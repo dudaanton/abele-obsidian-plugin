@@ -1,0 +1,42 @@
+{
+  "kind": "singleType",
+  "collectionName": "ai_configs",
+  "info": {
+    "singularName": "ai-config",
+    "pluralName": "ai-configs",
+    "displayName": "AI config",
+    "description": ""
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "attributes": {
+    "OPENROUTER_ENG_CARD_MODEL": {
+      "type": "string",
+      "default": "google/gemini-2.5-flash-preview-05-20"
+    },
+    "USE_ELEVEN_LABS": {
+      "type": "boolean",
+      "default": false
+    },
+    "OPENROUTER_LV_CARD_MODEL": {
+      "type": "string",
+      "default": "google/gemini-2.5-flash-preview-05-20"
+    },
+    "ELEVENLABS_VOICE_ID": {
+      "type": "string",
+      "default": "uju3wxzG5OhpWcoi3SMy"
+    },
+    "ELEVENLABS_MODEL_ID": {
+      "type": "string",
+      "default": "eleven_multilingual_v2"
+    },
+    "OPENAI_IMAGE_MODEL": {
+      "type": "string",
+      "default": "dall-e-3"
+    },
+    "ELEVENLABS_SPEECH_TO_TEXT_MODEL_ID": {
+      "type": "string"
+    }
+  }
+}

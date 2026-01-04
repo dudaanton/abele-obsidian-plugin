@@ -1,0 +1,29 @@
+# Use an official Node.js runtime as a parent image (choose a version compatible with Strapi and your project)
+FROM node:20-alpine
+
+# Set the working directory in the container
+WORKDIR /opt/app
+
+# Copy package.json and package-lock.json (or yarn.lock)
+# COPY package.json ./
+
+# Install dependencies
+# Using --legacy-peer-deps might be necessary depending on Strapi version and plugins
+# Or use --force if absolutely needed, but try to resolve peer dependency issues first
+# RUN npm install
+
+# Copy the rest of the application code into the container
+# COPY . .
+
+# Build the Strapi application (creates the .strapi and build folders)
+# RUN npm run build
+
+# Expose the port Strapi runs on
+EXPOSE 1337
+
+# Define the command to run your app using the Strapi development server
+# The command from docker-compose.yml (strapi develop) will override this if set there.
+# This CMD is useful if running the image directly without docker-compose.
+#CMD ["npm", "run", "develop"]
+
+CMD ["sleep", "1d"]

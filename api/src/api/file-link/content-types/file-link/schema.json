@@ -1,0 +1,29 @@
+{
+  "kind": "collectionType",
+  "collectionName": "file_links",
+  "info": {
+    "singularName": "file-link",
+    "pluralName": "file-links",
+    "displayName": "File Link"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "slug": {
+      "type": "uid",
+      "required": true
+    },
+    "file": {
+      "allowedTypes": [
+        "images",
+        "files",
+        "videos",
+        "audios"
+      ],
+      "type": "media",
+      "multiple": false,
+      "required": true
+    }
+  }
+}

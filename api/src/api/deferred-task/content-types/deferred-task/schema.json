@@ -1,0 +1,66 @@
+{
+  "kind": "collectionType",
+  "collectionName": "deferred_tasks",
+  "info": {
+    "singularName": "deferred-task",
+    "pluralName": "deferred-tasks",
+    "displayName": "Deferred Task",
+    "description": "Stores information about background tasks"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": true
+    },
+    "content-type-builder": {
+      "visible": true
+    }
+  },
+  "attributes": {
+    "command_name": {
+      "type": "string",
+      "required": true
+    },
+    "payload": {
+      "type": "json"
+    },
+    "taskStatus": {
+      "type": "enumeration",
+      "enum": [
+        "pending",
+        "running",
+        "completed",
+        "error"
+      ],
+      "default": "pending",
+      "required": true
+    },
+    "result": {
+      "type": "json",
+      "private": true
+    },
+    "error_message": {
+      "type": "text",
+      "private": true
+    },
+    "media": {
+      "type": "media",
+      "multiple": true,
+      "required": false,
+      "allowedTypes": [
+        "images",
+        "files",
+        "videos",
+        "audios"
+      ]
+    },
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user",
+      "inversedBy": "deferred_tasks"
+    }
+  }
+}

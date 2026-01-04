@@ -1,0 +1,19 @@
+# Ignore node_modules to prevent host modules from interfering with container build
+node_modules
+
+# Ignore build artifacts if they exist locally
+.strapi/
+build/
+.tmp/
+.dist/
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
+
+# Ignore Git directory
+.git
+
+.env
+.env.*
+.cache

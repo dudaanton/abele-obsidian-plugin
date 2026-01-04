@@ -1,0 +1,28 @@
+{
+  "kind": "collectionType",
+  "collectionName": "obsidian_tokens",
+  "info": {
+    "singularName": "obsidian-token",
+    "pluralName": "obsidian-tokens",
+    "displayName": "Obsidian Token",
+    "description": ""
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user",
+      "inversedBy": "obsidian_tokens"
+    },
+    "token": {
+      "type": "string",
+      "private": true,
+      "maxLength": 64,
+      "minLength": 16,
+      "required": true
+    }
+  }
+}
