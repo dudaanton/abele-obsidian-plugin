@@ -213,6 +213,10 @@ export default class AbelePlugin extends Plugin {
           // Check if path is excluded
           if (AbeleConfig.getInstance().isPathExcludedFromDefaultTemplate(file.path)) return
 
+          // Journals have their own templates
+          if (AbeleConfig.getInstance().journals.some((j) => j.checkIfNotePathIsJournal(file.path)))
+            return
+
           // Wait for 1 second to ensure there is no content being added (e.g., from Obsidian Web Clipper)
           await new Promise((res) => setTimeout(res, 1000))
 
