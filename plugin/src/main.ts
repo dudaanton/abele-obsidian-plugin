@@ -32,6 +32,7 @@ import { AbeleSettingTab } from './settings'
 import { createHeaderExtension } from './editor/HeaderExtension'
 import { migrateFromDataview } from './commands/migrateFromDataview'
 import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
+import { readFileContent } from './helpers/vaultUtils'
 
 interface PluginData {}
 
@@ -212,8 +213,11 @@ export default class AbelePlugin extends Plugin {
           // Check if path is excluded
           if (AbeleConfig.getInstance().isPathExcludedFromDefaultTemplate(file.path)) return
 
+          // Wait for 1 second to ensure there is no content being added (e.g., from Obsidian Web Clipper)
+          await new Promise((res) => setTimeout(res, 1000))
+
           // Check if file is empty
-          const content = await this.app.vault.read(file)
+          const content = await readFileContent(file)
           if (content.trim() !== '') return
 
           // Apply default template
