@@ -246,6 +246,15 @@ export async function createNoteFromTemplate(
     return null
   }
 
+  // Create parent directories if they don't exist
+  const parentPath = renderedPath.split('/').slice(0, -1).join('/')
+  if (parentPath) {
+    const parentExists = await app.vault.adapter.exists(parentPath)
+    if (!parentExists) {
+      await app.vault.createFolder(parentPath)
+    }
+  }
+
   const newFile = await app.vault.create(renderedPath, finalContent)
 
   app.workspace.openLinkText(newFile.path, '', false)
