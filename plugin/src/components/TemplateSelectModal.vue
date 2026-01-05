@@ -1,37 +1,41 @@
 <template>
   <Modal title="Select Template" @close="emit('close')">
-    <div class="template-select-modal">
+    <div class="abele-template-select">
       <Input v-model="searchQuery" placeholder="Search templates..." />
 
       <!-- Breadcrumbs -->
-      <div v-if="currentPath.length > 0 && !searchQuery" class="breadcrumbs">
-        <span class="breadcrumb-item" @click="navigateTo(-1)">All</span>
+      <div v-if="currentPath.length > 0 && !searchQuery" class="abele-template-select__breadcrumbs">
+        <span class="abele-template-select__breadcrumb-item" @click="navigateTo(-1)">All</span>
         <template v-for="(segment, idx) in currentPath" :key="idx">
-          <span class="breadcrumb-separator">/</span>
-          <span class="breadcrumb-item" @click="navigateTo(idx)">{{ segment }}</span>
+          <span class="abele-template-select__breadcrumb-separator">/</span>
+          <span class="abele-template-select__breadcrumb-item" @click="navigateTo(idx)">{{
+            segment
+          }}</span>
         </template>
       </div>
 
-      <div class="template-list">
+      <div class="abele-template-select__list">
         <!-- Search mode: flat list -->
         <template v-if="searchQuery">
           <div
             v-for="template in searchResults"
             :key="template.file.path"
-            class="template-item"
-            :class="{ selected: selectedTemplate === template }"
+            class="abele-template-select__item"
+            :class="{ 'abele-template-select__item_selected': selectedTemplate === template }"
             @click="selectTemplate(template)"
             @dblclick="confirmSelection"
           >
-            <div class="template-info">
-              <span class="template-name">{{ template.name }}</span>
-              <span v-if="template.templateDir" class="template-path">
+            <div class="abele-template-select__item-info">
+              <span class="abele-template-select__item-name">{{ template.name }}</span>
+              <span v-if="template.templateDir" class="abele-template-select__item-path">
                 {{ template.templateDir }}
               </span>
             </div>
-            <span class="template-type">{{ template.templateFor }}</span>
+            <span class="abele-template-select__item-type">{{ template.templateFor }}</span>
           </div>
-          <div v-if="searchResults.length === 0" class="no-templates">No templates found</div>
+          <div v-if="searchResults.length === 0" class="abele-template-select__empty">
+            No templates found
+          </div>
         </template>
 
         <!-- Browse mode: folders + templates -->
@@ -40,41 +44,41 @@
           <div
             v-for="folder in currentFolders"
             :key="'folder:' + folder"
-            class="template-item folder-item"
+            class="abele-template-select__item abele-template-select__item_folder"
             @click="openFolder(folder)"
           >
-            <div class="template-info">
-              <Icon icon="folder" class="folder-icon" />
-              <span class="template-name">{{ folder }}</span>
+            <div class="abele-template-select__item-info abele-template-select__item-info_folder">
+              <Icon icon="folder" class="abele-template-select__folder-icon" />
+              <span class="abele-template-select__item-name">{{ folder }}</span>
             </div>
-            <span class="folder-count">{{ getFolderCount(folder) }}</span>
+            <span class="abele-template-select__folder-count">{{ getFolderCount(folder) }}</span>
           </div>
 
           <!-- Templates at current level -->
           <div
             v-for="template in currentTemplates"
             :key="template.file.path"
-            class="template-item"
-            :class="{ selected: selectedTemplate === template }"
+            class="abele-template-select__item"
+            :class="{ 'abele-template-select__item_selected': selectedTemplate === template }"
             @click="selectTemplate(template)"
             @dblclick="confirmSelection"
           >
-            <div class="template-info">
-              <span class="template-name">{{ template.name }}</span>
+            <div class="abele-template-select__item-info">
+              <span class="abele-template-select__item-name">{{ template.name }}</span>
             </div>
-            <span class="template-type">{{ template.templateFor }}</span>
+            <span class="abele-template-select__item-type">{{ template.templateFor }}</span>
           </div>
 
           <div
             v-if="currentFolders.length === 0 && currentTemplates.length === 0"
-            class="no-templates"
+            class="abele-template-select__empty"
           >
             No templates available
           </div>
         </template>
       </div>
 
-      <div class="modal-buttons">
+      <div class="abele-template-select__buttons">
         <Button text="Cancel" @click="emit('close')" />
         <Button
           text="Select"
@@ -185,22 +189,22 @@ function confirmSelection() {
 }
 </script>
 
-<style scoped>
-.template-select-modal {
+<style>
+.abele-template-select {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-2);
   min-width: 400px;
 }
 
-.template-list {
+.abele-template-select__list {
   max-height: 300px;
   overflow-y: auto;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
 }
 
-.template-item {
+.abele-template-select__item {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -209,20 +213,20 @@ function confirmSelection() {
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.template-item:last-child {
+.abele-template-select__item:last-child {
   border-bottom: none;
 }
 
-.template-item:hover {
+.abele-template-select__item:hover {
   background: var(--background-modifier-hover);
 }
 
-.template-item.selected {
+.abele-template-select__item_selected {
   background: var(--interactive-accent);
   color: var(--text-on-accent);
 }
 
-.breadcrumbs {
+.abele-template-select__breadcrumbs {
   display: flex;
   align-items: center;
   gap: var(--size-2-1);
@@ -230,66 +234,66 @@ function confirmSelection() {
   color: var(--text-muted);
 }
 
-.breadcrumb-item {
+.abele-template-select__breadcrumb-item {
   cursor: pointer;
   padding: 2px 4px;
   border-radius: var(--radius-s);
 }
 
-.breadcrumb-item:hover {
+.abele-template-select__breadcrumb-item:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
 
-.breadcrumb-separator {
+.abele-template-select__breadcrumb-separator {
   opacity: 0.5;
 }
 
-.folder-item .template-info {
-  flex-direction: row;
-  align-items: center;
-  gap: var(--size-2-2);
-}
-
-.folder-count {
-  font-size: var(--font-smaller);
-  color: var(--text-muted);
-}
-
-.template-info {
+.abele-template-select__item-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.template-name {
+.abele-template-select__item-info_folder {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--size-2-2);
+}
+
+.abele-template-select__folder-count {
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+}
+
+.abele-template-select__item-name {
   font-weight: var(--font-medium);
 }
 
-.template-path {
+.abele-template-select__item-path {
   font-size: var(--font-smaller);
   opacity: 0.7;
 }
 
-.template-type {
+.abele-template-select__item-type {
   font-size: var(--font-smaller);
   padding: 2px 6px;
   background: var(--background-modifier-border);
   border-radius: var(--radius-s);
 }
 
-.template-item.selected .template-type {
+.abele-template-select__item_selected .abele-template-select__item-type {
   background: var(--text-on-accent);
   color: var(--interactive-accent);
 }
 
-.no-templates {
+.abele-template-select__empty {
   padding: var(--size-4-4);
   text-align: center;
   opacity: 0.7;
 }
 
-.modal-buttons {
+.abele-template-select__buttons {
   display: flex;
   justify-content: flex-end;
   gap: var(--size-4-2);
