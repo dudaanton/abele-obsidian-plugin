@@ -410,60 +410,6 @@ export interface ApiAiConfigAiConfig extends Struct.SingleTypeSchema {
   };
 }
 
-export interface ApiDeferredTaskDeferredTask
-  extends Struct.CollectionTypeSchema {
-  collectionName: 'deferred_tasks';
-  info: {
-    description: 'Stores information about background tasks';
-    displayName: 'Deferred Task';
-    pluralName: 'deferred-tasks';
-    singularName: 'deferred-task';
-  };
-  options: {
-    draftAndPublish: false;
-  };
-  pluginOptions: {
-    'content-manager': {
-      visible: true;
-    };
-    'content-type-builder': {
-      visible: true;
-    };
-  };
-  attributes: {
-    command_name: Schema.Attribute.String & Schema.Attribute.Required;
-    createdAt: Schema.Attribute.DateTime;
-    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-    error_message: Schema.Attribute.Text & Schema.Attribute.Private;
-    locale: Schema.Attribute.String & Schema.Attribute.Private;
-    localizations: Schema.Attribute.Relation<
-      'oneToMany',
-      'api::deferred-task.deferred-task'
-    > &
-      Schema.Attribute.Private;
-    media: Schema.Attribute.Media<
-      'images' | 'files' | 'videos' | 'audios',
-      true
-    >;
-    payload: Schema.Attribute.JSON;
-    publishedAt: Schema.Attribute.DateTime;
-    result: Schema.Attribute.JSON & Schema.Attribute.Private;
-    taskStatus: Schema.Attribute.Enumeration<
-      ['pending', 'running', 'completed', 'error']
-    > &
-      Schema.Attribute.Required &
-      Schema.Attribute.DefaultTo<'pending'>;
-    updatedAt: Schema.Attribute.DateTime;
-    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-    user: Schema.Attribute.Relation<
-      'manyToOne',
-      'plugin::users-permissions.user'
-    >;
-  };
-}
-
 export interface ApiFileLinkFileLink extends Struct.CollectionTypeSchema {
   collectionName: 'file_links';
   info: {
@@ -1027,10 +973,6 @@ export interface PluginUsersPermissionsUser
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
-    deferred_tasks: Schema.Attribute.Relation<
-      'oneToMany',
-      'api::deferred-task.deferred-task'
-    >;
     email: Schema.Attribute.Email &
       Schema.Attribute.Required &
       Schema.Attribute.SetMinMaxLength<{
@@ -1081,7 +1023,6 @@ declare module '@strapi/strapi' {
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
       'api::ai-config.ai-config': ApiAiConfigAiConfig;
-      'api::deferred-task.deferred-task': ApiDeferredTaskDeferredTask;
       'api::file-link.file-link': ApiFileLinkFileLink;
       'api::obsidian-token.obsidian-token': ApiObsidianTokenObsidianToken;
       'api::prompt.prompt': ApiPromptPrompt;

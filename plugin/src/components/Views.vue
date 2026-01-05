@@ -58,7 +58,7 @@ import FindAndReplaceModal from './FindAndReplaceModal.vue'
 import MigrateFromDataviewModal from './MigrateFromDataviewModal.vue'
 import { TIMELINE_SIDEBAR_ID_ATTR } from '@/views/TimelineSidebarView'
 import { TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'
-import SettingsView from './Settings.vue'
+import SettingsView from './settings/Settings.vue'
 import { SETTINGS_ID_ATTR } from '@/settings'
 
 const {

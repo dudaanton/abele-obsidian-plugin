@@ -12,6 +12,9 @@ export interface AbeleSettings {
   journals?: JournalDTO[]
   busyDayThreshold?: number // Optional threshold for busy day
   excludedPathsForDefaultTemplate?: string[] // Paths where default template should not apply
+  // Server settings
+  baseUrl?: string // Backend API base URL
+  apiToken?: string // API authentication token
 }
 
 export const DEFAULT_SETTINGS: AbeleSettings = {
@@ -25,6 +28,8 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   journals: [],
   busyDayThreshold: 3,
   excludedPathsForDefaultTemplate: ['attachments/', 'templates/'],
+  baseUrl: '',
+  apiToken: '',
 }
 
 export class AbeleConfig {
@@ -42,6 +47,8 @@ export class AbeleConfig {
   public excludedPathsForDefaultTemplate: string[]
 
   public journals: Journal[]
+  public baseUrl: string
+  public apiToken: string
 
   public get logsNotesTypes(): string[] {
     return this._logsNotesTypes
@@ -137,6 +144,8 @@ export class AbeleConfig {
     this.excludedPathsForDefaultTemplate = settings?.excludedPathsForDefaultTemplate || [
       ...DEFAULT_SETTINGS.excludedPathsForDefaultTemplate,
     ]
+    this.baseUrl = settings?.baseUrl || DEFAULT_SETTINGS.baseUrl
+    this.apiToken = settings?.apiToken || DEFAULT_SETTINGS.apiToken
   }
 
   exportSettings(): AbeleSettings {
@@ -151,6 +160,8 @@ export class AbeleConfig {
       journals: this.journals.map((j) => j.toDTO()),
       busyDayThreshold: this.busyDayThreshold,
       excludedPathsForDefaultTemplate: [...this.excludedPathsForDefaultTemplate],
+      baseUrl: this.baseUrl,
+      apiToken: this.apiToken,
     }
   }
 }

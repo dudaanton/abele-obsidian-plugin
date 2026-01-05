@@ -70,12 +70,6 @@
       "relation": "oneToMany",
       "target": "api::obsidian-token.obsidian-token",
       "mappedBy": "user"
-    },
-    "deferred_tasks": {
-      "type": "relation",
-      "relation": "oneToMany",
-      "target": "api::deferred-task.deferred-task",
-      "mappedBy": "user"
     }
   }
 }
