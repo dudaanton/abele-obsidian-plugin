@@ -33,6 +33,8 @@ import { createHeaderExtension } from './editor/HeaderExtension'
 import { migrateFromDataview } from './commands/migrateFromDataview'
 import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
 import { readFileContent } from './helpers/vaultUtils'
+import { runAfterSync } from './helpers/runAfterSync'
+import { handleProtocolAction } from './helpers/protocolHandler'
 
 interface PluginData {}
 
@@ -201,6 +203,13 @@ export default class AbelePlugin extends Plugin {
 
     this.addRibbonIcon(TodoSidebarView.getIcon(), 'Show todo sidebar', () => {
       this.activateView(TODO_SIDEBAR_VIEW_TYPE)
+    })
+
+    // Register protocol handler for obsidian://abele
+    this.registerObsidianProtocolHandler('abele', (params) => {
+      runAfterSync(this.app, () => {
+        handleProtocolAction(this.app, params)
+      })
     })
 
     // Register default template hook only after workspace is ready
