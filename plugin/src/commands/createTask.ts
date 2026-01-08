@@ -1,5 +1,6 @@
 import { Task, TaskCreateDTO } from '@/entities/Task'
 import { cleanFileName, pathToWikilink } from '@/helpers/pathsHelpers'
+import dayjs from 'dayjs'
 import { createTaskEmbedded, getNewTaskPathFromString } from '@/helpers/tasksUtils'
 import { getAvailablePath } from '@/helpers/vaultUtils'
 import { Editor, Notice } from 'obsidian'
@@ -24,9 +25,9 @@ export const createTask = async (
   let taskModel: Task
 
   if (data) {
-    taskModel = new Task({ ...data, id: '', wikilink })
+    taskModel = new Task({ ...data, createdAt: data.createdAt ?? dayjs(), id: '', wikilink })
   } else {
-    taskModel = new Task({ id: '', wikilink })
+    taskModel = new Task({ id: '', wikilink, createdAt: dayjs() })
   }
 
   await taskModel.writeTaskToFile(focus)
@@ -66,7 +67,7 @@ export const createTaskAndInsert = async (editor: Editor) => {
   // setting cursor to the beginning of the next line
   editor.setSelection({ line: cursor.line + (shouldCreateNewLine ? 2 : 1), ch: 0 })
 
-  const taskModel = new Task({ id: '', wikilink })
+  const taskModel = new Task({ id: '', wikilink, createdAt: dayjs() })
   if (selection) {
     taskModel.title = selection.split('\n')[0] || DEFAULT_TASK_NAME
     taskModel.description = selection.split('\n').slice(1).join('\n') || ''
