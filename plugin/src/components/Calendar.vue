@@ -127,24 +127,16 @@ const todayClick = () => {
 const days = computed(() => {
   const days: { dayNumber: number; day: dayjs.Dayjs; formatedDate: string }[] = []
   const firstDayOfMonth = dayjs().year(selectedYear.value).month(selectedMonth.value).date(1)
+  const weekStart = GlobalStore.getInstance().weekStartsOnMonday.value ? 1 : 0
 
-  const weekdayOfFirst = firstDayOfMonth.day()
+  const paddingDays = (firstDayOfMonth.day() - weekStart + 7) % 7
 
-  for (
-    let i = GlobalStore.getInstance().weekStartsOnMonday.value ? 1 : 0;
-    i < weekdayOfFirst;
-    i++
-  ) {
+  for (let i = paddingDays; i > 0; i--) {
+    const day = firstDayOfMonth.subtract(i, 'day')
     days.push({
-      dayNumber: firstDayOfMonth
-        .date(1)
-        .subtract(weekdayOfFirst - i, 'day')
-        .date(),
-      day: firstDayOfMonth.date(1).subtract(weekdayOfFirst - i, 'day'),
-      formatedDate: firstDayOfMonth
-        .date(1)
-        .subtract(weekdayOfFirst - i, 'day')
-        .format(DATE_FORMAT),
+      dayNumber: day.date(),
+      day,
+      formatedDate: day.format(DATE_FORMAT),
     })
   }
 
@@ -158,17 +150,14 @@ const days = computed(() => {
   }
 
   const lastDayOfMonth = firstDayOfMonth.date(daysInMonth)
-  const weekdayOfLast = lastDayOfMonth.day()
+  const trailingDays = (weekStart + 6 - lastDayOfMonth.day()) % 7
 
-  for (
-    let i = 1;
-    i < 7 - weekdayOfLast + (GlobalStore.getInstance().weekStartsOnMonday.value ? 1 : 0);
-    i++
-  ) {
+  for (let i = 1; i <= trailingDays; i++) {
+    const day = lastDayOfMonth.add(i, 'day')
     days.push({
-      dayNumber: i,
-      day: lastDayOfMonth.date(daysInMonth + i),
-      formatedDate: lastDayOfMonth.date(daysInMonth + i).format(DATE_FORMAT),
+      dayNumber: day.date(),
+      day,
+      formatedDate: day.format(DATE_FORMAT),
     })
   }
 
@@ -186,7 +175,6 @@ const weekdays = computed(() => {
   }
   return days
 })
-
 
 const tasksDateMap = computed(() => {
   const { tasksList: tasksListRef } = GlobalStore.getInstance()
