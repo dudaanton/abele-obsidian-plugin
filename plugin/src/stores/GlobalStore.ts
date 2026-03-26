@@ -67,7 +67,6 @@ export class GlobalStore {
 
     this._app = app
     this._vaultWatcher = new VaultWatcher(app)
-    this.tasksList.value = new TasksList()
 
     console.debug('GlobalStore initialized')
     this.initialized.value = true
@@ -101,6 +100,12 @@ export class GlobalStore {
         }
       }
     })
+  }
+
+  public initTasksList(): void {
+    if (!this.tasksList.value) {
+      this.tasksList.value = new TasksList()
+    }
   }
 
   public destroy(): void {

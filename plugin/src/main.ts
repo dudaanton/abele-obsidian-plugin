@@ -78,6 +78,13 @@ export default class AbelePlugin extends Plugin {
 
     GlobalStore.getInstance().init(this.app)
 
+    // Vault files and metadata cache are not fully available during onload().
+    // Deferring TasksList creation until layout is ready ensures getMarkdownFiles()
+    // and getFileCache() return complete data.
+    this.app.workspace.onLayoutReady(() => {
+      GlobalStore.getInstance().initTasksList()
+    })
+
     this.addSettingTab(new AbeleSettingTab(this.app, this))
 
     console.debug('Abele Plugin loaded.')
