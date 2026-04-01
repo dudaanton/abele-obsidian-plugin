@@ -18,6 +18,9 @@ build/
 # obsidian
 data.json
 
+# env files
+*.env
+
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
 
