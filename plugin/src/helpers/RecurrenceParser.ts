@@ -16,7 +16,8 @@ interface RecurrenceRule {
     type: 'weekdays' | 'monthdays'
     days: number[] // 0-6 for weekdays, 1-31 for monthdays
   } | null
-  position?: 'first' | 'last' // for first/last weekday of month
+  position?: 'first' | 'last' // for first/last weekday of month/year, or first/last day of month/year
+  positionScope?: 'month' | 'year' // scope for positional day (not weekday)
   fromCompletion: boolean
 }
 
@@ -45,6 +46,16 @@ export class RecurrenceParser {
       interval: null,
       specificDays: null,
       fromCompletion: normalized.includes('from completion'),
+    }
+
+    // Pattern: every (first|last) day of (month|year)
+    const dayOfPeriodMatch = normalized.match(/every\s+(first|last)\s+day\s+of\s+(month|year)/)
+    if (dayOfPeriodMatch) {
+      const [, position, scope] = dayOfPeriodMatch
+      rule.position = position as 'first' | 'last'
+      rule.positionScope = scope as 'month' | 'year'
+      rule.interval = { value: 1, unit: scope as 'month' | 'year' }
+      return rule
     }
 
     // Pattern: every (first|last) weekday
@@ -124,6 +135,22 @@ export class RecurrenceParser {
 
     const startDate = rule.fromCompletion && completionDate ? completionDate : baseDate
     let nextDate = startDate
+
+    // Handle first/last day of month/year
+    if (rule.position && rule.positionScope && !rule.specificDays) {
+      const scope = rule.positionScope
+      if (rule.position === 'first') {
+        nextDate = startDate.add(1, scope).startOf(scope)
+      } else {
+        const endOfCurrent = startDate.endOf(scope)
+        if (endOfCurrent.isAfter(startDate, 'day')) {
+          nextDate = endOfCurrent.startOf('day')
+        } else {
+          nextDate = startDate.add(1, scope).endOf(scope).startOf('day')
+        }
+      }
+      return nextDate
+    }
 
     // Handle first/last weekday of month
     if (rule.position && rule.specificDays?.type === 'weekdays') {

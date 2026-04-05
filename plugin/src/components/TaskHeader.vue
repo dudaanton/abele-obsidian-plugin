@@ -26,13 +26,7 @@
       icon="calendar-clock"
       @click="openDatePickerForMode('due')"
     />
-    <Icon
-      ref="recurrenceButton"
-      text-right="Recurrence"
-      icon="repeat"
-      with-bg
-      @click="recurrenceMenu.open"
-    />
+    <Icon text-right="Recurrence" icon="repeat" with-bg @click="recurrencePickerOpen = true" />
     <Icon text-right="Clear" with-bg @click="clear" />
 
     <DateTimePickerModal
@@ -46,6 +40,14 @@
       @clear="onDateTimeClear"
       @cancel="datePickerOpen = false"
     />
+
+    <RecurrencePickerModal
+      v-if="recurrencePickerOpen"
+      :initial-pattern="task.recurrence"
+      @confirm="onRecurrenceConfirm"
+      @clear="onRecurrenceClear"
+      @cancel="recurrencePickerOpen = false"
+    />
   </div>
 </template>
 
@@ -53,16 +55,14 @@
 import { ref, computed, onMounted } from 'vue'
 import dayjs from 'dayjs'
 import { TaskHeader } from '@/entities/TaskHeader'
-import { AbeleConfig } from '@/services/AbeleConfig'
 import { Menu } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import DateTimePickerModal from './DateTimePickerModal.vue'
-import { useMenu, type Choice } from '@/composables/useMenu'
+import RecurrencePickerModal from './RecurrencePickerModal.vue'
 
 const props = defineProps<{ task: TaskHeader }>()
 
 const addDateButton = ref<InstanceType<typeof Icon> | null>(null)
-const recurrenceButton = ref<InstanceType<typeof Icon> | null>(null)
 
 const datePickerOpen = ref(false)
 const datePickerMode = ref<'event' | 'due'>('event')
@@ -132,42 +132,17 @@ const onDateTimeClear = () => {
   datePickerOpen.value = false
 }
 
-const config = AbeleConfig.getInstance()
+const recurrencePickerOpen = ref(false)
 
-const recurrenceMenuChoices = computed<Choice[]>(() => {
-  return config.tasksRecurrenceChoices.map((rec) => {
-    let recurrenceValue: string
-
-    switch (rec) {
-      case 'Daily':
-        recurrenceValue = 'every day'
-        break
-      case 'Weekly':
-        recurrenceValue = 'every week'
-        break
-      case 'Monthly':
-        recurrenceValue = 'every month'
-        break
-      case 'Yearly':
-        recurrenceValue = 'every year'
-        break
-    }
-
-    return {
-      title: rec,
-      event: 'set_recurrence',
-      value: recurrenceValue,
-    }
-  })
-})
-
-const handleMenuSelect = (event: string, value: string) => {
-  if (event === 'set_recurrence') {
-    props.task.addRecurrence(value)
-  }
+const onRecurrenceConfirm = (pattern: string) => {
+  props.task.addRecurrence(pattern)
+  recurrencePickerOpen.value = false
 }
 
-const recurrenceMenu = useMenu(recurrenceButton, recurrenceMenuChoices, handleMenuSelect)
+const onRecurrenceClear = () => {
+  props.task.removeRecurrence()
+  recurrencePickerOpen.value = false
+}
 
 const clear = () => {
   props.task.removeDueDate()
