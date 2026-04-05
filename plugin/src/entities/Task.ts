@@ -109,6 +109,15 @@ export class Task {
     return this.getTaskDate() ?? dayjs()
   }
 
+  get hasTime(): boolean {
+    return !!(this.dateTime || this.dueTime)
+  }
+
+  getSortTimestamp(): number {
+    const date = this.getTaskDateOrToday()
+    return this.hasTime ? date.unix() : date.endOf('day').unix()
+  }
+
   async loadContent() {
     const task = await getNoteData(this.taskPath)
 
@@ -289,7 +298,7 @@ export class Task {
       dates.push(this.date.format(DATE_FORMAT))
     }
     if (this.due) {
-      if (this.date && this.date.isBefore(this.due)) {
+      if (this.date && this.date.isBefore(this.due, 'day')) {
         // adding all the dates between date and due
         let current = this.date.add(1, 'day')
         while (current.isBefore(this.due)) {
@@ -297,7 +306,7 @@ export class Task {
           current = current.add(1, 'day')
         }
         dates.push(this.due.format(DATE_FORMAT))
-      } else {
+      } else if (!this.date || !this.date.isSame(this.due, 'day')) {
         dates.push(this.due.format(DATE_FORMAT))
       }
     }

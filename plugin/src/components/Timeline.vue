@@ -81,6 +81,10 @@ const dates = computed(() => {
     }
   }
 
+  for (const [, dayTasks] of datesSet) {
+    dayTasks.sort((a, b) => a.getSortTimestamp() - b.getSortTimestamp())
+  }
+
   return Array.from(datesSet.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1))
 })
 

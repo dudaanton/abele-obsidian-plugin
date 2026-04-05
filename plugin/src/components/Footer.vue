@@ -21,7 +21,7 @@ const props = defineProps<{
 
 const tasks = computed(() => {
   return Array.from(props.footer.noteRelations.tasks.values()).sort(
-    (a, b) => b.getTaskDateOrToday().unix() - a.getTaskDateOrToday().unix()
+    (a, b) => b.getSortTimestamp() - a.getSortTimestamp()
   )
 })
 
