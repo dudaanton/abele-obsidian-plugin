@@ -2,7 +2,7 @@ import { pathToWikilink } from '@/helpers/pathsHelpers'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { EventRef, normalizePath, TAbstractFile, TFile } from 'obsidian'
 import { Task } from './Task'
-import { reactive } from 'vue'
+import { reactive, toRaw } from 'vue'
 
 export class TasksList {
   // public readonly id: string
@@ -140,7 +140,9 @@ export class TasksList {
     const { app } = GlobalStore.getInstance()
 
     this.eventRefs.forEach((ref) => {
-      app.vault.offref(ref)
+      const rawRef = toRaw(ref)
+      app.vault.offref(rawRef)
+      app.metadataCache.offref(rawRef)
     })
     this.eventRefs = []
 

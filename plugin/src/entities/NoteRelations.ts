@@ -6,7 +6,7 @@ import { EventRef, normalizePath, TAbstractFile, TFile } from 'obsidian'
 import { Task } from './Task'
 import { Log } from './Log'
 import { Note } from './Note'
-import { reactive } from 'vue'
+import { reactive, toRaw } from 'vue'
 import { Journal } from './Journal'
 import dayjs from 'dayjs'
 import { DATE_FORMAT } from '@/constants/dates'
@@ -436,7 +436,9 @@ export class NoteRelations {
     const { app } = GlobalStore.getInstance()
 
     this.eventRefs.forEach((ref) => {
-      app.vault.offref(ref)
+      const rawRef = toRaw(ref)
+      app.vault.offref(rawRef)
+      app.metadataCache.offref(rawRef)
     })
     this.eventRefs = []
 
