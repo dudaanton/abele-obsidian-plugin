@@ -10,15 +10,21 @@
       :text-right="addDateText"
       with-bg
       icon="calendar"
-      @click="dateMenu.open"
+      @click="openDatePicker"
     />
     <Icon
-      v-if="showAddTime"
-      ref="addTimeButton"
-      :text-right="addTimeText"
+      v-if="showEditDate && task.date"
+      text-right="Edit Event Date"
       with-bg
-      icon="clock"
-      @click="timeMenu.open"
+      icon="calendar-days"
+      @click="openDatePickerForMode('event')"
+    />
+    <Icon
+      v-if="showEditDate && task.due"
+      text-right="Edit Due Date"
+      with-bg
+      icon="calendar-clock"
+      @click="openDatePickerForMode('due')"
     />
     <Icon
       ref="recurrenceButton"
@@ -28,108 +34,105 @@
       @click="recurrenceMenu.open"
     />
     <Icon text-right="Clear" with-bg @click="clear" />
+
+    <DateTimePickerModal
+      v-if="datePickerOpen"
+      :mode="datePickerMode"
+      :initial-date="datePickerMode === 'event' ? task.date : task.due"
+      :initial-time="
+        datePickerMode === 'event' ? formatTime(task.dateTime) : formatTime(task.dueTime)
+      "
+      @confirm="onDateTimeConfirm"
+      @clear="onDateTimeClear"
+      @cancel="datePickerOpen = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import dayjs from 'dayjs'
 import { TaskHeader } from '@/entities/TaskHeader'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { Menu } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
+import DateTimePickerModal from './DateTimePickerModal.vue'
 import { useMenu, type Choice } from '@/composables/useMenu'
 
 const props = defineProps<{ task: TaskHeader }>()
 
 const addDateButton = ref<InstanceType<typeof Icon> | null>(null)
-const addTimeButton = ref<InstanceType<typeof Icon> | null>(null)
 const recurrenceButton = ref<InstanceType<typeof Icon> | null>(null)
+
+const datePickerOpen = ref(false)
+const datePickerMode = ref<'event' | 'due'>('event')
 
 const toggleText = computed(() => (props.task.completedAt ? 'Undone' : 'Complete'))
 const toggleIcon = computed(() => (props.task.completedAt ? 'check-square' : 'square'))
 
 const showAddDate = computed(() => !props.task.due || !props.task.date)
+const showEditDate = computed(() => props.task.due || props.task.date)
 const addDateText = computed(() => {
   if (!props.task.due && !props.task.date) return 'Add Date'
   return props.task.due ? 'Add Event Date' : 'Add Due Date'
 })
 
-const showAddTime = computed(
-  () => (props.task.due && !props.task.dueTime) || (props.task.date && !props.task.dateTime)
-)
-const addTimeText = computed(() => {
-  if (!props.task.dueTime && !props.task.dateTime) return 'Add Time'
-  return props.task.due && !props.task.dueTime ? 'Add Due Time' : 'Add Event Time'
-})
+const formatTime = (time: dayjs.Dayjs | null): string | null => {
+  if (!time) return null
+  return time.format('HH:mm')
+}
+
+const openDatePickerForMode = (mode: 'event' | 'due') => {
+  datePickerMode.value = mode
+  datePickerOpen.value = true
+}
+
+const openDatePicker = () => {
+  if (!props.task.due && !props.task.date) {
+    const menu = new Menu()
+    menu.setUseNativeMenu(false)
+    menu.addItem((item) => {
+      item.setTitle('Event date')
+      item.setIcon('calendar-days')
+      item.onClick(() => openDatePickerForMode('event'))
+    })
+    menu.addItem((item) => {
+      item.setTitle('Due date')
+      item.setIcon('calendar-clock')
+      item.onClick(() => openDatePickerForMode('due'))
+    })
+    const el = addDateButton.value?.$el
+    if (el) {
+      const rect = el.getBoundingClientRect()
+      menu.showAtPosition({ x: rect.left, y: rect.bottom })
+    } else {
+      menu.showAtMouseEvent(new MouseEvent('click'))
+    }
+    return
+  }
+  datePickerMode.value = props.task.due ? 'event' : 'due'
+  datePickerOpen.value = true
+}
+
+const onDateTimeConfirm = (result: { date: dayjs.Dayjs; time: string | null }) => {
+  if (datePickerMode.value === 'event') {
+    props.task.setEventDate(result.date, result.time)
+  } else {
+    props.task.setDueDate(result.date, result.time)
+  }
+  datePickerOpen.value = false
+}
+
+const onDateTimeClear = () => {
+  if (datePickerMode.value === 'event') {
+    props.task.removeEventDate()
+  } else {
+    props.task.removeDueDate()
+  }
+  datePickerOpen.value = false
+}
 
 const config = AbeleConfig.getInstance()
-
-const dateMenuChoices = computed<Choice[]>(() => {
-  const dateChoices = config.tasksDateChoices.map((date) => ({
-    title: date,
-    event: 'set_date',
-    value: date,
-  }))
-
-  if (showAddDate.value && !props.task.due && !props.task.date) {
-    return [
-      {
-        title: 'Event date',
-        icon: 'calendar-days',
-        subMenu: dateChoices.map((c) => ({
-          ...c,
-          event: 'set_event_date',
-        })),
-      },
-      {
-        title: 'Due date',
-        icon: 'calendar-clock',
-        subMenu: dateChoices.map((c) => ({
-          ...c,
-          event: 'set_due_date',
-        })),
-      },
-    ]
-  }
-  if (props.task.due) return dateChoices.map((c) => ({ ...c, event: 'set_event_date' }))
-  return dateChoices.map((c) => ({ ...c, event: 'set_due_date' }))
-})
-
-const timeMenuChoices = computed<Choice[]>(() => {
-  if (!showAddTime.value) return []
-  const timeChoices = config.tasksTimeChoices.map((time) => ({
-    title: time,
-    event: 'set_time',
-    value: time,
-  }))
-
-  if (props.task.due && !props.task.dueTime && props.task.date && !props.task.dateTime) {
-    return [
-      {
-        title: 'Event time',
-        icon: 'clock',
-        subMenu: timeChoices.map((c) => ({
-          ...c,
-          event: 'set_event_time',
-        })),
-      },
-      {
-        title: 'Due time',
-        icon: 'clock',
-        subMenu: timeChoices.map((c) => ({
-          ...c,
-          event: 'set_due_time',
-        })),
-      },
-    ]
-  }
-
-  if (props.task.due && !props.task.dueTime)
-    return timeChoices.map((c) => ({ ...c, event: c.event.replace('set_time', 'set_due_time') }))
-  if (props.task.date && !props.task.dateTime)
-    return timeChoices.map((c) => ({ ...c, event: c.event.replace('set_time', 'set_event_time') }))
-
-  return []
-})
 
 const recurrenceMenuChoices = computed<Choice[]>(() => {
   return config.tasksRecurrenceChoices.map((rec) => {
@@ -159,27 +162,11 @@ const recurrenceMenuChoices = computed<Choice[]>(() => {
 })
 
 const handleMenuSelect = (event: string, value: string) => {
-  switch (event) {
-    case 'set_due_date':
-      props.task.addDueDate(value)
-      break
-    case 'set_event_date':
-      props.task.addEventDate(value)
-      break
-    case 'set_due_time':
-      props.task.addDueTime(value)
-      break
-    case 'set_event_time':
-      props.task.addEventTime(value)
-      break
-    case 'set_recurrence':
-      props.task.addRecurrence(value)
-      break
+  if (event === 'set_recurrence') {
+    props.task.addRecurrence(value)
   }
 }
 
-const dateMenu = useMenu(addDateButton, dateMenuChoices, handleMenuSelect)
-const timeMenu = useMenu(addTimeButton, timeMenuChoices, handleMenuSelect)
 const recurrenceMenu = useMenu(recurrenceButton, recurrenceMenuChoices, handleMenuSelect)
 
 const clear = () => {

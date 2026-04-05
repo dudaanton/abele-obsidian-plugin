@@ -136,6 +136,30 @@ export class TaskHeader {
     return this.writeContentToEditor()
   }
 
+  async setEventDate(date: dayjs.Dayjs, time?: string | null) {
+    this.date = date
+    if (time) {
+      const [hours, minutes] = time.split(':').map((t) => parseInt(t, 10))
+      this.dateTime = this.date.hour(hours).minute(minutes)
+      this.date = this.date.hour(hours).minute(minutes)
+    } else {
+      this.dateTime = null
+    }
+    return this.writeContentToEditor()
+  }
+
+  async setDueDate(date: dayjs.Dayjs, time?: string | null) {
+    this.due = date
+    if (time) {
+      const [hours, minutes] = time.split(':').map((t) => parseInt(t, 10))
+      this.dueTime = this.due.hour(hours).minute(minutes)
+      this.due = this.due.hour(hours).minute(minutes)
+    } else {
+      this.dueTime = null
+    }
+    return this.writeContentToEditor()
+  }
+
   async addEventTime(time?: string) {
     if (!this.date) {
       this.date = dayjs()
