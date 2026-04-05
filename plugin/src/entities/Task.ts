@@ -84,16 +84,24 @@ export class Task {
     this.oldProps = data.oldProps || {}
   }
 
-  getTaskDate(): dayjs.Dayjs {
-    if (this.date && this.due) {
-      return this.date.isBefore(this.due) ? this.date : this.due
-    } else if (this.date) {
-      return this.date
-    } else if (this.due) {
-      return this.due
-    } else if (this.createdAt) {
-      return this.createdAt
+  static resolveDate(params: {
+    date?: dayjs.Dayjs | string | null
+    due?: dayjs.Dayjs | string | null
+    created?: dayjs.Dayjs | string | null
+  }): dayjs.Dayjs | null {
+    const date = typeof params.date === 'string' ? parseDateOrNull(params.date) : params.date
+    const due = typeof params.due === 'string' ? parseDateOrNull(params.due) : params.due
+    const created =
+      typeof params.created === 'string' ? parseDateOrNull(params.created) : params.created
+
+    if (date && due) {
+      return date.isBefore(due) ? date : due
     }
+    return date ?? due ?? created ?? null
+  }
+
+  getTaskDate(): dayjs.Dayjs | null {
+    return Task.resolveDate({ date: this.date, due: this.due, created: this.createdAt })
   }
 
   // is used to sort tasks by date

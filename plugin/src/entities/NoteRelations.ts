@@ -264,6 +264,11 @@ export class NoteRelations {
           if (parsedDate.isSame(this.journalDate, 'date')) return true
         }
       }
+
+      if (frontmatter?.type === 'task') {
+        const taskDate = Task.resolveDate(frontmatter)
+        if (taskDate?.isSame(this.journalDate, 'date')) return true
+      }
     }
 
     const type = frontmatter?.type
