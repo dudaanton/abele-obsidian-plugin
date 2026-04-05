@@ -37,7 +37,7 @@ const notesLinks = computed(() => {
   display: flex;
   flex-direction: column;
   gap: calc(var(--p-spacing) / 2);
-  padding-left: calc(var(--icon-size) / 4);
+  padding-left: 0;
 
   br {
     display: none;

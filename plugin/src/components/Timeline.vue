@@ -22,10 +22,7 @@
         <div class="abele-timeline__date-icon abele-timeline__date-icon_upcoming">
           <ObsidianIcon icon="calendar" no-hover />
         </div>
-        <div
-          class="abele-timeline__date-line"
-          :class="{ 'abele-timeline__date-line_last': index === dates.length - 1 }"
-        />
+        <div class="abele-timeline__date-line" />
       </div>
       <div class="abele-timeline__block-content">
         <ObsidianMarkdown class="timeline__date" :text="getDateWikilink(date)" />
@@ -169,7 +166,7 @@ const getDateWikilink = (dateStr: string) => {
         display: none;
       }
     }
-    .abele-timeline__date-line:not(.abele-timeline__date-line_last) {
+    .abele-timeline__date-line {
       background-color: var(--background-secondary);
     }
   }
