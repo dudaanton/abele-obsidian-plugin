@@ -49,6 +49,7 @@ import TasksSettings from './TasksSettings.vue'
 import LogsSettings from './LogsSettings.vue'
 import JournalsSettings from './JournalsSettings.vue'
 import ServerSettings from './ServerSettings.vue'
+import AiSettings from './AiSettings.vue'
 
 interface Tab {
   id: string
@@ -61,6 +62,7 @@ const tabs: Tab[] = [
   { id: 'logs', name: 'Logs', component: markRaw(LogsSettings) },
   { id: 'journals', name: 'Journals', component: markRaw(JournalsSettings) },
   { id: 'server', name: 'Server', component: markRaw(ServerSettings) },
+  { id: 'ai', name: 'AI Agent', component: markRaw(AiSettings) },
 ]
 
 const activeTab = ref(0)

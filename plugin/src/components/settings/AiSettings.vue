@@ -1,0 +1,509 @@
+<template>
+  <div class="abele-settings__ai">
+    <Setting name="AI Agent" desc="Enable AI agent features including the chat sidebar.">
+      <Checkbox :is-enabled="enabled" @toggle="toggleEnabled" />
+    </Setting>
+
+    <template v-if="enabled">
+      <h3>Providers</h3>
+
+      <div v-for="(provider, pIdx) in providers" :key="provider.id" class="abele-ai-provider">
+        <div class="abele-ai-provider__header">
+          <strong>{{ provider.name || 'Unnamed Provider' }}</strong>
+          <Icon icon="trash" @click="removeProvider(pIdx)" />
+        </div>
+
+        <Setting name="Name" desc="Display name for this provider.">
+          <Input
+            :model-value="provider.name"
+            @update:model-value="updateProvider(pIdx, 'name', $event)"
+          />
+        </Setting>
+
+        <Setting name="Base URL" desc="OpenAI-compatible API endpoint.">
+          <Input
+            :model-value="provider.baseUrl"
+            placeholder="https://api.openai.com/v1"
+            @update:model-value="updateProvider(pIdx, 'baseUrl', $event)"
+          />
+        </Setting>
+
+        <Setting name="API Key" desc="API key for this provider.">
+          <Input
+            :model-value="provider.apiKeyId"
+            placeholder="sk-..."
+            @update:model-value="updateProvider(pIdx, 'apiKeyId', $event)"
+          />
+        </Setting>
+
+        <div class="abele-ai-provider__models">
+          <div class="abele-ai-provider__models-header">
+            <span>Models</span>
+            <div class="abele-ai-provider__models-actions">
+              <Button
+                :text="fetchingModels === pIdx ? 'Loading...' : 'Fetch Models'"
+                :disabled="!provider.baseUrl || !provider.apiKeyId || fetchingModels === pIdx"
+                @click="fetchModels(pIdx)"
+              />
+              <Button text="Add Manually" @click="addModel(pIdx)" />
+            </div>
+          </div>
+
+          <!-- Fetched models picker -->
+          <div v-if="remoteModels[provider.id]?.length" class="abele-ai-provider__remote-models">
+            <div class="abele-ai-provider__remote-label">
+              {{ remoteModels[provider.id].length }} models available
+            </div>
+            <input
+              type="text"
+              class="abele-ai-provider__remote-filter"
+              placeholder="Filter models..."
+              :value="modelFilter[provider.id] || ''"
+              @input="modelFilter[provider.id] = ($event.target as HTMLInputElement).value"
+            />
+            <div class="abele-ai-provider__remote-list">
+              <div
+                v-for="rm in filteredRemoteModels(provider.id)"
+                :key="rm.id"
+                class="abele-ai-provider__remote-item"
+                :class="{
+                  'abele-ai-provider__remote-item_added': isModelAdded(pIdx, rm.id),
+                }"
+                @click="toggleRemoteModel(pIdx, rm.id)"
+              >
+                <div
+                  class="checkbox-container"
+                  :class="{ 'is-enabled': isModelAdded(pIdx, rm.id) }"
+                />
+                <span>{{ rm.id }}</span>
+                <span v-if="rm.owned_by" class="abele-ai-provider__remote-owner">{{
+                  rm.owned_by
+                }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Fetch error -->
+          <div v-if="fetchError[provider.id]" class="abele-ai-provider__fetch-error">
+            {{ fetchError[provider.id] }}
+          </div>
+
+          <!-- Added models (editable details) -->
+          <div v-for="(model, mIdx) in provider.models" :key="model.id" class="abele-ai-model">
+            <div class="abele-ai-model__header">
+              <span class="abele-ai-model__id">{{ model.id }}</span>
+              <Icon icon="trash" @click="removeModel(pIdx, mIdx)" />
+            </div>
+            <Setting name="Display name" desc="Optional label shown in model selector.">
+              <Input
+                :model-value="model.name"
+                placeholder="e.g. GPT-4o"
+                @update:model-value="updateModel(pIdx, mIdx, 'name', $event)"
+              />
+            </Setting>
+            <Setting name="Context window" desc="Maximum input tokens the model supports.">
+              <Input
+                :model-value="String(model.contextWindow)"
+                @update:model-value="
+                  updateModel(pIdx, mIdx, 'contextWindow', parseInt($event) || 0)
+                "
+              />
+            </Setting>
+            <Setting name="Max output tokens" desc="Maximum tokens in a single response.">
+              <Input
+                :model-value="String(model.maxTokens)"
+                @update:model-value="updateModel(pIdx, mIdx, 'maxTokens', parseInt($event) || 0)"
+              />
+            </Setting>
+            <Setting name="Reasoning" desc="Enable reasoning/thinking for supported models.">
+              <Checkbox
+                :is-enabled="model.supportsReasoning"
+                @toggle="updateModel(pIdx, mIdx, 'supportsReasoning', !model.supportsReasoning)"
+              />
+            </Setting>
+          </div>
+        </div>
+      </div>
+
+      <Button text="Add Provider" @click="addProvider" />
+
+      <h3>Active Configuration</h3>
+
+      <Setting name="Primary Model" desc="The main model used for chat.">
+        <Dropdown
+          :model-value="activeModelKey"
+          :options="modelOptions"
+          @update:model-value="selectActiveModel($event)"
+        />
+      </Setting>
+
+      <Setting name="Auxiliary Model" desc="Used for summarization and compaction.">
+        <Dropdown
+          :model-value="auxModelKey"
+          :options="[{ value: '', display: 'Same as primary' }, ...modelOptions]"
+          @update:model-value="selectAuxModel($event)"
+        />
+      </Setting>
+
+      <h3>Chat Storage</h3>
+
+      <Setting
+        name="Chat Folder"
+        desc="Folder for storing chat notes. Supports date patterns like {{YYYY-MM}}."
+      >
+        <Input
+          :model-value="chatFolder"
+          placeholder="AI/Chats"
+          @update:model-value="updateField('chatFolder', $event)"
+        />
+      </Setting>
+
+      <Setting
+        name="Message Separator"
+        desc="HTML comment used to separate messages in chat notes."
+      >
+        <Input
+          :model-value="messageSeparator"
+          @update:model-value="updateField('messageSeparator', $event)"
+        />
+      </Setting>
+
+      <h3>Integrations</h3>
+
+      <Setting name="Brave Search API Key" desc="Required for web search functionality.">
+        <Input
+          :model-value="braveSearchApiKey"
+          placeholder="BSA..."
+          @update:model-value="updateField('braveSearchApiKey', $event)"
+        />
+      </Setting>
+
+      <Setting name="System Prompt" desc="Custom instructions added to the agent's system prompt.">
+        <Input
+          :model-value="systemPrompt"
+          as-text-area
+          placeholder="Additional instructions for the AI agent..."
+          @update:model-value="updateField('systemPrompt', $event)"
+        />
+      </Setting>
+    </template>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, reactive } from 'vue'
+import { debounce } from 'obsidian'
+import { nanoid } from 'nanoid'
+import Setting from '../obsidian/Setting.vue'
+import Input from '../obsidian/Input.vue'
+import Button from '../obsidian/Button.vue'
+import Checkbox from '../obsidian/Checkbox.vue'
+import Dropdown from '../obsidian/Dropdown.vue'
+import Icon from '../obsidian/Icon.vue'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { OpenAIClient } from '@/ai/client'
+import type { RemoteModel } from '@/ai/client'
+import type { AiProvider, AiModelConfig } from '@/ai/types'
+
+const config = AbeleConfig.getInstance()
+const client = new OpenAIClient()
+
+const enabled = ref(config.ai.enabled)
+const providers = ref<AiProvider[]>(JSON.parse(JSON.stringify(config.ai.providers)))
+const chatFolder = ref(config.ai.chatFolder)
+const messageSeparator = ref(config.ai.messageSeparator)
+const braveSearchApiKey = ref(config.ai.braveSearchApiKey)
+const systemPrompt = ref(config.ai.systemPrompt)
+const activeProviderId = ref(config.ai.activeProviderId)
+const activeModelId = ref(config.ai.activeModelId)
+const auxiliaryModelId = ref(config.ai.auxiliaryModelId)
+
+// Remote models state
+const remoteModels = reactive<Record<string, RemoteModel[]>>({})
+const fetchingModels = ref<number | null>(null)
+const fetchError = reactive<Record<string, string>>({})
+const modelFilter = reactive<Record<string, string>>({})
+
+const filteredRemoteModels = (providerId: string): RemoteModel[] => {
+  const all = remoteModels[providerId] || []
+  const filter = (modelFilter[providerId] || '').toLowerCase()
+  if (!filter) return all
+  return all.filter(
+    (m) => m.id.toLowerCase().includes(filter) || m.owned_by?.toLowerCase().includes(filter)
+  )
+}
+
+const activeModelKey = computed(() =>
+  activeProviderId.value && activeModelId.value
+    ? `${activeProviderId.value}::${activeModelId.value}`
+    : ''
+)
+
+const auxModelKey = computed(() =>
+  activeProviderId.value && auxiliaryModelId.value
+    ? `${activeProviderId.value}::${auxiliaryModelId.value}`
+    : ''
+)
+
+const modelOptions = computed(() => {
+  const options: { value: string; display: string }[] = []
+  for (const p of providers.value) {
+    for (const m of p.models) {
+      options.push({
+        value: `${p.id}::${m.id}`,
+        display: `${p.name} / ${m.name || m.id}`,
+      })
+    }
+  }
+  return options
+})
+
+const save = debounce(async () => {
+  config.ai = {
+    enabled: enabled.value,
+    providers: JSON.parse(JSON.stringify(providers.value)),
+    activeProviderId: activeProviderId.value,
+    activeModelId: activeModelId.value,
+    auxiliaryModelId: auxiliaryModelId.value,
+    permissionMode: config.ai.permissionMode,
+    chatFolder: chatFolder.value,
+    messageSeparator: messageSeparator.value,
+    braveSearchApiKey: braveSearchApiKey.value,
+    systemPrompt: systemPrompt.value,
+  }
+  await config.saveSettings()
+}, 500)
+
+const toggleEnabled = () => {
+  enabled.value = !enabled.value
+  save()
+}
+
+const addProvider = () => {
+  providers.value.push({
+    id: nanoid(8),
+    name: '',
+    baseUrl: '',
+    apiKeyId: '',
+    models: [],
+  })
+  save()
+}
+
+const removeProvider = (idx: number) => {
+  const id = providers.value[idx].id
+  providers.value.splice(idx, 1)
+  delete remoteModels[id]
+  delete fetchError[id]
+  save()
+}
+
+const updateProvider = (idx: number, field: keyof AiProvider, value: string) => {
+  ;(providers.value[idx] as Record<string, unknown>)[field] = value
+  save()
+}
+
+const fetchModels = async (pIdx: number) => {
+  const provider = providers.value[pIdx]
+  if (!provider.baseUrl || !provider.apiKeyId) return
+
+  fetchingModels.value = pIdx
+  delete fetchError[provider.id]
+
+  try {
+    const models = await client.fetchModels(provider.baseUrl, provider.apiKeyId)
+    remoteModels[provider.id] = models
+  } catch (err: unknown) {
+    fetchError[provider.id] = err instanceof Error ? err.message : String(err)
+  } finally {
+    fetchingModels.value = null
+  }
+}
+
+const isModelAdded = (pIdx: number, modelId: string): boolean => {
+  return providers.value[pIdx].models.some((m) => m.id === modelId)
+}
+
+const toggleRemoteModel = (pIdx: number, modelId: string) => {
+  const provider = providers.value[pIdx]
+  const existingIdx = provider.models.findIndex((m) => m.id === modelId)
+
+  if (existingIdx !== -1) {
+    provider.models.splice(existingIdx, 1)
+  } else {
+    provider.models.push({
+      id: modelId,
+      name: '',
+      contextWindow: 128000,
+      maxTokens: 4096,
+      supportsReasoning: false,
+    })
+  }
+  save()
+}
+
+const addModel = (providerIdx: number) => {
+  providers.value[providerIdx].models.push({
+    id: '',
+    name: '',
+    contextWindow: 128000,
+    maxTokens: 4096,
+    supportsReasoning: false,
+  })
+  save()
+}
+
+const removeModel = (pIdx: number, mIdx: number) => {
+  providers.value[pIdx].models.splice(mIdx, 1)
+  save()
+}
+
+const updateModel = (
+  pIdx: number,
+  mIdx: number,
+  field: keyof AiModelConfig,
+  value: string | number | boolean
+) => {
+  ;(providers.value[pIdx].models[mIdx] as Record<string, unknown>)[field] = value
+  save()
+}
+
+const selectActiveModel = (key: string) => {
+  const [pId, mId] = key.split('::')
+  activeProviderId.value = pId || ''
+  activeModelId.value = mId || ''
+  save()
+}
+
+const selectAuxModel = (key: string) => {
+  if (!key) {
+    auxiliaryModelId.value = ''
+  } else {
+    const [, mId] = key.split('::')
+    auxiliaryModelId.value = mId || ''
+  }
+  save()
+}
+
+const updateField = (field: string, value: string) => {
+  switch (field) {
+    case 'chatFolder':
+      chatFolder.value = value
+      break
+    case 'messageSeparator':
+      messageSeparator.value = value
+      break
+    case 'braveSearchApiKey':
+      braveSearchApiKey.value = value
+      break
+    case 'systemPrompt':
+      systemPrompt.value = value
+      break
+  }
+  save()
+}
+</script>
+
+<style lang="scss">
+.abele-ai-provider {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: var(--size-4-3);
+  margin-bottom: var(--size-4-3);
+}
+
+.abele-ai-provider__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--size-4-2);
+}
+
+.abele-ai-provider__models {
+  margin-top: var(--size-4-2);
+}
+
+.abele-ai-provider__models-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--size-4-2);
+  font-size: var(--font-small);
+  color: var(--text-muted);
+}
+
+.abele-ai-provider__models-actions {
+  display: flex;
+  gap: var(--size-4-1);
+}
+
+.abele-ai-provider__remote-models {
+  margin-bottom: var(--size-4-2);
+}
+
+.abele-ai-provider__remote-label {
+  font-size: var(--font-small);
+  color: var(--text-muted);
+  margin-bottom: var(--size-4-1);
+}
+
+.abele-ai-provider__remote-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+}
+
+.abele-ai-provider__remote-item {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-1) var(--size-4-2);
+  cursor: pointer;
+  font-size: var(--font-small);
+
+  &:hover {
+    background-color: var(--background-modifier-hover);
+  }
+
+  &_added {
+    background-color: var(--background-secondary);
+  }
+}
+
+.abele-ai-provider__remote-owner {
+  color: var(--text-faint);
+  margin-left: auto;
+}
+
+.abele-ai-provider__fetch-error {
+  color: var(--text-error);
+  font-size: var(--font-small);
+  padding: var(--size-4-1);
+}
+
+.abele-ai-provider__remote-filter {
+  width: 100%;
+  margin-bottom: var(--size-4-1);
+}
+
+.abele-ai-model {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: var(--size-4-2);
+  margin-bottom: var(--size-4-2);
+}
+
+.abele-ai-model__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--size-4-1);
+}
+
+.abele-ai-model__id {
+  font-family: var(--font-monospace);
+  font-size: var(--font-small);
+  color: var(--text-accent);
+}
+</style>

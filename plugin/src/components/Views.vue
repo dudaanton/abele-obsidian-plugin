@@ -29,6 +29,9 @@
   <Teleport v-if="todoSidebarId" :to="`[${TODO_SIDEBAR_ID_ATTR}='${todoSidebarId}']`">
     <TodoSidebarView />
   </Teleport>
+  <Teleport v-if="aiSidebarId" :to="`[${AI_SIDEBAR_ID_ATTR}='${aiSidebarId}']`">
+    <AiChatView />
+  </Teleport>
   <FindAndReplaceModal
     v-if="findAndReplaceModalOpened"
     @close="findAndReplaceModalOpened = false"
@@ -58,6 +61,8 @@ import FindAndReplaceModal from './FindAndReplaceModal.vue'
 import MigrateFromDataviewModal from './MigrateFromDataviewModal.vue'
 import { TIMELINE_SIDEBAR_ID_ATTR } from '@/views/TimelineSidebarView'
 import { TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'
+import { AI_SIDEBAR_ID_ATTR } from '@/views/AiSidebarView'
+import AiChatView from './AiChat.vue'
 import SettingsView from './settings/Settings.vue'
 import { SETTINGS_ID_ATTR } from '@/settings'
 
@@ -70,6 +75,7 @@ const {
   migrateFromDataviewModalOpened,
   timelineSidebarId,
   todoSidebarId,
+  aiSidebarId,
   settingsTabId,
 } = GlobalStore.getInstance()
 </script>

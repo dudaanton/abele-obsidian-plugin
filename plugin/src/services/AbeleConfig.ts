@@ -1,4 +1,5 @@
 import { Journal, JournalDTO } from '@/entities/Journal'
+import { AiSettings, DEFAULT_AI_SETTINGS, AiProvider } from '@/ai/types'
 import AbelePlugin from '@/main'
 
 export interface AbeleSettings {
@@ -15,6 +16,8 @@ export interface AbeleSettings {
   // Server settings
   baseUrl?: string // Backend API base URL
   apiToken?: string // API authentication token
+  // AI Agent settings
+  ai?: AiSettings
 }
 
 export const DEFAULT_SETTINGS: AbeleSettings = {
@@ -30,6 +33,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   excludedPathsForDefaultTemplate: ['attachments/', 'templates/'],
   baseUrl: '',
   apiToken: '',
+  ai: { ...DEFAULT_AI_SETTINGS },
 }
 
 export class AbeleConfig {
@@ -49,6 +53,7 @@ export class AbeleConfig {
   public journals: Journal[]
   public baseUrl: string
   public apiToken: string
+  public ai: AiSettings
 
   public get logsNotesTypes(): string[] {
     return this._logsNotesTypes
@@ -146,6 +151,7 @@ export class AbeleConfig {
     ]
     this.baseUrl = settings?.baseUrl || DEFAULT_SETTINGS.baseUrl
     this.apiToken = settings?.apiToken || DEFAULT_SETTINGS.apiToken
+    this.ai = settings?.ai ? { ...DEFAULT_AI_SETTINGS, ...settings.ai } : { ...DEFAULT_AI_SETTINGS }
   }
 
   exportSettings(): AbeleSettings {
@@ -162,6 +168,7 @@ export class AbeleConfig {
       excludedPathsForDefaultTemplate: [...this.excludedPathsForDefaultTemplate],
       baseUrl: this.baseUrl,
       apiToken: this.apiToken,
+      ai: { ...this.ai },
     }
   }
 }

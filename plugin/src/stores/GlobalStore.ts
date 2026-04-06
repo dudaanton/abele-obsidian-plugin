@@ -28,6 +28,7 @@ export class GlobalStore {
 
   public readonly timelineSidebarId = ref<string | null>(null)
   public readonly todoSidebarId = ref<string | null>(null)
+  public readonly aiSidebarId = ref<string | null>(null)
 
   public readonly tasksList = ref<TasksList | null>(null)
 
@@ -120,6 +121,7 @@ export class GlobalStore {
     this.footersContainers.value = []
     this.tasksList.value?.cleanup()
     this.tasksList.value = null
+    this.aiSidebarId.value = null
     this._vaultWatcher.cleanup()
 
     console.debug('GlobalStore destroyed')

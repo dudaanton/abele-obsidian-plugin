@@ -24,6 +24,8 @@ import { taskStateField } from './editor/TaskPlugin'
 import { findAndReplace } from './commands/findAndReplace'
 import { TIMELINE_SIDEBAR_VIEW_TYPE, TimelineSidebarView } from './views/TimelineSidebarView'
 import { TODO_SIDEBAR_VIEW_TYPE, TodoSidebarView } from './views/TodoSidebarView'
+import { AI_SIDEBAR_VIEW_TYPE, AiSidebarView } from './views/AiSidebarView'
+import { AgentService } from './ai/AgentService'
 import weekday from 'dayjs/plugin/weekday'
 import updateLocale from 'dayjs/plugin/updateLocale'
 import dayOfYear from 'dayjs/plugin/dayOfYear'
@@ -91,6 +93,9 @@ export default class AbelePlugin extends Plugin {
 
     this.registerView(TIMELINE_SIDEBAR_VIEW_TYPE, (leaf) => new TimelineSidebarView(leaf, this.app))
     this.registerView(TODO_SIDEBAR_VIEW_TYPE, (leaf) => new TodoSidebarView(leaf, this.app))
+
+    // AI sidebar is always registered so the view can be restored, but commands/ribbon are conditional
+    this.registerView(AI_SIDEBAR_VIEW_TYPE, (leaf) => new AiSidebarView(leaf, this.app))
 
     this.initializeVue()
 
@@ -212,6 +217,11 @@ export default class AbelePlugin extends Plugin {
       this.activateView(TODO_SIDEBAR_VIEW_TYPE)
     })
 
+    // AI Agent — conditional on settings
+    if (AbeleConfig.getInstance().ai.enabled) {
+      this.registerAiFeatures()
+    }
+
     // Register protocol handler for obsidian://abele
     this.registerObsidianProtocolHandler('abele', (params) => {
       runAfterSync(this.app, () => {
@@ -247,7 +257,22 @@ export default class AbelePlugin extends Plugin {
     })
   }
 
+  registerAiFeatures() {
+    this.addCommand({
+      id: 'show-ai-sidebar',
+      name: 'Show AI chat sidebar',
+      callback: () => {
+        this.activateView(AI_SIDEBAR_VIEW_TYPE)
+      },
+    })
+
+    this.addRibbonIcon(AiSidebarView.getIcon(), 'Show AI chat', () => {
+      this.activateView(AI_SIDEBAR_VIEW_TYPE)
+    })
+  }
+
   onunload() {
+    AgentService.getInstance().destroy()
     GlobalStore.getInstance().destroy()
     AbeleConfig.getInstance().destroy()
     VaultWatcherWrapper.destroy()
