@@ -158,6 +158,17 @@
         />
       </Setting>
 
+      <Setting
+        name="Migrate chats"
+        desc="Move existing chat files to match the current path template."
+      >
+        <Button
+          :text="migrating ? 'Migrating...' : 'Migrate'"
+          :disabled="migrating"
+          @click="migrateChats"
+        />
+      </Setting>
+
       <h3>Integrations</h3>
 
       <Setting name="Brave Search API Key" desc="Required for web search functionality.">
@@ -191,12 +202,26 @@ import Checkbox from '../obsidian/Checkbox.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import Icon from '../obsidian/Icon.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { ChatStorage } from '@/ai/ChatStorage'
 import { OpenAIClient } from '@/ai/client'
 import type { RemoteModel } from '@/ai/client'
 import type { AiProvider, AiModelConfig } from '@/ai/types'
 
 const config = AbeleConfig.getInstance()
 const client = new OpenAIClient()
+const migrating = ref(false)
+
+const migrateChats = async () => {
+  migrating.value = true
+  try {
+    const count = await ChatStorage.getInstance().migrateChats()
+    new (window as any).Notice(`Migrated ${count} chat(s)`)
+  } catch (err: unknown) {
+    new (window as any).Notice(`Migration failed: ${err instanceof Error ? err.message : err}`)
+  } finally {
+    migrating.value = false
+  }
+}
 
 const enabled = ref(config.ai.enabled)
 const providers = ref<AiProvider[]>(JSON.parse(JSON.stringify(config.ai.providers)))

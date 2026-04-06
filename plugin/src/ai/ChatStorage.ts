@@ -116,27 +116,31 @@ export class ChatStorage {
     this.removeHistoryEntry(path)
   }
 
-  async migrateChatFolder(newFolder: string): Promise<void> {
+  async migrateChats(): Promise<number> {
     const { app } = GlobalStore.getInstance()
     const config = AbeleConfig.getInstance()
     const history = [...(config.ai.chatHistory || [])]
-
-    await this.ensureFolder(newFolder)
+    let moved = 0
 
     for (const entry of history) {
       const file = app.vault.getAbstractFileByPath(entry.path)
       if (!(file instanceof TFile)) continue
 
-      const fileName = file.name
-      const newPath = `${newFolder}/${fileName}`
-      const availablePath = await getAvailablePath(newPath)
+      const newDesired = this.resolveChatPath(entry.title || file.basename)
+      if (newDesired === entry.path) continue
+
+      const folder = newDesired.substring(0, newDesired.lastIndexOf('/'))
+      if (folder) await this.ensureFolder(folder)
+
+      const availablePath = await getAvailablePath(newDesired)
       await app.fileManager.renameFile(file, availablePath)
       entry.path = availablePath
+      moved++
     }
 
     config.ai.chatHistory = history
-    config.ai.chatFolder = newFolder
     await config.saveSettings()
+    return moved
   }
 
   // ── History management (stored in plugin data.json) ──
