@@ -148,23 +148,13 @@
       <h3>Chat Storage</h3>
 
       <Setting
-        name="Chat Folder"
-        desc="Folder for storing chat notes. Supports date patterns like {{YYYY-MM}}."
+        name="Chat path template"
+        desc="Path template for chat files. Variables: {{name}}, {{date:YYYY-MM-DD}}."
       >
         <Input
           :model-value="chatFolder"
-          placeholder="AI/Chats"
+          placeholder="AI/Chats/{{name}}"
           @update:model-value="updateField('chatFolder', $event)"
-        />
-      </Setting>
-
-      <Setting
-        name="Message Separator"
-        desc="HTML comment used to separate messages in chat notes."
-      >
-        <Input
-          :model-value="messageSeparator"
-          @update:model-value="updateField('messageSeparator', $event)"
         />
       </Setting>
 
@@ -211,7 +201,6 @@ const client = new OpenAIClient()
 const enabled = ref(config.ai.enabled)
 const providers = ref<AiProvider[]>(JSON.parse(JSON.stringify(config.ai.providers)))
 const chatFolder = ref(config.ai.chatFolder)
-const messageSeparator = ref(config.ai.messageSeparator)
 const braveSearchApiKey = ref(config.ai.braveSearchApiKey)
 const systemPrompt = ref(config.ai.systemPrompt)
 const activeProviderId = ref(config.ai.activeProviderId)
@@ -267,7 +256,7 @@ const save = debounce(async () => {
     auxiliaryModelId: auxiliaryModelId.value,
     permissionMode: config.ai.permissionMode,
     chatFolder: chatFolder.value,
-    messageSeparator: messageSeparator.value,
+    chatHistory: config.ai.chatHistory || [],
     braveSearchApiKey: braveSearchApiKey.value,
     systemPrompt: systemPrompt.value,
   }
@@ -389,9 +378,6 @@ const updateField = (field: string, value: string) => {
   switch (field) {
     case 'chatFolder':
       chatFolder.value = value
-      break
-    case 'messageSeparator':
-      messageSeparator.value = value
       break
     case 'braveSearchApiKey':
       braveSearchApiKey.value = value

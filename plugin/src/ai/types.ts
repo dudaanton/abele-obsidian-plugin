@@ -16,6 +16,12 @@ export interface AiModelConfig {
 
 export type PermissionMode = 'confirm-all' | 'allow-edit' | 'allow-all'
 
+export interface AiChatHistoryEntry {
+  path: string
+  title: string
+  created: string
+}
+
 export interface AiSettings {
   enabled: boolean
   providers: AiProvider[]
@@ -24,7 +30,7 @@ export interface AiSettings {
   auxiliaryModelId: string
   permissionMode: PermissionMode
   chatFolder: string
-  messageSeparator: string
+  chatHistory: AiChatHistoryEntry[]
   braveSearchApiKey: string
   systemPrompt: string
 }
@@ -36,10 +42,21 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   activeModelId: '',
   auxiliaryModelId: '',
   permissionMode: 'confirm-all',
-  chatFolder: 'AI/Chats',
-  messageSeparator: '<!-- abele-msg -->',
+  chatFolder: 'AI/Chats/{{name}}',
+  chatHistory: [],
   braveSearchApiKey: '',
   systemPrompt: '',
+}
+
+export interface ChatMessageUsage {
+  input: number
+  output: number
+  total: number
+}
+
+export interface ChatMessageDiff {
+  old: string
+  new: string
 }
 
 export interface ChatMessage {
@@ -50,11 +67,13 @@ export interface ChatMessage {
   toolParams?: Record<string, unknown>
   toolStatus?: 'pending' | 'approved' | 'rejected' | 'modified'
   toolResult?: string
+  toolDiff?: ChatMessageDiff
+  usage?: ChatMessageUsage
   timestamp: number
 }
 
 export interface ChatMetadata {
-  type: 'ai-chat'
+  type: 'abele-chat'
   providerId: string
   modelId: string
   created: string

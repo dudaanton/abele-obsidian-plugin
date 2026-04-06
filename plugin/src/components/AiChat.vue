@@ -4,7 +4,8 @@
     <div class="abele-ai-chat__header">
       <AiModelSelector />
       <div class="abele-ai-chat__header-actions">
-        <div v-if="scopeSummary" class="abele-ai-chat__scope-badge" @click="scopeOpen = true">
+        <span v-if="tokenDisplay" class="abele-ai-chat__tokens">{{ tokenDisplay }}</span>
+        <div v-if="scopeCompact" class="abele-ai-chat__scope-badge" @click="scopeOpen = true">
           {{ scopeCompact }}
         </div>
         <Icon icon="folder-open" with-bg @click="scopeOpen = true" />
@@ -82,6 +83,7 @@ import AiToolApproval from './AiToolApproval.vue'
 import AiModelSelector from './AiModelSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
 import AiScopeManager from './AiScopeManager.vue'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import { AgentService } from '@/ai/AgentService'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 
@@ -91,6 +93,31 @@ const scope = ScopeResolver.getInstance()
 const { messages, isStreaming, streamingContent, streamingThinking, currentApproval, error } = agent
 
 const scopeSummary = computed(() => scope.summary.value)
+
+const contextWindow = computed(() => {
+  const config = AbeleConfig.getInstance().ai
+  const provider =
+    config.providers.find((p) => p.id === config.activeProviderId) ||
+    config.providers.find((p) => p.models.length > 0)
+  const model = provider?.models.find((m) => m.id === config.activeModelId) || provider?.models[0]
+  return model?.contextWindow || 0
+})
+
+const totalTokens = computed(() => {
+  let total = 0
+  for (const m of messages.value) {
+    if (m.usage) total += m.usage.total
+  }
+  return total
+})
+
+const tokenDisplay = computed(() => {
+  const t = totalTokens.value
+  if (t === 0) return ''
+  const ctx = contextWindow.value
+  const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+  return ctx ? `${fmt(t)}/${fmt(ctx)}` : fmt(t)
+})
 const scopeCompact = computed(() => {
   const s = scope.summary.value
   if (!s || s === 'No files') return ''
@@ -232,7 +259,13 @@ const showDebug = () => {
 .abele-ai-chat__header-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--size-4-1);
+}
+
+.abele-ai-chat__tokens {
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  white-space: nowrap;
 }
 
 .abele-ai-chat__scope-badge {

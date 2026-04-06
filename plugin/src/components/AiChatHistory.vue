@@ -1,54 +1,51 @@
 <template>
   <ObsidianModal title="Chat History" @close="emit('close')">
     <div class="abele-chat-history">
-      <div v-if="loading" class="abele-chat-history__loading">Loading...</div>
-      <div v-else-if="chats.length === 0" class="abele-chat-history__empty">No previous chats</div>
+      <div v-if="chats.length === 0" class="abele-chat-history__empty">No previous chats</div>
       <div
         v-for="chat in chats"
         :key="chat.path"
         class="abele-chat-history__item"
-        @click="select(chat)"
+        @click="select(chat.path)"
       >
-        <div class="abele-chat-history__title">{{ chatTitle(chat) }}</div>
-        <div class="abele-chat-history__date">{{ formatDate(chat.stat.mtime) }}</div>
+        <div class="abele-chat-history__info">
+          <div class="abele-chat-history__title">{{ chat.title || chat.path }}</div>
+          <div class="abele-chat-history__date">{{ chat.created }}</div>
+        </div>
+        <Icon icon="trash" @click.stop="remove(chat.path)" />
       </div>
     </div>
   </ObsidianModal>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { TFile } from 'obsidian'
-import dayjs from 'dayjs'
 import ObsidianModal from './obsidian/Modal.vue'
+import Icon from './obsidian/Icon.vue'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { GlobalStore } from '@/stores/GlobalStore'
+import type { AiChatHistoryEntry } from '@/ai/types'
 
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'select', file: TFile): void
 }>()
 
-const chats = ref<TFile[]>([])
-const loading = ref(true)
+const chats = ref<AiChatHistoryEntry[]>(ChatStorage.getInstance().getHistory())
 
-onMounted(async () => {
-  chats.value = await ChatStorage.getInstance().listChats()
-  loading.value = false
-})
-
-const chatTitle = (file: TFile): string => {
-  const cache = GlobalStore.getInstance().app.metadataCache.getFileCache(file)
-  return cache?.frontmatter?.title || file.basename
+const select = (path: string) => {
+  const { app } = GlobalStore.getInstance()
+  const file = app.vault.getAbstractFileByPath(path)
+  if (file instanceof TFile) {
+    emit('select', file)
+    emit('close')
+  }
 }
 
-const formatDate = (timestamp: number): string => {
-  return dayjs(timestamp).format('YYYY-MM-DD HH:mm')
-}
-
-const select = (file: TFile) => {
-  emit('select', file)
-  emit('close')
+const remove = async (path: string) => {
+  await ChatStorage.getInstance().deleteChat(path)
+  chats.value = ChatStorage.getInstance().getHistory()
 }
 </script>
 
@@ -58,7 +55,6 @@ const select = (file: TFile) => {
   overflow-y: auto;
 }
 
-.abele-chat-history__loading,
 .abele-chat-history__empty {
   padding: var(--size-4-4);
   text-align: center;
@@ -67,19 +63,23 @@ const select = (file: TFile) => {
 
 .abele-chat-history__item {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   padding: var(--size-4-2) var(--size-4-3);
   cursor: pointer;
   border-radius: var(--radius-s);
+  gap: var(--size-4-2);
 
   &:hover {
     background-color: var(--background-modifier-hover);
   }
 }
 
-.abele-chat-history__title {
+.abele-chat-history__info {
   flex: 1;
+  min-width: 0;
+}
+
+.abele-chat-history__title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -88,7 +88,5 @@ const select = (file: TFile) => {
 .abele-chat-history__date {
   font-size: var(--font-small);
   color: var(--text-muted);
-  margin-left: var(--size-4-2);
-  white-space: nowrap;
 }
 </style>

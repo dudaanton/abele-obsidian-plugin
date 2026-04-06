@@ -6,7 +6,7 @@ export function createCreateFileTool(): AgentTool {
   return {
     name: 'create',
     label: 'Create File',
-    description: 'Create a new file. The parent folder must be within workspace scope.',
+    description: 'Create a new file in the vault with the specified content.',
     parameters: {
       type: 'object',
       properties: {
@@ -17,15 +17,10 @@ export function createCreateFileTool(): AgentTool {
     },
     execute: async (_id, params) => {
       const { path, content } = params as { path: string; content: string }
-      const scope = ScopeResolver.getInstance()
-      const parentFolder = path.split('/').slice(0, -1).join('/')
-      if (parentFolder && !scope.fullVaultAccess.value && !scope.isFolderInScope(parentFolder)) {
-        throw new Error(`Access denied: ${parentFolder} is not in workspace scope`)
-      }
       const { app } = GlobalStore.getInstance()
       if (app.vault.getAbstractFileByPath(path)) throw new Error(`File already exists: ${path}`)
 
-      // Ensure parent folders
+      const parentFolder = path.split('/').slice(0, -1).join('/')
       if (parentFolder) {
         const parts = parentFolder.split('/')
         let current = ''
@@ -35,7 +30,8 @@ export function createCreateFileTool(): AgentTool {
         }
       }
       await app.vault.create(path, content)
-      scope.invalidate()
+      // Add new file to scope so agent can read/edit it
+      ScopeResolver.getInstance().addFile(path)
       return { content: [{ type: 'text', text: `Created: ${path}` }] }
     },
   }

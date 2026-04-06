@@ -137,6 +137,9 @@ When working with files, always explain what you're about to do before doing it.
               thinking: thinkingParts.length
                 ? thinkingParts.map((t) => t.thinking).join('')
                 : undefined,
+              usage: am.usage
+                ? { input: am.usage.input, output: am.usage.output, total: am.usage.totalTokens }
+                : undefined,
               timestamp: Date.now(),
             }
             this.messages.value = [...this.messages.value, chatMsg]
@@ -144,15 +147,20 @@ When working with files, always explain what you're about to do before doing it.
           this.streamingContent.value = ''
           this.streamingThinking.value = ''
         } else if (msg.role === 'toolResult') {
-          const resultContent = msg.content.map((c) => c.text).join('')
-          const chatMsg: ChatMessage = {
-            role: 'tool-result',
-            content: resultContent,
-            toolName: msg.toolName,
-            toolStatus: msg.isError ? 'rejected' : 'approved',
-            timestamp: Date.now(),
+          // Only add visible entry for errors (tool_end already updated the tool-call message)
+          if (msg.isError) {
+            const resultContent = msg.content.map((c) => c.text).join('')
+            this.messages.value = [
+              ...this.messages.value,
+              {
+                role: 'tool-result',
+                content: resultContent,
+                toolName: msg.toolName,
+                toolStatus: 'rejected',
+                timestamp: Date.now(),
+              },
+            ]
           }
-          this.messages.value = [...this.messages.value, chatMsg]
         }
         break
       }
@@ -167,6 +175,30 @@ When working with files, always explain what you're about to do before doing it.
           timestamp: Date.now(),
         }
         this.messages.value = [...this.messages.value, chatMsg]
+        break
+      }
+
+      case 'tool_end': {
+        // Update the tool-call message with result and diff
+        const msgs = [...this.messages.value]
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (
+            msgs[i].role === 'tool-call' &&
+            msgs[i].toolName === event.toolName &&
+            msgs[i].toolStatus === 'pending'
+          ) {
+            const resultText = event.result.content?.map((c) => c.text).join('') || ''
+            const diff = (event.result.details as { diff?: { old: string; new: string } })?.diff
+            msgs[i] = {
+              ...msgs[i],
+              toolResult: resultText,
+              toolDiff: diff ? { old: diff.old, new: diff.new } : undefined,
+              toolStatus: event.isError ? 'rejected' : 'approved',
+            }
+            break
+          }
+        }
+        this.messages.value = msgs
         break
       }
     }
@@ -281,7 +313,7 @@ When working with files, always explain what you're about to do before doing it.
     const title = this.chatTitle || this.fallbackTitle()
 
     const metadata: ChatMetadata = {
-      type: 'ai-chat',
+      type: 'abele-chat',
       providerId: config.activeProviderId,
       modelId: config.activeModelId,
       created: this.currentChatFile.value ? '' : dayjs().format('YYYY-MM-DD'),
@@ -333,9 +365,21 @@ When working with files, always explain what you're about to do before doing it.
       title = title
         .trim()
         .replace(/^["']|["']$/g, '')
+        .replace(/[\\/:*?"<>|]/g, '-')
         .slice(0, 60)
-      if (title) {
-        this.chatTitle = title
+
+      if (!title || title === this.chatTitle) return
+
+      this.chatTitle = title
+
+      // Rename the file to match the new title
+      if (this.currentChatFile.value) {
+        const storage = ChatStorage.getInstance()
+        const oldPath = this.currentChatFile.value.path
+        const newFile = await storage.renameChat(this.currentChatFile.value, title)
+        if (newFile) {
+          this.currentChatFile.value = newFile
+        }
       }
     } catch {
       // Silently fail — title generation is best-effort

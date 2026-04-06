@@ -35,7 +35,10 @@ export function createEditFileTool(): AgentTool {
         throw new Error(`String not found in file: "${old_string.slice(0, 100)}"`)
       }
       await app.vault.modify(file, content.replace(old_string, new_string))
-      return { content: [{ type: 'text', text: `Edited: ${path}` }] }
+      return {
+        content: [{ type: 'text', text: `Edited: ${path}` }],
+        details: { diff: { old: old_string, new: new_string } },
+      }
     },
   }
 }
