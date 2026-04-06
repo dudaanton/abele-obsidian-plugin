@@ -370,10 +370,14 @@ const addProvider = () => {
 }
 
 const removeProvider = (idx: number) => {
-  const id = providers.value[idx].id
+  const provider = providers.value[idx]
+  if (provider.apiKeyId?.startsWith('abele-')) {
+    // deleteSecret exists at runtime but is missing from obsidian.d.ts (as of 1.12.3)
+    ;(app.secretStorage as any).deleteSecret(provider.apiKeyId)
+  }
   providers.value.splice(idx, 1)
-  delete remoteModels[id]
-  delete fetchError[id]
+  delete remoteModels[provider.id]
+  delete fetchError[provider.id]
   save()
 }
 
