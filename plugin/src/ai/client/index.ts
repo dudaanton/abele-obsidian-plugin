@@ -1,6 +1,7 @@
 export { OpenAIClient } from './OpenAIClient'
 export type { RemoteModel } from './OpenAIClient'
 export { AgentLoop } from './AgentLoop'
+export { EMPTY_USAGE } from './types'
 export type {
   // Messages
   Message,

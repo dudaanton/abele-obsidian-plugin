@@ -49,7 +49,7 @@
       </div>
 
       <!-- Tool approval -->
-      <AiToolApproval v-if="currentApproval" :request="currentApproval" />
+      <AiToolApproval v-if="pendingApprovalMessage" :message="pendingApprovalMessage" />
 
       <!-- Error -->
       <div v-if="error" class="abele-ai-chat__error">
@@ -61,9 +61,11 @@
     <!-- Input -->
     <AiChatInput
       :is-streaming="isStreaming"
+      :can-continue="showContinue"
       @send="onSend"
       @command="onCommand"
       @abort="agent.abort()"
+      @continue="onContinue"
     />
 
     <!-- Modals -->
@@ -90,7 +92,21 @@ import { ScopeResolver } from '@/ai/ScopeResolver'
 const agent = AgentService.getInstance()
 const scope = ScopeResolver.getInstance()
 
-const { messages, isStreaming, streamingContent, streamingThinking, currentApproval, error } = agent
+const { messages, isStreaming, streamingContent, streamingThinking, pendingToolCalls, error } =
+  agent
+
+const pendingApprovalMessage = computed(() => {
+  if (pendingToolCalls.value.length === 0) return null
+  const tc = pendingToolCalls.value[0]
+  return messages.value.find((m) => m.toolCallId === tc.id && m.toolStatus === 'pending') || null
+})
+
+const showContinue = computed(() => {
+  if (isStreaming.value) return false
+  if (pendingToolCalls.value.length > 0) return false
+  if (messages.value.length === 0) return false
+  return true
+})
 
 const scopeSummary = computed(() => scope.summary.value)
 
@@ -213,6 +229,11 @@ const onCommand = (command: string) => {
       scopeOpen.value = true
       break
   }
+}
+
+const onContinue = () => {
+  scrollOnUserSend()
+  agent.sendMessage('Continue')
 }
 
 const handleNewChat = async () => {

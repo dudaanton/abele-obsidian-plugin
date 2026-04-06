@@ -32,7 +32,10 @@ export function createCreateFileTool(): AgentTool {
       await app.vault.create(path, content)
       // Add new file to scope so agent can read/edit it
       ScopeResolver.getInstance().addFile(path)
-      return { content: [{ type: 'text', text: `Created: ${path}` }] }
+      return {
+        content: [{ type: 'text', text: `Created: ${path}` }],
+        details: { diff: { old: '', new: content } },
+      }
     },
   }
 }

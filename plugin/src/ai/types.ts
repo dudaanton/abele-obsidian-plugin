@@ -63,6 +63,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'tool-call' | 'tool-result' | 'system'
   content: string
   thinking?: string
+  toolCallId?: string
   toolName?: string
   toolParams?: Record<string, unknown>
   toolStatus?: 'pending' | 'approved' | 'rejected' | 'modified'
@@ -78,17 +79,5 @@ export interface ChatMetadata {
   modelId: string
   created: string
   title?: string
-}
-
-export type ToolApprovalRequest = {
-  toolCallId: string
-  toolName: string
-  args: Record<string, unknown>
-  resolve: (result: ToolApprovalResult) => void
-}
-
-export type ToolApprovalResult = {
-  approved: boolean
-  modifiedArgs?: Record<string, unknown>
-  reason?: string
+  pendingToolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>
 }

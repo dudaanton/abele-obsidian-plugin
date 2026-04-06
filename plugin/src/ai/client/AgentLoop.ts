@@ -13,18 +13,29 @@ import type {
   UserMessage,
 } from './types'
 
+export interface AgentLoopResult {
+  messages: Message[]
+  /** If the loop paused for tool approval, these are the remaining tool calls (including the paused one). */
+  pausedAt?: ToolCallContent[]
+}
+
 export interface AgentLoopOptions {
   model: ModelConfig
   systemPrompt: string
   tools: AgentTool[]
   messages: Message[]
   streamOptions?: StreamOptions
-  /** Called before tool execution. Return { block: true, reason } to prevent. */
+  /** Called before tool execution. Return { block, pause, modifiedArgs } to control. */
   beforeToolCall?: (
     toolName: string,
     toolCallId: string,
     args: Record<string, unknown>
-  ) => Promise<{ block: boolean; reason?: string; modifiedArgs?: Record<string, unknown> } | void>
+  ) => Promise<{
+    block?: boolean
+    pause?: boolean
+    reason?: string
+    modifiedArgs?: Record<string, unknown>
+  } | void>
 }
 
 type Listener = (event: AgentEvent) => void
@@ -37,6 +48,7 @@ export class AgentLoop {
   private listeners: Listener[] = []
   private abortController: AbortController | null = null
   private _isRunning = false
+  private _pausedToolCalls: ToolCallContent[] | null = null
 
   get isRunning() {
     return this._isRunning
@@ -66,10 +78,11 @@ export class AgentLoop {
 
   /**
    * Run the agent loop: send user message, stream response, execute tools, repeat.
-   * Returns the final list of messages (including all new ones from this run).
+   * Returns the final list of messages. If the loop paused for approval, `pausedAt` contains remaining tool calls.
    */
-  async run(opts: AgentLoopOptions): Promise<Message[]> {
+  async run(opts: AgentLoopOptions): Promise<AgentLoopResult> {
     this._isRunning = true
+    this._pausedToolCalls = null
     this.abortController = new AbortController()
     const signal = this.abortController.signal
     const messages = [...opts.messages]
@@ -105,14 +118,25 @@ export class AgentLoop {
         if (toolCalls.length === 0) break
 
         // Execute tools sequentially
-        for (const tc of toolCalls) {
+        for (let ti = 0; ti < toolCalls.length; ti++) {
           if (signal.aborted) break
 
+          const tc = toolCalls[ti]
           const tool = opts.tools.find((t) => t.name === tc.name)
           const resultMsg = await this.executeTool(tool, tc, opts.beforeToolCall, signal)
+
+          if (!resultMsg) {
+            // beforeToolCall requested pause — store remaining tool calls
+            this._pausedToolCalls = toolCalls.slice(ti)
+            break
+          }
+
           messages.push(resultMsg)
           this.emit({ type: 'message_end', message: resultMsg })
         }
+
+        // If paused, exit the main loop
+        if (this._pausedToolCalls) break
       }
     } finally {
       this._isRunning = false
@@ -120,7 +144,7 @@ export class AgentLoop {
       this.emit({ type: 'agent_end' })
     }
 
-    return messages
+    return { messages, pausedAt: this._pausedToolCalls || undefined }
   }
 
   /**
@@ -194,13 +218,14 @@ export class AgentLoop {
 
   /**
    * Execute a single tool call with beforeToolCall hook support.
+   * Returns null if the hook requested a pause (caller should stop processing).
    */
   private async executeTool(
     tool: AgentTool | undefined,
     tc: ToolCallContent,
     beforeToolCall: AgentLoopOptions['beforeToolCall'],
     signal: AbortSignal
-  ): Promise<ToolResultMessage> {
+  ): Promise<ToolResultMessage | null> {
     const makeResult = (content: string, isError: boolean): ToolResultMessage => ({
       role: 'toolResult',
       toolCallId: tc.id,
@@ -229,19 +254,24 @@ export class AgentLoop {
     if (beforeToolCall) {
       try {
         const hookResult = await beforeToolCall(tc.name, tc.id, args)
-        if (hookResult && hookResult.block) {
-          const result = makeResult(hookResult.reason || 'User rejected this action', true)
-          this.emit({
-            type: 'tool_end',
-            toolCallId: tc.id,
-            toolName: tc.name,
-            result: { content: result.content },
-            isError: true,
-          })
-          return result
-        }
-        if (hookResult && hookResult.modifiedArgs) {
-          args = hookResult.modifiedArgs
+        if (hookResult) {
+          if (hookResult.pause) {
+            return null // Signal caller to pause
+          }
+          if (hookResult.block) {
+            const result = makeResult(hookResult.reason || 'User rejected this action', true)
+            this.emit({
+              type: 'tool_end',
+              toolCallId: tc.id,
+              toolName: tc.name,
+              result: { content: result.content },
+              isError: true,
+            })
+            return result
+          }
+          if (hookResult.modifiedArgs) {
+            args = hookResult.modifiedArgs
+          }
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err)

@@ -12,6 +12,13 @@
       />
       <Icon v-if="isStreaming" icon="square" with-bg @click="emit('abort')" />
       <Icon
+        v-else-if="canContinue && !text.trim()"
+        icon="play"
+        with-bg
+        class="abele-chat-input__continue"
+        @click="emit('continue')"
+      />
+      <Icon
         v-else
         icon="send-horizontal"
         with-bg
@@ -28,12 +35,14 @@ import Icon from './obsidian/Icon.vue'
 
 const props = defineProps<{
   isStreaming: boolean
+  canContinue: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'send', message: string): void
   (e: 'command', command: string): void
   (e: 'abort'): void
+  (e: 'continue'): void
 }>()
 
 const text = ref('')
@@ -118,6 +127,14 @@ const onKeydown = (e: KeyboardEvent) => {
   &:focus {
     border-color: var(--interactive-accent);
     outline: none;
+  }
+}
+
+.abele-chat-input__continue {
+  opacity: 0.5;
+
+  &:hover {
+    opacity: 1;
   }
 }
 
