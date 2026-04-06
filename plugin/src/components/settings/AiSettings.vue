@@ -28,12 +28,28 @@
           />
         </Setting>
 
-        <Setting name="API Key" desc="API key for this provider.">
-          <Input
-            :model-value="provider.apiKeyId"
-            placeholder="sk-..."
-            @update:model-value="updateProvider(pIdx, 'apiKeyId', $event)"
-          />
+        <Setting name="API Key" desc="Stored securely in keychain.">
+          <div class="abele-ai-provider__secret">
+            <span v-if="getSecretDisplay(provider.apiKeyId)" class="abele-ai-provider__secret-mask">
+              {{ getSecretDisplay(provider.apiKeyId) }}
+            </span>
+            <div class="abele-ai-provider__secret-row">
+              <input
+                type="password"
+                class="abele-ai-provider__secret-input"
+                :value="secretInputs[provider.id] || ''"
+                :placeholder="getSecretDisplay(provider.apiKeyId) ? 'New key...' : 'sk-...'"
+                @input="secretInputs[provider.id] = ($event.target as HTMLInputElement).value"
+                @keydown.enter="applyProviderSecret(pIdx)"
+              />
+              <Icon
+                v-if="secretInputs[provider.id]"
+                icon="check"
+                with-bg
+                @click="applyProviderSecret(pIdx)"
+              />
+            </div>
+          </div>
         </Setting>
 
         <div class="abele-ai-provider__models">
@@ -171,12 +187,23 @@
 
       <h3>Integrations</h3>
 
-      <Setting name="Brave Search API Key" desc="Required for web search functionality.">
-        <Input
-          :model-value="braveSearchApiKey"
-          placeholder="BSA..."
-          @update:model-value="updateField('braveSearchApiKey', $event)"
-        />
+      <Setting name="Brave Search API Key" desc="Stored securely in keychain.">
+        <div class="abele-ai-provider__secret">
+          <span v-if="getSecretDisplay(braveSearchApiKey)" class="abele-ai-provider__secret-mask">
+            {{ getSecretDisplay(braveSearchApiKey) }}
+          </span>
+          <div class="abele-ai-provider__secret-row">
+            <input
+              type="password"
+              class="abele-ai-provider__secret-input"
+              :value="braveSecretInput"
+              :placeholder="getSecretDisplay(braveSearchApiKey) ? 'New key...' : 'BSA...'"
+              @input="braveSecretInput = ($event.target as HTMLInputElement).value"
+              @keydown.enter="applyBraveSecret"
+            />
+            <Icon v-if="braveSecretInput" icon="check" with-bg @click="applyBraveSecret" />
+          </div>
+        </div>
       </Setting>
 
       <Setting name="System Prompt" desc="Custom instructions added to the agent's system prompt.">
@@ -202,12 +229,14 @@ import Checkbox from '../obsidian/Checkbox.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import Icon from '../obsidian/Icon.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { OpenAIClient } from '@/ai/client'
 import type { RemoteModel } from '@/ai/client'
 import type { AiProvider, AiModelConfig } from '@/ai/types'
 
 const config = AbeleConfig.getInstance()
+const { app } = GlobalStore.getInstance()
 const client = new OpenAIClient()
 const migrating = ref(false)
 
@@ -293,12 +322,48 @@ const toggleEnabled = () => {
   save()
 }
 
+// ── Secret helpers ──────────────────────────────────────────
+
+const getSecretDisplay = (secretId: string): string => {
+  if (!secretId) return ''
+  const secret = app.secretStorage.getSecret(secretId)
+  if (!secret) return ''
+  if (secret.length <= 8) return '••••••••'
+  return secret.slice(0, 4) + '••••' + secret.slice(-4)
+}
+
+const secretInputs = reactive<Record<string, string>>({})
+const braveSecretInput = ref('')
+
+const applyProviderSecret = (pIdx: number) => {
+  const provider = providers.value[pIdx]
+  const value = secretInputs[provider.id]
+  if (!value) return
+  if (!provider.apiKeyId || !provider.apiKeyId.startsWith('abele-')) {
+    provider.apiKeyId = `abele-provider-${provider.id.toLowerCase().replace(/[^a-z0-9-]/g, '')}`
+  }
+  app.secretStorage.setSecret(provider.apiKeyId, value)
+  secretInputs[provider.id] = ''
+  save()
+}
+
+const applyBraveSecret = () => {
+  if (!braveSecretInput.value) return
+  braveSearchApiKey.value = 'abele-brave-search'
+  app.secretStorage.setSecret('abele-brave-search', braveSecretInput.value)
+  braveSecretInput.value = ''
+  save()
+}
+
+// ── Provider management ─────────────────────────────────────
+
 const addProvider = () => {
+  const id = nanoid(8)
   providers.value.push({
-    id: nanoid(8),
+    id,
     name: '',
     baseUrl: '',
-    apiKeyId: '',
+    apiKeyId: `abele-provider-${id.toLowerCase().replace(/[^a-z0-9-]/g, '')}`,
     models: [],
   })
   save()
@@ -320,12 +385,14 @@ const updateProvider = (idx: number, field: keyof AiProvider, value: string) => 
 const fetchModels = async (pIdx: number) => {
   const provider = providers.value[pIdx]
   if (!provider.baseUrl || !provider.apiKeyId) return
+  const apiKey = app.secretStorage.getSecret(provider.apiKeyId)
+  if (!apiKey) return
 
   fetchingModels.value = pIdx
   delete fetchError[provider.id]
 
   try {
-    const models = await client.fetchModels(provider.baseUrl, provider.apiKeyId)
+    const models = await client.fetchModels(provider.baseUrl, apiKey)
     remoteModels[provider.id] = models
   } catch (err: unknown) {
     fetchError[provider.id] = err instanceof Error ? err.message : String(err)
@@ -404,9 +471,6 @@ const updateField = (field: string, value: string) => {
     case 'chatFolder':
       chatFolder.value = value
       break
-    case 'braveSearchApiKey':
-      braveSearchApiKey.value = value
-      break
     case 'systemPrompt':
       systemPrompt.value = value
       break
@@ -428,6 +492,28 @@ const updateField = (field: string, value: string) => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: var(--size-4-2);
+}
+
+.abele-ai-provider__secret {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+}
+
+.abele-ai-provider__secret-mask {
+  font-family: var(--font-monospace);
+  font-size: var(--font-small);
+  color: var(--text-muted);
+}
+
+.abele-ai-provider__secret-row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+}
+
+.abele-ai-provider__secret-input {
+  flex: 1;
 }
 
 .abele-ai-provider__models {

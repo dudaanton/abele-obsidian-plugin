@@ -2,6 +2,7 @@ import { ref, shallowRef } from 'vue'
 import { TFile } from 'obsidian'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentLoop } from './client/AgentLoop'
 import { OpenAIClient } from './client/OpenAIClient'
 import type {
@@ -65,7 +66,7 @@ export class AgentService {
       id: model.id,
       name: model.name,
       baseUrl: provider.baseUrl,
-      apiKey: provider.apiKeyId,
+      apiKey: GlobalStore.getInstance().app.secretStorage.getSecret(provider.apiKeyId) || '',
       contextWindow: model.contextWindow,
       maxTokens: model.maxTokens,
       supportsReasoning: model.supportsReasoning,
