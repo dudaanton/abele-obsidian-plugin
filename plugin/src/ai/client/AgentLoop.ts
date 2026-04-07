@@ -83,6 +83,9 @@ export class AgentLoop {
    * Returns the final list of messages. If the loop paused for approval, `pausedAt` contains remaining tool calls.
    */
   async run(opts: AgentLoopOptions): Promise<AgentLoopResult> {
+    if (this._isRunning) {
+      throw new Error('AgentLoop.run() called while already running')
+    }
     this._isRunning = true
     this._pausedToolCalls = null
     this.abortController = new AbortController()

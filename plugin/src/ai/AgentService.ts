@@ -383,6 +383,8 @@ export class AgentService {
   // ── Public API ──────────────────────────────────────────────────
 
   async sendMessage(content: string): Promise<void> {
+    if (this.isStreaming.value || this.isCompacting.value) return
+
     this.error.value = null
     this.userMessageCount++
 
@@ -411,12 +413,14 @@ export class AgentService {
   }
 
   async approveToolCall(modifiedArgs?: Record<string, unknown>): Promise<void> {
+    if (this.isStreaming.value) return
     await this.executeCurrentPendingTool(modifiedArgs)
     await this.processAllPendingToolCalls()
     await this.saveCurrentChat()
   }
 
   async rejectToolCall(reason?: string): Promise<void> {
+    if (this.isStreaming.value) return
     const tc = this.pendingToolCalls.value[0]
     if (!tc) return
 
@@ -740,6 +744,7 @@ export class AgentService {
 
   async compact(): Promise<void> {
     if (this.internalMessages.length === 0) return
+    if (this.isStreaming.value || this.isCompacting.value) return
 
     this.isCompacting.value = true
     this.error.value = null
