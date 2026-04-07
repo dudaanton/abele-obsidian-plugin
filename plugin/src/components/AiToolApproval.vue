@@ -52,6 +52,7 @@
         placeholder="Edit arguments (JSON)"
         @update:model-value="editedArgs = $event"
       />
+      <div v-if="parseError" class="abele-tool-approval__parse-error">{{ parseError }}</div>
     </div>
 
     <div class="abele-tool-approval__actions">
@@ -97,13 +98,17 @@ const headerText = computed(() => {
   }
 })
 
+const parseError = ref('')
+
 const approve = () => {
   if (isEditing.value) {
     try {
       const modified = JSON.parse(editedArgs.value)
+      parseError.value = ''
       agent.approveToolCall(modified)
-    } catch {
-      agent.approveToolCall()
+    } catch (err: unknown) {
+      parseError.value = `Invalid JSON: ${err instanceof Error ? err.message : String(err)}`
+      return
     }
   } else {
     agent.approveToolCall()
@@ -204,6 +209,12 @@ const toggleEdit = () => {
     font-family: var(--font-monospace);
     font-size: var(--font-small);
   }
+}
+
+.abele-tool-approval__parse-error {
+  color: var(--text-error);
+  font-size: var(--font-small);
+  margin-top: var(--size-4-1);
 }
 
 .abele-tool-approval__actions {

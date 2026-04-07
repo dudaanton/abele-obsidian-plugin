@@ -82,7 +82,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import type { AbstractInputSuggest } from 'obsidian'
 import ObsidianModal from './obsidian/Modal.vue'
 import Setting from './obsidian/Setting.vue'
 import Button from './obsidian/Button.vue'
@@ -113,6 +114,8 @@ const previewEntry = ref<ScopeEntry | null>(null)
 
 const resolvedCount = computed(() => scope.resolve().size)
 
+const suggesters: AbstractInputSuggest<unknown>[] = []
+
 /**
  * Create a suggester that adds to scope on selection, then clears and re-attaches.
  */
@@ -128,6 +131,7 @@ const attachSuggester = (
     // Keep input and re-trigger suggestions so user can select more
     suggester.onInputChanged()
   }
+  suggesters.push(suggester)
 }
 
 onMounted(() => {
@@ -140,6 +144,10 @@ onMounted(() => {
   if (groupInputEl.value) {
     attachSuggester(groupInputEl.value, FileSuggest, (path) => scope.addGroup(path))
   }
+})
+
+onUnmounted(() => {
+  for (const s of suggesters) s.close()
 })
 
 const entryIcon = (type: string) => {

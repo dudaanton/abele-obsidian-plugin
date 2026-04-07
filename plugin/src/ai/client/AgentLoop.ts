@@ -44,7 +44,7 @@ type Listener = (event: AgentEvent) => void
  * Agent loop: prompt → LLM stream → tool execution → repeat until done.
  */
 export class AgentLoop {
-  private static readonly MAX_TURNS = 50
+  private static readonly MAX_TURNS = 100
 
   private client = new OpenAIClient()
   private listeners: Listener[] = []
@@ -141,6 +141,16 @@ export class AgentLoop {
 
         // If paused, exit the main loop
         if (this._pausedToolCalls) break
+      }
+
+      if (maxTurns <= 0) {
+        this.emit({
+          type: 'stream_event',
+          event: {
+            type: 'error',
+            error: `Agent stopped: reached ${AgentLoop.MAX_TURNS} turn limit`,
+          },
+        })
       }
     } finally {
       this._isRunning = false
