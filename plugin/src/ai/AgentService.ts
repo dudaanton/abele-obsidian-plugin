@@ -10,14 +10,12 @@ import type {
   AgentTool,
   AgentToolResult,
   AssistantMessage,
-  AssistantContentBlock,
   Message,
   ModelConfig,
   TextContent,
   ThinkingContent,
   ToolCallContent,
 } from './client'
-import { EMPTY_USAGE } from './client'
 import { ChatStorage } from './ChatStorage'
 import { ChatMessage, ChatMetadata, DEFAULT_AI_SETTINGS } from './types'
 import { createAgentTools } from './tools'
@@ -517,11 +515,9 @@ export class AgentService {
     // Count existing user messages for title generation logic
     this.userMessageCount = result.messages.filter((m) => m.role === 'user').length
 
-    // Restore internal messages — prefer stored, fallback to rebuild
+    // Restore internal messages (old chats without them will have no model context)
     if (result.internalMessages?.length) {
       this.internalMessages = result.internalMessages
-    } else {
-      this.rebuildInternalMessages(result.messages, result.metadata)
     }
 
     // Restore pending tool calls from metadata
@@ -532,145 +528,6 @@ export class AgentService {
         name: tc.name,
         arguments: tc.arguments,
       }))
-    }
-  }
-
-  /**
-   * Rebuild OpenAI-format internalMessages from stored ChatMessages.
-   * Groups assistant messages with following tool-call messages.
-   */
-  private rebuildInternalMessages(messages: ChatMessage[], metadata: ChatMetadata | null): void {
-    this.internalMessages = []
-    const modelId = metadata?.modelId || ''
-    let i = 0
-
-    while (i < messages.length) {
-      const msg = messages[i]
-
-      if (msg.role === 'user' || msg.role === 'system') {
-        this.internalMessages.push({
-          role: 'user',
-          content: msg.content,
-          timestamp: msg.timestamp,
-        })
-        i++
-        continue
-      }
-
-      if (msg.role === 'assistant') {
-        const contentBlocks: AssistantContentBlock[] = []
-        if (msg.thinking) contentBlocks.push({ type: 'thinking', thinking: msg.thinking })
-        if (msg.content) contentBlocks.push({ type: 'text', text: msg.content })
-
-        // Look ahead: collect tool-call messages that follow this assistant message
-        let j = i + 1
-        while (j < messages.length && messages[j].role === 'tool-call') {
-          const tc = messages[j]
-          if (tc.toolCallId && tc.toolName) {
-            contentBlocks.push({
-              type: 'toolCall',
-              id: tc.toolCallId,
-              name: tc.toolName,
-              arguments: tc.toolParams || {},
-            })
-          }
-          j++
-        }
-
-        const hasToolCalls = contentBlocks.some((b) => b.type === 'toolCall')
-        this.internalMessages.push({
-          role: 'assistant',
-          content: contentBlocks,
-          model: modelId,
-          usage: msg.usage
-            ? {
-                input: msg.usage.input,
-                output: msg.usage.output,
-                cacheRead: 0,
-                cacheWrite: 0,
-                totalTokens: msg.usage.total,
-              }
-            : EMPTY_USAGE,
-          stopReason: hasToolCalls ? 'toolUse' : 'stop',
-          timestamp: msg.timestamp,
-        })
-
-        // Add tool results for resolved tool calls
-        for (let k = i + 1; k < j; k++) {
-          const tc = messages[k]
-          if (
-            tc.toolCallId &&
-            tc.toolName &&
-            (tc.toolStatus === 'approved' || tc.toolStatus === 'rejected')
-          ) {
-            this.internalMessages.push({
-              role: 'toolResult',
-              toolCallId: tc.toolCallId,
-              toolName: tc.toolName,
-              content: [{ type: 'text', text: tc.toolResult || '' }],
-              isError: tc.toolStatus === 'rejected',
-              timestamp: tc.timestamp,
-            })
-          }
-        }
-
-        i = j
-        continue
-      }
-
-      if (msg.role === 'tool-call') {
-        // Orphaned tool-call (no preceding assistant message)
-        // Collect consecutive tool-calls into a synthetic assistant message
-        const contentBlocks: AssistantContentBlock[] = []
-        let j = i
-        while (j < messages.length && messages[j].role === 'tool-call') {
-          const tc = messages[j]
-          if (tc.toolCallId && tc.toolName) {
-            contentBlocks.push({
-              type: 'toolCall',
-              id: tc.toolCallId,
-              name: tc.toolName,
-              arguments: tc.toolParams || {},
-            })
-          }
-          j++
-        }
-
-        if (contentBlocks.length > 0) {
-          this.internalMessages.push({
-            role: 'assistant',
-            content: contentBlocks,
-            model: modelId,
-            usage: EMPTY_USAGE,
-            stopReason: 'toolUse',
-            timestamp: messages[i].timestamp,
-          })
-
-          for (let k = i; k < j; k++) {
-            const tc = messages[k]
-            if (
-              tc.toolCallId &&
-              tc.toolName &&
-              (tc.toolStatus === 'approved' || tc.toolStatus === 'rejected')
-            ) {
-              this.internalMessages.push({
-                role: 'toolResult',
-                toolCallId: tc.toolCallId,
-                toolName: tc.toolName,
-                content: [{ type: 'text', text: tc.toolResult || '' }],
-                isError: tc.toolStatus === 'rejected',
-                timestamp: tc.timestamp,
-              })
-            }
-          }
-        }
-
-        i = j
-        continue
-      }
-
-      // Skip tool-result messages (handled via tool-call processing)
-      i++
     }
   }
 
