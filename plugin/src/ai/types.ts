@@ -36,6 +36,7 @@ export interface AiSettings {
   activeProviderId: string
   activeModelId: string
   auxiliaryModelId: string
+  sequentialAuxiliary: boolean
   permissionMode: PermissionMode
   chatFolder: string
   chatHistory: AiChatHistoryEntry[]
@@ -50,6 +51,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   activeProviderId: '',
   activeModelId: '',
   auxiliaryModelId: '',
+  sequentialAuxiliary: false,
   permissionMode: 'confirm-all',
   chatFolder: 'AI/Chats/{{name}}',
   chatHistory: [],

@@ -52,6 +52,7 @@ export class AgentService {
   public readonly streamingContent = ref('')
   public readonly streamingThinking = ref('')
   public readonly pendingToolCalls = ref<ToolCallContent[]>([])
+  public readonly isGeneratingTitle = ref(false)
   public readonly isCompacting = ref(false)
   public readonly currentChatFile = shallowRef<TFile | null>(null)
   public readonly error = ref<string | null>(null)
@@ -87,6 +88,28 @@ export class AgentService {
       maxTokens: model.maxTokens,
       supportsReasoning: model.supportsReasoning,
     }
+  }
+
+  private getAuxiliaryModelConfig(): ModelConfig {
+    const config = AbeleConfig.getInstance().ai
+    if (!config.auxiliaryModelId) return this.getActiveModelConfig()
+
+    for (const provider of config.providers) {
+      const model = provider.models.find((m) => m.id === config.auxiliaryModelId)
+      if (model) {
+        return {
+          id: model.id,
+          name: model.name,
+          baseUrl: provider.baseUrl,
+          apiKey: GlobalStore.getInstance().app.secretStorage.getSecret(provider.apiKeyId) || '',
+          contextWindow: model.contextWindow,
+          maxTokens: model.maxTokens,
+          supportsReasoning: model.supportsReasoning,
+        }
+      }
+    }
+
+    return this.getActiveModelConfig()
   }
 
   private getSystemPrompt(): string {
@@ -442,16 +465,26 @@ export class AgentService {
     await this.runAgentLoop()
     await this.saveCurrentChat()
 
+    const sequential = AbeleConfig.getInstance().ai.sequentialAuxiliary
+
     if (AgentService.TITLE_GENERATION_TRIGGERS.includes(this.userMessageCount)) {
-      this.generateTitle().catch(() => {
-        return
-      })
+      if (sequential) {
+        await this.generateTitle()
+      } else {
+        this.generateTitle().catch(() => {
+          return
+        })
+      }
     }
 
     // Auto-compact if near context limit
-    this.autoCompactIfNeeded().catch(() => {
-      return
-    })
+    if (sequential) {
+      await this.autoCompactIfNeeded()
+    } else {
+      this.autoCompactIfNeeded().catch(() => {
+        return
+      })
+    }
   }
 
   async approveToolCall(modifiedArgs?: Record<string, unknown>): Promise<void> {
@@ -589,9 +622,10 @@ export class AgentService {
   }
 
   private async generateTitle(): Promise<void> {
+    this.isGeneratingTitle.value = true
     try {
       const config = AbeleConfig.getInstance().ai
-      const model = this.getActiveModelConfig()
+      const model = this.getAuxiliaryModelConfig()
       const client = new OpenAIClient()
       const msgs = this.messages.value
         .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -612,15 +646,22 @@ export class AgentService {
         },
       ]
 
+      // Pass agent tools to the model: reasoning models (e.g. qwen3) produce
+      // excessive thinking tokens without tools in the request, and a low
+      // max_completion_tokens makes it even worse.  Keeping tools + default
+      // max_tokens matches the main chat behaviour where reasoning is minimal.
+      const tools = this.getTools()
+      const toolDefs = tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      }))
+
       let title = ''
       const signal = this.getBackgroundSignal()
-      for await (const event of client.stream(
-        { ...model, maxTokens: AgentService.TITLE_MAX_TOKENS },
-        titleSystem,
-        titleMessages,
-        [],
-        { signal }
-      )) {
+      for await (const event of client.stream(model, titleSystem, titleMessages, toolDefs, {
+        signal,
+      })) {
         if (event.type === 'text_delta') title += event.delta
       }
 
@@ -644,19 +685,21 @@ export class AgentService {
       }
     } catch {
       // Silently fail — title generation is best-effort
+    } finally {
+      this.isGeneratingTitle.value = false
     }
   }
 
   async compact(): Promise<void> {
     if (this.internalMessages.length === 0) return
-    if (this.isStreaming.value || this.isCompacting.value) return
+    if (this.isStreaming.value || this.isCompacting.value || this.isGeneratingTitle.value) return
 
     this.isCompacting.value = true
     this.error.value = null
 
     try {
       const config = AbeleConfig.getInstance().ai
-      const model = this.getActiveModelConfig()
+      const model = this.getAuxiliaryModelConfig()
       const client = new OpenAIClient()
 
       // Summarize everything the model currently sees
@@ -690,13 +733,21 @@ export class AgentService {
         { role: 'user', content: compactPrompt, timestamp: Date.now() },
       ]
 
+      // Pass agent tools — see comment in generateTitle() for rationale
+      const tools = this.getTools()
+      const toolDefs = tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+      }))
+
       let summary = ''
       const signal = this.getBackgroundSignal()
       for await (const event of client.stream(
         model,
         AgentService.COMPACT_SYSTEM_PROMPT,
         compactMessages,
-        [],
+        toolDefs,
         { signal }
       )) {
         if (event.type === 'text_delta') summary += event.delta

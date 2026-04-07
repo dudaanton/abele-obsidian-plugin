@@ -161,6 +161,13 @@
         />
       </Setting>
 
+      <Setting
+        name="Sequential Auxiliary"
+        desc="Run auxiliary tasks after the main model finishes. Enable when both use the same endpoint."
+      >
+        <Checkbox :is-enabled="sequentialAuxiliary" @toggle="toggleSequentialAuxiliary" />
+      </Setting>
+
       <h3>Chat Storage</h3>
 
       <Setting
@@ -337,6 +344,7 @@ const systemPrompt = ref(config.ai.systemPrompt)
 const activeProviderId = ref(config.ai.activeProviderId)
 const activeModelId = ref(config.ai.activeModelId)
 const auxiliaryModelId = ref(config.ai.auxiliaryModelId)
+const sequentialAuxiliary = ref(config.ai.sequentialAuxiliary)
 const prompts = ref<Partial<AiPrompts>>(
   config.ai.prompts ? JSON.parse(JSON.stringify(config.ai.prompts)) : {}
 )
@@ -390,6 +398,7 @@ const save = debounce(async () => {
     activeProviderId: activeProviderId.value,
     activeModelId: activeModelId.value,
     auxiliaryModelId: auxiliaryModelId.value,
+    sequentialAuxiliary: sequentialAuxiliary.value,
     permissionMode: config.ai.permissionMode,
     chatFolder: chatFolder.value,
     chatHistory: config.ai.chatHistory || [],
@@ -402,6 +411,11 @@ const save = debounce(async () => {
 
 const toggleEnabled = () => {
   enabled.value = !enabled.value
+  save()
+}
+
+const toggleSequentialAuxiliary = () => {
+  sequentialAuxiliary.value = !sequentialAuxiliary.value
   save()
 }
 

@@ -11,6 +11,7 @@
         @keydown="onKeydown"
       />
       <Icon v-if="isStreaming" icon="square" with-bg @click="emit('abort')" />
+      <Icon v-else-if="isBusy" icon="loader" no-hover class="abele-chat-input__spinner" />
       <Icon
         v-else-if="canContinue && !text.trim()"
         icon="play"
@@ -33,8 +34,9 @@
 import { ref, nextTick } from 'vue'
 import Icon from './obsidian/Icon.vue'
 
-defineProps<{
+const props = defineProps<{
   isStreaming: boolean
+  isBusy: boolean
   canContinue: boolean
 }>()
 
@@ -64,6 +66,7 @@ const onInput = (e: Event) => {
 }
 
 const send = () => {
+  if (props.isStreaming || props.isBusy) return
   const msg = text.value.trim()
   if (!msg) return
 
@@ -145,6 +148,20 @@ const onKeydown = (e: KeyboardEvent) => {
 
   &:hover {
     opacity: 1;
+  }
+}
+
+.abele-chat-input__spinner {
+  animation: abele-spin 1s linear infinite;
+  color: var(--text-muted);
+}
+
+@keyframes abele-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 

@@ -48,8 +48,12 @@
         </div>
       </div>
 
-      <!-- Compacting indicator -->
-      <div v-if="isCompacting" class="abele-ai-chat__compacting">
+      <!-- Background task indicators -->
+      <div v-if="isGeneratingTitle" class="abele-ai-chat__aux-status">
+        <Icon icon="heading" />
+        <span>Generating title...</span>
+      </div>
+      <div v-if="isCompacting" class="abele-ai-chat__aux-status">
         <Icon icon="minimize-2" />
         <span>Compacting conversation...</span>
       </div>
@@ -68,6 +72,7 @@
     <AiChatInput
       ref="chatInput"
       :is-streaming="isStreaming"
+      :is-busy="isBusy"
       :can-continue="showContinue"
       @send="onSend"
       @command="onCommand"
@@ -118,12 +123,18 @@ const scope = ScopeResolver.getInstance()
 const {
   messages,
   isStreaming,
+  isGeneratingTitle,
   isCompacting,
   streamingContent,
   streamingThinking,
   pendingToolCalls,
   error,
 } = agent
+
+const isBusy = computed(() => {
+  if (!AbeleConfig.getInstance().ai.sequentialAuxiliary) return false
+  return isGeneratingTitle.value || isCompacting.value
+})
 
 const pendingApprovalMessage = computed(() => {
   if (pendingToolCalls.value.length === 0) return null
@@ -405,7 +416,7 @@ const showDebug = () => {
   }
 }
 
-.abele-ai-chat__compacting {
+.abele-ai-chat__aux-status {
   display: flex;
   align-items: center;
   gap: var(--size-4-2);
