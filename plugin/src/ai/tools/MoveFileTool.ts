@@ -24,6 +24,7 @@ export function createMoveFileTool(): AgentTool {
       const { app } = GlobalStore.getInstance()
       const file = app.vault.getAbstractFileByPath(from)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${from}`)
+      if (app.vault.getAbstractFileByPath(to)) throw new Error(`Destination exists: ${to}`)
       await app.fileManager.renameFile(file, to)
       ScopeResolver.getInstance().invalidate()
       return { content: [{ type: 'text', text: `Moved: ${from} → ${to}` }] }
