@@ -45,6 +45,7 @@ export class AgentService {
   private chatTitle = ''
   private chatCreated = ''
   private backgroundAbort: AbortController | null = null
+  private chatSessionId = 0
 
   // Reactive state for Vue components
   public readonly messages = ref<ChatMessage[]>([])
@@ -445,6 +446,7 @@ export class AgentService {
   async sendMessage(content: string): Promise<void> {
     if (this.isStreaming.value || this.isCompacting.value) return
 
+    const session = this.chatSessionId
     this.error.value = null
     this.userMessageCount++
 
@@ -463,6 +465,10 @@ export class AgentService {
     })
 
     await this.runAgentLoop()
+
+    // Chat was reset (e.g. user clicked "new chat") — stop processing
+    if (session !== this.chatSessionId) return
+
     await this.saveCurrentChat()
 
     const sequential = AbeleConfig.getInstance().ai.sequentialAuxiliary
@@ -534,10 +540,13 @@ export class AgentService {
 
   abort(): void {
     this.agentLoop?.abort()
+    this.unsubscribe?.()
+    this.unsubscribe = null
     this.isStreaming.value = false
   }
 
   async newChat(): Promise<void> {
+    this.chatSessionId++
     await this.saveCurrentChat()
     this.abort()
     this.abortBackground()
