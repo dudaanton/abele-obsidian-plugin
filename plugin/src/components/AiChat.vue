@@ -240,7 +240,7 @@ onMounted(() => {
 onUnmounted(() => mutObserver?.disconnect())
 
 const onSend = async (content: string) => {
-  const fileRefs = content.match(/@([\w/.@-]+)/g)
+  const fileRefs = content.match(/@([\w/.@\s-]+\.\w+)/g)
   if (fileRefs) {
     for (const r of fileRefs) {
       scope.addFile(r.slice(1))
@@ -253,7 +253,9 @@ const onSend = async (content: string) => {
 const onCommand = (command: string) => {
   switch (command) {
     case '/compact':
-      agent.compact().catch(() => void 0)
+      agent.compact().catch(() => {
+        return
+      })
       break
     case '/new':
       handleNewChat()
