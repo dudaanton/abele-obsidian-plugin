@@ -142,13 +142,13 @@ export class OpenAIClient {
         model,
         `HTTP ${response.status}: ${errorText}`
       )
-      yield { type: 'error', error: errorMsg.errorMessage!, message: errorMsg }
+      yield { type: 'error', error: errorMsg.errorMessage ?? '', message: errorMsg }
       return
     }
 
     if (!response.body) {
       const errorMsg = this.makeErrorMessage(model, 'No response body')
-      yield { type: 'error', error: errorMsg.errorMessage!, message: errorMsg }
+      yield { type: 'error', error: errorMsg.errorMessage ?? '', message: errorMsg }
       return
     }
 

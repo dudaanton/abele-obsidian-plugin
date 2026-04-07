@@ -248,14 +248,12 @@ const onSend = async (content: string) => {
   }
   scrollOnUserSend()
   await agent.sendMessage(content)
-  // Auto-save after each exchange
-  agent.saveCurrentChat()
 }
 
 const onCommand = (command: string) => {
   switch (command) {
     case '/compact':
-      agent.compact().catch(() => {})
+      agent.compact().catch(() => void 0)
       break
     case '/new':
       handleNewChat()
@@ -301,9 +299,9 @@ const onPromptVariablesConfirm = async (values: Map<string, string>) => {
   chatInput.value?.setText(resolved.trim())
 }
 
-const onContinue = () => {
+const onContinue = async () => {
   scrollOnUserSend()
-  agent.sendMessage('Continue')
+  await agent.sendMessage('Continue')
 }
 
 const handleNewChat = async () => {

@@ -7,10 +7,8 @@ import type {
   Message,
   ModelConfig,
   StreamOptions,
-  TextContent,
   ToolCallContent,
   ToolResultMessage,
-  UserMessage,
 } from './types'
 
 export interface AgentLoopResult {

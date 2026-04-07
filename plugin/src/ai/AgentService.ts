@@ -426,11 +426,11 @@ export class AgentService {
     await this.saveCurrentChat()
 
     if (AgentService.TITLE_GENERATION_TRIGGERS.includes(this.userMessageCount)) {
-      this.generateTitle().catch(() => {})
+      this.generateTitle().catch(() => void 0)
     }
 
     // Auto-compact if near context limit
-    this.autoCompactIfNeeded().catch(() => {})
+    this.autoCompactIfNeeded().catch(() => void 0)
   }
 
   async approveToolCall(modifiedArgs?: Record<string, unknown>): Promise<void> {

@@ -33,7 +33,7 @@
 import { ref, nextTick } from 'vue'
 import Icon from './obsidian/Icon.vue'
 
-const props = defineProps<{
+defineProps<{
   isStreaming: boolean
   canContinue: boolean
 }>()
