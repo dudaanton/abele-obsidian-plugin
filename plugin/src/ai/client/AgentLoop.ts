@@ -135,6 +135,11 @@ export class AgentLoop {
 
           messages.push(resultMsg)
           this.emit({ type: 'message_end', message: resultMsg })
+
+          // Inject extra messages (e.g. image content from read_image tool)
+          if (resultMsg.injectMessages?.length) {
+            messages.push(...resultMsg.injectMessages)
+          }
         }
 
         // If paused, exit the main loop
@@ -328,6 +333,7 @@ export class AgentLoop {
       content: toolResult.content,
       isError,
       timestamp: Date.now(),
+      injectMessages: toolResult.injectMessages,
     }
   }
 }

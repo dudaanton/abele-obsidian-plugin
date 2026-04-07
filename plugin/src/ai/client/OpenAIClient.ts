@@ -15,9 +15,13 @@ import type {
 
 // ── OpenAI API types (request/response) ─────────────────────
 
+type OpenAIContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 interface OpenAIMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string | null
+  content: string | OpenAIContentPart[] | null
   tool_calls?: OpenAIToolCall[]
   tool_call_id?: string
   name?: string
@@ -340,7 +344,19 @@ export class OpenAIClient {
       const msg = messages[i]
 
       if (msg.role === 'user') {
-        result.push({ role: 'user', content: msg.content })
+        if (Array.isArray(msg.content)) {
+          // Multipart content (text + images)
+          result.push({
+            role: 'user',
+            content: msg.content.map((p) =>
+              p.type === 'text'
+                ? { type: 'text' as const, text: p.text }
+                : { type: 'image_url' as const, image_url: p.image_url }
+            ),
+          })
+        } else {
+          result.push({ role: 'user', content: msg.content })
+        }
         continue
       }
 

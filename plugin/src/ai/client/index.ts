@@ -10,6 +10,8 @@ export type {
   AssistantMessage,
   ToolResultMessage,
   TextContent,
+  ImageUrlContent,
+  UserContentPart,
   ThinkingContent,
   ToolCallContent,
   AssistantContentBlock,

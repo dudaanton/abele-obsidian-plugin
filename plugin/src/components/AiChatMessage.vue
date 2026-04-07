@@ -25,6 +25,11 @@
             >failed</span
           >
         </span>
+        <img
+          v-if="message.toolName === 'read_image' && message.toolStatus === 'approved' && imageUrl"
+          :src="imageUrl"
+          class="abele-chat-msg__image-preview"
+        />
         <pre
           v-if="message.toolDiff && !message.toolDiff.old"
           class="abele-chat-msg__new-file"
@@ -89,9 +94,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import dayjs from 'dayjs'
+import { TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import Diff from './Diff.vue'
+import { GlobalStore } from '@/stores/GlobalStore'
 import type { ChatMessage } from '@/ai/types'
 
 const props = defineProps<{
@@ -108,6 +115,16 @@ const toolSummary = computed(() => {
   if (p.query) return String(p.query)
   if (p.name) return String(p.name)
   return ''
+})
+
+const imageUrl = computed(() => {
+  if (props.message.toolName !== 'read_image') return ''
+  const path = props.message.toolParams?.path as string
+  if (!path) return ''
+  const { app } = GlobalStore.getInstance()
+  const file = app.vault.getAbstractFileByPath(path)
+  if (!(file instanceof TFile)) return ''
+  return app.vault.getResourcePath(file)
 })
 
 const TOOL_RESULT_MAX_LENGTH = 1000
@@ -286,6 +303,15 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
 .abele-chat-msg__tool-error {
   font-size: var(--font-small);
   color: var(--text-error);
+}
+
+.abele-chat-msg__image-preview {
+  display: block;
+  max-width: 300px;
+  max-height: 300px;
+  border-radius: var(--radius-s);
+  margin-top: var(--size-4-1);
+  border: 1px solid var(--background-modifier-border);
 }
 
 .abele-chat-msg__new-file {

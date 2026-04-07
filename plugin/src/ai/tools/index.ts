@@ -10,6 +10,7 @@ import { createMoveFileTool } from './MoveFileTool'
 import { createCopyFileTool } from './CopyFileTool'
 import { createListWorkspaceTool } from './ListWorkspaceTool'
 import { createWebSearchTool } from './WebSearchTool'
+import { createReadImageTool } from './ReadImageTool'
 
 export function createAgentTools(): AgentTool[] {
   const tools = [
@@ -23,6 +24,7 @@ export function createAgentTools(): AgentTool[] {
     createCopyFileTool(),
     createListWorkspaceTool(),
     createWebSearchTool(),
+    createReadImageTool(),
   ]
 
   const customDescriptions = AbeleConfig.getInstance().ai.prompts?.toolDescriptions

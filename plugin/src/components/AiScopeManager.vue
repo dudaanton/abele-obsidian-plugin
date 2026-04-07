@@ -122,9 +122,11 @@ const suggesters: AbstractInputSuggest<unknown>[] = []
 const attachSuggester = (
   inputEl: HTMLInputElement,
   Suggester: typeof FileSuggest | typeof FolderSuggest,
-  onSelect: (path: string) => void
+  onSelect: (path: string) => void,
+  options?: { allFileTypes?: boolean }
 ) => {
-  const suggester = new Suggester(app, inputEl)
+  const suggester =
+    Suggester === FileSuggest ? new FileSuggest(app, inputEl, options) : new Suggester(app, inputEl)
   suggester.selectSuggestion = (item: any) => {
     const path = item.path as string
     onSelect(path)
@@ -136,7 +138,9 @@ const attachSuggester = (
 
 onMounted(() => {
   if (fileInputEl.value) {
-    attachSuggester(fileInputEl.value, FileSuggest, (path) => scope.addFile(path))
+    attachSuggester(fileInputEl.value, FileSuggest, (path) => scope.addFile(path), {
+      allFileTypes: true,
+    })
   }
   if (folderInputEl.value) {
     attachSuggester(folderInputEl.value, FolderSuggest, (path) => scope.addFolder(path))

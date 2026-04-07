@@ -20,6 +20,7 @@ import type {
 import { ChatStorage } from './ChatStorage'
 import { ChatMessage, ChatMetadata, DEFAULT_AI_SETTINGS } from './types'
 import { createAgentTools } from './tools'
+import { ScopeResolver } from './ScopeResolver'
 
 /** Shape returned by tools that provide diff details */
 interface ToolDiffDetails {
@@ -136,9 +137,13 @@ export class AgentService {
   private static readonly READ_TOOLS = ['read', 'ls', 'find', 'workspace', 'web_search']
   private static readonly EDIT_TOOLS = ['edit']
 
-  private needsApproval(toolName: string): boolean {
+  private needsApproval(toolName: string, args?: Record<string, unknown>): boolean {
     const mode = AbeleConfig.getInstance().ai.permissionMode
     if (AgentService.READ_TOOLS.includes(toolName)) return false
+    // read_image: auto-approve if the image is in workspace scope
+    if (toolName === 'read_image' && args?.path) {
+      return !ScopeResolver.getInstance().isInScope(args.path as string)
+    }
     if (
       AgentService.EDIT_TOOLS.includes(toolName) &&
       (mode === 'allow-edit' || mode === 'allow-all')
@@ -289,8 +294,8 @@ export class AgentService {
         systemPrompt: this.getSystemPrompt(),
         tools,
         messages: toSend,
-        beforeToolCall: async (toolName) => {
-          if (this.needsApproval(toolName)) {
+        beforeToolCall: async (toolName, _id, args) => {
+          if (this.needsApproval(toolName, args)) {
             return { pause: true }
           }
         },
@@ -330,7 +335,7 @@ export class AgentService {
     while (this.pendingToolCalls.value.length > 0) {
       const tc = this.pendingToolCalls.value[0]
 
-      if (this.needsApproval(tc.name)) {
+      if (this.needsApproval(tc.name, tc.arguments)) {
         // Add ChatMessage for the pending tool call (if not already there)
         this.ensurePendingToolCallMessage(tc)
         await this.saveCurrentChat()
@@ -436,6 +441,11 @@ export class AgentService {
       isError,
       timestamp: Date.now(),
     })
+
+    // Inject extra messages (e.g. image content from read_image)
+    if (toolResult.injectMessages?.length) {
+      this.internalMessages.push(...toolResult.injectMessages)
+    }
 
     // Remove from pending
     this.pendingToolCalls.value = this.pendingToolCalls.value.slice(1)

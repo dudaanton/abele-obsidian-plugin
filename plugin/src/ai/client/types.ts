@@ -19,9 +19,16 @@ export interface ToolCallContent {
 
 export type AssistantContentBlock = TextContent | ThinkingContent | ToolCallContent
 
+export interface ImageUrlContent {
+  type: 'image_url'
+  image_url: { url: string }
+}
+
+export type UserContentPart = TextContent | ImageUrlContent
+
 export interface UserMessage {
   role: 'user'
-  content: string
+  content: string | UserContentPart[]
   timestamp: number
 }
 
@@ -42,6 +49,8 @@ export interface ToolResultMessage {
   content: TextContent[]
   isError: boolean
   timestamp: number
+  /** Messages to inject after this tool result (e.g. user message with image) */
+  injectMessages?: Message[]
 }
 
 export interface SystemMessage {
@@ -90,6 +99,8 @@ export interface AgentTool extends ToolDefinition {
 export interface AgentToolResult {
   content: TextContent[]
   details?: unknown
+  /** Extra messages injected into conversation after the tool result (e.g. image user messages) */
+  injectMessages?: Message[]
 }
 
 // ── Model / Provider types ──────────────────────────────────

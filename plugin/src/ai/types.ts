@@ -77,6 +77,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
       workspace:
         'Show all files currently accessible in the workspace scope. Use this to understand what files you can work with.',
       web_search: 'Search the web using Brave Search. Returns titles, URLs, and descriptions.',
+      read_image:
+        'Load an image so you can see its contents. Images in workspace scope are loaded automatically; others require user approval.',
     },
   },
 }

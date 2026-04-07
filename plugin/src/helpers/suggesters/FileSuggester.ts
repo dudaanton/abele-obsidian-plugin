@@ -10,11 +10,15 @@ export enum FileSuggestMode {
 }
 
 export class FileSuggest extends TextInputSuggest<TFile> {
+  private allFileTypes: boolean
+
   constructor(
     app: App,
-    public inputEl: HTMLInputElement
+    public inputEl: HTMLInputElement,
+    options?: { allFileTypes?: boolean }
   ) {
     super(app, inputEl)
+    this.allFileTypes = options?.allFileTypes ?? false
   }
 
   getSuggestions(input_str: string): TFile[] {
@@ -29,7 +33,7 @@ export class FileSuggest extends TextInputSuggest<TFile> {
     all_files.forEach((file: TAbstractFile) => {
       if (
         file instanceof TFile &&
-        file.extension === 'md' &&
+        (this.allFileTypes || file.extension === 'md') &&
         file.path.toLowerCase().contains(lower_input_str)
       ) {
         files.push(file)

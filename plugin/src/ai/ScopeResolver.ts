@@ -114,7 +114,7 @@ export class ScopeResolver {
     const result = new Set<string>()
 
     if (this.fullVaultAccess.value) {
-      for (const file of app.vault.getMarkdownFiles()) {
+      for (const file of app.vault.getFiles()) {
         result.add(file.path)
       }
       this._cache = result
@@ -134,7 +134,7 @@ export class ScopeResolver {
         }
         case 'pattern': {
           const regex = this.patternToRegex(entry.path)
-          for (const file of app.vault.getMarkdownFiles()) {
+          for (const file of app.vault.getFiles()) {
             if (regex.test(file.path)) result.add(file.path)
           }
           break
@@ -220,7 +220,7 @@ export class ScopeResolver {
     }
 
     // Find all notes that have this group in their `groups` frontmatter
-    for (const file of app.vault.getMarkdownFiles()) {
+    for (const file of app.vault.getFiles()) {
       if (visited.has(file.path)) continue
       const cache = app.metadataCache.getFileCache(file)
       const groups = cache?.frontmatter?.groups
