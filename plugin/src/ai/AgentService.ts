@@ -43,6 +43,7 @@ export class AgentService {
   private userMessageCount = 0
   private chatTitle = ''
   private chatCreated = ''
+  private backgroundAbort: AbortController | null = null
 
   // Reactive state for Vue components
   public readonly messages = ref<ChatMessage[]>([])
@@ -91,6 +92,16 @@ export class AgentService {
     const config = AbeleConfig.getInstance().ai
     const base = config.prompts?.system || DEFAULT_AI_SETTINGS.prompts.system
     return config.systemPrompt ? `${base}\n\n${config.systemPrompt}` : base
+  }
+
+  private getBackgroundSignal(): AbortSignal {
+    if (!this.backgroundAbort) this.backgroundAbort = new AbortController()
+    return this.backgroundAbort.signal
+  }
+
+  private abortBackground(): void {
+    this.backgroundAbort?.abort()
+    this.backgroundAbort = null
   }
 
   private getTools(): AgentTool[] {
@@ -490,6 +501,7 @@ export class AgentService {
   async newChat(): Promise<void> {
     await this.saveCurrentChat()
     this.abort()
+    this.abortBackground()
     this.internalMessages = []
     this.messages.value = []
     this.streamingContent.value = ''
@@ -595,12 +607,13 @@ export class AgentService {
       ]
 
       let title = ''
+      const signal = this.getBackgroundSignal()
       for await (const event of client.stream(
         { ...model, maxTokens: AgentService.TITLE_MAX_TOKENS },
         titleSystem,
         titleMessages,
         [],
-        {}
+        { signal }
       )) {
         if (event.type === 'text_delta') title += event.delta
       }
@@ -672,12 +685,13 @@ export class AgentService {
       ]
 
       let summary = ''
+      const signal = this.getBackgroundSignal()
       for await (const event of client.stream(
         model,
         AgentService.COMPACT_SYSTEM_PROMPT,
         compactMessages,
         [],
-        {}
+        { signal }
       )) {
         if (event.type === 'text_delta') summary += event.delta
       }
@@ -760,6 +774,7 @@ export class AgentService {
 
   destroy(): void {
     this.abort()
+    this.abortBackground()
     this.internalMessages = []
     this.messages.value = []
     this.pendingToolCalls.value = []

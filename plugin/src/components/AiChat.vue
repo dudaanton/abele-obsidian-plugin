@@ -317,9 +317,10 @@ const onLoadChat = async (file: TFile) => {
 const showDebug = () => {
   const data = JSON.stringify(agent.getDebugData(), null, 2)
   console.log('[Abele AI Debug]', data)
-  navigator.clipboard.writeText(data).then(() => {
-    new Notice('Debug JSON copied to clipboard')
-  })
+  navigator.clipboard.writeText(data).then(
+    () => new Notice('Debug JSON copied to clipboard'),
+    () => new Notice('Failed to copy to clipboard')
+  )
 }
 </script>
 

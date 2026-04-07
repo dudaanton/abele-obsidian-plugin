@@ -87,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import dayjs from 'dayjs'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
@@ -100,7 +100,7 @@ const props = defineProps<{
 
 const expanded = ref(false)
 
-const toolSummary = (() => {
+const toolSummary = computed(() => {
   const p = props.message.toolParams
   if (!p) return ''
   if (p.path) return String(p.path)
@@ -108,7 +108,7 @@ const toolSummary = (() => {
   if (p.query) return String(p.query)
   if (p.name) return String(p.name)
   return ''
-})()
+})
 
 const TOOL_RESULT_MAX_LENGTH = 1000
 
