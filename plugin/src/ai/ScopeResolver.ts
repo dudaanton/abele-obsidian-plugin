@@ -1,9 +1,10 @@
 import { ref, computed } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TFile, TFolder } from 'obsidian'
+import { isWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
 
 export interface ScopeEntry {
-  type: 'file' | 'folder' | 'pattern'
+  type: 'file' | 'folder' | 'pattern' | 'group'
   path: string
 }
 
@@ -37,10 +38,12 @@ export class ScopeResolver {
     const files = e.filter((x) => x.type === 'file').length
     const folders = e.filter((x) => x.type === 'folder').length
     const patterns = e.filter((x) => x.type === 'pattern').length
+    const groups = e.filter((x) => x.type === 'group').length
     const parts: string[] = []
     if (files) parts.push(`${files} file${files > 1 ? 's' : ''}`)
     if (folders) parts.push(`${folders} folder${folders > 1 ? 's' : ''}`)
     if (patterns) parts.push(`${patterns} pattern${patterns > 1 ? 's' : ''}`)
+    if (groups) parts.push(`${groups} group${groups > 1 ? 's' : ''}`)
     return parts.join(', ')
   })
 
@@ -74,6 +77,13 @@ export class ScopeResolver {
   addPattern(pattern: string): void {
     if (!this.entries.value.some((e) => e.type === 'pattern' && e.path === pattern)) {
       this.entries.value = [...this.entries.value, { type: 'pattern', path: pattern }]
+      this._cache = null
+    }
+  }
+
+  addGroup(path: string): void {
+    if (!this.entries.value.some((e) => e.type === 'group' && e.path === path)) {
+      this.entries.value = [...this.entries.value, { type: 'group', path }]
       this._cache = null
     }
   }
@@ -129,6 +139,10 @@ export class ScopeResolver {
           for (const file of app.vault.getMarkdownFiles()) {
             if (regex.test(file.path)) result.add(file.path)
           }
+          break
+        }
+        case 'group': {
+          this.resolveGroup(entry.path, result)
           break
         }
       }
@@ -191,6 +205,48 @@ export class ScopeResolver {
         this.resolveFolder(child.path, result)
       }
     }
+  }
+
+  /**
+   * Resolve all notes belonging to a group (notes that reference the group note
+   * via `groups` property, recursively down the tree).
+   */
+  private resolveGroup(groupPath: string, result: Set<string>, visited = new Set<string>()): void {
+    if (visited.has(groupPath)) return
+    visited.add(groupPath)
+
+    const { app } = GlobalStore.getInstance()
+    const groupFile = app.vault.getAbstractFileByPath(groupPath)
+    if (groupFile instanceof TFile) {
+      result.add(groupFile.path)
+    }
+
+    // Find all notes that have this group in their `groups` frontmatter
+    for (const file of app.vault.getMarkdownFiles()) {
+      if (visited.has(file.path)) continue
+      const cache = app.metadataCache.getFileCache(file)
+      const groups = cache?.frontmatter?.groups
+      if (!Array.isArray(groups)) continue
+
+      for (const group of groups) {
+        const linkPath = isWikilink(group)
+          ? app.metadataCache.getFirstLinkpathDest(wikilinkToPath(group), file.path)?.path
+          : null
+        if (linkPath && linkPath === groupPath) {
+          result.add(file.path)
+          // Recurse: this note might also be a group for other notes
+          this.resolveGroup(file.path, result, visited)
+          break
+        }
+      }
+    }
+  }
+
+  /** Resolve a group entry and return just its paths (for preview) */
+  resolveGroupPaths(groupPath: string): string[] {
+    const result = new Set<string>()
+    this.resolveGroup(groupPath, result)
+    return [...result].sort()
   }
 
   private patternToRegex(pattern: string): RegExp {

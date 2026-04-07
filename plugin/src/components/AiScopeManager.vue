@@ -10,23 +10,19 @@
         <!-- Add file -->
         <div class="abele-scope-mgr__section">
           <div class="abele-scope-mgr__label">Add file</div>
-          <Search
-            :model-value="fileInput"
-            placeholder="Search for a file..."
-            :suggester="FileSuggest"
-            @update:model-value="onFileInput"
-          />
+          <input ref="fileInputEl" type="text" placeholder="Search for a file..." />
         </div>
 
         <!-- Add folder -->
         <div class="abele-scope-mgr__section">
           <div class="abele-scope-mgr__label">Add folder</div>
-          <Search
-            :model-value="folderInput"
-            placeholder="Search for a folder..."
-            :suggester="FolderSuggest"
-            @update:model-value="onFolderInput"
-          />
+          <input ref="folderInputEl" type="text" placeholder="Search for a folder..." />
+        </div>
+
+        <!-- Add group -->
+        <div class="abele-scope-mgr__section">
+          <div class="abele-scope-mgr__label">Add group</div>
+          <input ref="groupInputEl" type="text" placeholder="Search for a group note..." />
         </div>
 
         <!-- Add pattern -->
@@ -51,15 +47,24 @@
             v-for="(entry, idx) in scope.entries.value"
             :key="idx"
             class="abele-scope-mgr__entry"
+            @click="togglePreview(entry)"
           >
-            <Icon
-              :icon="
-                entry.type === 'file' ? 'file-text' : entry.type === 'folder' ? 'folder' : 'regex'
-              "
-            />
+            <Icon :icon="entryIcon(entry.type)" />
             <span class="abele-scope-mgr__entry-path">{{ entry.path }}</span>
             <span class="abele-scope-mgr__entry-type">{{ entry.type }}</span>
-            <Icon icon="x" @click="scope.remove(entry)" />
+            <span v-if="entry.type === 'group'" class="abele-scope-mgr__entry-count">
+              {{ scope.resolveGroupPaths(entry.path).length }}
+            </span>
+            <Icon icon="x" @click.stop="scope.remove(entry)" />
+          </div>
+          <!-- Preview for selected group -->
+          <div v-if="previewEntry" class="abele-scope-mgr__preview">
+            <div class="abele-scope-mgr__preview-header">
+              {{ previewEntry.path }} ({{ previewPaths.length }} files)
+            </div>
+            <div v-for="p in previewPaths" :key="p" class="abele-scope-mgr__preview-item">
+              {{ p }}
+            </div>
           </div>
         </div>
       </template>
@@ -77,10 +82,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import Setting from './obsidian/Setting.vue'
-import Search from './obsidian/Search.vue'
 import Button from './obsidian/Button.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Dropdown from './obsidian/Dropdown.vue'
@@ -88,6 +92,8 @@ import Icon from './obsidian/Icon.vue'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
 import { ScopeResolver } from '@/ai/ScopeResolver'
+import type { ScopeEntry } from '@/ai/ScopeResolver'
+import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import type { PermissionMode } from '@/ai/types'
 
@@ -95,14 +101,77 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
+const { app } = GlobalStore.getInstance()
 const scope = ScopeResolver.getInstance()
 
-const fileInput = ref('')
-const folderInput = ref('')
+const fileInputEl = ref<HTMLInputElement | null>(null)
+const folderInputEl = ref<HTMLInputElement | null>(null)
+const groupInputEl = ref<HTMLInputElement | null>(null)
 const patternInput = ref('')
 const permissionMode = ref(AbeleConfig.getInstance().ai.permissionMode)
+const previewEntry = ref<ScopeEntry | null>(null)
 
 const resolvedCount = computed(() => scope.resolve().size)
+
+/**
+ * Create a suggester that adds to scope on selection, then clears and re-attaches.
+ */
+const attachSuggester = (
+  inputEl: HTMLInputElement,
+  Suggester: typeof FileSuggest | typeof FolderSuggest,
+  onSelect: (path: string) => void
+) => {
+  const suggester = new Suggester(app, inputEl)
+  // Override selectSuggestion to intercept selection
+  const origSelect = suggester.selectSuggestion.bind(suggester)
+  suggester.selectSuggestion = (item: any) => {
+    const path = item.path as string
+    onSelect(path)
+    // Keep input and re-trigger suggestions so user can select more
+    suggester.onInputChanged()
+  }
+}
+
+onMounted(() => {
+  if (fileInputEl.value) {
+    attachSuggester(fileInputEl.value, FileSuggest, (path) => scope.addFile(path))
+  }
+  if (folderInputEl.value) {
+    attachSuggester(folderInputEl.value, FolderSuggest, (path) => scope.addFolder(path))
+  }
+  if (groupInputEl.value) {
+    attachSuggester(groupInputEl.value, FileSuggest, (path) => scope.addGroup(path))
+  }
+})
+
+const entryIcon = (type: string) => {
+  switch (type) {
+    case 'file':
+      return 'file-text'
+    case 'folder':
+      return 'folder'
+    case 'group':
+      return 'users'
+    default:
+      return 'regex'
+  }
+}
+
+const previewPaths = computed(() => {
+  if (!previewEntry.value) return []
+  if (previewEntry.value.type === 'group') {
+    return scope.resolveGroupPaths(previewEntry.value.path)
+  }
+  return []
+})
+
+const togglePreview = (entry: ScopeEntry) => {
+  if (entry.type !== 'group') {
+    previewEntry.value = null
+    return
+  }
+  previewEntry.value = previewEntry.value?.path === entry.path ? null : entry
+}
 
 const permissionOptions = [
   { value: 'confirm-all', display: 'Confirm all writes' },
@@ -112,29 +181,6 @@ const permissionOptions = [
 
 const toggleFullVault = () => {
   scope.setFullVaultAccess(!scope.fullVaultAccess.value)
-}
-
-const onFileInput = (value: string) => {
-  if (value) {
-    scope.addFile(value)
-    // Reset after adding — nextTick ensures the Search component re-renders
-    nextTick(() => {
-      fileInput.value = ''
-    })
-    return
-  }
-  fileInput.value = value
-}
-
-const onFolderInput = (value: string) => {
-  if (value) {
-    scope.addFolder(value)
-    nextTick(() => {
-      folderInput.value = ''
-    })
-    return
-  }
-  folderInput.value = value
 }
 
 const addPattern = () => {
@@ -216,5 +262,33 @@ const onPermissionChange = (value: string) => {
 .abele-scope-mgr__entry-type {
   color: var(--text-faint);
   font-size: var(--font-smaller);
+}
+
+.abele-scope-mgr__entry-count {
+  font-size: var(--font-smaller);
+  color: var(--text-accent);
+}
+
+.abele-scope-mgr__preview {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: var(--size-4-2);
+  max-height: 150px;
+  overflow-y: auto;
+  font-size: var(--font-smaller);
+}
+
+.abele-scope-mgr__preview-header {
+  font-weight: 600;
+  margin-bottom: var(--size-4-1);
+  color: var(--text-muted);
+}
+
+.abele-scope-mgr__preview-item {
+  padding: 1px 0;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

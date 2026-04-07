@@ -19,32 +19,46 @@ const props = defineProps<{
 const el = ref<HTMLElement>()
 const search = ref<SearchComponent>()
 
-const updateSearch = () => {
-  if (el.value) {
-    if (!search.value) {
-      search.value = new SearchComponent(el.value)
-      new props.suggester(GlobalStore.getInstance().app, search.value.inputEl)
-      search.value.onChange((value) => {
-        emit('update:model-value', value)
-      })
-    }
-
-    search.value.setValue(props.modelValue)
-
-    if (props.disabled !== undefined) {
-      search.value.setDisabled(props.disabled)
-    }
-
-    if (props.placeholder) {
-      search.value.setPlaceholder(props.placeholder)
-    }
+const initSearch = () => {
+  if (!el.value) return
+  // Clear previous instance
+  if (search.value) {
+    el.value.empty()
+    search.value = undefined
+  }
+  search.value = new SearchComponent(el.value)
+  new props.suggester(GlobalStore.getInstance().app, search.value.inputEl)
+  search.value.onChange((value) => {
+    emit('update:model-value', value)
+  })
+  if (props.placeholder) {
+    search.value.setPlaceholder(props.placeholder)
+  }
+  if (props.disabled !== undefined) {
+    search.value.setDisabled(props.disabled)
   }
 }
 
-onMounted(() => {
-  updateSearch()
-})
-watch(() => [props.modelValue, props.disabled], updateSearch)
+onMounted(initSearch)
+
+watch(
+  () => props.modelValue,
+  (val) => {
+    // When value is reset externally, recreate the search component
+    if (val === '' && search.value) {
+      initSearch()
+    }
+  }
+)
+
+watch(
+  () => props.disabled,
+  () => {
+    if (search.value && props.disabled !== undefined) {
+      search.value.setDisabled(props.disabled)
+    }
+  }
+)
 
 const emit = defineEmits<{
   (e: 'update:model-value', value: string): void
