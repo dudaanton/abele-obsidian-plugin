@@ -1,5 +1,6 @@
 import { ref, shallowRef } from 'vue'
 import { TFile } from 'obsidian'
+import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -155,6 +156,7 @@ export class AgentService {
 
           // Always add assistant message (even if empty — needed for tool call grouping)
           const chatMsg: ChatMessage = {
+            id: nanoid(),
             role: 'assistant',
             content: textParts.map((t) => t.text).join(''),
             thinking: thinkingParts.length
@@ -175,6 +177,7 @@ export class AgentService {
             this.messages.value = [
               ...this.messages.value,
               {
+                id: nanoid(),
                 role: 'tool-result',
                 content: resultContent,
                 toolName: msg.toolName,
@@ -189,6 +192,7 @@ export class AgentService {
 
       case 'tool_start': {
         const chatMsg: ChatMessage = {
+          id: nanoid(),
           role: 'tool-call',
           content: `Calling ${event.toolName}`,
           toolCallId: event.toolCallId,
@@ -325,6 +329,7 @@ export class AgentService {
     this.messages.value = [
       ...this.messages.value,
       {
+        id: nanoid(),
         role: 'tool-call',
         content: `Calling ${tc.name}`,
         toolCallId: tc.id,
@@ -421,6 +426,7 @@ export class AgentService {
     this.userMessageCount++
 
     const userMsg: ChatMessage = {
+      id: nanoid(),
       role: 'user',
       content,
       timestamp: Date.now(),
@@ -548,7 +554,7 @@ export class AgentService {
   async loadChat(file: TFile): Promise<void> {
     await this.newChat()
     const result = await ChatStorage.getInstance().loadChat(file)
-    this.messages.value = result.messages
+    this.messages.value = result.messages.map((m) => (m.id ? m : { ...m, id: nanoid() }))
     this.currentChatFile.value = file
     this.chatTitle = result.metadata?.title || ''
     this.chatCreated = result.metadata?.created || ''
@@ -710,6 +716,7 @@ export class AgentService {
 
       // Insert a visual divider in UI messages
       const divider: ChatMessage = {
+        id: nanoid(),
         role: 'system',
         content: summary,
         timestamp: Date.now(),

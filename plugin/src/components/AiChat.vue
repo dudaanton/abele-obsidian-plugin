@@ -21,7 +21,7 @@
         Start a conversation with your AI assistant.
       </div>
 
-      <AiChatMessage v-for="(msg, idx) in messages" :key="idx" :message="msg" />
+      <AiChatMessage v-for="msg in messages" :key="msg.id" :message="msg" />
 
       <!-- Streaming indicator -->
       <div v-if="isStreaming" class="abele-ai-chat__streaming">

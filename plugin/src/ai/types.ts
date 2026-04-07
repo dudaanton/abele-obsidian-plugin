@@ -91,6 +91,7 @@ export interface ChatMessageDiff {
 }
 
 export interface ChatMessage {
+  id: string
   role: 'user' | 'assistant' | 'tool-call' | 'tool-result' | 'system'
   content: string
   thinking?: string
