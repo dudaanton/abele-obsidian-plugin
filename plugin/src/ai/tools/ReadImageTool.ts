@@ -3,19 +3,9 @@ import type { AgentTool, UserContentPart } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10 MB
 
-function getMimeType(ext: string): string {
-  const map: Record<string, string> = {
-    png: 'image/png',
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    gif: 'image/gif',
-    webp: 'image/webp',
-    bmp: 'image/bmp',
-    svg: 'image/svg+xml',
-  }
-  return map[ext] || 'application/octet-stream'
-}
+export const VAULT_IMAGE_PREFIX = 'vault:'
 
 export function isImagePath(path: string): boolean {
   const ext = path.split('.').pop()?.toLowerCase() || ''
@@ -48,14 +38,15 @@ export function createReadImageTool(): AgentTool {
         throw new Error(`Not an image file: ${path}`)
       }
 
-      const binary = await app.vault.readBinary(file)
-      const base64 = arrayBufferToBase64(binary)
-      const mime = getMimeType(ext)
-      const dataUrl = `data:${mime};base64,${base64}`
+      if (file.stat.size > MAX_IMAGE_SIZE) {
+        const sizeMB = (file.stat.size / 1024 / 1024).toFixed(1)
+        throw new Error(`Image too large: ${sizeMB} MB (max ${MAX_IMAGE_SIZE / 1024 / 1024} MB)`)
+      }
 
+      // Store vault reference — resolved to base64 on the fly before API calls
       const imageContent: UserContentPart[] = [
         { type: 'text', text: `[Image: ${path}]` },
-        { type: 'image_url', image_url: { url: dataUrl } },
+        { type: 'image_url', image_url: { url: `${VAULT_IMAGE_PREFIX}${path}` } },
       ]
 
       return {
@@ -64,13 +55,4 @@ export function createReadImageTool(): AgentTool {
       }
     },
   }
-}
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer)
-  let binary = ''
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i])
-  }
-  return btoa(binary)
 }

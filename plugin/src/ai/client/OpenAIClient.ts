@@ -1,3 +1,5 @@
+import { TFile } from 'obsidian'
+import { GlobalStore } from '@/stores/GlobalStore'
 import type {
   AssistantMessage,
   AssistantContentBlock,
@@ -6,11 +8,13 @@ import type {
   ToolCallContent,
   ToolDefinition,
   Message,
+  UserMessage,
   ModelConfig,
   StreamOptions,
   StreamEvent,
   StopReason,
   Usage,
+  UserContentPart,
 } from './types'
 
 // ── OpenAI API types (request/response) ─────────────────────
@@ -128,7 +132,9 @@ export class OpenAIClient {
     tools: ToolDefinition[],
     options: StreamOptions = {}
   ): AsyncGenerator<StreamEvent> {
-    const body = this.buildRequestBody(model, systemPrompt, messages, tools, options)
+    // Resolve vault: image references to base64 data URLs before sending
+    const resolved = await OpenAIClient.resolveVaultImages(messages)
+    const body = this.buildRequestBody(model, systemPrompt, resolved, tools, options)
 
     const response = await fetch(this.getUrl(model), {
       method: 'POST',
@@ -285,6 +291,79 @@ export class OpenAIClient {
     if (currentBlock) yield* this.finishBlock(currentBlock, output)
 
     yield { type: 'done', message: output }
+  }
+
+  // ── Vault image resolution ──────────────────────────────────
+
+  private static readonly VAULT_PREFIX = 'vault:'
+
+  /**
+   * Replace vault: image references with base64 data URLs.
+   * Only clones messages that actually contain vault references.
+   */
+  private static async resolveVaultImages(messages: Message[]): Promise<Message[]> {
+    let cloned = false
+    let result = messages
+
+    for (let i = 0; i < result.length; i++) {
+      const msg = result[i]
+      if (msg.role !== 'user' || !Array.isArray(msg.content)) continue
+
+      const parts = msg.content as UserContentPart[]
+      const hasVaultRef = parts.some(
+        (p) => p.type === 'image_url' && p.image_url.url.startsWith(OpenAIClient.VAULT_PREFIX)
+      )
+      if (!hasVaultRef) continue
+
+      if (!cloned) {
+        result = [...messages]
+        cloned = true
+      }
+
+      const resolvedParts = await Promise.all(
+        parts.map(async (p) => {
+          if (p.type !== 'image_url' || !p.image_url.url.startsWith(OpenAIClient.VAULT_PREFIX))
+            return p
+          const path = p.image_url.url.slice(OpenAIClient.VAULT_PREFIX.length)
+          const dataUrl = await OpenAIClient.readImageAsDataUrl(path)
+          return dataUrl
+            ? { type: 'image_url' as const, image_url: { url: dataUrl } }
+            : { type: 'text' as const, text: `[Image unavailable: ${path}]` }
+        })
+      )
+
+      result[i] = { ...msg, content: resolvedParts } as UserMessage
+    }
+
+    return result
+  }
+
+  private static async readImageAsDataUrl(path: string): Promise<string | null> {
+    try {
+      const { app } = GlobalStore.getInstance()
+      const file = app.vault.getAbstractFileByPath(path)
+      if (!(file instanceof TFile)) return null
+      const binary = await app.vault.readBinary(file)
+      const bytes = new Uint8Array(binary)
+      let raw = ''
+      for (let i = 0; i < bytes.byteLength; i++) {
+        raw += String.fromCharCode(bytes[i])
+      }
+      const ext = file.extension.toLowerCase()
+      const mimeMap: Record<string, string> = {
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        gif: 'image/gif',
+        webp: 'image/webp',
+        bmp: 'image/bmp',
+        svg: 'image/svg+xml',
+      }
+      const mime = mimeMap[ext] || 'application/octet-stream'
+      return `data:${mime};base64,${btoa(raw)}`
+    } catch {
+      return null
+    }
   }
 
   // ── Internals ─────────────────────────────────────────────
