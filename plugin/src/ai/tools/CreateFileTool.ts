@@ -17,6 +17,8 @@ export function createCreateFileTool(): AgentTool {
     },
     execute: async (_id, params) => {
       const { path, content } = params as { path: string; content: string }
+      if (!path) throw new Error('Missing required parameter: path')
+      if (content == null) throw new Error('Missing required parameter: content')
       const { app } = GlobalStore.getInstance()
       if (app.vault.getAbstractFileByPath(path)) throw new Error(`File already exists: ${path}`)
 

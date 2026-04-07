@@ -523,13 +523,13 @@ export class OpenAIClient {
     } catch {
       // Try to fix common partial JSON issues
       try {
-        // Attempt to close unclosed braces/brackets
         let fixed = raw
         const opens = (fixed.match(/\{/g) || []).length
         const closes = (fixed.match(/\}/g) || []).length
         for (let i = 0; i < opens - closes; i++) fixed += '}'
         return JSON.parse(fixed)
       } catch {
+        console.warn('[Abele] Failed to parse tool arguments:', raw.slice(0, 200))
         return {}
       }
     }
@@ -558,6 +558,7 @@ export class OpenAIClient {
     const reader = body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+    let dataLines: string[] = []
 
     try {
       while (true) {
@@ -573,19 +574,41 @@ export class OpenAIClient {
         buffer = lines.pop() || '' // Keep incomplete last line in buffer
 
         for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed || trimmed.startsWith(':')) continue // Skip empty lines and comments
+          const stripped = line.replace(/\r$/, '')
 
-          if (trimmed === 'data: [DONE]') return
-
-          if (trimmed.startsWith('data: ')) {
-            const jsonStr = trimmed.slice(6)
-            try {
-              yield JSON.parse(jsonStr) as StreamChunk
-            } catch {
-              // Skip malformed JSON chunks
+          // Empty line = end of event, dispatch accumulated data
+          if (!stripped) {
+            if (dataLines.length > 0) {
+              const jsonStr = dataLines.join('\n')
+              dataLines = []
+              try {
+                yield JSON.parse(jsonStr) as StreamChunk
+              } catch {
+                // Skip malformed JSON chunks
+              }
             }
+            continue
           }
+
+          if (stripped.startsWith(':')) continue // SSE comment
+
+          if (stripped === 'data: [DONE]') return
+
+          if (stripped.startsWith('data: ')) {
+            dataLines.push(stripped.slice(6))
+          } else if (stripped.startsWith('data:')) {
+            dataLines.push(stripped.slice(5))
+          }
+        }
+      }
+
+      // Flush remaining data lines (stream ended without trailing empty line)
+      if (dataLines.length > 0) {
+        const jsonStr = dataLines.join('\n')
+        try {
+          yield JSON.parse(jsonStr) as StreamChunk
+        } catch {
+          // Skip malformed JSON chunks
         }
       }
     } finally {

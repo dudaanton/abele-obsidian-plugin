@@ -18,6 +18,8 @@ export function createMoveFileTool(): AgentTool {
     },
     execute: async (_id, params) => {
       const { from, to } = params as { from: string; to: string }
+      if (!from) throw new Error('Missing required parameter: from')
+      if (!to) throw new Error('Missing required parameter: to')
       if (!ScopeResolver.getInstance().isInScope(from)) {
         throw new Error(`Access denied: ${from} is not in workspace scope`)
       }

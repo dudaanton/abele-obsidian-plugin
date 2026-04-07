@@ -17,6 +17,7 @@ export function createDeleteFileTool(): AgentTool {
     },
     execute: async (_id, params) => {
       const path = params.path as string
+      if (!path) throw new Error('Missing required parameter: path')
       if (!ScopeResolver.getInstance().isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }

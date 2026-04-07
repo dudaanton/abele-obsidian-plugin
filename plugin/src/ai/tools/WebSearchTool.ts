@@ -18,6 +18,7 @@ export function createWebSearchTool(): AgentTool {
     },
     execute: async (_toolCallId, params: Record<string, unknown>) => {
       const query = params.query as string
+      if (!query) throw new Error('Missing required parameter: query')
       const count = Math.min((params.count as number) || 5, 20)
       const secretId = AbeleConfig.getInstance().ai.braveSearchApiKey
       if (!secretId) throw new Error('Brave Search API key is not configured in settings')

@@ -24,6 +24,9 @@ export function createEditFileTool(): AgentTool {
         old_string: string
         new_string: string
       }
+      if (!path) throw new Error('Missing required parameter: path')
+      if (old_string == null) throw new Error('Missing required parameter: old_string')
+      if (new_string == null) throw new Error('Missing required parameter: new_string')
       if (!ScopeResolver.getInstance().isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
