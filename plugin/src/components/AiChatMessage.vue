@@ -25,8 +25,12 @@
             >failed</span
           >
         </span>
+        <pre
+          v-if="message.toolDiff && !message.toolDiff.old"
+          class="abele-chat-msg__new-file"
+        ><code>{{ message.toolDiff.new }}</code></pre>
         <Diff
-          v-if="message.toolDiff"
+          v-else-if="message.toolDiff"
           :text-left="message.toolDiff.old"
           :text-right="message.toolDiff.new"
           class="abele-chat-msg__diff"
@@ -282,6 +286,22 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
 .abele-chat-msg__tool-error {
   font-size: var(--font-small);
   color: var(--text-error);
+}
+
+.abele-chat-msg__new-file {
+  margin-top: var(--size-4-1);
+  border-radius: var(--radius-s);
+  max-height: 300px;
+  overflow-y: auto;
+  background-color: var(--background-secondary);
+
+  code {
+    display: block;
+    padding: var(--size-4-2) var(--size-4-3);
+    font-size: var(--font-small);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 }
 
 .abele-chat-msg__diff {

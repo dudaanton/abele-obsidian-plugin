@@ -42,6 +42,7 @@ export class AgentService {
   private internalMessages: Message[] = []
   private userMessageCount = 0
   private chatTitle = ''
+  private chatCreated = ''
 
   // Reactive state for Vue components
   public readonly messages = ref<ChatMessage[]>([])
@@ -494,6 +495,7 @@ export class AgentService {
     this.error.value = null
     this.userMessageCount = 0
     this.chatTitle = ''
+    this.chatCreated = ''
   }
 
   async saveCurrentChat(): Promise<void> {
@@ -506,7 +508,7 @@ export class AgentService {
       type: 'abele-chat',
       providerId: config.activeProviderId,
       modelId: config.activeModelId,
-      created: this.currentChatFile.value ? '' : dayjs().format('YYYY-MM-DD'),
+      created: this.chatCreated || (this.chatCreated = dayjs().format('YYYY-MM-DD')),
       title,
       pendingToolCalls:
         this.pendingToolCalls.value.length > 0
@@ -533,6 +535,7 @@ export class AgentService {
     this.messages.value = result.messages
     this.currentChatFile.value = file
     this.chatTitle = result.metadata?.title || ''
+    this.chatCreated = result.metadata?.created || ''
 
     // Count existing user messages for title generation logic
     this.userMessageCount = result.messages.filter((m) => m.role === 'user').length
