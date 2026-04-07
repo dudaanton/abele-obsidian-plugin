@@ -101,7 +101,7 @@ const confirm = () => {
 .abele-prompt-picker__item {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--size-2-1);
   padding: var(--size-4-2) var(--size-4-3);
   cursor: pointer;
   border-bottom: 1px solid var(--background-modifier-border);

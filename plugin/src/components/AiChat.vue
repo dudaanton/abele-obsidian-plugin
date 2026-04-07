@@ -364,7 +364,7 @@ const showDebug = () => {
   font-size: var(--font-smaller);
   color: var(--text-muted);
   background-color: var(--background-secondary);
-  padding: 2px 6px;
+  padding: var(--size-2-1) var(--size-2-3);
   border-radius: var(--radius-s);
   cursor: pointer;
   white-space: nowrap;
@@ -417,7 +417,7 @@ const showDebug = () => {
 
 .abele-ai-chat__typing {
   display: flex;
-  gap: 4px;
+  gap: var(--size-4-1);
   padding: var(--size-4-2);
 }
 

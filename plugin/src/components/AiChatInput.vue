@@ -122,10 +122,10 @@ const onKeydown = (e: KeyboardEvent) => {
   resize: none;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
-  padding: 6px var(--size-4-2);
+  padding: var(--size-2-3) var(--size-4-2);
   font-family: inherit;
   font-size: inherit;
-  line-height: 20px;
+  line-height: 1.5;
   background-color: var(--background-primary);
   color: var(--text-normal);
   height: 34px;

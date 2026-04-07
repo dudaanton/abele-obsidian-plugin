@@ -133,7 +133,7 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
 
   &_tool-call,
   &_tool-result {
-    padding: 2px 0;
+    padding: var(--size-2-1) 0;
   }
 
   &_system {
@@ -223,7 +223,7 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   }
 
   :not(pre) > code {
-    padding: 1px 4px;
+    padding: 1px var(--size-4-1);
     background-color: var(--background-secondary);
     border-radius: var(--radius-s);
     font-size: 0.9em;
@@ -326,7 +326,7 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
     padding: var(--size-4-1) var(--size-4-2);
     max-height: 200px;
     overflow: auto;
-    margin: 2px 0 var(--size-4-1);
+    margin: var(--size-2-1) 0 var(--size-4-1);
     font-size: var(--font-smaller);
     white-space: pre-wrap;
     word-break: break-word;
