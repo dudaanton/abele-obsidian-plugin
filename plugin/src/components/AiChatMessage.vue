@@ -67,7 +67,7 @@
         </div>
         <div v-if="message.toolResult" class="abele-chat-msg__detail-row">
           <span class="abele-chat-msg__detail-label">Result</span>
-          <pre>{{ truncate(message.toolResult, 1000) }}</pre>
+          <pre>{{ truncate(message.toolResult, TOOL_RESULT_MAX_LENGTH) }}</pre>
         </div>
       </div>
     </div>
@@ -105,6 +105,8 @@ const toolSummary = (() => {
   if (p.name) return String(p.name)
   return ''
 })()
+
+const TOOL_RESULT_MAX_LENGTH = 1000
 
 const formatTime = (ts: number) => dayjs(ts).format('YYYY-MM-DD HH:mm:ss')
 const shortTime = (ts: number) => dayjs(ts).format('HH:mm')

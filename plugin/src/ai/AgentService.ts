@@ -22,8 +22,22 @@ import { ChatStorage } from './ChatStorage'
 import { ChatMessage, ChatMetadata, DEFAULT_AI_SETTINGS } from './types'
 import { createAgentTools } from './tools'
 
+/** Shape returned by tools that provide diff details */
+interface ToolDiffDetails {
+  diff?: { old: string; new: string }
+}
+
 export class AgentService {
   private static instance: AgentService
+
+  private static readonly AUTO_COMPACT_THRESHOLD = 0.9
+  private static readonly TITLE_MAX_TOKENS = 30
+  private static readonly TITLE_MAX_LENGTH = 60
+  private static readonly TITLE_MSG_PREVIEW_LENGTH = 200
+  private static readonly TITLE_GENERATION_TRIGGERS = [1, 3]
+  private static readonly FALLBACK_TITLE_LENGTH = 50
+  private static readonly COMPACT_SYSTEM_PROMPT =
+    'You summarize conversations. Reply with ONLY the summary, nothing else.'
 
   private agentLoop: AgentLoop | null = null
   private unsubscribe: (() => void) | null = null
@@ -84,13 +98,16 @@ export class AgentService {
     return createAgentTools()
   }
 
+  private static readonly READ_TOOLS = ['read', 'ls', 'find', 'workspace', 'web_search']
+  private static readonly EDIT_TOOLS = ['edit']
+
   private needsApproval(toolName: string): boolean {
     const mode = AbeleConfig.getInstance().ai.permissionMode
-    const readTools = ['read', 'ls', 'find', 'workspace']
-    const editTools = ['edit']
-
-    if (readTools.includes(toolName) || toolName === 'web_search') return false
-    if (editTools.includes(toolName) && (mode === 'allow-edit' || mode === 'allow-all'))
+    if (AgentService.READ_TOOLS.includes(toolName)) return false
+    if (
+      AgentService.EDIT_TOOLS.includes(toolName) &&
+      (mode === 'allow-edit' || mode === 'allow-all')
+    )
       return false
     if (mode === 'allow-all') return false
     return true
@@ -184,7 +201,7 @@ export class AgentService {
             msgs[i].toolStatus === 'pending'
           ) {
             const resultText = event.result.content?.map((c) => c.text).join('') || ''
-            const diff = (event.result.details as { diff?: { old: string; new: string } })?.diff
+            const diff = (event.result.details as ToolDiffDetails)?.diff
             msgs[i] = {
               ...msgs[i],
               toolResult: resultText,
@@ -337,7 +354,7 @@ export class AgentService {
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (msgs[i].toolCallId === tc.id && msgs[i].toolStatus === 'pending') {
         const resultText = toolResult.content.map((c) => c.text).join('')
-        const diff = (toolResult.details as { diff?: { old: string; new: string } })?.diff
+        const diff = (toolResult.details as ToolDiffDetails)?.diff
         msgs[i] = {
           ...msgs[i],
           toolResult: resultText,
@@ -385,8 +402,7 @@ export class AgentService {
     await this.runAgentLoop()
     await this.saveCurrentChat()
 
-    // Generate title after 1st and 3rd user messages
-    if (this.userMessageCount === 1 || this.userMessageCount === 3) {
+    if (AgentService.TITLE_GENERATION_TRIGGERS.includes(this.userMessageCount)) {
       this.generateTitle().catch(() => {})
     }
 
@@ -658,7 +674,9 @@ export class AgentService {
 
   private fallbackTitle(): string {
     const firstUser = this.messages.value.find((m) => m.role === 'user')
-    const snippet = firstUser ? firstUser.content.slice(0, 50).replace(/\n/g, ' ') : 'Chat'
+    const snippet = firstUser
+      ? firstUser.content.slice(0, AgentService.FALLBACK_TITLE_LENGTH).replace(/\n/g, ' ')
+      : 'Chat'
     return `${dayjs().format('YYYY-MM-DD HH-mm')} ${snippet}`
   }
 
@@ -670,7 +688,7 @@ export class AgentService {
       const msgs = this.messages.value
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .slice(0, 6)
-        .map((m) => `[${m.role}]: ${m.content.slice(0, 200)}`)
+        .map((m) => `[${m.role}]: ${m.content.slice(0, AgentService.TITLE_MSG_PREVIEW_LENGTH)}`)
         .join('\n')
 
       const titlePrompt = (
@@ -688,7 +706,7 @@ export class AgentService {
 
       let title = ''
       for await (const event of client.stream(
-        { ...model, maxTokens: 30 },
+        { ...model, maxTokens: AgentService.TITLE_MAX_TOKENS },
         titleSystem,
         titleMessages,
         [],
@@ -701,7 +719,7 @@ export class AgentService {
         .trim()
         .replace(/^["']|["']$/g, '')
         .replace(/[\\/:*?"<>|]/g, '-')
-        .slice(0, 60)
+        .slice(0, AgentService.TITLE_MAX_LENGTH)
 
       if (!title || title === this.chatTitle) return
 
@@ -765,7 +783,7 @@ export class AgentService {
       let summary = ''
       for await (const event of client.stream(
         model,
-        'You summarize conversations. Reply with ONLY the summary, nothing else.',
+        AgentService.COMPACT_SYSTEM_PROMPT,
         compactMessages,
         [],
         {}
@@ -816,7 +834,7 @@ export class AgentService {
       if (!lastAssistant?.usage) return
 
       const usage = lastAssistant.usage.total
-      const threshold = model.contextWindow * 0.9
+      const threshold = model.contextWindow * AgentService.AUTO_COMPACT_THRESHOLD
 
       if (usage >= threshold && this.getMessagesForModel().length > 2) {
         await this.compact()

@@ -11,7 +11,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onActivated } from 'vue'
+import { ref, onMounted, onActivated, onUnmounted } from 'vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { AgentService } from '@/ai/AgentService'
@@ -43,12 +43,11 @@ const refresh = () => {
 onMounted(refresh)
 onActivated(refresh)
 
-// Poll for config changes (settings are saved asynchronously)
+const CONFIG_POLL_INTERVAL_MS = 2000
 let interval: ReturnType<typeof setInterval>
 onMounted(() => {
-  interval = setInterval(refresh, 2000)
+  interval = setInterval(refresh, CONFIG_POLL_INTERVAL_MS)
 })
-import { onUnmounted } from 'vue'
 onUnmounted(() => clearInterval(interval))
 
 const onSelect = (key: string) => {

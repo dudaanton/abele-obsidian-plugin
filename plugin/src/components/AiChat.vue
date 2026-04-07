@@ -94,7 +94,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
-import { TFile } from 'obsidian'
+import { Notice, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import AiChatMessage from './AiChatMessage.vue'
@@ -138,8 +138,6 @@ const showContinue = computed(() => {
   return true
 })
 
-const scopeSummary = computed(() => scope.summary.value)
-
 const contextWindow = computed(() => {
   const config = AbeleConfig.getInstance().ai
   const provider =
@@ -151,18 +149,13 @@ const contextWindow = computed(() => {
 
 const contextTokens = computed(() => {
   // Find last assistant with usage, but only after the last compact divider
-  let foundCompact = false
   for (let i = messages.value.length - 1; i >= 0; i--) {
     const m = messages.value[i]
-    if (m.role === 'system') {
-      foundCompact = true
-      break
-    }
+    if (m.role === 'system') break
     if (m.role === 'assistant' && m.usage) {
       return m.usage.total
     }
   }
-  // No assistant message after compact (or no messages at all)
   return 0
 })
 
@@ -195,8 +188,8 @@ const pendingPromptContent = ref('')
 const pendingPromptAllVars = ref<TemplateVariable[]>([])
 const pendingPromptUserVars = ref<TemplateVariable[]>([])
 
+const AUTO_SCROLL_THRESHOLD_PX = 60
 let shouldAutoScroll = true
-// Track with a flag that only user scroll events can set to false
 let scrollSetByCode = false
 
 const onMessagesScroll = () => {
@@ -207,7 +200,7 @@ const onMessagesScroll = () => {
   }
   const el = messagesContainer.value
   if (!el) return
-  shouldAutoScroll = el.scrollHeight - el.scrollTop - el.clientHeight < 60
+  shouldAutoScroll = el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD_PX
 }
 
 const doScroll = () => {
@@ -325,7 +318,7 @@ const showDebug = () => {
   const data = JSON.stringify(agent.getDebugData(), null, 2)
   console.log('[Abele AI Debug]', data)
   navigator.clipboard.writeText(data).then(() => {
-    new (window as any).Notice('Debug JSON copied to clipboard')
+    new Notice('Debug JSON copied to clipboard')
   })
 }
 </script>

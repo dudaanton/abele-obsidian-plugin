@@ -122,8 +122,6 @@ const attachSuggester = (
   onSelect: (path: string) => void
 ) => {
   const suggester = new Suggester(app, inputEl)
-  // Override selectSuggestion to intercept selection
-  const origSelect = suggester.selectSuggestion.bind(suggester)
   suggester.selectSuggestion = (item: any) => {
     const path = item.path as string
     onSelect(path)

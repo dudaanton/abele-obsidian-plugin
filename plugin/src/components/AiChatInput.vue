@@ -45,14 +45,17 @@ const emit = defineEmits<{
   (e: 'continue'): void
 }>()
 
+const TEXTAREA_MIN_HEIGHT = 34
+const TEXTAREA_MAX_HEIGHT = 80
+
 const text = ref('')
 const inputEl = ref<HTMLTextAreaElement | null>(null)
 
 const autoResize = () => {
   const el = inputEl.value
   if (!el) return
-  el.style.height = '34px'
-  el.style.height = Math.min(el.scrollHeight, 80) + 'px'
+  el.style.height = `${TEXTAREA_MIN_HEIGHT}px`
+  el.style.height = `${Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT)}px`
 }
 
 const onInput = (e: Event) => {
@@ -66,7 +69,7 @@ const send = () => {
 
   if (msg.startsWith('/')) {
     const cmd = msg.split(' ')[0].toLowerCase()
-    if (['/compact', '/new', '/load', '/scope', '/model', '/prompt'].includes(cmd)) {
+    if (['/compact', '/new', '/load', '/scope', '/prompt'].includes(cmd)) {
       emit('command', cmd)
       text.value = ''
       nextTick(autoResize)

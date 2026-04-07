@@ -293,7 +293,7 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive } from 'vue'
-import { debounce } from 'obsidian'
+import { Notice, debounce } from 'obsidian'
 import { nanoid } from 'nanoid'
 import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
@@ -309,6 +309,9 @@ import type { RemoteModel } from '@/ai/client'
 import type { AiProvider, AiModelConfig, AiPrompts } from '@/ai/types'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 
+const DEFAULT_CONTEXT_WINDOW = 128000
+const DEFAULT_MAX_TOKENS = 4096
+
 const config = AbeleConfig.getInstance()
 const { app } = GlobalStore.getInstance()
 const client = new OpenAIClient()
@@ -318,9 +321,9 @@ const migrateChats = async () => {
   migrating.value = true
   try {
     const count = await ChatStorage.getInstance().migrateChats()
-    new (window as any).Notice(`Migrated ${count} chat(s)`)
+    new Notice(`Migrated ${count} chat(s)`)
   } catch (err: unknown) {
-    new (window as any).Notice(`Migration failed: ${err instanceof Error ? err.message : err}`)
+    new Notice(`Migration failed: ${err instanceof Error ? err.message : err}`)
   } finally {
     migrating.value = false
   }
@@ -499,8 +502,8 @@ const toggleRemoteModel = (pIdx: number, modelId: string) => {
     provider.models.push({
       id: modelId,
       name: '',
-      contextWindow: 128000,
-      maxTokens: 4096,
+      contextWindow: DEFAULT_CONTEXT_WINDOW,
+      maxTokens: DEFAULT_MAX_TOKENS,
       supportsReasoning: false,
     })
   }

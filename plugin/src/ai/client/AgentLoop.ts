@@ -44,6 +44,8 @@ type Listener = (event: AgentEvent) => void
  * Agent loop: prompt → LLM stream → tool execution → repeat until done.
  */
 export class AgentLoop {
+  private static readonly MAX_TURNS = 50
+
   private client = new OpenAIClient()
   private listeners: Listener[] = []
   private abortController: AbortController | null = null
@@ -90,8 +92,7 @@ export class AgentLoop {
     this.emit({ type: 'agent_start' })
 
     try {
-      // Agent loop: keep going while model requests tool calls
-      let maxTurns = 50 // Safety limit
+      let maxTurns = AgentLoop.MAX_TURNS
       while (maxTurns-- > 0) {
         if (signal.aborted) break
 

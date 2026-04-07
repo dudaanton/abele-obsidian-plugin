@@ -1,4 +1,3 @@
-import { requestUrl } from 'obsidian'
 import type {
   AssistantMessage,
   AssistantContentBlock,
@@ -12,7 +11,6 @@ import type {
   StreamEvent,
   StopReason,
   Usage,
-  EMPTY_USAGE,
 } from './types'
 
 // ── OpenAI API types (request/response) ─────────────────────
@@ -23,6 +21,7 @@ interface OpenAIMessage {
   tool_calls?: OpenAIToolCall[]
   tool_call_id?: string
   name?: string
+  reasoning_content?: string
 }
 
 interface OpenAIToolCall {
@@ -82,6 +81,9 @@ export interface RemoteModel {
 }
 
 export class OpenAIClient {
+  private static readonly DEFAULT_MAX_COMPLETION_TOKENS = 32000
+  private static readonly MAX_TOOL_CALL_ID_LENGTH = 40
+
   /**
    * Fetch available models from a provider's /models endpoint.
    */
@@ -312,7 +314,8 @@ export class OpenAIClient {
       body.tools = []
     }
 
-    const maxTokens = options.maxTokens || Math.min(model.maxTokens, 32000)
+    const maxTokens =
+      options.maxTokens || Math.min(model.maxTokens, OpenAIClient.DEFAULT_MAX_COMPLETION_TOKENS)
     body.max_completion_tokens = maxTokens
 
     if (options.temperature != null) {
@@ -362,9 +365,7 @@ export class OpenAIClient {
 
         // Include reasoning_content if present
         if (thinkingParts.length > 0) {
-          ;(openaiMsg as unknown as Record<string, unknown>).reasoning_content = thinkingParts
-            .map((t) => t.thinking)
-            .join('')
+          openaiMsg.reasoning_content = thinkingParts.map((t) => t.thinking).join('')
         }
 
         if (toolCalls.length > 0) {
@@ -512,7 +513,7 @@ export class OpenAIClient {
     // Some providers generate very long IDs with special chars (e.g. pipe-separated)
     let clean = id.includes('|') ? id.split('|')[0] : id
     clean = clean.replace(/[^a-zA-Z0-9_-]/g, '')
-    return clean.slice(0, 40)
+    return clean.slice(0, OpenAIClient.MAX_TOOL_CALL_ID_LENGTH)
   }
 
   private parseJsonSafe(raw: string): Record<string, unknown> {

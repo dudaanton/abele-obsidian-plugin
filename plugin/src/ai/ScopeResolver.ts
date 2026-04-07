@@ -8,8 +8,6 @@ export interface ScopeEntry {
   path: string
 }
 
-export type PermissionMode = 'confirm-all' | 'allow-edit' | 'allow-all'
-
 /**
  * Manages the virtual filesystem scope for the AI agent.
  * All file operations are restricted to resolved scope paths.
