@@ -19,8 +19,10 @@ import type {
 } from './client'
 import { ChatStorage } from './ChatStorage'
 import { ChatMessage, ChatMetadata, DEFAULT_AI_SETTINGS } from './types'
+import type { UserContentPart } from './client'
 import { createAgentTools } from './tools'
 import { ScopeResolver } from './ScopeResolver'
+import { resolveAttachmentsForApi } from './attachments'
 
 /** Shape returned by tools that provide diff details */
 interface ToolDiffDetails {
@@ -453,7 +455,7 @@ export class AgentService {
 
   // ── Public API ──────────────────────────────────────────────────
 
-  async sendMessage(content: string): Promise<void> {
+  async sendMessage(content: string, attachments?: string[]): Promise<void> {
     if (this.isStreaming.value || this.isCompacting.value) return
 
     const session = this.chatSessionId
@@ -464,15 +466,26 @@ export class AgentService {
       id: nanoid(),
       role: 'user',
       content,
+      attachments: attachments?.length ? attachments : undefined,
       timestamp: Date.now(),
     }
     this.messages.value = [...this.messages.value, userMsg]
 
-    this.internalMessages.push({
-      role: 'user',
-      content,
-      timestamp: Date.now(),
-    })
+    if (attachments?.length) {
+      const parts = await resolveAttachmentsForApi(attachments)
+      const allParts: UserContentPart[] = [{ type: 'text', text: content }, ...parts]
+      this.internalMessages.push({
+        role: 'user',
+        content: allParts,
+        timestamp: Date.now(),
+      })
+    } else {
+      this.internalMessages.push({
+        role: 'user',
+        content,
+        timestamp: Date.now(),
+      })
+    }
 
     await this.runAgentLoop()
 

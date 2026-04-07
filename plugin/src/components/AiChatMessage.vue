@@ -60,6 +60,19 @@
       <!-- User / Assistant — markdown -->
       <Markdown v-else-if="message.content" :text="message.content" />
 
+      <!-- Attachments -->
+      <div v-if="message.attachments?.length" class="abele-chat-msg__attachments">
+        <span
+          v-for="path in message.attachments"
+          :key="path"
+          class="abele-chat-msg__attachment-chip"
+          @click="openAttachment(path)"
+        >
+          <Icon :icon="getAttachmentIcon(path)" />
+          {{ attachmentName(path) }}
+        </span>
+      </div>
+
       <!-- Expanded debug info — toggled by icon click -->
       <div v-if="expanded" class="abele-chat-msg__details">
         <div class="abele-chat-msg__detail-time">{{ formatTime(message.timestamp) }}</div>
@@ -99,6 +112,7 @@ import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import Diff from './Diff.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { getAttachmentIcon, fileName as attachmentName } from '@/ai/attachments'
 import type { ChatMessage } from '@/ai/types'
 
 const props = defineProps<{
@@ -126,6 +140,14 @@ const imageUrl = computed(() => {
   if (!(file instanceof TFile)) return ''
   return app.vault.getResourcePath(file)
 })
+
+const openAttachment = (path: string) => {
+  const { app } = GlobalStore.getInstance()
+  const file = app.vault.getAbstractFileByPath(path)
+  if (file instanceof TFile) {
+    app.workspace.getLeaf(false).openFile(file)
+  }
+}
 
 const TOOL_RESULT_MAX_LENGTH = 1000
 
@@ -303,6 +325,29 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
 .abele-chat-msg__tool-error {
   font-size: var(--font-small);
   color: var(--text-error);
+}
+
+.abele-chat-msg__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
+  margin-top: var(--size-4-1);
+}
+
+.abele-chat-msg__attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  padding: var(--size-2-1) var(--size-2-3);
+  background-color: var(--background-secondary);
+  border-radius: var(--radius-s);
+  font-size: var(--font-smaller);
+  color: var(--text-accent);
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--background-modifier-hover);
+  }
 }
 
 .abele-chat-msg__image-preview {

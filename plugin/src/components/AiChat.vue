@@ -250,7 +250,7 @@ onMounted(() => {
 })
 onUnmounted(() => mutObserver?.disconnect())
 
-const onSend = async (content: string) => {
+const onSend = async (content: string, attachments: string[] = []) => {
   const fileRefs = content.match(/@([\w/.@\s-]+\.\w+)/g)
   if (fileRefs) {
     for (const r of fileRefs) {
@@ -258,7 +258,7 @@ const onSend = async (content: string) => {
     }
   }
   scrollOnUserSend()
-  await agent.sendMessage(content)
+  await agent.sendMessage(content, attachments)
 }
 
 const onCommand = (command: string) => {

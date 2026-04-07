@@ -106,6 +106,7 @@ export interface ChatMessage {
   toolResult?: string
   toolDiff?: ChatMessageDiff
   usage?: ChatMessageUsage
+  attachments?: string[]
   timestamp: number
 }
 
