@@ -6,10 +6,13 @@ import { getAvailablePath } from '@/helpers/vaultUtils'
 import { renderTemplate } from '@/helpers/notesUtils'
 import { DATE_FORMAT } from '@/constants/dates'
 import { ChatMessage, ChatMetadata, AiChatHistoryEntry } from './types'
+import type { Message } from './client'
 
 interface ChatFile {
   metadata: ChatMetadata
   messages: ChatMessage[]
+  internalMessages?: Message[]
+  systemPrompt?: string
 }
 
 export class ChatStorage {
@@ -35,10 +38,12 @@ export class ChatStorage {
   async saveChat(
     messages: ChatMessage[],
     metadata: ChatMetadata,
-    existingFile?: TFile
+    existingFile?: TFile,
+    internalMessages?: Message[],
+    systemPrompt?: string
   ): Promise<TFile> {
     const { app } = GlobalStore.getInstance()
-    const data: ChatFile = { metadata, messages }
+    const data: ChatFile = { metadata, messages, internalMessages, systemPrompt }
     const content = JSON.stringify(data, null, 2)
 
     if (existingFile) {
@@ -66,12 +71,22 @@ export class ChatStorage {
     return file
   }
 
-  async loadChat(file: TFile): Promise<{ metadata: ChatMetadata | null; messages: ChatMessage[] }> {
+  async loadChat(file: TFile): Promise<{
+    metadata: ChatMetadata | null
+    messages: ChatMessage[]
+    internalMessages?: Message[]
+    systemPrompt?: string
+  }> {
     const { app } = GlobalStore.getInstance()
     const content = await app.vault.read(file)
     try {
       const data: ChatFile = JSON.parse(content)
-      return { metadata: data.metadata, messages: data.messages || [] }
+      return {
+        metadata: data.metadata,
+        messages: data.messages || [],
+        internalMessages: data.internalMessages,
+        systemPrompt: data.systemPrompt,
+      }
     } catch {
       return { metadata: null, messages: [] }
     }

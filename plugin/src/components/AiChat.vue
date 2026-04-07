@@ -48,6 +48,12 @@
         </div>
       </div>
 
+      <!-- Compacting indicator -->
+      <div v-if="isCompacting" class="abele-ai-chat__compacting">
+        <Icon icon="minimize-2" />
+        <span>Compacting conversation...</span>
+      </div>
+
       <!-- Tool approval -->
       <AiToolApproval v-if="pendingApprovalMessage" :message="pendingApprovalMessage" />
 
@@ -109,8 +115,15 @@ import { ScopeResolver } from '@/ai/ScopeResolver'
 const agent = AgentService.getInstance()
 const scope = ScopeResolver.getInstance()
 
-const { messages, isStreaming, streamingContent, streamingThinking, pendingToolCalls, error } =
-  agent
+const {
+  messages,
+  isStreaming,
+  isCompacting,
+  streamingContent,
+  streamingThinking,
+  pendingToolCalls,
+  error,
+} = agent
 
 const pendingApprovalMessage = computed(() => {
   if (pendingToolCalls.value.length === 0) return null
@@ -136,16 +149,25 @@ const contextWindow = computed(() => {
   return model?.contextWindow || 0
 })
 
-const totalTokens = computed(() => {
-  let total = 0
-  for (const m of messages.value) {
-    if (m.usage) total += m.usage.total
+const contextTokens = computed(() => {
+  // Find last assistant with usage, but only after the last compact divider
+  let foundCompact = false
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const m = messages.value[i]
+    if (m.role === 'system') {
+      foundCompact = true
+      break
+    }
+    if (m.role === 'assistant' && m.usage) {
+      return m.usage.total
+    }
   }
-  return total
+  // No assistant message after compact (or no messages at all)
+  return 0
 })
 
 const tokenDisplay = computed(() => {
-  const t = totalTokens.value
+  const t = contextTokens.value
   if (t === 0) return ''
   const ctx = contextWindow.value
   const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
@@ -240,7 +262,7 @@ const onSend = async (content: string) => {
 const onCommand = (command: string) => {
   switch (command) {
     case '/compact':
-      agent.compact()
+      agent.compact().catch(() => {})
       break
     case '/new':
       handleNewChat()
@@ -300,10 +322,10 @@ const onLoadChat = async (file: TFile) => {
 }
 
 const showDebug = () => {
-  const data = JSON.stringify(messages.value, null, 2)
+  const data = JSON.stringify(agent.getDebugData(), null, 2)
   console.log('[Abele AI Debug]', data)
   navigator.clipboard.writeText(data).then(() => {
-    new (window as any).Notice('Chat JSON copied to clipboard')
+    new (window as any).Notice('Debug JSON copied to clipboard')
   })
 }
 </script>
@@ -387,6 +409,16 @@ const showDebug = () => {
     color: var(--text-muted);
     font-style: italic;
   }
+}
+
+.abele-ai-chat__compacting {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3);
+  color: var(--text-muted);
+  font-size: var(--font-small);
+  font-style: italic;
 }
 
 .abele-ai-chat__typing {

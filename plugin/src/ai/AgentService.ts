@@ -37,6 +37,7 @@ export class AgentService {
   public readonly streamingContent = ref('')
   public readonly streamingThinking = ref('')
   public readonly pendingToolCalls = ref<ToolCallContent[]>([])
+  public readonly isCompacting = ref(false)
   public readonly currentChatFile = shallowRef<TFile | null>(null)
   public readonly error = ref<string | null>(null)
 
@@ -201,6 +202,19 @@ export class AgentService {
 
   // ── Agent loop execution ──────────────────────────────────────
 
+  private static COMPACT_MARKER = '[Conversation compacted]'
+
+  /** Get messages to send to the model — from the last compact marker onwards */
+  private getMessagesForModel(): Message[] {
+    for (let i = this.internalMessages.length - 1; i >= 0; i--) {
+      const m = this.internalMessages[i]
+      if (m.role === 'system' && m.content.startsWith(AgentService.COMPACT_MARKER)) {
+        return this.internalMessages.slice(i)
+      }
+    }
+    return [...this.internalMessages]
+  }
+
   private async runAgentLoop(): Promise<void> {
     this.isStreaming.value = true
     this.streamingContent.value = ''
@@ -214,11 +228,12 @@ export class AgentService {
       this.agentLoop = new AgentLoop()
       this.unsubscribe = this.agentLoop.subscribe((event) => this.handleAgentEvent(event))
 
+      const toSend = this.getMessagesForModel()
       const result = await this.agentLoop.run({
         model,
         systemPrompt: this.getSystemPrompt(),
         tools,
-        messages: this.internalMessages,
+        messages: toSend,
         beforeToolCall: async (toolName) => {
           if (this.needsApproval(toolName)) {
             return { pause: true }
@@ -226,7 +241,9 @@ export class AgentService {
         },
       })
 
-      this.internalMessages = result.messages
+      // Append only new messages to the full history (append-only)
+      const newMsgs = result.messages.slice(toSend.length)
+      this.internalMessages.push(...newMsgs)
 
       if (result.pausedAt?.length) {
         this.pendingToolCalls.value = result.pausedAt
@@ -372,6 +389,9 @@ export class AgentService {
     if (this.userMessageCount === 1 || this.userMessageCount === 3) {
       this.generateTitle().catch(() => {})
     }
+
+    // Auto-compact if near context limit
+    this.autoCompactIfNeeded().catch(() => {})
   }
 
   async approveToolCall(modifiedArgs?: Record<string, unknown>): Promise<void> {
@@ -461,26 +481,32 @@ export class AgentService {
     this.currentChatFile.value = await ChatStorage.getInstance().saveChat(
       this.messages.value,
       metadata,
-      this.currentChatFile.value || undefined
+      this.currentChatFile.value || undefined,
+      this.internalMessages,
+      this.getSystemPrompt()
     )
   }
 
   async loadChat(file: TFile): Promise<void> {
     await this.newChat()
-    const { metadata, messages } = await ChatStorage.getInstance().loadChat(file)
-    this.messages.value = messages
+    const result = await ChatStorage.getInstance().loadChat(file)
+    this.messages.value = result.messages
     this.currentChatFile.value = file
-    this.chatTitle = metadata?.title || ''
+    this.chatTitle = result.metadata?.title || ''
 
     // Count existing user messages for title generation logic
-    this.userMessageCount = messages.filter((m) => m.role === 'user').length
+    this.userMessageCount = result.messages.filter((m) => m.role === 'user').length
 
-    // Rebuild internal messages from chat messages
-    this.rebuildInternalMessages(messages, metadata)
+    // Restore internal messages — prefer stored, fallback to rebuild
+    if (result.internalMessages?.length) {
+      this.internalMessages = result.internalMessages
+    } else {
+      this.rebuildInternalMessages(result.messages, result.metadata)
+    }
 
     // Restore pending tool calls from metadata
-    if (metadata?.pendingToolCalls?.length) {
-      this.pendingToolCalls.value = metadata.pendingToolCalls.map((tc) => ({
+    if (result.metadata?.pendingToolCalls?.length) {
+      this.pendingToolCalls.value = result.metadata.pendingToolCalls.map((tc) => ({
         type: 'toolCall' as const,
         id: tc.id,
         name: tc.name,
@@ -695,19 +721,125 @@ export class AgentService {
   }
 
   async compact(): Promise<void> {
-    if (this.messages.value.length < 4) return
+    if (this.internalMessages.length === 0) return
 
-    const allContent = this.messages.value.map((m) => `[${m.role}]: ${m.content}`).join('\n\n')
+    this.isCompacting.value = true
+    this.error.value = null
 
-    const systemMsg: ChatMessage = {
-      role: 'system',
-      content: `[Conversation compacted]\n\n${allContent}`,
-      timestamp: Date.now(),
+    try {
+      const config = AbeleConfig.getInstance().ai
+      const model = this.getActiveModelConfig()
+      const client = new OpenAIClient()
+
+      // Summarize everything the model currently sees
+      const modelMsgs = this.getMessagesForModel()
+
+      const msgsText = modelMsgs
+        .map((m) => {
+          if (m.role === 'user') return `[user]: ${m.content}`
+          if (m.role === 'assistant') {
+            const text = m.content
+              .filter((b): b is TextContent => b.type === 'text')
+              .map((b) => b.text)
+              .join('')
+            return text ? `[assistant]: ${text}` : null
+          }
+          if (m.role === 'toolResult') {
+            return `[tool ${m.toolName}]: ${m.content.map((c) => c.text).join('')}`
+          }
+          return null
+        })
+        .filter(Boolean)
+        .join('\n\n')
+
+      if (!msgsText) return
+
+      const compactPrompt = (
+        config.prompts?.compactPrompt || DEFAULT_AI_SETTINGS.prompts.compactPrompt
+      ).replace('{{messages}}', msgsText)
+
+      const compactMessages: Message[] = [
+        { role: 'user', content: compactPrompt, timestamp: Date.now() },
+      ]
+
+      let summary = ''
+      for await (const event of client.stream(
+        model,
+        'You summarize conversations. Reply with ONLY the summary, nothing else.',
+        compactMessages,
+        [],
+        {}
+      )) {
+        if (event.type === 'text_delta') summary += event.delta
+      }
+
+      summary = summary.trim()
+      if (!summary) return
+
+      // Append compact marker at the end of current history
+      const insertAt = this.internalMessages.length
+      const compactMarker: Message = {
+        role: 'system',
+        content: `${AgentService.COMPACT_MARKER}\n\n${summary}`,
+        timestamp: Date.now(),
+      }
+      this.internalMessages.splice(insertAt, 0, compactMarker)
+
+      // Insert a visual divider in UI messages
+      const divider: ChatMessage = {
+        role: 'system',
+        content: summary,
+        timestamp: Date.now(),
+      }
+      this.messages.value = [...this.messages.value, divider]
+
+      await this.saveCurrentChat()
+    } catch (err: unknown) {
+      console.error('[Abele] compact error:', err)
+      const msg = err instanceof Error ? err.message : String(err)
+      this.error.value = `Compact failed: ${msg}`
+    } finally {
+      this.isCompacting.value = false
     }
+  }
 
-    const lastMessages = this.messages.value.slice(-2)
-    this.messages.value = [systemMsg, ...lastMessages]
-    this.internalMessages = []
+  /** Check if context is near limit and auto-compact */
+  private async autoCompactIfNeeded(): Promise<void> {
+    try {
+      const model = this.getActiveModelConfig()
+      if (!model.contextWindow) return
+
+      // Get last assistant message's input tokens as current usage
+      const lastAssistant = [...this.messages.value]
+        .reverse()
+        .find((m) => m.role === 'assistant' && m.usage)
+      if (!lastAssistant?.usage) return
+
+      const usage = lastAssistant.usage.total
+      const threshold = model.contextWindow * 0.9
+
+      if (usage >= threshold && this.getMessagesForModel().length > 2) {
+        await this.compact()
+      }
+    } catch {
+      // Auto-compact is best-effort
+    }
+  }
+
+  getDebugData(): Record<string, unknown> {
+    const tools = this.getTools().map((t) => ({
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
+    }))
+    return {
+      systemPrompt: this.getSystemPrompt(),
+      tools,
+      internalMessages: this.internalMessages,
+      pendingToolCalls: this.pendingToolCalls.value.length
+        ? this.pendingToolCalls.value
+        : undefined,
+    }
   }
 
   switchModel(providerId: string, modelId: string): void {

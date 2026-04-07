@@ -6,6 +6,7 @@ export type {
   // Messages
   Message,
   UserMessage,
+  SystemMessage,
   AssistantMessage,
   ToolResultMessage,
   TextContent,

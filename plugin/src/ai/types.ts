@@ -18,6 +18,7 @@ export interface AiPrompts {
   system: string
   titleGeneration: string
   titleSystem: string
+  compactPrompt: string
   toolDescriptions: Record<string, string>
 }
 
@@ -60,6 +61,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
     titleGeneration:
       'Generate a short title (3-6 words, no quotes) for this conversation:\n\n{{messages}}',
     titleSystem: 'You generate concise chat titles. Reply with ONLY the title, nothing else.',
+    compactPrompt:
+      'Summarize the conversation below into a concise context summary. Preserve key decisions, file paths, code changes, and any pending tasks. The summary will replace the conversation history, so include everything needed to continue the work.\n\n{{messages}}',
     toolDescriptions: {
       read: 'Read the content of a file. Only files within the current workspace scope are accessible.',
       ls: 'List files and subdirectories in a folder. Only shows items within workspace scope. Use without path to list scope root folders.',

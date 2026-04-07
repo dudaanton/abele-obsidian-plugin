@@ -44,7 +44,13 @@ export interface ToolResultMessage {
   timestamp: number
 }
 
-export type Message = UserMessage | AssistantMessage | ToolResultMessage
+export interface SystemMessage {
+  role: 'system'
+  content: string
+  timestamp: number
+}
+
+export type Message = UserMessage | AssistantMessage | ToolResultMessage | SystemMessage
 
 export type StopReason = 'stop' | 'length' | 'toolUse' | 'error' | 'aborted'
 

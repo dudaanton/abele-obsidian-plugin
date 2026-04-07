@@ -40,6 +40,14 @@
         </span>
       </template>
 
+      <!-- System / compact divider -->
+      <template v-else-if="message.role === 'system'">
+        <span class="abele-chat-msg__compact-label">── Conversation compacted ──</span>
+        <div v-if="expanded" class="abele-chat-msg__compact-summary">
+          <Markdown :text="message.content" />
+        </div>
+      </template>
+
       <!-- User / Assistant — markdown -->
       <Markdown v-else-if="message.content" :text="message.content" />
 
@@ -123,8 +131,12 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   }
 
   &_system {
-    opacity: 0.7;
-    font-style: italic;
+    color: var(--text-faint);
+
+    .abele-chat-msg__compact-label {
+      text-align: center;
+      display: block;
+    }
   }
 
   &_tool-result:not(:has(.abele-chat-msg__tool-error)) {
@@ -225,6 +237,19 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
     color: var(--text-muted);
     font-style: italic;
   }
+}
+
+.abele-chat-msg__compact-label {
+  color: var(--text-faint);
+  font-size: var(--font-small);
+}
+
+.abele-chat-msg__compact-summary {
+  font-size: var(--font-small);
+  color: var(--text-muted);
+  border-top: 1px solid var(--background-modifier-border);
+  padding-top: var(--size-4-1);
+  margin-top: var(--size-4-1);
 }
 
 .abele-chat-msg__tool-line {

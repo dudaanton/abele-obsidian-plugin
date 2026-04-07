@@ -341,6 +341,11 @@ export class OpenAIClient {
         continue
       }
 
+      if (msg.role === 'system') {
+        result.push({ role: 'system', content: msg.content })
+        continue
+      }
+
       if (msg.role === 'assistant') {
         // Skip error/aborted messages (may have partial content)
         if (msg.stopReason === 'error' || msg.stopReason === 'aborted') continue

@@ -244,8 +244,21 @@
       <Setting name="Title System Prompt" desc="System prompt for the title generation model.">
         <Input
           :model-value="prompts.titleSystem || ''"
+          as-text-area
           :placeholder="defaultPrompts.titleSystem"
           @update:model-value="updatePrompt('titleSystem', $event)"
+        />
+      </Setting>
+
+      <Setting
+        name="Compact Prompt"
+        desc="Prompt for summarizing conversation history. Use {{messages}} as placeholder."
+      >
+        <Input
+          :model-value="prompts.compactPrompt || ''"
+          as-text-area
+          :placeholder="defaultPrompts.compactPrompt"
+          @update:model-value="updatePrompt('compactPrompt', $event)"
         />
       </Setting>
 
