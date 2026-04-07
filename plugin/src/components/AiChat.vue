@@ -60,6 +60,7 @@
 
     <!-- Input -->
     <AiChatInput
+      ref="chatInput"
       :is-streaming="isStreaming"
       :can-continue="showContinue"
       @send="onSend"
@@ -71,6 +72,17 @@
     <!-- Modals -->
     <AiChatHistory v-if="historyOpen" @close="historyOpen = false" @select="onLoadChat" />
     <AiScopeManager v-if="scopeOpen" @close="scopeOpen = false" />
+    <AiPromptPicker
+      v-if="promptPickerOpen"
+      @close="promptPickerOpen = false"
+      @select="onPromptSelected"
+    />
+    <TemplateVariablesModal
+      v-if="variablesModalOpen"
+      :variables="pendingPromptUserVars"
+      @close="variablesModalOpen = false"
+      @confirm="onPromptVariablesConfirm"
+    />
   </div>
 </template>
 
@@ -85,8 +97,13 @@ import AiToolApproval from './AiToolApproval.vue'
 import AiModelSelector from './AiModelSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
 import AiScopeManager from './AiScopeManager.vue'
+import AiPromptPicker from './AiPromptPicker.vue'
+import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { AgentService } from '@/ai/AgentService'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
+import type { TemplateVariable } from '@/templates/TemplateParser'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 
 const agent = AgentService.getInstance()
@@ -147,8 +164,14 @@ const scopeCompact = computed(() => {
 })
 
 const messagesContainer = ref<HTMLElement | null>(null)
+const chatInput = ref<InstanceType<typeof AiChatInput> | null>(null)
 const historyOpen = ref(false)
 const scopeOpen = ref(false)
+const promptPickerOpen = ref(false)
+const variablesModalOpen = ref(false)
+const pendingPromptContent = ref('')
+const pendingPromptAllVars = ref<TemplateVariable[]>([])
+const pendingPromptUserVars = ref<TemplateVariable[]>([])
 
 let shouldAutoScroll = true
 // Track with a flag that only user scroll events can set to false
@@ -228,7 +251,39 @@ const onCommand = (command: string) => {
     case '/scope':
       scopeOpen.value = true
       break
+    case '/prompt':
+      promptPickerOpen.value = true
+      break
   }
+}
+
+const onPromptSelected = async (file: TFile) => {
+  promptPickerOpen.value = false
+  const { app } = GlobalStore.getInstance()
+  const content = await app.vault.read(file)
+  // Strip frontmatter
+  const body = content.replace(/^---[\s\S]*?---\n?/, '')
+  const { variables, userVariables } = parseTemplateVariables(body)
+
+  if (userVariables.length > 0) {
+    pendingPromptContent.value = body
+    pendingPromptAllVars.value = variables
+    pendingPromptUserVars.value = userVariables
+    variablesModalOpen.value = true
+  } else {
+    const resolved = await applyTemplateVariables(body, variables, new Map())
+    chatInput.value?.setText(resolved.trim())
+  }
+}
+
+const onPromptVariablesConfirm = async (values: Map<string, string>) => {
+  variablesModalOpen.value = false
+  const resolved = await applyTemplateVariables(
+    pendingPromptContent.value,
+    pendingPromptAllVars.value,
+    values
+  )
+  chatInput.value?.setText(resolved.trim())
 }
 
 const onContinue = () => {

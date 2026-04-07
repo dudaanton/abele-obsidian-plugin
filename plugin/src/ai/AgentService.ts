@@ -19,7 +19,7 @@ import type {
 } from './client'
 import { EMPTY_USAGE } from './client'
 import { ChatStorage } from './ChatStorage'
-import { ChatMessage, ChatMetadata } from './types'
+import { ChatMessage, ChatMetadata, DEFAULT_AI_SETTINGS } from './types'
 import { createAgentTools } from './tools'
 
 export class AgentService {
@@ -75,10 +75,7 @@ export class AgentService {
 
   private getSystemPrompt(): string {
     const config = AbeleConfig.getInstance().ai
-    const base = `You are an AI assistant integrated into Obsidian note-taking app through the Abele plugin. You can read, create, edit, delete, and move files in the user's vault. You can also search the web.
-
-When working with files, always explain what you're about to do before doing it. Be concise but thorough.`
-
+    const base = config.prompts?.system || DEFAULT_AI_SETTINGS.prompts.system
     return config.systemPrompt ? `${base}\n\n${config.systemPrompt}` : base
   }
 
@@ -641,6 +638,7 @@ When working with files, always explain what you're about to do before doing it.
 
   private async generateTitle(): Promise<void> {
     try {
+      const config = AbeleConfig.getInstance().ai
       const model = this.getActiveModelConfig()
       const client = new OpenAIClient()
       const msgs = this.messages.value
@@ -649,10 +647,15 @@ When working with files, always explain what you're about to do before doing it.
         .map((m) => `[${m.role}]: ${m.content.slice(0, 200)}`)
         .join('\n')
 
+      const titlePrompt = (
+        config.prompts?.titleGeneration || DEFAULT_AI_SETTINGS.prompts.titleGeneration
+      ).replace('{{messages}}', msgs)
+      const titleSystem = config.prompts?.titleSystem || DEFAULT_AI_SETTINGS.prompts.titleSystem
+
       const titleMessages: Message[] = [
         {
           role: 'user',
-          content: `Generate a short title (3-6 words, no quotes) for this conversation:\n\n${msgs}`,
+          content: titlePrompt,
           timestamp: Date.now(),
         },
       ]
@@ -660,7 +663,7 @@ When working with files, always explain what you're about to do before doing it.
       let title = ''
       for await (const event of client.stream(
         { ...model, maxTokens: 30 },
-        'You generate concise chat titles. Reply with ONLY the title, nothing else.',
+        titleSystem,
         titleMessages,
         [],
         {}

@@ -206,7 +206,21 @@
         </div>
       </Setting>
 
-      <Setting name="System Prompt" desc="Custom instructions added to the agent's system prompt.">
+      <h3>Prompts</h3>
+
+      <Setting name="System Prompt (base)" desc="The base system prompt sent to the AI agent.">
+        <Input
+          :model-value="prompts.system || ''"
+          as-text-area
+          :placeholder="defaultPrompts.system"
+          @update:model-value="updatePrompt('system', $event)"
+        />
+      </Setting>
+
+      <Setting
+        name="Custom Instructions"
+        desc="Additional instructions appended to the base system prompt."
+      >
         <Input
           :model-value="systemPrompt"
           as-text-area
@@ -214,6 +228,52 @@
           @update:model-value="updateField('systemPrompt', $event)"
         />
       </Setting>
+
+      <Setting
+        name="Title Generation Prompt"
+        desc="Prompt for generating chat titles. Use {{messages}} as placeholder."
+      >
+        <Input
+          :model-value="prompts.titleGeneration || ''"
+          as-text-area
+          :placeholder="defaultPrompts.titleGeneration"
+          @update:model-value="updatePrompt('titleGeneration', $event)"
+        />
+      </Setting>
+
+      <Setting name="Title System Prompt" desc="System prompt for the title generation model.">
+        <Input
+          :model-value="prompts.titleSystem || ''"
+          :placeholder="defaultPrompts.titleSystem"
+          @update:model-value="updatePrompt('titleSystem', $event)"
+        />
+      </Setting>
+
+      <div class="abele-ai-prompts__tools">
+        <div
+          class="abele-ai-prompts__tools-header"
+          @click="toolDescriptionsOpen = !toolDescriptionsOpen"
+        >
+          <Icon :icon="toolDescriptionsOpen ? 'chevron-down' : 'chevron-right'" />
+          <span>Tool Descriptions</span>
+        </div>
+
+        <template v-if="toolDescriptionsOpen">
+          <Setting
+            v-for="(desc, toolName) in defaultPrompts.toolDescriptions"
+            :key="toolName"
+            :name="toolName"
+            :desc="`Description sent to the model for the '${toolName}' tool.`"
+          >
+            <Input
+              :model-value="prompts.toolDescriptions?.[toolName] || ''"
+              as-text-area
+              :placeholder="desc"
+              @update:model-value="updateToolDescription(toolName, $event)"
+            />
+          </Setting>
+        </template>
+      </div>
     </template>
   </div>
 </template>
@@ -233,7 +293,8 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { OpenAIClient } from '@/ai/client'
 import type { RemoteModel } from '@/ai/client'
-import type { AiProvider, AiModelConfig } from '@/ai/types'
+import type { AiProvider, AiModelConfig, AiPrompts } from '@/ai/types'
+import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 
 const config = AbeleConfig.getInstance()
 const { app } = GlobalStore.getInstance()
@@ -260,6 +321,11 @@ const systemPrompt = ref(config.ai.systemPrompt)
 const activeProviderId = ref(config.ai.activeProviderId)
 const activeModelId = ref(config.ai.activeModelId)
 const auxiliaryModelId = ref(config.ai.auxiliaryModelId)
+const prompts = ref<Partial<AiPrompts>>(
+  config.ai.prompts ? JSON.parse(JSON.stringify(config.ai.prompts)) : {}
+)
+const defaultPrompts = DEFAULT_AI_SETTINGS.prompts
+const toolDescriptionsOpen = ref(false)
 
 // Remote models state
 const remoteModels = reactive<Record<string, RemoteModel[]>>({})
@@ -313,6 +379,7 @@ const save = debounce(async () => {
     chatHistory: config.ai.chatHistory || [],
     braveSearchApiKey: braveSearchApiKey.value,
     systemPrompt: systemPrompt.value,
+    prompts: JSON.parse(JSON.stringify(prompts.value)),
   }
   await config.saveSettings()
 }, 500)
@@ -481,6 +548,22 @@ const updateField = (field: string, value: string) => {
   }
   save()
 }
+
+const updatePrompt = (field: keyof Omit<AiPrompts, 'toolDescriptions'>, value: string) => {
+  prompts.value = { ...prompts.value, [field]: value }
+  save()
+}
+
+const updateToolDescription = (toolName: string, value: string) => {
+  const descs = { ...(prompts.value.toolDescriptions || {}) }
+  if (value) {
+    descs[toolName] = value
+  } else {
+    delete descs[toolName]
+  }
+  prompts.value = { ...prompts.value, toolDescriptions: descs }
+  save()
+}
 </script>
 
 <style lang="scss">
@@ -606,5 +689,23 @@ const updateField = (field: string, value: string) => {
   font-family: var(--font-monospace);
   font-size: var(--font-small);
   color: var(--text-accent);
+}
+
+.abele-ai-prompts__tools {
+  margin-top: var(--size-4-2);
+}
+
+.abele-ai-prompts__tools-header {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  cursor: pointer;
+  padding: var(--size-4-2) 0;
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+
+  &:hover {
+    color: var(--text-accent);
+  }
 }
 </style>

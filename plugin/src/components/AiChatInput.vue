@@ -5,7 +5,7 @@
         ref="inputEl"
         :value="text"
         class="abele-chat-input__textarea"
-        placeholder="Message... (/compact, /new, /load, /scope)"
+        placeholder="Message... (/prompt, /compact, /new, /scope)"
         rows="1"
         @input="onInput"
         @keydown="onKeydown"
@@ -66,7 +66,7 @@ const send = () => {
 
   if (msg.startsWith('/')) {
     const cmd = msg.split(' ')[0].toLowerCase()
-    if (['/compact', '/new', '/load', '/scope', '/model'].includes(cmd)) {
+    if (['/compact', '/new', '/load', '/scope', '/model', '/prompt'].includes(cmd)) {
       emit('command', cmd)
       text.value = ''
       nextTick(autoResize)
@@ -78,6 +78,13 @@ const send = () => {
   text.value = ''
   nextTick(autoResize)
 }
+
+const setText = (value: string) => {
+  text.value = value
+  nextTick(autoResize)
+}
+
+defineExpose({ setText })
 
 const onKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Enter' && !e.shiftKey) {

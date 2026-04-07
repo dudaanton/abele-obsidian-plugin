@@ -1,4 +1,5 @@
 import type { AgentTool } from '../client'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import { createReadFileTool } from './ReadFileTool'
 import { createLsTool } from './LsTool'
 import { createFindTool } from './FindTool'
@@ -11,7 +12,7 @@ import { createListWorkspaceTool } from './ListWorkspaceTool'
 import { createWebSearchTool } from './WebSearchTool'
 
 export function createAgentTools(): AgentTool[] {
-  return [
+  const tools = [
     createReadFileTool(),
     createLsTool(),
     createFindTool(),
@@ -23,4 +24,15 @@ export function createAgentTools(): AgentTool[] {
     createListWorkspaceTool(),
     createWebSearchTool(),
   ]
+
+  const customDescriptions = AbeleConfig.getInstance().ai.prompts?.toolDescriptions
+  if (customDescriptions) {
+    for (const tool of tools) {
+      if (customDescriptions[tool.name]) {
+        tool.description = customDescriptions[tool.name]
+      }
+    }
+  }
+
+  return tools
 }

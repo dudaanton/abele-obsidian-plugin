@@ -14,6 +14,13 @@ export interface AiModelConfig {
   supportsReasoning: boolean
 }
 
+export interface AiPrompts {
+  system: string
+  titleGeneration: string
+  titleSystem: string
+  toolDescriptions: Record<string, string>
+}
+
 export type PermissionMode = 'confirm-all' | 'allow-edit' | 'allow-all'
 
 export interface AiChatHistoryEntry {
@@ -33,6 +40,7 @@ export interface AiSettings {
   chatHistory: AiChatHistoryEntry[]
   braveSearchApiKey: string
   systemPrompt: string
+  prompts: AiPrompts
 }
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
@@ -46,6 +54,26 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   chatHistory: [],
   braveSearchApiKey: '',
   systemPrompt: '',
+  prompts: {
+    system:
+      "You are an AI assistant integrated into Obsidian note-taking app through the Abele plugin. You can read, create, edit, delete, and move files in the user's vault. You can also search the web.\n\nWhen working with files, always explain what you're about to do before doing it. Be concise but thorough.",
+    titleGeneration:
+      'Generate a short title (3-6 words, no quotes) for this conversation:\n\n{{messages}}',
+    titleSystem: 'You generate concise chat titles. Reply with ONLY the title, nothing else.',
+    toolDescriptions: {
+      read: 'Read the content of a file. Only files within the current workspace scope are accessible.',
+      ls: 'List files and subdirectories in a folder. Only shows items within workspace scope. Use without path to list scope root folders.',
+      find: 'Search for files within workspace scope by name pattern, frontmatter property, or content text.',
+      edit: 'Edit a file by replacing an exact string match with new content. File must be in workspace scope.',
+      create: 'Create a new file in the vault with the specified content.',
+      rm: 'Delete a file (moves to trash). File must be in workspace scope.',
+      mv: 'Move or rename a file. Source must be in workspace scope.',
+      cp: 'Copy a file to a new location. Source must be in workspace scope.',
+      workspace:
+        'Show all files currently accessible in the workspace scope. Use this to understand what files you can work with.',
+      web_search: 'Search the web using Brave Search. Returns titles, URLs, and descriptions.',
+    },
+  },
 }
 
 export interface ChatMessageUsage {
