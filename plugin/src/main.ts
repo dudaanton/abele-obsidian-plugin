@@ -26,6 +26,8 @@ import { TIMELINE_SIDEBAR_VIEW_TYPE, TimelineSidebarView } from './views/Timelin
 import { TODO_SIDEBAR_VIEW_TYPE, TodoSidebarView } from './views/TodoSidebarView'
 import { AI_SIDEBAR_VIEW_TYPE, AiSidebarView } from './views/AiSidebarView'
 import { AgentService } from './ai/AgentService'
+import { ScopeResolver } from './ai/ScopeResolver'
+import { ChatStorage } from './ai/ChatStorage'
 import weekday from 'dayjs/plugin/weekday'
 import updateLocale from 'dayjs/plugin/updateLocale'
 import dayOfYear from 'dayjs/plugin/dayOfYear'
@@ -273,6 +275,8 @@ export default class AbelePlugin extends Plugin {
 
   onunload() {
     AgentService.getInstance().destroy()
+    ScopeResolver.getInstance().destroy()
+    ChatStorage.destroy()
     GlobalStore.getInstance().destroy()
     AbeleConfig.getInstance().destroy()
     VaultWatcherWrapper.destroy()

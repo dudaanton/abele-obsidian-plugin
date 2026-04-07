@@ -26,7 +26,7 @@ interface ToolDiffDetails {
 }
 
 export class AgentService {
-  private static instance: AgentService
+  private static instance: AgentService | null = null
 
   private static readonly AUTO_COMPACT_THRESHOLD = 0.9
   private static readonly TITLE_MAX_TOKENS = 30
@@ -335,11 +335,33 @@ export class AgentService {
     const tool = tools.find((t) => t.name === tc.name)
     const args = modifiedArgs || tc.arguments
 
+    if (!tool) {
+      const errText = `Tool "${tc.name}" not found`
+      const msgs = [...this.messages.value]
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].toolCallId === tc.id && msgs[i].toolStatus === 'pending') {
+          msgs[i] = { ...msgs[i], toolResult: errText, toolStatus: 'rejected' }
+          break
+        }
+      }
+      this.messages.value = msgs
+      this.internalMessages.push({
+        role: 'toolResult',
+        toolCallId: tc.id,
+        toolName: tc.name,
+        content: [{ type: 'text', text: errText }],
+        isError: true,
+        timestamp: Date.now(),
+      })
+      this.pendingToolCalls.value = this.pendingToolCalls.value.slice(1)
+      return
+    }
+
     // Execute
     let toolResult: AgentToolResult
     let isError = false
     try {
-      toolResult = await tool!.execute(tc.id, args)
+      toolResult = await tool.execute(tc.id, args)
     } catch (err: unknown) {
       toolResult = {
         content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }],
@@ -735,5 +757,6 @@ export class AgentService {
     this.messages.value = []
     this.pendingToolCalls.value = []
     this.currentChatFile.value = null
+    AgentService.instance = null
   }
 }

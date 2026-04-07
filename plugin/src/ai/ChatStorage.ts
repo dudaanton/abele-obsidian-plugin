@@ -16,7 +16,7 @@ interface ChatFile {
 }
 
 export class ChatStorage {
-  private static instance: ChatStorage
+  private static instance: ChatStorage | null = null
 
   static getInstance(): ChatStorage {
     if (!ChatStorage.instance) {
@@ -193,5 +193,9 @@ export class ChatStorage {
         await app.vault.createFolder(current)
       }
     }
+  }
+
+  static destroy(): void {
+    ChatStorage.instance = null
   }
 }

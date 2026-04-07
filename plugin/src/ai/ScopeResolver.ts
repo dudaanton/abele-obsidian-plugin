@@ -13,7 +13,7 @@ export interface ScopeEntry {
  * All file operations are restricted to resolved scope paths.
  */
 export class ScopeResolver {
-  private static instance: ScopeResolver
+  private static instance: ScopeResolver | null = null
 
   public readonly entries = ref<ScopeEntry[]>([])
   public readonly fullVaultAccess = ref(false)
@@ -245,6 +245,11 @@ export class ScopeResolver {
     const result = new Set<string>()
     this.resolveGroup(groupPath, result)
     return [...result].sort()
+  }
+
+  destroy(): void {
+    this.clear()
+    ScopeResolver.instance = null
   }
 
   private patternToRegex(pattern: string): RegExp {
