@@ -22,6 +22,8 @@
         rows="1"
         @input="onInput"
         @keydown="onKeydown"
+        @focus="emit('focus', true)"
+        @blur="emit('focus', false)"
       />
       <Icon v-if="isStreaming" icon="square" with-bg @click="emit('abort')" />
       <Icon v-else-if="isBusy" icon="loader" no-hover class="abele-chat-input__spinner" />
@@ -75,6 +77,7 @@ const emit = defineEmits<{
   (e: 'command', command: string): void
   (e: 'abort'): void
   (e: 'continue'): void
+  (e: 'focus', focused: boolean): void
 }>()
 
 const TEXTAREA_MIN_HEIGHT = 34

@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-ai-chat">
+  <div ref="chatContainer" class="abele-ai-chat">
     <!-- Header -->
     <div class="abele-ai-chat__header">
       <AiModelSelector />
@@ -78,6 +78,7 @@
       @command="onCommand"
       @abort="onAbort"
       @continue="onContinue"
+      @focus="onInputFocus"
     />
 
     <!-- Modals -->
@@ -99,7 +100,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue'
-import { Notice, TFile } from 'obsidian'
+import { Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import AiChatMessage from './AiChatMessage.vue'
@@ -191,6 +192,7 @@ const scopeCompact = computed(() => {
     .replace(/,\s*/g, ' ')
 })
 
+const chatContainer = ref<HTMLElement | null>(null)
 const messagesContainer = ref<HTMLElement | null>(null)
 const chatInput = ref<InstanceType<typeof AiChatInput> | null>(null)
 const historyOpen = ref(false)
@@ -235,6 +237,24 @@ const scrollOnUserSend = () => {
 // Any content change during streaming — scroll if user hasn't scrolled away
 watch([messages, streamingContent, streamingThinking], doScroll)
 
+// Mobile: measure Obsidian's bottom UI height (without safe area).
+// On mount keyboard is closed, so --safe-area-inset-bottom is just the home indicator.
+// Subtract it to get pure UI element height.
+onMounted(() => {
+  if (Platform.isMobile && chatContainer.value) {
+    nextTick(() => {
+      const el = chatContainer.value!
+      const safeArea =
+        parseInt(
+          getComputedStyle(document.documentElement).getPropertyValue('--safe-area-inset-bottom')
+        ) || 0
+      const fullGap = window.innerHeight - el.getBoundingClientRect().bottom
+      const uiGap = Math.max(0, fullGap - safeArea)
+      el.style.setProperty('--abele-bottom-gap', `${uiGap}px`)
+    })
+  }
+})
+
 // MutationObserver catches all DOM changes (thinking open/close, markdown render, new elements)
 let mutObserver: MutationObserver | null = null
 onMounted(() => {
@@ -261,6 +281,10 @@ const onSend = async (content: string, attachments: string[] = []) => {
   }
   scrollOnUserSend()
   await agent.sendMessage(content, attachments)
+}
+
+const onInputFocus = (focused: boolean) => {
+  chatContainer.value?.classList.toggle('abele-keyboard-open', focused)
 }
 
 const onCommand = async (command: string) => {
@@ -377,6 +401,17 @@ const showDebug = () => {
   padding-bottom: var(--status-bar-height, 22px);
   box-sizing: border-box;
   background-color: var(--background-primary);
+
+  body.is-mobile & {
+    padding-bottom: var(--size-4-4);
+    // When keyboard is open, shrink by the keyboard portion not covered by bottom UI
+    &.abele-keyboard-open {
+      padding-bottom: 0;
+      height: calc(
+        100% - max(0px, var(--safe-area-inset-bottom, 0px) - var(--abele-bottom-gap, 0px))
+      );
+    }
+  }
 }
 
 .abele-ai-chat__header {
