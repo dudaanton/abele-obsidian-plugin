@@ -127,7 +127,8 @@ export class AgentService {
   private getSystemPrompt(): string {
     const config = AbeleConfig.getInstance().ai
     const base = config.prompts?.system || DEFAULT_AI_SETTINGS.prompts.system
-    return config.systemPrompt ? `${base}\n\n${config.systemPrompt}` : base
+    const raw = config.systemPrompt ? `${base}\n\n${config.systemPrompt}` : base
+    return raw.replace(/\{\{date\}\}/g, dayjs().format('YYYY-MM-DD'))
   }
 
   private getBackgroundSignal(): AbortSignal {
