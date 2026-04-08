@@ -36,10 +36,12 @@ export interface AiSettings {
   activeProviderId: string
   activeModelId: string
   auxiliaryModelId: string
+  wiseModelId: string
   sequentialAuxiliary: boolean
   permissionMode: PermissionMode
   allowWebSearch: boolean
   allowFetch: boolean
+  allowWiseModel: boolean
   chatFolder: string
   chatHistory: AiChatHistoryEntry[]
   braveSearchApiKey: string
@@ -53,10 +55,12 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   activeProviderId: '',
   activeModelId: '',
   auxiliaryModelId: '',
+  wiseModelId: '',
   sequentialAuxiliary: false,
   permissionMode: 'confirm-all',
   allowWebSearch: true,
   allowFetch: false,
+  allowWiseModel: false,
   chatFolder: 'AI/Chats/{{name}}',
   chatHistory: [],
   braveSearchApiKey: '',
@@ -85,6 +89,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
         'Load an image so you can see its contents. Images in workspace scope are loaded automatically; others require user approval.',
       fetch:
         'Send an HTTP request to any URL. Supports all methods, custom headers, and request body. Returns status code and response.',
+      wise_model:
+        'Consult a more powerful AI model for complex analysis, evaluation, or reasoning. Use when the task requires deeper expertise.',
     },
   },
 }
@@ -125,4 +131,5 @@ export interface ChatMetadata {
   pendingToolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>
   allowWebSearch?: boolean
   allowFetch?: boolean
+  allowWiseModel?: boolean
 }

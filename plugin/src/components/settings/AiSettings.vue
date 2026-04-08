@@ -162,6 +162,17 @@
       </Setting>
 
       <Setting
+        name="Wise Model"
+        desc="Powerful model the agent can consult for complex analysis via the wise_model tool."
+      >
+        <Dropdown
+          :model-value="wiseModelKey"
+          :options="[{ value: '', display: 'Not configured' }, ...modelOptions]"
+          @update:model-value="selectWiseModel($event)"
+        />
+      </Setting>
+
+      <Setting
         name="Sequential Auxiliary"
         desc="Run auxiliary tasks after the main model finishes. Enable for local models with limited throughput."
       >
@@ -227,6 +238,13 @@
         desc="Default for new chats. Can be changed per chat in the scope manager."
       >
         <Checkbox :is-enabled="defaultAllowFetch" @toggle="toggleDefault('allowFetch')" />
+      </Setting>
+
+      <Setting
+        name="Allow wise model"
+        desc="Default for new chats. Can be changed per chat in the scope manager."
+      >
+        <Checkbox :is-enabled="defaultAllowWiseModel" @toggle="toggleDefault('allowWiseModel')" />
       </Setting>
 
       <h3>Prompts</h3>
@@ -354,6 +372,7 @@ const migrateChats = async () => {
 
 const defaultAllowWebSearch = ref(config.ai.allowWebSearch)
 const defaultAllowFetch = ref(config.ai.allowFetch)
+const defaultAllowWiseModel = ref(config.ai.allowWiseModel)
 
 const enabled = ref(config.ai.enabled)
 const providers = ref<AiProvider[]>(JSON.parse(JSON.stringify(config.ai.providers)))
@@ -363,6 +382,7 @@ const systemPrompt = ref(config.ai.systemPrompt)
 const activeProviderId = ref(config.ai.activeProviderId)
 const activeModelId = ref(config.ai.activeModelId)
 const auxiliaryModelId = ref(config.ai.auxiliaryModelId)
+const wiseModelId = ref(config.ai.wiseModelId)
 const sequentialAuxiliary = ref(config.ai.sequentialAuxiliary)
 const prompts = ref<Partial<AiPrompts>>(
   config.ai.prompts ? JSON.parse(JSON.stringify(config.ai.prompts)) : {}
@@ -397,6 +417,16 @@ const auxModelKey = computed(() =>
     : ''
 )
 
+const wiseModelKey = computed(() => {
+  if (!wiseModelId.value) return ''
+  for (const p of providers.value) {
+    if (p.models.some((m) => m.id === wiseModelId.value)) {
+      return `${p.id}::${wiseModelId.value}`
+    }
+  }
+  return ''
+})
+
 const modelOptions = computed(() => {
   const options: { value: string; display: string }[] = []
   for (const p of providers.value) {
@@ -417,10 +447,12 @@ const save = debounce(async () => {
     activeProviderId: activeProviderId.value,
     activeModelId: activeModelId.value,
     auxiliaryModelId: auxiliaryModelId.value,
+    wiseModelId: wiseModelId.value,
     sequentialAuxiliary: sequentialAuxiliary.value,
     permissionMode: config.ai.permissionMode,
     allowWebSearch: defaultAllowWebSearch.value,
     allowFetch: defaultAllowFetch.value,
+    allowWiseModel: defaultAllowWiseModel.value,
     chatFolder: chatFolder.value,
     chatHistory: config.ai.chatHistory || [],
     braveSearchApiKey: braveSearchApiKey.value,
@@ -440,9 +472,10 @@ const toggleSequentialAuxiliary = () => {
   save()
 }
 
-const toggleDefault = (key: 'allowWebSearch' | 'allowFetch') => {
+const toggleDefault = (key: 'allowWebSearch' | 'allowFetch' | 'allowWiseModel') => {
   if (key === 'allowWebSearch') defaultAllowWebSearch.value = !defaultAllowWebSearch.value
   if (key === 'allowFetch') defaultAllowFetch.value = !defaultAllowFetch.value
+  if (key === 'allowWiseModel') defaultAllowWiseModel.value = !defaultAllowWiseModel.value
   save()
 }
 
@@ -590,6 +623,16 @@ const selectAuxModel = (key: string) => {
   } else {
     const [, mId] = key.split('::')
     auxiliaryModelId.value = mId || ''
+  }
+  save()
+}
+
+const selectWiseModel = (key: string) => {
+  if (!key) {
+    wiseModelId.value = ''
+  } else {
+    const [, mId] = key.split('::')
+    wiseModelId.value = mId || ''
   }
   save()
 }

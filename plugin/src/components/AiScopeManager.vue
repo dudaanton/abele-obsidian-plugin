@@ -85,6 +85,10 @@
       <Setting name="Fetch URL" desc="Allow agent to send HTTP requests without asking.">
         <Checkbox :is-enabled="allowFetch" @toggle="toggleSetting('allowFetch')" />
       </Setting>
+
+      <Setting name="Wise model" desc="Allow agent to consult the wise model without asking.">
+        <Checkbox :is-enabled="allowWiseModel" @toggle="toggleSetting('allowWiseModel')" />
+      </Setting>
     </div>
   </ObsidianModal>
 </template>
@@ -120,7 +124,7 @@ const groupInputEl = ref<HTMLInputElement | null>(null)
 const patternInput = ref('')
 const agent = AgentService.getInstance()
 const permissionMode = ref(AbeleConfig.getInstance().ai.permissionMode)
-const { allowWebSearch, allowFetch } = agent
+const { allowWebSearch, allowFetch, allowWiseModel } = agent
 const previewEntry = ref<ScopeEntry | null>(null)
 
 const resolvedCount = computed(() => scope.resolve().size)
@@ -219,7 +223,7 @@ const onPermissionChange = (value: string) => {
   config.saveSettings()
 }
 
-const toggleSetting = (key: 'allowWebSearch' | 'allowFetch') => {
+const toggleSetting = (key: 'allowWebSearch' | 'allowFetch' | 'allowWiseModel') => {
   agent[key].value = !agent[key].value
 }
 </script>

@@ -21,6 +21,12 @@
         <span class="abele-chat-msg__tool-line">
           <code>{{ message.toolName }}</code>
           <span class="abele-chat-msg__tool-summary">{{ toolSummary }}</span>
+          <Icon
+            v-if="message.toolStatus === 'approved' && !message.toolResult"
+            icon="loader"
+            no-hover
+            class="abele-chat-msg__tool-spinner"
+          />
           <span v-if="message.toolStatus === 'rejected'" class="abele-chat-msg__tool-err-badge"
             >failed</span
           >
@@ -49,12 +55,15 @@
         </span>
       </template>
 
-      <!-- System / compact divider -->
+      <!-- System messages: compact summary (long) or short label (model change, skill, etc.) -->
       <template v-else-if="message.role === 'system'">
-        <span class="abele-chat-msg__compact-label">── Conversation compacted ──</span>
-        <div v-if="expanded" class="abele-chat-msg__compact-summary">
-          <Markdown :text="message.content" />
-        </div>
+        <template v-if="message.content.length > 100">
+          <span class="abele-chat-msg__compact-label">── Conversation compacted ──</span>
+          <div v-if="expanded" class="abele-chat-msg__compact-summary">
+            <Markdown :text="message.content" />
+          </div>
+        </template>
+        <span v-else class="abele-chat-msg__compact-label">── {{ message.content }} ──</span>
       </template>
 
       <!-- User / Assistant — markdown -->
@@ -331,6 +340,11 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.abele-chat-msg__tool-spinner {
+  animation: abele-spin 1s linear infinite;
+  color: var(--text-faint);
 }
 
 .abele-chat-msg__tool-err-badge {

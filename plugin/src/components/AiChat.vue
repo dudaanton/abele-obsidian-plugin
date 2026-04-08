@@ -71,12 +71,12 @@
     <!-- Input -->
     <AiChatInput
       ref="chatInput"
-      :is-streaming="isStreaming"
+      :is-streaming="isStreaming || isExecutingTool"
       :is-busy="isBusy"
       :can-continue="showContinue"
       @send="onSend"
       @command="onCommand"
-      @abort="agent.abort()"
+      @abort="onAbort"
       @continue="onContinue"
     />
 
@@ -126,6 +126,7 @@ const {
   isStreaming,
   isGeneratingTitle,
   isCompacting,
+  isExecutingTool,
   streamingContent,
   streamingThinking,
   pendingToolCalls,
@@ -331,6 +332,14 @@ const onPromptVariablesConfirm = async (values: Map<string, string>) => {
     values
   )
   chatInput.value?.setText(resolved.trim())
+}
+
+const onAbort = () => {
+  if (isExecutingTool.value) {
+    agent.abortToolExecution()
+  } else {
+    agent.abort()
+  }
 }
 
 const onContinue = async () => {

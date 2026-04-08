@@ -380,7 +380,7 @@ export class OpenAIClient {
     tools: ToolDefinition[],
     options: StreamOptions
   ): Record<string, unknown> {
-    const openaiMessages = this.convertMessages(systemPrompt, messages)
+    const openaiMessages = this.convertMessages(systemPrompt, messages, model.supportsReasoning)
     const openaiTools = this.convertTools(tools)
 
     const body: Record<string, unknown> = {
@@ -412,7 +412,11 @@ export class OpenAIClient {
     return body
   }
 
-  private convertMessages(systemPrompt: string, messages: Message[]): OpenAIMessage[] {
+  private convertMessages(
+    systemPrompt: string,
+    messages: Message[],
+    supportsReasoning: boolean
+  ): OpenAIMessage[] {
     const result: OpenAIMessage[] = []
 
     if (systemPrompt) {
@@ -458,8 +462,8 @@ export class OpenAIClient {
           content: text || null,
         }
 
-        // Include reasoning_content if present
-        if (thinkingParts.length > 0) {
+        // Include reasoning_content only when sending to a reasoning model
+        if (thinkingParts.length > 0 && supportsReasoning) {
           openaiMsg.reasoning_content = thinkingParts.map((t) => t.thinking).join('')
         }
 

@@ -49,7 +49,9 @@ export class AgentService {
   private chatTitle = ''
   private chatCreated = ''
   private backgroundAbort: AbortController | null = null
+  private toolAbortController: AbortController | null = null
   private chatSessionId = 0
+  private lastModelId = ''
 
   // Reactive state for Vue components
   public readonly messages = ref<ChatMessage[]>([])
@@ -59,11 +61,13 @@ export class AgentService {
   public readonly pendingToolCalls = ref<ToolCallContent[]>([])
   public readonly isGeneratingTitle = ref(false)
   public readonly isCompacting = ref(false)
+  public readonly isExecutingTool = ref(false)
   public readonly currentChatFile = shallowRef<TFile | null>(null)
   public readonly error = ref<string | null>(null)
   // Per-chat tool permissions (initialized from defaults on new chat)
   public readonly allowWebSearch = ref(true)
   public readonly allowFetch = ref(false)
+  public readonly allowWiseModel = ref(false)
 
   static getInstance(): AgentService {
     if (!AgentService.instance) {
@@ -148,6 +152,7 @@ export class AgentService {
     if (AgentService.READ_TOOLS.includes(toolName)) return false
     if (toolName === 'web_search') return !this.allowWebSearch.value
     if (toolName === 'fetch') return !this.allowFetch.value
+    if (toolName === 'wise_model') return !this.allowWiseModel.value
     // read_image: auto-approve if the image is in workspace scope
     if (toolName === 'read_image' && args?.path) {
       return !ScopeResolver.getInstance().isInScope(args.path as string)
@@ -293,6 +298,20 @@ export class AgentService {
       const model = this.getActiveModelConfig()
       const tools = this.getTools()
 
+      // Show model indicator when model changes between messages
+      if (this.lastModelId && this.lastModelId !== model.id) {
+        this.messages.value = [
+          ...this.messages.value,
+          {
+            id: nanoid(),
+            role: 'system',
+            content: model.name || model.id,
+            timestamp: Date.now(),
+          },
+        ]
+      }
+      this.lastModelId = model.id
+
       this.agentLoop = new AgentLoop()
       this.unsubscribe = this.agentLoop.subscribe((event) => this.handleAgentEvent(event))
 
@@ -381,7 +400,10 @@ export class AgentService {
   /**
    * Execute the first pending tool call and update messages.
    */
-  private async executeCurrentPendingTool(modifiedArgs?: Record<string, unknown>): Promise<void> {
+  private async executeCurrentPendingTool(
+    modifiedArgs?: Record<string, unknown>,
+    signal?: AbortSignal
+  ): Promise<void> {
     const tc = this.pendingToolCalls.value[0]
     if (!tc) return
 
@@ -393,7 +415,7 @@ export class AgentService {
       const errText = `Tool "${tc.name}" not found`
       const msgs = [...this.messages.value]
       for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].toolCallId === tc.id && msgs[i].toolStatus === 'pending') {
+        if (msgs[i].role === 'tool-call' && msgs[i].toolCallId === tc.id) {
           msgs[i] = { ...msgs[i], toolResult: errText, toolStatus: 'rejected' }
           break
         }
@@ -415,7 +437,7 @@ export class AgentService {
     let toolResult: AgentToolResult
     let isError = false
     try {
-      toolResult = await tool.execute(tc.id, args)
+      toolResult = await tool.execute(tc.id, args, signal)
     } catch (err: unknown) {
       toolResult = {
         content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }],
@@ -423,10 +445,10 @@ export class AgentService {
       isError = true
     }
 
-    // Update the pending ChatMessage
+    // Update the ChatMessage with result
     const msgs = [...this.messages.value]
     for (let i = msgs.length - 1; i >= 0; i--) {
-      if (msgs[i].toolCallId === tc.id && msgs[i].toolStatus === 'pending') {
+      if (msgs[i].role === 'tool-call' && msgs[i].toolCallId === tc.id) {
         const resultText = toolResult.content.map((c) => c.text).join('')
         const diff = (toolResult.details as ToolDiffDetails)?.diff
         msgs[i] = {
@@ -523,10 +545,41 @@ export class AgentService {
   }
 
   async approveToolCall(modifiedArgs?: Record<string, unknown>): Promise<void> {
-    if (this.isStreaming.value) return
-    await this.executeCurrentPendingTool(modifiedArgs)
+    if (this.isStreaming.value || this.isExecutingTool.value) return
+    const tc = this.pendingToolCalls.value[0]
+    if (!tc) return
+
+    // Immediately mark as approved so the approval dialog disappears
+    const msgs = [...this.messages.value]
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].toolCallId === tc.id && msgs[i].toolStatus === 'pending') {
+        msgs[i] = { ...msgs[i], toolStatus: 'approved' }
+        break
+      }
+    }
+    this.messages.value = msgs
+
+    const controller = new AbortController()
+    this.toolAbortController = controller
+    this.isExecutingTool.value = true
+    try {
+      await this.executeCurrentPendingTool(modifiedArgs, controller.signal)
+    } finally {
+      this.isExecutingTool.value = false
+      this.toolAbortController = null
+    }
+
+    if (controller.signal.aborted) {
+      await this.saveCurrentChat()
+      return
+    }
+
     await this.processAllPendingToolCalls()
     await this.saveCurrentChat()
+  }
+
+  abortToolExecution(): void {
+    this.toolAbortController?.abort()
   }
 
   async rejectToolCall(reason?: string): Promise<void> {
@@ -618,10 +671,12 @@ export class AgentService {
     this.userMessageCount = 0
     this.chatTitle = ''
     this.chatCreated = ''
+    this.lastModelId = ''
     // Reset per-chat permissions from defaults
     const config = AbeleConfig.getInstance().ai
     this.allowWebSearch.value = config.allowWebSearch
     this.allowFetch.value = config.allowFetch
+    this.allowWiseModel.value = config.allowWiseModel
   }
 
   async saveCurrentChat(): Promise<void> {
@@ -646,6 +701,7 @@ export class AgentService {
           : undefined,
       allowWebSearch: this.allowWebSearch.value,
       allowFetch: this.allowFetch.value,
+      allowWiseModel: this.allowWiseModel.value,
     }
 
     this.currentChatFile.value = await ChatStorage.getInstance().saveChat(
@@ -677,6 +733,7 @@ export class AgentService {
     const config = AbeleConfig.getInstance().ai
     this.allowWebSearch.value = result.metadata?.allowWebSearch ?? config.allowWebSearch
     this.allowFetch.value = result.metadata?.allowFetch ?? config.allowFetch
+    this.allowWiseModel.value = result.metadata?.allowWiseModel ?? config.allowWiseModel
 
     // Restore pending tool calls from metadata
     if (result.metadata?.pendingToolCalls?.length) {

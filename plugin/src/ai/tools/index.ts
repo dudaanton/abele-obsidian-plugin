@@ -13,6 +13,7 @@ import { createWebSearchTool } from './WebSearchTool'
 import { createReadImageTool } from './ReadImageTool'
 import { createFetchTool } from './FetchTool'
 import { createSkillTool } from './SkillTool'
+import { createWiseModelTool } from './WiseModelTool'
 
 export function createAgentTools(): AgentTool[] {
   const tools = [
@@ -29,6 +30,7 @@ export function createAgentTools(): AgentTool[] {
     createReadImageTool(),
     createFetchTool(),
     createSkillTool(),
+    createWiseModelTool(),
   ]
 
   const customDescriptions = AbeleConfig.getInstance().ai.prompts?.toolDescriptions
