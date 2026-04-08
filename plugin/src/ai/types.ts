@@ -38,6 +38,8 @@ export interface AiSettings {
   auxiliaryModelId: string
   sequentialAuxiliary: boolean
   permissionMode: PermissionMode
+  allowWebSearch: boolean
+  allowFetch: boolean
   chatFolder: string
   chatHistory: AiChatHistoryEntry[]
   braveSearchApiKey: string
@@ -53,6 +55,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   auxiliaryModelId: '',
   sequentialAuxiliary: false,
   permissionMode: 'confirm-all',
+  allowWebSearch: true,
+  allowFetch: false,
   chatFolder: 'AI/Chats/{{name}}',
   chatHistory: [],
   braveSearchApiKey: '',
@@ -79,6 +83,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
       web_search: 'Search the web using Brave Search. Returns titles, URLs, and descriptions.',
       read_image:
         'Load an image so you can see its contents. Images in workspace scope are loaded automatically; others require user approval.',
+      fetch:
+        'Send an HTTP request to any URL. Supports all methods, custom headers, and request body. Returns status code and response.',
     },
   },
 }

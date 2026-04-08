@@ -400,6 +400,8 @@ const save = debounce(async () => {
     auxiliaryModelId: auxiliaryModelId.value,
     sequentialAuxiliary: sequentialAuxiliary.value,
     permissionMode: config.ai.permissionMode,
+    allowWebSearch: config.ai.allowWebSearch,
+    allowFetch: config.ai.allowFetch,
     chatFolder: chatFolder.value,
     chatHistory: config.ai.chatHistory || [],
     braveSearchApiKey: braveSearchApiKey.value,

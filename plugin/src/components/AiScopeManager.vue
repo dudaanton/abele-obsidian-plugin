@@ -69,13 +69,21 @@
         </div>
       </template>
 
-      <!-- Permission mode -->
+      <!-- Permissions -->
       <Setting name="Permission mode" desc="Controls which operations require your approval.">
         <Dropdown
           :model-value="permissionMode"
           :options="permissionOptions"
           @update:model-value="onPermissionChange"
         />
+      </Setting>
+
+      <Setting name="Web search" desc="Allow agent to search the web without asking.">
+        <Checkbox :is-enabled="allowWebSearch" @toggle="toggleSetting('allowWebSearch')" />
+      </Setting>
+
+      <Setting name="Fetch URL" desc="Allow agent to send HTTP requests without asking.">
+        <Checkbox :is-enabled="allowFetch" @toggle="toggleSetting('allowFetch')" />
       </Setting>
     </div>
   </ObsidianModal>
@@ -110,6 +118,8 @@ const folderInputEl = ref<HTMLInputElement | null>(null)
 const groupInputEl = ref<HTMLInputElement | null>(null)
 const patternInput = ref('')
 const permissionMode = ref(AbeleConfig.getInstance().ai.permissionMode)
+const allowWebSearch = ref(AbeleConfig.getInstance().ai.allowWebSearch)
+const allowFetch = ref(AbeleConfig.getInstance().ai.allowFetch)
 const previewEntry = ref<ScopeEntry | null>(null)
 
 const resolvedCount = computed(() => scope.resolve().size)
@@ -205,6 +215,15 @@ const onPermissionChange = (value: string) => {
   permissionMode.value = value as PermissionMode
   const config = AbeleConfig.getInstance()
   config.ai.permissionMode = value as PermissionMode
+  config.saveSettings()
+}
+
+const toggleSetting = (key: 'allowWebSearch' | 'allowFetch') => {
+  const config = AbeleConfig.getInstance()
+  const newVal = !config.ai[key]
+  config.ai[key] = newVal
+  if (key === 'allowWebSearch') allowWebSearch.value = newVal
+  if (key === 'allowFetch') allowFetch.value = newVal
   config.saveSettings()
 }
 </script>

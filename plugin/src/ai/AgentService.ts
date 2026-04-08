@@ -136,12 +136,15 @@ export class AgentService {
     return createAgentTools()
   }
 
-  private static readonly READ_TOOLS = ['read', 'ls', 'find', 'workspace', 'web_search']
-  private static readonly EDIT_TOOLS = ['edit']
+  private static readonly READ_TOOLS = ['read', 'ls', 'find', 'workspace']
+  private static readonly EDIT_TOOLS = ['edit', 'create']
 
   private needsApproval(toolName: string, args?: Record<string, unknown>): boolean {
-    const mode = AbeleConfig.getInstance().ai.permissionMode
+    const config = AbeleConfig.getInstance().ai
+    const mode = config.permissionMode
     if (AgentService.READ_TOOLS.includes(toolName)) return false
+    if (toolName === 'web_search') return !config.allowWebSearch
+    if (toolName === 'fetch') return !config.allowFetch
     // read_image: auto-approve if the image is in workspace scope
     if (toolName === 'read_image' && args?.path) {
       return !ScopeResolver.getInstance().isInScope(args.path as string)
