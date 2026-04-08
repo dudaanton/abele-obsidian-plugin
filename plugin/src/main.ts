@@ -76,6 +76,11 @@ export default class AbelePlugin extends Plugin {
 
     await AbeleConfig.getInstance().loadSettings()
 
+    // Apply body classes from settings
+    if (AbeleConfig.getInstance().fullWidthSidebars) {
+      document.body.classList.add('abele-full-width-sidebars')
+    }
+
     dayjs.updateLocale('en', {
       weekStart: AbeleConfig.getInstance().weekStartsOnMonday ? 1 : 0,
     })
@@ -274,6 +279,7 @@ export default class AbelePlugin extends Plugin {
   }
 
   onunload() {
+    document.body.classList.remove('abele-full-width-sidebars')
     AgentService.getInstance().destroy()
     ScopeResolver.getInstance().destroy()
     ChatStorage.destroy()

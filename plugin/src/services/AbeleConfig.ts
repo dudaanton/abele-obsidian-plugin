@@ -18,6 +18,8 @@ export interface AbeleSettings {
   apiToken?: string // API authentication token
   // AI Agent settings
   ai?: AiSettings
+  // Other
+  fullWidthSidebars?: boolean
 }
 
 export const DEFAULT_SETTINGS: AbeleSettings = {
@@ -34,6 +36,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   baseUrl: '',
   apiToken: '',
   ai: { ...DEFAULT_AI_SETTINGS },
+  fullWidthSidebars: false,
 }
 
 export class AbeleConfig {
@@ -54,6 +57,7 @@ export class AbeleConfig {
   public baseUrl: string
   public apiToken: string
   public ai: AiSettings
+  public fullWidthSidebars: boolean
 
   public get logsNotesTypes(): string[] {
     return this._logsNotesTypes
@@ -152,6 +156,7 @@ export class AbeleConfig {
     this.baseUrl = settings?.baseUrl || DEFAULT_SETTINGS.baseUrl
     this.apiToken = settings?.apiToken || DEFAULT_SETTINGS.apiToken
     this.ai = settings?.ai ? { ...DEFAULT_AI_SETTINGS, ...settings.ai } : { ...DEFAULT_AI_SETTINGS }
+    this.fullWidthSidebars = settings?.fullWidthSidebars ?? DEFAULT_SETTINGS.fullWidthSidebars
   }
 
   exportSettings(): AbeleSettings {
@@ -169,6 +174,7 @@ export class AbeleConfig {
       baseUrl: this.baseUrl,
       apiToken: this.apiToken,
       ai: { ...this.ai },
+      fullWidthSidebars: this.fullWidthSidebars,
     }
   }
 }
