@@ -13,37 +13,47 @@
       </div>
     </div>
 
-    <div class="abele-chat-input__row">
-      <textarea
-        ref="inputEl"
-        :value="text"
-        class="abele-chat-input__textarea"
-        placeholder="Message... (/prompt, /compact, /new, /scope)"
-        rows="1"
-        @input="onInput"
-        @keydown="onKeydown"
-        @focus="emit('focus', true)"
-        @blur="emit('focus', false)"
-      />
-      <Icon v-if="isStreaming" icon="square" with-bg @click="emit('abort')" />
-      <Icon v-else-if="isBusy" icon="loader" no-hover class="abele-chat-input__spinner" />
-      <template v-else>
-        <Icon icon="paperclip" with-bg @click="showAttachMenu" />
-        <Icon
-          v-if="canContinue && !text.trim() && !attachments.length"
-          icon="play"
-          with-bg
-          class="abele-chat-input__continue"
-          @click="emit('continue')"
-        />
-        <Icon
-          v-else
-          icon="send-horizontal"
-          with-bg
-          :class="{ 'abele-chat-input__disabled': !text.trim() && !attachments.length }"
-          @click="send"
-        />
-      </template>
+    <textarea
+      ref="inputEl"
+      :value="text"
+      class="abele-chat-input__textarea"
+      placeholder="Message... (/prompt, /compact, /new, /scope)"
+      rows="1"
+      @input="onInput"
+      @keydown="onKeydown"
+      @focus="emit('focus', true)"
+      @blur="emit('focus', false)"
+    />
+
+    <div class="abele-chat-input__toolbar">
+      <div class="abele-chat-input__toolbar-left">
+        <span v-if="tokenDisplay" class="abele-chat-input__tokens">{{ tokenDisplay }}</span>
+      </div>
+      <div class="abele-chat-input__toolbar-right">
+        <Icon v-if="isStreaming" icon="square" with-bg @click="emit('abort')" />
+        <Icon v-else-if="isBusy" icon="loader" no-hover class="abele-chat-input__spinner" />
+        <template v-else>
+          <div v-if="scopeLabel" class="abele-chat-input__scope-badge" @click="emit('openScope')">
+            {{ scopeLabel }}
+          </div>
+          <Icon icon="folder-open" with-bg @click="emit('openScope')" />
+          <Icon icon="paperclip" with-bg @click="showAttachMenu" />
+          <Icon
+            v-if="canContinue && !text.trim() && !attachments.length"
+            icon="play"
+            with-bg
+            class="abele-chat-input__continue"
+            @click="emit('continue')"
+          />
+          <Icon
+            v-else
+            icon="send-horizontal"
+            with-bg
+            :class="{ 'abele-chat-input__disabled': !text.trim() && !attachments.length }"
+            @click="send"
+          />
+        </template>
+      </div>
     </div>
 
     <!-- Hidden file input for system picker -->
@@ -70,6 +80,8 @@ const props = defineProps<{
   isStreaming: boolean
   isBusy: boolean
   canContinue: boolean
+  tokenDisplay: string
+  scopeLabel: string
 }>()
 
 const emit = defineEmits<{
@@ -78,6 +90,7 @@ const emit = defineEmits<{
   (e: 'abort'): void
   (e: 'continue'): void
   (e: 'focus', focused: boolean): void
+  (e: 'openScope'): void
 }>()
 
 const TEXTAREA_MIN_HEIGHT = 34
@@ -175,7 +188,7 @@ const setText = (value: string) => {
 defineExpose({ setText })
 
 const onKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
+  if (e.key === 'Enter' && e.shiftKey) {
     e.preventDefault()
     send()
   }
@@ -223,21 +236,8 @@ const onKeydown = (e: KeyboardEvent) => {
   white-space: nowrap;
 }
 
-.abele-chat-input__row {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--size-4-1);
-
-  > .abele-obsidian-icon {
-    flex-shrink: 0;
-    height: 34px;
-    width: 34px;
-    box-sizing: border-box;
-  }
-}
-
 .abele-chat-input__textarea {
-  flex: 1;
+  width: 100%;
   resize: none;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
@@ -256,6 +256,51 @@ const onKeydown = (e: KeyboardEvent) => {
   &:focus {
     border-color: var(--interactive-accent);
     outline: none;
+  }
+}
+
+.abele-chat-input__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--size-4-1);
+}
+
+.abele-chat-input__toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+}
+
+.abele-chat-input__toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+
+  > .abele-obsidian-icon {
+    flex-shrink: 0;
+    height: 2em;
+    width: 2em;
+  }
+}
+
+.abele-chat-input__tokens {
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.abele-chat-input__scope-badge {
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  background-color: var(--background-secondary);
+  padding: var(--size-2-1) var(--size-2-3);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    background-color: var(--background-modifier-hover);
   }
 }
 

@@ -4,11 +4,6 @@
     <div class="abele-ai-chat__header">
       <AiModelSelector />
       <div class="abele-ai-chat__header-actions">
-        <span v-if="tokenDisplay" class="abele-ai-chat__tokens">{{ tokenDisplay }}</span>
-        <div v-if="scopeCompact" class="abele-ai-chat__scope-badge" @click="scopeOpen = true">
-          {{ scopeCompact }}
-        </div>
-        <Icon icon="folder-open" with-bg @click="scopeOpen = true" />
         <Icon icon="plus" with-bg @click="handleNewChat" />
         <Icon icon="history" with-bg @click="historyOpen = true" />
         <Icon icon="bug" with-bg @click="showDebug" />
@@ -74,11 +69,14 @@
       :is-streaming="isStreaming || isExecutingTool"
       :is-busy="isBusy"
       :can-continue="showContinue"
+      :token-display="tokenDisplay"
+      :scope-label="scopeCompact"
       @send="onSend"
       @command="onCommand"
       @abort="onAbort"
       @continue="onContinue"
       @focus="onInputFocus"
+      @open-scope="scopeOpen = true"
     />
 
     <!-- Modals -->
@@ -428,25 +426,10 @@ const showDebug = () => {
   display: flex;
   align-items: center;
   gap: var(--size-4-1);
-}
 
-.abele-ai-chat__tokens {
-  font-size: var(--font-smaller);
-  color: var(--text-faint);
-  white-space: nowrap;
-}
-
-.abele-ai-chat__scope-badge {
-  font-size: var(--font-smaller);
-  color: var(--text-muted);
-  background-color: var(--background-secondary);
-  padding: var(--size-2-1) var(--size-2-3);
-  border-radius: var(--radius-s);
-  cursor: pointer;
-  white-space: nowrap;
-
-  &:hover {
-    background-color: var(--background-modifier-hover);
+  > .abele-obsidian-icon {
+    height: 2em;
+    width: 2em;
   }
 }
 

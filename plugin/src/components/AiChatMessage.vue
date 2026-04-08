@@ -481,4 +481,10 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
 .abele-chat-msg__detail-time {
   color: var(--text-faint);
 }
+
+body.is-mobile {
+  .abele-chat-msg__time {
+    display: none;
+  }
+}
 </style>
