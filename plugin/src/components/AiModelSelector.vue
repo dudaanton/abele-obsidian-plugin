@@ -11,25 +11,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onActivated, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { AgentService } from '@/ai/AgentService'
 
 const agent = AgentService.getInstance()
+const config = AbeleConfig.getInstance()
 
-const activeKey = ref('')
-const options = ref<{ value: string; display: string }[]>([])
+const activeKey = ref(
+  config.ai.activeProviderId && config.ai.activeModelId
+    ? `${config.ai.activeProviderId}::${config.ai.activeModelId}`
+    : ''
+)
 
-const refresh = () => {
-  const config = AbeleConfig.getInstance().ai
-  activeKey.value =
-    config.activeProviderId && config.activeModelId
-      ? `${config.activeProviderId}::${config.activeModelId}`
-      : ''
-
+const options = computed(() => {
   const opts: { value: string; display: string }[] = []
-  for (const p of config.providers) {
+  for (const p of config.ai.providers) {
     for (const m of p.models) {
       opts.push({
         value: `${p.id}::${m.id}`,
@@ -37,18 +35,8 @@ const refresh = () => {
       })
     }
   }
-  options.value = opts
-}
-
-onMounted(refresh)
-onActivated(refresh)
-
-const CONFIG_POLL_INTERVAL_MS = 2000
-let interval: ReturnType<typeof setInterval>
-onMounted(() => {
-  interval = setInterval(refresh, CONFIG_POLL_INTERVAL_MS)
+  return opts
 })
-onUnmounted(() => clearInterval(interval))
 
 const onSelect = (key: string) => {
   const [providerId, modelId] = key.split('::')
