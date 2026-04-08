@@ -11,6 +11,7 @@ import { createCopyFileTool } from './CopyFileTool'
 import { createListWorkspaceTool } from './ListWorkspaceTool'
 import { createWebSearchTool } from './WebSearchTool'
 import { createReadImageTool } from './ReadImageTool'
+import { createFetchTool } from './FetchTool'
 
 export function createAgentTools(): AgentTool[] {
   const tools = [
@@ -25,6 +26,7 @@ export function createAgentTools(): AgentTool[] {
     createListWorkspaceTool(),
     createWebSearchTool(),
     createReadImageTool(),
+    createFetchTool(),
   ]
 
   const customDescriptions = AbeleConfig.getInstance().ai.prompts?.toolDescriptions
