@@ -31,6 +31,7 @@ const renderContent = async () => {
 
 onMounted(() => {
   component = new Component()
+  component.load()
   renderContent()
 })
 

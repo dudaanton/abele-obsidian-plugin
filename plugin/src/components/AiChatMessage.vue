@@ -246,6 +246,7 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   }
 
   pre {
+    position: relative;
     white-space: pre-wrap;
     word-break: break-word;
     overflow-x: auto;
@@ -259,11 +260,26 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
       font-size: var(--font-small);
       line-height: 1.5;
     }
+
+    .copy-code-button {
+      position: absolute;
+      top: var(--size-4-1);
+      right: var(--size-4-1);
+      color: var(--text-muted);
+      background: none;
+      border: none;
+      box-shadow: none;
+
+      &:hover {
+        color: var(--text-normal);
+        background-color: var(--background-modifier-hover);
+      }
+    }
   }
 
   :not(pre) > code {
     padding: 1px var(--size-4-1);
-    background-color: var(--background-secondary);
+    background-color: var(--code-background);
     border-radius: var(--radius-s);
     font-size: 0.9em;
   }
