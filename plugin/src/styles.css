@@ -1,3 +1,7 @@
 body.abele-full-width-sidebars {
   --mobile-sidebar-width: 100vw;
 }
+
+.workspace-leaf-content:has(.abele-ai-chat)::after {
+  display: none;
+}

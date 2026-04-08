@@ -13,7 +13,8 @@
     <!-- Messages -->
     <div ref="messagesContainer" class="abele-ai-chat__messages" @scroll="onMessagesScroll">
       <div v-if="messages.length === 0" class="abele-ai-chat__empty">
-        Start a conversation with your AI assistant.
+        <Icon icon="tree-deciduous" class="abele-ai-chat__empty-icon" />
+        <span class="abele-ai-chat__empty-text">What's on your mind?</span>
       </div>
 
       <AiChatMessage v-for="msg in messages" :key="msg.id" :message="msg" />
@@ -443,11 +444,30 @@ const showDebug = () => {
 
 .abele-ai-chat__empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--text-muted);
-  font-style: italic;
+  gap: var(--size-4-3);
+}
+
+.abele-ai-chat__empty-icon {
+  color: var(--background-modifier-border);
+  opacity: 0.7;
+
+  svg {
+    width: 64px;
+    height: 64px;
+    stroke-width: 1;
+  }
+}
+
+.abele-ai-chat__empty-text {
+  display: block;
+  margin-top: var(--size-4-4);
+  color: var(--background-modifier-border);
+  opacity: 0.7;
+  font-size: var(--font-small);
 }
 
 .abele-ai-chat__streaming-thinking {

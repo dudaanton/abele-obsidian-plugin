@@ -51,8 +51,7 @@ const onSelect = (key: string) => {
 
   .abele-obsidian-dropdown {
     .dropdown {
-      font-size: var(--font-small);
-      max-width: 140px;
+      max-width: 250px;
       min-width: 80px;
       overflow: hidden;
       text-overflow: ellipsis;

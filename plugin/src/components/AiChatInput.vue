@@ -17,7 +17,7 @@
       ref="inputEl"
       :value="text"
       class="abele-chat-input__textarea"
-      placeholder="Message... (/prompt, /compact, /new, /scope)"
+      placeholder="Message..."
       rows="1"
       @input="onInput"
       @keydown="onKeydown"
