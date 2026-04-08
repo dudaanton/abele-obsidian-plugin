@@ -60,6 +60,9 @@ export class AgentService {
   public readonly isCompacting = ref(false)
   public readonly currentChatFile = shallowRef<TFile | null>(null)
   public readonly error = ref<string | null>(null)
+  // Per-chat tool permissions (initialized from defaults on new chat)
+  public readonly allowWebSearch = ref(true)
+  public readonly allowFetch = ref(false)
 
   static getInstance(): AgentService {
     if (!AgentService.instance) {
@@ -140,11 +143,10 @@ export class AgentService {
   private static readonly EDIT_TOOLS = ['edit', 'create']
 
   private needsApproval(toolName: string, args?: Record<string, unknown>): boolean {
-    const config = AbeleConfig.getInstance().ai
-    const mode = config.permissionMode
+    const mode = AbeleConfig.getInstance().ai.permissionMode
     if (AgentService.READ_TOOLS.includes(toolName)) return false
-    if (toolName === 'web_search') return !config.allowWebSearch
-    if (toolName === 'fetch') return !config.allowFetch
+    if (toolName === 'web_search') return !this.allowWebSearch.value
+    if (toolName === 'fetch') return !this.allowFetch.value
     // read_image: auto-approve if the image is in workspace scope
     if (toolName === 'read_image' && args?.path) {
       return !ScopeResolver.getInstance().isInScope(args.path as string)
@@ -586,6 +588,10 @@ export class AgentService {
     this.userMessageCount = 0
     this.chatTitle = ''
     this.chatCreated = ''
+    // Reset per-chat permissions from defaults
+    const config = AbeleConfig.getInstance().ai
+    this.allowWebSearch.value = config.allowWebSearch
+    this.allowFetch.value = config.allowFetch
   }
 
   async saveCurrentChat(): Promise<void> {
@@ -608,6 +614,8 @@ export class AgentService {
               arguments: tc.arguments,
             }))
           : undefined,
+      allowWebSearch: this.allowWebSearch.value,
+      allowFetch: this.allowFetch.value,
     }
 
     this.currentChatFile.value = await ChatStorage.getInstance().saveChat(
@@ -634,6 +642,11 @@ export class AgentService {
     if (result.internalMessages?.length) {
       this.internalMessages = result.internalMessages
     }
+
+    // Restore per-chat permissions (fallback to defaults for old chats)
+    const config = AbeleConfig.getInstance().ai
+    this.allowWebSearch.value = result.metadata?.allowWebSearch ?? config.allowWebSearch
+    this.allowFetch.value = result.metadata?.allowFetch ?? config.allowFetch
 
     // Restore pending tool calls from metadata
     if (result.metadata?.pendingToolCalls?.length) {

@@ -123,4 +123,6 @@ export interface ChatMetadata {
   created: string
   title?: string
   pendingToolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>
+  allowWebSearch?: boolean
+  allowFetch?: boolean
 }

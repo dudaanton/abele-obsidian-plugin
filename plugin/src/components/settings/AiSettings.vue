@@ -163,7 +163,7 @@
 
       <Setting
         name="Sequential Auxiliary"
-        desc="Run auxiliary tasks after the main model finishes. Enable when both use the same endpoint."
+        desc="Run auxiliary tasks after the main model finishes. Enable for local models with limited throughput."
       >
         <Checkbox :is-enabled="sequentialAuxiliary" @toggle="toggleSequentialAuxiliary" />
       </Setting>
@@ -211,6 +211,22 @@
             <Icon v-if="braveSecretInput" icon="check" with-bg @click="applyBraveSecret" />
           </div>
         </div>
+      </Setting>
+
+      <h3>Default Permissions</h3>
+
+      <Setting
+        name="Allow web search"
+        desc="Default for new chats. Can be changed per chat in the scope manager."
+      >
+        <Checkbox :is-enabled="defaultAllowWebSearch" @toggle="toggleDefault('allowWebSearch')" />
+      </Setting>
+
+      <Setting
+        name="Allow fetch"
+        desc="Default for new chats. Can be changed per chat in the scope manager."
+      >
+        <Checkbox :is-enabled="defaultAllowFetch" @toggle="toggleDefault('allowFetch')" />
       </Setting>
 
       <h3>Prompts</h3>
@@ -336,6 +352,9 @@ const migrateChats = async () => {
   }
 }
 
+const defaultAllowWebSearch = ref(config.ai.allowWebSearch)
+const defaultAllowFetch = ref(config.ai.allowFetch)
+
 const enabled = ref(config.ai.enabled)
 const providers = ref<AiProvider[]>(JSON.parse(JSON.stringify(config.ai.providers)))
 const chatFolder = ref(config.ai.chatFolder)
@@ -400,8 +419,8 @@ const save = debounce(async () => {
     auxiliaryModelId: auxiliaryModelId.value,
     sequentialAuxiliary: sequentialAuxiliary.value,
     permissionMode: config.ai.permissionMode,
-    allowWebSearch: config.ai.allowWebSearch,
-    allowFetch: config.ai.allowFetch,
+    allowWebSearch: defaultAllowWebSearch.value,
+    allowFetch: defaultAllowFetch.value,
     chatFolder: chatFolder.value,
     chatHistory: config.ai.chatHistory || [],
     braveSearchApiKey: braveSearchApiKey.value,
@@ -418,6 +437,12 @@ const toggleEnabled = () => {
 
 const toggleSequentialAuxiliary = () => {
   sequentialAuxiliary.value = !sequentialAuxiliary.value
+  save()
+}
+
+const toggleDefault = (key: 'allowWebSearch' | 'allowFetch') => {
+  if (key === 'allowWebSearch') defaultAllowWebSearch.value = !defaultAllowWebSearch.value
+  if (key === 'allowFetch') defaultAllowFetch.value = !defaultAllowFetch.value
   save()
 }
 

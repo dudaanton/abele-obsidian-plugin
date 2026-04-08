@@ -70,7 +70,7 @@
       </template>
 
       <!-- Permissions -->
-      <Setting name="Permission mode" desc="Controls which operations require your approval.">
+      <Setting name="Permission mode" desc="Controls which file operations require your approval.">
         <Dropdown
           :model-value="permissionMode"
           :options="permissionOptions"
@@ -104,6 +104,7 @@ import { ScopeResolver } from '@/ai/ScopeResolver'
 import type { ScopeEntry } from '@/ai/ScopeResolver'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { AgentService } from '@/ai/AgentService'
 import type { PermissionMode } from '@/ai/types'
 
 const emit = defineEmits<{
@@ -117,9 +118,9 @@ const fileInputEl = ref<HTMLInputElement | null>(null)
 const folderInputEl = ref<HTMLInputElement | null>(null)
 const groupInputEl = ref<HTMLInputElement | null>(null)
 const patternInput = ref('')
+const agent = AgentService.getInstance()
 const permissionMode = ref(AbeleConfig.getInstance().ai.permissionMode)
-const allowWebSearch = ref(AbeleConfig.getInstance().ai.allowWebSearch)
-const allowFetch = ref(AbeleConfig.getInstance().ai.allowFetch)
+const { allowWebSearch, allowFetch } = agent
 const previewEntry = ref<ScopeEntry | null>(null)
 
 const resolvedCount = computed(() => scope.resolve().size)
@@ -219,12 +220,7 @@ const onPermissionChange = (value: string) => {
 }
 
 const toggleSetting = (key: 'allowWebSearch' | 'allowFetch') => {
-  const config = AbeleConfig.getInstance()
-  const newVal = !config.ai[key]
-  config.ai[key] = newVal
-  if (key === 'allowWebSearch') allowWebSearch.value = newVal
-  if (key === 'allowFetch') allowFetch.value = newVal
-  config.saveSettings()
+  agent[key].value = !agent[key].value
 }
 </script>
 
