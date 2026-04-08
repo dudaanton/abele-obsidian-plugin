@@ -20,7 +20,12 @@
       <template v-if="message.role === 'tool-call'">
         <span class="abele-chat-msg__tool-line">
           <code>{{ message.toolName }}</code>
-          <span class="abele-chat-msg__tool-summary">{{ toolSummary }}</span>
+          <span
+            class="abele-chat-msg__tool-summary"
+            :class="{ 'abele-chat-msg__tool-link': toolFilePath }"
+            @click="openToolFile"
+            >{{ toolSummary }}</span
+          >
           <Icon
             v-if="message.toolStatus === 'approved' && !message.toolResult"
             icon="loader"
@@ -130,6 +135,8 @@ const props = defineProps<{
 
 const expanded = ref(false)
 
+const FILE_TOOLS = ['read', 'edit', 'create', 'rm', 'mv', 'cp', 'read_image']
+
 const toolSummary = computed(() => {
   const p = props.message.toolParams
   if (!p) return ''
@@ -139,6 +146,25 @@ const toolSummary = computed(() => {
   if (p.name) return String(p.name)
   return ''
 })
+
+/** Path to open when clicking the tool summary (result path for mv/cp, otherwise path param) */
+const toolFilePath = computed(() => {
+  const name = props.message.toolName
+  if (!name || !FILE_TOOLS.includes(name)) return ''
+  const p = props.message.toolParams
+  if (!p) return ''
+  if (name === 'mv' || name === 'cp') return String(p.to || '')
+  return String(p.path || '')
+})
+
+const openToolFile = () => {
+  if (!toolFilePath.value) return
+  const { app } = GlobalStore.getInstance()
+  const file = app.vault.getAbstractFileByPath(toolFilePath.value)
+  if (file instanceof TFile) {
+    app.workspace.getLeaf(false).openFile(file)
+  }
+}
 
 const imageUrl = computed(() => {
   if (props.message.toolName !== 'read_image') return ''
@@ -340,6 +366,15 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.abele-chat-msg__tool-link {
+  color: var(--text-accent);
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
 .abele-chat-msg__tool-spinner {
