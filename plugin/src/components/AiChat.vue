@@ -116,6 +116,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
 import type { TemplateVariable } from '@/templates/TemplateParser'
 import { ScopeResolver } from '@/ai/ScopeResolver'
+import { discoverSkills } from '@/ai/tools/SkillTool'
 
 const agent = AgentService.getInstance()
 const scope = ScopeResolver.getInstance()
@@ -261,7 +262,7 @@ const onSend = async (content: string, attachments: string[] = []) => {
   await agent.sendMessage(content, attachments)
 }
 
-const onCommand = (command: string) => {
+const onCommand = async (command: string) => {
   switch (command) {
     case '/compact':
       agent.compact().catch(() => {
@@ -280,7 +281,27 @@ const onCommand = (command: string) => {
     case '/prompt':
       promptPickerOpen.value = true
       break
+    default:
+      if (command.startsWith('/')) {
+        await onSkillCommand(command)
+      }
   }
+}
+
+const onSkillCommand = async (command: string) => {
+  const rest = command.slice(1)
+  const spaceIdx = rest.indexOf(' ')
+  const skillName = spaceIdx >= 0 ? rest.slice(0, spaceIdx).trim() : rest.trim()
+  const args = spaceIdx >= 0 ? rest.slice(spaceIdx + 1).trim() : ''
+
+  const skills = discoverSkills()
+  if (!skills.some((s) => s.name === skillName)) {
+    new Notice(`Unknown command: /${skillName}`)
+    return
+  }
+
+  scrollOnUserSend()
+  await agent.injectSkill(skillName, args || undefined)
 }
 
 const onPromptSelected = async (file: TFile) => {

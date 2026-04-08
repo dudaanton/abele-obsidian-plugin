@@ -21,6 +21,7 @@ import { ChatStorage } from './ChatStorage'
 import { ChatMessage, ChatMetadata, DEFAULT_AI_SETTINGS } from './types'
 import type { UserContentPart } from './client'
 import { createAgentTools } from './tools'
+import { loadSkillContent } from './tools/SkillTool'
 import { ScopeResolver } from './ScopeResolver'
 import { resolveAttachmentsForApi } from './attachments'
 
@@ -139,7 +140,7 @@ export class AgentService {
     return createAgentTools()
   }
 
-  private static readonly READ_TOOLS = ['read', 'ls', 'find', 'workspace']
+  private static readonly READ_TOOLS = ['read', 'ls', 'find', 'workspace', 'skill']
   private static readonly EDIT_TOOLS = ['edit', 'create']
 
   private needsApproval(toolName: string, args?: Record<string, unknown>): boolean {
@@ -564,6 +565,35 @@ export class AgentService {
 
     await this.processAllPendingToolCalls()
     await this.saveCurrentChat()
+  }
+
+  async injectSkill(skillName: string, args?: string): Promise<void> {
+    if (this.isStreaming.value || this.isCompacting.value) return
+
+    const content = await loadSkillContent(skillName)
+    if (!content) return
+
+    this.internalMessages.push({
+      role: 'system',
+      content: `[Skill: ${skillName}]\n\n${content}`,
+      timestamp: Date.now(),
+    })
+
+    this.messages.value = [
+      ...this.messages.value,
+      {
+        id: nanoid(),
+        role: 'system',
+        content: `Skill loaded: ${skillName}`,
+        timestamp: Date.now(),
+      },
+    ]
+
+    if (args?.trim()) {
+      await this.sendMessage(args.trim())
+    } else {
+      await this.saveCurrentChat()
+    }
   }
 
   abort(): void {

@@ -108,10 +108,12 @@ const send = () => {
     const cmd = msg.split(' ')[0].toLowerCase()
     if (['/compact', '/new', '/load', '/scope', '/prompt'].includes(cmd)) {
       emit('command', cmd)
-      text.value = ''
-      nextTick(autoResize)
-      return
+    } else {
+      emit('command', msg)
     }
+    text.value = ''
+    nextTick(autoResize)
+    return
   }
 
   const paths = attachments.value.map((f) => f.path)
