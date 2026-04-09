@@ -22,6 +22,7 @@ import {
 import { TemplateService } from './templates/TemplateService'
 import { taskStateField } from './editor/TaskPlugin'
 import { findAndReplace } from './commands/findAndReplace'
+import { saveMedia } from './commands/saveMedia'
 import { TIMELINE_SIDEBAR_VIEW_TYPE, TimelineSidebarView } from './views/TimelineSidebarView'
 import { TODO_SIDEBAR_VIEW_TYPE, TodoSidebarView } from './views/TodoSidebarView'
 import { AI_SIDEBAR_VIEW_TYPE, AiSidebarView } from './views/AiSidebarView'
@@ -157,6 +158,14 @@ export default class AbelePlugin extends Plugin {
       name: 'Find and replace in frontmatter and content of all notes, matching the criteria',
       callback: () => {
         findAndReplace()
+      },
+    })
+
+    this.addCommand({
+      id: 'save-media',
+      name: 'Save remote media to vault',
+      callback: () => {
+        saveMedia()
       },
     })
 

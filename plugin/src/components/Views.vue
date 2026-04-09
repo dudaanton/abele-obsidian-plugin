@@ -40,6 +40,7 @@
     v-if="migrateFromDataviewModalOpened"
     @close="migrateFromDataviewModalOpened = false"
   />
+  <SaveMediaModal v-if="saveMediaModalOpened" @close="saveMediaModalOpened = false" />
   <Teleport v-if="settingsTabId" :to="`[${SETTINGS_ID_ATTR}='${settingsTabId}']`">
     <SettingsView />
   </Teleport>
@@ -59,6 +60,7 @@ import TimelineSidebarView from './TimelineSidebar.vue'
 import TodoSidebarView from './TodoSidebar.vue'
 import FindAndReplaceModal from './FindAndReplaceModal.vue'
 import MigrateFromDataviewModal from './MigrateFromDataviewModal.vue'
+import SaveMediaModal from './SaveMediaModal.vue'
 import { TIMELINE_SIDEBAR_ID_ATTR } from '@/views/TimelineSidebarView'
 import { TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'
 import { AI_SIDEBAR_ID_ATTR } from '@/views/AiSidebarView'
@@ -73,6 +75,7 @@ const {
   footersContainers,
   findAndReplaceModalOpened,
   migrateFromDataviewModalOpened,
+  saveMediaModalOpened,
   timelineSidebarId,
   todoSidebarId,
   aiSidebarId,

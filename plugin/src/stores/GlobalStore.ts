@@ -25,6 +25,7 @@ export class GlobalStore {
   public readonly headersContainers = ref<Array<Header>>([])
   public readonly findAndReplaceModalOpened = ref(false)
   public readonly migrateFromDataviewModalOpened = ref(false)
+  public readonly saveMediaModalOpened = ref(false)
 
   public readonly timelineSidebarId = ref<string | null>(null)
   public readonly todoSidebarId = ref<string | null>(null)
