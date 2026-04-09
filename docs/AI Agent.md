@@ -87,9 +87,13 @@ When the conversation approaches the model's context window (90% usage), the age
 
 The summary preserves key decisions, file paths, code changes, and pending tasks. A divider appears in the chat marking where compaction occurred — click the icon to expand the summary.
 
+### Sending Messages
+
+Press **Shift+Enter** to send a message. **Enter** inserts a new line.
+
 ### Token Display
 
-The header shows current token usage: `12.5k/128k` (used / context window).
+The input toolbar shows current token usage: `12.5k/128k` (used / context window).
 
 ## Tools
 
@@ -124,11 +128,11 @@ The agent has access to these tools:
 | `skill` | Load a skill's instructions (see [Skills](#skills)) |
 | `wise_model` | Consult a more powerful model (see [Wise Model](#wise-model)) |
 
-All file operations respect the workspace scope — the agent can only access files you've allowed.
+All file operations respect the workspace scope — the agent can only access files you've allowed. File paths in tool call messages are clickable — click to open the file in the workspace.
 
 ## Workspace Scope
 
-The scope controls which files the agent can access. Open it with `/scope` or the folder icon in the header.
+The scope controls which files the agent can access. Open it with `/scope` or the folder icon in the input toolbar.
 
 ### Entry Types
 
@@ -138,6 +142,10 @@ The scope controls which files the agent can access. Open it with `/scope` or th
 | Folder | `Projects/` | Folder and all its contents (recursive) |
 | Pattern | `Journal/**/*.md` | Glob pattern (`*` matches within a folder, `**` matches across folders) |
 | Group | `Team/Backend.md` | A note that references other notes via `groups` frontmatter — all referenced notes are included |
+
+### Add Current File
+
+In the scope manager, click "Add current" to quickly add the currently open file to the scope.
 
 ### Full Vault Access
 
@@ -192,6 +200,8 @@ The base system prompt tells the model about the Obsidian environment and availa
 
 - **System Prompt (base)** — replace the default entirely
 - **Custom Instructions** — appended to the base prompt
+
+Use `{{date}}` in either field to insert the current date (YYYY-MM-DD), resolved fresh on each request.
 
 ### Prompt Library
 
