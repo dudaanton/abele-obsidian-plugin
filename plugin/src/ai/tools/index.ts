@@ -17,6 +17,7 @@ import { createWiseModelTool } from './WiseModelTool'
 import { createGenerateImageTool } from './GenerateImageTool'
 import { createEditImageTool } from './EditImageTool'
 import { createEvalJsTool } from './EvalJsTool'
+import { createListTemplatesTool, createApplyTemplateTool } from './TemplateTool'
 
 export function createAgentTools(): AgentTool[] {
   const tools = [
@@ -37,6 +38,8 @@ export function createAgentTools(): AgentTool[] {
     createGenerateImageTool(),
     createEditImageTool(),
     createEvalJsTool(),
+    createListTemplatesTool(),
+    createApplyTemplateTool(),
   ]
 
   const customDescriptions = AbeleConfig.getInstance().ai.prompts?.toolDescriptions

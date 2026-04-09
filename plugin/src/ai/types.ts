@@ -107,6 +107,10 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
         'Edit an existing vault image using a text prompt. Provide the source image path and editing instructions. Returns the path of the edited image.',
       eval_js:
         'Execute JavaScript code in a sandbox for calculations, data processing, or string manipulation. No file/network/DOM access.',
+      list_templates:
+        'List available note templates. Shows names, types, and required variables. Use before apply_template.',
+      apply_template:
+        'Create a new note from a template. Provide the template path and values for user variables.',
     },
   },
 }
