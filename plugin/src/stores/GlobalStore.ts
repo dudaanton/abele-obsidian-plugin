@@ -26,6 +26,8 @@ export class GlobalStore {
   public readonly findAndReplaceModalOpened = ref(false)
   public readonly migrateFromDataviewModalOpened = ref(false)
   public readonly saveMediaModalOpened = ref(false)
+  public readonly unusedMediaModalOpened = ref(false)
+  public readonly deduplicateMediaModalOpened = ref(false)
 
   public readonly timelineSidebarId = ref<string | null>(null)
   public readonly todoSidebarId = ref<string | null>(null)

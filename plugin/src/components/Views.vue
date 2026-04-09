@@ -41,6 +41,11 @@
     @close="migrateFromDataviewModalOpened = false"
   />
   <SaveMediaModal v-if="saveMediaModalOpened" @close="saveMediaModalOpened = false" />
+  <UnusedMediaModal v-if="unusedMediaModalOpened" @close="unusedMediaModalOpened = false" />
+  <DeduplicateMediaModal
+    v-if="deduplicateMediaModalOpened"
+    @close="deduplicateMediaModalOpened = false"
+  />
   <Teleport v-if="settingsTabId" :to="`[${SETTINGS_ID_ATTR}='${settingsTabId}']`">
     <SettingsView />
   </Teleport>
@@ -61,6 +66,8 @@ import TodoSidebarView from './TodoSidebar.vue'
 import FindAndReplaceModal from './FindAndReplaceModal.vue'
 import MigrateFromDataviewModal from './MigrateFromDataviewModal.vue'
 import SaveMediaModal from './SaveMediaModal.vue'
+import UnusedMediaModal from './UnusedMediaModal.vue'
+import DeduplicateMediaModal from './DeduplicateMediaModal.vue'
 import { TIMELINE_SIDEBAR_ID_ATTR } from '@/views/TimelineSidebarView'
 import { TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'
 import { AI_SIDEBAR_ID_ATTR } from '@/views/AiSidebarView'
@@ -76,6 +83,8 @@ const {
   findAndReplaceModalOpened,
   migrateFromDataviewModalOpened,
   saveMediaModalOpened,
+  unusedMediaModalOpened,
+  deduplicateMediaModalOpened,
   timelineSidebarId,
   todoSidebarId,
   aiSidebarId,

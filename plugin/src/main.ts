@@ -23,6 +23,8 @@ import { TemplateService } from './templates/TemplateService'
 import { taskStateField } from './editor/TaskPlugin'
 import { findAndReplace } from './commands/findAndReplace'
 import { saveMedia } from './commands/saveMedia'
+import { unusedMedia } from './commands/unusedMedia'
+import { deduplicateMedia } from './commands/deduplicateMedia'
 import { TIMELINE_SIDEBAR_VIEW_TYPE, TimelineSidebarView } from './views/TimelineSidebarView'
 import { TODO_SIDEBAR_VIEW_TYPE, TodoSidebarView } from './views/TodoSidebarView'
 import { AI_SIDEBAR_VIEW_TYPE, AiSidebarView } from './views/AiSidebarView'
@@ -166,6 +168,22 @@ export default class AbelePlugin extends Plugin {
       name: 'Save remote media to vault',
       callback: () => {
         saveMedia()
+      },
+    })
+
+    this.addCommand({
+      id: 'unused-media',
+      name: 'Find and delete unused media',
+      callback: () => {
+        unusedMedia()
+      },
+    })
+
+    this.addCommand({
+      id: 'deduplicate-media',
+      name: 'Deduplicate media attachments',
+      callback: () => {
+        deduplicateMedia()
       },
     })
 
