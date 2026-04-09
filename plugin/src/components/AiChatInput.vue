@@ -69,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { Menu, TFile, Notice } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -188,11 +188,29 @@ const setText = (value: string) => {
 defineExpose({ setText })
 
 const onKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Enter' && (e.shiftKey || e.metaKey)) {
+  if (e.key === 'Enter' && e.shiftKey) {
     e.preventDefault()
     send()
   }
 }
+
+// Cmd/Ctrl+Enter: Obsidian intercepts this at document level,
+// so we catch it on the capture phase before Obsidian does
+const onCaptureKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && document.activeElement === inputEl.value) {
+    e.preventDefault()
+    e.stopImmediatePropagation()
+    send()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onCaptureKeydown, true)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onCaptureKeydown, true)
+})
 </script>
 
 <style lang="scss">
