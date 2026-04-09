@@ -22,6 +22,11 @@
       />
     </template>
 
+    <!-- eval_js: show code -->
+    <template v-else-if="message.toolName === 'eval_js'">
+      <pre class="abele-tool-approval__code"><code>{{ params.code }}</code></pre>
+    </template>
+
     <!-- rm: just the path -->
     <template v-else-if="message.toolName === 'rm'">
       <div class="abele-tool-approval__path">{{ params.path }}</div>
@@ -93,6 +98,8 @@ const headerText = computed(() => {
       return 'Move file'
     case 'cp':
       return 'Copy file'
+    case 'eval_js':
+      return 'Execute JavaScript'
     default:
       return `Execute ${props.message.toolName}`
   }
