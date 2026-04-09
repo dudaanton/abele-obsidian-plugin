@@ -29,7 +29,7 @@
       <div class="abele-chat-input__toolbar-left">
         <span v-if="tokenDisplay" class="abele-chat-input__tokens">{{ tokenDisplay }}</span>
       </div>
-      <div class="abele-chat-input__toolbar-right">
+      <div class="abele-chat-input__toolbar-right" @mousedown.prevent>
         <Icon v-if="isStreaming" icon="square" with-bg @click="emit('abort')" />
         <Icon v-else-if="isBusy" icon="loader" no-hover class="abele-chat-input__spinner" />
         <template v-else>
