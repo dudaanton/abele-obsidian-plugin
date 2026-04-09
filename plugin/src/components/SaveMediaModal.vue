@@ -8,6 +8,27 @@
         @update:full-vault-access="fullVaultAccess = $event"
       />
 
+      <!-- Frontmatter properties to check -->
+      <div class="abele-save-media__props">
+        <div class="abele-scope-mgr__label">Frontmatter properties</div>
+        <div class="abele-save-media__props-list">
+          <span v-for="(prop, idx) in mediaProps" :key="prop" class="abele-save-media__prop-chip">
+            {{ prop }}
+            <Icon icon="x" @click="mediaProps.splice(idx, 1)" />
+          </span>
+        </div>
+        <div class="abele-save-media__props-add">
+          <input
+            type="text"
+            :value="newProp"
+            placeholder="Add property..."
+            @input="newProp = ($event.target as HTMLInputElement).value"
+            @keydown.enter="addProp"
+          />
+          <Button text="Add" @click="addProp" />
+        </div>
+      </div>
+
       <div class="abele-save-media__actions">
         <Button text="Scan" :disabled="scanning" @click="scan" />
         <Button
@@ -69,6 +90,7 @@ import { ref, computed } from 'vue'
 import { TFile, TFolder, requestUrl } from 'obsidian'
 import ObsidianModal from './obsidian/Modal.vue'
 import Button from './obsidian/Button.vue'
+import Icon from './obsidian/Icon.vue'
 import AiScopeEditor from './AiScopeEditor.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { ScopeEntry } from '@/ai/ScopeResolver'
@@ -81,6 +103,16 @@ const { app } = GlobalStore.getInstance()
 
 const scopeEntries = ref<ScopeEntry[]>([])
 const fullVaultAccess = ref(true)
+const mediaProps = ref(['cover', 'thumbnail', 'image', 'banner', 'poster'])
+const newProp = ref('')
+
+const addProp = () => {
+  const p = newProp.value.trim().toLowerCase()
+  if (p && !mediaProps.value.includes(p)) {
+    mediaProps.value.push(p)
+  }
+  newProp.value = ''
+}
 
 // ── State ──
 
@@ -119,16 +151,24 @@ const groupedItems = computed(() => {
 
 // ── Scanning ──
 
-const MEDIA_PATTERNS: Array<{ regex: RegExp; type: string }> = [
+const STATIC_PATTERNS: Array<{ regex: RegExp; type: string }> = [
   { regex: /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g, type: 'image' },
   { regex: /<img[^>]+src=["'](https?:\/\/[^"'\s]+)["'][^>]*>/gi, type: 'image' },
   { regex: /<(?:video|source)[^>]+src=["'](https?:\/\/[^"'\s]+)["'][^>]*>/gi, type: 'video' },
   { regex: /<audio[^>]+src=["'](https?:\/\/[^"'\s]+)["'][^>]*>/gi, type: 'audio' },
-  {
-    regex: /^(?:cover|thumbnail|image|banner|poster):\s*["']?(https?:\/\/[^\s"']+)["']?/gm,
-    type: 'cover',
-  },
 ]
+
+const getMediaPatterns = (): Array<{ regex: RegExp; type: string }> => {
+  const patterns = [...STATIC_PATTERNS]
+  for (const prop of mediaProps.value) {
+    const escaped = prop.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    patterns.push({
+      regex: new RegExp(`^${escaped}:\\s*["']?(https?:\\/\\/[^\\s"']+)["']?`, 'gm'),
+      type: 'property',
+    })
+  }
+  return patterns
+}
 
 const patternToRegex = (pat: string): RegExp => {
   const escaped = pat
@@ -186,7 +226,7 @@ const scanFile = async (file: TFile, seen: Set<string>): Promise<MediaItem[]> =>
   const content = await app.vault.read(file)
   const found: MediaItem[] = []
 
-  for (const { regex, type } of MEDIA_PATTERNS) {
+  for (const { regex, type } of getMediaPatterns()) {
     regex.lastIndex = 0
     let match: RegExpExecArray | null
     while ((match = regex.exec(content)) !== null) {
@@ -242,13 +282,61 @@ const getAttachmentFolder = async (): Promise<string> => {
   return folder
 }
 
+/** Hash an ArrayBuffer for content dedup (simple FNV-1a 32-bit) */
+const hashBuffer = (buf: ArrayBuffer): string => {
+  const bytes = new Uint8Array(buf)
+  let h = 0x811c9dc5
+  for (let i = 0; i < bytes.length; i++) {
+    h ^= bytes[i]
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(36)
+}
+
+/** Build content hash index of existing attachment files */
+const attachmentHashIndex = new Map<string, string>() // hash → vault path
+let hashIndexBuilt = false
+
+const buildHashIndex = async () => {
+  if (hashIndexBuilt) return
+  const folder = await getAttachmentFolder()
+  const allFiles = app.vault.getFiles()
+  for (const f of allFiles) {
+    if (folder && !f.path.startsWith(folder + '/')) continue
+    if (f.extension === 'md') continue
+    try {
+      const buf = await app.vault.readBinary(f)
+      const h = hashBuffer(buf)
+      attachmentHashIndex.set(h, f.path)
+    } catch {
+      // skip unreadable files
+    }
+  }
+  hashIndexBuilt = true
+}
+
+/** Generate a short hash from a string */
+const hashStr = (s: string): string => {
+  let h = 0
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0
+  }
+  return Math.abs(h).toString(36)
+}
+
 const urlToFilename = (url: string): string => {
+  const hash = hashStr(url)
   try {
     const pathname = new URL(url).pathname
-    const name = pathname.split('/').pop() || 'media'
-    return name.split('?')[0].split('#')[0]
+    const raw = pathname.split('/').pop() || ''
+    const withoutExt = raw
+      .split('?')[0]
+      .split('#')[0]
+      .replace(/\.[^.]+$/, '')
+    const clean = withoutExt.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40)
+    return clean ? `${clean}-${hash}` : hash
   } catch {
-    return 'media'
+    return hash
   }
 }
 
@@ -282,6 +370,7 @@ const getAvailablePath = (basePath: string): string => {
   return targetPath
 }
 
+// URL → local path cache (persists within this modal session)
 const downloadedUrls = new Map<string, string>()
 
 const downloadItem = async (item: MediaItem) => {
@@ -293,29 +382,55 @@ const downloadItem = async (item: MediaItem) => {
   items.value[idx] = { ...item, status: 'downloading' }
 
   try {
+    await buildHashIndex()
+
+    // 1. URL already downloaded this session?
     let localPath = downloadedUrls.get(item.url)
 
     if (!localPath) {
+      // 2. Download the file
       const response = await requestUrl({ url: item.url, method: 'GET', throw: false })
       if (response.status < 200 || response.status >= 300) {
         throw new Error(`HTTP ${response.status}`)
       }
 
-      const contentType = response.headers['content-type'] || ''
-      const folder = await getAttachmentFolder()
-      let filename = urlToFilename(item.url)
-      filename = ensureExtension(filename, contentType.split(';')[0].trim())
+      const contentHash = hashBuffer(response.arrayBuffer)
 
-      const basePath = folder ? `${folder}/${filename}` : filename
-      localPath = getAvailablePath(basePath)
+      // 3. Content already exists in attachments?
+      const existingByHash = attachmentHashIndex.get(contentHash)
+      if (existingByHash) {
+        localPath = existingByHash
+      } else {
+        // 4. Save new file
+        const contentType = response.headers['content-type'] || ''
+        const folder = await getAttachmentFolder()
+        const filename = urlToFilename(item.url)
+        const finalName = ensureExtension(filename, contentType.split(';')[0].trim())
+        const basePath = folder ? `${folder}/${finalName}` : finalName
+        localPath = getAvailablePath(basePath)
 
-      await app.vault.createBinary(localPath, response.arrayBuffer)
+        await app.vault.createBinary(localPath, response.arrayBuffer)
+        attachmentHashIndex.set(contentHash, localPath)
+      }
+
       downloadedUrls.set(item.url, localPath)
     }
 
-    await replaceInNote(item, localPath)
+    // Replace URL in all files that reference it
+    const filesToUpdate = new Set<string>()
+    for (const i of items.value) {
+      if (i.url === item.url) filesToUpdate.add(i.filePath)
+    }
+    for (const fp of filesToUpdate) {
+      await replaceAllInNote(fp, item.url, localPath)
+    }
 
-    items.value[idx] = { ...item, status: 'done', savedPath: localPath }
+    // Mark all items with the same URL across all files as done
+    items.value = items.value.map((i) =>
+      i.url === item.url && i.status !== 'done'
+        ? { ...i, status: 'done' as const, savedPath: localPath }
+        : i
+    )
   } catch (err: unknown) {
     items.value[idx] = {
       ...item,
@@ -325,22 +440,26 @@ const downloadItem = async (item: MediaItem) => {
   }
 }
 
-const replaceInNote = async (item: MediaItem, localPath: string) => {
-  const file = app.vault.getAbstractFileByPath(item.filePath)
+/**
+ * Replace ALL occurrences of a URL in a note — handles markdown images,
+ * HTML attributes, and frontmatter properties in one pass.
+ */
+const replaceAllInNote = async (filePath: string, url: string, localPath: string) => {
+  const file = app.vault.getAbstractFileByPath(filePath)
   if (!(file instanceof TFile)) return
 
   const content = await app.vault.read(file)
+  const escapedUrl = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-  let newMatch: string
-  if (item.type === 'cover') {
-    newMatch = item.matchFull.replace(item.url, localPath)
-  } else if (item.matchFull.startsWith('![')) {
-    newMatch = `![[${localPath}]]`
-  } else {
-    newMatch = item.matchFull.replace(item.url, localPath)
-  }
+  // Replace markdown images: ![...](url) → ![[localPath]]
+  let updated = content.replace(
+    new RegExp(`!\\[[^\\]]*\\]\\(${escapedUrl}\\)`, 'g'),
+    `![[${localPath}]]`
+  )
 
-  const updated = content.replace(item.matchFull, newMatch)
+  // Replace remaining occurrences of the URL (HTML tags, frontmatter, etc.)
+  updated = updated.replaceAll(url, localPath)
+
   if (updated !== content) {
     await app.vault.modify(file, updated)
   }
@@ -363,6 +482,45 @@ const downloadAll = async () => {
 <style lang="scss">
 .abele-save-media {
   min-width: 450px;
+}
+
+.abele-save-media__props {
+  margin-top: var(--size-4-2);
+}
+
+.abele-save-media__props-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
+  margin: var(--size-4-1) 0;
+}
+
+.abele-save-media__prop-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  padding: var(--size-2-1) var(--size-2-3);
+  background-color: var(--background-secondary);
+  border-radius: var(--radius-s);
+  font-size: var(--font-smaller);
+  color: var(--text-normal);
+
+  .clickable-icon {
+    cursor: pointer;
+    color: var(--text-faint);
+    &:hover {
+      color: var(--text-muted);
+    }
+  }
+}
+
+.abele-save-media__props-add {
+  display: flex;
+  gap: var(--size-4-1);
+
+  input {
+    flex: 1;
+  }
 }
 
 .abele-save-media__actions {
