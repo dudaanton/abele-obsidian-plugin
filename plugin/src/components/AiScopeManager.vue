@@ -11,6 +11,11 @@
         <div class="abele-scope-mgr__section">
           <div class="abele-scope-mgr__label">Add file</div>
           <input ref="fileInputEl" type="text" placeholder="Search for a file..." />
+          <Button
+            :text="activeFilePath ? `Add current (${activeFileName})` : 'No file open'"
+            :disabled="!activeFilePath"
+            @click="addCurrentFile"
+          />
         </div>
 
         <!-- Add folder -->
@@ -117,6 +122,15 @@ const emit = defineEmits<{
 
 const { app } = GlobalStore.getInstance()
 const scope = ScopeResolver.getInstance()
+
+const activeFilePath = computed(() => app.workspace.getActiveFile()?.path || '')
+const activeFileName = computed(() => app.workspace.getActiveFile()?.name || '')
+
+const addCurrentFile = () => {
+  if (activeFilePath.value) {
+    scope.addFile(activeFilePath.value)
+  }
+}
 
 const fileInputEl = ref<HTMLInputElement | null>(null)
 const folderInputEl = ref<HTMLInputElement | null>(null)

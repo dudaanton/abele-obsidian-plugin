@@ -5,3 +5,8 @@ body.abele-full-width-sidebars {
 .workspace-leaf-content:has(.abele-ai-chat)::after {
   display: none;
 }
+
+body.is-mobile .modal:has(.abele-scope-mgr) {
+  margin-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  margin-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+}

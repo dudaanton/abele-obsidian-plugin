@@ -13,7 +13,7 @@
     <!-- Messages -->
     <div ref="messagesContainer" class="abele-ai-chat__messages" @scroll="onMessagesScroll">
       <div v-if="messages.length === 0" class="abele-ai-chat__empty">
-        <Icon icon="tree-deciduous" class="abele-ai-chat__empty-icon" />
+        <Icon icon="tree-deciduous" no-hover class="abele-ai-chat__empty-icon" />
         <span class="abele-ai-chat__empty-text">What's on your mind?</span>
       </div>
 
@@ -453,7 +453,6 @@ const showDebug = () => {
 
 .abele-ai-chat__empty-icon {
   color: var(--background-modifier-border);
-  opacity: 0.7;
 
   svg {
     width: 64px;
@@ -466,7 +465,6 @@ const showDebug = () => {
   display: block;
   margin-top: var(--size-4-4);
   color: var(--background-modifier-border);
-  opacity: 0.7;
   font-size: var(--font-small);
 }
 
