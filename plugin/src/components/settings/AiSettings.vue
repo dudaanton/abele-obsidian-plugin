@@ -259,6 +259,15 @@
         />
       </Setting>
 
+      <h3>Default Scope</h3>
+
+      <AiScopeEditor
+        :entries="defaultScope"
+        :full-vault-access="defaultFullVaultAccess"
+        @update:entries="updateDefaultScope"
+        @update:full-vault-access="updateDefaultFullVault"
+      />
+
       <h3>Default Permissions</h3>
 
       <Setting
@@ -290,6 +299,13 @@
           :is-enabled="defaultAllowImageGeneration"
           @toggle="toggleDefault('allowImageGeneration')"
         />
+      </Setting>
+
+      <Setting
+        name="Allow eval JS"
+        desc="Default for new chats. Can be changed per chat in the scope manager."
+      >
+        <Checkbox :is-enabled="defaultAllowEvalJs" @toggle="toggleDefault('allowEvalJs')" />
       </Setting>
 
       <h3>Prompts</h3>
@@ -369,6 +385,7 @@
 import { ref, computed, reactive } from 'vue'
 import { Notice, debounce } from 'obsidian'
 import { nanoid } from 'nanoid'
+import AiScopeEditor from '../AiScopeEditor.vue'
 import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
 import Button from '../obsidian/Button.vue'
@@ -407,6 +424,19 @@ const defaultAllowWebSearch = ref(config.ai.allowWebSearch)
 const defaultAllowFetch = ref(config.ai.allowFetch)
 const defaultAllowWiseModel = ref(config.ai.allowWiseModel)
 const defaultAllowImageGeneration = ref(config.ai.allowImageGeneration)
+const defaultAllowEvalJs = ref(config.ai.allowEvalJs)
+const defaultScope = ref(JSON.parse(JSON.stringify(config.ai.defaultScope || [])))
+const defaultFullVaultAccess = ref(config.ai.defaultFullVaultAccess)
+
+const updateDefaultScope = (entries: any[]) => {
+  defaultScope.value = entries
+  save()
+}
+
+const updateDefaultFullVault = (value: boolean) => {
+  defaultFullVaultAccess.value = value
+  save()
+}
 
 const enabled = ref(config.ai.enabled)
 const providers = ref<AiProvider[]>(JSON.parse(JSON.stringify(config.ai.providers)))
@@ -490,6 +520,9 @@ const save = debounce(async () => {
     allowFetch: defaultAllowFetch.value,
     allowWiseModel: defaultAllowWiseModel.value,
     allowImageGeneration: defaultAllowImageGeneration.value,
+    allowEvalJs: defaultAllowEvalJs.value,
+    defaultScope: JSON.parse(JSON.stringify(defaultScope.value)),
+    defaultFullVaultAccess: defaultFullVaultAccess.value,
     chatFolder: chatFolder.value,
     chatHistory: config.ai.chatHistory || [],
     braveSearchApiKey: braveSearchApiKey.value,
@@ -511,13 +544,14 @@ const toggleSequentialAuxiliary = () => {
 }
 
 const toggleDefault = (
-  key: 'allowWebSearch' | 'allowFetch' | 'allowWiseModel' | 'allowImageGeneration'
+  key: 'allowWebSearch' | 'allowFetch' | 'allowWiseModel' | 'allowImageGeneration' | 'allowEvalJs'
 ) => {
   if (key === 'allowWebSearch') defaultAllowWebSearch.value = !defaultAllowWebSearch.value
   if (key === 'allowFetch') defaultAllowFetch.value = !defaultAllowFetch.value
   if (key === 'allowWiseModel') defaultAllowWiseModel.value = !defaultAllowWiseModel.value
   if (key === 'allowImageGeneration')
     defaultAllowImageGeneration.value = !defaultAllowImageGeneration.value
+  if (key === 'allowEvalJs') defaultAllowEvalJs.value = !defaultAllowEvalJs.value
   save()
 }
 
