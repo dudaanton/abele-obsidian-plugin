@@ -30,6 +30,7 @@ export interface UserMessage {
   role: 'user'
   content: string | UserContentPart[]
   timestamp: number
+  chatMessageId?: string
 }
 
 export interface AssistantMessage {
@@ -40,6 +41,7 @@ export interface AssistantMessage {
   stopReason: StopReason
   errorMessage?: string
   timestamp: number
+  chatMessageId?: string
 }
 
 export interface ToolResultMessage {
@@ -51,12 +53,14 @@ export interface ToolResultMessage {
   timestamp: number
   /** Messages to inject after this tool result (e.g. user message with image) */
   injectMessages?: Message[]
+  chatMessageId?: string
 }
 
 export interface SystemMessage {
   role: 'system'
   content: string
   timestamp: number
+  chatMessageId?: string
 }
 
 export type Message = UserMessage | AssistantMessage | ToolResultMessage | SystemMessage

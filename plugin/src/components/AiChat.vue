@@ -17,7 +17,14 @@
         <span class="abele-ai-chat__empty-text">What's on your mind?</span>
       </div>
 
-      <AiChatMessage v-for="msg in messages" :key="msg.id" :message="msg" />
+      <AiChatMessage
+        v-for="msg in messages"
+        :key="msg.id"
+        :message="msg"
+        :branch-info="branchInfoMap.get(msg.id)"
+        @create-branch="onCreateBranch"
+        @switch-branch="onSwitchBranch"
+      />
 
       <!-- Streaming indicator -->
       <div v-if="isStreaming" class="abele-ai-chat__streaming">
@@ -117,12 +124,14 @@ import { parseTemplateVariables, applyTemplateVariables } from '@/templates/Temp
 import type { TemplateVariable } from '@/templates/TemplateParser'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { discoverSkills } from '@/ai/tools/SkillTool'
+import { getSiblings, getChildren } from '@/ai/chatTree'
 
 const agent = AgentService.getInstance()
 const scope = ScopeResolver.getInstance()
 
 const {
   messages,
+  allMessages,
   isStreaming,
   isGeneratingTitle,
   isCompacting,
@@ -132,6 +141,58 @@ const {
   pendingToolCalls,
   error,
 } = agent
+
+export interface BranchInfo {
+  childIds: string[]
+  activeChildIndex: number // -1 = new branch (not yet sent)
+  total: number // childIds.length + 1 if currently on a new unsent branch
+}
+
+const branchInfoMap = computed(() => {
+  const map = new Map<string, BranchInfo>()
+  const all = allMessages.value
+  const visible = messages.value
+  if (all.length === 0 || visible.length === 0) return map
+
+  // For each visible message, check if it has multiple children in the tree
+  for (let i = 0; i < visible.length; i++) {
+    const msg = visible[i]
+    const children = getChildren(all, msg.id)
+    if (children.length <= 1 && i < visible.length - 1) continue
+    if (children.length === 0 && i < visible.length - 1) continue
+
+    if (children.length > 1) {
+      // Multiple children — this is a branch point
+      // Find which child is in the visible path
+      const nextVisible = visible[i + 1]
+      const activeIdx = nextVisible ? children.findIndex((c) => c.id === nextVisible.id) : -1
+      map.set(msg.id, {
+        childIds: children.map((c) => c.id),
+        activeChildIndex: activeIdx,
+        total: activeIdx === -1 ? children.length + 1 : children.length,
+      })
+    } else if (i === visible.length - 1 && children.length > 0) {
+      // Last visible message with children — user branched from here
+      map.set(msg.id, {
+        childIds: children.map((c) => c.id),
+        activeChildIndex: -1,
+        total: children.length + 1,
+      })
+    }
+  }
+
+  return map
+})
+
+const onCreateBranch = (messageId: string) => {
+  shouldAutoScroll = false
+  agent.createBranch(messageId)
+}
+
+const onSwitchBranch = (childId: string) => {
+  shouldAutoScroll = false
+  agent.switchBranch(childId)
+}
 
 const isBusy = computed(() => {
   if (!AbeleConfig.getInstance().ai.sequentialAuxiliary) return false

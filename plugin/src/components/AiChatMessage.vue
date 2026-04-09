@@ -94,7 +94,8 @@
           <span class="abele-chat-msg__detail-label">Tokens</span>
           <span
             >in: {{ message.usage.input }} / out: {{ message.usage.output }} / total:
-            {{ message.usage.total }}</span
+            {{ message.usage.total
+            }}<template v-if="message.usage.speed"> · {{ message.usage.speed }} t/s</template></span
           >
         </div>
         <div v-if="message.toolParams" class="abele-chat-msg__detail-row">
@@ -104,6 +105,11 @@
         <div v-if="message.toolResult" class="abele-chat-msg__detail-row">
           <span class="abele-chat-msg__detail-label">Result</span>
           <pre>{{ truncate(message.toolResult, TOOL_RESULT_MAX_LENGTH) }}</pre>
+        </div>
+        <div class="abele-chat-msg__detail-row">
+          <span class="abele-chat-msg__branch-action" @click="emit('create-branch', message.id)"
+            >Branch from here</span
+          >
         </div>
       </div>
     </div>
@@ -115,6 +121,24 @@
     >
       {{ shortTime(message.timestamp) }}
     </span>
+
+    <!-- Branch navigation — below message, full width -->
+    <div v-if="branchInfo && branchInfo.total > 1" class="abele-chat-msg__branch-nav">
+      <Icon
+        icon="chevron-left"
+        :class="{ 'abele-chat-msg__branch-disabled': displayIndex <= 0 }"
+        @click.stop="switchPrev"
+      />
+      <span class="abele-chat-msg__branch-label"
+        >{{ displayIndex + 1 }}/{{ branchInfo.total }}</span
+      >
+      <Icon
+        icon="chevron-right"
+        :class="{ 'abele-chat-msg__branch-disabled': displayIndex >= branchInfo.total - 1 }"
+        @click.stop="switchNext"
+      />
+      <Icon icon="plus" class="abele-chat-msg__branch-add" @click.stop="branchFromHere" />
+    </div>
   </div>
 </template>
 
@@ -128,10 +152,46 @@ import Diff from './Diff.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { getAttachmentIcon, fileName as attachmentName } from '@/ai/attachments'
 import type { ChatMessage } from '@/ai/types'
+import type { BranchInfo } from './AiChat.vue'
 
 const props = defineProps<{
   message: ChatMessage
+  branchInfo?: BranchInfo
 }>()
+
+const emit = defineEmits<{
+  (e: 'create-branch', messageId: string): void
+  (e: 'switch-branch', messageId: string): void
+}>()
+
+// -1 = "new unsent branch" = last position (after all existing children)
+const displayIndex = computed(() => {
+  if (!props.branchInfo) return 0
+  return props.branchInfo.activeChildIndex === -1
+    ? props.branchInfo.total - 1
+    : props.branchInfo.activeChildIndex
+})
+
+const switchPrev = () => {
+  if (!props.branchInfo || displayIndex.value <= 0) return
+  emit('switch-branch', props.branchInfo.childIds[displayIndex.value - 1])
+}
+
+const switchNext = () => {
+  if (!props.branchInfo) return
+  const idx = displayIndex.value
+  if (idx >= props.branchInfo.total - 1) return
+  // Going forward into "new branch" = create branch
+  if (idx + 1 >= props.branchInfo.childIds.length) {
+    emit('create-branch', props.message.id)
+  } else {
+    emit('switch-branch', props.branchInfo.childIds[idx + 1])
+  }
+}
+
+const branchFromHere = () => {
+  emit('create-branch', props.message.id)
+}
 
 const expanded = ref(false)
 
@@ -212,6 +272,7 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
 <style lang="scss">
 .abele-chat-msg {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: var(--size-4-2);
   padding: var(--size-4-2) 0;
@@ -498,6 +559,54 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
 
 .abele-chat-msg__detail-time {
   color: var(--text-faint);
+}
+
+.abele-chat-msg__branch-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--size-2-1);
+  flex-basis: 100%;
+  color: var(--text-faint);
+  font-size: var(--font-smaller);
+
+  .clickable-icon {
+    cursor: pointer;
+    &:hover {
+      color: var(--text-muted);
+    }
+  }
+}
+
+.abele-chat-msg__branch-label {
+  white-space: nowrap;
+  min-width: 20px;
+  text-align: center;
+}
+
+.abele-chat-msg__branch-disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.abele-chat-msg__branch-add {
+  margin-left: var(--size-2-1);
+  cursor: pointer;
+  color: var(--text-faint);
+
+  &:hover {
+    color: var(--text-muted);
+  }
+}
+
+.abele-chat-msg__branch-action {
+  color: var(--text-accent);
+  cursor: pointer;
+  font-size: var(--font-smaller);
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
 @container (max-width: 450px) {

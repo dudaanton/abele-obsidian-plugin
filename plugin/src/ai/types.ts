@@ -43,6 +43,9 @@ export interface AiSettings {
   allowFetch: boolean
   allowWiseModel: boolean
   allowImageGeneration: boolean
+  allowEvalJs: boolean
+  defaultScope: Array<{ type: 'file' | 'folder' | 'pattern' | 'group'; path: string }>
+  defaultFullVaultAccess: boolean
   chatFolder: string
   chatHistory: AiChatHistoryEntry[]
   braveSearchApiKey: string
@@ -64,6 +67,9 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   allowFetch: false,
   allowWiseModel: false,
   allowImageGeneration: false,
+  allowEvalJs: false,
+  defaultScope: [],
+  defaultFullVaultAccess: false,
   chatFolder: 'AI/Chats/{{name}}',
   chatHistory: [],
   braveSearchApiKey: '',
@@ -99,6 +105,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
         'Generate an image from a text prompt. The image is saved to the vault attachments folder. Returns the path of the saved image.',
       edit_image:
         'Edit an existing vault image using a text prompt. Provide the source image path and editing instructions. Returns the path of the edited image.',
+      eval_js:
+        'Execute JavaScript code in a sandbox for calculations, data processing, or string manipulation. No file/network/DOM access.',
     },
   },
 }
@@ -107,6 +115,7 @@ export interface ChatMessageUsage {
   input: number
   output: number
   total: number
+  speed?: number // output tokens per second
 }
 
 export interface ChatMessageDiff {
@@ -116,6 +125,7 @@ export interface ChatMessageDiff {
 
 export interface ChatMessage {
   id: string
+  parentId?: string
   role: 'user' | 'assistant' | 'tool-call' | 'tool-result' | 'system'
   content: string
   thinking?: string
@@ -141,4 +151,6 @@ export interface ChatMetadata {
   allowFetch?: boolean
   allowWiseModel?: boolean
   allowImageGeneration?: boolean
+  allowEvalJs?: boolean
+  activeLeafId?: string
 }

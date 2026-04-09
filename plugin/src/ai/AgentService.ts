@@ -24,6 +24,15 @@ import { createAgentTools } from './tools'
 import { loadSkillContent } from './tools/SkillTool'
 import { ScopeResolver } from './ScopeResolver'
 import { resolveAttachmentsForApi } from './attachments'
+import {
+  getPathToLeaf,
+  getSiblings,
+  findDeepestLeaf,
+  findDefaultLeaf,
+  getInternalMessagesForPath,
+  backfillParentIds,
+  backfillChatMessageIds,
+} from './chatTree'
 
 /** Shape returned by tools that provide diff details */
 interface ToolDiffDetails {
@@ -37,14 +46,17 @@ export class AgentService {
   private static readonly TITLE_MAX_TOKENS = 30
   private static readonly TITLE_MAX_LENGTH = 60
   private static readonly TITLE_MSG_PREVIEW_LENGTH = 200
-  private static readonly TITLE_GENERATION_TRIGGERS = [1, 3]
+  private static readonly TITLE_GENERATION_TRIGGERS = [1]
   private static readonly FALLBACK_TITLE_LENGTH = 50
   private static readonly COMPACT_SYSTEM_PROMPT =
     'You summarize conversations. Reply with ONLY the summary, nothing else.'
 
   private agentLoop: AgentLoop | null = null
   private unsubscribe: (() => void) | null = null
-  private internalMessages: Message[] = []
+  private streamStartTime = 0
+  private allInternalMessages: Message[] = []
+  private allChatMessages: ChatMessage[] = []
+  private activeLeafId: string | null = null
   private userMessageCount = 0
   private chatTitle = ''
   private chatCreated = ''
@@ -55,6 +67,7 @@ export class AgentService {
 
   // Reactive state for Vue components
   public readonly messages = ref<ChatMessage[]>([])
+  public readonly allMessages = ref<ChatMessage[]>([])
   public readonly isStreaming = ref(false)
   public readonly streamingContent = ref('')
   public readonly streamingThinking = ref('')
@@ -69,6 +82,7 @@ export class AgentService {
   public readonly allowFetch = ref(false)
   public readonly allowWiseModel = ref(false)
   public readonly allowImageGeneration = ref(false)
+  public readonly allowEvalJs = ref(false)
 
   static getInstance(): AgentService {
     if (!AgentService.instance) {
@@ -157,6 +171,7 @@ export class AgentService {
     if (toolName === 'wise_model') return !this.allowWiseModel.value
     if (toolName === 'generate_image' || toolName === 'edit_image')
       return !this.allowImageGeneration.value
+    if (toolName === 'eval_js') return !this.allowEvalJs.value
     // read_image: auto-approve if the image is in workspace scope
     if (toolName === 'read_image' && args?.path) {
       return !ScopeResolver.getInstance().isInScope(args.path as string)
@@ -175,6 +190,7 @@ export class AgentService {
       case 'stream_event': {
         const se = event.event
         if (se.type === 'text_delta') {
+          if (!this.streamStartTime) this.streamStartTime = Date.now()
           this.streamingContent.value += se.delta
         } else if (se.type === 'thinking_delta') {
           this.streamingThinking.value += se.delta
@@ -209,28 +225,36 @@ export class AgentService {
               ? thinkingParts.map((t) => t.thinking).join('')
               : undefined,
             usage: am.usage
-              ? { input: am.usage.input, output: am.usage.output, total: am.usage.totalTokens }
+              ? {
+                  input: am.usage.input,
+                  output: am.usage.output,
+                  total: am.usage.totalTokens,
+                  speed:
+                    this.streamStartTime && am.usage.output
+                      ? Math.round((am.usage.output / (Date.now() - this.streamStartTime)) * 1000)
+                      : undefined,
+                }
               : undefined,
             timestamp: Date.now(),
           }
-          this.messages.value = [...this.messages.value, chatMsg]
+          this.appendChatMessage(chatMsg)
+          this.updateVisibleMessages()
           this.streamingContent.value = ''
           this.streamingThinking.value = ''
+          this.streamStartTime = 0
         } else if (msg.role === 'toolResult') {
           // Only add visible entry for errors (tool_end already updated the tool-call message)
           if (msg.isError) {
-            const resultContent = msg.content.map((c) => c.text).join('')
-            this.messages.value = [
-              ...this.messages.value,
-              {
-                id: nanoid(),
-                role: 'tool-result',
-                content: resultContent,
-                toolName: msg.toolName,
-                toolStatus: 'rejected',
-                timestamp: Date.now(),
-              },
-            ]
+            const chatMsg: ChatMessage = {
+              id: nanoid(),
+              role: 'tool-result',
+              content: msg.content.map((c) => c.text).join(''),
+              toolName: msg.toolName,
+              toolStatus: 'rejected',
+              timestamp: Date.now(),
+            }
+            this.appendChatMessage(chatMsg)
+            this.updateVisibleMessages()
           }
         }
         break
@@ -247,32 +271,94 @@ export class AgentService {
           toolStatus: 'pending',
           timestamp: Date.now(),
         }
-        this.messages.value = [...this.messages.value, chatMsg]
+        this.appendChatMessage(chatMsg)
+        this.updateVisibleMessages()
         break
       }
 
       case 'tool_end': {
-        // Update the tool-call message with result and diff (match by toolCallId)
-        const msgs = [...this.messages.value]
-        for (let i = msgs.length - 1; i >= 0; i--) {
-          if (
-            msgs[i].role === 'tool-call' &&
-            msgs[i].toolCallId === event.toolCallId &&
-            msgs[i].toolStatus === 'pending'
-          ) {
+        this.updateChatMessage(
+          (m) =>
+            m.role === 'tool-call' &&
+            m.toolCallId === event.toolCallId &&
+            m.toolStatus === 'pending',
+          (m) => {
             const resultText = event.result.content?.map((c) => c.text).join('') || ''
             const diff = (event.result.details as ToolDiffDetails)?.diff
-            msgs[i] = {
-              ...msgs[i],
+            return {
+              ...m,
               toolResult: resultText,
               toolDiff: diff ? { old: diff.old, new: diff.new } : undefined,
               toolStatus: event.isError ? 'rejected' : 'approved',
             }
-            break
           }
-        }
-        this.messages.value = msgs
+        )
         break
+      }
+    }
+  }
+
+  // ── Tree helpers ─────────────────────────────────────────────
+
+  /** Append a ChatMessage to the tree with parentId = activeLeafId, update activeLeafId */
+  private appendChatMessage(msg: ChatMessage): void {
+    msg.parentId = this.activeLeafId || undefined
+    this.allChatMessages.push(msg)
+    this.activeLeafId = msg.id
+  }
+
+  /** Rebuild the visible messages ref from the active branch path */
+  private updateVisibleMessages(): void {
+    if (!this.activeLeafId) {
+      this.messages.value = []
+    } else {
+      this.messages.value = getPathToLeaf(this.allChatMessages, this.activeLeafId)
+    }
+    this.allMessages.value = [...this.allChatMessages]
+  }
+
+  /**
+   * Update a ChatMessage in the tree by predicate (e.g. match toolCallId).
+   * Also refreshes the visible messages ref.
+   */
+  private updateChatMessage(
+    predicate: (m: ChatMessage) => boolean,
+    updater: (m: ChatMessage) => ChatMessage
+  ): void {
+    for (let i = this.allChatMessages.length - 1; i >= 0; i--) {
+      if (predicate(this.allChatMessages[i])) {
+        this.allChatMessages[i] = updater(this.allChatMessages[i])
+        break
+      }
+    }
+    this.updateVisibleMessages()
+  }
+
+  /** Link new internal messages from an agent run to their ChatMessages */
+  private linkInternalMessages(newMsgs: Message[]): void {
+    // Collect assistant and tool-call ChatMessages created during this run
+    // (everything after the last user message in the active path)
+    const visiblePath = this.messages.value
+    let lastUserIdx = -1
+    for (let i = visiblePath.length - 1; i >= 0; i--) {
+      if (visiblePath[i].role === 'user') {
+        lastUserIdx = i
+        break
+      }
+    }
+    const runChatMsgs = lastUserIdx >= 0 ? visiblePath.slice(lastUserIdx + 1) : visiblePath
+    const assistantChatMsgs = runChatMsgs.filter((m) => m.role === 'assistant')
+
+    let assistantIdx = 0
+    for (const msg of newMsgs) {
+      if (msg.role === 'assistant') {
+        if (assistantIdx < assistantChatMsgs.length) {
+          msg.chatMessageId = assistantChatMsgs[assistantIdx].id
+          assistantIdx++
+        }
+      } else if (msg.role === 'toolResult') {
+        const chatMsg = runChatMsgs.find((m) => m.toolCallId === msg.toolCallId)
+        if (chatMsg) msg.chatMessageId = chatMsg.id
       }
     }
   }
@@ -283,13 +369,18 @@ export class AgentService {
 
   /** Get messages to send to the model — from the last compact marker onwards */
   private getMessagesForModel(): Message[] {
-    for (let i = this.internalMessages.length - 1; i >= 0; i--) {
-      const m = this.internalMessages[i]
+    const path = this.activeLeafId
+      ? getPathToLeaf(this.allChatMessages, this.activeLeafId)
+      : this.allChatMessages
+    const internal = getInternalMessagesForPath(path, this.allInternalMessages)
+
+    for (let i = internal.length - 1; i >= 0; i--) {
+      const m = internal[i]
       if (m.role === 'system' && m.content.startsWith(AgentService.COMPACT_MARKER)) {
-        return this.internalMessages.slice(i)
+        return internal.slice(i)
       }
     }
-    return [...this.internalMessages]
+    return internal
   }
 
   private async runAgentLoop(): Promise<void> {
@@ -304,15 +395,14 @@ export class AgentService {
 
       // Show model indicator when model changes between messages
       if (this.lastModelId && this.lastModelId !== model.id) {
-        this.messages.value = [
-          ...this.messages.value,
-          {
-            id: nanoid(),
-            role: 'system',
-            content: model.name || model.id,
-            timestamp: Date.now(),
-          },
-        ]
+        const sysMsg: ChatMessage = {
+          id: nanoid(),
+          role: 'system',
+          content: model.name || model.id,
+          timestamp: Date.now(),
+        }
+        this.appendChatMessage(sysMsg)
+        this.updateVisibleMessages()
       }
       this.lastModelId = model.id
 
@@ -334,7 +424,8 @@ export class AgentService {
 
       // Append only new messages to the full history (append-only)
       const newMsgs = result.messages.slice(toSend.length)
-      this.internalMessages.push(...newMsgs)
+      this.linkInternalMessages(newMsgs)
+      this.allInternalMessages.push(...newMsgs)
 
       if (result.pausedAt?.length) {
         this.pendingToolCalls.value = result.pausedAt
@@ -383,22 +474,21 @@ export class AgentService {
   }
 
   private ensurePendingToolCallMessage(tc: ToolCallContent): void {
-    const exists = this.messages.value.some((m) => m.toolCallId === tc.id)
+    const exists = this.allChatMessages.some((m) => m.toolCallId === tc.id)
     if (exists) return
 
-    this.messages.value = [
-      ...this.messages.value,
-      {
-        id: nanoid(),
-        role: 'tool-call',
-        content: `Calling ${tc.name}`,
-        toolCallId: tc.id,
-        toolName: tc.name,
-        toolParams: tc.arguments,
-        toolStatus: 'pending',
-        timestamp: Date.now(),
-      },
-    ]
+    const chatMsg: ChatMessage = {
+      id: nanoid(),
+      role: 'tool-call',
+      content: `Calling ${tc.name}`,
+      toolCallId: tc.id,
+      toolName: tc.name,
+      toolParams: tc.arguments,
+      toolStatus: 'pending',
+      timestamp: Date.now(),
+    }
+    this.appendChatMessage(chatMsg)
+    this.updateVisibleMessages()
   }
 
   /**
@@ -417,21 +507,21 @@ export class AgentService {
 
     if (!tool) {
       const errText = `Tool "${tc.name}" not found`
-      const msgs = [...this.messages.value]
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].role === 'tool-call' && msgs[i].toolCallId === tc.id) {
-          msgs[i] = { ...msgs[i], toolResult: errText, toolStatus: 'rejected' }
-          break
-        }
-      }
-      this.messages.value = msgs
-      this.internalMessages.push({
+      const toolChatMsg = this.allChatMessages.find(
+        (m) => m.role === 'tool-call' && m.toolCallId === tc.id
+      )
+      this.updateChatMessage(
+        (m) => m.role === 'tool-call' && m.toolCallId === tc.id,
+        (m) => ({ ...m, toolResult: errText, toolStatus: 'rejected' as const })
+      )
+      this.allInternalMessages.push({
         role: 'toolResult',
         toolCallId: tc.id,
         toolName: tc.name,
         content: [{ type: 'text', text: errText }],
         isError: true,
         timestamp: Date.now(),
+        chatMessageId: toolChatMsg?.id,
       })
       this.pendingToolCalls.value = this.pendingToolCalls.value.slice(1)
       return
@@ -449,36 +539,43 @@ export class AgentService {
       isError = true
     }
 
+    // Find the tool-call ChatMessage to link internal messages
+    const toolChatMsg = this.allChatMessages.find(
+      (m) => m.role === 'tool-call' && m.toolCallId === tc.id
+    )
+
     // Update the ChatMessage with result
-    const msgs = [...this.messages.value]
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (msgs[i].role === 'tool-call' && msgs[i].toolCallId === tc.id) {
+    this.updateChatMessage(
+      (m) => m.role === 'tool-call' && m.toolCallId === tc.id,
+      (m) => {
         const resultText = toolResult.content.map((c) => c.text).join('')
         const diff = (toolResult.details as ToolDiffDetails)?.diff
-        msgs[i] = {
-          ...msgs[i],
+        return {
+          ...m,
           toolResult: resultText,
           toolDiff: diff ? { old: diff.old, new: diff.new } : undefined,
-          toolStatus: isError ? 'rejected' : 'approved',
+          toolStatus: isError ? ('rejected' as const) : ('approved' as const),
         }
-        break
       }
-    }
-    this.messages.value = msgs
+    )
 
     // Add to internal messages
-    this.internalMessages.push({
+    this.allInternalMessages.push({
       role: 'toolResult',
       toolCallId: tc.id,
       toolName: tc.name,
       content: toolResult.content,
       isError,
       timestamp: Date.now(),
+      chatMessageId: toolChatMsg?.id,
     })
 
     // Inject extra messages (e.g. image content from read_image)
     if (toolResult.injectMessages?.length) {
-      this.internalMessages.push(...toolResult.injectMessages)
+      for (const injected of toolResult.injectMessages) {
+        injected.chatMessageId = toolChatMsg?.id
+      }
+      this.allInternalMessages.push(...toolResult.injectMessages)
     }
 
     // Remove from pending
@@ -501,21 +598,24 @@ export class AgentService {
       attachments: attachments?.length ? attachments : undefined,
       timestamp: Date.now(),
     }
-    this.messages.value = [...this.messages.value, userMsg]
+    this.appendChatMessage(userMsg)
+    this.updateVisibleMessages()
 
     if (attachments?.length) {
       const parts = await resolveAttachmentsForApi(attachments)
       const allParts: UserContentPart[] = [{ type: 'text', text: content }, ...parts]
-      this.internalMessages.push({
+      this.allInternalMessages.push({
         role: 'user',
         content: allParts,
         timestamp: Date.now(),
+        chatMessageId: userMsg.id,
       })
     } else {
-      this.internalMessages.push({
+      this.allInternalMessages.push({
         role: 'user',
         content,
         timestamp: Date.now(),
+        chatMessageId: userMsg.id,
       })
     }
 
@@ -554,14 +654,10 @@ export class AgentService {
     if (!tc) return
 
     // Immediately mark as approved so the approval dialog disappears
-    const msgs = [...this.messages.value]
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (msgs[i].toolCallId === tc.id && msgs[i].toolStatus === 'pending') {
-        msgs[i] = { ...msgs[i], toolStatus: 'approved' }
-        break
-      }
-    }
-    this.messages.value = msgs
+    this.updateChatMessage(
+      (m) => m.toolCallId === tc.id && m.toolStatus === 'pending',
+      (m) => ({ ...m, toolStatus: 'approved' as const })
+    )
 
     const controller = new AbortController()
     this.toolAbortController = controller
@@ -594,27 +690,23 @@ export class AgentService {
     const reasonText = reason || 'User rejected this action'
 
     // Update ChatMessage
-    const msgs = [...this.messages.value]
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (msgs[i].toolCallId === tc.id && msgs[i].toolStatus === 'pending') {
-        msgs[i] = {
-          ...msgs[i],
-          toolResult: reasonText,
-          toolStatus: 'rejected',
-        }
-        break
-      }
-    }
-    this.messages.value = msgs
+    const toolChatMsg = this.allChatMessages.find(
+      (m) => m.toolCallId === tc.id && m.toolStatus === 'pending'
+    )
+    this.updateChatMessage(
+      (m) => m.toolCallId === tc.id && m.toolStatus === 'pending',
+      (m) => ({ ...m, toolResult: reasonText, toolStatus: 'rejected' as const })
+    )
 
     // Add error result to internal messages
-    this.internalMessages.push({
+    this.allInternalMessages.push({
       role: 'toolResult',
       toolCallId: tc.id,
       toolName: tc.name,
       content: [{ type: 'text', text: reasonText }],
       isError: true,
       timestamp: Date.now(),
+      chatMessageId: toolChatMsg?.id,
     })
 
     // Remove from pending
@@ -630,21 +722,21 @@ export class AgentService {
     const content = await loadSkillContent(skillName)
     if (!content) return
 
-    this.internalMessages.push({
+    const chatMsg: ChatMessage = {
+      id: nanoid(),
+      role: 'system',
+      content: `Skill loaded: ${skillName}`,
+      timestamp: Date.now(),
+    }
+    this.appendChatMessage(chatMsg)
+    this.updateVisibleMessages()
+
+    this.allInternalMessages.push({
       role: 'system',
       content: `[Skill: ${skillName}]\n\n${content}`,
       timestamp: Date.now(),
+      chatMessageId: chatMsg.id,
     })
-
-    this.messages.value = [
-      ...this.messages.value,
-      {
-        id: nanoid(),
-        role: 'system',
-        content: `Skill loaded: ${skillName}`,
-        timestamp: Date.now(),
-      },
-    ]
 
     if (args?.trim()) {
       await this.sendMessage(args.trim())
@@ -665,8 +757,11 @@ export class AgentService {
     await this.saveCurrentChat()
     this.abort()
     this.abortBackground()
-    this.internalMessages = []
+    this.allInternalMessages = []
+    this.allChatMessages = []
+    this.activeLeafId = null
     this.messages.value = []
+    this.allMessages.value = []
     this.streamingContent.value = ''
     this.streamingThinking.value = ''
     this.pendingToolCalls.value = []
@@ -682,10 +777,31 @@ export class AgentService {
     this.allowFetch.value = config.allowFetch
     this.allowWiseModel.value = config.allowWiseModel
     this.allowImageGeneration.value = config.allowImageGeneration
+    this.allowEvalJs.value = config.allowEvalJs
+    // Reset scope from defaults
+    const scope = ScopeResolver.getInstance()
+    scope.clear()
+    scope.setFullVaultAccess(config.defaultFullVaultAccess)
+    for (const entry of config.defaultScope || []) {
+      switch (entry.type) {
+        case 'file':
+          scope.addFile(entry.path)
+          break
+        case 'folder':
+          scope.addFolder(entry.path)
+          break
+        case 'pattern':
+          scope.addPattern(entry.path)
+          break
+        case 'group':
+          scope.addGroup(entry.path)
+          break
+      }
+    }
   }
 
   async saveCurrentChat(): Promise<void> {
-    if (this.messages.value.length === 0) return
+    if (this.allChatMessages.length === 0) return
 
     const config = AbeleConfig.getInstance().ai
     const title = this.chatTitle || this.fallbackTitle()
@@ -708,31 +824,48 @@ export class AgentService {
       allowFetch: this.allowFetch.value,
       allowWiseModel: this.allowWiseModel.value,
       allowImageGeneration: this.allowImageGeneration.value,
+      allowEvalJs: this.allowEvalJs.value,
+      activeLeafId: this.activeLeafId || undefined,
     }
 
     this.currentChatFile.value = await ChatStorage.getInstance().saveChat(
-      this.messages.value,
+      this.allChatMessages,
       metadata,
       this.currentChatFile.value || undefined,
-      this.internalMessages
+      this.allInternalMessages
     )
   }
 
   async loadChat(file: TFile): Promise<void> {
     await this.newChat()
     const result = await ChatStorage.getInstance().loadChat(file)
-    this.messages.value = result.messages.map((m) => (m.id ? m : { ...m, id: nanoid() }))
+
+    // Ensure all messages have IDs
+    this.allChatMessages = result.messages.map((m) => (m.id ? m : { ...m, id: nanoid() }))
+    this.allInternalMessages = result.internalMessages || []
     this.currentChatFile.value = file
     this.chatTitle = result.metadata?.title || ''
     this.chatCreated = result.metadata?.created || ''
 
-    // Count existing user messages for title generation logic
-    this.userMessageCount = result.messages.filter((m) => m.role === 'user').length
-
-    // Restore internal messages (old chats without them will have no model context)
-    if (result.internalMessages?.length) {
-      this.internalMessages = result.internalMessages
+    // Migrate old flat format → tree format once, then resave
+    const needsMigration =
+      this.allChatMessages.length > 1 && !this.allChatMessages.some((m) => m.parentId)
+    if (needsMigration) {
+      backfillParentIds(this.allChatMessages)
+      backfillChatMessageIds(this.allChatMessages, this.allInternalMessages)
     }
+
+    // Resolve active branch
+    this.activeLeafId =
+      result.metadata?.activeLeafId || findDefaultLeaf(this.allChatMessages)?.id || null
+    this.updateVisibleMessages()
+
+    if (needsMigration) {
+      await this.saveCurrentChat()
+    }
+
+    // Count existing user messages for title generation logic
+    this.userMessageCount = this.messages.value.filter((m) => m.role === 'user').length
 
     // Restore per-chat permissions (fallback to defaults for old chats)
     const config = AbeleConfig.getInstance().ai
@@ -741,6 +874,7 @@ export class AgentService {
     this.allowWiseModel.value = result.metadata?.allowWiseModel ?? config.allowWiseModel
     this.allowImageGeneration.value =
       result.metadata?.allowImageGeneration ?? config.allowImageGeneration
+    this.allowEvalJs.value = result.metadata?.allowEvalJs ?? config.allowEvalJs
 
     // Restore pending tool calls from metadata
     if (result.metadata?.pendingToolCalls?.length) {
@@ -833,7 +967,7 @@ export class AgentService {
   }
 
   async compact(): Promise<void> {
-    if (this.internalMessages.length === 0) return
+    if (this.allInternalMessages.length === 0) return
     if (this.isStreaming.value || this.isCompacting.value || this.isGeneratingTitle.value) return
 
     this.isCompacting.value = true
@@ -898,15 +1032,6 @@ export class AgentService {
       summary = summary.trim()
       if (!summary) return
 
-      // Append compact marker at the end of current history
-      const insertAt = this.internalMessages.length
-      const compactMarker: Message = {
-        role: 'system',
-        content: `${AgentService.COMPACT_MARKER}\n\n${summary}`,
-        timestamp: Date.now(),
-      }
-      this.internalMessages.splice(insertAt, 0, compactMarker)
-
       // Insert a visual divider in UI messages
       const divider: ChatMessage = {
         id: nanoid(),
@@ -914,7 +1039,17 @@ export class AgentService {
         content: summary,
         timestamp: Date.now(),
       }
-      this.messages.value = [...this.messages.value, divider]
+      this.appendChatMessage(divider)
+      this.updateVisibleMessages()
+
+      // Append compact marker to internal messages, linked to the divider
+      const compactMarker: Message = {
+        role: 'system',
+        content: `${AgentService.COMPACT_MARKER}\n\n${summary}`,
+        timestamp: Date.now(),
+        chatMessageId: divider.id,
+      }
+      this.allInternalMessages.push(compactMarker)
 
       await this.saveCurrentChat()
     } catch (err: unknown) {
@@ -958,11 +1093,25 @@ export class AgentService {
     return {
       systemPrompt: this.getSystemPrompt(),
       tools,
-      internalMessages: this.internalMessages,
+      internalMessages: this.allInternalMessages,
       pendingToolCalls: this.pendingToolCalls.value.length
         ? this.pendingToolCalls.value
         : undefined,
     }
+  }
+
+  createBranch(messageId: string): void {
+    if (this.isStreaming.value || this.pendingToolCalls.value.length > 0) return
+    this.activeLeafId = messageId
+    this.updateVisibleMessages()
+  }
+
+  switchBranch(messageId: string): void {
+    if (this.isStreaming.value) return
+    const leaf = findDeepestLeaf(this.allChatMessages, messageId)
+    this.activeLeafId = leaf.id
+    this.updateVisibleMessages()
+    this.saveCurrentChat()
   }
 
   switchModel(providerId: string, modelId: string): void {
@@ -975,8 +1124,11 @@ export class AgentService {
   destroy(): void {
     this.abort()
     this.abortBackground()
-    this.internalMessages = []
+    this.allInternalMessages = []
+    this.allChatMessages = []
+    this.activeLeafId = null
     this.messages.value = []
+    this.allMessages.value = []
     this.pendingToolCalls.value = []
     this.currentChatFile.value = null
     AgentService.instance = null
