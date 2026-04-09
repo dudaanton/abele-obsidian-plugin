@@ -37,7 +37,7 @@
           >
         </span>
         <img
-          v-if="message.toolName === 'read_image' && message.toolStatus === 'approved' && imageUrl"
+          v-if="message.toolStatus === 'approved' && imageUrl"
           :src="imageUrl"
           class="abele-chat-msg__image-preview"
         />
@@ -166,10 +166,28 @@ const openToolFile = () => {
   }
 }
 
+const IMAGE_TOOLS = ['read_image', 'generate_image', 'edit_image']
+
 const imageUrl = computed(() => {
-  if (props.message.toolName !== 'read_image') return ''
-  const path = props.message.toolParams?.path as string
-  if (!path) return ''
+  const name = props.message.toolName
+  if (!name || !IMAGE_TOOLS.includes(name)) return ''
+
+  // read_image: path is in toolParams
+  if (name === 'read_image') {
+    const path = props.message.toolParams?.path as string
+    if (!path) return ''
+    const { app } = GlobalStore.getInstance()
+    const file = app.vault.getAbstractFileByPath(path)
+    if (!(file instanceof TFile)) return ''
+    return app.vault.getResourcePath(file)
+  }
+
+  // generate_image / edit_image: extract saved path from toolResult
+  const result = props.message.toolResult
+  if (!result) return ''
+  const match = result.match(/(?:Image saved|Edited image saved): (.+)/)
+  if (!match) return ''
+  const path = match[1].trim()
   const { app } = GlobalStore.getInstance()
   const file = app.vault.getAbstractFileByPath(path)
   if (!(file instanceof TFile)) return ''
@@ -482,7 +500,7 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   color: var(--text-faint);
 }
 
-body.is-mobile {
+@container (max-width: 450px) {
   .abele-chat-msg__time {
     display: none;
   }

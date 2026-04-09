@@ -224,6 +224,41 @@
         </div>
       </Setting>
 
+      <Setting
+        name="OpenRouter API Key"
+        desc="Used for image generation/editing. Stored securely in keychain."
+      >
+        <div class="abele-ai-provider__secret">
+          <span v-if="getSecretDisplay(openRouterApiKey)" class="abele-ai-provider__secret-mask">
+            {{ getSecretDisplay(openRouterApiKey) }}
+          </span>
+          <div class="abele-ai-provider__secret-row">
+            <input
+              type="password"
+              class="abele-ai-provider__secret-input"
+              :value="openRouterSecretInput"
+              :placeholder="getSecretDisplay(openRouterApiKey) ? 'New key...' : 'sk-or-...'"
+              @input="openRouterSecretInput = ($event.target as HTMLInputElement).value"
+              @keydown.enter="applyOpenRouterSecret"
+            />
+            <Icon
+              v-if="openRouterSecretInput"
+              icon="check"
+              with-bg
+              @click="applyOpenRouterSecret"
+            />
+          </div>
+        </div>
+      </Setting>
+
+      <Setting name="Image Model" desc="OpenRouter model for image generation/editing.">
+        <Input
+          :model-value="imageModel"
+          placeholder="google/gemini-2.5-flash-preview:thinking"
+          @update:model-value="updateImageModel"
+        />
+      </Setting>
+
       <h3>Default Permissions</h3>
 
       <Setting
@@ -247,6 +282,16 @@
         <Checkbox :is-enabled="defaultAllowWiseModel" @toggle="toggleDefault('allowWiseModel')" />
       </Setting>
 
+      <Setting
+        name="Allow image generation"
+        desc="Default for new chats. Can be changed per chat in the scope manager."
+      >
+        <Checkbox
+          :is-enabled="defaultAllowImageGeneration"
+          @toggle="toggleDefault('allowImageGeneration')"
+        />
+      </Setting>
+
       <h3>Prompts</h3>
 
       <Setting name="System Prompt (base)" desc="The base system prompt sent to the AI agent.">
@@ -255,18 +300,6 @@
           as-text-area
           :placeholder="defaultPrompts.system"
           @update:model-value="updatePrompt('system', $event)"
-        />
-      </Setting>
-
-      <Setting
-        name="Custom Instructions"
-        desc="Additional instructions appended to the base system prompt."
-      >
-        <Input
-          :model-value="systemPrompt"
-          as-text-area
-          placeholder="Additional instructions for the AI agent..."
-          @update:model-value="updateField('systemPrompt', $event)"
         />
       </Setting>
 
@@ -373,12 +406,15 @@ const migrateChats = async () => {
 const defaultAllowWebSearch = ref(config.ai.allowWebSearch)
 const defaultAllowFetch = ref(config.ai.allowFetch)
 const defaultAllowWiseModel = ref(config.ai.allowWiseModel)
+const defaultAllowImageGeneration = ref(config.ai.allowImageGeneration)
 
 const enabled = ref(config.ai.enabled)
 const providers = ref<AiProvider[]>(JSON.parse(JSON.stringify(config.ai.providers)))
 const chatFolder = ref(config.ai.chatFolder)
 const braveSearchApiKey = ref(config.ai.braveSearchApiKey)
-const systemPrompt = ref(config.ai.systemPrompt)
+const openRouterApiKey = ref(config.ai.openRouterApiKey)
+const imageModel = ref(config.ai.imageModel)
+const openRouterSecretInput = ref('')
 const activeProviderId = ref(config.ai.activeProviderId)
 const activeModelId = ref(config.ai.activeModelId)
 const auxiliaryModelId = ref(config.ai.auxiliaryModelId)
@@ -453,10 +489,12 @@ const save = debounce(async () => {
     allowWebSearch: defaultAllowWebSearch.value,
     allowFetch: defaultAllowFetch.value,
     allowWiseModel: defaultAllowWiseModel.value,
+    allowImageGeneration: defaultAllowImageGeneration.value,
     chatFolder: chatFolder.value,
     chatHistory: config.ai.chatHistory || [],
     braveSearchApiKey: braveSearchApiKey.value,
-    systemPrompt: systemPrompt.value,
+    openRouterApiKey: openRouterApiKey.value,
+    imageModel: imageModel.value,
     prompts: JSON.parse(JSON.stringify(prompts.value)),
   }
   await config.saveSettings()
@@ -472,10 +510,14 @@ const toggleSequentialAuxiliary = () => {
   save()
 }
 
-const toggleDefault = (key: 'allowWebSearch' | 'allowFetch' | 'allowWiseModel') => {
+const toggleDefault = (
+  key: 'allowWebSearch' | 'allowFetch' | 'allowWiseModel' | 'allowImageGeneration'
+) => {
   if (key === 'allowWebSearch') defaultAllowWebSearch.value = !defaultAllowWebSearch.value
   if (key === 'allowFetch') defaultAllowFetch.value = !defaultAllowFetch.value
   if (key === 'allowWiseModel') defaultAllowWiseModel.value = !defaultAllowWiseModel.value
+  if (key === 'allowImageGeneration')
+    defaultAllowImageGeneration.value = !defaultAllowImageGeneration.value
   save()
 }
 
@@ -509,6 +551,19 @@ const applyBraveSecret = () => {
   braveSearchApiKey.value = 'abele-brave-search'
   app.secretStorage.setSecret('abele-brave-search', braveSecretInput.value)
   braveSecretInput.value = ''
+  save()
+}
+
+const updateImageModel = (val: string) => {
+  imageModel.value = val
+  save()
+}
+
+const applyOpenRouterSecret = () => {
+  if (!openRouterSecretInput.value) return
+  openRouterApiKey.value = 'abele-openrouter'
+  app.secretStorage.setSecret('abele-openrouter', openRouterSecretInput.value)
+  openRouterSecretInput.value = ''
   save()
 }
 
@@ -641,9 +696,6 @@ const updateField = (field: string, value: string) => {
   switch (field) {
     case 'chatFolder':
       chatFolder.value = value
-      break
-    case 'systemPrompt':
-      systemPrompt.value = value
       break
   }
   save()

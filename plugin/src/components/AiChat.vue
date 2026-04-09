@@ -399,6 +399,7 @@ const showDebug = () => {
   flex-direction: column;
   padding-bottom: var(--status-bar-height, 22px);
   box-sizing: border-box;
+  container-type: inline-size;
   background-color: var(--background-primary);
 
   body.is-mobile & {

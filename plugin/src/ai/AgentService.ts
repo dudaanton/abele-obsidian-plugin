@@ -68,6 +68,7 @@ export class AgentService {
   public readonly allowWebSearch = ref(true)
   public readonly allowFetch = ref(false)
   public readonly allowWiseModel = ref(false)
+  public readonly allowImageGeneration = ref(false)
 
   static getInstance(): AgentService {
     if (!AgentService.instance) {
@@ -127,7 +128,7 @@ export class AgentService {
   private getSystemPrompt(): string {
     const config = AbeleConfig.getInstance().ai
     const base = config.prompts?.system || DEFAULT_AI_SETTINGS.prompts.system
-    const raw = config.systemPrompt ? `${base}\n\n${config.systemPrompt}` : base
+    const raw = base
     return raw.replace(/\{\{date\}\}/g, dayjs().format('YYYY-MM-DD'))
   }
 
@@ -154,6 +155,8 @@ export class AgentService {
     if (toolName === 'web_search') return !this.allowWebSearch.value
     if (toolName === 'fetch') return !this.allowFetch.value
     if (toolName === 'wise_model') return !this.allowWiseModel.value
+    if (toolName === 'generate_image' || toolName === 'edit_image')
+      return !this.allowImageGeneration.value
     // read_image: auto-approve if the image is in workspace scope
     if (toolName === 'read_image' && args?.path) {
       return !ScopeResolver.getInstance().isInScope(args.path as string)
@@ -678,6 +681,7 @@ export class AgentService {
     this.allowWebSearch.value = config.allowWebSearch
     this.allowFetch.value = config.allowFetch
     this.allowWiseModel.value = config.allowWiseModel
+    this.allowImageGeneration.value = config.allowImageGeneration
   }
 
   async saveCurrentChat(): Promise<void> {
@@ -703,14 +707,14 @@ export class AgentService {
       allowWebSearch: this.allowWebSearch.value,
       allowFetch: this.allowFetch.value,
       allowWiseModel: this.allowWiseModel.value,
+      allowImageGeneration: this.allowImageGeneration.value,
     }
 
     this.currentChatFile.value = await ChatStorage.getInstance().saveChat(
       this.messages.value,
       metadata,
       this.currentChatFile.value || undefined,
-      this.internalMessages,
-      this.getSystemPrompt()
+      this.internalMessages
     )
   }
 
@@ -735,6 +739,8 @@ export class AgentService {
     this.allowWebSearch.value = result.metadata?.allowWebSearch ?? config.allowWebSearch
     this.allowFetch.value = result.metadata?.allowFetch ?? config.allowFetch
     this.allowWiseModel.value = result.metadata?.allowWiseModel ?? config.allowWiseModel
+    this.allowImageGeneration.value =
+      result.metadata?.allowImageGeneration ?? config.allowImageGeneration
 
     // Restore pending tool calls from metadata
     if (result.metadata?.pendingToolCalls?.length) {

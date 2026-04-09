@@ -94,6 +94,13 @@
       <Setting name="Wise model" desc="Allow agent to consult the wise model without asking.">
         <Checkbox :is-enabled="allowWiseModel" @toggle="toggleSetting('allowWiseModel')" />
       </Setting>
+
+      <Setting name="Image generation" desc="Allow agent to generate/edit images without asking.">
+        <Checkbox
+          :is-enabled="allowImageGeneration"
+          @toggle="toggleSetting('allowImageGeneration')"
+        />
+      </Setting>
     </div>
   </ObsidianModal>
 </template>
@@ -138,7 +145,7 @@ const groupInputEl = ref<HTMLInputElement | null>(null)
 const patternInput = ref('')
 const agent = AgentService.getInstance()
 const permissionMode = ref(AbeleConfig.getInstance().ai.permissionMode)
-const { allowWebSearch, allowFetch, allowWiseModel } = agent
+const { allowWebSearch, allowFetch, allowWiseModel, allowImageGeneration } = agent
 const previewEntry = ref<ScopeEntry | null>(null)
 
 const resolvedCount = computed(() => scope.resolve().size)
@@ -237,7 +244,9 @@ const onPermissionChange = (value: string) => {
   config.saveSettings()
 }
 
-const toggleSetting = (key: 'allowWebSearch' | 'allowFetch' | 'allowWiseModel') => {
+const toggleSetting = (
+  key: 'allowWebSearch' | 'allowFetch' | 'allowWiseModel' | 'allowImageGeneration'
+) => {
   agent[key].value = !agent[key].value
 }
 </script>

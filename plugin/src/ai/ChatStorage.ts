@@ -12,7 +12,6 @@ interface ChatFile {
   metadata: ChatMetadata
   messages: ChatMessage[]
   internalMessages?: Message[]
-  systemPrompt?: string
 }
 
 export class ChatStorage {
@@ -39,11 +38,10 @@ export class ChatStorage {
     messages: ChatMessage[],
     metadata: ChatMetadata,
     existingFile?: TFile,
-    internalMessages?: Message[],
-    systemPrompt?: string
+    internalMessages?: Message[]
   ): Promise<TFile> {
     const { app } = GlobalStore.getInstance()
-    const data: ChatFile = { metadata, messages, internalMessages, systemPrompt }
+    const data: ChatFile = { metadata, messages, internalMessages }
     const content = JSON.stringify(data, null, 2)
 
     if (existingFile) {
@@ -75,7 +73,6 @@ export class ChatStorage {
     metadata: ChatMetadata | null
     messages: ChatMessage[]
     internalMessages?: Message[]
-    systemPrompt?: string
   }> {
     const { app } = GlobalStore.getInstance()
     const content = await app.vault.read(file)
@@ -85,7 +82,6 @@ export class ChatStorage {
         metadata: data.metadata,
         messages: data.messages || [],
         internalMessages: data.internalMessages,
-        systemPrompt: data.systemPrompt,
       }
     } catch {
       return { metadata: null, messages: [] }

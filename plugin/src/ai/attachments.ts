@@ -1,7 +1,7 @@
 import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { UserContentPart } from './client'
-import { isImagePath, VAULT_IMAGE_PREFIX } from './tools/ReadImageTool'
+import { isImagePath } from './tools/ReadImageTool'
 
 const MAX_TEXT_FILE_SIZE = 100 * 1024 // 100 KB
 
@@ -75,10 +75,7 @@ export async function resolveAttachmentsForApi(paths: string[]): Promise<UserCon
     }
 
     if (isImagePath(path)) {
-      parts.push({
-        type: 'image_url',
-        image_url: { url: `${VAULT_IMAGE_PREFIX}${path}` },
-      })
+      parts.push({ type: 'text', text: `[Attached image: ${path}]` })
     } else {
       try {
         let content = await app.vault.read(file)

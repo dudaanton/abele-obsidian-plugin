@@ -42,10 +42,12 @@ export interface AiSettings {
   allowWebSearch: boolean
   allowFetch: boolean
   allowWiseModel: boolean
+  allowImageGeneration: boolean
   chatFolder: string
   chatHistory: AiChatHistoryEntry[]
   braveSearchApiKey: string
-  systemPrompt: string
+  openRouterApiKey: string
+  imageModel: string
   prompts: AiPrompts
 }
 
@@ -61,10 +63,12 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   allowWebSearch: true,
   allowFetch: false,
   allowWiseModel: false,
+  allowImageGeneration: false,
   chatFolder: 'AI/Chats/{{name}}',
   chatHistory: [],
   braveSearchApiKey: '',
-  systemPrompt: '',
+  openRouterApiKey: '',
+  imageModel: 'google/gemini-2.5-flash-preview:thinking',
   prompts: {
     system:
       "You are an AI assistant integrated into Obsidian note-taking app through the Abele plugin. You can read, create, edit, delete, and move files in the user's vault. You can also search the web.\n\nWhen working with files, always explain what you're about to do before doing it. Be concise but thorough.",
@@ -91,6 +95,10 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
         'Send an HTTP request to any URL. Supports all methods, custom headers, and request body. Returns status code and response.',
       wise_model:
         'Consult a more powerful AI model for complex analysis, evaluation, or reasoning. Use when the task requires deeper expertise.',
+      generate_image:
+        'Generate an image from a text prompt. The image is saved to the vault attachments folder. Returns the path of the saved image.',
+      edit_image:
+        'Edit an existing vault image using a text prompt. Provide the source image path and editing instructions. Returns the path of the edited image.',
     },
   },
 }
@@ -132,4 +140,5 @@ export interface ChatMetadata {
   allowWebSearch?: boolean
   allowFetch?: boolean
   allowWiseModel?: boolean
+  allowImageGeneration?: boolean
 }
