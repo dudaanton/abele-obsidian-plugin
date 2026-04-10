@@ -14,6 +14,7 @@ import { createPinia } from 'pinia'
 import VueEntry from './App.vue'
 import { AbeleConfig } from './services/AbeleConfig'
 import { createTask, createTaskAndInsert } from './commands/createTask'
+import { createTransaction, createTransactionAndInsert } from './commands/createTransaction'
 import {
   createNoteFromTemplate,
   replaceNoteWithTemplate,
@@ -38,6 +39,7 @@ import dayjs from 'dayjs'
 import { AbeleSettingTab } from './settings'
 import { createHeaderExtension } from './editor/HeaderExtension'
 import { migrateFromDataview } from './commands/migrateFromDataview'
+// migrateFromFirefly is triggered via modal
 import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
 import { readFileContent } from './helpers/vaultUtils'
 import { runAfterSync } from './helpers/runAfterSync'
@@ -95,6 +97,7 @@ export default class AbelePlugin extends Plugin {
     // and getFileCache() return complete data.
     this.app.workspace.onLayoutReady(() => {
       GlobalStore.getInstance().initTasksList()
+      GlobalStore.getInstance().initFinance()
     })
 
     this.addSettingTab(new AbeleSettingTab(this.app, this))
@@ -192,6 +195,30 @@ export default class AbelePlugin extends Plugin {
       name: 'Migrate tasks from Dataview to Abele',
       callback: () => {
         migrateFromDataview()
+      },
+    })
+
+    this.addCommand({
+      id: 'migrate-from-firefly',
+      name: 'Migrate data from Firefly III',
+      callback: () => {
+        GlobalStore.getInstance().migrateFromFireflyModalOpened.value = true
+      },
+    })
+
+    this.addCommand({
+      id: 'create-transaction',
+      name: 'Create new transaction',
+      callback: () => {
+        createTransaction()
+      },
+    })
+
+    this.addCommand({
+      id: 'create-transaction-and-insert-link',
+      name: 'Create new transaction and insert into current note',
+      editorCallback: (editor: Editor) => {
+        createTransactionAndInsert(editor)
       },
     })
 

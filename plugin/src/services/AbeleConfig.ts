@@ -18,6 +18,14 @@ export interface AbeleSettings {
   apiToken?: string // API authentication token
   // AI Agent settings
   ai?: AiSettings
+  // Finance settings
+  transactionPathTemplate?: string // Path template for new transactions
+  transactionTemplatePath?: string // Path to the template note for new transactions
+  accountsFolder?: string // Default folder for new accounts
+  financeCategoriesFolder?: string // Default folder for new finance categories
+  defaultCurrency?: string // Default currency code for new transactions
+  fireflyBaseUrl?: string // Firefly III instance base URL for migration
+  fireflyToken?: string // Firefly III Personal Access Token for migration
   // Other
   fullWidthSidebars?: boolean
 }
@@ -36,6 +44,13 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   baseUrl: '',
   apiToken: '',
   ai: { ...DEFAULT_AI_SETTINGS },
+  transactionPathTemplate: 'Finance/Transactions/{{date:YYYY/MM}}/{{title}}',
+  transactionTemplatePath: '',
+  accountsFolder: 'Finance/Accounts',
+  financeCategoriesFolder: 'Finance/Categories',
+  defaultCurrency: 'EUR',
+  fireflyBaseUrl: '',
+  fireflyToken: '',
   fullWidthSidebars: false,
 }
 
@@ -57,6 +72,13 @@ export class AbeleConfig {
   public baseUrl: string
   public apiToken: string
   public ai: AiSettings
+  public transactionPathTemplate: string
+  public transactionTemplatePath: string
+  public accountsFolder: string
+  public financeCategoriesFolder: string
+  public defaultCurrency: string
+  public fireflyBaseUrl: string
+  public fireflyToken: string
   public fullWidthSidebars: boolean
 
   public get logsNotesTypes(): string[] {
@@ -156,6 +178,16 @@ export class AbeleConfig {
     this.baseUrl = settings?.baseUrl || DEFAULT_SETTINGS.baseUrl
     this.apiToken = settings?.apiToken || DEFAULT_SETTINGS.apiToken
     this.ai = settings?.ai ? { ...DEFAULT_AI_SETTINGS, ...settings.ai } : { ...DEFAULT_AI_SETTINGS }
+    this.transactionPathTemplate =
+      settings?.transactionPathTemplate || DEFAULT_SETTINGS.transactionPathTemplate
+    this.transactionTemplatePath =
+      settings?.transactionTemplatePath ?? DEFAULT_SETTINGS.transactionTemplatePath
+    this.accountsFolder = settings?.accountsFolder || DEFAULT_SETTINGS.accountsFolder
+    this.financeCategoriesFolder =
+      settings?.financeCategoriesFolder || DEFAULT_SETTINGS.financeCategoriesFolder
+    this.defaultCurrency = settings?.defaultCurrency || DEFAULT_SETTINGS.defaultCurrency
+    this.fireflyBaseUrl = settings?.fireflyBaseUrl ?? DEFAULT_SETTINGS.fireflyBaseUrl
+    this.fireflyToken = settings?.fireflyToken ?? DEFAULT_SETTINGS.fireflyToken
     this.fullWidthSidebars = settings?.fullWidthSidebars ?? DEFAULT_SETTINGS.fullWidthSidebars
   }
 
@@ -174,6 +206,13 @@ export class AbeleConfig {
       baseUrl: this.baseUrl,
       apiToken: this.apiToken,
       ai: { ...this.ai },
+      transactionPathTemplate: this.transactionPathTemplate,
+      transactionTemplatePath: this.transactionTemplatePath,
+      accountsFolder: this.accountsFolder,
+      financeCategoriesFolder: this.financeCategoriesFolder,
+      defaultCurrency: this.defaultCurrency,
+      fireflyBaseUrl: this.fireflyBaseUrl,
+      fireflyToken: this.fireflyToken,
       fullWidthSidebars: this.fullWidthSidebars,
     }
   }
