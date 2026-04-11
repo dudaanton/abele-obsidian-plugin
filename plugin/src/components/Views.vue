@@ -32,6 +32,9 @@
   <Teleport v-if="aiSidebarId" :to="`[${AI_SIDEBAR_ID_ATTR}='${aiSidebarId}']`">
     <AiChatView />
   </Teleport>
+  <Teleport v-if="financeSidebarId" :to="`[${FINANCE_SIDEBAR_ID_ATTR}='${financeSidebarId}']`">
+    <FinanceSidebarView />
+  </Teleport>
   <FindAndReplaceModal
     v-if="findAndReplaceModalOpened"
     @close="findAndReplaceModalOpened = false"
@@ -76,7 +79,9 @@ import MigrateFromFireflyModal from './MigrateFromFireflyModal.vue'
 import { TIMELINE_SIDEBAR_ID_ATTR } from '@/views/TimelineSidebarView'
 import { TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'
 import { AI_SIDEBAR_ID_ATTR } from '@/views/AiSidebarView'
+import { FINANCE_SIDEBAR_ID_ATTR } from '@/views/FinanceSidebarView'
 import AiChatView from './AiChat.vue'
+import FinanceSidebarView from './FinanceSidebar.vue'
 import SettingsView from './settings/Settings.vue'
 import { SETTINGS_ID_ATTR } from '@/settings'
 
@@ -94,6 +99,7 @@ const {
   timelineSidebarId,
   todoSidebarId,
   aiSidebarId,
+  financeSidebarId,
   settingsTabId,
 } = GlobalStore.getInstance()
 </script>

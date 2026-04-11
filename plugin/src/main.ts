@@ -29,6 +29,11 @@ import { deduplicateMedia } from './commands/deduplicateMedia'
 import { TIMELINE_SIDEBAR_VIEW_TYPE, TimelineSidebarView } from './views/TimelineSidebarView'
 import { TODO_SIDEBAR_VIEW_TYPE, TodoSidebarView } from './views/TodoSidebarView'
 import { AI_SIDEBAR_VIEW_TYPE, AiSidebarView } from './views/AiSidebarView'
+import { FINANCE_SIDEBAR_VIEW_TYPE, FinanceSidebarView } from './views/FinanceSidebarView'
+import { BALANCE_CHART_VIEW_ID, BalanceChartView } from './bases/BalanceChartView'
+import { SPENDING_BREAKDOWN_VIEW_ID, SpendingBreakdownView } from './bases/SpendingBreakdownView'
+import { NET_WORTH_VIEW_ID, NetWorthView } from './bases/NetWorthView'
+import { CALENDAR_VIEW_ID, CalendarView } from './bases/CalendarView'
 import { AgentService } from './ai/AgentService'
 import { ScopeResolver } from './ai/ScopeResolver'
 import { ChatStorage } from './ai/ChatStorage'
@@ -40,6 +45,7 @@ import { AbeleSettingTab } from './settings'
 import { createHeaderExtension } from './editor/HeaderExtension'
 import { migrateFromDataview } from './commands/migrateFromDataview'
 // migrateFromFirefly is triggered via modal
+import { generateBaseFiles } from './commands/generateBaseFiles'
 import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
 import { readFileContent } from './helpers/vaultUtils'
 import { runAfterSync } from './helpers/runAfterSync'
@@ -106,9 +112,68 @@ export default class AbelePlugin extends Plugin {
 
     this.registerView(TIMELINE_SIDEBAR_VIEW_TYPE, (leaf) => new TimelineSidebarView(leaf, this.app))
     this.registerView(TODO_SIDEBAR_VIEW_TYPE, (leaf) => new TodoSidebarView(leaf, this.app))
+    this.registerView(FINANCE_SIDEBAR_VIEW_TYPE, (leaf) => new FinanceSidebarView(leaf, this.app))
 
     // AI sidebar is always registered so the view can be restored, but commands/ribbon are conditional
     this.registerView(AI_SIDEBAR_VIEW_TYPE, (leaf) => new AiSidebarView(leaf, this.app))
+
+    // Custom Bases view types for finance
+    this.registerBasesView(BALANCE_CHART_VIEW_ID, {
+      name: 'Balance Chart',
+      icon: 'line-chart',
+      factory: (controller, containerEl) => new BalanceChartView(controller, containerEl),
+      options: () => [
+        {
+          key: 'daysBack',
+          type: 'slider',
+          displayName: 'Days back',
+          default: 90,
+          min: 7,
+          max: 365,
+          step: 7,
+        },
+      ],
+    })
+
+    this.registerBasesView(SPENDING_BREAKDOWN_VIEW_ID, {
+      name: 'Spending Breakdown',
+      icon: 'bar-chart-horizontal',
+      factory: (controller, containerEl) => new SpendingBreakdownView(controller, containerEl),
+      options: () => [
+        {
+          key: 'daysBack',
+          type: 'slider',
+          displayName: 'Days back (0 = current month)',
+          default: 0,
+          min: 0,
+          max: 365,
+          step: 7,
+        },
+      ],
+    })
+
+    this.registerBasesView(NET_WORTH_VIEW_ID, {
+      name: 'Net Worth',
+      icon: 'trending-up',
+      factory: (controller, containerEl) => new NetWorthView(controller, containerEl),
+      options: () => [
+        {
+          key: 'daysBack',
+          type: 'slider',
+          displayName: 'Trend days back',
+          default: 90,
+          min: 7,
+          max: 365,
+          step: 7,
+        },
+      ],
+    })
+
+    this.registerBasesView(CALENDAR_VIEW_ID, {
+      name: 'Spending Calendar',
+      icon: 'calendar',
+      factory: (controller, containerEl) => new CalendarView(controller, containerEl),
+    })
 
     this.initializeVue()
 
@@ -223,6 +288,14 @@ export default class AbelePlugin extends Plugin {
     })
 
     this.addCommand({
+      id: 'generate-finance-base-files',
+      name: 'Generate finance .base files',
+      callback: () => {
+        generateBaseFiles()
+      },
+    })
+
+    this.addCommand({
       id: 'show-timeline-sidebar',
       name: 'Show timeline sidebar',
       callback: () => {
@@ -235,6 +308,14 @@ export default class AbelePlugin extends Plugin {
       name: 'Show TODO sidebar',
       callback: () => {
         this.activateView(TODO_SIDEBAR_VIEW_TYPE)
+      },
+    })
+
+    this.addCommand({
+      id: 'show-finance-sidebar',
+      name: 'Show finance sidebar',
+      callback: () => {
+        this.activateView(FINANCE_SIDEBAR_VIEW_TYPE)
       },
     })
 
@@ -276,6 +357,10 @@ export default class AbelePlugin extends Plugin {
 
     this.addRibbonIcon(TodoSidebarView.getIcon(), 'Show todo sidebar', () => {
       this.activateView(TODO_SIDEBAR_VIEW_TYPE)
+    })
+
+    this.addRibbonIcon(FinanceSidebarView.getIcon(), 'Show finance sidebar', () => {
+      this.activateView(FINANCE_SIDEBAR_VIEW_TYPE)
     })
 
     // AI Agent — conditional on settings
