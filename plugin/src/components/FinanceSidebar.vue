@@ -77,6 +77,24 @@
           </span>
         </div>
       </div>
+      <div class="abele-finance-sidebar__pie-tabs">
+        <div
+          class="abele-finance-sidebar__pie-tab"
+          :class="{ 'abele-finance-sidebar__pie-tab--active': pieTab === 'expenses' }"
+          @click="pieTab = 'expenses'"
+        >
+          Expenses
+        </div>
+        <div
+          class="abele-finance-sidebar__pie-tab"
+          :class="{ 'abele-finance-sidebar__pie-tab--active': pieTab === 'income' }"
+          @click="pieTab = 'income'"
+        >
+          Income
+        </div>
+      </div>
+      <div v-if="pieData.length" ref="pieChartEl" class="abele-finance-sidebar__pie-chart" />
+      <div v-else class="abele-finance-sidebar__pie-empty">No data</div>
     </section>
 
     <!-- Recent Transactions -->
@@ -341,6 +359,8 @@ onUnmounted(() => {
   for (const obs of chartObservers.values()) obs.disconnect()
   chartInstances.clear()
   chartObservers.clear()
+  pieChart?.dispose()
+  pieObserver?.disconnect()
 })
 
 // --- Period Summary ---
@@ -382,31 +402,133 @@ function goToCurrentMonth() {
   selectedYear.value = dayjs().year()
 }
 
+interface PieItem {
+  name: string
+  value: number
+}
+
 const periodTotals = computed(() => {
   const bi = toRaw(balanceIndex.value) as BalanceIndex | null
   const al = accountsList.value
-  if (!bi || !al) return { income: 0, expenses: 0 }
+  if (!bi || !al)
+    return {
+      income: 0,
+      expenses: 0,
+      expenseBreakdown: [] as PieItem[],
+      incomeBreakdown: [] as PieItem[],
+    }
 
   const start = periodStart.value.subtract(1, 'day')
   const end = periodEnd.value
 
   let income = 0
   let expenses = 0
+  const expenseBreakdown: PieItem[] = []
+  const incomeBreakdown: PieItem[] = []
 
   for (const [path, account] of al.accounts) {
     if (account.accountType === 'expense') {
-      expenses += bi.getBalanceAtDate(path, end) - bi.getBalanceAtDate(path, start)
+      const total = bi.getBalanceAtDate(path, end) - bi.getBalanceAtDate(path, start)
+      expenses += total
+      if (total > 0) {
+        expenseBreakdown.push({
+          name: account.accountName || account.title || path.split('/').pop() || path,
+          value: Math.round(total * 100) / 100,
+        })
+      }
     } else if (account.accountType === 'revenue') {
-      income += bi.getBalanceAtDate(path, start) - bi.getBalanceAtDate(path, end)
+      const total = bi.getBalanceAtDate(path, start) - bi.getBalanceAtDate(path, end)
+      income += total
+      if (total > 0) {
+        incomeBreakdown.push({
+          name: account.accountName || account.title || path.split('/').pop() || path,
+          value: Math.round(total * 100) / 100,
+        })
+      }
     }
   }
 
-  return { income, expenses }
+  expenseBreakdown.sort((a, b) => b.value - a.value)
+  incomeBreakdown.sort((a, b) => b.value - a.value)
+
+  return { income, expenses, expenseBreakdown, incomeBreakdown }
 })
 
 const periodIncome = computed(() => periodTotals.value.income)
 const periodExpenses = computed(() => periodTotals.value.expenses)
 const periodSavings = computed(() => periodIncome.value - periodExpenses.value)
+
+// --- Pie Chart ---
+
+const pieTab = ref<'expenses' | 'income'>('expenses')
+const pieChartEl = ref<HTMLElement | null>(null)
+let pieChart: EChartsType | null = null
+let pieObserver: ResizeObserver | null = null
+
+const pieData = computed(() =>
+  pieTab.value === 'expenses'
+    ? periodTotals.value.expenseBreakdown
+    : periodTotals.value.incomeBreakdown
+)
+
+function renderPieChart() {
+  if (!pieChartEl.value) {
+    pieChart?.dispose()
+    pieChart = null
+    pieObserver?.disconnect()
+    pieObserver = null
+    return
+  }
+
+  if (!pieChart || pieChart.isDisposed()) {
+    pieChart = echartsInit(pieChartEl.value)
+    pieObserver = new ResizeObserver(() => pieChart?.resize())
+    pieObserver.observe(pieChartEl.value)
+  }
+
+  const colors = getThemeColors()
+  const data = pieData.value
+
+  if (!data.length) {
+    pieChart.clear()
+    return
+  }
+
+  pieChart.setOption(
+    {
+      animation: false,
+      tooltip: {
+        trigger: 'item',
+        enterable: false,
+        confine: true,
+        formatter: (p: any) =>
+          `${p.marker} ${p.name}: ${p.value.toLocaleString(undefined, { minimumFractionDigits: 2 })} (${p.percent}%)`,
+      },
+      series: [
+        {
+          type: 'pie',
+          radius: ['35%', '60%'],
+          center: ['50%', '50%'],
+          itemStyle: {
+            borderWidth: 2,
+            borderColor: getComputedStyle(document.body)
+              .getPropertyValue('--background-primary')
+              .trim(),
+          },
+          emphasis: { disabled: true },
+          label: {
+            color: colors.text,
+            formatter: '{b}',
+          },
+          data,
+        },
+      ],
+    },
+    true
+  )
+}
+
+watch([pieData, pieChartEl], () => nextTick(renderPieChart), { immediate: true })
 
 // --- Recent Transactions ---
 
@@ -650,6 +772,54 @@ function fmtShort(n: number): string {
 
 .abele-finance-sidebar__summary-value--expense {
   color: var(--text-error);
+}
+
+// --- Pie Chart ---
+
+.abele-finance-sidebar__pie-tabs {
+  display: flex;
+  gap: var(--size-4-1);
+  margin-top: calc(var(--p-spacing) * 1.5);
+}
+
+.abele-finance-sidebar__pie-empty {
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  font-size: var(--font-ui-small);
+  font-style: italic;
+}
+
+.abele-finance-sidebar__pie-tab {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: var(--size-2-1) var(--size-4-2);
+  border-radius: var(--radius-s);
+
+  &:hover {
+    color: var(--text-normal);
+    background-color: var(--background-modifier-hover);
+  }
+
+  &--active {
+    color: var(--text-normal);
+    font-weight: var(--font-semibold);
+    background-color: var(--background-modifier-hover);
+  }
+}
+
+.abele-finance-sidebar__pie-chart {
+  width: 100%;
+  max-width: 100%;
+  height: 220px;
+  margin-top: var(--size-4-1);
+
+  canvas {
+    max-width: 100% !important;
+  }
 }
 
 // --- Transactions ---
