@@ -40,7 +40,13 @@
 
     <!-- Period Summary -->
     <section class="abele-finance-sidebar__section">
-      <h3 class="abele-finance-sidebar__section-title">{{ currentMonthLabel }}</h3>
+      <div class="abele-finance-sidebar__period-header">
+        <ObsidianIcon icon="chevron-left" @click="previousMonth()" />
+        <div class="abele-finance-sidebar__period-title" @click="goToCurrentMonth()">
+          {{ periodLabel }}
+        </div>
+        <ObsidianIcon icon="chevron-right" @click="nextMonth()" />
+      </div>
       <div class="abele-finance-sidebar__summary">
         <div class="abele-finance-sidebar__summary-row">
           <span class="abele-finance-sidebar__summary-label">Income</span>
@@ -291,8 +297,14 @@ function applyMiniChartOption(chart: EChartsType, card: CurrencyCard) {
   })
 }
 
+const chartElements = new Map<string, HTMLElement>()
+
 function setChartRef(currency: string, el: HTMLElement | null) {
   if (!el) return
+
+  // Skip if same element already has a chart
+  if (chartElements.get(currency) === el && chartInstances.has(currency)) return
+  chartElements.set(currency, el)
 
   // Dispose old
   chartInstances.get(currency)?.dispose()
@@ -333,48 +345,67 @@ onUnmounted(() => {
 
 // --- Period Summary ---
 
-const currentMonthLabel = computed(() => dayjs().format('MMMM YYYY'))
-const periodStart = computed(() => dayjs().startOf('month'))
-const periodEnd = computed(() => dayjs().endOf('month'))
+const selectedMonth = ref(dayjs().month())
+const selectedYear = ref(dayjs().year())
 
-const periodIncome = computed(() => {
-  const bi = balanceIndex.value
+const periodLabel = computed(() =>
+  dayjs().year(selectedYear.value).month(selectedMonth.value).format('MMMM YYYY')
+)
+
+const periodStart = computed(() =>
+  dayjs().year(selectedYear.value).month(selectedMonth.value).startOf('month')
+)
+const periodEnd = computed(() =>
+  dayjs().year(selectedYear.value).month(selectedMonth.value).endOf('month')
+)
+
+function previousMonth() {
+  if (selectedMonth.value === 0) {
+    selectedMonth.value = 11
+    selectedYear.value -= 1
+  } else {
+    selectedMonth.value -= 1
+  }
+}
+
+function nextMonth() {
+  if (selectedMonth.value === 11) {
+    selectedMonth.value = 0
+    selectedYear.value += 1
+  } else {
+    selectedMonth.value += 1
+  }
+}
+
+function goToCurrentMonth() {
+  selectedMonth.value = dayjs().month()
+  selectedYear.value = dayjs().year()
+}
+
+const periodTotals = computed(() => {
+  const bi = toRaw(balanceIndex.value) as BalanceIndex | null
   const al = accountsList.value
-  if (!bi || !al) return 0
+  if (!bi || !al) return { income: 0, expenses: 0 }
+
+  const start = periodStart.value.subtract(1, 'day')
+  const end = periodEnd.value
 
   let income = 0
-  for (const [path, account] of al.accounts) {
-    if (account.accountType === 'revenue') {
-      income += bi.getTotalForPeriod({
-        startDate: periodStart.value,
-        endDate: periodEnd.value,
-        accountPath: path,
-        direction: 'from',
-      })
-    }
-  }
-  return income
-})
-
-const periodExpenses = computed(() => {
-  const bi = balanceIndex.value
-  const al = accountsList.value
-  if (!bi || !al) return 0
-
   let expenses = 0
+
   for (const [path, account] of al.accounts) {
     if (account.accountType === 'expense') {
-      expenses += bi.getTotalForPeriod({
-        startDate: periodStart.value,
-        endDate: periodEnd.value,
-        accountPath: path,
-        direction: 'to',
-      })
+      expenses += bi.getBalanceAtDate(path, end) - bi.getBalanceAtDate(path, start)
+    } else if (account.accountType === 'revenue') {
+      income += bi.getBalanceAtDate(path, start) - bi.getBalanceAtDate(path, end)
     }
   }
-  return expenses
+
+  return { income, expenses }
 })
 
+const periodIncome = computed(() => periodTotals.value.income)
+const periodExpenses = computed(() => periodTotals.value.expenses)
 const periodSavings = computed(() => periodIncome.value - periodExpenses.value)
 
 // --- Recent Transactions ---
@@ -560,6 +591,28 @@ function fmtShort(n: number): string {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin: 0 0 var(--size-4-2) 0;
+}
+
+// --- Period Header ---
+
+.abele-finance-sidebar__period-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--size-4-2);
+}
+
+.abele-finance-sidebar__period-title {
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text-accent);
+  }
 }
 
 // --- Summary ---

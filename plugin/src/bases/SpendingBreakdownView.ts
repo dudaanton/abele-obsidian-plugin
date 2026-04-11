@@ -45,15 +45,11 @@ export class SpendingBreakdownView extends BasesView {
     const startDate = daysBack > 0 ? endDate.subtract(daysBack, 'day') : endDate.startOf('month')
 
     const items: Array<{ name: string; value: number }> = []
+    const beforeStart = startDate.subtract(1, 'day')
 
     for (const [path, account] of al.accounts) {
       if (account.accountType !== 'expense') continue
-      const total = bi.getTotalForPeriod({
-        startDate,
-        endDate,
-        accountPath: path,
-        direction: 'to',
-      })
+      const total = bi.getBalanceAtDate(path, endDate) - bi.getBalanceAtDate(path, beforeStart)
       if (total > 0) {
         items.push({
           name: account.accountName || account.title || path.split('/').pop() || path,
