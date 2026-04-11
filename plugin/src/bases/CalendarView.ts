@@ -4,7 +4,7 @@ import { TransactionsList } from '@/entities/TransactionsList'
 import { AccountsList } from '@/entities/AccountsList'
 import { DATE_FORMAT } from '@/constants/dates'
 import { wikilinkToPath } from '@/helpers/pathsHelpers'
-import { echartsInit, EChartsType } from './echarts'
+import { echartsInit, getThemeColors, EChartsType } from './echarts'
 import { toRaw } from 'vue'
 import dayjs from 'dayjs'
 
@@ -156,6 +156,15 @@ export class CalendarView extends BasesView {
     chartDiv.style.width = '100%'
     chartDiv.style.height = '220px'
 
+    const colors = getThemeColors()
+    const bgPrimary = getComputedStyle(document.body)
+      .getPropertyValue('--background-primary')
+      .trim()
+
+    // Build a gradient: transparent → expense color with increasing opacity
+    const isDark = document.body.classList.contains('theme-dark')
+    const emptyColor = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'
+
     this.chart = echartsInit(chartDiv)
 
     this.chart.setOption({
@@ -168,9 +177,9 @@ export class CalendarView extends BasesView {
           }
           let html = `<b>${dateStr}</b>`
           if (data.income > 0)
-            html += `<br/><span style="color:#22c55e">+${fmt(data.income)}</span>`
+            html += `<br/><span style="color:${colors.income}">+${fmt(data.income)}</span>`
           if (data.expense > 0)
-            html += `<br/><span style="color:#ef4444">-${fmt(data.expense)}</span>`
+            html += `<br/><span style="color:${colors.expense}">-${fmt(data.expense)}</span>`
           return html
         },
       },
@@ -179,7 +188,7 @@ export class CalendarView extends BasesView {
         min: 0,
         max: maxExpense,
         inRange: {
-          color: ['#f0f0f0', '#fecaca', '#f87171', '#dc2626'],
+          color: [emptyColor, colors.expense + '40', colors.expense + '80', colors.expense],
         },
       },
       calendar: {
@@ -192,14 +201,14 @@ export class CalendarView extends BasesView {
         dayLabel: {
           firstDay: GlobalStore.getInstance().weekStartsOnMonday.value ? 1 : 0,
           nameMap: 'en',
-          fontSize: 11,
+          color: colors.textFaint,
         },
         monthLabel: { show: false },
         yearLabel: { show: false },
         splitLine: { lineStyle: { color: 'transparent' } },
         itemStyle: {
           borderWidth: 2,
-          borderColor: 'var(--background-primary)',
+          borderColor: bgPrimary,
           borderRadius: 4,
         },
       },
@@ -210,6 +219,7 @@ export class CalendarView extends BasesView {
           data: expenseData,
           label: {
             show: true,
+            color: colors.text,
             formatter: (params: any) => {
               const data = dayTotals.get(params.data[0])
               if (!data) return ''

@@ -1,5 +1,12 @@
 <template>
   <div class="abele-finance-sidebar">
+    <div class="abele-finance-sidebar__header">
+      <div class="abele-finance-sidebar__header-left">
+        <div class="abele-finance-sidebar__header-text">Transactions</div>
+        <ObsidianIcon icon="banknote-arrow-down" @click="createTransaction()" />
+      </div>
+    </div>
+
     <!-- Period Summary -->
     <section class="abele-finance-sidebar__section">
       <h3 class="abele-finance-sidebar__section-title">{{ currentMonthLabel }}</h3>
@@ -81,55 +88,6 @@
       </div>
     </section>
 
-    <!-- Quick Add Transaction -->
-    <section class="abele-finance-sidebar__section">
-      <h3 class="abele-finance-sidebar__section-title">Quick Add</h3>
-      <form class="abele-finance-sidebar__quick-add" @submit.prevent="submitTransaction">
-        <input
-          v-model="quickAdd.title"
-          type="text"
-          placeholder="Description"
-          class="abele-finance-sidebar__input"
-        />
-        <div class="abele-finance-sidebar__quick-add-row">
-          <input
-            v-model="quickAdd.amount"
-            type="number"
-            step="0.01"
-            placeholder="Amount"
-            class="abele-finance-sidebar__input abele-finance-sidebar__input--amount"
-          />
-          <input
-            v-model="quickAdd.currency"
-            type="text"
-            placeholder="EUR"
-            class="abele-finance-sidebar__input abele-finance-sidebar__input--currency"
-          />
-        </div>
-        <input
-          v-model="quickAdd.from"
-          type="text"
-          placeholder="From account"
-          class="abele-finance-sidebar__input"
-        />
-        <input
-          v-model="quickAdd.to"
-          type="text"
-          placeholder="To account"
-          class="abele-finance-sidebar__input"
-        />
-        <input
-          v-model="quickAdd.category"
-          type="text"
-          placeholder="Category (optional)"
-          class="abele-finance-sidebar__input"
-        />
-        <button type="submit" class="abele-finance-sidebar__submit" :disabled="!canSubmit">
-          Add Transaction
-        </button>
-      </form>
-    </section>
-
     <!-- Recent Transactions -->
     <section class="abele-finance-sidebar__section">
       <h3 class="abele-finance-sidebar__section-title">Recent Transactions</h3>
@@ -174,17 +132,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, unref } from 'vue'
+import { computed, ref, unref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AccountsList } from '@/entities/AccountsList'
 import { TransactionsList } from '@/entities/TransactionsList'
 import { BalanceIndex } from '@/entities/BalanceIndex'
 import { Account } from '@/entities/Account'
-import { Transaction } from '@/entities/Transaction'
 import { createTransaction } from '@/commands/createTransaction'
-import { AbeleConfig } from '@/services/AbeleConfig'
 import { extractAliasOrNameFromWikilink } from '@/helpers/pathsHelpers'
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
+import ObsidianIcon from './obsidian/Icon.vue'
 import dayjs from 'dayjs'
 import { Notice, TFile } from 'obsidian'
 
@@ -192,15 +149,6 @@ const PAGE_SIZE = 20
 const visibleCount = ref(PAGE_SIZE)
 
 const store = GlobalStore.getInstance()
-
-const quickAdd = reactive({
-  title: '',
-  amount: '',
-  currency: AbeleConfig.getInstance().defaultCurrency || 'EUR',
-  from: '',
-  to: '',
-  category: '',
-})
 
 const currentMonthLabel = computed(() => dayjs().format('MMMM YYYY'))
 
@@ -333,45 +281,6 @@ function loadMore() {
   visibleCount.value += PAGE_SIZE
 }
 
-// --- Quick Add ---
-
-const canSubmit = computed(() => {
-  return quickAdd.amount && quickAdd.from && quickAdd.to
-})
-
-async function submitTransaction() {
-  if (!canSubmit.value) return
-
-  const wrapWikilink = (s: string) => (s.startsWith('[[') ? s : `[[${s}]]`)
-
-  try {
-    await createTransaction(
-      {
-        title: quickAdd.title || undefined,
-        amount: parseFloat(quickAdd.amount),
-        currency: quickAdd.currency || AbeleConfig.getInstance().defaultCurrency || 'EUR',
-        from: wrapWikilink(quickAdd.from),
-        to: wrapWikilink(quickAdd.to),
-        category: quickAdd.category ? wrapWikilink(quickAdd.category) : undefined,
-        date: dayjs(),
-      },
-      false
-    )
-
-    // Reset form
-    quickAdd.title = ''
-    quickAdd.amount = ''
-    quickAdd.from = ''
-    quickAdd.to = ''
-    quickAdd.category = ''
-
-    new Notice('Transaction created')
-  } catch (e) {
-    new Notice('Failed to create transaction')
-    console.error('Failed to create transaction', e)
-  }
-}
-
 // --- Navigation ---
 
 function openNote(path: string) {
@@ -421,6 +330,23 @@ function formatAmount(value: number): string {
     padding: calc(var(--size-4-4));
     padding-top: calc(var(--size-4-2) + var(--icon-size));
   }
+}
+
+.abele-finance-sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--p-spacing);
+}
+
+.abele-finance-sidebar__header-left {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--p-spacing) / 2);
+}
+
+.abele-finance-sidebar__header-text {
+  font-weight: bold;
 }
 
 .abele-finance-sidebar__section {
@@ -516,66 +442,6 @@ function formatAmount(value: number): string {
 .abele-finance-sidebar__account-currency {
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
-}
-
-// --- Quick Add ---
-
-.abele-finance-sidebar__quick-add {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-1);
-}
-
-.abele-finance-sidebar__quick-add-row {
-  display: flex;
-  gap: var(--size-4-1);
-}
-
-.abele-finance-sidebar__input {
-  width: 100%;
-  padding: var(--size-4-1) var(--size-4-2);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  background-color: var(--background-primary);
-  color: var(--text-normal);
-  font-size: var(--font-ui-small);
-
-  &::placeholder {
-    color: var(--text-faint);
-  }
-
-  &:focus {
-    border-color: var(--interactive-accent);
-    outline: none;
-  }
-}
-
-.abele-finance-sidebar__input--amount {
-  flex: 1;
-}
-
-.abele-finance-sidebar__input--currency {
-  width: 60px;
-  flex: none;
-}
-
-.abele-finance-sidebar__submit {
-  padding: var(--size-4-1) var(--size-4-2);
-  border: none;
-  border-radius: var(--radius-s);
-  background-color: var(--interactive-accent);
-  color: var(--text-on-accent);
-  font-size: var(--font-ui-small);
-  cursor: pointer;
-
-  &:hover {
-    background-color: var(--interactive-accent-hover);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
 }
 
 // --- Transactions ---

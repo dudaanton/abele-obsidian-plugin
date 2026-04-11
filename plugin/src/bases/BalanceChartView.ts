@@ -113,9 +113,6 @@ export class BalanceChartView extends BasesView {
         name: s.name,
         type: 'line',
         data: s.data,
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { width: 2 },
       })),
     })
 

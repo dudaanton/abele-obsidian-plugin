@@ -2,7 +2,7 @@ import { BasesView, QueryController } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { BalanceIndex } from '@/entities/BalanceIndex'
 import { AccountsList } from '@/entities/AccountsList'
-import { echartsInit, EChartsType } from './echarts'
+import { echartsInit, getThemeColors, EChartsType } from './echarts'
 import { toRaw } from 'vue'
 import dayjs from 'dayjs'
 
@@ -84,13 +84,13 @@ export class SpendingBreakdownView extends BasesView {
     const total = items.reduce((s, i) => s + i.value, 0)
     const periodLabel = `${startDate.format('MMM D')} – ${endDate.format('MMM D')}`
 
+    const colors = getThemeColors()
+
     this.chart.setOption({
       title: {
-        text: `${periodLabel}`,
+        text: periodLabel,
         subtext: `Total: ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         left: 'center',
-        textStyle: { fontSize: 13 },
-        subtextStyle: { fontSize: 12 },
       },
       tooltip: {
         trigger: 'axis',
@@ -125,16 +125,17 @@ export class SpendingBreakdownView extends BasesView {
           data: items.map((i) => i.value).reverse(),
           itemStyle: {
             borderRadius: [0, 4, 4, 0],
+            color: colors.expense,
           },
           label: {
             show: true,
             position: 'right',
+            color: colors.textMuted,
             formatter: (p: any) =>
               p.value.toLocaleString(undefined, {
                 minimumFractionDigits: 0,
                 maximumFractionDigits: 0,
               }),
-            fontSize: 11,
           },
         },
       ],

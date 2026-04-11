@@ -92,15 +92,11 @@ export class NetWorthView extends BasesView {
       },
       yAxis: {
         type: 'value',
-        splitLine: { lineStyle: { opacity: 0.3 } },
       },
       series: [
         {
           type: 'line',
           data: values,
-          smooth: true,
-          showSymbol: false,
-          lineStyle: { width: 2 },
           areaStyle: { opacity: 0.15 },
         },
       ],
