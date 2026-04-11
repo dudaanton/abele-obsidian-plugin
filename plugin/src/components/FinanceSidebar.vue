@@ -408,9 +408,9 @@ interface PieItem {
 }
 
 const periodTotals = computed(() => {
-  const bi = toRaw(balanceIndex.value) as BalanceIndex | null
+  const tl = toRaw(transactionsList.value) as TransactionsList | null
   const al = accountsList.value
-  if (!bi || !al)
+  if (!tl || !al)
     return {
       income: 0,
       expenses: 0,
@@ -418,33 +418,74 @@ const periodTotals = computed(() => {
       incomeBreakdown: [] as PieItem[],
     }
 
-  const start = periodStart.value.subtract(1, 'day')
-  const end = periodEnd.value
+  const startStr = periodStart.value.format(DATE_FORMAT)
+  const endStr = periodEnd.value.format(DATE_FORMAT)
+
+  const { app } = store
+  const resolveCache = new Map<string, string | null>()
+  const resolve = (wikilink: string): string | null => {
+    if (resolveCache.has(wikilink)) return resolveCache.get(wikilink)!
+    const linkPath = wikilinkToPath(wikilink)
+    const file = linkPath ? app.metadataCache.getFirstLinkpathDest(linkPath, '') : null
+    const resolved = file ? file.path : null
+    resolveCache.set(wikilink, resolved)
+    return resolved
+  }
+
+  // Build account type lookup
+  const expensePaths = new Set<string>()
+  const revenuePaths = new Set<string>()
+  const accountNames = new Map<string, string>()
+  for (const [path, account] of al.accounts) {
+    if (account.accountType === 'expense') expensePaths.add(path)
+    if (account.accountType === 'revenue') revenuePaths.add(path)
+    accountNames.set(path, account.accountName || account.title || path.split('/').pop() || path)
+  }
+
+  // Single pass: sum by destination (expense) or source (revenue)
+  const expenseMap = new Map<string, number>()
+  const incomeMap = new Map<string, number>()
+
+  for (const tx of tl.transactions.values()) {
+    const raw = toRaw(tx)
+    if (!raw.loaded || !raw.date || raw.amount == null) continue
+
+    const dateStr = raw.date.format(DATE_FORMAT)
+    if (dateStr < startStr || dateStr > endStr) continue
+
+    const toPath = raw.to ? resolve(raw.to) : null
+    if (toPath && expensePaths.has(toPath)) {
+      expenseMap.set(toPath, (expenseMap.get(toPath) || 0) + raw.amount)
+    }
+
+    const fromPath = raw.from ? resolve(raw.from) : null
+    if (fromPath && revenuePaths.has(fromPath)) {
+      incomeMap.set(fromPath, (incomeMap.get(fromPath) || 0) + raw.amount)
+    }
+  }
 
   let income = 0
   let expenses = 0
   const expenseBreakdown: PieItem[] = []
   const incomeBreakdown: PieItem[] = []
 
-  for (const [path, account] of al.accounts) {
-    if (account.accountType === 'expense') {
-      const total = bi.getBalanceAtDate(path, end) - bi.getBalanceAtDate(path, start)
-      expenses += total
-      if (total > 0) {
-        expenseBreakdown.push({
-          name: account.accountName || account.title || path.split('/').pop() || path,
-          value: Math.round(total * 100) / 100,
-        })
-      }
-    } else if (account.accountType === 'revenue') {
-      const total = bi.getBalanceAtDate(path, start) - bi.getBalanceAtDate(path, end)
-      income += total
-      if (total > 0) {
-        incomeBreakdown.push({
-          name: account.accountName || account.title || path.split('/').pop() || path,
-          value: Math.round(total * 100) / 100,
-        })
-      }
+  for (const [path, total] of expenseMap) {
+    expenses += total
+    if (total > 0) {
+      expenseBreakdown.push({
+        name: accountNames.get(path) || path,
+        value: Math.round(total * 100) / 100,
+      })
+    }
+  }
+
+  for (const [path, total] of incomeMap) {
+    income += total
+    if (total > 0) {
+      incomeBreakdown.push({
+        name: accountNames.get(path) || path,
+        value: Math.round(total * 100) / 100,
+      })
     }
   }
 
