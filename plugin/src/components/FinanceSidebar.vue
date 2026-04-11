@@ -7,45 +7,51 @@
       </div>
     </div>
 
+    <div class="abele-finance-sidebar__period-header">
+      <ObsidianIcon icon="chevron-left" @click="previousMonth()" />
+      <div class="abele-finance-sidebar__period-title" @click="goToCurrentMonth()">
+        {{ periodLabel }}
+      </div>
+      <ObsidianIcon icon="chevron-right" @click="nextMonth()" />
+    </div>
+
     <!-- Currency Balance Cards -->
     <div v-if="currencyCards.length" class="abele-finance-sidebar__cards">
       <div v-for="card in currencyCards" :key="card.currency" class="abele-finance-sidebar__card">
-        <div class="abele-finance-sidebar__card-body">
-          <div class="abele-finance-sidebar__card-balance">
-            {{ formatAmount(card.assets) }}
-            <span class="abele-finance-sidebar__card-currency">{{ card.currency }}</span>
-          </div>
-          <div class="abele-finance-sidebar__card-details">
-            <span v-if="card.liabilities > 0" class="abele-finance-sidebar__card-debt">
-              Debt {{ formatAmount(card.liabilities) }}
-            </span>
-            <span
-              v-if="card.liabilities > 0"
-              class="abele-finance-sidebar__card-net"
-              :class="{
-                'abele-finance-sidebar__summary-value--income': card.net >= 0,
-                'abele-finance-sidebar__summary-value--expense': card.net < 0,
-              }"
-            >
-              Net {{ formatAmount(card.net) }}
-            </span>
-          </div>
+        <div class="abele-finance-sidebar__card-balance">
+          {{ formatAmount(card.assets) }}
+          <span class="abele-finance-sidebar__card-currency">{{ card.currency }}</span>
         </div>
-        <div
-          :ref="(el) => setChartRef(card.currency, el as HTMLElement)"
-          class="abele-finance-sidebar__card-chart"
-        />
+        <div class="abele-finance-sidebar__card-details">
+          <span v-if="card.liabilities > 0" class="abele-finance-sidebar__card-debt">
+            Debt {{ formatAmount(card.liabilities) }}
+          </span>
+          <span
+            v-if="card.liabilities > 0"
+            class="abele-finance-sidebar__card-net"
+            :class="{
+              'abele-finance-sidebar__summary-value--income': card.net >= 0,
+              'abele-finance-sidebar__summary-value--expense': card.net < 0,
+            }"
+          >
+            Net {{ formatAmount(card.net) }}
+          </span>
+        </div>
       </div>
     </div>
 
     <!-- Period Summary -->
     <section class="abele-finance-sidebar__section">
-      <div class="abele-finance-sidebar__period-header">
-        <ObsidianIcon icon="chevron-left" @click="previousMonth()" />
-        <div class="abele-finance-sidebar__period-title" @click="goToCurrentMonth()">
-          {{ periodLabel }}
+      <div v-if="periodCurrencies.length > 1" class="abele-finance-sidebar__currency-tabs">
+        <div
+          v-for="cur in periodCurrencies"
+          :key="cur"
+          class="abele-finance-sidebar__currency-tab"
+          :class="{ 'abele-finance-sidebar__currency-tab--active': selectedPeriodCurrency === cur }"
+          @click="selectedPeriodCurrency = cur"
+        >
+          {{ cur }}
         </div>
-        <ObsidianIcon icon="chevron-right" @click="nextMonth()" />
       </div>
       <div class="abele-finance-sidebar__summary">
         <div class="abele-finance-sidebar__summary-row">
@@ -74,6 +80,27 @@
             }"
           >
             {{ formatAmount(periodSavings) }}
+          </span>
+        </div>
+      </div>
+      <div
+        v-if="periodLent > 0 || periodReturned > 0"
+        class="abele-finance-sidebar__summary abele-finance-sidebar__summary--debt"
+      >
+        <div v-if="periodLent > 0" class="abele-finance-sidebar__summary-row">
+          <span class="abele-finance-sidebar__summary-label">Lent</span>
+          <span
+            class="abele-finance-sidebar__summary-value abele-finance-sidebar__summary-value--income"
+          >
+            {{ formatAmount(periodLent) }}
+          </span>
+        </div>
+        <div v-if="periodReturned > 0" class="abele-finance-sidebar__summary-row">
+          <span class="abele-finance-sidebar__summary-label">Returned</span>
+          <span
+            class="abele-finance-sidebar__summary-value abele-finance-sidebar__summary-value--expense"
+          >
+            {{ formatAmount(periodReturned) }}
           </span>
         </div>
       </div>
@@ -172,8 +199,6 @@ interface CurrencyCard {
   assets: number
   liabilities: number
   net: number
-  dailyExpenses: number[] // last 7 days
-  dayLabels: string[]
 }
 
 const pinnedCurrenciesList = computed(() =>
@@ -186,10 +211,9 @@ const pinnedCurrenciesList = computed(() =>
 const currencyCards = computed<CurrencyCard[]>(() => {
   const al = accountsList.value
   const bi = toRaw(balanceIndex.value) as BalanceIndex | null
-  const tl = toRaw(transactionsList.value) as TransactionsList | null
   if (!al || !bi) return []
 
-  const today = dayjs()
+  const asOfDate = periodEnd.value
   const cards: CurrencyCard[] = []
 
   for (const currency of pinnedCurrenciesList.value) {
@@ -200,17 +224,9 @@ const currencyCards = computed<CurrencyCard[]>(() => {
       if (account.currency !== currency) continue
       if (account.excludeFromTotal) continue
 
-      const balance = bi.getBalanceAtDate(path, today)
+      const balance = bi.getBalanceAtDate(path, asOfDate)
       if (account.accountType === 'asset') assets += balance
       else if (account.accountType === 'liability') liabilities += Math.abs(balance)
-    }
-
-    // Daily expenses for last 7 days
-    const days = 7
-    const dailyExpenses = computeDailyExpenses(tl, al, currency, days)
-    const dayLabels: string[] = []
-    for (let i = days - 1; i >= 0; i--) {
-      dayLabels.push(today.subtract(i, 'day').format('dd'))
     }
 
     cards.push({
@@ -218,147 +234,13 @@ const currencyCards = computed<CurrencyCard[]>(() => {
       assets,
       liabilities,
       net: assets - liabilities,
-      dailyExpenses,
-      dayLabels,
     })
   }
 
   return cards
 })
 
-function computeDailyExpenses(
-  tl: TransactionsList | null,
-  al: AccountsList | null,
-  currency: string,
-  days: number
-): number[] {
-  if (!tl || !al) return new Array(days).fill(0)
-
-  const { app } = store
-  const today = dayjs()
-  const result = new Array(days).fill(0)
-
-  // Build expense paths for this currency
-  const expensePaths = new Set<string>()
-  for (const [path, account] of al.accounts) {
-    if (account.accountType === 'expense') expensePaths.add(path)
-  }
-
-  // Resolve cache
-  const resolveCache = new Map<string, string | null>()
-  const resolve = (wikilink: string): string | null => {
-    if (resolveCache.has(wikilink)) return resolveCache.get(wikilink)!
-    const linkPath = wikilinkToPath(wikilink)
-    const file = linkPath ? app.metadataCache.getFirstLinkpathDest(linkPath, '') : null
-    const resolved = file ? file.path : null
-    resolveCache.set(wikilink, resolved)
-    return resolved
-  }
-
-  const startDate = today.subtract(days - 1, 'day')
-  const startStr = startDate.format(DATE_FORMAT)
-
-  for (const tx of tl.transactions.values()) {
-    const raw = toRaw(tx)
-    if (!raw.loaded || !raw.date || raw.amount == null) continue
-    if (raw.currency !== currency) continue
-
-    const dateStr = raw.date.format(DATE_FORMAT)
-    if (dateStr < startStr) continue
-
-    const toPath = raw.to ? resolve(raw.to) : null
-    if (!toPath || !expensePaths.has(toPath)) continue
-
-    const dayIndex = raw.date.diff(startDate, 'day')
-    if (dayIndex >= 0 && dayIndex < days) {
-      result[dayIndex] += raw.amount
-    }
-  }
-
-  return result
-}
-
-// Mini charts
-const chartInstances = new Map<string, EChartsType>()
-const chartObservers = new Map<string, ResizeObserver>()
-
-function applyMiniChartOption(chart: EChartsType, card: CurrencyCard) {
-  const colors = getThemeColors()
-  const radius = parseInt(getComputedStyle(document.body).getPropertyValue('--radius-s')) || 4
-  chart.setOption({
-    grid: { left: 0, right: 0, top: 18, bottom: 16, containLabel: false },
-    tooltip: { show: false },
-    xAxis: {
-      type: 'category',
-      data: card.dayLabels,
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: { color: colors.textFaint },
-    },
-    yAxis: { type: 'value', show: false },
-    series: [
-      {
-        type: 'bar',
-        data: card.dailyExpenses,
-        silent: true,
-        itemStyle: { color: colors.accent, borderRadius: radius },
-        emphasis: { disabled: true },
-        barWidth: '55%',
-        label: {
-          show: true,
-          position: 'top',
-          color: colors.textFaint,
-          formatter: (p: any) => fmtShort(p.value),
-        },
-      },
-    ],
-  })
-}
-
-const chartElements = new Map<string, HTMLElement>()
-
-function setChartRef(currency: string, el: HTMLElement | null) {
-  if (!el) return
-
-  // Skip if same element already has a chart
-  if (chartElements.get(currency) === el && chartInstances.has(currency)) return
-  chartElements.set(currency, el)
-
-  // Dispose old
-  chartInstances.get(currency)?.dispose()
-  chartInstances.delete(currency)
-  chartObservers.get(currency)?.disconnect()
-  chartObservers.delete(currency)
-
-  nextTick(() => {
-    const card = currencyCards.value.find((c) => c.currency === currency)
-    if (!card || !el.isConnected) return
-
-    const chart = echartsInit(el)
-    chartInstances.set(currency, chart)
-
-    applyMiniChartOption(chart, card)
-
-    const observer = new ResizeObserver(() => chart.resize())
-    observer.observe(el)
-    chartObservers.set(currency, observer)
-  })
-}
-
-// Re-render charts when data changes
-watch(currencyCards, () => {
-  for (const [currency, chart] of chartInstances) {
-    const card = currencyCards.value.find((c) => c.currency === currency)
-    if (!card) continue
-    applyMiniChartOption(chart, card)
-  }
-})
-
 onUnmounted(() => {
-  for (const chart of chartInstances.values()) chart.dispose()
-  for (const obs of chartObservers.values()) obs.disconnect()
-  chartInstances.clear()
-  chartObservers.clear()
   pieChart?.dispose()
   pieObserver?.disconnect()
 })
@@ -407,16 +289,20 @@ interface PieItem {
   value: number
 }
 
-const periodTotals = computed(() => {
+interface CurrencyPeriodData {
+  income: number
+  expenses: number
+  lent: number
+  returned: number
+  expenseBreakdown: PieItem[]
+  incomeBreakdown: PieItem[]
+}
+
+const periodByCurrency = computed(() => {
   const tl = toRaw(transactionsList.value) as TransactionsList | null
   const al = accountsList.value
-  if (!tl || !al)
-    return {
-      income: 0,
-      expenses: 0,
-      expenseBreakdown: [] as PieItem[],
-      incomeBreakdown: [] as PieItem[],
-    }
+  const result = new Map<string, CurrencyPeriodData>()
+  if (!tl || !al) return result
 
   const startStr = periodStart.value.format(DATE_FORMAT)
   const endStr = periodEnd.value.format(DATE_FORMAT)
@@ -432,71 +318,134 @@ const periodTotals = computed(() => {
     return resolved
   }
 
-  // Build account type lookup
   const expensePaths = new Set<string>()
   const revenuePaths = new Set<string>()
+  const liabilityPaths = new Set<string>()
   const accountNames = new Map<string, string>()
   for (const [path, account] of al.accounts) {
     if (account.accountType === 'expense') expensePaths.add(path)
     if (account.accountType === 'revenue') revenuePaths.add(path)
+    if (account.accountType === 'liability') liabilityPaths.add(path)
     accountNames.set(path, account.accountName || account.title || path.split('/').pop() || path)
   }
 
-  // Single pass: sum by destination (expense) or source (revenue)
+  // key: "currency|accountPath"
   const expenseMap = new Map<string, number>()
   const incomeMap = new Map<string, number>()
 
+  const getOrCreate = (cur: string): CurrencyPeriodData => {
+    if (!result.has(cur)) {
+      result.set(cur, {
+        income: 0,
+        expenses: 0,
+        lent: 0,
+        returned: 0,
+        expenseBreakdown: [],
+        incomeBreakdown: [],
+      })
+    }
+    return result.get(cur)!
+  }
+
   for (const tx of tl.transactions.values()) {
     const raw = toRaw(tx)
-    if (!raw.loaded || !raw.date || raw.amount == null) continue
+    if (!raw.loaded || !raw.date || raw.amount == null || !raw.currency) continue
 
     const dateStr = raw.date.format(DATE_FORMAT)
     if (dateStr < startStr || dateStr > endStr) continue
 
+    const cur = raw.currency
+
     const toPath = raw.to ? resolve(raw.to) : null
     if (toPath && expensePaths.has(toPath)) {
-      expenseMap.set(toPath, (expenseMap.get(toPath) || 0) + raw.amount)
+      const key = `${cur}|${toPath}`
+      expenseMap.set(key, (expenseMap.get(key) || 0) + raw.amount)
+    }
+    if (toPath && liabilityPaths.has(toPath)) {
+      getOrCreate(cur).returned += raw.amount
     }
 
     const fromPath = raw.from ? resolve(raw.from) : null
     if (fromPath && revenuePaths.has(fromPath)) {
-      incomeMap.set(fromPath, (incomeMap.get(fromPath) || 0) + raw.amount)
+      const key = `${cur}|${fromPath}`
+      incomeMap.set(key, (incomeMap.get(key) || 0) + raw.amount)
+    }
+    if (fromPath && liabilityPaths.has(fromPath)) {
+      getOrCreate(cur).lent += raw.amount
     }
   }
 
-  let income = 0
-  let expenses = 0
-  const expenseBreakdown: PieItem[] = []
-  const incomeBreakdown: PieItem[] = []
-
-  for (const [path, total] of expenseMap) {
-    expenses += total
+  for (const [key, total] of expenseMap) {
+    const [cur, path] = key.split('|')
+    const data = getOrCreate(cur)
+    data.expenses += total
     if (total > 0) {
-      expenseBreakdown.push({
+      data.expenseBreakdown.push({
         name: accountNames.get(path) || path,
         value: Math.round(total * 100) / 100,
       })
     }
   }
 
-  for (const [path, total] of incomeMap) {
-    income += total
+  for (const [key, total] of incomeMap) {
+    const [cur, path] = key.split('|')
+    const data = getOrCreate(cur)
+    data.income += total
     if (total > 0) {
-      incomeBreakdown.push({
+      data.incomeBreakdown.push({
         name: accountNames.get(path) || path,
         value: Math.round(total * 100) / 100,
       })
     }
   }
 
-  expenseBreakdown.sort((a, b) => b.value - a.value)
-  incomeBreakdown.sort((a, b) => b.value - a.value)
+  for (const data of result.values()) {
+    data.expenseBreakdown.sort((a, b) => b.value - a.value)
+    data.incomeBreakdown.sort((a, b) => b.value - a.value)
+  }
 
-  return { income, expenses, expenseBreakdown, incomeBreakdown }
+  return result
+})
+
+const periodCurrencies = computed(() => {
+  const pinned = pinnedCurrenciesList.value
+  const all = Array.from(periodByCurrency.value.keys())
+  // Pinned first, then the rest
+  const ordered = pinned.filter((c) => all.includes(c))
+  for (const c of all) {
+    if (!ordered.includes(c)) ordered.push(c)
+  }
+  return ordered
+})
+
+const selectedPeriodCurrency = ref(
+  AbeleConfig.getInstance().pinnedCurrencies.split(',')[0]?.trim().toUpperCase() || 'EUR'
+)
+
+// Auto-select first available currency if current selection has no data
+watch(periodCurrencies, (currencies) => {
+  if (currencies.length && !currencies.includes(selectedPeriodCurrency.value)) {
+    selectedPeriodCurrency.value = currencies[0]
+  }
+})
+
+const emptyPeriodData: CurrencyPeriodData = {
+  income: 0,
+  expenses: 0,
+  lent: 0,
+  returned: 0,
+  expenseBreakdown: [],
+  incomeBreakdown: [],
+}
+
+const periodTotals = computed((): CurrencyPeriodData => {
+  return periodByCurrency.value.get(selectedPeriodCurrency.value) || emptyPeriodData
 })
 
 const periodIncome = computed(() => periodTotals.value.income)
 const periodExpenses = computed(() => periodTotals.value.expenses)
+const periodLent = computed(() => periodTotals.value.lent)
+const periodReturned = computed(() => periodTotals.value.returned)
 const periodSavings = computed(() => periodIncome.value - periodExpenses.value)
 
 // --- Pie Chart ---
@@ -641,11 +590,6 @@ function formatAmount(value: number): string {
     maximumFractionDigits: 2,
   })
 }
-
-function fmtShort(n: number): string {
-  if (Math.abs(n) >= 1000) return (n / 1000).toFixed(1) + 'k'
-  return n.toFixed(0)
-}
 </script>
 
 <style lang="scss">
@@ -701,11 +645,6 @@ function fmtShort(n: number): string {
   gap: var(--size-4-1);
 }
 
-.abele-finance-sidebar__card-body {
-  flex: 1;
-  min-width: 0;
-}
-
 .abele-finance-sidebar__card-balance {
   font-size: var(--font-ui-large);
   font-weight: var(--font-semibold);
@@ -734,11 +673,6 @@ function fmtShort(n: number): string {
 
 .abele-finance-sidebar__card-net {
   font-weight: var(--font-medium);
-}
-
-.abele-finance-sidebar__card-chart {
-  width: 100%;
-  height: 64px;
 }
 
 // --- Section ---
@@ -778,12 +712,45 @@ function fmtShort(n: number): string {
   }
 }
 
+// --- Currency Tabs ---
+
+.abele-finance-sidebar__currency-tabs {
+  display: flex;
+  gap: var(--size-4-1);
+  margin-bottom: var(--size-4-2);
+}
+
+.abele-finance-sidebar__currency-tab {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: var(--size-2-1) var(--size-4-2);
+  border-radius: var(--radius-s);
+
+  &:hover {
+    color: var(--text-normal);
+    background-color: var(--background-modifier-hover);
+  }
+
+  &--active {
+    color: var(--text-normal);
+    font-weight: var(--font-semibold);
+    background-color: var(--background-modifier-hover);
+  }
+}
+
 // --- Summary ---
 
 .abele-finance-sidebar__summary {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-1);
+}
+
+.abele-finance-sidebar__summary--debt {
+  margin-top: var(--size-4-2);
+  padding-top: var(--size-4-1);
+  border-top: 1px dashed var(--background-modifier-border);
 }
 
 .abele-finance-sidebar__summary-row {
