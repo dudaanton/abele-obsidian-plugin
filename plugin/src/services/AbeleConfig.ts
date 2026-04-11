@@ -24,6 +24,7 @@ export interface AbeleSettings {
   accountsFolder?: string // Default folder for new accounts
   financeCategoriesFolder?: string // Default folder for new finance categories
   defaultCurrency?: string // Default currency code for new transactions
+  pinnedCurrencies?: string // Comma-separated currencies to show in sidebar
   fireflyBaseUrl?: string // Firefly III instance base URL for migration
   fireflyToken?: string // Firefly III Personal Access Token for migration
   // Other
@@ -49,6 +50,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   accountsFolder: 'Finance/Accounts',
   financeCategoriesFolder: 'Finance/Categories',
   defaultCurrency: 'EUR',
+  pinnedCurrencies: 'EUR',
   fireflyBaseUrl: '',
   fireflyToken: '',
   fullWidthSidebars: false,
@@ -77,6 +79,7 @@ export class AbeleConfig {
   public accountsFolder: string
   public financeCategoriesFolder: string
   public defaultCurrency: string
+  public pinnedCurrencies: string
   public fireflyBaseUrl: string
   public fireflyToken: string
   public fullWidthSidebars: boolean
@@ -186,6 +189,7 @@ export class AbeleConfig {
     this.financeCategoriesFolder =
       settings?.financeCategoriesFolder || DEFAULT_SETTINGS.financeCategoriesFolder
     this.defaultCurrency = settings?.defaultCurrency || DEFAULT_SETTINGS.defaultCurrency
+    this.pinnedCurrencies = settings?.pinnedCurrencies ?? DEFAULT_SETTINGS.pinnedCurrencies
     this.fireflyBaseUrl = settings?.fireflyBaseUrl ?? DEFAULT_SETTINGS.fireflyBaseUrl
     this.fireflyToken = settings?.fireflyToken ?? DEFAULT_SETTINGS.fireflyToken
     this.fullWidthSidebars = settings?.fullWidthSidebars ?? DEFAULT_SETTINGS.fullWidthSidebars
@@ -211,6 +215,7 @@ export class AbeleConfig {
       accountsFolder: this.accountsFolder,
       financeCategoriesFolder: this.financeCategoriesFolder,
       defaultCurrency: this.defaultCurrency,
+      pinnedCurrencies: this.pinnedCurrencies,
       fireflyBaseUrl: this.fireflyBaseUrl,
       fireflyToken: this.fireflyToken,
       fullWidthSidebars: this.fullWidthSidebars,

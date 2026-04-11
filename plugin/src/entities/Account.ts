@@ -28,6 +28,7 @@ export class Account {
   public startingBalance = 0
   public startingBalanceDate: dayjs.Dayjs | null = null
   public groups: string[] = []
+  public excludeFromTotal = false
 
   public content = ''
 
@@ -71,6 +72,7 @@ export class Account {
       this.startingBalance = Number(frontmatter.startingBalance) || 0
       this.startingBalanceDate = parseDateOrNull(frontmatter.startingBalanceDate)
       this.groups = Array.isArray(frontmatter.groups) ? frontmatter.groups : []
+      this.excludeFromTotal = !!frontmatter.excludeFromTotal
     } else {
       this.accountNotFound = true
     }
@@ -129,6 +131,7 @@ export class Account {
     this.startingBalance = 0
     this.startingBalanceDate = null
     this.groups = []
+    this.excludeFromTotal = false
     this.content = ''
     this.loaded = false
     this.accountNotFound = false

@@ -7,6 +7,37 @@
       </div>
     </div>
 
+    <!-- Currency Balance Cards -->
+    <div v-if="currencyCards.length" class="abele-finance-sidebar__cards">
+      <div v-for="card in currencyCards" :key="card.currency" class="abele-finance-sidebar__card">
+        <div class="abele-finance-sidebar__card-body">
+          <div class="abele-finance-sidebar__card-balance">
+            {{ formatAmount(card.assets) }}
+            <span class="abele-finance-sidebar__card-currency">{{ card.currency }}</span>
+          </div>
+          <div class="abele-finance-sidebar__card-details">
+            <span v-if="card.liabilities > 0" class="abele-finance-sidebar__card-debt">
+              Debt {{ formatAmount(card.liabilities) }}
+            </span>
+            <span
+              v-if="card.liabilities > 0"
+              class="abele-finance-sidebar__card-net"
+              :class="{
+                'abele-finance-sidebar__summary-value--income': card.net >= 0,
+                'abele-finance-sidebar__summary-value--expense': card.net < 0,
+              }"
+            >
+              Net {{ formatAmount(card.net) }}
+            </span>
+          </div>
+        </div>
+        <div
+          :ref="(el) => setChartRef(card.currency, el as HTMLElement)"
+          class="abele-finance-sidebar__card-chart"
+        />
+      </div>
+    </div>
+
     <!-- Period Summary -->
     <section class="abele-finance-sidebar__section">
       <h3 class="abele-finance-sidebar__section-title">{{ currentMonthLabel }}</h3>
@@ -42,52 +73,6 @@
       </div>
     </section>
 
-    <!-- Account Balances -->
-    <section class="abele-finance-sidebar__section">
-      <h3 class="abele-finance-sidebar__section-title">Accounts</h3>
-      <div v-if="assetAccounts.length" class="abele-finance-sidebar__accounts-group">
-        <div
-          v-for="item in assetAccounts"
-          :key="item.path"
-          class="abele-finance-sidebar__account-row"
-          @click="openNote(item.path)"
-        >
-          <span class="abele-finance-sidebar__account-name" :title="item.name">{{
-            item.name
-          }}</span>
-          <span class="abele-finance-sidebar__account-balance">
-            {{ formatAmount(item.balance) }}
-            <span class="abele-finance-sidebar__account-currency">{{ item.currency }}</span>
-          </span>
-        </div>
-      </div>
-      <div v-if="liabilityAccounts.length" class="abele-finance-sidebar__accounts-group">
-        <div class="abele-finance-sidebar__group-label">Liabilities</div>
-        <div
-          v-for="item in liabilityAccounts"
-          :key="item.path"
-          class="abele-finance-sidebar__account-row"
-          @click="openNote(item.path)"
-        >
-          <span class="abele-finance-sidebar__account-name" :title="item.name">{{
-            item.name
-          }}</span>
-          <span
-            class="abele-finance-sidebar__account-balance abele-finance-sidebar__summary-value--expense"
-          >
-            {{ formatAmount(item.balance) }}
-            <span class="abele-finance-sidebar__account-currency">{{ item.currency }}</span>
-          </span>
-        </div>
-      </div>
-      <div
-        v-if="!assetAccounts.length && !liabilityAccounts.length"
-        class="abele-finance-sidebar__empty"
-      >
-        No accounts found
-      </div>
-    </section>
-
     <!-- Recent Transactions -->
     <section class="abele-finance-sidebar__section">
       <h3 class="abele-finance-sidebar__section-title">Recent Transactions</h3>
@@ -102,7 +87,7 @@
             <span class="abele-finance-sidebar__transaction-title">{{ tx.title }}</span>
             <span class="abele-finance-sidebar__transaction-amount">
               {{ formatAmount(tx.amount) }}
-              <span class="abele-finance-sidebar__account-currency">{{ tx.currency }}</span>
+              <span class="abele-finance-sidebar__card-currency">{{ tx.currency }}</span>
             </span>
           </div>
           <div class="abele-finance-sidebar__transaction-meta">
@@ -132,70 +117,223 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, unref } from 'vue'
+import { computed, ref, unref, watch, nextTick, onUnmounted } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AccountsList } from '@/entities/AccountsList'
 import { TransactionsList } from '@/entities/TransactionsList'
 import { BalanceIndex } from '@/entities/BalanceIndex'
-import { Account } from '@/entities/Account'
 import { createTransaction } from '@/commands/createTransaction'
-import { extractAliasOrNameFromWikilink } from '@/helpers/pathsHelpers'
-import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { extractAliasOrNameFromWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
+import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
+import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
 import ObsidianIcon from './obsidian/Icon.vue'
 import dayjs from 'dayjs'
 import { Notice, TFile } from 'obsidian'
+import { toRaw } from 'vue'
 
 const PAGE_SIZE = 20
 const visibleCount = ref(PAGE_SIZE)
 
 const store = GlobalStore.getInstance()
 
-const currentMonthLabel = computed(() => dayjs().format('MMMM YYYY'))
-
 const accountsList = computed(() => unref(store.accountsList) as AccountsList | null)
 const transactionsList = computed(() => unref(store.transactionsList) as TransactionsList | null)
 const balanceIndex = computed(() => unref(store.balanceIndex) as BalanceIndex | null)
 
-// --- Account Balances ---
+// --- Currency Balance Cards ---
 
-interface AccountRow {
-  path: string
-  name: string
-  balance: number
+interface CurrencyCard {
   currency: string
-  type: string
+  assets: number
+  liabilities: number
+  net: number
+  dailyExpenses: number[] // last 7 days
+  dayLabels: string[]
 }
 
-function buildAccountRow(path: string, account: Account): AccountRow {
-  const bi = balanceIndex.value
-  const balance = bi ? bi.getBalanceAtDate(path, dayjs()) : 0
-  return {
-    path,
-    name: account.accountName || account.title || path.split('/').pop() || path,
-    balance,
-    currency: account.currency || '',
-    type: account.accountType || '',
-  }
-}
+const pinnedCurrenciesList = computed(() =>
+  AbeleConfig.getInstance()
+    .pinnedCurrencies.split(',')
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean)
+)
 
-const allAccountRows = computed<AccountRow[]>(() => {
+const currencyCards = computed<CurrencyCard[]>(() => {
   const al = accountsList.value
-  if (!al) return []
+  const bi = toRaw(balanceIndex.value) as BalanceIndex | null
+  const tl = toRaw(transactionsList.value) as TransactionsList | null
+  if (!al || !bi) return []
 
-  const rows: AccountRow[] = []
-  for (const [path, account] of al.accounts) {
-    if (account.accountType === 'asset' || account.accountType === 'liability') {
-      rows.push(buildAccountRow(path, account))
+  const today = dayjs()
+  const cards: CurrencyCard[] = []
+
+  for (const currency of pinnedCurrenciesList.value) {
+    let assets = 0
+    let liabilities = 0
+
+    for (const [path, account] of al.accounts) {
+      if (account.currency !== currency) continue
+      if (account.excludeFromTotal) continue
+
+      const balance = bi.getBalanceAtDate(path, today)
+      if (account.accountType === 'asset') assets += balance
+      else if (account.accountType === 'liability') liabilities += Math.abs(balance)
     }
+
+    // Daily expenses for last 7 days
+    const days = 7
+    const dailyExpenses = computeDailyExpenses(tl, al, currency, days)
+    const dayLabels: string[] = []
+    for (let i = days - 1; i >= 0; i--) {
+      dayLabels.push(today.subtract(i, 'day').format('dd'))
+    }
+
+    cards.push({
+      currency,
+      assets,
+      liabilities,
+      net: assets - liabilities,
+      dailyExpenses,
+      dayLabels,
+    })
   }
-  return rows.sort((a, b) => a.name.localeCompare(b.name))
+
+  return cards
 })
 
-const assetAccounts = computed(() => allAccountRows.value.filter((a) => a.type === 'asset'))
-const liabilityAccounts = computed(() => allAccountRows.value.filter((a) => a.type === 'liability'))
+function computeDailyExpenses(
+  tl: TransactionsList | null,
+  al: AccountsList | null,
+  currency: string,
+  days: number
+): number[] {
+  if (!tl || !al) return new Array(days).fill(0)
+
+  const { app } = store
+  const today = dayjs()
+  const result = new Array(days).fill(0)
+
+  // Build expense paths for this currency
+  const expensePaths = new Set<string>()
+  for (const [path, account] of al.accounts) {
+    if (account.accountType === 'expense') expensePaths.add(path)
+  }
+
+  // Resolve cache
+  const resolveCache = new Map<string, string | null>()
+  const resolve = (wikilink: string): string | null => {
+    if (resolveCache.has(wikilink)) return resolveCache.get(wikilink)!
+    const linkPath = wikilinkToPath(wikilink)
+    const file = linkPath ? app.metadataCache.getFirstLinkpathDest(linkPath, '') : null
+    const resolved = file ? file.path : null
+    resolveCache.set(wikilink, resolved)
+    return resolved
+  }
+
+  const startDate = today.subtract(days - 1, 'day')
+  const startStr = startDate.format(DATE_FORMAT)
+
+  for (const tx of tl.transactions.values()) {
+    const raw = toRaw(tx)
+    if (!raw.loaded || !raw.date || raw.amount == null) continue
+    if (raw.currency !== currency) continue
+
+    const dateStr = raw.date.format(DATE_FORMAT)
+    if (dateStr < startStr) continue
+
+    const toPath = raw.to ? resolve(raw.to) : null
+    if (!toPath || !expensePaths.has(toPath)) continue
+
+    const dayIndex = raw.date.diff(startDate, 'day')
+    if (dayIndex >= 0 && dayIndex < days) {
+      result[dayIndex] += raw.amount
+    }
+  }
+
+  return result
+}
+
+// Mini charts
+const chartInstances = new Map<string, EChartsType>()
+const chartObservers = new Map<string, ResizeObserver>()
+
+function applyMiniChartOption(chart: EChartsType, card: CurrencyCard) {
+  const colors = getThemeColors()
+  const radius = parseInt(getComputedStyle(document.body).getPropertyValue('--radius-s')) || 4
+  chart.setOption({
+    grid: { left: 0, right: 0, top: 18, bottom: 16, containLabel: false },
+    tooltip: { show: false },
+    xAxis: {
+      type: 'category',
+      data: card.dayLabels,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: colors.textFaint },
+    },
+    yAxis: { type: 'value', show: false },
+    series: [
+      {
+        type: 'bar',
+        data: card.dailyExpenses,
+        silent: true,
+        itemStyle: { color: colors.accent, borderRadius: radius },
+        emphasis: { disabled: true },
+        barWidth: '55%',
+        label: {
+          show: true,
+          position: 'top',
+          color: colors.textFaint,
+          formatter: (p: any) => fmtShort(p.value),
+        },
+      },
+    ],
+  })
+}
+
+function setChartRef(currency: string, el: HTMLElement | null) {
+  if (!el) return
+
+  // Dispose old
+  chartInstances.get(currency)?.dispose()
+  chartInstances.delete(currency)
+  chartObservers.get(currency)?.disconnect()
+  chartObservers.delete(currency)
+
+  nextTick(() => {
+    const card = currencyCards.value.find((c) => c.currency === currency)
+    if (!card || !el.isConnected) return
+
+    const chart = echartsInit(el)
+    chartInstances.set(currency, chart)
+
+    applyMiniChartOption(chart, card)
+
+    const observer = new ResizeObserver(() => chart.resize())
+    observer.observe(el)
+    chartObservers.set(currency, observer)
+  })
+}
+
+// Re-render charts when data changes
+watch(currencyCards, () => {
+  for (const [currency, chart] of chartInstances) {
+    const card = currencyCards.value.find((c) => c.currency === currency)
+    if (!card) continue
+    applyMiniChartOption(chart, card)
+  }
+})
+
+onUnmounted(() => {
+  for (const chart of chartInstances.values()) chart.dispose()
+  for (const obs of chartObservers.values()) obs.disconnect()
+  chartInstances.clear()
+  chartObservers.clear()
+})
 
 // --- Period Summary ---
 
+const currentMonthLabel = computed(() => dayjs().format('MMMM YYYY'))
 const periodStart = computed(() => dayjs().startOf('month'))
 const periodEnd = computed(() => dayjs().endOf('month'))
 
@@ -309,6 +447,11 @@ function formatAmount(value: number): string {
     maximumFractionDigits: 2,
   })
 }
+
+function fmtShort(n: number): string {
+  if (Math.abs(n) >= 1000) return (n / 1000).toFixed(1) + 'k'
+  return n.toFixed(0)
+}
 </script>
 
 <style lang="scss">
@@ -348,6 +491,63 @@ function formatAmount(value: number): string {
 .abele-finance-sidebar__header-text {
   font-weight: bold;
 }
+
+// --- Currency Cards ---
+
+.abele-finance-sidebar__cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  margin-bottom: calc(var(--p-spacing) * 2);
+}
+
+.abele-finance-sidebar__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+}
+
+.abele-finance-sidebar__card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.abele-finance-sidebar__card-balance {
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.abele-finance-sidebar__card-currency {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-weight: normal;
+}
+
+.abele-finance-sidebar__card-details {
+  display: flex;
+  gap: var(--size-4-2);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+.abele-finance-sidebar__card-debt {
+  color: var(--text-error);
+}
+
+.abele-finance-sidebar__card-net {
+  font-weight: var(--font-medium);
+}
+
+.abele-finance-sidebar__card-chart {
+  width: 100%;
+  height: 64px;
+}
+
+// --- Section ---
 
 .abele-finance-sidebar__section {
   margin-bottom: calc(var(--p-spacing) * 2);
@@ -397,51 +597,6 @@ function formatAmount(value: number): string {
 
 .abele-finance-sidebar__summary-value--expense {
   color: var(--text-error);
-}
-
-// --- Accounts ---
-
-.abele-finance-sidebar__accounts-group {
-  margin-bottom: var(--size-4-2);
-}
-
-.abele-finance-sidebar__group-label {
-  font-size: var(--font-ui-smaller);
-  color: var(--text-faint);
-  margin-bottom: var(--size-4-1);
-}
-
-.abele-finance-sidebar__account-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--size-4-1) 0;
-  cursor: pointer;
-  border-radius: var(--radius-s);
-  font-size: var(--font-ui-small);
-
-  &:hover {
-    background-color: var(--background-modifier-hover);
-  }
-}
-
-.abele-finance-sidebar__account-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
-
-.abele-finance-sidebar__account-balance {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  margin-left: var(--size-4-2);
-}
-
-.abele-finance-sidebar__account-currency {
-  color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
 }
 
 // --- Transactions ---

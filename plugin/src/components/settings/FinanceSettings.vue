@@ -29,6 +29,16 @@
         @update:model-value="defaultCurrencyChanged"
       />
     </Setting>
+    <Setting
+      name="Pinned currencies"
+      desc="Comma-separated currencies to show balance summaries in the sidebar. Order is preserved."
+    >
+      <Input
+        :model-value="pinnedCurrencies"
+        placeholder="e.g. EUR, USD, GBP"
+        @update:model-value="pinnedCurrenciesChanged"
+      />
+    </Setting>
 
     <h3>Firefly III Migration</h3>
     <Setting name="Firefly III URL" desc="Base URL of your Firefly III instance.">
@@ -79,6 +89,7 @@ const transactionTemplatePath = ref(AbeleConfig.getInstance().transactionTemplat
 const accountsFolder = ref(AbeleConfig.getInstance().accountsFolder)
 const financeCategoriesFolder = ref(AbeleConfig.getInstance().financeCategoriesFolder)
 const defaultCurrency = ref(AbeleConfig.getInstance().defaultCurrency)
+const pinnedCurrencies = ref(AbeleConfig.getInstance().pinnedCurrencies)
 const fireflyBaseUrl = ref(AbeleConfig.getInstance().fireflyBaseUrl)
 const fireflyToken = ref(AbeleConfig.getInstance().fireflyToken)
 
@@ -93,6 +104,7 @@ const saveSettings = debounce(async () => {
     ? financeCategoriesFolder.value.slice(0, -1).trim()
     : financeCategoriesFolder.value.trim()
   config.defaultCurrency = defaultCurrency.value.trim().toUpperCase()
+  config.pinnedCurrencies = pinnedCurrencies.value.trim()
   config.fireflyBaseUrl = fireflyBaseUrl.value.trim().replace(/\/$/, '')
   config.fireflyToken = fireflyToken.value.trim()
 
@@ -121,6 +133,11 @@ const financeCategoriesFolderChanged = (value: string) => {
 
 const defaultCurrencyChanged = (value: string) => {
   defaultCurrency.value = value.trim()
+  saveSettings()
+}
+
+const pinnedCurrenciesChanged = (value: string) => {
+  pinnedCurrencies.value = value
   saveSettings()
 }
 
