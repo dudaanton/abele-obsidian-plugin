@@ -55,20 +55,17 @@ export class BalanceIndex {
     accountPath: string,
     role: 'from' | 'to'
   ): number {
-    if (role === 'from') {
-      return -transaction.amount!
-    }
+    const account = this.accountsList.accounts.get(accountPath)
 
-    // For 'to' account: use foreignAmount if the destination account currency
-    // differs from the transaction currency (multi-currency transfer)
+    // For multi-currency transfers, use foreignAmount when the account's currency
+    // matches foreignCurrency (i.e. the account operates in the foreign currency)
     if (transaction.foreignAmount != null && transaction.foreignCurrency) {
-      const account = this.accountsList.accounts.get(accountPath)
       if (account && account.currency === transaction.foreignCurrency) {
-        return transaction.foreignAmount
+        return role === 'from' ? -transaction.foreignAmount : transaction.foreignAmount
       }
     }
 
-    return transaction.amount!
+    return role === 'from' ? -transaction.amount! : transaction.amount!
   }
 
   rebuild(): void {
