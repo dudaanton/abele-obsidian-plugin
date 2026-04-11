@@ -4,6 +4,7 @@ import { TransactionsList } from '@/entities/TransactionsList'
 import { AccountsList } from '@/entities/AccountsList'
 import { DATE_FORMAT } from '@/constants/dates'
 import { wikilinkToPath } from '@/helpers/pathsHelpers'
+import { echartsInit, EChartsType } from './echarts'
 import { toRaw } from 'vue'
 import dayjs from 'dayjs'
 
@@ -17,6 +18,7 @@ interface DayData {
 export class CalendarView extends BasesView {
   type = CALENDAR_VIEW_ID
   private containerEl: HTMLElement
+  private chart: EChartsType | null = null
   private currentMonth: number
   private currentYear: number
 
@@ -31,13 +33,17 @@ export class CalendarView extends BasesView {
     this.render()
   }
 
+  onunload(): void {
+    this.chart?.dispose()
+    this.chart = null
+  }
+
   private computeDayTotals(): Map<string, DayData> {
     const store = GlobalStore.getInstance()
     const tl = toRaw(store.transactionsList.value) as TransactionsList | null
     const al = toRaw(store.accountsList.value) as AccountsList | null
     if (!tl || !al) return new Map()
 
-    // Build set of expense and revenue account paths
     const expensePaths = new Set<string>()
     const revenuePaths = new Set<string>()
     for (const [path, account] of al.accounts) {
@@ -45,7 +51,6 @@ export class CalendarView extends BasesView {
       if (account.accountType === 'revenue') revenuePaths.add(path)
     }
 
-    // Resolve wikilink → path cache
     const { app } = store
     const resolveCache = new Map<string, string | null>()
     const resolve = (wikilink: string): string | null => {
@@ -57,7 +62,6 @@ export class CalendarView extends BasesView {
       return result
     }
 
-    // Single pass through all transactions
     const dayMap = new Map<string, DayData>()
 
     for (const tx of tl.transactions.values()) {
@@ -65,7 +69,6 @@ export class CalendarView extends BasesView {
       if (!raw.loaded || !raw.date || raw.amount == null) continue
 
       const dateStr = raw.date.format(DATE_FORMAT)
-
       if (!dayMap.has(dateStr)) {
         dayMap.set(dateStr, { expense: 0, income: 0 })
       }
@@ -74,12 +77,8 @@ export class CalendarView extends BasesView {
       const toPath = raw.to ? resolve(raw.to) : null
       const fromPath = raw.from ? resolve(raw.from) : null
 
-      if (toPath && expensePaths.has(toPath)) {
-        day.expense += raw.amount
-      }
-      if (fromPath && revenuePaths.has(fromPath)) {
-        day.income += raw.amount
-      }
+      if (toPath && expensePaths.has(toPath)) day.expense += raw.amount
+      if (fromPath && revenuePaths.has(fromPath)) day.income += raw.amount
     }
 
     return dayMap
@@ -87,11 +86,13 @@ export class CalendarView extends BasesView {
 
   private render(): void {
     this.containerEl.empty()
+    this.chart?.dispose()
+    this.chart = null
 
     const dayTotals = this.computeDayTotals()
     const wrapper = this.containerEl.createDiv({ cls: 'abele-bases-cal' })
 
-    // Header with month/year and navigation
+    // Header
     const header = wrapper.createDiv({ cls: 'abele-bases-cal__header' })
     const title = header.createDiv({ cls: 'abele-bases-cal__title' })
     title.textContent = dayjs().year(this.currentYear).month(this.currentMonth).format('MMMM YYYY')
@@ -130,94 +131,122 @@ export class CalendarView extends BasesView {
       this.render()
     })
 
-    // Weekday headers
-    const weekStartMonday = GlobalStore.getInstance().weekStartsOnMonday.value
-    const weekdays = wrapper.createDiv({ cls: 'abele-bases-cal__weekdays' })
-    for (let i = weekStartMonday ? 1 : 0; i < (weekStartMonday ? 8 : 7); i++) {
-      const wd = weekdays.createDiv({ cls: 'abele-bases-cal__weekday' })
-      wd.textContent = dayjs().day(i).format('dd')
-    }
-
-    // Days grid
-    const grid = wrapper.createDiv({ cls: 'abele-bases-cal__days' })
+    // ECharts calendar heatmap
     const firstDay = dayjs().year(this.currentYear).month(this.currentMonth).date(1)
-    const weekStart = weekStartMonday ? 1 : 0
-    const paddingDays = (firstDay.day() - weekStart + 7) % 7
-    const daysInMonth = firstDay.daysInMonth()
-    const today = dayjs()
+    const lastDay = firstDay.endOf('month')
+    const rangeStart = firstDay.format(DATE_FORMAT)
+    const rangeEnd = lastDay.format(DATE_FORMAT)
 
-    // Padding days from previous month
-    for (let i = paddingDays; i > 0; i--) {
-      const d = firstDay.subtract(i, 'day')
-      this.renderDay(grid, d, dayTotals, today, true)
+    // Build heatmap data: [date, expense] for expense layer
+    const expenseData: Array<[string, number]> = []
+    const incomeData: Array<[string, number]> = []
+
+    let d = firstDay
+    while (d.isBefore(lastDay) || d.isSame(lastDay, 'day')) {
+      const dateStr = d.format(DATE_FORMAT)
+      const data = dayTotals.get(dateStr)
+      expenseData.push([dateStr, data?.expense || 0])
+      incomeData.push([dateStr, data?.income || 0])
+      d = d.add(1, 'day')
     }
 
-    // Current month days
-    for (let i = 1; i <= daysInMonth; i++) {
-      const d = firstDay.date(i)
-      this.renderDay(grid, d, dayTotals, today, false)
-    }
+    const maxExpense = Math.max(...expenseData.map((d) => d[1]), 1)
 
-    // Trailing days
-    const lastDay = firstDay.date(daysInMonth)
-    const trailingDays = (weekStart + 6 - lastDay.day()) % 7
-    for (let i = 1; i <= trailingDays; i++) {
-      const d = lastDay.add(i, 'day')
-      this.renderDay(grid, d, dayTotals, today, true)
-    }
+    const chartDiv = wrapper.createDiv({ cls: 'abele-bases-echart' })
+    chartDiv.style.width = '100%'
+    chartDiv.style.height = '220px'
+
+    this.chart = echartsInit(chartDiv)
+
+    this.chart.setOption({
+      tooltip: {
+        formatter: (params: any) => {
+          const dateStr = params.data[0]
+          const data = dayTotals.get(dateStr)
+          if (!data || (data.expense === 0 && data.income === 0)) {
+            return `${dateStr}<br/>No transactions`
+          }
+          let html = `<b>${dateStr}</b>`
+          if (data.income > 0)
+            html += `<br/><span style="color:#22c55e">+${fmt(data.income)}</span>`
+          if (data.expense > 0)
+            html += `<br/><span style="color:#ef4444">-${fmt(data.expense)}</span>`
+          return html
+        },
+      },
+      visualMap: {
+        show: false,
+        min: 0,
+        max: maxExpense,
+        inRange: {
+          color: ['#f0f0f0', '#fecaca', '#f87171', '#dc2626'],
+        },
+      },
+      calendar: {
+        top: 8,
+        left: 30,
+        right: 8,
+        bottom: 8,
+        range: [rangeStart, rangeEnd],
+        cellSize: ['auto', 28],
+        dayLabel: {
+          firstDay: GlobalStore.getInstance().weekStartsOnMonday.value ? 1 : 0,
+          nameMap: 'en',
+          fontSize: 11,
+        },
+        monthLabel: { show: false },
+        yearLabel: { show: false },
+        splitLine: { lineStyle: { color: 'transparent' } },
+        itemStyle: {
+          borderWidth: 2,
+          borderColor: 'var(--background-primary)',
+          borderRadius: 4,
+        },
+      },
+      series: [
+        {
+          type: 'heatmap',
+          coordinateSystem: 'calendar',
+          data: expenseData,
+          label: {
+            show: true,
+            formatter: (params: any) => {
+              const data = dayTotals.get(params.data[0])
+              if (!data) return ''
+              const parts: string[] = []
+              if (data.income > 0) parts.push(`+${fmtShort(data.income)}`)
+              if (data.expense > 0) parts.push(`-${fmtShort(data.expense)}`)
+              return parts.join('\n')
+            },
+            fontSize: 9,
+            lineHeight: 11,
+          },
+        },
+      ],
+    })
 
     // Month summary
-    const monthStart = firstDay.format(DATE_FORMAT)
-    const monthEnd = firstDay.date(daysInMonth).format(DATE_FORMAT)
     let monthExpense = 0
     let monthIncome = 0
     for (const [dateStr, data] of dayTotals) {
-      if (dateStr >= monthStart && dateStr <= monthEnd) {
+      if (dateStr >= rangeStart && dateStr <= rangeEnd) {
         monthExpense += data.expense
         monthIncome += data.income
       }
     }
 
     const summary = wrapper.createDiv({ cls: 'abele-bases-cal__summary' })
-    const incomeEl = summary.createSpan({ cls: 'abele-bases-cal__summary-income' })
-    incomeEl.textContent = `+${fmt(monthIncome)}`
-    const expenseEl = summary.createSpan({ cls: 'abele-bases-cal__summary-expense' })
-    expenseEl.textContent = `-${fmt(monthExpense)}`
-    const savingsVal = monthIncome - monthExpense
-    const savingsEl = summary.createSpan({
-      cls: `abele-bases-cal__summary-savings ${savingsVal >= 0 ? 'abele-bases-cal__summary-income' : 'abele-bases-cal__summary-expense'}`,
+    summary.createSpan({ cls: 'abele-bases-cal__summary-income', text: `+${fmt(monthIncome)}` })
+    summary.createSpan({ cls: 'abele-bases-cal__summary-expense', text: `-${fmt(monthExpense)}` })
+    const savings = monthIncome - monthExpense
+    summary.createSpan({
+      cls: savings >= 0 ? 'abele-bases-cal__summary-income' : 'abele-bases-cal__summary-expense',
+      text: `= ${fmt(savings)}`,
     })
-    savingsEl.textContent = `= ${fmt(savingsVal)}`
-  }
 
-  private renderDay(
-    grid: HTMLElement,
-    date: dayjs.Dayjs,
-    dayTotals: Map<string, DayData>,
-    today: dayjs.Dayjs,
-    otherMonth: boolean
-  ): void {
-    const dateStr = date.format(DATE_FORMAT)
-    const data = dayTotals.get(dateStr)
-    const isToday = date.isSame(today, 'day')
-
-    const cell = grid.createDiv({ cls: 'abele-bases-cal__day' })
-    if (otherMonth) cell.addClass('abele-bases-cal__day--other')
-    if (isToday) cell.addClass('abele-bases-cal__day--today')
-
-    const num = cell.createDiv({ cls: 'abele-bases-cal__day-num' })
-    num.textContent = String(date.date())
-
-    if (data) {
-      if (data.income > 0) {
-        const inc = cell.createDiv({ cls: 'abele-bases-cal__day-income' })
-        inc.textContent = `+${fmtShort(data.income)}`
-      }
-      if (data.expense > 0) {
-        const exp = cell.createDiv({ cls: 'abele-bases-cal__day-expense' })
-        exp.textContent = `-${fmtShort(data.expense)}`
-      }
-    }
+    const observer = new ResizeObserver(() => this.chart?.resize())
+    observer.observe(chartDiv)
+    this.register(() => observer.disconnect())
   }
 }
 

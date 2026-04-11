@@ -11,7 +11,7 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   margin-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
 
-/* Bases chart views */
+/* Bases views — shared */
 .abele-bases-chart__empty {
   padding: 24px;
   text-align: center;
@@ -19,79 +19,7 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   font-style: italic;
 }
 
-.abele-bases-chart__header {
-  padding: 8px 0;
-  font-size: var(--font-ui-small);
-  color: var(--text-normal);
-}
-
-.abele-bases-chart__header-sub {
-  color: var(--text-faint);
-}
-
-.abele-bases-chart__legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 8px 0;
-}
-
-.abele-bases-chart__legend-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--font-ui-smaller);
-  color: var(--text-muted);
-}
-
-.abele-bases-chart__legend-swatch {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
-}
-
-/* Bar chart */
-.abele-bases-bar__row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0;
-  font-size: var(--font-ui-small);
-}
-
-.abele-bases-bar__label {
-  width: 120px;
-  flex-shrink: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-normal);
-}
-
-.abele-bases-bar__track {
-  flex: 1;
-  height: 18px;
-  background: var(--background-modifier-border);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.abele-bases-bar__fill {
-  height: 100%;
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.abele-bases-bar__value {
-  width: 70px;
-  flex-shrink: 0;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-}
-
-/* Stat card */
+/* Stat card (Net Worth) */
 .abele-bases-stat {
   padding: 16px;
 }
@@ -109,10 +37,6 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   color: var(--text-normal);
   font-variant-numeric: tabular-nums;
   margin: 4px 0;
-}
-
-.abele-bases-stat__spark {
-  margin-top: 8px;
 }
 
 /* Bases Calendar View */
@@ -146,71 +70,6 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
 
 .abele-bases-cal__today:hover {
   text-decoration: underline;
-}
-
-.abele-bases-cal__weekdays {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  margin-bottom: 4px;
-}
-
-.abele-bases-cal__weekday {
-  text-align: center;
-  font-weight: var(--font-semibold);
-  color: var(--text-muted);
-  font-size: var(--font-ui-small);
-}
-
-.abele-bases-cal__days {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
-}
-
-.abele-bases-cal__day {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 4px 2px;
-  border-radius: var(--radius-s);
-  min-height: 48px;
-  cursor: default;
-}
-
-.abele-bases-cal__day:hover {
-  background-color: var(--background-modifier-hover);
-}
-
-.abele-bases-cal__day--other {
-  opacity: 0.35;
-}
-
-.abele-bases-cal__day--today {
-  background-color: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.1);
-}
-
-.abele-bases-cal__day--today .abele-bases-cal__day-num {
-  color: var(--text-accent);
-  font-weight: var(--font-semibold);
-}
-
-.abele-bases-cal__day-num {
-  font-size: var(--font-ui-small);
-  margin-bottom: 2px;
-}
-
-.abele-bases-cal__day-income {
-  font-size: 10px;
-  color: var(--text-success);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-}
-
-.abele-bases-cal__day-expense {
-  font-size: 10px;
-  color: var(--text-error);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
 }
 
 .abele-bases-cal__summary {

@@ -1,7 +1,7 @@
 import { BasesView, QueryController } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { BalanceIndex } from '@/entities/BalanceIndex'
-import { renderStatCard } from './svgChart'
+import { echartsInit, EChartsType } from './echarts'
 import { toRaw } from 'vue'
 import dayjs from 'dayjs'
 
@@ -10,6 +10,7 @@ export const NET_WORTH_VIEW_ID = 'abele-net-worth'
 export class NetWorthView extends BasesView {
   type = NET_WORTH_VIEW_ID
   private containerEl: HTMLElement
+  private chart: EChartsType | null = null
 
   constructor(controller: QueryController, containerEl: HTMLElement) {
     super(controller)
@@ -18,6 +19,11 @@ export class NetWorthView extends BasesView {
 
   onDataUpdated(): void {
     this.render()
+  }
+
+  onunload(): void {
+    this.chart?.dispose()
+    this.chart = null
   }
 
   private render(): void {
@@ -34,22 +40,74 @@ export class NetWorthView extends BasesView {
 
     const today = dayjs()
     const netWorth = bi.getNetWorthAtDate(today)
-
-    // Build trend: last 90 days, sampled weekly
     const daysBack = (this.config.get('daysBack') as number) || 90
-    const trend: Array<{ x: string; y: number }> = []
-    for (let i = daysBack; i >= 0; i -= 7) {
+
+    // Build daily series
+    const dates: string[] = []
+    const values: number[] = []
+    for (let i = daysBack; i >= 0; i--) {
       const date = today.subtract(i, 'day')
-      trend.push({
-        x: date.format('YYYY-MM-DD'),
-        y: bi.getNetWorthAtDate(date),
-      })
-    }
-    // Always include today
-    if (trend.length === 0 || trend[trend.length - 1].x !== today.format('YYYY-MM-DD')) {
-      trend.push({ x: today.format('YYYY-MM-DD'), y: netWorth })
+      dates.push(date.format('MMM D'))
+      values.push(bi.getNetWorthAtDate(date))
     }
 
-    renderStatCard(this.containerEl, 'Net Worth', netWorth, undefined, trend)
+    this.containerEl.empty()
+
+    // Stat number
+    const statEl = this.containerEl.createDiv({ cls: 'abele-bases-stat' })
+    const labelEl = statEl.createDiv({ cls: 'abele-bases-stat__label' })
+    labelEl.textContent = 'Net Worth'
+    const valueEl = statEl.createDiv({ cls: 'abele-bases-stat__value' })
+    valueEl.textContent = netWorth.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+
+    // Area chart below
+    const chartDiv = this.containerEl.createDiv({ cls: 'abele-bases-echart' })
+    chartDiv.style.width = '100%'
+    chartDiv.style.height = '200px'
+
+    this.chart?.dispose()
+    this.chart = echartsInit(chartDiv)
+
+    this.chart.setOption({
+      tooltip: {
+        trigger: 'axis',
+      },
+      grid: {
+        left: 12,
+        right: 12,
+        top: 8,
+        bottom: 24,
+        containLabel: true,
+      },
+      xAxis: {
+        type: 'category',
+        data: dates,
+        boundaryGap: false,
+        axisLabel: {
+          interval: Math.max(Math.floor(dates.length / 6) - 1, 0),
+        },
+      },
+      yAxis: {
+        type: 'value',
+        splitLine: { lineStyle: { opacity: 0.3 } },
+      },
+      series: [
+        {
+          type: 'line',
+          data: values,
+          smooth: true,
+          showSymbol: false,
+          lineStyle: { width: 2 },
+          areaStyle: { opacity: 0.15 },
+        },
+      ],
+    })
+
+    const observer = new ResizeObserver(() => this.chart?.resize())
+    observer.observe(chartDiv)
+    this.register(() => observer.disconnect())
   }
 }
