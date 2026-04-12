@@ -260,10 +260,12 @@ export async function migrateFromFirefly(
       const attr = account.attributes
 
       // Render account name from template
+      const abeleAccountType = mapFireflyAccountType(attr.type)
+      const hasCurrency = abeleAccountType === 'asset' || abeleAccountType === 'liability'
       const templateData: Record<string, string> = {
         name: attr.name,
-        currency: attr.currency_code || '',
-        accountType: mapFireflyAccountType(attr.type),
+        currency: hasCurrency ? attr.currency_code || '' : '',
+        accountType: abeleAccountType,
       }
       const renderedName =
         cleanFileName(renderTemplate(config.accountNameTemplate, templateData)) ||
@@ -278,16 +280,23 @@ export async function migrateFromFirefly(
 
       const frontmatter: Record<string, any> = {
         type: 'account',
-        accountType: mapFireflyAccountType(attr.type),
-        currency: attr.currency_code,
+        accountType: abeleAccountType,
         fireflyId: parseInt(account.id),
+      }
+
+      // Only asset/liability accounts have a fixed currency.
+      // Expense/revenue are categories — currency is determined by the transaction.
+      if (hasCurrency) {
+        frontmatter.currency = attr.currency_code
       }
 
       const content = buildFrontmatter(frontmatter)
       const path = `${config.accountsFolder}/${renderedName}.md`
 
       result.preview.accounts.push(
-        `${renderedName} (${mapFireflyAccountType(attr.type)}, ${attr.currency_code})`
+        hasCurrency
+          ? `${renderedName} (${abeleAccountType}, ${attr.currency_code})`
+          : `${renderedName} (${abeleAccountType})`
       )
       const created = await createNoteIfNotExists(path, content, config.dryRun)
       if (created) {

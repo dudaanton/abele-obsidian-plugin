@@ -55,12 +55,17 @@ export class BalanceIndex {
     accountPath: string,
     role: 'from' | 'to'
   ): number {
-    const account = this.accountsList.accounts.get(accountPath)
-
-    // For multi-currency transfers, use foreignAmount when the account's currency
-    // matches foreignCurrency (i.e. the account operates in the foreign currency)
+    // Multi-currency logic only applies to asset/liability accounts (they have a fixed currency).
+    // Expense/revenue accounts are categories — they don't have a currency,
+    // so they always use the transaction's primary amount.
     if (transaction.foreignAmount != null && transaction.foreignCurrency) {
-      if (account && account.currency === transaction.foreignCurrency) {
+      const account = this.accountsList.accounts.get(accountPath)
+      const accountType = account?.accountType
+      if (
+        account?.currency &&
+        (accountType === 'asset' || accountType === 'liability') &&
+        account.currency === transaction.foreignCurrency
+      ) {
         return role === 'from' ? -transaction.foreignAmount : transaction.foreignAmount
       }
     }
