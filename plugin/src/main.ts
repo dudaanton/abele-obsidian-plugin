@@ -143,6 +143,12 @@ export default class AbelePlugin extends Plugin {
           placeholder: 'Optional — split into separate series',
         },
         {
+          key: 'showDots',
+          type: 'toggle' as const,
+          displayName: 'Show data points on lines',
+          default: false,
+        },
+        {
           key: 'logScale',
           type: 'toggle' as const,
           displayName: 'Logarithmic scale',
@@ -153,6 +159,15 @@ export default class AbelePlugin extends Plugin {
           type: 'toggle' as const,
           displayName: 'Separate Y axis per series',
           default: false,
+        },
+        {
+          key: 'chartHeight',
+          type: 'slider' as const,
+          displayName: 'Chart height',
+          default: 500,
+          min: 200,
+          max: 1000,
+          step: 50,
         },
       ],
     })

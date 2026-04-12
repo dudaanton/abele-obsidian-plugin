@@ -434,6 +434,28 @@ const periodLent = computed(() => periodTotals.value.lent)
 const periodReturned = computed(() => periodTotals.value.returned)
 const periodSavings = computed(() => periodIncome.value - periodExpenses.value)
 
+// --- Account Type Lookup ---
+
+const accountTypeSets = computed(() => {
+  const al = accountsList.value
+  const expense = new Set<string>()
+  const revenue = new Set<string>()
+  if (!al) return { expense, revenue }
+
+  for (const [path, account] of al.accounts) {
+    if (account.accountType === 'expense') expense.add(path)
+    if (account.accountType === 'revenue') revenue.add(path)
+  }
+  return { expense, revenue }
+})
+
+function resolveWikilink(wikilink: string): string | null {
+  const linkPath = wikilinkToPath(wikilink)
+  if (!linkPath) return null
+  const file = store.app.metadataCache.getFirstLinkpathDest(linkPath, '')
+  return file ? file.path : null
+}
+
 // --- Charts ---
 
 type ChartTab = 'expenses' | 'income' | 'calendar' | 'networth'
@@ -782,26 +804,6 @@ function renderNetworthChart() {
 watch([networthData, networthChartEl], () => nextTick(renderNetworthChart), { immediate: true })
 
 // --- Recent Transactions ---
-
-const accountTypeSets = computed(() => {
-  const al = accountsList.value
-  const expense = new Set<string>()
-  const revenue = new Set<string>()
-  if (!al) return { expense, revenue }
-
-  for (const [path, account] of al.accounts) {
-    if (account.accountType === 'expense') expense.add(path)
-    if (account.accountType === 'revenue') revenue.add(path)
-  }
-  return { expense, revenue }
-})
-
-function resolveWikilink(wikilink: string): string | null {
-  const linkPath = wikilinkToPath(wikilink)
-  if (!linkPath) return null
-  const file = store.app.metadataCache.getFirstLinkpathDest(linkPath, '')
-  return file ? file.path : null
-}
 
 const sortedTransactions = computed(() => {
   const tl = transactionsList.value

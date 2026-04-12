@@ -56,6 +56,7 @@ export class ChartView extends BasesView {
     const chartType = ((this.config.get('chartType') as string) || 'line') as ChartType
     const logScale = !!this.config.get('logScale')
     const dualAxis = !!this.config.get('dualAxis')
+    const showDots = !!this.config.get('showDots')
     const dateProp = this.config.getAsPropertyId('dateProperty')
     const groupProp = this.config.getAsPropertyId('groupProperty')
 
@@ -123,7 +124,15 @@ export class ChartView extends BasesView {
     if (chartType === 'scatter') {
       this.renderScatter(points, valueProps, groupProp, logScale)
     } else {
-      this.renderCategorySeries(points, valueProps, groupProp, chartType, logScale, dualAxis)
+      this.renderCategorySeries(
+        points,
+        valueProps,
+        groupProp,
+        chartType,
+        logScale,
+        dualAxis,
+        showDots
+      )
     }
   }
 
@@ -133,7 +142,8 @@ export class ChartView extends BasesView {
     groupProp: BasesPropertyId | null,
     chartType: 'line' | 'bar',
     logScale: boolean,
-    dualAxis: boolean
+    dualAxis: boolean,
+    showDots: boolean
   ): void {
     const allDates = [...new Set(points.map((p) => p.date))].sort()
     const hasGroups = groupProp && new Set(points.map((p) => p.group)).size > 1
@@ -219,7 +229,13 @@ export class ChartView extends BasesView {
           type: chartType,
           data: s.data,
           ...(dualAxis && seriesList.length > 1 ? { yAxisIndex: i } : {}),
-          ...(chartType === 'line' ? { connectNulls: true } : {}),
+          ...(chartType === 'line'
+            ? {
+                connectNulls: true,
+                symbol: showDots ? 'circle' : 'none',
+                symbolSize: showDots ? 6 : 0,
+              }
+            : {}),
           emphasis: { disabled: true },
         })),
       },
@@ -322,16 +338,14 @@ export class ChartView extends BasesView {
   }
 
   private ensureChart(): void {
+    const height = (this.config.get('chartHeight') as number) || 500
+
     this.containerEl.empty()
     const chartDiv = this.containerEl.createDiv({ cls: 'abele-bases-echart' })
     chartDiv.style.width = '100%'
-    chartDiv.style.height = '320px'
+    chartDiv.style.height = `${height}px`
 
     this.chart?.dispose()
     this.chart = echartsInit(chartDiv)
-
-    const observer = new ResizeObserver(() => this.chart?.resize())
-    observer.observe(chartDiv)
-    this.register(() => observer.disconnect())
   }
 }
