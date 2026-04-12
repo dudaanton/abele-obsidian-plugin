@@ -32,6 +32,7 @@ export class GlobalStore {
   public readonly unusedMediaModalOpened = ref(false)
   public readonly deduplicateMediaModalOpened = ref(false)
   public readonly migrateFromFireflyModalOpened = ref(false)
+  public readonly migrateDataviewFieldsModalOpened = ref(false)
 
   public readonly timelineSidebarId = ref<string | null>(null)
   public readonly todoSidebarId = ref<string | null>(null)

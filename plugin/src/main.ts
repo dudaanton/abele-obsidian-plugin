@@ -255,6 +255,14 @@ export default class AbelePlugin extends Plugin {
     })
 
     this.addCommand({
+      id: 'migrate-dataview-fields',
+      name: 'Migrate from dataview fields',
+      callback: () => {
+        GlobalStore.getInstance().migrateDataviewFieldsModalOpened.value = true
+      },
+    })
+
+    this.addCommand({
       id: 'show-todo-sidebar',
       name: 'Show TODO sidebar',
       callback: () => {
