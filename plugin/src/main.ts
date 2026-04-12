@@ -31,9 +31,6 @@ import { TODO_SIDEBAR_VIEW_TYPE, TodoSidebarView } from './views/TodoSidebarView
 import { AI_SIDEBAR_VIEW_TYPE, AiSidebarView } from './views/AiSidebarView'
 import { FINANCE_SIDEBAR_VIEW_TYPE, FinanceSidebarView } from './views/FinanceSidebarView'
 import { BALANCE_CHART_VIEW_ID, BalanceChartView } from './bases/BalanceChartView'
-import { SPENDING_BREAKDOWN_VIEW_ID, SpendingBreakdownView } from './bases/SpendingBreakdownView'
-import { NET_WORTH_VIEW_ID, NetWorthView } from './bases/NetWorthView'
-import { CALENDAR_VIEW_ID, CalendarView } from './bases/CalendarView'
 import { LINE_CHART_VIEW_ID, LineChartView } from './bases/LineChartView'
 import { AgentService } from './ai/AgentService'
 import { ScopeResolver } from './ai/ScopeResolver'
@@ -133,46 +130,6 @@ export default class AbelePlugin extends Plugin {
           step: 7,
         },
       ],
-    })
-
-    this.registerBasesView(SPENDING_BREAKDOWN_VIEW_ID, {
-      name: 'Spending Breakdown',
-      icon: 'bar-chart-horizontal',
-      factory: (controller, containerEl) => new SpendingBreakdownView(controller, containerEl),
-      options: () => [
-        {
-          key: 'daysBack',
-          type: 'slider',
-          displayName: 'Days back (0 = current month)',
-          default: 0,
-          min: 0,
-          max: 365,
-          step: 7,
-        },
-      ],
-    })
-
-    this.registerBasesView(NET_WORTH_VIEW_ID, {
-      name: 'Net Worth',
-      icon: 'trending-up',
-      factory: (controller, containerEl) => new NetWorthView(controller, containerEl),
-      options: () => [
-        {
-          key: 'daysBack',
-          type: 'slider',
-          displayName: 'Trend days back',
-          default: 90,
-          min: 7,
-          max: 365,
-          step: 7,
-        },
-      ],
-    })
-
-    this.registerBasesView(CALENDAR_VIEW_ID, {
-      name: 'Spending Calendar',
-      icon: 'calendar',
-      factory: (controller, containerEl) => new CalendarView(controller, containerEl),
     })
 
     this.registerBasesView(LINE_CHART_VIEW_ID, {

@@ -104,24 +104,27 @@
           </span>
         </div>
       </div>
-      <div class="abele-finance-sidebar__pie-tabs">
+      <div class="abele-finance-sidebar__chart-tabs">
         <div
-          class="abele-finance-sidebar__pie-tab"
-          :class="{ 'abele-finance-sidebar__pie-tab--active': pieTab === 'expenses' }"
-          @click="pieTab = 'expenses'"
+          v-for="tab in chartTabs"
+          :key="tab.key"
+          class="abele-finance-sidebar__chart-tab"
+          :class="{ 'abele-finance-sidebar__chart-tab--active': chartTab === tab.key }"
+          @click="chartTab = tab.key"
         >
-          Expenses
-        </div>
-        <div
-          class="abele-finance-sidebar__pie-tab"
-          :class="{ 'abele-finance-sidebar__pie-tab--active': pieTab === 'income' }"
-          @click="pieTab = 'income'"
-        >
-          Income
+          {{ tab.label }}
         </div>
       </div>
-      <div v-if="pieData.length" ref="pieChartEl" class="abele-finance-sidebar__pie-chart" />
-      <div v-else class="abele-finance-sidebar__pie-empty">No data</div>
+      <template v-if="chartTab === 'expenses' || chartTab === 'income'">
+        <div v-if="pieData.length" ref="pieChartEl" class="abele-finance-sidebar__pie-chart" />
+        <div v-else class="abele-finance-sidebar__pie-empty">No data</div>
+      </template>
+      <template v-else-if="chartTab === 'calendar'">
+        <div ref="calendarChartEl" class="abele-finance-sidebar__calendar-chart" />
+      </template>
+      <template v-else-if="chartTab === 'networth'">
+        <div ref="networthChartEl" class="abele-finance-sidebar__networth-chart" />
+      </template>
     </section>
 
     <!-- Recent Transactions -->
@@ -218,6 +221,10 @@ const currencyCards = computed<CurrencyCard[]>(() => {
 onUnmounted(() => {
   pieChart?.dispose()
   pieObserver?.disconnect()
+  calendarChart?.dispose()
+  calendarObserver?.disconnect()
+  networthChart?.dispose()
+  networthObserver?.disconnect()
 })
 
 // --- Period Summary ---
@@ -399,7 +406,11 @@ const selectedPeriodCurrency = ref(
 
 // Auto-select first available currency if current selection has no data
 watch(periodCurrencies, (currencies) => {
-  if (currencies.length && !currencies.includes(selectedPeriodCurrency.value)) {
+  if (
+    currencies.length &&
+    !currencies.includes(selectedPeriodCurrency.value) &&
+    !pinnedCurrenciesList.value.includes(selectedPeriodCurrency.value)
+  ) {
     selectedPeriodCurrency.value = currencies[0]
   }
 })
@@ -423,9 +434,22 @@ const periodLent = computed(() => periodTotals.value.lent)
 const periodReturned = computed(() => periodTotals.value.returned)
 const periodSavings = computed(() => periodIncome.value - periodExpenses.value)
 
+// --- Charts ---
+
+type ChartTab = 'expenses' | 'income' | 'calendar' | 'networth'
+const chartTab = ref<ChartTab>('expenses')
+const chartTabs = [
+  { key: 'expenses' as ChartTab, label: 'Expenses' },
+  { key: 'income' as ChartTab, label: 'Income' },
+  { key: 'calendar' as ChartTab, label: 'Calendar' },
+  { key: 'networth' as ChartTab, label: 'Net Worth' },
+]
+
+// Keep pieTab in sync for backward compat
+const pieTab = computed(() => (chartTab.value === 'income' ? 'income' : 'expenses'))
+
 // --- Pie Chart ---
 
-const pieTab = ref<'expenses' | 'income'>('expenses')
 const pieChartEl = ref<HTMLElement | null>(null)
 let pieChart: EChartsType | null = null
 let pieObserver: ResizeObserver | null = null
@@ -495,6 +519,268 @@ function renderPieChart() {
 
 watch([pieData, pieChartEl], () => nextTick(renderPieChart), { immediate: true })
 
+// --- Calendar Heatmap ---
+
+const calendarChartEl = ref<HTMLElement | null>(null)
+let calendarChart: EChartsType | null = null
+let calendarObserver: ResizeObserver | null = null
+
+const calendarData = computed(() => {
+  const tl = toRaw(transactionsList.value) as TransactionsList | null
+  if (!tl) return new Map<string, { expense: number; income: number }>()
+
+  const { expense: expPaths, revenue: revPaths } = accountTypeSets.value
+  const { app } = store
+  const resolveCache = new Map<string, string | null>()
+  const resolve = (wikilink: string): string | null => {
+    if (resolveCache.has(wikilink)) return resolveCache.get(wikilink)!
+    const linkPath = wikilinkToPath(wikilink)
+    const file = linkPath ? app.metadataCache.getFirstLinkpathDest(linkPath, '') : null
+    const result = file ? file.path : null
+    resolveCache.set(wikilink, result)
+    return result
+  }
+
+  const startStr = periodStart.value.format(DATE_FORMAT)
+  const endStr = periodEnd.value.format(DATE_FORMAT)
+  const dayMap = new Map<string, { expense: number; income: number }>()
+
+  for (const tx of tl.transactions.values()) {
+    const raw = toRaw(tx)
+    if (!raw.loaded || !raw.date || raw.amount == null || !raw.currency) continue
+    if (raw.currency !== selectedPeriodCurrency.value) continue
+
+    const dateStr = raw.date.format(DATE_FORMAT)
+    if (dateStr < startStr || dateStr > endStr) continue
+
+    if (!dayMap.has(dateStr)) dayMap.set(dateStr, { expense: 0, income: 0 })
+    const day = dayMap.get(dateStr)!
+
+    const toPath = raw.to ? resolve(raw.to) : null
+    const fromPath = raw.from ? resolve(raw.from) : null
+
+    if (toPath && expPaths.has(toPath)) day.expense += raw.amount
+    if (fromPath && revPaths.has(fromPath)) day.income += raw.amount
+  }
+
+  return dayMap
+})
+
+function renderCalendarChart() {
+  if (!calendarChartEl.value) {
+    calendarChart?.dispose()
+    calendarChart = null
+    calendarObserver?.disconnect()
+    calendarObserver = null
+    return
+  }
+
+  if (!calendarChart || calendarChart.isDisposed()) {
+    calendarChart = echartsInit(calendarChartEl.value)
+    calendarObserver = new ResizeObserver(() => calendarChart?.resize())
+    calendarObserver.observe(calendarChartEl.value)
+  }
+
+  const colors = getThemeColors()
+  const rangeStart = periodStart.value.format(DATE_FORMAT)
+  const rangeEnd = periodEnd.value.format(DATE_FORMAT)
+  const dayTotals = calendarData.value
+
+  const expenseData: Array<[string, number]> = []
+  let d = periodStart.value
+  while (d.isBefore(periodEnd.value) || d.isSame(periodEnd.value, 'day')) {
+    const dateStr = d.format(DATE_FORMAT)
+    const data = dayTotals.get(dateStr)
+    expenseData.push([dateStr, data?.expense || 0])
+    d = d.add(1, 'day')
+  }
+
+  const maxExpense = Math.max(...expenseData.map((e) => e[1]), 1)
+  const bgPrimary = getComputedStyle(document.body).getPropertyValue('--background-primary').trim()
+  const isDark = document.body.classList.contains('theme-dark')
+  const emptyColor = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'
+
+  const fmtShort = (n: number): string => {
+    if (Math.abs(n) >= 1000) return (n / 1000).toFixed(1) + 'k'
+    return n.toFixed(0)
+  }
+
+  calendarChart.setOption(
+    {
+      animation: false,
+      tooltip: {
+        formatter: (params: any) => {
+          const dateStr = params.data[0]
+          const data = dayTotals.get(dateStr)
+          if (!data || (data.expense === 0 && data.income === 0))
+            return `${dateStr}<br/>No transactions`
+          let html = `<b>${dateStr}</b>`
+          if (data.income > 0)
+            html += `<br/><span style="color:${colors.income}">+${formatAmount(data.income)}</span>`
+          if (data.expense > 0)
+            html += `<br/><span style="color:${colors.expense}">-${formatAmount(data.expense)}</span>`
+          return html
+        },
+      },
+      visualMap: {
+        show: false,
+        min: 0,
+        max: maxExpense,
+        inRange: {
+          color: [emptyColor, colors.expense + '40', colors.expense + '80', colors.expense],
+        },
+      },
+      calendar: {
+        top: 8,
+        left: 30,
+        right: 8,
+        bottom: 8,
+        range: [rangeStart, rangeEnd],
+        cellSize: ['auto', 28],
+        dayLabel: {
+          firstDay: store.weekStartsOnMonday.value ? 1 : 0,
+          nameMap: 'en',
+          color: colors.textFaint,
+        },
+        monthLabel: { show: false },
+        yearLabel: { show: false },
+        splitLine: { lineStyle: { color: 'transparent' } },
+        itemStyle: { borderWidth: 2, borderColor: bgPrimary, borderRadius: 4 },
+      },
+      series: [
+        {
+          type: 'heatmap',
+          coordinateSystem: 'calendar',
+          data: expenseData,
+          label: {
+            show: true,
+            color: colors.text,
+            formatter: (params: any) => {
+              const data = dayTotals.get(params.data[0])
+              if (!data) return ''
+              const parts: string[] = []
+              if (data.income > 0) parts.push(`+${fmtShort(data.income)}`)
+              if (data.expense > 0) parts.push(`-${fmtShort(data.expense)}`)
+              return parts.join('\n')
+            },
+            fontSize: 9,
+            lineHeight: 11,
+          },
+        },
+      ],
+    },
+    true
+  )
+}
+
+watch([calendarData, calendarChartEl], () => nextTick(renderCalendarChart), { immediate: true })
+
+// --- Net Worth Chart ---
+
+const networthChartEl = ref<HTMLElement | null>(null)
+let networthChart: EChartsType | null = null
+let networthObserver: ResizeObserver | null = null
+const networthLegendSelected = ref<Record<string, boolean>>({})
+
+interface NetworthSeries {
+  name: string
+  data: number[]
+}
+
+const networthData = computed(() => {
+  const bi = toRaw(balanceIndex.value) as BalanceIndex | null
+  if (!bi) return { dates: [] as string[], series: [] as NetworthSeries[] }
+
+  const dates: string[] = []
+  let d = periodStart.value
+  while (d.isBefore(periodEnd.value) || d.isSame(periodEnd.value, 'day')) {
+    dates.push(d.format('MMM D'))
+    d = d.add(1, 'day')
+  }
+
+  const series: NetworthSeries[] = []
+  for (const currency of pinnedCurrenciesList.value) {
+    const data: number[] = []
+    let dd = periodStart.value
+    for (let i = 0; i < dates.length; i++) {
+      data.push(Math.round(bi.getNetWorthAtDateByCurrency(dd, currency) * 100) / 100)
+      dd = dd.add(1, 'day')
+    }
+    series.push({ name: currency, data })
+  }
+
+  return { dates, series }
+})
+
+function renderNetworthChart() {
+  if (!networthChartEl.value) {
+    networthChart?.dispose()
+    networthChart = null
+    networthObserver?.disconnect()
+    networthObserver = null
+    return
+  }
+
+  if (!networthChart || networthChart.isDisposed()) {
+    networthChart = echartsInit(networthChartEl.value)
+    networthObserver = new ResizeObserver(() => networthChart?.resize())
+    networthObserver.observe(networthChartEl.value)
+    networthChart.on('legendselectchanged', (params: any) => {
+      networthLegendSelected.value = { ...params.selected }
+    })
+  }
+
+  const { dates, series } = networthData.value
+
+  if (!dates.length || !series.length) {
+    networthChart.clear()
+    return
+  }
+
+  networthChart.setOption(
+    {
+      animation: false,
+      tooltip: {
+        trigger: 'axis',
+        valueFormatter: (v: number) => formatAmount(v),
+      },
+      legend: {
+        data: series.map((s) => s.name),
+        selected: Object.keys(networthLegendSelected.value).length
+          ? networthLegendSelected.value
+          : undefined,
+        bottom: 0,
+        type: 'scroll',
+      },
+      grid: {
+        left: 12,
+        right: 12,
+        top: 12,
+        bottom: series.length > 1 ? 40 : 24,
+        containLabel: true,
+      },
+      xAxis: {
+        type: 'category',
+        data: dates,
+        boundaryGap: false,
+        axisLabel: {
+          interval: Math.max(Math.floor(dates.length / 6) - 1, 0),
+        },
+      },
+      yAxis: { type: 'value' },
+      series: series.map((s) => ({
+        name: s.name,
+        type: 'line',
+        data: s.data,
+        emphasis: { disabled: true },
+      })),
+    },
+    true
+  )
+}
+
+watch([networthData, networthChartEl], () => nextTick(renderNetworthChart), { immediate: true })
+
 // --- Recent Transactions ---
 
 const accountTypeSets = computed(() => {
@@ -522,7 +808,10 @@ const sortedTransactions = computed(() => {
   if (!tl) return []
 
   const { app } = store
-  const txs = [...tl.transactions.values()].filter((tx) => tx.loaded && tx.date)
+  const endStr = periodEnd.value.format('YYYY-MM-DD')
+  const txs = [...tl.transactions.values()].filter(
+    (tx) => tx.loaded && tx.date && tx.date.format('YYYY-MM-DD') <= endStr
+  )
   txs.sort((a, b) => {
     const da = a.date!.format('YYYY-MM-DD')
     const db = b.date!.format('YYYY-MM-DD')
@@ -557,6 +846,10 @@ const transactionTypes = computed(() => {
   }
 
   return types
+})
+
+watch(periodEnd, () => {
+  visibleCount.value = PAGE_SIZE
 })
 
 const visibleTransactions = computed(() => sortedTransactions.value.slice(0, visibleCount.value))
@@ -768,25 +1061,16 @@ function formatAmount(value: number): string {
   color: var(--text-error);
 }
 
-// --- Pie Chart ---
+// --- Charts ---
 
-.abele-finance-sidebar__pie-tabs {
+.abele-finance-sidebar__chart-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--size-4-1);
   margin-top: calc(var(--p-spacing) * 1.5);
 }
 
-.abele-finance-sidebar__pie-empty {
-  height: 200px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-faint);
-  font-size: var(--font-ui-small);
-  font-style: italic;
-}
-
-.abele-finance-sidebar__pie-tab {
+.abele-finance-sidebar__chart-tab {
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
   cursor: pointer;
@@ -805,7 +1089,19 @@ function formatAmount(value: number): string {
   }
 }
 
-.abele-finance-sidebar__pie-chart {
+.abele-finance-sidebar__pie-empty {
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  font-size: var(--font-ui-small);
+  font-style: italic;
+}
+
+.abele-finance-sidebar__pie-chart,
+.abele-finance-sidebar__calendar-chart,
+.abele-finance-sidebar__networth-chart {
   width: 100%;
   max-width: 100%;
   height: 220px;

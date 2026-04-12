@@ -190,10 +190,28 @@ export class LineChartView extends BasesView {
         bottom: 0,
         type: 'scroll',
       },
+      dataZoom: [
+        {
+          type: 'inside',
+          xAxisIndex: 0,
+        },
+        {
+          type: 'inside',
+          yAxisIndex: 0,
+        },
+      ],
+      toolbox: {
+        right: 12,
+        feature: {
+          dataZoom: {
+            yAxisIndex: 'none',
+          },
+        },
+      },
       grid: {
         left: 12,
         right: 12,
-        top: 12,
+        top: 32,
         bottom: 40,
         containLabel: true,
       },
