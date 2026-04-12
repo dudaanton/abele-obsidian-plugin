@@ -128,24 +128,7 @@
     <section class="abele-finance-sidebar__section">
       <h3 class="abele-finance-sidebar__section-title">Recent Transactions</h3>
       <div v-if="visibleTransactions.length" class="abele-finance-sidebar__transactions">
-        <div
-          v-for="tx in visibleTransactions"
-          :key="tx.path"
-          class="abele-finance-sidebar__transaction-row"
-          @click="openNote(tx.path)"
-        >
-          <div class="abele-finance-sidebar__transaction-main">
-            <span class="abele-finance-sidebar__transaction-title">{{ tx.title }}</span>
-            <span class="abele-finance-sidebar__transaction-amount">
-              {{ formatAmount(tx.amount) }}
-              <span class="abele-finance-sidebar__card-currency">{{ tx.currency }}</span>
-            </span>
-          </div>
-          <div class="abele-finance-sidebar__transaction-meta">
-            <span>{{ tx.from }} → {{ tx.to }}</span>
-            <span>{{ tx.date }}</span>
-          </div>
-        </div>
+        <TransactionItem v-for="tx in visibleTransactions" :key="tx.id" :transaction="tx" />
         <button v-if="hasMore" class="abele-finance-sidebar__load-more" @click="loadMore">
           Load more
         </button>
@@ -175,10 +158,11 @@ import { TransactionsList } from '@/entities/TransactionsList'
 import { BalanceIndex } from '@/entities/BalanceIndex'
 import { createTransaction } from '@/commands/createTransaction'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { extractAliasOrNameFromWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
-import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
+import { wikilinkToPath } from '@/helpers/pathsHelpers'
+import { DATE_FORMAT } from '@/constants/dates'
 import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
 import ObsidianIcon from './obsidian/Icon.vue'
+import TransactionItem from './TransactionItem.vue'
 import dayjs from 'dayjs'
 import { Notice, TFile } from 'obsidian'
 import { toRaw } from 'vue'
@@ -522,37 +506,18 @@ watch([pieData, pieChartEl], () => nextTick(renderPieChart), { immediate: true }
 
 // --- Recent Transactions ---
 
-interface TransactionRow {
-  path: string
-  title: string
-  amount: number
-  currency: string
-  from: string
-  to: string
-  date: string
-  sortDate: string
-}
-
-const sortedTransactions = computed<TransactionRow[]>(() => {
+const sortedTransactions = computed(() => {
   const tl = transactionsList.value
   if (!tl) return []
 
-  const rows: TransactionRow[] = []
-  for (const [path, tx] of tl.transactions) {
-    if (!tx.loaded || !tx.date) continue
-    rows.push({
-      path,
-      title: tx.title || tx.transactionName || 'Transaction',
-      amount: tx.amount ?? 0,
-      currency: tx.currency || '',
-      from: tx.from ? extractAliasOrNameFromWikilink(tx.from) || tx.from : '',
-      to: tx.to ? extractAliasOrNameFromWikilink(tx.to) || tx.to : '',
-      date: tx.date.format(DISPLAY_DATE_FORMAT),
-      sortDate: tx.date.format('YYYY-MM-DD'),
-    })
-  }
+  const txs = [...tl.transactions.values()].filter((tx) => tx.loaded && tx.date)
+  txs.sort((a, b) => {
+    const da = a.date!.format('YYYY-MM-DD')
+    const db = b.date!.format('YYYY-MM-DD')
+    return db.localeCompare(da)
+  })
 
-  return rows.sort((a, b) => b.sortDate.localeCompare(a.sortDate))
+  return txs
 })
 
 const visibleTransactions = computed(() => sortedTransactions.value.slice(0, visibleCount.value))
@@ -563,14 +528,6 @@ function loadMore() {
 }
 
 // --- Navigation ---
-
-function openNote(path: string) {
-  const { app } = GlobalStore.getInstance()
-  const file = app.vault.getAbstractFileByPath(path)
-  if (file instanceof TFile) {
-    app.workspace.getLeaf(false).openFile(file)
-  }
-}
 
 function openBaseFile(path: string) {
   const { app } = GlobalStore.getInstance()
@@ -835,45 +792,6 @@ function formatAmount(value: number): string {
 .abele-finance-sidebar__transactions {
   display: flex;
   flex-direction: column;
-}
-
-.abele-finance-sidebar__transaction-row {
-  padding: var(--size-4-1) 0;
-  cursor: pointer;
-  border-radius: var(--radius-s);
-
-  &:hover {
-    background-color: var(--background-modifier-hover);
-  }
-}
-
-.abele-finance-sidebar__transaction-main {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: var(--font-ui-small);
-}
-
-.abele-finance-sidebar__transaction-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
-
-.abele-finance-sidebar__transaction-amount {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  margin-left: var(--size-4-2);
-}
-
-.abele-finance-sidebar__transaction-meta {
-  display: flex;
-  justify-content: space-between;
-  font-size: var(--font-ui-smaller);
-  color: var(--text-faint);
-  margin-top: 2px;
 }
 
 .abele-finance-sidebar__load-more {
