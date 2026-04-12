@@ -30,7 +30,7 @@ import { TIMELINE_SIDEBAR_VIEW_TYPE, TimelineSidebarView } from './views/Timelin
 import { TODO_SIDEBAR_VIEW_TYPE, TodoSidebarView } from './views/TodoSidebarView'
 import { AI_SIDEBAR_VIEW_TYPE, AiSidebarView } from './views/AiSidebarView'
 import { FINANCE_SIDEBAR_VIEW_TYPE, FinanceSidebarView } from './views/FinanceSidebarView'
-import { LINE_CHART_VIEW_ID, LineChartView } from './bases/LineChartView'
+import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { AgentService } from './ai/AgentService'
 import { ScopeResolver } from './ai/ScopeResolver'
 import { ChatStorage } from './ai/ChatStorage'
@@ -114,11 +114,22 @@ export default class AbelePlugin extends Plugin {
     this.registerView(AI_SIDEBAR_VIEW_TYPE, (leaf) => new AiSidebarView(leaf, this.app))
 
     // Custom Bases view types for finance
-    this.registerBasesView(LINE_CHART_VIEW_ID, {
-      name: 'Line Chart',
+    this.registerBasesView(CHART_VIEW_ID, {
+      name: 'Chart',
       icon: 'chart-line',
-      factory: (controller, containerEl) => new LineChartView(controller, containerEl),
-      options: (config) => [
+      factory: (controller, containerEl) => new ChartView(controller, containerEl),
+      options: () => [
+        {
+          key: 'chartType',
+          type: 'dropdown' as const,
+          displayName: 'Chart type',
+          default: 'line',
+          options: {
+            line: 'Line',
+            bar: 'Bar',
+            scatter: 'Scatter',
+          },
+        },
         {
           key: 'dateProperty',
           type: 'property' as const,
@@ -129,7 +140,19 @@ export default class AbelePlugin extends Plugin {
           key: 'groupProperty',
           type: 'property' as const,
           displayName: 'Group by property',
-          placeholder: 'Optional — split into separate lines',
+          placeholder: 'Optional — split into separate series',
+        },
+        {
+          key: 'logScale',
+          type: 'toggle' as const,
+          displayName: 'Logarithmic scale',
+          default: false,
+        },
+        {
+          key: 'dualAxis',
+          type: 'toggle' as const,
+          displayName: 'Separate Y axis per series',
+          default: false,
         },
       ],
     })

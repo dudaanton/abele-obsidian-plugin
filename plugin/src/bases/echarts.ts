@@ -1,6 +1,6 @@
 import { use, init, registerTheme } from 'echarts/core'
 import type { EChartsType } from 'echarts/core'
-import { LineChart, BarChart, PieChart, HeatmapChart } from 'echarts/charts'
+import { LineChart, BarChart, PieChart, HeatmapChart, ScatterChart } from 'echarts/charts'
 import {
   CalendarComponent,
   DataZoomComponent,
@@ -18,6 +18,7 @@ use([
   BarChart,
   PieChart,
   HeatmapChart,
+  ScatterChart,
   CalendarComponent,
   DataZoomComponent,
   GridComponent,
