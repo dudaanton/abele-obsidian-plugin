@@ -128,10 +128,13 @@
     <section class="abele-finance-sidebar__section">
       <h3 class="abele-finance-sidebar__section-title">Recent Transactions</h3>
       <div v-if="visibleTransactions.length" class="abele-finance-sidebar__transactions">
-        <TransactionItem v-for="tx in visibleTransactions" :key="tx.id" :transaction="tx" />
-        <button v-if="hasMore" class="abele-finance-sidebar__load-more" @click="loadMore">
-          Load more
-        </button>
+        <TransactionItem
+          v-for="tx in visibleTransactions"
+          :key="tx.id"
+          :transaction="tx"
+          :tx-type="transactionTypes.get(tx.id) || 'transfer'"
+        />
+        <div ref="scrollSentinel" class="abele-finance-sidebar__sentinel" />
       </div>
       <div v-else class="abele-finance-sidebar__empty">No transactions found</div>
     </section>
@@ -140,6 +143,7 @@
 
 <script setup lang="ts">
 import { computed, ref, unref, watch, nextTick, onUnmounted } from 'vue'
+import { useIntersectionObserver } from '@vueuse/core'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AccountsList } from '@/entities/AccountsList'
 import { TransactionsList } from '@/entities/TransactionsList'
@@ -493,26 +497,76 @@ watch([pieData, pieChartEl], () => nextTick(renderPieChart), { immediate: true }
 
 // --- Recent Transactions ---
 
+const accountTypeSets = computed(() => {
+  const al = accountsList.value
+  const expense = new Set<string>()
+  const revenue = new Set<string>()
+  if (!al) return { expense, revenue }
+
+  for (const [path, account] of al.accounts) {
+    if (account.accountType === 'expense') expense.add(path)
+    if (account.accountType === 'revenue') revenue.add(path)
+  }
+  return { expense, revenue }
+})
+
+function resolveWikilink(wikilink: string): string | null {
+  const linkPath = wikilinkToPath(wikilink)
+  if (!linkPath) return null
+  const file = store.app.metadataCache.getFirstLinkpathDest(linkPath, '')
+  return file ? file.path : null
+}
+
 const sortedTransactions = computed(() => {
   const tl = transactionsList.value
   if (!tl) return []
 
+  const { app } = store
   const txs = [...tl.transactions.values()].filter((tx) => tx.loaded && tx.date)
   txs.sort((a, b) => {
     const da = a.date!.format('YYYY-MM-DD')
     const db = b.date!.format('YYYY-MM-DD')
-    return db.localeCompare(da)
+    const dateCmp = db.localeCompare(da)
+    if (dateCmp !== 0) return dateCmp
+
+    const fa = app.vault.getAbstractFileByPath(a.transactionPath)
+    const fb = app.vault.getAbstractFileByPath(b.transactionPath)
+    const ca = (fa as any)?.stat?.ctime ?? 0
+    const cb = (fb as any)?.stat?.ctime ?? 0
+    return cb - ca
   })
 
   return txs
 })
 
-const visibleTransactions = computed(() => sortedTransactions.value.slice(0, visibleCount.value))
-const hasMore = computed(() => sortedTransactions.value.length > visibleCount.value)
+const transactionTypes = computed(() => {
+  const { expense, revenue } = accountTypeSets.value
+  const types = new Map<string, 'income' | 'expense' | 'transfer'>()
 
-function loadMore() {
-  visibleCount.value += PAGE_SIZE
-}
+  for (const tx of sortedTransactions.value) {
+    const toPath = tx.to ? resolveWikilink(tx.to) : null
+    const fromPath = tx.from ? resolveWikilink(tx.from) : null
+
+    if (toPath && expense.has(toPath)) {
+      types.set(tx.id, 'expense')
+    } else if (fromPath && revenue.has(fromPath)) {
+      types.set(tx.id, 'income')
+    } else {
+      types.set(tx.id, 'transfer')
+    }
+  }
+
+  return types
+})
+
+const visibleTransactions = computed(() => sortedTransactions.value.slice(0, visibleCount.value))
+
+const scrollSentinel = ref<HTMLElement | null>(null)
+useIntersectionObserver(scrollSentinel, ([entry]) => {
+  if (entry?.isIntersecting && sortedTransactions.value.length > visibleCount.value) {
+    visibleCount.value += PAGE_SIZE
+  }
+})
 
 // --- Formatting ---
 
@@ -769,21 +823,8 @@ function formatAmount(value: number): string {
   flex-direction: column;
 }
 
-.abele-finance-sidebar__load-more {
-  margin-top: var(--size-4-2);
-  padding: var(--size-4-1);
-  border: 1px dashed var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  background: none;
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  cursor: pointer;
-  text-align: center;
-
-  &:hover {
-    background-color: var(--background-modifier-hover);
-    color: var(--text-normal);
-  }
+.abele-finance-sidebar__sentinel {
+  height: 1px;
 }
 
 // --- Empty ---

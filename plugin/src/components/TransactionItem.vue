@@ -11,8 +11,13 @@
           :file-path="transaction.transactionPath"
           class="abele-transaction-view__title"
         />
-        <span class="abele-transaction-view__amount">
-          {{ formatAmount(transaction.amount ?? 0) }}
+        <ObsidianIcon
+          v-if="transaction.description"
+          :icon="showDescription ? 'chevron-up' : 'chevron-down'"
+          @click.stop="toggleDescription"
+        />
+        <span class="abele-transaction-view__amount" :class="amountClass">
+          {{ txType === 'expense' ? '-' : '' }}{{ formatAmount(transaction.amount ?? 0) }}
           <span class="abele-transaction-view__currency">{{ transaction.currency }}</span>
         </span>
       </div>
@@ -41,11 +46,6 @@
         <span>{{ dateText }}</span>
       </div>
     </div>
-    <ObsidianIcon
-      v-if="transaction.description"
-      :icon="showDescription ? 'chevron-up' : 'chevron-down'"
-      @click.stop="toggleDescription"
-    />
     <div class="abele-transaction-view__buttons abele-transaction-view__buttons_full">
       <ObsidianIcon icon="edit" @click.stop="edit" />
     </div>
@@ -66,8 +66,11 @@ import { useElementVisibility } from '@vueuse/core'
 import Icon from './obsidian/Icon.vue'
 import { Choice, useMenu } from '@/composables/useMenu'
 
+export type TransactionType = 'income' | 'expense' | 'transfer'
+
 const props = defineProps<{
   transaction: Transaction
+  txType: TransactionType
 }>()
 
 const txEl = ref(null)
@@ -91,6 +94,10 @@ const showDescription = ref(false)
 const toggleDescription = () => {
   showDescription.value = !showDescription.value
 }
+
+const amountClass = computed(() => {
+  return `abele-transaction-view__amount--${props.txType}`
+})
 
 const dateText = computed(() => {
   if (!props.transaction.date) return ''
@@ -190,6 +197,18 @@ onMounted(() => {
 .abele-transaction-view__amount {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+
+  &--income {
+    color: var(--text-success);
+  }
+
+  &--expense {
+    color: var(--text-error);
+  }
+
+  &--transfer {
+    color: var(--color-purple);
+  }
 }
 
 .abele-transaction-view__currency {
