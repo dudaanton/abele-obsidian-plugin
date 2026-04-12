@@ -30,7 +30,6 @@ import { TIMELINE_SIDEBAR_VIEW_TYPE, TimelineSidebarView } from './views/Timelin
 import { TODO_SIDEBAR_VIEW_TYPE, TodoSidebarView } from './views/TodoSidebarView'
 import { AI_SIDEBAR_VIEW_TYPE, AiSidebarView } from './views/AiSidebarView'
 import { FINANCE_SIDEBAR_VIEW_TYPE, FinanceSidebarView } from './views/FinanceSidebarView'
-import { BALANCE_CHART_VIEW_ID, BalanceChartView } from './bases/BalanceChartView'
 import { LINE_CHART_VIEW_ID, LineChartView } from './bases/LineChartView'
 import { AgentService } from './ai/AgentService'
 import { ScopeResolver } from './ai/ScopeResolver'
@@ -115,23 +114,6 @@ export default class AbelePlugin extends Plugin {
     this.registerView(AI_SIDEBAR_VIEW_TYPE, (leaf) => new AiSidebarView(leaf, this.app))
 
     // Custom Bases view types for finance
-    this.registerBasesView(BALANCE_CHART_VIEW_ID, {
-      name: 'Balance Chart',
-      icon: 'line-chart',
-      factory: (controller, containerEl) => new BalanceChartView(controller, containerEl),
-      options: () => [
-        {
-          key: 'daysBack',
-          type: 'slider',
-          displayName: 'Days back',
-          default: 90,
-          min: 7,
-          max: 365,
-          step: 7,
-        },
-      ],
-    })
-
     this.registerBasesView(LINE_CHART_VIEW_ID, {
       name: 'Line Chart',
       icon: 'chart-line',

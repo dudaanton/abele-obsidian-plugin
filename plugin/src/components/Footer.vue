@@ -2,6 +2,7 @@
   <div v-if="footer.loaded" class="abele-footer-view">
     <TodoList v-if="todoTasks.length" :tasks="todoTasks" />
     <Timeline v-if="timelineTasks.length" :tasks="timelineTasks" title="Calendar tasks" />
+    <AccountBalanceChart v-if="footer.type === 'account'" :account-path="footer.filePath" />
     <TransactionsListView
       v-if="transactions.length"
       :transactions="transactions"
@@ -18,6 +19,7 @@ import { computed, onMounted } from 'vue'
 import { Footer } from '@/entities/Footer'
 import Timeline from './Timeline.vue'
 import TodoList from './TodoList.vue'
+import AccountBalanceChart from './AccountBalanceChart.vue'
 import TransactionsListView from './TransactionsList.vue'
 import NotesList from './NotesList.vue'
 import LogsList from './LogsList.vue'
