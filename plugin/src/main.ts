@@ -34,6 +34,7 @@ import { BALANCE_CHART_VIEW_ID, BalanceChartView } from './bases/BalanceChartVie
 import { SPENDING_BREAKDOWN_VIEW_ID, SpendingBreakdownView } from './bases/SpendingBreakdownView'
 import { NET_WORTH_VIEW_ID, NetWorthView } from './bases/NetWorthView'
 import { CALENDAR_VIEW_ID, CalendarView } from './bases/CalendarView'
+import { LINE_CHART_VIEW_ID, LineChartView } from './bases/LineChartView'
 import { AgentService } from './ai/AgentService'
 import { ScopeResolver } from './ai/ScopeResolver'
 import { ChatStorage } from './ai/ChatStorage'
@@ -172,6 +173,26 @@ export default class AbelePlugin extends Plugin {
       name: 'Spending Calendar',
       icon: 'calendar',
       factory: (controller, containerEl) => new CalendarView(controller, containerEl),
+    })
+
+    this.registerBasesView(LINE_CHART_VIEW_ID, {
+      name: 'Line Chart',
+      icon: 'chart-line',
+      factory: (controller, containerEl) => new LineChartView(controller, containerEl),
+      options: (config) => [
+        {
+          key: 'dateProperty',
+          type: 'property' as const,
+          displayName: 'Date property (X axis)',
+          placeholder: 'Leave empty to use file name',
+        },
+        {
+          key: 'groupProperty',
+          type: 'property' as const,
+          displayName: 'Group by property',
+          placeholder: 'Optional — split into separate lines',
+        },
+      ],
     })
 
     this.initializeVue()
