@@ -135,18 +135,6 @@
       </div>
       <div v-else class="abele-finance-sidebar__empty">No transactions found</div>
     </section>
-
-    <!-- Links to .base views -->
-    <section class="abele-finance-sidebar__section">
-      <div class="abele-finance-sidebar__links">
-        <a class="abele-finance-sidebar__link" @click="openBaseFile('Finance/Transactions.base')">
-          Transactions table
-        </a>
-        <a class="abele-finance-sidebar__link" @click="openBaseFile('Finance/Accounts.base')">
-          Accounts overview
-        </a>
-      </div>
-    </section>
   </div>
 </template>
 
@@ -164,7 +152,6 @@ import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
 import ObsidianIcon from './obsidian/Icon.vue'
 import TransactionItem from './TransactionItem.vue'
 import dayjs from 'dayjs'
-import { Notice, TFile } from 'obsidian'
 import { toRaw } from 'vue'
 
 const PAGE_SIZE = 20
@@ -527,18 +514,6 @@ function loadMore() {
   visibleCount.value += PAGE_SIZE
 }
 
-// --- Navigation ---
-
-function openBaseFile(path: string) {
-  const { app } = GlobalStore.getInstance()
-  const file = app.vault.getAbstractFileByPath(path)
-  if (file instanceof TFile) {
-    app.workspace.getLeaf(false).openFile(file)
-  } else {
-    new Notice(`File not found: ${path}`)
-  }
-}
-
 // --- Formatting ---
 
 function formatAmount(value: number): string {
@@ -808,24 +783,6 @@ function formatAmount(value: number): string {
   &:hover {
     background-color: var(--background-modifier-hover);
     color: var(--text-normal);
-  }
-}
-
-// --- Links ---
-
-.abele-finance-sidebar__links {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-1);
-}
-
-.abele-finance-sidebar__link {
-  font-size: var(--font-ui-small);
-  color: var(--text-accent);
-  cursor: pointer;
-
-  &:hover {
-    text-decoration: underline;
   }
 }
 

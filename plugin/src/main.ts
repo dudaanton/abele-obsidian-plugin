@@ -45,7 +45,6 @@ import { AbeleSettingTab } from './settings'
 import { createHeaderExtension } from './editor/HeaderExtension'
 import { migrateFromDataview } from './commands/migrateFromDataview'
 // migrateFromFirefly is triggered via modal
-import { generateBaseFiles } from './commands/generateBaseFiles'
 import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
 import { readFileContent } from './helpers/vaultUtils'
 import { runAfterSync } from './helpers/runAfterSync'
@@ -284,14 +283,6 @@ export default class AbelePlugin extends Plugin {
       name: 'Create new transaction and insert into current note',
       editorCallback: (editor: Editor) => {
         createTransactionAndInsert(editor)
-      },
-    })
-
-    this.addCommand({
-      id: 'generate-finance-base-files',
-      name: 'Generate finance .base files',
-      callback: () => {
-        generateBaseFiles()
       },
     })
 

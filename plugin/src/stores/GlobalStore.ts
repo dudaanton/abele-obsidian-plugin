@@ -8,7 +8,6 @@ import { AccountsList } from '@/entities/AccountsList'
 import { BalanceIndex } from '@/entities/BalanceIndex'
 import { parseNoteContent } from '@/helpers/notesUtils'
 import { cleanNoteName, getFolderFromPath, resolvePath } from '@/helpers/pathsHelpers'
-import { generateBaseFiles } from '@/commands/generateBaseFiles'
 import { cleanTaskName } from '@/helpers/tasksUtils'
 import { getAvailablePath, readFileContent } from '@/helpers/vaultUtils'
 import { VaultWatcher } from '@/helpers/VaultWatcher'
@@ -152,8 +151,6 @@ export class GlobalStore {
         toRaw(this.accountsList.value) as unknown as AccountsList
       )
     }
-
-    generateBaseFiles()
   }
 
   public destroy(): void {
