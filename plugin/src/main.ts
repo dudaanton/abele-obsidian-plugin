@@ -204,31 +204,6 @@ export default class AbelePlugin extends Plugin {
       GlobalStore.getInstance().currentFile.value = activeView.file
     }
 
-    this.registerEvent(
-      this.app.workspace.on('layout-change', () => {
-        const store = GlobalStore.getInstance()
-        const openFiles = new Set<string>()
-        this.app.workspace.getLeavesOfType('markdown').forEach((leaf) => {
-          const file = (leaf.view as MarkdownView).file
-          if (file) openFiles.add(file.path)
-        })
-
-        const cleanContainer = (container: {
-          value: Array<{ filePath: string; cleanup: () => void }>
-        }) => {
-          for (let i = container.value.length - 1; i >= 0; i--) {
-            if (!openFiles.has(container.value[i].filePath)) {
-              container.value[i].cleanup()
-              container.value.splice(i, 1)
-            }
-          }
-        }
-
-        cleanContainer(store.footersContainers as any)
-        cleanContainer(store.headersContainers as any)
-      })
-    )
-
     this.addCommand({
       id: 'create-task',
       name: 'Create new task',
