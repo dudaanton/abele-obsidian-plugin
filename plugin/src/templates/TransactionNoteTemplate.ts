@@ -109,7 +109,7 @@ export class TransactionNoteTemplate extends GenericTemplate<TransactionNotePara
 
           for (const [key, value] of Object.entries(propMap)) {
             if (value != null && value !== '') {
-              body = this.setFrontmatterProp(body, key, value)
+              body = this.setFrontmatterProp(body, key, value, true)
             }
           }
 
@@ -121,15 +121,14 @@ export class TransactionNoteTemplate extends GenericTemplate<TransactionNotePara
     return super.createNoteWithTemplate(params, focus, overwrite)
   }
 
-  private setFrontmatterProp(content: string, key: string, value: any): string {
+  private setFrontmatterProp(content: string, key: string, value: any, force = false): string {
     const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/)
     if (!fmMatch) return content
 
     const fm = (load(fmMatch[1]) as Record<string, any>) || {}
     const afterFm = content.slice(fmMatch[0].length)
 
-    // Only set if not already set to a non-empty value
-    if (fm[key] == null || fm[key] === '') {
+    if (force || fm[key] == null || fm[key] === '') {
       fm[key] = value
     }
 
