@@ -156,6 +156,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { wikilinkToPath } from '@/helpers/pathsHelpers'
 import { DATE_FORMAT } from '@/constants/dates'
 import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
+import { openFile } from '@/helpers/vaultUtils'
 import ObsidianIcon from './obsidian/Icon.vue'
 import TransactionItem from './TransactionItem.vue'
 import dayjs from 'dayjs'
@@ -190,6 +191,7 @@ const currencyCards = computed<CurrencyCard[]>(() => {
   const al = accountsList.value
   const bi = toRaw(balanceIndex.value) as BalanceIndex | null
   if (!al || !bi) return []
+  bi.version.value // track reactivity
 
   const asOfDate = periodEnd.value
   const cards: CurrencyCard[] = []
@@ -269,6 +271,7 @@ function goToCurrentMonth() {
 interface PieItem {
   name: string
   value: number
+  path?: string
 }
 
 interface CurrencyPeriodData {
@@ -365,6 +368,7 @@ const periodByCurrency = computed(() => {
       data.expenseBreakdown.push({
         name: accountNames.get(path) || path,
         value: Math.round(total * 100) / 100,
+        path,
       })
     }
   }
@@ -377,6 +381,7 @@ const periodByCurrency = computed(() => {
       data.incomeBreakdown.push({
         name: accountNames.get(path) || path,
         value: Math.round(total * 100) / 100,
+        path,
       })
     }
   }
@@ -495,6 +500,12 @@ function renderPieChart() {
     pieChart = echartsInit(pieChartEl.value)
     pieObserver = new ResizeObserver(() => pieChart?.resize())
     pieObserver.observe(pieChartEl.value)
+    pieChart.on('click', (params: any) => {
+      const item = pieData.value[params.dataIndex]
+      if (item?.path) {
+        openFile(item.path)
+      }
+    })
   }
 
   const colors = getThemeColors()
@@ -712,6 +723,7 @@ interface NetworthSeries {
 const networthData = computed(() => {
   const bi = toRaw(balanceIndex.value) as BalanceIndex | null
   if (!bi) return { dates: [] as string[], series: [] as NetworthSeries[] }
+  bi.version.value // track reactivity
 
   const dates: string[] = []
   let d = periodStart.value

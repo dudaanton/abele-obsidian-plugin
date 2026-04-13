@@ -3,7 +3,7 @@ import { wikilinkToPath } from '@/helpers/pathsHelpers'
 import { GlobalStore } from '@/stores/GlobalStore'
 import dayjs from 'dayjs'
 import { debounce, EventRef, normalizePath, TFile } from 'obsidian'
-import { toRaw } from 'vue'
+import { ref, toRaw } from 'vue'
 import { AccountsList } from './AccountsList'
 import { Transaction } from './Transaction'
 import { TransactionsList } from './TransactionsList'
@@ -23,6 +23,8 @@ export class BalanceIndex {
 
   // Cache resolved wikilink → path to avoid repeated lookups
   private resolvedPaths: Map<string, string | null> = new Map()
+
+  public readonly version = ref(0)
 
   private eventRefs: EventRef[] = []
   private debouncedRebuild: () => void
@@ -88,6 +90,8 @@ export class BalanceIndex {
     for (const path of this.accountEntries.keys()) {
       this.sortAndComputePrefixSums(path)
     }
+
+    this.version.value++
   }
 
   private addTransactionEntries(transaction: Transaction): void {
@@ -300,10 +304,14 @@ export class BalanceIndex {
   private startWatching(): void {
     const { app } = GlobalStore.getInstance()
 
-    // Rebuild when metadataCache resolves (initial load + bulk changes)
+    // Rebuild once when metadataCache finishes initial resolve
+    let initialResolved = false
     this.eventRefs.push(
       app.metadataCache.on('resolved', () => {
-        this.debouncedRebuild()
+        if (!initialResolved) {
+          initialResolved = true
+          this.debouncedRebuild()
+        }
       })
     )
 

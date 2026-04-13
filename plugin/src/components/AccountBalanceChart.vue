@@ -68,6 +68,7 @@ function goToCurrentMonth() {
 const chartData = computed(() => {
   const bi = toRaw(unref(store.balanceIndex)) as BalanceIndex | null
   if (!bi) return { dates: [] as string[], values: [] as number[] }
+  bi.version.value // track reactivity
 
   const series = bi.getBalanceSeries(props.accountPath, periodStart.value, periodEnd.value)
   return {
