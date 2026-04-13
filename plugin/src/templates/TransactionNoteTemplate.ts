@@ -5,7 +5,9 @@ import dayjs, { Dayjs } from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { renderTemplate } from '@/helpers/notesUtils'
 import { readFileContent } from '@/helpers/vaultUtils'
-import { dump } from 'js-yaml'
+import { UserTemplate } from './UserTemplate'
+import { parseTemplateVariables, applyTemplateVariables } from './TemplateParser'
+import { dump, load } from 'js-yaml'
 
 export interface TransactionNoteContentParams {
   date?: dayjs.Dayjs | null
@@ -63,28 +65,86 @@ export class TransactionNoteTemplate extends GenericTemplate<TransactionNotePara
   ): Promise<void> {
     const config = AbeleConfig.getInstance()
 
-    // If a template note is configured and content is not already set,
-    // load the template and render it with transaction variables
     if (config.transactionTemplatePath && !params.content) {
       const templateFile = this.app.vault.getAbstractFileByPath(config.transactionTemplatePath)
       if (templateFile instanceof TFile) {
-        const templateContent = await readFileContent(templateFile)
-        const data: Record<string, string> = {
-          date: (params.date || dayjs()).format(DATE_FORMAT),
-          from: params.from || '',
-          to: params.to || '',
-          amount: params.amount != null ? String(params.amount) : '',
-          currency: params.currency || config.defaultCurrency || '',
-          category: params.category || '',
+        const template = UserTemplate.fromFile(templateFile)
+        if (template) {
+          // Get body with template props stripped (template_for → type, template_for_* stripped)
+          let body = await template.getBody()
+
+          // Apply template variables ({{ date }}, {{ date.format(...) }}, etc.)
+          const { variables } = parseTemplateVariables(body)
+          const userValues = new Map<string, string>()
+          body = await applyTemplateVariables(body, variables, userValues)
+
+          // Apply target properties (template_for_date → date in frontmatter)
+          const data: Record<string, string> = {
+            date: (params.date || dayjs()).format(DATE_FORMAT),
+            from: params.from || '',
+            to: params.to || '',
+            amount: params.amount != null ? String(params.amount) : '',
+            currency: params.currency || config.defaultCurrency || '',
+            category: params.category || '',
+          }
+
+          // Resolve target property values with transaction data
+          for (const tp of template.targetProperties) {
+            const resolved = renderTemplate(tp.value, data)
+            body = this.setFrontmatterProp(body, tp.name, resolved)
+          }
+
+          // Merge transaction params into empty/missing frontmatter fields
+          const propMap: Record<string, any> = {
+            date: (params.date || dayjs()).format(DATE_FORMAT),
+            from: params.from,
+            to: params.to,
+            amount: params.amount,
+            currency: params.currency || config.defaultCurrency,
+            foreignAmount: params.foreignAmount,
+            foreignCurrency: params.foreignCurrency,
+            category: params.category,
+            groups: params.groups?.length ? params.groups : undefined,
+          }
+
+          for (const [key, value] of Object.entries(propMap)) {
+            if (value != null && value !== '') {
+              body = this.setFrontmatterProp(body, key, value)
+            }
+          }
+
+          this._renderedTemplate = body
         }
-        params = { ...params, content: renderTemplate(templateContent, data) }
       }
     }
 
     return super.createNoteWithTemplate(params, focus, overwrite)
   }
 
+  private setFrontmatterProp(content: string, key: string, value: any): string {
+    const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/)
+    if (!fmMatch) return content
+
+    const fm = (load(fmMatch[1]) as Record<string, any>) || {}
+    const afterFm = content.slice(fmMatch[0].length)
+
+    // Only set if not already set to a non-empty value
+    if (fm[key] == null || fm[key] === '') {
+      fm[key] = value
+    }
+
+    const yaml = dump(fm, { quotingType: "'", lineWidth: -1 })
+    return `---\n${yaml}---${afterFm}`
+  }
+
+  private _renderedTemplate: string | null = null
+
   createTemplate(params: TransactionNoteContentParams): string {
+    if (this._renderedTemplate) {
+      const rendered = this._renderedTemplate
+      this._renderedTemplate = null
+      return rendered
+    }
     const config = AbeleConfig.getInstance()
 
     const frontmatterData: Record<string, any> = { ...params.oldProps, type: 'transaction' }
