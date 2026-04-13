@@ -170,7 +170,7 @@ export class TransactionNoteTemplate extends GenericTemplate<TransactionNotePara
       if (value !== null && value !== undefined) {
         frontmatterData[fmKey] = format ? format(value) : value
       } else if (paramKey in params) {
-        delete frontmatterData[fmKey]
+        frontmatterData[fmKey] = null
       }
     }
 

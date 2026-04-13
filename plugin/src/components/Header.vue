@@ -1,5 +1,8 @@
 <template>
-  <div v-if="header.journal" class="abele-header-view">
+  <div v-if="header.type === 'transaction'" class="abele-header-view">
+    <Icon icon="copy-plus" text-right="Add next" @click="addNextTransaction" />
+  </div>
+  <div v-else-if="header.journal" class="abele-header-view">
     <div class="abele-header-view__icons-set">
       <Icon
         icon="chevron-first"
@@ -41,10 +44,30 @@ import Icon from './obsidian/Icon.vue'
 import { computed, onMounted, ref } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { Choice, useMenu } from '@/composables/useMenu'
+import { createTransaction } from '@/commands/createTransaction'
+import { getFrontmatterFromCache } from '@/helpers/notesUtils'
+import dayjs from 'dayjs'
+import { parseDateOrNull } from '@/helpers/datesHelper'
 
 const props = defineProps<{
   header: Header
 }>()
+
+const addNextTransaction = async () => {
+  const fm = getFrontmatterFromCache(props.header.filePath)
+  if (!fm) return
+
+  createTransaction({
+    date: parseDateOrNull(fm.date) || dayjs(),
+    from: fm.from || undefined,
+    to: fm.to || undefined,
+    amount: undefined,
+    currency: fm.currency || undefined,
+    foreignCurrency: fm.foreignCurrency || undefined,
+    category: fm.category || undefined,
+    groups: Array.isArray(fm.groups) ? fm.groups : undefined,
+  })
+}
 
 const prevJournalDate = computed(() => {
   const { journal, journalDate } = props.header
