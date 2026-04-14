@@ -16,12 +16,21 @@
     </div>
     <div class="abele-account-balance-chart__period">
       <ObsidianIcon icon="chevron-left" @click="previousMonth()" />
-      <div class="abele-account-balance-chart__period-title" @click="goToCurrentMonth()">
+      <div class="abele-account-balance-chart__period-title" @click="dateRangePickerOpen = true">
         {{ periodLabel }}
       </div>
       <ObsidianIcon icon="chevron-right" @click="nextMonth()" />
     </div>
     <div ref="chartEl" class="abele-account-balance-chart__chart" />
+
+    <DateRangePickerModal
+      v-if="dateRangePickerOpen"
+      :initial-from="periodStart"
+      :initial-to="periodEnd"
+      @apply="onDateRangeApply"
+      @reset="onDateRangeReset"
+      @cancel="dateRangePickerOpen = false"
+    />
   </div>
 </template>
 
@@ -35,6 +44,7 @@ import { echartsInit, EChartsType } from '@/bases/echarts'
 import { wikilinkToPath } from '@/helpers/pathsHelpers'
 import { DATE_FORMAT } from '@/constants/dates'
 import ObsidianIcon from './obsidian/Icon.vue'
+import DateRangePickerModal from './DateRangePickerModal.vue'
 import dayjs from 'dayjs'
 import { toRaw, unref } from 'vue'
 
@@ -46,18 +56,35 @@ const store = GlobalStore.getInstance()
 
 const selectedMonth = ref(dayjs().month())
 const selectedYear = ref(dayjs().year())
+const customFrom = ref<dayjs.Dayjs | null>(null)
+const customTo = ref<dayjs.Dayjs | null>(null)
+const dateRangePickerOpen = ref(false)
 
-const periodLabel = computed(() =>
-  dayjs().year(selectedYear.value).month(selectedMonth.value).format('MMMM YYYY')
-)
+const isCustomRange = computed(() => customFrom.value !== null && customTo.value !== null)
+
+const periodLabel = computed(() => {
+  if (isCustomRange.value) {
+    const from = customFrom.value!.format('MMM D, YYYY')
+    const to = customTo.value!.format('MMM D, YYYY')
+    return `${from} — ${to}`
+  }
+  return dayjs().year(selectedYear.value).month(selectedMonth.value).format('MMMM YYYY')
+})
+
 const periodStart = computed(() =>
-  dayjs().year(selectedYear.value).month(selectedMonth.value).startOf('month')
+  isCustomRange.value
+    ? customFrom.value!
+    : dayjs().year(selectedYear.value).month(selectedMonth.value).startOf('month')
 )
 const periodEnd = computed(() =>
-  dayjs().year(selectedYear.value).month(selectedMonth.value).endOf('month')
+  isCustomRange.value
+    ? customTo.value!
+    : dayjs().year(selectedYear.value).month(selectedMonth.value).endOf('month')
 )
 
 function previousMonth() {
+  customFrom.value = null
+  customTo.value = null
   if (selectedMonth.value === 0) {
     selectedMonth.value = 11
     selectedYear.value -= 1
@@ -67,6 +94,8 @@ function previousMonth() {
 }
 
 function nextMonth() {
+  customFrom.value = null
+  customTo.value = null
   if (selectedMonth.value === 11) {
     selectedMonth.value = 0
     selectedYear.value += 1
@@ -75,9 +104,18 @@ function nextMonth() {
   }
 }
 
-function goToCurrentMonth() {
+function onDateRangeApply(range: { from: dayjs.Dayjs; to: dayjs.Dayjs }) {
+  customFrom.value = range.from
+  customTo.value = range.to
+  dateRangePickerOpen.value = false
+}
+
+function onDateRangeReset() {
+  customFrom.value = null
+  customTo.value = null
   selectedMonth.value = dayjs().month()
   selectedYear.value = dayjs().year()
+  dateRangePickerOpen.value = false
 }
 
 interface ChartSeries {

@@ -9,11 +9,20 @@
 
     <div class="abele-finance-sidebar__period-header">
       <ObsidianIcon icon="chevron-left" @click="previousMonth()" />
-      <div class="abele-finance-sidebar__period-title" @click="goToCurrentMonth()">
+      <div class="abele-finance-sidebar__period-title" @click="dateRangePickerOpen = true">
         {{ periodLabel }}
       </div>
       <ObsidianIcon icon="chevron-right" @click="nextMonth()" />
     </div>
+
+    <DateRangePickerModal
+      v-if="dateRangePickerOpen"
+      :initial-from="periodStart"
+      :initial-to="periodEnd"
+      @apply="onDateRangeApply"
+      @reset="onDateRangeReset"
+      @cancel="dateRangePickerOpen = false"
+    />
 
     <!-- Currency Balance Cards -->
     <div v-if="currencyCards.length" class="abele-finance-sidebar__cards">
@@ -158,6 +167,7 @@ import { DATE_FORMAT } from '@/constants/dates'
 import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
 import { openFile } from '@/helpers/vaultUtils'
 import ObsidianIcon from './obsidian/Icon.vue'
+import DateRangePickerModal from './DateRangePickerModal.vue'
 import TransactionItem from './TransactionItem.vue'
 import dayjs from 'dayjs'
 import { toRaw } from 'vue'
@@ -233,19 +243,35 @@ onUnmounted(() => {
 
 const selectedMonth = ref(dayjs().month())
 const selectedYear = ref(dayjs().year())
+const customFrom = ref<dayjs.Dayjs | null>(null)
+const customTo = ref<dayjs.Dayjs | null>(null)
+const dateRangePickerOpen = ref(false)
 
-const periodLabel = computed(() =>
-  dayjs().year(selectedYear.value).month(selectedMonth.value).format('MMMM YYYY')
-)
+const isCustomRange = computed(() => customFrom.value !== null && customTo.value !== null)
+
+const periodLabel = computed(() => {
+  if (isCustomRange.value) {
+    const from = customFrom.value!.format('MMM D, YYYY')
+    const to = customTo.value!.format('MMM D, YYYY')
+    return `${from} — ${to}`
+  }
+  return dayjs().year(selectedYear.value).month(selectedMonth.value).format('MMMM YYYY')
+})
 
 const periodStart = computed(() =>
-  dayjs().year(selectedYear.value).month(selectedMonth.value).startOf('month')
+  isCustomRange.value
+    ? customFrom.value!
+    : dayjs().year(selectedYear.value).month(selectedMonth.value).startOf('month')
 )
 const periodEnd = computed(() =>
-  dayjs().year(selectedYear.value).month(selectedMonth.value).endOf('month')
+  isCustomRange.value
+    ? customTo.value!
+    : dayjs().year(selectedYear.value).month(selectedMonth.value).endOf('month')
 )
 
 function previousMonth() {
+  customFrom.value = null
+  customTo.value = null
   if (selectedMonth.value === 0) {
     selectedMonth.value = 11
     selectedYear.value -= 1
@@ -255,6 +281,8 @@ function previousMonth() {
 }
 
 function nextMonth() {
+  customFrom.value = null
+  customTo.value = null
   if (selectedMonth.value === 11) {
     selectedMonth.value = 0
     selectedYear.value += 1
@@ -263,9 +291,19 @@ function nextMonth() {
   }
 }
 
-function goToCurrentMonth() {
+function onDateRangeApply(range: { from: dayjs.Dayjs; to: dayjs.Dayjs }) {
+  customFrom.value = range.from
+  customTo.value = range.to
+  dateRangePickerOpen.value = false
+  if (chartTab.value === 'calendar') chartTab.value = 'expenses'
+}
+
+function onDateRangeReset() {
+  customFrom.value = null
+  customTo.value = null
   selectedMonth.value = dayjs().month()
   selectedYear.value = dayjs().year()
+  dateRangePickerOpen.value = false
 }
 
 interface PieItem {
@@ -465,12 +503,16 @@ function resolveWikilink(wikilink: string): string | null {
 
 type ChartTab = 'expenses' | 'income' | 'calendar' | 'networth'
 const chartTab = ref<ChartTab>('expenses')
-const chartTabs = [
+const allChartTabs = [
   { key: 'expenses' as ChartTab, label: 'Expenses' },
   { key: 'income' as ChartTab, label: 'Income' },
   { key: 'calendar' as ChartTab, label: 'Calendar' },
   { key: 'networth' as ChartTab, label: 'Net Worth' },
 ]
+
+const chartTabs = computed(() =>
+  isCustomRange.value ? allChartTabs.filter((t) => t.key !== 'calendar') : allChartTabs
+)
 
 // Keep pieTab in sync for backward compat
 const pieTab = computed(() => (chartTab.value === 'income' ? 'income' : 'expenses'))
