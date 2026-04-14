@@ -20,7 +20,7 @@ export class Gallery {
     this.layout = data.layout
   }
 
-  resolveImageUrl(image: GalleryImageEntry): string | null {
+  resolveImageUrl(image: GalleryImageEntry, version = 0): string | null {
     if (image.type === 'remote') {
       return image.path
     }
@@ -28,7 +28,8 @@ export class Gallery {
     const { app } = GlobalStore.getInstance()
     const file = app.metadataCache.getFirstLinkpathDest(image.path, this.filePath)
     if (file) {
-      return app.vault.getResourcePath(file)
+      const url = app.vault.getResourcePath(file)
+      return version ? `${url}#v=${version}` : url
     }
 
     return null

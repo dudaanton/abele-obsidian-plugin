@@ -25,7 +25,9 @@
       v-if="viewerOpen"
       :images="viewerImages"
       :start-index="viewerStartIndex"
+      :gallery-file-path="gallery.filePath"
       @close="viewerOpen = false"
+      @image-changed="imageVersion++"
     />
   </div>
 </template>
@@ -40,9 +42,12 @@ const props = defineProps<{
   gallery: Gallery
 }>()
 
+const imageVersion = ref(0)
+
 const resolvedImages = computed(() => {
+  const _v = imageVersion.value // force re-evaluation on image changes
   return props.gallery.images.map((image) => ({
-    url: props.gallery.resolveImageUrl(image),
+    url: props.gallery.resolveImageUrl(image, _v),
     alt: image.alt,
     type: image.type,
     path: image.path,
@@ -53,7 +58,14 @@ const viewerOpen = ref(false)
 const viewerStartIndex = ref(0)
 
 const viewerImages = computed<ViewerImage[]>(() =>
-  resolvedImages.value.filter((img) => img.url).map((img) => ({ url: img.url!, alt: img.alt }))
+  resolvedImages.value
+    .filter((img) => img.url)
+    .map((img) => ({
+      url: img.url!,
+      alt: img.alt,
+      type: img.type as 'local' | 'remote',
+      path: img.path,
+    }))
 )
 
 function openViewer(index: number) {
