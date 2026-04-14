@@ -164,11 +164,11 @@ const pickFromDisk = () => {
 
 const onFileSelected = async (e: Event) => {
   const input = e.target as HTMLInputElement
-  const files = input.files
-  input.value = '' // reset for re-selection
-  if (!files?.length) return
+  const fileList = input.files ? Array.from(input.files) : []
+  input.value = ''
+  if (!fileList.length) return
 
-  for (const file of Array.from(files)) {
+  for (const file of fileList) {
     try {
       const vaultFile = await importExternalFile(file)
       if (!attachments.value.some((a) => a.path === vaultFile.path)) {
