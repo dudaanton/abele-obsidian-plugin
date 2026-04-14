@@ -80,18 +80,19 @@ function buildGalleryDecorations(state: EditorState): DecorationSet {
   const hiddenLine = Decoration.line({ class: 'abele-gallery-hidden-line' })
 
   for (const block of blocks) {
-    const cursorOnHeader = state.selection.ranges.some(
-      (range) =>
-        range.from === range.to &&
-        rangesOverlap(range.from, range.to, block.headerFrom, block.headerTo)
-    )
-
     const headerLineNum = state.doc.lineAt(block.headerFrom).number
     const blockEndLineNum = state.doc.lineAt(block.blockTo).number
 
-    if (cursorOnHeader && block.images.length > 0) {
-      // Focused: header stays as raw text, images rendered as widget
-      // Replace must come first (lower startSide), then line decorations
+    const cursorOnHeader =
+      block.images.length > 0 &&
+      state.selection.ranges.some(
+        (range) =>
+          range.from === range.to &&
+          rangesOverlap(range.from, range.to, block.headerFrom, block.headerTo)
+      )
+
+    if (cursorOnHeader) {
+      // Focused: header as raw text, images as widget below
       builder.add(
         block.headerTo,
         block.blockTo,
@@ -105,8 +106,7 @@ function buildGalleryDecorations(state: EditorState): DecorationSet {
         builder.add(state.doc.line(ln).from, state.doc.line(ln).from, hiddenLine)
       }
     } else {
-      // Normal: entire block is one widget
-      // Replace first, then line decorations as CSS backup during selection
+      // Normal: entire block as one widget
       builder.add(
         block.headerFrom,
         block.blockTo,
@@ -197,9 +197,14 @@ export const galleryStateField = StateField.define<DecorationSet>({
   update(decorations, tr) {
     if (
       tr.docChanged ||
-      tr.selection ||
       tr.state.field(editorLivePreviewField) !== tr.startState.field(editorLivePreviewField)
     ) {
+      return buildGalleryDecorations(tr.state)
+    }
+
+    // Rebuild on keyboard/programmatic selection changes, but NOT on pointer clicks.
+    // This prevents focused mode from activating when clicking gallery header icons.
+    if (tr.selection && !tr.isUserEvent('select.pointer')) {
       return buildGalleryDecorations(tr.state)
     }
 
@@ -228,12 +233,19 @@ const galleryKeymap = Prec.high(
         for (const block of blocks) {
           if (block.images.length === 0) continue
           if (pos >= block.headerFrom && pos <= block.headerTo) {
-            // Insert newline after the block, place cursor there
-            const insertPos = block.blockTo
-            view.dispatch({
-              changes: { from: insertPos, insert: '\n' },
-              selection: { anchor: insertPos + 1 },
-            })
+            if (pos === block.headerFrom) {
+              // Cursor at the very start → insert line BEFORE the block
+              view.dispatch({
+                changes: { from: block.headerFrom, insert: '\n' },
+                selection: { anchor: block.headerFrom },
+              })
+            } else {
+              // Cursor elsewhere on header → insert line AFTER the block
+              view.dispatch({
+                changes: { from: block.blockTo, insert: '\n' },
+                selection: { anchor: block.blockTo + 1 },
+              })
+            }
             return true
           }
         }

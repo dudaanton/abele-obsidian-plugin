@@ -35,6 +35,10 @@
         />
       </div>
 
+      <div v-if="currentImage.description" class="abele-gallery-viewer__caption">
+        {{ currentImage.description }}
+      </div>
+
       <div class="abele-gallery-viewer__toolbar" @click.stop>
         <ObsidianIcon icon="copy" no-hover text-right="Copy" @click="copyImage" />
         <ObsidianIcon icon="link" no-hover text-right="Path" @click="copyPath" />
@@ -75,6 +79,7 @@ export interface ViewerImage {
   alt: string
   type: 'local' | 'remote'
   path: string
+  description?: string
 }
 
 const props = defineProps<{
@@ -417,6 +422,22 @@ onUnmounted(() => {
   max-height: 85vh;
   object-fit: contain;
   transition: none;
+}
+
+.abele-gallery-viewer__caption {
+  position: absolute;
+  bottom: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 80vw;
+  padding: 6px 14px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: var(--radius-m);
+  backdrop-filter: blur(8px);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  text-align: center;
+  pointer-events: none;
 }
 
 .abele-gallery-viewer__toolbar {

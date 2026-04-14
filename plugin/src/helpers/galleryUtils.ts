@@ -2,6 +2,7 @@ export interface GalleryImageEntry {
   type: 'local' | 'remote'
   path: string
   alt: string
+  description: string
   raw: string
 }
 
@@ -29,10 +30,14 @@ export function parseImageLine(line: string): GalleryImageEntry | null {
 
   const wikiMatch = trimmed.match(WIKILINK_IMAGE_REGEX)
   if (wikiMatch) {
+    const parts = wikiMatch[1].split('|')
+    const path = parts[0]
+    const description = parts[1]?.trim() || ''
     return {
       type: 'local',
-      path: wikiMatch[1],
-      alt: wikiMatch[1],
+      path,
+      alt: description || path,
+      description,
       raw: trimmed,
     }
   }
@@ -40,13 +45,22 @@ export function parseImageLine(line: string): GalleryImageEntry | null {
   const mdMatch = trimmed.match(MARKDOWN_IMAGE_REGEX)
   if (mdMatch) {
     const isRemote = mdMatch[2].startsWith('http://') || mdMatch[2].startsWith('https://')
+    const description = mdMatch[1] || ''
     return {
       type: isRemote ? 'remote' : 'local',
       path: mdMatch[2],
-      alt: mdMatch[1] || mdMatch[2],
+      alt: description || mdMatch[2],
+      description,
       raw: trimmed,
     }
   }
 
   return null
+}
+
+export function buildImageLine(entry: GalleryImageEntry): string {
+  if (entry.type === 'local') {
+    return entry.description ? `![[${entry.path}|${entry.description}]]` : `![[${entry.path}]]`
+  }
+  return `![${entry.description || ''}](${entry.path})`
 }
