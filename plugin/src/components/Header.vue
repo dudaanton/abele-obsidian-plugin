@@ -1,8 +1,8 @@
 <template>
-  <div v-if="header.type === 'account'" class="abele-header-view">
-    <div class="abele-header-view__balance">
-      {{ accountBalance }}
-      <span class="abele-header-view__currency">{{ accountCurrency }}</span>
+  <div v-if="header.type === 'account'" class="abele-header-view abele-header-view--column">
+    <div v-for="b in accountBalances" :key="b.currency" class="abele-header-view__balance">
+      {{ b.formatted }}
+      <span class="abele-header-view__currency">{{ b.currency }}</span>
     </div>
   </div>
   <div v-else-if="header.type === 'transaction'" class="abele-header-view">
@@ -65,19 +65,38 @@ const props = defineProps<{
 
 const store = GlobalStore.getInstance()
 
-const accountBalance = computed(() => {
+const accountBalances = computed(() => {
   const bi = toRaw(unref(store.balanceIndex)) as BalanceIndex | null
-  if (!bi) return '—'
-  bi.version.value
-  const balance = bi.getBalanceAtDate(props.header.filePath, dayjs())
-  return balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-})
-
-const accountCurrency = computed(() => {
   const al = unref(store.accountsList) as AccountsList | null
-  if (!al) return ''
+  if (!bi || !al) return []
+  bi.version.value
+
   const account = al.accounts.get(props.header.filePath)
-  return account?.currency || ''
+  if (!account) return []
+
+  const fmt = (n: number) =>
+    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  if (account.currency) {
+    const balance = bi.getBalanceAtDate(props.header.filePath, dayjs())
+    return [{ currency: account.currency, formatted: fmt(balance) }]
+  }
+
+  const available = bi.getCurrenciesForAccount(props.header.filePath)
+  const pinned = AbeleConfig.getInstance()
+    .pinnedCurrencies.split(',')
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean)
+
+  const ordered = pinned.filter((c) => available.includes(c))
+  for (const c of available) {
+    if (!ordered.includes(c)) ordered.push(c)
+  }
+
+  return ordered.map((cur) => ({
+    currency: cur,
+    formatted: fmt(bi.getBalanceAtDateByCurrency(props.header.filePath, dayjs(), cur)),
+  }))
 })
 
 const addNextTransaction = async () => {
@@ -271,6 +290,10 @@ onMounted(() => {
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
   font-weight: normal;
+}
+
+.abele-header-view--column {
+  flex-direction: column;
 }
 
 .abele-header-view__icons-set {

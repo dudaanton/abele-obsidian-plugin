@@ -1,7 +1,18 @@
 <template>
   <div class="abele-account-balance-chart">
     <div class="abele-account-balance-chart__header">
-      <div class="abele-account-balance-chart__header-text">Balance</div>
+      <div class="abele-account-balance-chart__header-text">
+        {{ isExpenseRevenue ? 'Spending' : 'Balance' }}
+      </div>
+      <div
+        v-if="isExpenseRevenue && monthTotals.length"
+        class="abele-account-balance-chart__totals"
+      >
+        <span v-for="t in monthTotals" :key="t.currency">
+          {{ t.formatted }}
+          <span class="abele-account-balance-chart__currency">{{ t.currency }}</span>
+        </span>
+      </div>
     </div>
     <div class="abele-account-balance-chart__period">
       <ObsidianIcon icon="chevron-left" @click="previousMonth()" />
@@ -18,7 +29,11 @@
 import { computed, ref, watch, nextTick, onUnmounted } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { BalanceIndex } from '@/entities/BalanceIndex'
+import { AccountsList } from '@/entities/AccountsList'
+import { TransactionsList } from '@/entities/TransactionsList'
 import { echartsInit, EChartsType } from '@/bases/echarts'
+import { wikilinkToPath } from '@/helpers/pathsHelpers'
+import { DATE_FORMAT } from '@/constants/dates'
 import ObsidianIcon from './obsidian/Icon.vue'
 import dayjs from 'dayjs'
 import { toRaw, unref } from 'vue'
@@ -65,16 +80,118 @@ function goToCurrentMonth() {
   selectedYear.value = dayjs().year()
 }
 
+interface ChartSeries {
+  name: string
+  data: number[]
+}
+
+const isExpenseRevenue = computed(() => {
+  const al = unref(store.accountsList) as AccountsList | null
+  const account = al?.accounts.get(props.accountPath)
+  const t = account?.accountType
+  return t === 'expense' || t === 'revenue'
+})
+
 const chartData = computed(() => {
   const bi = toRaw(unref(store.balanceIndex)) as BalanceIndex | null
-  if (!bi) return { dates: [] as string[], values: [] as number[] }
+  const al = unref(store.accountsList) as AccountsList | null
+  if (!bi || !al)
+    return { dates: [] as string[], seriesList: [] as ChartSeries[], chartType: 'line' as const }
   bi.version.value // track reactivity
 
-  const series = bi.getBalanceSeries(props.accountPath, periodStart.value, periodEnd.value)
-  return {
-    dates: series.map((s) => dayjs(s.date).format('MMM D')),
-    values: series.map((s) => Math.round(s.balance * 100) / 100),
+  const account = al.accounts.get(props.accountPath)
+  const start = periodStart.value
+  const end = periodEnd.value
+
+  const dates: string[] = []
+  let d = start
+  while (d.isBefore(end) || d.isSame(end, 'day')) {
+    dates.push(d.format('MMM D'))
+    d = d.add(1, 'day')
   }
+
+  const seriesList: ChartSeries[] = []
+
+  if (isExpenseRevenue.value) {
+    const tl = toRaw(unref(store.transactionsList)) as TransactionsList | null
+    if (!tl) return { dates, seriesList, chartType: 'bar' as const }
+
+    const startStr = start.format(DATE_FORMAT)
+    const endStr = end.format(DATE_FORMAT)
+    const { app } = store
+
+    const dailyByCurrency = new Map<string, Map<string, number>>()
+
+    for (const tx of tl.transactions.values()) {
+      const raw = toRaw(tx)
+      if (!raw.loaded || !raw.date || raw.amount == null || !raw.currency) continue
+
+      const dateStr = raw.date.format(DATE_FORMAT)
+      if (dateStr < startStr || dateStr > endStr) continue
+
+      const fromPath = raw.from
+        ? (() => {
+            const lp = wikilinkToPath(raw.from!)
+            return lp ? (app.metadataCache.getFirstLinkpathDest(lp, '')?.path ?? null) : null
+          })()
+        : null
+      const toPath = raw.to
+        ? (() => {
+            const lp = wikilinkToPath(raw.to!)
+            return lp ? (app.metadataCache.getFirstLinkpathDest(lp, '')?.path ?? null) : null
+          })()
+        : null
+
+      if (fromPath !== props.accountPath && toPath !== props.accountPath) continue
+
+      const cur = raw.currency
+      if (!dailyByCurrency.has(cur)) dailyByCurrency.set(cur, new Map())
+      const daily = dailyByCurrency.get(cur)!
+      daily.set(dateStr, (daily.get(dateStr) || 0) + raw.amount)
+    }
+
+    for (const [cur, daily] of dailyByCurrency) {
+      const data: number[] = []
+      let dd = start
+      for (let i = 0; i < dates.length; i++) {
+        data.push(Math.round((daily.get(dd.format(DATE_FORMAT)) || 0) * 100) / 100)
+        dd = dd.add(1, 'day')
+      }
+      seriesList.push({ name: cur, data })
+    }
+
+    return { dates, seriesList, chartType: 'bar' as const }
+  }
+
+  if (account?.currency) {
+    const series = bi.getBalanceSeries(props.accountPath, start, end)
+    seriesList.push({
+      name: account.currency,
+      data: series.map((s) => Math.round(s.balance * 100) / 100),
+    })
+  } else {
+    const currencies = bi.getCurrenciesForAccount(props.accountPath)
+    for (const cur of currencies) {
+      const series = bi.getBalanceSeriesByCurrency(props.accountPath, start, end, cur)
+      seriesList.push({
+        name: cur,
+        data: series.map((s) => Math.round(s.balance * 100) / 100),
+      })
+    }
+  }
+
+  return { dates, seriesList, chartType: 'line' as const }
+})
+
+const monthTotals = computed(() => {
+  const { seriesList } = chartData.value
+  const fmt = (n: number) =>
+    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  return seriesList.map((s) => ({
+    currency: s.name,
+    formatted: fmt(s.data.reduce((a, b) => a + b, 0)),
+  }))
 })
 
 const chartEl = ref<HTMLElement | null>(null)
@@ -96,12 +213,15 @@ function renderChart() {
     chartObserver.observe(chartEl.value)
   }
 
-  const { dates, values } = chartData.value
+  const { dates, seriesList, chartType } = chartData.value
 
-  if (!dates.length) {
+  if (!dates.length || !seriesList.length) {
     chart.clear()
     return
   }
+
+  const hasLegend = seriesList.length > 1
+  const isBar = chartType === 'bar'
 
   chart.setOption(
     {
@@ -111,29 +231,32 @@ function renderChart() {
         valueFormatter: (v: number) =>
           v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       },
+      legend: hasLegend
+        ? { data: seriesList.map((s) => s.name), bottom: 0, type: 'scroll' }
+        : undefined,
       grid: {
         left: 12,
         right: 12,
         top: 12,
-        bottom: 24,
+        bottom: hasLegend ? 40 : 24,
         containLabel: true,
       },
       xAxis: {
         type: 'category',
         data: dates,
-        boundaryGap: false,
+        boundaryGap: isBar,
         axisLabel: {
           interval: Math.max(Math.floor(dates.length / 6) - 1, 0),
         },
       },
       yAxis: { type: 'value' },
-      series: [
-        {
-          type: 'line',
-          data: values,
-          emphasis: { disabled: true },
-        },
-      ],
+      series: seriesList.map((s) => ({
+        name: s.name,
+        type: chartType,
+        data: s.data,
+        emphasis: { disabled: true },
+        ...(isBar ? { stack: 'total' } : {}),
+      })),
     },
     true
   )
@@ -157,6 +280,19 @@ onUnmounted(() => {
   .abele-account-balance-chart__header-text {
     font-weight: bold;
   }
+}
+
+.abele-account-balance-chart__totals {
+  display: flex;
+  gap: var(--size-4-3);
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.abele-account-balance-chart__currency {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
 }
 
 .abele-account-balance-chart__period {

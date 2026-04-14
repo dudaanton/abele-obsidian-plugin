@@ -94,15 +94,30 @@ export class BalanceIndex {
     this.version.value++
   }
 
+  private isExpenseOrRevenue(accountPath: string): boolean {
+    const account = this.accountsList.accounts.get(accountPath)
+    const t = account?.accountType
+    return t === 'expense' || t === 'revenue'
+  }
+
+  private getEntryKey(accountPath: string, currency?: string): string {
+    if (currency && this.isExpenseOrRevenue(accountPath)) {
+      return `${accountPath}|${currency}`
+    }
+    return accountPath
+  }
+
   private addTransactionEntries(transaction: Transaction): void {
     const dateStr = transaction.date!.format(DATE_FORMAT)
+    const currency = transaction.currency || ''
 
     if (transaction.from) {
       const fromPath = this.resolveAccountPath(transaction.from)
       if (fromPath) {
         const startDate = this.getStartingBalanceDate(fromPath)
         if (!startDate || dateStr >= startDate) {
-          this.addEntry(fromPath, {
+          const key = this.getEntryKey(fromPath, currency)
+          this.addEntry(key, {
             date: dateStr,
             amount: this.getAmountForAccount(transaction, fromPath, 'from'),
             transactionPath: transaction.transactionPath,
@@ -116,7 +131,8 @@ export class BalanceIndex {
       if (toPath) {
         const startDate = this.getStartingBalanceDate(toPath)
         if (!startDate || dateStr >= startDate) {
-          this.addEntry(toPath, {
+          const key = this.getEntryKey(toPath, currency)
+          this.addEntry(key, {
             date: dateStr,
             amount: this.getAmountForAccount(transaction, toPath, 'to'),
             transactionPath: transaction.transactionPath,
@@ -126,11 +142,11 @@ export class BalanceIndex {
     }
   }
 
-  private addEntry(accountPath: string, entry: BalanceEntry): void {
-    if (!this.accountEntries.has(accountPath)) {
-      this.accountEntries.set(accountPath, [])
+  private addEntry(key: string, entry: BalanceEntry): void {
+    if (!this.accountEntries.has(key)) {
+      this.accountEntries.set(key, [])
     }
-    this.accountEntries.get(accountPath)!.push(entry)
+    this.accountEntries.get(key)!.push(entry)
   }
 
   private sortAndComputePrefixSums(accountPath: string): void {
@@ -227,14 +243,69 @@ export class BalanceIndex {
     return result
   }
 
+  getCurrenciesForAccount(accountPath: string): string[] {
+    const prefix = `${accountPath}|`
+    const currencies: string[] = []
+    for (const key of this.accountEntries.keys()) {
+      if (key.startsWith(prefix)) {
+        currencies.push(key.slice(prefix.length))
+      }
+    }
+    return currencies.sort()
+  }
+
+  private getBalanceAtKey(key: string, date: dayjs.Dayjs, startingBalance = 0): number {
+    const dateStr = date.format(DATE_FORMAT)
+    const entries = this.accountEntries.get(key)
+    const sums = this.prefixSums.get(key)
+
+    if (!entries || !sums || entries.length === 0) {
+      return startingBalance
+    }
+
+    const index = this.findIndexAtDate(entries, dateStr)
+    if (index < 0) {
+      return startingBalance
+    }
+
+    return startingBalance + sums[index]
+  }
+
+  getBalanceAtDateByCurrency(accountPath: string, date: dayjs.Dayjs, currency: string): number {
+    const key = `${accountPath}|${currency}`
+    return this.getBalanceAtKey(key, date)
+  }
+
+  getBalanceSeriesByCurrency(
+    accountPath: string,
+    startDate: dayjs.Dayjs,
+    endDate: dayjs.Dayjs,
+    currency: string
+  ): Array<{ date: string; balance: number }> {
+    const key = `${accountPath}|${currency}`
+    const result: Array<{ date: string; balance: number }> = []
+    let current = startDate
+
+    while (current.isBefore(endDate) || current.isSame(endDate, 'day')) {
+      result.push({
+        date: current.format(DATE_FORMAT),
+        balance: this.getBalanceAtKey(key, current),
+      })
+      current = current.add(1, 'day')
+    }
+
+    return result
+  }
+
   getNetWorthAtDate(date: dayjs.Dayjs): number {
     let netWorth = 0
 
     for (const [path, account] of this.accountsList.accounts) {
+      if (account.excludeFromTotal) continue
       if (account.accountType === 'asset') {
         netWorth += this.getBalanceAtDate(path, date)
       } else if (account.accountType === 'liability') {
-        netWorth -= this.getBalanceAtDate(path, date)
+        netWorth -= Math.abs(this.getBalanceAtDate(path, date))
       }
     }
 
@@ -246,10 +317,11 @@ export class BalanceIndex {
 
     for (const [path, account] of this.accountsList.accounts) {
       if (account.currency !== currency) continue
+      if (account.excludeFromTotal) continue
       if (account.accountType === 'asset') {
         netWorth += this.getBalanceAtDate(path, date)
       } else if (account.accountType === 'liability') {
-        netWorth -= this.getBalanceAtDate(path, date)
+        netWorth -= Math.abs(this.getBalanceAtDate(path, date))
       }
     }
 
