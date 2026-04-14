@@ -11,6 +11,8 @@ interface GalleryBlock {
   blockTo: number
   images: GalleryImageEntry[]
   layout: string
+  height: number
+  bg: boolean
 }
 
 function findGalleryBlocks(state: EditorState): GalleryBlock[] {
@@ -55,6 +57,8 @@ function findGalleryBlocks(state: EditorState): GalleryBlock[] {
       blockTo: state.doc.line(endLine).to,
       images,
       layout: header.layout,
+      height: header.height,
+      bg: header.bg,
     })
 
     i = endLine + 1
@@ -97,7 +101,13 @@ function buildGalleryDecorations(state: EditorState): DecorationSet {
         block.headerTo,
         block.blockTo,
         Decoration.replace({
-          widget: new GalleryWidget(currentFile.path, block.images, block.layout),
+          widget: new GalleryWidget(
+            currentFile.path,
+            block.images,
+            block.layout,
+            block.height,
+            block.bg
+          ),
           block: true,
           inclusive: true,
         })
@@ -111,7 +121,13 @@ function buildGalleryDecorations(state: EditorState): DecorationSet {
         block.headerFrom,
         block.blockTo,
         Decoration.replace({
-          widget: new GalleryWidget(currentFile.path, block.images, block.layout),
+          widget: new GalleryWidget(
+            currentFile.path,
+            block.images,
+            block.layout,
+            block.height,
+            block.bg
+          ),
           block: true,
           inclusive: true,
         })

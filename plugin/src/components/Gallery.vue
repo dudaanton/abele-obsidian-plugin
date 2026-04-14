@@ -4,7 +4,7 @@
       <div class="abele-gallery__header-right">
         <ObsidianIcon ref="addBtnRef" icon="image-plus" @click="addMenu.open" />
         <ObsidianIcon :icon="editMode ? 'check' : 'pencil'" @click="editMode = !editMode" />
-        <ObsidianIcon ref="layoutBtnRef" icon="layout-grid" @click="layoutMenu.open" />
+        <ObsidianIcon ref="layoutBtnRef" icon="settings" @click="layoutMenu.open" />
         <ObsidianIcon ref="deleteBtnRef" icon="trash-2" @click="deleteMenu.open" />
       </div>
     </div>
@@ -50,7 +50,7 @@
             :alt="resolvedImages[imgIdx].alt"
             class="abele-gallery__image"
             loading="lazy"
-            @click="openViewer(imgIdx)"
+            @click.stop.prevent="openViewer(imgIdx)"
             @load="onImageLoad(imgIdx, $event)"
           />
           <div v-else class="abele-gallery__image-error">
@@ -62,10 +62,46 @@
     </div>
 
     <div
-      v-else
-      ref="gridEl"
-      :class="['abele-gallery__grid', `abele-gallery__grid--${gallery.layout}`]"
+      v-else-if="gallery.layout === 'slider'"
+      :class="['abele-gallery__slider-wrap', { 'abele-gallery__slider-wrap--no-bg': !gallery.bg }]"
     >
+      <div ref="gridEl" class="abele-gallery__slider">
+        <div
+          v-for="(image, index) in resolvedImages"
+          :key="index"
+          class="abele-gallery__slider-item"
+          :style="{ height: gallery.height + 'px' }"
+        >
+          <img
+            v-if="image.url"
+            :src="image.url"
+            :alt="image.alt"
+            class="abele-gallery__image abele-gallery__image--contain"
+            loading="lazy"
+            @click.stop.prevent="openViewer(index)"
+            @load="onImageLoad(index, $event)"
+          />
+        </div>
+      </div>
+      <template v-if="resolvedImages.length > 1">
+        <div
+          class="abele-gallery__slider-nav abele-gallery__slider-nav--prev"
+          @click.stop="slideBy(-1)"
+          @mousedown.prevent
+        >
+          <ObsidianIcon icon="chevron-left" no-hover />
+        </div>
+        <div
+          class="abele-gallery__slider-nav abele-gallery__slider-nav--next"
+          @click.stop="slideBy(1)"
+          @mousedown.prevent
+        >
+          <ObsidianIcon icon="chevron-right" no-hover />
+        </div>
+      </template>
+    </div>
+
+    <div v-else :class="['abele-gallery__grid', `abele-gallery__grid--${gallery.layout}`]">
       <div v-for="(image, index) in resolvedImages" :key="index" class="abele-gallery__item">
         <img
           v-if="image.url"
@@ -73,7 +109,7 @@
           :alt="image.alt"
           class="abele-gallery__image"
           loading="lazy"
-          @click="openViewer(index)"
+          @click.stop.prevent="openViewer(index)"
           @load="onImageLoad(index, $event)"
         />
         <div v-else class="abele-gallery__image-error">
@@ -81,21 +117,6 @@
           <span>{{ image.alt }}</span>
         </div>
       </div>
-
-      <template v-if="gallery.layout === 'slider' && resolvedImages.length > 1">
-        <ObsidianIcon
-          icon="chevron-left"
-          class="abele-gallery__slider-nav abele-gallery__slider-nav--prev"
-          no-hover
-          @click.stop="slideBy(-1)"
-        />
-        <ObsidianIcon
-          icon="chevron-right"
-          class="abele-gallery__slider-nav abele-gallery__slider-nav--next"
-          no-hover
-          @click.stop="slideBy(1)"
-        />
-      </template>
     </div>
 
     <input
@@ -230,29 +251,62 @@ function handleAddMenu(event: string) {
 
 const addMenu = useMenu(addBtnRef, addChoices, handleAddMenu)
 
-// --- Layout menu ---
+// --- Settings menu (layout, height, bg) ---
 
-const layoutChoices = computed<Choice[]>(() => [
-  { title: 'Grid', event: 'grid', icon: 'layout-grid' },
-  { title: 'Masonry', event: 'masonry', icon: 'gallery-vertical-end' },
-  { title: 'Column', event: 'column', icon: 'rows-3' },
-  { title: 'Slider', event: 'slider', icon: 'gallery-horizontal' },
+const settingsChoices = computed<Choice[]>(() => [
+  {
+    title: 'Layout',
+    icon: 'layout-grid',
+    subMenu: [
+      { title: 'Grid', event: 'layout', value: 'grid', icon: 'layout-grid' },
+      { title: 'Masonry', event: 'layout', value: 'masonry', icon: 'gallery-vertical-end' },
+      { title: 'Column', event: 'layout', value: 'column', icon: 'rows-3' },
+      { title: 'Slider', event: 'layout', value: 'slider', icon: 'gallery-horizontal' },
+    ],
+  },
+  {
+    title: 'Height',
+    icon: 'ruler',
+    subMenu: [200, 300, 400, 500, 600].map((h) => ({
+      title: `${h}px${h === props.gallery.height ? ' ✓' : ''}`,
+      event: 'height',
+      value: String(h),
+    })),
+  },
+  {
+    title: props.gallery.bg ? 'Hide background' : 'Show background',
+    event: 'bg',
+    icon: props.gallery.bg ? 'eye-off' : 'eye',
+  },
 ])
 
-function handleLayoutMenu(event: string) {
-  props.gallery.setLayout(event)
+function handleSettingsMenu(event: string, value: string) {
+  if (event === 'layout') props.gallery.setLayout(value)
+  else if (event === 'height') props.gallery.setHeight(parseInt(value))
+  else if (event === 'bg') props.gallery.setBg(!props.gallery.bg)
 }
 
-const layoutMenu = useMenu(layoutBtnRef, layoutChoices, handleLayoutMenu)
+const layoutMenu = useMenu(layoutBtnRef, settingsChoices, handleSettingsMenu)
 
 // --- Slider ---
 
 function slideBy(dir: number) {
   const el = gridEl.value
   if (!el) return
-  const item = el.querySelector('.abele-gallery__item') as HTMLElement
-  if (!item) return
-  el.scrollBy({ left: item.offsetWidth * dir, behavior: 'smooth' })
+
+  const itemWidth = el.clientWidth
+  const maxScroll = el.scrollWidth - itemWidth
+  const currentScroll = el.scrollLeft
+
+  if (dir > 0 && currentScroll >= maxScroll - 1) {
+    // At the end → loop to start
+    el.scrollTo({ left: 0, behavior: 'smooth' })
+  } else if (dir < 0 && currentScroll <= 1) {
+    // At the start → loop to end
+    el.scrollTo({ left: maxScroll, behavior: 'smooth' })
+  } else {
+    el.scrollBy({ left: itemWidth * dir, behavior: 'smooth' })
+  }
 }
 
 async function addFromVault() {
@@ -408,30 +462,6 @@ const deleteMenu = useMenu(deleteBtnRef, deleteChoices, handleDeleteMenu)
       object-fit: contain;
     }
   }
-
-  &--slider {
-    position: relative;
-    display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    scrollbar-width: none;
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
-
-    .abele-gallery__item {
-      flex: 0 0 100%;
-      scroll-snap-align: center;
-      aspect-ratio: unset;
-    }
-
-    .abele-gallery__image {
-      height: auto;
-      max-height: 70vh;
-      object-fit: contain;
-    }
-  }
 }
 
 .abele-gallery__item {
@@ -470,28 +500,70 @@ const deleteMenu = useMenu(deleteBtnRef, deleteChoices, handleDeleteMenu)
   }
 }
 
+.abele-gallery__slider-wrap {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  background: var(--background-secondary);
+
+  &--no-bg {
+    background: none;
+  }
+}
+
+.abele-gallery__slider {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  touch-action: pan-x pan-y;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.abele-gallery__slider-item {
+  flex: 0 0 100%;
+  min-width: 100%;
+  scroll-snap-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.abele-gallery__image--contain {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
 .abele-gallery__slider-nav {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 0;
+  bottom: 0;
+  width: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 1;
-  color: rgba(255, 255, 255, 0.8);
-  background: rgba(0, 0, 0, 0.4);
-  border-radius: 50%;
   cursor: pointer;
-  padding: var(--size-2-2);
 
-  &:hover {
-    background: rgba(0, 0, 0, 0.6);
-    color: #fff;
+  .abele-obsidian-icon {
+    color: var(--text-muted);
+  }
+
+  &:hover .abele-obsidian-icon {
+    color: var(--text-normal);
   }
 
   &--prev {
-    left: 8px;
+    left: 0;
   }
 
   &--next {
-    right: 8px;
+    right: 0;
   }
 }
 

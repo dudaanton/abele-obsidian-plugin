@@ -9,13 +9,23 @@ export class GalleryWidget extends WidgetType {
   private readonly filePath: string
   private readonly images: GalleryImageEntry[]
   private readonly layout: string
+  private readonly height: number
+  private readonly bg: boolean
 
-  constructor(filePath: string, images: GalleryImageEntry[], layout: string) {
+  constructor(
+    filePath: string,
+    images: GalleryImageEntry[],
+    layout: string,
+    height: number,
+    bg: boolean
+  ) {
     super()
     this.id = genid()
     this.filePath = filePath
     this.images = images
     this.layout = layout
+    this.height = height
+    this.bg = bg
   }
 
   toDOM() {
@@ -31,6 +41,8 @@ export class GalleryWidget extends WidgetType {
         filePath: this.filePath,
         images: [...this.images],
         layout: this.layout,
+        height: this.height,
+        bg: this.bg,
       })
     )
 
@@ -50,6 +62,8 @@ export class GalleryWidget extends WidgetType {
     return (
       this.filePath === other.filePath &&
       this.layout === other.layout &&
+      this.height === other.height &&
+      this.bg === other.bg &&
       this.images.length === other.images.length &&
       this.images.every((img, i) => img.raw === other.images[i].raw)
     )

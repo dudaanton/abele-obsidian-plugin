@@ -1,27 +1,32 @@
 <template>
   <Teleport to="body">
-    <div class="abele-gallery-viewer" @click.self="close" @wheel.prevent="onWheel">
+    <div class="abele-gallery-viewer" @click.self="close" @wheel.prevent="onWheel" @touchstart.stop>
       <div class="abele-gallery-viewer__counter">{{ currentIndex + 1 }} / {{ images.length }}</div>
       <ObsidianIcon icon="x" class="abele-gallery-viewer__close" no-hover @click="close" />
 
-      <ObsidianIcon
+      <div
         v-if="images.length > 1"
-        icon="chevron-left"
         class="abele-gallery-viewer__nav abele-gallery-viewer__nav--prev"
-        no-hover
         @click.stop="prev"
-      />
-      <ObsidianIcon
+        @mousedown.prevent
+      >
+        <ObsidianIcon icon="chevron-left" no-hover />
+      </div>
+      <div
         v-if="images.length > 1"
-        icon="chevron-right"
         class="abele-gallery-viewer__nav abele-gallery-viewer__nav--next"
-        no-hover
         @click.stop="next"
-      />
+        @mousedown.prevent
+      >
+        <ObsidianIcon icon="chevron-right" no-hover />
+      </div>
 
       <div
         class="abele-gallery-viewer__image-wrap"
         @mousedown.prevent="onDragStart"
+        @touchstart="onTouchStart"
+        @touchmove.prevent="onTouchMove"
+        @touchend="onTouchEnd"
         @click.self="close"
       >
         <img
@@ -328,6 +333,56 @@ function onDragEnd() {
   document.removeEventListener('mouseup', onDragEnd)
 }
 
+// --- Touch swipe ---
+
+let touchStartX = 0
+let touchStartY = 0
+let touchStartTranslateX = 0
+let touchStartTranslateY = 0
+let isSwiping = false
+
+function onTouchStart(e: TouchEvent) {
+  if (e.touches.length !== 1) return
+  const t = e.touches[0]
+  touchStartX = t.clientX
+  touchStartY = t.clientY
+  touchStartTranslateX = translateX.value
+  touchStartTranslateY = translateY.value
+  isSwiping = true
+}
+
+function onTouchMove(e: TouchEvent) {
+  if (!isSwiping || e.touches.length !== 1) return
+  const t = e.touches[0]
+  const dx = t.clientX - touchStartX
+  const dy = t.clientY - touchStartY
+
+  if (scale.value > 1) {
+    // Pan when zoomed
+    translateX.value = touchStartTranslateX + dx
+    translateY.value = touchStartTranslateY + dy
+  }
+}
+
+function onTouchEnd(e: TouchEvent) {
+  if (!isSwiping) return
+  isSwiping = false
+
+  if (scale.value > 1) return // don't swipe-navigate when zoomed
+
+  const t = e.changedTouches[0]
+  const dx = t.clientX - touchStartX
+  const dy = t.clientY - touchStartY
+  const absDx = Math.abs(dx)
+  const absDy = Math.abs(dy)
+
+  // Horizontal swipe: min 50px, more horizontal than vertical
+  if (absDx > 50 && absDx > absDy * 1.5) {
+    if (dx < 0) next()
+    else prev()
+  }
+}
+
 function onKeydown(e: KeyboardEvent) {
   switch (e.key) {
     case 'Escape':
@@ -343,6 +398,8 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 onMounted(() => {
+  // Blur active element to prevent keyboard popup on mobile
+  ;(document.activeElement as HTMLElement)?.blur()
   document.addEventListener('keydown', onKeydown)
 })
 
@@ -389,22 +446,29 @@ onUnmounted(() => {
 
 .abele-gallery-viewer__nav {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  color: rgba(255, 255, 255, 0.7);
+  top: 0;
+  bottom: 0;
+  width: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   z-index: 1;
 
-  &:hover {
+  .abele-obsidian-icon {
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  &:hover .abele-obsidian-icon {
     color: #fff;
   }
 
   &--prev {
-    left: 12px;
+    left: 0;
   }
 
   &--next {
-    right: 12px;
+    right: 0;
   }
 }
 

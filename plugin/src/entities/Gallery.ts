@@ -13,17 +13,25 @@ export class Gallery {
   public readonly filePath: string
   public readonly images: GalleryImageEntry[]
   public readonly layout: string
+  public readonly height: number
+  public readonly bg: boolean
 
   constructor(data: {
     id?: string
     filePath: string
     images: GalleryImageEntry[]
     layout: string
+    height: number
+    bg: boolean
   }) {
     this.id = data.id || genid()
     this.filePath = data.filePath
     this.images = data.images
+    this.height = data.height
+    this.bg = data.bg
     this.layout = data.layout
+    this.height = data.height
+    this.bg = data.bg
   }
 
   resolveImageUrl(image: GalleryImageEntry, version = 0): string | null {
@@ -173,7 +181,27 @@ export class Gallery {
     editor.setValue(lines.join('\n'))
   }
 
+  private buildHeader(layout: string, height: number, bg: boolean): string {
+    const opts: string[] = []
+    if (layout !== 'grid') opts.push(`layout=${layout}`)
+    if (height !== 400) opts.push(`height=${height}`)
+    if (!bg) opts.push('bg=false')
+    return opts.length > 0 ? `::abele-gallery{${opts.join(',')}}::` : '::abele-gallery::'
+  }
+
   setLayout(newLayout: string) {
+    this.updateHeader(newLayout, this.height, this.bg)
+  }
+
+  setHeight(newHeight: number) {
+    this.updateHeader(this.layout, newHeight, this.bg)
+  }
+
+  setBg(newBg: boolean) {
+    this.updateHeader(this.layout, this.height, newBg)
+  }
+
+  private updateHeader(layout: string, height: number, bg: boolean) {
     const editor = getEditorForFile(this.filePath)
     if (!editor) return
 
@@ -181,13 +209,9 @@ export class Gallery {
     const block = this.findBlockInText(lines)
     if (!block) return
 
-    const headerLineNum = block.headerLine
-    const newHeader =
-      newLayout === 'grid' ? '::abele-gallery::' : `::abele-gallery{layout=${newLayout}}::`
-
-    const from = { line: headerLineNum, ch: 0 }
-    const to = { line: headerLineNum, ch: lines[headerLineNum].length }
-    editor.replaceRange(newHeader, from, to)
+    const from = { line: block.headerLine, ch: 0 }
+    const to = { line: block.headerLine, ch: lines[block.headerLine].length }
+    editor.replaceRange(this.buildHeader(layout, height, bg), from, to)
   }
 
   /** Remove only the ::abele-gallery:: header, leaving image links as plain markdown */
