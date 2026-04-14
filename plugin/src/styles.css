@@ -6,6 +6,22 @@ body.abele-full-width-sidebars {
   display: none;
 }
 
+/* Gallery: hide image lines during selection when replace decoration is disrupted */
+.abele-gallery-hidden-line {
+  height: 0 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  min-height: 0 !important;
+  line-height: 0 !important;
+}
+
+/* Hide Obsidian's image embed rendered adjacent to gallery widget during selection */
+.abele-gallery-widget-container + .internal-embed.image-embed,
+.abele-gallery-widget-container + .cm-line + .internal-embed.image-embed {
+  display: none !important;
+}
+
 body.is-mobile .modal:has(.abele-scope-mgr) {
   margin-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
   margin-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));

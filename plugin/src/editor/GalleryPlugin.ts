@@ -77,13 +77,21 @@ function buildGalleryDecorations(state: EditorState): DecorationSet {
 
   const blocks = findGalleryBlocks(state)
 
+  const hiddenLine = Decoration.line({ class: 'abele-gallery-hidden-line' })
+
   for (const block of blocks) {
-    const cursorOnHeader = state.selection.ranges.some((range) =>
-      rangesOverlap(range.from, range.to, block.headerFrom, block.headerTo)
+    const cursorOnHeader = state.selection.ranges.some(
+      (range) =>
+        range.from === range.to &&
+        rangesOverlap(range.from, range.to, block.headerFrom, block.headerTo)
     )
+
+    const headerLineNum = state.doc.lineAt(block.headerFrom).number
+    const blockEndLineNum = state.doc.lineAt(block.blockTo).number
 
     if (cursorOnHeader && block.images.length > 0) {
       // Focused: header stays as raw text, images rendered as widget
+      // Replace must come first (lower startSide), then line decorations
       builder.add(
         block.headerTo,
         block.blockTo,
@@ -93,8 +101,12 @@ function buildGalleryDecorations(state: EditorState): DecorationSet {
           inclusive: true,
         })
       )
+      for (let ln = headerLineNum + 1; ln <= blockEndLineNum; ln++) {
+        builder.add(state.doc.line(ln).from, state.doc.line(ln).from, hiddenLine)
+      }
     } else {
       // Normal: entire block is one widget
+      // Replace first, then line decorations as CSS backup during selection
       builder.add(
         block.headerFrom,
         block.blockTo,
@@ -104,6 +116,9 @@ function buildGalleryDecorations(state: EditorState): DecorationSet {
           inclusive: true,
         })
       )
+      for (let ln = headerLineNum; ln <= blockEndLineNum; ln++) {
+        builder.add(state.doc.line(ln).from, state.doc.line(ln).from, hiddenLine)
+      }
     }
   }
 
@@ -142,21 +157,28 @@ const galleryCursorFilter = EditorState.transactionFilter.of((tr) => {
       const headerLine = doc.lineAt(block.headerFrom).number
       if (newLine === headerLine) continue
 
-      // Cursor landed on a non-header line within the block → redirect
+      // Head landed on a non-header line within the block → redirect
       modified = true
 
+      let newHead: number
       if (oldHead >= block.headerFrom && oldHead <= block.headerTo) {
         // Came from the header → skip past block
         const blockEndLine = doc.lineAt(block.blockTo)
         if (blockEndLine.number < doc.lines) {
-          return EditorSelection.cursor(doc.line(blockEndLine.number + 1).from)
+          newHead = doc.line(blockEndLine.number + 1).from
+        } else {
+          newHead = block.headerTo
         }
-        // Block at end of doc → stay on header
-        return EditorSelection.cursor(block.headerTo)
       } else {
         // Came from above, below, or anywhere else → go to header end
-        return EditorSelection.cursor(block.headerTo)
+        newHead = block.headerTo
       }
+
+      // Preserve selection (anchor) if it exists
+      if (range.anchor === range.head) {
+        return EditorSelection.cursor(newHead)
+      }
+      return EditorSelection.range(range.anchor, newHead)
     }
     return range
   })
