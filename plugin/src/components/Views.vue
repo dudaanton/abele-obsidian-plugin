@@ -3,6 +3,13 @@
     <TaskView :task="task as Task" />
   </Teleport>
   <Teleport
+    v-for="gallery in galleriesContainers"
+    :key="gallery.id"
+    :to="`[data-gallery-id='${gallery.id}']`"
+  >
+    <GalleryView :gallery="gallery as Gallery" />
+  </Teleport>
+  <Teleport
     v-for="taskHeader in tasksHeadersContainers"
     :key="taskHeader.id"
     :to="`[data-task-header-id='${taskHeader.id}']`"
@@ -65,10 +72,12 @@
 <script setup lang="ts">
 import { GlobalStore } from '@/stores/GlobalStore'
 import TaskView from './Task.vue'
+import GalleryView from './Gallery.vue'
 import TaskHeaderView from './TaskHeader.vue'
 import HeaderView from './Header.vue'
 import FooterView from './Footer.vue'
 import { Task } from '@/entities/Task'
+import { Gallery } from '@/entities/Gallery'
 import { TaskHeader } from '@/entities/TaskHeader'
 import { Header } from '@/entities/Header'
 import { Footer } from '@/entities/Footer'
@@ -92,6 +101,7 @@ import { SETTINGS_ID_ATTR } from '@/settings'
 
 const {
   tasksContainers,
+  galleriesContainers,
   tasksHeadersContainers,
   headersContainers,
   footersContainers,

@@ -1,4 +1,5 @@
 import { Footer } from '@/entities/Footer'
+import { Gallery } from '@/entities/Gallery'
 import { Header } from '@/entities/Header'
 import { Task } from '@/entities/Task'
 import { TaskHeader } from '@/entities/TaskHeader'
@@ -33,6 +34,7 @@ export class GlobalStore {
   public readonly tasksHeadersContainers = ref<Array<TaskHeader>>([])
   public readonly footersContainers = ref<Array<Footer>>([])
   public readonly headersContainers = ref<Array<Header>>([])
+  public readonly galleriesContainers = ref<Array<Gallery>>([])
   public readonly findAndReplaceModalOpened = ref(false)
   public readonly migrateFromDataviewModalOpened = ref(false)
   public readonly saveMediaModalOpened = ref(false)
@@ -185,6 +187,7 @@ export class GlobalStore {
     this.tasksContainers.value = []
     this.tasksHeadersContainers.value = []
     this.footersContainers.value = []
+    this.galleriesContainers.value = []
     this.tasksList.value?.cleanup()
     this.tasksList.value = null
     this.balanceIndex.value?.cleanup()
