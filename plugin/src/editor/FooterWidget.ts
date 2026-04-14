@@ -5,7 +5,7 @@ import { Footer } from '@/entities/Footer'
 import { reactive } from 'vue'
 
 export class FooterWidget extends WidgetType {
-  private readonly id: string
+  private id: string
   private readonly filePath: string
 
   constructor(filePath: string) {
@@ -21,13 +21,17 @@ export class FooterWidget extends WidgetType {
 
     container.createDiv({ attr: { 'data-footer-id': this.id }, cls: 'abele-vue-mount' })
 
-    GlobalStore.getInstance().footersContainers.value.push(
+    const store = GlobalStore.getInstance()
+    store.footersContainers.value.push(
       reactive(
         new Footer({
           id: this.id,
           filePath: this.filePath,
         })
       )
+    )
+    console.debug(
+      `[FooterWidget] toDOM id=${this.id} file=${this.filePath} | total: ${store.footersContainers.value.length}`
     )
 
     return container
@@ -39,11 +43,22 @@ export class FooterWidget extends WidgetType {
     if (index !== -1) {
       store.footersContainers.value[index].cleanup()
       store.footersContainers.value.splice(index, 1)
+      console.debug(
+        `[FooterWidget] destroy OK id=${this.id} file=${this.filePath} | total: ${store.footersContainers.value.length}`
+      )
+    } else {
+      console.debug(
+        `[FooterWidget] destroy MISS id=${this.id} file=${this.filePath} | total: ${store.footersContainers.value.length}`
+      )
     }
   }
 
   eq(other: FooterWidget) {
-    return this.filePath === other.filePath
+    if (this.filePath === other.filePath) {
+      other.id = this.id
+      return true
+    }
+    return false
   }
 
   ignoreEvent() {

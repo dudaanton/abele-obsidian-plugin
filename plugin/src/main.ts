@@ -14,6 +14,7 @@ import { createPinia } from 'pinia'
 import VueEntry from './App.vue'
 import { AbeleConfig } from './services/AbeleConfig'
 import { createTask, createTaskAndInsert } from './commands/createTask'
+import { createTransaction, createTransactionAndInsert } from './commands/createTransaction'
 import {
   createNoteFromTemplate,
   replaceNoteWithTemplate,
@@ -28,6 +29,8 @@ import { deduplicateMedia } from './commands/deduplicateMedia'
 import { TIMELINE_SIDEBAR_VIEW_TYPE, TimelineSidebarView } from './views/TimelineSidebarView'
 import { TODO_SIDEBAR_VIEW_TYPE, TodoSidebarView } from './views/TodoSidebarView'
 import { AI_SIDEBAR_VIEW_TYPE, AiSidebarView } from './views/AiSidebarView'
+import { FINANCE_SIDEBAR_VIEW_TYPE, FinanceSidebarView } from './views/FinanceSidebarView'
+import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { AgentService } from './ai/AgentService'
 import { ScopeResolver } from './ai/ScopeResolver'
 import { ChatStorage } from './ai/ChatStorage'
@@ -38,6 +41,7 @@ import dayjs from 'dayjs'
 import { AbeleSettingTab } from './settings'
 import { createHeaderExtension } from './editor/HeaderExtension'
 import { migrateFromDataview } from './commands/migrateFromDataview'
+// migrateFromFirefly is triggered via modal
 import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
 import { readFileContent } from './helpers/vaultUtils'
 import { runAfterSync } from './helpers/runAfterSync'
@@ -95,6 +99,7 @@ export default class AbelePlugin extends Plugin {
     // and getFileCache() return complete data.
     this.app.workspace.onLayoutReady(() => {
       GlobalStore.getInstance().initTasksList()
+      GlobalStore.getInstance().initFinance()
     })
 
     this.addSettingTab(new AbeleSettingTab(this.app, this))
@@ -103,9 +108,69 @@ export default class AbelePlugin extends Plugin {
 
     this.registerView(TIMELINE_SIDEBAR_VIEW_TYPE, (leaf) => new TimelineSidebarView(leaf, this.app))
     this.registerView(TODO_SIDEBAR_VIEW_TYPE, (leaf) => new TodoSidebarView(leaf, this.app))
+    this.registerView(FINANCE_SIDEBAR_VIEW_TYPE, (leaf) => new FinanceSidebarView(leaf, this.app))
 
     // AI sidebar is always registered so the view can be restored, but commands/ribbon are conditional
     this.registerView(AI_SIDEBAR_VIEW_TYPE, (leaf) => new AiSidebarView(leaf, this.app))
+
+    // Custom Bases view types for finance
+    this.registerBasesView(CHART_VIEW_ID, {
+      name: 'Chart',
+      icon: 'chart-line',
+      factory: (controller, containerEl) => new ChartView(controller, containerEl),
+      options: () => [
+        {
+          key: 'chartType',
+          type: 'dropdown' as const,
+          displayName: 'Chart type',
+          default: 'line',
+          options: {
+            line: 'Line',
+            bar: 'Bar',
+            scatter: 'Scatter',
+          },
+        },
+        {
+          key: 'dateProperty',
+          type: 'property' as const,
+          displayName: 'Date property (X axis)',
+          placeholder: 'Leave empty to use file name',
+        },
+        {
+          key: 'groupProperty',
+          type: 'property' as const,
+          displayName: 'Group by property',
+          placeholder: 'Optional — split into separate series',
+        },
+        {
+          key: 'showDots',
+          type: 'toggle' as const,
+          displayName: 'Show data points on lines',
+          default: false,
+        },
+        {
+          key: 'logScale',
+          type: 'toggle' as const,
+          displayName: 'Logarithmic scale',
+          default: false,
+        },
+        {
+          key: 'dualAxis',
+          type: 'toggle' as const,
+          displayName: 'Separate Y axis per series',
+          default: false,
+        },
+        {
+          key: 'chartHeight',
+          type: 'slider' as const,
+          displayName: 'Chart height',
+          default: 500,
+          min: 200,
+          max: 1000,
+          step: 50,
+        },
+      ],
+    })
 
     this.initializeVue()
 
@@ -196,6 +261,30 @@ export default class AbelePlugin extends Plugin {
     })
 
     this.addCommand({
+      id: 'migrate-from-firefly',
+      name: 'Migrate data from Firefly III',
+      callback: () => {
+        GlobalStore.getInstance().migrateFromFireflyModalOpened.value = true
+      },
+    })
+
+    this.addCommand({
+      id: 'create-transaction',
+      name: 'Create new transaction',
+      callback: () => {
+        createTransaction()
+      },
+    })
+
+    this.addCommand({
+      id: 'create-transaction-and-insert-link',
+      name: 'Create new transaction and insert into current note',
+      editorCallback: (editor: Editor) => {
+        createTransactionAndInsert(editor)
+      },
+    })
+
+    this.addCommand({
       id: 'show-timeline-sidebar',
       name: 'Show timeline sidebar',
       callback: () => {
@@ -204,10 +293,26 @@ export default class AbelePlugin extends Plugin {
     })
 
     this.addCommand({
+      id: 'migrate-dataview-fields',
+      name: 'Migrate from dataview fields',
+      callback: () => {
+        GlobalStore.getInstance().migrateDataviewFieldsModalOpened.value = true
+      },
+    })
+
+    this.addCommand({
       id: 'show-todo-sidebar',
       name: 'Show TODO sidebar',
       callback: () => {
         this.activateView(TODO_SIDEBAR_VIEW_TYPE)
+      },
+    })
+
+    this.addCommand({
+      id: 'show-finance-sidebar',
+      name: 'Show finance sidebar',
+      callback: () => {
+        this.activateView(FINANCE_SIDEBAR_VIEW_TYPE)
       },
     })
 
@@ -249,6 +354,10 @@ export default class AbelePlugin extends Plugin {
 
     this.addRibbonIcon(TodoSidebarView.getIcon(), 'Show todo sidebar', () => {
       this.activateView(TODO_SIDEBAR_VIEW_TYPE)
+    })
+
+    this.addRibbonIcon(FinanceSidebarView.getIcon(), 'Show finance sidebar', () => {
+      this.activateView(FINANCE_SIDEBAR_VIEW_TYPE)
     })
 
     // AI Agent — conditional on settings

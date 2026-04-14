@@ -1,5 +1,5 @@
 <template>
-  <div ref="target" class="abele-markdown" @click="emit('click')"></div>
+  <div ref="target" class="abele-markdown" @click="handleClick"></div>
 </template>
 
 <script setup lang="ts">
@@ -15,6 +15,19 @@ const props = defineProps<{
 let component: Component | null = null
 
 const target = ref<HTMLElement>()
+
+const handleClick = (event: MouseEvent) => {
+  const el = (event.target as HTMLElement).closest('a.internal-link') as HTMLElement | null
+  if (el) {
+    event.preventDefault()
+    const href = el.getAttribute('data-href')
+    if (href) {
+      GlobalStore.getInstance().app.workspace.openLinkText(href, props.filePath || '')
+    }
+    return
+  }
+  emit('click')
+}
 
 const renderContent = async () => {
   if (!target.value || !component) return

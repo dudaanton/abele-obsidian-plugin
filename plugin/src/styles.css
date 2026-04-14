@@ -10,3 +10,83 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   margin-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
   margin-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
+
+/* Bases views — shared */
+.abele-bases-chart__empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* Stat card (Net Worth) */
+.abele-bases-stat {
+  padding: 16px;
+}
+
+.abele-bases-stat__label {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.abele-bases-stat__value {
+  font-size: 28px;
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+  font-variant-numeric: tabular-nums;
+  margin: 4px 0;
+}
+
+/* Bases Calendar View */
+.abele-bases-cal {
+  padding: 8px;
+}
+
+.abele-bases-cal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.abele-bases-cal__title {
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-semibold);
+}
+
+.abele-bases-cal__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-2);
+}
+
+.abele-bases-cal__today {
+  cursor: pointer;
+  font-size: var(--font-ui-small);
+  color: var(--text-accent);
+}
+
+.abele-bases-cal__today:hover {
+  text-decoration: underline;
+}
+
+.abele-bases-cal__summary {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.abele-bases-cal__summary-income {
+  color: var(--text-success);
+}
+
+.abele-bases-cal__summary-expense {
+  color: var(--text-error);
+}

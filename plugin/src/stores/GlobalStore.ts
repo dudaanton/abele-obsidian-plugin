@@ -3,14 +3,24 @@ import { Header } from '@/entities/Header'
 import { Task } from '@/entities/Task'
 import { TaskHeader } from '@/entities/TaskHeader'
 import { TasksList } from '@/entities/TasksList'
-import { parseNoteContent } from '@/helpers/notesUtils'
-import { getFolderFromPath, resolvePath } from '@/helpers/pathsHelpers'
+import { TransactionsList } from '@/entities/TransactionsList'
+import { AccountsList } from '@/entities/AccountsList'
+import { BalanceIndex } from '@/entities/BalanceIndex'
+import { parseNoteContent, renderTemplate } from '@/helpers/notesUtils'
+import {
+  cleanFileName,
+  cleanNoteName,
+  getFolderFromPath,
+  resolvePath,
+} from '@/helpers/pathsHelpers'
+import { DATE_FORMAT } from '@/constants/dates'
+import dayjs from 'dayjs'
 import { cleanTaskName } from '@/helpers/tasksUtils'
 import { getAvailablePath, readFileContent } from '@/helpers/vaultUtils'
 import { VaultWatcher } from '@/helpers/VaultWatcher'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { App, TFile } from 'obsidian'
-import { computed, ref } from 'vue'
+import { computed, ref, toRaw } from 'vue'
 
 export class GlobalStore {
   private static instance: GlobalStore
@@ -28,12 +38,18 @@ export class GlobalStore {
   public readonly saveMediaModalOpened = ref(false)
   public readonly unusedMediaModalOpened = ref(false)
   public readonly deduplicateMediaModalOpened = ref(false)
+  public readonly migrateFromFireflyModalOpened = ref(false)
+  public readonly migrateDataviewFieldsModalOpened = ref(false)
 
   public readonly timelineSidebarId = ref<string | null>(null)
   public readonly todoSidebarId = ref<string | null>(null)
   public readonly aiSidebarId = ref<string | null>(null)
+  public readonly financeSidebarId = ref<string | null>(null)
 
   public readonly tasksList = ref<TasksList | null>(null)
+  public readonly transactionsList = ref<TransactionsList | null>(null)
+  public readonly accountsList = ref<AccountsList | null>(null)
+  public readonly balanceIndex = ref<BalanceIndex | null>(null)
 
   public readonly settingsTabId = ref<string>(null)
 
@@ -102,6 +118,38 @@ export class GlobalStore {
             await this.app.fileManager.renameFile(event.file, newPath)
           }
         }
+
+        const isTransaction = fm?.type === 'transaction'
+        if (isTransaction) {
+          const config = AbeleConfig.getInstance()
+          const fileContent = await readFileContent(event.file)
+          const parsedContent = await parseNoteContent(event.file, fileContent)
+          const lines = parsedContent.content
+            .split('\n')
+            .filter((line: string) => line.trim() !== '')
+          const newTitle =
+            lines.length > 0 ? cleanTaskName(lines[0]) || 'New Transaction' : 'New Transaction'
+
+          const stripWikilink = (s?: string | null) => (s ? s.replace(/\[\[|\]\]/g, '').trim() : '')
+
+          const data: Record<string, string> = {
+            date: fm.date || dayjs().format(DATE_FORMAT),
+            title: newTitle,
+            from: stripWikilink(fm.from),
+            to: stripWikilink(fm.to),
+            amount: fm.amount != null ? String(fm.amount) : '',
+            currency: fm.currency || config.defaultCurrency || '',
+          }
+
+          let rendered = renderTemplate(config.transactionPathTemplate, data)
+          if (!rendered.endsWith('.md')) rendered += '.md'
+
+          const newPath = await getAvailablePath(rendered, event.file.path)
+
+          if (newPath !== event.file.path) {
+            await this.app.fileManager.renameFile(event.file, newPath)
+          }
+        }
       }
     })
   }
@@ -109,6 +157,21 @@ export class GlobalStore {
   public initTasksList(): void {
     if (!this.tasksList.value) {
       this.tasksList.value = new TasksList()
+    }
+  }
+
+  public initFinance(): void {
+    if (!this.transactionsList.value) {
+      this.transactionsList.value = new TransactionsList()
+    }
+    if (!this.accountsList.value) {
+      this.accountsList.value = new AccountsList()
+    }
+    if (!this.balanceIndex.value && this.transactionsList.value && this.accountsList.value) {
+      this.balanceIndex.value = new BalanceIndex(
+        toRaw(this.transactionsList.value) as unknown as TransactionsList,
+        toRaw(this.accountsList.value) as unknown as AccountsList
+      )
     }
   }
 
@@ -124,6 +187,12 @@ export class GlobalStore {
     this.footersContainers.value = []
     this.tasksList.value?.cleanup()
     this.tasksList.value = null
+    this.balanceIndex.value?.cleanup()
+    this.balanceIndex.value = null
+    this.transactionsList.value?.cleanup()
+    this.transactionsList.value = null
+    this.accountsList.value?.cleanup()
+    this.accountsList.value = null
     this.aiSidebarId.value = null
     this._vaultWatcher.cleanup()
 

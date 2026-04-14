@@ -118,6 +118,20 @@ export function cleanFileName(fileName: string): string {
     .trim()
 }
 
+/**
+ * Strips wikilinks (replacing with alias or name) and cleans invalid filename chars.
+ * Generic version of cleanTaskName — works for any note type.
+ */
+export function cleanNoteName(fileName: string): string {
+  const wikilinkRegex = /\[\[([^\]]+)\]\]/g
+  fileName = fileName.replace(wikilinkRegex, (_, linkContent) => {
+    const parts = linkContent.split('|')
+    return parts.length > 1 ? parts[1].trim() : parts[0].trim()
+  })
+
+  return cleanFileName(fileName)
+}
+
 export function resolvePath(folder: string, name: string): string {
   folder = folder.trim().replace(/^\/+|\/+$/g, '') // remove leading and trailing slashes and spaces
   name = name.trim().replace(/^\/+|\/+$/g, '') // remove leading and trailing slashes and spaces
