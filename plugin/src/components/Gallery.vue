@@ -12,6 +12,7 @@
           :alt="image.alt"
           class="abele-gallery__image"
           loading="lazy"
+          @click="openViewer(index)"
         />
         <div v-else class="abele-gallery__image-error">
           <ObsidianIcon icon="image-off" />
@@ -19,13 +20,21 @@
         </div>
       </div>
     </div>
+
+    <GalleryViewer
+      v-if="viewerOpen"
+      :images="viewerImages"
+      :start-index="viewerStartIndex"
+      @close="viewerOpen = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { Gallery } from '@/entities/Gallery'
 import ObsidianIcon from './obsidian/Icon.vue'
+import GalleryViewer, { type ViewerImage } from './GalleryViewer.vue'
 
 const props = defineProps<{
   gallery: Gallery
@@ -39,6 +48,23 @@ const resolvedImages = computed(() => {
     path: image.path,
   }))
 })
+
+const viewerOpen = ref(false)
+const viewerStartIndex = ref(0)
+
+const viewerImages = computed<ViewerImage[]>(() =>
+  resolvedImages.value.filter((img) => img.url).map((img) => ({ url: img.url!, alt: img.alt }))
+)
+
+function openViewer(index: number) {
+  // Map grid index to viewer index (skipping broken images)
+  let viewerIdx = 0
+  for (let i = 0; i < index; i++) {
+    if (resolvedImages.value[i].url) viewerIdx++
+  }
+  viewerStartIndex.value = viewerIdx
+  viewerOpen.value = true
+}
 </script>
 
 <style lang="scss">

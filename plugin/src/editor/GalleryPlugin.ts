@@ -1,21 +1,20 @@
-import { StateField, RangeSetBuilder, EditorState } from '@codemirror/state'
-import { Decoration, DecorationSet, EditorView } from '@codemirror/view'
+import { EditorSelection, Prec, StateField, RangeSetBuilder, EditorState } from '@codemirror/state'
+import { Decoration, DecorationSet, EditorView, keymap } from '@codemirror/view'
 import { editorLivePreviewField, editorInfoField } from 'obsidian'
 import { GalleryWidget } from './GalleryWidget'
 import { parseGalleryHeader, parseImageLine, GalleryImageEntry } from '@/helpers/galleryUtils'
 import { rangesOverlap } from '@/helpers/editorHelpers'
 
-function buildGalleryDecorations(state: EditorState): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>()
+interface GalleryBlock {
+  headerFrom: number
+  headerTo: number
+  blockTo: number
+  images: GalleryImageEntry[]
+  layout: string
+}
 
-  if (!state.field(editorLivePreviewField)) {
-    return builder.finish()
-  }
-
-  const currentFile = state.field(editorInfoField)?.file
-  if (!currentFile) {
-    return builder.finish()
-  }
+function findGalleryBlocks(state: EditorState): GalleryBlock[] {
+  const blocks: GalleryBlock[] = []
 
   let i = 1
   while (i <= state.doc.lines) {
@@ -27,7 +26,6 @@ function buildGalleryDecorations(state: EditorState): DecorationSet {
       continue
     }
 
-    // Found gallery header — collect image lines
     const images: GalleryImageEntry[] = []
     let endLine = i
     let j = i + 1
@@ -51,31 +49,124 @@ function buildGalleryDecorations(state: EditorState): DecorationSet {
       }
     }
 
-    const blockFrom = line.from
-    const blockTo = state.doc.line(endLine).to
+    blocks.push({
+      headerFrom: line.from,
+      headerTo: line.to,
+      blockTo: state.doc.line(endLine).to,
+      images,
+      layout: header.layout,
+    })
 
-    // Don't replace when cursor is inside the gallery block
-    const cursorInBlock = state.selection.ranges.some((range) =>
-      rangesOverlap(range.from, range.to, blockFrom, blockTo)
+    i = endLine + 1
+  }
+
+  return blocks
+}
+
+function buildGalleryDecorations(state: EditorState): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>()
+
+  if (!state.field(editorLivePreviewField)) {
+    return builder.finish()
+  }
+
+  const currentFile = state.field(editorInfoField)?.file
+  if (!currentFile) {
+    return builder.finish()
+  }
+
+  const blocks = findGalleryBlocks(state)
+
+  for (const block of blocks) {
+    const cursorOnHeader = state.selection.ranges.some((range) =>
+      rangesOverlap(range.from, range.to, block.headerFrom, block.headerTo)
     )
 
-    if (!cursorInBlock) {
+    if (cursorOnHeader && block.images.length > 0) {
+      // Focused: header stays as raw text, images rendered as widget
       builder.add(
-        blockFrom,
-        blockTo,
+        block.headerTo,
+        block.blockTo,
         Decoration.replace({
-          widget: new GalleryWidget(currentFile.path, images, header.layout),
+          widget: new GalleryWidget(currentFile.path, block.images, block.layout),
+          block: true,
+          inclusive: true,
+        })
+      )
+    } else {
+      // Normal: entire block is one widget
+      builder.add(
+        block.headerFrom,
+        block.blockTo,
+        Decoration.replace({
+          widget: new GalleryWidget(currentFile.path, block.images, block.layout),
           block: true,
           inclusive: true,
         })
       )
     }
-
-    i = endLine + 1
   }
 
   return builder.finish()
 }
+
+/**
+ * Transaction filter: intercepts ANY cursor movement onto image lines
+ * and redirects BEFORE the transaction is applied.
+ * Uses line numbers (not just offsets) for robust detection.
+ * Redirect target depends on where the cursor came from:
+ * - from above or below → header end
+ * - from header → past block
+ */
+const galleryCursorFilter = EditorState.transactionFilter.of((tr) => {
+  if (tr.newSelection.eq(tr.startState.selection)) return tr
+
+  if (!tr.startState.field(editorLivePreviewField, false)) return tr
+
+  const doc = tr.startState.doc
+  const blocks = findGalleryBlocks(tr.startState)
+  if (blocks.length === 0) return tr
+
+  const oldHead = tr.startState.selection.main.head
+  const sel = tr.newSelection
+  let modified = false
+
+  const ranges = sel.ranges.map((range) => {
+    for (const block of blocks) {
+      if (block.images.length === 0) continue
+
+      // Check if new cursor is inside the block but NOT on the header line
+      if (range.head < block.headerFrom || range.head > block.blockTo) continue
+
+      const newLine = doc.lineAt(range.head).number
+      const headerLine = doc.lineAt(block.headerFrom).number
+      if (newLine === headerLine) continue
+
+      // Cursor landed on a non-header line within the block → redirect
+      modified = true
+
+      if (oldHead >= block.headerFrom && oldHead <= block.headerTo) {
+        // Came from the header → skip past block
+        const blockEndLine = doc.lineAt(block.blockTo)
+        if (blockEndLine.number < doc.lines) {
+          return EditorSelection.cursor(doc.line(blockEndLine.number + 1).from)
+        }
+        // Block at end of doc → stay on header
+        return EditorSelection.cursor(block.headerTo)
+      } else {
+        // Came from above, below, or anywhere else → go to header end
+        return EditorSelection.cursor(block.headerTo)
+      }
+    }
+    return range
+  })
+
+  if (modified) {
+    return [tr, { selection: EditorSelection.create(ranges) }]
+  }
+
+  return tr
+})
 
 export const galleryStateField = StateField.define<DecorationSet>({
   create(state) {
@@ -96,3 +187,38 @@ export const galleryStateField = StateField.define<DecorationSet>({
     return [EditorView.decorations.from(field)]
   },
 })
+
+/**
+ * Keymap: Enter on the header line inserts a newline AFTER the block,
+ * not between the header and the images.
+ */
+const galleryKeymap = Prec.high(
+  keymap.of([
+    {
+      key: 'Enter',
+      run: (view) => {
+        const state = view.state
+        const pos = state.selection.main.head
+
+        if (!state.field(editorLivePreviewField, false)) return false
+
+        const blocks = findGalleryBlocks(state)
+        for (const block of blocks) {
+          if (block.images.length === 0) continue
+          if (pos >= block.headerFrom && pos <= block.headerTo) {
+            // Insert newline after the block, place cursor there
+            const insertPos = block.blockTo
+            view.dispatch({
+              changes: { from: insertPos, insert: '\n' },
+              selection: { anchor: insertPos + 1 },
+            })
+            return true
+          }
+        }
+        return false
+      },
+    },
+  ])
+)
+
+export const galleryExtensions = [galleryStateField, galleryCursorFilter, galleryKeymap]

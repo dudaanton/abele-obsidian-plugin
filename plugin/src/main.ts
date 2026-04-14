@@ -22,7 +22,7 @@ import {
 } from './commands/templateCommands'
 import { TemplateService } from './templates/TemplateService'
 import { taskStateField } from './editor/TaskPlugin'
-import { galleryStateField } from './editor/GalleryPlugin'
+import { galleryExtensions } from './editor/GalleryPlugin'
 import { findAndReplace } from './commands/findAndReplace'
 import { saveMedia } from './commands/saveMedia'
 import { unusedMedia } from './commands/unusedMedia'
@@ -176,7 +176,7 @@ export default class AbelePlugin extends Plugin {
     this.initializeVue()
 
     this.registerEditorExtension(taskStateField)
-    this.registerEditorExtension(galleryStateField)
+    this.registerEditorExtension(galleryExtensions)
     this.registerEditorExtension(createHeaderExtension())
 
     // this.registerPriorityCodeblockPostProcessor(
