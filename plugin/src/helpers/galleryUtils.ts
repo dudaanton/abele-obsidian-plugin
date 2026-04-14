@@ -58,6 +58,26 @@ export function parseImageLine(line: string): GalleryImageEntry | null {
   return null
 }
 
+const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif']
+
+export function isImageEmbed(line: string): boolean {
+  const entry = parseImageLine(line.trim())
+  if (!entry) return false
+  if (entry.type === 'remote') {
+    // Remote URLs: check extension or assume image
+    try {
+      const pathname = new URL(entry.path).pathname
+      const ext = pathname.split('.').pop()?.toLowerCase() || ''
+      return IMAGE_EXTENSIONS.includes(ext)
+    } catch {
+      return true // can't parse URL, assume image
+    }
+  }
+  // Local: check extension in path (before alias separator |)
+  const ext = entry.path.split('.').pop()?.toLowerCase() || ''
+  return IMAGE_EXTENSIONS.includes(ext)
+}
+
 export function buildImageLine(entry: GalleryImageEntry): string {
   if (entry.type === 'local') {
     return entry.description ? `![[${entry.path}|${entry.description}]]` : `![[${entry.path}]]`

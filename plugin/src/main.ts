@@ -23,6 +23,7 @@ import {
 import { TemplateService } from './templates/TemplateService'
 import { taskStateField } from './editor/TaskPlugin'
 import { galleryExtensions } from './editor/GalleryPlugin'
+import { insertGallery, convertImagesToGalleries } from './commands/galleryCommands'
 import { findAndReplace } from './commands/findAndReplace'
 import { saveMedia } from './commands/saveMedia'
 import { unusedMedia } from './commands/unusedMedia'
@@ -347,6 +348,22 @@ export default class AbelePlugin extends Plugin {
       name: 'Insert template at cursor',
       editorCallback: (editor: Editor) => {
         insertTemplateAtCursor(editor)
+      },
+    })
+
+    this.addCommand({
+      id: 'insert-gallery',
+      name: 'Insert image gallery',
+      editorCallback: (editor: Editor) => {
+        insertGallery(editor)
+      },
+    })
+
+    this.addCommand({
+      id: 'convert-images-to-galleries',
+      name: 'Convert images on page to galleries',
+      editorCallback: (editor: Editor) => {
+        convertImagesToGalleries(editor)
       },
     })
 
