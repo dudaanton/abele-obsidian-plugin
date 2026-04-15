@@ -1,5 +1,5 @@
-import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { prepareImageForApi } from '@/ai/imagePrep'
 import type {
   AssistantMessage,
   AssistantContentBlock,
@@ -325,7 +325,7 @@ export class OpenAIClient {
           if (p.type !== 'image_url' || !p.image_url.url.startsWith(OpenAIClient.VAULT_PREFIX))
             return p
           const path = p.image_url.url.slice(OpenAIClient.VAULT_PREFIX.length)
-          const dataUrl = await OpenAIClient.readImageAsDataUrl(path)
+          const dataUrl = await prepareImageForApi(path)
           return dataUrl
             ? { type: 'image_url' as const, image_url: { url: dataUrl } }
             : { type: 'text' as const, text: `[Image unavailable: ${path}]` }
@@ -336,34 +336,6 @@ export class OpenAIClient {
     }
 
     return result
-  }
-
-  private static async readImageAsDataUrl(path: string): Promise<string | null> {
-    try {
-      const { app } = GlobalStore.getInstance()
-      const file = app.vault.getAbstractFileByPath(path)
-      if (!(file instanceof TFile)) return null
-      const binary = await app.vault.readBinary(file)
-      const bytes = new Uint8Array(binary)
-      let raw = ''
-      for (let i = 0; i < bytes.byteLength; i++) {
-        raw += String.fromCharCode(bytes[i])
-      }
-      const ext = file.extension.toLowerCase()
-      const mimeMap: Record<string, string> = {
-        png: 'image/png',
-        jpg: 'image/jpeg',
-        jpeg: 'image/jpeg',
-        gif: 'image/gif',
-        webp: 'image/webp',
-        bmp: 'image/bmp',
-        svg: 'image/svg+xml',
-      }
-      const mime = mimeMap[ext] || 'application/octet-stream'
-      return `data:${mime};base64,${btoa(raw)}`
-    } catch {
-      return null
-    }
   }
 
   // ── Internals ─────────────────────────────────────────────

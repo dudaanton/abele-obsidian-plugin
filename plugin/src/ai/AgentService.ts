@@ -1106,6 +1106,20 @@ export class AgentService {
     this.updateVisibleMessages()
   }
 
+  repeatMessage(messageId: string): void {
+    if (this.isStreaming.value || this.pendingToolCalls.value.length > 0) return
+
+    const msg = this.allChatMessages.find((m) => m.id === messageId)
+    if (!msg || msg.role !== 'user') return
+
+    // Set active leaf to the parent — everything after disappears
+    this.activeLeafId = msg.parentId || null
+    this.updateVisibleMessages()
+
+    // Resend the same content (creates a sibling branch from the same point)
+    this.sendMessage(msg.content, msg.attachments)
+  }
+
   switchBranch(messageId: string): void {
     if (this.isStreaming.value) return
     const leaf = findDeepestLeaf(this.allChatMessages, messageId)

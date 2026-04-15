@@ -24,6 +24,7 @@
         :branch-info="branchInfoMap.get(msg.id)"
         @create-branch="onCreateBranch"
         @switch-branch="onSwitchBranch"
+        @repeat-message="onRepeatMessage"
       />
 
       <!-- Streaming indicator -->
@@ -192,6 +193,11 @@ const onCreateBranch = (messageId: string) => {
 const onSwitchBranch = (childId: string) => {
   shouldAutoScroll = false
   agent.switchBranch(childId)
+}
+
+const onRepeatMessage = (messageId: string) => {
+  shouldAutoScroll = true
+  agent.repeatMessage(messageId)
 }
 
 const isBusy = computed(() => {

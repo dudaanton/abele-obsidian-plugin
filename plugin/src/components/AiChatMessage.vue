@@ -111,6 +111,11 @@
             >Branch from here</span
           >
         </div>
+        <div v-if="message.role === 'user'" class="abele-chat-msg__detail-row">
+          <span class="abele-chat-msg__branch-action" @click="emit('repeat-message', message.id)"
+            >Repeat</span
+          >
+        </div>
       </div>
     </div>
 
@@ -162,6 +167,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'create-branch', messageId: string): void
   (e: 'switch-branch', messageId: string): void
+  (e: 'repeat-message', messageId: string): void
 }>()
 
 // -1 = "new unsent branch" = last position (after all existing children)

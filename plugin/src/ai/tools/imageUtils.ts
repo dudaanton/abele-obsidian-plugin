@@ -1,6 +1,7 @@
 import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
+import { arrayBufferToBase64, getMime } from '@/ai/imagePrep'
 
 /**
  * Get the vault's configured attachment folder path, ensuring it exists.
@@ -65,22 +66,6 @@ export async function readImageAsDataUrl(path: string): Promise<string> {
   if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
 
   const binary = await app.vault.readBinary(file)
-  const bytes = new Uint8Array(binary)
-  let raw = ''
-  for (let i = 0; i < bytes.byteLength; i++) {
-    raw += String.fromCharCode(bytes[i])
-  }
-
-  const ext = file.extension.toLowerCase()
-  const mimeMap: Record<string, string> = {
-    png: 'image/png',
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    gif: 'image/gif',
-    webp: 'image/webp',
-    bmp: 'image/bmp',
-    svg: 'image/svg+xml',
-  }
-  const mime = mimeMap[ext] || 'image/png'
-  return `data:${mime};base64,${btoa(raw)}`
+  const mime = getMime(file.extension)
+  return `data:${mime};base64,${arrayBufferToBase64(binary)}`
 }
