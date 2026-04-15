@@ -52,6 +52,8 @@ export interface AiSettings {
   openRouterApiKey: string
   imageModel: string
   prompts: AiPrompts
+  systemPromptFromNote: boolean
+  systemPromptNotePath: string
 }
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
@@ -75,6 +77,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   braveSearchApiKey: '',
   openRouterApiKey: '',
   imageModel: 'google/gemini-2.5-flash-preview:thinking',
+  systemPromptFromNote: false,
+  systemPromptNotePath: '',
   prompts: {
     system:
       "You are an AI assistant integrated into Obsidian note-taking app through the Abele plugin. You can read, create, edit, delete, and move files in the user's vault. You can also search the web.\n\nWhen working with files, always explain what you're about to do before doing it. Be concise but thorough.",
@@ -157,4 +161,6 @@ export interface ChatMetadata {
   allowImageGeneration?: boolean
   allowEvalJs?: boolean
   activeLeafId?: string
+  customSystemPrompt?: string
+  customSystemPromptNotePath?: string
 }

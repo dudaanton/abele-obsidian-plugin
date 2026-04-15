@@ -24,6 +24,7 @@ import { createAgentTools } from './tools'
 import { loadSkillContent } from './tools/SkillTool'
 import { ScopeResolver } from './ScopeResolver'
 import { resolveAttachmentsForApi } from './attachments'
+import { getNoteBody } from '@/helpers/notesUtils'
 import {
   getPathToLeaf,
   getSiblings,
@@ -83,6 +84,8 @@ export class AgentService {
   public readonly allowWiseModel = ref(false)
   public readonly allowImageGeneration = ref(false)
   public readonly allowEvalJs = ref(false)
+  public readonly customSystemPrompt = ref('')
+  public readonly customSystemPromptNotePath = ref('')
 
   static getInstance(): AgentService {
     if (!AgentService.instance) {
@@ -139,11 +142,38 @@ export class AgentService {
     return this.getActiveModelConfig()
   }
 
-  private getSystemPrompt(): string {
+  private async getSystemPrompt(): Promise<string> {
+    const date = dayjs().format('YYYY-MM-DD')
+
+    // Per-chat override: note path
+    if (this.customSystemPromptNotePath.value) {
+      const body = await this.readNoteBody(this.customSystemPromptNotePath.value)
+      if (body) return body.replace(/\{\{date\}\}/g, date)
+    }
+
+    // Per-chat override: inline text
+    if (this.customSystemPrompt.value) {
+      return this.customSystemPrompt.value.replace(/\{\{date\}\}/g, date)
+    }
+
+    // Global: note path
     const config = AbeleConfig.getInstance().ai
+    if (config.systemPromptFromNote && config.systemPromptNotePath) {
+      const body = await this.readNoteBody(config.systemPromptNotePath)
+      if (body) return body.replace(/\{\{date\}\}/g, date)
+    }
+
+    // Global: inline text
     const base = config.prompts?.system || DEFAULT_AI_SETTINGS.prompts.system
-    const raw = base
-    return raw.replace(/\{\{date\}\}/g, dayjs().format('YYYY-MM-DD'))
+    return base.replace(/\{\{date\}\}/g, date)
+  }
+
+  private async readNoteBody(path: string): Promise<string | null> {
+    const { app } = GlobalStore.getInstance()
+    const file = app.vault.getAbstractFileByPath(path)
+    if (!(file instanceof TFile)) return null
+    const content = await app.vault.cachedRead(file)
+    return getNoteBody(content).trim() || null
   }
 
   private getBackgroundSignal(): AbortSignal {
@@ -412,7 +442,7 @@ export class AgentService {
       const toSend = this.getMessagesForModel()
       const result = await this.agentLoop.run({
         model,
-        systemPrompt: this.getSystemPrompt(),
+        systemPrompt: await this.getSystemPrompt(),
         tools,
         messages: toSend,
         beforeToolCall: async (toolName, _id, args) => {
@@ -771,6 +801,8 @@ export class AgentService {
     this.chatTitle = ''
     this.chatCreated = ''
     this.lastModelId = ''
+    this.customSystemPrompt.value = ''
+    this.customSystemPromptNotePath.value = ''
     // Reset per-chat permissions from defaults
     const config = AbeleConfig.getInstance().ai
     this.allowWebSearch.value = config.allowWebSearch
@@ -826,6 +858,8 @@ export class AgentService {
       allowImageGeneration: this.allowImageGeneration.value,
       allowEvalJs: this.allowEvalJs.value,
       activeLeafId: this.activeLeafId || undefined,
+      customSystemPrompt: this.customSystemPrompt.value || undefined,
+      customSystemPromptNotePath: this.customSystemPromptNotePath.value || undefined,
     }
 
     this.currentChatFile.value = await ChatStorage.getInstance().saveChat(
@@ -875,6 +909,8 @@ export class AgentService {
     this.allowImageGeneration.value =
       result.metadata?.allowImageGeneration ?? config.allowImageGeneration
     this.allowEvalJs.value = result.metadata?.allowEvalJs ?? config.allowEvalJs
+    this.customSystemPrompt.value = result.metadata?.customSystemPrompt || ''
+    this.customSystemPromptNotePath.value = result.metadata?.customSystemPromptNotePath || ''
 
     // Restore pending tool calls from metadata
     if (result.metadata?.pendingToolCalls?.length) {

@@ -310,7 +310,31 @@
 
       <h3>Prompts</h3>
 
-      <Setting name="System Prompt (base)" desc="The base system prompt sent to the AI agent.">
+      <Setting
+        name="System prompt from note"
+        desc="Use a vault note as the system prompt instead of inline text."
+      >
+        <Checkbox :is-enabled="systemPromptFromNote" @toggle="toggleSystemPromptFromNote" />
+      </Setting>
+
+      <Setting
+        v-if="systemPromptFromNote"
+        name="System prompt note"
+        desc="Path to the note. Only the body (without frontmatter) is used."
+      >
+        <Search
+          :model-value="systemPromptNotePath"
+          placeholder="Path to note..."
+          :suggester="FileSuggest"
+          @update:model-value="updateSystemPromptNotePath"
+        />
+      </Setting>
+
+      <Setting
+        v-if="!systemPromptFromNote"
+        name="System Prompt (base)"
+        desc="The base system prompt sent to the AI agent."
+      >
         <Input
           :model-value="prompts.system || ''"
           as-text-area
@@ -391,6 +415,8 @@ import Input from '../obsidian/Input.vue'
 import Button from '../obsidian/Button.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
+import Search from '../obsidian/Search.vue'
+import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import Icon from '../obsidian/Icon.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -453,6 +479,8 @@ const sequentialAuxiliary = ref(config.ai.sequentialAuxiliary)
 const prompts = ref<Partial<AiPrompts>>(
   config.ai.prompts ? JSON.parse(JSON.stringify(config.ai.prompts)) : {}
 )
+const systemPromptFromNote = ref(config.ai.systemPromptFromNote || false)
+const systemPromptNotePath = ref(config.ai.systemPromptNotePath || '')
 const defaultPrompts = DEFAULT_AI_SETTINGS.prompts
 const toolDescriptionsOpen = ref(false)
 
@@ -528,6 +556,8 @@ const save = debounce(async () => {
     braveSearchApiKey: braveSearchApiKey.value,
     openRouterApiKey: openRouterApiKey.value,
     imageModel: imageModel.value,
+    systemPromptFromNote: systemPromptFromNote.value,
+    systemPromptNotePath: systemPromptNotePath.value,
     prompts: JSON.parse(JSON.stringify(prompts.value)),
   }
   await config.saveSettings()
@@ -732,6 +762,16 @@ const updateField = (field: string, value: string) => {
       chatFolder.value = value
       break
   }
+  save()
+}
+
+const toggleSystemPromptFromNote = () => {
+  systemPromptFromNote.value = !systemPromptFromNote.value
+  save()
+}
+
+const updateSystemPromptNotePath = (value: string) => {
+  systemPromptNotePath.value = value
   save()
 }
 

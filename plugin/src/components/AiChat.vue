@@ -4,6 +4,12 @@
     <div class="abele-ai-chat__header">
       <AiModelSelector />
       <div class="abele-ai-chat__header-actions">
+        <Icon
+          icon="scroll-text"
+          with-bg
+          :class="{ 'abele-ai-chat__header-active': hasCustomPrompt }"
+          @click="promptSettingsOpen = true"
+        />
         <Icon icon="plus" with-bg @click="handleNewChat" />
         <Icon icon="history" with-bg @click="historyOpen = true" />
         <Icon icon="bug" with-bg @click="showDebug" />
@@ -102,6 +108,7 @@
       @close="variablesModalOpen = false"
       @confirm="onPromptVariablesConfirm"
     />
+    <AiSystemPromptSettings v-if="promptSettingsOpen" @close="promptSettingsOpen = false" />
   </div>
 </template>
 
@@ -117,6 +124,7 @@ import AiModelSelector from './AiModelSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
 import AiScopeManager from './AiScopeManager.vue'
 import AiPromptPicker from './AiPromptPicker.vue'
+import AiSystemPromptSettings from './AiSystemPromptSettings.vue'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { AgentService } from '@/ai/AgentService'
@@ -264,6 +272,11 @@ const chatInput = ref<InstanceType<typeof AiChatInput> | null>(null)
 const historyOpen = ref(false)
 const scopeOpen = ref(false)
 const promptPickerOpen = ref(false)
+const promptSettingsOpen = ref(false)
+
+const hasCustomPrompt = computed(
+  () => !!agent.customSystemPrompt.value || !!agent.customSystemPromptNotePath.value
+)
 const variablesModalOpen = ref(false)
 const pendingPromptContent = ref('')
 const pendingPromptAllVars = ref<TemplateVariable[]>([])
@@ -500,6 +513,10 @@ const showDebug = () => {
     height: 2em;
     width: 2em;
   }
+}
+
+.abele-ai-chat__header-active {
+  color: var(--interactive-accent) !important;
 }
 
 .abele-ai-chat__messages {

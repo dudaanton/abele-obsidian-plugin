@@ -208,6 +208,7 @@ const toolSummary = computed(() => {
   if (!p) return ''
   if (p.path) return String(p.path)
   if (p.from && p.to) return `${p.from} → ${p.to}`
+  if (p.url) return String(p.url)
   if (p.query) return String(p.query)
   if (p.name) return String(p.name)
   return ''
