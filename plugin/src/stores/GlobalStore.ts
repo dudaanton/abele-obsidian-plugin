@@ -12,7 +12,9 @@ import {
   cleanFileName,
   cleanNoteName,
   getFolderFromPath,
+  normalizePath,
   resolvePath,
+  wikilinkToPath,
 } from '@/helpers/pathsHelpers'
 import { DATE_FORMAT } from '@/constants/dates'
 import dayjs from 'dayjs'
@@ -135,13 +137,52 @@ export class GlobalStore {
 
           const stripWikilink = (s?: string | null) => (s ? s.replace(/\[\[|\]\]/g, '').trim() : '')
 
+          // Auto-set currency from accounts
+          const al = this.accountsList.value
+          if (al) {
+            const resolveAccount = (wl?: string) => {
+              if (!wl) return null
+              const path = wikilinkToPath(wl)
+              if (!path) return null
+              const file = this.app.metadataCache.getFirstLinkpathDest(
+                path.replace(/\.md$/, ''),
+                event.file.path
+              )
+              return file ? al.accounts.get(normalizePath(file.path)) : null
+            }
+
+            const fromAccount = resolveAccount(parsedContent.from as string)
+            const toAccount = resolveAccount(parsedContent.to as string)
+            const fromCur = fromAccount?.currency
+            const toCur = toAccount?.currency
+
+            const txCurrency = parsedContent.currency as string | undefined
+            const txForeignCurrency = parsedContent.foreignCurrency as string | undefined
+
+            if (fromCur && toCur && fromCur !== toCur) {
+              if (txCurrency !== fromCur || txForeignCurrency !== toCur) {
+                await this.app.fileManager.processFrontMatter(event.file, (frontmatter) => {
+                  frontmatter.currency = fromCur
+                  frontmatter.foreignCurrency = toCur
+                })
+              }
+            } else {
+              const accountCurrency = fromCur || toCur
+              if (accountCurrency && txCurrency !== accountCurrency) {
+                await this.app.fileManager.processFrontMatter(event.file, (frontmatter) => {
+                  frontmatter.currency = accountCurrency
+                })
+              }
+            }
+          }
+
           const data: Record<string, string> = {
-            date: fm.date || dayjs().format(DATE_FORMAT),
+            date: (parsedContent.date as string) || dayjs().format(DATE_FORMAT),
             title: newTitle,
-            from: stripWikilink(fm.from),
-            to: stripWikilink(fm.to),
-            amount: fm.amount != null ? String(fm.amount) : '',
-            currency: fm.currency || config.defaultCurrency || '',
+            from: stripWikilink(parsedContent.from as string),
+            to: stripWikilink(parsedContent.to as string),
+            amount: parsedContent.amount != null ? String(parsedContent.amount) : '',
+            currency: (parsedContent.currency as string) || config.defaultCurrency || '',
           }
 
           let rendered = renderTemplate(config.transactionPathTemplate, data)

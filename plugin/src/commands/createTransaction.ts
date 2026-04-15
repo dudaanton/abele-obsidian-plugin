@@ -1,9 +1,15 @@
 import { Transaction, TransactionCreateDTO } from '@/entities/Transaction'
-import { cleanFileName, pathToWikilink } from '@/helpers/pathsHelpers'
+import {
+  cleanFileName,
+  normalizePath,
+  pathToWikilink,
+  wikilinkToPath,
+} from '@/helpers/pathsHelpers'
 import { renderTemplate } from '@/helpers/notesUtils'
 import dayjs from 'dayjs'
 import { getAvailablePath } from '@/helpers/vaultUtils'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { GlobalStore } from '@/stores/GlobalStore'
 import { DATE_FORMAT } from '@/constants/dates'
 import { Editor, Notice } from 'obsidian'
 
@@ -60,13 +66,41 @@ export const createTransaction = async (
 
   const wikilink = pathToWikilink(availablePath)
 
+  // Resolve currency from accounts if not explicitly provided
+  let resolvedCurrency = data?.currency
+  let resolvedForeignCurrency = data?.foreignCurrency
+  if (!resolvedCurrency) {
+    const al = GlobalStore.getInstance().accountsList.value
+    if (al) {
+      const resolveAccountCurrency = (wl?: string) => {
+        if (!wl) return null
+        const path = wikilinkToPath(wl)
+        if (!path) return null
+        const { app } = GlobalStore.getInstance()
+        const file = app.metadataCache.getFirstLinkpathDest(path.replace(/\.md$/, ''), '')
+        return file ? al.accounts.get(normalizePath(file.path))?.currency || null : null
+      }
+      const fromCur = resolveAccountCurrency(data?.from)
+      const toCur = resolveAccountCurrency(data?.to)
+
+      if (fromCur && toCur && fromCur !== toCur) {
+        resolvedCurrency = fromCur
+        resolvedForeignCurrency = toCur
+      } else {
+        resolvedCurrency = fromCur || toCur || undefined
+      }
+    }
+  }
+
+  const config = AbeleConfig.getInstance()
   let transactionModel: Transaction
 
   if (data) {
     transactionModel = new Transaction({
       ...data,
       date: data.date ?? dayjs(),
-      currency: data.currency || AbeleConfig.getInstance().defaultCurrency,
+      currency: resolvedCurrency || config.defaultCurrency,
+      foreignCurrency: resolvedForeignCurrency || data.foreignCurrency,
       id: '',
       wikilink,
     })
@@ -75,7 +109,7 @@ export const createTransaction = async (
       id: '',
       wikilink,
       date: dayjs(),
-      currency: AbeleConfig.getInstance().defaultCurrency,
+      currency: resolvedCurrency || config.defaultCurrency,
     })
   }
 
