@@ -1,5 +1,7 @@
 import { BasesView, BasesPropertyId, NullValue, QueryController } from 'obsidian'
 import { echartsInit, EChartsType } from './echarts'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { watch } from 'vue'
 import dayjs from 'dayjs'
 
 export const CHART_VIEW_ID = 'abele-chart'
@@ -37,10 +39,20 @@ export class ChartView extends BasesView {
   type = CHART_VIEW_ID
   private containerEl: HTMLElement
   private chart: EChartsType | null = null
+  private stopThemeWatch: (() => void) | null = null
 
   constructor(controller: QueryController, containerEl: HTMLElement) {
     super(controller)
     this.containerEl = containerEl
+
+    this.stopThemeWatch = watch(
+      () => GlobalStore.getInstance().themeVersion.value,
+      () => {
+        this.chart?.dispose()
+        this.chart = null
+        this.render()
+      }
+    )
   }
 
   onDataUpdated(): void {
@@ -50,6 +62,8 @@ export class ChartView extends BasesView {
   onunload(): void {
     this.chart?.dispose()
     this.chart = null
+    this.stopThemeWatch?.()
+    this.stopThemeWatch = null
   }
 
   private render(): void {

@@ -306,6 +306,15 @@ onUnmounted(() => {
   chart?.dispose()
   chartObserver?.disconnect()
 })
+
+watch(
+  () => GlobalStore.getInstance().themeVersion.value,
+  () => {
+    chart?.dispose()
+    chart = null
+    nextTick(renderChart)
+  }
+)
 </script>
 
 <style lang="scss">

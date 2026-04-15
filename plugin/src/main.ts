@@ -187,6 +187,12 @@ export default class AbelePlugin extends Plugin {
     // )
 
     this.registerEvent(
+      this.app.workspace.on('css-change', () => {
+        GlobalStore.getInstance().themeVersion.value++
+      })
+    )
+
+    this.registerEvent(
       this.app.workspace.on('active-leaf-change', (leaf) => {
         const viewType = leaf?.view.getViewType()
         if (viewType === 'empty') {

@@ -239,6 +239,24 @@ onUnmounted(() => {
   networthObserver?.disconnect()
 })
 
+// Re-render charts on theme change
+watch(
+  () => GlobalStore.getInstance().themeVersion.value,
+  () => {
+    pieChart?.dispose()
+    pieChart = null
+    calendarChart?.dispose()
+    calendarChart = null
+    networthChart?.dispose()
+    networthChart = null
+    nextTick(() => {
+      renderPieChart()
+      renderCalendarChart()
+      renderNetworthChart()
+    })
+  }
+)
+
 // --- Period Summary ---
 
 const selectedMonth = ref(dayjs().month())
