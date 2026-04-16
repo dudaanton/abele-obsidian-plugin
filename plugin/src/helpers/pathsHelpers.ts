@@ -83,7 +83,7 @@ export function extractAliasOrNameFromWikilink(link: string): string | null {
     if (parts.length > 1) {
       return parts[1].trim()
     }
-    return getFileNameFromPath(match[0])
+    return getFileNameFromPath(match[1])
   }
 
   return null
