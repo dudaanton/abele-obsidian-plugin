@@ -55,30 +55,10 @@ export const stopActiveTimeEntry = async (): Promise<boolean> => {
   const file = store.app.vault.getAbstractFileByPath(active.entryPath)
   if (!(file instanceof TFile)) return false
 
-  const now = dayjs()
-
+  // Setting end in frontmatter triggers VaultWatcher auto-rename to include end time.
   await store.app.fileManager.processFrontMatter(file, (frontmatter) => {
-    frontmatter.end = now.format(DATETIME_FORMAT)
+    frontmatter.end = dayjs().format(DATETIME_FORMAT)
   })
-
-  // Rename file to include end time
-  const config = AbeleConfig.getInstance()
-  const template = config.timeEntryPathTemplate
-
-  const data: Record<string, string> = {
-    date: (active.start || now).format(DATE_FORMAT),
-    groups: getGroupsLabel(active.groups),
-    start: getTimeLabel(active.start),
-    end: getTimeLabel(now),
-  }
-
-  let newRendered = renderTemplate(template, data)
-  if (!newRendered.endsWith('.md')) newRendered += '.md'
-
-  const newPath = await getAvailablePath(newRendered, file.path)
-  if (newPath !== file.path) {
-    await store.app.fileManager.renameFile(file, newPath)
-  }
 
   return true
 }
@@ -97,8 +77,13 @@ export const createTimeEntry = async (data?: TimeEntryCreateDTO, focus = true): 
     return
   }
 
+  const pathNoExt = availablePath.endsWith('.md') ? availablePath.slice(0, -3) : availablePath
+  const parts = pathNoExt.split('/')
+  const entryName = parts.pop() || 'Timer'
+  const entryFolder = parts.join('/')
+
   const { app } = GlobalStore.getInstance()
   const template = new TimeEntryNoteTemplate(app)
 
-  await template.createNoteWithTemplate({ start, end: null, groups }, focus)
+  await template.createNoteWithTemplate({ start, end: null, groups, entryName, entryFolder }, focus)
 }

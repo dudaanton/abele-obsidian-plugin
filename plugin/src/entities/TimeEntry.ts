@@ -6,7 +6,7 @@ import {
   normalizePath,
   wikilinkToPath,
 } from '@/helpers/pathsHelpers'
-import { getFileByPathOrName } from '@/helpers/vaultUtils'
+import { getFileByPath, getFileByPathOrName } from '@/helpers/vaultUtils'
 import { genid } from '@/helpers/vueUtils'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -122,6 +122,15 @@ export class TimeEntry {
     )
 
     this.watcherInitialized = true
+  }
+
+  async remove() {
+    const { app } = GlobalStore.getInstance()
+    const file = getFileByPath(this.entryPath)
+    if (file) {
+      await app.vault.delete(file)
+    }
+    this.cleanup()
   }
 
   toCreateDTO(): TimeEntryCreateDTO {

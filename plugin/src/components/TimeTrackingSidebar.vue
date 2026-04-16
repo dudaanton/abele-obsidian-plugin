@@ -3,7 +3,7 @@
     <div class="abele-time-tracking-sidebar__header">
       <div class="abele-time-tracking-sidebar__header-left">
         <div class="abele-time-tracking-sidebar__header-text">Time Tracking</div>
-        <ObsidianIcon icon="timer" @click="startEmptyTimer" />
+        <ObsidianIcon icon="timer" tooltip="Start empty timer" @click="startEmptyTimer" />
       </div>
     </div>
 
@@ -11,7 +11,7 @@
     <div v-if="activeEntry" class="abele-time-tracking-sidebar__active">
       <div class="abele-time-tracking-sidebar__active-header">
         <span class="abele-time-tracking-sidebar__active-label">Active Timer</span>
-        <ObsidianIcon icon="timer-off" @click="stopTimer" />
+        <ObsidianIcon icon="timer-off" tooltip="Stop timer" @click="stopTimer" />
       </div>
       <div class="abele-time-tracking-sidebar__active-groups">
         <ObsidianMarkdown
@@ -29,41 +29,18 @@
     </div>
 
     <!-- Period selector -->
-    <div class="abele-time-tracking-sidebar__period-header">
-      <ObsidianIcon icon="chevron-left" @click="previousMonth()" />
-      <div class="abele-time-tracking-sidebar__period-title" @click="dateRangePickerOpen = true">
-        {{ periodLabel }}
-      </div>
-      <ObsidianIcon icon="chevron-right" @click="nextMonth()" />
-    </div>
-
-    <DateRangePickerModal
-      v-if="dateRangePickerOpen"
-      :initial-from="periodStart"
-      :initial-to="periodEnd"
-      @apply="onDateRangeApply"
-      @reset="onDateRangeReset"
-      @cancel="dateRangePickerOpen = false"
-    />
+    <PeriodSelector v-model:start="periodStart" v-model:end="periodEnd" />
 
     <!-- Total time for period -->
-    <div class="abele-time-tracking-sidebar__total">
-      <span class="abele-time-tracking-sidebar__total-label">Total</span>
-      <span class="abele-time-tracking-sidebar__total-value">{{ totalTimeText }}</span>
+    <div class="abele-time-tracking-sidebar__summary">
+      <div class="abele-time-tracking-sidebar__summary-row">
+        <span class="abele-time-tracking-sidebar__summary-label">Total</span>
+        <span class="abele-time-tracking-sidebar__summary-value">{{ totalTimeText }}</span>
+      </div>
     </div>
 
     <!-- Charts -->
-    <div class="abele-time-tracking-sidebar__chart-tabs">
-      <div
-        v-for="tab in chartTabs"
-        :key="tab.key"
-        class="abele-time-tracking-sidebar__chart-tab"
-        :class="{ 'abele-time-tracking-sidebar__chart-tab--active': chartTab === tab.key }"
-        @click="chartTab = tab.key"
-      >
-        {{ tab.label }}
-      </div>
-    </div>
+    <ChartTabs v-model="chartTab" :tabs="chartTabs" />
     <template v-if="chartTab === 'daily'">
       <div
         v-if="dailyChartData.length"
@@ -102,12 +79,16 @@ import { TimeEntry } from '@/entities/TimeEntry'
 import { createTimeEntry, stopActiveTimeEntry } from '@/commands/createTimeEntry'
 import { DATE_FORMAT } from '@/constants/dates'
 import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
-import { extractAliasOrNameFromWikilink } from '@/helpers/pathsHelpers'
+import { extractAliasOrNameFromWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
+import { openFile } from '@/helpers/vaultUtils'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
-import DateRangePickerModal from './DateRangePickerModal.vue'
+import ChartTabs from './obsidian/ChartTabs.vue'
+import PeriodSelector from './obsidian/PeriodSelector.vue'
 import TimeEntryItem from './TimeEntryItem.vue'
 import dayjs from 'dayjs'
+
+type ChartTab = 'daily' | 'groups'
 
 const PAGE_SIZE = 20
 const visibleCount = ref(PAGE_SIZE)
@@ -176,69 +157,8 @@ const startEmptyTimer = () => createTimeEntry(undefined, true)
 
 // --- Period ---
 
-const selectedMonth = ref(dayjs().month())
-const selectedYear = ref(dayjs().year())
-const customFrom = ref<dayjs.Dayjs | null>(null)
-const customTo = ref<dayjs.Dayjs | null>(null)
-const dateRangePickerOpen = ref(false)
-
-const isCustomRange = computed(() => customFrom.value !== null && customTo.value !== null)
-
-const periodLabel = computed(() => {
-  if (isCustomRange.value) {
-    const from = customFrom.value!.format('MMM D, YYYY')
-    const to = customTo.value!.format('MMM D, YYYY')
-    return `${from} — ${to}`
-  }
-  return dayjs().year(selectedYear.value).month(selectedMonth.value).format('MMMM YYYY')
-})
-
-const periodStart = computed(() =>
-  isCustomRange.value
-    ? customFrom.value!
-    : dayjs().year(selectedYear.value).month(selectedMonth.value).startOf('month')
-)
-const periodEnd = computed(() =>
-  isCustomRange.value
-    ? customTo.value!
-    : dayjs().year(selectedYear.value).month(selectedMonth.value).endOf('month')
-)
-
-function previousMonth() {
-  customFrom.value = null
-  customTo.value = null
-  if (selectedMonth.value === 0) {
-    selectedMonth.value = 11
-    selectedYear.value -= 1
-  } else {
-    selectedMonth.value -= 1
-  }
-}
-
-function nextMonth() {
-  customFrom.value = null
-  customTo.value = null
-  if (selectedMonth.value === 11) {
-    selectedMonth.value = 0
-    selectedYear.value += 1
-  } else {
-    selectedMonth.value += 1
-  }
-}
-
-function onDateRangeApply(range: { from: dayjs.Dayjs; to: dayjs.Dayjs }) {
-  customFrom.value = range.from
-  customTo.value = range.to
-  dateRangePickerOpen.value = false
-}
-
-function onDateRangeReset() {
-  customFrom.value = null
-  customTo.value = null
-  selectedMonth.value = dayjs().month()
-  selectedYear.value = dayjs().year()
-  dateRangePickerOpen.value = false
-}
+const periodStart = ref<dayjs.Dayjs>(dayjs().startOf('month'))
+const periodEnd = ref<dayjs.Dayjs>(dayjs().endOf('month'))
 
 // --- Filtered entries ---
 
@@ -263,6 +183,10 @@ const periodEntries = computed(() => {
     const db = b.start ? b.start.valueOf() : 0
     return db - da
   })
+})
+
+watch(periodEnd, () => {
+  visibleCount.value = PAGE_SIZE
 })
 
 const visibleEntries = computed(() => periodEntries.value.slice(0, visibleCount.value))
@@ -292,11 +216,11 @@ const totalTimeText = computed(() => {
 
 // --- Charts ---
 
-const chartTabs = [
+const chartTabs: Array<{ key: ChartTab; label: string }> = [
   { key: 'daily', label: 'Daily' },
   { key: 'groups', label: 'By Groups' },
 ]
-const chartTab = ref('daily')
+const chartTab = ref<ChartTab>('daily')
 
 // Daily bar chart
 const dailyChartData = computed(() => {
@@ -330,68 +254,113 @@ let dailyChart: EChartsType | null = null
 let dailyObserver: ResizeObserver | null = null
 
 function renderDailyChart() {
-  if (!dailyChartEl.value || !dailyChartData.value.length) return
-  if (dailyChart) dailyChart.dispose()
+  if (!dailyChartEl.value) {
+    dailyChart?.dispose()
+    dailyChart = null
+    dailyObserver?.disconnect()
+    dailyObserver = null
+    return
+  }
+
+  if (!dailyChart || dailyChart.isDisposed()) {
+    dailyChart = echartsInit(dailyChartEl.value)
+    dailyObserver = new ResizeObserver(() => dailyChart?.resize())
+    dailyObserver.observe(dailyChartEl.value)
+  }
 
   const colors = getThemeColors()
-  dailyChart = echartsInit(dailyChartEl.value)
+  const data = dailyChartData.value
 
-  dailyChart.setOption({
-    tooltip: {
-      trigger: 'axis',
-      formatter: (params: any) => {
-        const p = Array.isArray(params) ? params[0] : params
-        return `${p.name}<br/>${formatDurationShort(Math.round(p.value * 3600))}`
-      },
-    },
-    grid: { left: 40, right: 12, top: 8, bottom: 24 },
-    xAxis: {
-      type: 'category',
-      data: dailyChartData.value.map((d) => dayjs(d.date).format('D')),
-      axisLabel: { color: colors.textMuted },
-      axisLine: { lineStyle: { color: colors.border } },
-    },
-    yAxis: {
-      type: 'value',
-      axisLabel: {
-        color: colors.textMuted,
-        formatter: (v: number) => `${v}h`,
-      },
-      splitLine: { lineStyle: { color: colors.border, type: 'dashed' } },
-    },
-    series: [
-      {
-        type: 'bar',
-        data: dailyChartData.value.map((d) => d.hours),
-        itemStyle: { color: colors.accent, borderRadius: [2, 2, 0, 0] },
-      },
-    ],
-  })
+  if (!data.length) {
+    dailyChart.clear()
+    return
+  }
 
-  if (dailyObserver) dailyObserver.disconnect()
-  dailyObserver = new ResizeObserver(() => dailyChart?.resize())
-  dailyObserver.observe(dailyChartEl.value)
+  dailyChart.setOption(
+    {
+      animation: false,
+      tooltip: {
+        trigger: 'axis',
+        enterable: false,
+        confine: true,
+        formatter: (params: any) => {
+          const p = Array.isArray(params) ? params[0] : params
+          return `${p.name}<br/>${formatDurationShort(Math.round(p.value * 3600))}`
+        },
+      },
+      grid: { left: 40, right: 12, top: 8, bottom: 24 },
+      xAxis: {
+        type: 'category',
+        data: data.map((d) => dayjs(d.date).format('MMM D')),
+        axisLabel: {
+          color: colors.textMuted,
+          interval: Math.max(Math.floor(data.length / 6) - 1, 0),
+        },
+        axisLine: { lineStyle: { color: colors.border } },
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: {
+          color: colors.textMuted,
+          formatter: (v: number) => `${v}h`,
+        },
+        splitLine: { lineStyle: { color: colors.border, type: 'dashed' } },
+      },
+      series: [
+        {
+          type: 'bar',
+          data: data.map((d) => d.hours),
+          itemStyle: { color: colors.accent, borderRadius: [2, 2, 0, 0] },
+          emphasis: { disabled: true },
+        },
+      ],
+    },
+    true
+  )
 }
 
-watch([dailyChartEl, dailyChartData], () => nextTick(renderDailyChart))
+watch([dailyChartData, dailyChartEl], () => nextTick(renderDailyChart), { immediate: true })
 
 // Groups pie chart
-const groupsPieData = computed(() => {
-  const byGroup = new Map<string, number>()
+interface GroupPieItem {
+  name: string
+  value: number
+  path?: string
+}
+
+const groupsPieData = computed<GroupPieItem[]>(() => {
+  const { app } = store
+  const byGroup = new Map<string, { seconds: number; path?: string }>()
+
+  const resolveCache = new Map<string, string | null>()
+  const resolve = (wikilink: string): string | null => {
+    if (resolveCache.has(wikilink)) return resolveCache.get(wikilink)!
+    const linkPath = wikilinkToPath(wikilink)
+    const file = linkPath ? app.metadataCache.getFirstLinkpathDest(linkPath, '') : null
+    const resolved = file ? file.path : null
+    resolveCache.set(wikilink, resolved)
+    return resolved
+  }
 
   for (const entry of periodEntries.value) {
     if (entry.groups.length === 0) {
-      byGroup.set('No groups', (byGroup.get('No groups') || 0) + entry.duration)
+      const existing = byGroup.get('No groups') || { seconds: 0 }
+      byGroup.set('No groups', { seconds: existing.seconds + entry.duration })
     } else {
       for (const g of entry.groups) {
-        const label = extractAliasOrNameFromWikilink(g)
-        byGroup.set(label, (byGroup.get(label) || 0) + entry.duration)
+        const label = extractAliasOrNameFromWikilink(g) || g
+        const existing = byGroup.get(label) || { seconds: 0, path: resolve(g) ?? undefined }
+        byGroup.set(label, { seconds: existing.seconds + entry.duration, path: existing.path })
       }
     }
   }
 
   return Array.from(byGroup.entries())
-    .map(([name, secs]) => ({ name, value: Math.round((secs / 3600) * 100) / 100 }))
+    .map(([name, { seconds, path }]) => ({
+      name,
+      value: Math.round((seconds / 3600) * 100) / 100,
+      path,
+    }))
     .sort((a, b) => b.value - a.value)
 })
 
@@ -400,39 +369,70 @@ let groupsPieChart: EChartsType | null = null
 let groupsPieObserver: ResizeObserver | null = null
 
 function renderGroupsPieChart() {
-  if (!groupsPieChartEl.value || !groupsPieData.value.length) return
-  if (groupsPieChart) groupsPieChart.dispose()
+  if (!groupsPieChartEl.value) {
+    groupsPieChart?.dispose()
+    groupsPieChart = null
+    groupsPieObserver?.disconnect()
+    groupsPieObserver = null
+    return
+  }
+
+  if (!groupsPieChart || groupsPieChart.isDisposed()) {
+    groupsPieChart = echartsInit(groupsPieChartEl.value)
+    groupsPieObserver = new ResizeObserver(() => groupsPieChart?.resize())
+    groupsPieObserver.observe(groupsPieChartEl.value)
+    groupsPieChart.on('click', (params: any) => {
+      const item = groupsPieData.value[params.dataIndex]
+      if (item?.path) {
+        openFile(item.path)
+      }
+    })
+  }
 
   const colors = getThemeColors()
-  groupsPieChart = echartsInit(groupsPieChartEl.value)
+  const data = groupsPieData.value
 
-  groupsPieChart.setOption({
-    tooltip: {
-      trigger: 'item',
-      formatter: (params: any) => {
-        return `${params.name}<br/>${formatDurationShort(Math.round(params.value * 3600))} (${params.percent}%)`
-      },
-    },
-    series: [
-      {
-        type: 'pie',
-        radius: ['40%', '70%'],
-        avoidLabelOverlap: true,
-        label: {
-          color: colors.textNormal,
-          formatter: '{b}: {d}%',
+  if (!data.length) {
+    groupsPieChart.clear()
+    return
+  }
+
+  groupsPieChart.setOption(
+    {
+      animation: false,
+      tooltip: {
+        trigger: 'item',
+        enterable: false,
+        confine: true,
+        formatter: (params: any) => {
+          return `${params.name}<br/>${formatDurationShort(Math.round(params.value * 3600))} (${params.percent}%)`
         },
-        data: groupsPieData.value,
       },
-    ],
-  })
-
-  if (groupsPieObserver) groupsPieObserver.disconnect()
-  groupsPieObserver = new ResizeObserver(() => groupsPieChart?.resize())
-  groupsPieObserver.observe(groupsPieChartEl.value)
+      series: [
+        {
+          type: 'pie',
+          radius: ['35%', '60%'],
+          center: ['50%', '50%'],
+          itemStyle: {
+            borderWidth: 2,
+            borderColor: getComputedStyle(document.body)
+              .getPropertyValue('--background-primary')
+              .trim(),
+          },
+          emphasis: { disabled: true },
+          label: {
+            color: colors.text,
+            formatter: '{b}',
+          },
+          data,
+        },
+      ],
+    },
+    true
+  )
 }
 
-watch([groupsPieChartEl, groupsPieData], () => nextTick(renderGroupsPieChart))
+watch([groupsPieData, groupsPieChartEl], () => nextTick(renderGroupsPieChart), { immediate: true })
 
 // Re-render charts on theme change
 watch(
@@ -452,10 +452,27 @@ watch(
 
 <style lang="scss">
 .abele-time-tracking-sidebar {
-  padding: var(--size-4-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-3);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  background-color: var(--background-primary);
+
+  padding: calc(var(--p-spacing) * 2);
+  padding-top: calc(var(--size-4-2) * 2 + var(--icon-size));
+
+  > * + * {
+    margin-top: var(--size-4-3);
+  }
+}
+
+@media (max-width: 600px) {
+  .abele-time-tracking-sidebar {
+    padding: calc(var(--size-4-4));
+    padding-top: calc(var(--size-4-2) + var(--icon-size));
+  }
 }
 
 .abele-time-tracking-sidebar__header {
@@ -538,79 +555,49 @@ watch(
   color: var(--text-success);
 }
 
-.abele-time-tracking-sidebar__period-header {
+.abele-time-tracking-sidebar__summary {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--size-4-2);
-}
-
-.abele-time-tracking-sidebar__period-title {
-  cursor: pointer;
-  font-weight: var(--font-semibold);
-  text-align: center;
-  flex: 1;
-
-  &:hover {
-    color: var(--text-accent);
-  }
-}
-
-.abele-time-tracking-sidebar__total {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: var(--size-4-1);
   padding: var(--size-4-2) 0;
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.abele-time-tracking-sidebar__total-label {
-  font-weight: var(--font-semibold);
-}
-
-.abele-time-tracking-sidebar__total-value {
-  font-size: var(--font-ui-large);
-  font-weight: var(--font-semibold);
-  font-variant-numeric: tabular-nums;
-}
-
-.abele-time-tracking-sidebar__chart-tabs {
+.abele-time-tracking-sidebar__summary-row {
   display: flex;
-  gap: var(--size-4-1);
+  justify-content: space-between;
+  align-items: center;
 }
 
-.abele-time-tracking-sidebar__chart-tab {
-  padding: var(--size-4-1) var(--size-4-3);
-  border-radius: var(--radius-s);
-  cursor: pointer;
+.abele-time-tracking-sidebar__summary-label {
   color: var(--text-muted);
-  font-size: var(--font-ui-small);
+}
 
-  &:hover {
-    background-color: var(--background-modifier-hover);
-    color: var(--text-normal);
-  }
-
-  &--active {
-    background-color: var(--interactive-accent);
-    color: var(--text-on-accent);
-  }
+.abele-time-tracking-sidebar__summary-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-semibold);
 }
 
 .abele-time-tracking-sidebar__chart {
   width: 100%;
-  height: 200px;
+  height: 240px;
+  margin-top: var(--size-4-2);
 }
 
 .abele-time-tracking-sidebar__chart-empty {
+  height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-muted);
   font-style: italic;
-  padding: var(--size-4-2) 0;
+  margin-top: var(--size-4-2);
 }
 
 .abele-time-tracking-sidebar__section {
   display: flex;
   flex-direction: column;
+  margin-top: calc(var(--p-spacing) * 1.5);
 }
 
 .abele-time-tracking-sidebar__section-title {

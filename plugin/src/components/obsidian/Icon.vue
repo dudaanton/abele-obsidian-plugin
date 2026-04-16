@@ -6,6 +6,7 @@
       'abele-obsidian-icon_no-hover': noHover,
       'abele-obsidian-icon_disabled': disabled,
     }"
+    :title="tooltip"
     @click="!disabled && emit('click', $event)"
   >
     <div v-if="textLeft" class="abele-obsidian-icon__text">{{ textLeft }}</div>
@@ -22,6 +23,7 @@ const props = defineProps<{
   icon?: string
   textLeft?: string
   textRight?: string
+  tooltip?: string
   withBg?: boolean
   noHover?: boolean
   disabled?: boolean

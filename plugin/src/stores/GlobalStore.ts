@@ -202,13 +202,17 @@ export class GlobalStore {
         const isTimeEntry = fm?.type === 'time-entry'
         if (isTimeEntry) {
           const config = AbeleConfig.getInstance()
-          const groups = Array.isArray(fm.groups) ? fm.groups : []
+          const fileContent = await readFileContent(event.file)
+          const parsedContent = await parseNoteContent(event.file, fileContent)
+          const groups = Array.isArray(parsedContent.groups)
+            ? (parsedContent.groups as string[])
+            : []
           const groupsLabel =
             groups.length > 0
               ? groups.map((g: string) => extractAliasOrNameFromWikilink(g)).join(', ')
               : 'Timer'
-          const startDt = fm.start ? dayjs(fm.start) : null
-          const endDt = fm.end ? dayjs(fm.end) : null
+          const startDt = parsedContent.start ? dayjs(parsedContent.start as string) : null
+          const endDt = parsedContent.end ? dayjs(parsedContent.end as string) : null
           const startLabel = startDt?.isValid() ? startDt.format('HH-mm') : ''
           const endLabel = endDt?.isValid() ? endDt.format('HH-mm') : ''
 

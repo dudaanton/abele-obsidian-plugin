@@ -12,6 +12,8 @@ export interface TimeEntryNoteParams {
   start?: dayjs.Dayjs | null
   end?: dayjs.Dayjs | null
   groups?: string[]
+  entryName?: string
+  entryFolder?: string
 }
 
 export class TimeEntryNoteTemplate extends GenericTemplate<TimeEntryNoteParams> {
@@ -29,7 +31,7 @@ export class TimeEntryNoteTemplate extends GenericTemplate<TimeEntryNoteParams> 
     return dt.format('HH-mm')
   }
 
-  protected getPath(params: TimeEntryNoteParams): string {
+  private renderedPath(params: TimeEntryNoteParams): string {
     const config = AbeleConfig.getInstance()
     const template = config.timeEntryPathTemplate
 
@@ -40,24 +42,22 @@ export class TimeEntryNoteTemplate extends GenericTemplate<TimeEntryNoteParams> 
       end: this.getTimeLabel(params.end),
     }
 
-    const rendered = renderTemplate(template, data)
+    return renderTemplate(template, data)
+  }
+
+  protected getPath(params: TimeEntryNoteParams): string {
+    if (params.entryFolder !== undefined) return params.entryFolder
+
+    const rendered = this.renderedPath(params)
     const parts = rendered.split('/')
     parts.pop()
     return parts.join('/')
   }
 
   protected getFilename(params: TimeEntryNoteParams): string {
-    const config = AbeleConfig.getInstance()
-    const template = config.timeEntryPathTemplate
+    if (params.entryName) return params.entryName
 
-    const data: Record<string, string> = {
-      date: (params.start || dayjs()).format(DATE_FORMAT),
-      groups: this.getGroupsLabel(params),
-      start: this.getTimeLabel(params.start),
-      end: this.getTimeLabel(params.end),
-    }
-
-    const rendered = renderTemplate(template, data)
+    const rendered = this.renderedPath(params)
     const parts = rendered.split('/')
     return parts.pop() || 'Timer'
   }

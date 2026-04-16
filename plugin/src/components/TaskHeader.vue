@@ -28,6 +28,14 @@
     />
     <Icon text-right="Recurrence" icon="repeat" with-bg @click="recurrencePickerOpen = true" />
     <Icon text-right="Clear" with-bg @click="clear" />
+    <Icon
+      v-if="showTimerButton"
+      :icon="isTimerActiveForNote ? 'timer-off' : 'timer'"
+      :text-right="isTimerActiveForNote ? timerElapsedText : 'Start timer'"
+      :tooltip="isTimerActiveForNote ? 'Stop timer' : 'Start timer for this note'"
+      with-bg
+      @click="toggleTimer"
+    />
 
     <DateTimePickerModal
       v-if="datePickerOpen"
@@ -59,8 +67,17 @@ import { Menu } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import DateTimePickerModal from './DateTimePickerModal.vue'
 import RecurrencePickerModal from './RecurrencePickerModal.vue'
+import { useTimerButton } from '@/composables/useTimerButton'
 
 const props = defineProps<{ task: TaskHeader }>()
+
+// --- Timer ---
+const taskFilePath = computed(() => props.task.filePath)
+const taskType = computed(() => 'task')
+const { showTimerButton, isTimerActiveForNote, timerElapsedText, toggleTimer } = useTimerButton(
+  taskFilePath,
+  taskType
+)
 
 const addDateButton = ref<InstanceType<typeof Icon> | null>(null)
 

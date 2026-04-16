@@ -6,13 +6,14 @@
     <div class="abele-time-entry-item__content">
       <div class="abele-time-entry-item__main">
         <span class="abele-time-entry-item__groups">
-          <ObsidianMarkdown
-            v-for="(group, idx) in entry.groups"
-            :key="idx"
-            :text="group"
-            :file-path="entry.entryPath"
-            class="abele-time-entry-item__link"
-          />
+          <template v-for="(group, idx) in entry.groups" :key="idx">
+            <ObsidianMarkdown
+              :text="group"
+              :file-path="entry.entryPath"
+              class="abele-time-entry-item__link"
+            />
+            <span v-if="idx < entry.groups.length - 1">, </span>
+          </template>
           <span v-if="!entry.groups.length" class="abele-time-entry-item__no-groups">Timer</span>
         </span>
         <span
@@ -28,9 +29,19 @@
       </div>
     </div>
     <div class="abele-time-entry-item__buttons">
-      <ObsidianIcon v-if="entry.isActive" icon="timer-off" @click.stop="stopTimer" />
-      <ObsidianIcon v-else icon="timer-reset" @click.stop="startNew" />
-      <ObsidianIcon icon="edit" @click.stop="edit" />
+      <ObsidianIcon
+        v-if="entry.isActive"
+        icon="timer-off"
+        tooltip="Stop timer"
+        @click.stop="stopTimer"
+      />
+      <ObsidianIcon
+        v-else
+        icon="timer-reset"
+        tooltip="Start new timer with same groups"
+        @click.stop="startNew"
+      />
+      <ObsidianIcon ref="menuButton" icon="edit" @click.stop="menu.open" />
     </div>
   </div>
 </template>
@@ -40,9 +51,11 @@ import { TimeEntry } from '@/entities/TimeEntry'
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
+import Icon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import { openFile } from '@/helpers/vaultUtils'
 import { createTimeEntry, stopActiveTimeEntry } from '@/commands/createTimeEntry'
+import { Choice, useMenu } from '@/composables/useMenu'
 import dayjs from 'dayjs'
 
 const props = defineProps<{
@@ -103,6 +116,23 @@ const stopTimer = () => stopActiveTimeEntry()
 const startNew = () => {
   createTimeEntry({ groups: [...props.entry.groups] }, false)
 }
+
+const promptRemove = () => {
+  if (confirm('Are you sure you want to delete this time entry?')) {
+    props.entry.remove()
+  }
+}
+
+const menuButton = ref<InstanceType<typeof Icon> | null>(null)
+const menuChoices = computed<Choice[]>(() => [
+  { title: 'Edit', event: 'edit' },
+  { title: 'Delete', event: 'delete' },
+])
+const handleMenuSelect = (event: string) => {
+  if (event === 'edit') edit()
+  else if (event === 'delete') promptRemove()
+}
+const menu = useMenu(menuButton, menuChoices, handleMenuSelect)
 </script>
 
 <style lang="scss">
