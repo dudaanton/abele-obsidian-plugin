@@ -30,7 +30,9 @@ export async function parseNoteContent(
   const parsedData: Record<string, any> = {}
   for (const [key, value] of Object.entries(parsed.attributes)) {
     if (value instanceof Date) {
-      parsedData[key] = dayjs(value).format(DATE_FORMAT)
+      const d = dayjs(value)
+      const hasTime = d.hour() !== 0 || d.minute() !== 0 || d.second() !== 0
+      parsedData[key] = hasTime ? d.format('YYYY-MM-DDTHH:mm:ss') : d.format(DATE_FORMAT)
     } else {
       parsedData[key] = value
     }
