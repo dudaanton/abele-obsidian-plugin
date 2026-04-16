@@ -5,8 +5,10 @@ import { Task } from '@/entities/Task'
 import { TaskHeader } from '@/entities/TaskHeader'
 import { TasksList } from '@/entities/TasksList'
 import { TransactionsList } from '@/entities/TransactionsList'
+import { TimeEntryList } from '@/entities/TimeEntryList'
 import { AccountsList } from '@/entities/AccountsList'
 import { BalanceIndex } from '@/entities/BalanceIndex'
+import { extractAliasOrNameFromWikilink } from '@/helpers/pathsHelpers'
 import { parseNoteContent, renderTemplate } from '@/helpers/notesUtils'
 import {
   cleanFileName,
@@ -49,11 +51,13 @@ export class GlobalStore {
   public readonly todoSidebarId = ref<string | null>(null)
   public readonly aiSidebarId = ref<string | null>(null)
   public readonly financeSidebarId = ref<string | null>(null)
+  public readonly timeTrackingSidebarId = ref<string | null>(null)
 
   public readonly tasksList = ref<TasksList | null>(null)
   public readonly transactionsList = ref<TransactionsList | null>(null)
   public readonly accountsList = ref<AccountsList | null>(null)
   public readonly balanceIndex = ref<BalanceIndex | null>(null)
+  public readonly timeEntryList = ref<TimeEntryList | null>(null)
 
   public readonly settingsTabId = ref<string>(null)
   public readonly themeVersion = ref(0)
@@ -194,6 +198,36 @@ export class GlobalStore {
             await this.app.fileManager.renameFile(event.file, newPath)
           }
         }
+
+        const isTimeEntry = fm?.type === 'time-entry'
+        if (isTimeEntry) {
+          const config = AbeleConfig.getInstance()
+          const groups = Array.isArray(fm.groups) ? fm.groups : []
+          const groupsLabel =
+            groups.length > 0
+              ? groups.map((g: string) => extractAliasOrNameFromWikilink(g)).join(', ')
+              : 'Timer'
+          const startDt = fm.start ? dayjs(fm.start) : null
+          const endDt = fm.end ? dayjs(fm.end) : null
+          const startLabel = startDt?.isValid() ? startDt.format('HH-mm') : ''
+          const endLabel = endDt?.isValid() ? endDt.format('HH-mm') : ''
+
+          const data: Record<string, string> = {
+            date: (startDt?.isValid() ? startDt : dayjs()).format(DATE_FORMAT),
+            groups: groupsLabel,
+            start: startLabel,
+            end: endLabel,
+          }
+
+          let rendered = renderTemplate(config.timeEntryPathTemplate, data)
+          if (!rendered.endsWith('.md')) rendered += '.md'
+
+          const newPath = await getAvailablePath(rendered, event.file.path)
+
+          if (newPath !== event.file.path) {
+            await this.app.fileManager.renameFile(event.file, newPath)
+          }
+        }
       }
     })
   }
@@ -201,6 +235,12 @@ export class GlobalStore {
   public initTasksList(): void {
     if (!this.tasksList.value) {
       this.tasksList.value = new TasksList()
+    }
+  }
+
+  public initTimeTracking(): void {
+    if (!this.timeEntryList.value) {
+      this.timeEntryList.value = new TimeEntryList()
     }
   }
 
@@ -232,6 +272,8 @@ export class GlobalStore {
     this.galleriesContainers.value = []
     this.tasksList.value?.cleanup()
     this.tasksList.value = null
+    this.timeEntryList.value?.cleanup()
+    this.timeEntryList.value = null
     this.balanceIndex.value?.cleanup()
     this.balanceIndex.value = null
     this.transactionsList.value?.cleanup()

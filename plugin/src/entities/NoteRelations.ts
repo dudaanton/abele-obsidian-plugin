@@ -5,6 +5,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { EventRef, normalizePath, TAbstractFile, TFile } from 'obsidian'
 import { Task } from './Task'
 import { Transaction } from './Transaction'
+import { TimeEntry } from './TimeEntry'
 import { Log } from './Log'
 import { Note } from './Note'
 import { reactive, toRaw } from 'vue'
@@ -20,6 +21,7 @@ export class NoteRelations {
 
   tasks: Map<string, Task> = reactive(new Map())
   transactions: Map<string, Transaction> = reactive(new Map())
+  timeEntries: Map<string, TimeEntry> = reactive(new Map())
   logs: Map<string, Log> = reactive(new Map())
   notes: Map<string, Note> = reactive(new Map())
 
@@ -89,6 +91,27 @@ export class NoteRelations {
     return transaction
   }
 
+  private addTimeEntry(path: string) {
+    path = normalizePath(path)
+    if (!this.timeEntries.has(path)) {
+      const entry = reactive(new TimeEntry({ wikilink: pathToWikilink(path) }))
+      entry.load()
+      this.timeEntries.set(path, entry as TimeEntry)
+    }
+  }
+
+  private removeTimeEntry(path: string) {
+    path = normalizePath(path)
+
+    const entry = this.timeEntries.get(path)
+    if (entry) {
+      entry.cleanup()
+      this.timeEntries.delete(path)
+    }
+
+    return entry
+  }
+
   private addLog(path: string) {
     path = normalizePath(path)
     if (!this.logs.has(path)) {
@@ -136,6 +159,7 @@ export class NoteRelations {
     return (
       this.tasks.has(path) ||
       this.transactions.has(path) ||
+      this.timeEntries.has(path) ||
       this.logs.has(path) ||
       this.notes.has(path)
     )
@@ -166,6 +190,8 @@ export class NoteRelations {
         this.addTask(file.path)
       } else if (type === 'transaction') {
         this.addTransaction(file.path)
+      } else if (type === 'time-entry') {
+        this.addTimeEntry(file.path)
       } else if (AbeleConfig.getInstance().isLogType(type, file.path)) {
         this.addLog(file.path)
       } else {
@@ -227,6 +253,8 @@ export class NoteRelations {
           this.addTask(note.path)
         } else if (cache.type === 'transaction') {
           this.addTransaction(note.path)
+        } else if (cache.type === 'time-entry') {
+          this.addTimeEntry(note.path)
         } else if (AbeleConfig.getInstance().isLogType(cache.type, note.path)) {
           // Skip logs that are also journal notes (avoid showing one journal as log in another)
           const isDefaultJournal = AbeleConfig.getInstance().journals.some((j) =>
@@ -258,6 +286,9 @@ export class NoteRelations {
       } else if (this.transactions.has(oldPath)) {
         this.removeTransaction(oldPath)
         this.addTransaction(newPath)
+      } else if (this.timeEntries.has(oldPath)) {
+        this.removeTimeEntry(oldPath)
+        this.addTimeEntry(newPath)
       } else if (this.logs.has(oldPath)) {
         this.removeLog(oldPath)
         this.addLog(newPath)
@@ -309,6 +340,11 @@ export class NoteRelations {
         const txDate = dayjs(frontmatter.date, DATE_FORMAT)
         if (txDate.isValid() && txDate.isSame(this.journalDate, 'date')) return true
       }
+
+      if (frontmatter?.type === 'time-entry' && frontmatter?.start) {
+        const teDate = dayjs(frontmatter.start)
+        if (teDate.isValid() && teDate.isSame(this.journalDate, 'date')) return true
+      }
     }
 
     const type = frontmatter?.type
@@ -316,7 +352,8 @@ export class NoteRelations {
     if (
       AbeleConfig.getInstance().isLogType(type, path) ||
       type === 'task' ||
-      type === 'transaction'
+      type === 'transaction' ||
+      type === 'time-entry'
     ) {
       const outgoingLinks = getOutgoingLinksByPath(path)
       for (const link of outgoingLinks) {
@@ -359,10 +396,11 @@ export class NoteRelations {
 
     const task = this.removeTask(path)
     const transaction = this.removeTransaction(path)
+    const timeEntry = this.removeTimeEntry(path)
     const log = this.removeLog(path)
     const note = this.removeNote(path)
 
-    if (!task && !transaction && !log && !note) return
+    if (!task && !transaction && !timeEntry && !log && !note) return
 
     this.removeRemainingRelations()
   }
@@ -374,6 +412,7 @@ export class NoteRelations {
     const allPaths = [
       ...this.tasks.keys(),
       ...this.transactions.keys(),
+      ...this.timeEntries.keys(),
       ...this.logs.keys(),
       ...this.notes.keys(),
     ]
@@ -382,6 +421,7 @@ export class NoteRelations {
       if (!this.isRelatedPath(path)) {
         this.removeTask(path)
         this.removeTransaction(path)
+        this.removeTimeEntry(path)
         this.removeLog(path)
         this.removeNote(path)
       }
@@ -473,6 +513,10 @@ export class NoteRelations {
 
     this.transactions.forEach((_, path) => {
       this.removeTransaction(path)
+    })
+
+    this.timeEntries.forEach((_, path) => {
+      this.removeTimeEntry(path)
     })
 
     this.logs.forEach((_, path) => {

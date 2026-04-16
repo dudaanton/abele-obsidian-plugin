@@ -9,6 +9,7 @@
       :date="footer.noteRelations.journalDate"
       :account-path="footer.type === 'account' ? footer.filePath : null"
     />
+    <TimeEntryListView v-if="timeEntries.length" :time-entries="timeEntries" />
     <NotesList v-if="notes.length" :notes="notes" />
     <LogsList v-if="logs.length" :logs="logs" />
   </div>
@@ -21,6 +22,7 @@ import Timeline from './Timeline.vue'
 import TodoList from './TodoList.vue'
 import AccountBalanceChart from './AccountBalanceChart.vue'
 import TransactionsListView from './TransactionsList.vue'
+import TimeEntryListView from './TimeEntryListView.vue'
 import NotesList from './NotesList.vue'
 import LogsList from './LogsList.vue'
 
@@ -41,6 +43,10 @@ const transactions = computed(() => {
   return Array.from(props.footer.noteRelations.transactions.values()).filter(
     (t) => !t.transactionNotFound
   )
+})
+
+const timeEntries = computed(() => {
+  return Array.from(props.footer.noteRelations.timeEntries.values()).filter((e) => !e.entryNotFound)
 })
 
 const notes = computed(() => {

@@ -27,6 +27,10 @@ export interface AbeleSettings {
   pinnedCurrencies?: string // Comma-separated currencies to show in sidebar
   fireflyBaseUrl?: string // Firefly III instance base URL for migration
   fireflyToken?: string // Firefly III Personal Access Token for migration
+  // Time tracking settings
+  timeEntryPathTemplate?: string // Path template for new time entries
+  timeTrackableNoteTypes?: string[] // Note types that show timer button in header
+  timeTrackAllNotes?: boolean // Show timer button for all notes
   // Other
   fullWidthSidebars?: boolean
 }
@@ -53,6 +57,9 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   pinnedCurrencies: 'EUR',
   fireflyBaseUrl: '',
   fireflyToken: '',
+  timeEntryPathTemplate: 'Time/{{date:YYYY/MM}}/{{groups}} {{start}}',
+  timeTrackableNoteTypes: ['task'],
+  timeTrackAllNotes: false,
   fullWidthSidebars: false,
 }
 
@@ -82,6 +89,9 @@ export class AbeleConfig {
   public pinnedCurrencies: string
   public fireflyBaseUrl: string
   public fireflyToken: string
+  public timeEntryPathTemplate: string
+  public timeTrackableNoteTypes: string[]
+  public timeTrackAllNotes: boolean
   public fullWidthSidebars: boolean
 
   public get logsNotesTypes(): string[] {
@@ -113,6 +123,12 @@ export class AbeleConfig {
       if (regexp.test(path)) return true
     }
     return false
+  }
+
+  isTimeTrackable(type: string | null): boolean {
+    if (this.timeTrackAllNotes) return true
+    if (!type) return false
+    return this.timeTrackableNoteTypes.includes(type)
   }
 
   /**
@@ -192,6 +208,12 @@ export class AbeleConfig {
     this.pinnedCurrencies = settings?.pinnedCurrencies ?? DEFAULT_SETTINGS.pinnedCurrencies
     this.fireflyBaseUrl = settings?.fireflyBaseUrl ?? DEFAULT_SETTINGS.fireflyBaseUrl
     this.fireflyToken = settings?.fireflyToken ?? DEFAULT_SETTINGS.fireflyToken
+    this.timeEntryPathTemplate =
+      settings?.timeEntryPathTemplate || DEFAULT_SETTINGS.timeEntryPathTemplate
+    this.timeTrackableNoteTypes = settings?.timeTrackableNoteTypes || [
+      ...DEFAULT_SETTINGS.timeTrackableNoteTypes,
+    ]
+    this.timeTrackAllNotes = settings?.timeTrackAllNotes ?? DEFAULT_SETTINGS.timeTrackAllNotes
     this.fullWidthSidebars = settings?.fullWidthSidebars ?? DEFAULT_SETTINGS.fullWidthSidebars
   }
 
@@ -218,6 +240,9 @@ export class AbeleConfig {
       pinnedCurrencies: this.pinnedCurrencies,
       fireflyBaseUrl: this.fireflyBaseUrl,
       fireflyToken: this.fireflyToken,
+      timeEntryPathTemplate: this.timeEntryPathTemplate,
+      timeTrackableNoteTypes: [...this.timeTrackableNoteTypes],
+      timeTrackAllNotes: this.timeTrackAllNotes,
       fullWidthSidebars: this.fullWidthSidebars,
     }
   }

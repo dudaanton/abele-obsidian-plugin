@@ -42,6 +42,12 @@
   <Teleport v-if="financeSidebarId" :to="`[${FINANCE_SIDEBAR_ID_ATTR}='${financeSidebarId}']`">
     <FinanceSidebarView />
   </Teleport>
+  <Teleport
+    v-if="timeTrackingSidebarId"
+    :to="`[${TIME_TRACKING_SIDEBAR_ID_ATTR}='${timeTrackingSidebarId}']`"
+  >
+    <TimeTrackingSidebarView />
+  </Teleport>
   <FindAndReplaceModal
     v-if="findAndReplaceModalOpened"
     @close="findAndReplaceModalOpened = false"
@@ -94,8 +100,10 @@ import { TIMELINE_SIDEBAR_ID_ATTR } from '@/views/TimelineSidebarView'
 import { TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'
 import { AI_SIDEBAR_ID_ATTR } from '@/views/AiSidebarView'
 import { FINANCE_SIDEBAR_ID_ATTR } from '@/views/FinanceSidebarView'
+import { TIME_TRACKING_SIDEBAR_ID_ATTR } from '@/views/TimeTrackingSidebarView'
 import AiChatView from './AiChat.vue'
 import FinanceSidebarView from './FinanceSidebar.vue'
+import TimeTrackingSidebarView from './TimeTrackingSidebar.vue'
 import SettingsView from './settings/Settings.vue'
 import { SETTINGS_ID_ATTR } from '@/settings'
 
@@ -116,6 +124,7 @@ const {
   todoSidebarId,
   aiSidebarId,
   financeSidebarId,
+  timeTrackingSidebarId,
   settingsTabId,
 } = GlobalStore.getInstance()
 </script>

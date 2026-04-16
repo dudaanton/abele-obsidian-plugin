@@ -15,6 +15,7 @@ import VueEntry from './App.vue'
 import { AbeleConfig } from './services/AbeleConfig'
 import { createTask, createTaskAndInsert } from './commands/createTask'
 import { createTransaction, createTransactionAndInsert } from './commands/createTransaction'
+import { createTimeEntry, stopActiveTimeEntry } from './commands/createTimeEntry'
 import {
   createNoteFromTemplate,
   replaceNoteWithTemplate,
@@ -32,6 +33,10 @@ import { TIMELINE_SIDEBAR_VIEW_TYPE, TimelineSidebarView } from './views/Timelin
 import { TODO_SIDEBAR_VIEW_TYPE, TodoSidebarView } from './views/TodoSidebarView'
 import { AI_SIDEBAR_VIEW_TYPE, AiSidebarView } from './views/AiSidebarView'
 import { FINANCE_SIDEBAR_VIEW_TYPE, FinanceSidebarView } from './views/FinanceSidebarView'
+import {
+  TIME_TRACKING_SIDEBAR_VIEW_TYPE,
+  TimeTrackingSidebarView,
+} from './views/TimeTrackingSidebarView'
 import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { AgentService } from './ai/AgentService'
 import { ScopeResolver } from './ai/ScopeResolver'
@@ -102,6 +107,7 @@ export default class AbelePlugin extends Plugin {
     this.app.workspace.onLayoutReady(() => {
       GlobalStore.getInstance().initTasksList()
       GlobalStore.getInstance().initFinance()
+      GlobalStore.getInstance().initTimeTracking()
     })
 
     this.addSettingTab(new AbeleSettingTab(this.app, this))
@@ -111,6 +117,10 @@ export default class AbelePlugin extends Plugin {
     this.registerView(TIMELINE_SIDEBAR_VIEW_TYPE, (leaf) => new TimelineSidebarView(leaf, this.app))
     this.registerView(TODO_SIDEBAR_VIEW_TYPE, (leaf) => new TodoSidebarView(leaf, this.app))
     this.registerView(FINANCE_SIDEBAR_VIEW_TYPE, (leaf) => new FinanceSidebarView(leaf, this.app))
+    this.registerView(
+      TIME_TRACKING_SIDEBAR_VIEW_TYPE,
+      (leaf) => new TimeTrackingSidebarView(leaf, this.app)
+    )
 
     // AI sidebar is always registered so the view can be restored, but commands/ribbon are conditional
     this.registerView(AI_SIDEBAR_VIEW_TYPE, (leaf) => new AiSidebarView(leaf, this.app))
@@ -326,6 +336,33 @@ export default class AbelePlugin extends Plugin {
     })
 
     this.addCommand({
+      id: 'show-time-tracking-sidebar',
+      name: 'Show time tracking sidebar',
+      callback: () => {
+        this.activateView(TIME_TRACKING_SIDEBAR_VIEW_TYPE)
+      },
+    })
+
+    this.addCommand({
+      id: 'start-timer',
+      name: 'Start timer for current note',
+      callback: () => {
+        const file = this.app.workspace.getActiveFile()
+        if (file) {
+          createTimeEntry({ groups: [`[[${file.basename}]]`] })
+        }
+      },
+    })
+
+    this.addCommand({
+      id: 'stop-timer',
+      name: 'Stop active timer',
+      callback: () => {
+        stopActiveTimeEntry()
+      },
+    })
+
+    this.addCommand({
       id: 'paste-from-clipboard',
       name: 'Paste from clipboard at cursor',
       editorCallback: async (editor: Editor) => {
@@ -383,6 +420,10 @@ export default class AbelePlugin extends Plugin {
 
     this.addRibbonIcon(FinanceSidebarView.getIcon(), 'Show finance sidebar', () => {
       this.activateView(FINANCE_SIDEBAR_VIEW_TYPE)
+    })
+
+    this.addRibbonIcon(TimeTrackingSidebarView.getIcon(), 'Show time tracking', () => {
+      this.activateView(TIME_TRACKING_SIDEBAR_VIEW_TYPE)
     })
 
     // AI Agent — conditional on settings

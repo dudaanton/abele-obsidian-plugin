@@ -42,21 +42,32 @@
       <Icon icon="chevron-last" :disabled="doesNextJournalNoteExist" @click="goToNextJournalNote" />
     </div>
   </div>
+  <div v-if="showTimerButton" class="abele-header-view">
+    <Icon
+      :icon="isTimerActiveForNote ? 'timer-off' : 'timer'"
+      :text-right="isTimerActiveForNote ? timerElapsedText : 'Start timer'"
+      @click="toggleTimer"
+    />
+  </div>
 </template>
 
 <script setup lang="ts">
 import { Header } from '@/entities/Header'
 import Icon from './obsidian/Icon.vue'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { Choice, useMenu } from '@/composables/useMenu'
 import { createTransaction } from '@/commands/createTransaction'
+import { createTimeEntry, stopActiveTimeEntry } from '@/commands/createTimeEntry'
 import { getFrontmatterFromCache } from '@/helpers/notesUtils'
+import { pathToWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { BalanceIndex } from '@/entities/BalanceIndex'
 import { AccountsList } from '@/entities/AccountsList'
+import { TimeEntry } from '@/entities/TimeEntry'
+import { TimeEntryList } from '@/entities/TimeEntryList'
 import dayjs from 'dayjs'
-import { toRaw, unref } from 'vue'
+import { toRaw, unref, onUnmounted } from 'vue'
 import { parseDateOrNull } from '@/helpers/datesHelper'
 
 const props = defineProps<{
@@ -258,6 +269,85 @@ const handleJournalButtonClick = () => {
 }
 
 const journalMenu = useMenu(switchJournalButton, journalMenuChoices, handleMenuSelect)
+
+// --- Timer ---
+
+const showTimerButton = computed(() => {
+  if (props.header.type === 'time-entry') return false
+  return AbeleConfig.getInstance().isTimeTrackable(props.header.type)
+})
+
+const timeEntryList = computed(() => unref(store.timeEntryList) as TimeEntryList | null)
+
+const activeTimeEntry = computed(
+  () => (timeEntryList.value?.activeEntry ?? null) as TimeEntry | null
+)
+
+const isTimerActiveForNote = computed(() => {
+  const active = activeTimeEntry.value
+  if (!active) return false
+  const basename = props.header.filePath.replace(/\.md$/, '').split('/').pop() || ''
+  return active.groups.some((g) => {
+    const linkPath = wikilinkToPath(g)
+    return linkPath === basename || linkPath === props.header.filePath.replace(/\.md$/, '')
+  })
+})
+
+const timerElapsed = ref(0)
+let timerInterval: ReturnType<typeof setInterval> | null = null
+
+const updateElapsed = () => {
+  const active = activeTimeEntry.value
+  if (active?.start && isTimerActiveForNote.value) {
+    timerElapsed.value = dayjs().diff(active.start, 'second')
+  } else {
+    timerElapsed.value = 0
+  }
+}
+
+const startElapsedTimer = () => {
+  stopElapsedTimer()
+  updateElapsed()
+  timerInterval = setInterval(updateElapsed, 1000)
+}
+
+const stopElapsedTimer = () => {
+  if (timerInterval) {
+    clearInterval(timerInterval)
+    timerInterval = null
+  }
+}
+
+const timerElapsedText = computed(() => {
+  const secs = timerElapsed.value
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  const s = secs % 60
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(h)}:${pad(m)}:${pad(s)}`
+})
+
+watch(
+  isTimerActiveForNote,
+  (active) => {
+    if (active) startElapsedTimer()
+    else stopElapsedTimer()
+  },
+  { immediate: true }
+)
+
+const toggleTimer = () => {
+  if (isTimerActiveForNote.value) {
+    stopActiveTimeEntry()
+  } else {
+    const wikilink = pathToWikilink(props.header.filePath)
+    createTimeEntry({ groups: [wikilink] }, false)
+  }
+}
+
+onUnmounted(() => {
+  stopElapsedTimer()
+})
 
 onMounted(() => {
   props.header.load()
