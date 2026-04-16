@@ -28,6 +28,9 @@ const initSearch = () => {
   }
   search.value = new SearchComponent(el.value)
   new props.suggester(GlobalStore.getInstance().app, search.value.inputEl)
+  if (props.modelValue) {
+    search.value.setValue(props.modelValue)
+  }
   search.value.onChange((value) => {
     emit('update:model-value', value)
   })
@@ -44,9 +47,9 @@ onMounted(initSearch)
 watch(
   () => props.modelValue,
   (val) => {
-    // When value is reset externally, recreate the search component
-    if (val === '' && search.value) {
-      initSearch()
+    if (!search.value) return
+    if (search.value.getValue() !== val) {
+      search.value.setValue(val ?? '')
     }
   }
 )
