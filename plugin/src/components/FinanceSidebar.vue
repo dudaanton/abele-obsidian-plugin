@@ -7,21 +7,10 @@
       </div>
     </div>
 
-    <div class="abele-finance-sidebar__period-header">
-      <ObsidianIcon icon="chevron-left" @click="previousMonth()" />
-      <div class="abele-finance-sidebar__period-title" @click="dateRangePickerOpen = true">
-        {{ periodLabel }}
-      </div>
-      <ObsidianIcon icon="chevron-right" @click="nextMonth()" />
-    </div>
-
-    <DateRangePickerModal
-      v-if="dateRangePickerOpen"
-      :initial-from="periodStart"
-      :initial-to="periodEnd"
-      @apply="onDateRangeApply"
-      @reset="onDateRangeReset"
-      @cancel="dateRangePickerOpen = false"
+    <PeriodSelector
+      v-model:start="periodStart"
+      v-model:end="periodEnd"
+      @custom-applied="onCustomApplied"
     />
 
     <!-- Currency Balance Cards -->
@@ -113,17 +102,7 @@
           </span>
         </div>
       </div>
-      <div class="abele-finance-sidebar__chart-tabs">
-        <div
-          v-for="tab in chartTabs"
-          :key="tab.key"
-          class="abele-finance-sidebar__chart-tab"
-          :class="{ 'abele-finance-sidebar__chart-tab--active': chartTab === tab.key }"
-          @click="chartTab = tab.key"
-        >
-          {{ tab.label }}
-        </div>
-      </div>
+      <ChartTabs v-model="chartTab" :tabs="chartTabs" />
       <template v-if="chartTab === 'expenses' || chartTab === 'income'">
         <div v-if="pieData.length" ref="pieChartEl" class="abele-finance-sidebar__pie-chart" />
         <div v-else class="abele-finance-sidebar__pie-empty">No data</div>
@@ -167,7 +146,8 @@ import { DATE_FORMAT } from '@/constants/dates'
 import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
 import { openFile } from '@/helpers/vaultUtils'
 import ObsidianIcon from './obsidian/Icon.vue'
-import DateRangePickerModal from './DateRangePickerModal.vue'
+import ChartTabs from './obsidian/ChartTabs.vue'
+import PeriodSelector from './obsidian/PeriodSelector.vue'
 import TransactionItem from './TransactionItem.vue'
 import dayjs from 'dayjs'
 import { toRaw } from 'vue'
@@ -259,69 +239,18 @@ watch(
 
 // --- Period Summary ---
 
-const selectedMonth = ref(dayjs().month())
-const selectedYear = ref(dayjs().year())
-const customFrom = ref<dayjs.Dayjs | null>(null)
-const customTo = ref<dayjs.Dayjs | null>(null)
-const dateRangePickerOpen = ref(false)
+const periodStart = ref<dayjs.Dayjs>(dayjs().startOf('month'))
+const periodEnd = ref<dayjs.Dayjs>(dayjs().endOf('month'))
 
-const isCustomRange = computed(() => customFrom.value !== null && customTo.value !== null)
-
-const periodLabel = computed(() => {
-  if (isCustomRange.value) {
-    const from = customFrom.value!.format('MMM D, YYYY')
-    const to = customTo.value!.format('MMM D, YYYY')
-    return `${from} — ${to}`
-  }
-  return dayjs().year(selectedYear.value).month(selectedMonth.value).format('MMMM YYYY')
-})
-
-const periodStart = computed(() =>
-  isCustomRange.value
-    ? customFrom.value!
-    : dayjs().year(selectedYear.value).month(selectedMonth.value).startOf('month')
-)
-const periodEnd = computed(() =>
-  isCustomRange.value
-    ? customTo.value!
-    : dayjs().year(selectedYear.value).month(selectedMonth.value).endOf('month')
+const isCustomRange = computed(
+  () =>
+    !periodStart.value.isSame(periodStart.value.startOf('month'), 'day') ||
+    !periodEnd.value.isSame(periodEnd.value.endOf('month'), 'day') ||
+    !periodStart.value.isSame(periodEnd.value, 'month')
 )
 
-function previousMonth() {
-  customFrom.value = null
-  customTo.value = null
-  if (selectedMonth.value === 0) {
-    selectedMonth.value = 11
-    selectedYear.value -= 1
-  } else {
-    selectedMonth.value -= 1
-  }
-}
-
-function nextMonth() {
-  customFrom.value = null
-  customTo.value = null
-  if (selectedMonth.value === 11) {
-    selectedMonth.value = 0
-    selectedYear.value += 1
-  } else {
-    selectedMonth.value += 1
-  }
-}
-
-function onDateRangeApply(range: { from: dayjs.Dayjs; to: dayjs.Dayjs }) {
-  customFrom.value = range.from
-  customTo.value = range.to
-  dateRangePickerOpen.value = false
+function onCustomApplied() {
   if (chartTab.value === 'calendar') chartTab.value = 'expenses'
-}
-
-function onDateRangeReset() {
-  customFrom.value = null
-  customTo.value = null
-  selectedMonth.value = dayjs().month()
-  selectedYear.value = dayjs().year()
-  dateRangePickerOpen.value = false
 }
 
 interface PieItem {
@@ -1043,28 +972,6 @@ function formatAmount(value: number): string {
   margin: 0 0 var(--size-4-2) 0;
 }
 
-// --- Period Header ---
-
-.abele-finance-sidebar__period-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--size-4-2);
-}
-
-.abele-finance-sidebar__period-title {
-  font-size: var(--font-ui-small);
-  font-weight: var(--font-semibold);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-
-  &:hover {
-    color: var(--text-accent);
-  }
-}
-
 // --- Currency Tabs ---
 
 .abele-finance-sidebar__currency-tabs {
@@ -1136,32 +1043,6 @@ function formatAmount(value: number): string {
 }
 
 // --- Charts ---
-
-.abele-finance-sidebar__chart-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--size-4-1);
-  margin-top: calc(var(--p-spacing) * 1.5);
-}
-
-.abele-finance-sidebar__chart-tab {
-  font-size: var(--font-ui-smaller);
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: var(--size-2-1) var(--size-4-2);
-  border-radius: var(--radius-s);
-
-  &:hover {
-    color: var(--text-normal);
-    background-color: var(--background-modifier-hover);
-  }
-
-  &--active {
-    color: var(--text-normal);
-    font-weight: var(--font-semibold);
-    background-color: var(--background-modifier-hover);
-  }
-}
 
 .abele-finance-sidebar__pie-empty {
   height: 200px;

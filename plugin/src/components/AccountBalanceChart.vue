@@ -14,23 +14,8 @@
         </span>
       </div>
     </div>
-    <div class="abele-account-balance-chart__period">
-      <ObsidianIcon icon="chevron-left" @click="previousMonth()" />
-      <div class="abele-account-balance-chart__period-title" @click="dateRangePickerOpen = true">
-        {{ periodLabel }}
-      </div>
-      <ObsidianIcon icon="chevron-right" @click="nextMonth()" />
-    </div>
+    <PeriodSelector v-model:start="periodStart" v-model:end="periodEnd" />
     <div ref="chartEl" class="abele-account-balance-chart__chart" />
-
-    <DateRangePickerModal
-      v-if="dateRangePickerOpen"
-      :initial-from="periodStart"
-      :initial-to="periodEnd"
-      @apply="onDateRangeApply"
-      @reset="onDateRangeReset"
-      @cancel="dateRangePickerOpen = false"
-    />
   </div>
 </template>
 
@@ -43,8 +28,7 @@ import { TransactionsList } from '@/entities/TransactionsList'
 import { echartsInit, EChartsType } from '@/bases/echarts'
 import { wikilinkToPath } from '@/helpers/pathsHelpers'
 import { DATE_FORMAT } from '@/constants/dates'
-import ObsidianIcon from './obsidian/Icon.vue'
-import DateRangePickerModal from './DateRangePickerModal.vue'
+import PeriodSelector from './obsidian/PeriodSelector.vue'
 import dayjs from 'dayjs'
 import { toRaw, unref } from 'vue'
 
@@ -54,69 +38,8 @@ const props = defineProps<{
 
 const store = GlobalStore.getInstance()
 
-const selectedMonth = ref(dayjs().month())
-const selectedYear = ref(dayjs().year())
-const customFrom = ref<dayjs.Dayjs | null>(null)
-const customTo = ref<dayjs.Dayjs | null>(null)
-const dateRangePickerOpen = ref(false)
-
-const isCustomRange = computed(() => customFrom.value !== null && customTo.value !== null)
-
-const periodLabel = computed(() => {
-  if (isCustomRange.value) {
-    const from = customFrom.value!.format('MMM D, YYYY')
-    const to = customTo.value!.format('MMM D, YYYY')
-    return `${from} — ${to}`
-  }
-  return dayjs().year(selectedYear.value).month(selectedMonth.value).format('MMMM YYYY')
-})
-
-const periodStart = computed(() =>
-  isCustomRange.value
-    ? customFrom.value!
-    : dayjs().year(selectedYear.value).month(selectedMonth.value).startOf('month')
-)
-const periodEnd = computed(() =>
-  isCustomRange.value
-    ? customTo.value!
-    : dayjs().year(selectedYear.value).month(selectedMonth.value).endOf('month')
-)
-
-function previousMonth() {
-  customFrom.value = null
-  customTo.value = null
-  if (selectedMonth.value === 0) {
-    selectedMonth.value = 11
-    selectedYear.value -= 1
-  } else {
-    selectedMonth.value -= 1
-  }
-}
-
-function nextMonth() {
-  customFrom.value = null
-  customTo.value = null
-  if (selectedMonth.value === 11) {
-    selectedMonth.value = 0
-    selectedYear.value += 1
-  } else {
-    selectedMonth.value += 1
-  }
-}
-
-function onDateRangeApply(range: { from: dayjs.Dayjs; to: dayjs.Dayjs }) {
-  customFrom.value = range.from
-  customTo.value = range.to
-  dateRangePickerOpen.value = false
-}
-
-function onDateRangeReset() {
-  customFrom.value = null
-  customTo.value = null
-  selectedMonth.value = dayjs().month()
-  selectedYear.value = dayjs().year()
-  dateRangePickerOpen.value = false
-}
+const periodStart = ref<dayjs.Dayjs>(dayjs().startOf('month'))
+const periodEnd = ref<dayjs.Dayjs>(dayjs().endOf('month'))
 
 interface ChartSeries {
   name: string
@@ -340,26 +263,6 @@ watch(
 .abele-account-balance-chart__currency {
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
-}
-
-.abele-account-balance-chart__period {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--size-4-2);
-}
-
-.abele-account-balance-chart__period-title {
-  font-size: var(--font-ui-small);
-  font-weight: var(--font-semibold);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-
-  &:hover {
-    color: var(--text-accent);
-  }
 }
 
 .abele-account-balance-chart__chart {
