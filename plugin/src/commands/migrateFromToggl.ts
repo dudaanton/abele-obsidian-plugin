@@ -79,7 +79,7 @@ async function fetchTogglProjects(apiToken: string): Promise<Map<number, string>
   return map
 }
 
-async function ensureNote(folder: string, name: string): Promise<void> {
+async function ensureNote(folder: string, name: string, groups?: string[]): Promise<void> {
   const { app } = GlobalStore.getInstance()
   const safeName = cleanFileName(name) || 'Untitled'
   const path = `${folder}/${safeName}.md`
@@ -97,7 +97,13 @@ async function ensureNote(folder: string, name: string): Promise<void> {
     }
   }
 
-  await app.vault.create(path, '')
+  let content = ''
+  if (groups?.length) {
+    const yaml = groups.map((g) => `  - "${g}"`).join('\n')
+    content = `---\ngroups:\n${yaml}\n---\n`
+  }
+
+  await app.vault.create(path, content)
 }
 
 export async function migrateFromToggl(
@@ -156,26 +162,36 @@ export async function migrateFromToggl(
       const description = entry.description?.trim()
       const projectName = entry.project_id ? projectMap.get(entry.project_id) : null
 
+      // Ensure project note exists
+      if (projectName) {
+        const safeProject = cleanFileName(projectName)
+        const projectKey = `Toggl/${safeProject}`
+        if (!createdNotes.has(projectKey)) {
+          await ensureNote('Toggl', projectName)
+          createdNotes.add(projectKey)
+          result.notesCreated++
+        }
+      }
+
+      // Ensure description note exists, with project as its group
       if (description) {
         const safeName = cleanFileName(description)
         const noteKey = `Toggl/${safeName}`
         groups.push(`[[${noteKey}|${safeName}]]`)
         if (!createdNotes.has(noteKey)) {
-          await ensureNote('Toggl', description)
+          const descGroups: string[] = []
+          if (projectName) {
+            const safeProject = cleanFileName(projectName)
+            descGroups.push(`[[Toggl/${safeProject}|${safeProject}]]`)
+          }
+          await ensureNote('Toggl', description, descGroups)
           createdNotes.add(noteKey)
           result.notesCreated++
         }
-      }
-
-      if (projectName) {
-        const safeName = cleanFileName(projectName)
-        const noteKey = `Toggl/${safeName}`
-        groups.push(`[[${noteKey}|${safeName}]]`)
-        if (!createdNotes.has(noteKey)) {
-          await ensureNote('Toggl', projectName)
-          createdNotes.add(noteKey)
-          result.notesCreated++
-        }
+      } else if (projectName) {
+        // No description — link time entry directly to project
+        const safeProject = cleanFileName(projectName)
+        groups.push(`[[Toggl/${safeProject}|${safeProject}]]`)
       }
 
       const start = dayjs(entry.start)
