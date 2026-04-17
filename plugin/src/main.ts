@@ -336,6 +336,14 @@ export default class AbelePlugin extends Plugin {
     })
 
     this.addCommand({
+      id: 'migrate-from-toggl',
+      name: 'Migrate time entries from Toggl',
+      callback: () => {
+        GlobalStore.getInstance().migrateFromTogglModalOpened.value = true
+      },
+    })
+
+    this.addCommand({
       id: 'show-time-tracking-sidebar',
       name: 'Show time tracking sidebar',
       callback: () => {
