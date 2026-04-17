@@ -21,6 +21,7 @@
       rows="1"
       @input="onInput"
       @keydown="onKeydown"
+      @paste="onPaste"
       @focus="emit('focus', true)"
       @blur="emit('focus', false)"
     />
@@ -169,6 +170,33 @@ const onFileSelected = async (e: Event) => {
   if (!fileList.length) return
 
   for (const file of fileList) {
+    try {
+      const vaultFile = await importExternalFile(file)
+      if (!attachments.value.some((a) => a.path === vaultFile.path)) {
+        attachments.value = [...attachments.value, vaultFile]
+      }
+    } catch (err: unknown) {
+      new Notice(`Failed to import ${file.name}: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+}
+
+const onPaste = async (e: ClipboardEvent) => {
+  const items = e.clipboardData?.items
+  if (!items) return
+
+  const files: File[] = []
+  for (const item of items) {
+    if (item.kind === 'file') {
+      const file = item.getAsFile()
+      if (file) files.push(file)
+    }
+  }
+
+  if (!files.length) return
+  e.preventDefault()
+
+  for (const file of files) {
     try {
       const vaultFile = await importExternalFile(file)
       if (!attachments.value.some((a) => a.path === vaultFile.path)) {
