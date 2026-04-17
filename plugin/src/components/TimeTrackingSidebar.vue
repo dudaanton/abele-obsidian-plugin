@@ -69,7 +69,12 @@
     <section class="abele-time-tracking-sidebar__section">
       <h3 class="abele-time-tracking-sidebar__section-title">Entries</h3>
       <div v-if="visibleEntries.length" class="abele-time-tracking-sidebar__entries">
-        <TimeEntryItem v-for="entry in visibleEntries" :key="entry.id" :entry="entry" />
+        <template v-for="(entry, idx) in visibleEntries" :key="entry.id">
+          <DateDivider v-if="showDateBefore(idx)" :date="entryDate(entry)">
+            {{ dayDuration(entryDate(entry)) }}
+          </DateDivider>
+          <TimeEntryItem :entry="entry" />
+        </template>
         <div ref="scrollSentinel" class="abele-time-tracking-sidebar__sentinel" />
       </div>
       <div v-else class="abele-time-tracking-sidebar__empty">No entries found</div>
@@ -97,6 +102,7 @@ import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import ChartTabs from './obsidian/ChartTabs.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
+import DateDivider from './obsidian/DateDivider.vue'
 import TimeEntryItem from './TimeEntryItem.vue'
 import dayjs from 'dayjs'
 
@@ -160,6 +166,26 @@ const formatDurationLong = (seconds: number): string => {
 const formatDurationShort = (seconds: number): string => {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
+
+const entryDate = (entry: TimeEntry): string => {
+  return entry.start?.format(DATE_FORMAT) ?? ''
+}
+
+const showDateBefore = (idx: number): boolean => {
+  if (idx === 0) return true
+  return entryDate(visibleEntries.value[idx]) !== entryDate(visibleEntries.value[idx - 1])
+}
+
+const dayDuration = (date: string): string => {
+  let total = 0
+  for (const e of periodEntries.value) {
+    if (e.start?.format(DATE_FORMAT) === date) total += e.duration
+  }
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
   if (h > 0) return `${h}h ${m}m`
   return `${m}m`
 }

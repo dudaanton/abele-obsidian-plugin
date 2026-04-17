@@ -3,7 +3,13 @@
     <em class="abele-task-view__content">Task not found</em>
     <ObsidianIcon icon="trash" @click="removeOrphaned" />
   </div>
-  <div v-else-if="task.loaded" ref="taskEl" class="abele-task-view">
+  <div
+    v-else-if="task.loaded"
+    ref="taskEl"
+    class="abele-task-view"
+    @click="onCardClick"
+    @contextmenu.prevent="onContextMenu"
+  >
     <div v-if="isOverdue && !atTimeline" class="abele-task-view__indicator" />
     <label class="task-list-label" contenteditable="false"
       ><input
@@ -46,15 +52,8 @@
     <ObsidianIcon
       v-if="task.description"
       :icon="showDescription ? 'chevron-up' : 'chevron-down'"
-      @click="toggleDescription"
+      @click.stop="toggleDescription"
     />
-    <div class="abele-task-view__buttons abele-task-view__buttons_full">
-      <ObsidianIcon icon="edit" @click="edit" />
-      <ObsidianIcon icon="trash" @click="promptRemove" />
-    </div>
-    <div class="abele-task-view__buttons abele-task-view__buttons_small">
-      <ObsidianIcon ref="menuButton" icon="edit" @click="menu.open" />
-    </div>
   </div>
 </template>
 
@@ -67,8 +66,7 @@ import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import { openFile } from '@/helpers/vaultUtils'
 import { useElementVisibility, useIntervalFn } from '@vueuse/core'
-import Icon from './obsidian/Icon.vue'
-import { Choice, useMenu } from '@/composables/useMenu'
+import { Menu } from 'obsidian'
 
 const props = defineProps<{
   task: Task
@@ -192,33 +190,30 @@ const isOverdue = computed(() => {
   return due.startOf('day').isBefore(now.startOf('day'))
 })
 
-const menuButton = ref<InstanceType<typeof Icon> | null>(null)
-
-const menuChoices = computed<Choice[]>(() => {
-  return [
-    { title: 'Edit', event: 'edit' },
-    { title: 'Delete', event: 'delete' },
-  ]
-})
-
-const handleMenuSelect = (event: string) => {
-  if (event === 'edit') {
-    edit()
-  } else if (event === 'delete') {
-    promptRemove()
-  }
-}
-
-const menu = useMenu(menuButton, menuChoices, handleMenuSelect)
-
-const edit = () => {
+const onCardClick = (e: MouseEvent) => {
+  const target = e.target as HTMLElement
+  if (
+    target.closest('a.internal-link') ||
+    target.closest('.abele-obsidian-icon') ||
+    target.closest('label')
+  )
+    return
   openFile(props.task.taskPath)
 }
 
-const promptRemove = () => {
-  if (confirm('Are you sure you want to delete this task?')) {
-    props.task.remove()
-  }
+const onContextMenu = (e: MouseEvent) => {
+  const menu = new Menu()
+  menu.addItem((item) => {
+    item
+      .setTitle('Delete')
+      .setIcon('trash')
+      .onClick(() => {
+        if (confirm('Are you sure you want to delete this task?')) {
+          props.task.remove()
+        }
+      })
+  })
+  menu.showAtPosition({ x: e.clientX, y: e.clientY })
 }
 
 const removeOrphaned = () => {
@@ -237,6 +232,12 @@ onMounted(() => {
   gap: 0.5em;
   margin-bottom: 0.25em;
   padding: 0.25em 0;
+  cursor: pointer;
+  border-radius: var(--radius-s);
+
+  &:hover {
+    background-color: var(--background-modifier-hover);
+  }
 
   p {
     margin: 0;
@@ -252,31 +253,6 @@ onMounted(() => {
       vertical-align: middle;
       margin-inline-start: var(--checkbox-margin-inline-start);
       margin-inline-end: 0.25em;
-    }
-  }
-}
-
-.abele-task-view__buttons {
-  align-items: flex-start;
-  gap: 0.5em;
-
-  &_full {
-    display: flex;
-  }
-
-  &_small {
-    display: none;
-  }
-}
-
-@media (max-width: 600px) {
-  .abele-task-view__buttons {
-    &_full {
-      display: none;
-    }
-
-    &_small {
-      display: flex;
     }
   }
 }

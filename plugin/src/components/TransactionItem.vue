@@ -2,7 +2,13 @@
   <div v-if="transaction.transactionNotFound" class="abele-transaction-view">
     <em class="abele-transaction-view__content">Transaction not found</em>
   </div>
-  <div v-else-if="transaction.loaded" ref="txEl" class="abele-transaction-view">
+  <div
+    v-else-if="transaction.loaded"
+    ref="txEl"
+    class="abele-transaction-view"
+    @click="onCardClick"
+    @contextmenu.prevent="onContextMenu"
+  >
     <div class="abele-transaction-view__content">
       <div class="abele-transaction-view__main">
         <ObsidianMarkdown
@@ -16,10 +22,6 @@
           :icon="showDescription ? 'chevron-up' : 'chevron-down'"
           @click.stop="toggleDescription"
         />
-        <span class="abele-transaction-view__amount" :class="amountClass">
-          {{ txType === 'expense' ? '-' : '' }}{{ formatAmount(transaction.amount ?? 0) }}
-          <span class="abele-transaction-view__currency">{{ transaction.currency }}</span>
-        </span>
       </div>
       <ObsidianMarkdown
         v-if="transaction.description && showDescription && contentLoaded"
@@ -43,28 +45,23 @@
             class="abele-transaction-view__link"
           />
         </span>
-        <span>{{ dateText }}</span>
       </div>
     </div>
-    <div class="abele-transaction-view__buttons abele-transaction-view__buttons_full">
-      <ObsidianIcon icon="edit" @click.stop="edit" />
-    </div>
-    <div class="abele-transaction-view__buttons abele-transaction-view__buttons_small">
-      <ObsidianIcon ref="menuButton" icon="edit" @click.stop="menu.open" />
-    </div>
+    <span class="abele-transaction-view__amount" :class="amountClass">
+      {{ txType === 'expense' ? '-' : '' }}{{ formatAmount(transaction.amount ?? 0) }}
+      <span class="abele-transaction-view__currency">{{ transaction.currency }}</span>
+    </span>
   </div>
 </template>
 
 <script setup lang="ts">
-import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { Transaction } from '@/entities/Transaction'
 import { computed, onMounted, ref, watch } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import { openFile } from '@/helpers/vaultUtils'
 import { useElementVisibility } from '@vueuse/core'
-import Icon from './obsidian/Icon.vue'
-import { Choice, useMenu } from '@/composables/useMenu'
+import { Menu } from 'obsidian'
 
 export type TransactionType = 'income' | 'expense' | 'transfer'
 
@@ -99,27 +96,25 @@ const amountClass = computed(() => {
   return `abele-transaction-view__amount--${props.txType}`
 })
 
-const dateText = computed(() => {
-  if (!props.transaction.date) return ''
-  return props.transaction.date.format(DISPLAY_DATE_FORMAT)
-})
-
-const menuButton = ref<InstanceType<typeof Icon> | null>(null)
-
-const menuChoices = computed<Choice[]>(() => {
-  return [{ title: 'Edit', event: 'edit' }]
-})
-
-const handleMenuSelect = (event: string) => {
-  if (event === 'edit') {
-    edit()
-  }
+const onCardClick = (e: MouseEvent) => {
+  const target = e.target as HTMLElement
+  if (target.closest('a.internal-link') || target.closest('.abele-obsidian-icon')) return
+  openFile(props.transaction.transactionPath)
 }
 
-const menu = useMenu(menuButton, menuChoices, handleMenuSelect)
-
-const edit = () => {
-  openFile(props.transaction.transactionPath)
+const onContextMenu = (e: MouseEvent) => {
+  const menu = new Menu()
+  menu.addItem((item) => {
+    item
+      .setTitle('Delete')
+      .setIcon('trash')
+      .onClick(() => {
+        if (confirm('Are you sure you want to delete this transaction?')) {
+          props.transaction.remove()
+        }
+      })
+  })
+  menu.showAtPosition({ x: e.clientX, y: e.clientY })
 }
 
 function formatAmount(value: number): string {
@@ -137,39 +132,20 @@ onMounted(() => {
 <style lang="scss">
 .abele-transaction-view {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.5em;
   margin-bottom: 0.25em;
   padding: 0.25em 0;
+  cursor: pointer;
+  border-radius: var(--radius-s);
+
+  &:hover {
+    background-color: var(--background-modifier-hover);
+  }
 
   p {
     margin: 0;
     word-break: break-word;
-  }
-}
-
-.abele-transaction-view__buttons {
-  align-items: flex-start;
-  gap: 0.5em;
-
-  &_full {
-    display: flex;
-  }
-
-  &_small {
-    display: none;
-  }
-}
-
-@media (max-width: 600px) {
-  .abele-transaction-view__buttons {
-    &_full {
-      display: none;
-    }
-
-    &_small {
-      display: flex;
-    }
   }
 }
 

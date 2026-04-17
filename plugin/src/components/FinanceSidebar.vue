@@ -119,12 +119,14 @@
     <section class="abele-finance-sidebar__section">
       <h3 class="abele-finance-sidebar__section-title">Recent Transactions</h3>
       <div v-if="visibleTransactions.length" class="abele-finance-sidebar__transactions">
-        <TransactionItem
-          v-for="tx in visibleTransactions"
-          :key="tx.id"
-          :transaction="tx"
-          :tx-type="transactionTypes.get(tx.id) || 'transfer'"
-        />
+        <template v-for="(tx, idx) in visibleTransactions" :key="tx.id">
+          <DateDivider v-if="showTxDateBefore(idx)" :date="txDateStr(tx)">
+            <span v-for="s in dayTxTotals(txDateStr(tx))" :key="s" style="margin-left: 0.5em">{{
+              s
+            }}</span>
+          </DateDivider>
+          <TransactionItem :transaction="tx" :tx-type="transactionTypes.get(tx.id) || 'transfer'" />
+        </template>
         <div ref="scrollSentinel" class="abele-finance-sidebar__sentinel" />
       </div>
       <div v-else class="abele-finance-sidebar__empty">No transactions found</div>
@@ -148,6 +150,7 @@ import { openFile } from '@/helpers/vaultUtils'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ChartTabs from './obsidian/ChartTabs.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
+import DateDivider from './obsidian/DateDivider.vue'
 import TransactionItem from './TransactionItem.vue'
 import dayjs from 'dayjs'
 import { toRaw } from 'vue'
@@ -863,6 +866,29 @@ useIntersectionObserver(scrollSentinel, ([entry]) => {
     visibleCount.value += PAGE_SIZE
   }
 })
+
+const txDateStr = (tx: any): string => {
+  return tx.date?.format(DATE_FORMAT) ?? ''
+}
+
+const showTxDateBefore = (idx: number): boolean => {
+  if (idx === 0) return true
+  return txDateStr(visibleTransactions.value[idx]) !== txDateStr(visibleTransactions.value[idx - 1])
+}
+
+const dayTxTotals = (date: string): string[] => {
+  const byCurrency = new Map<string, number>()
+  for (const tx of sortedTransactions.value) {
+    if (txDateStr(tx) !== date) continue
+    const cur = tx.currency || '?'
+    const type = transactionTypes.value.get(tx.id) || 'transfer'
+    const sign = type === 'income' ? 1 : -1
+    byCurrency.set(cur, (byCurrency.get(cur) || 0) + sign * (tx.amount || 0))
+  }
+  return Array.from(byCurrency.entries()).map(
+    ([cur, amount]) => `${amount >= 0 ? '+' : ''}${formatAmount(amount)} ${cur}`
+  )
+}
 
 // --- Formatting ---
 

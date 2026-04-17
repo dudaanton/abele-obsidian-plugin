@@ -196,6 +196,15 @@ export class Transaction {
     }
   }
 
+  async remove() {
+    const { app } = GlobalStore.getInstance()
+    const file = getFileByPathOrName(this.transactionPath)
+    if (file) {
+      await app.vault.delete(file)
+    }
+    this.cleanup()
+  }
+
   cleanup() {
     this.cleanedUp = true
     this.fileWatcher?.cleanup()

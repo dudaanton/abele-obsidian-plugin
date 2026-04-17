@@ -2,61 +2,53 @@
   <div v-if="entry.entryNotFound" class="abele-time-entry-item">
     <em class="abele-time-entry-item__content">Time entry not found</em>
   </div>
-  <div v-else-if="entry.loaded" class="abele-time-entry-item">
+  <div
+    v-else-if="entry.loaded"
+    class="abele-time-entry-item"
+    @click="onCardClick"
+    @contextmenu.prevent="onContextMenu"
+  >
     <div class="abele-time-entry-item__content">
-      <div class="abele-time-entry-item__main">
-        <span class="abele-time-entry-item__groups">
-          <template v-for="(group, idx) in entry.groups" :key="idx">
-            <ObsidianMarkdown
-              :text="ensureWikilinkAlias(group)"
-              :file-path="entry.entryPath"
-              class="abele-time-entry-item__link"
-            />
-            <span v-if="idx < entry.groups.length - 1">, </span>
-          </template>
-          <span v-if="!entry.groups.length" class="abele-time-entry-item__no-groups">Timer</span>
-        </span>
-        <span
-          class="abele-time-entry-item__duration"
-          :class="{ 'abele-time-entry-item__duration--active': entry.isActive }"
-        >
-          {{ entry.isActive ? elapsedText : durationText }}
-        </span>
-      </div>
-      <div class="abele-time-entry-item__info">
-        <span>{{ timeRange }}</span>
-        <span>{{ dateText }}</span>
-      </div>
+      <span class="abele-time-entry-item__groups">
+        <template v-for="(group, idx) in entry.groups" :key="idx">
+          <ObsidianMarkdown
+            :text="ensureWikilinkAlias(group)"
+            :file-path="entry.entryPath"
+            class="abele-time-entry-item__link"
+          />
+          <span v-if="idx < entry.groups.length - 1">, </span>
+        </template>
+        <span v-if="!entry.groups.length" class="abele-time-entry-item__no-groups">Timer</span>
+      </span>
     </div>
-    <div class="abele-time-entry-item__buttons">
-      <ObsidianIcon
-        v-if="entry.isActive"
-        icon="timer-off"
-        tooltip="Stop timer"
-        @click.stop="stopTimer"
-      />
-      <ObsidianIcon
-        v-else
-        icon="timer-reset"
-        tooltip="Start new timer with same groups"
-        @click.stop="startNew"
-      />
-      <ObsidianIcon ref="menuButton" icon="edit" @click.stop="menu.open" />
+    <div class="abele-time-entry-item__right">
+      <span
+        class="abele-time-entry-item__duration"
+        :class="{ 'abele-time-entry-item__duration--active': entry.isActive }"
+      >
+        {{ entry.isActive ? elapsedText : durationText }}
+      </span>
+      <span class="abele-time-entry-item__time-range">{{ timeRange }}</span>
     </div>
+    <ObsidianIcon
+      v-if="entry.isActive"
+      icon="timer-off"
+      tooltip="Stop timer"
+      @click.stop="stopTimer"
+    />
+    <ObsidianIcon v-else icon="timer-reset" tooltip="Start new" @click.stop="startNew" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { TimeEntry } from '@/entities/TimeEntry'
-import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
-import Icon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import { ensureWikilinkAlias } from '@/helpers/pathsHelpers'
 import { openFile } from '@/helpers/vaultUtils'
 import { createTimeEntry, stopActiveTimeEntry } from '@/commands/createTimeEntry'
-import { Choice, useMenu } from '@/composables/useMenu'
+import { Menu } from 'obsidian'
 import dayjs from 'dayjs'
 
 const props = defineProps<{
@@ -95,11 +87,6 @@ const formatDuration = (seconds: number): string => {
 const durationText = computed(() => formatDuration(props.entry.duration))
 const elapsedText = computed(() => formatDuration(elapsed.value))
 
-const dateText = computed(() => {
-  if (!props.entry.start) return ''
-  return props.entry.start.format(DISPLAY_DATE_FORMAT)
-})
-
 const timeRange = computed(() => {
   if (!props.entry.start) return ''
   const start = props.entry.start.format('HH:mm')
@@ -110,7 +97,11 @@ const timeRange = computed(() => {
   return `${start} — ...`
 })
 
-const edit = () => openFile(props.entry.entryPath)
+const onCardClick = (e: MouseEvent) => {
+  const target = e.target as HTMLElement
+  if (target.closest('a.internal-link') || target.closest('.abele-obsidian-icon')) return
+  openFile(props.entry.entryPath)
+}
 
 const stopTimer = () => stopActiveTimeEntry()
 
@@ -118,31 +109,35 @@ const startNew = () => {
   createTimeEntry({ groups: [...props.entry.groups] }, false)
 }
 
-const promptRemove = () => {
-  if (confirm('Are you sure you want to delete this time entry?')) {
-    props.entry.remove()
-  }
+const onContextMenu = (e: MouseEvent) => {
+  const menu = new Menu()
+  menu.addItem((item) => {
+    item
+      .setTitle('Delete')
+      .setIcon('trash')
+      .onClick(() => {
+        if (confirm('Are you sure you want to delete this time entry?')) {
+          props.entry.remove()
+        }
+      })
+  })
+  menu.showAtPosition({ x: e.clientX, y: e.clientY })
 }
-
-const menuButton = ref<InstanceType<typeof Icon> | null>(null)
-const menuChoices = computed<Choice[]>(() => [
-  { title: 'Edit', event: 'edit' },
-  { title: 'Delete', event: 'delete' },
-])
-const handleMenuSelect = (event: string) => {
-  if (event === 'edit') edit()
-  else if (event === 'delete') promptRemove()
-}
-const menu = useMenu(menuButton, menuChoices, handleMenuSelect)
 </script>
 
 <style lang="scss">
 .abele-time-entry-item {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.5em;
   margin-bottom: 0.25em;
   padding: 0.25em 0;
+  cursor: pointer;
+  border-radius: var(--radius-s);
+
+  &:hover {
+    background-color: var(--background-modifier-hover);
+  }
 
   p {
     margin: 0;
@@ -152,20 +147,10 @@ const menu = useMenu(menuButton, menuChoices, handleMenuSelect)
 
 .abele-time-entry-item__content {
   flex: 1;
-  overflow-wrap: break-word;
-  padding-top: 1px;
   min-width: 0;
 }
 
-.abele-time-entry-item__main {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 0.5em;
-}
-
 .abele-time-entry-item__groups {
-  flex: 1;
   min-width: 0;
 }
 
@@ -192,6 +177,13 @@ const menu = useMenu(menuButton, menuChoices, handleMenuSelect)
   }
 }
 
+.abele-time-entry-item__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
 .abele-time-entry-item__duration {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -203,19 +195,10 @@ const menu = useMenu(menuButton, menuChoices, handleMenuSelect)
   }
 }
 
-.abele-time-entry-item__info {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  margin-top: 0.25em;
-  font-size: 0.85em;
-  gap: 0.25em;
-  color: var(--text-muted);
-}
-
-.abele-time-entry-item__buttons {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5em;
+.abele-time-entry-item__time-range {
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-faint);
 }
 </style>

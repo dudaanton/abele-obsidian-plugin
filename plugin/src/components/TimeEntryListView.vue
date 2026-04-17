@@ -7,7 +7,12 @@
     <PeriodSelector v-model:start="periodStart" v-model:end="periodEnd" />
     <div v-if="dailyChartData.length" ref="chartEl" class="abele-time-entries-list__chart" />
     <div v-if="visible.length" class="abele-time-entries-list__items">
-      <TimeEntryItem v-for="entry in visible" :key="entry.id" :entry="entry" />
+      <template v-for="(entry, idx) in visible" :key="entry.id">
+        <DateDivider v-if="showDateBefore(idx)" :date="entryDate(entry)">
+          {{ dayDuration(entryDate(entry)) }}
+        </DateDivider>
+        <TimeEntryItem :entry="entry" />
+      </template>
       <div ref="scrollSentinel" class="abele-time-entries-list__sentinel" />
     </div>
     <div v-if="!filtered.length" class="abele-time-entries-list__empty">No time entries.</div>
@@ -20,6 +25,7 @@ import { DATE_FORMAT } from '@/constants/dates'
 import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
 import { GlobalStore } from '@/stores/GlobalStore'
 import TimeEntryItem from './TimeEntryItem.vue'
+import DateDivider from './obsidian/DateDivider.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
 import { computed, ref, watch, nextTick, onUnmounted } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
@@ -66,6 +72,26 @@ watch(periodEnd, () => {
   visibleCount.value = PAGE_SIZE
 })
 
+const entryDate = (entry: TimeEntry): string => {
+  return entry.start?.format(DATE_FORMAT) ?? ''
+}
+
+const showDateBefore = (idx: number): boolean => {
+  if (idx === 0) return true
+  return entryDate(visible.value[idx]) !== entryDate(visible.value[idx - 1])
+}
+
+const dayDuration = (date: string): string => {
+  let total = 0
+  for (const e of filtered.value) {
+    if (e.start?.format(DATE_FORMAT) === date) total += e.duration
+  }
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
+
 const totalText = computed(() => {
   let totalSeconds = 0
   for (const entry of filtered.value) {
@@ -73,7 +99,8 @@ const totalText = computed(() => {
   }
   const h = Math.floor(totalSeconds / 3600)
   const m = Math.floor((totalSeconds % 3600) / 60)
-  return `${h}h ${m}m`
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
 })
 
 // --- Daily bar chart ---

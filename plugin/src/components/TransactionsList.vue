@@ -5,12 +5,14 @@
       <ObsidianIcon icon="banknote-arrow-down" @click="addTransaction()" />
     </div>
     <div v-if="visible.length" class="abele-transactions-list__items">
-      <TransactionItem
-        v-for="tx in visible"
-        :key="tx.id"
-        :transaction="tx"
-        :tx-type="getType(tx)"
-      />
+      <template v-for="(tx, idx) in visible" :key="tx.id">
+        <DateDivider v-if="showDateBefore(idx)" :date="txDate(tx)">
+          <span v-for="s in dayTotals(txDate(tx))" :key="s" style="margin-left: 0.5em">{{
+            s
+          }}</span>
+        </DateDivider>
+        <TransactionItem :transaction="tx" :tx-type="getType(tx)" />
+      </template>
       <div ref="scrollSentinel" class="abele-transactions-list__sentinel" />
     </div>
     <div v-if="!sorted.length" class="abele-transactions-list__empty">No transactions.</div>
@@ -23,8 +25,10 @@ import { AccountsList } from '@/entities/AccountsList'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { pathToWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
 import TransactionItem from './TransactionItem.vue'
+import DateDivider from './obsidian/DateDivider.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import { createTransaction } from '@/commands/createTransaction'
+import { DATE_FORMAT } from '@/constants/dates'
 import { computed, ref, unref } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import dayjs from 'dayjs'
@@ -94,6 +98,29 @@ useIntersectionObserver(scrollSentinel, ([entry]) => {
     visibleCount.value += PAGE_SIZE
   }
 })
+
+const txDate = (tx: Transaction): string => {
+  return tx.date?.format(DATE_FORMAT) ?? ''
+}
+
+const showDateBefore = (idx: number): boolean => {
+  if (idx === 0) return true
+  return txDate(visible.value[idx]) !== txDate(visible.value[idx - 1])
+}
+
+const dayTotals = (date: string): string[] => {
+  const byCurrency = new Map<string, number>()
+  for (const tx of sorted.value) {
+    if (txDate(tx) !== date) continue
+    const cur = tx.currency || '?'
+    const sign = getType(tx) === 'income' ? 1 : -1
+    byCurrency.set(cur, (byCurrency.get(cur) || 0) + sign * (tx.amount || 0))
+  }
+  return Array.from(byCurrency.entries()).map(
+    ([cur, amount]) =>
+      `${amount >= 0 ? '+' : ''}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur}`
+  )
+}
 
 function addTransaction() {
   const al = unref(store.accountsList) as AccountsList | null
