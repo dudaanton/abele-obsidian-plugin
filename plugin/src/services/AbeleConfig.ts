@@ -209,7 +209,7 @@ export class AbeleConfig {
     this.fireflyBaseUrl = settings?.fireflyBaseUrl ?? DEFAULT_SETTINGS.fireflyBaseUrl
     this.fireflyToken = settings?.fireflyToken ?? DEFAULT_SETTINGS.fireflyToken
     this.timeEntryPathTemplate =
-      settings?.timeEntryPathTemplate || DEFAULT_SETTINGS.timeEntryPathTemplate
+      settings?.timeEntryPathTemplate ?? DEFAULT_SETTINGS.timeEntryPathTemplate
     this.timeTrackableNoteTypes = settings?.timeTrackableNoteTypes || [
       ...DEFAULT_SETTINGS.timeTrackableNoteTypes,
     ]

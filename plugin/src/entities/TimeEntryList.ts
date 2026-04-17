@@ -18,11 +18,12 @@ export class TimeEntryList {
     this.startWatching()
   }
 
-  readonly activeEntry = computed(() => {
+  readonly activeEntries = computed(() => {
+    const result: TimeEntry[] = []
     for (const entry of this.entries.values()) {
-      if (entry.isActive) return entry
+      if (entry.isActive) result.push(entry)
     }
-    return null
+    return result
   })
 
   private addEntry(path: string) {

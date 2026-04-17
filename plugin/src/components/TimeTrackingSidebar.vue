@@ -7,25 +7,32 @@
       </div>
     </div>
 
-    <!-- Active Timer -->
-    <div v-if="activeEntry" class="abele-time-tracking-sidebar__active">
+    <!-- Active Timers -->
+    <div
+      v-for="active in activeEntries"
+      :key="active.id"
+      class="abele-time-tracking-sidebar__active"
+    >
       <div class="abele-time-tracking-sidebar__active-header">
         <span class="abele-time-tracking-sidebar__active-label">Active Timer</span>
-        <ObsidianIcon icon="timer-off" tooltip="Stop timer" @click="stopTimer" />
+        <ObsidianIcon icon="timer-off" tooltip="Stop timer" @click="stopSingle(active)" />
       </div>
       <div class="abele-time-tracking-sidebar__active-groups">
-        <ObsidianMarkdown
-          v-for="(group, idx) in activeEntry.groups"
-          :key="idx"
-          :text="group"
-          :file-path="activeEntry.entryPath"
-          class="abele-time-tracking-sidebar__link"
-        />
-        <span v-if="!activeEntry.groups.length" class="abele-time-tracking-sidebar__no-groups">
+        <template v-for="(group, idx) in active.groups" :key="idx">
+          <ObsidianMarkdown
+            :text="ensureWikilinkAlias(group)"
+            :file-path="active.entryPath"
+            class="abele-time-tracking-sidebar__link"
+          />
+          <span v-if="idx < active.groups.length - 1">, </span>
+        </template>
+        <span v-if="!active.groups.length" class="abele-time-tracking-sidebar__no-groups">
           No groups
         </span>
       </div>
-      <div class="abele-time-tracking-sidebar__active-elapsed">{{ activeElapsedText }}</div>
+      <div class="abele-time-tracking-sidebar__active-elapsed">
+        {{ formatDurationLong(activeElapsedMap[active.id] || 0) }}
+      </div>
     </div>
 
     <!-- Period selector -->
@@ -75,11 +82,16 @@ import { computed, ref, unref, watch, nextTick, onUnmounted } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TimeEntryList } from '@/entities/TimeEntryList'
-import { TimeEntry } from '@/entities/TimeEntry'
-import { createTimeEntry, stopActiveTimeEntry } from '@/commands/createTimeEntry'
+import { TimeEntry, DATETIME_FORMAT } from '@/entities/TimeEntry'
+import { createTimeEntry } from '@/commands/createTimeEntry'
+import { TFile } from 'obsidian'
 import { DATE_FORMAT } from '@/constants/dates'
 import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
-import { extractAliasOrNameFromWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
+import {
+  ensureWikilinkAlias,
+  extractAliasOrNameFromWikilink,
+  wikilinkToPath,
+} from '@/helpers/pathsHelpers'
 import { openFile } from '@/helpers/vaultUtils'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
@@ -97,30 +109,33 @@ const store = GlobalStore.getInstance()
 
 const timeEntryList = computed(() => unref(store.timeEntryList) as TimeEntryList | null)
 
-const activeEntry = computed(() => (timeEntryList.value?.activeEntry ?? null) as TimeEntry | null)
+const activeEntries = computed(
+  () => (timeEntryList.value?.activeEntries ?? []) as unknown as TimeEntry[]
+)
 
-// Active timer elapsed
-const activeElapsed = ref(0)
+// Active timers elapsed — one counter per active entry
+const activeElapsedMap = ref<Record<string, number>>({})
 let activeInterval: ReturnType<typeof setInterval> | null = null
 
 const updateActiveElapsed = () => {
-  const active = activeEntry.value
-  if (active?.start) {
-    activeElapsed.value = dayjs().diff(active.start, 'second')
-  } else {
-    activeElapsed.value = 0
+  const map: Record<string, number> = {}
+  for (const entry of activeEntries.value) {
+    if (entry.start) {
+      map[entry.id] = dayjs().diff(entry.start, 'second')
+    }
   }
+  activeElapsedMap.value = map
 }
 
 watch(
-  activeEntry,
-  (entry) => {
+  () => activeEntries.value.length,
+  (count) => {
     if (activeInterval) clearInterval(activeInterval)
-    if (entry) {
+    if (count > 0) {
       updateActiveElapsed()
       activeInterval = setInterval(updateActiveElapsed, 1000)
     } else {
-      activeElapsed.value = 0
+      activeElapsedMap.value = {}
     }
   },
   { immediate: true }
@@ -149,9 +164,14 @@ const formatDurationShort = (seconds: number): string => {
   return `${m}m`
 }
 
-const activeElapsedText = computed(() => formatDurationLong(activeElapsed.value))
-
-const stopTimer = () => stopActiveTimeEntry()
+const stopSingle = async (entry: TimeEntry) => {
+  const file = store.app.vault.getAbstractFileByPath(entry.entryPath)
+  if (file instanceof TFile) {
+    await store.app.fileManager.processFrontMatter(file, (fm) => {
+      fm.end = dayjs().format(DATETIME_FORMAT)
+    })
+  }
+}
 
 const startEmptyTimer = () => createTimeEntry(undefined, true)
 

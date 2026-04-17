@@ -100,6 +100,15 @@ export function pathToWikilink(path: string, alias?: string): string {
   return `[[${path}|${alias}]]`
 }
 
+export function ensureWikilinkAlias(link: string): string {
+  const match = link.match(/\[\[([^\]|]+)(\|[^\]]+)?\]\]/)
+  if (!match) return link
+  if (match[2]) return link // already has alias
+  const path = match[1]
+  const name = getFileNameFromPath(path)
+  return `[[${path}|${name}]]`
+}
+
 export function removeAliasFromWikilink(link: string): string {
   const match = link.match(/\[\[([^\]]+)\]\]/)
   if (match) {

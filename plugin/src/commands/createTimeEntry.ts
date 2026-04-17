@@ -1,4 +1,4 @@
-import { TimeEntryCreateDTO, DATETIME_FORMAT } from '@/entities/TimeEntry'
+import { TimeEntry, TimeEntryCreateDTO, DATETIME_FORMAT } from '@/entities/TimeEntry'
 import { TimeEntryNoteTemplate } from '@/templates/TimeEntryNoteTemplate'
 import { extractAliasOrNameFromWikilink } from '@/helpers/pathsHelpers'
 import { renderTemplate } from '@/helpers/notesUtils'
@@ -49,16 +49,18 @@ export const stopActiveTimeEntry = async (): Promise<boolean> => {
   const rawList = toRaw(store.timeEntryList.value) as unknown as TimeEntryList | null
   if (!rawList) return false
 
-  const active = rawList.activeEntry.value
-  if (!active) return false
+  const actives = rawList.activeEntries.value as TimeEntry[]
+  if (!actives.length) return false
 
-  const file = store.app.vault.getAbstractFileByPath(active.entryPath)
-  if (!(file instanceof TFile)) return false
-
-  // Setting end in frontmatter triggers VaultWatcher auto-rename to include end time.
-  await store.app.fileManager.processFrontMatter(file, (frontmatter) => {
-    frontmatter.end = dayjs().format(DATETIME_FORMAT)
-  })
+  const now = dayjs()
+  for (const active of actives) {
+    const file = store.app.vault.getAbstractFileByPath(active.entryPath)
+    if (file instanceof TFile) {
+      await store.app.fileManager.processFrontMatter(file, (frontmatter) => {
+        frontmatter.end = now.format(DATETIME_FORMAT)
+      })
+    }
+  }
 
   return true
 }

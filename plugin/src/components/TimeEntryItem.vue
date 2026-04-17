@@ -8,7 +8,7 @@
         <span class="abele-time-entry-item__groups">
           <template v-for="(group, idx) in entry.groups" :key="idx">
             <ObsidianMarkdown
-              :text="group"
+              :text="ensureWikilinkAlias(group)"
               :file-path="entry.entryPath"
               class="abele-time-entry-item__link"
             />
@@ -53,6 +53,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import Icon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
+import { ensureWikilinkAlias } from '@/helpers/pathsHelpers'
 import { openFile } from '@/helpers/vaultUtils'
 import { createTimeEntry, stopActiveTimeEntry } from '@/commands/createTimeEntry'
 import { Choice, useMenu } from '@/composables/useMenu'
@@ -166,9 +167,6 @@ const menu = useMenu(menuButton, menuChoices, handleMenuSelect)
 .abele-time-entry-item__groups {
   flex: 1;
   min-width: 0;
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0.25em;
 }
 
 .abele-time-entry-item__no-groups {

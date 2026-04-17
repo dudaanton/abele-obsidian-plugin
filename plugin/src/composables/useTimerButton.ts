@@ -24,28 +24,40 @@ export function useTimerButton(
 
   const timeEntryList = computed(() => unref(store.timeEntryList) as TimeEntryList | null)
 
-  const activeTimeEntry = computed(
-    () => (timeEntryList.value?.activeEntry ?? null) as unknown as TimeEntry | null
+  const activeEntries = computed(
+    () => (timeEntryList.value?.activeEntries ?? []) as unknown as TimeEntry[]
   )
 
   const isTimerActiveForNote = computed(() => {
-    const active = activeTimeEntry.value
-    if (!active) return false
+    if (!activeEntries.value.length) return false
     const basename = filePath.value.replace(/\.md$/, '').split('/').pop() || ''
     const pathNoExt = filePath.value.replace(/\.md$/, '')
-    return active.groups.some((g) => {
-      const linkPath = wikilinkToPath(g)
-      return linkPath === basename || linkPath === pathNoExt
-    })
+    return activeEntries.value.some((entry) =>
+      entry.groups.some((g) => {
+        const linkPath = wikilinkToPath(g)
+        return linkPath === basename || linkPath === pathNoExt
+      })
+    )
   })
 
   const timerElapsed = ref(0)
   let timerInterval: ReturnType<typeof setInterval> | null = null
 
   const updateElapsed = () => {
-    const active = activeTimeEntry.value
-    if (active?.start && isTimerActiveForNote.value) {
-      timerElapsed.value = dayjs().diff(active.start, 'second')
+    if (!isTimerActiveForNote.value) {
+      timerElapsed.value = 0
+      return
+    }
+    const basename = filePath.value.replace(/\.md$/, '').split('/').pop() || ''
+    const pathNoExt = filePath.value.replace(/\.md$/, '')
+    const match = activeEntries.value.find((entry) =>
+      entry.groups.some((g) => {
+        const linkPath = wikilinkToPath(g)
+        return linkPath === basename || linkPath === pathNoExt
+      })
+    )
+    if (match?.start) {
+      timerElapsed.value = dayjs().diff(match.start, 'second')
     } else {
       timerElapsed.value = 0
     }
