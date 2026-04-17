@@ -48,6 +48,13 @@
   >
     <TimeTrackingSidebarView />
   </Teleport>
+  <Teleport
+    v-for="[id, instance] in findAndReplaceBasesInstances"
+    :key="id"
+    :to="`[${FIND_AND_REPLACE_ID_ATTR}='${id}']`"
+  >
+    <FindAndReplaceBases :files="instance.files" />
+  </Teleport>
   <FindAndReplaceModal
     v-if="findAndReplaceModalOpened"
     @close="findAndReplaceModalOpened = false"
@@ -93,6 +100,7 @@ import { Header } from '@/entities/Header'
 import { Footer } from '@/entities/Footer'
 import TimelineSidebarView from './TimelineSidebar.vue'
 import TodoSidebarView from './TodoSidebar.vue'
+import FindAndReplaceBases from './FindAndReplaceBases.vue'
 import FindAndReplaceModal from './FindAndReplaceModal.vue'
 import MigrateFromDataviewModal from './MigrateFromDataviewModal.vue'
 import SaveMediaModal from './SaveMediaModal.vue'
@@ -104,6 +112,7 @@ import MigrateFromTogglModal from './MigrateFromTogglModal.vue'
 import { TIMELINE_SIDEBAR_ID_ATTR } from '@/views/TimelineSidebarView'
 import { TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'
 import { AI_SIDEBAR_ID_ATTR } from '@/views/AiSidebarView'
+import { FIND_AND_REPLACE_ID_ATTR } from '@/bases/FindAndReplaceView'
 import { FINANCE_SIDEBAR_ID_ATTR } from '@/views/FinanceSidebarView'
 import { TIME_TRACKING_SIDEBAR_ID_ATTR } from '@/views/TimeTrackingSidebarView'
 import AiChatView from './AiChat.vue'
@@ -131,6 +140,7 @@ const {
   aiSidebarId,
   financeSidebarId,
   timeTrackingSidebarId,
+  findAndReplaceBasesInstances,
   settingsTabId,
 } = GlobalStore.getInstance()
 </script>

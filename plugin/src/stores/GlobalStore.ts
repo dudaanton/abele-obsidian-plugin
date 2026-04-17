@@ -25,7 +25,8 @@ import { getAvailablePath, readFileContent } from '@/helpers/vaultUtils'
 import { VaultWatcher } from '@/helpers/VaultWatcher'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { App, TFile } from 'obsidian'
-import { computed, ref, toRaw } from 'vue'
+import { computed, ref, shallowRef, toRaw } from 'vue'
+import type { FindAndReplaceInstance } from '@/bases/FindAndReplaceView'
 
 export class GlobalStore {
   private static instance: GlobalStore
@@ -53,6 +54,9 @@ export class GlobalStore {
   public readonly aiSidebarId = ref<string | null>(null)
   public readonly financeSidebarId = ref<string | null>(null)
   public readonly timeTrackingSidebarId = ref<string | null>(null)
+  public readonly findAndReplaceBasesInstances = shallowRef<Map<string, FindAndReplaceInstance>>(
+    new Map()
+  )
 
   public readonly tasksList = ref<TasksList | null>(null)
   public readonly transactionsList = ref<TransactionsList | null>(null)

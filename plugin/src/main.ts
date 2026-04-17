@@ -38,6 +38,7 @@ import {
   TimeTrackingSidebarView,
 } from './views/TimeTrackingSidebarView'
 import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
+import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
 import { AgentService } from './ai/AgentService'
 import { ScopeResolver } from './ai/ScopeResolver'
 import { ChatStorage } from './ai/ChatStorage'
@@ -182,6 +183,12 @@ export default class AbelePlugin extends Plugin {
           step: 50,
         },
       ],
+    })
+
+    this.registerBasesView(FIND_AND_REPLACE_VIEW_ID, {
+      name: 'Find and replace',
+      icon: 'replace-all',
+      factory: (controller, containerEl) => new FindAndReplaceView(controller, containerEl),
     })
 
     this.initializeVue()
