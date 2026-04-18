@@ -791,6 +791,8 @@ function renderNetworthChart() {
         boundaryGap: false,
         axisLabel: {
           interval: Math.max(Math.floor(dates.length / 6) - 1, 0),
+          hideOverlap: true,
+          ...(dates.length > 8 ? { rotate: 45 } : {}),
         },
       },
       yAxis: { type: 'value' },
