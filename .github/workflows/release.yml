@@ -1,0 +1,48 @@
+name: Release Obsidian Plugin
+
+on:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+
+      - name: Build plugin
+        working-directory: plugin
+        run: |
+          npm ci
+          npm run build
+
+      - name: Create release with changelog
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+
+          prev_tag=$(git tag --sort=-v:refname | grep -v "^${tag}$" | head -n 1)
+
+          if [ -n "$prev_tag" ]; then
+            changelog=$(git log "${prev_tag}..${tag}" --pretty=format:"- %h %s" --no-merges)
+          else
+            changelog=$(git log --pretty=format:"- %h %s" --no-merges)
+          fi
+
+          gh release create "$tag" \
+            --title="$tag" \
+            --notes="$changelog" \
+            plugin/build/main.js \
+            plugin/manifest.json \
+            plugin/build/main.css
