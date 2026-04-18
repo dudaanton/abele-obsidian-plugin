@@ -40,9 +40,11 @@ jobs:
             changelog=$(git log --pretty=format:"- %h %s" --no-merges)
           fi
 
+          cp plugin/build/main.css plugin/build/styles.css
+
           gh release create "$tag" \
             --title="$tag" \
             --notes="$changelog" \
             plugin/build/main.js \
             plugin/manifest.json \
-            plugin/build/main.css
+            plugin/build/styles.css
