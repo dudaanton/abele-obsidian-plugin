@@ -341,6 +341,8 @@ function renderDailyChart() {
         axisLabel: {
           color: colors.textMuted,
           interval: Math.max(Math.floor(data.length / 6) - 1, 0),
+          hideOverlap: true,
+          ...(data.length > 8 ? { rotate: 45 } : {}),
         },
         axisLine: { lineStyle: { color: colors.border } },
       },

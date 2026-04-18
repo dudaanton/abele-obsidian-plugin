@@ -225,6 +225,8 @@ export class ChartView extends BasesView {
           data: xLabels,
           axisLabel: {
             interval: Math.max(Math.floor(xLabels.length / 6) - 1, 0),
+            hideOverlap: true,
+            ...(xLabels.length > 8 ? { rotate: 45 } : {}),
           },
         },
         yAxis:
@@ -331,6 +333,8 @@ export class ChartView extends BasesView {
           data: xLabels,
           axisLabel: {
             interval: Math.max(Math.floor(xLabels.length / 6) - 1, 0),
+            hideOverlap: true,
+            ...(xLabels.length > 8 ? { rotate: 45 } : {}),
           },
         },
         yAxis: { type: logScale ? 'log' : 'value' },
