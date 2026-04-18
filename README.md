@@ -1,5 +1,7 @@
 # Ābele Obsidian plugin
 
+![Ābele plugin preview](assets/abele_preview.jpg)
+
 An Obsidian plugin that adds a lot of functionality I personally find missing:
 
 - Tasks
@@ -7,9 +9,15 @@ An Obsidian plugin that adds a lot of functionality I personally find missing:
 - Journals
 - Logs
 - Templates
+- Financial Tracker
+- Time Tracker
+- Image Galleries
+- AI Agent
 - Various helper tools, etc.
 
 I've been working on this plugin for several years. Originally, it was more of a collection of helpers that were hard to adapt to workflows different from my own. It was also heavily dependent on the Dataview API. Recently, I decided to rewrite it from scratch to make it more universal and as independent as possible from other plugins. My goal is to consolidate all the functionality I need into a single plugin.
+
+The plugin has been tested on a vault with over 16k notes on both desktop and iOS.
 
 ## Features
 
@@ -41,9 +49,49 @@ Having tasks as separate notes allows for very detailed descriptions, attaching 
 
 Besides daily notes, I keep monthly and yearly ones, as well as a separate daily health journal where I collect data exported from Apple Health — and I don't want to mix it with my main journal. To manage them effectively, navigate between adjacent notes, quickly create them, and have quick access to them, I developed the journals functionality. It groups notes belonging to one journal, automatically creates them using configurable paths for each journal, allows switching between multiple journals for a specific date, opens them via calendar click, and shows which dates have journal notes and open tasks.
 
+### Financial Tracker
+
+This is a relatively new feature of the plugin. I previously used Firefly III, but I missed the linking capabilities that Obsidian provides and wanted a simpler way to create transactions. Firefly's analytics were also rather inconvenient. All of this led to a natural conclusion — adding financial tracking support directly in Obsidian.
+
+Each transaction is a separate file with `from`, `to`, amount, and currency specified in its properties. `From` and `To` are simply links to account notes, which come in the following types: assets, income, expenses, and liabilities. Depending on the account types, a transaction is counted as positive, negative, or neutral (for transfers between wallets) in the overall balance.
+
+Transaction lists and analytics are available in the finance sidebar, in all account notes, and in all notes referenced by a transaction.
+
+The module supports multi-currency operations in the same way Firefly does — by specifying the amount in two currencies.
+
+### Time Tracker
+
+The time tracker serves as my replacement for Toggl. It's conceptually very similar to the financial module, except instead of transactions there are time entries. Each time entry has a start and end time, as well as a `groups` property that links to the note being tracked. It follows the same Obsidian-native approach where one time entry = one file.
+
+As with finances, the list of time entries can be viewed in the sidebar and in all notes linked to time entries, as well as their groups and so on up the tree. This means if you have tasks under a project and you track time against them, the project note will display the total time spent on it.
+
+For reports, I use the built-in Bases functionality, which allows exporting a ready-made CSV file for all tasks and projects.
+
+### AI Agent
+
+My goal was never to create a new Claude Code or a full-fledged replacement inside Obsidian. The main reason I decided to embed an agent chat in Obsidian is that I want fine-grained control over file access that I grant to agents. Since my file structure is flat, simply granting access to a folder wouldn't work.
+
+Instead, I implemented a very flexible access system with a virtual filesystem for agents. You can grant access to individual files, folders, patterns, and — most importantly — entire branches of files linked through the `groups` property. For example, you can grant access to a "My Project" group, and all notes referencing that project through `groups`, as well as all their sub-notes and so on, will be accessible to the agent.
+
+To enable the agent to work with Obsidian, it has basic file operation tools, web search (via Brave Search), fetch, image reading/generating, and various other essential capabilities.
+
+There is also support for skills and a prompt library. My favorite skill is probably "defuddle", which teaches the agent how to load website content efficiently, directly in markdown format.
+
+### Images Gallery
+
+Another long-standing pain point in my Obsidian workflow — working with images — is solved by this module. You can conveniently add and manage image display within notes, move them, edit them, and much more.
+
+### Charts Bases View
+
+Since my Obsidian vault contains a lot of numerical data (finances, time tracking, and beyond), I wanted to be able to visualize it as charts to see trends, correlations, and analytics. And since I already had to add charts for other modules, I added a new Obsidian Bases View type for charts.
+
+You can build various types of charts using any data from your notes.
+
 ### Templates
 
-For templates, I used to use the powerful Templater plugin for Obsidian. Personally, I didn't find it very convenient, and it seemed unsafe since it executed JS directly from notes. I wanted a more lightweight solution with more convenient template selection, so I wrote my own templating implementation. It's functional now but will be expanded further.
+For templates, I used to use the powerful Templater plugin for Obsidian. Personally, I didn't find it very convenient, and it seemed unsafe since it executed JS directly from notes. I wanted a more lightweight solution with more convenient template selection, so I wrote my own templating implementation.
+
+Over time, templates became used across all other modules, becoming an important foundation of the entire plugin.
 
 ### Find and replace
 
@@ -55,11 +103,11 @@ For these purposes, I wrote the find-and-replace module, which works with condit
 
 ## Roadmap
 
-The plugin currently implements only a portion of the functionality I planned during the design phase. In my first version of the plugin, I used a custom backend built on Strapi for uploading media to my server, creating Anki language cards using LLM, loading content from social networks, viewing images, and much more. The old version also had AnkiConnect integration, which I want to port to this version in a more universal way. Additionally, I planned to add better image gallery handling and optional, transparent LLM functionality. All of this will be implemented in the near future.
+Currently, the plan includes some refactoring and performance optimization, plus fixing known bugs.
 
 ## Development approach
 
-The core of the plugin was written by me manually (~90% at the time of publishing the code on GitHub was written without LLM code generation). Over the past six months, I've started using LLM more actively in my work, so some code is now LLM-generated. However, I don't use agents (my workflow is based on CodeCompanion in Neovim), as I still consider them unreliable, and I review generated code in real time. In any case, I think it's right to mention this here.
+The original version of the plugin, its architecture, and all core functionality — including logs, journals, tasks, timeline, templates, find and replace, and most of the UI and helpers — were written entirely by hand. Over time, I started using LLMs more actively, including agents recently, as they've finally become reliable enough. So the plugin is now developed in part with the help of LLMs. I think it's important to mention this. That said, I review the code and periodically refactor it, and I always verify the plugin's functionality before pushing it here.
 
 The plugin is currently in very active development, so bugs are expected. I also haven't written detailed documentation yet. However, if you want to try it and can't get it running, please open an Issue — I'll try to help.
 
@@ -70,7 +118,3 @@ TODO
 ## License
 
 [GPL-3.0](LICENSE)
-
----
-
-And yes, this README was translated by an LLM, so if you notice any inaccuracies — please let me know.
