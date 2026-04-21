@@ -146,7 +146,7 @@ export class TemplateService {
     content = await this.applyTargetProperties(content, template, variables, userValues)
 
     // Determine target path
-    const targetPath = await this.resolveTargetPath(template, variables, userValues)
+    const targetPath = await this.resolveTargetPath(template, userValues)
 
     // Create file
     const file = await this.createFileWithPath(targetPath, content)
@@ -273,7 +273,6 @@ export class TemplateService {
    */
   private async resolveTargetPath(
     template: UserTemplate,
-    variables: TemplateVariable[],
     userValues: Map<string, string>
   ): Promise<string> {
     const { app } = GlobalStore.getInstance()
@@ -283,7 +282,8 @@ export class TemplateService {
 
     // Resolve target_folder if specified
     if (template.targetFolder) {
-      folder = await applyTemplateVariables(template.targetFolder, variables, userValues)
+      const { variables: folderVars } = parseTemplateVariables(template.targetFolder)
+      folder = await applyTemplateVariables(template.targetFolder, folderVars, userValues)
     } else {
       // Use Obsidian's default location for new files
       const defaultLocation = (app.vault as any).getConfig?.('newFileLocation') || 'root'
@@ -300,7 +300,8 @@ export class TemplateService {
 
     // Resolve target_name if specified
     if (template.targetName) {
-      name = await applyTemplateVariables(template.targetName, variables, userValues)
+      const { variables: nameVars } = parseTemplateVariables(template.targetName)
+      name = await applyTemplateVariables(template.targetName, nameVars, userValues)
     }
 
     // Build full path
