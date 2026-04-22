@@ -5,12 +5,13 @@ import { getNameFromPath, normalizePath } from '@/helpers/pathsHelpers'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import dayjs from 'dayjs'
-import { debounce } from 'obsidian'
+import { debounce, TFile } from 'obsidian'
 
 export class Note {
   public filePath: string
 
   public createdAt: dayjs.Dayjs | null = null
+  public updatedAt: dayjs.Dayjs | null = null
   public type: string | null = null
 
   public loaded = false
@@ -41,8 +42,14 @@ export class Note {
 
     const frontmatter = getFrontmatterFromCache(this.filePath)
 
+    const { app } = GlobalStore.getInstance()
+    const file = app.vault.getAbstractFileByPath(this.filePath)
+
     if (frontmatter) {
       this.createdAt = parseDateOrNull(frontmatter.created) ?? extractDateFromFilename(this.name)
+      this.updatedAt =
+        parseDateOrNull(frontmatter.updated) ??
+        (file instanceof TFile ? dayjs(file.stat.mtime) : null)
       this.type = frontmatter.type || null
     } else {
       this.noteNotFound = true
@@ -77,6 +84,7 @@ export class Note {
 
   cleanData() {
     this.createdAt = null
+    this.updatedAt = null
     this.type = null
     this.loaded = false
   }
