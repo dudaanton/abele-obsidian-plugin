@@ -13,9 +13,6 @@ export interface AbeleSettings {
   journals?: JournalDTO[]
   busyDayThreshold?: number // Optional threshold for busy day
   excludedPathsForDefaultTemplate?: string[] // Paths where default template should not apply
-  // Server settings
-  baseUrl?: string // Backend API base URL
-  apiToken?: string // API authentication token
   // AI Agent settings
   ai?: AiSettings
   // Finance settings
@@ -46,8 +43,6 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   journals: [],
   busyDayThreshold: 3,
   excludedPathsForDefaultTemplate: ['attachments/', 'templates/'],
-  baseUrl: '',
-  apiToken: '',
   ai: { ...DEFAULT_AI_SETTINGS },
   transactionPathTemplate: 'Finance/Transactions/{{date:YYYY/MM}}/{{title}}',
   transactionTemplatePath: '',
@@ -78,8 +73,6 @@ export class AbeleConfig {
   public excludedPathsForDefaultTemplate: string[]
 
   public journals: Journal[]
-  public baseUrl: string
-  public apiToken: string
   public ai: AiSettings
   public transactionPathTemplate: string
   public transactionTemplatePath: string
@@ -194,8 +187,6 @@ export class AbeleConfig {
     this.excludedPathsForDefaultTemplate = settings?.excludedPathsForDefaultTemplate || [
       ...DEFAULT_SETTINGS.excludedPathsForDefaultTemplate,
     ]
-    this.baseUrl = settings?.baseUrl || DEFAULT_SETTINGS.baseUrl
-    this.apiToken = settings?.apiToken || DEFAULT_SETTINGS.apiToken
     this.ai = settings?.ai ? { ...DEFAULT_AI_SETTINGS, ...settings.ai } : { ...DEFAULT_AI_SETTINGS }
     this.transactionPathTemplate =
       settings?.transactionPathTemplate || DEFAULT_SETTINGS.transactionPathTemplate
@@ -229,8 +220,6 @@ export class AbeleConfig {
       journals: this.journals.map((j) => j.toDTO()),
       busyDayThreshold: this.busyDayThreshold,
       excludedPathsForDefaultTemplate: [...this.excludedPathsForDefaultTemplate],
-      baseUrl: this.baseUrl,
-      apiToken: this.apiToken,
       ai: { ...this.ai },
       transactionPathTemplate: this.transactionPathTemplate,
       transactionTemplatePath: this.transactionTemplatePath,
