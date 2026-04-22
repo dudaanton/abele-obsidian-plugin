@@ -71,6 +71,7 @@ export class ChartView extends BasesView {
     const logScale = !!this.config.get('logScale')
     const dualAxis = !!this.config.get('dualAxis')
     const showDots = !!this.config.get('showDots')
+    const timeAxis = !!this.config.get('timeAxis')
     const dateProp = this.config.getAsPropertyId('dateProperty')
     const groupProp = this.config.getAsPropertyId('groupProperty')
 
@@ -136,7 +137,7 @@ export class ChartView extends BasesView {
     }
 
     if (chartType === 'scatter') {
-      this.renderScatter(points, valueProps, groupProp, logScale)
+      this.renderScatter(points, valueProps, groupProp, logScale, timeAxis)
     } else {
       this.renderCategorySeries(
         points,
@@ -145,7 +146,8 @@ export class ChartView extends BasesView {
         chartType,
         logScale,
         dualAxis,
-        showDots
+        showDots,
+        timeAxis
       )
     }
   }
@@ -157,7 +159,8 @@ export class ChartView extends BasesView {
     chartType: 'line' | 'bar',
     logScale: boolean,
     dualAxis: boolean,
-    showDots: boolean
+    showDots: boolean,
+    timeAxis: boolean
   ): void {
     const allDates = [...new Set(points.map((p) => p.date))].sort()
     const hasGroups = groupProp && new Set(points.map((p) => p.group)).size > 1
@@ -165,7 +168,7 @@ export class ChartView extends BasesView {
 
     interface Series {
       name: string
-      data: (number | null)[]
+      data: (number | null)[] | [string, number][]
     }
 
     const seriesList: Series[] = []
@@ -175,23 +178,36 @@ export class ChartView extends BasesView {
       for (const prop of valueProps) {
         const propName = this.config.getDisplayName(prop)
         const name = hasGroups ? `${group} — ${propName}` : propName
-        const data: (number | null)[] = new Array(allDates.length).fill(null)
 
-        for (const point of points) {
-          if (point.group !== group) continue
-          const val = point.values.get(prop)
-          if (val !== undefined) {
-            const idx = dateIndex.get(point.date)!
-            if (chartType === 'bar' && data[idx] !== null) {
-              data[idx] = data[idx]! + val
-            } else {
-              data[idx] = val
+        if (timeAxis) {
+          const data: [string, number][] = []
+          for (const point of points) {
+            if (point.group !== group) continue
+            const val = point.values.get(prop)
+            if (val !== undefined) {
+              data.push([point.date, val])
             }
           }
-        }
-
-        if (data.some((v) => v !== null)) {
-          seriesList.push({ name, data })
+          if (data.length) {
+            seriesList.push({ name, data })
+          }
+        } else {
+          const data: (number | null)[] = new Array(allDates.length).fill(null)
+          for (const point of points) {
+            if (point.group !== group) continue
+            const val = point.values.get(prop)
+            if (val !== undefined) {
+              const idx = dateIndex.get(point.date)!
+              if (chartType === 'bar' && data[idx] !== null) {
+                data[idx] = data[idx]! + val
+              } else {
+                data[idx] = val
+              }
+            }
+          }
+          if (data.some((v) => v !== null)) {
+            seriesList.push({ name, data })
+          }
         }
       }
     }
@@ -220,15 +236,20 @@ export class ChartView extends BasesView {
           bottom: 40,
           containLabel: true,
         },
-        xAxis: {
-          type: 'category',
-          data: xLabels,
-          axisLabel: {
-            interval: Math.max(Math.floor(xLabels.length / 6) - 1, 0),
-            hideOverlap: true,
-            ...(xLabels.length > 8 ? { rotate: 45 } : {}),
-          },
-        },
+        xAxis: timeAxis
+          ? {
+              type: 'time',
+              axisLabel: { hideOverlap: true },
+            }
+          : {
+              type: 'category',
+              data: xLabels,
+              axisLabel: {
+                interval: Math.max(Math.floor(xLabels.length / 6) - 1, 0),
+                hideOverlap: true,
+                ...(xLabels.length > 8 ? { rotate: 45 } : {}),
+              },
+            },
         yAxis:
           dualAxis && seriesList.length > 1
             ? seriesList.map((_, i) => ({
@@ -263,7 +284,8 @@ export class ChartView extends BasesView {
     points: Array<{ date: string; group: string; values: Map<BasesPropertyId, number> }>,
     valueProps: BasesPropertyId[],
     groupProp: BasesPropertyId | null,
-    logScale: boolean
+    logScale: boolean,
+    timeAxis: boolean
   ): void {
     const allDates = [...new Set(points.map((p) => p.date))].sort()
     const hasGroups = groupProp && new Set(points.map((p) => p.group)).size > 1
@@ -271,7 +293,7 @@ export class ChartView extends BasesView {
 
     interface ScatterSeries {
       name: string
-      data: [number, number][]
+      data: [number, number][] | [string, number][]
     }
 
     const seriesList: ScatterSeries[] = []
@@ -280,19 +302,32 @@ export class ChartView extends BasesView {
       for (const prop of valueProps) {
         const propName = this.config.getDisplayName(prop)
         const name = hasGroups ? `${group} — ${propName}` : propName
-        const data: [number, number][] = []
 
-        for (const point of points) {
-          if (point.group !== group) continue
-          const val = point.values.get(prop)
-          if (val !== undefined) {
-            const xIdx = allDates.indexOf(point.date)
-            data.push([xIdx, val])
+        if (timeAxis) {
+          const data: [string, number][] = []
+          for (const point of points) {
+            if (point.group !== group) continue
+            const val = point.values.get(prop)
+            if (val !== undefined) {
+              data.push([point.date, val])
+            }
           }
-        }
-
-        if (data.length) {
-          seriesList.push({ name, data })
+          if (data.length) {
+            seriesList.push({ name, data })
+          }
+        } else {
+          const data: [number, number][] = []
+          for (const point of points) {
+            if (point.group !== group) continue
+            const val = point.values.get(prop)
+            if (val !== undefined) {
+              const xIdx = allDates.indexOf(point.date)
+              data.push([xIdx, val])
+            }
+          }
+          if (data.length) {
+            seriesList.push({ name, data })
+          }
         }
       }
     }
@@ -311,6 +346,10 @@ export class ChartView extends BasesView {
         tooltip: {
           trigger: 'item',
           formatter: (params: any) => {
+            if (timeAxis) {
+              const label = dayjs(params.data[0]).format(dateFmt)
+              return `${params.marker} ${params.seriesName}<br/>${label}: ${params.data[1]}`
+            }
             const xIdx = params.data[0]
             const label = xLabels[xIdx] ?? xIdx
             return `${params.marker} ${params.seriesName}<br/>${label}: ${params.data[1]}`
@@ -328,15 +367,20 @@ export class ChartView extends BasesView {
           bottom: 40,
           containLabel: true,
         },
-        xAxis: {
-          type: 'category',
-          data: xLabels,
-          axisLabel: {
-            interval: Math.max(Math.floor(xLabels.length / 6) - 1, 0),
-            hideOverlap: true,
-            ...(xLabels.length > 8 ? { rotate: 45 } : {}),
-          },
-        },
+        xAxis: timeAxis
+          ? {
+              type: 'time',
+              axisLabel: { hideOverlap: true },
+            }
+          : {
+              type: 'category',
+              data: xLabels,
+              axisLabel: {
+                interval: Math.max(Math.floor(xLabels.length / 6) - 1, 0),
+                hideOverlap: true,
+                ...(xLabels.length > 8 ? { rotate: 45 } : {}),
+              },
+            },
         yAxis: { type: logScale ? 'log' : 'value' },
         series: seriesList.map((s) => ({
           name: s.name,
