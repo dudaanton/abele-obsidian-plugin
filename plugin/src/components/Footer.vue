@@ -50,9 +50,7 @@ const timeEntries = computed(() => {
 })
 
 const notes = computed(() => {
-  return Array.from(props.footer.noteRelations.notes.values()).sort(
-    (a, b) => b.getNoteDateOrToday().unix() - a.getNoteDateOrToday().unix()
-  )
+  return Array.from(props.footer.noteRelations.notes.values())
 })
 const logs = computed(() => {
   return Array.from(props.footer.noteRelations.logs.values()).sort(
