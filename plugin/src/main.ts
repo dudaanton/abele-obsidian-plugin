@@ -174,6 +174,12 @@ export default class AbelePlugin extends Plugin {
           default: false,
         },
         {
+          key: 'timeAxis',
+          type: 'toggle' as const,
+          displayName: 'Proportional time axis',
+          default: false,
+        },
+        {
           key: 'chartHeight',
           type: 'slider' as const,
           displayName: 'Chart height',

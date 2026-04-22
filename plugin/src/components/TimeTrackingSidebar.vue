@@ -278,7 +278,7 @@ const dailyChartData = computed(() => {
     byDay.set(day, (byDay.get(day) || 0) + entry.duration)
   }
 
-  const result: { date: string; hours: number }[] = []
+  const result: [string, number][] = []
   const cursor = periodStart.value.startOf('day')
   const end = periodEnd.value.startOf('day')
 
@@ -287,7 +287,7 @@ const dailyChartData = computed(() => {
     const key = d.format(DATE_FORMAT)
     const secs = byDay.get(key) || 0
     if (secs > 0) {
-      result.push({ date: key, hours: Math.round((secs / 3600) * 100) / 100 })
+      result.push([key, Math.round((secs / 3600) * 100) / 100])
     }
     d = d.add(1, 'day')
   }
@@ -331,18 +331,17 @@ function renderDailyChart() {
         confine: true,
         formatter: (params: any) => {
           const p = Array.isArray(params) ? params[0] : params
-          return `${p.name}<br/>${formatDurationShort(Math.round(p.value * 3600))}`
+          return `${dayjs(p.value[0]).format('MMM D')}<br/>${formatDurationShort(Math.round(p.value[1] * 3600))}`
         },
       },
       grid: { left: 40, right: 12, top: 8, bottom: 24 },
       xAxis: {
-        type: 'category',
-        data: data.map((d) => dayjs(d.date).format('MMM D')),
+        type: 'time',
+        min: periodStart.value.valueOf(),
+        max: periodEnd.value.valueOf(),
         axisLabel: {
           color: colors.textMuted,
-          interval: Math.max(Math.floor(data.length / 6) - 1, 0),
           hideOverlap: true,
-          ...(data.length > 8 ? { rotate: 45 } : {}),
         },
         axisLine: { lineStyle: { color: colors.border } },
       },
@@ -357,7 +356,7 @@ function renderDailyChart() {
       series: [
         {
           type: 'bar',
-          data: data.map((d) => d.hours),
+          data: data,
           itemStyle: { color: colors.accent, borderRadius: [2, 2, 0, 0] },
           emphasis: { disabled: true },
         },
