@@ -48,7 +48,6 @@ import Icon from '../obsidian/Icon.vue'
 import TasksSettings from './TasksSettings.vue'
 import LogsSettings from './LogsSettings.vue'
 import JournalsSettings from './JournalsSettings.vue'
-import ServerSettings from './ServerSettings.vue'
 import AiSettings from './AiSettings.vue'
 import FinanceSettings from './FinanceSettings.vue'
 import TimeTrackingSettings from './TimeTrackingSettings.vue'
@@ -66,7 +65,6 @@ const tabs: Tab[] = [
   { id: 'journals', name: 'Journals', component: markRaw(JournalsSettings) },
   { id: 'finance', name: 'Finance', component: markRaw(FinanceSettings) },
   { id: 'time-tracking', name: 'Time Tracking', component: markRaw(TimeTrackingSettings) },
-  { id: 'server', name: 'Server', component: markRaw(ServerSettings) },
   { id: 'ai', name: 'AI Agent', component: markRaw(AiSettings) },
   { id: 'other', name: 'Other', component: markRaw(OtherSettings) },
 ]
