@@ -43,7 +43,23 @@ export function createListTemplatesTool(): AgentTool {
         templates.map(async (t) => {
           const body = await t.getBody()
           const { userVariables } = parseTemplateVariables(body)
-          const vars = userVariables.map((v) => v.name)
+
+          // Also collect variables from target properties
+          for (const prop of t.targetProperties) {
+            const { userVariables: propVars } = parseTemplateVariables(prop.value)
+            for (const v of propVars) {
+              if (!userVariables.find((uv) => uv.name === v.name)) {
+                userVariables.push(v)
+              }
+            }
+          }
+
+          const vars = userVariables.map((v) => {
+            if (v.type === 'list' || v.type === 'wiki_list') {
+              return `${v.name} (${v.type})`
+            }
+            return v.name
+          })
 
           let line = `- **${t.name}** (${t.templateFor})`
           if (t.templateDir) line += ` [${t.templateDir}]`
@@ -70,15 +86,18 @@ export function createApplyTemplateTool(): AgentTool {
     name: 'apply_template',
     label: 'Apply Template',
     description:
-      'Create a new note from a template. Provide the template file path and values for any user variables. Date variables are resolved automatically.',
+      'Create a new note from a template. Provide the template file path and values for any user variables. Date variables are resolved automatically. For list and wiki_list variables, pass an array of strings.',
     parameters: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'Vault path to the template file' },
         variables: {
           type: 'object',
-          description: 'Values for user variables (name → value). Omit if no user variables.',
-          additionalProperties: { type: 'string' },
+          description:
+            'Values for user variables (name → value). For regular variables pass a string. For list/wiki_list variables pass an array of strings.',
+          additionalProperties: {
+            oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
+          },
         },
       },
       required: ['path'],
@@ -92,8 +111,15 @@ export function createApplyTemplateTool(): AgentTool {
       const template = templates.find((t) => t.file.path === path)
       if (!template) throw new Error(`Template not found: ${path}`)
 
-      const vars = (params.variables as Record<string, string>) || {}
-      const userValues = new Map(Object.entries(vars))
+      const vars = (params.variables as Record<string, string | string[]>) || {}
+      const userValues = new Map<string, string>()
+      for (const [key, val] of Object.entries(vars)) {
+        if (Array.isArray(val)) {
+          userValues.set(key, JSON.stringify(val))
+        } else {
+          userValues.set(key, val)
+        }
+      }
 
       const file = await service.createNoteFromTemplate(template, userValues)
       ScopeResolver.getInstance().addFile(file.path)

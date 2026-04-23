@@ -165,7 +165,7 @@ export class UserTemplate {
 
     for (const line of lines) {
       // Check if line starts a property (not indented, has colon)
-      const propertyMatch = line.match(/^([a-z_]+)\s*:/)
+      const propertyMatch = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*:/)
 
       if (propertyMatch) {
         const propName = propertyMatch[1]
