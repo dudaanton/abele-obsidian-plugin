@@ -4,7 +4,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { TaskHeader } from '@/entities/TaskHeader'
 
 export class TaskHeaderWidget extends WidgetType {
-  private readonly id: string
+  private id: string
   private readonly filePath: string
 
   constructor(filePath: string) {
@@ -40,7 +40,11 @@ export class TaskHeaderWidget extends WidgetType {
   }
 
   eq(other: TaskHeaderWidget) {
-    return this.filePath === other.filePath
+    if (this.filePath === other.filePath) {
+      this.id = other.id
+      return true
+    }
+    return false
   }
 
   ignoreEvent() {

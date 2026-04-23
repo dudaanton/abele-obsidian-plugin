@@ -3,15 +3,16 @@ import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { Footer } from '@/entities/Footer'
 import { reactive } from 'vue'
+import { TFile } from 'obsidian'
 
 export class FooterWidget extends WidgetType {
   private id: string
-  private readonly filePath: string
+  private readonly file: TFile
 
-  constructor(filePath: string) {
+  constructor(file: TFile) {
     super()
     this.id = genid()
-    this.filePath = filePath
+    this.file = file
   }
 
   toDOM() {
@@ -26,12 +27,12 @@ export class FooterWidget extends WidgetType {
       reactive(
         new Footer({
           id: this.id,
-          filePath: this.filePath,
+          filePath: this.file.path,
         })
       )
     )
     console.debug(
-      `[FooterWidget] toDOM id=${this.id} file=${this.filePath} | total: ${store.footersContainers.value.length}`
+      `[FooterWidget] toDOM id=${this.id} file=${this.file.path} | total: ${store.footersContainers.value.length}`
     )
 
     return container
@@ -44,18 +45,18 @@ export class FooterWidget extends WidgetType {
       store.footersContainers.value[index].cleanup()
       store.footersContainers.value.splice(index, 1)
       console.debug(
-        `[FooterWidget] destroy OK id=${this.id} file=${this.filePath} | total: ${store.footersContainers.value.length}`
+        `[FooterWidget] destroy OK id=${this.id} file=${this.file.path} | total: ${store.footersContainers.value.length}`
       )
     } else {
       console.debug(
-        `[FooterWidget] destroy MISS id=${this.id} file=${this.filePath} | total: ${store.footersContainers.value.length}`
+        `[FooterWidget] destroy MISS id=${this.id} file=${this.file.path} | total: ${store.footersContainers.value.length}`
       )
     }
   }
 
   eq(other: FooterWidget) {
-    if (this.filePath === other.filePath) {
-      other.id = this.id
+    if (this.file === other.file) {
+      this.id = other.id
       return true
     }
     return false

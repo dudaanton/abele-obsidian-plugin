@@ -4,7 +4,7 @@ import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 
 export class TaskWidget extends WidgetType {
-  private readonly id: string
+  private id: string
   private readonly filePath: string // path of the file, where the task link is located
   private readonly wikilink: string // wikilink to the task note
 
@@ -43,7 +43,11 @@ export class TaskWidget extends WidgetType {
   }
 
   eq(other: TaskWidget) {
-    return this.wikilink === other.wikilink
+    if (this.wikilink === other.wikilink) {
+      this.id = other.id
+      return true
+    }
+    return false
   }
 
   ignoreEvent() {

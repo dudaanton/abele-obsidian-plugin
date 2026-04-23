@@ -102,7 +102,7 @@ function buildGalleryDecorations(state: EditorState): DecorationSet {
         block.blockTo,
         Decoration.replace({
           widget: new GalleryWidget(
-            currentFile.path,
+            currentFile,
             block.images,
             block.layout,
             block.height,
@@ -122,7 +122,7 @@ function buildGalleryDecorations(state: EditorState): DecorationSet {
         block.blockTo,
         Decoration.replace({
           widget: new GalleryWidget(
-            currentFile.path,
+            currentFile,
             block.images,
             block.layout,
             block.height,

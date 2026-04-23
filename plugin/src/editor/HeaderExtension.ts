@@ -8,7 +8,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 export function createHeaderExtension(): Extension {
   return ViewPlugin.fromClass(
     class {
-      private file: TFile
+      private file: TFile | null
       private noteType?: string
       private view: EditorView
       private widgetElement?: HTMLElement
@@ -29,6 +29,8 @@ export function createHeaderExtension(): Extension {
       }
 
       private createWidget() {
+        if (!this.file) return
+
         if (this.noteType === 'task') {
           this.wiget = new TaskHeaderWidget(this.file.path)
         } else {
@@ -48,18 +50,39 @@ export function createHeaderExtension(): Extension {
         }
       }
 
+      private destroyWidget() {
+        this.widgetElement?.remove()
+        this.wiget?.destroy()
+        this.widgetElement = undefined
+        this.wiget = undefined
+      }
+
       update() {
         // metadata cache is not updated immediately
         setTimeout(() => {
           if (this.destroyed) return
+
+          const currentFile = this.view.state.field(editorInfoField)?.file ?? null
+
+          // File changed — recreate widget for the new file
+          if (currentFile?.path !== this.file?.path) {
+            this.destroyWidget()
+            this.file = currentFile
+            if (!this.file) return
+            const cache = GlobalStore.getInstance().app.metadataCache.getFileCache(this.file)
+            this.noteType = cache?.frontmatter?.type
+            this.createWidget()
+            return
+          }
+
+          if (!this.file) return
 
           const cache = GlobalStore.getInstance().app.metadataCache.getFileCache(this.file)
           const noteType = cache?.frontmatter?.type
 
           if (noteType !== this.noteType) {
             this.noteType = noteType
-            this.widgetElement?.remove()
-            this.wiget?.destroy()
+            this.destroyWidget()
             this.createWidget()
           }
         }, 300)
@@ -67,8 +90,7 @@ export function createHeaderExtension(): Extension {
 
       destroy() {
         this.destroyed = true
-        this.widgetElement?.remove()
-        this.wiget?.destroy()
+        this.destroyWidget()
       }
     }
   )
