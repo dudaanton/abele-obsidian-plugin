@@ -16,7 +16,13 @@
 
     <div v-else-if="editMode" class="abele-gallery__edit-list">
       <div v-for="(image, index) in resolvedImages" :key="index" class="abele-gallery__edit-item">
-        <img v-if="image.url" :src="image.url" class="abele-gallery__edit-thumb" />
+        <video
+          v-if="image.url && image.mediaType === 'video'"
+          :src="image.url"
+          class="abele-gallery__edit-thumb"
+          muted
+        />
+        <img v-else-if="image.url" :src="image.url" class="abele-gallery__edit-thumb" />
         <div v-else class="abele-gallery__edit-thumb abele-gallery__edit-thumb--missing">
           <ObsidianIcon icon="image-off" />
         </div>
@@ -44,8 +50,16 @@
     <div v-else-if="gallery.layout === 'masonry'" class="abele-gallery__masonry">
       <div v-for="(col, colIdx) in masonryColumns" :key="colIdx" class="abele-gallery__masonry-col">
         <div v-for="imgIdx in col" :key="imgIdx" class="abele-gallery__item">
+          <video
+            v-if="resolvedImages[imgIdx].url && resolvedImages[imgIdx].mediaType === 'video'"
+            :src="resolvedImages[imgIdx].url"
+            class="abele-gallery__image"
+            controls
+            muted
+            preload="metadata"
+          />
           <img
-            v-if="resolvedImages[imgIdx].url"
+            v-else-if="resolvedImages[imgIdx].url"
             :src="resolvedImages[imgIdx].url"
             :alt="resolvedImages[imgIdx].alt"
             class="abele-gallery__image"
@@ -72,8 +86,16 @@
           class="abele-gallery__slider-item"
           :style="{ height: gallery.height + 'px' }"
         >
+          <video
+            v-if="image.url && image.mediaType === 'video'"
+            :src="image.url"
+            class="abele-gallery__image abele-gallery__image--contain"
+            controls
+            muted
+            preload="metadata"
+          />
           <img
-            v-if="image.url"
+            v-else-if="image.url"
             :src="image.url"
             :alt="image.alt"
             class="abele-gallery__image abele-gallery__image--contain"
@@ -103,8 +125,16 @@
 
     <div v-else :class="['abele-gallery__grid', `abele-gallery__grid--${gallery.layout}`]">
       <div v-for="(image, index) in resolvedImages" :key="index" class="abele-gallery__item">
+        <video
+          v-if="image.url && image.mediaType === 'video'"
+          :src="image.url"
+          class="abele-gallery__image"
+          controls
+          muted
+          preload="metadata"
+        />
         <img
-          v-if="image.url"
+          v-else-if="image.url"
           :src="image.url"
           :alt="image.alt"
           class="abele-gallery__image"
@@ -122,7 +152,7 @@
     <input
       ref="fileInputRef"
       type="file"
-      accept="image/*"
+      accept="image/*,video/*"
       multiple
       style="display: none"
       @change="onFilesSelected"
@@ -178,6 +208,7 @@ const resolvedImages = computed(() => {
     alt: image.alt,
     type: image.type,
     path: image.path,
+    mediaType: image.mediaType || 'image',
   }))
 })
 
