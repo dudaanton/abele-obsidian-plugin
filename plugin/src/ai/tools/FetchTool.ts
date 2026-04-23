@@ -1,14 +1,33 @@
 import type { AgentTool } from '../client'
 import { requestUrl } from 'obsidian'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { substituteSecrets } from './secretUtils'
 
 const MAX_RESPONSE_SIZE = 100 * 1024 // 100 KB
 
+function substituteInHeaders(headers: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const [key, value] of Object.entries(headers)) {
+    result[key] = substituteSecrets(value)
+  }
+  return result
+}
+
 export function createFetchTool(): AgentTool {
+  const secrets = AbeleConfig.getInstance().ai.secrets || []
+  const secretNames = secrets.map((s) => s.name).filter(Boolean)
+
+  let description =
+    'Send an HTTP request to any URL. Supports GET, POST, PUT, PATCH, DELETE. Returns status code, headers, and response body. Use this to interact with APIs, fetch web pages, or download data.'
+
+  if (secretNames.length > 0) {
+    description += `\n\nAvailable secrets for authentication (use as \${abele_key:name} in url, headers, or body — they will be substituted with actual values): ${secretNames.join(', ')}`
+  }
+
   return {
     name: 'fetch',
     label: 'Fetch URL',
-    description:
-      'Send an HTTP request to any URL. Supports GET, POST, PUT, PATCH, DELETE. Returns status code, headers, and response body. Use this to interact with APIs, fetch web pages, or download data.',
+    description,
     parameters: {
       type: 'object',
       properties: {
@@ -31,12 +50,14 @@ export function createFetchTool(): AgentTool {
       required: ['url'],
     },
     execute: async (_id, params) => {
-      const url = params.url as string
-      if (!url) throw new Error('Missing required parameter: url')
+      const rawUrl = params.url as string
+      if (!rawUrl) throw new Error('Missing required parameter: url')
 
+      const url = substituteSecrets(rawUrl)
       const method = ((params.method as string) || 'GET').toUpperCase()
-      const headers = (params.headers as Record<string, string>) || {}
-      const body = params.body as string | undefined
+      const headers = substituteInHeaders((params.headers as Record<string, string>) || {})
+      const rawBody = params.body as string | undefined
+      const body = rawBody ? substituteSecrets(rawBody) : undefined
 
       const response = await requestUrl({
         url,

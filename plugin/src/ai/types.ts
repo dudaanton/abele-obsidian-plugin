@@ -30,6 +30,11 @@ export interface AiChatHistoryEntry {
   created: string
 }
 
+export interface AiSecret {
+  name: string
+  keyId: string // reference for Obsidian keychain
+}
+
 export interface AiSettings {
   enabled: boolean
   providers: AiProvider[]
@@ -41,6 +46,7 @@ export interface AiSettings {
   permissionMode: PermissionMode
   allowWebSearch: boolean
   allowFetch: boolean
+  allowDownload: boolean
   allowWiseModel: boolean
   allowImageGeneration: boolean
   allowEvalJs: boolean
@@ -51,6 +57,7 @@ export interface AiSettings {
   braveSearchApiKey: string
   openRouterApiKey: string
   imageModel: string
+  secrets: AiSecret[]
   prompts: AiPrompts
   systemPromptFromNote: boolean
   systemPromptNotePath: string
@@ -67,6 +74,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   permissionMode: 'confirm-all',
   allowWebSearch: true,
   allowFetch: false,
+  allowDownload: false,
   allowWiseModel: false,
   allowImageGeneration: false,
   allowEvalJs: false,
@@ -77,6 +85,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   braveSearchApiKey: '',
   openRouterApiKey: '',
   imageModel: 'google/gemini-2.5-flash-preview:thinking',
+  secrets: [],
   systemPromptFromNote: false,
   systemPromptNotePath: '',
   prompts: {
@@ -115,6 +124,10 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
         'List available note templates. Shows names, types, and required variables. Use before apply_template.',
       apply_template:
         'Create a new note from a template. Provide the template path and values for user variables.',
+      download_image:
+        'Download an image from a URL and save it to the vault attachments folder. Returns the saved file path.',
+      download_file:
+        'Download any file from a URL and save it to the vault attachments folder. Returns the saved file path.',
     },
   },
 }
@@ -157,6 +170,7 @@ export interface ChatMetadata {
   pendingToolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>
   allowWebSearch?: boolean
   allowFetch?: boolean
+  allowDownload?: boolean
   allowWiseModel?: boolean
   allowImageGeneration?: boolean
   allowEvalJs?: boolean
