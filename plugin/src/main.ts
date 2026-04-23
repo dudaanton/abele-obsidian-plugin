@@ -512,17 +512,17 @@ export default class AbelePlugin extends Plugin {
 
   onunload() {
     document.body.classList.remove('abele-full-width-sidebars')
+    // Unmount Vue BEFORE store cleanup so Teleport components unmount cleanly
+    if (this.vueApp) {
+      this.vueApp.unmount()
+      document.getElementById('abele-vue-root')?.remove()
+    }
     AgentService.getInstance().destroy()
     ScopeResolver.getInstance().destroy()
     ChatStorage.destroy()
     GlobalStore.getInstance().destroy()
     AbeleConfig.getInstance().destroy()
     VaultWatcherWrapper.destroy()
-    // this.cleanupWidgets()
-    if (this.vueApp) {
-      this.vueApp.unmount()
-      document.getElementById('abele-vue-root')?.remove()
-    }
     console.debug('Obsidian Service Plugin unloaded.')
   }
 
