@@ -259,6 +259,49 @@
         />
       </Setting>
 
+      <h3>Secrets</h3>
+
+      <p class="setting-item-description" style="margin-bottom: var(--size-4-2)">
+        Keys and tokens for API requests. AI agent uses <code>${abele_key:name}</code> in fetch
+        calls, which is replaced with the actual value. Stored securely in keychain.
+      </p>
+
+      <div class="abele-ai-secrets-table">
+        <div v-for="(secret, sIdx) in secrets" :key="sIdx" class="abele-ai-secrets-table__row">
+          <!-- View mode -->
+          <template v-if="editingSecretIdx !== sIdx">
+            <span class="abele-ai-secrets-table__name">{{ secret.name || '(unnamed)' }}</span>
+            <span class="abele-ai-secrets-table__mask">{{
+              getSecretDisplay(secret.keyId) || '(not set)'
+            }}</span>
+            <Icon icon="pencil" @click="startEditSecret(sIdx)" />
+            <Icon icon="trash" @click="removeSecret(sIdx)" />
+          </template>
+          <!-- Edit mode -->
+          <template v-else>
+            <Input
+              :model-value="secret.name"
+              placeholder="Name"
+              @update:model-value="(v: string) => updateSecretName(sIdx, v)"
+            />
+            <div class="abele-ai-provider__secret-row">
+              <input
+                type="password"
+                class="abele-ai-provider__secret-input"
+                :value="secretValueInputs[sIdx] || ''"
+                placeholder="Value..."
+                @input="secretValueInputs[sIdx] = ($event.target as HTMLInputElement).value"
+                @keydown.enter="applySecretValue(sIdx)"
+              />
+            </div>
+            <Icon icon="check" with-bg @click="applySecretValue(sIdx)" />
+            <Icon icon="x" @click="editingSecretIdx = -1" />
+          </template>
+        </div>
+      </div>
+
+      <Button text="Add secret" @click="addSecret" />
+
       <h3>Default Scope</h3>
 
       <AiScopeEditor
@@ -282,6 +325,13 @@
         desc="Default for new chats. Can be changed per chat in the scope manager."
       >
         <Checkbox :is-enabled="defaultAllowFetch" @toggle="toggleDefault('allowFetch')" />
+      </Setting>
+
+      <Setting
+        name="Allow download"
+        desc="Default for new chats. Can be changed per chat in the scope manager."
+      >
+        <Checkbox :is-enabled="defaultAllowDownload" @toggle="toggleDefault('allowDownload')" />
       </Setting>
 
       <Setting
@@ -448,6 +498,7 @@ const migrateChats = async () => {
 
 const defaultAllowWebSearch = ref(config.ai.allowWebSearch)
 const defaultAllowFetch = ref(config.ai.allowFetch)
+const defaultAllowDownload = ref(config.ai.allowDownload)
 const defaultAllowWiseModel = ref(config.ai.allowWiseModel)
 const defaultAllowImageGeneration = ref(config.ai.allowImageGeneration)
 const defaultAllowEvalJs = ref(config.ai.allowEvalJs)
@@ -471,6 +522,8 @@ const braveSearchApiKey = ref(config.ai.braveSearchApiKey)
 const openRouterApiKey = ref(config.ai.openRouterApiKey)
 const imageModel = ref(config.ai.imageModel)
 const openRouterSecretInput = ref('')
+const secrets = ref(JSON.parse(JSON.stringify(config.ai.secrets || [])))
+const secretValueInputs = reactive<Record<number, string>>({})
 const activeProviderId = ref(config.ai.activeProviderId)
 const activeModelId = ref(config.ai.activeModelId)
 const auxiliaryModelId = ref(config.ai.auxiliaryModelId)
@@ -546,6 +599,7 @@ const save = debounce(async () => {
     permissionMode: config.ai.permissionMode,
     allowWebSearch: defaultAllowWebSearch.value,
     allowFetch: defaultAllowFetch.value,
+    allowDownload: defaultAllowDownload.value,
     allowWiseModel: defaultAllowWiseModel.value,
     allowImageGeneration: defaultAllowImageGeneration.value,
     allowEvalJs: defaultAllowEvalJs.value,
@@ -556,6 +610,7 @@ const save = debounce(async () => {
     braveSearchApiKey: braveSearchApiKey.value,
     openRouterApiKey: openRouterApiKey.value,
     imageModel: imageModel.value,
+    secrets: JSON.parse(JSON.stringify(secrets.value)),
     systemPromptFromNote: systemPromptFromNote.value,
     systemPromptNotePath: systemPromptNotePath.value,
     prompts: JSON.parse(JSON.stringify(prompts.value)),
@@ -574,10 +629,17 @@ const toggleSequentialAuxiliary = () => {
 }
 
 const toggleDefault = (
-  key: 'allowWebSearch' | 'allowFetch' | 'allowWiseModel' | 'allowImageGeneration' | 'allowEvalJs'
+  key:
+    | 'allowWebSearch'
+    | 'allowFetch'
+    | 'allowDownload'
+    | 'allowWiseModel'
+    | 'allowImageGeneration'
+    | 'allowEvalJs'
 ) => {
   if (key === 'allowWebSearch') defaultAllowWebSearch.value = !defaultAllowWebSearch.value
   if (key === 'allowFetch') defaultAllowFetch.value = !defaultAllowFetch.value
+  if (key === 'allowDownload') defaultAllowDownload.value = !defaultAllowDownload.value
   if (key === 'allowWiseModel') defaultAllowWiseModel.value = !defaultAllowWiseModel.value
   if (key === 'allowImageGeneration')
     defaultAllowImageGeneration.value = !defaultAllowImageGeneration.value
@@ -628,6 +690,55 @@ const applyOpenRouterSecret = () => {
   openRouterApiKey.value = 'abele-openrouter'
   app.secretStorage.setSecret('abele-openrouter', openRouterSecretInput.value)
   openRouterSecretInput.value = ''
+  save()
+}
+
+// ── User secrets ────────────────────────────────────────────
+
+const editingSecretIdx = ref(-1)
+
+const addSecret = () => {
+  secrets.value.push({ name: '', keyId: '' })
+  editingSecretIdx.value = secrets.value.length - 1
+}
+
+const startEditSecret = (idx: number) => {
+  editingSecretIdx.value = idx
+}
+
+const removeSecret = (idx: number) => {
+  const secret = secrets.value[idx]
+  if (secret.keyId) {
+    try {
+      app.secretStorage.setSecret(secret.keyId, '')
+    } catch {
+      // Invalid keyId from older version — skip keychain cleanup
+    }
+  }
+  secrets.value.splice(idx, 1)
+  delete secretValueInputs[idx]
+  save()
+}
+
+const updateSecretName = (idx: number, name: string) => {
+  secrets.value[idx].name = name
+  save()
+}
+
+const applySecretValue = (idx: number) => {
+  const value = secretValueInputs[idx]
+  if (!value) return
+  const secret = secrets.value[idx]
+  if (!secret.keyId || !/^[a-z0-9-]+$/.test(secret.keyId)) {
+    secret.keyId = `abele-secret-${nanoid(8)
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '0')}`
+  }
+  app.secretStorage.setSecret(secret.keyId, value)
+  secretValueInputs[idx] = ''
+  editingSecretIdx.value = -1
+  // Force re-render so getSecretDisplay() re-evaluates with the new keychain value
+  secrets.value = [...secrets.value]
   save()
 }
 
@@ -932,6 +1043,35 @@ const updateToolDescription = (toolName: string, value: string) => {
 
   &:hover {
     color: var(--text-accent);
+  }
+}
+
+.abele-ai-secrets-table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+  margin-bottom: var(--size-4-2);
+}
+
+.abele-ai-secrets-table__row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+
+  .abele-ai-secrets-table__name {
+    min-width: 100px;
+    font-weight: var(--font-medium);
+  }
+
+  .abele-ai-secrets-table__mask {
+    flex: 1;
+    color: var(--text-muted);
+    font-size: var(--font-small);
+    font-family: var(--font-monospace);
+  }
+
+  .abele-ai-provider__secret-row {
+    flex: 1;
   }
 }
 </style>
