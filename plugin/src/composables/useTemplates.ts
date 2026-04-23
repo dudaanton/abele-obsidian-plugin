@@ -89,6 +89,14 @@ export function useTemplates() {
         }
       }
     }
+    for (const prop of template.targetProperties) {
+      const { userVariables: propVars } = parseTemplateVariables(prop.value)
+      for (const v of propVars) {
+        if (!parsedVars.find((uv) => uv.name === v.name)) {
+          parsedVars.push(v)
+        }
+      }
+    }
 
     userVariables.value = parsedVars
 
