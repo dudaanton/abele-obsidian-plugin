@@ -1,9 +1,12 @@
+export type MediaType = 'image' | 'video'
+
 export interface GalleryImageEntry {
   type: 'local' | 'remote'
   path: string
   alt: string
   description: string
   raw: string
+  mediaType: MediaType
 }
 
 const GALLERY_HEADER_REGEX = /^::abele-gallery(?:\{([^}]*)\})?::$/
@@ -51,6 +54,7 @@ export function parseImageLine(line: string): GalleryImageEntry | null {
       alt: description || path,
       description,
       raw: trimmed,
+      mediaType: getMediaType(path),
     }
   }
 
@@ -64,6 +68,7 @@ export function parseImageLine(line: string): GalleryImageEntry | null {
       alt: description || mdMatch[2],
       description,
       raw: trimmed,
+      mediaType: getMediaType(mdMatch[2]),
     }
   }
 
@@ -71,23 +76,38 @@ export function parseImageLine(line: string): GalleryImageEntry | null {
 }
 
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif']
+const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'mkv', 'avi', 'ogv']
+const MEDIA_EXTENSIONS = [...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS]
+
+function getExtFromPath(path: string): string {
+  return path.split('.').pop()?.toLowerCase() || ''
+}
+
+export function getMediaType(path: string): MediaType {
+  let ext: string
+  try {
+    const url = new URL(path)
+    ext = getExtFromPath(url.pathname)
+  } catch {
+    ext = getExtFromPath(path)
+  }
+  return VIDEO_EXTENSIONS.includes(ext) ? 'video' : 'image'
+}
 
 export function isImageEmbed(line: string): boolean {
   const entry = parseImageLine(line.trim())
   if (!entry) return false
   if (entry.type === 'remote') {
-    // Remote URLs: check extension or assume image
     try {
       const pathname = new URL(entry.path).pathname
       const ext = pathname.split('.').pop()?.toLowerCase() || ''
-      return IMAGE_EXTENSIONS.includes(ext)
+      return MEDIA_EXTENSIONS.includes(ext)
     } catch {
-      return true // can't parse URL, assume image
+      return true
     }
   }
-  // Local: check extension in path (before alias separator |)
   const ext = entry.path.split('.').pop()?.toLowerCase() || ''
-  return IMAGE_EXTENSIONS.includes(ext)
+  return MEDIA_EXTENSIONS.includes(ext)
 }
 
 export function buildImageLine(entry: GalleryImageEntry): string {
