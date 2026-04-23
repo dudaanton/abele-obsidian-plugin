@@ -1,0 +1,142 @@
+import type { AgentTool } from '../client'
+import { requestUrl } from 'obsidian'
+import { getAttachmentFolder } from './imageUtils'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { nanoid } from 'nanoid'
+import { substituteSecrets } from './secretUtils'
+
+function extFromContentType(contentType: string): string | null {
+  if (contentType.includes('jpeg') || contentType.includes('jpg')) return 'jpg'
+  if (contentType.includes('png')) return 'png'
+  if (contentType.includes('gif')) return 'gif'
+  if (contentType.includes('webp')) return 'webp'
+  if (contentType.includes('svg')) return 'svg'
+  if (contentType.includes('bmp')) return 'bmp'
+  if (contentType.includes('ico')) return 'ico'
+  if (contentType.includes('pdf')) return 'pdf'
+  return null
+}
+
+function extFromUrl(url: string): string | null {
+  const urlExt = url.split('?')[0].split('#')[0].split('.').pop()?.toLowerCase()
+  if (
+    urlExt &&
+    [
+      'jpg',
+      'jpeg',
+      'png',
+      'gif',
+      'webp',
+      'svg',
+      'bmp',
+      'ico',
+      'pdf',
+      'zip',
+      'json',
+      'csv',
+      'txt',
+      'xml',
+      'html',
+    ].includes(urlExt)
+  ) {
+    return urlExt === 'jpeg' ? 'jpg' : urlExt
+  }
+  return null
+}
+
+async function downloadToVault(
+  rawUrl: string,
+  filename: string | undefined,
+  defaultExt: string,
+  overrideExt?: string
+): Promise<string> {
+  const url = substituteSecrets(rawUrl)
+
+  const response = await requestUrl({ url, method: 'GET', throw: false })
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+
+  const contentType = response.headers['content-type'] || ''
+  const ext = overrideExt || extFromContentType(contentType) || extFromUrl(url) || defaultExt
+
+  const { app } = GlobalStore.getInstance()
+  const folder = await getAttachmentFolder()
+  const baseName = filename || `file-${nanoid(8)}`
+  const basePath = folder ? `${folder}/${baseName}.${ext}` : `${baseName}.${ext}`
+
+  let targetPath = basePath
+  let counter = 1
+  while (app.vault.getAbstractFileByPath(targetPath)) {
+    targetPath = folder
+      ? `${folder}/${baseName} ${counter}.${ext}`
+      : `${baseName} ${counter}.${ext}`
+    counter++
+  }
+
+  await app.vault.createBinary(targetPath, response.arrayBuffer)
+  return targetPath
+}
+
+export function createDownloadImageTool(): AgentTool {
+  return {
+    name: 'download_image',
+    label: 'Download Image',
+    description:
+      'Download an image from a URL and save it to the vault attachments folder. Returns the vault path of the saved file. Supports ${abele_key:name} substitution in the URL.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Image URL to download' },
+        filename: {
+          type: 'string',
+          description: 'Optional filename (without extension). Auto-generated if omitted.',
+        },
+      },
+      required: ['url'],
+    },
+    execute: async (_id, params) => {
+      const url = params.url as string
+      if (!url) throw new Error('Missing required parameter: url')
+      const targetPath = await downloadToVault(url, params.filename as string | undefined, 'png')
+      return { content: [{ type: 'text', text: `Saved: ${targetPath}` }] }
+    },
+  }
+}
+
+export function createDownloadFileTool(): AgentTool {
+  return {
+    name: 'download_file',
+    label: 'Download File',
+    description:
+      'Download any file from a URL and save it to the vault attachments folder. Returns the vault path of the saved file. Supports ${abele_key:name} substitution in the URL. Specify extension when content-type is unreliable (e.g. for video: "mp4").',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'File URL to download' },
+        filename: {
+          type: 'string',
+          description: 'Optional filename (without extension). Auto-generated if omitted.',
+        },
+        extension: {
+          type: 'string',
+          description:
+            'File extension to use (e.g. "mp4", "pdf", "zip"). Overrides auto-detection from content-type and URL.',
+        },
+      },
+      required: ['url'],
+    },
+    execute: async (_id, params) => {
+      const url = params.url as string
+      if (!url) throw new Error('Missing required parameter: url')
+      const ext = params.extension as string | undefined
+      const targetPath = await downloadToVault(
+        url,
+        params.filename as string | undefined,
+        'bin',
+        ext
+      )
+      return { content: [{ type: 'text', text: `Saved: ${targetPath}` }] }
+    },
+  }
+}
