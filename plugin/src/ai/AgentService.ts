@@ -81,6 +81,7 @@ export class AgentService {
   // Per-chat tool permissions (initialized from defaults on new chat)
   public readonly allowWebSearch = ref(true)
   public readonly allowFetch = ref(false)
+  public readonly allowDownload = ref(false)
   public readonly allowWiseModel = ref(false)
   public readonly allowImageGeneration = ref(false)
   public readonly allowEvalJs = ref(false)
@@ -192,20 +193,39 @@ export class AgentService {
 
   private static readonly READ_TOOLS = ['read', 'ls', 'find', 'workspace', 'skill']
   private static readonly EDIT_TOOLS = ['edit', 'create']
+  private static readonly SCOPED_TOOLS = [
+    'read',
+    'edit',
+    'create',
+    'rm',
+    'mv',
+    'cp',
+    'read_image',
+    'ls',
+    'find',
+  ]
 
   private needsApproval(toolName: string, args?: Record<string, unknown>): boolean {
     const mode = AbeleConfig.getInstance().ai.permissionMode
+
+    // Out-of-scope file access always requires approval
+    if (args && AgentService.SCOPED_TOOLS.includes(toolName)) {
+      const path = (args.path || args.from) as string
+      if (path && !ScopeResolver.getInstance().isInScope(path)) {
+        return true
+      }
+    }
+
     if (AgentService.READ_TOOLS.includes(toolName)) return false
     if (toolName === 'web_search') return !this.allowWebSearch.value
     if (toolName === 'fetch') return !this.allowFetch.value
+    if (toolName === 'download_image' || toolName === 'download_file')
+      return !this.allowDownload.value
     if (toolName === 'wise_model') return !this.allowWiseModel.value
     if (toolName === 'generate_image' || toolName === 'edit_image')
       return !this.allowImageGeneration.value
     if (toolName === 'eval_js') return !this.allowEvalJs.value
-    // read_image: auto-approve if the image is in workspace scope
-    if (toolName === 'read_image' && args?.path) {
-      return !ScopeResolver.getInstance().isInScope(args.path as string)
-    }
+    if (toolName === 'read_image') return false
     if (
       AgentService.EDIT_TOOLS.includes(toolName) &&
       (mode === 'allow-edit' || mode === 'allow-all')
@@ -689,6 +709,16 @@ export class AgentService {
       (m) => ({ ...m, toolStatus: 'approved' as const })
     )
 
+    // Add out-of-scope file paths to scope on approval
+    const approvedArgs = modifiedArgs || tc.arguments
+    if (approvedArgs) {
+      const scope = ScopeResolver.getInstance()
+      const path = (approvedArgs.path || approvedArgs.from) as string
+      if (path && !scope.isInScope(path)) {
+        scope.addFile(path)
+      }
+    }
+
     const controller = new AbortController()
     this.toolAbortController = controller
     this.isExecutingTool.value = true
@@ -807,6 +837,7 @@ export class AgentService {
     const config = AbeleConfig.getInstance().ai
     this.allowWebSearch.value = config.allowWebSearch
     this.allowFetch.value = config.allowFetch
+    this.allowDownload.value = config.allowDownload
     this.allowWiseModel.value = config.allowWiseModel
     this.allowImageGeneration.value = config.allowImageGeneration
     this.allowEvalJs.value = config.allowEvalJs
@@ -854,6 +885,7 @@ export class AgentService {
           : undefined,
       allowWebSearch: this.allowWebSearch.value,
       allowFetch: this.allowFetch.value,
+      allowDownload: this.allowDownload.value,
       allowWiseModel: this.allowWiseModel.value,
       allowImageGeneration: this.allowImageGeneration.value,
       allowEvalJs: this.allowEvalJs.value,
@@ -905,6 +937,7 @@ export class AgentService {
     const config = AbeleConfig.getInstance().ai
     this.allowWebSearch.value = result.metadata?.allowWebSearch ?? config.allowWebSearch
     this.allowFetch.value = result.metadata?.allowFetch ?? config.allowFetch
+    this.allowDownload.value = result.metadata?.allowDownload ?? config.allowDownload
     this.allowWiseModel.value = result.metadata?.allowWiseModel ?? config.allowWiseModel
     this.allowImageGeneration.value =
       result.metadata?.allowImageGeneration ?? config.allowImageGeneration
