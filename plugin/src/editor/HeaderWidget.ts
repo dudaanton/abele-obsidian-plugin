@@ -4,7 +4,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { Header } from '@/entities/Header'
 
 export class HeaderWidget extends WidgetType {
-  private readonly id: string
+  private id: string
   private readonly filePath: string
 
   constructor(filePath: string) {
@@ -40,7 +40,11 @@ export class HeaderWidget extends WidgetType {
   }
 
   eq(other: HeaderWidget) {
-    return this.filePath === other.filePath
+    if (this.filePath === other.filePath) {
+      this.id = other.id
+      return true
+    }
+    return false
   }
 
   ignoreEvent() {

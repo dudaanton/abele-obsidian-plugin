@@ -94,7 +94,7 @@ function buildTaskDecorations(state: EditorState): DecorationSet {
     lastLine.to,
     lastLine.to,
     Decoration.widget({
-      widget: new FooterWidget(currentFile.path),
+      widget: new FooterWidget(currentFile),
       block: true,
       side: 1,
     })

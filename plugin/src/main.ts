@@ -217,9 +217,11 @@ export default class AbelePlugin extends Plugin {
 
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', (leaf) => {
+        const store = GlobalStore.getInstance()
+
         const viewType = leaf?.view.getViewType()
         if (viewType === 'empty') {
-          GlobalStore.getInstance().currentFile.value = null
+          store.currentFile.value = null
           return
         }
         if (leaf?.view.getViewType() !== 'markdown') return
@@ -227,10 +229,17 @@ export default class AbelePlugin extends Plugin {
         const file = (leaf.view as MarkdownView).file
 
         if (file) {
-          GlobalStore.getInstance().currentFile.value = file
+          store.currentFile.value = file
         }
+
+        // Delayed cleanup for widgets whose DOM was removed without CodeMirror calling destroy().
+        // The delay ensures CodeMirror's own destroy() runs first when it does fire.
+        setTimeout(() => {
+          store.cleanupOrphanedWidgets()
+        }, 500)
       })
     )
+
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView)
     if (activeView?.file) {
       GlobalStore.getInstance().currentFile.value = activeView.file

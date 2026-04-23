@@ -268,6 +268,31 @@ export class GlobalStore {
     }
   }
 
+  /**
+   * Remove widgets whose DOM containers no longer exist in the document.
+   * This catches cases where CodeMirror doesn't call WidgetType.destroy().
+   */
+  public cleanupOrphanedWidgets(): void {
+    const cleanupArray = <T extends { id: string; cleanup: () => void }>(
+      arr: Array<T>,
+      attr: string
+    ) => {
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const el = document.querySelector(`[${attr}='${arr[i].id}']`)
+        if (!el || !document.body.contains(el)) {
+          arr[i].cleanup()
+          arr.splice(i, 1)
+        }
+      }
+    }
+
+    cleanupArray(this.footersContainers.value, 'data-footer-id')
+    cleanupArray(this.headersContainers.value, 'data-header-id')
+    cleanupArray(this.tasksContainers.value, 'data-task-id')
+    cleanupArray(this.tasksHeadersContainers.value, 'data-task-header-id')
+    cleanupArray(this.galleriesContainers.value, 'data-gallery-id')
+  }
+
   public destroy(): void {
     if (!this.initialized.value) {
       return
@@ -275,10 +300,18 @@ export class GlobalStore {
 
     this.initialized.value = false
     this.currentFile.value = null
+
+    for (const t of this.tasksContainers.value) t.cleanup()
     this.tasksContainers.value = []
+    for (const th of this.tasksHeadersContainers.value) th.cleanup()
     this.tasksHeadersContainers.value = []
+    for (const f of this.footersContainers.value) f.cleanup()
     this.footersContainers.value = []
+    for (const h of this.headersContainers.value) h.cleanup()
+    this.headersContainers.value = []
+    for (const g of this.galleriesContainers.value) g.cleanup()
     this.galleriesContainers.value = []
+
     this.tasksList.value?.cleanup()
     this.tasksList.value = null
     this.timeEntryList.value?.cleanup()
