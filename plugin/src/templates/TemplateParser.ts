@@ -9,7 +9,7 @@ export interface TemplateVariable {
   /** Full match including {{ }} */
   raw: string
   /** Variable type */
-  type: 'date' | 'user' | 'plugin'
+  type: 'date' | 'user' | 'plugin' | 'list' | 'wiki_list'
   /** Variable name/label */
   name: string
   /** For date: format string */
@@ -39,6 +39,7 @@ const DATE_FORMAT_REGEX = /^date\.format\(['"]([^'"]+)['"]\)$/
 const DATE_OFFSET_REGEX = /^date\.offset\(([-\d]+)\)$/
 const DATE_OFFSET_FORMAT_REGEX = /^date\.offset\(([-\d]+)\)\.format\(['"]([^'"]+)['"]\)$/
 const PLUGIN_REGEX = /^([^;]+);([^;]+);(.+)$/
+const LIST_SUFFIX_REGEX = /^(.+)::(\w+)$/
 
 /**
  * Parse a single variable expression
@@ -90,6 +91,19 @@ function parseVariableExpression(raw: string, expr: string): TemplateVariable {
     }
   }
 
+  // Check list suffix (name::list or name::wiki_list)
+  const listMatch = trimmed.match(LIST_SUFFIX_REGEX)
+  if (listMatch) {
+    const name = listMatch[1].trim()
+    const suffix = listMatch[2]
+    if (suffix === 'list') {
+      return { raw, type: 'list', name }
+    }
+    if (suffix === 'wiki_list') {
+      return { raw, type: 'wiki_list', name }
+    }
+  }
+
   // Default: user variable
   return { raw, type: 'user', name: trimmed }
 }
@@ -113,8 +127,10 @@ export function parseTemplateVariables(content: string): ParseResult {
     variables.push(parseVariableExpression(raw, expr))
   }
 
-  // User variables = those that need user input (user + plugin types)
-  const userVariables = variables.filter((v) => v.type === 'user' || v.type === 'plugin')
+  // User variables = those that need user input
+  const userVariables = variables.filter(
+    (v) => v.type === 'user' || v.type === 'plugin' || v.type === 'list' || v.type === 'wiki_list'
+  )
 
   return { variables, userVariables }
 }
@@ -174,6 +190,23 @@ async function resolvePluginVariable(
 }
 
 /**
+ * Format a list value for YAML output.
+ * Value is stored as JSON array string in the Map.
+ */
+function formatListValue(jsonValue: string, isWikiList: boolean): string {
+  try {
+    const items: string[] = JSON.parse(jsonValue)
+    if (!Array.isArray(items) || items.length === 0) return ''
+    const formatted = isWikiList
+      ? items.map((item) => `\n  - "[[${item}]]"`)
+      : items.map((item) => `\n  - ${item}`)
+    return formatted.join('')
+  } catch {
+    return jsonValue
+  }
+}
+
+/**
  * Apply variable values to template content
  * @param content Template content with {{ variables }}
  * @param variables Parsed variables from parseTemplateVariables
@@ -197,6 +230,14 @@ export async function applyTemplateVariables(
       case 'plugin':
         const input = userValues.get(variable.name) || ''
         value = await resolvePluginVariable(variable, input)
+        break
+
+      case 'list':
+        value = formatListValue(userValues.get(variable.name) || '[]', false)
+        break
+
+      case 'wiki_list':
+        value = formatListValue(userValues.get(variable.name) || '[]', true)
         break
 
       case 'user':
