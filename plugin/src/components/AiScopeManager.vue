@@ -26,6 +26,10 @@
         <Checkbox :is-enabled="allowFetch" @toggle="toggleSetting('allowFetch')" />
       </Setting>
 
+      <Setting name="Download files" desc="Allow agent to download files without asking.">
+        <Checkbox :is-enabled="allowDownload" @toggle="toggleSetting('allowDownload')" />
+      </Setting>
+
       <Setting name="Wise model" desc="Allow agent to consult the wise model without asking.">
         <Checkbox :is-enabled="allowWiseModel" @toggle="toggleSetting('allowWiseModel')" />
       </Setting>
@@ -64,7 +68,14 @@ const emit = defineEmits<{
 const scope = ScopeResolver.getInstance()
 const agent = AgentService.getInstance()
 const permissionMode = ref(AbeleConfig.getInstance().ai.permissionMode)
-const { allowWebSearch, allowFetch, allowWiseModel, allowImageGeneration, allowEvalJs } = agent
+const {
+  allowWebSearch,
+  allowFetch,
+  allowDownload,
+  allowWiseModel,
+  allowImageGeneration,
+  allowEvalJs,
+} = agent
 
 const scopeEntries = computed(() => scope.entries.value)
 
@@ -87,7 +98,13 @@ const onPermissionChange = (value: string) => {
 }
 
 const toggleSetting = (
-  key: 'allowWebSearch' | 'allowFetch' | 'allowWiseModel' | 'allowImageGeneration' | 'allowEvalJs'
+  key:
+    | 'allowWebSearch'
+    | 'allowFetch'
+    | 'allowDownload'
+    | 'allowWiseModel'
+    | 'allowImageGeneration'
+    | 'allowEvalJs'
 ) => {
   agent[key].value = !agent[key].value
 }
