@@ -201,10 +201,22 @@ const branchFromHere = () => {
 
 const expanded = ref(false)
 
-const FILE_TOOLS = ['read', 'edit', 'create', 'rm', 'mv', 'cp', 'read_image']
+const FILE_TOOLS = ['read', 'edit', 'create', 'rm', 'mv', 'cp', 'read_image', 'apply_template']
+
+/** Extract path from tool result text like "Created: path" or "Saved: path" */
+function extractResultPath(result?: string): string {
+  if (!result) return ''
+  const match = result.match(/^(?:Created|Saved|Edited):\s*(.+)$/m)
+  return match?.[1]?.trim() || ''
+}
 
 const toolSummary = computed(() => {
+  const name = props.message.toolName
   const p = props.message.toolParams
+  // For apply_template, show created file path once available
+  if (name === 'apply_template') {
+    return extractResultPath(props.message.toolResult) || String(p?.path || '')
+  }
   if (!p) return ''
   if (p.path) return String(p.path)
   if (p.from && p.to) return `${p.from} → ${p.to}`
@@ -221,6 +233,7 @@ const toolFilePath = computed(() => {
   const p = props.message.toolParams
   if (!p) return ''
   if (name === 'mv' || name === 'cp') return String(p.to || '')
+  if (name === 'apply_template') return extractResultPath(props.message.toolResult)
   return String(p.path || '')
 })
 
@@ -404,6 +417,22 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
     border-radius: var(--radius-s);
     font-size: 0.9em;
   }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+
+    th,
+    td {
+      border: 1px solid var(--background-modifier-border);
+      padding: var(--size-4-1) var(--size-4-2);
+      text-align: left;
+    }
+
+    th {
+      background-color: var(--background-secondary);
+    }
+  }
 }
 
 .abele-chat-msg__thinking {
@@ -413,11 +442,53 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   border-radius: var(--radius-s);
   padding: var(--size-4-1) var(--size-4-2);
   font-size: var(--font-small);
+  overflow: hidden;
 
   summary {
     cursor: pointer;
     color: var(--text-muted);
     font-style: italic;
+  }
+
+  pre {
+    position: relative;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+    margin: var(--size-4-2) 0;
+
+    code {
+      display: block;
+      padding: var(--size-4-2) var(--size-4-3);
+      background-color: var(--background-secondary);
+      border-radius: var(--radius-s);
+      font-size: var(--font-small);
+      line-height: 1.5;
+    }
+  }
+
+  :not(pre) > code {
+    padding: 1px var(--size-4-1);
+    background-color: var(--code-background);
+    border-radius: var(--radius-s);
+    font-size: 0.9em;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: var(--font-small);
+
+    th,
+    td {
+      border: 1px solid var(--background-modifier-border);
+      padding: var(--size-4-1) var(--size-4-2);
+      text-align: left;
+    }
+
+    th {
+      background-color: var(--background-secondary);
+    }
   }
 }
 
