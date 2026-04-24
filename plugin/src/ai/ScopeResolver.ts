@@ -124,8 +124,7 @@ export class ScopeResolver {
     for (const entry of this.entries.value) {
       switch (entry.type) {
         case 'file': {
-          const file = app.vault.getAbstractFileByPath(entry.path)
-          if (file instanceof TFile) result.add(file.path)
+          result.add(entry.path)
           break
         }
         case 'folder': {
