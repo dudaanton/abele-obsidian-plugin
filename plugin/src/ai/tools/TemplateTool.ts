@@ -121,6 +121,8 @@ export function createApplyTemplateTool(): AgentTool {
         }
       }
 
+      console.debug('[apply_template] path:', path, 'variables:', Object.fromEntries(userValues))
+
       const file = await service.createNoteFromTemplate(template, userValues)
       ScopeResolver.getInstance().addFile(file.path)
 
