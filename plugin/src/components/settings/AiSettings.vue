@@ -173,6 +173,17 @@
       </Setting>
 
       <Setting
+        name="Delegate Model"
+        desc="Model for sub-agent tasks (delegate tool). Falls back to main model if not set."
+      >
+        <Dropdown
+          :model-value="delegateModelKey"
+          :options="[{ value: '', display: 'Same as main' }, ...modelOptions]"
+          @update:model-value="selectDelegateModel($event)"
+        />
+      </Setting>
+
+      <Setting
         name="Sequential Auxiliary"
         desc="Run auxiliary tasks after the main model finishes. Enable for local models with limited throughput."
       >
@@ -358,6 +369,23 @@
         <Checkbox :is-enabled="defaultAllowEvalJs" @toggle="toggleDefault('allowEvalJs')" />
       </Setting>
 
+      <Setting
+        name="Allow create files"
+        desc="Default for new chats. Allow agent to create new files without asking."
+      >
+        <Checkbox
+          :is-enabled="defaultAllowCreateFiles"
+          @toggle="toggleDefault('allowCreateFiles')"
+        />
+      </Setting>
+
+      <Setting
+        name="Allow delegate"
+        desc="Default for new chats. Allow agent to delegate tasks to sub-agents without asking."
+      >
+        <Checkbox :is-enabled="defaultAllowDelegate" @toggle="toggleDefault('allowDelegate')" />
+      </Setting>
+
       <h3>Prompts</h3>
 
       <Setting
@@ -502,6 +530,8 @@ const defaultAllowDownload = ref(config.ai.allowDownload)
 const defaultAllowWiseModel = ref(config.ai.allowWiseModel)
 const defaultAllowImageGeneration = ref(config.ai.allowImageGeneration)
 const defaultAllowEvalJs = ref(config.ai.allowEvalJs)
+const defaultAllowCreateFiles = ref(config.ai.allowCreateFiles ?? true)
+const defaultAllowDelegate = ref(config.ai.allowDelegate ?? false)
 const defaultScope = ref(JSON.parse(JSON.stringify(config.ai.defaultScope || [])))
 const defaultFullVaultAccess = ref(config.ai.defaultFullVaultAccess)
 
@@ -528,6 +558,7 @@ const activeProviderId = ref(config.ai.activeProviderId)
 const activeModelId = ref(config.ai.activeModelId)
 const auxiliaryModelId = ref(config.ai.auxiliaryModelId)
 const wiseModelId = ref(config.ai.wiseModelId)
+const delegateModelId = ref(config.ai.delegateModelId || '')
 const sequentialAuxiliary = ref(config.ai.sequentialAuxiliary)
 const prompts = ref<Partial<AiPrompts>>(
   config.ai.prompts ? JSON.parse(JSON.stringify(config.ai.prompts)) : {}
@@ -574,6 +605,16 @@ const wiseModelKey = computed(() => {
   return ''
 })
 
+const delegateModelKey = computed(() => {
+  if (!delegateModelId.value) return ''
+  for (const p of providers.value) {
+    if (p.models.some((m) => m.id === delegateModelId.value)) {
+      return `${p.id}::${delegateModelId.value}`
+    }
+  }
+  return ''
+})
+
 const modelOptions = computed(() => {
   const options: { value: string; display: string }[] = []
   for (const p of providers.value) {
@@ -595,6 +636,7 @@ const save = debounce(async () => {
     activeModelId: activeModelId.value,
     auxiliaryModelId: auxiliaryModelId.value,
     wiseModelId: wiseModelId.value,
+    delegateModelId: delegateModelId.value,
     sequentialAuxiliary: sequentialAuxiliary.value,
     permissionMode: config.ai.permissionMode,
     allowWebSearch: defaultAllowWebSearch.value,
@@ -603,6 +645,8 @@ const save = debounce(async () => {
     allowWiseModel: defaultAllowWiseModel.value,
     allowImageGeneration: defaultAllowImageGeneration.value,
     allowEvalJs: defaultAllowEvalJs.value,
+    allowCreateFiles: defaultAllowCreateFiles.value,
+    allowDelegate: defaultAllowDelegate.value,
     defaultScope: JSON.parse(JSON.stringify(defaultScope.value)),
     defaultFullVaultAccess: defaultFullVaultAccess.value,
     chatFolder: chatFolder.value,
@@ -636,6 +680,8 @@ const toggleDefault = (
     | 'allowWiseModel'
     | 'allowImageGeneration'
     | 'allowEvalJs'
+    | 'allowCreateFiles'
+    | 'allowDelegate'
 ) => {
   if (key === 'allowWebSearch') defaultAllowWebSearch.value = !defaultAllowWebSearch.value
   if (key === 'allowFetch') defaultAllowFetch.value = !defaultAllowFetch.value
@@ -644,6 +690,8 @@ const toggleDefault = (
   if (key === 'allowImageGeneration')
     defaultAllowImageGeneration.value = !defaultAllowImageGeneration.value
   if (key === 'allowEvalJs') defaultAllowEvalJs.value = !defaultAllowEvalJs.value
+  if (key === 'allowCreateFiles') defaultAllowCreateFiles.value = !defaultAllowCreateFiles.value
+  if (key === 'allowDelegate') defaultAllowDelegate.value = !defaultAllowDelegate.value
   save()
 }
 
@@ -863,6 +911,16 @@ const selectWiseModel = (key: string) => {
   } else {
     const [, mId] = key.split('::')
     wiseModelId.value = mId || ''
+  }
+  save()
+}
+
+const selectDelegateModel = (key: string) => {
+  if (!key) {
+    delegateModelId.value = ''
+  } else {
+    const [, mId] = key.split('::')
+    delegateModelId.value = mId || ''
   }
   save()
 }

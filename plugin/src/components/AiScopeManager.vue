@@ -44,6 +44,14 @@
       <Setting name="Eval JS" desc="Allow agent to execute JavaScript code without asking.">
         <Checkbox :is-enabled="allowEvalJs" @toggle="toggleSetting('allowEvalJs')" />
       </Setting>
+
+      <Setting name="Create files" desc="Allow agent to create new files without asking.">
+        <Checkbox :is-enabled="allowCreateFiles" @toggle="toggleSetting('allowCreateFiles')" />
+      </Setting>
+
+      <Setting name="Delegate" desc="Allow agent to delegate tasks to sub-agents without asking.">
+        <Checkbox :is-enabled="allowDelegate" @toggle="toggleSetting('allowDelegate')" />
+      </Setting>
     </div>
   </ObsidianModal>
 </template>
@@ -75,6 +83,8 @@ const {
   allowWiseModel,
   allowImageGeneration,
   allowEvalJs,
+  allowCreateFiles,
+  allowDelegate,
 } = agent
 
 const scopeEntries = computed(() => scope.entries.value)
@@ -105,6 +115,8 @@ const toggleSetting = (
     | 'allowWiseModel'
     | 'allowImageGeneration'
     | 'allowEvalJs'
+    | 'allowCreateFiles'
+    | 'allowDelegate'
 ) => {
   agent[key].value = !agent[key].value
 }

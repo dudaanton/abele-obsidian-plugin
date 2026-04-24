@@ -26,6 +26,12 @@
             @click="openToolFile"
             >{{ toolSummary }}</span
           >
+          <span
+            v-if="message.toolName === 'delegate' && message.toolResult?.startsWith('Processing:')"
+            class="abele-chat-msg__tool-progress"
+          >
+            {{ message.toolResult }}
+          </span>
           <Icon
             v-if="message.toolStatus === 'approved' && !message.toolResult"
             icon="loader"
@@ -358,6 +364,8 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   flex: 1;
   min-width: 0;
   overflow-wrap: break-word;
+  word-break: break-word;
+  overflow-x: hidden;
 
   p:first-child {
     margin-top: 0;
@@ -443,6 +451,8 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   padding: var(--size-4-1) var(--size-4-2);
   font-size: var(--font-small);
   overflow: hidden;
+  overflow-wrap: break-word;
+  word-break: break-word;
 
   summary {
     cursor: pointer;
@@ -512,10 +522,13 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   font-size: var(--font-small);
   color: var(--text-muted);
   padding-top: 5px;
+  overflow: hidden;
 
   code {
     color: var(--text-accent);
     font-size: var(--font-smaller);
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 }
 
@@ -537,6 +550,14 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
 .abele-chat-msg__tool-spinner {
   animation: abele-spin 1s linear infinite;
   color: var(--text-faint);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.abele-chat-msg__tool-progress {
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .abele-chat-msg__tool-err-badge {
