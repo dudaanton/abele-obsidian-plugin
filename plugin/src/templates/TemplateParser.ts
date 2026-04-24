@@ -33,7 +33,7 @@ export interface ParseResult {
 }
 
 // Regex patterns
-const VARIABLE_REGEX = /\{\{\s*([^}]+?)\s*\}\}/g
+const VARIABLE_PATTERN = /\{\{\s*([^}]+?)\s*\}\}/g
 const DATE_SIMPLE_REGEX = /^date$/
 const DATE_FORMAT_REGEX = /^date\.format\(['"]([^'"]+)['"]\)$/
 const DATE_OFFSET_REGEX = /^date\.offset\(([-\d]+)\)$/
@@ -115,8 +115,9 @@ export function parseTemplateVariables(content: string): ParseResult {
   const variables: TemplateVariable[] = []
   const seen = new Set<string>()
 
+  const regex = new RegExp(VARIABLE_PATTERN.source, VARIABLE_PATTERN.flags)
   let match: RegExpExecArray | null
-  while ((match = VARIABLE_REGEX.exec(content)) !== null) {
+  while ((match = regex.exec(content)) !== null) {
     const raw = match[0]
     const expr = match[1]
 
