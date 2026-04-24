@@ -1,6 +1,21 @@
 import { App, FuzzySuggestModal, TFile } from 'obsidian'
 
-const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']
+const MEDIA_EXTENSIONS = [
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'bmp',
+  'svg',
+  'avif',
+  'mp4',
+  'webm',
+  'mov',
+  'mkv',
+  'avi',
+  'ogv',
+]
 
 class ImagePickerModal extends FuzzySuggestModal<TFile> {
   private resolve: (file: TFile | null) => void = () => {}
@@ -8,13 +23,13 @@ class ImagePickerModal extends FuzzySuggestModal<TFile> {
 
   constructor(app: App) {
     super(app)
-    this.setPlaceholder('Search for an image...')
+    this.setPlaceholder('Search for an image or video...')
   }
 
   getItems(): TFile[] {
     return this.app.vault
       .getFiles()
-      .filter((f) => IMAGE_EXTENSIONS.includes(f.extension.toLowerCase()))
+      .filter((f) => MEDIA_EXTENSIONS.includes(f.extension.toLowerCase()))
   }
 
   getItemText(file: TFile): string {
