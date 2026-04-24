@@ -255,7 +255,7 @@ export class AgentService {
     }
 
     if (AgentService.READ_TOOLS.includes(toolName)) return false
-    if (toolName === 'create') return !this.allowCreateFiles.value
+    if (toolName === 'create' || toolName === 'apply_template') return !this.allowCreateFiles.value
     if (toolName === 'delegate') return !this.allowDelegate.value
     if (toolName === 'web_search') return !this.allowWebSearch.value
     if (toolName === 'fetch') return !this.allowFetch.value
