@@ -39,7 +39,7 @@ export class GalleryWidget extends WidgetType {
     GlobalStore.getInstance().galleriesContainers.value.push(
       new Gallery({
         id: this.id,
-        filePath: this.file.path,
+        file: this.file,
         images: [...this.images],
         layout: this.layout,
         height: this.height,

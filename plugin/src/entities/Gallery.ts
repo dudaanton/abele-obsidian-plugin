@@ -7,25 +7,31 @@ import {
 } from '@/helpers/galleryUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { getEditorForFile } from '@/helpers/vaultUtils'
+import { TFile } from 'obsidian'
 
 export class Gallery {
   public readonly id: string
-  public readonly filePath: string
+  public readonly file: TFile
   public readonly images: GalleryImageEntry[]
   public readonly layout: string
   public readonly height: number
   public readonly bg: boolean
 
+  /** Current file path (follows renames via TFile reference) */
+  get filePath(): string {
+    return this.file.path
+  }
+
   constructor(data: {
     id?: string
-    filePath: string
+    file: TFile
     images: GalleryImageEntry[]
     layout: string
     height: number
     bg: boolean
   }) {
     this.id = data.id || genid()
-    this.filePath = data.filePath
+    this.file = data.file
     this.images = data.images
     this.height = data.height
     this.bg = data.bg
