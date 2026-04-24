@@ -143,6 +143,7 @@ const PERMISSION_TOOLS: Record<
   edit_image: 'allowImageGeneration',
   eval_js: 'allowEvalJs',
   create: 'allowCreateFiles',
+  apply_template: 'allowCreateFiles',
   delegate: 'allowDelegate',
 }
 
