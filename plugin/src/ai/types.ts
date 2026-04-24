@@ -42,6 +42,7 @@ export interface AiSettings {
   activeModelId: string
   auxiliaryModelId: string
   wiseModelId: string
+  delegateModelId: string
   sequentialAuxiliary: boolean
   permissionMode: PermissionMode
   allowWebSearch: boolean
@@ -50,6 +51,8 @@ export interface AiSettings {
   allowWiseModel: boolean
   allowImageGeneration: boolean
   allowEvalJs: boolean
+  allowCreateFiles: boolean
+  allowDelegate: boolean
   defaultScope: Array<{ type: 'file' | 'folder' | 'pattern' | 'group'; path: string }>
   defaultFullVaultAccess: boolean
   chatFolder: string
@@ -70,6 +73,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   activeModelId: '',
   auxiliaryModelId: '',
   wiseModelId: '',
+  delegateModelId: '',
   sequentialAuxiliary: false,
   permissionMode: 'confirm-all',
   allowWebSearch: true,
@@ -78,6 +82,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   allowWiseModel: false,
   allowImageGeneration: false,
   allowEvalJs: false,
+  allowCreateFiles: true,
+  allowDelegate: false,
   defaultScope: [],
   defaultFullVaultAccess: false,
   chatFolder: 'AI/Chats/{{name}}',
@@ -128,6 +134,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
         'Download an image from a URL and save it to the vault attachments folder. Returns the saved file path.',
       download_file:
         'Download any file from a URL and save it to the vault attachments folder. Returns the saved file path.',
+      delegate:
+        'Delegate repetitive tasks to sub-agents for parallel processing. Each item gets a fresh context. Use for batch operations on many items.',
     },
   },
 }
@@ -174,6 +182,8 @@ export interface ChatMetadata {
   allowWiseModel?: boolean
   allowImageGeneration?: boolean
   allowEvalJs?: boolean
+  allowCreateFiles?: boolean
+  allowDelegate?: boolean
   activeLeafId?: string
   customSystemPrompt?: string
   customSystemPromptNotePath?: string

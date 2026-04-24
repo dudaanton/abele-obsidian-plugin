@@ -62,6 +62,7 @@
 
     <div class="abele-tool-approval__actions">
       <Button text="Approve" @click="approve" />
+      <Button v-if="canAllowAll" text="Allow all" @click="allowAll" />
       <Button text="Edit" @click="toggleEdit" />
       <Button text="Reject" @click="reject" />
     </div>
@@ -120,6 +121,44 @@ const approve = () => {
   } else {
     agent.approveToolCall()
   }
+}
+
+const PERMISSION_TOOLS: Record<
+  string,
+  | 'allowWebSearch'
+  | 'allowFetch'
+  | 'allowDownload'
+  | 'allowWiseModel'
+  | 'allowImageGeneration'
+  | 'allowEvalJs'
+  | 'allowCreateFiles'
+  | 'allowDelegate'
+> = {
+  web_search: 'allowWebSearch',
+  fetch: 'allowFetch',
+  download_image: 'allowDownload',
+  download_file: 'allowDownload',
+  wise_model: 'allowWiseModel',
+  generate_image: 'allowImageGeneration',
+  edit_image: 'allowImageGeneration',
+  eval_js: 'allowEvalJs',
+  create: 'allowCreateFiles',
+  delegate: 'allowDelegate',
+}
+
+const canAllowAll = computed(() => {
+  const name = props.message.toolName
+  return name ? name in PERMISSION_TOOLS : false
+})
+
+const allowAll = () => {
+  const name = props.message.toolName
+  if (!name) return
+  const permKey = PERMISSION_TOOLS[name]
+  if (permKey) {
+    agent[permKey].value = true
+  }
+  agent.approveToolCall()
 }
 
 const reject = () => {

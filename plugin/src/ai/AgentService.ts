@@ -85,6 +85,8 @@ export class AgentService {
   public readonly allowWiseModel = ref(false)
   public readonly allowImageGeneration = ref(false)
   public readonly allowEvalJs = ref(false)
+  public readonly allowCreateFiles = ref(true)
+  public readonly allowDelegate = ref(false)
   public readonly customSystemPrompt = ref('')
   public readonly customSystemPromptNotePath = ref('')
 
@@ -191,12 +193,48 @@ export class AgentService {
     return createAgentTools()
   }
 
+  // ── Delegate (sub-agent) support ──────────────────────────────
+
+  getDelegateModelConfig(): ModelConfig {
+    const config = AbeleConfig.getInstance().ai
+    if (config.delegateModelId) {
+      for (const provider of config.providers) {
+        const model = provider.models.find((m) => m.id === config.delegateModelId)
+        if (model) {
+          return {
+            id: model.id,
+            name: model.name,
+            baseUrl: provider.baseUrl,
+            apiKey: GlobalStore.getInstance().app.secretStorage.getSecret(provider.apiKeyId) || '',
+            contextWindow: model.contextWindow,
+            maxTokens: model.maxTokens,
+            supportsReasoning: model.supportsReasoning,
+          }
+        }
+      }
+    }
+    return this.getActiveModelConfig()
+  }
+
+  async getDelegateSystemPrompt(): Promise<string> {
+    return this.getSystemPrompt()
+  }
+
+  updateDelegateProgress(status: string): void {
+    this.updateChatMessage(
+      (m) => m.role === 'tool-call' && m.toolName === 'delegate' && m.toolStatus === 'approved',
+      (m) => ({
+        ...m,
+        toolResult: `Processing: ${status}`,
+      })
+    )
+  }
+
   private static readonly READ_TOOLS = ['read', 'ls', 'find', 'workspace', 'skill']
   private static readonly EDIT_TOOLS = ['edit', 'create']
   private static readonly SCOPED_TOOLS = [
     'read',
     'edit',
-    'create',
     'rm',
     'mv',
     'cp',
@@ -217,6 +255,8 @@ export class AgentService {
     }
 
     if (AgentService.READ_TOOLS.includes(toolName)) return false
+    if (toolName === 'create') return !this.allowCreateFiles.value
+    if (toolName === 'delegate') return !this.allowDelegate.value
     if (toolName === 'web_search') return !this.allowWebSearch.value
     if (toolName === 'fetch') return !this.allowFetch.value
     if (toolName === 'download_image' || toolName === 'download_file')
@@ -841,6 +881,8 @@ export class AgentService {
     this.allowWiseModel.value = config.allowWiseModel
     this.allowImageGeneration.value = config.allowImageGeneration
     this.allowEvalJs.value = config.allowEvalJs
+    this.allowCreateFiles.value = config.allowCreateFiles ?? true
+    this.allowDelegate.value = config.allowDelegate ?? false
     // Reset scope from defaults
     const scope = ScopeResolver.getInstance()
     scope.clear()
@@ -889,6 +931,8 @@ export class AgentService {
       allowWiseModel: this.allowWiseModel.value,
       allowImageGeneration: this.allowImageGeneration.value,
       allowEvalJs: this.allowEvalJs.value,
+      allowCreateFiles: this.allowCreateFiles.value,
+      allowDelegate: this.allowDelegate.value,
       activeLeafId: this.activeLeafId || undefined,
       customSystemPrompt: this.customSystemPrompt.value || undefined,
       customSystemPromptNotePath: this.customSystemPromptNotePath.value || undefined,
@@ -942,6 +986,9 @@ export class AgentService {
     this.allowImageGeneration.value =
       result.metadata?.allowImageGeneration ?? config.allowImageGeneration
     this.allowEvalJs.value = result.metadata?.allowEvalJs ?? config.allowEvalJs
+    this.allowCreateFiles.value =
+      result.metadata?.allowCreateFiles ?? config.allowCreateFiles ?? true
+    this.allowDelegate.value = result.metadata?.allowDelegate ?? config.allowDelegate ?? false
     this.customSystemPrompt.value = result.metadata?.customSystemPrompt || ''
     this.customSystemPromptNotePath.value = result.metadata?.customSystemPromptNotePath || ''
 

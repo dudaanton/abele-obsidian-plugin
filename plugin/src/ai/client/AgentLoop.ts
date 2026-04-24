@@ -90,6 +90,17 @@ export class AgentLoop {
     const signal = this.abortController.signal
     const messages = [...opts.messages]
 
+    // Forward external abort signal to internal controller
+    const externalSignal = opts.streamOptions?.signal
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        this.abortController.abort()
+      } else {
+        const onExternalAbort = () => this.abortController?.abort()
+        externalSignal.addEventListener('abort', onExternalAbort, { once: true })
+      }
+    }
+
     this.emit({ type: 'agent_start' })
 
     try {
