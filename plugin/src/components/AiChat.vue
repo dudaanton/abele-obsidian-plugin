@@ -523,6 +523,7 @@ const showDebug = () => {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--size-4-2) var(--size-4-3);
   user-select: text;
 }
