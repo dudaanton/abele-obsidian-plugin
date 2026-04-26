@@ -43,6 +43,8 @@ export class GlobalStore {
   public readonly findAndReplaceModalOpened = ref(false)
   public readonly migrateFromDataviewModalOpened = ref(false)
   public readonly saveMediaModalOpened = ref(false)
+  public readonly importFilesModalOpened = ref(false)
+  public readonly previewImagePath = ref<string | null>(null)
   public readonly unusedMediaModalOpened = ref(false)
   public readonly deduplicateMediaModalOpened = ref(false)
   public readonly migrateFromFireflyModalOpened = ref(false)

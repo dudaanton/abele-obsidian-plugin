@@ -64,6 +64,14 @@
     @close="migrateFromDataviewModalOpened = false"
   />
   <SaveMediaModal v-if="saveMediaModalOpened" @close="saveMediaModalOpened = false" />
+  <ImportFilesModal v-if="importFilesModalOpened" @close="importFilesModalOpened = false" />
+  <GalleryViewer
+    v-if="previewImagePath"
+    :images="previewImages"
+    :start-index="previewStartIndex"
+    :gallery-file-path="previewImagePath"
+    @close="previewImagePath = null"
+  />
   <UnusedMediaModal v-if="unusedMediaModalOpened" @close="unusedMediaModalOpened = false" />
   <DeduplicateMediaModal
     v-if="deduplicateMediaModalOpened"
@@ -93,6 +101,8 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import TaskView from './Task.vue'
 import GalleryView from './Gallery.vue'
@@ -110,6 +120,8 @@ import FindAndReplaceBases from './FindAndReplaceBases.vue'
 import FindAndReplaceModal from './FindAndReplaceModal.vue'
 import MigrateFromDataviewModal from './MigrateFromDataviewModal.vue'
 import SaveMediaModal from './SaveMediaModal.vue'
+import ImportFilesModal from './ImportFilesModal.vue'
+import GalleryViewer from './GalleryViewer.vue'
 import UnusedMediaModal from './UnusedMediaModal.vue'
 import DeduplicateMediaModal from './DeduplicateMediaModal.vue'
 import MigrateFromFireflyModal from './MigrateFromFireflyModal.vue'
@@ -137,6 +149,8 @@ const {
   findAndReplaceModalOpened,
   migrateFromDataviewModalOpened,
   saveMediaModalOpened,
+  importFilesModalOpened,
+  previewImagePath,
   unusedMediaModalOpened,
   deduplicateMediaModalOpened,
   migrateFromFireflyModalOpened,
@@ -153,4 +167,44 @@ const {
   findAndReplaceBasesInstances,
   settingsTabId,
 } = GlobalStore.getInstance()
+
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'])
+
+const previewImages = computed(() => {
+  const path = previewImagePath.value
+  if (!path) return []
+  const { app } = GlobalStore.getInstance()
+  const file = app.vault.getAbstractFileByPath(path)
+  if (!file || !(file instanceof TFile)) return []
+
+  // Collect all images in the same folder
+  const folder = file.parent
+  if (!folder) return [toViewerImage(file)]
+
+  return folder.children
+    .filter(
+      (f): f is TFile => f instanceof TFile && IMAGE_EXTENSIONS.has(f.extension.toLowerCase())
+    )
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(toViewerImage)
+})
+
+const previewStartIndex = computed(() => {
+  const path = previewImagePath.value
+  if (!path) return 0
+  return Math.max(
+    0,
+    previewImages.value.findIndex((img) => img.path === path)
+  )
+})
+
+function toViewerImage(file: TFile) {
+  const { app } = GlobalStore.getInstance()
+  return {
+    url: app.vault.getResourcePath(file),
+    alt: file.name,
+    type: 'local' as const,
+    path: file.path,
+  }
+}
 </script>

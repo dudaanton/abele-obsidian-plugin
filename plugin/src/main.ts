@@ -28,6 +28,7 @@ import { insertGallery, convertImagesToGalleries } from './commands/galleryComma
 import { setCoverFromFirstMedia } from './commands/setCover'
 import { findAndReplace } from './commands/findAndReplace'
 import { saveMedia } from './commands/saveMedia'
+import { importFiles } from './commands/importFiles'
 import { unusedMedia } from './commands/unusedMedia'
 import { deduplicateMedia } from './commands/deduplicateMedia'
 import { TIMELINE_SIDEBAR_VIEW_TYPE, TimelineSidebarView } from './views/TimelineSidebarView'
@@ -42,6 +43,7 @@ import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
 import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
 import { AgentService } from './ai/AgentService'
+import { useFilesInAgent } from './helpers/useFilesInAgent'
 import { ScriptService } from './scripting/ScriptService'
 import { ScopeResolver } from './ai/ScopeResolver'
 import { ChatStorage } from './ai/ChatStorage'
@@ -252,6 +254,31 @@ export default class AbelePlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on('file-menu', (menu, file) => {
         if (!(file instanceof TFile)) return
+
+        // "Preview" for images
+        const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']
+        if (IMAGE_EXTENSIONS.includes(file.extension.toLowerCase())) {
+          menu.addItem((item) => {
+            item
+              .setTitle('Preview')
+              .setIcon('eye')
+              .onClick(() => {
+                GlobalStore.getInstance().previewImagePath.value = file.path
+              })
+          })
+        }
+
+        // "Use in AI Agent" for all files
+        if (AbeleConfig.getInstance().ai.enabled) {
+          menu.addItem((item) => {
+            item
+              .setTitle('Use in AI Agent')
+              .setIcon('bot')
+              .onClick(() => useFilesInAgent([file]))
+          })
+        }
+
+        // "Open as code" for code files
         const ext = file.extension
         if (
           ![
@@ -312,6 +339,14 @@ export default class AbelePlugin extends Plugin {
       name: 'Find and replace in frontmatter and content of all notes, matching the criteria',
       callback: () => {
         findAndReplace()
+      },
+    })
+
+    this.addCommand({
+      id: 'import-files',
+      name: 'Import files to vault',
+      callback: () => {
+        importFiles()
       },
     })
 
