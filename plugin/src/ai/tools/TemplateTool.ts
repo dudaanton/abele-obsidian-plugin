@@ -44,10 +44,16 @@ export function createListTemplatesTool(): AgentTool {
           const body = await t.getBody()
           const { userVariables } = parseTemplateVariables(body)
 
-          // Also collect variables from target properties
-          for (const prop of t.targetProperties) {
-            const { userVariables: propVars } = parseTemplateVariables(prop.value)
-            for (const v of propVars) {
+          // Also collect variables from target_name, target_folder, and target properties
+          const extraSources = [
+            t.targetName,
+            t.targetFolder,
+            ...t.targetProperties.map((p) => p.value),
+          ]
+          for (const src of extraSources) {
+            if (!src) continue
+            const { userVariables: extraVars } = parseTemplateVariables(src)
+            for (const v of extraVars) {
               if (!userVariables.find((uv) => uv.name === v.name)) {
                 userVariables.push(v)
               }
@@ -111,7 +117,11 @@ export function createApplyTemplateTool(): AgentTool {
       const template = templates.find((t) => t.file.path === path)
       if (!template) throw new Error(`Template not found: ${path}`)
 
-      const vars = (params.variables as Record<string, string | string[]>) || {}
+      const rawVars = params.variables
+      const vars: Record<string, string | string[]> =
+        typeof rawVars === 'string'
+          ? JSON.parse(rawVars)
+          : (rawVars as Record<string, string | string[]>) || {}
       const userValues = new Map<string, string>()
       for (const [key, val] of Object.entries(vars)) {
         if (Array.isArray(val)) {
