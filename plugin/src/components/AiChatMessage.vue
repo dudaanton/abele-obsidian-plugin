@@ -42,11 +42,27 @@
             >failed</span
           >
         </span>
-        <img
+        <div
           v-if="message.toolStatus === 'approved' && imageUrl"
-          :src="imageUrl"
-          class="abele-chat-msg__image-preview"
-        />
+          class="abele-chat-msg__image-wrap"
+        >
+          <img
+            :src="imageUrl"
+            class="abele-chat-msg__image-preview"
+            @click="openImagePreview"
+            @contextmenu.prevent="onImageContextMenu"
+          />
+          <span v-if="imagePath" class="abele-chat-msg__image-link" @click="openImagePreview">{{
+            imagePath
+          }}</span>
+          <GalleryViewer
+            v-if="viewerOpen"
+            :images="viewerImages"
+            :start-index="0"
+            :gallery-file-path="imagePath || ''"
+            @close="viewerOpen = false"
+          />
+        </div>
         <pre
           v-if="message.toolDiff && !message.toolDiff.old"
           class="abele-chat-msg__new-file"
@@ -156,10 +172,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import dayjs from 'dayjs'
-import { TFile } from 'obsidian'
+import { Menu, Notice, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import Diff from './Diff.vue'
+import GalleryViewer from './GalleryViewer.vue'
+import type { ViewerImage } from './GalleryViewer.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { getAttachmentIcon, fileName as attachmentName } from '@/ai/attachments'
 import type { ChatMessage } from '@/ai/types'
@@ -253,6 +271,69 @@ const openToolFile = () => {
 }
 
 const IMAGE_TOOLS = ['read_image', 'generate_image', 'edit_image']
+
+const imagePath = computed(() => {
+  const name = props.message.toolName
+  if (!name || !IMAGE_TOOLS.includes(name)) return ''
+  if (name === 'read_image') return (props.message.toolParams?.path as string) || ''
+  const result = props.message.toolResult
+  if (!result) return ''
+  const match = result.match(/(?:Image saved|Edited image saved): (.+)/)
+  return match ? match[1].trim() : ''
+})
+
+const viewerOpen = ref(false)
+
+const viewerImages = computed<ViewerImage[]>(() => {
+  if (!imageUrl.value || !imagePath.value) return []
+  return [
+    {
+      url: imageUrl.value,
+      alt: imagePath.value.split('/').pop() || '',
+      type: 'local' as const,
+      path: imagePath.value,
+    },
+  ]
+})
+
+const openImagePreview = () => {
+  if (viewerImages.value.length) {
+    viewerOpen.value = true
+  }
+}
+
+const onImageContextMenu = (e: MouseEvent) => {
+  const menu = new Menu()
+  menu.addItem((item) => {
+    item
+      .setTitle('Preview')
+      .setIcon('eye')
+      .onClick(() => openImagePreview())
+  })
+  menu.addItem((item) => {
+    item
+      .setTitle('Open file')
+      .setIcon('file')
+      .onClick(() => {
+        if (!imagePath.value) return
+        const { app } = GlobalStore.getInstance()
+        const file = app.vault.getAbstractFileByPath(imagePath.value)
+        if (file instanceof TFile) app.workspace.getLeaf(false).openFile(file)
+      })
+  })
+  menu.addItem((item) => {
+    item
+      .setTitle('Copy path')
+      .setIcon('link')
+      .onClick(() => {
+        if (imagePath.value) {
+          navigator.clipboard.writeText(imagePath.value)
+          new Notice('Path copied')
+        }
+      })
+  })
+  menu.showAtPosition({ x: e.clientX, y: e.clientY })
+}
 
 const imageUrl = computed(() => {
   const name = props.message.toolName
@@ -593,13 +674,30 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   }
 }
 
+.abele-chat-msg__image-wrap {
+  margin-top: var(--size-4-1);
+}
+
 .abele-chat-msg__image-preview {
   display: block;
   max-width: 300px;
   max-height: 300px;
   border-radius: var(--radius-s);
-  margin-top: var(--size-4-1);
   border: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+}
+
+.abele-chat-msg__image-link {
+  display: block;
+  margin-top: var(--size-2-1);
+  font-size: var(--font-smallest);
+  color: var(--text-accent);
+  cursor: pointer;
+  word-break: break-all;
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
 .abele-chat-msg__new-file {
