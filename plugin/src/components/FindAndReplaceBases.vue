@@ -20,6 +20,7 @@
     <div class="abele-far-bases__buttons">
       <ObsidianButton text="Preview" accent @click="preview" />
       <ObsidianButton text="Replace all" :disabled="!searchResults.length" @click="replace" />
+      <ObsidianButton text="Use in AI" :disabled="!props.files.value.length" @click="sendToAgent" />
       <div class="abele-far-bases__count">{{ searchResults.length }} results</div>
     </div>
     <div class="abele-far-bases__results">
@@ -60,6 +61,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { stringifyYaml, TFile } from 'obsidian'
 import { getEditorForFile } from '@/helpers/vaultUtils'
 import { getNoteBody, replaceNoteBody } from '@/helpers/notesUtils'
+import { useFilesInAgent } from '@/helpers/useFilesInAgent'
 
 const props = defineProps<{
   files: Ref<TFile[]>
@@ -189,6 +191,10 @@ const goToNote = (path: string) => {
   if (file && file instanceof TFile) {
     app.workspace.getLeaf().openFile(file)
   }
+}
+
+const sendToAgent = () => {
+  useFilesInAgent(props.files.value)
 }
 
 const removeSearchResult = (result: SearchResult) => {

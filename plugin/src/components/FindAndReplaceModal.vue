@@ -39,6 +39,7 @@
       <div class="abele-sar-fm-modal__buttons">
         <ObsidianButton text="Search" accent @click="search" />
         <ObsidianButton text="Replace all" :disabled="!searchResults.length" @click="replace" />
+        <ObsidianButton text="Use in AI" :disabled="!searchResults.length" @click="sendToAgent" />
         <div class="abele-sar-fm-modal__count">{{ searchResults.length }} results</div>
       </div>
       <div class="abele-sar-fm-modal__results">
@@ -80,6 +81,7 @@ import CriterionView from './Criterion.vue'
 import ReplacementActionView from './ReplacementAction.vue'
 import Diff from './Diff.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { useFilesInAgent } from '@/helpers/useFilesInAgent'
 import { stringifyYaml, TFile } from 'obsidian'
 import { useInfiniteScroll } from '@vueuse/core'
 import { getEditorForFile } from '@/helpers/vaultUtils'
@@ -266,6 +268,15 @@ const replace = async () => {
       await replaceOne(result)
     }
   }
+}
+
+const sendToAgent = () => {
+  const { app } = GlobalStore.getInstance()
+  const files = searchResults.value
+    .map((r) => app.vault.getAbstractFileByPath(r.oldPath))
+    .filter((f): f is TFile => f instanceof TFile)
+  useFilesInAgent(files)
+  emit('close')
 }
 
 const goToNote = (path: string) => {

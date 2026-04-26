@@ -36,6 +36,7 @@
           />
         </div>
         <div class="abele-gallery__edit-actions">
+          <ObsidianIcon icon="image" title="Set as cover" @click="setAsCover(index)" />
           <ObsidianIcon icon="arrow-up" :disabled="index === 0" @click="moveImage(index, -1)" />
           <ObsidianIcon
             icon="arrow-down"
@@ -176,12 +177,13 @@ const editModeFiles = new Set<string>()
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Notice } from 'obsidian'
+import { Notice, TFile } from 'obsidian'
 import { Gallery } from '@/entities/Gallery'
 import { GlobalStore } from '@/stores/GlobalStore'
 import ObsidianIcon from './obsidian/Icon.vue'
 import GalleryViewer, { type ViewerImage } from './GalleryViewer.vue'
 import { pickImageFile } from '@/helpers/suggesters/ImagePicker'
+import { setCoverFromMedia } from '@/commands/setCover'
 import { Choice, useMenu } from '@/composables/useMenu'
 
 const props = defineProps<{
@@ -408,6 +410,16 @@ function getAttachmentFolder(app: any, noteFilePath: string): string {
 }
 
 // --- Edit mode actions ---
+
+async function setAsCover(index: number) {
+  const { app } = GlobalStore.getInstance()
+  const image = props.gallery.images[index]
+  const mediaFile = app.metadataCache.getFirstLinkpathDest(image.path, props.gallery.filePath)
+  if (!(mediaFile instanceof TFile)) return
+  const noteFile = app.vault.getAbstractFileByPath(props.gallery.filePath)
+  if (!(noteFile instanceof TFile)) return
+  await setCoverFromMedia(mediaFile, noteFile)
+}
 
 function removeImage(index: number) {
   props.gallery.removeImage(index)

@@ -301,7 +301,16 @@ export class TemplateService {
     // Resolve target_name if specified
     if (template.targetName) {
       const { variables: nameVars } = parseTemplateVariables(template.targetName)
+      console.debug(
+        '[resolveTargetPath] targetName:',
+        JSON.stringify(template.targetName),
+        'parsedVars:',
+        nameVars.map((v) => ({ raw: v.raw, name: v.name, type: v.type })),
+        'userValues:',
+        Object.fromEntries(userValues)
+      )
       name = await applyTemplateVariables(template.targetName, nameVars, userValues)
+      console.debug('[resolveTargetPath] resolved name:', JSON.stringify(name))
     }
 
     // Build full path

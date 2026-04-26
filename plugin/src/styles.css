@@ -106,3 +106,20 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
 .abele-bases-cal__summary-expense {
   color: var(--text-error);
 }
+
+.abele-code-toolbar {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.abele-code-save-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.abele-code-save-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
