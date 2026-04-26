@@ -52,11 +52,28 @@ export function createGenerateImageTool(): AgentTool {
         throw new Error(`OpenRouter API error ${response.status}: ${body}`)
       }
 
-      const data = response.json
-      const message = data?.choices?.[0]?.message
+      if (!response.text?.trim()) {
+        throw new Error('Empty response from image model')
+      }
+
+      interface ImageResponse {
+        choices?: Array<{
+          message?: {
+            content?: string
+            images?: Array<{ image_url: { url: string } }>
+          }
+        }>
+      }
+      let data: ImageResponse
+      try {
+        data = response.json
+      } catch {
+        throw new Error(`Invalid JSON from image model: ${response.text.slice(0, 200)}`)
+      }
+      const message = data.choices?.[0]?.message
       if (!message) throw new Error('No response from image model')
 
-      const images = message.images as Array<{ image_url: { url: string } }> | undefined
+      const images = message.images
       if (!images?.length) {
         // Model returned text but no image
         const text = message.content || 'No image generated'
