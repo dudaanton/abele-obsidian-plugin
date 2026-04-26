@@ -87,6 +87,9 @@ export class AgentService {
   public readonly allowEvalJs = ref(false)
   public readonly allowCreateFiles = ref(true)
   public readonly allowDelegate = ref(false)
+  public readonly allowScripts = ref(false)
+  public readonly allowedScripts = ref<Record<string, boolean>>({})
+  public readonly allowCreateScript = ref(false)
   public readonly customSystemPrompt = ref('')
   public readonly customSystemPromptNotePath = ref('')
 
@@ -230,7 +233,14 @@ export class AgentService {
     )
   }
 
-  private static readonly READ_TOOLS = ['read', 'ls', 'find', 'workspace', 'skill']
+  private static readonly READ_TOOLS = [
+    'read',
+    'ls',
+    'find',
+    'workspace',
+    'skill',
+    'script_api_docs',
+  ]
   private static readonly EDIT_TOOLS = ['edit', 'create']
   private static readonly SCOPED_TOOLS = [
     'read',
@@ -257,6 +267,9 @@ export class AgentService {
     if (AgentService.READ_TOOLS.includes(toolName)) return false
     if (toolName === 'create' || toolName === 'apply_template') return !this.allowCreateFiles.value
     if (toolName === 'delegate') return !this.allowDelegate.value
+    if (toolName.startsWith('script_'))
+      return !this.allowScripts.value && !this.allowedScripts.value[toolName]
+    if (toolName === 'create_script') return !this.allowCreateScript.value
     if (toolName === 'web_search') return !this.allowWebSearch.value
     if (toolName === 'fetch') return !this.allowFetch.value
     if (toolName === 'download_image' || toolName === 'download_file')
@@ -883,6 +896,9 @@ export class AgentService {
     this.allowEvalJs.value = config.allowEvalJs
     this.allowCreateFiles.value = config.allowCreateFiles ?? true
     this.allowDelegate.value = config.allowDelegate ?? false
+    this.allowScripts.value = config.allowScripts ?? false
+    this.allowedScripts.value = { ...(config.scriptToolToggles || {}) }
+    this.allowCreateScript.value = config.allowCreateScript ?? false
     // Reset scope from defaults
     const scope = ScopeResolver.getInstance()
     scope.clear()
@@ -909,6 +925,7 @@ export class AgentService {
     if (this.allChatMessages.length === 0) return
 
     const config = AbeleConfig.getInstance().ai
+    const scope = ScopeResolver.getInstance()
     const title = this.chatTitle || this.fallbackTitle()
 
     const metadata: ChatMetadata = {
@@ -933,6 +950,11 @@ export class AgentService {
       allowEvalJs: this.allowEvalJs.value,
       allowCreateFiles: this.allowCreateFiles.value,
       allowDelegate: this.allowDelegate.value,
+      allowScripts: this.allowScripts.value,
+      allowedScripts: this.allowedScripts.value,
+      allowCreateScript: this.allowCreateScript.value,
+      scopeEntries: scope.entries.value.length ? [...scope.entries.value] : undefined,
+      fullVaultAccess: scope.fullVaultAccess.value || undefined,
       activeLeafId: this.activeLeafId || undefined,
       customSystemPrompt: this.customSystemPrompt.value || undefined,
       customSystemPromptNotePath: this.customSystemPromptNotePath.value || undefined,
@@ -989,6 +1011,36 @@ export class AgentService {
     this.allowCreateFiles.value =
       result.metadata?.allowCreateFiles ?? config.allowCreateFiles ?? true
     this.allowDelegate.value = result.metadata?.allowDelegate ?? config.allowDelegate ?? false
+    this.allowScripts.value = result.metadata?.allowScripts ?? config.allowScripts ?? false
+    this.allowedScripts.value = {
+      ...(config.allowedScripts || {}),
+      ...(result.metadata?.allowedScripts || {}),
+    }
+    this.allowCreateScript.value =
+      result.metadata?.allowCreateScript ?? config.allowCreateScript ?? false
+    // Restore scope
+    const scope = ScopeResolver.getInstance()
+    if (result.metadata?.scopeEntries) {
+      scope.clear()
+      scope.setFullVaultAccess(result.metadata.fullVaultAccess ?? false)
+      for (const entry of result.metadata.scopeEntries) {
+        switch (entry.type) {
+          case 'file':
+            scope.addFile(entry.path)
+            break
+          case 'folder':
+            scope.addFolder(entry.path)
+            break
+          case 'pattern':
+            scope.addPattern(entry.path)
+            break
+          case 'group':
+            scope.addGroup(entry.path)
+            break
+        }
+      }
+    }
+
     this.customSystemPrompt.value = result.metadata?.customSystemPrompt || ''
     this.customSystemPromptNotePath.value = result.metadata?.customSystemPromptNotePath || ''
 

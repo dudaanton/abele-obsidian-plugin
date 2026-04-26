@@ -41,6 +41,12 @@
       </div>
     </template>
 
+    <!-- create_script: show name + code preview -->
+    <template v-else-if="message.toolName === 'create_script'">
+      <div class="abele-tool-approval__path">{{ params.name }}.js</div>
+      <pre class="abele-tool-approval__code"><code>{{ params.content }}</code></pre>
+    </template>
+
     <!-- Fallback: readable key-value -->
     <template v-else>
       <div v-for="(val, key) in params" :key="key" class="abele-tool-approval__param">

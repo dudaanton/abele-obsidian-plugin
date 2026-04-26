@@ -1,0 +1,28 @@
+export interface ScriptParam {
+  name: string
+  type: 'string' | 'number' | 'boolean'
+  required: boolean
+  description: string
+}
+
+export interface ScriptMeta {
+  name: string
+  description: string
+  params: ScriptParam[]
+}
+
+export interface ParsedScript {
+  path: string
+  meta: ScriptMeta
+  code: string
+  commandId: string
+}
+
+export interface FormField {
+  name: string
+  label: string
+  type?: 'text' | 'textarea' | 'select'
+  options?: string[]
+  default?: string
+  required?: boolean
+}

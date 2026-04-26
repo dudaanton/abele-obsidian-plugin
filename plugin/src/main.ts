@@ -42,6 +42,7 @@ import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
 import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
 import { AgentService } from './ai/AgentService'
+import { ScriptService } from './scripting/ScriptService'
 import { ScopeResolver } from './ai/ScopeResolver'
 import { ChatStorage } from './ai/ChatStorage'
 import weekday from 'dayjs/plugin/weekday'
@@ -126,6 +127,10 @@ export default class AbelePlugin extends Plugin {
     )
 
     this.registerView(CODE_VIEW_TYPE, (leaf) => new CodeView(leaf))
+    this.registerExtensions(
+      ['json', 'css', 'js', 'ts', 'html', 'xml', 'yaml', 'yml', 'csv', 'txt'],
+      CODE_VIEW_TYPE
+    )
 
     // AI sidebar is always registered so the view can be restored, but commands/ribbon are conditional
     this.registerView(AI_SIDEBAR_VIEW_TYPE, (leaf) => new AiSidebarView(leaf, this.app))
@@ -557,6 +562,12 @@ export default class AbelePlugin extends Plugin {
     this.addRibbonIcon(AiSidebarView.getIcon(), 'Show AI chat', () => {
       this.activateView(AI_SIDEBAR_VIEW_TYPE)
     })
+
+    if (AbeleConfig.getInstance().ai.scriptsEnabled) {
+      this.app.workspace.onLayoutReady(() => {
+        ScriptService.getInstance().init()
+      })
+    }
   }
 
   onunload() {
@@ -566,6 +577,7 @@ export default class AbelePlugin extends Plugin {
       this.vueApp.unmount()
       document.getElementById('abele-vue-root')?.remove()
     }
+    ScriptService.destroy()
     AgentService.getInstance().destroy()
     ScopeResolver.getInstance().destroy()
     ChatStorage.destroy()

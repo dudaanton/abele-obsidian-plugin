@@ -89,6 +89,14 @@ function isToolAllowed(
     return { allowed: false, reason: 'Image generation not allowed' }
   if (toolName === 'eval_js' && !agent.allowEvalJs.value)
     return { allowed: false, reason: 'Eval JS not allowed' }
+  if (
+    toolName.startsWith('script_') &&
+    !agent.allowScripts.value &&
+    !agent.allowedScripts.value[toolName]
+  )
+    return { allowed: false, reason: 'Script execution not allowed' }
+  if (toolName === 'create_script' && !agent.allowCreateScript.value)
+    return { allowed: false, reason: 'Script creation not allowed' }
 
   return { allowed: true }
 }

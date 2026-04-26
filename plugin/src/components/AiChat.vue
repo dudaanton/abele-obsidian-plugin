@@ -92,11 +92,13 @@
       @continue="onContinue"
       @focus="onInputFocus"
       @open-scope="scopeOpen = true"
+      @open-permissions="permissionsOpen = true"
     />
 
     <!-- Modals -->
     <AiChatHistory v-if="historyOpen" @close="historyOpen = false" @select="onLoadChat" />
     <AiScopeManager v-if="scopeOpen" @close="scopeOpen = false" />
+    <AiPermissions v-if="permissionsOpen" @close="permissionsOpen = false" />
     <AiPromptPicker
       v-if="promptPickerOpen"
       @close="promptPickerOpen = false"
@@ -123,6 +125,7 @@ import AiToolApproval from './AiToolApproval.vue'
 import AiModelSelector from './AiModelSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
 import AiScopeManager from './AiScopeManager.vue'
+import AiPermissions from './AiPermissions.vue'
 import AiPromptPicker from './AiPromptPicker.vue'
 import AiSystemPromptSettings from './AiSystemPromptSettings.vue'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
@@ -271,6 +274,7 @@ const messagesContainer = ref<HTMLElement | null>(null)
 const chatInput = ref<InstanceType<typeof AiChatInput> | null>(null)
 const historyOpen = ref(false)
 const scopeOpen = ref(false)
+const permissionsOpen = ref(false)
 const promptPickerOpen = ref(false)
 const promptSettingsOpen = ref(false)
 
