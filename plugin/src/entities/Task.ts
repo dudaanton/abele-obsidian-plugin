@@ -195,10 +195,13 @@ export class Task {
 
       const newTaskTitle = getRecurrentTaskTitle(this.content, newTaskDue || newTaskDate)
 
+      const cleanedContent = this.content?.replace(/- \[x\]/gi, '- [ ]') || ''
+
       return createTask(
         {
           ...this.toCreateDTO(),
           title: newTaskTitle,
+          content: cleanedContent,
           completedAt: null,
           due: newTaskDue,
           date: newTaskDate,
