@@ -1,7 +1,17 @@
 <template>
   <Teleport to="body">
     <div class="abele-gallery-viewer" @click.self="close" @wheel.prevent="onWheel" @touchstart.stop>
-      <div class="abele-gallery-viewer__counter">{{ currentIndex + 1 }} / {{ images.length }}</div>
+      <div class="abele-gallery-viewer__info">
+        <div class="abele-gallery-viewer__counter">
+          {{ currentIndex + 1 }} / {{ images.length }}
+        </div>
+        <div v-if="fileInfo" class="abele-gallery-viewer__file-info">
+          <span class="abele-gallery-viewer__filename">{{ fileInfo.name }}</span>
+          <span class="abele-gallery-viewer__meta"
+            >{{ fileInfo.size }} · {{ fileInfo.modified }}</span
+          >
+        </div>
+      </div>
       <ObsidianIcon icon="x" class="abele-gallery-viewer__close" no-hover @click="close" />
 
       <div
@@ -49,13 +59,6 @@
         <ObsidianIcon icon="link" no-hover text-right="Path" @click="copyPath" />
         <ObsidianIcon
           v-if="isLocal"
-          icon="folder-open"
-          no-hover
-          text-right="Reveal"
-          @click="openOnDisk"
-        />
-        <ObsidianIcon
-          v-if="isLocal"
           icon="rotate-cw"
           no-hover
           text-right="Rotate"
@@ -68,7 +71,7 @@
           text-right="Download"
           @click="downloadImage"
         />
-        <ObsidianIcon v-if="isLocal" icon="image" no-hover text-right="Cover" @click="setAsCover" />
+        <ObsidianIcon icon="more-horizontal" no-hover text-right="More" @click="showMoreMenu" />
       </div>
     </div>
   </Teleport>
@@ -76,7 +79,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { Notice, TFile } from 'obsidian'
+import { Menu, Notice, TFile } from 'obsidian'
 import ObsidianIcon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { setCoverFromMedia } from '@/commands/setCover'
@@ -110,6 +113,25 @@ const imageEl = ref<HTMLImageElement | null>(null)
 
 const currentImage = computed(() => props.images[currentIndex.value])
 const isLocal = computed(() => currentImage.value.type === 'local')
+
+const fileInfo = computed(() => {
+  if (!isLocal.value) return null
+  const { app } = GlobalStore.getInstance()
+  const file = app.vault.getAbstractFileByPath(currentImage.value.path)
+  if (!(file instanceof TFile)) return null
+  const s = file.stat
+  return {
+    name: file.name,
+    size: formatBytes(s.size),
+    modified: new Date(s.mtime).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+  }
+})
 
 const displayUrl = computed(() => urlOverride.value || currentImage.value.url)
 
@@ -235,6 +257,104 @@ async function rotateImage() {
   }
 }
 
+/** Re-encode image through canvas to strip all EXIF/IPTC metadata */
+async function stripMetadata() {
+  const file = resolveFile()
+  if (!file) return
+
+  const { app } = GlobalStore.getInstance()
+  const buffer = await app.vault.readBinary(file)
+  const blob = new Blob([buffer])
+  const imgUrl = URL.createObjectURL(blob)
+
+  try {
+    const img = await loadImage(imgUrl)
+    const canvas = document.createElement('canvas')
+    canvas.width = img.naturalWidth
+    canvas.height = img.naturalHeight
+    const ctx = canvas.getContext('2d')!
+    ctx.drawImage(img, 0, 0)
+
+    const mimeType = file.extension === 'png' ? 'image/png' : 'image/jpeg'
+    const quality = mimeType === 'image/jpeg' ? 0.95 : undefined
+    const cleanBlob = await canvasToBlob(canvas, mimeType, quality)
+    const cleanBuffer = await cleanBlob.arrayBuffer()
+
+    const saved = cleanBuffer.byteLength
+    const original = buffer.byteLength
+    await app.vault.modifyBinary(file, cleanBuffer)
+
+    urlOverride.value = app.vault.getResourcePath(file) + '#t=' + Date.now()
+    emit('image-changed')
+    const diff = original - saved
+    new Notice(
+      diff > 0
+        ? `Metadata stripped (${formatBytes(original)} → ${formatBytes(saved)})`
+        : 'Metadata stripped'
+    )
+  } finally {
+    URL.revokeObjectURL(imgUrl)
+  }
+}
+
+/** Re-encode image at reduced quality/size */
+async function reduceSize() {
+  const file = resolveFile()
+  if (!file) return
+
+  const { app } = GlobalStore.getInstance()
+  const buffer = await app.vault.readBinary(file)
+  const blob = new Blob([buffer])
+  const imgUrl = URL.createObjectURL(blob)
+
+  try {
+    const img = await loadImage(imgUrl)
+    let width = img.naturalWidth
+    let height = img.naturalHeight
+
+    // Scale down if larger than 2000px on any side
+    const maxDim = 2000
+    if (width > maxDim || height > maxDim) {
+      const ratio = Math.min(maxDim / width, maxDim / height)
+      width = Math.round(width * ratio)
+      height = Math.round(height * ratio)
+    }
+
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')!
+    ctx.drawImage(img, 0, 0, width, height)
+
+    // JPEG at 0.8, PNG stays PNG
+    const mimeType = file.extension === 'png' ? 'image/png' : 'image/jpeg'
+    const quality = mimeType === 'image/jpeg' ? 0.8 : undefined
+    const reducedBlob = await canvasToBlob(canvas, mimeType, quality)
+    const reducedBuffer = await reducedBlob.arrayBuffer()
+
+    if (reducedBuffer.byteLength >= buffer.byteLength) {
+      new Notice('Image is already optimized')
+      return
+    }
+
+    await app.vault.modifyBinary(file, reducedBuffer)
+
+    urlOverride.value = app.vault.getResourcePath(file) + '#t=' + Date.now()
+    emit('image-changed')
+    new Notice(
+      `Reduced: ${formatBytes(buffer.byteLength)} → ${formatBytes(reducedBuffer.byteLength)}`
+    )
+  } finally {
+    URL.revokeObjectURL(imgUrl)
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 async function downloadImage() {
   const image = currentImage.value
   if (image.type !== 'remote') return
@@ -277,6 +397,37 @@ async function setAsCover() {
   const noteFile = app.vault.getAbstractFileByPath(props.galleryFilePath)
   if (!(noteFile instanceof TFile)) return
   await setCoverFromMedia(mediaFile, noteFile)
+}
+
+function showMoreMenu(e: MouseEvent) {
+  const menu = new Menu()
+  if (isLocal.value) {
+    menu.addItem((item) =>
+      item
+        .setTitle('Reveal in folder')
+        .setIcon('folder-open')
+        .onClick(() => openOnDisk())
+    )
+    menu.addItem((item) =>
+      item
+        .setTitle('Strip metadata')
+        .setIcon('eraser')
+        .onClick(() => stripMetadata())
+    )
+    menu.addItem((item) =>
+      item
+        .setTitle('Reduce size')
+        .setIcon('minimize-2')
+        .onClick(() => reduceSize())
+    )
+    menu.addItem((item) =>
+      item
+        .setTitle('Set as cover')
+        .setIcon('image')
+        .onClick(() => setAsCover())
+    )
+  }
+  menu.showAtPosition({ x: e.clientX, y: e.clientY })
 }
 
 // --- Helpers ---
@@ -469,12 +620,15 @@ function onTouchEnd(e: TouchEvent) {
 function onKeydown(e: KeyboardEvent) {
   switch (e.key) {
     case 'Escape':
+      e.stopPropagation()
       close()
       break
     case 'ArrowLeft':
+      e.stopPropagation()
       prev()
       break
     case 'ArrowRight':
+      e.stopPropagation()
       next()
       break
   }
@@ -483,11 +637,11 @@ function onKeydown(e: KeyboardEvent) {
 onMounted(() => {
   // Blur active element to prevent keyboard popup on mobile
   ;(document.activeElement as HTMLElement)?.blur()
-  document.addEventListener('keydown', onKeydown)
+  document.addEventListener('keydown', onKeydown, true)
 })
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', onKeydown)
+  document.removeEventListener('keydown', onKeydown, true)
   document.removeEventListener('mousemove', onDragMove)
   document.removeEventListener('mouseup', onDragEnd)
 })
@@ -505,14 +659,42 @@ onUnmounted(() => {
   user-select: none;
 }
 
-.abele-gallery-viewer__counter {
+.abele-gallery-viewer__info {
   position: absolute;
   top: 16px;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.abele-gallery-viewer__counter {
   color: rgba(255, 255, 255, 0.7);
   font-size: 14px;
-  pointer-events: none;
+}
+
+.abele-gallery-viewer__file-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.abele-gallery-viewer__filename {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.abele-gallery-viewer__meta {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
 }
 
 .abele-gallery-viewer__close {
