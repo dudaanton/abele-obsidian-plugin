@@ -40,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import Search from './obsidian/Search.vue'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
@@ -48,43 +48,50 @@ import { AgentService } from '@/ai/AgentService'
 
 const emit = defineEmits<{ close: [] }>()
 
-const agent = AgentService.getInstance()
+const agentService = AgentService.getInstance()
+const session = computed(() => agentService.activeSession.value)
 
 type Mode = 'default' | 'note' | 'custom'
 
 const mode = ref<Mode>(
-  agent.customSystemPromptNotePath.value
+  session.value?.customSystemPromptNotePath.value
     ? 'note'
-    : agent.customSystemPrompt.value
+    : session.value?.customSystemPrompt.value
       ? 'custom'
       : 'default'
 )
-const notePath = ref(agent.customSystemPromptNotePath.value)
-const customText = ref(agent.customSystemPrompt.value)
+const notePath = ref(session.value?.customSystemPromptNotePath.value ?? '')
+const customText = ref(session.value?.customSystemPrompt.value ?? '')
 
 function setMode(m: Mode) {
+  const s = session.value
+  if (!s) return
   mode.value = m
   if (m === 'default') {
-    agent.customSystemPrompt.value = ''
-    agent.customSystemPromptNotePath.value = ''
+    s.customSystemPrompt.value = ''
+    s.customSystemPromptNotePath.value = ''
   } else if (m === 'note') {
-    agent.customSystemPrompt.value = ''
+    s.customSystemPrompt.value = ''
   } else if (m === 'custom') {
-    agent.customSystemPromptNotePath.value = ''
+    s.customSystemPromptNotePath.value = ''
   }
-  agent.saveCurrentChat()
+  s.save()
 }
 
 function updateNotePath(value: string) {
+  const s = session.value
+  if (!s) return
   notePath.value = value
-  agent.customSystemPromptNotePath.value = value
-  agent.saveCurrentChat()
+  s.customSystemPromptNotePath.value = value
+  s.save()
 }
 
 function updateCustomText(value: string) {
+  const s = session.value
+  if (!s) return
   customText.value = value
-  agent.customSystemPrompt.value = value
-  agent.saveCurrentChat()
+  s.customSystemPrompt.value = value
+  s.save()
 }
 </script>
 

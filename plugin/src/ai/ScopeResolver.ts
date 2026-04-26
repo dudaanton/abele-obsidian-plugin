@@ -14,6 +14,7 @@ export interface ScopeEntry {
  */
 export class ScopeResolver {
   private static instance: ScopeResolver | null = null
+  private static activeOverride: ScopeResolver | null = null
 
   public readonly entries = ref<ScopeEntry[]>([])
   public readonly fullVaultAccess = ref(false)
@@ -21,7 +22,16 @@ export class ScopeResolver {
   /** Cached resolved paths — invalidated on scope change */
   private _cache: Set<string> | null = null
 
+  /**
+   * Set the active session's scope resolver so that tools calling
+   * ScopeResolver.getInstance() resolve to the correct session's scope.
+   */
+  static setActiveInstance(resolver: ScopeResolver | null): void {
+    ScopeResolver.activeOverride = resolver
+  }
+
   static getInstance(): ScopeResolver {
+    if (ScopeResolver.activeOverride) return ScopeResolver.activeOverride
     if (!ScopeResolver.instance) {
       ScopeResolver.instance = new ScopeResolver()
     }

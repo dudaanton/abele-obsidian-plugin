@@ -88,7 +88,7 @@ const props = defineProps<{
   message: ChatMessage
 }>()
 
-const agent = AgentService.getInstance()
+const session = computed(() => AgentService.getInstance().activeSession.value)
 const isEditing = ref(false)
 const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
 const params = computed(() => props.message.toolParams || {})
@@ -119,13 +119,13 @@ const approve = () => {
     try {
       const modified = JSON.parse(editedArgs.value)
       parseError.value = ''
-      agent.approveToolCall(modified)
+      session.value?.approveToolCall(modified)
     } catch (err: unknown) {
       parseError.value = `Invalid JSON: ${err instanceof Error ? err.message : String(err)}`
       return
     }
   } else {
-    agent.approveToolCall()
+    session.value?.approveToolCall()
   }
 }
 
@@ -159,17 +159,19 @@ const canAllowAll = computed(() => {
 })
 
 const allowAll = () => {
+  const s = session.value
+  if (!s) return
   const name = props.message.toolName
   if (!name) return
   const permKey = PERMISSION_TOOLS[name]
   if (permKey) {
-    agent[permKey].value = true
+    s[permKey].value = true
   }
-  agent.approveToolCall()
+  s.approveToolCall()
 }
 
 const reject = () => {
-  agent.rejectToolCall('User rejected this action')
+  session.value?.rejectToolCall('User rejected this action')
 }
 
 const toggleEdit = () => {

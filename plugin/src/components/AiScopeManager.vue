@@ -3,10 +3,10 @@
     <div class="abele-scope-mgr">
       <AiScopeEditor
         :entries="scopeEntries"
-        :full-vault-access="scope.fullVaultAccess.value"
+        :full-vault-access="scope?.fullVaultAccess.value ?? false"
         :show-current-file="true"
         @update:entries="onEntriesUpdate"
-        @update:full-vault-access="scope.setFullVaultAccess($event)"
+        @update:full-vault-access="scope?.setFullVaultAccess($event)"
       />
 
       <Setting name="Permission mode" desc="Controls which file operations require your approval.">
@@ -26,8 +26,8 @@ import ObsidianModal from './obsidian/Modal.vue'
 import Setting from './obsidian/Setting.vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import AiScopeEditor from './AiScopeEditor.vue'
-import { ScopeResolver } from '@/ai/ScopeResolver'
 import type { ScopeEntry } from '@/ai/ScopeResolver'
+import { AgentService } from '@/ai/AgentService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import type { PermissionMode } from '@/ai/types'
 
@@ -35,13 +35,15 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-const scope = ScopeResolver.getInstance()
+const session = computed(() => AgentService.getInstance().activeSession.value)
+const scope = computed(() => session.value?.scopeResolver)
 const permissionMode = ref(AbeleConfig.getInstance().ai.permissionMode)
-const scopeEntries = computed(() => scope.entries.value)
+const scopeEntries = computed(() => scope.value?.entries.value ?? [])
 
 const onEntriesUpdate = (entries: ScopeEntry[]) => {
-  scope.entries.value = entries
-  scope.invalidate()
+  if (!scope.value) return
+  scope.value.entries.value = entries
+  scope.value.invalidate()
 }
 
 const permissionOptions = [

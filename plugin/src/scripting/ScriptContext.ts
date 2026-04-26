@@ -203,11 +203,13 @@ export function buildScriptContext(opts: {
           : modelType === 'primary'
             ? (resolveModelBySlot('activeModelId') ?? agentService.getDelegateModelConfig())
             : agentService.getDelegateModelConfig()
-      const systemPrompt = await agentService.getDelegateSystemPrompt()
+      const session = agentService.activeSession.value
+      const systemPrompt = await agentService.getDelegateSystemPrompt(session!)
       const allTools = createAgentTools()
       const tools = allTools.filter((t) => t.name !== 'delegate')
+      const permissions = session!.getPermissions()
 
-      return runSubAgent({ systemPrompt, userMessage: task, tools, model, signal: s })
+      return runSubAgent({ systemPrompt, userMessage: task, tools, model, signal: s }, permissions)
     },
 
     async generateImage(prompt: string): Promise<string> {
