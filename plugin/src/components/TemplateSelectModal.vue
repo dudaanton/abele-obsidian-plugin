@@ -194,7 +194,7 @@ function confirmSelection() {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-2);
-  min-width: 400px;
+  min-width: min(400px, 100%);
 }
 
 .abele-template-select__list {

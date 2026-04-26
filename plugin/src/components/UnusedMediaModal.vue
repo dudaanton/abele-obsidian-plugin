@@ -248,7 +248,7 @@ scan()
 
 <style lang="scss">
 .abele-unused-media {
-  min-width: 450px;
+  min-width: min(450px, 100%);
 }
 
 .abele-unused-media__actions {
