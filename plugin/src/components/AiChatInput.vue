@@ -1,5 +1,11 @@
 <template>
-  <div class="abele-chat-input">
+  <div
+    class="abele-chat-input"
+    :class="{ 'abele-chat-input--dragover': isDragging }"
+    @dragover.prevent="onDragOver"
+    @dragleave="onDragLeave"
+    @drop.prevent="onDrop"
+  >
     <!-- Pending attachments -->
     <div v-if="attachments.length" class="abele-chat-input__attachments">
       <div v-for="(a, i) in attachments" :key="a.path" class="abele-chat-input__attachment">
@@ -94,6 +100,7 @@ const emit = defineEmits<{
   (e: 'focus', focused: boolean): void
   (e: 'openScope'): void
   (e: 'openPermissions'): void
+  (e: 'attachFile', path: string): void
 }>()
 
 const TEXTAREA_MIN_HEIGHT = 34
@@ -158,6 +165,7 @@ const pickFromVault = async () => {
   const file = await pickVaultFile(app)
   if (file && !attachments.value.some((a) => a.path === file.path)) {
     attachments.value = [...attachments.value, file]
+    emit('attachFile', file.path)
   }
 }
 
@@ -176,6 +184,7 @@ const onFileSelected = async (e: Event) => {
       const vaultFile = await importExternalFile(file)
       if (!attachments.value.some((a) => a.path === vaultFile.path)) {
         attachments.value = [...attachments.value, vaultFile]
+        emit('attachFile', vaultFile.path)
       }
     } catch (err: unknown) {
       new Notice(`Failed to import ${file.name}: ${err instanceof Error ? err.message : err}`)
@@ -203,6 +212,71 @@ const onPaste = async (e: ClipboardEvent) => {
       const vaultFile = await importExternalFile(file)
       if (!attachments.value.some((a) => a.path === vaultFile.path)) {
         attachments.value = [...attachments.value, vaultFile]
+        emit('attachFile', vaultFile.path)
+      }
+    } catch (err: unknown) {
+      new Notice(`Failed to import ${file.name}: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+}
+
+// ── Drag & drop ──
+
+const isDragging = ref(false)
+let dragLeaveTimer: ReturnType<typeof setTimeout> | null = null
+
+const onDragOver = () => {
+  if (dragLeaveTimer) {
+    clearTimeout(dragLeaveTimer)
+    dragLeaveTimer = null
+  }
+  isDragging.value = true
+}
+
+const onDragLeave = () => {
+  // Small delay to prevent flicker when moving between child elements
+  dragLeaveTimer = setTimeout(() => {
+    isDragging.value = false
+  }, 50)
+}
+
+const onDrop = async (e: DragEvent) => {
+  isDragging.value = false
+  const dt = e.dataTransfer
+  if (!dt) return
+
+  console.debug('[Abele drop]', {
+    types: [...dt.types],
+    text: dt.getData('text/plain'),
+    html: dt.getData('text/html'),
+    files: dt.files?.length,
+  })
+
+  // 1. Obsidian internal drag — files from file explorer
+  // Obsidian puts the path in text/plain and may also provide Files
+  const textData = dt.getData('text/plain')?.trim()
+  if (textData) {
+    const { app } = GlobalStore.getInstance()
+    // Could be a single path or a wikilink-style drag
+    const path = textData.replace(/^\[\[|\]\]$/g, '')
+    const file = app.vault.getAbstractFileByPath(path)
+    if (file instanceof TFile) {
+      if (!attachments.value.some((a) => a.path === file.path)) {
+        attachments.value = [...attachments.value, file]
+        emit('attachFile', file.path)
+      }
+      return
+    }
+  }
+
+  // 2. External files from OS
+  const fileList = dt.files ? Array.from(dt.files) : []
+  for (const file of fileList) {
+    try {
+      const vaultFile = await importExternalFile(file)
+      if (!attachments.value.some((a) => a.path === vaultFile.path)) {
+        attachments.value = [...attachments.value, vaultFile]
+        emit('attachFile', vaultFile.path)
       }
     } catch (err: unknown) {
       new Notice(`Failed to import ${file.name}: ${err instanceof Error ? err.message : err}`)
@@ -215,7 +289,14 @@ const setText = (value: string) => {
   nextTick(autoResize)
 }
 
-defineExpose({ setText })
+const addAttachment = (file: TFile) => {
+  if (!attachments.value.some((a) => a.path === file.path)) {
+    attachments.value = [...attachments.value, file]
+    emit('attachFile', file.path)
+  }
+}
+
+defineExpose({ setText, addAttachment })
 
 const onKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Enter' && e.shiftKey) {
@@ -248,6 +329,11 @@ onUnmounted(() => {
   border-top: 1px solid var(--background-modifier-border);
   padding: var(--size-4-2);
   flex-shrink: 0;
+  transition: border-color 0.15s;
+
+  &--dragover {
+    border-color: var(--interactive-accent);
+  }
 }
 
 .abele-chat-input__attachments {

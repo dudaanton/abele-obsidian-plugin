@@ -71,20 +71,19 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-const agent = AgentService.getInstance()
-const {
-  allowWebSearch,
-  allowFetch,
-  allowDownload,
-  allowWiseModel,
-  allowImageGeneration,
-  allowEvalJs,
-  allowCreateFiles,
-  allowDelegate,
-  allowScripts,
-  allowedScripts,
-  allowCreateScript,
-} = agent
+const session = computed(() => AgentService.getInstance().activeSession.value)
+
+const allowWebSearch = computed(() => session.value?.allowWebSearch.value ?? true)
+const allowFetch = computed(() => session.value?.allowFetch.value ?? false)
+const allowDownload = computed(() => session.value?.allowDownload.value ?? false)
+const allowWiseModel = computed(() => session.value?.allowWiseModel.value ?? false)
+const allowImageGeneration = computed(() => session.value?.allowImageGeneration.value ?? false)
+const allowEvalJs = computed(() => session.value?.allowEvalJs.value ?? false)
+const allowCreateFiles = computed(() => session.value?.allowCreateFiles.value ?? true)
+const allowDelegate = computed(() => session.value?.allowDelegate.value ?? false)
+const allowScripts = computed(() => session.value?.allowScripts.value ?? false)
+const allowedScripts = computed(() => session.value?.allowedScripts.value ?? {})
+const allowCreateScript = computed(() => session.value?.allowCreateScript.value ?? false)
 
 const scriptTools = computed(() => {
   const config = AbeleConfig.getInstance().ai
@@ -114,20 +113,23 @@ const toggle = (
     | 'allowScripts'
     | 'allowCreateScript'
 ) => {
-  agent[key].value = !agent[key].value
+  const s = session.value
+  if (s) s[key].value = !s[key].value
 }
 
 const toggleScript = (toolName: string) => {
-  allowedScripts.value = {
-    ...allowedScripts.value,
-    [toolName]: !allowedScripts.value[toolName],
+  const s = session.value
+  if (!s) return
+  s.allowedScripts.value = {
+    ...s.allowedScripts.value,
+    [toolName]: !s.allowedScripts.value[toolName],
   }
 }
 </script>
 
 <style lang="scss">
 .modal:has(.abele-permissions) {
-  width: 500px;
+  width: min(500px, 90vw);
 }
 
 .abele-permissions {

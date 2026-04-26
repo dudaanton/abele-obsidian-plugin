@@ -1,5 +1,6 @@
 import type { AgentTool } from '../client'
 import { AgentService } from '../AgentService'
+import { ChatSession } from '../ChatSession'
 import { runSubAgentBatch, type SubAgentResult } from '../SubAgentRunner'
 import { createAgentTools } from './index'
 
@@ -38,8 +39,14 @@ export function createDelegateTool(): AgentTool {
       if (!items?.length) throw new Error('Missing required parameter: items')
 
       const agent = AgentService.getInstance()
+      const session = ChatSession.getActiveSession()
       const model = agent.getDelegateModelConfig()
-      const systemPrompt = await agent.getDelegateSystemPrompt()
+      const systemPrompt = await agent.getDelegateSystemPrompt(
+        session || agent.activeSession.value!
+      )
+      const permissions = session
+        ? session.getPermissions()
+        : agent.activeSession.value!.getPermissions()
 
       // Build tools list excluding delegate itself to prevent recursion
       const allTools = createAgentTools()
@@ -51,7 +58,9 @@ export function createDelegateTool(): AgentTool {
         const parts = [`${completed}/${total}`]
         if (succeeded > 0) parts.push(`${succeeded} ok`)
         if (failed > 0) parts.push(`${failed} failed`)
-        agent.updateDelegateProgress(parts.join(', '))
+        if (session) {
+          session.updateDelegateProgress(parts.join(', '))
+        }
       }
 
       const results = await runSubAgentBatch(
@@ -61,6 +70,7 @@ export function createDelegateTool(): AgentTool {
         model,
         systemPrompt,
         batchSize,
+        permissions,
         signal,
         onProgress
       )

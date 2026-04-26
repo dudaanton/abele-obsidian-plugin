@@ -105,11 +105,20 @@
           </div>
 
           <!-- Added models (editable details) -->
-          <div v-for="(model, mIdx) in provider.models" :key="model.id" class="abele-ai-model">
+          <div v-for="(model, mIdx) in provider.models" :key="mIdx" class="abele-ai-model">
             <div class="abele-ai-model__header">
-              <span class="abele-ai-model__id">{{ model.id }}</span>
               <Icon icon="trash" @click="removeModel(pIdx, mIdx)" />
             </div>
+            <Setting
+              name="Model ID"
+              desc="API model identifier (e.g. gpt-4o, claude-sonnet-4-20250514)."
+            >
+              <Input
+                :model-value="model.id"
+                placeholder="e.g. gpt-4o"
+                @update:model-value="updateModel(pIdx, mIdx, 'id', $event)"
+              />
+            </Setting>
             <Setting name="Display name" desc="Optional label shown in model selector.">
               <Input
                 :model-value="model.name"
@@ -1046,6 +1055,14 @@ const updateToolDescription = (toolName: string, value: string) => {
   padding: var(--size-4-1) var(--size-4-2);
   cursor: pointer;
   font-size: var(--font-small);
+  min-width: 0;
+
+  > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
 
   &:hover {
     background-color: var(--background-modifier-hover);

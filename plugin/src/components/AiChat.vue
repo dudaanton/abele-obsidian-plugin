@@ -1,5 +1,20 @@
 <template>
-  <div ref="chatContainer" class="abele-ai-chat">
+  <div
+    ref="chatContainer"
+    class="abele-ai-chat"
+    @dragover.prevent="onDragOver"
+    @dragleave="onDragLeave"
+    @drop.prevent="onFileDrop"
+  >
+    <!-- Tabs -->
+    <AiChatTabs
+      :tabs="tabInfos"
+      :can-create="agentService.canCreateTab"
+      @select="agentService.switchTab($event)"
+      @close="agentService.closeTab($event)"
+      @create="agentService.createTab()"
+    />
+
     <!-- Header -->
     <div class="abele-ai-chat__header">
       <AiModelSelector />
@@ -93,6 +108,7 @@
       @focus="onInputFocus"
       @open-scope="scopeOpen = true"
       @open-permissions="permissionsOpen = true"
+      @attach-file="onAttachFile"
     />
 
     <!-- Modals -->
@@ -121,6 +137,7 @@ import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import AiChatMessage from './AiChatMessage.vue'
 import AiChatInput from './AiChatInput.vue'
+import AiChatTabs from './AiChatTabs.vue'
 import AiToolApproval from './AiToolApproval.vue'
 import AiModelSelector from './AiModelSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
@@ -134,25 +151,37 @@ import { AgentService } from '@/ai/AgentService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
 import type { TemplateVariable } from '@/templates/TemplateParser'
-import { ScopeResolver } from '@/ai/ScopeResolver'
+import { importExternalFile } from '@/ai/attachments'
 import { discoverSkills } from '@/ai/tools/SkillTool'
-import { getSiblings, getChildren } from '@/ai/chatTree'
+import { getChildren } from '@/ai/chatTree'
 
-const agent = AgentService.getInstance()
-const scope = ScopeResolver.getInstance()
+const agentService = AgentService.getInstance()
+const session = computed(() => agentService.activeSession.value)
 
-const {
-  messages,
-  allMessages,
-  isStreaming,
-  isGeneratingTitle,
-  isCompacting,
-  isExecutingTool,
-  streamingContent,
-  streamingThinking,
-  pendingToolCalls,
-  error,
-} = agent
+// Reactive state from active session
+const messages = computed(() => session.value?.messages.value ?? [])
+const allMessages = computed(() => session.value?.allMessages.value ?? [])
+const isStreaming = computed(() => session.value?.isStreaming.value ?? false)
+const isGeneratingTitle = computed(() => session.value?.isGeneratingTitle.value ?? false)
+const isCompacting = computed(() => session.value?.isCompacting.value ?? false)
+const isExecutingTool = computed(() => session.value?.isExecutingTool.value ?? false)
+const streamingContent = computed(() => session.value?.streamingContent.value ?? '')
+const streamingThinking = computed(() => session.value?.streamingThinking.value ?? '')
+const pendingToolCalls = computed(() => session.value?.pendingToolCalls.value ?? [])
+const error = computed(() => session.value?.error.value ?? null)
+
+// Tab bar info
+const tabInfos = computed(() =>
+  agentService.tabOrder.value.map((id) => {
+    const s = agentService.getSession(id)
+    return {
+      id,
+      label: s?.chatTitle.value || 'New chat',
+      isStreaming: s?.isStreaming.value ?? false,
+      isActive: id === agentService.activeTabId.value,
+    }
+  })
+)
 
 export interface BranchInfo {
   childIds: string[]
@@ -166,7 +195,6 @@ const branchInfoMap = computed(() => {
   const visible = messages.value
   if (all.length === 0 || visible.length === 0) return map
 
-  // For each visible message, check if it has multiple children in the tree
   for (let i = 0; i < visible.length; i++) {
     const msg = visible[i]
     const children = getChildren(all, msg.id)
@@ -174,8 +202,6 @@ const branchInfoMap = computed(() => {
     if (children.length === 0 && i < visible.length - 1) continue
 
     if (children.length > 1) {
-      // Multiple children — this is a branch point
-      // Find which child is in the visible path
       const nextVisible = visible[i + 1]
       const activeIdx = nextVisible ? children.findIndex((c) => c.id === nextVisible.id) : -1
       map.set(msg.id, {
@@ -184,7 +210,6 @@ const branchInfoMap = computed(() => {
         total: activeIdx === -1 ? children.length + 1 : children.length,
       })
     } else if (i === visible.length - 1 && children.length > 0) {
-      // Last visible message with children — user branched from here
       map.set(msg.id, {
         childIds: children.map((c) => c.id),
         activeChildIndex: -1,
@@ -198,17 +223,17 @@ const branchInfoMap = computed(() => {
 
 const onCreateBranch = (messageId: string) => {
   shouldAutoScroll = false
-  agent.createBranch(messageId)
+  session.value?.createBranch(messageId)
 }
 
 const onSwitchBranch = (childId: string) => {
   shouldAutoScroll = false
-  agent.switchBranch(childId)
+  session.value?.switchBranch(childId)
 }
 
 const onRepeatMessage = (messageId: string) => {
   shouldAutoScroll = true
-  agent.repeatMessage(messageId)
+  session.value?.repeatMessage(messageId)
 }
 
 const isBusy = computed(() => {
@@ -239,7 +264,6 @@ const contextWindow = computed(() => {
 })
 
 const contextTokens = computed(() => {
-  // Find last assistant with usage, but only after the last compact divider
   for (let i = messages.value.length - 1; i >= 0; i--) {
     const m = messages.value[i]
     if (m.role === 'system') break
@@ -257,11 +281,13 @@ const tokenDisplay = computed(() => {
   const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
   return ctx ? `${fmt(t)}/${fmt(ctx)}` : fmt(t)
 })
+
 const scopeCompact = computed(() => {
+  const scope = session.value?.scopeResolver
+  if (!scope) return ''
   const s = scope.summary.value
   if (!s || s === 'No files') return ''
   if (s === 'Full vault') return 'vault'
-  // Shorten: "2 files, 1 folder" → "2f 1d"
   return s
     .replace(/ files?/, 'f')
     .replace(/ folders?/, 'd')
@@ -279,7 +305,8 @@ const promptPickerOpen = ref(false)
 const promptSettingsOpen = ref(false)
 
 const hasCustomPrompt = computed(
-  () => !!agent.customSystemPrompt.value || !!agent.customSystemPromptNotePath.value
+  () =>
+    !!session.value?.customSystemPrompt.value || !!session.value?.customSystemPromptNotePath.value
 )
 const variablesModalOpen = ref(false)
 const pendingPromptContent = ref('')
@@ -291,7 +318,6 @@ let shouldAutoScroll = true
 let scrollSetByCode = false
 
 const onMessagesScroll = () => {
-  // Ignore scroll events triggered by our own scrollTop assignment
   if (scrollSetByCode) {
     scrollSetByCode = false
     return
@@ -311,18 +337,22 @@ const doScroll = () => {
   })
 }
 
-// User sends a message — they want to see the response, scroll down
 const scrollOnUserSend = () => {
   shouldAutoScroll = true
   doScroll()
 }
 
-// Any content change during streaming — scroll if user hasn't scrolled away
 watch([messages, streamingContent, streamingThinking], doScroll)
 
-// Mobile: measure Obsidian's bottom UI height (without safe area).
-// On mount keyboard is closed, so --safe-area-inset-bottom is just the home indicator.
-// Subtract it to get pure UI element height.
+// Reset scroll when switching tabs
+watch(
+  () => agentService.activeTabId.value,
+  () => {
+    shouldAutoScroll = true
+    nextTick(doScroll)
+  }
+)
+
 onMounted(() => {
   if (Platform.isMobile && chatContainer.value) {
     nextTick(() => {
@@ -338,7 +368,6 @@ onMounted(() => {
   }
 })
 
-// MutationObserver catches all DOM changes (thinking open/close, markdown render, new elements)
 let mutObserver: MutationObserver | null = null
 onMounted(() => {
   nextTick(() => {
@@ -348,7 +377,7 @@ onMounted(() => {
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ['open'], // <details open> toggle
+        attributeFilter: ['open'],
       })
     }
   })
@@ -356,14 +385,16 @@ onMounted(() => {
 onUnmounted(() => mutObserver?.disconnect())
 
 const onSend = async (content: string, attachments: string[] = []) => {
+  const s = session.value
+  if (!s) return
   const fileRefs = content.match(/@([\w/.@\s-]+\.\w+)/g)
   if (fileRefs) {
     for (const r of fileRefs) {
-      scope.addFile(r.slice(1))
+      s.scopeResolver.addFile(r.slice(1))
     }
   }
   scrollOnUserSend()
-  await agent.sendMessage(content, attachments)
+  await s.sendMessage(content, attachments)
 }
 
 const onInputFocus = (focused: boolean) => {
@@ -371,9 +402,11 @@ const onInputFocus = (focused: boolean) => {
 }
 
 const onCommand = async (command: string) => {
+  const s = session.value
+  if (!s) return
   switch (command) {
     case '/compact':
-      agent.compact().catch(() => {
+      s.compact().catch(() => {
         return
       })
       break
@@ -409,14 +442,13 @@ const onSkillCommand = async (command: string) => {
   }
 
   scrollOnUserSend()
-  await agent.injectSkill(skillName, args || undefined)
+  await session.value?.injectSkill(skillName, args || undefined)
 }
 
 const onPromptSelected = async (file: TFile) => {
   promptPickerOpen.value = false
   const { app } = GlobalStore.getInstance()
   const content = await app.vault.read(file)
-  // Strip frontmatter
   const body = content.replace(/^---[\s\S]*?---\n?/, '')
   const { variables, userVariables } = parseTemplateVariables(body)
 
@@ -441,29 +473,107 @@ const onPromptVariablesConfirm = async (values: Map<string, string>) => {
   chatInput.value?.setText(resolved.trim())
 }
 
+const onAttachFile = (path: string) => {
+  session.value?.scopeResolver.addFile(path)
+}
+
+// ── Drag & drop on the whole chat area ──
+
+let dragLeaveTimer: ReturnType<typeof setTimeout> | null = null
+
+const onDragOver = () => {
+  if (dragLeaveTimer) {
+    clearTimeout(dragLeaveTimer)
+    dragLeaveTimer = null
+  }
+}
+
+const onDragLeave = () => {
+  dragLeaveTimer = setTimeout(() => {
+    dragLeaveTimer = null
+  }, 50)
+}
+
+const onFileDrop = async (e: DragEvent) => {
+  const dt = e.dataTransfer
+  if (!dt) return
+
+  console.debug('[Abele drop]', {
+    types: [...dt.types],
+    text: dt.getData('text/plain'),
+    files: dt.files?.length,
+  })
+
+  const { app } = GlobalStore.getInstance()
+
+  // 1. Obsidian internal drag — URIs like obsidian://open?vault=...&file=...
+  const textData = dt.getData('text/plain')?.trim()
+  if (textData) {
+    const lines = textData
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+    let handled = false
+    for (const line of lines) {
+      let path = line
+      // Parse obsidian:// URI
+      const fileParam = line.match(/[?&]file=([^&]+)/)
+      if (fileParam) {
+        path = decodeURIComponent(fileParam[1])
+      }
+      const file = app.vault.getAbstractFileByPath(path)
+      if (file instanceof TFile) {
+        chatInput.value?.addAttachment(file)
+        handled = true
+      }
+    }
+    if (handled) return
+  }
+
+  // 2. External files
+  const fileList = dt.files ? Array.from(dt.files) : []
+  for (const f of fileList) {
+    try {
+      const vaultFile = await importExternalFile(f)
+      chatInput.value?.addAttachment(vaultFile)
+    } catch (err: unknown) {
+      new Notice(`Failed to import ${f.name}: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+}
+
 const onAbort = () => {
+  const s = session.value
+  if (!s) return
   if (isExecutingTool.value) {
-    agent.abortToolExecution()
+    s.abortToolExecution()
   } else {
-    agent.abort()
+    s.abort()
   }
 }
 
 const onContinue = async () => {
   scrollOnUserSend()
-  await agent.sendMessage('Continue')
+  await session.value?.sendMessage('Continue')
 }
 
 const handleNewChat = async () => {
-  await agent.newChat()
+  await session.value?.reset()
 }
 
 const onLoadChat = async (file: TFile) => {
-  await agent.loadChat(file)
+  // If this chat is already open in another tab, switch to it
+  const existing = agentService.getSessionByFile(file.path)
+  if (existing) {
+    agentService.switchTab(existing.id)
+    return
+  }
+  // Load into the current tab
+  await session.value?.load(file)
 }
 
 const showDebug = () => {
-  const data = JSON.stringify(agent.getDebugData(), null, 2)
+  const data = JSON.stringify(session.value?.getDebugData() ?? {}, null, 2)
   console.log('[Abele AI Debug]', data)
   navigator.clipboard.writeText(data).then(
     () => new Notice('Debug JSON copied to clipboard'),

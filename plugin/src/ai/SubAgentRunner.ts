@@ -1,8 +1,20 @@
 import { AgentLoop } from './client/AgentLoop'
 import type { AgentTool, ModelConfig, Message, AssistantMessage, TextContent } from './client'
 import { ScopeResolver } from './ScopeResolver'
-import { AgentService } from './AgentService'
 import { AbeleConfig } from '@/services/AbeleConfig'
+
+export interface SubAgentPermissions {
+  allowWebSearch: boolean
+  allowFetch: boolean
+  allowDownload: boolean
+  allowWiseModel: boolean
+  allowImageGeneration: boolean
+  allowEvalJs: boolean
+  allowCreateFiles: boolean
+  allowScripts: boolean
+  allowedScripts: Record<string, boolean>
+  allowCreateScript: boolean
+}
 
 export interface SubAgentTask {
   /** System prompt for the sub-agent */
@@ -40,9 +52,9 @@ export interface SubAgentResult {
  */
 function isToolAllowed(
   toolName: string,
+  permissions: SubAgentPermissions,
   args?: Record<string, unknown>
 ): { allowed: boolean; reason?: string } {
-  const agent = AgentService.getInstance()
   const scope = ScopeResolver.getInstance()
   const mode = AbeleConfig.getInstance().ai.permissionMode
 
@@ -59,7 +71,7 @@ function isToolAllowed(
   }
 
   // Create — check allowCreateFiles flag
-  if (toolName === 'create' && !agent.allowCreateFiles.value)
+  if (toolName === 'create' && !permissions.allowCreateFiles)
     return { allowed: false, reason: 'File creation not allowed' }
 
   // Edit/write tools need appropriate permission mode
@@ -74,28 +86,28 @@ function isToolAllowed(
   }
 
   // Permission flag checks
-  if (toolName === 'web_search' && !agent.allowWebSearch.value)
+  if (toolName === 'web_search' && !permissions.allowWebSearch)
     return { allowed: false, reason: 'Web search not allowed' }
-  if (toolName === 'fetch' && !agent.allowFetch.value)
+  if (toolName === 'fetch' && !permissions.allowFetch)
     return { allowed: false, reason: 'Fetch not allowed' }
-  if ((toolName === 'download_image' || toolName === 'download_file') && !agent.allowDownload.value)
+  if ((toolName === 'download_image' || toolName === 'download_file') && !permissions.allowDownload)
     return { allowed: false, reason: 'Download not allowed' }
-  if (toolName === 'wise_model' && !agent.allowWiseModel.value)
+  if (toolName === 'wise_model' && !permissions.allowWiseModel)
     return { allowed: false, reason: 'Wise model not allowed' }
   if (
     (toolName === 'generate_image' || toolName === 'edit_image') &&
-    !agent.allowImageGeneration.value
+    !permissions.allowImageGeneration
   )
     return { allowed: false, reason: 'Image generation not allowed' }
-  if (toolName === 'eval_js' && !agent.allowEvalJs.value)
+  if (toolName === 'eval_js' && !permissions.allowEvalJs)
     return { allowed: false, reason: 'Eval JS not allowed' }
   if (
     toolName.startsWith('script_') &&
-    !agent.allowScripts.value &&
-    !agent.allowedScripts.value[toolName]
+    !permissions.allowScripts &&
+    !permissions.allowedScripts[toolName]
   )
     return { allowed: false, reason: 'Script execution not allowed' }
-  if (toolName === 'create_script' && !agent.allowCreateScript.value)
+  if (toolName === 'create_script' && !permissions.allowCreateScript)
     return { allowed: false, reason: 'Script creation not allowed' }
 
   return { allowed: true }
@@ -105,7 +117,10 @@ function isToolAllowed(
  * Run a single sub-agent task to completion.
  * Returns result text or error — never prompts for approval.
  */
-export async function runSubAgent(task: SubAgentTask): Promise<string> {
+export async function runSubAgent(
+  task: SubAgentTask,
+  permissions: SubAgentPermissions
+): Promise<string> {
   if (task.signal?.aborted) throw new Error('Aborted')
 
   const agentLoop = new AgentLoop()
@@ -128,7 +143,7 @@ export async function runSubAgent(task: SubAgentTask): Promise<string> {
     },
     beforeToolCall: async (toolName, _id, args) => {
       if (task.signal?.aborted) return { block: true, reason: 'Aborted' }
-      const check = isToolAllowed(toolName, args)
+      const check = isToolAllowed(toolName, permissions, args)
       if (!check.allowed) {
         return { block: true, reason: check.reason }
       }
@@ -159,6 +174,7 @@ export async function runSubAgentBatch(
   model: ModelConfig,
   systemPrompt: string,
   batchSize: number,
+  permissions: SubAgentPermissions,
   signal?: AbortSignal,
   onProgress?: (completed: number, total: number, results: SubAgentResult[]) => void
 ): Promise<SubAgentResult[]> {
@@ -181,13 +197,16 @@ export async function runSubAgentBatch(
       }
 
       try {
-        const text = await runSubAgent({
-          systemPrompt,
-          userMessage: `${taskDescription}\n\nItem to process:\n${item}`,
-          tools,
-          model,
-          signal,
-        })
+        const text = await runSubAgent(
+          {
+            systemPrompt,
+            userMessage: `${taskDescription}\n\nItem to process:\n${item}`,
+            tools,
+            model,
+            signal,
+          },
+          permissions
+        )
         return { item, success: true, text }
       } catch (err) {
         if (signal?.aborted) return { item, success: false, text: '', error: 'Aborted' }

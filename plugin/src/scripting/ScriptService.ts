@@ -158,12 +158,15 @@ export class ScriptService {
       }
     }
 
-    // Also clean per-chat allowedScripts
+    // Also clean per-chat allowedScripts on active session
     const agent = AgentService.getInstance()
-    const chatAllowed = agent.allowedScripts.value
-    for (const toolName of Object.keys(chatAllowed)) {
-      if (!validToolNames.has(toolName)) {
-        delete chatAllowed[toolName]
+    const session = agent.activeSession.value
+    if (session) {
+      const chatAllowed = session.allowedScripts.value
+      for (const toolName of Object.keys(chatAllowed)) {
+        if (!validToolNames.has(toolName)) {
+          delete chatAllowed[toolName]
+        }
       }
     }
 
