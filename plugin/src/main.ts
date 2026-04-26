@@ -25,6 +25,7 @@ import { TemplateService } from './templates/TemplateService'
 import { taskStateField } from './editor/TaskPlugin'
 import { galleryExtensions } from './editor/GalleryPlugin'
 import { insertGallery, convertImagesToGalleries } from './commands/galleryCommands'
+import { setCoverFromFirstMedia } from './commands/setCover'
 import { findAndReplace } from './commands/findAndReplace'
 import { saveMedia } from './commands/saveMedia'
 import { unusedMedia } from './commands/unusedMedia'
@@ -39,6 +40,7 @@ import {
 } from './views/TimeTrackingSidebarView'
 import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
+import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
 import { AgentService } from './ai/AgentService'
 import { ScopeResolver } from './ai/ScopeResolver'
 import { ChatStorage } from './ai/ChatStorage'
@@ -122,6 +124,8 @@ export default class AbelePlugin extends Plugin {
       TIME_TRACKING_SIDEBAR_VIEW_TYPE,
       (leaf) => new TimeTrackingSidebarView(leaf, this.app)
     )
+
+    this.registerView(CODE_VIEW_TYPE, (leaf) => new CodeView(leaf))
 
     // AI sidebar is always registered so the view can be restored, but commands/ribbon are conditional
     this.registerView(AI_SIDEBAR_VIEW_TYPE, (leaf) => new AiSidebarView(leaf, this.app))
@@ -237,6 +241,43 @@ export default class AbelePlugin extends Plugin {
         setTimeout(() => {
           store.cleanupOrphanedWidgets()
         }, 500)
+      })
+    )
+
+    this.registerEvent(
+      this.app.workspace.on('file-menu', (menu, file) => {
+        if (!(file instanceof TFile)) return
+        const ext = file.extension
+        if (
+          ![
+            'base',
+            'json',
+            'css',
+            'js',
+            'ts',
+            'html',
+            'xml',
+            'yaml',
+            'yml',
+            'csv',
+            'txt',
+            'svg',
+          ].includes(ext)
+        )
+          return
+        menu.addItem((item) => {
+          item
+            .setTitle('Open as code')
+            .setIcon('code')
+            .onClick(async () => {
+              const leaf = this.app.workspace.getLeaf('tab')
+              await leaf.setViewState({
+                type: CODE_VIEW_TYPE,
+                state: { file: file.path },
+              })
+              this.app.workspace.setActiveLeaf(leaf, { focus: true })
+            })
+        })
       })
     )
 
@@ -437,6 +478,14 @@ export default class AbelePlugin extends Plugin {
       name: 'Convert images on page to galleries',
       editorCallback: (editor: Editor) => {
         convertImagesToGalleries(editor)
+      },
+    })
+
+    this.addCommand({
+      id: 'set-cover-from-first-media',
+      name: 'Set cover from first image/video in note',
+      callback: () => {
+        setCoverFromFirstMedia()
       },
     })
 

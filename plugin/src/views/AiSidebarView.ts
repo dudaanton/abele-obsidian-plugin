@@ -1,9 +1,9 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App } from 'obsidian'
+import { AI_SIDEBAR_VIEW_TYPE, AI_SIDEBAR_ID_ATTR } from '@/constants/views'
 
-export const AI_SIDEBAR_VIEW_TYPE = 'abele-ai-sidebar-view'
-export const AI_SIDEBAR_ID_ATTR = 'abele-ai-sidebar-id'
+export { AI_SIDEBAR_VIEW_TYPE, AI_SIDEBAR_ID_ATTR }
 
 export class AiSidebarView extends ItemView {
   private id: string

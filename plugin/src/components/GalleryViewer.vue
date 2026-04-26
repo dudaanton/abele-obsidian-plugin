@@ -68,6 +68,7 @@
           text-right="Download"
           @click="downloadImage"
         />
+        <ObsidianIcon v-if="isLocal" icon="image" no-hover text-right="Cover" @click="setAsCover" />
       </div>
     </div>
   </Teleport>
@@ -78,6 +79,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { Notice, TFile } from 'obsidian'
 import ObsidianIcon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { setCoverFromMedia } from '@/commands/setCover'
 
 export interface ViewerImage {
   url: string
@@ -268,6 +270,15 @@ async function downloadImage() {
   }
 }
 
+async function setAsCover() {
+  const mediaFile = resolveFile()
+  if (!mediaFile) return
+  const { app } = GlobalStore.getInstance()
+  const noteFile = app.vault.getAbstractFileByPath(props.galleryFilePath)
+  if (!(noteFile instanceof TFile)) return
+  await setCoverFromMedia(mediaFile, noteFile)
+}
+
 // --- Helpers ---
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -333,15 +344,47 @@ function onDragEnd() {
   document.removeEventListener('mouseup', onDragEnd)
 }
 
-// --- Touch swipe ---
+// --- Touch swipe + pinch-to-zoom ---
 
 let touchStartX = 0
 let touchStartY = 0
 let touchStartTranslateX = 0
 let touchStartTranslateY = 0
 let isSwiping = false
+let isPinching = false
+let pinchStartDist = 0
+let pinchStartScale = 1
+let pinchStartMidX = 0
+let pinchStartMidY = 0
+let pinchStartTranslateX = 0
+let pinchStartTranslateY = 0
+
+function getTouchDist(e: TouchEvent): number {
+  const a = e.touches[0]
+  const b = e.touches[1]
+  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+}
+
+function getTouchMid(e: TouchEvent): { x: number; y: number } {
+  const a = e.touches[0]
+  const b = e.touches[1]
+  return { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 }
+}
 
 function onTouchStart(e: TouchEvent) {
+  if (e.touches.length === 2) {
+    // Start pinch
+    isPinching = true
+    isSwiping = false
+    pinchStartDist = getTouchDist(e)
+    pinchStartScale = scale.value
+    pinchStartTranslateX = translateX.value
+    pinchStartTranslateY = translateY.value
+    const mid = getTouchMid(e)
+    pinchStartMidX = mid.x
+    pinchStartMidY = mid.y
+    return
+  }
   if (e.touches.length !== 1) return
   const t = e.touches[0]
   touchStartX = t.clientX
@@ -349,9 +392,41 @@ function onTouchStart(e: TouchEvent) {
   touchStartTranslateX = translateX.value
   touchStartTranslateY = translateY.value
   isSwiping = true
+  isPinching = false
 }
 
 function onTouchMove(e: TouchEvent) {
+  if (isPinching && e.touches.length === 2) {
+    const dist = getTouchDist(e)
+    const mid = getTouchMid(e)
+    const newScale = Math.max(0.5, Math.min(10, pinchStartScale * (dist / pinchStartDist)))
+
+    // Pan: track midpoint movement
+    const panDx = mid.x - pinchStartMidX
+    const panDy = mid.y - pinchStartMidY
+
+    // Zoom around initial pinch midpoint
+    // The wrap center is the image's untranslated origin
+    const wrap = imageEl.value?.parentElement
+    if (wrap) {
+      const wrapRect = wrap.getBoundingClientRect()
+      const originX = wrapRect.left + wrapRect.width / 2
+      const originY = wrapRect.top + wrapRect.height / 2
+      // Pinch point relative to the image's untranslated center
+      const px = pinchStartMidX - originX - pinchStartTranslateX
+      const py = pinchStartMidY - originY - pinchStartTranslateY
+      const factor = newScale / pinchStartScale
+      translateX.value = pinchStartTranslateX + px * (1 - factor) + panDx
+      translateY.value = pinchStartTranslateY + py * (1 - factor) + panDy
+    } else {
+      const factor = newScale / pinchStartScale
+      translateX.value = pinchStartTranslateX * factor + panDx
+      translateY.value = pinchStartTranslateY * factor + panDy
+    }
+    scale.value = newScale
+    return
+  }
+
   if (!isSwiping || e.touches.length !== 1) return
   const t = e.touches[0]
   const dx = t.clientX - touchStartX
@@ -365,6 +440,14 @@ function onTouchMove(e: TouchEvent) {
 }
 
 function onTouchEnd(e: TouchEvent) {
+  if (isPinching) {
+    if (e.touches.length < 2) {
+      isPinching = false
+      if (scale.value <= 1) resetTransform()
+    }
+    return
+  }
+
   if (!isSwiping) return
   isSwiping = false
 
