@@ -53,6 +53,12 @@ export interface AiSettings {
   allowEvalJs: boolean
   allowCreateFiles: boolean
   allowDelegate: boolean
+  allowScripts: boolean
+  allowedScripts: Record<string, boolean>
+  allowCreateScript: boolean
+  scriptsEnabled: boolean
+  scriptsFolder: string
+  scriptToolToggles: Record<string, boolean>
   defaultScope: Array<{ type: 'file' | 'folder' | 'pattern' | 'group'; path: string }>
   defaultFullVaultAccess: boolean
   chatFolder: string
@@ -84,6 +90,12 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   allowEvalJs: false,
   allowCreateFiles: true,
   allowDelegate: false,
+  allowScripts: false,
+  allowedScripts: {},
+  allowCreateScript: false,
+  scriptsEnabled: false,
+  scriptsFolder: '',
+  scriptToolToggles: {},
   defaultScope: [],
   defaultFullVaultAccess: false,
   chatFolder: 'AI/Chats/{{name}}',
@@ -184,6 +196,11 @@ export interface ChatMetadata {
   allowEvalJs?: boolean
   allowCreateFiles?: boolean
   allowDelegate?: boolean
+  allowScripts?: boolean
+  allowedScripts?: Record<string, boolean>
+  allowCreateScript?: boolean
+  scopeEntries?: Array<{ type: 'file' | 'folder' | 'pattern' | 'group'; path: string }>
+  fullVaultAccess?: boolean
   activeLeafId?: string
   customSystemPrompt?: string
   customSystemPromptNotePath?: string

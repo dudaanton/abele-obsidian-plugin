@@ -51,6 +51,7 @@ import JournalsSettings from './JournalsSettings.vue'
 import AiSettings from './AiSettings.vue'
 import FinanceSettings from './FinanceSettings.vue'
 import TimeTrackingSettings from './TimeTrackingSettings.vue'
+import ScriptsSettings from './ScriptsSettings.vue'
 import OtherSettings from './OtherSettings.vue'
 
 interface Tab {
@@ -66,6 +67,7 @@ const tabs: Tab[] = [
   { id: 'finance', name: 'Finance', component: markRaw(FinanceSettings) },
   { id: 'time-tracking', name: 'Time Tracking', component: markRaw(TimeTrackingSettings) },
   { id: 'ai', name: 'AI Agent', component: markRaw(AiSettings) },
+  { id: 'scripts', name: 'Scripts', component: markRaw(ScriptsSettings) },
   { id: 'other', name: 'Other', component: markRaw(OtherSettings) },
 ]
 

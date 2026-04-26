@@ -38,6 +38,7 @@
             {{ scopeLabel }}
           </div>
           <Icon icon="folder-open" with-bg @click="emit('openScope')" />
+          <Icon icon="shield" with-bg @click="emit('openPermissions')" />
           <Icon icon="paperclip" with-bg @click="showAttachMenu" />
           <Icon
             v-if="canContinue && !text.trim() && !attachments.length"
@@ -92,6 +93,7 @@ const emit = defineEmits<{
   (e: 'continue'): void
   (e: 'focus', focused: boolean): void
   (e: 'openScope'): void
+  (e: 'openPermissions'): void
 }>()
 
 const TEXTAREA_MIN_HEIGHT = 34

@@ -1,4 +1,4 @@
-import { setIcon, TextFileView, WorkspaceLeaf } from 'obsidian'
+import { setIcon, TextFileView, WorkspaceLeaf, TFile, EventRef } from 'obsidian'
 import {
   EditorView,
   lineNumbers,
@@ -43,6 +43,7 @@ export class CodeView extends TextFileView {
   private editor: EditorView | null = null
   private dirty = false
   private saveBtn: HTMLButtonElement | null = null
+  private modifyRef: EventRef | null = null
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
@@ -78,6 +79,37 @@ export class CodeView extends TextFileView {
   clear(): void {
     this.editor?.destroy()
     this.editor = null
+  }
+
+  async onLoadFile(file: TFile): Promise<void> {
+    await super.onLoadFile(file)
+    this.startWatching()
+  }
+
+  async onUnloadFile(file: TFile): Promise<void> {
+    this.stopWatching()
+    await super.onUnloadFile(file)
+  }
+
+  private startWatching() {
+    this.stopWatching()
+    this.modifyRef = this.app.vault.on('modify', async (modified) => {
+      if (!(modified instanceof TFile)) return
+      if (modified.path !== this.file?.path) return
+      if (this.dirty) return
+      const content = await this.app.vault.read(modified)
+      const current = this.editor?.state.doc.toString() ?? ''
+      if (content !== current) {
+        this.setViewData(content, false)
+      }
+    })
+  }
+
+  private stopWatching() {
+    if (this.modifyRef) {
+      this.app.vault.offref(this.modifyRef)
+      this.modifyRef = null
+    }
   }
 
   private setDirty(value: boolean) {

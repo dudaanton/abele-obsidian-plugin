@@ -20,6 +20,8 @@ import { createEvalJsTool } from './EvalJsTool'
 import { createListTemplatesTool, createApplyTemplateTool } from './TemplateTool'
 import { createDownloadImageTool, createDownloadFileTool } from './DownloadImageTool'
 import { createDelegateTool } from './DelegateTool'
+import { createScriptTools } from './ScriptTool'
+import { createCreateScriptTool, createScriptApiDocsTool } from './CreateScriptTool'
 
 export function createAgentTools(): AgentTool[] {
   const tools = [
@@ -46,6 +48,13 @@ export function createAgentTools(): AgentTool[] {
     createDownloadFileTool(),
     createDelegateTool(),
   ]
+
+  const config = AbeleConfig.getInstance().ai
+  if (config.scriptsEnabled) {
+    tools.push(...createScriptTools())
+    tools.push(createScriptApiDocsTool())
+    tools.push(createCreateScriptTool())
+  }
 
   const customDescriptions = AbeleConfig.getInstance().ai.prompts?.toolDescriptions
   if (customDescriptions) {

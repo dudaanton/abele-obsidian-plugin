@@ -4,6 +4,15 @@ import { UserTemplate } from './UserTemplate'
 import { parseTemplateVariables, applyTemplateVariables, TemplateVariable } from './TemplateParser'
 import { getAvailablePath } from '@/helpers/vaultUtils'
 
+/** Wrap value in quotes if it contains a colon (breaks YAML), but leave wikilinks and arrays as-is */
+function escapeFrontmatterValue(value: string): string {
+  if (value.startsWith('[') || value.startsWith('[[')) return value
+  if (value.includes(':') || value.trim() !== value) {
+    return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  }
+  return value
+}
+
 /**
  * Grouped templates by templateDir for hierarchical display
  */
@@ -257,13 +266,17 @@ export class TemplateService {
       const frontmatterContent = match[1]
       const afterFrontmatter = content.slice(match[0].length)
 
-      const newProps = resolvedProps.map((p) => `${p.name}: ${p.value}`).join('\n')
+      const newProps = resolvedProps
+        .map((p) => `${p.name}: ${escapeFrontmatterValue(p.value)}`)
+        .join('\n')
       const newFrontmatter = frontmatterContent.trimEnd() + '\n' + newProps
 
       return `---\n${newFrontmatter}\n---${afterFrontmatter}`
     } else {
       // Create new frontmatter with properties
-      const newProps = resolvedProps.map((p) => `${p.name}: ${p.value}`).join('\n')
+      const newProps = resolvedProps
+        .map((p) => `${p.name}: ${escapeFrontmatterValue(p.value)}`)
+        .join('\n')
       return `---\n${newProps}\n---\n${content}`
     }
   }

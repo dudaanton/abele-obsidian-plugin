@@ -48,6 +48,20 @@ export class GlobalStore {
   public readonly migrateFromFireflyModalOpened = ref(false)
   public readonly migrateDataviewFieldsModalOpened = ref(false)
   public readonly migrateFromTogglModalOpened = ref(false)
+  public readonly scriptFormModalOpened = ref(false)
+  public readonly scriptFormFields = ref<
+    Array<{
+      name: string
+      label: string
+      type?: string
+      options?: string[]
+      default?: string
+      required?: boolean
+    }>
+  >([])
+  public readonly scriptFormResolve = ref<((result: Record<string, string> | null) => void) | null>(
+    null
+  )
 
   public readonly timelineSidebarId = ref<string | null>(null)
   public readonly todoSidebarId = ref<string | null>(null)

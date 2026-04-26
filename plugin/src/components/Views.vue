@@ -81,6 +81,12 @@
     v-if="migrateFromTogglModalOpened"
     @close="migrateFromTogglModalOpened = false"
   />
+  <ScriptFormModal
+    v-if="scriptFormModalOpened && scriptFormResolve"
+    :fields="scriptFormFields"
+    :resolve="scriptFormResolve"
+    @close="scriptFormModalOpened = false"
+  />
   <Teleport v-if="settingsTabId" :to="`[${SETTINGS_ID_ATTR}='${settingsTabId}']`">
     <SettingsView />
   </Teleport>
@@ -109,6 +115,7 @@ import DeduplicateMediaModal from './DeduplicateMediaModal.vue'
 import MigrateFromFireflyModal from './MigrateFromFireflyModal.vue'
 import MigrateDataviewFieldsModal from './MigrateDataviewFieldsModal.vue'
 import MigrateFromTogglModal from './MigrateFromTogglModal.vue'
+import ScriptFormModal from './ScriptFormModal.vue'
 import { TIMELINE_SIDEBAR_ID_ATTR } from '@/views/TimelineSidebarView'
 import { TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'
 import { AI_SIDEBAR_ID_ATTR } from '@/views/AiSidebarView'
@@ -135,6 +142,9 @@ const {
   migrateFromFireflyModalOpened,
   migrateDataviewFieldsModalOpened,
   migrateFromTogglModalOpened,
+  scriptFormModalOpened,
+  scriptFormFields,
+  scriptFormResolve,
   timelineSidebarId,
   todoSidebarId,
   aiSidebarId,
