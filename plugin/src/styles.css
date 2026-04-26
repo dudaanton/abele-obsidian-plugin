@@ -27,6 +27,11 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   margin-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
 
+/* Ensure notices appear above gallery viewer overlay */
+.notice-container {
+  z-index: 10000 !important;
+}
+
 /* Bases views — shared */
 .abele-bases-chart__empty {
   padding: 24px;

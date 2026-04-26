@@ -296,7 +296,7 @@ scan()
 
 <style lang="scss">
 .abele-dedup {
-  min-width: 500px;
+  min-width: min(500px, 100%);
 }
 
 .abele-dedup__actions {

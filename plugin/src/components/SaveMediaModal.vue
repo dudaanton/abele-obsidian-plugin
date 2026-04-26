@@ -481,7 +481,7 @@ const downloadAll = async () => {
 
 <style lang="scss">
 .abele-save-media {
-  min-width: 450px;
+  min-width: min(450px, 100%);
 }
 
 .abele-save-media__props {

@@ -162,7 +162,7 @@ function confirmValues() {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-3);
-  min-width: 350px;
+  min-width: min(350px, 100%);
 }
 
 .variables-list {
