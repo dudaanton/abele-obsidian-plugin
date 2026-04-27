@@ -1,10 +1,9 @@
 {
 	"id": "abele",
 	"name": "Abele",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"minAppVersion": "0.15.0",
 	"description": "All-in-one productivity plugin.",
 	"author": "Anton Duda",
 	"authorUrl": "https://duda.dev",
 	"isDesktopOnly": false
-}
