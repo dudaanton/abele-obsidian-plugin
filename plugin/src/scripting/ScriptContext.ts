@@ -40,12 +40,8 @@ function stripPrefix(result: string): string {
   return result.replace(/^(?:Saved|Created):\s*/, '')
 }
 
-function resolveModelBySlot(
-  slot: 'activeModelId' | 'wiseModelId' | 'delegateModelId'
-): ModelConfig | null {
+function resolveModelById(modelId: string): ModelConfig | null {
   const config = AbeleConfig.getInstance().ai
-  const modelId = config[slot]
-  if (!modelId) return null
   for (const provider of config.providers) {
     const model = provider.models.find((m) => m.id === modelId)
     if (model) {
@@ -60,6 +56,15 @@ function resolveModelBySlot(
       }
     }
   }
+  return null
+}
+
+function resolveModelBySlot(
+  slot: 'activeModelId' | 'wiseModelId' | 'delegateModelId'
+): ModelConfig | null {
+  const modelId = AbeleConfig.getInstance().ai[slot]
+  if (!modelId) return null
+  return resolveModelById(modelId)
   return null
 }
 
@@ -191,18 +196,18 @@ export function buildScriptContext(opts: {
 
     // ── AI ──
 
-    async agent(
-      task: string,
-      agentOpts?: { model?: 'primary' | 'delegate' | 'wise' }
-    ): Promise<string> {
+    async agent(task: string, agentOpts?: { model?: string }): Promise<string> {
       const agentService = AgentService.getInstance()
       const modelType = agentOpts?.model ?? 'delegate'
-      const model =
-        modelType === 'wise'
-          ? (resolveModelBySlot('wiseModelId') ?? agentService.getDelegateModelConfig())
-          : modelType === 'primary'
-            ? (resolveModelBySlot('activeModelId') ?? agentService.getDelegateModelConfig())
-            : agentService.getDelegateModelConfig()
+      const SLOTS: Record<string, 'activeModelId' | 'wiseModelId' | 'delegateModelId'> = {
+        primary: 'activeModelId',
+        delegate: 'delegateModelId',
+        wise: 'wiseModelId',
+      }
+      const slot = SLOTS[modelType]
+      const model = slot
+        ? (resolveModelBySlot(slot) ?? agentService.getDelegateModelConfig())
+        : (resolveModelById(modelType) ?? agentService.getDelegateModelConfig())
       const session = agentService.activeSession.value
       const systemPrompt = await agentService.getDelegateSystemPrompt(session!)
       const allTools = createAgentTools()
