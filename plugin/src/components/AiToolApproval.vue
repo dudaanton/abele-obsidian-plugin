@@ -139,6 +139,10 @@ const PERMISSION_TOOLS: Record<
   | 'allowEvalJs'
   | 'allowCreateFiles'
   | 'allowDelegate'
+  | 'allowReadLogs'
+  | 'allowReadBacklinks'
+  | 'allowReadTransactions'
+  | 'allowReadTasks'
 > = {
   web_search: 'allowWebSearch',
   fetch: 'allowFetch',
@@ -151,6 +155,10 @@ const PERMISSION_TOOLS: Record<
   create: 'allowCreateFiles',
   apply_template: 'allowCreateFiles',
   delegate: 'allowDelegate',
+  read_logs: 'allowReadLogs',
+  read_backlinks: 'allowReadBacklinks',
+  read_transactions: 'allowReadTransactions',
+  read_tasks: 'allowReadTasks',
 }
 
 const canAllowAll = computed(() => {
