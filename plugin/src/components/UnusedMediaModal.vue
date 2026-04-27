@@ -152,8 +152,24 @@ const scan = async () => {
     totalFiles.value = mdFiles.length
 
     const htmlRefRegex = /(?:src|poster|href)=["']([^"']+)["']/gi
-    const frontmatterMediaRegex =
-      /^(?:cover|thumbnail|image|banner|poster):\s*["']?([^\s"']+)["']?/gm
+
+    const addRef = (ref: string, sourcePath: string) => {
+      if (!ref || ref.startsWith('http')) return
+      const resolved = app.metadataCache.getFirstLinkpathDest(ref, sourcePath)
+      if (resolved) referenced.add(resolved.path)
+      else referenced.add(ref)
+    }
+
+    // Extract all string values from frontmatter recursively
+    const extractStrings = (val: unknown, sourcePath: string) => {
+      if (typeof val === 'string') {
+        addRef(val, sourcePath)
+      } else if (Array.isArray(val)) {
+        for (const item of val) extractStrings(item, sourcePath)
+      } else if (val && typeof val === 'object') {
+        for (const v of Object.values(val)) extractStrings(v, sourcePath)
+      }
+    }
 
     for (const file of mdFiles) {
       const content = await app.vault.cachedRead(file)
@@ -162,24 +178,13 @@ const scan = async () => {
       htmlRefRegex.lastIndex = 0
       let match: RegExpExecArray | null
       while ((match = htmlRefRegex.exec(content)) !== null) {
-        const ref = match[1]
-        if (!ref.startsWith('http')) {
-          // Resolve as vault path
-          const resolved = app.metadataCache.getFirstLinkpathDest(ref, file.path)
-          if (resolved) referenced.add(resolved.path)
-          else referenced.add(ref)
-        }
+        addRef(match[1], file.path)
       }
 
-      // Frontmatter media properties
-      frontmatterMediaRegex.lastIndex = 0
-      while ((match = frontmatterMediaRegex.exec(content)) !== null) {
-        const ref = match[1]
-        if (!ref.startsWith('http')) {
-          const resolved = app.metadataCache.getFirstLinkpathDest(ref, file.path)
-          if (resolved) referenced.add(resolved.path)
-          else referenced.add(ref)
-        }
+      // All frontmatter values — any string that resolves to a vault file
+      const fm = app.metadataCache.getFileCache(file)?.frontmatter
+      if (fm) {
+        extractStrings(fm, file.path)
       }
 
       scannedFiles.value++
