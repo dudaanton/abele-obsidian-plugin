@@ -18,6 +18,7 @@ export interface SubAgentPermissions {
   allowReadBacklinks: boolean
   allowReadTransactions: boolean
   allowReadTasks: boolean
+  allowOpenFile: boolean
 }
 
 export interface SubAgentTask {
@@ -119,6 +120,8 @@ function isToolAllowed(
     return { allowed: false, reason: 'Read transactions not allowed' }
   if (toolName === 'read_tasks' && !permissions.allowReadTasks)
     return { allowed: false, reason: 'Read tasks not allowed' }
+  if (toolName === 'open' && !permissions.allowOpenFile)
+    return { allowed: false, reason: 'Open file not allowed' }
   if (toolName === 'create_script' && !permissions.allowCreateScript)
     return { allowed: false, reason: 'Script creation not allowed' }
 

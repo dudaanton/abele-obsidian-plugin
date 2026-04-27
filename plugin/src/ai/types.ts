@@ -60,6 +60,7 @@ export interface AiSettings {
   allowReadBacklinks: boolean
   allowReadTransactions: boolean
   allowReadTasks: boolean
+  allowOpenFile: boolean
   scriptsEnabled: boolean
   scriptsFolder: string
   scriptToolToggles: Record<string, boolean>
@@ -101,6 +102,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   allowReadBacklinks: false,
   allowReadTransactions: false,
   allowReadTasks: false,
+  allowOpenFile: false,
   scriptsEnabled: false,
   scriptsFolder: '',
   scriptToolToggles: {},
@@ -211,6 +213,7 @@ export interface ChatMetadata {
   allowReadBacklinks?: boolean
   allowReadTransactions?: boolean
   allowReadTasks?: boolean
+  allowOpenFile?: boolean
   scopeEntries?: Array<{ type: 'file' | 'folder' | 'pattern' | 'group'; path: string }>
   fullVaultAccess?: boolean
   activeLeafId?: string

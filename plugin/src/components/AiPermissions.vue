@@ -55,6 +55,10 @@
         <Checkbox :is-enabled="allowReadTasks" @toggle="toggle('allowReadTasks')" />
       </Setting>
 
+      <Setting name="Open files" desc="Allow agent to open files in the editor.">
+        <Checkbox :is-enabled="allowOpenFile" @toggle="toggle('allowOpenFile')" />
+      </Setting>
+
       <!-- Scripts -->
       <template v-if="scriptTools.length">
         <h4 class="abele-permissions__heading">Scripts</h4>
@@ -106,6 +110,7 @@ const allowReadLogs = computed(() => session.value?.allowReadLogs.value ?? false
 const allowReadBacklinks = computed(() => session.value?.allowReadBacklinks.value ?? false)
 const allowReadTransactions = computed(() => session.value?.allowReadTransactions.value ?? false)
 const allowReadTasks = computed(() => session.value?.allowReadTasks.value ?? false)
+const allowOpenFile = computed(() => session.value?.allowOpenFile.value ?? false)
 
 const scriptTools = computed(() => {
   const config = AbeleConfig.getInstance().ai
@@ -138,6 +143,7 @@ const toggle = (
     | 'allowReadBacklinks'
     | 'allowReadTransactions'
     | 'allowReadTasks'
+    | 'allowOpenFile'
 ) => {
   const s = session.value
   if (s) s[key].value = !s[key].value

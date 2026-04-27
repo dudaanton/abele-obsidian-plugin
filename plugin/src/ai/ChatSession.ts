@@ -130,6 +130,7 @@ export class ChatSession {
   public readonly allowReadBacklinks = ref(false)
   public readonly allowReadTransactions = ref(false)
   public readonly allowReadTasks = ref(false)
+  public readonly allowOpenFile = ref(false)
   public readonly customSystemPrompt = ref('')
   public readonly customSystemPromptNotePath = ref('')
 
@@ -167,6 +168,7 @@ export class ChatSession {
     this.allowReadBacklinks.value = config.allowReadBacklinks ?? false
     this.allowReadTransactions.value = config.allowReadTransactions ?? false
     this.allowReadTasks.value = config.allowReadTasks ?? false
+    this.allowOpenFile.value = config.allowOpenFile ?? false
   }
 
   private resetScope(): void {
@@ -253,6 +255,7 @@ export class ChatSession {
     if (toolName === 'read_backlinks') return !this.allowReadBacklinks.value
     if (toolName === 'read_transactions') return !this.allowReadTransactions.value
     if (toolName === 'read_tasks') return !this.allowReadTasks.value
+    if (toolName === 'open') return !this.allowOpenFile.value
     if (toolName === 'read_image') return false
     if (
       ChatSession.EDIT_TOOLS.includes(toolName) &&
@@ -873,6 +876,7 @@ export class ChatSession {
       allowReadBacklinks: this.allowReadBacklinks.value,
       allowReadTransactions: this.allowReadTransactions.value,
       allowReadTasks: this.allowReadTasks.value,
+      allowOpenFile: this.allowOpenFile.value,
       scopeEntries: this.scopeResolver.entries.value.length
         ? [...this.scopeResolver.entries.value]
         : undefined,
@@ -945,6 +949,7 @@ export class ChatSession {
     this.allowReadTransactions.value =
       result.metadata?.allowReadTransactions ?? config.allowReadTransactions ?? false
     this.allowReadTasks.value = result.metadata?.allowReadTasks ?? config.allowReadTasks ?? false
+    this.allowOpenFile.value = result.metadata?.allowOpenFile ?? config.allowOpenFile ?? false
 
     // Restore scope
     if (result.metadata?.scopeEntries) {
@@ -1038,6 +1043,7 @@ export class ChatSession {
     allowReadBacklinks: boolean
     allowReadTransactions: boolean
     allowReadTasks: boolean
+    allowOpenFile: boolean
   } {
     return {
       allowWebSearch: this.allowWebSearch.value,
@@ -1054,6 +1060,7 @@ export class ChatSession {
       allowReadBacklinks: this.allowReadBacklinks.value,
       allowReadTransactions: this.allowReadTransactions.value,
       allowReadTasks: this.allowReadTasks.value,
+      allowOpenFile: this.allowOpenFile.value,
     }
   }
 

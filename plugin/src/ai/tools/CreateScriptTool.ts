@@ -46,6 +46,7 @@ All async. Full vault access — no scope restrictions.
 | \`ls(path?)\` | \`string[]\` | List folder contents (file/folder paths). Omit path for vault root |
 | \`find(opts)\` | \`string[]\` | Search files (see below) |
 | \`replace(path, actions)\` | \`string\` | Apply replacement actions to a file (see below) |
+| \`open(path)\` | — | Open a file in the Obsidian editor |
 
 ### find(opts)
 
