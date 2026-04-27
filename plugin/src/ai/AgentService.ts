@@ -206,13 +206,40 @@ export class AgentService {
     return getNoteBody(content).trim() || null
   }
 
-  // ── Global model switching ─────────────────────────────────────
+  /** Resolve model config for specific provider+model IDs (used by per-session model) */
+  getModelConfigFor(providerId: string, modelId: string): ModelConfig {
+    const config = AbeleConfig.getInstance().ai
+
+    let provider = config.providers.find((p) => p.id === providerId)
+    if (!provider || provider.models.length === 0) {
+      provider = config.providers.find((p) => p.models.length > 0)
+    }
+    if (!provider) throw new Error('No provider with models configured')
+
+    let model = provider.models.find((m) => m.id === modelId)
+    if (!model) {
+      model = provider.models[0]
+    }
+
+    return {
+      id: model.id,
+      name: model.name,
+      baseUrl: provider.baseUrl,
+      apiKey: GlobalStore.getInstance().app.secretStorage.getSecret(provider.apiKeyId) || '',
+      contextWindow: model.contextWindow,
+      maxTokens: model.maxTokens,
+      supportsReasoning: model.supportsReasoning,
+    }
+  }
+
+  // ── Model switching ───────────────────────────────────────────
 
   switchModel(providerId: string, modelId: string): void {
-    const config = AbeleConfig.getInstance()
-    config.ai.activeProviderId = providerId
-    config.ai.activeModelId = modelId
-    config.saveSettings()
+    const session = this.activeSession.value
+    if (session) {
+      session.activeProviderId.value = providerId
+      session.activeModelId.value = modelId
+    }
   }
 
   // ── Cleanup ───────────────────────────────────────────────────
