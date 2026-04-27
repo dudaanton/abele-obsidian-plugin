@@ -21,7 +21,7 @@ export interface ParsedScript {
 export interface FormField {
   name: string
   label: string
-  type?: 'text' | 'textarea' | 'select'
+  type?: 'text' | 'textarea' | 'select' | 'boolean'
   options?: string[]
   default?: string
   required?: boolean

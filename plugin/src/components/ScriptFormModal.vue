@@ -19,6 +19,11 @@
           class="abele-script-form__textarea"
           rows="4"
         />
+        <Checkbox
+          v-else-if="field.type === 'boolean'"
+          :is-enabled="values[field.name] === 'true'"
+          @toggle="values[field.name] = values[field.name] === 'true' ? 'false' : 'true'"
+        />
         <input v-else v-model="values[field.name]" type="text" class="abele-script-form__input" />
       </div>
       <div class="abele-script-form__actions">
@@ -32,6 +37,7 @@
 <script setup lang="ts">
 import { reactive } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
+import Checkbox from './obsidian/Checkbox.vue'
 import type { FormField } from '@/scripting/types'
 
 const props = defineProps<{
@@ -45,7 +51,7 @@ const emit = defineEmits<{
 
 const values = reactive<Record<string, string>>({})
 for (const field of props.fields) {
-  values[field.name] = field.default ?? ''
+  values[field.name] = field.default ?? (field.type === 'boolean' ? 'false' : '')
 }
 
 function onSubmit() {

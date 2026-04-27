@@ -290,14 +290,24 @@ export class ScriptService {
     }
   }
 
-  private showParamForm(script: ParsedScript): Promise<Record<string, string> | null> {
+  private async showParamForm(script: ParsedScript): Promise<Record<string, unknown> | null> {
     const fields: FormField[] = script.meta.params.map((p) => ({
       name: p.name,
       label: p.description || p.name,
-      type: 'text' as const,
+      type: p.type === 'boolean' ? ('boolean' as const) : ('text' as const),
       required: p.required,
     }))
-    return this.showFormModal(fields)
+    const result = await this.showFormModal(fields)
+    if (!result) return null
+
+    const typed: Record<string, unknown> = {}
+    for (const p of script.meta.params) {
+      const v = result[p.name]
+      if (p.type === 'boolean') typed[p.name] = v === 'true'
+      else if (p.type === 'number') typed[p.name] = Number(v)
+      else typed[p.name] = v
+    }
+    return typed
   }
 
   /**
