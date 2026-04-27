@@ -70,10 +70,13 @@ export class Log {
 
       const groupPath = normalizePath(groupFile.path)
 
-      return this.checkIfPathIsInGroupsTree(groupPath, targetNotePath, [
+      const check = this.checkIfPathIsInGroupsTree(groupPath, targetNotePath, [
         ...processedTreePaths,
         path,
       ])
+
+      if (!check) continue
+      return true
     }
 
     return false
