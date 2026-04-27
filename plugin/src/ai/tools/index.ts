@@ -22,6 +22,13 @@ import { createDownloadImageTool, createDownloadFileTool } from './DownloadImage
 import { createDelegateTool } from './DelegateTool'
 import { createScriptTools } from './ScriptTool'
 import { createCreateScriptTool, createScriptApiDocsTool } from './CreateScriptTool'
+import { createReplaceTool } from './ReplaceTool'
+import {
+  createReadLogsTool,
+  createReadBacklinksTool,
+  createReadTransactionsTool,
+  createReadTasksTool,
+} from './RelationTools'
 
 export function createAgentTools(): AgentTool[] {
   const tools = [
@@ -47,6 +54,11 @@ export function createAgentTools(): AgentTool[] {
     createDownloadImageTool(),
     createDownloadFileTool(),
     createDelegateTool(),
+    createReplaceTool(),
+    createReadLogsTool(),
+    createReadBacklinksTool(),
+    createReadTransactionsTool(),
+    createReadTasksTool(),
   ]
 
   const config = AbeleConfig.getInstance().ai
