@@ -143,6 +143,7 @@ const PERMISSION_TOOLS: Record<
   | 'allowReadBacklinks'
   | 'allowReadTransactions'
   | 'allowReadTasks'
+  | 'allowOpenFile'
 > = {
   web_search: 'allowWebSearch',
   fetch: 'allowFetch',
@@ -159,6 +160,7 @@ const PERMISSION_TOOLS: Record<
   read_backlinks: 'allowReadBacklinks',
   read_transactions: 'allowReadTransactions',
   read_tasks: 'allowReadTasks',
+  open: 'allowOpenFile',
 }
 
 const canAllowAll = computed(() => {

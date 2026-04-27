@@ -23,6 +23,7 @@ import { createDelegateTool } from './DelegateTool'
 import { createScriptTools } from './ScriptTool'
 import { createCreateScriptTool, createScriptApiDocsTool } from './CreateScriptTool'
 import { createReplaceTool } from './ReplaceTool'
+import { createOpenFileTool } from './OpenFileTool'
 import {
   createReadLogsTool,
   createReadBacklinksTool,
@@ -55,6 +56,7 @@ export function createAgentTools(): AgentTool[] {
     createDownloadFileTool(),
     createDelegateTool(),
     createReplaceTool(),
+    createOpenFileTool(),
     createReadLogsTool(),
     createReadBacklinksTool(),
     createReadTransactionsTool(),

@@ -1,4 +1,4 @@
-import { Notice, requestUrl } from 'obsidian'
+import { Notice, requestUrl, TFile } from 'obsidian'
 import { nanoid } from 'nanoid'
 import type { AgentTool, ModelConfig } from '@/ai/client'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -203,6 +203,13 @@ export function buildScriptContext(opts: {
       return call(replaceTool, { path, actions }, s)
     },
 
+    async open(path: string) {
+      const { app } = GlobalStore.getInstance()
+      const file = app.vault.getAbstractFileByPath(path)
+      if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
+      await app.workspace.getLeaf(false).openFile(file)
+    },
+
     // ── Templates ──
 
     async applyTemplate(
@@ -291,6 +298,7 @@ export function buildScriptContext(opts: {
         allowReadBacklinks: config.allowReadBacklinks,
         allowReadTransactions: config.allowReadTransactions,
         allowReadTasks: config.allowReadTasks,
+        allowOpenFile: config.allowOpenFile,
       }
 
       return runSubAgent({ systemPrompt, userMessage: task, tools, model, signal: s }, permissions)
