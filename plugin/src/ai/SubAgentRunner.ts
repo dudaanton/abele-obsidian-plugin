@@ -14,6 +14,10 @@ export interface SubAgentPermissions {
   allowScripts: boolean
   allowedScripts: Record<string, boolean>
   allowCreateScript: boolean
+  allowReadLogs: boolean
+  allowReadBacklinks: boolean
+  allowReadTransactions: boolean
+  allowReadTasks: boolean
 }
 
 export interface SubAgentTask {
@@ -107,6 +111,14 @@ function isToolAllowed(
     !permissions.allowedScripts[toolName]
   )
     return { allowed: false, reason: 'Script execution not allowed' }
+  if (toolName === 'read_logs' && !permissions.allowReadLogs)
+    return { allowed: false, reason: 'Read logs not allowed' }
+  if (toolName === 'read_backlinks' && !permissions.allowReadBacklinks)
+    return { allowed: false, reason: 'Read backlinks not allowed' }
+  if (toolName === 'read_transactions' && !permissions.allowReadTransactions)
+    return { allowed: false, reason: 'Read transactions not allowed' }
+  if (toolName === 'read_tasks' && !permissions.allowReadTasks)
+    return { allowed: false, reason: 'Read tasks not allowed' }
   if (toolName === 'create_script' && !permissions.allowCreateScript)
     return { allowed: false, reason: 'Script creation not allowed' }
 

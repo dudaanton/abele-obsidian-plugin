@@ -56,6 +56,10 @@ export interface AiSettings {
   allowScripts: boolean
   allowedScripts: Record<string, boolean>
   allowCreateScript: boolean
+  allowReadLogs: boolean
+  allowReadBacklinks: boolean
+  allowReadTransactions: boolean
+  allowReadTasks: boolean
   scriptsEnabled: boolean
   scriptsFolder: string
   scriptToolToggles: Record<string, boolean>
@@ -93,6 +97,10 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   allowScripts: false,
   allowedScripts: {},
   allowCreateScript: false,
+  allowReadLogs: false,
+  allowReadBacklinks: false,
+  allowReadTransactions: false,
+  allowReadTasks: false,
   scriptsEnabled: false,
   scriptsFolder: '',
   scriptToolToggles: {},
@@ -199,6 +207,10 @@ export interface ChatMetadata {
   allowScripts?: boolean
   allowedScripts?: Record<string, boolean>
   allowCreateScript?: boolean
+  allowReadLogs?: boolean
+  allowReadBacklinks?: boolean
+  allowReadTransactions?: boolean
+  allowReadTasks?: boolean
   scopeEntries?: Array<{ type: 'file' | 'folder' | 'pattern' | 'group'; path: string }>
   fullVaultAccess?: boolean
   activeLeafId?: string

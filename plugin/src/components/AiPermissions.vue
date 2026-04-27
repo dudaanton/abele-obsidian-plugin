@@ -37,6 +37,24 @@
         <Checkbox :is-enabled="allowCreateScript" @toggle="toggle('allowCreateScript')" />
       </Setting>
 
+      <h4 class="abele-permissions__heading">Vault data</h4>
+
+      <Setting name="Read logs" desc="Allow agent to read log entries of notes.">
+        <Checkbox :is-enabled="allowReadLogs" @toggle="toggle('allowReadLogs')" />
+      </Setting>
+
+      <Setting name="Read backlinks" desc="Allow agent to read group-based backlinks of notes.">
+        <Checkbox :is-enabled="allowReadBacklinks" @toggle="toggle('allowReadBacklinks')" />
+      </Setting>
+
+      <Setting name="Read transactions" desc="Allow agent to read financial transactions.">
+        <Checkbox :is-enabled="allowReadTransactions" @toggle="toggle('allowReadTransactions')" />
+      </Setting>
+
+      <Setting name="Read tasks" desc="Allow agent to read tasks.">
+        <Checkbox :is-enabled="allowReadTasks" @toggle="toggle('allowReadTasks')" />
+      </Setting>
+
       <!-- Scripts -->
       <template v-if="scriptTools.length">
         <h4 class="abele-permissions__heading">Scripts</h4>
@@ -84,6 +102,10 @@ const allowDelegate = computed(() => session.value?.allowDelegate.value ?? false
 const allowScripts = computed(() => session.value?.allowScripts.value ?? false)
 const allowedScripts = computed(() => session.value?.allowedScripts.value ?? {})
 const allowCreateScript = computed(() => session.value?.allowCreateScript.value ?? false)
+const allowReadLogs = computed(() => session.value?.allowReadLogs.value ?? false)
+const allowReadBacklinks = computed(() => session.value?.allowReadBacklinks.value ?? false)
+const allowReadTransactions = computed(() => session.value?.allowReadTransactions.value ?? false)
+const allowReadTasks = computed(() => session.value?.allowReadTasks.value ?? false)
 
 const scriptTools = computed(() => {
   const config = AbeleConfig.getInstance().ai
@@ -112,6 +134,10 @@ const toggle = (
     | 'allowDelegate'
     | 'allowScripts'
     | 'allowCreateScript'
+    | 'allowReadLogs'
+    | 'allowReadBacklinks'
+    | 'allowReadTransactions'
+    | 'allowReadTasks'
 ) => {
   const s = session.value
   if (s) s[key].value = !s[key].value
