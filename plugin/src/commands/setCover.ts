@@ -11,7 +11,7 @@ const MEDIA_EXTENSIONS = [...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS]
  * Find the first image/video embed in a note's content.
  * Returns the resolved TFile or null.
  */
-function findFirstMedia(content: string, sourcePath: string): TFile | null {
+export function findFirstMedia(content: string, sourcePath: string): TFile | null {
   const { app } = GlobalStore.getInstance()
 
   // Wikilink embeds: ![[path|alt]]

@@ -47,6 +47,7 @@ All async. Full vault access — no scope restrictions.
 | \`find(opts)\` | \`string[]\` | Search files (see below) |
 | \`replace(path, actions)\` | \`string\` | Apply replacement actions to a file (see below) |
 | \`open(path)\` | — | Open a file in the Obsidian editor |
+| \`setCover(notePath, mediaPath?)\` | — | Set cover image for a note. If mediaPath omitted, uses first media embed in note. Handles video thumbnails automatically |
 
 ### find(opts)
 

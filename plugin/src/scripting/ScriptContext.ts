@@ -311,6 +311,26 @@ export function buildScriptContext(opts: {
       return stripPrefix(text(result).replace(/^.*Image saved:\s*/s, ''))
     },
 
+    // ── Vault helpers ──
+
+    async setCover(notePath: string, mediaPath?: string) {
+      const { setCoverFromMedia, findFirstMedia } = await import('@/commands/setCover')
+      const { app } = GlobalStore.getInstance()
+      const noteFile = app.vault.getAbstractFileByPath(notePath)
+      if (!(noteFile instanceof TFile)) throw new Error(`Note not found: ${notePath}`)
+
+      if (mediaPath) {
+        const mediaFile = app.vault.getAbstractFileByPath(mediaPath)
+        if (!(mediaFile instanceof TFile)) throw new Error(`Media not found: ${mediaPath}`)
+        await setCoverFromMedia(mediaFile, noteFile)
+      } else {
+        const content = await app.vault.cachedRead(noteFile)
+        const media = findFirstMedia(content, notePath)
+        if (!media) throw new Error('No image or video found in note')
+        await setCoverFromMedia(media, noteFile)
+      }
+    },
+
     // ── Scripts ──
 
     async runScript(name: string, scriptParams?: Record<string, unknown>): Promise<string> {
