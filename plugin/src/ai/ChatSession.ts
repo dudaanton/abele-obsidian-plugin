@@ -68,10 +68,11 @@ export class ChatSession {
     'skill',
     'script_api_docs',
   ]
-  private static readonly EDIT_TOOLS = ['edit', 'create']
+  private static readonly EDIT_TOOLS = ['edit', 'create', 'replace']
   private static readonly SCOPED_TOOLS = [
     'read',
     'edit',
+    'replace',
     'rm',
     'mv',
     'cp',
@@ -109,6 +110,10 @@ export class ChatSession {
   public readonly currentChatFile = shallowRef<TFile | null>(null)
   public readonly error = ref<string | null>(null)
 
+  // Per-chat model selection
+  public readonly activeProviderId = ref('')
+  public readonly activeModelId = ref('')
+
   // Per-chat tool permissions
   public readonly allowWebSearch = ref(true)
   public readonly allowFetch = ref(false)
@@ -121,6 +126,10 @@ export class ChatSession {
   public readonly allowScripts = ref(false)
   public readonly allowedScripts = ref<Record<string, boolean>>({})
   public readonly allowCreateScript = ref(false)
+  public readonly allowReadLogs = ref(false)
+  public readonly allowReadBacklinks = ref(false)
+  public readonly allowReadTransactions = ref(false)
+  public readonly allowReadTasks = ref(false)
   public readonly customSystemPrompt = ref('')
   public readonly customSystemPromptNotePath = ref('')
 
@@ -141,6 +150,8 @@ export class ChatSession {
 
   private resetPermissions(): void {
     const config = AbeleConfig.getInstance().ai
+    this.activeProviderId.value = config.activeProviderId
+    this.activeModelId.value = config.activeModelId
     this.allowWebSearch.value = config.allowWebSearch
     this.allowFetch.value = config.allowFetch
     this.allowDownload.value = config.allowDownload
@@ -152,6 +163,10 @@ export class ChatSession {
     this.allowScripts.value = config.allowScripts ?? false
     this.allowedScripts.value = { ...(config.scriptToolToggles || {}) }
     this.allowCreateScript.value = config.allowCreateScript ?? false
+    this.allowReadLogs.value = config.allowReadLogs ?? false
+    this.allowReadBacklinks.value = config.allowReadBacklinks ?? false
+    this.allowReadTransactions.value = config.allowReadTransactions ?? false
+    this.allowReadTasks.value = config.allowReadTasks ?? false
   }
 
   private resetScope(): void {
@@ -234,6 +249,10 @@ export class ChatSession {
     if (toolName === 'generate_image' || toolName === 'edit_image')
       return !this.allowImageGeneration.value
     if (toolName === 'eval_js') return !this.allowEvalJs.value
+    if (toolName === 'read_logs') return !this.allowReadLogs.value
+    if (toolName === 'read_backlinks') return !this.allowReadBacklinks.value
+    if (toolName === 'read_transactions') return !this.allowReadTransactions.value
+    if (toolName === 'read_tasks') return !this.allowReadTasks.value
     if (toolName === 'read_image') return false
     if (
       ChatSession.EDIT_TOOLS.includes(toolName) &&
@@ -437,7 +456,10 @@ export class ChatSession {
     this.error.value = null
 
     try {
-      const model = this.agentService.getActiveModelConfig()
+      const model = this.agentService.getModelConfigFor(
+        this.activeProviderId.value,
+        this.activeModelId.value
+      )
       const tools = this.getTools()
 
       // Show model indicator when model changes between messages
@@ -824,8 +846,8 @@ export class ChatSession {
 
     const metadata: ChatMetadata = {
       type: 'abele-chat',
-      providerId: config.activeProviderId,
-      modelId: config.activeModelId,
+      providerId: this.activeProviderId.value || config.activeProviderId,
+      modelId: this.activeModelId.value || config.activeModelId,
       created: this.chatCreated || (this.chatCreated = dayjs().format('YYYY-MM-DD')),
       title,
       pendingToolCalls:
@@ -847,6 +869,10 @@ export class ChatSession {
       allowScripts: this.allowScripts.value,
       allowedScripts: this.allowedScripts.value,
       allowCreateScript: this.allowCreateScript.value,
+      allowReadLogs: this.allowReadLogs.value,
+      allowReadBacklinks: this.allowReadBacklinks.value,
+      allowReadTransactions: this.allowReadTransactions.value,
+      allowReadTasks: this.allowReadTasks.value,
       scopeEntries: this.scopeResolver.entries.value.length
         ? [...this.scopeResolver.entries.value]
         : undefined,
@@ -892,8 +918,10 @@ export class ChatSession {
 
     this.userMessageCount = this.messages.value.filter((m) => m.role === 'user').length
 
-    // Restore per-chat permissions
+    // Restore per-chat model and permissions
     const config = AbeleConfig.getInstance().ai
+    this.activeProviderId.value = result.metadata?.providerId ?? config.activeProviderId
+    this.activeModelId.value = result.metadata?.modelId ?? config.activeModelId
     this.allowWebSearch.value = result.metadata?.allowWebSearch ?? config.allowWebSearch
     this.allowFetch.value = result.metadata?.allowFetch ?? config.allowFetch
     this.allowDownload.value = result.metadata?.allowDownload ?? config.allowDownload
@@ -911,6 +939,12 @@ export class ChatSession {
     }
     this.allowCreateScript.value =
       result.metadata?.allowCreateScript ?? config.allowCreateScript ?? false
+    this.allowReadLogs.value = result.metadata?.allowReadLogs ?? config.allowReadLogs ?? false
+    this.allowReadBacklinks.value =
+      result.metadata?.allowReadBacklinks ?? config.allowReadBacklinks ?? false
+    this.allowReadTransactions.value =
+      result.metadata?.allowReadTransactions ?? config.allowReadTransactions ?? false
+    this.allowReadTasks.value = result.metadata?.allowReadTasks ?? config.allowReadTasks ?? false
 
     // Restore scope
     if (result.metadata?.scopeEntries) {
@@ -1000,6 +1034,10 @@ export class ChatSession {
     allowScripts: boolean
     allowedScripts: Record<string, boolean>
     allowCreateScript: boolean
+    allowReadLogs: boolean
+    allowReadBacklinks: boolean
+    allowReadTransactions: boolean
+    allowReadTasks: boolean
   } {
     return {
       allowWebSearch: this.allowWebSearch.value,
@@ -1012,6 +1050,10 @@ export class ChatSession {
       allowScripts: this.allowScripts.value,
       allowedScripts: { ...this.allowedScripts.value },
       allowCreateScript: this.allowCreateScript.value,
+      allowReadLogs: this.allowReadLogs.value,
+      allowReadBacklinks: this.allowReadBacklinks.value,
+      allowReadTransactions: this.allowReadTransactions.value,
+      allowReadTasks: this.allowReadTasks.value,
     }
   }
 
@@ -1184,7 +1226,10 @@ export class ChatSession {
 
   private async autoCompactIfNeeded(): Promise<void> {
     try {
-      const model = this.agentService.getActiveModelConfig()
+      const model = this.agentService.getModelConfigFor(
+        this.activeProviderId.value,
+        this.activeModelId.value
+      )
       if (!model.contextWindow) return
 
       const lastAssistant = [...this.messages.value]

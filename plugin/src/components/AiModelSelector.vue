@@ -11,19 +11,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { AgentService } from '@/ai/AgentService'
 
-const agent = AgentService.getInstance()
+const agentService = AgentService.getInstance()
 const config = AbeleConfig.getInstance()
+const session = computed(() => agentService.activeSession.value)
 
-const activeKey = ref(
-  config.ai.activeProviderId && config.ai.activeModelId
-    ? `${config.ai.activeProviderId}::${config.ai.activeModelId}`
-    : ''
-)
+const activeKey = computed(() => {
+  const s = session.value
+  const pid = s?.activeProviderId.value || config.ai.activeProviderId
+  const mid = s?.activeModelId.value || config.ai.activeModelId
+  return pid && mid ? `${pid}::${mid}` : ''
+})
 
 const options = computed(() => {
   const opts: { value: string; display: string }[] = []
@@ -40,8 +42,7 @@ const options = computed(() => {
 
 const onSelect = (key: string) => {
   const [providerId, modelId] = key.split('::')
-  agent.switchModel(providerId, modelId)
-  activeKey.value = key
+  agentService.switchModel(providerId, modelId)
 }
 </script>
 
