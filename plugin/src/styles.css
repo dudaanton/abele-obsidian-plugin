@@ -112,9 +112,18 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   color: var(--text-error);
 }
 
+.view-content:has(.abele-code-toolbar) {
+  padding: 0 !important;
+  overflow: auto;
+}
+
 .abele-code-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   padding: 4px 8px;
   border-bottom: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
 }
 
 .abele-code-save-btn {

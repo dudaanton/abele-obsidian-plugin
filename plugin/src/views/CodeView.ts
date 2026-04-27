@@ -9,7 +9,12 @@ import {
 import { Extension } from '@codemirror/state'
 import { EditorState } from '@codemirror/state'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
-import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
+import {
+  highlightSelectionMatches,
+  searchKeymap,
+  search,
+  openSearchPanel,
+} from '@codemirror/search'
 import {
   bracketMatching,
   foldGutter,
@@ -136,6 +141,15 @@ export class CodeView extends TextFileView {
     const ext = this.file?.extension ?? ''
     const langFactory = langByExt[ext]
 
+    // Intercept Cmd/Ctrl+F before Obsidian captures it
+    this.contentEl.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f' && this.editor) {
+        e.preventDefault()
+        e.stopPropagation()
+        openSearchPanel(this.editor)
+      }
+    })
+
     this.editor = new EditorView({
       state: EditorState.create({
         doc,
@@ -147,6 +161,7 @@ export class CodeView extends TextFileView {
           bracketMatching(),
           highlightActiveLine(),
           highlightSelectionMatches(),
+          search({ top: true }),
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
           ...(langFactory ? [langFactory()] : []),
           EditorView.lineWrapping,
