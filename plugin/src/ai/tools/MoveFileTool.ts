@@ -3,7 +3,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
 
-export function createMoveFileTool(): AgentTool {
+export function createMoveFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
     name: 'mv',
     label: 'Move/Rename File',
@@ -20,7 +20,7 @@ export function createMoveFileTool(): AgentTool {
       const { from, to } = params as { from: string; to: string }
       if (!from) throw new Error('Missing required parameter: from')
       if (!to) throw new Error('Missing required parameter: to')
-      if (!ScopeResolver.getInstance().isInScope(from)) {
+      if (!opts?.skipScope && !ScopeResolver.getInstance().isInScope(from)) {
         throw new Error(`Access denied: ${from} is not in workspace scope`)
       }
       const { app } = GlobalStore.getInstance()

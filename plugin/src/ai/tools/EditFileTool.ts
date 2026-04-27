@@ -3,7 +3,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
 
-export function createEditFileTool(): AgentTool {
+export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
     name: 'edit',
     label: 'Edit File',
@@ -27,7 +27,7 @@ export function createEditFileTool(): AgentTool {
       if (!path) throw new Error('Missing required parameter: path')
       if (old_string == null) throw new Error('Missing required parameter: old_string')
       if (new_string == null) throw new Error('Missing required parameter: new_string')
-      if (!ScopeResolver.getInstance().isInScope(path)) {
+      if (!opts?.skipScope && !ScopeResolver.getInstance().isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
       const { app } = GlobalStore.getInstance()

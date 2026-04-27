@@ -2,7 +2,7 @@ import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 
-export function createCreateFileTool(): AgentTool {
+export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
     name: 'create',
     label: 'Create File',
@@ -33,7 +33,7 @@ export function createCreateFileTool(): AgentTool {
       }
       await app.vault.create(path, content)
       // Add new file to scope so agent can read/edit it
-      ScopeResolver.getInstance().addFile(path)
+      if (!opts?.skipScope) ScopeResolver.getInstance().addFile(path)
       return {
         content: [{ type: 'text', text: `Created: ${path}` }],
         details: { diff: { old: '', new: content } },

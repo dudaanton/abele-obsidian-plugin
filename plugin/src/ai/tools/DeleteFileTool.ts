@@ -3,7 +3,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
 
-export function createDeleteFileTool(): AgentTool {
+export function createDeleteFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
     name: 'rm',
     label: 'Delete File',
@@ -18,7 +18,7 @@ export function createDeleteFileTool(): AgentTool {
     execute: async (_id, params) => {
       const path = params.path as string
       if (!path) throw new Error('Missing required parameter: path')
-      if (!ScopeResolver.getInstance().isInScope(path)) {
+      if (!opts?.skipScope && !ScopeResolver.getInstance().isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
       const { app } = GlobalStore.getInstance()
