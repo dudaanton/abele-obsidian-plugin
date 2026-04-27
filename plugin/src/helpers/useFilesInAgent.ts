@@ -5,20 +5,20 @@ import { AI_SIDEBAR_VIEW_TYPE } from '@/constants/views'
 
 /**
  * Add files to AI agent scope and open the AI sidebar.
- * Uses the active session's scope resolver, or creates a new tab.
+ * Adds to the current active session's scope without replacing existing entries.
  */
 export async function useFilesInAgent(files: TFile[]): Promise<void> {
   const agentService = AgentService.getInstance()
 
-  // If active session has no messages, set scope on it; otherwise create new tab
-  let session = agentService.activeSession.value
-  if (!session || session.messages.value.length > 0) {
-    const tabId = agentService.createTab()
-    session = agentService.getSession(tabId)!
-  }
+  const session = agentService.activeSession.value
+  if (!session) return
 
   const scope = session.scopeResolver
-  scope.entries.value = files.map((f) => ({ type: 'file' as const, path: f.path }))
+  for (const f of files) {
+    if (!scope.entries.value.some((e) => e.path === f.path)) {
+      scope.entries.value = [...scope.entries.value, { type: 'file' as const, path: f.path }]
+    }
+  }
   scope.invalidate()
 
   // Open AI sidebar
