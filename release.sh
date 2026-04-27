@@ -27,4 +27,3 @@ cd ..
 git add plugin/package.json plugin/manifest.json plugin/versions.json
 git commit -m "chore: bump version to ${version}"
 git tag "$version"
-git push origin master --tags
