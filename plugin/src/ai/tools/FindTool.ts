@@ -19,6 +19,7 @@ interface CriterionParam {
     | 'notExists'
   property?: string
   value?: string
+  case_insensitive?: boolean
 }
 
 export function createFindTool(opts?: { skipScope?: boolean }): AgentTool {
@@ -81,6 +82,10 @@ export function createFindTool(opts?: { skipScope?: boolean }): AgentTool {
                 description:
                   'Value to match (not needed for exists/notExists). For wikilinks in arrays like groups, include brackets: "[[Note Name]]".',
               },
+              case_insensitive: {
+                type: 'boolean',
+                description: 'Case-insensitive matching (default false)',
+              },
             },
             required: ['type', 'operator'],
           },
@@ -119,6 +124,7 @@ export function createFindTool(opts?: { skipScope?: boolean }): AgentTool {
         cr.operator = c.operator
         cr.property = c.property || ''
         cr.value = c.value || ''
+        cr.caseInsensitive = c.case_insensitive ?? false
         return cr
       })
 

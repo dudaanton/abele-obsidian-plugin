@@ -14,6 +14,7 @@ export class Criterion {
     | 'notExists'
   property: string // used if type is 'property'
   value: string
+  caseInsensitive: boolean
 
   constructor() {
     this.id = nanoid()
@@ -21,6 +22,11 @@ export class Criterion {
     this.operator = 'equals'
     this.value = ''
     this.property = ''
+    this.caseInsensitive = false
+  }
+
+  private normalize(s: string): string {
+    return this.caseInsensitive ? s.toLowerCase() : s
   }
 
   checkRegExp(value: string, pattern: string): boolean {
@@ -54,17 +60,19 @@ export class Criterion {
   }
 
   checkPathCriterion(path: string): boolean {
+    const p = this.normalize(path)
+    const v = this.normalize(this.value)
     switch (this.operator) {
       case 'equals':
-        return path === this.value
+        return p === v
       case 'contains':
-        return path.includes(this.value)
+        return p.includes(v)
       case 'notContains':
-        return !path.includes(this.value)
+        return !p.includes(v)
       case 'startsWith':
-        return path.startsWith(this.value)
+        return p.startsWith(v)
       case 'endsWith':
-        return path.endsWith(this.value)
+        return p.endsWith(v)
       case 'regex':
         return this.checkRegExp(path, this.value)
       default:
@@ -74,27 +82,34 @@ export class Criterion {
 
   checkPropertyCriterion(properties: Record<string, any>): boolean {
     const propValue = properties[this.property]
+    const v = this.normalize(this.value)
     switch (this.operator) {
       case 'exists':
         return propValue !== undefined
       case 'notExists':
         return propValue === undefined
       case 'equals':
-        return propValue === this.value
+        return this.normalize(String(propValue ?? '')) === v
       case 'contains':
-        if (typeof propValue === 'string' || Array.isArray(propValue)) {
-          return propValue.includes(this.value)
+        if (Array.isArray(propValue)) {
+          return propValue.some((item) => this.normalize(String(item)) === v)
+        }
+        if (typeof propValue === 'string') {
+          return this.normalize(propValue).includes(v)
         }
         return false
       case 'notContains':
-        if (typeof propValue === 'string' || Array.isArray(propValue)) {
-          return !propValue.includes(this.value)
+        if (Array.isArray(propValue)) {
+          return !propValue.some((item) => this.normalize(String(item)) === v)
+        }
+        if (typeof propValue === 'string') {
+          return !this.normalize(propValue).includes(v)
         }
         return false
       case 'startsWith':
-        return typeof propValue === 'string' && propValue.startsWith(this.value)
+        return typeof propValue === 'string' && this.normalize(propValue).startsWith(v)
       case 'endsWith':
-        return typeof propValue === 'string' && propValue.endsWith(this.value)
+        return typeof propValue === 'string' && this.normalize(propValue).endsWith(v)
       case 'regex': {
         if (typeof propValue === 'string') {
           return this.checkRegExp(propValue, this.value)
@@ -107,18 +122,20 @@ export class Criterion {
   }
 
   checkContentCriterion(content: string): boolean {
+    const c = this.normalize(content)
+    const v = this.normalize(this.value)
     switch (this.operator) {
       case 'contains':
-        return content.includes(this.value)
+        return c.includes(v)
       case 'notContains':
-        return !content.includes(this.value)
+        return !c.includes(v)
       case 'startsWith':
-        return content.startsWith(this.value)
+        return c.startsWith(v)
       case 'endsWith':
-        return content.endsWith(this.value)
+        return c.endsWith(v)
       case 'regex':
         try {
-          const regex = new RegExp(this.value)
+          const regex = new RegExp(this.value, this.caseInsensitive ? 'i' : '')
           return regex.test(content)
         } catch (e) {
           console.error(`Invalid regex in criterion: ${this.value}`, e)
