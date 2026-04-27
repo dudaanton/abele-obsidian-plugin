@@ -440,9 +440,22 @@ const deleteChoices = computed<Choice[]>(() => [
   { title: 'Remove with images', event: 'all', icon: 'trash-2' },
 ])
 
-function handleDeleteMenu(event: string) {
-  if (event === 'header') props.gallery.removeHeaderOnly()
-  else if (event === 'all') props.gallery.removeBlock()
+async function handleDeleteMenu(event: string) {
+  if (event === 'header') {
+    props.gallery.removeHeaderOnly()
+  } else if (event === 'all') {
+    const { app } = GlobalStore.getInstance()
+    const localFiles = props.gallery.images
+      .filter((img) => img.type === 'local')
+      .map((img) => app.metadataCache.getFirstLinkpathDest(img.path, props.gallery.filePath))
+      .filter((f): f is TFile => f instanceof TFile)
+
+    props.gallery.removeBlock()
+
+    for (const file of localFiles) {
+      await app.vault.trash(file, true)
+    }
+  }
 }
 
 const deleteMenu = useMenu(deleteBtnRef, deleteChoices, handleDeleteMenu)
