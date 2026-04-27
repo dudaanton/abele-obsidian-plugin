@@ -12,6 +12,7 @@ import { createCopyFileTool } from '@/ai/tools/CopyFileTool'
 import { createLsTool } from '@/ai/tools/LsTool'
 import { createFindTool } from '@/ai/tools/FindTool'
 import { createApplyTemplateTool, createListTemplatesTool } from '@/ai/tools/TemplateTool'
+import { createReplaceTool } from '@/ai/tools/ReplaceTool'
 import { createGenerateImageTool } from '@/ai/tools/GenerateImageTool'
 import { createDownloadImageTool, createDownloadFileTool } from '@/ai/tools/DownloadImageTool'
 import { runSubAgent } from '@/ai/SubAgentRunner'
@@ -76,15 +77,16 @@ export function buildScriptContext(opts: {
 }) {
   const s = opts.signal
 
-  // Lazily created tool instances
-  const readTool = createReadFileTool()
-  const editTool = createEditFileTool()
-  const createTool = createCreateFileTool()
-  const deleteTool = createDeleteFileTool()
-  const moveTool = createMoveFileTool()
-  const copyTool = createCopyFileTool()
-  const lsTool = createLsTool()
-  const findTool = createFindTool()
+  const skipScope = { skipScope: true }
+  const readTool = createReadFileTool(skipScope)
+  const editTool = createEditFileTool(skipScope)
+  const createTool = createCreateFileTool(skipScope)
+  const deleteTool = createDeleteFileTool(skipScope)
+  const moveTool = createMoveFileTool(skipScope)
+  const copyTool = createCopyFileTool(skipScope)
+  const lsTool = createLsTool(skipScope)
+  const findTool = createFindTool(skipScope)
+  const replaceTool = createReplaceTool(skipScope)
   const applyTemplateTool = createApplyTemplateTool()
   const listTemplatesTool = createListTemplatesTool()
   const generateImageTool = createGenerateImageTool()
@@ -129,7 +131,8 @@ export function buildScriptContext(opts: {
 
     async ls(path?: string): Promise<string[]> {
       const result = await call(lsTool, { path: path ?? '' }, s)
-      return result ? result.split('\n').filter(Boolean) : []
+      if (!result || result.startsWith('(')) return []
+      return result.split('\n').filter(Boolean)
     },
 
     async find(findOpts: {
@@ -137,9 +140,67 @@ export function buildScriptContext(opts: {
       property?: string
       value?: string
       content?: string
+      criteria?: Array<{
+        type: 'path' | 'name' | 'property' | 'content'
+        operator: string
+        property?: string
+        value?: string
+      }>
+      include_frontmatter?: boolean
+      limit?: number
     }): Promise<string[]> {
-      const result = await call(findTool, findOpts, s)
-      return result ? result.split('\n').filter(Boolean) : []
+      // Convert shorthand params to criteria format
+      const criteria = findOpts.criteria ? [...findOpts.criteria] : []
+      if (findOpts.name) {
+        criteria.push({ type: 'name', operator: 'contains', value: findOpts.name })
+      }
+      if (findOpts.property) {
+        criteria.push(
+          findOpts.value
+            ? {
+                type: 'property',
+                operator: 'equals',
+                property: findOpts.property,
+                value: findOpts.value,
+              }
+            : { type: 'property', operator: 'exists', property: findOpts.property }
+        )
+      }
+      if (findOpts.content) {
+        criteria.push({ type: 'content', operator: 'contains', value: findOpts.content })
+      }
+      if (!criteria.length) return []
+      const result = await call(
+        findTool,
+        { criteria, include_frontmatter: findOpts.include_frontmatter, limit: findOpts.limit },
+        s
+      )
+      if (!result || result === 'No files found.' || result === 'No criteria provided.') return []
+      // Strip the "N files:" / "N of M files:" header line
+      const lines = result.split('\n').filter(Boolean)
+      if (lines[0]?.match(/^\d+.*files?:/)) lines.shift()
+      return lines
+    },
+
+    async replace(
+      path: string,
+      actions: Array<{
+        type:
+          | 'set-property'
+          | 'remove-property'
+          | 'add-to-list'
+          | 'remove-from-list'
+          | 'replace-in-list'
+          | 'replace-in-content'
+          | 'replace-in-property'
+          | 'move'
+        property?: string
+        value?: string
+        old_value?: string
+        directory?: string
+      }>
+    ): Promise<string> {
+      return call(replaceTool, { path, actions }, s)
     },
 
     // ── Templates ──
@@ -208,11 +269,29 @@ export function buildScriptContext(opts: {
       const model = slot
         ? (resolveModelBySlot(slot) ?? agentService.getDelegateModelConfig())
         : (resolveModelById(modelType) ?? agentService.getDelegateModelConfig())
+      const config = AbeleConfig.getInstance().ai
       const session = agentService.activeSession.value
-      const systemPrompt = await agentService.getDelegateSystemPrompt(session!)
+      const systemPrompt = session
+        ? await agentService.getDelegateSystemPrompt(session)
+        : config.prompts.system
       const allTools = createAgentTools()
       const tools = allTools.filter((t) => t.name !== 'delegate')
-      const permissions = session!.getPermissions()
+      const permissions = {
+        allowWebSearch: config.allowWebSearch,
+        allowFetch: config.allowFetch,
+        allowDownload: config.allowDownload,
+        allowWiseModel: config.allowWiseModel,
+        allowImageGeneration: config.allowImageGeneration,
+        allowEvalJs: config.allowEvalJs,
+        allowCreateFiles: config.allowCreateFiles,
+        allowScripts: config.allowScripts,
+        allowedScripts: { ...(config.allowedScripts || {}) },
+        allowCreateScript: config.allowCreateScript,
+        allowReadLogs: config.allowReadLogs,
+        allowReadBacklinks: config.allowReadBacklinks,
+        allowReadTransactions: config.allowReadTransactions,
+        allowReadTasks: config.allowReadTasks,
+      }
 
       return runSubAgent({ systemPrompt, userMessage: task, tools, model, signal: s }, permissions)
     },

@@ -242,7 +242,7 @@ export class ScriptService {
         'ctx',
         `"use strict";
         return (async () => {
-          const { read, edit, create, remove, move, copy, ls, find, agent, form, log, params, signal, fetch, applyTemplate, listTemplates, generateImage, downloadImage, downloadFile, notice, runScript, setStatus } = ctx;
+          const { read, edit, create, remove, move, copy, ls, find, replace, agent, form, log, params, signal, fetch, applyTemplate, listTemplates, generateImage, downloadImage, downloadFile, notice, runScript, setStatus } = ctx;
           ${script.code}
         })()`
       )
@@ -294,7 +294,12 @@ export class ScriptService {
     const fields: FormField[] = script.meta.params.map((p) => ({
       name: p.name,
       label: p.description || p.name,
-      type: p.type === 'boolean' ? ('boolean' as const) : ('text' as const),
+      type:
+        p.type === 'boolean'
+          ? ('boolean' as const)
+          : p.type === 'text'
+            ? ('textarea' as const)
+            : ('text' as const),
       required: p.required,
     }))
     const result = await this.showFormModal(fields)
