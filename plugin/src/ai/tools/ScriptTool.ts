@@ -24,7 +24,7 @@ function buildJsonSchema(params: ScriptParam[]): Record<string, unknown> {
 
   for (const p of params) {
     properties[p.name] = {
-      type: p.type,
+      type: p.type === 'text' ? 'string' : p.type,
       description: p.description,
     }
     if (p.required) required.push(p.name)

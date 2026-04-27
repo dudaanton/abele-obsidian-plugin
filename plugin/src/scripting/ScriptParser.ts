@@ -40,7 +40,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
  * Parse a @param line body: `paramName type[?] "description"`
  */
 function parseParam(raw: string): ScriptParam | null {
-  const match = raw.match(/^(\w+)\s+(string|number|boolean)(\?)?\s+"([^"]*)"/)
+  const match = raw.match(/^(\w+)\s+(string|number|boolean|text)(\?)?\s+"([^"]*)"/)
   if (!match) return null
 
   return {
