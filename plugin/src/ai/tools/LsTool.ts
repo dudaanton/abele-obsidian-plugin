@@ -3,7 +3,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile, TFolder } from 'obsidian'
 
-export function createLsTool(): AgentTool {
+export function createLsTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
     name: 'ls',
     label: 'List Directory',
@@ -20,13 +20,15 @@ export function createLsTool(): AgentTool {
       const { app } = GlobalStore.getInstance()
       const folderPath = (params.path as string) || ''
 
-      if (folderPath && !scope.isFolderInScope(folderPath)) {
+      if (!opts?.skipScope && folderPath && !scope.isFolderInScope(folderPath)) {
         throw new Error(`Access denied: ${folderPath} is not in workspace scope`)
       }
 
-      // If no path, list unique top-level directories of scope
+      // If no path, list unique top-level directories of scope (or vault root if skipScope)
       if (!folderPath) {
-        const paths = scope.getAccessiblePaths()
+        const paths = opts?.skipScope
+          ? app.vault.getMarkdownFiles().map((f) => f.path)
+          : scope.getAccessiblePaths()
         const dirs = new Set<string>()
         const rootFiles: string[] = []
         for (const p of paths) {
@@ -49,11 +51,11 @@ export function createLsTool(): AgentTool {
       const entries: string[] = []
       for (const child of folder.children) {
         if (child instanceof TFolder) {
-          if (scope.isFolderInScope(child.path)) {
+          if (opts?.skipScope || scope.isFolderInScope(child.path)) {
             entries.push(child.name + '/')
           }
         } else if (child instanceof TFile) {
-          if (scope.isInScope(child.path)) {
+          if (opts?.skipScope || scope.isInScope(child.path)) {
             entries.push(child.name)
           }
         }

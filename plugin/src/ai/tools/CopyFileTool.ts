@@ -3,7 +3,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
 
-export function createCopyFileTool(): AgentTool {
+export function createCopyFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
     name: 'cp',
     label: 'Copy File',
@@ -20,7 +20,7 @@ export function createCopyFileTool(): AgentTool {
       const { from, to } = params as { from: string; to: string }
       if (!from) throw new Error('Missing required parameter: from')
       if (!to) throw new Error('Missing required parameter: to')
-      if (!ScopeResolver.getInstance().isInScope(from)) {
+      if (!opts?.skipScope && !ScopeResolver.getInstance().isInScope(from)) {
         throw new Error(`Access denied: ${from} is not in workspace scope`)
       }
       const { app } = GlobalStore.getInstance()

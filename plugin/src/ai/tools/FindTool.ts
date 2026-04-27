@@ -21,15 +21,27 @@ interface CriterionParam {
   value?: string
 }
 
-export function createFindTool(): AgentTool {
+export function createFindTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
     name: 'find',
     label: 'Find Files',
     description:
-      'Search for files using criteria. Multiple criteria are combined with AND logic. ' +
-      'Each criterion has a type (path, name, property, content), an operator ' +
-      '(equals, contains, notContains, startsWith, endsWith, regex, exists, notExists), ' +
-      'and optionally property (for property type) and value. ' +
+      'Search for files using criteria. Multiple criteria are combined with AND logic.\n' +
+      'Each criterion: {type, operator, property?, value?}\n\n' +
+      'Types: path (full path), name (filename without .md), property (frontmatter field), content (note body).\n' +
+      'Operators: equals, contains, notContains, startsWith, endsWith, regex, exists, notExists.\n' +
+      'exists/notExists — only for property type, no value needed.\n\n' +
+      'IMPORTANT for property searches:\n' +
+      '- Frontmatter values are matched as strings. For wikilinks use contains with the [[link]] syntax.\n' +
+      '- Array properties (like groups, tags): "contains" checks if the array includes the value.\n\n' +
+      'Examples:\n' +
+      '- Find by type: {type:"property", operator:"equals", property:"type", value:"task"}\n' +
+      '- Find notes with a group: {type:"property", operator:"contains", property:"groups", value:"[[Project A]]"}\n' +
+      '- Find by tag: {type:"property", operator:"contains", property:"tags", value:"important"}\n' +
+      '- Find uncompleted: {type:"property", operator:"notExists", property:"completed"}\n' +
+      '- Find by name pattern: {type:"name", operator:"contains", value:"daily"}\n' +
+      '- Find by content: {type:"content", operator:"contains", value:"TODO"}\n' +
+      '- Find by path prefix: {type:"path", operator:"startsWith", value:"Projects/"}\n\n' +
       "Set include_frontmatter to see each file's properties in the results.",
     parameters: {
       type: 'object',
@@ -61,11 +73,13 @@ export function createFindTool(): AgentTool {
               },
               property: {
                 type: 'string',
-                description: 'Frontmatter property name (required when type is property)',
+                description:
+                  'Frontmatter property name (required when type is property). Common properties: type, tags, groups, date, due, completed, created.',
               },
               value: {
                 type: 'string',
-                description: 'Value to match (not needed for exists/notExists)',
+                description:
+                  'Value to match (not needed for exists/notExists). For wikilinks in arrays like groups, include brackets: "[[Note Name]]".',
               },
             },
             required: ['type', 'operator'],
@@ -113,7 +127,9 @@ export function createFindTool(): AgentTool {
       const propertyCriteria = criteria.filter((c) => c.type === 'property')
       const contentCriteria = criteria.filter((c) => c.type === 'content')
 
-      let paths = scope.getAccessiblePaths()
+      let paths = opts?.skipScope
+        ? app.vault.getMarkdownFiles().map((f) => f.path)
+        : scope.getAccessiblePaths()
 
       // Path & name filters (cheap, no I/O)
       if (pathCriteria.length) {
@@ -140,7 +156,6 @@ export function createFindTool(): AgentTool {
       if (contentCriteria.length) {
         const matched: string[] = []
         for (const p of paths) {
-          if (matched.length >= limit) break
           const file = app.vault.getAbstractFileByPath(p)
           if (!file) continue
           const text = await app.vault.cachedRead(file as any)
@@ -152,6 +167,7 @@ export function createFindTool(): AgentTool {
         paths = matched
       }
 
+      const total = paths.length
       paths = paths.slice(0, limit)
 
       if (!paths.length) {
@@ -159,6 +175,7 @@ export function createFindTool(): AgentTool {
       }
 
       // Format output
+      const countLabel = total > paths.length ? `${paths.length} of ${total}` : `${total}`
       let text: string
       if (includeFm) {
         const lines: string[] = []
@@ -174,9 +191,9 @@ export function createFindTool(): AgentTool {
             lines.push(p)
           }
         }
-        text = `${paths.length} files:\n\n${lines.join('\n\n')}`
+        text = `${countLabel} files:\n\n${lines.join('\n\n')}`
       } else {
-        text = `${paths.length} files:\n${paths.join('\n')}`
+        text = `${countLabel} files:\n${paths.join('\n')}`
       }
 
       return { content: [{ type: 'text', text }] }
