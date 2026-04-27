@@ -6,63 +6,216 @@ import { normalizePath } from 'obsidian'
 
 const SCRIPT_API_DOCS = `# Script API Reference
 
+Scripts are async JavaScript functions that run with full vault access (no scope restrictions).
+All functions below are available as top-level globals — no imports needed.
+Scripts have a 60-second timeout. Use \`return\` to output a result string.
+
+---
+
 ## Header Format
+
+Every script must start with a comment block declaring its metadata:
+
 \`\`\`js
 // @name My Script Name
 // @description What the script does
 // @param paramName string "Required string parameter"
-// @param optionalParam number? "Optional number parameter"
-// @param flag boolean? "Optional boolean flag"
+// @param count number? "Optional number parameter"
+// @param dryRun boolean? "Optional flag (shown as toggle in UI)"
 \`\`\`
-Parameter types: string, number, boolean. Add ? after type for optional.
 
-## File Operations (all async)
-- read(path) → string — read vault file content
-- edit(path, oldString, newString) — replace exact string in file
-- create(path, content) — create new file
-- remove(path) — delete file (to trash)
-- move(from, to) — move/rename file
-- copy(from, to) — copy file
-- ls(path?) → string[] — list folder contents
-- find({ name?, property?, value?, content? }) → string[] — search files
+- Parameter types: \`string\`, \`number\`, \`boolean\`
+- Add \`?\` after type for optional (e.g. \`number?\`)
+- Boolean params are rendered as toggles, not text inputs
+- Parameters are available via the \`params\` object (e.g. \`params.paramName\`)
+
+---
+
+## File Operations
+
+All async. Full vault access — no scope restrictions.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| \`read(path)\` | \`string\` | Read file content |
+| \`edit(path, oldString, newString)\` | — | Replace first exact match of \`oldString\` with \`newString\` |
+| \`create(path, content)\` | — | Create new file (parent folders created automatically) |
+| \`remove(path)\` | — | Move file to trash |
+| \`move(from, to)\` | — | Move or rename a file |
+| \`copy(from, to)\` | — | Copy a file |
+| \`ls(path?)\` | \`string[]\` | List folder contents (file/folder paths). Omit path for vault root |
+| \`find(opts)\` | \`string[]\` | Search files (see below) |
+| \`replace(path, actions)\` | \`string\` | Apply replacement actions to a file (see below) |
+
+### find(opts)
+
+Supports both simple shorthand and advanced criteria:
+
+**Shorthand** (fields are AND-combined):
+\`\`\`js
+await find({ name: "daily" })                        // name contains "daily"
+await find({ property: "type", value: "task" })      // property equals value
+await find({ content: "TODO" })                      // body contains "TODO"
+\`\`\`
+
+**Advanced criteria** — each criterion has \`type\`, \`operator\`, and optionally \`property\`/\`value\`:
+\`\`\`js
+await find({
+  criteria: [
+    { type: "property", operator: "equals", property: "type", value: "task" },
+    { type: "property", operator: "notExists", property: "completed" },
+    { type: "name", operator: "regex", value: "/2026-04/" },
+  ],
+  include_frontmatter: true,  // include YAML properties in results
+  limit: 100,                 // max results (default 50)
+})
+\`\`\`
+
+Criteria types: \`path\`, \`name\`, \`property\`, \`content\`
+Operators: \`equals\`, \`contains\`, \`notContains\`, \`startsWith\`, \`endsWith\`, \`regex\`, \`exists\`, \`notExists\`
+(\`exists\`/\`notExists\` only for \`property\` type)
+
+Shorthand and criteria can be combined — they are merged.
+
+### replace(path, actions)
+
+Apply one or more replacement actions to a file. Actions are applied sequentially.
+
+\`\`\`js
+await replace("Notes/note.md", [
+  { type: "set-property", property: "status", value: "done" },
+  { type: "remove-property", property: "draft" },
+  { type: "add-to-list", property: "tags", value: "reviewed" },
+  { type: "remove-from-list", property: "tags", value: "pending" },
+  { type: "replace-in-list", property: "tags", old_value: "old-tag", value: "new-tag" },
+  { type: "replace-in-content", old_value: "old text", value: "new text" },
+  { type: "replace-in-content", old_value: "/regex/gi", value: "replacement" },
+  { type: "replace-in-property", property: "title", old_value: "old", value: "new" },
+  { type: "move", directory: "Archive/" },
+])
+\`\`\`
+
+Action types: \`set-property\`, \`remove-property\`, \`add-to-list\`, \`remove-from-list\`, \`replace-in-list\`, \`replace-in-content\`, \`replace-in-property\`, \`move\`.
+\`old_value\` supports regex in \`/pattern/flags\` format for replace operations.
+List values can contain \`;\` separator to add/remove multiple items at once.
+
+---
 
 ## Templates
-- applyTemplate(path, variables?) → string — create note from template; variables is { name: value }
-- listTemplates(type?) → string — list available templates, optionally filtered by type
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| \`applyTemplate(path, variables?)\` | \`string\` | Create note from template. \`variables\`: \`{ name: value }\` |
+| \`listTemplates(type?)\` | \`string\` | List available templates, optionally filtered by type |
+
+---
 
 ## Network
-- fetch(url, opts?) → { status, headers, data, text } — HTTP request; opts: { method?, headers?, body? }. Supports \${abele_key:name} secret substitution in url/headers/body
-- downloadImage(url, filename?) → string — download image to vault, returns path
-- downloadFile(url, filename?, extension?) → string — download any file to vault, returns path
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| \`fetch(url, opts?)\` | \`{ status, headers, data, text }\` | HTTP request |
+| \`downloadImage(url, filename?)\` | \`string\` | Download image to vault, returns saved path |
+| \`downloadFile(url, filename?, ext?)\` | \`string\` | Download any file to vault, returns saved path |
+
+\`fetch\` options: \`{ method?, headers?, body? }\`
+Secret substitution: use \`\${abele_key:name}\` in url, headers, or body to inject secrets configured in AI settings.
+
+---
 
 ## AI
-- agent(task, opts?) → string — delegate task to AI sub-agent; opts: { model?: 'primary' | 'delegate' | 'wise' }
-- generateImage(prompt) → string — generate image from text prompt, returns vault path
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| \`agent(task, opts?)\` | \`string\` | Delegate task to an AI sub-agent |
+| \`generateImage(prompt)\` | \`string\` | Generate image from text, returns vault path |
+
+\`agent\` options: \`{ model?: string }\`
+- Preset slots: \`"primary"\`, \`"delegate"\`, \`"wise"\`
+- Or pass any model ID from your configured models (e.g. \`"gpt-4o"\`, \`"claude-sonnet-4-20250514"\`)
+- Default: \`"delegate"\`
+
+---
 
 ## Scripts
-- runScript(name, params?) → string — call another script by name, returns its output
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| \`runScript(name, params?)\` | \`string\` | Call another script by name |
+
+---
 
 ## UI
-- notice(message, timeout?) — show Obsidian notification
-- setStatus(text) — set status bar text (auto-cleared when script ends)
-- form(fields) → object|null — show form modal (command palette only); fields: [{ name, label, type?: 'text'|'textarea'|'select', options?, default?, required? }]
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| \`notice(message, timeout?)\` | — | Show Obsidian notification |
+| \`setStatus(text)\` | — | Set status bar text (auto-cleared when script ends) |
+| \`form(fields)\` | \`object \\| null\` | Show form modal (command palette only) |
+
+\`form\` fields: \`[{ name, label, type?, options?, default?, required? }]\`
+Types: \`"text"\` (default), \`"textarea"\`, \`"select"\`, \`"boolean"\`
+
+---
 
 ## Globals
-- params — object with resolved parameter values
-- signal — AbortSignal for cancellation
-- log(...args) — captured output (returned as result)
 
-All file operations respect workspace scope. Scripts run with 60s timeout.
+| Name | Type | Description |
+|------|------|-------------|
+| \`params\` | \`object\` | Resolved parameter values from the script header |
+| \`signal\` | \`AbortSignal\` | Cancellation signal — check \`signal.aborted\` in long loops |
+| \`log(...args)\` | — | Append to script output. Objects are JSON-stringified |
 
-## Example
+\`log()\` output is captured and returned as the script result.
+You can also \`return "result"\` directly.
+
+---
+
+## Examples
+
+### Read and transform
 \`\`\`js
 // @name Summarize Note
-// @description Read a note and create a summary using AI
+// @description Create an AI summary of a note
 // @param path string "Path to the note"
 const content = await read(params.path)
-const summary = await agent("Summarize this note concisely:\\n\\n" + content)
+const summary = await agent("Summarize this concisely:\\n\\n" + content)
 await create(params.path.replace('.md', ' Summary.md'), summary)
 return "Summary created"
+\`\`\`
+
+### Batch processing
+\`\`\`js
+// @name Tag Untagged Notes
+// @description Find notes without tags and add a default tag
+// @param tag string "Tag to add"
+const files = await find({
+  criteria: [
+    { type: "property", operator: "notExists", property: "tags" },
+    { type: "path", operator: "startsWith", value: "Notes/" },
+  ]
+})
+for (const path of files) {
+  const content = await read(path)
+  const newContent = content.replace(/^---/, "---\\ntags: [" + params.tag + "]")
+  await edit(path, content, newContent)
+}
+return files.length + " notes tagged"
+\`\`\`
+
+### User interaction
+\`\`\`js
+// @name Quick Note
+// @description Create a note with a form
+const result = await form([
+  { name: "title", label: "Title", required: true },
+  { name: "body", label: "Content", type: "textarea" },
+  { name: "important", label: "Mark as important", type: "boolean" },
+])
+if (!result) return "Cancelled"
+const prefix = result.important === "true" ? "⚠️ " : ""
+await create("Notes/" + result.title + ".md", prefix + result.body)
+return "Created: " + result.title
 \`\`\``
 
 export function createScriptApiDocsTool(): AgentTool {

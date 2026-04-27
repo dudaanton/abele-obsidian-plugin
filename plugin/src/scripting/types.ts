@@ -1,6 +1,6 @@
 export interface ScriptParam {
   name: string
-  type: 'string' | 'number' | 'boolean'
+  type: 'string' | 'number' | 'boolean' | 'text'
   required: boolean
   description: string
 }
