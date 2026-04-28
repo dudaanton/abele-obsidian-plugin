@@ -9,6 +9,7 @@ export interface ScriptMeta {
   name: string
   description: string
   params: ScriptParam[]
+  enabled?: boolean
 }
 
 export interface ParsedScript {

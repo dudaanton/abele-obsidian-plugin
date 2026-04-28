@@ -13,6 +13,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
   const lines = source.split('\n')
   let name = ''
   let description = ''
+  let enabled = true
   const params: ScriptParam[] = []
 
   for (const line of lines) {
@@ -25,6 +26,8 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
       name = content.slice(6).trim()
     } else if (content.startsWith('@description ')) {
       description = content.slice(13).trim()
+    } else if (content.startsWith('@enabled ')) {
+      enabled = content.slice(9).trim() !== 'false'
     } else if (content.startsWith('@param ')) {
       const param = parseParam(content.slice(7).trim())
       if (param) params.push(param)
@@ -33,7 +36,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
 
   if (!name) return null
 
-  return { name, description, params }
+  return { name, description, params, enabled }
 }
 
 /**

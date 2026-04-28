@@ -126,9 +126,8 @@ export class ScriptService {
     this.cleanupStaleEntries()
   }
 
-  /** Remove stale entries from scriptToolToggles and allowedScripts */
+  /** Remove stale script entries from toolModes */
   private cleanupStaleEntries() {
-    const validPaths = new Set(this.scripts.keys())
     const validToolNames = new Set(
       Array.from(this.scripts.values()).map((s) => `script_${sanitize(s.meta.name)}`)
     )
@@ -136,37 +135,11 @@ export class ScriptService {
     const config = AbeleConfig.getInstance()
     let dirty = false
 
-    // Clean scriptToolToggles (keyed by path)
-    const toggles = config.ai.scriptToolToggles
-    if (toggles) {
-      for (const path of Object.keys(toggles)) {
-        if (!validPaths.has(path)) {
-          delete toggles[path]
-          dirty = true
-        }
-      }
-    }
-
-    // Clean allowedScripts (keyed by tool name)
-    const allowed = config.ai.allowedScripts
-    if (allowed) {
-      for (const toolName of Object.keys(allowed)) {
-        if (!validToolNames.has(toolName)) {
-          delete allowed[toolName]
-          dirty = true
-        }
-      }
-    }
-
-    // Also clean per-chat allowedScripts on active session
-    const agent = AgentService.getInstance()
-    const session = agent.activeSession.value
-    if (session) {
-      const chatAllowed = session.allowedScripts.value
-      for (const toolName of Object.keys(chatAllowed)) {
-        if (!validToolNames.has(toolName)) {
-          delete chatAllowed[toolName]
-        }
+    const modes = config.ai.toolModes
+    for (const key of Object.keys(modes)) {
+      if (key.startsWith('script_') && key !== 'script_api_docs' && !validToolNames.has(key)) {
+        delete modes[key]
+        dirty = true
       }
     }
 
@@ -193,7 +166,7 @@ export class ScriptService {
   }
 
   getEnabledToolScripts(): ParsedScript[] {
-    return this.getAll()
+    return this.getAll().filter((s) => s.meta.enabled !== false)
   }
 
   setStatus(text: string) {
