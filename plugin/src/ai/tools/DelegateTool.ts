@@ -1,6 +1,7 @@
 import type { AgentTool } from '../client'
 import { AgentService } from '../AgentService'
 import { ChatSession } from '../ChatSession'
+import { CORE_TOOLS } from '../types'
 import { runSubAgentBatch, type SubAgentResult } from '../SubAgentRunner'
 import { createAgentTools } from './index'
 
@@ -48,9 +49,13 @@ export function createDelegateTool(): AgentTool {
         ? session.getPermissions()
         : agent.activeSession.value!.getPermissions()
 
-      // Build tools list excluding delegate itself to prevent recursion
+      // Build tools list: exclude delegate and filter off tools
       const allTools = createAgentTools()
-      const tools = allTools.filter((t) => t.name !== 'delegate')
+      const tools = allTools.filter((t) => {
+        if (t.name === 'delegate') return false
+        if (CORE_TOOLS.has(t.name)) return true
+        return (permissions[t.name] ?? 'off') !== 'off'
+      })
 
       const onProgress = (completed: number, total: number, results: SubAgentResult[]) => {
         const succeeded = results.filter((r) => r.success).length

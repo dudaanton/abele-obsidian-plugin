@@ -281,27 +281,11 @@ export function buildScriptContext(opts: {
       const systemPrompt = session
         ? await agentService.getDelegateSystemPrompt(session)
         : config.prompts.system
+      const toolModes = { ...config.toolModes }
       const allTools = createAgentTools()
       const tools = allTools.filter((t) => t.name !== 'delegate')
-      const permissions = {
-        allowWebSearch: config.allowWebSearch,
-        allowFetch: config.allowFetch,
-        allowDownload: config.allowDownload,
-        allowWiseModel: config.allowWiseModel,
-        allowImageGeneration: config.allowImageGeneration,
-        allowEvalJs: config.allowEvalJs,
-        allowCreateFiles: config.allowCreateFiles,
-        allowScripts: config.allowScripts,
-        allowedScripts: { ...(config.allowedScripts || {}) },
-        allowCreateScript: config.allowCreateScript,
-        allowReadLogs: config.allowReadLogs,
-        allowReadBacklinks: config.allowReadBacklinks,
-        allowReadTransactions: config.allowReadTransactions,
-        allowReadTasks: config.allowReadTasks,
-        allowOpenFile: config.allowOpenFile,
-      }
 
-      return runSubAgent({ systemPrompt, userMessage: task, tools, model, signal: s }, permissions)
+      return runSubAgent({ systemPrompt, userMessage: task, tools, model, signal: s }, toolModes)
     },
 
     async generateImage(prompt: string): Promise<string> {

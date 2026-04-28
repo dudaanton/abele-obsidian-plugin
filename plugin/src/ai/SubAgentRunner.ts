@@ -2,24 +2,8 @@ import { AgentLoop } from './client/AgentLoop'
 import type { AgentTool, ModelConfig, Message, AssistantMessage, TextContent } from './client'
 import { ScopeResolver } from './ScopeResolver'
 import { AbeleConfig } from '@/services/AbeleConfig'
-
-export interface SubAgentPermissions {
-  allowWebSearch: boolean
-  allowFetch: boolean
-  allowDownload: boolean
-  allowWiseModel: boolean
-  allowImageGeneration: boolean
-  allowEvalJs: boolean
-  allowCreateFiles: boolean
-  allowScripts: boolean
-  allowedScripts: Record<string, boolean>
-  allowCreateScript: boolean
-  allowReadLogs: boolean
-  allowReadBacklinks: boolean
-  allowReadTransactions: boolean
-  allowReadTasks: boolean
-  allowOpenFile: boolean
-}
+import { CORE_TOOLS } from './types'
+import type { ToolMode } from './types'
 
 export interface SubAgentTask {
   /** System prompt for the sub-agent */
@@ -48,83 +32,47 @@ export interface SubAgentResult {
 /**
  * Check if a tool call is allowed given current parent permissions.
  * Sub-agents: denied = immediate error, no approval prompts.
- *
- * Key difference from main agent:
- * - `create` skips scope check (new files don't exist in scope yet)
- * - `edit`/`read`/`rm`/`mv`/`cp` check scope strictly
- * - Permission flags inherited from parent agent
- * - `create`/`edit` allowed if parent's permissionMode is allow-edit or allow-all
  */
 function isToolAllowed(
   toolName: string,
-  permissions: SubAgentPermissions,
+  toolModes: Record<string, ToolMode>,
   args?: Record<string, unknown>
 ): { allowed: boolean; reason?: string } {
   const scope = ScopeResolver.getInstance()
   const mode = AbeleConfig.getInstance().ai.permissionMode
 
-  // Prevent recursion
   if (toolName === 'delegate') return { allowed: false, reason: 'Sub-agents cannot delegate' }
 
-  // Scope check for file tools (except create — new files aren't in scope yet)
-  const SCOPED_READ_TOOLS = ['read', 'edit', 'rm', 'mv', 'cp', 'read_image', 'ls', 'find']
-  if (args && SCOPED_READ_TOOLS.includes(toolName)) {
+  // Scope check for file tools
+  const SCOPED = ['read', 'edit', 'rm', 'mv', 'cp', 'read_image', 'ls', 'find']
+  if (args && SCOPED.includes(toolName)) {
     const path = (args.path || args.from) as string
     if (path && !scope.isInScope(path)) {
       return { allowed: false, reason: `Access denied: ${path} is not in workspace scope` }
     }
   }
 
-  // Create — check allowCreateFiles flag
-  if (toolName === 'create' && !permissions.allowCreateFiles)
-    return { allowed: false, reason: 'File creation not allowed' }
-
-  // Edit/write tools need appropriate permission mode
-  const WRITE_TOOLS = ['edit', 'rm', 'mv', 'cp']
-  if (WRITE_TOOLS.includes(toolName)) {
+  // Write tools: check permissionMode
+  const WRITE = ['edit', 'rm', 'mv', 'cp', 'create']
+  if (WRITE.includes(toolName)) {
     if (mode !== 'allow-edit' && mode !== 'allow-all') {
       return {
         allowed: false,
-        reason: `Write operations require allow-edit or allow-all permission mode`,
+        reason: 'Write operations require allow-edit or allow-all permission mode',
       }
     }
+    return { allowed: true }
   }
 
-  // Permission flag checks
-  if (toolName === 'web_search' && !permissions.allowWebSearch)
-    return { allowed: false, reason: 'Web search not allowed' }
-  if (toolName === 'fetch' && !permissions.allowFetch)
-    return { allowed: false, reason: 'Fetch not allowed' }
-  if ((toolName === 'download_image' || toolName === 'download_file') && !permissions.allowDownload)
-    return { allowed: false, reason: 'Download not allowed' }
-  if (toolName === 'wise_model' && !permissions.allowWiseModel)
-    return { allowed: false, reason: 'Wise model not allowed' }
-  if (
-    (toolName === 'generate_image' || toolName === 'edit_image') &&
-    !permissions.allowImageGeneration
-  )
-    return { allowed: false, reason: 'Image generation not allowed' }
-  if (toolName === 'eval_js' && !permissions.allowEvalJs)
-    return { allowed: false, reason: 'Eval JS not allowed' }
-  if (
-    toolName.startsWith('script_') &&
-    !permissions.allowScripts &&
-    !permissions.allowedScripts[toolName]
-  )
-    return { allowed: false, reason: 'Script execution not allowed' }
-  if (toolName === 'read_logs' && !permissions.allowReadLogs)
-    return { allowed: false, reason: 'Read logs not allowed' }
-  if (toolName === 'read_backlinks' && !permissions.allowReadBacklinks)
-    return { allowed: false, reason: 'Read backlinks not allowed' }
-  if (toolName === 'read_transactions' && !permissions.allowReadTransactions)
-    return { allowed: false, reason: 'Read transactions not allowed' }
-  if (toolName === 'read_tasks' && !permissions.allowReadTasks)
-    return { allowed: false, reason: 'Read tasks not allowed' }
-  if (toolName === 'open' && !permissions.allowOpenFile)
-    return { allowed: false, reason: 'Open file not allowed' }
-  if (toolName === 'create_script' && !permissions.allowCreateScript)
-    return { allowed: false, reason: 'Script creation not allowed' }
+  // Core tools: always allowed
+  if (CORE_TOOLS.has(toolName)) return { allowed: true }
 
+  // Feature tools: check toolModes
+  const toolMode = toolModes[toolName] ?? 'off'
+  if (toolMode === 'off') {
+    return { allowed: false, reason: `${toolName} is not enabled` }
+  }
+  // 'ask' and 'auto' both allowed for sub-agents (no interactive prompt)
   return { allowed: true }
 }
 
@@ -134,7 +82,7 @@ function isToolAllowed(
  */
 export async function runSubAgent(
   task: SubAgentTask,
-  permissions: SubAgentPermissions
+  toolModes: Record<string, ToolMode>
 ): Promise<string> {
   if (task.signal?.aborted) throw new Error('Aborted')
 
@@ -158,7 +106,7 @@ export async function runSubAgent(
     },
     beforeToolCall: async (toolName, _id, args) => {
       if (task.signal?.aborted) return { block: true, reason: 'Aborted' }
-      const check = isToolAllowed(toolName, permissions, args)
+      const check = isToolAllowed(toolName, toolModes, args)
       if (!check.allowed) {
         return { block: true, reason: check.reason }
       }
@@ -170,12 +118,12 @@ export async function runSubAgent(
     | AssistantMessage
     | undefined
 
-  if (!lastAssistant) return ''
+  if (lastAssistant) {
+    const texts = lastAssistant.content.filter((c): c is TextContent => c.type === 'text')
+    if (texts.length) return texts.map((t) => t.text).join('\n')
+  }
 
-  return lastAssistant.content
-    .filter((c): c is TextContent => c.type === 'text')
-    .map((c) => c.text)
-    .join('\n')
+  return ''
 }
 
 /**
@@ -189,7 +137,7 @@ export async function runSubAgentBatch(
   model: ModelConfig,
   systemPrompt: string,
   batchSize: number,
-  permissions: SubAgentPermissions,
+  toolModes: Record<string, ToolMode>,
   signal?: AbortSignal,
   onProgress?: (completed: number, total: number, results: SubAgentResult[]) => void
 ): Promise<SubAgentResult[]> {
@@ -197,7 +145,6 @@ export async function runSubAgentBatch(
 
   for (let i = 0; i < items.length; i += batchSize) {
     if (signal?.aborted) {
-      // Mark remaining items as aborted
       for (let j = i; j < items.length; j++) {
         results.push({ item: items[j], success: false, text: '', error: 'Aborted' })
       }
@@ -220,7 +167,7 @@ export async function runSubAgentBatch(
             model,
             signal,
           },
-          permissions
+          toolModes
         )
         return { item, success: true, text }
       } catch (err) {

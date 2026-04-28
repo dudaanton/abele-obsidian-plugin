@@ -56,12 +56,20 @@
           <div class="abele-ai-provider__models-header">
             <span>Models</span>
             <div class="abele-ai-provider__models-actions">
-              <Button
-                :text="fetchingModels === pIdx ? 'Loading...' : 'Fetch Models'"
-                :disabled="!provider.baseUrl || !provider.apiKeyId || fetchingModels === pIdx"
-                @click="fetchModels(pIdx)"
+              <Icon
+                icon="download"
+                :class="{
+                  'is-disabled': !provider.baseUrl || !provider.apiKeyId || fetchingModels === pIdx,
+                }"
+                title="Fetch models from API"
+                @click="
+                  provider.baseUrl &&
+                  provider.apiKeyId &&
+                  fetchingModels !== pIdx &&
+                  fetchModels(pIdx)
+                "
               />
-              <Button text="Add Manually" @click="addModel(pIdx)" />
+              <Icon icon="plus" title="Add model manually" @click="addModel(pIdx)" />
             </div>
           </div>
 
@@ -104,53 +112,40 @@
             {{ fetchError[provider.id] }}
           </div>
 
-          <!-- Added models (editable details) -->
-          <div v-for="(model, mIdx) in provider.models" :key="mIdx" class="abele-ai-model">
-            <div class="abele-ai-model__header">
-              <Icon icon="trash" @click="removeModel(pIdx, mIdx)" />
-            </div>
-            <Setting
-              name="Model ID"
-              desc="API model identifier (e.g. gpt-4o, claude-sonnet-4-20250514)."
+          <!-- Model cards -->
+          <div class="abele-ai-models-grid">
+            <div
+              v-for="(model, mIdx) in provider.models"
+              :key="mIdx"
+              class="abele-ai-model-card"
+              @click="openModelEdit(pIdx, mIdx)"
             >
-              <Input
-                :model-value="model.id"
-                placeholder="e.g. gpt-4o"
-                @update:model-value="updateModel(pIdx, mIdx, 'id', $event)"
-              />
-            </Setting>
-            <Setting name="Display name" desc="Optional label shown in model selector.">
-              <Input
-                :model-value="model.name"
-                placeholder="e.g. GPT-4o"
-                @update:model-value="updateModel(pIdx, mIdx, 'name', $event)"
-              />
-            </Setting>
-            <Setting name="Context window" desc="Maximum input tokens the model supports.">
-              <Input
-                :model-value="String(model.contextWindow)"
-                @update:model-value="
-                  updateModel(pIdx, mIdx, 'contextWindow', parseInt($event) || 0)
-                "
-              />
-            </Setting>
-            <Setting name="Max output tokens" desc="Maximum tokens in a single response.">
-              <Input
-                :model-value="String(model.maxTokens)"
-                @update:model-value="updateModel(pIdx, mIdx, 'maxTokens', parseInt($event) || 0)"
-              />
-            </Setting>
-            <Setting name="Reasoning" desc="Enable reasoning/thinking for supported models.">
-              <Checkbox
-                :is-enabled="model.supportsReasoning"
-                @toggle="updateModel(pIdx, mIdx, 'supportsReasoning', !model.supportsReasoning)"
-              />
-            </Setting>
+              <div class="abele-ai-model-card__name">{{ model.name || model.id }}</div>
+              <div class="abele-ai-model-card__id">{{ model.id }}</div>
+              <div class="abele-ai-model-card__meta">
+                <span>{{ formatTokens(model.contextWindow) }} ctx</span>
+                <span>{{ formatTokens(model.maxTokens) }} out</span>
+                <span v-if="model.supportsReasoning" class="abele-ai-model-card__badge"
+                  >reasoning</span
+                >
+              </div>
+            </div>
           </div>
+
+          <ModelEditModal
+            v-if="editingModel?.pIdx === pIdx"
+            :model="editingModel.model"
+            :is-new="editingModel.isNew"
+            @save="onModelSave(pIdx, editingModel.mIdx, $event)"
+            @delete="removeModel(pIdx, editingModel.mIdx)"
+            @close="editingModel = null"
+          />
         </div>
       </div>
 
-      <Button text="Add Provider" @click="addProvider" />
+      <div style="margin-top: var(--size-4-6)">
+        <Button text="Add Provider" @click="addProvider" />
+      </div>
 
       <h3>Active Configuration</h3>
 
@@ -286,36 +281,45 @@
         calls, which is replaced with the actual value. Stored securely in keychain.
       </p>
 
-      <div class="abele-ai-secrets-table">
-        <div v-for="(secret, sIdx) in secrets" :key="sIdx" class="abele-ai-secrets-table__row">
-          <!-- View mode -->
+      <div class="abele-ai-secrets-grid">
+        <div
+          v-for="(secret, sIdx) in secrets"
+          :key="sIdx"
+          class="abele-ai-secret-card"
+          :class="{ 'abele-ai-secret-card--editing': editingSecretIdx === sIdx }"
+          @click="editingSecretIdx !== sIdx && startEditSecret(sIdx)"
+        >
           <template v-if="editingSecretIdx !== sIdx">
-            <span class="abele-ai-secrets-table__name">{{ secret.name || '(unnamed)' }}</span>
-            <span class="abele-ai-secrets-table__mask">{{
-              getSecretDisplay(secret.keyId) || '(not set)'
-            }}</span>
-            <Icon icon="pencil" @click="startEditSecret(sIdx)" />
-            <Icon icon="trash" @click="removeSecret(sIdx)" />
+            <div class="abele-ai-secret-card__name">{{ secret.name || '(unnamed)' }}</div>
+            <div class="abele-ai-secret-card__value">
+              {{ getSecretDisplay(secret.keyId) || '(not set)' }}
+            </div>
           </template>
-          <!-- Edit mode -->
           <template v-else>
             <Input
               :model-value="secret.name"
-              placeholder="Name"
+              placeholder="Secret name"
               @update:model-value="(v: string) => updateSecretName(sIdx, v)"
+              @click.stop
             />
-            <div class="abele-ai-provider__secret-row">
-              <input
-                type="password"
-                class="abele-ai-provider__secret-input"
-                :value="secretValueInputs[sIdx] || ''"
-                placeholder="Value..."
-                @input="secretValueInputs[sIdx] = ($event.target as HTMLInputElement).value"
-                @keydown.enter="applySecretValue(sIdx)"
+            <input
+              type="password"
+              class="abele-ai-secret-card__input"
+              :value="secretValueInputs[sIdx] || ''"
+              placeholder="New value..."
+              @click.stop
+              @input="secretValueInputs[sIdx] = ($event.target as HTMLInputElement).value"
+              @keydown.enter="applySecretValue(sIdx)"
+            />
+            <div class="abele-ai-secret-card__actions" @click.stop>
+              <Button
+                text="Save"
+                :disabled="!secretValueInputs[sIdx]"
+                @click="applySecretValue(sIdx)"
               />
+              <Icon icon="trash" @click="removeSecret(sIdx)" />
+              <Icon icon="x" @click="editingSecretIdx = -1" />
             </div>
-            <Icon icon="check" with-bg @click="applySecretValue(sIdx)" />
-            <Icon icon="x" @click="editingSecretIdx = -1" />
           </template>
         </div>
       </div>
@@ -331,69 +335,19 @@
         @update:full-vault-access="updateDefaultFullVault"
       />
 
-      <h3>Default Permissions</h3>
+      <h3>Default Tool Modes</h3>
+      <p class="setting-item-description">
+        Default modes for new chats. Off = tool not available. Ask = requires approval. Auto = runs
+        automatically.
+      </p>
 
-      <Setting
-        name="Allow web search"
-        desc="Default for new chats. Can be changed per chat in the scope manager."
-      >
-        <Checkbox :is-enabled="defaultAllowWebSearch" @toggle="toggleDefault('allowWebSearch')" />
-      </Setting>
-
-      <Setting
-        name="Allow fetch"
-        desc="Default for new chats. Can be changed per chat in the scope manager."
-      >
-        <Checkbox :is-enabled="defaultAllowFetch" @toggle="toggleDefault('allowFetch')" />
-      </Setting>
-
-      <Setting
-        name="Allow download"
-        desc="Default for new chats. Can be changed per chat in the scope manager."
-      >
-        <Checkbox :is-enabled="defaultAllowDownload" @toggle="toggleDefault('allowDownload')" />
-      </Setting>
-
-      <Setting
-        name="Allow wise model"
-        desc="Default for new chats. Can be changed per chat in the scope manager."
-      >
-        <Checkbox :is-enabled="defaultAllowWiseModel" @toggle="toggleDefault('allowWiseModel')" />
-      </Setting>
-
-      <Setting
-        name="Allow image generation"
-        desc="Default for new chats. Can be changed per chat in the scope manager."
-      >
-        <Checkbox
-          :is-enabled="defaultAllowImageGeneration"
-          @toggle="toggleDefault('allowImageGeneration')"
-        />
-      </Setting>
-
-      <Setting
-        name="Allow eval JS"
-        desc="Default for new chats. Can be changed per chat in the scope manager."
-      >
-        <Checkbox :is-enabled="defaultAllowEvalJs" @toggle="toggleDefault('allowEvalJs')" />
-      </Setting>
-
-      <Setting
-        name="Allow create files"
-        desc="Default for new chats. Allow agent to create new files without asking."
-      >
-        <Checkbox
-          :is-enabled="defaultAllowCreateFiles"
-          @toggle="toggleDefault('allowCreateFiles')"
-        />
-      </Setting>
-
-      <Setting
-        name="Allow delegate"
-        desc="Default for new chats. Allow agent to delegate tasks to sub-agents without asking."
-      >
-        <Checkbox :is-enabled="defaultAllowDelegate" @toggle="toggleDefault('allowDelegate')" />
-      </Setting>
+      <ToolModesEditor
+        :tool-modes="defaultToolModes"
+        :show-descriptions="true"
+        :tool-descriptions="customToolDescriptions"
+        @update="onDefaultToolModeUpdate"
+        @update-description="onToolDescriptionUpdate"
+      />
 
       <h3>Prompts</h3>
 
@@ -462,32 +416,6 @@
           @update:model-value="updatePrompt('compactPrompt', $event)"
         />
       </Setting>
-
-      <div class="abele-ai-prompts__tools">
-        <div
-          class="abele-ai-prompts__tools-header"
-          @click="toolDescriptionsOpen = !toolDescriptionsOpen"
-        >
-          <Icon :icon="toolDescriptionsOpen ? 'chevron-down' : 'chevron-right'" />
-          <span>Tool Descriptions</span>
-        </div>
-
-        <template v-if="toolDescriptionsOpen">
-          <Setting
-            v-for="(desc, toolName) in defaultPrompts.toolDescriptions"
-            :key="toolName"
-            :name="toolName"
-            :desc="`Description sent to the model for the '${toolName}' tool.`"
-          >
-            <Input
-              :model-value="prompts.toolDescriptions?.[toolName] || ''"
-              as-text-area
-              :placeholder="desc"
-              @update:model-value="updateToolDescription(toolName, $event)"
-            />
-          </Setting>
-        </template>
-      </div>
     </template>
   </div>
 </template>
@@ -502,6 +430,8 @@ import Input from '../obsidian/Input.vue'
 import Button from '../obsidian/Button.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
+import ToolModesEditor from '../ToolModesEditor.vue'
+import ModelEditModal from './ModelEditModal.vue'
 import Search from '../obsidian/Search.vue'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import Icon from '../obsidian/Icon.vue'
@@ -533,14 +463,12 @@ const migrateChats = async () => {
   }
 }
 
-const defaultAllowWebSearch = ref(config.ai.allowWebSearch)
-const defaultAllowFetch = ref(config.ai.allowFetch)
-const defaultAllowDownload = ref(config.ai.allowDownload)
-const defaultAllowWiseModel = ref(config.ai.allowWiseModel)
-const defaultAllowImageGeneration = ref(config.ai.allowImageGeneration)
-const defaultAllowEvalJs = ref(config.ai.allowEvalJs)
-const defaultAllowCreateFiles = ref(config.ai.allowCreateFiles ?? true)
-const defaultAllowDelegate = ref(config.ai.allowDelegate ?? false)
+const defaultToolModes = reactive<Record<string, string>>({ ...config.ai.toolModes })
+
+const onDefaultToolModeUpdate = (toolName: string, mode: string) => {
+  defaultToolModes[toolName] = mode
+  save()
+}
 const defaultScope = ref(JSON.parse(JSON.stringify(config.ai.defaultScope || [])))
 const defaultFullVaultAccess = ref(config.ai.defaultFullVaultAccess)
 
@@ -575,7 +503,18 @@ const prompts = ref<Partial<AiPrompts>>(
 const systemPromptFromNote = ref(config.ai.systemPromptFromNote || false)
 const systemPromptNotePath = ref(config.ai.systemPromptNotePath || '')
 const defaultPrompts = DEFAULT_AI_SETTINGS.prompts
-const toolDescriptionsOpen = ref(false)
+const customToolDescriptions = computed(() => prompts.value.toolDescriptions || {})
+
+const onToolDescriptionUpdate = (toolName: string, value: string) => {
+  const descs = { ...(prompts.value.toolDescriptions || {}) }
+  if (value) {
+    descs[toolName] = value
+  } else {
+    delete descs[toolName]
+  }
+  prompts.value = { ...prompts.value, toolDescriptions: descs }
+  save()
+}
 
 // Remote models state
 const remoteModels = reactive<Record<string, RemoteModel[]>>({})
@@ -648,20 +587,9 @@ const save = debounce(async () => {
     delegateModelId: delegateModelId.value,
     sequentialAuxiliary: sequentialAuxiliary.value,
     permissionMode: config.ai.permissionMode,
-    allowWebSearch: defaultAllowWebSearch.value,
-    allowFetch: defaultAllowFetch.value,
-    allowDownload: defaultAllowDownload.value,
-    allowWiseModel: defaultAllowWiseModel.value,
-    allowImageGeneration: defaultAllowImageGeneration.value,
-    allowEvalJs: defaultAllowEvalJs.value,
-    allowCreateFiles: defaultAllowCreateFiles.value,
-    allowDelegate: defaultAllowDelegate.value,
-    allowScripts: config.ai.allowScripts ?? false,
-    allowedScripts: config.ai.allowedScripts ?? {},
-    allowCreateScript: config.ai.allowCreateScript ?? false,
+    toolModes: { ...defaultToolModes },
     scriptsEnabled: config.ai.scriptsEnabled ?? false,
     scriptsFolder: config.ai.scriptsFolder ?? '',
-    scriptToolToggles: config.ai.scriptToolToggles ?? {},
     defaultScope: JSON.parse(JSON.stringify(defaultScope.value)),
     defaultFullVaultAccess: defaultFullVaultAccess.value,
     chatFolder: chatFolder.value,
@@ -684,29 +612,6 @@ const toggleEnabled = () => {
 
 const toggleSequentialAuxiliary = () => {
   sequentialAuxiliary.value = !sequentialAuxiliary.value
-  save()
-}
-
-const toggleDefault = (
-  key:
-    | 'allowWebSearch'
-    | 'allowFetch'
-    | 'allowDownload'
-    | 'allowWiseModel'
-    | 'allowImageGeneration'
-    | 'allowEvalJs'
-    | 'allowCreateFiles'
-    | 'allowDelegate'
-) => {
-  if (key === 'allowWebSearch') defaultAllowWebSearch.value = !defaultAllowWebSearch.value
-  if (key === 'allowFetch') defaultAllowFetch.value = !defaultAllowFetch.value
-  if (key === 'allowDownload') defaultAllowDownload.value = !defaultAllowDownload.value
-  if (key === 'allowWiseModel') defaultAllowWiseModel.value = !defaultAllowWiseModel.value
-  if (key === 'allowImageGeneration')
-    defaultAllowImageGeneration.value = !defaultAllowImageGeneration.value
-  if (key === 'allowEvalJs') defaultAllowEvalJs.value = !defaultAllowEvalJs.value
-  if (key === 'allowCreateFiles') defaultAllowCreateFiles.value = !defaultAllowCreateFiles.value
-  if (key === 'allowDelegate') defaultAllowDelegate.value = !defaultAllowDelegate.value
   save()
 }
 
@@ -770,6 +675,7 @@ const startEditSecret = (idx: number) => {
 }
 
 const removeSecret = (idx: number) => {
+  if (!confirm('Delete this secret?')) return
   const secret = secrets.value[idx]
   if (secret.keyId) {
     try {
@@ -820,6 +726,7 @@ const addProvider = () => {
 }
 
 const removeProvider = (idx: number) => {
+  if (!confirm('Delete this provider and all its models?')) return
   const provider = providers.value[idx]
   if (provider.apiKeyId?.startsWith('abele-')) {
     // deleteSecret exists at runtime but is missing from obsidian.d.ts (as of 1.12.3)
@@ -877,30 +784,59 @@ const toggleRemoteModel = (pIdx: number, modelId: string) => {
   save()
 }
 
+const editingModel = ref<{
+  pIdx: number
+  mIdx: number
+  model: AiModelConfig
+  isNew: boolean
+} | null>(null)
+
 const addModel = (providerIdx: number) => {
-  providers.value[providerIdx].models.push({
+  const model: AiModelConfig = {
     id: '',
     name: '',
     contextWindow: 128000,
     maxTokens: 4096,
     supportsReasoning: false,
-  })
+  }
+  editingModel.value = {
+    pIdx: providerIdx,
+    mIdx: providers.value[providerIdx].models.length,
+    model,
+    isNew: true,
+  }
+}
+
+const openModelEdit = (pIdx: number, mIdx: number) => {
+  editingModel.value = {
+    pIdx,
+    mIdx,
+    model: { ...providers.value[pIdx].models[mIdx] },
+    isNew: false,
+  }
+}
+
+const onModelSave = (pIdx: number, mIdx: number, model: AiModelConfig) => {
+  const models = providers.value[pIdx].models
+  if (mIdx >= models.length) {
+    models.push(model)
+  } else {
+    models[mIdx] = model
+  }
   save()
 }
 
 const removeModel = (pIdx: number, mIdx: number) => {
+  if (!confirm('Delete this model?')) return
   providers.value[pIdx].models.splice(mIdx, 1)
+  editingModel.value = null
   save()
 }
 
-const updateModel = (
-  pIdx: number,
-  mIdx: number,
-  field: keyof AiModelConfig,
-  value: string | number | boolean
-) => {
-  ;(providers.value[pIdx].models[mIdx] as Record<string, unknown>)[field] = value
-  save()
+const formatTokens = (n: number): string => {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`
+  return String(n)
 }
 
 const selectActiveModel = (key: string) => {
@@ -963,25 +899,16 @@ const updatePrompt = (field: keyof Omit<AiPrompts, 'toolDescriptions'>, value: s
   prompts.value = { ...prompts.value, [field]: value }
   save()
 }
-
-const updateToolDescription = (toolName: string, value: string) => {
-  const descs = { ...(prompts.value.toolDescriptions || {}) }
-  if (value) {
-    descs[toolName] = value
-  } else {
-    delete descs[toolName]
-  }
-  prompts.value = { ...prompts.value, toolDescriptions: descs }
-  save()
-}
 </script>
 
 <style lang="scss">
 .abele-ai-provider {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  padding: var(--size-4-3);
-  margin-bottom: var(--size-4-3);
+  padding: var(--size-4-3) 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+
+  &:last-child {
+    border-bottom: none;
+  }
 }
 
 .abele-ai-provider__header {
@@ -1014,7 +941,7 @@ const updateToolDescription = (toolName: string, value: string) => {
 }
 
 .abele-ai-provider__models {
-  margin-top: var(--size-4-2);
+  margin-top: var(--size-4-4);
 }
 
 .abele-ai-provider__models-header {
@@ -1089,70 +1016,106 @@ const updateToolDescription = (toolName: string, value: string) => {
   margin-bottom: var(--size-4-1);
 }
 
-.abele-ai-model {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  padding: var(--size-4-2);
+.abele-ai-models-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--size-4-2);
   margin-bottom: var(--size-4-2);
 }
 
-.abele-ai-model__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--size-4-1);
-}
-
-.abele-ai-model__id {
-  font-family: var(--font-monospace);
-  font-size: var(--font-small);
-  color: var(--text-accent);
-}
-
-.abele-ai-prompts__tools {
-  margin-top: var(--size-4-2);
-}
-
-.abele-ai-prompts__tools-header {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-2);
+.abele-ai-model-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: var(--size-4-3);
   cursor: pointer;
-  padding: var(--size-4-2) 0;
-  font-weight: var(--font-semibold);
-  color: var(--text-normal);
-
-  &:hover {
-    color: var(--text-accent);
-  }
-}
-
-.abele-ai-secrets-table {
+  transition: border-color 0.15s;
   display: flex;
   flex-direction: column;
+  gap: var(--size-2-1);
+
+  &:hover {
+    border-color: var(--interactive-accent);
+  }
+}
+
+.abele-ai-model-card__name {
+  font-weight: var(--font-semibold);
+  font-size: var(--font-ui-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.abele-ai-model-card__id {
+  font-family: var(--font-monospace);
+  font-size: var(--font-smallest);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.abele-ai-model-card__meta {
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--size-4-1);
+  font-size: var(--font-smallest);
+  color: var(--text-faint);
+  margin-top: var(--size-2-1);
+}
+
+.abele-ai-model-card__badge {
+  background: var(--background-modifier-hover);
+  padding: 0 var(--size-2-2);
+  border-radius: var(--radius-s);
+}
+
+.abele-ai-secrets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--size-4-2);
   margin-bottom: var(--size-4-2);
 }
 
-.abele-ai-secrets-table__row {
+.abele-ai-secret-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: var(--size-4-3);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+
+  &:hover:not(&--editing) {
+    border-color: var(--interactive-accent);
+  }
+
+  &--editing {
+    cursor: default;
+    grid-column: 1 / -1;
+    gap: var(--size-4-2);
+  }
+}
+
+.abele-ai-secret-card__name {
+  font-weight: var(--font-semibold);
+  font-size: var(--font-ui-small);
+}
+
+.abele-ai-secret-card__value {
+  font-family: var(--font-monospace);
+  font-size: var(--font-smallest);
+  color: var(--text-muted);
+}
+
+.abele-ai-secret-card__input {
+  width: 100%;
+}
+
+.abele-ai-secret-card__actions {
   display: flex;
   align-items: center;
   gap: var(--size-4-2);
-
-  .abele-ai-secrets-table__name {
-    min-width: 100px;
-    font-weight: var(--font-medium);
-  }
-
-  .abele-ai-secrets-table__mask {
-    flex: 1;
-    color: var(--text-muted);
-    font-size: var(--font-small);
-    font-family: var(--font-monospace);
-  }
-
-  .abele-ai-provider__secret-row {
-    flex: 1;
-  }
 }
 </style>

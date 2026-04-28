@@ -23,6 +23,7 @@ export interface AiPrompts {
 }
 
 export type PermissionMode = 'confirm-all' | 'allow-edit' | 'allow-all'
+export type ToolMode = 'off' | 'ask' | 'auto'
 
 export interface AiChatHistoryEntry {
   path: string
@@ -45,25 +46,9 @@ export interface AiSettings {
   delegateModelId: string
   sequentialAuxiliary: boolean
   permissionMode: PermissionMode
-  allowWebSearch: boolean
-  allowFetch: boolean
-  allowDownload: boolean
-  allowWiseModel: boolean
-  allowImageGeneration: boolean
-  allowEvalJs: boolean
-  allowCreateFiles: boolean
-  allowDelegate: boolean
-  allowScripts: boolean
-  allowedScripts: Record<string, boolean>
-  allowCreateScript: boolean
-  allowReadLogs: boolean
-  allowReadBacklinks: boolean
-  allowReadTransactions: boolean
-  allowReadTasks: boolean
-  allowOpenFile: boolean
+  toolModes: Record<string, ToolMode>
   scriptsEnabled: boolean
   scriptsFolder: string
-  scriptToolToggles: Record<string, boolean>
   defaultScope: Array<{ type: 'file' | 'folder' | 'pattern' | 'group'; path: string }>
   defaultFullVaultAccess: boolean
   chatFolder: string
@@ -77,6 +62,24 @@ export interface AiSettings {
   systemPromptNotePath: string
 }
 
+/** Tools always sent to agent, governed by permissionMode */
+export const CORE_TOOLS = new Set([
+  'read',
+  'edit',
+  'replace',
+  'create',
+  'rm',
+  'mv',
+  'cp',
+  'ls',
+  'find',
+  'workspace',
+  'read_image',
+  'skill',
+  'list_templates',
+  'apply_template',
+])
+
 export const DEFAULT_AI_SETTINGS: AiSettings = {
   enabled: false,
   providers: [],
@@ -87,25 +90,13 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   delegateModelId: '',
   sequentialAuxiliary: false,
   permissionMode: 'confirm-all',
-  allowWebSearch: true,
-  allowFetch: false,
-  allowDownload: false,
-  allowWiseModel: false,
-  allowImageGeneration: false,
-  allowEvalJs: false,
-  allowCreateFiles: true,
-  allowDelegate: false,
-  allowScripts: false,
-  allowedScripts: {},
-  allowCreateScript: false,
-  allowReadLogs: false,
-  allowReadBacklinks: false,
-  allowReadTransactions: false,
-  allowReadTasks: false,
-  allowOpenFile: false,
+  toolModes: {
+    web_search: 'auto',
+    chart_docs: 'auto',
+    script_api_docs: 'auto',
+  },
   scriptsEnabled: false,
   scriptsFolder: '',
-  scriptToolToggles: {},
   defaultScope: [],
   defaultFullVaultAccess: false,
   chatFolder: 'AI/Chats/{{name}}',
@@ -158,8 +149,71 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
         'Download any file from a URL and save it to the vault attachments folder. Returns the saved file path.',
       delegate:
         'Delegate repetitive tasks to sub-agents for parallel processing. Each item gets a fresh context. Use for batch operations on many items.',
+      replace:
+        'Apply batch replacement actions to a file: set/remove properties, add/remove list items, replace in content or properties, move file. Supports regex.',
+      open: 'Open a file in the Obsidian editor.',
+      read_logs: 'Read log entries related to a note.',
+      read_backlinks: 'Read notes linked to a note through groups (transitive backlinks).',
+      read_transactions:
+        'Read financial transactions, optionally filtered by note and date period.',
+      read_tasks: 'Read tasks, optionally filtered by note, date period, and completion status.',
+      chart_docs:
+        'Get the reference for creating abele-chart codeblocks with chart types, data formats, and formula syntax.',
+      script_api_docs:
+        'Get the full API reference for writing Abele scripts. Call before create_script.',
+      create_script: 'Create a new JavaScript script in the scripts folder.',
     },
   },
+}
+
+/** Migrate old boolean permissions to toolModes map */
+export function migrateOldPermissions(
+  metadata: Record<string, any> | null,
+  config: Record<string, any>
+): Record<string, ToolMode> {
+  const modes: Record<string, ToolMode> = {}
+
+  const mapping: Array<{ keys: string[]; tools: string[] }> = [
+    { keys: ['allowWebSearch'], tools: ['web_search'] },
+    { keys: ['allowFetch'], tools: ['fetch'] },
+    { keys: ['allowDownload'], tools: ['download_image', 'download_file'] },
+    { keys: ['allowWiseModel'], tools: ['wise_model'] },
+    { keys: ['allowImageGeneration'], tools: ['generate_image', 'edit_image'] },
+    { keys: ['allowEvalJs'], tools: ['eval_js'] },
+    { keys: ['allowDelegate'], tools: ['delegate'] },
+    { keys: ['allowCreateScript'], tools: ['create_script'] },
+    { keys: ['allowReadLogs'], tools: ['read_logs'] },
+    { keys: ['allowReadBacklinks'], tools: ['read_backlinks'] },
+    { keys: ['allowReadTransactions'], tools: ['read_transactions'] },
+    { keys: ['allowReadTasks'], tools: ['read_tasks'] },
+    { keys: ['allowOpenFile'], tools: ['open'] },
+  ]
+
+  for (const entry of mapping) {
+    const key = entry.keys[0]
+    const value = metadata?.[key] ?? config[key]
+    const mode: ToolMode = value ? 'auto' : 'ask'
+    for (const tool of entry.tools) {
+      modes[tool] = mode
+    }
+  }
+
+  // Migrate per-script permissions
+  const allowScripts = metadata?.allowScripts ?? config.allowScripts
+  const allowedScripts = {
+    ...(config.allowedScripts || {}),
+    ...(config.scriptToolToggles || {}),
+    ...(metadata?.allowedScripts || {}),
+  }
+  for (const [toolName, allowed] of Object.entries(allowedScripts)) {
+    modes[toolName] = allowed ? 'auto' : 'ask'
+  }
+  // If blanket allowScripts was on, mark script_api_docs as auto
+  if (allowScripts) {
+    modes['script_api_docs'] = 'auto'
+  }
+
+  return modes
 }
 
 export interface ChatMessageUsage {
@@ -198,6 +252,8 @@ export interface ChatMetadata {
   created: string
   title?: string
   pendingToolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>
+  toolModes?: Record<string, ToolMode>
+  // Legacy fields for backwards compatibility (read-only during migration)
   allowWebSearch?: boolean
   allowFetch?: boolean
   allowDownload?: boolean

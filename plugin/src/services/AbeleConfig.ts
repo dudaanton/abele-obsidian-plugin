@@ -1,5 +1,5 @@
 import { Journal, JournalDTO } from '@/entities/Journal'
-import { AiSettings, DEFAULT_AI_SETTINGS, AiProvider } from '@/ai/types'
+import { AiSettings, DEFAULT_AI_SETTINGS, AiProvider, migrateOldPermissions } from '@/ai/types'
 import AbelePlugin from '@/main'
 
 export interface AbeleSettings {
@@ -28,8 +28,16 @@ export interface AbeleSettings {
   timeEntryPathTemplate?: string // Path template for new time entries
   timeTrackableNoteTypes?: string[] // Note types that show timer button in header
   timeTrackAllNotes?: boolean // Show timer button for all notes
+  // Links
+  links?: LinkDefinition[]
   // Other
   fullWidthSidebars?: boolean
+}
+
+export interface LinkDefinition {
+  id: string
+  name: string
+  scriptName: string
 }
 
 export const DEFAULT_SETTINGS: AbeleSettings = {
@@ -55,6 +63,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   timeEntryPathTemplate: 'Time/{{date:YYYY/MM}}/{{groups}} {{start}}',
   timeTrackableNoteTypes: ['task'],
   timeTrackAllNotes: false,
+  links: [],
   fullWidthSidebars: false,
 }
 
@@ -85,6 +94,7 @@ export class AbeleConfig {
   public timeEntryPathTemplate: string
   public timeTrackableNoteTypes: string[]
   public timeTrackAllNotes: boolean
+  public links: LinkDefinition[]
   public fullWidthSidebars: boolean
 
   public get logsNotesTypes(): string[] {
@@ -188,6 +198,14 @@ export class AbeleConfig {
       ...DEFAULT_SETTINGS.excludedPathsForDefaultTemplate,
     ]
     this.ai = settings?.ai ? { ...DEFAULT_AI_SETTINGS, ...settings.ai } : { ...DEFAULT_AI_SETTINGS }
+    // Migrate old boolean permissions to toolModes
+    if (
+      settings?.ai &&
+      !settings.ai.toolModes &&
+      (settings.ai as any).allowWebSearch !== undefined
+    ) {
+      this.ai.toolModes = migrateOldPermissions(null, settings.ai as any)
+    }
     this.transactionPathTemplate =
       settings?.transactionPathTemplate || DEFAULT_SETTINGS.transactionPathTemplate
     this.transactionTemplatePath =
@@ -205,6 +223,7 @@ export class AbeleConfig {
       ...DEFAULT_SETTINGS.timeTrackableNoteTypes,
     ]
     this.timeTrackAllNotes = settings?.timeTrackAllNotes ?? DEFAULT_SETTINGS.timeTrackAllNotes
+    this.links = settings?.links || []
     this.fullWidthSidebars = settings?.fullWidthSidebars ?? DEFAULT_SETTINGS.fullWidthSidebars
   }
 
@@ -232,6 +251,7 @@ export class AbeleConfig {
       timeEntryPathTemplate: this.timeEntryPathTemplate,
       timeTrackableNoteTypes: [...this.timeTrackableNoteTypes],
       timeTrackAllNotes: this.timeTrackAllNotes,
+      links: [...this.links],
       fullWidthSidebars: this.fullWidthSidebars,
     }
   }

@@ -129,54 +129,20 @@ const approve = () => {
   }
 }
 
-const PERMISSION_TOOLS: Record<
-  string,
-  | 'allowWebSearch'
-  | 'allowFetch'
-  | 'allowDownload'
-  | 'allowWiseModel'
-  | 'allowImageGeneration'
-  | 'allowEvalJs'
-  | 'allowCreateFiles'
-  | 'allowDelegate'
-  | 'allowReadLogs'
-  | 'allowReadBacklinks'
-  | 'allowReadTransactions'
-  | 'allowReadTasks'
-  | 'allowOpenFile'
-> = {
-  web_search: 'allowWebSearch',
-  fetch: 'allowFetch',
-  download_image: 'allowDownload',
-  download_file: 'allowDownload',
-  wise_model: 'allowWiseModel',
-  generate_image: 'allowImageGeneration',
-  edit_image: 'allowImageGeneration',
-  eval_js: 'allowEvalJs',
-  create: 'allowCreateFiles',
-  apply_template: 'allowCreateFiles',
-  delegate: 'allowDelegate',
-  read_logs: 'allowReadLogs',
-  read_backlinks: 'allowReadBacklinks',
-  read_transactions: 'allowReadTransactions',
-  read_tasks: 'allowReadTasks',
-  open: 'allowOpenFile',
-}
-
 const canAllowAll = computed(() => {
   const name = props.message.toolName
-  return name ? name in PERMISSION_TOOLS : false
+  if (!name) return false
+  const s = session.value
+  if (!s) return false
+  // Can "allow all" if this tool is in ask mode (not auto yet)
+  return s.getToolMode(name) === 'ask'
 })
 
 const allowAll = () => {
   const s = session.value
-  if (!s) return
   const name = props.message.toolName
-  if (!name) return
-  const permKey = PERMISSION_TOOLS[name]
-  if (permKey) {
-    s[permKey].value = true
-  }
+  if (!s || !name) return
+  s.toolModes.value = { ...s.toolModes.value, [name]: 'auto' }
   s.approveToolCall()
 }
 

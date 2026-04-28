@@ -17,7 +17,14 @@ import type {
   ToolCallContent,
 } from './client'
 import { ChatStorage } from './ChatStorage'
-import { ChatMessage, ChatMetadata, DEFAULT_AI_SETTINGS } from './types'
+import {
+  ChatMessage,
+  ChatMetadata,
+  DEFAULT_AI_SETTINGS,
+  CORE_TOOLS,
+  migrateOldPermissions,
+} from './types'
+import type { ToolMode } from './types'
 import type { UserContentPart } from './client'
 import { createAgentTools } from './tools'
 import { loadSkillContent } from './tools/SkillTool'
@@ -60,14 +67,7 @@ export class ChatSession {
     'You summarize conversations. Reply with ONLY the summary, nothing else.'
   private static readonly COMPACT_MARKER = '[Conversation compacted]'
 
-  private static readonly READ_TOOLS = [
-    'read',
-    'ls',
-    'find',
-    'workspace',
-    'skill',
-    'script_api_docs',
-  ]
+  private static readonly READ_TOOLS = ['read', 'ls', 'find', 'workspace', 'skill']
   private static readonly EDIT_TOOLS = ['edit', 'create', 'replace']
   private static readonly SCOPED_TOOLS = [
     'read',
@@ -115,22 +115,7 @@ export class ChatSession {
   public readonly activeModelId = ref('')
 
   // Per-chat tool permissions
-  public readonly allowWebSearch = ref(true)
-  public readonly allowFetch = ref(false)
-  public readonly allowDownload = ref(false)
-  public readonly allowWiseModel = ref(false)
-  public readonly allowImageGeneration = ref(false)
-  public readonly allowEvalJs = ref(false)
-  public readonly allowCreateFiles = ref(true)
-  public readonly allowDelegate = ref(false)
-  public readonly allowScripts = ref(false)
-  public readonly allowedScripts = ref<Record<string, boolean>>({})
-  public readonly allowCreateScript = ref(false)
-  public readonly allowReadLogs = ref(false)
-  public readonly allowReadBacklinks = ref(false)
-  public readonly allowReadTransactions = ref(false)
-  public readonly allowReadTasks = ref(false)
-  public readonly allowOpenFile = ref(false)
+  public readonly toolModes = ref<Record<string, ToolMode>>({})
   public readonly customSystemPrompt = ref('')
   public readonly customSystemPromptNotePath = ref('')
 
@@ -153,22 +138,11 @@ export class ChatSession {
     const config = AbeleConfig.getInstance().ai
     this.activeProviderId.value = config.activeProviderId
     this.activeModelId.value = config.activeModelId
-    this.allowWebSearch.value = config.allowWebSearch
-    this.allowFetch.value = config.allowFetch
-    this.allowDownload.value = config.allowDownload
-    this.allowWiseModel.value = config.allowWiseModel
-    this.allowImageGeneration.value = config.allowImageGeneration
-    this.allowEvalJs.value = config.allowEvalJs
-    this.allowCreateFiles.value = config.allowCreateFiles ?? true
-    this.allowDelegate.value = config.allowDelegate ?? false
-    this.allowScripts.value = config.allowScripts ?? false
-    this.allowedScripts.value = { ...(config.scriptToolToggles || {}) }
-    this.allowCreateScript.value = config.allowCreateScript ?? false
-    this.allowReadLogs.value = config.allowReadLogs ?? false
-    this.allowReadBacklinks.value = config.allowReadBacklinks ?? false
-    this.allowReadTransactions.value = config.allowReadTransactions ?? false
-    this.allowReadTasks.value = config.allowReadTasks ?? false
-    this.allowOpenFile.value = config.allowOpenFile ?? false
+    this.toolModes.value = { ...config.toolModes }
+  }
+
+  getToolMode(toolName: string): ToolMode {
+    return this.toolModes.value[toolName] ?? 'off'
   }
 
   private resetScope(): void {
@@ -196,8 +170,12 @@ export class ChatSession {
   // ── Tools with session scope ────────────────────────────────────
 
   private getTools(): AgentTool[] {
-    const tools = createAgentTools()
-    return this.wrapToolsForSession(tools)
+    const allTools = createAgentTools()
+    const filtered = allTools.filter((tool) => {
+      if (CORE_TOOLS.has(tool.name)) return true
+      return this.getToolMode(tool.name) !== 'off'
+    })
+    return this.wrapToolsForSession(filtered)
   }
 
   /**
@@ -237,33 +215,22 @@ export class ChatSession {
       }
     }
 
+    // Core read tools: never need approval
     if (ChatSession.READ_TOOLS.includes(toolName)) return false
-    if (toolName === 'create' || toolName === 'apply_template') return !this.allowCreateFiles.value
-    if (toolName === 'delegate') return !this.allowDelegate.value
-    if (toolName.startsWith('script_'))
-      return !this.allowScripts.value && !this.allowedScripts.value[toolName]
-    if (toolName === 'create_script') return !this.allowCreateScript.value
-    if (toolName === 'web_search') return !this.allowWebSearch.value
-    if (toolName === 'fetch') return !this.allowFetch.value
-    if (toolName === 'download_image' || toolName === 'download_file')
-      return !this.allowDownload.value
-    if (toolName === 'wise_model') return !this.allowWiseModel.value
-    if (toolName === 'generate_image' || toolName === 'edit_image')
-      return !this.allowImageGeneration.value
-    if (toolName === 'eval_js') return !this.allowEvalJs.value
-    if (toolName === 'read_logs') return !this.allowReadLogs.value
-    if (toolName === 'read_backlinks') return !this.allowReadBacklinks.value
-    if (toolName === 'read_transactions') return !this.allowReadTransactions.value
-    if (toolName === 'read_tasks') return !this.allowReadTasks.value
-    if (toolName === 'open') return !this.allowOpenFile.value
     if (toolName === 'read_image') return false
-    if (
-      ChatSession.EDIT_TOOLS.includes(toolName) &&
-      (mode === 'allow-edit' || mode === 'allow-all')
-    )
-      return false
-    if (mode === 'allow-all') return false
-    return true
+
+    // Core edit tools: governed by permissionMode
+    if (ChatSession.EDIT_TOOLS.includes(toolName)) {
+      if (mode === 'allow-edit' || mode === 'allow-all') return false
+      return true
+    }
+    if (['rm', 'mv', 'cp'].includes(toolName)) {
+      if (mode === 'allow-all') return false
+      return true
+    }
+
+    // Feature tools: governed by toolModes
+    return this.getToolMode(toolName) !== 'auto'
   }
 
   // ── Event handling ───────────────────────────��──────────────────
@@ -861,22 +828,7 @@ export class ChatSession {
               arguments: tc.arguments,
             }))
           : undefined,
-      allowWebSearch: this.allowWebSearch.value,
-      allowFetch: this.allowFetch.value,
-      allowDownload: this.allowDownload.value,
-      allowWiseModel: this.allowWiseModel.value,
-      allowImageGeneration: this.allowImageGeneration.value,
-      allowEvalJs: this.allowEvalJs.value,
-      allowCreateFiles: this.allowCreateFiles.value,
-      allowDelegate: this.allowDelegate.value,
-      allowScripts: this.allowScripts.value,
-      allowedScripts: this.allowedScripts.value,
-      allowCreateScript: this.allowCreateScript.value,
-      allowReadLogs: this.allowReadLogs.value,
-      allowReadBacklinks: this.allowReadBacklinks.value,
-      allowReadTransactions: this.allowReadTransactions.value,
-      allowReadTasks: this.allowReadTasks.value,
-      allowOpenFile: this.allowOpenFile.value,
+      toolModes: this.toolModes.value,
       scopeEntries: this.scopeResolver.entries.value.length
         ? [...this.scopeResolver.entries.value]
         : undefined,
@@ -892,6 +844,9 @@ export class ChatSession {
       this.currentChatFile.value || undefined,
       this.allInternalMessages
     )
+
+    // Update tab state so new chats get persisted
+    this.agentService.saveTabs()
   }
 
   async load(file: TFile): Promise<void> {
@@ -926,30 +881,13 @@ export class ChatSession {
     const config = AbeleConfig.getInstance().ai
     this.activeProviderId.value = result.metadata?.providerId ?? config.activeProviderId
     this.activeModelId.value = result.metadata?.modelId ?? config.activeModelId
-    this.allowWebSearch.value = result.metadata?.allowWebSearch ?? config.allowWebSearch
-    this.allowFetch.value = result.metadata?.allowFetch ?? config.allowFetch
-    this.allowDownload.value = result.metadata?.allowDownload ?? config.allowDownload
-    this.allowWiseModel.value = result.metadata?.allowWiseModel ?? config.allowWiseModel
-    this.allowImageGeneration.value =
-      result.metadata?.allowImageGeneration ?? config.allowImageGeneration
-    this.allowEvalJs.value = result.metadata?.allowEvalJs ?? config.allowEvalJs
-    this.allowCreateFiles.value =
-      result.metadata?.allowCreateFiles ?? config.allowCreateFiles ?? true
-    this.allowDelegate.value = result.metadata?.allowDelegate ?? config.allowDelegate ?? false
-    this.allowScripts.value = result.metadata?.allowScripts ?? config.allowScripts ?? false
-    this.allowedScripts.value = {
-      ...(config.allowedScripts || {}),
-      ...(result.metadata?.allowedScripts || {}),
+
+    if (result.metadata?.toolModes) {
+      this.toolModes.value = { ...result.metadata.toolModes }
+    } else {
+      // Migrate from old boolean format
+      this.toolModes.value = migrateOldPermissions(result.metadata, config as any)
     }
-    this.allowCreateScript.value =
-      result.metadata?.allowCreateScript ?? config.allowCreateScript ?? false
-    this.allowReadLogs.value = result.metadata?.allowReadLogs ?? config.allowReadLogs ?? false
-    this.allowReadBacklinks.value =
-      result.metadata?.allowReadBacklinks ?? config.allowReadBacklinks ?? false
-    this.allowReadTransactions.value =
-      result.metadata?.allowReadTransactions ?? config.allowReadTransactions ?? false
-    this.allowReadTasks.value = result.metadata?.allowReadTasks ?? config.allowReadTasks ?? false
-    this.allowOpenFile.value = result.metadata?.allowOpenFile ?? config.allowOpenFile ?? false
 
     // Restore scope
     if (result.metadata?.scopeEntries) {
@@ -1028,40 +966,8 @@ export class ChatSession {
   }
 
   /** Get permissions snapshot for sub-agent runner */
-  getPermissions(): {
-    allowWebSearch: boolean
-    allowFetch: boolean
-    allowDownload: boolean
-    allowWiseModel: boolean
-    allowImageGeneration: boolean
-    allowEvalJs: boolean
-    allowCreateFiles: boolean
-    allowScripts: boolean
-    allowedScripts: Record<string, boolean>
-    allowCreateScript: boolean
-    allowReadLogs: boolean
-    allowReadBacklinks: boolean
-    allowReadTransactions: boolean
-    allowReadTasks: boolean
-    allowOpenFile: boolean
-  } {
-    return {
-      allowWebSearch: this.allowWebSearch.value,
-      allowFetch: this.allowFetch.value,
-      allowDownload: this.allowDownload.value,
-      allowWiseModel: this.allowWiseModel.value,
-      allowImageGeneration: this.allowImageGeneration.value,
-      allowEvalJs: this.allowEvalJs.value,
-      allowCreateFiles: this.allowCreateFiles.value,
-      allowScripts: this.allowScripts.value,
-      allowedScripts: { ...this.allowedScripts.value },
-      allowCreateScript: this.allowCreateScript.value,
-      allowReadLogs: this.allowReadLogs.value,
-      allowReadBacklinks: this.allowReadBacklinks.value,
-      allowReadTransactions: this.allowReadTransactions.value,
-      allowReadTasks: this.allowReadTasks.value,
-      allowOpenFile: this.allowOpenFile.value,
-    }
+  getPermissions(): Record<string, ToolMode> {
+    return { ...this.toolModes.value }
   }
 
   // ── Background tasks ──────────────────────────────────────────
