@@ -19,7 +19,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { TFile } from 'obsidian'
 import ObsidianModal from './obsidian/Modal.vue'
 import Icon from './obsidian/Icon.vue'
@@ -33,6 +33,10 @@ const emit = defineEmits<{
 }>()
 
 const chats = ref<AiChatHistoryEntry[]>(ChatStorage.getInstance().getHistory())
+
+onMounted(async () => {
+  chats.value = await ChatStorage.getInstance().refreshHistory()
+})
 
 const select = (path: string) => {
   const { app } = GlobalStore.getInstance()

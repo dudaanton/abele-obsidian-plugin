@@ -92,6 +92,55 @@ export class ChatStorage {
     return AbeleConfig.getInstance().ai.chatHistory || []
   }
 
+  /** Scan chat folder for files not yet in history and add them */
+  async refreshHistory(): Promise<AiChatHistoryEntry[]> {
+    const config = AbeleConfig.getInstance()
+    const { app } = GlobalStore.getInstance()
+
+    if (!config.ai.chatHistory) config.ai.chatHistory = []
+    const known = new Set(config.ai.chatHistory.map((e) => e.path))
+
+    // Derive base folder from chatFolder template (strip {{...}} parts)
+    const baseFolder = config.ai.chatFolder.replace(/\/?\{\{.*$/, '').replace(/\/$/, '')
+    if (!baseFolder) return config.ai.chatHistory
+
+    const folder = app.vault.getAbstractFileByPath(baseFolder)
+    if (!folder) return config.ai.chatHistory
+
+    const files: TFile[] = []
+    const collect = (f: any) => {
+      if (f instanceof TFile && f.extension === 'json' && !known.has(f.path)) {
+        files.push(f)
+      }
+      if (f.children) f.children.forEach(collect)
+    }
+    collect(folder)
+
+    let added = 0
+    for (const file of files) {
+      try {
+        const content = await app.vault.read(file)
+        const data: ChatFile = JSON.parse(content)
+        if (data.metadata?.type !== 'abele-chat') continue
+        config.ai.chatHistory.push({
+          path: file.path,
+          title: data.metadata.title || file.basename,
+          created: data.metadata.created || '',
+        })
+        added++
+      } catch {
+        // Not a valid chat file
+      }
+    }
+
+    if (added) {
+      config.ai.chatHistory.sort((a, b) => (b.created || '').localeCompare(a.created || ''))
+      config.saveSettings()
+    }
+
+    return config.ai.chatHistory
+  }
+
   async renameChat(file: TFile, newTitle: string): Promise<TFile | null> {
     const { app } = GlobalStore.getInstance()
     const oldPath = file.path
