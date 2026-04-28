@@ -36,6 +36,10 @@ const props = defineProps<{
   accountPath: string
 }>()
 
+const emit = defineEmits<{
+  (e: 'periodChange', start: dayjs.Dayjs, end: dayjs.Dayjs): void
+}>()
+
 const store = GlobalStore.getInstance()
 
 const periodStart = ref<dayjs.Dayjs>(dayjs().startOf('month'))
@@ -226,6 +230,14 @@ function renderChart() {
 }
 
 watch([chartData, chartEl], () => nextTick(renderChart), { immediate: true })
+
+watch(
+  [periodStart, periodEnd],
+  () => {
+    emit('periodChange', periodStart.value, periodEnd.value)
+  },
+  { immediate: true }
+)
 
 onUnmounted(() => {
   chart?.dispose()

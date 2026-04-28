@@ -2,7 +2,11 @@
   <div v-if="footer.loaded" class="abele-footer-view">
     <TodoList v-if="todoTasks.length" :tasks="todoTasks" />
     <Timeline v-if="timelineTasks.length" :tasks="timelineTasks" title="Calendar tasks" />
-    <AccountBalanceChart v-if="footer.type === 'account'" :account-path="footer.filePath" />
+    <AccountBalanceChart
+      v-if="footer.type === 'account'"
+      :account-path="footer.filePath"
+      @period-change="onPeriodChange"
+    />
     <TransactionsListView
       v-if="transactions.length"
       :transactions="transactions"
@@ -16,8 +20,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Footer } from '@/entities/Footer'
+import dayjs from 'dayjs'
 import Timeline from './Timeline.vue'
 import TodoList from './TodoList.vue'
 import AccountBalanceChart from './AccountBalanceChart.vue'
@@ -39,10 +44,27 @@ const tasks = computed(() => {
 const todoTasks = computed(() => tasks.value.filter((t) => !t.taskNotFound && !t.dates.length))
 const timelineTasks = computed(() => tasks.value.filter((t) => !t.taskNotFound && t.dates.length))
 
+const chartPeriodStart = ref<dayjs.Dayjs | null>(null)
+const chartPeriodEnd = ref<dayjs.Dayjs | null>(null)
+
+const onPeriodChange = (start: dayjs.Dayjs, end: dayjs.Dayjs) => {
+  chartPeriodStart.value = start
+  chartPeriodEnd.value = end
+}
+
 const transactions = computed(() => {
-  return Array.from(props.footer.noteRelations.transactions.values()).filter(
+  let txs = Array.from(props.footer.noteRelations.transactions.values()).filter(
     (t) => !t.transactionNotFound
   )
+  if (props.footer.type === 'account' && chartPeriodStart.value && chartPeriodEnd.value) {
+    const start = chartPeriodStart.value
+    const end = chartPeriodEnd.value
+    txs = txs.filter((t) => {
+      if (!t.date) return false
+      return !t.date.isBefore(start, 'day') && !t.date.isAfter(end, 'day')
+    })
+  }
+  return txs
 })
 
 const timeEntries = computed(() => {

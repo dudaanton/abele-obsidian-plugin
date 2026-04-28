@@ -106,7 +106,10 @@ const emit = defineEmits<{
 const { app } = GlobalStore.getInstance()
 
 const activeFilePath = computed(() => app.workspace.getActiveFile()?.path || '')
-const activeFileName = computed(() => app.workspace.getActiveFile()?.name || '')
+const activeFileName = computed(() => {
+  const name = app.workspace.getActiveFile()?.name || ''
+  return name.length > 30 ? name.slice(0, 27) + '...' : name
+})
 
 const addCurrentFile = () => {
   if (activeFilePath.value) {
