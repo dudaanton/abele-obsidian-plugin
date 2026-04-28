@@ -26,8 +26,26 @@ interface ChartConfig {
   series: SeriesConfig[]
 }
 
-const FORMULA_ALIASES: Record<string, string> = {
-  ln: 'log',
+/**
+ * Preprocess formula:
+ * - ln → log
+ * - Ternary `cond ? a : b` → `ifElse(cond, a, b)` (fparser built-in)
+ * - `==` → `=` (fparser comparison operator)
+ */
+function preprocess(expr: string): string {
+  let s = String(expr)
+  s = s.replace(/\bln\b/g, 'log')
+  // Ternary → ifElse (handle innermost first)
+  while (/\?/.test(s)) {
+    const replaced = s.replace(
+      /([^?,]+?)\s*\?\s*([^?,]+?)\s*:\s*([^?,]+)/,
+      (_, cond, then, els) => `ifElse(${cond.trim()}, ${then.trim()}, ${els.trim()})`
+    )
+    if (replaced === s) break
+    s = replaced
+  }
+  s = s.replace(/==/g, '=')
+  return s
 }
 
 function evaluateFormula(
@@ -36,12 +54,7 @@ function evaluateFormula(
   to: number,
   step: number
 ): Array<[number, number]> {
-  // Register aliases
-  let processed = String(expr)
-  for (const [alias, fn] of Object.entries(FORMULA_ALIASES)) {
-    processed = processed.replace(new RegExp(`\\b${alias}\\b`, 'g'), fn)
-  }
-
+  const processed = preprocess(expr)
   const formula = new Formula(processed)
   const points: Array<[number, number]> = []
 
@@ -52,7 +65,7 @@ function evaluateFormula(
         points.push([Math.round(x * 1e10) / 1e10, y])
       }
     } catch {
-      // Skip points where formula is undefined
+      // Skip undefined points
     }
   }
 
@@ -210,24 +223,22 @@ export function registerChartCodeblock(
       }
     }
 
-    // Defer init until container is visible (fixes charts not rendering on note open)
-    const visObs = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          visObs.disconnect()
-          initChart()
-        }
-      },
-      { threshold: 0.01 }
-    )
-    visObs.observe(container)
+    // Defer init until container has dimensions
+    const tryInit = () => {
+      if (chart || !el.isConnected) return
+      if (container.offsetWidth > 0) {
+        initChart()
+      } else {
+        requestAnimationFrame(tryInit)
+      }
+    }
+    requestAnimationFrame(tryInit)
 
     // Cleanup when element is removed from DOM
     const mutObs = new MutationObserver(() => {
       if (!el.isConnected) {
         chart?.dispose()
         resizeObs?.disconnect()
-        visObs.disconnect()
         mutObs.disconnect()
       }
     })

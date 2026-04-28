@@ -15,6 +15,7 @@ title: My Chart     # optional title
 smooth: true        # smooth lines (default: false)
 showDots: true      # show data points (default: true for data, false for formulas)
 legend: false       # show legend (default: true when multiple series)
+precision: 2        # decimal places in tooltip (default: 2)
 xAxis: Time         # optional x-axis label
 yAxis: Value        # optional y-axis label
 series:
@@ -51,13 +52,16 @@ Define \`x\` range as \`[from, to]\` or \`[from, to, step]\`. Default step auto-
 \`sinh\`, \`cosh\`, \`tanh\`,
 \`exp\`, \`log\` (natural), \`ln\` (alias for log), \`log2\`, \`log10\`,
 \`sqrt\`, \`abs\`, \`ceil\`, \`floor\`, \`round\`,
-\`pow\`, \`min\`, \`max\`
+\`pow\`, \`min\`, \`max\`,
+\`ifElse(condition, valueIfTrue, valueIfFalse)\`
 
 ### Constants
 \`PI\`, \`E\`
 
 ### Operators
-\`+\`, \`-\`, \`*\`, \`/\`, \`^\` (power)
+- Arithmetic: \`+\`, \`-\`, \`*\`, \`/\`, \`^\` (power)
+- Comparison: \`=\`, \`!=\`, \`<\`, \`>\`, \`<=\`, \`>=\` (return 1 or 0)
+- Ternary: \`condition ? then : else\` (auto-converted to ifElse)
 
 ### Examples
 
@@ -91,6 +95,15 @@ x: [-5, 5, 0.1]
 series:
   - name: y = x² - 3
     formula: x^2 - 3
+\`\`\`
+
+Piecewise function:
+\`\`\`yaml
+type: line
+x: [-5, 5, 0.05]
+series:
+  - name: piecewise
+    formula: x < 0 ? -x : x^2
 \`\`\`
 
 ## Pie Charts
