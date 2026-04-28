@@ -247,7 +247,11 @@ export async function applyTemplateVariables(
         break
     }
 
-    // Replace all occurrences of this exact variable
+    // For list/wiki_list: strip surrounding quotes so YAML array isn't wrapped in a string
+    if ((variable.type === 'list' || variable.type === 'wiki_list') && value.includes('\n')) {
+      result = result.split(`"${variable.raw}"`).join(value)
+      result = result.split(`'${variable.raw}'`).join(value)
+    }
     result = result.split(variable.raw).join(value)
   }
 

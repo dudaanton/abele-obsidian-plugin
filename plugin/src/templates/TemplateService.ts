@@ -7,6 +7,8 @@ import { getAvailablePath } from '@/helpers/vaultUtils'
 /** Wrap value in quotes if it contains a colon (breaks YAML), but leave wikilinks and arrays as-is */
 function escapeFrontmatterValue(value: string): string {
   if (value.startsWith('[') || value.startsWith('[[')) return value
+  // Multi-line YAML list from formatListValue — already formatted
+  if (value.includes('\n  - ')) return value
   if (value.includes(':') || value.trim() !== value) {
     return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
   }
