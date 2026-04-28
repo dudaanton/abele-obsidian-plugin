@@ -55,6 +55,7 @@
     "dayjs": "^1.11.18",
     "echarts": "^6.0.0",
     "file-type": "^20.5.0",
+    "fparser": "^4.2.0",
     "front-matter": "^4.0.2",
     "lucide-vue-next": "^0.284.0",
     "nanoid": "^5.1.6",

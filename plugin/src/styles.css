@@ -137,3 +137,15 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   opacity: 0.4;
   cursor: default;
 }
+
+/* Chart codeblock */
+.abele-chart-container {
+  border-radius: var(--radius-m);
+  overflow: hidden;
+}
+
+.abele-chart-error {
+  padding: var(--size-4-3);
+  color: var(--text-error);
+  font-size: var(--font-small);
+}
