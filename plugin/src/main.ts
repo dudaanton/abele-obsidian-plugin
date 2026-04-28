@@ -59,6 +59,8 @@ import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
 import { readFileContent } from './helpers/vaultUtils'
 import { runAfterSync } from './helpers/runAfterSync'
 import { handleProtocolAction } from './helpers/protocolHandler'
+import { handleLinkAction } from './helpers/linkHandler'
+import { registerChartCodeblock } from './editor/ChartCodeblock'
 
 interface PluginData {}
 
@@ -114,6 +116,9 @@ export default class AbelePlugin extends Plugin {
       GlobalStore.getInstance().initTasksList()
       GlobalStore.getInstance().initFinance()
       GlobalStore.getInstance().initTimeTracking()
+      if (AbeleConfig.getInstance().ai.enabled) {
+        AgentService.getInstance().restoreTabs()
+      }
     })
 
     this.addSettingTab(new AbeleSettingTab(this.app, this))
@@ -219,6 +224,10 @@ export default class AbelePlugin extends Plugin {
     //   -100,
     //   async (source: string, el, ctx) => TaskRenderer.register(source, el, ctx)
     // )
+
+    registerChartCodeblock((lang, handler) =>
+      this.registerMarkdownCodeBlockProcessor(lang, handler)
+    )
 
     this.registerEvent(
       this.app.workspace.on('css-change', () => {
@@ -554,6 +563,13 @@ export default class AbelePlugin extends Plugin {
     this.registerObsidianProtocolHandler('abele', (params) => {
       runAfterSync(this.app, () => {
         handleProtocolAction(this.app, params)
+      })
+    })
+
+    // Register protocol handler for obsidian://abele-link
+    this.registerObsidianProtocolHandler('abele-link', (params) => {
+      runAfterSync(this.app, () => {
+        handleLinkAction(params)
       })
     })
 
