@@ -156,6 +156,7 @@ import { discoverSkills } from '@/ai/tools/SkillTool'
 import { getChildren } from '@/ai/chatTree'
 
 const agentService = AgentService.getInstance()
+agentService.ensureInitialized()
 const session = computed(() => agentService.activeSession.value)
 
 // Reactive state from active session
@@ -350,6 +351,7 @@ watch(
   () => {
     shouldAutoScroll = true
     nextTick(doScroll)
+    chatInput.value?.setText('')
   }
 )
 
@@ -387,6 +389,12 @@ onUnmounted(() => mutObserver?.disconnect())
 const onSend = async (content: string, attachments: string[] = []) => {
   const s = session.value
   if (!s) return
+
+  // Auto-reject pending tool call when user sends a message instead
+  if (s.pendingToolCalls.value.length > 0) {
+    s.rejectToolCall('User sent a new message')
+  }
+
   const fileRefs = content.match(/@([\w/.@\s-]+\.\w+)/g)
   if (fileRefs) {
     for (const r of fileRefs) {
@@ -570,6 +578,7 @@ const onLoadChat = async (file: TFile) => {
   }
   // Load into the current tab
   await session.value?.load(file)
+  agentService.saveTabs()
 }
 
 const showDebug = () => {

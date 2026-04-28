@@ -9,11 +9,18 @@ import { getNoteBody } from '@/helpers/notesUtils'
 import { ChatSession } from './ChatSession'
 
 const MAX_TABS = 8
+const STORAGE_KEY = 'abele-agent-tabs'
+
+interface TabsState {
+  tabs: Array<{ chatFilePath: string | null }>
+  activeIndex: number
+}
 
 export class AgentService {
   private static instance: AgentService | null = null
 
   private sessions = new Map<string, ChatSession>()
+  private tabsRestored = false
   public readonly activeTabId = ref<string | null>(null)
   public readonly tabOrder = ref<string[]>([])
 
@@ -29,8 +36,93 @@ export class AgentService {
   }
 
   private constructor() {
-    // Create the initial default tab
-    this.createTab()
+    // Will be initialized by restoreTabs() or fallback to createTab()
+  }
+
+  /** Ensure at least one tab exists (called from components before restoreTabs) */
+  ensureInitialized(): void {
+    if (!this.tabsRestored && this.sessions.size === 0) {
+      this.createTab()
+    }
+  }
+
+  /** Call after plugin load to restore tabs from previous session */
+  async restoreTabs(): Promise<void> {
+    this.tabsRestored = true
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) {
+      if (this.sessions.size === 0) this.createTab()
+      return
+    }
+
+    // Clear any tabs created before restore
+    for (const session of this.sessions.values()) session.destroy()
+    this.sessions.clear()
+    this.tabOrder.value = []
+    this.activeTabId.value = null
+
+    try {
+      const state: TabsState = JSON.parse(raw)
+      if (!state.tabs?.length) {
+        this.createTab()
+        return
+      }
+
+      const { app } = GlobalStore.getInstance()
+      let restoredAny = false
+
+      for (const tab of state.tabs) {
+        if (!tab.chatFilePath) {
+          // Empty tab — just create a new one
+          this.createTab()
+          restoredAny = true
+          continue
+        }
+
+        const file = app.vault.getAbstractFileByPath(tab.chatFilePath)
+        if (!(file instanceof TFile)) continue
+
+        const session = new ChatSession(this)
+        this.sessions.set(session.id, session)
+        this.tabOrder.value = [...this.tabOrder.value, session.id]
+
+        try {
+          await session.load(file)
+        } catch (e) {
+          console.error(`[Abele] Failed to restore tab ${tab.chatFilePath}:`, e)
+          session.destroy()
+          this.sessions.delete(session.id)
+          this.tabOrder.value = this.tabOrder.value.filter((id) => id !== session.id)
+          continue
+        }
+
+        restoredAny = true
+      }
+
+      if (!restoredAny) {
+        this.createTab()
+        return
+      }
+
+      // Restore active tab
+      const activeIdx = Math.min(state.activeIndex, this.tabOrder.value.length - 1)
+      this.activeTabId.value = this.tabOrder.value[Math.max(0, activeIdx)]
+    } catch (e) {
+      console.error('[Abele] Failed to parse saved tabs:', e)
+      if (this.sessions.size === 0) this.createTab()
+    }
+  }
+
+  /** Persist current tabs state to localStorage */
+  saveTabs(): void {
+    const state: TabsState = {
+      tabs: this.tabOrder.value.map((id) => {
+        const session = this.sessions.get(id)
+        return { chatFilePath: session?.currentChatFile.value?.path ?? null }
+      }),
+      activeIndex: this.activeTabId.value ? this.tabOrder.value.indexOf(this.activeTabId.value) : 0,
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   }
 
   // ── Session / tab management ──────────────────────────────────
@@ -44,6 +136,7 @@ export class AgentService {
     this.sessions.set(session.id, session)
     this.tabOrder.value = [...this.tabOrder.value, session.id]
     this.activeTabId.value = session.id
+    if (this.tabsRestored) this.saveTabs()
     return session.id
   }
 
@@ -67,11 +160,13 @@ export class AgentService {
     if (this.activeTabId.value === tabId) {
       this.activeTabId.value = this.tabOrder.value[this.tabOrder.value.length - 1]
     }
+    this.saveTabs()
   }
 
   switchTab(tabId: string): void {
     if (this.sessions.has(tabId)) {
       this.activeTabId.value = tabId
+      this.saveTabs()
     }
   }
 
