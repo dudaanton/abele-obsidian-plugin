@@ -2,7 +2,7 @@
   <div class="abele-settings__links">
     <p class="setting-item-description">
       Create custom deeplinks that trigger scripts with URL parameters.<br />
-      Format: <code>obsidian://abele-link?name=link-name&amp;param1=value1&amp;param2=value2</code>
+      Format: <code>obsidian://abele?name=link-name&amp;param1=value1&amp;param2=value2</code>
     </p>
 
     <div v-if="links.length" class="abele-links__list">
@@ -48,8 +48,10 @@ import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
 import { AbeleConfig, type LinkDefinition } from '@/services/AbeleConfig'
 import { ScriptService } from '@/scripting/ScriptService'
+import { GlobalStore } from '@/stores/GlobalStore'
 
 const config = AbeleConfig.getInstance()
+const vaultName = GlobalStore.getInstance().app.vault.getName()
 const links = ref<LinkDefinition[]>(JSON.parse(JSON.stringify(config.links || [])))
 
 const scriptOptions = computed(() => {
@@ -81,8 +83,8 @@ const updateField = (idx: number, field: 'name' | 'scriptName', value: string) =
 }
 
 const buildUrl = (link: LinkDefinition): string => {
-  if (!link.name) return 'obsidian://abele-link?name=...'
-  return `obsidian://abele-link?name=${link.name}`
+  if (!link.name) return 'obsidian://abele?name=...'
+  return `obsidian://abele?vault=${encodeURIComponent(vaultName)}&name=${link.name}`
 }
 
 const copyUrl = (link: LinkDefinition) => {
