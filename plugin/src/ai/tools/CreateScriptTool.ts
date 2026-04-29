@@ -22,11 +22,16 @@ Every script must start with a comment block declaring its metadata:
 // @param paramName string "Required string parameter"
 // @param count number? "Optional number parameter"
 // @param dryRun boolean? "Optional flag (shown as toggle in UI)"
+// @param style string "CSS style" = "bold"
+// @param limit number? "Max results" = 50
+// @param verbose boolean? "Verbose output" = true
 \`\`\`
 
-- Parameter types: \`string\`, \`number\`, \`boolean\`
+- Parameter types: \`string\`, \`number\`, \`boolean\`, \`text\`
 - Add \`?\` after type for optional (e.g. \`number?\`)
 - Boolean params are rendered as toggles, not text inputs
+- Default values: add \`= value\` after description. Use quotes for strings with spaces: \`= "my value"\`
+- Defaults pre-fill the form UI and are used as fallback when the param is not provided (e.g. via link URL)
 - Parameters are available via the \`params\` object (e.g. \`params.paramName\`)
 
 ---

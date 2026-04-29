@@ -3,6 +3,7 @@ export interface ScriptParam {
   type: 'string' | 'number' | 'boolean' | 'text'
   required: boolean
   description: string
+  default?: string
 }
 
 export interface ScriptMeta {

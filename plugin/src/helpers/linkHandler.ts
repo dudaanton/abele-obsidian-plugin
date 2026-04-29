@@ -1,12 +1,12 @@
-import { Notice } from 'obsidian'
+import { App, Notice } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ScriptService } from '@/scripting/ScriptService'
 
 /**
- * Handle obsidian://abele-link?name=xxx&param1=val1&param2=val2
- * Finds the link definition by name, resolves the script, and executes it with query params.
+ * Handle obsidian://abele?name=xxx&param1=val1&param2=val2
+ * Finds the link definition by name and executes a script or Obsidian command.
  */
-export async function handleLinkAction(params: Record<string, string>): Promise<void> {
+export async function handleLinkAction(app: App, params: Record<string, string>): Promise<void> {
   const linkName = params.name
   if (!linkName) {
     new Notice('Abele Link: missing "name" parameter')
@@ -20,6 +20,22 @@ export async function handleLinkAction(params: Record<string, string>): Promise<
     return
   }
 
+  if (link.type === 'command') {
+    if (!link.commandId) {
+      new Notice('Abele Link: no command configured')
+      return
+    }
+    try {
+      ;(app as any).commands.executeCommandById(link.commandId)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      new Notice(`Abele Link error: ${msg}`, 10000)
+      console.error(`[Abele Link] Error executing command ${link.commandId}:`, err)
+    }
+    return
+  }
+
+  // type === 'script'
   const service = ScriptService.getInstance()
   const script = service.getAll().find((s) => s.meta.name === link.scriptName)
   if (!script) {
@@ -27,10 +43,13 @@ export async function handleLinkAction(params: Record<string, string>): Promise<
     return
   }
 
-  // All query params except "name" are passed to the script
+  // Apply param defaults, then override with URL query params
   const scriptParams: Record<string, unknown> = {}
+  for (const p of script.meta.params) {
+    if (p.default !== undefined) scriptParams[p.name] = p.default
+  }
   for (const [key, value] of Object.entries(params)) {
-    if (key !== 'name') scriptParams[key] = value
+    if (key !== 'name' && key !== 'vault') scriptParams[key] = value
   }
 
   try {

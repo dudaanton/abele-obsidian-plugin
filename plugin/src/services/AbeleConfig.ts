@@ -31,13 +31,17 @@ export interface AbeleSettings {
   // Links
   links?: LinkDefinition[]
   // Other
+  snippetsFolder?: string
   fullWidthSidebars?: boolean
 }
 
 export interface LinkDefinition {
   id: string
   name: string
+  type: 'script' | 'command'
   scriptName: string
+  commandId: string
+  waitForSync: boolean
 }
 
 export const DEFAULT_SETTINGS: AbeleSettings = {
@@ -64,6 +68,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   timeTrackableNoteTypes: ['task'],
   timeTrackAllNotes: false,
   links: [],
+  snippetsFolder: '',
   fullWidthSidebars: false,
 }
 
@@ -95,6 +100,7 @@ export class AbeleConfig {
   public timeTrackableNoteTypes: string[]
   public timeTrackAllNotes: boolean
   public links: LinkDefinition[]
+  public snippetsFolder: string
   public fullWidthSidebars: boolean
 
   public get logsNotesTypes(): string[] {
@@ -223,7 +229,13 @@ export class AbeleConfig {
       ...DEFAULT_SETTINGS.timeTrackableNoteTypes,
     ]
     this.timeTrackAllNotes = settings?.timeTrackAllNotes ?? DEFAULT_SETTINGS.timeTrackAllNotes
-    this.links = settings?.links || []
+    this.links = (settings?.links || []).map((l) => ({
+      ...l,
+      type: l.type || 'script',
+      commandId: l.commandId || '',
+      waitForSync: l.waitForSync ?? true,
+    }))
+    this.snippetsFolder = settings?.snippetsFolder ?? DEFAULT_SETTINGS.snippetsFolder
     this.fullWidthSidebars = settings?.fullWidthSidebars ?? DEFAULT_SETTINGS.fullWidthSidebars
   }
 
@@ -252,6 +264,7 @@ export class AbeleConfig {
       timeTrackableNoteTypes: [...this.timeTrackableNoteTypes],
       timeTrackAllNotes: this.timeTrackAllNotes,
       links: [...this.links],
+      snippetsFolder: this.snippetsFolder,
       fullWidthSidebars: this.fullWidthSidebars,
     }
   }

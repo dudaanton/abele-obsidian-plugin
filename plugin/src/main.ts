@@ -2,8 +2,10 @@ import {
   Editor,
   MarkdownPostProcessorContext,
   MarkdownView,
+  Notice,
   Plugin,
   TFile,
+  TFolder,
   WorkspaceLeaf,
 } from 'obsidian'
 import './styles.css'
@@ -61,6 +63,7 @@ import { runAfterSync } from './helpers/runAfterSync'
 import { handleProtocolAction } from './helpers/protocolHandler'
 import { handleLinkAction } from './helpers/linkHandler'
 import { registerChartCodeblock } from './editor/ChartCodeblock'
+import { SnippetService } from './services/SnippetService'
 
 interface PluginData {}
 
@@ -116,6 +119,7 @@ export default class AbelePlugin extends Plugin {
       GlobalStore.getInstance().initTasksList()
       GlobalStore.getInstance().initFinance()
       GlobalStore.getInstance().initTimeTracking()
+      SnippetService.getInstance().init()
       if (AbeleConfig.getInstance().ai.enabled) {
         AgentService.getInstance().restoreTabs()
       }
@@ -282,6 +286,30 @@ export default class AbelePlugin extends Plugin {
 
     this.registerEvent(
       this.app.workspace.on('file-menu', (menu, file) => {
+        // "Use in AI Agent" for folders
+        if (file instanceof TFolder && AbeleConfig.getInstance().ai.enabled) {
+          menu.addItem((item) => {
+            item
+              .setTitle('Use in AI Agent')
+              .setIcon('bot')
+              .onClick(async () => {
+                const agentService = AgentService.getInstance()
+                const session = agentService.activeSession.value
+                if (!session) return
+                session.scopeResolver.addFolder(file.path)
+                session.scopeResolver.invalidate()
+                const { workspace } = this.app
+                let leaf = workspace.getLeavesOfType(AI_SIDEBAR_VIEW_TYPE)[0] ?? null
+                if (!leaf) {
+                  leaf = workspace.getRightLeaf(false)
+                  await leaf.setViewState({ type: AI_SIDEBAR_VIEW_TYPE, active: true })
+                }
+                workspace.revealLeaf(leaf)
+              })
+          })
+          return
+        }
+
         if (!(file instanceof TFile)) return
 
         // "Preview" for images
@@ -604,6 +632,35 @@ export default class AbelePlugin extends Plugin {
       },
     })
 
+    this.addCommand({
+      id: 'open-today-daily-note',
+      name: "Open today's daily note",
+      callback: () => {
+        const journal = AbeleConfig.getInstance().journals.find((j) => j.isDefaultDailyJournal)
+        if (!journal) {
+          new Notice('No default daily journal configured')
+          return
+        }
+        journal.createJournalNote(dayjs())
+      },
+    })
+
+    this.addCommand({
+      id: 'create-css-snippet',
+      name: 'Create CSS snippet',
+      callback: () => {
+        SnippetService.getInstance().createSnippet()
+      },
+    })
+
+    this.addCommand({
+      id: 'create-script',
+      name: 'Create script',
+      callback: () => {
+        ScriptService.getInstance().createScript()
+      },
+    })
+
     this.addRibbonIcon(TimelineSidebarView.getIcon(), 'Show timeline sidebar', () => {
       this.activateView(TIMELINE_SIDEBAR_VIEW_TYPE)
     })
@@ -628,13 +685,24 @@ export default class AbelePlugin extends Plugin {
     // Register protocol handler for obsidian://abele
     // Routes to link handler when "name" param is present, otherwise to protocol action
     this.registerObsidianProtocolHandler('abele', (params) => {
-      runAfterSync(this.app, () => {
+      const exec = () => {
         if (params.name) {
-          handleLinkAction(params)
+          handleLinkAction(this.app, params)
         } else {
           handleProtocolAction(this.app, params)
         }
-      })
+      }
+
+      // Check if the link opts out of sync waiting
+      if (params.name) {
+        const link = AbeleConfig.getInstance().links.find((l) => l.name === params.name)
+        if (link && !link.waitForSync) {
+          exec()
+          return
+        }
+      }
+
+      runAfterSync(this.app, exec)
     })
 
     // Register default template hook only after workspace is ready
@@ -692,6 +760,7 @@ export default class AbelePlugin extends Plugin {
       this.vueApp.unmount()
       document.getElementById('abele-vue-root')?.remove()
     }
+    SnippetService.destroy()
     ScriptService.destroy()
     AgentService.getInstance().destroy()
     ScopeResolver.getInstance().destroy()

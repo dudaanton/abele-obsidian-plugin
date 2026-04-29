@@ -40,18 +40,32 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
 }
 
 /**
- * Parse a @param line body: `paramName type[?] "description"`
+ * Parse a @param line body: `paramName type[?] "description" [= default]`
+ *
+ * Default value formats:
+ *   // @param style string "CSS style" = "bold"
+ *   // @param count number? "How many" = 5
+ *   // @param enabled boolean "Feature flag" = true
  */
 function parseParam(raw: string): ScriptParam | null {
-  const match = raw.match(/^(\w+)\s+(string|number|boolean|text)(\?)?\s+"([^"]*)"/)
+  const match = raw.match(
+    /^(\w+)\s+(string|number|boolean|text)(\?)?\s+"([^"]*)"(?:\s*=\s*(?:"([^"]*)"|(\S+)))?/
+  )
   if (!match) return null
 
-  return {
+  const param: ScriptParam = {
     name: match[1],
     type: match[2] as ScriptParam['type'],
     required: !match[3],
     description: match[4],
   }
+
+  const defaultValue = match[5] ?? match[6]
+  if (defaultValue !== undefined) {
+    param.default = defaultValue
+  }
+
+  return param
 }
 
 /**

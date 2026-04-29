@@ -1,4 +1,4 @@
-import { TFile, TAbstractFile, debounce, Notice, EventRef } from 'obsidian'
+import { TFile, TAbstractFile, debounce, Notice, EventRef, Modal, normalizePath } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
@@ -39,6 +39,68 @@ export class ScriptService {
   init() {
     this.discover()
     this.startWatching()
+  }
+
+  async createScript(): Promise<void> {
+    const config = AbeleConfig.getInstance()
+    const folder = config.ai.scriptsFolder
+    if (!folder) {
+      new Notice('Scripts folder is not configured')
+      return
+    }
+
+    const { app } = GlobalStore.getInstance()
+    const name = await new Promise<string | null>((resolve) => {
+      const modal = new (class extends Modal {
+        onOpen() {
+          const { contentEl } = this
+          contentEl.createEl('h3', { text: 'New script' })
+          const input = contentEl.createEl('input', {
+            type: 'text',
+            placeholder: 'filename',
+          })
+          input.style.width = '100%'
+          input.focus()
+          input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && input.value.trim()) {
+              resolve(input.value.trim())
+              this.close()
+            }
+          })
+          this.modalEl.addEventListener('click', (e) => {
+            if (e.target === this.modalEl) {
+              resolve(null)
+              this.close()
+            }
+          })
+        }
+        onClose() {
+          resolve(null)
+        }
+      })(app)
+      modal.open()
+    })
+
+    if (!name) return
+
+    const filename = name.endsWith('.js') ? name : `${name}.js`
+    const path = normalizePath(`${folder}/${filename}`)
+
+    if (!app.vault.getAbstractFileByPath(folder)) {
+      await app.vault.createFolder(folder)
+    }
+
+    if (app.vault.getAbstractFileByPath(path)) {
+      new Notice(`File already exists: ${path}`)
+      return
+    }
+
+    const scriptName = filename.replace(/\.js$/, '')
+    const template = `// @name ${scriptName}\n// @description \n\n`
+    const file = await app.vault.create(path, template)
+
+    const leaf = app.workspace.getLeaf('tab')
+    await leaf.openFile(file)
   }
 
   private cleanup() {
@@ -274,6 +336,7 @@ export class ScriptService {
             ? ('textarea' as const)
             : ('text' as const),
       required: p.required,
+      default: p.default,
     }))
     const result = await this.showFormModal(fields)
     if (!result) return null
