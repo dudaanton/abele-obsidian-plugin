@@ -44,17 +44,59 @@ function extFromUrl(url: string): string | null {
   return null
 }
 
+interface DownloadOptions {
+  url: string
+  filename?: string
+  defaultExt: string
+  overrideExt?: string
+  method?: string
+  headers?: Record<string, string>
+  body?: string
+}
+
 async function downloadToVault(
   rawUrl: string,
   filename: string | undefined,
   defaultExt: string,
-  overrideExt?: string
+  overrideExt?: string,
+  method?: string,
+  rawHeaders?: Record<string, string>,
+  body?: string
 ): Promise<string> {
   const url = substituteSecrets(rawUrl)
 
-  const response = await requestUrl({ url, method: 'GET', throw: false })
+  // Substitute secrets in header values
+  const headers: Record<string, string> = {}
+  if (rawHeaders) {
+    for (const [k, v] of Object.entries(rawHeaders)) {
+      headers[k] = substituteSecrets(v)
+    }
+  }
+
+  const reqOpts: {
+    url: string
+    method: string
+    headers?: Record<string, string>
+    body?: string
+    contentType?: string
+    throw: boolean
+  } = {
+    url,
+    method: method || 'GET',
+    throw: false,
+  }
+  if (Object.keys(headers).length) reqOpts.headers = headers
+  if (body) {
+    reqOpts.body = body
+    if (!headers['content-type'] && !headers['Content-Type']) {
+      reqOpts.contentType = 'application/json'
+    }
+  }
+
+  const response = await requestUrl(reqOpts as any)
   if (response.status < 200 || response.status >= 300) {
-    throw new Error(`HTTP ${response.status}`)
+    const text = response.text?.slice(0, 500) || ''
+    throw new Error(`HTTP ${response.status}: ${text}`)
   }
 
   const contentType = response.headers['content-type'] || ''
@@ -109,7 +151,7 @@ export function createDownloadFileTool(): AgentTool {
     name: 'download_file',
     label: 'Download File',
     description:
-      'Download any file from a URL and save it to the vault attachments folder. Returns the vault path of the saved file. Supports ${abele_key:name} substitution in the URL. Specify extension when content-type is unreliable (e.g. for video: "mp4").',
+      'Download any file from a URL and save it to the vault attachments folder. Supports GET and POST requests, custom headers, and request body. Returns the vault path of the saved file. Supports ${abele_key:name} substitution in the URL and header values for API keys.',
     parameters: {
       type: 'object',
       properties: {
@@ -121,7 +163,21 @@ export function createDownloadFileTool(): AgentTool {
         extension: {
           type: 'string',
           description:
-            'File extension to use (e.g. "mp4", "pdf", "zip"). Overrides auto-detection from content-type and URL.',
+            'File extension to use (e.g. "mp3", "mp4", "pdf"). Overrides auto-detection from content-type.',
+        },
+        method: {
+          type: 'string',
+          description: 'HTTP method (default: GET). Use POST for APIs that return binary data.',
+        },
+        headers: {
+          type: 'object',
+          description:
+            'HTTP headers as key-value pairs. Use ${abele_key:name} for secret substitution (e.g. {"xi-api-key": "${abele_key:elevenlabs}"}).',
+          additionalProperties: { type: 'string' },
+        },
+        body: {
+          type: 'string',
+          description: 'Request body (JSON string). Content-Type defaults to application/json.',
         },
       },
       required: ['url'],
@@ -129,12 +185,14 @@ export function createDownloadFileTool(): AgentTool {
     execute: async (_id, params) => {
       const url = params.url as string
       if (!url) throw new Error('Missing required parameter: url')
-      const ext = params.extension as string | undefined
       const targetPath = await downloadToVault(
         url,
         params.filename as string | undefined,
         'bin',
-        ext
+        params.extension as string | undefined,
+        params.method as string | undefined,
+        params.headers as Record<string, string> | undefined,
+        params.body as string | undefined
       )
       return { content: [{ type: 'text', text: `Saved: ${targetPath}` }] }
     },

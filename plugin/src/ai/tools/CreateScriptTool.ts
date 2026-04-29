@@ -118,9 +118,10 @@ List values can contain \`;\` separator to add/remove multiple items at once.
 |----------|---------|-------------|
 | \`fetch(url, opts?)\` | \`{ status, headers, data, text }\` | HTTP request |
 | \`downloadImage(url, filename?)\` | \`string\` | Download image to vault, returns saved path |
-| \`downloadFile(url, filename?, ext?)\` | \`string\` | Download any file to vault, returns saved path |
+| \`downloadFile(url, opts?)\` | \`string\` | Download any file to vault, returns saved path |
 
 \`fetch\` options: \`{ method?, headers?, body? }\`
+\`downloadFile\` options: \`{ filename?, extension?, method?, headers?, body? }\` — supports POST for APIs that return binary (e.g. TTS).
 Secret substitution: use \`\${abele_key:name}\` in url, headers, or body to inject secrets configured in AI settings.
 
 ---

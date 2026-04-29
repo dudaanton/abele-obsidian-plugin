@@ -258,8 +258,17 @@ export function buildScriptContext(opts: {
       return stripPrefix(await call(downloadImageTool, { url, filename }, s))
     },
 
-    async downloadFile(url: string, filename?: string, extension?: string): Promise<string> {
-      return stripPrefix(await call(downloadFileTool, { url, filename, extension }, s))
+    async downloadFile(
+      url: string,
+      opts?: {
+        filename?: string
+        extension?: string
+        method?: string
+        headers?: Record<string, string>
+        body?: string
+      }
+    ): Promise<string> {
+      return stripPrefix(await call(downloadFileTool, { url, ...opts }, s))
     },
 
     // ── AI ──
