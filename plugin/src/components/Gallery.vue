@@ -275,11 +275,13 @@ function openViewer(index: number) {
 const addChoices = computed<Choice[]>(() => [
   { title: 'From vault', event: 'vault', icon: 'vault' },
   { title: 'From disk', event: 'disk', icon: 'hard-drive' },
+  { title: 'From clipboard', event: 'clipboard', icon: 'clipboard-paste' },
 ])
 
 function handleAddMenu(event: string) {
   if (event === 'vault') addFromVault()
   else if (event === 'disk') addFromDisk()
+  else if (event === 'clipboard') addFromClipboard()
 }
 
 const addMenu = useMenu(addBtnRef, addChoices, handleAddMenu)
@@ -352,6 +354,54 @@ async function addFromVault() {
 
 function addFromDisk() {
   fileInputRef.value?.click()
+}
+
+async function addFromClipboard() {
+  try {
+    const items = await navigator.clipboard.read()
+    const { app } = GlobalStore.getInstance()
+    const attachmentFolder = getAttachmentFolder(app, props.gallery.filePath)
+
+    if (attachmentFolder && !(await app.vault.adapter.exists(attachmentFolder))) {
+      await app.vault.createFolder(attachmentFolder)
+    }
+
+    const paths: string[] = []
+    for (const item of items) {
+      const imageType = item.types.find((t) => t.startsWith('image/'))
+      if (!imageType) continue
+
+      const blob = await item.getType(imageType)
+      const buffer = await blob.arrayBuffer()
+      const ext = imageType.split('/')[1].replace('jpeg', 'jpg')
+      const timestamp = Date.now()
+      const baseName = `clipboard-${timestamp}`
+      const basePath = attachmentFolder
+        ? `${attachmentFolder}/${baseName}.${ext}`
+        : `${baseName}.${ext}`
+
+      let finalPath = basePath
+      let counter = 1
+      while (await app.vault.adapter.exists(finalPath)) {
+        finalPath = attachmentFolder
+          ? `${attachmentFolder}/${baseName} ${counter}.${ext}`
+          : `${baseName} ${counter}.${ext}`
+        counter++
+      }
+
+      const created = await app.vault.createBinary(finalPath, buffer)
+      paths.push(created.path)
+    }
+
+    if (paths.length > 0) {
+      props.gallery.addImages(paths)
+      new Notice(`Added ${paths.length} image${paths.length > 1 ? 's' : ''} from clipboard`)
+    } else {
+      new Notice('No images found in clipboard')
+    }
+  } catch {
+    new Notice('Could not read clipboard')
+  }
 }
 
 async function onFilesSelected(e: Event) {
