@@ -1,6 +1,7 @@
 import { AgentLoop } from './client/AgentLoop'
 import type { AgentTool, ModelConfig, Message, AssistantMessage, TextContent } from './client'
 import { ScopeResolver } from './ScopeResolver'
+import { ChatSession } from './ChatSession'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { CORE_TOOLS } from './types'
 import type { ToolMode } from './types'
@@ -39,7 +40,8 @@ function isToolAllowed(
   args?: Record<string, unknown>
 ): { allowed: boolean; reason?: string } {
   const scope = ScopeResolver.getInstance()
-  const mode = AbeleConfig.getInstance().ai.permissionMode
+  const activeSession = ChatSession.getActiveSession()
+  const mode = activeSession?.permissionMode.value ?? AbeleConfig.getInstance().ai.permissionMode
 
   if (toolName === 'delegate') return { allowed: false, reason: 'Sub-agents cannot delegate' }
 

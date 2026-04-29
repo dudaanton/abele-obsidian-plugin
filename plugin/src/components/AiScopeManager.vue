@@ -21,14 +21,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import Setting from './obsidian/Setting.vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import AiScopeEditor from './AiScopeEditor.vue'
 import type { ScopeEntry } from '@/ai/ScopeResolver'
 import { AgentService } from '@/ai/AgentService'
-import { AbeleConfig } from '@/services/AbeleConfig'
 import type { PermissionMode } from '@/ai/types'
 
 const emit = defineEmits<{
@@ -37,7 +36,7 @@ const emit = defineEmits<{
 
 const session = computed(() => AgentService.getInstance().activeSession.value)
 const scope = computed(() => session.value?.scopeResolver)
-const permissionMode = ref(AbeleConfig.getInstance().ai.permissionMode)
+const permissionMode = computed(() => session.value?.permissionMode.value ?? 'confirm-all')
 const scopeEntries = computed(() => scope.value?.entries.value ?? [])
 
 const onEntriesUpdate = (entries: ScopeEntry[]) => {
@@ -53,10 +52,8 @@ const permissionOptions = [
 ]
 
 const onPermissionChange = (value: string) => {
-  permissionMode.value = value as PermissionMode
-  const config = AbeleConfig.getInstance()
-  config.ai.permissionMode = value as PermissionMode
-  config.saveSettings()
+  if (!session.value) return
+  session.value.permissionMode.value = value as PermissionMode
 }
 </script>
 
