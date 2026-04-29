@@ -204,7 +204,6 @@ export function registerChartCodeblock(
     container.style.height = `${height}px`
 
     let chart: EChartsType | null = null
-    let resizeObs: ResizeObserver | null = null
 
     const initChart = () => {
       if (chart) return
@@ -212,36 +211,36 @@ export function registerChartCodeblock(
         const option = buildEchartsOption(config)
         chart = echartsInit(container)
         chart.setOption(option, true)
-        resizeObs = new ResizeObserver(() => chart?.resize())
-        resizeObs.observe(container)
       } catch (e) {
         container.remove()
         el.createDiv({
           cls: 'abele-chart-error',
           text: `Chart error: ${e instanceof Error ? e.message : e}`,
         })
+        resizeObs.disconnect()
+        return
       }
+
+      // Cleanup when element is removed — safe to observe parent here, el is in DOM
+      const mutObs = new MutationObserver(() => {
+        if (!el.isConnected) {
+          chart?.dispose()
+          resizeObs.disconnect()
+          mutObs.disconnect()
+        }
+      })
+      mutObs.observe(el.parentElement!, { childList: true, subtree: true })
     }
 
-    // Defer init until container has dimensions
-    const tryInit = () => {
-      if (chart || !el.isConnected) return
-      if (container.offsetWidth > 0) {
-        initChart()
+    // ResizeObserver fires when container gets dimensions (after DOM insert + layout)
+    // and on subsequent resizes — single mechanism for both init and resize
+    const resizeObs = new ResizeObserver((entries) => {
+      if (!chart) {
+        if (entries[0]?.contentRect.width > 0) initChart()
       } else {
-        requestAnimationFrame(tryInit)
-      }
-    }
-    requestAnimationFrame(tryInit)
-
-    // Cleanup when element is removed from DOM
-    const mutObs = new MutationObserver(() => {
-      if (!el.isConnected) {
-        chart?.dispose()
-        resizeObs?.disconnect()
-        mutObs.disconnect()
+        chart.resize()
       }
     })
-    mutObs.observe(el.parentElement || document.body, { childList: true, subtree: true })
+    resizeObs.observe(container)
   })
 }
