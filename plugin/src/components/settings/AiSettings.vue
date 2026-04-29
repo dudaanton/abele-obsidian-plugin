@@ -302,15 +302,21 @@
               @update:model-value="(v: string) => updateSecretName(sIdx, v)"
               @click.stop
             />
-            <input
-              type="password"
-              class="abele-ai-secret-card__input"
-              :value="secretValueInputs[sIdx] || ''"
-              placeholder="New value..."
-              @click.stop
-              @input="secretValueInputs[sIdx] = ($event.target as HTMLInputElement).value"
-              @keydown.enter="applySecretValue(sIdx)"
-            />
+            <div class="abele-ai-secret-card__input-row" @click.stop>
+              <input
+                :type="revealedInputs[sIdx] ? 'text' : 'password'"
+                class="abele-ai-secret-card__input"
+                :value="secretValueInputs[sIdx] || ''"
+                placeholder="Value..."
+                @input="secretValueInputs[sIdx] = ($event.target as HTMLInputElement).value"
+                @keydown.enter="applySecretValue(sIdx)"
+              />
+              <Icon
+                :icon="revealedInputs[sIdx] ? 'eye-off' : 'eye'"
+                @click="revealedInputs[sIdx] = !revealedInputs[sIdx]"
+              />
+              <Icon icon="copy" @click="copySecret(secret.keyId)" />
+            </div>
             <div class="abele-ai-secret-card__actions" @click.stop>
               <Button
                 text="Save"
@@ -537,11 +543,15 @@ const activeModelKey = computed(() =>
     : ''
 )
 
-const auxModelKey = computed(() =>
-  activeProviderId.value && auxiliaryModelId.value
-    ? `${activeProviderId.value}::${auxiliaryModelId.value}`
-    : ''
-)
+const auxModelKey = computed(() => {
+  if (!auxiliaryModelId.value) return ''
+  for (const p of providers.value) {
+    if (p.models.some((m) => m.id === auxiliaryModelId.value)) {
+      return `${p.id}::${auxiliaryModelId.value}`
+    }
+  }
+  return ''
+})
 
 const wiseModelKey = computed(() => {
   if (!wiseModelId.value) return ''
@@ -665,6 +675,18 @@ const applyOpenRouterSecret = () => {
 
 const editingSecretIdx = ref(-1)
 
+const getSecretFullValue = (secretId: string): string => {
+  if (!secretId) return ''
+  return app.secretStorage.getSecret(secretId) || ''
+}
+
+const revealedInputs = reactive<Record<number, boolean>>({})
+
+const copySecret = (secretId: string) => {
+  const value = getSecretFullValue(secretId)
+  if (value) navigator.clipboard.writeText(value)
+}
+
 const addSecret = () => {
   secrets.value.push({ name: '', keyId: '' })
   editingSecretIdx.value = secrets.value.length - 1
@@ -672,6 +694,8 @@ const addSecret = () => {
 
 const startEditSecret = (idx: number) => {
   editingSecretIdx.value = idx
+  const keyId = secrets.value[idx].keyId
+  secretValueInputs[idx] = keyId ? getSecretFullValue(keyId) : ''
 }
 
 const removeSecret = (idx: number) => {
@@ -1109,8 +1133,15 @@ const updatePrompt = (field: keyof Omit<AiPrompts, 'toolDescriptions'>, value: s
   color: var(--text-muted);
 }
 
+.abele-ai-secret-card__input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-1);
+}
+
 .abele-ai-secret-card__input {
   width: 100%;
+  min-width: 0;
 }
 
 .abele-ai-secret-card__actions {

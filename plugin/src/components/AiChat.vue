@@ -257,10 +257,12 @@ const showContinue = computed(() => {
 
 const contextWindow = computed(() => {
   const config = AbeleConfig.getInstance().ai
+  const providerId = session.value?.activeProviderId.value ?? config.activeProviderId
+  const modelId = session.value?.activeModelId.value ?? config.activeModelId
   const provider =
-    config.providers.find((p) => p.id === config.activeProviderId) ||
+    config.providers.find((p) => p.id === providerId) ||
     config.providers.find((p) => p.models.length > 0)
-  const model = provider?.models.find((m) => m.id === config.activeModelId) || provider?.models[0]
+  const model = provider?.models.find((m) => m.id === modelId) || provider?.models[0]
   return model?.contextWindow || 0
 })
 

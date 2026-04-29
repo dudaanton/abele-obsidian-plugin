@@ -117,13 +117,16 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   overflow: auto;
 }
 
-.abele-code-toolbar {
+.abele-code-header {
   position: sticky;
   top: 0;
   z-index: 10;
+  background-color: var(--background-primary);
+}
+
+.abele-code-toolbar {
   padding: 4px 8px;
   border-bottom: 1px solid var(--background-modifier-border);
-  background-color: var(--background-primary);
 }
 
 .abele-code-save-btn {
@@ -152,7 +155,6 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   gap: var(--size-4-1);
   padding: var(--size-4-1) var(--size-4-2);
   border-bottom: 1px solid var(--background-modifier-border);
-  background-color: var(--background-primary);
 }
 
 .abele-code-search__input {
