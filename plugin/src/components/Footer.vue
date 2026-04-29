@@ -72,7 +72,10 @@ const timeEntries = computed(() => {
 })
 
 const notes = computed(() => {
-  return Array.from(props.footer.noteRelations.notes.values())
+  const selfPath = props.footer.filePath
+  return Array.from(props.footer.noteRelations.notes.values()).filter(
+    (n) => n.filePath !== selfPath
+  )
 })
 const logs = computed(() => {
   return Array.from(props.footer.noteRelations.logs.values()).sort(
