@@ -1,4 +1,12 @@
-import { setIcon, TextFileView, WorkspaceLeaf, TFile, EventRef, TextComponent } from 'obsidian'
+import {
+  setIcon,
+  TextFileView,
+  WorkspaceLeaf,
+  TFile,
+  EventRef,
+  TextComponent,
+  Scope,
+} from 'obsidian'
 import {
   EditorView,
   lineNumbers,
@@ -8,7 +16,13 @@ import {
 } from '@codemirror/view'
 import { Extension } from '@codemirror/state'
 import { EditorState } from '@codemirror/state'
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  toggleComment,
+  indentWithTab,
+} from '@codemirror/commands'
 import { highlightSelectionMatches, SearchQuery, setSearchQuery } from '@codemirror/search'
 import { SearchCursor } from '@codemirror/search'
 import {
@@ -43,11 +57,26 @@ const langByExt: Record<string, () => Extension> = {
 export class CodeView extends TextFileView {
   private editor: EditorView | null = null
   private dirty = false
+  private suppressDirty = false
   private saveBtn: HTMLButtonElement | null = null
   private modifyRef: EventRef | null = null
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
+
+    // Prevent Obsidian from intercepting keys that CodeMirror needs.
+    // Returning undefined blocks the parent scope chain (HotkeyManager)
+    // while letting the DOM event reach CodeMirror in bubble phase.
+    this.scope = new Scope(this.app.scope)
+    this.scope.register(['Mod'], '/', () => undefined)
+    this.scope.register(['Mod'], 'f', () => undefined)
+    this.scope.register(['Mod'], 's', () => undefined)
+    this.scope.register([], 'Tab', () => undefined)
+    this.scope.register(['Shift'], 'Tab', () => undefined)
+    this.scope.register(['Mod'], 'z', () => undefined)
+    this.scope.register(['Mod', 'Shift'], 'z', () => undefined)
+    this.scope.register(['Mod'], 'a', () => undefined)
+    this.scope.register(['Mod'], 'd', () => undefined)
   }
 
   getViewType() {
@@ -67,6 +96,7 @@ export class CodeView extends TextFileView {
   }
 
   setViewData(data: string, clear: boolean): void {
+    this.suppressDirty = true
     if (clear || !this.editor) {
       this.buildEditor(data)
     } else {
@@ -75,20 +105,12 @@ export class CodeView extends TextFileView {
       })
     }
     this.setDirty(false)
+    this.suppressDirty = false
   }
 
   clear(): void {
     this.editor?.destroy()
     this.editor = null
-  }
-
-  async onOpen(): Promise<void> {
-    // Scope register here (view fully initialized) — captures Cmd+F on Mac
-    this.scope.register(['Mod'], 'f', (e) => {
-      e.preventDefault()
-      this.toggleSearch()
-      return false
-    })
   }
 
   async onLoadFile(file: TFile): Promise<void> {
@@ -227,7 +249,8 @@ export class CodeView extends TextFileView {
     this.editor?.destroy()
     this.contentEl.empty()
 
-    const toolbar = this.contentEl.createDiv({ cls: 'abele-code-toolbar' })
+    const header = this.contentEl.createDiv({ cls: 'abele-code-header' })
+    const toolbar = header.createDiv({ cls: 'abele-code-toolbar' })
     this.saveBtn = toolbar.createEl('button', { cls: 'abele-code-save-btn' })
     this.saveBtn.disabled = true
     setIcon(this.saveBtn, 'save')
@@ -245,7 +268,7 @@ export class CodeView extends TextFileView {
     searchBtn.addEventListener('click', () => this.toggleSearch())
 
     // Search bar (hidden by default)
-    this.searchEl = this.contentEl.createDiv({ cls: 'abele-code-search' })
+    this.searchEl = header.createDiv({ cls: 'abele-code-search' })
     this.searchEl.style.display = 'none'
     const searchComponent = new TextComponent(this.searchEl)
     searchComponent.setPlaceholder('Find...')
@@ -275,19 +298,6 @@ export class CodeView extends TextFileView {
         this.toggleSearch()
       }
     })
-
-    // Capture Ctrl+F before Obsidian's global handler
-    this.contentEl.addEventListener(
-      'keydown',
-      (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
-          e.preventDefault()
-          e.stopPropagation()
-          this.toggleSearch()
-        }
-      },
-      true
-    )
 
     const ext = this.file?.extension ?? ''
     const langFactory = langByExt[ext]
@@ -322,12 +332,17 @@ export class CodeView extends TextFileView {
                 return true
               },
             },
+            {
+              key: 'Mod-/',
+              run: (view) => toggleComment(view as any),
+            },
+            indentWithTab,
             ...defaultKeymap,
             ...historyKeymap,
             ...foldKeymap,
           ]),
           EditorView.updateListener.of((update) => {
-            if (update.docChanged) {
+            if (update.docChanged && !this.suppressDirty) {
               this.setDirty(true)
             }
           }),
