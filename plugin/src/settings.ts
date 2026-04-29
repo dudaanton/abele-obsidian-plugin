@@ -20,6 +20,7 @@ export class AbeleSettingTab extends PluginSettingTab {
 
     containerEl.empty()
 
+    this.id = genid()
     containerEl.createDiv({ attr: { [SETTINGS_ID_ATTR]: this.id } })
 
     GlobalStore.getInstance().settingsTabId.value = this.id
