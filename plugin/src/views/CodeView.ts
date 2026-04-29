@@ -1,4 +1,4 @@
-import { setIcon, TextFileView, WorkspaceLeaf, TFile, EventRef } from 'obsidian'
+import { setIcon, TextFileView, WorkspaceLeaf, TFile, EventRef, TextComponent } from 'obsidian'
 import {
   EditorView,
   lineNumbers,
@@ -9,12 +9,8 @@ import {
 import { Extension } from '@codemirror/state'
 import { EditorState } from '@codemirror/state'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
-import {
-  highlightSelectionMatches,
-  searchKeymap,
-  search,
-  openSearchPanel,
-} from '@codemirror/search'
+import { highlightSelectionMatches, SearchQuery, setSearchQuery } from '@codemirror/search'
+import { SearchCursor } from '@codemirror/search'
 import {
   bracketMatching,
   foldGutter,
@@ -86,6 +82,15 @@ export class CodeView extends TextFileView {
     this.editor = null
   }
 
+  async onOpen(): Promise<void> {
+    // Scope register here (view fully initialized) — captures Cmd+F on Mac
+    this.scope.register(['Mod'], 'f', (e) => {
+      e.preventDefault()
+      this.toggleSearch()
+      return false
+    })
+  }
+
   async onLoadFile(file: TFile): Promise<void> {
     await super.onLoadFile(file)
     this.startWatching()
@@ -124,6 +129,100 @@ export class CodeView extends TextFileView {
     }
   }
 
+  private searchEl: HTMLElement | null = null
+  private searchInput: HTMLInputElement | null = null
+  private searchCountEl: HTMLElement | null = null
+
+  private toggleSearch() {
+    if (!this.searchEl) return
+    const visible = this.searchEl.style.display !== 'none'
+    this.searchEl.style.display = visible ? 'none' : 'flex'
+    if (!visible) {
+      // Pre-fill with selected text
+      if (this.editor && this.searchInput) {
+        const sel = this.editor.state.sliceDoc(
+          this.editor.state.selection.main.from,
+          this.editor.state.selection.main.to
+        )
+        if (sel && !sel.includes('\n')) {
+          this.searchInput.value = sel
+          this.doSearch()
+        }
+      }
+      this.searchInput?.focus()
+      this.searchInput?.select()
+    } else {
+      this.clearSearch()
+    }
+  }
+
+  private doSearch() {
+    if (!this.editor || !this.searchInput) return
+    const term = this.searchInput.value
+    const query = new SearchQuery({ search: term, caseSensitive: false })
+    this.editor.dispatch({ effects: setSearchQuery.of(query) })
+    this.updateSearchCount()
+    if (term) this.goToNext()
+  }
+
+  private goToNext() {
+    if (!this.editor || !this.searchInput?.value) return
+    const doc = this.editor.state.doc
+    const from = this.editor.state.selection.main.to
+    const cursor = new SearchCursor(doc, this.searchInput.value, from)
+    let result = cursor.next()
+    if (result.done) {
+      // Wrap around
+      const wrap = new SearchCursor(doc, this.searchInput.value, 0)
+      result = wrap.next()
+    }
+    if (!result.done) {
+      this.editor.dispatch({
+        selection: { anchor: result.value.from, head: result.value.to },
+        scrollIntoView: true,
+      })
+    }
+  }
+
+  private goToPrev() {
+    if (!this.editor || !this.searchInput?.value) return
+    const doc = this.editor.state.doc
+    const to = this.editor.state.selection.main.from
+    const term = this.searchInput.value
+    // SearchCursor only goes forward; collect all matches and pick the previous one
+    const cursor = new SearchCursor(doc, term, 0)
+    const matches: { from: number; to: number }[] = []
+    while (!cursor.next().done) {
+      matches.push({ from: cursor.value.from, to: cursor.value.to })
+    }
+    if (matches.length === 0) return
+    const prev = matches.filter((m) => m.to <= to).pop() || matches[matches.length - 1]
+    this.editor.dispatch({
+      selection: { anchor: prev.from, head: prev.to },
+      scrollIntoView: true,
+    })
+  }
+
+  private updateSearchCount() {
+    if (!this.editor || !this.searchCountEl || !this.searchInput) return
+    const term = this.searchInput.value
+    if (!term) {
+      this.searchCountEl.textContent = ''
+      return
+    }
+    const cursor = new SearchCursor(this.editor.state.doc, term, 0)
+    let count = 0
+    while (!cursor.next().done) count++
+    this.searchCountEl.textContent = count > 0 ? `${count} found` : 'No results'
+  }
+
+  private clearSearch() {
+    if (!this.editor) return
+    const query = new SearchQuery({ search: '' })
+    this.editor.dispatch({ effects: setSearchQuery.of(query) })
+    if (this.searchCountEl) this.searchCountEl.textContent = ''
+  }
+
   private buildEditor(doc: string) {
     this.editor?.destroy()
     this.contentEl.empty()
@@ -138,17 +237,60 @@ export class CodeView extends TextFileView {
       this.setDirty(false)
     })
 
-    const ext = this.file?.extension ?? ''
-    const langFactory = langByExt[ext]
+    toolbar.createSpan({ cls: 'abele-code-toolbar__sep' })
 
-    // Intercept Cmd/Ctrl+F before Obsidian captures it
-    this.contentEl.addEventListener('keydown', (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'f' && this.editor) {
+    const searchBtn = toolbar.createEl('button', { cls: 'abele-code-save-btn' })
+    setIcon(searchBtn, 'search')
+    searchBtn.createSpan({ text: 'Find' })
+    searchBtn.addEventListener('click', () => this.toggleSearch())
+
+    // Search bar (hidden by default)
+    this.searchEl = this.contentEl.createDiv({ cls: 'abele-code-search' })
+    this.searchEl.style.display = 'none'
+    const searchComponent = new TextComponent(this.searchEl)
+    searchComponent.setPlaceholder('Find...')
+    searchComponent.inputEl.addClass('abele-code-search__input')
+    this.searchInput = searchComponent.inputEl
+    this.searchCountEl = this.searchEl.createSpan({ cls: 'abele-code-search__count' })
+
+    const prevBtn = this.searchEl.createEl('button', { cls: 'abele-code-search__btn' })
+    setIcon(prevBtn, 'chevron-up')
+    prevBtn.addEventListener('click', () => this.goToPrev())
+
+    const nextBtn = this.searchEl.createEl('button', { cls: 'abele-code-search__btn' })
+    setIcon(nextBtn, 'chevron-down')
+    nextBtn.addEventListener('click', () => this.goToNext())
+
+    const closeBtn = this.searchEl.createEl('button', { cls: 'abele-code-search__btn' })
+    setIcon(closeBtn, 'x')
+    closeBtn.addEventListener('click', () => this.toggleSearch())
+
+    this.searchInput.addEventListener('input', () => this.doSearch())
+    this.searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
         e.preventDefault()
-        e.stopPropagation()
-        openSearchPanel(this.editor)
+        if (e.shiftKey) this.goToPrev()
+        else this.goToNext()
+      } else if (e.key === 'Escape') {
+        this.toggleSearch()
       }
     })
+
+    // Capture Ctrl+F before Obsidian's global handler
+    this.contentEl.addEventListener(
+      'keydown',
+      (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+          e.preventDefault()
+          e.stopPropagation()
+          this.toggleSearch()
+        }
+      },
+      true
+    )
+
+    const ext = this.file?.extension ?? ''
+    const langFactory = langByExt[ext]
 
     this.editor = new EditorView({
       state: EditorState.create({
@@ -161,7 +303,6 @@ export class CodeView extends TextFileView {
           bracketMatching(),
           highlightActiveLine(),
           highlightSelectionMatches(),
-          search({ top: true }),
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
           ...(langFactory ? [langFactory()] : []),
           EditorView.lineWrapping,
@@ -174,9 +315,15 @@ export class CodeView extends TextFileView {
                 return true
               },
             },
+            {
+              key: 'Mod-f',
+              run: () => {
+                this.toggleSearch()
+                return true
+              },
+            },
             ...defaultKeymap,
             ...historyKeymap,
-            ...searchKeymap,
             ...foldKeymap,
           ]),
           EditorView.updateListener.of((update) => {

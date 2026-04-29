@@ -138,6 +138,49 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   cursor: default;
 }
 
+.abele-code-toolbar__sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background-color: var(--background-modifier-border);
+}
+
+/* Code view — custom search bar */
+.abele-code-search {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  padding: var(--size-4-1) var(--size-4-2);
+  border-bottom: 1px solid var(--background-modifier-border);
+  background-color: var(--background-primary);
+}
+
+.abele-code-search__input {
+  flex: 1;
+  min-width: 120px;
+}
+
+.abele-code-search__count {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.abele-code-search__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--size-4-1);
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.abele-code-search__btn:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
 /* Chart codeblock */
 .abele-chart-container {
   border-radius: var(--radius-m);
