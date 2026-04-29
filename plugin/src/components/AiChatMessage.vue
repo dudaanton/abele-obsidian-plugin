@@ -556,6 +556,21 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
       font-size: var(--font-small);
       line-height: 1.5;
     }
+
+    .copy-code-button {
+      position: absolute;
+      top: var(--size-4-1);
+      right: var(--size-4-1);
+      color: var(--text-muted);
+      background: none;
+      border: none;
+      box-shadow: none;
+
+      &:hover {
+        color: var(--text-normal);
+        background-color: var(--background-modifier-hover);
+      }
+    }
   }
 
   :not(pre) > code {

@@ -1,7 +1,7 @@
 <template>
   <ObsidianModal title="Script Parameters" @close="onCancel">
-    <div class="abele-script-form">
-      <div v-for="field in fields" :key="field.name" class="abele-script-form__field">
+    <form class="abele-script-form" @submit.prevent="onSubmit">
+      <div v-for="(field, idx) in fields" :key="field.name" class="abele-script-form__field">
         <label class="abele-script-form__label">
           {{ field.label }}
           <span v-if="field.required" class="abele-script-form__required">*</span>
@@ -27,15 +27,15 @@
         <input v-else v-model="values[field.name]" type="text" class="abele-script-form__input" />
       </div>
       <div class="abele-script-form__actions">
-        <button class="mod-cta" @click="onSubmit">Run</button>
-        <button @click="onCancel">Cancel</button>
+        <button type="submit" class="mod-cta">Run</button>
+        <button type="button" @click="onCancel">Cancel</button>
       </div>
-    </div>
+    </form>
   </ObsidianModal>
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { reactive, onMounted } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import type { FormField } from '@/scripting/types'
@@ -53,6 +53,13 @@ const values = reactive<Record<string, string>>({})
 for (const field of props.fields) {
   values[field.name] = field.default ?? (field.type === 'boolean' ? 'false' : '')
 }
+
+onMounted(() => {
+  setTimeout(() => {
+    const input = document.querySelector<HTMLInputElement>('.abele-script-form__input')
+    input?.focus()
+  }, 100)
+})
 
 function onSubmit() {
   props.resolve({ ...values })

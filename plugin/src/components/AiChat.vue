@@ -355,6 +355,17 @@ watch(
   }
 )
 
+// Consume pending input from external sources (e.g. editor context menu)
+watch(
+  () => agentService.pendingInput.value,
+  (text) => {
+    if (text) {
+      chatInput.value?.setText(text)
+      agentService.pendingInput.value = null
+    }
+  }
+)
+
 onMounted(() => {
   if (Platform.isMobile && chatContainer.value) {
     nextTick(() => {
@@ -683,11 +694,52 @@ const showDebug = () => {
   border-radius: var(--radius-s);
   padding: var(--size-4-1) var(--size-4-2);
   font-size: var(--font-small);
+  overflow-wrap: break-word;
+  word-break: break-word;
 
   summary {
     cursor: pointer;
     color: var(--text-muted);
     font-style: italic;
+  }
+
+  pre {
+    position: relative;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+    margin: var(--size-4-2) 0;
+
+    code {
+      display: block;
+      padding: var(--size-4-2) var(--size-4-3);
+      background-color: var(--background-secondary);
+      border-radius: var(--radius-s);
+      font-size: var(--font-small);
+      line-height: 1.5;
+    }
+
+    .copy-code-button {
+      position: absolute;
+      top: var(--size-4-1);
+      right: var(--size-4-1);
+      color: var(--text-muted);
+      background: none;
+      border: none;
+      box-shadow: none;
+
+      &:hover {
+        color: var(--text-normal);
+        background-color: var(--background-modifier-hover);
+      }
+    }
+  }
+
+  :not(pre) > code {
+    padding: 1px var(--size-4-1);
+    background-color: var(--code-background);
+    border-radius: var(--radius-s);
+    font-size: 0.9em;
   }
 }
 
