@@ -421,8 +421,11 @@ export class OpenAIClient {
       }
 
       if (msg.role === 'assistant') {
-        // Skip error/aborted messages (may have partial content)
-        if (msg.stopReason === 'error' || msg.stopReason === 'aborted') continue
+        // Error/aborted messages: insert placeholder to preserve turn structure
+        if (msg.stopReason === 'error' || msg.stopReason === 'aborted') {
+          result.push({ role: 'assistant', content: '[Response interrupted]' })
+          continue
+        }
 
         const textParts = msg.content.filter((b): b is TextContent => b.type === 'text')
         const toolCalls = msg.content.filter((b): b is ToolCallContent => b.type === 'toolCall')
@@ -431,7 +434,7 @@ export class OpenAIClient {
         const text = textParts.map((t) => t.text).join('')
         const openaiMsg: OpenAIMessage = {
           role: 'assistant',
-          content: text || null,
+          content: text || '',
         }
 
         // Include reasoning_content only when sending to a reasoning model
@@ -450,9 +453,6 @@ export class OpenAIClient {
           }))
         }
 
-        // Skip empty messages (no content and no tool calls)
-        if (!openaiMsg.content && !openaiMsg.tool_calls?.length) continue
-
         result.push(openaiMsg)
 
         // Insert synthetic tool results for orphaned tool calls
@@ -462,9 +462,10 @@ export class OpenAIClient {
             const next = messages[j]
             if (next.role === 'toolResult') {
               nextToolResults.add(next.toolCallId)
-            } else {
+            } else if (next.role === 'assistant' || next.role === 'user') {
               break
             }
+            // Skip injected messages (e.g. image content) without breaking the scan
           }
           for (const tc of toolCalls) {
             if (!nextToolResults.has(tc.id)) {

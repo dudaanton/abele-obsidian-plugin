@@ -24,7 +24,7 @@ import {
   CORE_TOOLS,
   migrateOldPermissions,
 } from './types'
-import type { ToolMode } from './types'
+import type { ToolMode, PermissionMode } from './types'
 import type { UserContentPart } from './client'
 import { createAgentTools } from './tools'
 import { loadSkillContent } from './tools/SkillTool'
@@ -115,6 +115,7 @@ export class ChatSession {
   public readonly activeModelId = ref('')
 
   // Per-chat tool permissions
+  public readonly permissionMode = ref<PermissionMode>('confirm-all')
   public readonly toolModes = ref<Record<string, ToolMode>>({})
   public readonly customSystemPrompt = ref('')
   public readonly customSystemPromptNotePath = ref('')
@@ -138,6 +139,7 @@ export class ChatSession {
     const config = AbeleConfig.getInstance().ai
     this.activeProviderId.value = config.activeProviderId
     this.activeModelId.value = config.activeModelId
+    this.permissionMode.value = config.permissionMode
     this.toolModes.value = { ...config.toolModes }
   }
 
@@ -205,7 +207,7 @@ export class ChatSession {
   // ── Approval logic ──────────────────────────────────────────────
 
   needsApproval(toolName: string, args?: Record<string, unknown>): boolean {
-    const mode = AbeleConfig.getInstance().ai.permissionMode
+    const mode = this.permissionMode.value
 
     // Out-of-scope file access always requires approval
     if (args && ChatSession.SCOPED_TOOLS.includes(toolName)) {
@@ -388,13 +390,15 @@ export class ChatSession {
     const runChatMsgs = lastUserIdx >= 0 ? visiblePath.slice(lastUserIdx + 1) : visiblePath
     const assistantChatMsgs = runChatMsgs.filter((m) => m.role === 'assistant')
 
-    let assistantIdx = 0
+    // Match from the end: new assistant messages correspond to the last N chat messages
+    const newAssistantCount = newMsgs.filter((m) => m.role === 'assistant').length
+    let assistantIdx = assistantChatMsgs.length - newAssistantCount
     for (const msg of newMsgs) {
       if (msg.role === 'assistant') {
-        if (assistantIdx < assistantChatMsgs.length) {
+        if (assistantIdx >= 0 && assistantIdx < assistantChatMsgs.length) {
           msg.chatMessageId = assistantChatMsgs[assistantIdx].id
-          assistantIdx++
         }
+        assistantIdx++
       } else if (msg.role === 'toolResult') {
         const chatMsg = runChatMsgs.find((m) => m.toolCallId === msg.toolCallId)
         if (chatMsg) msg.chatMessageId = chatMsg.id
@@ -454,6 +458,9 @@ export class ChatSession {
         systemPrompt: await this.agentService.getSystemPrompt(this),
         tools,
         messages: toSend,
+        streamOptions: model.reasoningEffort
+          ? { reasoningEffort: model.reasoningEffort }
+          : undefined,
         beforeToolCall: async (toolName, _id, args) => {
           if (this.needsApproval(toolName, args)) {
             return { pause: true }
@@ -671,7 +678,7 @@ export class ChatSession {
   }
 
   async approveToolCall(modifiedArgs?: Record<string, unknown>): Promise<void> {
-    if (this.isStreaming.value || this.isExecutingTool.value) return
+    if (this.isStreaming.value || this.isExecutingTool.value || this.isCompacting.value) return
     const tc = this.pendingToolCalls.value[0]
     if (!tc) return
 
@@ -774,8 +781,6 @@ export class ChatSession {
 
   abort(): void {
     this.agentLoop?.abort()
-    this.unsubscribe?.()
-    this.unsubscribe = null
     this.isStreaming.value = false
   }
 
@@ -828,6 +833,7 @@ export class ChatSession {
               arguments: tc.arguments,
             }))
           : undefined,
+      permissionMode: this.permissionMode.value,
       toolModes: this.toolModes.value,
       scopeEntries: this.scopeResolver.entries.value.length
         ? [...this.scopeResolver.entries.value]
@@ -881,6 +887,7 @@ export class ChatSession {
     const config = AbeleConfig.getInstance().ai
     this.activeProviderId.value = result.metadata?.providerId ?? config.activeProviderId
     this.activeModelId.value = result.metadata?.modelId ?? config.activeModelId
+    this.permissionMode.value = result.metadata?.permissionMode ?? config.permissionMode
 
     if (result.metadata?.toolModes) {
       this.toolModes.value = { ...result.metadata.toolModes }
@@ -1139,6 +1146,8 @@ export class ChatSession {
 
   private async autoCompactIfNeeded(): Promise<void> {
     try {
+      if (this.pendingToolCalls.value.length > 0) return
+
       const model = this.agentService.getModelConfigFor(
         this.activeProviderId.value,
         this.activeModelId.value

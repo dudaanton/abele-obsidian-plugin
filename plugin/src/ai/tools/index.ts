@@ -25,6 +25,7 @@ import { createCreateScriptTool, createScriptApiDocsTool } from './CreateScriptT
 import { createReplaceTool } from './ReplaceTool'
 import { createOpenFileTool } from './OpenFileTool'
 import { createChartDocsTool } from './ChartDocsTool'
+import { createTemplateDocsTool } from './TemplateDocsTool'
 import {
   createReadLogsTool,
   createReadBacklinksTool,
@@ -69,6 +70,7 @@ export function getToolRegistry(): ToolInfo[] {
     eval_js: { label: 'Eval JS', category: 'AI' },
     delegate: { label: 'Delegate', category: 'AI' },
     chart_docs: { label: 'Chart docs', category: 'Docs' },
+    template_docs: { label: 'Template docs', category: 'Docs' },
     read_logs: { label: 'Read logs', category: 'Vault data' },
     read_backlinks: { label: 'Read backlinks', category: 'Vault data' },
     read_transactions: { label: 'Read transactions', category: 'Vault data' },
@@ -133,6 +135,7 @@ export function createAgentTools(): AgentTool[] {
     createReplaceTool(),
     createOpenFileTool(),
     createChartDocsTool(),
+    createTemplateDocsTool(),
     createReadLogsTool(),
     createReadBacklinksTool(),
     createReadTransactionsTool(),

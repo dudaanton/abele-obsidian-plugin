@@ -117,6 +117,7 @@ export interface ModelConfig {
   contextWindow: number
   maxTokens: number
   supportsReasoning: boolean
+  reasoningEffort?: 'low' | 'medium' | 'high'
 }
 
 export interface StreamOptions {
