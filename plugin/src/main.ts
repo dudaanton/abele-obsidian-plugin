@@ -135,7 +135,7 @@ export default class AbelePlugin extends Plugin {
 
     this.registerView(CODE_VIEW_TYPE, (leaf) => new CodeView(leaf))
     this.registerExtensions(
-      ['json', 'css', 'js', 'ts', 'html', 'xml', 'yaml', 'yml', 'csv', 'txt'],
+      ['json', 'css', 'js', 'ts', 'html', 'xml', 'yaml', 'yml', 'csv', 'txt', 'abchat'],
       CODE_VIEW_TYPE
     )
 
@@ -244,6 +244,26 @@ export default class AbelePlugin extends Plugin {
           store.currentFile.value = null
           return
         }
+
+        // Intercept .abchat files: open in AI sidebar instead of editor
+        if (leaf && viewType === CODE_VIEW_TYPE) {
+          const file = (leaf.view as any).file as TFile | undefined
+          if (file?.extension === 'abchat') {
+            leaf.detach()
+            const agentService = AgentService.getInstance()
+            agentService.openChatFile(file).then(() => {
+              const { workspace } = this.app
+              let aiLeaf = workspace.getLeavesOfType(AI_SIDEBAR_VIEW_TYPE)[0] ?? null
+              if (!aiLeaf) {
+                aiLeaf = workspace.getRightLeaf(false)
+                aiLeaf.setViewState({ type: AI_SIDEBAR_VIEW_TYPE, active: true })
+              }
+              workspace.revealLeaf(aiLeaf)
+            })
+            return
+          }
+        }
+
         if (leaf?.view.getViewType() !== 'markdown') return
 
         const file = (leaf.view as MarkdownView).file
@@ -321,6 +341,52 @@ export default class AbelePlugin extends Plugin {
         })
       })
     )
+
+    // "Use selection in AI Agent" on right-click in editor
+    if (AbeleConfig.getInstance().ai.enabled) {
+      this.registerEvent(
+        this.app.workspace.on('editor-menu', (menu, editor, view) => {
+          const selection = editor.getSelection()
+          if (!selection) return
+          menu.addItem((item) => {
+            item
+              .setTitle('Use in AI Agent')
+              .setIcon('bot')
+              .onClick(async () => {
+                const file = view.file
+                const ref = file
+                  ? `> From [[${file.basename}]]:\n> ${selection.replace(/\n/g, '\n> ')}\n\n`
+                  : `> ${selection.replace(/\n/g, '\n> ')}\n\n`
+                const agentService = AgentService.getInstance()
+                agentService.pendingInput.value = ref
+
+                // Add file to scope
+                if (file) {
+                  const session = agentService.activeSession.value
+                  if (session) {
+                    const scope = session.scopeResolver
+                    if (!scope.entries.value.some((e) => e.path === file.path)) {
+                      scope.entries.value = [
+                        ...scope.entries.value,
+                        { type: 'file' as const, path: file.path },
+                      ]
+                      scope.invalidate()
+                    }
+                  }
+                }
+
+                const { workspace } = this.app
+                let leaf = workspace.getLeavesOfType(AI_SIDEBAR_VIEW_TYPE)[0] ?? null
+                if (!leaf) {
+                  leaf = workspace.getRightLeaf(false)
+                  await leaf.setViewState({ type: AI_SIDEBAR_VIEW_TYPE, active: true })
+                }
+                workspace.revealLeaf(leaf)
+              })
+          })
+        })
+      )
+    }
 
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView)
     if (activeView?.file) {
@@ -560,16 +626,14 @@ export default class AbelePlugin extends Plugin {
     }
 
     // Register protocol handler for obsidian://abele
+    // Routes to link handler when "name" param is present, otherwise to protocol action
     this.registerObsidianProtocolHandler('abele', (params) => {
       runAfterSync(this.app, () => {
-        handleProtocolAction(this.app, params)
-      })
-    })
-
-    // Register protocol handler for obsidian://abele-link
-    this.registerObsidianProtocolHandler('abele-link', (params) => {
-      runAfterSync(this.app, () => {
-        handleLinkAction(params)
+        if (params.name) {
+          handleLinkAction(params)
+        } else {
+          handleProtocolAction(this.app, params)
+        }
       })
     })
 

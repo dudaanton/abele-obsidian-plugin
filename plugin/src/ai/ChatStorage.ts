@@ -31,7 +31,7 @@ export class ChatStorage {
       name,
       date: dayjs().format(DATE_FORMAT),
     })
-    return rendered.endsWith('.json') ? rendered : `${rendered}.json`
+    return rendered.endsWith('.abchat') ? rendered : `${rendered}.abchat`
   }
 
   async saveChat(
@@ -109,7 +109,11 @@ export class ChatStorage {
 
     const files: TFile[] = []
     const collect = (f: any) => {
-      if (f instanceof TFile && f.extension === 'json' && !known.has(f.path)) {
+      if (
+        f instanceof TFile &&
+        (f.extension === 'abchat' || f.extension === 'json') &&
+        !known.has(f.path)
+      ) {
         files.push(f)
       }
       if (f.children) f.children.forEach(collect)
