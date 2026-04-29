@@ -30,6 +30,23 @@
         />
       </Setting>
 
+      <Setting
+        v-if="form.supportsReasoning"
+        name="Thinking effort"
+        desc="Controls how much reasoning the model does. Leave at Default for model's own behavior."
+      >
+        <Dropdown
+          :model-value="form.reasoningEffort || ''"
+          :options="[
+            { value: '', display: 'Default' },
+            { value: 'low', display: 'Low' },
+            { value: 'medium', display: 'Medium' },
+            { value: 'high', display: 'High' },
+          ]"
+          @update:model-value="form.reasoningEffort = $event || undefined"
+        />
+      </Setting>
+
       <div class="abele-model-edit__actions">
         <Button text="Save" :disabled="!form.id" @click="onSave" />
         <Button v-if="!isNew" text="Delete" @click="onDelete" />
@@ -44,6 +61,7 @@ import ObsidianModal from '../obsidian/Modal.vue'
 import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
+import Dropdown from '../obsidian/Dropdown.vue'
 import Button from '../obsidian/Button.vue'
 import type { AiModelConfig } from '@/ai/types'
 

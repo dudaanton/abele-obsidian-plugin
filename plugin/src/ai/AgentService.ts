@@ -28,6 +28,9 @@ export class AgentService {
     this.activeTabId.value ? (this.sessions.get(this.activeTabId.value) ?? null) : null
   )
 
+  /** Text to pre-fill in chat input (consumed by AiChat component) */
+  public readonly pendingInput = ref<string | null>(null)
+
   static getInstance(): AgentService {
     if (!AgentService.instance) {
       AgentService.instance = new AgentService()
@@ -183,6 +186,32 @@ export class AgentService {
     return null
   }
 
+  /** Open a chat file in the sidebar: reuse existing tab, load into empty tab, or create new */
+  async openChatFile(file: TFile): Promise<void> {
+    // Already open → switch to it
+    const existing = this.getSessionByFile(file.path)
+    if (existing) {
+      this.switchTab(existing.id)
+      return
+    }
+
+    // Current tab is empty (no file) → load there
+    const active = this.activeSession.value
+    if (active && !active.currentChatFile.value) {
+      await active.load(file)
+      this.saveTabs()
+      return
+    }
+
+    // Create new tab and load
+    const tabId = this.createTab()
+    const session = this.sessions.get(tabId)
+    if (session) {
+      await session.load(file)
+      this.saveTabs()
+    }
+  }
+
   getAllSessions(): ChatSession[] {
     return Array.from(this.sessions.values())
   }
@@ -215,6 +244,7 @@ export class AgentService {
       contextWindow: model.contextWindow,
       maxTokens: model.maxTokens,
       supportsReasoning: model.supportsReasoning,
+      reasoningEffort: model.reasoningEffort,
     }
   }
 
@@ -324,6 +354,7 @@ export class AgentService {
       contextWindow: model.contextWindow,
       maxTokens: model.maxTokens,
       supportsReasoning: model.supportsReasoning,
+      reasoningEffort: model.reasoningEffort,
     }
   }
 
