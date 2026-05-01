@@ -183,6 +183,76 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   color: var(--text-normal);
 }
 
+/* AI Chat — streaming thinking hidden */
+.abele-ai-chat__streaming-thinking-hidden {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3);
+  color: var(--text-muted);
+  font-size: var(--font-small);
+}
+
+/* AI Chat — questions tool */
+.abele-ai-chat__questions {
+  padding: var(--size-4-3);
+  margin: var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background-color: var(--background-secondary);
+}
+
+.abele-ai-chat__questions-question {
+  font-weight: var(--font-semibold);
+  margin-bottom: var(--size-4-2);
+}
+
+.abele-ai-chat__questions-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-1);
+  margin-bottom: var(--size-4-2);
+}
+
+.abele-ai-chat__questions-option {
+  padding: var(--size-2-2) var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: var(--font-small);
+}
+
+.abele-ai-chat__questions-option:hover {
+  background-color: var(--background-modifier-hover);
+  border-color: var(--interactive-accent);
+}
+
+.abele-ai-chat__questions-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.abele-ai-chat__questions-progress {
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+}
+
+.abele-ai-chat__questions-abort {
+  font-size: var(--font-smaller);
+  color: var(--text-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: var(--size-2-1) var(--size-2-3);
+}
+
+.abele-ai-chat__questions-abort:hover {
+  color: var(--text-error);
+}
+
 /* Chart codeblock */
 .abele-chart-container {
   border-radius: var(--radius-m);

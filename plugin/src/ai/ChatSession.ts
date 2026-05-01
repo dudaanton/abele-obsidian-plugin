@@ -68,11 +68,12 @@ export class ChatSession {
   private static readonly COMPACT_MARKER = '[Conversation compacted]'
 
   private static readonly READ_TOOLS = ['read', 'ls', 'find', 'workspace', 'skill']
-  private static readonly EDIT_TOOLS = ['edit', 'create', 'replace']
+  private static readonly EDIT_TOOLS = ['edit', 'create', 'replace', 'write']
   private static readonly SCOPED_TOOLS = [
     'read',
     'edit',
     'replace',
+    'write',
     'rm',
     'mv',
     'cp',
@@ -109,6 +110,17 @@ export class ChatSession {
   public readonly isExecutingTool = ref(false)
   public readonly currentChatFile = shallowRef<TFile | null>(null)
   public readonly error = ref<string | null>(null)
+
+  // UI preferences
+  public readonly hideReasoning = ref(false)
+
+  // Questions tool state
+  public readonly pendingQuestions = ref<{
+    questions: { question: string; options: string[] }[]
+    currentIndex: number
+    answers: string[]
+    resolve: (answers: string[] | null) => void
+  } | null>(null)
 
   // Per-chat model selection
   public readonly activeProviderId = ref('')
@@ -219,7 +231,7 @@ export class ChatSession {
 
     // Core read tools: never need approval
     if (ChatSession.READ_TOOLS.includes(toolName)) return false
-    if (toolName === 'read_image') return false
+    if (toolName === 'read_image' || toolName === 'questions') return false
 
     // Core edit tools: governed by permissionMode
     if (ChatSession.EDIT_TOOLS.includes(toolName)) {
@@ -750,6 +762,43 @@ export class ChatSession {
     await this.save()
   }
 
+  // ── Questions tool ──────────────────────────────────────────────
+
+  askQuestions(questions: { question: string; options: string[] }[]): Promise<string[] | null> {
+    return new Promise((resolve) => {
+      this.pendingQuestions.value = {
+        questions,
+        currentIndex: 0,
+        answers: [],
+        resolve,
+      }
+    })
+  }
+
+  answerCurrentQuestion(answer: string): void {
+    const pq = this.pendingQuestions.value
+    if (!pq) return
+
+    const answers = [...pq.answers, answer]
+    if (pq.currentIndex + 1 < pq.questions.length) {
+      this.pendingQuestions.value = {
+        ...pq,
+        currentIndex: pq.currentIndex + 1,
+        answers,
+      }
+    } else {
+      pq.resolve(answers)
+      this.pendingQuestions.value = null
+    }
+  }
+
+  abortQuestions(): void {
+    const pq = this.pendingQuestions.value
+    if (!pq) return
+    pq.resolve(null)
+    this.pendingQuestions.value = null
+  }
+
   async injectSkill(skillName: string, args?: string): Promise<void> {
     if (this.isStreaming.value || this.isCompacting.value) return
 
@@ -941,15 +990,39 @@ export class ChatSession {
   }
 
   repeatMessage(messageId: string): void {
-    if (this.isStreaming.value || this.pendingToolCalls.value.length > 0) return
+    if (this.isStreaming.value || this.isExecutingTool.value) return
 
     const msg = this.allChatMessages.find((m) => m.id === messageId)
     if (!msg || msg.role !== 'user') return
+
+    // Dismiss any pending tool approvals
+    this.pendingToolCalls.value = []
 
     this.activeLeafId = msg.parentId || null
     this.updateVisibleMessages()
 
     this.sendMessage(msg.content, msg.attachments)
+  }
+
+  async retryFromMessage(messageId: string): Promise<void> {
+    if (this.isStreaming.value || this.isExecutingTool.value) return
+
+    const msg = this.allChatMessages.find((m) => m.id === messageId)
+    if (!msg) return
+
+    // For tool-call messages: walk up to find the assistant message that generated the tool calls,
+    // then find the user message before it and repeat from there.
+    // For assistant messages: find the user message before it and repeat.
+    let current: ChatMessage | undefined = msg
+    while (current && current.role !== 'user') {
+      current = current.parentId
+        ? this.allChatMessages.find((m) => m.id === current!.parentId)
+        : undefined
+    }
+
+    if (current) {
+      this.repeatMessage(current.id)
+    }
   }
 
   switchBranch(messageId: string): void {

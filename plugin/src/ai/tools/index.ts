@@ -23,7 +23,9 @@ import { createDelegateTool } from './DelegateTool'
 import { createScriptTools } from './ScriptTool'
 import { createCreateScriptTool, createScriptApiDocsTool } from './CreateScriptTool'
 import { createReplaceTool } from './ReplaceTool'
+import { createWriteFileTool } from './WriteFileTool'
 import { createOpenFileTool } from './OpenFileTool'
+import { createQuestionsTool } from './QuestionsTool'
 import { createChartDocsTool } from './ChartDocsTool'
 import { createTemplateDocsTool } from './TemplateDocsTool'
 import {
@@ -51,6 +53,7 @@ export function getToolRegistry(): ToolInfo[] {
     read: { label: 'Read file', category: 'Files' },
     edit: { label: 'Edit file', category: 'Files' },
     replace: { label: 'Replace', category: 'Files' },
+    write: { label: 'Write file', category: 'Files' },
     create: { label: 'Create file', category: 'Files' },
     rm: { label: 'Delete file', category: 'Files' },
     mv: { label: 'Move file', category: 'Files' },
@@ -68,6 +71,7 @@ export function getToolRegistry(): ToolInfo[] {
     generate_image: { label: 'Generate image', category: 'AI' },
     edit_image: { label: 'Edit image', category: 'AI' },
     eval_js: { label: 'Eval JS', category: 'AI' },
+    questions: { label: 'Questions', category: 'AI' },
     delegate: { label: 'Delegate', category: 'AI' },
     chart_docs: { label: 'Chart docs', category: 'Docs' },
     template_docs: { label: 'Template docs', category: 'Docs' },
@@ -133,7 +137,9 @@ export function createAgentTools(): AgentTool[] {
     createDownloadFileTool(),
     createDelegateTool(),
     createReplaceTool(),
+    createWriteFileTool(),
     createOpenFileTool(),
+    createQuestionsTool(),
     createChartDocsTool(),
     createTemplateDocsTool(),
     createReadLogsTool(),

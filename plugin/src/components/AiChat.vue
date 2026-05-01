@@ -25,6 +25,7 @@
           :class="{ 'abele-ai-chat__header-active': hasCustomPrompt }"
           @click="promptSettingsOpen = true"
         />
+        <Icon icon="sliders-horizontal" with-bg @click="chatSettingsOpen = true" />
         <Icon icon="plus" with-bg @click="handleNewChat" />
         <Icon icon="history" with-bg @click="historyOpen = true" />
         <Icon icon="bug" with-bg @click="showDebug" />
@@ -46,15 +47,21 @@
         @create-branch="onCreateBranch"
         @switch-branch="onSwitchBranch"
         @repeat-message="onRepeatMessage"
+        @retry-message="onRetryMessage"
+        @edit-message="onEditMessage"
       />
 
       <!-- Streaming indicator -->
       <div v-if="isStreaming" class="abele-ai-chat__streaming">
         <div v-if="streamingThinking" class="abele-ai-chat__streaming-thinking">
-          <details open>
+          <details v-if="!hideReasoning" open>
             <summary>Thinking...</summary>
             <Markdown :text="streamingThinking" />
           </details>
+          <div v-else class="abele-ai-chat__streaming-thinking-hidden">
+            <Icon icon="lightbulb" no-hover class="abele-ai-chat__spinner" />
+            <span>Thinking...</span>
+          </div>
         </div>
         <div v-if="streamingContent" class="abele-ai-chat__streaming-content">
           <div class="abele-chat-msg abele-chat-msg_assistant">
@@ -86,6 +93,27 @@
       <!-- Tool approval -->
       <AiToolApproval v-if="pendingApprovalMessage" :message="pendingApprovalMessage" />
 
+      <!-- Questions tool -->
+      <div v-if="currentQuestion" class="abele-ai-chat__questions">
+        <div class="abele-ai-chat__questions-question">{{ currentQuestion.question }}</div>
+        <div class="abele-ai-chat__questions-options">
+          <button
+            v-for="(opt, i) in currentQuestion.options"
+            :key="i"
+            class="abele-ai-chat__questions-option"
+            @click="answerQuestion(opt)"
+          >
+            {{ opt }}
+          </button>
+        </div>
+        <div class="abele-ai-chat__questions-footer">
+          <span class="abele-ai-chat__questions-progress">
+            {{ questionsProgress }}
+          </span>
+          <button class="abele-ai-chat__questions-abort" @click="abortQuestions">Abort</button>
+        </div>
+      </div>
+
       <!-- Error -->
       <div v-if="error" class="abele-ai-chat__error">
         <Icon icon="alert-triangle" />
@@ -108,6 +136,7 @@
       @focus="onInputFocus"
       @open-scope="scopeOpen = true"
       @open-permissions="permissionsOpen = true"
+      @open-skill-prompt="skillPromptOpen = true"
       @attach-file="onAttachFile"
     />
 
@@ -127,6 +156,13 @@
       @confirm="onPromptVariablesConfirm"
     />
     <AiSystemPromptSettings v-if="promptSettingsOpen" @close="promptSettingsOpen = false" />
+    <AiChatSettings v-if="chatSettingsOpen" @close="chatSettingsOpen = false" />
+    <AiSkillPromptPicker
+      v-if="skillPromptOpen"
+      @close="skillPromptOpen = false"
+      @skill="onPickerSkill"
+      @prompt="onPromptSelected"
+    />
   </div>
 </template>
 
@@ -145,6 +181,8 @@ import AiScopeManager from './AiScopeManager.vue'
 import AiPermissions from './AiPermissions.vue'
 import AiPromptPicker from './AiPromptPicker.vue'
 import AiSystemPromptSettings from './AiSystemPromptSettings.vue'
+import AiChatSettings from './AiChatSettings.vue'
+import AiSkillPromptPicker from './AiSkillPromptPicker.vue'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { AgentService } from '@/ai/AgentService'
@@ -168,6 +206,26 @@ const isCompacting = computed(() => session.value?.isCompacting.value ?? false)
 const isExecutingTool = computed(() => session.value?.isExecutingTool.value ?? false)
 const streamingContent = computed(() => session.value?.streamingContent.value ?? '')
 const streamingThinking = computed(() => session.value?.streamingThinking.value ?? '')
+const hideReasoning = computed(() => session.value?.hideReasoning.value ?? false)
+
+// Questions tool
+const pendingQuestions = computed(() => session.value?.pendingQuestions.value ?? null)
+const currentQuestion = computed(() => {
+  const pq = pendingQuestions.value
+  if (!pq) return null
+  return pq.questions[pq.currentIndex]
+})
+const questionsProgress = computed(() => {
+  const pq = pendingQuestions.value
+  if (!pq) return ''
+  return `${pq.currentIndex + 1} / ${pq.questions.length}`
+})
+const answerQuestion = (answer: string) => {
+  session.value?.answerCurrentQuestion(answer)
+}
+const abortQuestions = () => {
+  session.value?.abortQuestions()
+}
 const pendingToolCalls = computed(() => session.value?.pendingToolCalls.value ?? [])
 const error = computed(() => session.value?.error.value ?? null)
 
@@ -235,6 +293,26 @@ const onSwitchBranch = (childId: string) => {
 const onRepeatMessage = (messageId: string) => {
   shouldAutoScroll = true
   session.value?.repeatMessage(messageId)
+}
+
+const onRetryMessage = (messageId: string) => {
+  shouldAutoScroll = true
+  session.value?.retryFromMessage(messageId)
+}
+
+const onEditMessage = (messageId: string) => {
+  const s = session.value
+  if (!s) return
+  const msg = s.allMessages.value.find((m) => m.id === messageId)
+  if (!msg || msg.role !== 'user') return
+
+  // Branch from parent so user message and everything below disappears
+  if (msg.parentId) {
+    s.createBranch(msg.parentId)
+  } else {
+    s.createBranch(messageId)
+  }
+  chatInput.value?.setText(msg.content)
 }
 
 const isBusy = computed(() => {
@@ -306,6 +384,8 @@ const scopeOpen = ref(false)
 const permissionsOpen = ref(false)
 const promptPickerOpen = ref(false)
 const promptSettingsOpen = ref(false)
+const chatSettingsOpen = ref(false)
+const skillPromptOpen = ref(false)
 
 const hasCustomPrompt = computed(
   () =>
@@ -403,6 +483,12 @@ const onSend = async (content: string, attachments: string[] = []) => {
   const s = session.value
   if (!s) return
 
+  // Answer pending question with typed text
+  if (s.pendingQuestions.value) {
+    s.answerCurrentQuestion(content)
+    return
+  }
+
   // Auto-reject pending tool call when user sends a message instead
   if (s.pendingToolCalls.value.length > 0) {
     s.rejectToolCall('User sent a new message')
@@ -464,6 +550,11 @@ const onSkillCommand = async (command: string) => {
 
   scrollOnUserSend()
   await session.value?.injectSkill(skillName, args || undefined)
+}
+
+const onPickerSkill = async (name: string) => {
+  scrollOnUserSend()
+  await session.value?.injectSkill(name)
 }
 
 const onPromptSelected = async (file: TFile) => {
