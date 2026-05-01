@@ -44,6 +44,7 @@
             {{ scopeLabel }}
           </div>
           <Icon icon="folder-open" with-bg @click="emit('openScope')" />
+          <Icon icon="sparkles" with-bg @click="emit('openSkillPrompt')" />
           <Icon icon="shield" with-bg @click="emit('openPermissions')" />
           <Icon icon="paperclip" with-bg @click="showAttachMenu" />
           <Icon
@@ -100,6 +101,7 @@ const emit = defineEmits<{
   (e: 'focus', focused: boolean): void
   (e: 'openScope'): void
   (e: 'openPermissions'): void
+  (e: 'openSkillPrompt'): void
   (e: 'attachFile', path: string): void
 }>()
 
