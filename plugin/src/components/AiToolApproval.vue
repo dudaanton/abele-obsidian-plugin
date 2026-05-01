@@ -5,8 +5,8 @@
       <span>{{ headerText }}</span>
     </div>
 
-    <!-- Create: show file content preview -->
-    <template v-if="message.toolName === 'create'">
+    <!-- Create / Write: show file content preview -->
+    <template v-if="message.toolName === 'create' || message.toolName === 'write'">
       <div class="abele-tool-approval__path">{{ params.path }}</div>
       <pre class="abele-tool-approval__code"><code>{{ params.content }}</code></pre>
     </template>

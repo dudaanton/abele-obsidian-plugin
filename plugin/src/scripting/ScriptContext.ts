@@ -13,6 +13,7 @@ import { createLsTool } from '@/ai/tools/LsTool'
 import { createFindTool } from '@/ai/tools/FindTool'
 import { createApplyTemplateTool, createListTemplatesTool } from '@/ai/tools/TemplateTool'
 import { createReplaceTool } from '@/ai/tools/ReplaceTool'
+import { createWriteFileTool } from '@/ai/tools/WriteFileTool'
 import { createGenerateImageTool } from '@/ai/tools/GenerateImageTool'
 import { createDownloadImageTool, createDownloadFileTool } from '@/ai/tools/DownloadImageTool'
 import { runSubAgent } from '@/ai/SubAgentRunner'
@@ -80,6 +81,7 @@ export function buildScriptContext(opts: {
   const skipScope = { skipScope: true }
   const readTool = createReadFileTool(skipScope)
   const editTool = createEditFileTool(skipScope)
+  const writeTool = createWriteFileTool(skipScope)
   const createTool = createCreateFileTool(skipScope)
   const deleteTool = createDeleteFileTool(skipScope)
   const moveTool = createMoveFileTool(skipScope)
@@ -111,6 +113,10 @@ export function buildScriptContext(opts: {
 
     async edit(path: string, oldString: string, newString: string) {
       await call(editTool, { path, old_string: oldString, new_string: newString }, s)
+    },
+
+    async write(path: string, content: string) {
+      await call(writeTool, { path, content }, s)
     },
 
     async create(path: string, content: string) {
@@ -221,6 +227,11 @@ export function buildScriptContext(opts: {
 
     async listTemplates(type?: string): Promise<string> {
       return call(listTemplatesTool, { type }, s)
+    },
+
+    async createFromTemplate(templatePath: string): Promise<void> {
+      const { getTemplateComposable } = await import('@/composables/useTemplates')
+      await getTemplateComposable().startCreateFlowWithTemplate(templatePath)
     },
 
     // ── Network ──

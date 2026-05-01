@@ -44,6 +44,7 @@ All async. Full vault access — no scope restrictions.
 |----------|---------|-------------|
 | \`read(path)\` | \`string\` | Read file content |
 | \`edit(path, oldString, newString)\` | — | Replace first exact match of \`oldString\` with \`newString\` |
+| \`write(path, content)\` | — | Overwrite entire file with new content |
 | \`create(path, content)\` | — | Create new file (parent folders created automatically) |
 | \`remove(path)\` | — | Move file to trash |
 | \`move(from, to)\` | — | Move or rename a file |
@@ -114,6 +115,7 @@ List values can contain \`;\` separator to add/remove multiple items at once.
 |----------|---------|-------------|
 | \`applyTemplate(path, variables?)\` | \`string\` | Create note from template. \`variables\`: \`{ name: value }\` |
 | \`listTemplates(type?)\` | \`string\` | List available templates, optionally filtered by type |
+| \`createFromTemplate(templatePath)\` | — | Open the create-note-from-template modal for a specific template |
 
 ---
 

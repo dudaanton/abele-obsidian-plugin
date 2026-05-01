@@ -137,6 +137,17 @@
           <span class="abele-chat-msg__branch-action" @click="emit('repeat-message', message.id)"
             >Repeat</span
           >
+          <span class="abele-chat-msg__branch-action" @click="emit('edit-message', message.id)"
+            >Edit</span
+          >
+        </div>
+        <div
+          v-if="message.role === 'assistant' || message.role === 'tool-call'"
+          class="abele-chat-msg__detail-row"
+        >
+          <span class="abele-chat-msg__branch-action" @click="emit('retry-message', message.id)"
+            >Retry</span
+          >
         </div>
       </div>
     </div>
@@ -192,6 +203,8 @@ const emit = defineEmits<{
   (e: 'create-branch', messageId: string): void
   (e: 'switch-branch', messageId: string): void
   (e: 'repeat-message', messageId: string): void
+  (e: 'retry-message', messageId: string): void
+  (e: 'edit-message', messageId: string): void
 }>()
 
 // -1 = "new unsent branch" = last position (after all existing children)
@@ -225,7 +238,17 @@ const branchFromHere = () => {
 
 const expanded = ref(false)
 
-const FILE_TOOLS = ['read', 'edit', 'create', 'rm', 'mv', 'cp', 'read_image', 'apply_template']
+const FILE_TOOLS = [
+  'read',
+  'edit',
+  'write',
+  'create',
+  'rm',
+  'mv',
+  'cp',
+  'read_image',
+  'apply_template',
+]
 
 /** Extract path from tool result text like "Created: path" or "Saved: path" */
 function extractResultPath(result?: string): string {
@@ -761,6 +784,8 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
 }
 
 .abele-chat-msg__detail-row {
+  display: flex;
+  gap: var(--size-4-2);
   margin-bottom: var(--size-4-1);
 }
 

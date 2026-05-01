@@ -277,7 +277,7 @@ export class ScriptService {
         'ctx',
         `"use strict";
         return (async () => {
-          const { read, edit, create, remove, move, copy, ls, find, replace, open, setCover, agent, form, log, params, signal, fetch, applyTemplate, listTemplates, generateImage, downloadImage, downloadFile, notice, runScript, setStatus } = ctx;
+          const { read, edit, write, create, remove, move, copy, ls, find, replace, open, setCover, agent, form, log, params, signal, fetch, applyTemplate, listTemplates, createFromTemplate, generateImage, downloadImage, downloadFile, notice, runScript, setStatus } = ctx;
           ${script.code}
         })()`
       )
