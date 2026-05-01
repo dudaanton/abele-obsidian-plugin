@@ -416,6 +416,52 @@ export default class AbelePlugin extends Plugin {
       )
     }
 
+    // "Find and create aliases" on right-click in editor
+    this.registerEvent(
+      this.app.workspace.on('editor-menu', (menu, editor) => {
+        const selection = editor.getSelection()
+        if (!selection) return
+
+        const wikilinkRegex = /\[\[([^\]|]+)\|([^\]]+)\]\]/g
+        const links: { path: string; alias: string }[] = []
+        let match: RegExpExecArray | null
+        while ((match = wikilinkRegex.exec(selection)) !== null) {
+          links.push({ path: match[1].trim(), alias: match[2].trim() })
+        }
+        if (!links.length) return
+
+        menu.addItem((item) => {
+          item
+            .setTitle('Find and create aliases')
+            .setIcon('link')
+            .onClick(async () => {
+              let created = 0
+              for (const { path, alias } of links) {
+                const file = this.app.metadataCache.getFirstLinkpathDest(path, '')
+                if (!file) continue
+
+                const cache = this.app.metadataCache.getFileCache(file)
+                const existing: string[] = cache?.frontmatter?.aliases || []
+                if (existing.some((a) => a === alias)) continue
+
+                await this.app.fileManager.processFrontMatter(file, (fm) => {
+                  if (!fm.aliases) fm.aliases = []
+                  if (!Array.isArray(fm.aliases)) fm.aliases = [fm.aliases]
+                  fm.aliases.push(alias)
+                })
+                created++
+              }
+
+              if (created > 0) {
+                new Notice(`Created ${created} alias${created > 1 ? 'es' : ''}`)
+              } else {
+                new Notice('All aliases already exist')
+              }
+            })
+        })
+      })
+    )
+
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView)
     if (activeView?.file) {
       GlobalStore.getInstance().currentFile.value = activeView.file

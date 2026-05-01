@@ -191,6 +191,22 @@ export function useTemplates() {
     action.value = 'create'
   }
 
+  /**
+   * Start create flow with a specific template path, skipping the selection modal
+   */
+  async function startCreateFlowWithTemplate(templatePath: string) {
+    const service = TemplateService.getInstance()
+    const template = service
+      .discoverTemplates()
+      .find((t) => t.file.path === templatePath || t.file.path === templatePath + '.md')
+    if (!template) {
+      throw new Error(`Template not found: ${templatePath}`)
+    }
+    action.value = 'create'
+    initialValues.value = new Map()
+    await onTemplateSelected(template)
+  }
+
   return {
     isSelectModalOpen,
     isVariablesModalOpen,
@@ -200,6 +216,7 @@ export function useTemplates() {
     initialValues,
     action,
     startCreateFlow,
+    startCreateFlowWithTemplate,
     startReplaceFlow,
     startInsertFlow,
     onTemplateSelected,

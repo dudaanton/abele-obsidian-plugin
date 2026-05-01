@@ -16,6 +16,7 @@ export function discoverSkills(): SkillInfo[] {
     if (cache?.frontmatter?.type === 'abele-skill') {
       const name = cache.frontmatter.name
       if (!name) continue
+      if (cache.frontmatter.enabled === false) continue
       results.push({
         path: file.path,
         name: String(name),
