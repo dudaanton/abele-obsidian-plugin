@@ -19,12 +19,7 @@
     <div class="abele-ai-chat__header">
       <AiModelSelector />
       <div class="abele-ai-chat__header-actions">
-        <Icon
-          icon="scroll-text"
-          with-bg
-          :class="{ 'abele-ai-chat__header-active': hasCustomPrompt }"
-          @click="promptSettingsOpen = true"
-        />
+        <Icon icon="refresh-cw" with-bg title="Reload from disk" @click="reloadChat" />
         <Icon icon="sliders-horizontal" with-bg @click="chatSettingsOpen = true" />
         <Icon icon="plus" with-bg @click="handleNewChat" />
         <Icon icon="history" with-bg @click="historyOpen = true" />
@@ -155,7 +150,6 @@
       @close="variablesModalOpen = false"
       @confirm="onPromptVariablesConfirm"
     />
-    <AiSystemPromptSettings v-if="promptSettingsOpen" @close="promptSettingsOpen = false" />
     <AiChatSettings v-if="chatSettingsOpen" @close="chatSettingsOpen = false" />
     <AiSkillPromptPicker
       v-if="skillPromptOpen"
@@ -180,7 +174,6 @@ import AiChatHistory from './AiChatHistory.vue'
 import AiScopeManager from './AiScopeManager.vue'
 import AiPermissions from './AiPermissions.vue'
 import AiPromptPicker from './AiPromptPicker.vue'
-import AiSystemPromptSettings from './AiSystemPromptSettings.vue'
 import AiChatSettings from './AiChatSettings.vue'
 import AiSkillPromptPicker from './AiSkillPromptPicker.vue'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
@@ -383,14 +376,8 @@ const historyOpen = ref(false)
 const scopeOpen = ref(false)
 const permissionsOpen = ref(false)
 const promptPickerOpen = ref(false)
-const promptSettingsOpen = ref(false)
 const chatSettingsOpen = ref(false)
 const skillPromptOpen = ref(false)
-
-const hasCustomPrompt = computed(
-  () =>
-    !!session.value?.customSystemPrompt.value || !!session.value?.customSystemPromptNotePath.value
-)
 const variablesModalOpen = ref(false)
 const pendingPromptContent = ref('')
 const pendingPromptAllVars = ref<TemplateVariable[]>([])
@@ -683,6 +670,16 @@ const onLoadChat = async (file: TFile) => {
   // Load into the current tab
   await session.value?.load(file)
   agentService.saveTabs()
+}
+
+const reloadChat = async () => {
+  const file = session.value?.currentChatFile.value
+  if (!file) {
+    new Notice('No chat file to reload')
+    return
+  }
+  await session.value?.load(file)
+  new Notice('Chat reloaded from disk')
 }
 
 const showDebug = () => {

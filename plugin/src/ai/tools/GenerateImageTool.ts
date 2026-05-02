@@ -1,9 +1,8 @@
-import { requestUrl } from 'obsidian'
 import type { AgentTool } from '../client'
-import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ScopeResolver } from '../ScopeResolver'
 import { saveImageToVault } from './imageUtils'
+import { callImageApi, listImageModelKeys } from './imageApi'
 
 export function createGenerateImageTool(): AgentTool {
   return {
@@ -15,6 +14,12 @@ export function createGenerateImageTool(): AgentTool {
       type: 'object',
       properties: {
         prompt: { type: 'string', description: 'Text description of the image to generate' },
+        model: {
+          type: 'string',
+          description:
+            'Optional image model key (provider::model). If omitted, uses the default image model. Available models: ' +
+            (listImageModelKeys().join(', ') || 'none configured'),
+        },
       },
       required: ['prompt'],
     },
@@ -22,69 +27,17 @@ export function createGenerateImageTool(): AgentTool {
       const prompt = params.prompt as string
       if (!prompt) throw new Error('Missing required parameter: prompt')
 
-      const config = AbeleConfig.getInstance()
-      const secretId = config.ai.openRouterApiKey
-      if (!secretId) throw new Error('OpenRouter API key not configured in settings')
+      const modelKey = (params.model as string) || undefined
+      const result = await callImageApi({ prompt, modelKey })
 
-      const apiKey = GlobalStore.getInstance().app.secretStorage.getSecret(secretId)
-      if (!apiKey) throw new Error('OpenRouter API key not found in keychain')
-
-      const model = config.ai.imageModel
-      if (!model) throw new Error('Image model not configured in settings')
-
-      const response = await requestUrl({
-        url: 'https://openrouter.ai/api/v1/chat/completions',
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: 'user', content: prompt }],
-          modalities: ['image', 'text'],
-        }),
-        throw: false,
-      })
-
-      if (response.status !== 200) {
-        const body = response.text?.slice(0, 500) || ''
-        throw new Error(`OpenRouter API error ${response.status}: ${body}`)
+      if (!result.dataUrl) {
+        return { content: [{ type: 'text', text: result.text || 'No image generated' }] }
       }
 
-      if (!response.text?.trim()) {
-        throw new Error('Empty response from image model')
-      }
-
-      interface ImageResponse {
-        choices?: Array<{
-          message?: {
-            content?: string
-            images?: Array<{ image_url: { url: string } }>
-          }
-        }>
-      }
-      let data: ImageResponse
-      try {
-        data = response.json
-      } catch {
-        throw new Error(`Invalid JSON from image model: ${response.text.slice(0, 200)}`)
-      }
-      const message = data.choices?.[0]?.message
-      if (!message) throw new Error('No response from image model')
-
-      const images = message.images
-      if (!images?.length) {
-        // Model returned text but no image
-        const text = message.content || 'No image generated'
-        return { content: [{ type: 'text', text }] }
-      }
-
-      const dataUrl = images[0].image_url.url
-      const savedPath = await saveImageToVault(dataUrl)
+      const savedPath = await saveImageToVault(result.dataUrl)
       ScopeResolver.getInstance().addFile(savedPath)
-      const text = message.content
-        ? `${message.content}\n\nImage saved: ${savedPath}`
+      const text = result.text
+        ? `${result.text}\n\nImage saved: ${savedPath}`
         : `Image saved: ${savedPath}`
 
       return {

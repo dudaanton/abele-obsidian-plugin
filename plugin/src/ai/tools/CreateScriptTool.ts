@@ -138,7 +138,9 @@ Secret substitution: use \`\${abele_key:name}\` in url, headers, or body to inje
 | Function | Returns | Description |
 |----------|---------|-------------|
 | \`agent(task, opts?)\` | \`string\` | Delegate task to an AI sub-agent |
-| \`generateImage(prompt)\` | \`string\` | Generate image from text, returns vault path |
+| \`generateImage(prompt, model?)\` | \`string\` | Generate image from text, returns vault path |
+
+\`generateImage\` model parameter: optional \`"providerId::modelId"\` key from image generation settings. If omitted, uses the default image model.
 
 \`agent\` options: \`{ model?: string }\`
 - Preset slots: \`"primary"\`, \`"delegate"\`, \`"wise"\`

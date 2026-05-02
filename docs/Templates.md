@@ -65,6 +65,58 @@ Rating: {{ rating }}
 
 This template prompts for three inputs: title, author, rating.
 
+### Wikilink Variable
+
+Opens a file picker. The selected file is inserted as `"[[path/to/file|file]]"` — always quoted, with `|alias` showing the filename. `.md` extension is stripped automatically.
+
+```
+{{ project::wikilink }}
+```
+
+### Image Variable
+
+Image picker with three sources: vault file, disk file, or clipboard paste. The image is imported into the vault attachment folder and the variable is replaced with the resulting path.
+
+```
+{{ cover::image }}
+```
+
+### Select Variable
+
+Dropdown with predefined options:
+
+```
+{{ status::select(Draft,Active,Done) }}
+{{ priority::select(Low,Medium,High) }}
+```
+
+### List Variables
+
+| Syntax | UI | Output |
+|--------|----|--------|
+| `{{ tags::list }}` | Textarea, one item per line | YAML list: `- tag1`, `- tag2` |
+| `{{ links::wiki_list }}` | File picker per item (add/remove) | YAML wikilink list: `- "[[file]]"` |
+
+### Default Values
+
+Any variable (except `date` and plugin) supports a default value via `::default(...)`:
+
+```
+{{ title::default(Untitled) }}
+{{ project::wikilink::default(Projects/Main.md) }}
+{{ status::select(Draft,Active,Done)::default(Draft) }}
+{{ tags::list::default(tag1,tag2) }}
+{{ links::wiki_list::default(fileA.md,fileB.md) }}
+```
+
+Defaults pre-fill the form but can be overridden by the user. `initialValues` (e.g. selected text) take priority over defaults.
+
+**Escaping:** use `\(` `\)` `\,` for literal parentheses and commas inside default values:
+
+```
+{{ ref::wiki_list::default(path/normal.md,path/name\(with parens\).md) }}
+```
+
 ### Plugin Method Calls
 
 ```
@@ -175,13 +227,14 @@ template_dir: "Reading"
 order: 1
 target_folder: "Books"
 target_name: "{{ title }}"
+template_for_author: "{{ author::wikilink }}"
+template_for_status: "{{ status::select(To Read,Reading,Finished)::default(To Read) }}"
+template_for_tags: "{{ tags::list::default(book) }}"
 ---
 
 # {{ title }}
 
-Author: {{ author }}
 Started: {{ date }}
-Status: #reading
 
 ## Notes
 

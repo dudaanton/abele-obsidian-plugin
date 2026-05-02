@@ -308,8 +308,8 @@ export function buildScriptContext(opts: {
       return runSubAgent({ systemPrompt, userMessage: task, tools, model, signal: s }, toolModes)
     },
 
-    async generateImage(prompt: string): Promise<string> {
-      const result = await generateImageTool.execute(nanoid(), { prompt }, s)
+    async generateImage(prompt: string, model?: string): Promise<string> {
+      const result = await generateImageTool.execute(nanoid(), { prompt, model }, s)
       const imagePath = (result.details as any)?.imagePath
       if (imagePath) return imagePath
       return stripPrefix(text(result).replace(/^.*Image saved:\s*/s, ''))

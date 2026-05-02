@@ -123,6 +123,27 @@ export async function importExternalFile(file: File): Promise<TFile> {
   return await app.vault.createBinary(targetPath, buffer)
 }
 
+/**
+ * Import an image from the clipboard into the vault attachment folder.
+ * Returns the vault path of the created file, or null if no image found.
+ */
+export async function importClipboardImage(): Promise<string | null> {
+  const items = await navigator.clipboard.read()
+
+  for (const item of items) {
+    const imageType = item.types.find((t) => t.startsWith('image/'))
+    if (!imageType) continue
+
+    const blob = await item.getType(imageType)
+    const ext = imageType.split('/')[1].replace('jpeg', 'jpg')
+    const file = new File([blob], `clipboard-${Date.now()}.${ext}`, { type: imageType })
+    const created = await importExternalFile(file)
+    return created.path
+  }
+
+  return null
+}
+
 export function getAttachmentIcon(path: string): string {
   if (isImagePath(path)) return 'image'
   const ext = path.split('.').pop()?.toLowerCase() || ''

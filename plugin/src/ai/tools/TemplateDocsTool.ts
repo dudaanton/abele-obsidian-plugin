@@ -65,6 +65,53 @@ Use \`{{ variable_name }}\` syntax in template content, target_folder, target_na
 When using the apply_template tool, pass list variables as JSON arrays:
 \`{ "tags": ["tag1", "tag2"], "links": ["Page A", "Page B"] }\`
 
+### Wikilink variable
+
+\`\`\`
+{{ project::wikilink }}   → file picker, resolved as "[[path/to/file|file]]"
+\`\`\`
+
+The value is always quoted and uses \`|alias\` format with the filename. The \`.md\` extension is stripped automatically.
+Examples: \`"[[Projects/Main|Main]]"\`, \`"[[note|note]]"\`
+
+When using the apply_template tool, pass the file path as a string:
+\`{ "project": "Projects/Main" }\` or \`{ "project": "Projects/Main.md" }\`
+
+### Image variable
+
+\`\`\`
+{{ cover::image }}   → image picker (vault / disk / clipboard), resolved as attachment path
+\`\`\`
+
+The selected or pasted image is imported into the vault attachment folder. The variable is replaced with the resulting vault path.
+
+When using the apply_template tool, pass the vault path as a string:
+\`{ "cover": "Attachments/cover.jpg" }\`
+
+### Select variable
+
+\`\`\`
+{{ status::select(Draft,Active,Done) }}   → dropdown with the given options
+\`\`\`
+
+When using the apply_template tool, pass one of the listed options:
+\`{ "status": "Draft" }\`
+
+### Default values
+
+Any variable (except date and plugin) supports a default via \`::default(...)\`:
+
+\`\`\`
+{{ title::default(Untitled) }}
+{{ project::wikilink::default(Projects/Main.md) }}
+{{ status::select(Draft,Active,Done)::default(Draft) }}
+{{ tags::list::default(tag1,tag2) }}
+{{ links::wiki_list::default(fileA.md,fileB.md) }}
+\`\`\`
+
+Defaults pre-fill the form but can be overridden by the user.
+Use \`\\(\` \`\\)\` \`\\,\` to escape literal parentheses and commas inside default values.
+
 ### Plugin variables
 
 \`\`\`
@@ -101,8 +148,10 @@ template_dir: Media
 target_folder: Books
 target_name: "{{ title }}"
 template_for_created: "{{ date }}"
-template_for_author: "{{ author }}"
+template_for_author: "{{ author::wikilink }}"
+template_for_status: "{{ status::select(To Read,Reading,Finished)::default(To Read) }}"
 template_for_rating: ""
+template_for_tags: "{{ tags::list::default(book,fiction) }}"
 ---
 
 ## Summary
@@ -113,14 +162,18 @@ template_for_rating: ""
 
 \`\`\`
 
-Using \`apply_template\` with \`{ "title": "Dune", "author": "Frank Herbert", "summary": "Sci-fi epic..." }\` creates \`Books/Dune.md\`:
+Using \`apply_template\` with \`{ "title": "Dune", "author": "Frank Herbert", "summary": "Sci-fi epic...", "status": "Reading", "tags": ["book", "sci-fi"] }\` creates \`Books/Dune.md\`:
 
 \`\`\`yaml
 ---
 type: book
 created: 2026-04-28
-author: Frank Herbert
+author: "[[Frank Herbert|Frank Herbert]]"
+status: Reading
 rating: ""
+tags:
+  - book
+  - sci-fi
 ---
 
 ## Summary

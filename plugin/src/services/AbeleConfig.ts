@@ -1,5 +1,11 @@
 import { Journal, JournalDTO } from '@/entities/Journal'
-import { AiSettings, DEFAULT_AI_SETTINGS, AiProvider, migrateOldPermissions } from '@/ai/types'
+import {
+  AiSettings,
+  DEFAULT_AI_SETTINGS,
+  AiProvider,
+  ImageProvider,
+  migrateOldPermissions,
+} from '@/ai/types'
 import AbelePlugin from '@/main'
 
 export interface AbeleSettings {
@@ -211,6 +217,58 @@ export class AbeleConfig {
       (settings.ai as any).allowWebSearch !== undefined
     ) {
       this.ai.toolModes = migrateOldPermissions(null, settings.ai as any)
+    }
+    // Migrate image generation settings to imageProviders
+    if (settings?.ai && !settings.ai.imageProviders) {
+      const old = settings.ai as any
+      // Check for v2 format (single imageGeneration object)
+      const ig = old.imageGeneration
+      // Check for v1 format (openRouterApiKey + imageModel)
+      const legacyKey = old.openRouterApiKey || ''
+      const legacyModel = old.imageModel || ''
+
+      if (ig) {
+        // Migrate v2 → v3
+        const provider: ImageProvider = {
+          id: 'migrated-img',
+          name: ig.apiType === 'openai' ? 'OpenAI' : 'OpenRouter',
+          apiType: ig.apiType || 'openrouter',
+          endpoint: ig.endpoint || '',
+          apiKeyId: ig.apiKeyId || '',
+          models: [
+            {
+              id: ig.model || 'gpt-image-1',
+              name: ig.model || 'gpt-image-1',
+              size: ig.size || '1024x1024',
+              outputFormat: ig.outputFormat || 'png',
+              quality: ig.quality || 'medium',
+            },
+          ],
+        }
+        this.ai.imageProviders = [provider]
+        this.ai.defaultImageModel = `${provider.id}::${provider.models[0].id}`
+      } else if (legacyKey || legacyModel) {
+        // Migrate v1 → v3
+        const modelId = legacyModel || 'google/gemini-2.5-flash-preview:thinking'
+        const provider: ImageProvider = {
+          id: 'migrated-img',
+          name: 'OpenRouter',
+          apiType: 'openrouter',
+          endpoint: '',
+          apiKeyId: legacyKey,
+          models: [
+            {
+              id: modelId,
+              name: modelId,
+              size: '1024x1024',
+              outputFormat: 'png',
+              quality: 'medium',
+            },
+          ],
+        }
+        this.ai.imageProviders = [provider]
+        this.ai.defaultImageModel = `${provider.id}::${modelId}`
+      }
     }
     this.transactionPathTemplate =
       settings?.transactionPathTemplate || DEFAULT_SETTINGS.transactionPathTemplate

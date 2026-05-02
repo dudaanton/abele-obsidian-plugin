@@ -37,6 +37,51 @@ export interface AiSecret {
   keyId: string // reference for Obsidian keychain
 }
 
+export type ImageApiType = 'openai' | 'openrouter'
+
+export interface ImageModelConfig2 {
+  id: string
+  name: string
+  size: string // openai: 1024x1024, 1536x1024, etc.
+  outputFormat: string // openai: png, jpeg, webp
+  quality: string // openai: low, medium, high
+}
+
+export interface ImageProvider {
+  id: string
+  name: string
+  apiType: ImageApiType
+  endpoint: string // empty = default for apiType
+  apiKeyId: string // keychain reference
+  models: ImageModelConfig2[]
+}
+
+export const IMAGE_API_DEFAULTS: Record<ImageApiType, string> = {
+  openai: 'https://api.openai.com/v1/images/generations',
+  openrouter: 'https://openrouter.ai/api/v1/chat/completions',
+}
+
+/** Parse "providerId::modelId" key */
+export function parseImageModelKey(key: string): { providerId: string; modelId: string } | null {
+  const sep = key.indexOf('::')
+  if (sep < 0) return null
+  return { providerId: key.slice(0, sep), modelId: key.slice(sep + 2) }
+}
+
+/** Resolve provider + model from key and providers list */
+export function resolveImageModel(
+  key: string,
+  providers: ImageProvider[]
+): { provider: ImageProvider; model: ImageModelConfig2 } | null {
+  const parsed = parseImageModelKey(key)
+  if (!parsed) return null
+  const provider = providers.find((p) => p.id === parsed.providerId)
+  if (!provider) return null
+  const model = provider.models.find((m) => m.id === parsed.modelId)
+  if (!model) return null
+  return { provider, model }
+}
+
 export interface AiSettings {
   enabled: boolean
   providers: AiProvider[]
@@ -55,12 +100,18 @@ export interface AiSettings {
   chatFolder: string
   chatHistory: AiChatHistoryEntry[]
   braveSearchApiKey: string
-  openRouterApiKey: string
-  imageModel: string
+  imageProviders: ImageProvider[]
+  defaultImageModel: string // "providerId::modelId"
   secrets: AiSecret[]
   prompts: AiPrompts
   systemPromptFromNote: boolean
   systemPromptNotePath: string
+  /** @deprecated migrated to imageProviders */
+  openRouterApiKey?: string
+  /** @deprecated migrated to imageProviders */
+  imageModel?: string
+  /** @deprecated migrated to imageProviders */
+  imageGeneration?: any
 }
 
 /** Tools always sent to agent, governed by permissionMode */
@@ -103,8 +154,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   chatFolder: 'AI/Chats/{{name}}',
   chatHistory: [],
   braveSearchApiKey: '',
-  openRouterApiKey: '',
-  imageModel: 'google/gemini-2.5-flash-preview:thinking',
+  imageProviders: [],
+  defaultImageModel: '',
   secrets: [],
   systemPromptFromNote: false,
   systemPromptNotePath: '',

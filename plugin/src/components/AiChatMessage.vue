@@ -792,6 +792,8 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
 .abele-chat-msg__detail-label {
   font-weight: bold;
   margin-right: var(--size-4-1);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .abele-chat-msg__detail-time {

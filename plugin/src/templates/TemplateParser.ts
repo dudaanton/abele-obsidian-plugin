@@ -9,7 +9,7 @@ export interface TemplateVariable {
   /** Full match including {{ }} */
   raw: string
   /** Variable type */
-  type: 'date' | 'user' | 'plugin' | 'list' | 'wiki_list'
+  type: 'date' | 'user' | 'plugin' | 'list' | 'wiki_list' | 'wikilink' | 'select' | 'image'
   /** Variable name/label */
   name: string
   /** For date: format string */
@@ -20,6 +20,10 @@ export interface TemplateVariable {
   pluginId?: string
   /** For plugin: method name */
   methodName?: string
+  /** For select: available options */
+  options?: string[]
+  /** Default value (for list/wiki_list stored as JSON array string) */
+  defaultValue?: string
 }
 
 /**
@@ -40,6 +44,46 @@ const DATE_OFFSET_REGEX = /^date\.offset\(([-\d]+)\)$/
 const DATE_OFFSET_FORMAT_REGEX = /^date\.offset\(([-\d]+)\)\.format\(['"]([^'"]+)['"]\)$/
 const PLUGIN_REGEX = /^([^;]+);([^;]+);(.+)$/
 const LIST_SUFFIX_REGEX = /^(.+)::(\w+)$/
+const SELECT_REGEX = /^(.+)::select\(([^)]+)\)$/
+
+/**
+ * Extract ::default(...) suffix from expression.
+ * Handles escaped parens \( \) inside the default value.
+ */
+function extractDefault(expr: string): { expr: string; defaultValue?: string } {
+  const marker = '::default('
+  const idx = expr.lastIndexOf(marker)
+  if (idx === -1 || !expr.endsWith(')')) return { expr }
+
+  const rawDefault = expr.slice(idx + marker.length, -1)
+  return { expr: expr.slice(0, idx), defaultValue: rawDefault }
+}
+
+/**
+ * Split raw default string by unescaped commas, unescape each item.
+ * Supports \( \) \, escapes.
+ */
+function splitDefaultItems(raw: string): string[] {
+  const items: string[] = []
+  let current = ''
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === '\\' && i + 1 < raw.length) {
+      current += raw[i + 1]
+      i++
+    } else if (raw[i] === ',') {
+      items.push(current)
+      current = ''
+    } else {
+      current += raw[i]
+    }
+  }
+  if (current) items.push(current)
+  return items
+}
+
+function unescapeDefault(value: string): string {
+  return value.replace(/\\([(),])/g, '$1')
+}
 
 /**
  * Parse a single variable expression
@@ -47,17 +91,35 @@ const LIST_SUFFIX_REGEX = /^(.+)::(\w+)$/
 function parseVariableExpression(raw: string, expr: string): TemplateVariable {
   const trimmed = expr.trim()
 
+  // Extract ::default(...) suffix before parsing type
+  const { expr: mainExpr, defaultValue: rawDefault } = extractDefault(trimmed)
+  const variable = parseTypeExpression(raw, mainExpr)
+
+  if (rawDefault !== undefined) {
+    variable.defaultValue =
+      variable.type === 'list' || variable.type === 'wiki_list'
+        ? JSON.stringify(splitDefaultItems(rawDefault))
+        : unescapeDefault(rawDefault)
+  }
+
+  return variable
+}
+
+/**
+ * Parse variable type from expression (without ::default suffix)
+ */
+function parseTypeExpression(raw: string, expr: string): TemplateVariable {
   // Check date patterns
-  if (DATE_SIMPLE_REGEX.test(trimmed)) {
+  if (DATE_SIMPLE_REGEX.test(expr)) {
     return { raw, type: 'date', name: 'date', format: DATE_FORMAT }
   }
 
-  const formatMatch = trimmed.match(DATE_FORMAT_REGEX)
+  const formatMatch = expr.match(DATE_FORMAT_REGEX)
   if (formatMatch) {
     return { raw, type: 'date', name: 'date', format: formatMatch[1] }
   }
 
-  const offsetMatch = trimmed.match(DATE_OFFSET_REGEX)
+  const offsetMatch = expr.match(DATE_OFFSET_REGEX)
   if (offsetMatch) {
     return {
       raw,
@@ -68,7 +130,7 @@ function parseVariableExpression(raw: string, expr: string): TemplateVariable {
     }
   }
 
-  const offsetFormatMatch = trimmed.match(DATE_OFFSET_FORMAT_REGEX)
+  const offsetFormatMatch = expr.match(DATE_OFFSET_FORMAT_REGEX)
   if (offsetFormatMatch) {
     return {
       raw,
@@ -80,7 +142,7 @@ function parseVariableExpression(raw: string, expr: string): TemplateVariable {
   }
 
   // Check plugin pattern
-  const pluginMatch = trimmed.match(PLUGIN_REGEX)
+  const pluginMatch = expr.match(PLUGIN_REGEX)
   if (pluginMatch) {
     return {
       raw,
@@ -91,8 +153,16 @@ function parseVariableExpression(raw: string, expr: string): TemplateVariable {
     }
   }
 
-  // Check list suffix (name::list or name::wiki_list)
-  const listMatch = trimmed.match(LIST_SUFFIX_REGEX)
+  // Check select pattern (name::select(opt1,opt2,...))
+  const selectMatch = expr.match(SELECT_REGEX)
+  if (selectMatch) {
+    const name = selectMatch[1].trim()
+    const options = selectMatch[2].split(',').map((o) => o.trim())
+    return { raw, type: 'select', name, options }
+  }
+
+  // Check list suffix (name::list, name::wiki_list, name::wikilink)
+  const listMatch = expr.match(LIST_SUFFIX_REGEX)
   if (listMatch) {
     const name = listMatch[1].trim()
     const suffix = listMatch[2]
@@ -102,10 +172,16 @@ function parseVariableExpression(raw: string, expr: string): TemplateVariable {
     if (suffix === 'wiki_list') {
       return { raw, type: 'wiki_list', name }
     }
+    if (suffix === 'wikilink') {
+      return { raw, type: 'wikilink', name }
+    }
+    if (suffix === 'image') {
+      return { raw, type: 'image', name }
+    }
   }
 
   // Default: user variable
-  return { raw, type: 'user', name: trimmed }
+  return { raw, type: 'user', name: expr }
 }
 
 /**
@@ -130,7 +206,14 @@ export function parseTemplateVariables(content: string): ParseResult {
 
   // User variables = those that need user input
   const userVariables = variables.filter(
-    (v) => v.type === 'user' || v.type === 'plugin' || v.type === 'list' || v.type === 'wiki_list'
+    (v) =>
+      v.type === 'user' ||
+      v.type === 'plugin' ||
+      v.type === 'list' ||
+      v.type === 'wiki_list' ||
+      v.type === 'wikilink' ||
+      v.type === 'select' ||
+      v.type === 'image'
   )
 
   return { variables, userVariables }
@@ -191,6 +274,16 @@ async function resolvePluginVariable(
 }
 
 /**
+ * Format a path as a quoted wikilink: "[[path/to/file|file]]"
+ * Strips .md extension, uses filename as alias.
+ */
+function formatWikilink(path: string): string {
+  const clean = path.replace(/\.md$/, '')
+  const name = clean.split('/').pop() || clean
+  return `"[[${clean}|${name}]]"`
+}
+
+/**
  * Format a list value for YAML output.
  * Value is stored as JSON array string in the Map.
  */
@@ -199,7 +292,7 @@ function formatListValue(jsonValue: string, isWikiList: boolean): string {
     const items: string[] = JSON.parse(jsonValue)
     if (!Array.isArray(items) || items.length === 0) return ''
     const formatted = isWikiList
-      ? items.map((item) => `\n  - "[[${item}]]"`)
+      ? items.map((item) => `\n  - ${formatWikilink(item)}`)
       : items.map((item) => `\n  - ${item}`)
     return formatted.join('')
   } catch {
@@ -239,6 +332,17 @@ export async function applyTemplateVariables(
 
       case 'wiki_list':
         value = formatListValue(userValues.get(variable.name) || '[]', true)
+        break
+
+      case 'wikilink': {
+        const link = userValues.get(variable.name) || ''
+        value = link ? formatWikilink(link) : ''
+        break
+      }
+
+      case 'select':
+      case 'image':
+        value = userValues.get(variable.name) || ''
         break
 
       case 'user':

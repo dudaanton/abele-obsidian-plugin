@@ -34,6 +34,58 @@
             </button>
           </div>
 
+          <!-- wikilink: single file picker -->
+          <Search
+            v-else-if="variable.type === 'wikilink'"
+            :model-value="values.get(variable.name) || ''"
+            :suggester="FileSuggest"
+            placeholder="Search for a note..."
+            @update:model-value="(v: string) => updateValue(variable.name, v)"
+          />
+
+          <!-- select: dropdown with options -->
+          <select
+            v-else-if="variable.type === 'select' && variable.options"
+            :value="values.get(variable.name) || ''"
+            class="dropdown"
+            @change="
+              (e: Event) => updateValue(variable.name, (e.target as HTMLSelectElement).value)
+            "
+          >
+            <option value="" disabled>Select {{ variable.name }}</option>
+            <option v-for="opt in variable.options" :key="opt" :value="opt">{{ opt }}</option>
+          </select>
+
+          <!-- image: pick from vault, disk, or clipboard -->
+          <div v-else-if="variable.type === 'image'" class="variable-image">
+            <div v-if="values.get(variable.name)" class="variable-image__preview">
+              <img :src="imageUrls.get(variable.name)" class="variable-image__thumb" />
+              <span class="variable-image__path">{{
+                getFileName(values.get(variable.name)!)
+              }}</span>
+              <button
+                class="variable-image__clear clickable-icon"
+                @click="clearImage(variable.name)"
+              >
+                <ObsidianIcon icon="x" />
+              </button>
+            </div>
+            <div class="variable-image__actions">
+              <button class="clickable-icon" @click="pickImageFromVault(variable.name)">
+                <ObsidianIcon icon="vault" />
+                <span>Vault</span>
+              </button>
+              <button class="clickable-icon" @click="pickImageFromDisk(variable.name)">
+                <ObsidianIcon icon="hard-drive" />
+                <span>Disk</span>
+              </button>
+              <button class="clickable-icon" @click="pickImageFromClipboard(variable.name)">
+                <ObsidianIcon icon="clipboard-paste" />
+                <span>Clipboard</span>
+              </button>
+            </div>
+          </div>
+
           <!-- list: textarea, line per item -->
           <Input
             v-else-if="variable.type === 'list'"
@@ -63,6 +115,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { Notice, TFile } from 'obsidian'
 import Modal from './obsidian/Modal.vue'
 import Input from './obsidian/Input.vue'
 import Button from './obsidian/Button.vue'
@@ -70,6 +123,9 @@ import Search from './obsidian/Search.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import { TemplateVariable } from '@/templates/TemplateParser'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
+import { pickImageFile } from '@/helpers/suggesters/ImagePicker'
+import { importExternalFile, importClipboardImage } from '@/ai/attachments'
+import { GlobalStore } from '@/stores/GlobalStore'
 
 const props = defineProps<{
   variables: TemplateVariable[]
@@ -82,17 +138,31 @@ const emit = defineEmits<{
 }>()
 
 const values = ref<Map<string, string>>(new Map())
+const imageUrls = ref<Map<string, string>>(new Map())
 
 onMounted(() => {
+  // Apply variable defaults first
+  for (const v of props.variables) {
+    if (v.defaultValue !== undefined) {
+      values.value.set(v.name, v.defaultValue)
+    }
+  }
+  // Override with external initialValues (e.g. selected text)
   if (props.initialValues) {
     for (const [key, value] of props.initialValues) {
       values.value.set(key, value)
     }
   }
-  // Initialize list variables with empty array if not set
+  // Initialize list variables with empty array if still unset
   for (const v of props.variables) {
     if ((v.type === 'list' || v.type === 'wiki_list') && !values.value.has(v.name)) {
       values.value.set(v.name, '[]')
+    }
+  }
+  // Resolve preview URLs for pre-filled image values
+  for (const v of props.variables) {
+    if (v.type === 'image' && values.value.has(v.name)) {
+      resolveImageUrl(v.name, values.value.get(v.name)!)
     }
   }
 })
@@ -143,6 +213,62 @@ function removeListItem(name: string, idx: number) {
   const items = getListItems(name)
   items.splice(idx, 1)
   values.value.set(name, JSON.stringify(items))
+}
+
+// --- image helpers ---
+
+function resolveImageUrl(name: string, path: string) {
+  const { app } = GlobalStore.getInstance()
+  const file = app.vault.getAbstractFileByPath(path)
+  if (file instanceof TFile) {
+    imageUrls.value.set(name, app.vault.getResourcePath(file))
+  }
+}
+
+function setImageValue(name: string, path: string) {
+  values.value.set(name, path)
+  resolveImageUrl(name, path)
+}
+
+function clearImage(name: string) {
+  values.value.delete(name)
+  imageUrls.value.delete(name)
+}
+
+function getFileName(path: string): string {
+  return path.split('/').pop() || path
+}
+
+async function pickImageFromVault(name: string) {
+  const { app } = GlobalStore.getInstance()
+  const file = await pickImageFile(app)
+  if (file) setImageValue(name, file.path)
+}
+
+function pickImageFromDisk(name: string) {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  input.onchange = async () => {
+    const file = input.files?.[0]
+    if (!file) return
+    const created = await importExternalFile(file)
+    setImageValue(name, created.path)
+  }
+  input.click()
+}
+
+async function pickImageFromClipboard(name: string) {
+  try {
+    const path = await importClipboardImage()
+    if (path) {
+      setImageValue(name, path)
+    } else {
+      new Notice('No images found in clipboard')
+    }
+  } catch {
+    new Notice('Could not read clipboard')
+  }
 }
 
 function getPlaceholder(variable: TemplateVariable): string {
@@ -212,6 +338,58 @@ function confirmValues() {
   align-self: flex-start;
   padding: 2px 6px;
   border-radius: var(--radius-s);
+}
+
+.variable-image {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+}
+
+.variable-image__preview {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-1);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+}
+
+.variable-image__thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: var(--radius-s);
+  flex-shrink: 0;
+}
+
+.variable-image__path {
+  flex: 1;
+  font-size: var(--font-small);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.variable-image__clear {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.variable-image__actions {
+  display: flex;
+  gap: var(--size-4-1);
+}
+
+.variable-image__actions .clickable-icon {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  font-size: var(--font-small);
+  padding: 2px 8px;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
 }
 
 .modal-buttons {

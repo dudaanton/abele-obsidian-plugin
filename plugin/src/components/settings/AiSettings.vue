@@ -239,38 +239,126 @@
         </div>
       </Setting>
 
-      <Setting
-        name="OpenRouter API Key"
-        desc="Used for image generation/editing. Stored securely in keychain."
-      >
-        <div class="abele-ai-provider__secret">
-          <span v-if="getSecretDisplay(openRouterApiKey)" class="abele-ai-provider__secret-mask">
-            {{ getSecretDisplay(openRouterApiKey) }}
-          </span>
-          <div class="abele-ai-provider__secret-row">
-            <input
-              type="password"
-              class="abele-ai-provider__secret-input"
-              :value="openRouterSecretInput"
-              :placeholder="getSecretDisplay(openRouterApiKey) ? 'New key...' : 'sk-or-...'"
-              @input="openRouterSecretInput = ($event.target as HTMLInputElement).value"
-              @keydown.enter="applyOpenRouterSecret"
-            />
-            <Icon
-              v-if="openRouterSecretInput"
-              icon="check"
-              with-bg
-              @click="applyOpenRouterSecret"
-            />
-          </div>
-        </div>
-      </Setting>
+      <h3>Image Generation</h3>
 
-      <Setting name="Image Model" desc="OpenRouter model for image generation/editing.">
-        <Input
-          :model-value="imageModel"
-          placeholder="google/gemini-2.5-flash-preview:thinking"
-          @update:model-value="updateImageModel"
+      <div v-for="(ip, ipIdx) in imageProviders" :key="ip.id" class="abele-ai-provider">
+        <div class="abele-ai-provider__header">
+          <strong>{{ ip.name || 'Unnamed Provider' }}</strong>
+          <Icon icon="trash" @click="removeImageProvider(ipIdx)" />
+        </div>
+
+        <Setting name="ID" desc="Short identifier used in model keys (e.g. openai, openrouter).">
+          <Input
+            :model-value="ip.id"
+            placeholder="e.g. openai"
+            @update:model-value="updateImageProvider(ipIdx, 'id', $event)"
+          />
+        </Setting>
+
+        <Setting name="Name" desc="Display name for this provider.">
+          <Input
+            :model-value="ip.name"
+            @update:model-value="updateImageProvider(ipIdx, 'name', $event)"
+          />
+        </Setting>
+
+        <Setting
+          name="API Type"
+          desc="OpenAI uses /v1/images/generations, OpenRouter uses chat completions."
+        >
+          <Dropdown
+            :model-value="ip.apiType"
+            :options="[
+              { value: 'openai', display: 'OpenAI' },
+              { value: 'openrouter', display: 'OpenRouter' },
+            ]"
+            @update:model-value="updateImageProvider(ipIdx, 'apiType', $event)"
+          />
+        </Setting>
+
+        <Setting
+          name="Endpoint"
+          :desc="'Leave empty for default: ' + imgEndpointDefault(ip.apiType)"
+        >
+          <Input
+            :model-value="ip.endpoint"
+            :placeholder="imgEndpointDefault(ip.apiType)"
+            @update:model-value="updateImageProvider(ipIdx, 'endpoint', $event)"
+          />
+        </Setting>
+
+        <Setting name="API Key" desc="Stored securely in keychain.">
+          <div class="abele-ai-provider__secret">
+            <span v-if="getSecretDisplay(ip.apiKeyId)" class="abele-ai-provider__secret-mask">
+              {{ getSecretDisplay(ip.apiKeyId) }}
+            </span>
+            <div class="abele-ai-provider__secret-row">
+              <input
+                type="password"
+                class="abele-ai-provider__secret-input"
+                :value="imgSecretInputs[ip.id] || ''"
+                :placeholder="getSecretDisplay(ip.apiKeyId) ? 'New key...' : 'sk-...'"
+                @input="imgSecretInputs[ip.id] = ($event.target as HTMLInputElement).value"
+                @keydown.enter="applyImageProviderSecret(ipIdx)"
+              />
+              <Icon
+                v-if="imgSecretInputs[ip.id]"
+                icon="check"
+                with-bg
+                @click="applyImageProviderSecret(ipIdx)"
+              />
+            </div>
+          </div>
+        </Setting>
+
+        <div class="abele-ai-provider__models">
+          <div class="abele-ai-provider__models-header">
+            <span>Models</span>
+            <Icon icon="plus" title="Add model" @click="addImageModel(ipIdx)" />
+          </div>
+
+          <div class="abele-ai-models-grid">
+            <div
+              v-for="(im, imIdx) in ip.models"
+              :key="imIdx"
+              class="abele-ai-model-card"
+              @click="openImageModelEdit(ipIdx, imIdx)"
+            >
+              <div class="abele-ai-model-card__name">{{ im.name || im.id }}</div>
+              <div class="abele-ai-model-card__id">{{ ip.id }}::{{ im.id }}</div>
+              <div v-if="ip.apiType === 'openai'" class="abele-ai-model-card__meta">
+                <span>{{ im.size }}</span>
+                <span>{{ im.quality }}</span>
+                <span>{{ im.outputFormat }}</span>
+              </div>
+            </div>
+          </div>
+
+          <ImageModelEditModal
+            v-if="editingImageModel?.pIdx === ipIdx"
+            :model="editingImageModel.model"
+            :is-new="editingImageModel.isNew"
+            :is-open-ai="ip.apiType === 'openai'"
+            @save="onImageModelSave(ipIdx, editingImageModel.mIdx, $event)"
+            @delete="removeImageModel(ipIdx, editingImageModel.mIdx)"
+            @close="editingImageModel = null"
+          />
+        </div>
+      </div>
+
+      <div style="margin-top: var(--size-4-6)">
+        <Button text="Add Image Provider" @click="addImageProvider" />
+      </div>
+
+      <Setting
+        name="Default Image Model"
+        desc="Used when agent doesn't specify a model."
+        style="margin-top: var(--size-4-6)"
+      >
+        <Dropdown
+          :model-value="defaultImageModel"
+          :options="[{ value: '', display: 'Not configured' }, ...imageModelOptions]"
+          @update:model-value="selectDefaultImageModel"
         />
       </Setting>
 
@@ -438,6 +526,7 @@ import Checkbox from '../obsidian/Checkbox.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import ToolModesEditor from '../ToolModesEditor.vue'
 import ModelEditModal from './ModelEditModal.vue'
+import ImageModelEditModal from './ImageModelEditModal.vue'
 import Search from '../obsidian/Search.vue'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import Icon from '../obsidian/Icon.vue'
@@ -492,9 +581,9 @@ const enabled = ref(config.ai.enabled)
 const providers = ref<AiProvider[]>(JSON.parse(JSON.stringify(config.ai.providers)))
 const chatFolder = ref(config.ai.chatFolder)
 const braveSearchApiKey = ref(config.ai.braveSearchApiKey)
-const openRouterApiKey = ref(config.ai.openRouterApiKey)
-const imageModel = ref(config.ai.imageModel)
-const openRouterSecretInput = ref('')
+const imageProviders = ref(JSON.parse(JSON.stringify(config.ai.imageProviders || [])))
+const defaultImageModel = ref(config.ai.defaultImageModel || '')
+const imgSecretInputs = reactive<Record<string, string>>({})
 const secrets = ref(JSON.parse(JSON.stringify(config.ai.secrets || [])))
 const secretValueInputs = reactive<Record<number, string>>({})
 const activeProviderId = ref(config.ai.activeProviderId)
@@ -605,8 +694,8 @@ const save = debounce(async () => {
     chatFolder: chatFolder.value,
     chatHistory: config.ai.chatHistory || [],
     braveSearchApiKey: braveSearchApiKey.value,
-    openRouterApiKey: openRouterApiKey.value,
-    imageModel: imageModel.value,
+    imageProviders: JSON.parse(JSON.stringify(imageProviders.value)),
+    defaultImageModel: defaultImageModel.value,
     secrets: JSON.parse(JSON.stringify(secrets.value)),
     systemPromptFromNote: systemPromptFromNote.value,
     systemPromptNotePath: systemPromptNotePath.value,
@@ -658,16 +747,107 @@ const applyBraveSecret = () => {
   save()
 }
 
-const updateImageModel = (val: string) => {
-  imageModel.value = val
+// ── Image providers ─────────────────────────────────────────
+
+const imgEndpointDefault = (apiType: string) => {
+  const defaults: Record<string, string> = {
+    openai: 'https://api.openai.com/v1/images/generations',
+    openrouter: 'https://openrouter.ai/api/v1/chat/completions',
+  }
+  return defaults[apiType] || ''
+}
+
+const imageModelOptions = computed(() => {
+  const options: { value: string; display: string }[] = []
+  for (const p of imageProviders.value) {
+    for (const m of p.models) {
+      options.push({
+        value: `${p.id}::${m.id}`,
+        display: `${p.name} / ${m.name || m.id}`,
+      })
+    }
+  }
+  return options
+})
+
+const addImageProvider = () => {
+  const id = `img-${Date.now()}`
+  imageProviders.value.push({
+    id,
+    name: '',
+    apiType: 'openai',
+    endpoint: '',
+    apiKeyId: '',
+    models: [],
+  })
   save()
 }
 
-const applyOpenRouterSecret = () => {
-  if (!openRouterSecretInput.value) return
-  openRouterApiKey.value = 'abele-openrouter'
-  app.secretStorage.setSecret('abele-openrouter', openRouterSecretInput.value)
-  openRouterSecretInput.value = ''
+const removeImageProvider = (idx: number) => {
+  imageProviders.value.splice(idx, 1)
+  save()
+}
+
+const updateImageProvider = (idx: number, key: string, val: string) => {
+  ;(imageProviders.value[idx] as any)[key] = val
+  save()
+}
+
+const applyImageProviderSecret = (idx: number) => {
+  const provider = imageProviders.value[idx]
+  const val = imgSecretInputs[provider.id]
+  if (!val) return
+  const keyId = `abele-img-${provider.id}`
+  provider.apiKeyId = keyId
+  app.secretStorage.setSecret(keyId, val)
+  imgSecretInputs[provider.id] = ''
+  save()
+}
+
+const editingImageModel = ref<{
+  pIdx: number
+  mIdx: number
+  model: any
+  isNew: boolean
+} | null>(null)
+
+const addImageModel = (pIdx: number) => {
+  const newModel = { id: '', name: '', size: '1024x1024', outputFormat: 'png', quality: 'medium' }
+  editingImageModel.value = {
+    pIdx,
+    mIdx: imageProviders.value[pIdx].models.length,
+    model: newModel,
+    isNew: true,
+  }
+}
+
+const openImageModelEdit = (pIdx: number, mIdx: number) => {
+  editingImageModel.value = {
+    pIdx,
+    mIdx,
+    model: { ...imageProviders.value[pIdx].models[mIdx] },
+    isNew: false,
+  }
+}
+
+const onImageModelSave = (pIdx: number, mIdx: number, model: any) => {
+  const models = imageProviders.value[pIdx].models
+  if (mIdx >= models.length) {
+    models.push(model)
+  } else {
+    models[mIdx] = model
+  }
+  save()
+}
+
+const removeImageModel = (pIdx: number, mIdx: number) => {
+  imageProviders.value[pIdx].models.splice(mIdx, 1)
+  editingImageModel.value = null
+  save()
+}
+
+const selectDefaultImageModel = (key: string) => {
+  defaultImageModel.value = key
   save()
 }
 
