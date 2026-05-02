@@ -286,9 +286,7 @@ const dailyChartData = computed(() => {
   while (d.isBefore(end) || d.isSame(end, 'day')) {
     const key = d.format(DATE_FORMAT)
     const secs = byDay.get(key) || 0
-    if (secs > 0) {
-      result.push([key, Math.round((secs / 3600) * 100) / 100])
-    }
+    result.push([key, Math.round((secs / 3600) * 100) / 100])
     d = d.add(1, 'day')
   }
 
@@ -317,7 +315,7 @@ function renderDailyChart() {
   const colors = getThemeColors()
   const data = dailyChartData.value
 
-  if (!data.length) {
+  if (!data.some(([, v]) => v > 0)) {
     dailyChart.clear()
     return
   }
@@ -339,6 +337,8 @@ function renderDailyChart() {
         type: 'time',
         min: periodStart.value.valueOf(),
         max: periodEnd.value.valueOf(),
+        minInterval: 24 * 3600 * 1000,
+        maxInterval: 7 * 24 * 3600 * 1000,
         axisLabel: {
           color: colors.textMuted,
           hideOverlap: true,
