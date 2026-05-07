@@ -45,15 +45,17 @@ const store = GlobalStore.getInstance()
 
 const accountTypeSets = computed(() => {
   const al = unref(store.accountsList) as AccountsList | null
+  const asset = new Set<string>()
   const expense = new Set<string>()
   const revenue = new Set<string>()
-  if (!al) return { expense, revenue }
+  if (!al) return { asset, expense, revenue }
 
   for (const [path, account] of al.accounts) {
+    if (account.accountType === 'asset') asset.add(path)
     if (account.accountType === 'expense') expense.add(path)
     if (account.accountType === 'revenue') revenue.add(path)
   }
-  return { expense, revenue }
+  return { asset, expense, revenue }
 })
 
 function resolveWikilink(wikilink: string): string | null {
@@ -108,10 +110,18 @@ const showDateBefore = (idx: number): boolean => {
   return txDate(visible.value[idx]) !== txDate(visible.value[idx - 1])
 }
 
+const isAssetToAsset = (tx: Transaction): boolean => {
+  const { asset } = accountTypeSets.value
+  const toPath = tx.to ? resolveWikilink(tx.to) : null
+  const fromPath = tx.from ? resolveWikilink(tx.from) : null
+  return !!(toPath && asset.has(toPath) && fromPath && asset.has(fromPath))
+}
+
 const dayTotals = (date: string): string[] => {
   const byCurrency = new Map<string, number>()
   for (const tx of sorted.value) {
     if (txDate(tx) !== date) continue
+    if (isAssetToAsset(tx)) continue
     const cur = tx.currency || '?'
     const sign = getType(tx) === 'income' ? 1 : -1
     byCurrency.set(cur, (byCurrency.get(cur) || 0) + sign * (tx.amount || 0))

@@ -431,15 +431,17 @@ const periodSavings = computed(() => periodIncome.value - periodExpenses.value)
 
 const accountTypeSets = computed(() => {
   const al = accountsList.value
+  const asset = new Set<string>()
   const expense = new Set<string>()
   const revenue = new Set<string>()
-  if (!al) return { expense, revenue }
+  if (!al) return { asset, expense, revenue }
 
   for (const [path, account] of al.accounts) {
+    if (account.accountType === 'asset') asset.add(path)
     if (account.accountType === 'expense') expense.add(path)
     if (account.accountType === 'revenue') revenue.add(path)
   }
-  return { expense, revenue }
+  return { asset, expense, revenue }
 })
 
 function resolveWikilink(wikilink: string): string | null {
@@ -878,10 +880,18 @@ const showTxDateBefore = (idx: number): boolean => {
   return txDateStr(visibleTransactions.value[idx]) !== txDateStr(visibleTransactions.value[idx - 1])
 }
 
+const isAssetToAsset = (tx: Transaction): boolean => {
+  const { asset } = accountTypeSets.value
+  const toPath = tx.to ? resolveWikilink(tx.to) : null
+  const fromPath = tx.from ? resolveWikilink(tx.from) : null
+  return !!(toPath && asset.has(toPath) && fromPath && asset.has(fromPath))
+}
+
 const dayTxTotals = (date: string): string[] => {
   const byCurrency = new Map<string, number>()
   for (const tx of sortedTransactions.value) {
     if (txDateStr(tx) !== date) continue
+    if (isAssetToAsset(tx)) continue
     const cur = tx.currency || '?'
     const type = transactionTypes.value.get(tx.id) || 'transfer'
     const sign = type === 'income' ? 1 : -1
