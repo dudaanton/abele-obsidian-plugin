@@ -466,6 +466,10 @@ onMounted(() => {
 })
 onUnmounted(() => mutObserver?.disconnect())
 
+onMounted(() => {
+  setTimeout(() => chatInput.value?.focus(), 150)
+})
+
 const onSend = async (content: string, attachments: string[] = []) => {
   const s = session.value
   if (!s) return

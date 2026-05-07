@@ -59,7 +59,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { TFile } from 'obsidian'
 import Modal from './obsidian/Modal.vue'
 import Input from './obsidian/Input.vue'
@@ -81,6 +81,13 @@ const emit = defineEmits<{
 const { app } = GlobalStore.getInstance()
 const tab = ref<'skills' | 'prompts'>('skills')
 const search = ref('')
+
+onMounted(() => {
+  setTimeout(() => {
+    const input = document.querySelector<HTMLInputElement>('.abele-sp-picker input')
+    input?.focus()
+  }, 100)
+})
 
 const skills = computed(() => discoverSkills())
 

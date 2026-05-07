@@ -298,7 +298,11 @@ const addAttachment = (file: TFile) => {
   }
 }
 
-defineExpose({ setText, addAttachment })
+function focus() {
+  inputEl.value?.focus()
+}
+
+defineExpose({ setText, addAttachment, focus })
 
 const onKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Enter' && e.shiftKey) {

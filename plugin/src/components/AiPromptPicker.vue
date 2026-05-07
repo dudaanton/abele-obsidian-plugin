@@ -1,6 +1,6 @@
 <template>
   <Modal title="Select Prompt" @close="emit('close')">
-    <div class="abele-prompt-picker">
+    <form class="abele-prompt-picker" @submit.prevent="confirm">
       <Input v-model="search" placeholder="Search prompts..." />
 
       <div class="abele-prompt-picker__list">
@@ -22,14 +22,14 @@
 
       <div class="abele-prompt-picker__buttons">
         <Button text="Cancel" @click="emit('close')" />
-        <Button text="Apply" :disabled="!selected" @click="confirm" />
+        <Button text="Apply" :disabled="!selected" type="submit" />
       </div>
-    </div>
+    </form>
   </Modal>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { TFile } from 'obsidian'
 import Modal from './obsidian/Modal.vue'
 import Input from './obsidian/Input.vue'
@@ -72,6 +72,13 @@ const filtered = computed(() => {
   return prompts.value.filter(
     (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)
   )
+})
+
+onMounted(() => {
+  setTimeout(() => {
+    const input = document.querySelector<HTMLInputElement>('.abele-prompt-picker input')
+    input?.focus()
+  }, 100)
 })
 
 const confirm = () => {
