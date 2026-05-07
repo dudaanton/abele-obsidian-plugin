@@ -18,7 +18,7 @@ export function createFetchTool(): AgentTool {
   const secretNames = secrets.map((s) => s.name).filter(Boolean)
 
   let description =
-    'Send an HTTP request to any URL. Supports GET, POST, PUT, PATCH, DELETE. Returns status code, headers, and response body. Use this to interact with APIs, fetch web pages, or download data.'
+    'Send an HTTP request to any URL. Supports GET, POST, PUT, PATCH, DELETE. Returns status code, headers, and response body. You can pass custom headers (e.g. Authorization, Content-Type) as key-value pairs. Use this to interact with APIs, fetch web pages, or download data.'
 
   if (secretNames.length > 0) {
     description += `\n\nAvailable secrets for authentication (use as \${abele_key:name} in url, headers, or body — they will be substituted with actual values): ${secretNames.join(', ')}`

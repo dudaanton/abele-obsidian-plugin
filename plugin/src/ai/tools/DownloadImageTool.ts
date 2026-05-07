@@ -125,7 +125,7 @@ export function createDownloadImageTool(): AgentTool {
     name: 'download_image',
     label: 'Download Image',
     description:
-      'Download an image from a URL and save it to the vault attachments folder. Returns the vault path of the saved file. Supports ${abele_key:name} substitution in the URL.',
+      'Download an image from a URL and save it to the vault attachments folder. Returns the vault path of the saved file. You can pass custom headers (e.g. Authorization) for authenticated endpoints. Supports ${abele_key:name} substitution in the URL and header values.',
     parameters: {
       type: 'object',
       properties: {
@@ -134,13 +134,26 @@ export function createDownloadImageTool(): AgentTool {
           type: 'string',
           description: 'Optional filename (without extension). Auto-generated if omitted.',
         },
+        headers: {
+          type: 'object',
+          description:
+            'HTTP headers as key-value pairs. Use ${abele_key:name} for secret substitution (e.g. {"Authorization": "Bearer ${abele_key:api_token}"}).',
+          additionalProperties: { type: 'string' },
+        },
       },
       required: ['url'],
     },
     execute: async (_id, params) => {
       const url = params.url as string
       if (!url) throw new Error('Missing required parameter: url')
-      const targetPath = await downloadToVault(url, params.filename as string | undefined, 'png')
+      const targetPath = await downloadToVault(
+        url,
+        params.filename as string | undefined,
+        'png',
+        undefined,
+        undefined,
+        params.headers as Record<string, string> | undefined
+      )
       return { content: [{ type: 'text', text: `Saved: ${targetPath}` }] }
     },
   }

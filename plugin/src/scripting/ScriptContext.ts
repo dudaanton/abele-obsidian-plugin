@@ -267,8 +267,13 @@ export function buildScriptContext(opts: {
       return { status: response.status, headers: response.headers, data, text: response.text }
     },
 
-    async downloadImage(url: string, filename?: string): Promise<string> {
-      return stripPrefix(await call(downloadImageTool, { url, filename }, s))
+    async downloadImage(
+      url: string,
+      filenameOrOpts?: string | { filename?: string; headers?: Record<string, string> }
+    ): Promise<string> {
+      const opts =
+        typeof filenameOrOpts === 'string' ? { filename: filenameOrOpts } : filenameOrOpts
+      return stripPrefix(await call(downloadImageTool, { url, ...opts }, s))
     },
 
     async downloadFile(
