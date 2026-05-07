@@ -18,6 +18,7 @@ import { AbeleConfig } from './services/AbeleConfig'
 import { createTask, createTaskAndInsert } from './commands/createTask'
 import { createTransaction, createTransactionAndInsert } from './commands/createTransaction'
 import { createTimeEntry, stopActiveTimeEntry } from './commands/createTimeEntry'
+import { createNoteInGroup } from './commands/createNoteInGroup'
 import {
   createNoteFromTemplate,
   replaceNoteWithTemplate,
@@ -335,6 +336,16 @@ export default class AbelePlugin extends Plugin {
           })
         }
 
+        // "Create note in group" for markdown files
+        if (file.extension === 'md') {
+          menu.addItem((item) => {
+            item
+              .setTitle('Create note in group')
+              .setIcon('file-plus')
+              .onClick(() => createNoteInGroup(file))
+          })
+        }
+
         // "Open as code" for code files
         const ext = file.extension
         if (
@@ -635,6 +646,17 @@ export default class AbelePlugin extends Plugin {
       name: 'Create note from template',
       callback: () => {
         createNoteFromTemplate()
+      },
+    })
+
+    this.addCommand({
+      id: 'create-note-in-group',
+      name: 'Create note in group',
+      callback: () => {
+        const file = this.app.workspace.getActiveFile()
+        if (file) {
+          createNoteInGroup(file)
+        }
       },
     })
 
