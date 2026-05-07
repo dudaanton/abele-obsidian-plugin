@@ -722,6 +722,15 @@ export default class AbelePlugin extends Plugin {
     })
 
     this.addCommand({
+      id: 'reload-css-snippets',
+      name: 'Reload CSS snippets',
+      callback: async () => {
+        await SnippetService.getInstance().reload()
+        new Notice('CSS snippets reloaded')
+      },
+    })
+
+    this.addCommand({
       id: 'create-script',
       name: 'Create script',
       callback: () => {
