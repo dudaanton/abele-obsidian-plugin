@@ -176,6 +176,7 @@ Types: \`"text"\` (default), \`"textarea"\`, \`"select"\`, \`"boolean"\`
 |------|------|-------------|
 | \`params\` | \`object\` | Resolved parameter values from the script header |
 | \`signal\` | \`AbortSignal\` | Cancellation signal — check \`signal.aborted\` in long loops |
+| \`dayjs\` | \`function\` | [Day.js](https://day.js.org) date library — \`dayjs()\`, \`dayjs('2026-01-01').add(7, 'day')\`, \`.format('YYYY-MM-DD')\`, etc. |
 | \`log(...args)\` | — | Append to script output. Objects are JSON-stringified |
 
 \`log()\` output is captured and returned as the script result.

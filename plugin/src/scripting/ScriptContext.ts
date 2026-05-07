@@ -1,4 +1,5 @@
 import { Notice, requestUrl, TFile } from 'obsidian'
+import dayjs from 'dayjs'
 import { nanoid } from 'nanoid'
 import type { AgentTool, ModelConfig } from '@/ai/client'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -98,6 +99,7 @@ export function buildScriptContext(opts: {
   return {
     params: opts.params,
     signal: s,
+    dayjs,
 
     // ── Logging ──
 
