@@ -83,6 +83,9 @@ import { Menu, Notice, TFile } from 'obsidian'
 import ObsidianIcon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { setCoverFromMedia } from '@/commands/setCover'
+import { reduceImageFile, formatBytes } from '@/helpers/reduceImage'
+import { useFilesInAgent } from '@/helpers/useFilesInAgent'
+import { AbeleConfig } from '@/services/AbeleConfig'
 
 export interface ViewerImage {
   url: string
@@ -302,57 +305,16 @@ async function reduceSize() {
   const file = resolveFile()
   if (!file) return
 
-  const { app } = GlobalStore.getInstance()
-  const buffer = await app.vault.readBinary(file)
-  const blob = new Blob([buffer])
-  const imgUrl = URL.createObjectURL(blob)
-
-  try {
-    const img = await loadImage(imgUrl)
-    let width = img.naturalWidth
-    let height = img.naturalHeight
-
-    // Scale down if larger than 2000px on any side
-    const maxDim = 2000
-    if (width > maxDim || height > maxDim) {
-      const ratio = Math.min(maxDim / width, maxDim / height)
-      width = Math.round(width * ratio)
-      height = Math.round(height * ratio)
-    }
-
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const ctx = canvas.getContext('2d')!
-    ctx.drawImage(img, 0, 0, width, height)
-
-    // JPEG at 0.8, PNG stays PNG
-    const mimeType = file.extension === 'png' ? 'image/png' : 'image/jpeg'
-    const quality = mimeType === 'image/jpeg' ? 0.8 : undefined
-    const reducedBlob = await canvasToBlob(canvas, mimeType, quality)
-    const reducedBuffer = await reducedBlob.arrayBuffer()
-
-    if (reducedBuffer.byteLength >= buffer.byteLength) {
-      new Notice('Image is already optimized')
-      return
-    }
-
-    await app.vault.modifyBinary(file, reducedBuffer)
-
-    urlOverride.value = app.vault.getResourcePath(file) + '#t=' + Date.now()
-    emit('image-changed')
-    new Notice(
-      `Reduced: ${formatBytes(buffer.byteLength)} → ${formatBytes(reducedBuffer.byteLength)}`
-    )
-  } finally {
-    URL.revokeObjectURL(imgUrl)
+  const result = await reduceImageFile(file)
+  if (!result.reduced) {
+    new Notice('Image is already optimized')
+    return
   }
-}
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  const { app } = GlobalStore.getInstance()
+  urlOverride.value = app.vault.getResourcePath(file) + '#t=' + Date.now()
+  emit('image-changed')
+  new Notice(`Reduced: ${formatBytes(result.originalSize)} → ${formatBytes(result.newSize)}`)
 }
 
 async function downloadImage() {
@@ -426,6 +388,17 @@ function showMoreMenu(e: MouseEvent) {
         .setIcon('image')
         .onClick(() => setAsCover())
     )
+    if (AbeleConfig.getInstance().ai.enabled) {
+      menu.addItem((item) =>
+        item
+          .setTitle('Use in AI Agent')
+          .setIcon('bot')
+          .onClick(() => {
+            const file = resolveFile()
+            if (file) useFilesInAgent([file])
+          })
+      )
+    }
   }
   menu.showAtPosition({ x: e.clientX, y: e.clientY })
 }

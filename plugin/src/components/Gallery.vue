@@ -185,6 +185,7 @@ import GalleryViewer, { type ViewerImage } from './GalleryViewer.vue'
 import { pickImageFile } from '@/helpers/suggesters/ImagePicker'
 import { setCoverFromMedia } from '@/commands/setCover'
 import { Choice, useMenu } from '@/composables/useMenu'
+import { reduceImageFile, formatBytes } from '@/helpers/reduceImage'
 
 const props = defineProps<{
   gallery: Gallery
@@ -313,12 +314,52 @@ const settingsChoices = computed<Choice[]>(() => [
     event: 'bg',
     icon: props.gallery.bg ? 'eye-off' : 'eye',
   },
+  {
+    title: 'Reduce size',
+    event: 'reduce-size',
+    icon: 'minimize-2',
+  },
 ])
 
-function handleSettingsMenu(event: string, value: string) {
+async function handleSettingsMenu(event: string, value: string) {
   if (event === 'layout') props.gallery.setLayout(value)
   else if (event === 'height') props.gallery.setHeight(parseInt(value))
   else if (event === 'bg') props.gallery.setBg(!props.gallery.bg)
+  else if (event === 'reduce-size') await reduceAllImages()
+}
+
+async function reduceAllImages() {
+  const { app } = GlobalStore.getInstance()
+  const localImages = props.gallery.images.filter((img) => img.type === 'local')
+
+  if (localImages.length === 0) {
+    new Notice('No local images to reduce')
+    return
+  }
+
+  let reduced = 0
+  let totalOriginal = 0
+  let totalNew = 0
+
+  for (const img of localImages) {
+    const file = app.metadataCache.getFirstLinkpathDest(img.path, props.gallery.filePath)
+    if (!(file instanceof TFile)) continue
+
+    const result = await reduceImageFile(file)
+    totalOriginal += result.originalSize
+    totalNew += result.newSize
+    if (result.reduced) reduced++
+  }
+
+  imageVersion.value++
+
+  if (reduced === 0) {
+    new Notice('All images are already optimized')
+  } else {
+    new Notice(
+      `Reduced ${reduced}/${localImages.length} images: ${formatBytes(totalOriginal)} → ${formatBytes(totalNew)}`
+    )
+  }
 }
 
 const layoutMenu = useMenu(layoutBtnRef, settingsChoices, handleSettingsMenu)
