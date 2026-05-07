@@ -30,6 +30,13 @@
   >
     <FooterView :footer="footer as Footer" />
   </Teleport>
+  <Teleport
+    v-for="footnote in footnotesContainers"
+    :key="footnote.id"
+    :to="`[data-footnote-id='${footnote.id}']`"
+  >
+    <FootnoteView :footnote="footnote as Footnote" />
+  </Teleport>
   <Teleport v-if="timelineSidebarId" :to="`[${TIMELINE_SIDEBAR_ID_ATTR}='${timelineSidebarId}']`">
     <TimelineSidebarView />
   </Teleport>
@@ -109,11 +116,13 @@ import GalleryView from './Gallery.vue'
 import TaskHeaderView from './TaskHeader.vue'
 import HeaderView from './Header.vue'
 import FooterView from './Footer.vue'
+import FootnoteView from './FootnoteView.vue'
 import { Task } from '@/entities/Task'
 import { Gallery } from '@/entities/Gallery'
 import { TaskHeader } from '@/entities/TaskHeader'
 import { Header } from '@/entities/Header'
 import { Footer } from '@/entities/Footer'
+import { Footnote } from '@/entities/Footnote'
 import TimelineSidebarView from './TimelineSidebar.vue'
 import TodoSidebarView from './TodoSidebar.vue'
 import FindAndReplaceBases from './FindAndReplaceBases.vue'
@@ -146,6 +155,7 @@ const {
   tasksHeadersContainers,
   headersContainers,
   footersContainers,
+  footnotesContainers,
   findAndReplaceModalOpened,
   migrateFromDataviewModalOpened,
   saveMediaModalOpened,

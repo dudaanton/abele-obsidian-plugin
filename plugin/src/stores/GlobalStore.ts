@@ -1,4 +1,5 @@
 import { Footer } from '@/entities/Footer'
+import { Footnote } from '@/entities/Footnote'
 import { Gallery } from '@/entities/Gallery'
 import { Header } from '@/entities/Header'
 import { Task } from '@/entities/Task'
@@ -40,6 +41,7 @@ export class GlobalStore {
   public readonly footersContainers = ref<Array<Footer>>([])
   public readonly headersContainers = ref<Array<Header>>([])
   public readonly galleriesContainers = ref<Array<Gallery>>([])
+  public readonly footnotesContainers = ref<Array<Footnote>>([])
   public readonly findAndReplaceModalOpened = ref(false)
   public readonly migrateFromDataviewModalOpened = ref(false)
   public readonly saveMediaModalOpened = ref(false)
@@ -307,6 +309,7 @@ export class GlobalStore {
     cleanupArray(this.tasksContainers.value, 'data-task-id')
     cleanupArray(this.tasksHeadersContainers.value, 'data-task-header-id')
     cleanupArray(this.galleriesContainers.value, 'data-gallery-id')
+    cleanupArray(this.footnotesContainers.value, 'data-footnote-id')
   }
 
   public destroy(): void {
@@ -327,6 +330,8 @@ export class GlobalStore {
     this.headersContainers.value = []
     for (const g of this.galleriesContainers.value) g.cleanup()
     this.galleriesContainers.value = []
+    for (const fn of this.footnotesContainers.value) fn.cleanup()
+    this.footnotesContainers.value = []
 
     this.tasksList.value?.cleanup()
     this.tasksList.value = null

@@ -2,6 +2,67 @@ body.abele-full-width-sidebars {
   --mobile-sidebar-width: 100vw;
 }
 
+/* Footnote sidenotes overlay — lives inside cm-scroller, out of document flow */
+.abele-footnotes-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+}
+
+.abele-footnote-widget-container {
+  pointer-events: auto;
+}
+
+/* Highlight the reference line when hovering a sidenote card */
+.abele-footnote-ref-highlight {
+  background-color: var(--text-highlight-bg);
+  border-radius: var(--radius-s);
+}
+
+/* Flash highlight on navigation */
+.abele-footnote-flash {
+  animation: abele-footnote-flash 2.5s ease-out;
+}
+
+@keyframes abele-footnote-flash {
+  0% {
+    background-color: var(--text-highlight-bg);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* Footnote [^ and ] syntax — hidden */
+.abele-footnote-ref-syntax {
+  font-size: 0;
+}
+
+/* Footnote label in body text — superscript link */
+.abele-footnote-ref-link {
+  color: var(--text-accent);
+  cursor: pointer;
+  font-size: var(--font-smallest);
+  vertical-align: super;
+  line-height: 0;
+}
+
+.abele-footnote-ref-link:hover {
+  text-decoration: underline;
+}
+
+/* Footnote labels [^N] in definitions — styled as back-links */
+.abele-footnote-def-link {
+  color: var(--text-accent);
+  cursor: pointer;
+}
+
+.abele-footnote-def-link:hover {
+  text-decoration: underline;
+}
+
 .workspace-leaf-content:has(.abele-ai-chat)::after {
   display: none;
 }

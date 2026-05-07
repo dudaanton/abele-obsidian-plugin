@@ -27,7 +27,9 @@ import {
 import { TemplateService } from './templates/TemplateService'
 import { taskStateField } from './editor/TaskPlugin'
 import { galleryExtensions } from './editor/GalleryPlugin'
+import { footnoteExtensions } from './editor/FootnotePlugin'
 import { insertGallery, convertImagesToGalleries } from './commands/galleryCommands'
+import { reindexFootnotes } from './commands/footnoteCommands'
 import { setCoverFromFirstMedia } from './commands/setCover'
 import { findAndReplace } from './commands/findAndReplace'
 import { saveMedia } from './commands/saveMedia'
@@ -223,6 +225,7 @@ export default class AbelePlugin extends Plugin {
     this.registerEditorExtension(taskStateField)
     this.registerEditorExtension(galleryExtensions)
     this.registerEditorExtension(createHeaderExtension())
+    this.registerEditorExtension(footnoteExtensions)
 
     // this.registerPriorityCodeblockPostProcessor(
     //   TASK_CODEBLOCK_KEYWORD,
@@ -689,6 +692,14 @@ export default class AbelePlugin extends Plugin {
       name: 'Convert images on page to galleries',
       editorCallback: (editor: Editor) => {
         convertImagesToGalleries(editor)
+      },
+    })
+
+    this.addCommand({
+      id: 'reindex-footnotes',
+      name: 'Reindex footnotes',
+      editorCallback: (editor: Editor) => {
+        reindexFootnotes(editor)
       },
     })
 
