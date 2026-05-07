@@ -524,19 +524,19 @@ watch(
 
 .abele-time-tracking-sidebar__header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--p-spacing);
 }
 
 .abele-time-tracking-sidebar__header-left {
   display: flex;
   align-items: center;
-  gap: var(--size-4-2);
+  gap: calc(var(--p-spacing) / 2);
 }
 
 .abele-time-tracking-sidebar__header-text {
-  font-size: var(--font-ui-large);
-  font-weight: var(--font-semibold);
+  font-weight: bold;
 }
 
 .abele-time-tracking-sidebar__active {
