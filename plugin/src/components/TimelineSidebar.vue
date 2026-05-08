@@ -6,6 +6,7 @@
       :journal="journal"
       class="abele-timeline-sidebar__calendar"
       @date-selected="selectDate"
+      @date-right-clicked="onDateRightClick"
     />
     <Timeline :tasks="timelineTasks" show-add-button />
   </div>
@@ -17,8 +18,9 @@ import Timeline from './Timeline.vue'
 import Calendar from './Calendar.vue'
 import { computed, unref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { Notice } from 'obsidian'
+import { Menu, Notice } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { createTask } from '@/commands/createTask'
 import dayjs from 'dayjs'
 
 const { selectedJournal } = GlobalStore.getInstance()
@@ -49,6 +51,23 @@ const selectDate = (date: dayjs.Dayjs) => {
   }
 
   journal.value.createJournalNote(date)
+}
+
+const onDateRightClick = (date: dayjs.Dayjs, event: MouseEvent) => {
+  event.preventDefault()
+  const menu = new Menu()
+  menu.setUseNativeMenu(false)
+  menu.addItem((item) => {
+    item.setTitle('Event date')
+    item.setIcon('calendar-days')
+    item.onClick(() => createTask({ date }))
+  })
+  menu.addItem((item) => {
+    item.setTitle('Due date')
+    item.setIcon('calendar-clock')
+    item.onClick(() => createTask({ due: date }))
+  })
+  menu.showAtMouseEvent(event)
 }
 
 // const todoTasks = computed(() => tasks.value.filter((t) => !t.taskNotFound && !t.dates.length))

@@ -28,7 +28,11 @@
               ? day.day.isSame(props.selectedDate, 'day')
               : false,
           }"
-          @click="emit('date-selected', day.day)"
+          @click="onDayClick(day.day)"
+          @contextmenu="onContextMenu(day.day, $event)"
+          @touchstart="onTouchStart(day.day, $event)"
+          @touchend="onTouchEnd"
+          @touchmove="onTouchEnd"
         >
           <div class="abele-calendar__day-number">{{ day.dayNumber }}</div>
           <div v-if="journal || showTasks" class="abele-calendar__day-marks">
@@ -124,6 +128,43 @@ const todayClick = () => {
   emit('date-selected', today.value)
 }
 
+let longPressTimer: ReturnType<typeof setTimeout> | null = null
+let longPressFired = false
+
+const onDayClick = (date: dayjs.Dayjs) => {
+  if (longPressFired) {
+    longPressFired = false
+    return
+  }
+  emit('date-selected', date)
+}
+
+const onTouchStart = (date: dayjs.Dayjs, event: TouchEvent) => {
+  longPressFired = false
+  longPressTimer = setTimeout(() => {
+    longPressFired = true
+    const touch = event.touches[0]
+    emit(
+      'date-right-clicked',
+      date,
+      new MouseEvent('contextmenu', { clientX: touch.clientX, clientY: touch.clientY })
+    )
+  }, 500)
+}
+
+const onContextMenu = (date: dayjs.Dayjs, event: MouseEvent) => {
+  event.preventDefault()
+  if (longPressFired) return
+  emit('date-right-clicked', date, event)
+}
+
+const onTouchEnd = () => {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+}
+
 const days = computed(() => {
   const days: { dayNumber: number; day: dayjs.Dayjs; formatedDate: string }[] = []
   const firstDayOfMonth = dayjs().year(selectedYear.value).month(selectedMonth.value).date(1)
@@ -203,6 +244,7 @@ const tasksDateMap = computed(() => {
 
 const emit = defineEmits<{
   (e: 'date-selected', date: dayjs.Dayjs): void
+  (e: 'date-right-clicked', date: dayjs.Dayjs, event: MouseEvent): void
 }>()
 </script>
 
