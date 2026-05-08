@@ -25,14 +25,10 @@
         placeholder="Old value"
       />
       <ObisidianInput
-        v-if="
-          action.type !== 'remove-from-list' &&
-          action.type !== 'remove-property' &&
-          action.type !== 'move'
-        "
+        v-if="action.type !== 'remove-property' && action.type !== 'move'"
         v-model="action.value"
         class="abele-replacement-action__input abele-replacement-action__input_stretch"
-        placeholder="Value"
+        :placeholder="action.type === 'remove-from-list' ? 'Value to remove' : 'Value'"
       />
     </div>
     <ObsidianIcon icon="cross" @click="emit('remove')" />
