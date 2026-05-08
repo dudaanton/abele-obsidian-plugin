@@ -85,6 +85,22 @@ export default class AbelePlugin extends Plugin {
 
     this.vueApp = createApp(VueEntry)
     this.vueApp.use(createPinia())
+
+    // Catch errors from Teleport unmounting when CM6 removes widget DOM
+    this.vueApp.config.errorHandler = (err, instance, info) => {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (
+        msg.includes('removeChild') ||
+        msg.includes('parentNode') ||
+        msg.includes('bum') ||
+        msg.includes('emitsOptions')
+      ) {
+        console.debug('[Abele] Suppressed Teleport cleanup error:', msg)
+        return
+      }
+      console.error('[Abele] Vue error:', err, info)
+    }
+
     this.vueApp.mount(rootContainer)
   }
 

@@ -6,7 +6,7 @@ import { editorLivePreviewField } from 'obsidian'
  * Matches =={color} text== where color is a word (e.g. red, blue, green).
  * Captures: [1] = opening ==, [2] = {color} , [3] = text, [4] = closing ==
  */
-const HIGHLIGHT_RE = /=={(\w+)}\s((?:(?!==).)+)==/g
+const HIGHLIGHT_RE = /=={(\w+)}\s((?:(?!==)[\s\S])+)==/g
 
 export const HIGHLIGHT_COLORS = [
   'red',
@@ -37,24 +37,20 @@ interface HighlightMatch {
 
 function findHighlights(state: EditorState): HighlightMatch[] {
   const matches: HighlightMatch[] = []
+  const text = state.doc.toString()
 
-  for (let i = 1; i <= state.doc.lines; i++) {
-    const line = state.doc.line(i)
-    HIGHLIGHT_RE.lastIndex = 0
-    let match: RegExpExecArray | null
-    while ((match = HIGHLIGHT_RE.exec(line.text)) !== null) {
-      const fullFrom = line.from + match.index
-      const fullTo = fullFrom + match[0].length
-      const color = match[1]
-      // ==        {color} text     ==
-      // ^openFrom ^openTo  ^closeFrom ^closeTo
-      const openFrom = fullFrom
-      const openTo = fullFrom + 2 + 1 + color.length + 1 + 1 // =={ + color + } + space
-      const closeFrom = fullTo - 2
-      const closeTo = fullTo
+  HIGHLIGHT_RE.lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = HIGHLIGHT_RE.exec(text)) !== null) {
+    const fullFrom = match.index
+    const fullTo = fullFrom + match[0].length
+    const color = match[1]
+    const openFrom = fullFrom
+    const openTo = fullFrom + 2 + 1 + color.length + 1 + 1 // =={ + color + } + space
+    const closeFrom = fullTo - 2
+    const closeTo = fullTo
 
-      matches.push({ from: fullFrom, to: fullTo, color, openFrom, openTo, closeFrom, closeTo })
-    }
+    matches.push({ from: fullFrom, to: fullTo, color, openFrom, openTo, closeFrom, closeTo })
   }
 
   return matches

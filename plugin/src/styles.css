@@ -116,12 +116,15 @@ body {
   }
 }
 
-/* Footnote [^ and ] syntax — hidden */
-.abele-footnote-ref-syntax {
+/* Desktop: footnote refs as superscript — hide [ ^ ] show N */
+.abele-footnote-ref-bracket {
   font-size: 0;
 }
 
-/* Footnote label in body text — superscript link */
+.abele-footnote-ref-caret {
+  font-size: 0;
+}
+
 .abele-footnote-ref-link {
   color: var(--text-accent);
   cursor: pointer;
@@ -134,14 +137,38 @@ body {
   text-decoration: underline;
 }
 
-/* Footnote labels [^N] in definitions — styled as back-links */
-.abele-footnote-def-link {
+/* Definition [^N] — hide ^ show [N] as link */
+/* Footnote definition — style Obsidian's wrapper as a link */
+.cm-hmd-footnote:has(.abele-footnote-def-link) {
+  color: var(--text-accent) !important;
+  cursor: pointer;
+}
+
+.cm-hmd-footnote:has(.abele-footnote-def-link) * {
+  color: inherit !important;
+}
+
+
+.abele-footnote-def-bracket:hover,
+.abele-footnote-def-link:hover {
+  text-decoration: underline;
+}
+
+/* Mobile: full-size [N] links for both refs and definitions */
+body.is-mobile .abele-footnote-ref-bracket {
+  font-size: inherit;
   color: var(--text-accent);
   cursor: pointer;
 }
 
-.abele-footnote-def-link:hover {
-  text-decoration: underline;
+body.is-mobile .abele-footnote-ref-caret {
+  font-size: 0;
+}
+
+body.is-mobile .abele-footnote-ref-link {
+  font-size: inherit;
+  vertical-align: baseline;
+  line-height: inherit;
 }
 
 .workspace-leaf-content:has(.abele-ai-chat)::after {

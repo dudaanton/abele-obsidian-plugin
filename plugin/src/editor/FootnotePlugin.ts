@@ -1,16 +1,16 @@
 import { EditorView, ViewPlugin, ViewUpdate, Decoration, DecorationSet } from '@codemirror/view'
 import { EditorState, RangeSetBuilder } from '@codemirror/state'
-import { editorLivePreviewField, editorInfoField } from 'obsidian'
+import { editorLivePreviewField, editorInfoField, Platform } from 'obsidian'
 import { Footnote } from '@/entities/Footnote'
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { reliableScrollTo } from '@/helpers/scrollUtils'
 
 const FOOTNOTE_REF_RE = /\[\^([^\]]+)\]/g
 const FOOTNOTE_DEF_RE = /^\[\^([^\]]+)\]:\s*(.*)/
 
 const SIDENOTE_GAP = 4
 const HIGHLIGHT_CLASS = 'abele-footnote-ref-highlight'
-const FLASH_CLASS = 'abele-footnote-flash'
 
 interface ParsedFootnote {
   label: string
@@ -129,15 +129,22 @@ function buildDecorations(
   const builder = new RangeSetBuilder<Decoration>()
 
   // Collect all marks and sort by from position (required by RangeSetBuilder)
-  const marks: { from: number; to: number; cls: string; label: string }[] = []
+  const marks: { from: number; to: number; cls: string; label: string; style?: string }[] = []
 
-  // References in body text: [^ → hidden, label → superscript link, ] → hidden
+  // References in body text: [, ^, label, ]
   for (const fn of footnotes) {
-    // [^
+    // [
     marks.push({
       from: fn.refFrom,
+      to: fn.refFrom + 1,
+      cls: 'abele-footnote-ref-bracket',
+      label: fn.label,
+    })
+    // ^
+    marks.push({
+      from: fn.refFrom + 1,
       to: fn.refFrom + 2,
-      cls: 'abele-footnote-ref-syntax',
+      cls: 'abele-footnote-ref-caret',
       label: fn.label,
     })
     // label
@@ -151,7 +158,7 @@ function buildDecorations(
     marks.push({
       from: fn.refTo - 1,
       to: fn.refTo,
-      cls: 'abele-footnote-ref-syntax',
+      cls: 'abele-footnote-ref-bracket',
       label: fn.label,
     })
   }
@@ -162,30 +169,24 @@ function buildDecorations(
     refPositions.set(fn.label, fn.refFrom)
   }
 
-  // [^N] in definition lines → link back to reference
+  // [^N] in definition lines — only mark the label for click handling
   for (const def of definitions) {
-    if (refPositions.has(def.label)) {
-      marks.push({
-        from: def.labelFrom,
-        to: def.labelTo,
-        cls: 'abele-footnote-def-link',
-        label: def.label,
-      })
-    }
+    if (!refPositions.has(def.label)) continue
+    marks.push({
+      from: def.labelFrom,
+      to: def.labelTo,
+      cls: 'abele-footnote-def-link',
+      label: def.label,
+    })
   }
 
   // Sort by from position
   marks.sort((a, b) => a.from - b.from || a.to - b.to)
 
   for (const mark of marks) {
-    builder.add(
-      mark.from,
-      mark.to,
-      Decoration.mark({
-        class: mark.cls,
-        attributes: { 'data-footnote-label': mark.label },
-      })
-    )
+    const attrs: Record<string, string> = { 'data-footnote-label': mark.label }
+    if (mark.style) attrs.style = mark.style
+    builder.add(mark.from, mark.to, Decoration.mark({ class: mark.cls, attributes: attrs }))
   }
 
   return builder.finish()
@@ -223,58 +224,33 @@ class FootnoteOverlay {
   private handleClick = (e: MouseEvent) => {
     const target = e.target as HTMLElement
 
-    // Click on [^N] in body text → scroll to definition
-    const refLink = target.closest('.abele-footnote-ref-link')
-    if (refLink) {
-      const label = refLink.getAttribute('data-footnote-label')
+    // Click on any part of [^N] in body text → scroll to definition
+    const refPart = target.closest(
+      '.abele-footnote-ref-link, .abele-footnote-ref-bracket, .abele-footnote-ref-caret'
+    )
+    if (refPart) {
+      const label = refPart.getAttribute('data-footnote-label')
       const fn = this.parsedFootnotes.find((f) => f.label === label)
       if (fn) {
         e.preventDefault()
-        this.view.dispatch({
-          selection: { anchor: fn.definitionFrom },
-          effects: EditorView.scrollIntoView(fn.definitionFrom, { y: 'center' }),
-        })
-        this.flashLineAt(fn.definitionFrom)
+        reliableScrollTo(fn.definitionFrom)
       }
       return
     }
 
-    // Click on [^N] in definition → scroll to reference
-    const defLink = target.closest('.abele-footnote-def-link')
-    if (defLink) {
-      const label = defLink.getAttribute('data-footnote-label')
+    // Click on any part of [^N] in definition → scroll to reference
+    const defPart = target.closest(
+      '.abele-footnote-def-link, .abele-footnote-def-bracket, .abele-footnote-def-caret'
+    )
+    if (defPart) {
+      const label = defPart.getAttribute('data-footnote-label')
       const fn = this.parsedFootnotes.find((f) => f.label === label)
       if (fn) {
         e.preventDefault()
-        this.view.dispatch({
-          selection: { anchor: fn.refFrom },
-          effects: EditorView.scrollIntoView(fn.refFrom, { y: 'center' }),
-        })
-        this.flashLineAt(fn.refFrom)
+        reliableScrollTo(fn.refFrom)
       }
       return
     }
-  }
-
-  private flashLineAt(pos: number) {
-    // Delay to let CM6 finish scrolling and render the target line
-    setTimeout(() => {
-      try {
-        const domPos = this.view.domAtPos(pos)
-        const lineEl =
-          domPos.node instanceof HTMLElement
-            ? domPos.node.closest('.cm-line')
-            : (domPos.node.parentElement?.closest('.cm-line') ?? null)
-        if (lineEl) {
-          lineEl.classList.remove(FLASH_CLASS)
-          void (lineEl as HTMLElement).offsetWidth
-          lineEl.classList.add(FLASH_CLASS)
-          setTimeout(() => lineEl.classList.remove(FLASH_CLASS), 2500)
-        }
-      } catch {
-        // pos outside viewport
-      }
-    }, 150)
   }
 
   update(update: ViewUpdate) {
@@ -406,7 +382,7 @@ class FootnoteOverlay {
     const rightSpace = scrollerRect.right - contentRect.right
     const sidenoteWidth = Math.min(300, Math.max(180, rightSpace - 16))
 
-    if (sidenoteWidth < 100) {
+    if (rightSpace < 200) {
       for (const entry of this.entries.values()) {
         entry.el.style.display = 'none'
       }
@@ -460,32 +436,3 @@ class FootnoteOverlay {
 export const footnoteExtensions = ViewPlugin.fromClass(FootnoteOverlay, {
   decorations: (v) => v.decorations,
 })
-
-/**
- * Flash-highlight a line in the active editor at the given character offset.
- * Used by FootnoteView.vue when navigating via card links.
- */
-export function flashLineAtOffset(offset: number) {
-  const view = (GlobalStore.getInstance().app.workspace as any).activeEditor?.editor?.cm as
-    | EditorView
-    | undefined
-  if (!view) return
-
-  setTimeout(() => {
-    try {
-      const domPos = view.domAtPos(offset)
-      const lineEl =
-        domPos.node instanceof HTMLElement
-          ? domPos.node.closest('.cm-line')
-          : (domPos.node.parentElement?.closest('.cm-line') ?? null)
-      if (lineEl) {
-        lineEl.classList.remove(FLASH_CLASS)
-        void (lineEl as HTMLElement).offsetWidth
-        lineEl.classList.add(FLASH_CLASS)
-        setTimeout(() => lineEl.classList.remove(FLASH_CLASS), 2500)
-      }
-    } catch {
-      // pos outside viewport
-    }
-  }, 150)
-}

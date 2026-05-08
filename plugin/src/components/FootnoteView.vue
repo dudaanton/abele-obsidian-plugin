@@ -13,34 +13,20 @@
 
 <script setup lang="ts">
 import { Footnote } from '@/entities/Footnote'
-import { GlobalStore } from '@/stores/GlobalStore'
-import { MarkdownView } from 'obsidian'
-import { flashLineAtOffset } from '@/editor/FootnotePlugin'
 import { removeFootnote } from '@/commands/footnoteCommands'
+import { reliableScrollTo } from '@/helpers/scrollUtils'
 import Markdown from './obsidian/Markdown.vue'
 
 const props = defineProps<{
   footnote: Footnote
 }>()
 
-function scrollTo(offset: number) {
-  const view = GlobalStore.getInstance().app.workspace.getActiveViewOfType(MarkdownView)
-  if (!view) return
-
-  const editor = view.editor
-  const pos = editor.offsetToPos(offset)
-  editor.setCursor(pos)
-  editor.scrollIntoView({ from: pos, to: pos }, true)
-  editor.focus()
-  flashLineAtOffset(offset)
-}
-
 function scrollToDefinition() {
-  scrollTo(props.footnote.definitionFrom)
+  reliableScrollTo(props.footnote.definitionFrom)
 }
 
 function scrollToReference() {
-  scrollTo(props.footnote.refFrom)
+  reliableScrollTo(props.footnote.refFrom)
 }
 
 function remove() {
