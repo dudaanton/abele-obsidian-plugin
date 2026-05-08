@@ -28,8 +28,10 @@ import { TemplateService } from './templates/TemplateService'
 import { taskStateField } from './editor/TaskPlugin'
 import { galleryExtensions } from './editor/GalleryPlugin'
 import { footnoteExtensions } from './editor/FootnotePlugin'
+import { highlightStateField } from './editor/HighlightPlugin'
 import { insertGallery, convertImagesToGalleries } from './commands/galleryCommands'
 import { reindexFootnotes } from './commands/footnoteCommands'
+import { insertHighlight, removeHighlight } from './commands/highlightCommands'
 import { setCoverFromFirstMedia } from './commands/setCover'
 import { findAndReplace } from './commands/findAndReplace'
 import { saveMedia } from './commands/saveMedia'
@@ -226,6 +228,7 @@ export default class AbelePlugin extends Plugin {
     this.registerEditorExtension(galleryExtensions)
     this.registerEditorExtension(createHeaderExtension())
     this.registerEditorExtension(footnoteExtensions)
+    this.registerEditorExtension(highlightStateField)
 
     // this.registerPriorityCodeblockPostProcessor(
     //   TASK_CODEBLOCK_KEYWORD,
@@ -700,6 +703,22 @@ export default class AbelePlugin extends Plugin {
       name: 'Reindex footnotes',
       editorCallback: (editor: Editor) => {
         reindexFootnotes(editor)
+      },
+    })
+
+    this.addCommand({
+      id: 'insert-highlight',
+      name: 'Insert colored highlight',
+      editorCallback: (editor: Editor) => {
+        insertHighlight(editor)
+      },
+    })
+
+    this.addCommand({
+      id: 'remove-highlight',
+      name: 'Remove colored highlight',
+      editorCallback: (editor: Editor) => {
+        removeHighlight(editor)
       },
     })
 

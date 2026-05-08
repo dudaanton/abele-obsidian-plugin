@@ -2,6 +2,87 @@ body.abele-full-width-sidebars {
   --mobile-sidebar-width: 100vw;
 }
 
+/* Colored highlight variables */
+body {
+  --abele-highlight-red: rgba(255, 82, 82, 0.3);
+  --abele-highlight-orange: rgba(255, 152, 0, 0.3);
+  --abele-highlight-yellow: rgba(255, 235, 59, 0.3);
+  --abele-highlight-green: rgba(76, 175, 80, 0.3);
+  --abele-highlight-cyan: rgba(0, 188, 212, 0.3);
+  --abele-highlight-blue: rgba(66, 133, 244, 0.3);
+  --abele-highlight-purple: rgba(156, 39, 176, 0.3);
+  --abele-highlight-pink: rgba(233, 30, 99, 0.3);
+  --abele-highlight-gray: rgba(158, 158, 158, 0.3);
+}
+
+.theme-dark {
+  --abele-highlight-red: rgba(255, 82, 82, 0.35);
+  --abele-highlight-orange: rgba(255, 152, 0, 0.35);
+  --abele-highlight-yellow: rgba(255, 235, 59, 0.25);
+  --abele-highlight-green: rgba(76, 175, 80, 0.35);
+  --abele-highlight-cyan: rgba(0, 188, 212, 0.35);
+  --abele-highlight-blue: rgba(66, 133, 244, 0.35);
+  --abele-highlight-purple: rgba(156, 39, 176, 0.35);
+  --abele-highlight-pink: rgba(233, 30, 99, 0.35);
+  --abele-highlight-gray: rgba(158, 158, 158, 0.35);
+}
+
+/* Highlight decorations */
+.abele-highlight {
+  border-radius: var(--radius-xs);
+  padding: 1px 0;
+}
+
+.abele-highlight--red { background-color: var(--abele-highlight-red); }
+.abele-highlight--orange { background-color: var(--abele-highlight-orange); }
+.abele-highlight--yellow { background-color: var(--abele-highlight-yellow); }
+.abele-highlight--green { background-color: var(--abele-highlight-green); }
+.abele-highlight--cyan { background-color: var(--abele-highlight-cyan); }
+.abele-highlight--blue { background-color: var(--abele-highlight-blue); }
+.abele-highlight--purple { background-color: var(--abele-highlight-purple); }
+.abele-highlight--pink { background-color: var(--abele-highlight-pink); }
+.abele-highlight--gray { background-color: var(--abele-highlight-gray); }
+
+/* Hide syntax markers when cursor is outside — also kill Obsidian's yellow bg */
+.abele-highlight-syntax-hidden {
+  font-size: 0;
+  background-color: transparent !important;
+}
+
+/* Show syntax markers dimmed when cursor is inside */
+.abele-highlight-syntax {
+  color: var(--text-faint);
+  background-color: transparent !important;
+}
+
+/* Override Obsidian's built-in highlight when our colored highlight is active */
+.cm-highlight:has(.abele-highlight) {
+  background: none !important;
+}
+
+/* Kill yellow bg on the == formatting markers next to our colored highlight */
+.cm-formatting-highlight:has(+ .cm-highlight > .abele-highlight) {
+  background: none !important;
+}
+
+.cm-highlight:has(.abele-highlight) + .cm-formatting-highlight {
+  background: none !important;
+}
+
+/* Color picker modal */
+.abele-color-picker-item {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
+.abele-color-picker-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-s);
+}
+
 /* Footnote sidenotes overlay — lives inside cm-scroller, out of document flow */
 .abele-footnotes-overlay {
   position: absolute;
