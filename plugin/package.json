@@ -53,6 +53,7 @@
     "@popperjs/core": "^2.11.8",
     "@vueuse/core": "^13.4.0",
     "dayjs": "^1.11.18",
+    "dom-to-image-more": "^3.7.2",
     "echarts": "^6.0.0",
     "file-type": "^20.5.0",
     "fparser": "^4.2.0",

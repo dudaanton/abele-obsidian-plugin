@@ -26,6 +26,8 @@ import { createReplaceTool } from './ReplaceTool'
 import { createWriteFileTool } from './WriteFileTool'
 import { createOpenFileTool } from './OpenFileTool'
 import { createQuestionsTool } from './QuestionsTool'
+import { createScreenshotTool } from './ScreenshotTool'
+import { createInspectViewTool } from './InspectViewTool'
 import { createChartDocsTool } from './ChartDocsTool'
 import { createTemplateDocsTool } from './TemplateDocsTool'
 import {
@@ -63,6 +65,8 @@ export function getToolRegistry(): ToolInfo[] {
     workspace: { label: 'Workspace', category: 'Files' },
     read_image: { label: 'Read image', category: 'Files' },
     open: { label: 'Open file', category: 'Files' },
+    screenshot: { label: 'Screenshot', category: 'Files' },
+    inspect_view: { label: 'Inspect view', category: 'Files' },
     web_search: { label: 'Web search', category: 'Network' },
     fetch: { label: 'Fetch URL', category: 'Network' },
     download_image: { label: 'Download image', category: 'Network' },
@@ -146,6 +150,8 @@ export function createAgentTools(): AgentTool[] {
     createReadBacklinksTool(),
     createReadTransactionsTool(),
     createReadTasksTool(),
+    createScreenshotTool(),
+    createInspectViewTool(),
   ]
 
   const config = AbeleConfig.getInstance().ai
