@@ -405,15 +405,21 @@ export class ChatSession {
     // Match from the end: new assistant messages correspond to the last N chat messages
     const newAssistantCount = newMsgs.filter((m) => m.role === 'assistant').length
     let assistantIdx = assistantChatMsgs.length - newAssistantCount
+    let lastLinkedId: string | undefined
     for (const msg of newMsgs) {
       if (msg.role === 'assistant') {
         if (assistantIdx >= 0 && assistantIdx < assistantChatMsgs.length) {
           msg.chatMessageId = assistantChatMsgs[assistantIdx].id
         }
         assistantIdx++
+        if (msg.chatMessageId) lastLinkedId = msg.chatMessageId
       } else if (msg.role === 'toolResult') {
         const chatMsg = runChatMsgs.find((m) => m.toolCallId === msg.toolCallId)
         if (chatMsg) msg.chatMessageId = chatMsg.id
+        if (msg.chatMessageId) lastLinkedId = msg.chatMessageId
+      } else if (!msg.chatMessageId && lastLinkedId) {
+        // Link injected messages (e.g. from read_image) to the preceding tool-call
+        msg.chatMessageId = lastLinkedId
       }
     }
   }

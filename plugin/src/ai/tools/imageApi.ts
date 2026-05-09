@@ -45,7 +45,61 @@ function getEndpoint(provider: ImageProvider): string {
 }
 
 /**
- * Call OpenAI /v1/images/generations (or compatible endpoint).
+ * Convert a data URL to a Uint8Array.
+ */
+function dataUrlToBytes(dataUrl: string): Uint8Array {
+  const base64 = dataUrl.split(',')[1]
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes
+}
+
+/**
+ * Build a multipart/form-data body manually (Obsidian requestUrl doesn't support FormData).
+ */
+function buildMultipart(
+  fields: Record<string, string>,
+  images: { name: string; data: Uint8Array; filename: string }[]
+): { body: ArrayBuffer; contentType: string } {
+  const boundary = '----AbeleMultipart' + Date.now().toString(36)
+  const encoder = new TextEncoder()
+  const parts: Uint8Array[] = []
+
+  for (const [key, value] of Object.entries(fields)) {
+    parts.push(
+      encoder.encode(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`
+      )
+    )
+  }
+
+  for (const img of images) {
+    parts.push(
+      encoder.encode(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${img.name}"; filename="${img.filename}"\r\nContent-Type: application/octet-stream\r\n\r\n`
+      )
+    )
+    parts.push(img.data)
+    parts.push(encoder.encode('\r\n'))
+  }
+
+  parts.push(encoder.encode(`--${boundary}--\r\n`))
+
+  let totalLength = 0
+  for (const p of parts) totalLength += p.byteLength
+  const result = new Uint8Array(totalLength)
+  let offset = 0
+  for (const p of parts) {
+    result.set(p, offset)
+    offset += p.byteLength
+  }
+
+  return { body: result.buffer, contentType: `multipart/form-data; boundary=${boundary}` }
+}
+
+/**
+ * Call OpenAI /v1/images/generations or /v1/images/edits (when source images are provided).
  */
 async function callOpenAi(
   apiKey: string,
@@ -53,35 +107,58 @@ async function callOpenAi(
   model: ImageModelConfig2,
   req: ImageApiRequest
 ): Promise<ImageApiResponse> {
-  const endpoint = getEndpoint(provider)
+  const baseEndpoint = getEndpoint(provider)
+  const isEdit = !!req.sourceImages?.length
+  const endpoint = isEdit ? baseEndpoint.replace(/\/generations\/?$/, '/edits') : baseEndpoint
 
-  const body: Record<string, unknown> = {
-    model: model.id,
-    prompt: req.prompt,
-    n: 1,
-    size: model.size || '1024x1024',
-    quality: model.quality || 'medium',
-    output_format: model.outputFormat || 'png',
+  let response
+  if (isEdit) {
+    const fields: Record<string, string> = {
+      model: model.id,
+      prompt: req.prompt,
+      n: '1',
+      size: model.size || '1024x1024',
+      quality: model.quality || 'medium',
+      output_format: model.outputFormat || 'png',
+    }
+    const images = req.sourceImages!.map((dataUrl, i) => ({
+      name: 'image[]',
+      data: dataUrlToBytes(dataUrl),
+      filename: `image${i}.png`,
+    }))
+    const { body, contentType } = buildMultipart(fields, images)
+
+    response = await requestUrl({
+      url: endpoint,
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': contentType,
+      },
+      body,
+      throw: false,
+    })
+  } else {
+    const body: Record<string, unknown> = {
+      model: model.id,
+      prompt: req.prompt,
+      n: 1,
+      size: model.size || '1024x1024',
+      quality: model.quality || 'medium',
+      output_format: model.outputFormat || 'png',
+    }
+
+    response = await requestUrl({
+      url: endpoint,
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      throw: false,
+    })
   }
-
-  if (req.sourceImages?.length) {
-    body.input = [
-      ...req.sourceImages.map((url) => ({ type: 'input_image', image_url: url })),
-      { type: 'input_text', text: req.prompt },
-    ]
-    delete body.prompt
-  }
-
-  const response = await requestUrl({
-    url: endpoint,
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-    throw: false,
-  })
 
   if (response.status !== 200) {
     const detail = response.text?.slice(0, 500) || ''
