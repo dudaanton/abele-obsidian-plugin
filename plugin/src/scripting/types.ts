@@ -4,6 +4,7 @@ export interface ScriptParam {
   required: boolean
   description: string
   default?: string
+  selection?: boolean
 }
 
 export interface ScriptMeta {

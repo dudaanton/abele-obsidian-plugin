@@ -49,7 +49,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
  */
 function parseParam(raw: string): ScriptParam | null {
   const match = raw.match(
-    /^(\w+)\s+(string|number|boolean|text)(\?)?\s+"([^"]*)"(?:\s*=\s*(?:"([^"]*)"|(\S+)))?/
+    /^(\w+)\s+(string|number|boolean|text)(\?)?\s+"([^"]*)"(?:\s*=\s*(?:"([^"]*)"|(\S+)))?(\s+selection)?/
   )
   if (!match) return null
 
@@ -63,6 +63,10 @@ function parseParam(raw: string): ScriptParam | null {
   const defaultValue = match[5] ?? match[6]
   if (defaultValue !== undefined) {
     param.default = defaultValue
+  }
+
+  if (match[7]) {
+    param.selection = true
   }
 
   return param

@@ -1,4 +1,13 @@
-import { TFile, TAbstractFile, debounce, Notice, EventRef, Modal, normalizePath } from 'obsidian'
+import {
+  TFile,
+  TAbstractFile,
+  debounce,
+  Notice,
+  EventRef,
+  MarkdownView,
+  Modal,
+  normalizePath,
+} from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
@@ -325,7 +334,14 @@ export class ScriptService {
     }
   }
 
+  private getEditorSelection(): string {
+    const { app } = GlobalStore.getInstance()
+    const view = app.workspace.getActiveViewOfType(MarkdownView)
+    return view?.editor?.getSelection() || ''
+  }
+
   private async showParamForm(script: ParsedScript): Promise<Record<string, unknown> | null> {
+    const selection = this.getEditorSelection()
     const fields: FormField[] = script.meta.params.map((p) => ({
       name: p.name,
       label: p.description || p.name,
@@ -336,7 +352,7 @@ export class ScriptService {
             ? ('textarea' as const)
             : ('text' as const),
       required: p.required,
-      default: p.default,
+      default: p.selection && selection ? selection : p.default,
     }))
     const result = await this.showFormModal(fields)
     if (!result) return null
