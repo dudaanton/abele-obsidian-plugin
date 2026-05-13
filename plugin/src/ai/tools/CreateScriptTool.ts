@@ -8,7 +8,7 @@ const SCRIPT_API_DOCS = `# Script API Reference
 
 Scripts are async JavaScript functions that run with full vault access (no scope restrictions).
 All functions below are available as top-level globals — no imports needed.
-Scripts have a 60-second timeout. Use \`return\` to output a result string.
+Use \`return\` to output a result string.
 
 ---
 
@@ -32,7 +32,16 @@ Every script must start with a comment block declaring its metadata:
 - Boolean params are rendered as toggles, not text inputs
 - Default values: add \`= value\` after description. Use quotes for strings with spaces: \`= "my value"\`
 - Defaults pre-fill the form UI and are used as fallback when the param is not provided (e.g. via link URL)
+- Add \`selection\` after description/default to auto-fill from editor selection: \`// @param text string "Input text" selection\`
 - Parameters are available via the \`params\` object (e.g. \`params.paramName\`)
+
+---
+
+## Workspace
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| \`activeNotePath()\` | \`string \\| null\` | Get the file path of the currently active note (null if no note is open) |
 
 ---
 

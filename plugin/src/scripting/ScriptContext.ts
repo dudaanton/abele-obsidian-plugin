@@ -1,4 +1,4 @@
-import { Notice, requestUrl, TFile } from 'obsidian'
+import { MarkdownView, Notice, requestUrl, TFile } from 'obsidian'
 import dayjs from 'dayjs'
 import { nanoid } from 'nanoid'
 import type { AgentTool, ModelConfig } from '@/ai/client'
@@ -107,6 +107,14 @@ export function buildScriptContext(opts: {
       opts.logs.push(
         args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ')
       )
+    },
+
+    // ── Workspace ──
+
+    activeNotePath(): string | null {
+      const { app } = GlobalStore.getInstance()
+      const view = app.workspace.getActiveViewOfType(MarkdownView)
+      return view?.file?.path ?? null
     },
 
     // ── File operations ──

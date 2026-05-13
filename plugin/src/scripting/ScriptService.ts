@@ -25,6 +25,7 @@ export class ScriptService {
   private watcherCallbackId: symbol | null = null
   private createEventRef: EventRef | null = null
   private statusBarEl: HTMLElement | null = null
+  private runningAbort: AbortController | null = null
 
   /** Reactive list for settings UI */
   public readonly scriptList = ref<ParsedScript[]>([])
@@ -256,6 +257,22 @@ export class ScriptService {
     }
   }
 
+  private showRunningStatus(scriptName: string, controller: AbortController) {
+    const plugin = AbeleConfig.getInstance().plugin
+    if (!plugin) return
+    if (!this.statusBarEl) {
+      this.statusBarEl = plugin.addStatusBarItem()
+    }
+    this.statusBarEl.empty()
+    this.statusBarEl.addClass('mod-clickable')
+    this.statusBarEl.setAttribute('aria-label', 'Stop script')
+    this.statusBarEl.setText(`⏹ ${scriptName}`)
+    this.statusBarEl.addEventListener('click', () => {
+      controller.abort()
+      new Notice(`Script "${scriptName}" stopped.`)
+    })
+  }
+
   async execute(
     path: string,
     params: Record<string, unknown>,
@@ -265,12 +282,13 @@ export class ScriptService {
     const script = this.scripts.get(path)
     if (!script) throw new Error(`Script not found: ${path}`)
 
-    const timeoutSignal = AbortSignal.timeout(60_000)
     const combinedController = new AbortController()
+    this.runningAbort = combinedController
 
     const onAbort = () => combinedController.abort()
     signal?.addEventListener('abort', onAbort)
-    timeoutSignal.addEventListener('abort', onAbort)
+
+    this.showRunningStatus(script.meta.name, combinedController)
 
     const logs: string[] = []
 
@@ -286,12 +304,18 @@ export class ScriptService {
         'ctx',
         `"use strict";
         return (async () => {
-          const { dayjs, read, edit, write, create, remove, move, copy, ls, find, replace, open, setCover, agent, form, log, params, signal, fetch, applyTemplate, listTemplates, createFromTemplate, generateImage, downloadImage, downloadFile, notice, runScript, setStatus } = ctx;
+          const { dayjs, read, edit, write, create, remove, move, copy, ls, find, replace, open, setCover, agent, form, log, params, signal, fetch, applyTemplate, listTemplates, createFromTemplate, generateImage, downloadImage, downloadFile, notice, runScript, setStatus, activeNotePath } = ctx;
           ${script.code}
         })()`
       )
 
-      const result = await fn(ctx)
+      const abortPromise = new Promise<never>((_, reject) => {
+        combinedController.signal.addEventListener('abort', () =>
+          reject(new Error('Script stopped'))
+        )
+      })
+
+      const result = await Promise.race([fn(ctx), abortPromise])
       const output = logs.length ? logs.join('\n') + '\n' : ''
       const resultStr =
         result !== undefined
@@ -301,6 +325,7 @@ export class ScriptService {
           : ''
       return output + resultStr
     } finally {
+      this.runningAbort = null
       this.clearStatus()
       signal?.removeEventListener('abort', onAbort)
     }
