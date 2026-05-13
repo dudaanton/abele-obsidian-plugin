@@ -10,6 +10,7 @@ export interface ScriptParam {
 export interface ScriptMeta {
   name: string
   description: string
+  icon?: string
   params: ScriptParam[]
   enabled?: boolean
 }

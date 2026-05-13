@@ -503,6 +503,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'create-task',
       name: 'Create new task',
+      icon: 'circle-plus',
       callback: () => {
         createTask()
       },
@@ -511,6 +512,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'create-task-and-insert-link',
       name: 'Create new task and insert into current note',
+      icon: 'list-plus',
       editorCallback: (editor: Editor) => {
         createTaskAndInsert(editor)
       },
@@ -519,6 +521,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'find-and-replace',
       name: 'Find and replace in frontmatter and content of all notes, matching the criteria',
+      icon: 'replace-all',
       callback: () => {
         findAndReplace()
       },
@@ -527,6 +530,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'import-files',
       name: 'Import files to vault',
+      icon: 'import',
       callback: () => {
         importFiles()
       },
@@ -535,6 +539,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'save-media',
       name: 'Save remote media to vault',
+      icon: 'download',
       callback: () => {
         saveMedia()
       },
@@ -543,6 +548,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'unused-media',
       name: 'Find and delete unused media',
+      icon: 'trash-2',
       callback: () => {
         unusedMedia()
       },
@@ -551,6 +557,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'deduplicate-media',
       name: 'Deduplicate media attachments',
+      icon: 'copy-check',
       callback: () => {
         deduplicateMedia()
       },
@@ -559,6 +566,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'migrate-from-dataview',
       name: 'Migrate tasks from Dataview to Abele',
+      icon: 'database',
       callback: () => {
         migrateFromDataview()
       },
@@ -567,6 +575,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'migrate-from-firefly',
       name: 'Migrate data from Firefly III',
+      icon: 'database',
       callback: () => {
         GlobalStore.getInstance().migrateFromFireflyModalOpened.value = true
       },
@@ -575,6 +584,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'create-transaction',
       name: 'Create new transaction',
+      icon: 'receipt',
       callback: () => {
         createTransaction()
       },
@@ -583,6 +593,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'create-transaction-and-insert-link',
       name: 'Create new transaction and insert into current note',
+      icon: 'receipt',
       editorCallback: (editor: Editor) => {
         createTransactionAndInsert(editor)
       },
@@ -591,6 +602,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'show-timeline-sidebar',
       name: 'Show timeline sidebar',
+      icon: 'calendar-range',
       callback: () => {
         this.activateView(TIMELINE_SIDEBAR_VIEW_TYPE)
       },
@@ -599,6 +611,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'migrate-dataview-fields',
       name: 'Migrate from dataview fields',
+      icon: 'database',
       callback: () => {
         GlobalStore.getInstance().migrateDataviewFieldsModalOpened.value = true
       },
@@ -607,6 +620,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'show-todo-sidebar',
       name: 'Show TODO sidebar',
+      icon: 'check-square',
       callback: () => {
         this.activateView(TODO_SIDEBAR_VIEW_TYPE)
       },
@@ -615,6 +629,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'show-finance-sidebar',
       name: 'Show finance sidebar',
+      icon: 'wallet',
       callback: () => {
         this.activateView(FINANCE_SIDEBAR_VIEW_TYPE)
       },
@@ -623,6 +638,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'migrate-from-toggl',
       name: 'Migrate time entries from Toggl',
+      icon: 'database',
       callback: () => {
         GlobalStore.getInstance().migrateFromTogglModalOpened.value = true
       },
@@ -631,6 +647,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'show-time-tracking-sidebar',
       name: 'Show time tracking sidebar',
+      icon: 'timer',
       callback: () => {
         this.activateView(TIME_TRACKING_SIDEBAR_VIEW_TYPE)
       },
@@ -639,6 +656,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'start-timer',
       name: 'Start timer for current note',
+      icon: 'play',
       callback: () => {
         const file = this.app.workspace.getActiveFile()
         if (file) {
@@ -650,6 +668,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'stop-timer',
       name: 'Stop active timer',
+      icon: 'square',
       callback: () => {
         stopActiveTimeEntry()
       },
@@ -658,6 +677,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'paste-from-clipboard',
       name: 'Paste from clipboard at cursor',
+      icon: 'clipboard-paste',
       editorCallback: async (editor: Editor) => {
         pasteFromClipboard(editor)
       },
@@ -666,6 +686,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'create-note-from-template',
       name: 'Create note from template',
+      icon: 'file-plus-2',
       callback: () => {
         createNoteFromTemplate()
       },
@@ -674,6 +695,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'create-note-in-group',
       name: 'Create note in group',
+      icon: 'folder-plus',
       callback: () => {
         const file = this.app.workspace.getActiveFile()
         if (file) {
@@ -685,6 +707,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'replace-note-with-template',
       name: 'Replace current note with template',
+      icon: 'file-input',
       callback: () => {
         replaceNoteWithTemplate()
       },
@@ -693,6 +716,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'insert-template-at-cursor',
       name: 'Insert template at cursor',
+      icon: 'file-symlink',
       editorCallback: (editor: Editor) => {
         insertTemplateAtCursor(editor)
       },
@@ -701,6 +725,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'insert-gallery',
       name: 'Insert image gallery',
+      icon: 'gallery-horizontal',
       editorCallback: (editor: Editor) => {
         insertGallery(editor)
       },
@@ -709,6 +734,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'convert-images-to-galleries',
       name: 'Convert images on page to galleries',
+      icon: 'images',
       editorCallback: (editor: Editor) => {
         convertImagesToGalleries(editor)
       },
@@ -717,6 +743,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'reindex-footnotes',
       name: 'Reindex footnotes',
+      icon: 'list-ordered',
       editorCallback: (editor: Editor) => {
         reindexFootnotes(editor)
       },
@@ -725,6 +752,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'insert-highlight',
       name: 'Insert colored highlight',
+      icon: 'highlighter',
       editorCallback: (editor: Editor) => {
         insertHighlight(editor)
       },
@@ -733,6 +761,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'remove-highlight',
       name: 'Remove colored highlight',
+      icon: 'eraser',
       editorCallback: (editor: Editor) => {
         removeHighlight(editor)
       },
@@ -741,6 +770,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'set-cover-from-first-media',
       name: 'Set cover from first image/video in note',
+      icon: 'image',
       callback: () => {
         setCoverFromFirstMedia()
       },
@@ -749,6 +779,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'open-today-daily-note',
       name: "Open today's daily note",
+      icon: 'calendar',
       callback: () => {
         const journal = AbeleConfig.getInstance().journals.find((j) => j.isDefaultDailyJournal)
         if (!journal) {
@@ -762,6 +793,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'create-css-snippet',
       name: 'Create CSS snippet',
+      icon: 'palette',
       callback: () => {
         SnippetService.getInstance().createSnippet()
       },
@@ -770,6 +802,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'reload-css-snippets',
       name: 'Reload CSS snippets',
+      icon: 'refresh-cw',
       callback: async () => {
         await SnippetService.getInstance().reload()
         new Notice('CSS snippets reloaded')
@@ -779,6 +812,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'create-script',
       name: 'Create script',
+      icon: 'scroll-text',
       callback: () => {
         ScriptService.getInstance().createScript()
       },
@@ -860,6 +894,7 @@ export default class AbelePlugin extends Plugin {
     this.addCommand({
       id: 'show-ai-sidebar',
       name: 'Show AI chat sidebar',
+      icon: 'bot',
       callback: () => {
         this.activateView(AI_SIDEBAR_VIEW_TYPE)
       },

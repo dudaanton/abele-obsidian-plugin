@@ -19,6 +19,7 @@ Every script must start with a comment block declaring its metadata:
 \`\`\`js
 // @name My Script Name
 // @description What the script does
+// @icon lucide-icon-name
 // @param paramName string "Required string parameter"
 // @param count number? "Optional number parameter"
 // @param dryRun boolean? "Optional flag (shown as toggle in UI)"
@@ -27,6 +28,7 @@ Every script must start with a comment block declaring its metadata:
 // @param verbose boolean? "Verbose output" = true
 \`\`\`
 
+- \`@icon\`: Lucide icon name for toolbar display (e.g. \`scroll-text\`, \`sparkles\`, \`wand\`). Defaults to \`scroll-text\` if omitted. See https://lucide.dev for available icons.
 - Parameter types: \`string\`, \`number\`, \`boolean\`, \`text\`
 - Add \`?\` after type for optional (e.g. \`number?\`)
 - Boolean params are rendered as toggles, not text inputs

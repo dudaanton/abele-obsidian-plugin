@@ -16,6 +16,8 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
   let enabled = true
   const params: ScriptParam[] = []
 
+  let icon: string | undefined
+
   for (const line of lines) {
     const trimmed = line.trim()
     if (!trimmed.startsWith('//')) break // stop at first non-comment line
@@ -26,6 +28,8 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
       name = content.slice(6).trim()
     } else if (content.startsWith('@description ')) {
       description = content.slice(13).trim()
+    } else if (content.startsWith('@icon ')) {
+      icon = content.slice(6).trim()
     } else if (content.startsWith('@enabled ')) {
       enabled = content.slice(9).trim() !== 'false'
     } else if (content.startsWith('@param ')) {
@@ -36,7 +40,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
 
   if (!name) return null
 
-  return { name, description, params, enabled }
+  return { name, description, icon, params, enabled }
 }
 
 /**

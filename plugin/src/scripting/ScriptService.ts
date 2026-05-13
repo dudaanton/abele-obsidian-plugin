@@ -106,7 +106,7 @@ export class ScriptService {
     }
 
     const scriptName = filename.replace(/\.js$/, '')
-    const template = `// @name ${scriptName}\n// @description \n\n`
+    const template = `// @name ${scriptName}\n// @description \n// @icon scroll-text\n\n`
     const file = await app.vault.create(path, template)
 
     const leaf = app.workspace.getLeaf('tab')
@@ -184,6 +184,7 @@ export class ScriptService {
         plugin.addCommand({
           id: commandId,
           name: `Script: ${meta.name}`,
+          icon: meta.icon || 'scroll-text',
           callback: () => this.executeFromCommand(file.path),
         })
         this.commandIds.add(commandId)
