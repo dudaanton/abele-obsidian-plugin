@@ -527,6 +527,53 @@ const onCommand = async (command: string) => {
   }
 }
 
+const applyAiModelProperty = (modelKey: string | undefined) => {
+  if (!modelKey) return
+  const config = AbeleConfig.getInstance()
+  let resolvedProviderId: string | undefined
+  let resolvedModelId: string | undefined
+
+  if (modelKey.includes('::')) {
+    const [providerPart, modelPart] = modelKey.split('::')
+    const provider = config.ai.providers.find(
+      (p) => p.id === providerPart || p.name === providerPart
+    )
+    if (provider) {
+      const model = provider.models.find((m) => m.id === modelPart || m.name === modelPart)
+      if (model) {
+        resolvedProviderId = provider.id
+        resolvedModelId = model.id
+      }
+    }
+  } else {
+    for (const p of config.ai.providers) {
+      const m = p.models.find((m) => m.id === modelKey || m.name === modelKey)
+      if (m) {
+        resolvedProviderId = p.id
+        resolvedModelId = m.id
+        break
+      }
+    }
+  }
+
+  if (resolvedProviderId && resolvedModelId) {
+    agentService.switchModel(resolvedProviderId, resolvedModelId)
+  } else {
+    new Notice(`Model not found: ${modelKey}`)
+  }
+}
+
+const getSkillModelKey = (skillName: string): string | undefined => {
+  const { app } = GlobalStore.getInstance()
+  const skills = discoverSkills()
+  const skill = skills.find((s) => s.name === skillName)
+  if (!skill) return undefined
+  const file = app.vault.getAbstractFileByPath(skill.path)
+  if (!(file instanceof TFile)) return undefined
+  const cache = app.metadataCache.getFileCache(file)
+  return cache?.frontmatter?.['ai-model'] as string | undefined
+}
+
 const onSkillCommand = async (command: string) => {
   const rest = command.slice(1)
   const spaceIdx = rest.indexOf(' ')
@@ -539,11 +586,13 @@ const onSkillCommand = async (command: string) => {
     return
   }
 
+  applyAiModelProperty(getSkillModelKey(skillName))
   scrollOnUserSend()
   await session.value?.injectSkill(skillName, args || undefined)
 }
 
 const onPickerSkill = async (name: string) => {
+  applyAiModelProperty(getSkillModelKey(name))
   scrollOnUserSend()
   await session.value?.injectSkill(name)
 }
@@ -551,6 +600,10 @@ const onPickerSkill = async (name: string) => {
 const onPromptSelected = async (file: TFile) => {
   promptPickerOpen.value = false
   const { app } = GlobalStore.getInstance()
+
+  const cache = app.metadataCache.getFileCache(file)
+  applyAiModelProperty(cache?.frontmatter?.['ai-model'] as string | undefined)
+
   const content = await app.vault.read(file)
   const body = content.replace(/^---[\s\S]*?---\n?/, '')
   const { variables, userVariables } = parseTemplateVariables(body)
