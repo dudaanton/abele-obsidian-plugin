@@ -241,7 +241,7 @@
 
       <h3>Image Generation</h3>
 
-      <div v-for="(ip, ipIdx) in imageProviders" :key="ip.id" class="abele-ai-provider">
+      <div v-for="(ip, ipIdx) in imageProviders" :key="ipIdx" class="abele-ai-provider">
         <div class="abele-ai-provider__header">
           <strong>{{ ip.name || 'Unnamed Provider' }}</strong>
           <Icon icon="trash" @click="removeImageProvider(ipIdx)" />
@@ -797,7 +797,7 @@ const applyImageProviderSecret = (idx: number) => {
   const provider = imageProviders.value[idx]
   const val = imgSecretInputs[provider.id]
   if (!val) return
-  const keyId = `abele-img-${provider.id}`
+  const keyId = `abele-img-${provider.id.toLowerCase().replace(/[^a-z0-9-]/g, '')}`
   provider.apiKeyId = keyId
   app.secretStorage.setSecret(keyId, val)
   imgSecretInputs[provider.id] = ''
