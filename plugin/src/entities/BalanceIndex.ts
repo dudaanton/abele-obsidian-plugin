@@ -302,10 +302,8 @@ export class BalanceIndex {
 
     for (const [path, account] of this.accountsList.accounts) {
       if (account.excludeFromTotal) continue
-      if (account.accountType === 'asset') {
+      if (account.accountType === 'asset' || account.accountType === 'liability') {
         netWorth += this.getBalanceAtDate(path, date)
-      } else if (account.accountType === 'liability') {
-        netWorth -= Math.abs(this.getBalanceAtDate(path, date))
       }
     }
 
@@ -318,10 +316,8 @@ export class BalanceIndex {
     for (const [path, account] of this.accountsList.accounts) {
       if (account.currency !== currency) continue
       if (account.excludeFromTotal) continue
-      if (account.accountType === 'asset') {
+      if (account.accountType === 'asset' || account.accountType === 'liability') {
         netWorth += this.getBalanceAtDate(path, date)
-      } else if (account.accountType === 'liability') {
-        netWorth -= Math.abs(this.getBalanceAtDate(path, date))
       }
     }
 

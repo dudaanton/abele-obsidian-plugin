@@ -199,7 +199,7 @@ const currencyCards = computed<CurrencyCard[]>(() => {
 
       const balance = bi.getBalanceAtDate(path, asOfDate)
       if (account.accountType === 'asset') assets += balance
-      else if (account.accountType === 'liability') liabilities += Math.abs(balance)
+      else if (account.accountType === 'liability' && balance < 0) liabilities += -balance
     }
 
     cards.push({
@@ -335,7 +335,7 @@ const periodByCurrency = computed(() => {
       expenseMap.set(key, (expenseMap.get(key) || 0) + raw.amount)
     }
     if (toPath && liabilityPaths.has(toPath)) {
-      getOrCreate(cur).returned += raw.amount
+      getOrCreate(cur).lent += raw.amount
     }
 
     const fromPath = raw.from ? resolve(raw.from) : null
@@ -344,7 +344,7 @@ const periodByCurrency = computed(() => {
       incomeMap.set(key, (incomeMap.get(key) || 0) + raw.amount)
     }
     if (fromPath && liabilityPaths.has(fromPath)) {
-      getOrCreate(cur).lent += raw.amount
+      getOrCreate(cur).returned += raw.amount
     }
   }
 

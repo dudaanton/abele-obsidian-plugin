@@ -13,7 +13,7 @@ export interface UserTemplateProperties {
   target_folder?: string
   target_name?: string
   // Dynamic template_for_* properties for target note
-  [key: string]: string | number | undefined
+  [key: string]: string | number | string[] | undefined
 }
 
 /**
@@ -64,9 +64,22 @@ export class UserTemplate {
         const propName = key.slice(prefix.length)
         if (propName) {
           // Only add if there's actually a property name after prefix
+          console.debug(
+            '[template] extractTargetProperties',
+            propName,
+            typeof value,
+            Array.isArray(value),
+            JSON.stringify(value)
+          )
+          let strValue: string
+          if (Array.isArray(value)) {
+            strValue = value.map((v) => `\n  - "${String(v).replace(/"/g, '\\"')}"`).join('')
+          } else {
+            strValue = String(value)
+          }
           result.push({
             name: propName,
-            value: String(value),
+            value: strValue,
           })
         }
       }

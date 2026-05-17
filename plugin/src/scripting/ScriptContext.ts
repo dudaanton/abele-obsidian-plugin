@@ -330,6 +330,33 @@ export function buildScriptContext(opts: {
       return stripPrefix(text(result).replace(/^.*Image saved:\s*/s, ''))
     },
 
+    // ── Zip ──
+
+    async unzip(zipPath: string, targetFolder?: string): Promise<string[]> {
+      const { unzipSync } = await import('fflate')
+      const { app } = GlobalStore.getInstance()
+      const file = app.vault.getAbstractFileByPath(zipPath)
+      if (!(file instanceof TFile)) throw new Error(`File not found: ${zipPath}`)
+
+      const folder = targetFolder ?? zipPath.replace(/\.zip$/i, '')
+
+      const buf = await app.vault.readBinary(file)
+      const entries = unzipSync(new Uint8Array(buf))
+
+      const created: string[] = []
+      for (const [name, data] of Object.entries(entries)) {
+        if (name.endsWith('/')) continue // skip directories
+        const path = `${folder}/${name}`
+        const dir = path.split('/').slice(0, -1).join('/')
+        if (dir && !app.vault.getAbstractFileByPath(dir)) {
+          await app.vault.createFolder(dir)
+        }
+        await app.vault.createBinary(path, data.buffer as ArrayBuffer)
+        created.push(path)
+      }
+      return created
+    },
+
     // ── Vault helpers ──
 
     async setCover(notePath: string, mediaPath?: string) {

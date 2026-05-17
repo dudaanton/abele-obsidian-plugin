@@ -142,6 +142,12 @@ List values can contain \`;\` separator to add/remove multiple items at once.
 \`downloadFile\` options: \`{ filename?, extension?, method?, headers?, body? }\` — supports POST for APIs that return binary (e.g. TTS).
 Secret substitution: use \`\${abele_key:name}\` in url, headers, or body to inject secrets configured in AI settings.
 
+### Zip
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| \`unzip(zipPath, targetFolder?)\` | \`string[]\` | Extract zip archive to vault, returns list of created file paths. Target folder defaults to zip filename without extension |
+
 ---
 
 ## AI
