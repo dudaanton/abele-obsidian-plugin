@@ -14,7 +14,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import dayjs from 'dayjs'
 import { debounce } from 'obsidian'
 
-export type AccountType = 'asset' | 'expense' | 'revenue' | 'liability'
+export type AccountType = 'asset' | 'expense' | 'revenue' | 'liability' | 'computed'
 
 export class Account {
   public readonly id: string
@@ -29,6 +29,7 @@ export class Account {
   public startingBalanceDate: dayjs.Dayjs | null = null
   public groups: string[] = []
   public excludeFromTotal = false
+  public sourceAccounts: string[] = []
 
   public content = ''
 
@@ -73,6 +74,7 @@ export class Account {
       this.startingBalanceDate = parseDateOrNull(frontmatter.startingBalanceDate)
       this.groups = Array.isArray(frontmatter.groups) ? frontmatter.groups : []
       this.excludeFromTotal = !!frontmatter.excludeFromTotal
+      this.sourceAccounts = Array.isArray(frontmatter.accounts) ? frontmatter.accounts : []
     } else {
       this.accountNotFound = true
     }
@@ -132,6 +134,7 @@ export class Account {
     this.startingBalanceDate = null
     this.groups = []
     this.excludeFromTotal = false
+    this.sourceAccounts = []
     this.content = ''
     this.loaded = false
     this.accountNotFound = false

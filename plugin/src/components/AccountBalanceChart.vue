@@ -57,6 +57,12 @@ const isExpenseRevenue = computed(() => {
   return t === 'expense' || t === 'revenue'
 })
 
+const isComputed = computed(() => {
+  const al = unref(store.accountsList) as AccountsList | null
+  const account = al?.accounts.get(props.accountPath)
+  return account?.accountType === 'computed'
+})
+
 const chartData = computed(() => {
   const bi = toRaw(unref(store.balanceIndex)) as BalanceIndex | null
   const al = unref(store.accountsList) as AccountsList | null
@@ -126,6 +132,33 @@ const chartData = computed(() => {
     }
 
     return { dates, seriesList, chartType: 'bar' as const }
+  }
+
+  if (isComputed.value && account?.sourceAccounts.length) {
+    const { app } = store
+    const sourcePaths: string[] = []
+    for (const wikilink of account.sourceAccounts) {
+      const linkPath = wikilinkToPath(wikilink)
+      if (!linkPath) continue
+      const file = app.metadataCache.getFirstLinkpathDest(linkPath, '')
+      if (file) sourcePaths.push(file.path)
+    }
+
+    if (sourcePaths.length) {
+      const data: number[] = []
+      let dd = start
+      for (let i = 0; i < dates.length; i++) {
+        let sum = 0
+        for (const sp of sourcePaths) {
+          sum += bi.getBalanceAtDate(sp, dd)
+        }
+        data.push(Math.round(sum * 100) / 100)
+        dd = dd.add(1, 'day')
+      }
+      seriesList.push({ name: account.currency || '', data })
+    }
+
+    return { dates, seriesList, chartType: 'line' as const }
   }
 
   if (account?.currency) {

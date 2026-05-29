@@ -67,6 +67,7 @@ import { AccountsList } from '@/entities/AccountsList'
 import dayjs from 'dayjs'
 import { toRaw, unref } from 'vue'
 import { parseDateOrNull } from '@/helpers/datesHelper'
+import { wikilinkToPath } from '@/helpers/pathsHelpers'
 
 const props = defineProps<{
   header: Header
@@ -85,6 +86,18 @@ const accountBalances = computed(() => {
 
   const fmt = (n: number) =>
     n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  if (account.accountType === 'computed' && account.sourceAccounts.length) {
+    const { app } = store
+    let sum = 0
+    for (const wikilink of account.sourceAccounts) {
+      const linkPath = wikilinkToPath(wikilink)
+      if (!linkPath) continue
+      const file = app.metadataCache.getFirstLinkpathDest(linkPath, '')
+      if (file) sum += bi.getBalanceAtDate(file.path, dayjs())
+    }
+    return [{ currency: account.currency || '', formatted: fmt(sum) }]
+  }
 
   if (account.currency) {
     const balance = bi.getBalanceAtDate(props.header.filePath, dayjs())
