@@ -81,7 +81,9 @@ import CriterionView from './Criterion.vue'
 import ReplacementActionView from './ReplacementAction.vue'
 import Diff from './Diff.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { useFilesInAgent } from '@/helpers/useFilesInAgent'
+const useFilesInAgent = (
+  ...args: Parameters<typeof import('@/helpers/useFilesInAgent').useFilesInAgent>
+) => import('@/helpers/useFilesInAgent').then((m) => m.useFilesInAgent(...args))
 import { stringifyYaml, TFile } from 'obsidian'
 import { useInfiniteScroll } from '@vueuse/core'
 import { getEditorForFile } from '@/helpers/vaultUtils'

@@ -61,7 +61,9 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { stringifyYaml, TFile } from 'obsidian'
 import { getEditorForFile } from '@/helpers/vaultUtils'
 import { getNoteBody, replaceNoteBody } from '@/helpers/notesUtils'
-import { useFilesInAgent } from '@/helpers/useFilesInAgent'
+const useFilesInAgent = (
+  ...args: Parameters<typeof import('@/helpers/useFilesInAgent').useFilesInAgent>
+) => import('@/helpers/useFilesInAgent').then((m) => m.useFilesInAgent(...args))
 
 const props = defineProps<{
   files: Ref<TFile[]>
@@ -97,7 +99,7 @@ const removeReplacement = (id: string) => {
   replacements.value = replacements.value.filter((r) => r.id !== id)
 }
 
-const preview = async () => {
+async function preview() {
   const { app } = GlobalStore.getInstance()
 
   searchResults.value = []
