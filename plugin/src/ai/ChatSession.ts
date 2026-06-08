@@ -24,7 +24,7 @@ import {
   CORE_TOOLS,
   migrateOldPermissions,
 } from './types'
-import type { ToolMode, PermissionMode } from './types'
+import type { ToolMode, PermissionMode, InterceptorChatMessage } from './types'
 import type { UserContentPart } from './client'
 import { createAgentTools } from './tools'
 import { loadSkillContent } from './tools/SkillTool'
@@ -131,6 +131,14 @@ export class ChatSession {
   public readonly toolModes = ref<Record<string, ToolMode>>({})
   public readonly customSystemPrompt = ref('')
   public readonly customSystemPromptNotePath = ref('')
+
+  // Interceptor state
+  public readonly activeInterceptorId = ref('')
+  public readonly interceptorStreaming = ref(false)
+  public readonly interceptorStreamingContent = ref('')
+  public readonly interceptorError = ref<string | null>(null)
+  private interceptorAbort: AbortController | null = null
+  private lastInterceptorDraftId: string | null = null
 
   // Per-session scope
   public readonly scopeResolver: ScopeResolver
@@ -636,6 +644,11 @@ export class ChatSession {
   async sendMessage(content: string, attachments?: string[]): Promise<void> {
     if (this.isStreaming.value || this.isCompacting.value) return
 
+    // Draft mode: interceptor is active → create draft, don't send to main AI
+    if (this.activeInterceptorId.value) {
+      return this.sendDraftMessage(content, attachments)
+    }
+
     const gen = this.generation
     this.error.value = null
     this.userMessageCount++
@@ -862,6 +875,13 @@ export class ChatSession {
     this.lastModelId = ''
     this.customSystemPrompt.value = ''
     this.customSystemPromptNotePath.value = ''
+    this.activeInterceptorId.value = ''
+    this.interceptorStreaming.value = false
+    this.interceptorStreamingContent.value = ''
+    this.interceptorError.value = null
+    this.interceptorAbort?.abort()
+    this.interceptorAbort = null
+    this.lastInterceptorDraftId = null
     this.resetPermissions()
     this.resetScope()
   }
@@ -897,6 +917,7 @@ export class ChatSession {
       activeLeafId: this.activeLeafId || undefined,
       customSystemPrompt: this.customSystemPrompt.value || undefined,
       customSystemPromptNotePath: this.customSystemPromptNotePath.value || undefined,
+      activeInterceptorId: this.activeInterceptorId.value || undefined,
     }
 
     this.currentChatFile.value = await ChatStorage.getInstance().saveChat(
@@ -975,6 +996,7 @@ export class ChatSession {
 
     this.customSystemPrompt.value = result.metadata?.customSystemPrompt || ''
     this.customSystemPromptNotePath.value = result.metadata?.customSystemPromptNotePath || ''
+    this.activeInterceptorId.value = result.metadata?.activeInterceptorId || ''
 
     // Restore pending tool calls
     if (result.metadata?.pendingToolCalls?.length) {
@@ -1054,6 +1076,300 @@ export class ChatSession {
   /** Get permissions snapshot for sub-agent runner */
   getPermissions(): Record<string, ToolMode> {
     return { ...this.toolModes.value }
+  }
+
+  // ── Interceptor ────────────────────────────────────────────────
+
+  private async sendDraftMessage(content: string, attachments?: string[]): Promise<void> {
+    this.error.value = null
+
+    const userMsg: ChatMessage = {
+      id: nanoid(),
+      role: 'user',
+      content,
+      attachments: attachments?.length ? attachments : undefined,
+      timestamp: Date.now(),
+      draft: true,
+      interceptorName: this.getInterceptorConfig()?.name || 'Interceptor',
+      interceptorChat: [],
+    }
+    this.appendChatMessage(userMsg)
+    this.updateVisibleMessages()
+
+    await this.runInterceptor(userMsg.id)
+    await this.save()
+  }
+
+  private getInterceptorConfig() {
+    const config = AbeleConfig.getInstance().ai
+    return config.interceptors.find((i) => i.id === this.activeInterceptorId.value) || null
+  }
+
+  private resolveInterceptorModel(interceptor: { modelId: string }) {
+    const config = AbeleConfig.getInstance().ai
+    for (const provider of config.providers) {
+      const model = provider.models.find((m) => m.id === interceptor.modelId)
+      if (model) {
+        return {
+          id: model.id,
+          name: model.name,
+          baseUrl: provider.baseUrl,
+          apiKey: GlobalStore.getInstance().app.secretStorage.getSecret(provider.apiKeyId) || '',
+          contextWindow: model.contextWindow,
+          maxTokens: model.maxTokens,
+          supportsReasoning: model.supportsReasoning,
+        }
+      }
+    }
+    // Fallback to active model
+    return this.agentService.getActiveModelConfig()
+  }
+
+  private buildInterceptorContext(
+    interceptor: { contextDepth: number },
+    draftContent: string
+  ): Message[] {
+    const msgs: Message[] = []
+
+    // Add recent main chat messages as context
+    if (interceptor.contextDepth !== 0) {
+      const visible = this.messages.value.filter(
+        (m) => !m.draft && (m.role === 'user' || m.role === 'assistant')
+      )
+      const slice =
+        interceptor.contextDepth === -1 ? visible : visible.slice(-interceptor.contextDepth)
+      for (const m of slice) {
+        msgs.push({ role: 'user', content: `[${m.role}]: ${m.content}`, timestamp: m.timestamp })
+      }
+    }
+
+    // Add the draft message for review
+    msgs.push({
+      role: 'user',
+      content: draftContent,
+      timestamp: Date.now(),
+    })
+    return msgs
+  }
+
+  private async runInterceptor(draftMsgId: string): Promise<void> {
+    const interceptor = this.getInterceptorConfig()
+    if (!interceptor) return
+
+    const draftMsg = this.allChatMessages.find((m) => m.id === draftMsgId)
+    if (!draftMsg) return
+
+    this.lastInterceptorDraftId = draftMsgId
+    this.interceptorError.value = null
+
+    const model = this.resolveInterceptorModel(interceptor)
+    console.debug('[Abele interceptor]', {
+      modelId: model.id,
+      baseUrl: model.baseUrl,
+      hasKey: !!model.apiKey,
+    })
+    const client = new OpenAIClient()
+    const messages = this.buildInterceptorContext(interceptor, draftMsg.content)
+
+    this.interceptorAbort = new AbortController()
+    this.interceptorStreaming.value = true
+    this.interceptorStreamingContent.value = ''
+
+    try {
+      let response = ''
+      for await (const event of client.stream(model, interceptor.systemPrompt, messages, [], {
+        signal: this.interceptorAbort.signal,
+      })) {
+        if (event.type === 'text_delta') {
+          response += event.delta
+          this.interceptorStreamingContent.value = response
+        }
+      }
+
+      if (response.trim()) {
+        const chatMsg: InterceptorChatMessage = {
+          id: nanoid(),
+          role: 'assistant',
+          content: response.trim(),
+          timestamp: Date.now(),
+        }
+        draftMsg.interceptorChat = [...(draftMsg.interceptorChat || []), chatMsg]
+        this.updateVisibleMessages()
+      }
+    } catch (err) {
+      if (this.interceptorAbort?.signal.aborted) return
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[Abele interceptor error]', err)
+      this.interceptorError.value = message
+    } finally {
+      this.interceptorStreaming.value = false
+      this.interceptorStreamingContent.value = ''
+      this.interceptorAbort = null
+    }
+  }
+
+  async retryInterceptor(): Promise<void> {
+    if (!this.lastInterceptorDraftId) return
+    this.interceptorError.value = null
+    await this.runInterceptor(this.lastInterceptorDraftId)
+    await this.save()
+  }
+
+  async sendInterceptorMessage(draftMsgId: string, content: string): Promise<void> {
+    if (this.interceptorStreaming.value) return
+
+    const interceptor = this.getInterceptorConfig()
+    if (!interceptor) return
+
+    const draftMsg = this.allChatMessages.find((m) => m.id === draftMsgId)
+    if (!draftMsg || !draftMsg.draft) return
+
+    // Add user message to sub-chat
+    const userReply: InterceptorChatMessage = {
+      id: nanoid(),
+      role: 'user',
+      content,
+      timestamp: Date.now(),
+    }
+    draftMsg.interceptorChat = [...(draftMsg.interceptorChat || []), userReply]
+    this.updateVisibleMessages()
+
+    // Build full interceptor conversation
+    const model = this.resolveInterceptorModel(interceptor)
+    const client = new OpenAIClient()
+
+    const messages: Message[] = this.buildInterceptorContext(interceptor, draftMsg.content)
+    // Add previous interceptor sub-chat messages
+    for (const msg of draftMsg.interceptorChat) {
+      if (msg.role === 'user') {
+        messages.push({ role: 'user', content: msg.content, timestamp: msg.timestamp })
+      } else {
+        messages.push({
+          role: 'assistant',
+          content: [{ type: 'text', text: msg.content }],
+          model: '',
+          usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
+          stopReason: 'stop',
+          timestamp: msg.timestamp,
+        })
+      }
+    }
+
+    this.interceptorError.value = null
+    this.interceptorAbort = new AbortController()
+    this.interceptorStreaming.value = true
+    this.interceptorStreamingContent.value = ''
+
+    try {
+      let response = ''
+      for await (const event of client.stream(model, interceptor.systemPrompt, messages, [], {
+        signal: this.interceptorAbort.signal,
+      })) {
+        if (event.type === 'text_delta') {
+          response += event.delta
+          this.interceptorStreamingContent.value = response
+        }
+      }
+
+      if (response.trim()) {
+        const chatMsg: InterceptorChatMessage = {
+          id: nanoid(),
+          role: 'assistant',
+          content: response.trim(),
+          timestamp: Date.now(),
+        }
+        draftMsg.interceptorChat = [...(draftMsg.interceptorChat || []), chatMsg]
+        this.updateVisibleMessages()
+      }
+    } catch (err) {
+      if (this.interceptorAbort?.signal.aborted) return
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[Abele interceptor error]', err)
+      this.interceptorError.value = message
+    } finally {
+      this.interceptorStreaming.value = false
+      this.interceptorStreamingContent.value = ''
+      this.interceptorAbort = null
+    }
+
+    await this.save()
+  }
+
+  abortInterceptor(): void {
+    this.interceptorAbort?.abort()
+  }
+
+  updateDraftContent(draftMsgId: string, content: string): void {
+    this.updateChatMessage(
+      (m) => m.id === draftMsgId && !!m.draft,
+      (m) => ({ ...m, content })
+    )
+  }
+
+  async confirmDraft(draftMsgId: string): Promise<void> {
+    if (this.isStreaming.value || this.isCompacting.value) return
+
+    const draftMsg = this.allChatMessages.find((m) => m.id === draftMsgId)
+    if (!draftMsg || !draftMsg.draft) return
+
+    // Mark as confirmed and collapse interceptor chat
+    this.updateChatMessage(
+      (m) => m.id === draftMsgId,
+      (m) => ({ ...m, draft: false, interceptorCollapsed: true })
+    )
+
+    // Now add to internal messages and run agent loop
+    const gen = this.generation
+    this.error.value = null
+    this.userMessageCount++
+
+    if (draftMsg.attachments?.length) {
+      const parts = await resolveAttachmentsForApi(draftMsg.attachments)
+      const allParts: UserContentPart[] = [{ type: 'text', text: draftMsg.content }, ...parts]
+      this.allInternalMessages.push({
+        role: 'user',
+        content: allParts,
+        timestamp: draftMsg.timestamp,
+        chatMessageId: draftMsg.id,
+      })
+    } else {
+      this.allInternalMessages.push({
+        role: 'user',
+        content: draftMsg.content,
+        timestamp: draftMsg.timestamp,
+        chatMessageId: draftMsg.id,
+      })
+    }
+
+    await this.runAgentLoop()
+
+    if (gen !== this.generation) return
+
+    await this.save()
+
+    const sequential = AbeleConfig.getInstance().ai.sequentialAuxiliary
+
+    if (ChatSession.TITLE_GENERATION_TRIGGERS.includes(this.userMessageCount)) {
+      if (sequential) {
+        await this.generateTitle()
+      } else {
+        this.generateTitle().catch(() => {
+          return
+        })
+      }
+    }
+
+    if (sequential) {
+      await this.autoCompactIfNeeded()
+    } else {
+      this.autoCompactIfNeeded().catch(() => {
+        return
+      })
+    }
+  }
+
+  getDraftMessage(): ChatMessage | null {
+    return this.messages.value.find((m) => m.draft) || null
   }
 
   // ── Background tasks ──────────────────────────────────────────

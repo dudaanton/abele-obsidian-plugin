@@ -1,5 +1,8 @@
 <template>
-  <div class="abele-chat-msg" :class="`abele-chat-msg_${message.role}`">
+  <div
+    class="abele-chat-msg"
+    :class="[`abele-chat-msg_${message.role}`, { 'abele-chat-msg--draft': message.draft }]"
+  >
     <!-- Icon — clickable to expand details -->
     <div class="abele-chat-msg__icon" @click="expanded = !expanded">
       <Icon v-if="message.role === 'user'" icon="user" />
@@ -177,6 +180,91 @@
       />
       <Icon icon="plus" class="abele-chat-msg__branch-add" @click.stop="branchFromHere" />
     </div>
+
+    <!-- Draft actions -->
+    <div v-if="message.draft" class="abele-chat-msg__draft-actions">
+      <button
+        class="abele-chat-msg__draft-btn abele-chat-msg__draft-btn--send"
+        @click="emit('confirm-draft', message.id)"
+      >
+        Send
+      </button>
+      <button class="abele-chat-msg__draft-btn" @click="emit('edit-draft', message.id)">
+        Edit
+      </button>
+    </div>
+
+    <!-- Interceptor sub-chat -->
+    <div
+      v-if="message.interceptorChat?.length || interceptorStreaming || interceptorError"
+      class="abele-chat-msg__interceptor"
+    >
+      <div
+        v-if="!message.draft && message.interceptorCollapsed !== false"
+        class="abele-chat-msg__interceptor-collapsed"
+        @click="emit('toggle-interceptor', message.id)"
+      >
+        <Icon icon="message-square" />
+        <span
+          >{{ message.interceptorName || 'Interceptor' }} ({{
+            message.interceptorChat?.length || 0
+          }})</span
+        >
+      </div>
+      <template v-else>
+        <div
+          v-if="!message.draft"
+          class="abele-chat-msg__interceptor-header"
+          @click="emit('toggle-interceptor', message.id)"
+        >
+          <Icon icon="chevron-down" />
+          <span>{{ message.interceptorName || 'Interceptor' }}</span>
+        </div>
+        <div class="abele-chat-msg__interceptor-messages">
+          <div
+            v-for="icMsg in message.interceptorChat"
+            :key="icMsg.id"
+            class="abele-chat-msg__interceptor-msg"
+            :class="`abele-chat-msg__interceptor-msg--${icMsg.role}`"
+          >
+            <Markdown v-if="icMsg.role === 'assistant'" :text="icMsg.content" />
+            <span v-else>{{ icMsg.content }}</span>
+          </div>
+          <div
+            v-if="interceptorStreaming"
+            class="abele-chat-msg__interceptor-msg abele-chat-msg__interceptor-msg--assistant"
+          >
+            <Markdown v-if="interceptorStreamingContent" :text="interceptorStreamingContent" />
+            <span v-else class="abele-chat-msg__interceptor-typing">
+              <span class="abele-ai-chat__typing-dot" />
+              <span class="abele-ai-chat__typing-dot" />
+              <span class="abele-ai-chat__typing-dot" />
+            </span>
+          </div>
+        </div>
+        <div v-if="interceptorError" class="abele-chat-msg__interceptor-error">
+          <span>{{ interceptorError }}</span>
+          <button class="abele-chat-msg__draft-btn" @click="emit('retry-interceptor')">
+            Retry
+          </button>
+        </div>
+        <div
+          v-if="message.draft && !interceptorStreaming && !interceptorError"
+          class="abele-chat-msg__interceptor-input"
+        >
+          <textarea
+            ref="interceptorInputEl"
+            :value="interceptorText"
+            class="abele-chat-msg__interceptor-textarea"
+            placeholder="Reply..."
+            rows="1"
+            @input="interceptorText = ($event.target as HTMLTextAreaElement).value"
+            @keydown.shift.enter.prevent="sendInterceptorReply"
+          />
+          <Icon icon="send-horizontal" with-bg @click="sendInterceptorReply" />
+        </div>
+      </template>
+    </div>
   </div>
 </template>
 
@@ -197,6 +285,9 @@ import type { BranchInfo } from './AiChat.vue'
 const props = defineProps<{
   message: ChatMessage
   branchInfo?: BranchInfo
+  interceptorStreaming?: boolean
+  interceptorStreamingContent?: string
+  interceptorError?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -205,7 +296,22 @@ const emit = defineEmits<{
   (e: 'repeat-message', messageId: string): void
   (e: 'retry-message', messageId: string): void
   (e: 'edit-message', messageId: string): void
+  (e: 'confirm-draft', messageId: string): void
+  (e: 'edit-draft', messageId: string): void
+  (e: 'send-interceptor', messageId: string, content: string): void
+  (e: 'toggle-interceptor', messageId: string): void
+  (e: 'retry-interceptor'): void
 }>()
+
+const interceptorText = ref('')
+const interceptorInputEl = ref<HTMLTextAreaElement | null>(null)
+
+const sendInterceptorReply = () => {
+  const text = interceptorText.value.trim()
+  if (!text) return
+  emit('send-interceptor', props.message.id, text)
+  interceptorText.value = ''
+}
 
 // -1 = "new unsent branch" = last position (after all existing children)
 const displayIndex = computed(() => {
@@ -851,6 +957,153 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
 @container (max-width: 450px) {
   .abele-chat-msg__time {
     display: none;
+  }
+}
+
+// ── Draft ──
+
+.abele-chat-msg--draft {
+  &.abele-chat-msg_user .abele-chat-msg__body {
+    border: 1px dashed var(--interactive-accent);
+    background-color: var(--background-primary-alt);
+  }
+}
+
+.abele-chat-msg__draft-actions {
+  display: flex;
+  gap: var(--size-4-1);
+  flex-basis: 100%;
+  padding-left: calc(var(--icon-size) + var(--size-4-2));
+}
+
+.abele-chat-msg__draft-btn {
+  font-size: var(--font-ui-smaller);
+  padding: var(--size-2-1) var(--size-4-2);
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+  }
+
+  &--send {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+
+    &:hover {
+      background: var(--interactive-accent-hover);
+    }
+  }
+}
+
+// ── Interceptor sub-chat ──
+
+.abele-chat-msg__interceptor {
+  flex-basis: 100%;
+  margin-left: calc(var(--icon-size) + var(--size-4-2) + var(--size-4-3));
+  border-left: 2px solid var(--background-modifier-border);
+  padding-left: var(--size-4-2);
+}
+
+.abele-chat-msg__interceptor-collapsed {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text-muted);
+  }
+}
+
+.abele-chat-msg__interceptor-header {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  font-size: var(--font-smaller);
+  color: var(--text-faint);
+  cursor: pointer;
+  margin-bottom: var(--size-4-1);
+
+  &:hover {
+    color: var(--text-muted);
+  }
+}
+
+.abele-chat-msg__interceptor-messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+}
+
+.abele-chat-msg__interceptor-msg {
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+
+  p:first-child {
+    margin-top: 0;
+  }
+  p:last-child {
+    margin-bottom: 0;
+  }
+
+  &--user {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  &--assistant {
+    color: var(--text-normal);
+  }
+}
+
+.abele-chat-msg__interceptor-typing {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.abele-chat-msg__interceptor-error {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  margin-top: var(--size-4-1);
+  font-size: var(--font-ui-small);
+  color: var(--text-error);
+}
+
+.abele-chat-msg__interceptor-input {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  margin-top: var(--size-4-1);
+}
+
+.abele-chat-msg__interceptor-textarea {
+  flex: 1;
+  resize: none;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: var(--size-2-1) var(--size-4-1);
+  font-family: inherit;
+  font-size: var(--font-ui-small);
+  line-height: 1.5;
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  height: 28px;
+  min-height: 28px;
+  max-height: 60px;
+  overflow-y: hidden;
+
+  &:focus {
+    border-color: var(--interactive-accent);
+    outline: none;
   }
 }
 </style>

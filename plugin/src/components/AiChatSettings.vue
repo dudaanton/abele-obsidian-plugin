@@ -5,6 +5,23 @@
         <Checkbox :is-enabled="hideReasoning" @toggle="toggleHideReasoning" />
       </Setting>
 
+      <Setting
+        v-if="interceptorOptions.length"
+        name="Interceptor"
+        desc="Review messages before sending to the main AI."
+      >
+        <select
+          class="dropdown"
+          :value="activeInterceptorId"
+          @change="setInterceptor(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="">Off</option>
+          <option v-for="opt in interceptorOptions" :key="opt.id" :value="opt.id">
+            {{ opt.name }}
+          </option>
+        </select>
+      </Setting>
+
       <h4 style="margin: var(--size-4-3) 0 var(--size-4-1)">System Prompt</h4>
 
       <div class="abele-system-prompt-settings">
@@ -63,10 +80,23 @@ import Checkbox from './obsidian/Checkbox.vue'
 import Search from './obsidian/Search.vue'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import { AgentService } from '@/ai/AgentService'
+import { AbeleConfig } from '@/services/AbeleConfig'
 
 const emit = defineEmits<{ close: [] }>()
 
 const session = computed(() => AgentService.getInstance().activeSession.value)
+
+// ── Interceptor ──
+
+const interceptorOptions = computed(() => AbeleConfig.getInstance().ai.interceptors)
+const activeInterceptorId = computed(() => session.value?.activeInterceptorId.value ?? '')
+
+function setInterceptor(id: string) {
+  const s = session.value
+  if (!s) return
+  s.activeInterceptorId.value = id
+  s.save()
+}
 
 // ── Hide reasoning ──
 

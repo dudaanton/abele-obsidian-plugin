@@ -39,11 +39,19 @@
         :key="msg.id"
         :message="msg"
         :branch-info="branchInfoMap.get(msg.id)"
+        :interceptor-streaming="msg.draft ? interceptorStreaming : false"
+        :interceptor-streaming-content="msg.draft ? interceptorStreamingContent : ''"
+        :interceptor-error="msg.draft ? interceptorError : null"
         @create-branch="onCreateBranch"
         @switch-branch="onSwitchBranch"
         @repeat-message="onRepeatMessage"
         @retry-message="onRetryMessage"
         @edit-message="onEditMessage"
+        @confirm-draft="onConfirmDraft"
+        @edit-draft="onEditDraft"
+        @send-interceptor="onSendInterceptor"
+        @toggle-interceptor="onToggleInterceptor"
+        @retry-interceptor="onRetryInterceptor"
       />
 
       <!-- Streaming indicator -->
@@ -201,6 +209,14 @@ const streamingContent = computed(() => session.value?.streamingContent.value ??
 const streamingThinking = computed(() => session.value?.streamingThinking.value ?? '')
 const hideReasoning = computed(() => session.value?.hideReasoning.value ?? false)
 
+// Interceptor
+const interceptorStreaming = computed(() => session.value?.interceptorStreaming.value ?? false)
+const interceptorStreamingContent = computed(
+  () => session.value?.interceptorStreamingContent.value ?? ''
+)
+const interceptorError = computed(() => session.value?.interceptorError.value ?? null)
+const draftMessage = computed(() => session.value?.getDraftMessage() ?? null)
+
 // Questions tool
 const pendingQuestions = computed(() => session.value?.pendingQuestions.value ?? null)
 const currentQuestion = computed(() => {
@@ -306,6 +322,41 @@ const onEditMessage = (messageId: string) => {
     s.createBranch(messageId)
   }
   chatInput.value?.setText(msg.content)
+}
+
+// ── Interceptor handlers ──
+
+const onConfirmDraft = async (messageId: string) => {
+  shouldAutoScroll = true
+  await session.value?.confirmDraft(messageId)
+}
+
+const onEditDraft = (messageId: string) => {
+  const s = session.value
+  if (!s) return
+  const msg = s.allMessages.value.find((m) => m.id === messageId)
+  if (!msg || !msg.draft) return
+  chatInput.value?.setText(msg.content)
+  editingDraftId.value = messageId
+}
+
+const editingDraftId = ref<string | null>(null)
+
+const onSendInterceptor = async (messageId: string, content: string) => {
+  await session.value?.sendInterceptorMessage(messageId, content)
+}
+
+const onRetryInterceptor = async () => {
+  await session.value?.retryInterceptor()
+}
+
+const onToggleInterceptor = (messageId: string) => {
+  const s = session.value
+  if (!s) return
+  const msg = s.allMessages.value.find((m) => m.id === messageId)
+  if (!msg) return
+  msg.interceptorCollapsed = !msg.interceptorCollapsed
+  s.updateVisibleMessages()
 }
 
 const isBusy = computed(() => {
@@ -473,6 +524,13 @@ onMounted(() => {
 const onSend = async (content: string, attachments: string[] = []) => {
   const s = session.value
   if (!s) return
+
+  // Update draft content if editing
+  if (editingDraftId.value) {
+    s.updateDraftContent(editingDraftId.value, content)
+    editingDraftId.value = null
+    return
+  }
 
   // Answer pending question with typed text
   if (s.pendingQuestions.value) {

@@ -82,6 +82,21 @@ export function resolveImageModel(
   return { provider, model }
 }
 
+export interface AiInterceptor {
+  id: string
+  name: string
+  systemPrompt: string
+  modelId: string // provider model id (resolved same way as auxiliaryModelId)
+  contextDepth: number // 0 = no context, -1 = all messages, N = last N messages
+}
+
+export interface InterceptorChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  timestamp: number
+}
+
 export interface AiSettings {
   enabled: boolean
   providers: AiProvider[]
@@ -106,6 +121,7 @@ export interface AiSettings {
   prompts: AiPrompts
   systemPromptFromNote: boolean
   systemPromptNotePath: string
+  interceptors: AiInterceptor[]
   /** @deprecated migrated to imageProviders */
   openRouterApiKey?: string
   /** @deprecated migrated to imageProviders */
@@ -159,6 +175,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   secrets: [],
   systemPromptFromNote: false,
   systemPromptNotePath: '',
+  interceptors: [],
   prompts: {
     system:
       "You are an AI assistant integrated into Obsidian note-taking app through the Abele plugin. You can read, create, edit, delete, and move files in the user's vault. You can also search the web.\n\nWhen working with files, always explain what you're about to do before doing it. Be concise but thorough.",
@@ -295,6 +312,10 @@ export interface ChatMessage {
   usage?: ChatMessageUsage
   attachments?: string[]
   timestamp: number
+  draft?: boolean
+  interceptorName?: string
+  interceptorChat?: InterceptorChatMessage[]
+  interceptorCollapsed?: boolean
 }
 
 export interface ChatMetadata {
@@ -328,4 +349,5 @@ export interface ChatMetadata {
   activeLeafId?: string
   customSystemPrompt?: string
   customSystemPromptNotePath?: string
+  activeInterceptorId?: string
 }

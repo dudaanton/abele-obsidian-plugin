@@ -510,6 +510,67 @@
           @update:model-value="updatePrompt('compactPrompt', $event)"
         />
       </Setting>
+
+      <h3>Interceptors</h3>
+      <p class="setting-item-description" style="margin-bottom: var(--size-4-2)">
+        Interceptors review your messages before they are sent to the main AI. Enable per chat in
+        Chat Settings.
+      </p>
+
+      <div v-for="(ic, icIdx) in interceptors" :key="ic.id" class="abele-ai-interceptor">
+        <div class="abele-ai-interceptor__header">
+          <strong>{{ ic.name || 'Unnamed Interceptor' }}</strong>
+          <Icon icon="trash" @click="removeInterceptor(icIdx)" />
+        </div>
+
+        <Setting name="Name">
+          <Input
+            :model-value="ic.name"
+            @update:model-value="updateInterceptor(icIdx, 'name', $event)"
+          />
+        </Setting>
+
+        <Setting name="Model" desc="Which model to use for this interceptor.">
+          <select
+            class="dropdown"
+            :value="ic.modelId"
+            @change="
+              updateInterceptor(icIdx, 'modelId', ($event.target as HTMLSelectElement).value)
+            "
+          >
+            <option value="">Default (active model)</option>
+            <template v-for="p in providers" :key="p.id">
+              <option v-for="m in p.models" :key="m.id" :value="m.id">
+                {{ p.name }} / {{ m.name }}
+              </option>
+            </template>
+          </select>
+        </Setting>
+
+        <Setting
+          name="Context depth"
+          desc="How many recent main chat messages the interceptor sees. 0 = none, -1 = all."
+        >
+          <Input
+            :model-value="String(ic.contextDepth ?? 0)"
+            type="number"
+            @update:model-value="updateInterceptor(icIdx, 'contextDepth', Number($event))"
+          />
+        </Setting>
+
+        <Setting name="System prompt">
+          <Input
+            :model-value="ic.systemPrompt"
+            as-text-area
+            placeholder="You are a grammar checker..."
+            @update:model-value="updateInterceptor(icIdx, 'systemPrompt', $event)"
+          />
+        </Setting>
+      </div>
+
+      <Setting name="">
+        <button class="mod-cta" @click="addInterceptor">Add Interceptor</button>
+      </Setting>
     </template>
   </div>
 </template>
@@ -597,6 +658,7 @@ const prompts = ref<Partial<AiPrompts>>(
 )
 const systemPromptFromNote = ref(config.ai.systemPromptFromNote || false)
 const systemPromptNotePath = ref(config.ai.systemPromptNotePath || '')
+const interceptors = ref(JSON.parse(JSON.stringify(config.ai.interceptors || [])))
 const defaultPrompts = DEFAULT_AI_SETTINGS.prompts
 const customToolDescriptions = computed(() => prompts.value.toolDescriptions || {})
 
@@ -699,6 +761,7 @@ const save = debounce(async () => {
     secrets: JSON.parse(JSON.stringify(secrets.value)),
     systemPromptFromNote: systemPromptFromNote.value,
     systemPromptNotePath: systemPromptNotePath.value,
+    interceptors: JSON.parse(JSON.stringify(interceptors.value)),
     prompts: JSON.parse(JSON.stringify(prompts.value)),
   }
   await config.saveSettings()
@@ -744,6 +807,29 @@ const applyBraveSecret = () => {
   braveSearchApiKey.value = 'abele-brave-search'
   app.secretStorage.setSecret('abele-brave-search', braveSecretInput.value)
   braveSecretInput.value = ''
+  save()
+}
+
+// ── Interceptors ────────────────────────────────────────────
+
+const addInterceptor = () => {
+  interceptors.value.push({
+    id: `ic-${Date.now()}`,
+    name: '',
+    systemPrompt: '',
+    modelId: '',
+    contextDepth: 5,
+  })
+  save()
+}
+
+const removeInterceptor = (idx: number) => {
+  interceptors.value.splice(idx, 1)
+  save()
+}
+
+const updateInterceptor = (idx: number, field: string, value: string | number) => {
+  ;(interceptors.value[idx] as Record<string, unknown>)[field] = value
   save()
 }
 
@@ -1328,5 +1414,21 @@ const updatePrompt = (field: keyof Omit<AiPrompts, 'toolDescriptions'>, value: s
   display: flex;
   align-items: center;
   gap: var(--size-4-2);
+}
+
+.abele-ai-interceptor {
+  padding: var(--size-4-3) 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.abele-ai-interceptor__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--size-4-2);
 }
 </style>
