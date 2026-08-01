@@ -82,7 +82,7 @@ export class GlobalStore {
   public readonly balanceIndex = ref<BalanceIndex | null>(null)
   public readonly timeEntryList = ref<TimeEntryList | null>(null)
 
-  public readonly settingsTabId = ref<string>(null)
+  public readonly settingsContainer = shallowRef<HTMLElement | null>(null)
   public readonly themeVersion = ref(0)
 
   public readonly weekStartsOnMonday = ref(AbeleConfig.getInstance().weekStartsOnMonday)

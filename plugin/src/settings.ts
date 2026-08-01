@@ -1,17 +1,13 @@
 import { App, PluginSettingTab } from 'obsidian'
 import AbelePlugin from './main'
-import { genid } from './helpers/vueUtils'
 import { GlobalStore } from './stores/GlobalStore'
 
-export const SETTINGS_ID_ATTR = 'abele-settings-id'
-
 export class AbeleSettingTab extends PluginSettingTab {
-  id: string
   plugin: AbelePlugin
+  private container: HTMLElement | null = null
 
   constructor(app: App, plugin: AbelePlugin) {
     super(app, plugin)
-    this.id = genid()
     this.plugin = plugin
   }
 
@@ -20,17 +16,20 @@ export class AbeleSettingTab extends PluginSettingTab {
 
     containerEl.empty()
 
-    this.id = genid()
-    containerEl.createDiv({ attr: { [SETTINGS_ID_ATTR]: this.id } })
+    // Since 1.13 settings may live in a separate window with its own document,
+    // so the Vue app teleports into this element directly — a CSS selector would
+    // only ever be resolved against the main window document.
+    this.container = containerEl.createDiv()
 
-    GlobalStore.getInstance().settingsTabId.value = this.id
+    GlobalStore.getInstance().settingsContainer.value = this.container
   }
 
   hide(): void {
     const store = GlobalStore.getInstance()
-    if (store.settingsTabId.value === this.id) {
-      store.settingsTabId.value = null
+    if (store.settingsContainer.value === this.container) {
+      store.settingsContainer.value = null
     }
+    this.container = null
     super.hide()
   }
 }

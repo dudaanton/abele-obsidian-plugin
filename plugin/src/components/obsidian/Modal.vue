@@ -1,5 +1,5 @@
 <template>
-  <Teleport :to="`#${id}`">
+  <Teleport v-if="wrapper" :to="wrapper">
     <slot :id="id" class="abele-modal" />
   </Teleport>
 </template>
@@ -8,7 +8,7 @@
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { App, Modal } from 'obsidian'
-import { onBeforeMount, onMounted, onUnmounted, ref } from 'vue'
+import { onBeforeMount, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 
 const props = defineProps<{
   title?: string
@@ -17,6 +17,9 @@ const props = defineProps<{
 const modal = ref<Modal | null>(null)
 
 const id = ref(genid())
+// Teleport by element, not by selector: a modal opened from the settings window
+// lives in that window's document, which `document.querySelector` never sees.
+const wrapper = shallowRef<HTMLElement | null>(null)
 
 class ObsidianModal extends Modal {
   constructor(app: App) {
@@ -34,9 +37,11 @@ onBeforeMount(() => {
 
   modal.value = new ObsidianModal(app)
 
-  const wrapper = document.createElement('div')
-  wrapper.id = id.value
-  modal.value.contentEl.appendChild(wrapper)
+  const contentEl = modal.value.contentEl
+  const el = contentEl.doc.createElement('div')
+  el.id = id.value
+  contentEl.appendChild(el)
+  wrapper.value = el
   if (props.title) {
     modal.value.setTitle(props.title)
   }

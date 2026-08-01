@@ -102,7 +102,7 @@
     :resolve="scriptFormResolve"
     @close="scriptFormModalOpened = false"
   />
-  <Teleport v-if="settingsTabId" :to="`[${SETTINGS_ID_ATTR}='${settingsTabId}']`">
+  <Teleport v-if="settingsContainer" :to="settingsContainer">
     <SettingsView />
   </Teleport>
 </template>
@@ -147,7 +147,6 @@ import AiChatView from './AiChat.vue'
 import FinanceSidebarView from './FinanceSidebar.vue'
 import TimeTrackingSidebarView from './TimeTrackingSidebar.vue'
 import SettingsView from './settings/Settings.vue'
-import { SETTINGS_ID_ATTR } from '@/settings'
 
 const {
   tasksContainers,
@@ -175,7 +174,7 @@ const {
   financeSidebarId,
   timeTrackingSidebarId,
   findAndReplaceBasesInstances,
-  settingsTabId,
+  settingsContainer,
 } = GlobalStore.getInstance()
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'])

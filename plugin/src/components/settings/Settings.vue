@@ -44,6 +44,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, markRaw, type Component } from 'vue'
 import { Platform } from 'obsidian'
+import { GlobalStore } from '@/stores/GlobalStore'
 import Icon from '../obsidian/Icon.vue'
 import TasksSettings from './TasksSettings.vue'
 import LogsSettings from './LogsSettings.vue'
@@ -77,6 +78,12 @@ const activeTab = ref(0)
 const isMenuOpen = ref(true)
 const isMobile = ref(Platform.isMobile)
 
+const { app, settingsContainer } = GlobalStore.getInstance()
+
+// Settings can be rendered in a separate window since Obsidian 1.13, so any
+// lookup around the settings UI must go through that window's own document.
+const settingsDoc = () => settingsContainer.value?.doc ?? document
+
 const selectTab = (idx: number) => {
   activeTab.value = idx
   if (isMobile.value) {
@@ -87,7 +94,7 @@ const selectTab = (idx: number) => {
 // Mobile back button handling
 onMounted(() => {
   if (Platform.isMobile) {
-    const backBtn = document.querySelector('.modal-setting-back-button') as HTMLElement
+    const backBtn = settingsDoc().querySelector('.modal-setting-back-button') as HTMLElement
     if (backBtn) {
       const newBackBtn = backBtn.cloneNode(true) as HTMLElement
       backBtn.parentNode?.replaceChild(newBackBtn, backBtn)
@@ -102,7 +109,7 @@ watch(
   () => {
     if (!Platform.isMobile) return
 
-    const backBtn = document.querySelector('.modal-setting-back-button') as HTMLElement
+    const backBtn = settingsDoc().querySelector('.modal-setting-back-button') as HTMLElement
     if (!backBtn) return
 
     const titleEl = backBtn.parentElement?.lastChild as HTMLElement
@@ -116,8 +123,7 @@ watch(
       if (titleEl) titleEl.textContent = 'Abele'
       backBtn.onclick = () => {
         // Close settings - this triggers the default Obsidian behavior
-        const app = (window as any).app
-        app?.setting?.closeActiveTab?.()
+        ;(app as any)?.setting?.closeActiveTab?.()
       }
     }
   },
