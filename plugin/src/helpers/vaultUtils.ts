@@ -1,5 +1,5 @@
 import { GlobalStore } from '@/stores/GlobalStore'
-import { Editor, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian'
+import { App, Editor, MarkdownView, TFile, WorkspaceLeaf } from 'obsidian'
 import { cleanFileName } from './pathsHelpers'
 
 export const getFileByPathOrName = (pathOrName: string): TFile | null => {
@@ -248,11 +248,32 @@ export async function getAvailablePath(
   }
 }
 
-export function getBacklinksByPath(path: string): string[] {
-  const { app } = GlobalStore.getInstance()
+/**
+ * Short-lived memo shared by every getBacklinksByPath call inside one synchronous burst
+ * (e.g. the NoteRelations 'resolved' queue drain, which runs fully synchronously).
+ * The link index cannot change mid-tick, so this is safe. It self-clears on the next
+ * microtask — results are never reused across ticks.
+ */
+let backlinksMemo: Map<string, string[]> | null = null
 
-  app.metadataCache.trigger(path)
+function getBacklinksMemo(): Map<string, string[]> {
+  if (!backlinksMemo) {
+    backlinksMemo = new Map()
+    queueMicrotask(() => {
+      backlinksMemo = null
+    })
+  }
 
+  return backlinksMemo
+}
+
+/**
+ * Collects the source paths linking to the given path by scanning resolvedLinks.
+ * Note: metadataCache.getBacklinksForFile is intentionally NOT used here — it computes
+ * the full backlink dict on demand (heavier than this scan) and froze the app when
+ * isRelatedPath recursed over pages with many cross-links.
+ */
+function collectBacklinks(app: App, path: string): string[] {
   const backlinks = []
   const allLinks = app.metadataCache.resolvedLinks
 
@@ -265,6 +286,22 @@ export function getBacklinksByPath(path: string): string[] {
   }
 
   return backlinks
+}
+
+export function getBacklinksByPath(path: string): string[] {
+  const { app } = GlobalStore.getInstance()
+
+  app.metadataCache.trigger(path)
+
+  const memo = getBacklinksMemo()
+  const cached = memo.get(path)
+  // a fresh array is returned on every call, exactly as before
+  if (cached) return cached.slice()
+
+  const backlinks = collectBacklinks(app, path)
+  memo.set(path, backlinks)
+
+  return backlinks.slice()
 }
 
 export function getOutgoingLinksByPath(path: string): string[] {

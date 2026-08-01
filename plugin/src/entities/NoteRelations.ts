@@ -437,15 +437,27 @@ export class NoteRelations {
 
     this.eventRefs.push(
       app.metadataCache.on('resolved', () => {
+        const startedAt = performance.now()
+        const wasResolved = this.resolved
         const queue = this.relationsCallbacksQueue.splice(0)
-        for (const callback of queue) {
-          if (this.cleanedUp) return
-          callback()
-        }
 
-        if (this.resolved) return
-        this.findRelations(this.filePath)
-        this.resolved = true
+        try {
+          for (const callback of queue) {
+            if (this.cleanedUp) return
+            callback()
+          }
+
+          if (this.resolved) return
+          this.findRelations(this.filePath)
+          this.resolved = true
+        } finally {
+          if (queue.length > 0 || !wasResolved) {
+            console.debug(
+              `[Abele] perf: NoteRelations resolved-queue drain ${this.filePath} (${queue.length} queued)`,
+              performance.now() - startedAt
+            )
+          }
+        }
       })
     )
 

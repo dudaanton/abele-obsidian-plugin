@@ -44,6 +44,8 @@ export class FileWatcher {
         const { oldPath, file } = event
         if (comparePaths(oldPath, this.filePath) && file instanceof TFile) {
           this.filePath = file.path
+          // keep the dispatch index in sync with the new path
+          VaultWatcherWrapper.getInstance().updateCallbackPath(this.callbackId, this.filePath)
 
           this.callback({
             type: 'rename',
@@ -65,7 +67,8 @@ export class FileWatcher {
           this.cleanup()
         }
       }
-    })
+      // never pass undefined: that would register this watcher as a wildcard subscriber
+    }, this.filePath ?? '')
 
     this.isActive = true
   }
