@@ -145,5 +145,6 @@ the general note population — which is itself group-attached — because backl
 relation walks scale with how many notes point at a group's members. A sparsely linked
 vault hides that cost completely: an earlier version of this generator averaged 0 body links
 per finance note and 1 per task, and `NoteRelations` looked fast. At realistic density
-(~2 links per finance note, ~3 per task, ~9 per journal, ~6 per note) the same code takes
-seconds on a single group note.
+(~2 links per finance note, ~3 per task, ~9 per journal, ~6 per note) the same code took
+seconds on a single group note — a quadratic backlink lookup that only a densely linked
+vault made visible at all.

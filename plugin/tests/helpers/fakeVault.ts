@@ -37,6 +37,12 @@ export interface FakeVaultStats {
   getFirstLinkpathDest: number
   getAbstractFileByPath: number
   read: number
+  /**
+   * Reads of the whole `resolvedLinks` map. Backlink lookups walk it end to end, so one read
+   * per lookup means the cost scales with how many paths are asked about; one read per burst
+   * means it scales with the vault alone.
+   */
+  resolvedLinks: number
 }
 
 export interface FakeFileCache {
@@ -181,6 +187,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     getFirstLinkpathDest: 0,
     getAbstractFileByPath: 0,
     read: 0,
+    resolvedLinks: 0,
   }
 
   const resolveLink = (linkpath: string): TFile | null => {
@@ -299,7 +306,10 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       trigger() {
         // Obsidian fires metadata events here; nothing in these tests observes them.
       },
-      resolvedLinks,
+      get resolvedLinks() {
+        stats.resolvedLinks++
+        return resolvedLinks
+      },
     },
     stats,
     resetStats() {
@@ -309,6 +319,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       stats.getFirstLinkpathDest = 0
       stats.getAbstractFileByPath = 0
       stats.read = 0
+      stats.resolvedLinks = 0
     },
   }
 }

@@ -249,43 +249,50 @@ export async function getAvailablePath(
 }
 
 /**
- * Short-lived memo shared by every getBacklinksByPath call inside one synchronous burst
- * (e.g. the NoteRelations 'resolved' queue drain, which runs fully synchronously).
- * The link index cannot change mid-tick, so this is safe. It self-clears on the next
- * microtask — results are never reused across ticks.
- */
-let backlinksMemo: Map<string, string[]> | null = null
-
-function getBacklinksMemo(): Map<string, string[]> {
-  if (!backlinksMemo) {
-    backlinksMemo = new Map()
-    queueMicrotask(() => {
-      backlinksMemo = null
-    })
-  }
-
-  return backlinksMemo
-}
-
-/**
- * Collects the source paths linking to the given path by scanning resolvedLinks.
+ * Reverse of metadataCache.resolvedLinks — target path -> the source paths linking to it.
+ *
+ * Shared by every getBacklinksByPath call inside one synchronous burst (e.g. the
+ * NoteRelations 'resolved' queue drain, which runs fully synchronously). The link index
+ * cannot change mid-tick, so this is safe; it self-clears on the next microtask and results
+ * are never reused across ticks.
+ *
+ * Inverting the whole index at once is what keeps relation gathering linear. Answering each
+ * path by scanning resolvedLinks separately — as this used to — costs (paths asked about) x
+ * (notes in the vault), and NoteRelations asks about every node of a group tree in a single
+ * burst: on a 43k-file vault one group note took seconds, all of it blocking the UI.
+ *
  * Note: metadataCache.getBacklinksForFile is intentionally NOT used here — it computes
- * the full backlink dict on demand (heavier than this scan) and froze the app when
+ * the full backlink dict on demand (heavier than this) and froze the app when
  * isRelatedPath recursed over pages with many cross-links.
  */
-function collectBacklinks(app: App, path: string): string[] {
-  const backlinks = []
+let backlinkIndex: Map<string, string[]> | null = null
+
+function getBacklinkIndex(app: App): Map<string, string[]> {
+  if (backlinkIndex) return backlinkIndex
+
+  const index = new Map<string, string[]>()
   const allLinks = app.metadataCache.resolvedLinks
 
   // allLinks structure: { [sourcePath]: { [targetPath]: linkCount } }
   for (const sourcePath in allLinks) {
-    // testing if sourcePath links to the given path
-    if (allLinks[sourcePath][path]) {
-      backlinks.push(sourcePath)
+    const targets = allLinks[sourcePath]
+    for (const targetPath in targets) {
+      // A zero count means the link was resolved away; the previous per-path scan skipped
+      // those with a truthy test, so keep doing that.
+      if (!targets[targetPath]) continue
+
+      const sources = index.get(targetPath)
+      if (sources) sources.push(sourcePath)
+      else index.set(targetPath, [sourcePath])
     }
   }
 
-  return backlinks
+  backlinkIndex = index
+  queueMicrotask(() => {
+    backlinkIndex = null
+  })
+
+  return index
 }
 
 export function getBacklinksByPath(path: string): string[] {
@@ -293,15 +300,8 @@ export function getBacklinksByPath(path: string): string[] {
 
   app.metadataCache.trigger(path)
 
-  const memo = getBacklinksMemo()
-  const cached = memo.get(path)
-  // a fresh array is returned on every call, exactly as before
-  if (cached) return cached.slice()
-
-  const backlinks = collectBacklinks(app, path)
-  memo.set(path, backlinks)
-
-  return backlinks.slice()
+  // A fresh array on every call, exactly as before — callers are free to mutate it.
+  return (getBacklinkIndex(app).get(path) ?? []).slice()
 }
 
 export function getOutgoingLinksByPath(path: string): string[] {
