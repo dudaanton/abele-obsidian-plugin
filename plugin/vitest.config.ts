@@ -19,12 +19,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'happy-dom',
+    // Includes the complexity tier: those assertions describe how much work an algorithm may
+    // do, they run against the in-memory fake vault in milliseconds, and they are the guard
+    // that stops group resolution from silently going quadratic again.
     include: ['tests/unit/**/*.test.ts', 'tests/integration/**/*.test.ts'],
-    // The complexity tier is excluded here because it currently fails by design: it states
-    // the cost group resolution SHOULD have, and the implementation does not meet it yet.
-    // Keeping it out of the commit hook keeps commits possible; run it with `npm run
-    // test:perf`. Fold it back into this tier once the group-resolution rewrite lands.
-    exclude: ['**/node_modules/**', '**/*.perf.test.ts'],
     reporters: 'default',
   },
 })

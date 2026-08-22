@@ -131,6 +131,9 @@ export class ScopeResolver {
       return result
     }
 
+    // Built at most once per resolve() and shared by every group entry — see buildGroupIndex.
+    let groupIndex: Map<string, string[]> | null = null
+
     for (const entry of this.entries.value) {
       switch (entry.type) {
         case 'file': {
@@ -149,7 +152,8 @@ export class ScopeResolver {
           break
         }
         case 'group': {
-          this.resolveGroup(entry.path, result)
+          groupIndex ??= this.buildGroupIndex()
+          this.resolveGroup(entry.path, result, groupIndex)
           break
         }
       }
@@ -215,36 +219,69 @@ export class ScopeResolver {
   }
 
   /**
-   * Resolve all notes belonging to a group (notes that reference the group note
-   * via `groups` property, recursively down the tree).
+   * Builds a reverse index of group membership: group note path -> paths of the notes that
+   * name it in their `groups` frontmatter.
+   *
+   * One pass over the vault answers the membership question for every group at once, which
+   * is what keeps group resolution linear in vault size. Walking the vault per group node
+   * instead — as this used to — costs (nodes in the group tree) x (notes with a `groups`
+   * property); on a 37k-file vault that was around 22 million link resolutions and blocked
+   * the main thread for well over a minute.
+   *
+   * Obsidian's `resolvedLinks` is deliberately not used as the source here: it records that
+   * one note links to another, not which property produced the link, so a note merely
+   * mentioning a group note in its body would be indexed as a member of it.
    */
-  private resolveGroup(groupPath: string, result: Set<string>, visited = new Set<string>()): void {
-    if (visited.has(groupPath)) return
-    visited.add(groupPath)
-
+  private buildGroupIndex(): Map<string, string[]> {
     const { app } = GlobalStore.getInstance()
-    const groupFile = app.vault.getAbstractFileByPath(groupPath)
-    if (groupFile instanceof TFile) {
-      result.add(groupFile.path)
-    }
+    const index = new Map<string, string[]>()
 
-    // Find all notes that have this group in their `groups` frontmatter
     for (const file of app.vault.getFiles()) {
-      if (visited.has(file.path)) continue
-      const cache = app.metadataCache.getFileCache(file)
-      const groups = cache?.frontmatter?.groups
+      const groups = app.metadataCache.getFileCache(file)?.frontmatter?.groups
       if (!Array.isArray(groups)) continue
 
       for (const group of groups) {
-        const linkPath = isWikilink(group)
-          ? app.metadataCache.getFirstLinkpathDest(wikilinkToPath(group), file.path)?.path
-          : null
-        if (linkPath && linkPath === groupPath) {
-          result.add(file.path)
-          // Recurse: this note might also be a group for other notes
-          this.resolveGroup(file.path, result, visited)
-          break
-        }
+        if (!isWikilink(group)) continue
+
+        const linkpath = wikilinkToPath(group)
+        if (!linkpath) continue
+
+        const dest = app.metadataCache.getFirstLinkpathDest(linkpath, file.path)
+        if (!dest) continue
+
+        const members = index.get(dest.path)
+        if (members) members.push(file.path)
+        else index.set(dest.path, [file.path])
+      }
+    }
+
+    return index
+  }
+
+  /**
+   * Resolve all notes belonging to a group (notes that reference the group note
+   * via `groups` property, recursively down the tree).
+   */
+  private resolveGroup(groupPath: string, result: Set<string>, index: Map<string, string[]>): void {
+    const { app } = GlobalStore.getInstance()
+    const visited = new Set<string>()
+    const pending = [groupPath]
+
+    // Iterative rather than recursive: a group tree can be thousands of nodes deep-ish and
+    // wide, and this runs synchronously on the agent's tool-call path.
+    while (pending.length > 0) {
+      const current = pending.pop() as string
+      if (visited.has(current)) continue
+      visited.add(current)
+
+      const file = app.vault.getAbstractFileByPath(current)
+      if (file instanceof TFile) {
+        result.add(file.path)
+      }
+
+      // Every member is itself a potential group for further notes.
+      for (const member of index.get(current) ?? []) {
+        if (!visited.has(member)) pending.push(member)
       }
     }
   }
@@ -252,7 +289,7 @@ export class ScopeResolver {
   /** Resolve a group entry and return just its paths (for preview) */
   resolveGroupPaths(groupPath: string): string[] {
     const result = new Set<string>()
-    this.resolveGroup(groupPath, result)
+    this.resolveGroup(groupPath, result, this.buildGroupIndex())
     return [...result].sort()
   }
 
