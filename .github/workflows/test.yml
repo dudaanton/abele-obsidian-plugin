@@ -1,0 +1,33 @@
+name: Tests
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+
+      - name: Install dependencies
+        working-directory: plugin
+        run: npm ci
+
+      - name: Type check
+        working-directory: plugin
+        run: npm run types
+
+      # Unit and integration tiers only. The e2e tier drives a running Obsidian desktop app
+      # through its CLI and has no meaning on a headless runner.
+      - name: Unit and integration tests
+        working-directory: plugin
+        run: npm test

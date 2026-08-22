@@ -63,6 +63,7 @@ import { createHeaderExtension } from './editor/HeaderExtension'
 import { migrateFromDataview } from './commands/migrateFromDataview'
 // migrateFromFirefly is triggered via modal
 import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
+import { exposeTestApi } from '@/testing/exposeTestApi'
 import { readFileContent } from './helpers/vaultUtils'
 import { runAfterSync } from './helpers/runAfterSync'
 import { handleProtocolAction } from './helpers/protocolHandler'
@@ -132,6 +133,15 @@ export default class AbelePlugin extends Plugin {
     })
 
     GlobalStore.getInstance().init(this.app)
+
+    // Development builds expose plugin internals to the e2e suite, which drives the app
+    // through `obsidian eval`. Vite inlines NODE_ENV, so in a production build this folds to
+    // `if (false)` and the import is tree-shaken away. It must stay a static import: a
+    // dynamic one makes Rollup emit a separate chunk, and the install scripts copy only
+    // main.js, which would ship a stub that cannot resolve its own bundle.
+    if (process.env.NODE_ENV !== 'production') {
+      exposeTestApi(this)
+    }
 
     // Vault files and metadata cache are not fully available during onload().
     // Deferring TasksList creation until layout is ready ensures getMarkdownFiles()
@@ -926,6 +936,9 @@ export default class AbelePlugin extends Plugin {
     GlobalStore.getInstance().destroy()
     AbeleConfig.getInstance().destroy()
     VaultWatcherWrapper.destroy()
+    if (process.env.NODE_ENV !== 'production') {
+      delete (globalThis as { __abeleTest?: unknown }).__abeleTest
+    }
     console.debug('Obsidian Service Plugin unloaded.')
   }
 

@@ -1,0 +1,22 @@
+#!/bin/sh
+#
+# Runs the fast test tiers before every commit: unit and integration.
+#
+# The complexity tier (`npm run test:perf`) and the end-to-end tier (`npm run test:e2e`)
+# are deliberately not run here — the first currently fails by design, and the second needs
+# a running Obsidian desktop app, which cannot be assumed at commit time.
+#
+# Enabled by `npm run prepare` in plugin/, which points core.hooksPath at this directory.
+# Skip a run with `git commit --no-verify` when committing work in progress.
+set -e
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root/plugin"
+
+if [ ! -d node_modules ]; then
+  echo "pre-commit: plugin/node_modules missing, skipping tests"
+  exit 0
+fi
+
+echo "pre-commit: running unit and integration tests…"
+npm test --silent
