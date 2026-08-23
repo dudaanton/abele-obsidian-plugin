@@ -154,15 +154,23 @@ Secret substitution: use \`\${abele_key:name}\` in url, headers, or body to inje
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| \`agent(task, opts?)\` | \`string\` | Delegate task to an AI sub-agent |
+| \`agent(task, opts?)\` | \`string \\| string[]\` | Hand a task to an agent |
+| \`agents()\` | \`object[]\` | List agents: \`{ id, name, description, utility }\` |
 | \`generateImage(prompt, model?)\` | \`string\` | Generate image from text, returns vault path |
 
 \`generateImage\` model parameter: optional \`"providerId::modelId"\` key from image generation settings. If omitted, uses the default image model.
 
-\`agent\` options: \`{ model?: string }\`
-- Preset slots: \`"primary"\`, \`"delegate"\`, \`"wise"\`
-- Or pass any model ID from your configured models (e.g. \`"gpt-4o"\`, \`"claude-sonnet-4-20250514"\`)
-- Default: \`"delegate"\`
+\`agent\` options: \`{ agent?: string, items?: string[], batchSize?: number }\`
+- \`agent\` — the name or id of the agent to run. Defaults to the agent new chats start on.
+- \`items\` — fan out: one sub-agent per item, results returned in the same order.
+- \`batchSize\` — how many run at once when fanning out (default 5, max 10).
+
+The agent brings its own model, instructions, tools and scope. Call \`agents()\` to see what is configured.
+
+\`\`\`js
+const summary = await agent("Summarise this note", { agent: "Researcher" })
+const each = await agent("Extract the date", { items: paths })
+\`\`\`
 
 ---
 

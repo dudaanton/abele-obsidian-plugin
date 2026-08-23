@@ -6,6 +6,7 @@ import { getAvailablePath } from '@/helpers/vaultUtils'
 import { renderTemplate } from '@/helpers/notesUtils'
 import { DATE_FORMAT } from '@/constants/dates'
 import { ChatMessage, ChatMetadata, AiChatHistoryEntry } from './types'
+import { RunStorage } from './RunStorage'
 import type { Message } from './client'
 
 interface ChatFile {
@@ -175,9 +176,25 @@ export class ChatStorage {
     const { app } = GlobalStore.getInstance()
     const file = app.vault.getAbstractFileByPath(path)
     if (file instanceof TFile) {
+      // Delegated runs live in sidecar files reachable only through this chat. Left behind,
+      // they would be unreachable clutter that nothing ever cleans up.
+      await this.deleteRunsOf(file)
       await app.vault.trash(file, false)
     }
     this.removeHistoryEntry(path)
+  }
+
+  private async deleteRunsOf(file: TFile): Promise<void> {
+    const { app } = GlobalStore.getInstance()
+    try {
+      const data = JSON.parse(await app.vault.read(file)) as { messages?: ChatMessage[] }
+      const runIds = (data.messages ?? [])
+        .map((m) => m.subAgentRun?.runId)
+        .filter((id): id is string => Boolean(id))
+      if (runIds.length) await RunStorage.getInstance().deleteRuns(runIds)
+    } catch {
+      // An unreadable chat file has no runs we can identify; deleting it is still correct.
+    }
   }
 
   async migrateChats(): Promise<number> {
