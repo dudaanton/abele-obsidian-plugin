@@ -4,8 +4,10 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { getNoteBody } from '@/helpers/notesUtils'
 import { createAgent, type AgentDefinition, type AgentPrompt } from './types'
+import { CORE_TOOLS } from '@/ai/types'
 import type { ModelConfig } from '@/ai/client'
 import type { AiModelConfig, AiProvider } from '@/ai/types'
+import type { SkillInfo } from '@/ai/tools/SkillTool'
 
 /**
  * The one place that answers what an agent is.
@@ -192,5 +194,33 @@ export class AgentRegistry {
 
     const content = await app.vault.cachedRead(file)
     return getNoteBody(content).trim()
+  }
+
+  // ── Tool and skill filters ────────────────────────────────────
+
+  /**
+   * Narrows a tool list to what an agent may use.
+   *
+   * Takes the list rather than building it, so the decision is a pure function of the agent
+   * and is testable without standing up every tool's dependencies.
+   *
+   * Core tools are never filtered here — they stay available to every agent and are governed
+   * by `permissionMode` and workspace scope at call time instead.
+   */
+  filterTools<T extends { name: string }>(agent: AgentDefinition, tools: T[]): T[] {
+    return tools.filter((tool) => {
+      if (tool.name === 'delegate' && agent.maxDelegateDepth <= 0) return false
+      if (CORE_TOOLS.has(tool.name)) return true
+      return (agent.toolModes[tool.name] ?? 'off') !== 'off'
+    })
+  }
+
+  /** Which skills the `skill` tool advertises to this agent. */
+  visibleSkills(agent: AgentDefinition, skills: SkillInfo[]): SkillInfo[] {
+    if (agent.skillsMode === 'none') return []
+    if (agent.skillsMode === 'all') return skills
+
+    const selected = new Set(agent.skills)
+    return skills.filter((skill) => selected.has(skill.name))
   }
 }
