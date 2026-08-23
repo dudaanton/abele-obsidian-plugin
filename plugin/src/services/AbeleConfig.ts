@@ -6,6 +6,7 @@ import {
   ImageProvider,
   migrateOldPermissions,
 } from '@/ai/types'
+import { migrateAgents } from '@/ai/agents/migration'
 import AbelePlugin from '@/main'
 
 export interface AbeleSettings {
@@ -210,6 +211,9 @@ export class AbeleConfig {
       ...DEFAULT_SETTINGS.excludedPathsForDefaultTemplate,
     ]
     this.ai = settings?.ai ? { ...DEFAULT_AI_SETTINGS, ...settings.ai } : { ...DEFAULT_AI_SETTINGS }
+    // Runs before the legacy migrations below, so a settings file predating both is folded
+    // into an agent using the values it actually had on disk.
+    migrateAgents(this.ai)
     // Migrate old boolean permissions to toolModes
     if (
       settings?.ai &&

@@ -1,3 +1,5 @@
+import type { AgentDefinition } from './agents/types'
+
 export interface AiProvider {
   id: string
   name: string
@@ -122,6 +124,9 @@ export interface AiSettings {
   systemPromptFromNote: boolean
   systemPromptNotePath: string
   interceptors: AiInterceptor[]
+  agents: AgentDefinition[]
+  /** Id of the agent new chats start on. */
+  defaultAgentId: string
   /** @deprecated migrated to imageProviders */
   openRouterApiKey?: string
   /** @deprecated migrated to imageProviders */
@@ -176,6 +181,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   systemPromptFromNote: false,
   systemPromptNotePath: '',
   interceptors: [],
+  agents: [],
+  defaultAgentId: '',
   prompts: {
     system:
       "You are an AI assistant integrated into Obsidian note-taking app through the Abele plugin. You can read, create, edit, delete, and move files in the user's vault. You can also search the web.\n\nWhen working with files, always explain what you're about to do before doing it. Be concise but thorough.",
