@@ -32,8 +32,16 @@ const options = computed(() =>
 
 const activeId = computed(() => session.value?.agent.value?.id ?? '')
 
-/** Shown beside the agent so the model in force is visible without opening settings. */
-const modelLabel = computed(() => session.value?.resolveModel()?.name ?? '')
+/**
+ * Shown beside the agent so the model in force is visible without opening settings.
+ *
+ * Falls back to the id: models fetched from a provider's `/models` endpoint often carry no
+ * display name, and an unlabelled model is worse than a technical one.
+ */
+const modelLabel = computed(() => {
+  const model = session.value?.resolveModel()
+  return model ? model.name || model.id : ''
+})
 
 const modelTitle = computed(() =>
   session.value?.isOverridden('modelId') ? 'Model overridden for this chat' : 'Model from the agent'

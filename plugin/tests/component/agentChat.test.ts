@@ -74,6 +74,15 @@ describe('the agent picker', () => {
     expect(view.find('.abele-agent-selector__model').text()).toBe('Big')
   })
 
+  it('falls back to the model id when the provider gave it no name', () => {
+    // Models fetched from a provider's /models endpoint often arrive unnamed.
+    AbeleConfig.getInstance().ai.providers[0].models[0].name = ''
+
+    const view = mount(AiAgentSelector, { shallow: true })
+
+    expect(view.find('.abele-agent-selector__model').text()).toBe('big')
+  })
+
   it('follows a per-chat model override', async () => {
     session.activeModelId.value = 'small'
 

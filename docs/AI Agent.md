@@ -1,15 +1,70 @@
 # AI Agent
 
-An AI assistant integrated into Obsidian that can read, create, edit, and search files in your vault, browse the web, and consult other models — all within a chat interface.
+An AI assistant integrated into Obsidian that can read, create, edit, and search files in your vault, browse the web, and hand work to other agents — all within a chat interface.
 
 ## Getting Started
 
 1. Enable the AI Agent in plugin settings
-2. Add a provider (any OpenAI-compatible API)
+2. On the **General** tab, add a provider (any OpenAI-compatible API)
 3. Set the API key (stored in Obsidian's secure keychain)
 4. Add at least one model
-5. Select it as the primary model
+5. On the **Agents** tab, open the `Default` agent and give it that model
 6. Open the chat sidebar
+
+## Agents
+
+An agent is what a chat runs on: a model, a set of instructions, and what it is allowed to do.
+Agents live on the **Agents** tab in settings, and every chat picks one from the dropdown in the
+chat header.
+
+### What an agent carries
+
+| Field | Purpose |
+|-------|---------|
+| Model | The model this agent runs on |
+| Fallback model | Offered as a retry when a request fails. Used automatically inside a delegated run, where nobody can press a button |
+| Prompts | One or more blocks, each inline text or a vault note, joined in order |
+| Permission mode | What it may do without asking |
+| Scope | Where it works by default |
+| Tools | Which feature tools it may use, and whether each asks first |
+| Skills | All, none, or a chosen few |
+| Delegation depth | How far it may hand work onward. `0` removes the delegate tool |
+| Utility | Hidden from the chat picker. Still reachable from scripts, delegation and draft review |
+
+### Editing an agent while a chat is open
+
+Changes take effect immediately, with nothing reloaded. A chat holds the agent's *id*, not a copy
+of its settings, so every open conversation resolves the agent afresh on each request.
+
+### Per-chat overrides
+
+Changing the model, scope, permissions or tools **inside a chat** overrides the agent for that chat
+only. The chat then stops tracking the agent for that one setting, and says so — each of those
+screens shows whether a value came from the agent or was overridden, with a reset back to the
+agent. Switching agent mid-chat clears the overrides, since they were expressed against the
+previous agent.
+
+### Delegation
+
+An agent with delegation depth above zero can hand work to another agent:
+
+```
+delegate(agent: "Researcher", task: "Summarise this", items?: ["a.md", "b.md"])
+```
+
+Without `items` this is one sub-agent. With `items` it fans out, one sub-agent per item, each with
+a fresh context.
+
+A delegated run keeps its whole conversation. In the chat it appears as a collapsed card on the
+tool call — agent name, how many tasks, status — which expands into the sub-agent's messages, or
+opens in its own read-only tab. Nested delegations expand the same way.
+
+The sub-agent runs with **its own** instructions, tools and permission mode, and with the union of
+its own scope and the delegating chat's — the agent knows where it normally works, and the chat
+holds the files the task is actually about.
+
+Run transcripts are stored beside your chats, in a `Runs` folder, and are deleted with the chat
+that started them.
 
 ## Providers & Models
 
@@ -41,15 +96,16 @@ Each model has configurable properties:
 | Max output tokens | Maximum tokens in a single response |
 | Reasoning | Enable for models that support extended thinking (e.g., DeepSeek-R1, QWQ) |
 
-### Model Roles
+### Which model runs where
 
-| Role | Purpose |
-|------|---------|
-| Primary | Main model used for chat |
-| Auxiliary | Used for title generation and conversation compaction. Falls back to primary if not set |
-| Wise | A powerful model the agent can consult via the `wise_model` tool. Must be explicitly configured |
+Chat models are chosen per agent, on the Agents tab. The **General** tab holds one model slot of
+its own: the **auxiliary** model, used for the plugin's own background work — naming chats and
+compacting long conversations. It has no tools, no scope and no prompt of its own, which is why it
+is a plain model rather than an agent.
 
-When you switch the primary model mid-conversation, a divider line appears in the chat showing the new model name. Reasoning content from previous messages is automatically stripped when sending to a non-reasoning model.
+When the model changes mid-conversation — a per-chat override, a fallback retry — a divider line
+appears in the chat showing the new model name. Switching agent leaves a divider too. Reasoning
+content from previous messages is automatically stripped when sending to a non-reasoning model.
 
 ## Chat
 
@@ -126,7 +182,7 @@ The agent has access to these tools:
 | Tool | Description |
 |------|-------------|
 | `skill` | Load a skill's instructions (see [Skills](#skills)) |
-| `wise_model` | Consult a more powerful model (see [Wise Model](#wise-model)) |
+| `delegate` | Hand a task to another agent (see [Delegation](#delegation)) |
 
 All file operations respect the workspace scope — the agent can only access files you've allowed. File paths in tool call messages are clickable — click to open the file in the workspace.
 
@@ -177,7 +233,7 @@ These are toggled per chat in the scope manager and default to global settings f
 |------------|---------|-------------|
 | Web search | On | Allow `web_search` without approval |
 | Fetch URL | Off | Allow `fetch` without approval |
-| Wise model | Off | Allow `wise_model` without approval |
+| Delegate | Off | Allow `delegate` without approval |
 
 When a permission is off, the agent asks for approval before each use. When on, the tool runs automatically.
 
@@ -196,12 +252,15 @@ You can **Approve**, **Edit** (modify parameters as JSON), or **Reject** (with o
 
 ### System Prompt
 
-The base system prompt tells the model about the Obsidian environment and available tools. You can customize it in settings:
+An agent's system prompt is built from its **prompt blocks**, edited on the Agents tab. Each block
+is either inline text or the body of a vault note, and they are joined in order with a blank line
+between them. A block that resolves to nothing — an empty box, a note that was moved — is dropped
+rather than leaving a gap.
 
-- **System Prompt (base)** — replace the default entirely
-- **Custom Instructions** — appended to the base prompt
+Use `{{date}}` in any block to insert the current date (YYYY-MM-DD), resolved fresh on each request.
 
-Use `{{date}}` in either field to insert the current date (YYYY-MM-DD), resolved fresh on each request.
+The **General** tab keeps only the prompts used for background work: title generation and
+compaction.
 
 ### Prompt Library
 
@@ -267,22 +326,6 @@ When invoked with arguments (`/review check the auth module`), the skill is load
 
 When invoked without arguments (`/review`), the skill is loaded and waits for your next message.
 
-## Wise Model
-
-The wise model lets a smaller, cheaper model consult a more powerful one for complex tasks — code review, architectural decisions, nuanced analysis.
-
-### Setup
-
-1. Add the powerful model to a provider (e.g., Claude Opus, GPT-4o)
-2. Select it as "Wise Model" in settings
-3. Optionally enable "Allow wise model" in default permissions to skip approval
-
-### How It Works
-
-The agent calls `wise_model(prompt="...", system_prompt="...")` when it needs deeper analysis. The request streams to the configured wise model and returns the response as a tool result.
-
-During execution, a spinner appears on the tool call message. You can cancel the request using the stop button.
-
 ## Chat Storage
 
 Chats are saved as JSON files in your vault.
@@ -312,14 +355,17 @@ If you change the path template, use the "Migrate" button in settings to move ex
 
 ## Settings Reference
 
-### Active Configuration
+Settings are split in two: **General** for infrastructure — providers, keys, storage, background
+model — and **Agents** for everything that shapes how an agent behaves.
+
+### Background Model (General)
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Primary Model | — | Main model for chat |
-| Auxiliary Model | Same as primary | Model for title generation and compaction |
-| Wise Model | Not configured | Model for the `wise_model` tool |
+| Auxiliary Model | First available | Model for chat titles and compaction |
 | Sequential Auxiliary | Off | If on, title generation and compaction block the chat. Enable for local models with limited throughput |
+
+Chat models are set per agent, on the Agents tab.
 
 ### Chat Storage
 
@@ -333,21 +379,18 @@ If you change the path template, use the "Migrate" button in settings to move ex
 |---------|---------|-------------|
 | Brave Search API Key | — | Required for `web_search` tool. Get one at [brave.com/search/api](https://brave.com/search/api/) |
 
-### Default Permissions
+### Permissions and scope
+
+Set per agent, on the Agents tab. A chat inherits them and can override them for itself.
+
+### Background Prompts (General)
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Allow web search | On | Default for new chats |
-| Allow fetch | Off | Default for new chats |
-| Allow wise model | Off | Default for new chats |
-
-### Prompts
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| System Prompt (base) | Built-in | The base system message sent to the model |
-| Custom Instructions | Empty | Additional instructions appended to the base |
 | Title Generation Prompt | Built-in | Template with `{{messages}}` for generating chat titles |
 | Title System Prompt | Built-in | System prompt for the title model |
 | Compact Prompt | Built-in | Template with `{{messages}}` for summarizing conversations |
+| Tool Descriptions | Built-in | What each tool tells the model about itself, shared by every agent |
+
+An agent's own instructions are its prompt blocks, on the Agents tab.
 | Tool Descriptions | Built-in | Per-tool descriptions sent to the model (expandable section) |
