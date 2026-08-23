@@ -36,6 +36,9 @@ export function migrateAgents(ai: AiSettings): void {
   for (const interceptor of ai.interceptors || []) {
     agents.push(
       createAgent({
+        // Reusing the interceptor's own id keeps every chat that already names it working:
+        // `activeInterceptorId` in old chat metadata becomes an agent id unchanged.
+        id: interceptor.id,
         name: interceptor.name || 'Interceptor',
         description: 'Migrated from interceptors.',
         utility: true,

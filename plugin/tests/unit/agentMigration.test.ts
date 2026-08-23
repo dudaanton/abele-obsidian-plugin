@@ -86,6 +86,26 @@ describe('migrateAgents', () => {
     expect(ai.defaultAgentId).toBe(ai.agents.find((a) => a.name === 'Default')!.id)
   })
 
+  it('keeps the interceptor id, so a chat already pointing at it still resolves', () => {
+    // Chats saved before agents existed store the interceptor id in their metadata. Minting a
+    // fresh one here would silently detach every such chat from its interceptor.
+    const ai = legacySettings({
+      interceptors: [
+        {
+          id: 'i1',
+          name: 'Reviewer',
+          systemPrompt: 'Review this.',
+          modelId: 'gpt-4o-mini',
+          contextDepth: 3,
+        },
+      ],
+    })
+
+    migrateAgents(ai)
+
+    expect(ai.agents.find((a) => a.id === 'i1')?.name).toBe('Reviewer')
+  })
+
   it('does nothing when agents already exist, so it never overwrites real configuration', () => {
     const ai = legacySettings()
     migrateAgents(ai)
