@@ -1,4 +1,4 @@
-import type { AgentDefinition } from './agents/types'
+import type { AgentDefinition, SessionOverrides } from './agents/types'
 
 export interface AiProvider {
   id: string
@@ -327,6 +327,10 @@ export interface ChatMessage {
 
 export interface ChatMetadata {
   type: 'abele-chat'
+  /** Which agent the chat runs on. Absent in chats saved before agents existed. */
+  agentId?: string
+  /** Only what this chat changed relative to its agent. */
+  overrides?: SessionOverrides
   providerId: string
   modelId: string
   created: string

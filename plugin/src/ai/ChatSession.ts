@@ -35,7 +35,7 @@ import {
   CORE_TOOLS,
   migrateOldPermissions,
 } from './types'
-import type { ToolMode, PermissionMode, InterceptorChatMessage } from './types'
+import type { ToolMode, PermissionMode, InterceptorChatMessage, AiSettings } from './types'
 import type { UserContentPart } from './client'
 import { createAgentTools } from './tools'
 import { loadSkillContent } from './tools/SkillTool'
@@ -1051,6 +1051,62 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.syncScopeFromAgent()
   }
 
+
+  /**
+   * Restores which agent a chat runs on and what it changed relative to that agent.
+   *
+   * Chats saved before agents existed carry a full snapshot — model, permission mode, tool
+   * modes, scope — that was a copy of the global defaults at the moment the chat started, not
+   * a deliberate choice. They are restored as overrides rather than left to track the agent:
+   * turning them live would silently change how an old conversation behaves when reopened,
+   * which is exactly the surprise this design is meant to avoid.
+   */
+  private restoreAgentBinding(metadata: ChatMetadata | null | undefined): void {
+    const registry = AgentRegistry.getInstance()
+    const config = AbeleConfig.getInstance().ai
+
+    const storedAgent = metadata?.agentId ? registry.get(metadata.agentId) : null
+    this.agentId.value = storedAgent?.id ?? registry.defaultAgent()?.id ?? ''
+
+    if (metadata?.agentId && !storedAgent) {
+      console.warn(
+        `[Abele] Chat references a deleted agent (${metadata.agentId}); falling back to the default`
+      )
+    }
+
+    if (metadata?.overrides) {
+      this.overrides.value = { ...metadata.overrides }
+      this.syncScopeFromAgent()
+      return
+    }
+
+    this.overrides.value = metadata ? this.legacyOverrides(metadata, config) : {}
+    this.syncScopeFromAgent()
+  }
+
+  /** Converts a pre-agent chat's stored snapshot into overrides. */
+  private legacyOverrides(metadata: ChatMetadata, config: AiSettings): SessionOverrides {
+    const overrides: SessionOverrides = {}
+
+    if (metadata.providerId) overrides.providerId = metadata.providerId
+    if (metadata.modelId) overrides.modelId = metadata.modelId
+    if (metadata.permissionMode) overrides.permissionMode = metadata.permissionMode
+
+    if (metadata.toolModes) {
+      overrides.toolModes = { ...metadata.toolModes }
+    } else if (metadata.allowWebSearch !== undefined) {
+      // Older still: booleans per tool, from before toolModes existed.
+      overrides.toolModes = migrateOldPermissions(metadata, config as unknown as Record<string, any>)
+    }
+
+    if (metadata.scopeEntries) {
+      overrides.scope = [...metadata.scopeEntries]
+      overrides.fullVaultAccess = metadata.fullVaultAccess ?? false
+    }
+
+    return overrides
+  }
+
   // ── Save / Load ────────────────────────────────────────────────
 
   async save(): Promise<void> {
@@ -1059,8 +1115,16 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const config = AbeleConfig.getInstance().ai
     const title = this.chatTitle.value || this.fallbackTitle()
 
+    const overrides = this.overrides.value
+
     const metadata: ChatMetadata = {
       type: 'abele-chat',
+      agentId: this.agentId.value || undefined,
+      // Only what this chat actually changed. Writing the resolved values instead would freeze
+      // the chat against today's agent and defeat the whole point of resolving on read.
+      overrides: Object.keys(overrides).length ? { ...overrides } : undefined,
+      // Kept for chats reopened by an older build, and for the history list, which shows the
+      // model a chat ran on without loading the session.
       providerId: this.activeProviderId.value || config.activeProviderId,
       modelId: this.activeModelId.value || config.activeModelId,
       created: this.chatCreated || (this.chatCreated = dayjs().format('YYYY-MM-DD')),
@@ -1073,12 +1137,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
               arguments: tc.arguments,
             }))
           : undefined,
-      permissionMode: this.permissionMode.value,
-      toolModes: this.toolModes.value,
-      scopeEntries: this.scopeResolver.entries.value.length
-        ? [...this.scopeResolver.entries.value]
-        : undefined,
-      fullVaultAccess: this.scopeResolver.fullVaultAccess.value || undefined,
       activeLeafId: this.activeLeafId || undefined,
       customSystemPrompt: this.customSystemPrompt.value || undefined,
       customSystemPromptNotePath: this.customSystemPromptNotePath.value || undefined,
@@ -1127,40 +1185,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     this.userMessageCount = this.messages.value.filter((m) => m.role === 'user').length
 
-    // Restore per-chat model and permissions
-    const config = AbeleConfig.getInstance().ai
-    this.activeProviderId.value = result.metadata?.providerId ?? config.activeProviderId
-    this.activeModelId.value = result.metadata?.modelId ?? config.activeModelId
-    this.permissionMode.value = result.metadata?.permissionMode ?? config.permissionMode
-
-    if (result.metadata?.toolModes) {
-      this.toolModes.value = { ...result.metadata.toolModes }
-    } else {
-      // Migrate from old boolean format
-      this.toolModes.value = migrateOldPermissions(result.metadata, config as any)
-    }
-
-    // Restore scope
-    if (result.metadata?.scopeEntries) {
-      this.scopeResolver.clear()
-      this.scopeResolver.setFullVaultAccess(result.metadata.fullVaultAccess ?? false)
-      for (const entry of result.metadata.scopeEntries) {
-        switch (entry.type) {
-          case 'file':
-            this.scopeResolver.addFile(entry.path)
-            break
-          case 'folder':
-            this.scopeResolver.addFolder(entry.path)
-            break
-          case 'pattern':
-            this.scopeResolver.addPattern(entry.path)
-            break
-          case 'group':
-            this.scopeResolver.addGroup(entry.path)
-            break
-        }
-      }
-    }
+    this.restoreAgentBinding(result.metadata)
 
     this.customSystemPrompt.value = result.metadata?.customSystemPrompt || ''
     this.customSystemPromptNotePath.value = result.metadata?.customSystemPromptNotePath || ''

@@ -80,6 +80,7 @@ export interface NoteRenderSample {
 interface AbeleTestApi {
   ScopeResolver: typeof ScopeResolver
   ChatService: typeof ChatService
+  AgentRegistry: typeof AgentRegistry
   GlobalStore: typeof GlobalStore
   plugin: Plugin
   measureGroupResolve(groupPath: string): GroupResolveMeasurement
@@ -441,6 +442,7 @@ export function exposeTestApi(plugin: Plugin): void {
   globalThis.__abeleTest = {
     ScopeResolver,
     ChatService,
+    AgentRegistry,
     GlobalStore,
     plugin,
     measureGroupResolve,
