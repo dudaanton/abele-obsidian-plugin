@@ -12,6 +12,8 @@
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { AgentService } from '@/ai/AgentService'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import { NoteRelations } from '@/entities/NoteRelations'
 import { TFile } from 'obsidian'
 import type { Plugin } from 'obsidian'
@@ -93,11 +95,65 @@ interface AbeleTestApi {
   /** Opens a note and samples what its footer costs to render; poll `noteRenderResult`. */
   startNoteRenderProbe(notePath: string, settleMs?: number): void
   noteRenderResult: NoteRenderSample | null
+  /** The agents the running plugin resolved, and which one new chats start on. */
+  agentsSnapshot(): AgentsSnapshot
+  /** The system prompt a chat with no per-chat override would send right now. */
+  resolvedSystemPrompt(): Promise<string>
+}
+
+export interface AgentsSnapshot {
+  defaultAgentId: string
+  defaultAgentName: string
+  agents: Array<{
+    id: string
+    name: string
+    utility: boolean
+    providerId: string
+    modelId: string
+    promptBlocks: number
+    skillsMode: string
+    maxDelegateDepth: number
+  }>
 }
 
 declare global {
   // eslint-disable-next-line no-var
   var __abeleTest: AbeleTestApi | undefined
+}
+
+/**
+ * What the running plugin made of the settings on disk.
+ *
+ * Migration mutates the in-memory config and only reaches `data.json` on the next settings
+ * save, so reading the file proves nothing about what the app is actually using.
+ */
+function agentsSnapshot(): AgentsSnapshot {
+  const registry = AgentRegistry.getInstance()
+  const fallback = registry.defaultAgent()
+
+  return {
+    defaultAgentId: AbeleConfig.getInstance().ai.defaultAgentId || '',
+    defaultAgentName: fallback?.name ?? '',
+    agents: registry.list({ includeUtility: true }).map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      utility: agent.utility,
+      providerId: agent.providerId,
+      modelId: agent.modelId,
+      promptBlocks: agent.prompts.length,
+      skillsMode: agent.skillsMode,
+      maxDelegateDepth: agent.maxDelegateDepth,
+    })),
+  }
+}
+
+/** Resolves the prompt through the real chat path, overrides and all. */
+async function resolvedSystemPrompt(): Promise<string> {
+  const service = AgentService.getInstance()
+  service.ensureInitialized()
+  const session = service.activeSession.value
+  if (!session) return ''
+  return service.getSystemPrompt(session)
 }
 
 /**
@@ -395,6 +451,8 @@ export function exposeTestApi(plugin: Plugin): void {
     responsivenessResult: null,
     startNoteRenderProbe,
     noteRenderResult: null,
+    agentsSnapshot,
+    resolvedSystemPrompt,
   }
   console.debug('[Abele] test API exposed on window.__abeleTest (development build)')
 }
