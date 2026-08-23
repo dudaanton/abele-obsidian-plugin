@@ -15,141 +15,145 @@
       @create="chatService.createTab()"
     />
 
-    <!-- Header -->
-    <div class="abele-ai-chat__header">
-      <AiAgentSelector />
-      <div class="abele-ai-chat__header-actions">
-        <Icon icon="refresh-cw" with-bg title="Reload from disk" @click="reloadChat" />
-        <Icon icon="sliders-horizontal" with-bg @click="chatSettingsOpen = true" />
-        <Icon icon="plus" with-bg @click="handleNewChat" />
-        <Icon icon="history" with-bg @click="historyOpen = true" />
-        <Icon icon="bug" with-bg @click="showDebug" />
-      </div>
-    </div>
+    <AiRunView v-if="activeRun" :run="activeRun" />
 
-    <!-- Messages -->
-    <div ref="messagesContainer" class="abele-ai-chat__messages" @scroll="onMessagesScroll">
-      <div v-if="messages.length === 0" class="abele-ai-chat__empty">
-        <Icon icon="tree-deciduous" no-hover class="abele-ai-chat__empty-icon" />
-        <span class="abele-ai-chat__empty-text">What's on your mind?</span>
+    <template v-else>
+      <!-- Header -->
+      <div class="abele-ai-chat__header">
+        <AiAgentSelector />
+        <div class="abele-ai-chat__header-actions">
+          <Icon icon="refresh-cw" with-bg title="Reload from disk" @click="reloadChat" />
+          <Icon icon="sliders-horizontal" with-bg @click="chatSettingsOpen = true" />
+          <Icon icon="plus" with-bg @click="handleNewChat" />
+          <Icon icon="history" with-bg @click="historyOpen = true" />
+          <Icon icon="bug" with-bg @click="showDebug" />
+        </div>
       </div>
 
-      <AiChatMessage
-        v-for="msg in messages"
-        :key="msg.id"
-        :message="msg"
-        :branch-info="branchInfoMap.get(msg.id)"
-        :interceptor-streaming="msg.draft ? interceptorStreaming : false"
-        :interceptor-streaming-content="msg.draft ? interceptorStreamingContent : ''"
-        :interceptor-error="msg.draft ? interceptorError : null"
-        @create-branch="onCreateBranch"
-        @switch-branch="onSwitchBranch"
-        @repeat-message="onRepeatMessage"
-        @retry-message="onRetryMessage"
-        @edit-message="onEditMessage"
-        @confirm-draft="onConfirmDraft"
-        @edit-draft="onEditDraft"
-        @send-interceptor="onSendInterceptor"
-        @toggle-interceptor="onToggleInterceptor"
-        @retry-interceptor="onRetryInterceptor"
+      <!-- Messages -->
+      <div ref="messagesContainer" class="abele-ai-chat__messages" @scroll="onMessagesScroll">
+        <div v-if="messages.length === 0" class="abele-ai-chat__empty">
+          <Icon icon="tree-deciduous" no-hover class="abele-ai-chat__empty-icon" />
+          <span class="abele-ai-chat__empty-text">What's on your mind?</span>
+        </div>
+
+        <AiChatMessage
+          v-for="msg in messages"
+          :key="msg.id"
+          :message="msg"
+          :branch-info="branchInfoMap.get(msg.id)"
+          :interceptor-streaming="msg.draft ? interceptorStreaming : false"
+          :interceptor-streaming-content="msg.draft ? interceptorStreamingContent : ''"
+          :interceptor-error="msg.draft ? interceptorError : null"
+          @create-branch="onCreateBranch"
+          @switch-branch="onSwitchBranch"
+          @repeat-message="onRepeatMessage"
+          @retry-message="onRetryMessage"
+          @edit-message="onEditMessage"
+          @confirm-draft="onConfirmDraft"
+          @edit-draft="onEditDraft"
+          @send-interceptor="onSendInterceptor"
+          @toggle-interceptor="onToggleInterceptor"
+          @retry-interceptor="onRetryInterceptor"
+        />
+
+        <!-- Streaming indicator -->
+        <div v-if="isStreaming" class="abele-ai-chat__streaming">
+          <div v-if="streamingThinking" class="abele-ai-chat__streaming-thinking">
+            <details v-if="!hideReasoning" open>
+              <summary>Thinking...</summary>
+              <Markdown :text="streamingThinking" />
+            </details>
+            <div v-else class="abele-ai-chat__streaming-thinking-hidden">
+              <Icon icon="lightbulb" no-hover class="abele-ai-chat__spinner" />
+              <span>Thinking...</span>
+            </div>
+          </div>
+          <div v-if="streamingContent" class="abele-ai-chat__streaming-content">
+            <div class="abele-chat-msg abele-chat-msg_assistant">
+              <div class="abele-chat-msg__icon">
+                <Icon icon="bot" />
+              </div>
+              <div class="abele-chat-msg__body">
+                <Markdown :text="streamingContent" />
+              </div>
+            </div>
+          </div>
+          <div v-if="!streamingContent && !streamingThinking" class="abele-ai-chat__typing">
+            <span class="abele-ai-chat__typing-dot" />
+            <span class="abele-ai-chat__typing-dot" />
+            <span class="abele-ai-chat__typing-dot" />
+          </div>
+        </div>
+
+        <!-- Background task indicators -->
+        <div v-if="isGeneratingTitle" class="abele-ai-chat__aux-status">
+          <Icon icon="heading" />
+          <span>Generating title...</span>
+        </div>
+        <div v-if="isCompacting" class="abele-ai-chat__aux-status">
+          <Icon icon="minimize-2" />
+          <span>Compacting conversation...</span>
+        </div>
+
+        <!-- Tool approval -->
+        <AiToolApproval v-if="pendingApprovalMessage" :message="pendingApprovalMessage" />
+
+        <!-- Questions tool -->
+        <div v-if="currentQuestion" class="abele-ai-chat__questions">
+          <div class="abele-ai-chat__questions-question">{{ currentQuestion.question }}</div>
+          <div class="abele-ai-chat__questions-options">
+            <button
+              v-for="(opt, i) in currentQuestion.options"
+              :key="i"
+              class="abele-ai-chat__questions-option"
+              @click="answerQuestion(opt)"
+            >
+              {{ opt }}
+            </button>
+          </div>
+          <div class="abele-ai-chat__questions-footer">
+            <span class="abele-ai-chat__questions-progress">
+              {{ questionsProgress }}
+            </span>
+            <button class="abele-ai-chat__questions-abort" @click="abortQuestions">Abort</button>
+          </div>
+        </div>
+
+        <!-- Error -->
+        <div v-if="error" class="abele-ai-chat__error">
+          <div class="abele-ai-chat__error-line">
+            <Icon icon="alert-triangle" />
+            <span>{{ error }}</span>
+          </div>
+          <div class="abele-ai-chat__error-actions">
+            <button @click="onRetryRequest">Retry</button>
+            <button v-if="hasFallbackModel" @click="onRetryWithFallback">
+              Retry on {{ fallbackModelName }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input -->
+      <AiChatInput
+        ref="chatInput"
+        :is-streaming="isStreaming || isExecutingTool"
+        :is-busy="isBusy"
+        :can-continue="showContinue"
+        :token-display="tokenDisplay"
+        :scope-label="scopeCompact"
+        @send="onSend"
+        @command="onCommand"
+        @abort="onAbort"
+        @continue="onContinue"
+        @focus="onInputFocus"
+        @open-scope="scopeOpen = true"
+        @open-permissions="permissionsOpen = true"
+        @open-skill-prompt="skillPromptOpen = true"
+        @attach-file="onAttachFile"
       />
-
-      <!-- Streaming indicator -->
-      <div v-if="isStreaming" class="abele-ai-chat__streaming">
-        <div v-if="streamingThinking" class="abele-ai-chat__streaming-thinking">
-          <details v-if="!hideReasoning" open>
-            <summary>Thinking...</summary>
-            <Markdown :text="streamingThinking" />
-          </details>
-          <div v-else class="abele-ai-chat__streaming-thinking-hidden">
-            <Icon icon="lightbulb" no-hover class="abele-ai-chat__spinner" />
-            <span>Thinking...</span>
-          </div>
-        </div>
-        <div v-if="streamingContent" class="abele-ai-chat__streaming-content">
-          <div class="abele-chat-msg abele-chat-msg_assistant">
-            <div class="abele-chat-msg__icon">
-              <Icon icon="bot" />
-            </div>
-            <div class="abele-chat-msg__body">
-              <Markdown :text="streamingContent" />
-            </div>
-          </div>
-        </div>
-        <div v-if="!streamingContent && !streamingThinking" class="abele-ai-chat__typing">
-          <span class="abele-ai-chat__typing-dot" />
-          <span class="abele-ai-chat__typing-dot" />
-          <span class="abele-ai-chat__typing-dot" />
-        </div>
-      </div>
-
-      <!-- Background task indicators -->
-      <div v-if="isGeneratingTitle" class="abele-ai-chat__aux-status">
-        <Icon icon="heading" />
-        <span>Generating title...</span>
-      </div>
-      <div v-if="isCompacting" class="abele-ai-chat__aux-status">
-        <Icon icon="minimize-2" />
-        <span>Compacting conversation...</span>
-      </div>
-
-      <!-- Tool approval -->
-      <AiToolApproval v-if="pendingApprovalMessage" :message="pendingApprovalMessage" />
-
-      <!-- Questions tool -->
-      <div v-if="currentQuestion" class="abele-ai-chat__questions">
-        <div class="abele-ai-chat__questions-question">{{ currentQuestion.question }}</div>
-        <div class="abele-ai-chat__questions-options">
-          <button
-            v-for="(opt, i) in currentQuestion.options"
-            :key="i"
-            class="abele-ai-chat__questions-option"
-            @click="answerQuestion(opt)"
-          >
-            {{ opt }}
-          </button>
-        </div>
-        <div class="abele-ai-chat__questions-footer">
-          <span class="abele-ai-chat__questions-progress">
-            {{ questionsProgress }}
-          </span>
-          <button class="abele-ai-chat__questions-abort" @click="abortQuestions">Abort</button>
-        </div>
-      </div>
-
-      <!-- Error -->
-      <div v-if="error" class="abele-ai-chat__error">
-        <div class="abele-ai-chat__error-line">
-          <Icon icon="alert-triangle" />
-          <span>{{ error }}</span>
-        </div>
-        <div class="abele-ai-chat__error-actions">
-          <button @click="onRetryRequest">Retry</button>
-          <button v-if="hasFallbackModel" @click="onRetryWithFallback">
-            Retry on {{ fallbackModelName }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Input -->
-    <AiChatInput
-      ref="chatInput"
-      :is-streaming="isStreaming || isExecutingTool"
-      :is-busy="isBusy"
-      :can-continue="showContinue"
-      :token-display="tokenDisplay"
-      :scope-label="scopeCompact"
-      @send="onSend"
-      @command="onCommand"
-      @abort="onAbort"
-      @continue="onContinue"
-      @focus="onInputFocus"
-      @open-scope="scopeOpen = true"
-      @open-permissions="permissionsOpen = true"
-      @open-skill-prompt="skillPromptOpen = true"
-      @attach-file="onAttachFile"
-    />
+    </template>
 
     <!-- Modals -->
     <AiChatHistory v-if="historyOpen" @close="historyOpen = false" @select="onLoadChat" />
@@ -184,6 +188,7 @@ import Markdown from './obsidian/Markdown.vue'
 import AiChatMessage from './AiChatMessage.vue'
 import AiChatInput from './AiChatInput.vue'
 import AiChatTabs from './AiChatTabs.vue'
+import AiRunView from './AiRunView.vue'
 import AiToolApproval from './AiToolApproval.vue'
 import AiAgentSelector from './AiAgentSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
@@ -246,9 +251,22 @@ const abortQuestions = () => {
 const pendingToolCalls = computed(() => session.value?.pendingToolCalls.value ?? [])
 const error = computed(() => session.value?.error.value ?? null)
 
+/** The run shown in the active tab, if this tab is a run rather than a chat. */
+const activeRun = computed(() => chatService.activeRun)
+
 // Tab bar info
 const tabInfos = computed(() =>
   chatService.tabOrder.value.map((id) => {
+    const run = chatService.getRun(id)
+    if (run) {
+      return {
+        id,
+        label: `${run.agentName} run`,
+        isStreaming: false,
+        isActive: id === chatService.activeTabId.value,
+      }
+    }
+
     const s = chatService.getSession(id)
     return {
       id,
@@ -766,7 +784,9 @@ const onAbort = () => {
 }
 
 const hasFallbackModel = computed(() => session.value?.hasFallbackModel ?? false)
-const fallbackModelName = computed(() => session.value?.resolveModel({ fallback: true })?.name ?? '')
+const fallbackModelName = computed(
+  () => session.value?.resolveModel({ fallback: true })?.name ?? ''
+)
 
 const onRetryRequest = async () => {
   await session.value?.retryRequest()

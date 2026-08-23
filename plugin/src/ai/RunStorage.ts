@@ -54,11 +54,18 @@ export class RunStorage {
     RunStorage.instance = null
   }
 
-  /** Runs sit beside the chats, in a folder Obsidian hides from the file explorer. */
+  /**
+   * Where run transcripts live: a plain folder beside the chats.
+   *
+   * Deliberately not dot-prefixed. Obsidian leaves dot-folders out of its vault index
+   * entirely, so a file written to one is on disk but invisible to `getAbstractFileByPath` —
+   * the run could be saved and never read back. A visible folder also means a person can
+   * inspect or delete these themselves, and Obsidian Sync treats them like any other note.
+   */
   runsFolder(): string {
     const template = AbeleConfig.getInstance().ai.chatFolder || 'AI/Chats'
     const base = template.replace(/\/?\{\{.*$/, '').replace(/\/$/, '')
-    return base ? `${base}/.runs` : '.runs'
+    return base ? `${base}/Runs` : 'Agent Runs'
   }
 
   runPath(runId: string): string {

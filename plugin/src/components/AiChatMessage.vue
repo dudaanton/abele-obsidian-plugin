@@ -30,7 +30,11 @@
             >{{ toolSummary }}</span
           >
           <span
-            v-if="message.toolName === 'delegate' && message.toolResult?.startsWith('Processing:')"
+            v-if="
+              message.toolName === 'delegate' &&
+              !message.subAgentRun &&
+              message.toolResult?.startsWith('Processing:')
+            "
             class="abele-chat-msg__tool-progress"
           >
             {{ message.toolResult }}
@@ -45,6 +49,9 @@
             >failed</span
           >
         </span>
+        <!-- A delegated run: the whole sub-conversation, right where it was dispatched. -->
+        <AiSubAgentRun v-if="message.subAgentRun" :run="message.subAgentRun" />
+
         <div
           v-if="message.toolStatus === 'approved' && imageUrl"
           class="abele-chat-msg__image-wrap"
@@ -275,6 +282,7 @@ import { Menu, Notice, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import Diff from './Diff.vue'
+import AiSubAgentRun from './AiSubAgentRun.vue'
 import GalleryViewer from './GalleryViewer.vue'
 import type { ViewerImage } from './GalleryViewer.vue'
 import { GlobalStore } from '@/stores/GlobalStore'

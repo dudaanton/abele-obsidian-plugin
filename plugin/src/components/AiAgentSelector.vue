@@ -36,9 +36,7 @@ const activeId = computed(() => session.value?.agent.value?.id ?? '')
 const modelLabel = computed(() => session.value?.resolveModel()?.name ?? '')
 
 const modelTitle = computed(() =>
-  session.value?.isOverridden('modelId')
-    ? 'Model overridden for this chat'
-    : 'Model from the agent'
+  session.value?.isOverridden('modelId') ? 'Model overridden for this chat' : 'Model from the agent'
 )
 
 const onSelect = (agentId: string) => {
@@ -49,7 +47,9 @@ const onSelect = (agentId: string) => {
   // loud rather than silently, since it can undo a scope somebody narrowed on purpose.
   const overridden = Object.keys(s.overrides.value).length
   if (overridden) {
-    new Notice(`Switched agent — ${overridden} per-chat override${overridden === 1 ? '' : 's'} cleared`)
+    new Notice(
+      `Switched agent — ${overridden} per-chat override${overridden === 1 ? '' : 's'} cleared`
+    )
   }
 
   s.switchAgent(agentId)

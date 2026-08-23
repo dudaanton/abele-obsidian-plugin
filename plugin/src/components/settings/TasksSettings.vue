@@ -1,6 +1,9 @@
 <template>
   <div class="abele-settings__tasks">
-    <Setting name="Tasks folder" desc='Optional folder path to store task files (default: "Tasks").'>
+    <Setting
+      name="Tasks folder"
+      desc='Optional folder path to store task files (default: "Tasks").'
+    >
       <Search
         :model-value="tasksFolder"
         placeholder="Enter tasks folder path"
@@ -49,7 +52,10 @@
         @update:model-value="busyDayThresholdChanged"
       />
     </Setting>
-    <Setting name="Week starts on Monday" desc="Set the first day of the week for date calculations.">
+    <Setting
+      name="Week starts on Monday"
+      desc="Set the first day of the week for date calculations."
+    >
       <Checkbox :is-enabled="weekStartsOnMonday" @toggle="weekStartsOnMondayChanged" />
     </Setting>
   </div>

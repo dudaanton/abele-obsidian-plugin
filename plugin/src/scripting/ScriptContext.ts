@@ -43,7 +43,6 @@ function stripPrefix(result: string): string {
   return result.replace(/^(?:Saved|Created):\s*/, '')
 }
 
-
 export function buildScriptContext(opts: {
   params: Record<string, unknown>
   signal: AbortSignal

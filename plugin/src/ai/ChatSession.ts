@@ -22,12 +22,7 @@ import { ChatStorage } from './ChatStorage'
 import { ChatSummarizer, type SummarizerHost } from './ChatSummarizer'
 import { ChatInterceptor, type InterceptorHost } from './ChatInterceptor'
 import { AgentRegistry } from './agents/AgentRegistry'
-import type {
-  AgentDefinition,
-  OverrideKey,
-  ScopeEntry,
-  SessionOverrides,
-} from './agents/types'
+import type { AgentDefinition, OverrideKey, ScopeEntry, SessionOverrides } from './agents/types'
 import {
   ChatMessage,
   ChatMetadata,
@@ -174,7 +169,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   // Per-chat tool permissions
   public readonly permissionMode = computed<PermissionMode>({
-    get: () => this.overrides.value.permissionMode ?? this.agent.value?.permissionMode ?? 'confirm-all',
+    get: () =>
+      this.overrides.value.permissionMode ?? this.agent.value?.permissionMode ?? 'confirm-all',
     set: (value) => this.setOverride('permissionMode', value),
   })
   public readonly toolModes = computed<Record<string, ToolMode>>({
@@ -219,8 +215,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.scopeResolver = new ScopeResolver()
     this.summarizer = new ChatSummarizer(this)
     this.interceptor = new ChatInterceptor(this)
-    this.agentId.value =
-      options.agentId || AgentRegistry.getInstance().defaultAgent()?.id || ''
+    this.agentId.value = options.agentId || AgentRegistry.getInstance().defaultAgent()?.id || ''
     this.scopeEffects = effectScope(true)
     this.scopeEffects.run(() => this.watchScope())
     this.syncScopeFromAgent()
@@ -501,7 +496,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       : null
     const filtered = effective
       ? AgentRegistry.getInstance().filterTools(effective, allTools)
-      : allTools.filter((tool) => CORE_TOOLS.has(tool.name) || this.getToolMode(tool.name) !== 'off')
+      : allTools.filter(
+          (tool) => CORE_TOOLS.has(tool.name) || this.getToolMode(tool.name) !== 'off'
+        )
 
     return this.wrapToolsForSession(filtered)
   }
@@ -1223,7 +1220,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.syncScopeFromAgent()
   }
 
-
   /**
    * Restores which agent a chat runs on and what it changed relative to that agent.
    *
@@ -1268,7 +1264,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       overrides.toolModes = { ...metadata.toolModes }
     } else if (metadata.allowWebSearch !== undefined) {
       // Older still: booleans per tool, from before toolModes existed.
-      overrides.toolModes = migrateOldPermissions(metadata, config as unknown as Record<string, any>)
+      overrides.toolModes = migrateOldPermissions(
+        metadata,
+        config as unknown as Record<string, any>
+      )
     }
 
     if (metadata.scopeEntries) {

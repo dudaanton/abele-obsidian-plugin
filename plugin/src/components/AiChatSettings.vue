@@ -144,7 +144,7 @@ const modelOverridden = computed(() => session.value?.isOverridden('modelId') ??
 
 const modelDesc = computed(() =>
   modelOverridden.value
-    ? 'Overridden for this chat. The agent\'s own model no longer applies here.'
+    ? "Overridden for this chat. The agent's own model no longer applies here."
     : `From the agent. Changing it here affects only this chat.`
 )
 

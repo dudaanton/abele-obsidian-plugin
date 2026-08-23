@@ -149,8 +149,8 @@
 
       <h3>Background Model</h3>
       <p class="setting-item-description" style="margin-bottom: var(--size-4-2)">
-        Chat models are chosen per agent, on the Agents tab. This one is used for the plugin's
-        own background work — naming chats and compacting long conversations.
+        Chat models are chosen per agent, on the Agents tab. This one is used for the plugin's own
+        background work — naming chats and compacting long conversations.
       </p>
 
       <Setting name="Auxiliary Model" desc="Used for chat titles and compaction.">
@@ -442,7 +442,6 @@
           @update:model-value="updatePrompt('compactPrompt', $event)"
         />
       </Setting>
-
     </template>
   </div>
 </template>
@@ -487,7 +486,6 @@ const migrateChats = async () => {
     migrating.value = false
   }
 }
-
 
 const enabled = ref(config.ai.enabled)
 const providers = ref<AiProvider[]>(JSON.parse(JSON.stringify(config.ai.providers)))
@@ -1163,5 +1161,4 @@ const updatePrompt = (field: keyof Omit<AiPrompts, 'toolDescriptions'>, value: s
   align-items: center;
   gap: var(--size-4-2);
 }
-
 </style>

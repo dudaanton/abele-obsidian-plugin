@@ -50,7 +50,9 @@
             <Dropdown
               :model-value="journal.recurrence"
               :options="journalReccurenceOptions"
-              @update:model-value="changeJournalReccurence(journal, $event as Journal['recurrence'])"
+              @update:model-value="
+                changeJournalReccurence(journal, $event as Journal['recurrence'])
+              "
             />
           </Setting>
         </div>
