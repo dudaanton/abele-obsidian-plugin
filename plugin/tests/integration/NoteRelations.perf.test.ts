@@ -153,3 +153,134 @@ describe('NoteRelations — relation gathering complexity', () => {
     expect(wideReads).toBeLessThanOrEqual(Math.max(narrowReads, 1) * 2)
   })
 })
+
+/**
+ * A group graph that is not a tree.
+ *
+ * Each level hangs two notes off the previous hub and then a new hub that belongs to both of
+ * them, so every level doubles the number of distinct routes from the root to the bottom.
+ * The relations are unchanged by that — the same notes are reachable either way — but a walk
+ * that only remembers the route it took expands the bottom of the graph once per route.
+ *
+ * Real vaults produce the same shape whenever a note belongs to two groups that share a
+ * parent, which is ordinary rather than exotic.
+ */
+function buildDiamondVault(depth: number, leaves: number): FakeFileSpec[] {
+  const specs: FakeFileSpec[] = [{ path: 'Notes/Hub 0.md', content: 'root\n' }]
+
+  for (let level = 1; level <= depth; level++) {
+    for (const side of ['A', 'B']) {
+      specs.push({
+        path: `Notes/${side} ${level}.md`,
+        frontmatter: { groups: [`[[Hub ${level - 1}]]`] },
+        content: `${side} ${level}\n`,
+      })
+    }
+    specs.push({
+      path: `Notes/Hub ${level}.md`,
+      frontmatter: { groups: [`[[A ${level}]]`, `[[B ${level}]]`] },
+      content: `Hub ${level}\n`,
+    })
+  }
+
+  for (let leaf = 0; leaf < leaves; leaf++) {
+    specs.push({
+      path: `Tasks/Leaf ${leaf}.md`,
+      frontmatter: { type: 'task', created: '2026-01-01', groups: [`[[Hub ${depth}]]`] },
+      content: `Leaf ${leaf}\n`,
+    })
+  }
+
+  return specs
+}
+
+/** Every note the walk should reach, regardless of how many routes lead to it. */
+function expectedDiamondMembers(depth: number, leaves: number): number {
+  return depth * 3 + leaves
+}
+
+describe('NoteRelations — group graphs with more than one route to a node', () => {
+  let app: FakeApp
+  let relations: NoteRelations | null = null
+
+  beforeEach(async () => {
+    await Promise.resolve()
+  })
+
+  afterEach(() => {
+    relations?.cleanup()
+    relations = null
+    VaultWatcherWrapper.destroy()
+  })
+
+  const gather = (specs: FakeFileSpec[]): { app: FakeApp; gathered: number } => {
+    app = useVault(specs)
+    configureAbele()
+    app.resetStats()
+
+    relations = new NoteRelations('Notes/Hub 0.md')
+
+    return {
+      app,
+      gathered:
+        relations.tasks.size +
+        relations.notes.size +
+        relations.logs.size +
+        relations.transactions.size +
+        relations.timeEntries.size,
+    }
+  }
+
+  it('reaches every member exactly once, whichever route leads there', () => {
+    const { gathered } = gather(buildDiamondVault(7, 30))
+
+    expect(gathered).toBe(expectedDiamondMembers(7, 30))
+  })
+
+  it('does not re-walk a node once per route that reaches it', () => {
+    const depth = 7
+    const leaves = 30
+    const { app: vault, gathered } = gather(buildDiamondVault(depth, leaves))
+
+    console.info(
+      [
+        '',
+        `  graph depth ................ ${depth} (2^${depth} = ${2 ** depth} routes to the bottom)`,
+        `  members gathered ........... ${gathered}`,
+        `  getFileCache() ............. ${vault.stats.getFileCache}`,
+        '',
+      ].join('\n')
+    )
+
+    // Every visit reads a file's frontmatter, so cache reads track how often the graph was
+    // walked. Bounded by the members, this says each node was visited a fixed number of
+    // times; unbounded, it tracks the number of routes and so doubles with every level.
+    expect(vault.stats.getFileCache).toBeLessThan(gathered * 10)
+  })
+
+  it('costs no more per level as the number of routes doubles', async () => {
+    const shallow = gather(buildDiamondVault(4, 30))
+    const shallowReads = shallow.app.stats.getFileCache
+
+    VaultWatcherWrapper.destroy()
+    relations?.cleanup()
+    relations = null
+
+    // The backlink index lives for one tick. Without this boundary the second vault would be
+    // served the first one's index and report its reads, which is how this test first passed
+    // while measuring nothing.
+    await Promise.resolve()
+
+    const deep = gather(buildDiamondVault(8, 30))
+    const deepReads = deep.app.stats.getFileCache
+
+    console.info(
+      `\n  depth 4 (${2 ** 4} routes) -> ${shallowReads} cache reads` +
+        `\n  depth 8 (${2 ** 8} routes) -> ${deepReads} cache reads\n`
+    )
+
+    // Four more levels multiply the routes by sixteen. Work must follow the four extra
+    // levels of members, not the sixteenfold increase in ways to reach them.
+    expect(deepReads).toBeLessThan(shallowReads * 3)
+  })
+})
