@@ -210,11 +210,11 @@ const streamingThinking = computed(() => session.value?.streamingThinking.value 
 const hideReasoning = computed(() => session.value?.hideReasoning.value ?? false)
 
 // Interceptor
-const interceptorStreaming = computed(() => session.value?.interceptorStreaming.value ?? false)
+const interceptorStreaming = computed(() => session.value?.interceptor.streaming.value ?? false)
 const interceptorStreamingContent = computed(
-  () => session.value?.interceptorStreamingContent.value ?? ''
+  () => session.value?.interceptor.streamingContent.value ?? ''
 )
-const interceptorError = computed(() => session.value?.interceptorError.value ?? null)
+const interceptorError = computed(() => session.value?.interceptor.error.value ?? null)
 const draftMessage = computed(() => session.value?.getDraftMessage() ?? null)
 
 // Questions tool

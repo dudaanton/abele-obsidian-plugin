@@ -356,5 +356,8 @@ export interface ChatMetadata {
   activeLeafId?: string
   customSystemPrompt?: string
   customSystemPromptNotePath?: string
+  interceptorAgentId?: string
+  interceptorContextDepth?: number
+  /** @deprecated pre-agent chats stored the interceptor id here; migrated on load. */
   activeInterceptorId?: string
 }

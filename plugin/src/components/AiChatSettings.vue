@@ -22,6 +22,23 @@
         </select>
       </Setting>
 
+      <Setting
+        v-if="activeInterceptorId"
+        name="Interceptor context"
+        desc="How much of the conversation the reviewer sees."
+      >
+        <select
+          class="dropdown"
+          :value="String(interceptorContextDepth)"
+          @change="setInterceptorContextDepth(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="0">Draft only</option>
+          <option value="4">Last 4 messages</option>
+          <option value="10">Last 10 messages</option>
+          <option value="-1">Whole conversation</option>
+        </select>
+      </Setting>
+
       <h4 style="margin: var(--size-4-3) 0 var(--size-4-1)">System Prompt</h4>
 
       <div class="abele-system-prompt-settings">
@@ -80,7 +97,7 @@ import Checkbox from './obsidian/Checkbox.vue'
 import Search from './obsidian/Search.vue'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import { ChatService } from '@/ai/ChatService'
-import { AbeleConfig } from '@/services/AbeleConfig'
+import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -88,13 +105,26 @@ const session = computed(() => ChatService.getInstance().activeSession.value)
 
 // ── Interceptor ──
 
-const interceptorOptions = computed(() => AbeleConfig.getInstance().ai.interceptors)
-const activeInterceptorId = computed(() => session.value?.activeInterceptorId.value ?? '')
+// Any agent may review a draft, utility ones included — that is what most of them are for.
+const interceptorOptions = computed(() =>
+  AgentRegistry.getInstance()
+    .list({ includeUtility: true })
+    .map((a) => ({ id: a.id, name: a.name }))
+)
+const activeInterceptorId = computed(() => session.value?.interceptor.agentId.value ?? '')
+const interceptorContextDepth = computed(() => session.value?.interceptor.contextDepth.value ?? 0)
 
 function setInterceptor(id: string) {
   const s = session.value
   if (!s) return
-  s.activeInterceptorId.value = id
+  s.interceptor.agentId.value = id
+  s.save()
+}
+
+function setInterceptorContextDepth(value: string) {
+  const s = session.value
+  if (!s) return
+  s.interceptor.contextDepth.value = Number(value)
   s.save()
 }
 
