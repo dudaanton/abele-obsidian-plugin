@@ -17,7 +17,7 @@
 
     <!-- Header -->
     <div class="abele-ai-chat__header">
-      <AiModelSelector />
+      <AiAgentSelector />
       <div class="abele-ai-chat__header-actions">
         <Icon icon="refresh-cw" with-bg title="Reload from disk" @click="reloadChat" />
         <Icon icon="sliders-horizontal" with-bg @click="chatSettingsOpen = true" />
@@ -119,8 +119,16 @@
 
       <!-- Error -->
       <div v-if="error" class="abele-ai-chat__error">
-        <Icon icon="alert-triangle" />
-        <span>{{ error }}</span>
+        <div class="abele-ai-chat__error-line">
+          <Icon icon="alert-triangle" />
+          <span>{{ error }}</span>
+        </div>
+        <div class="abele-ai-chat__error-actions">
+          <button @click="onRetryRequest">Retry</button>
+          <button v-if="hasFallbackModel" @click="onRetryWithFallback">
+            Retry on {{ fallbackModelName }}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -177,7 +185,7 @@ import AiChatMessage from './AiChatMessage.vue'
 import AiChatInput from './AiChatInput.vue'
 import AiChatTabs from './AiChatTabs.vue'
 import AiToolApproval from './AiToolApproval.vue'
-import AiModelSelector from './AiModelSelector.vue'
+import AiAgentSelector from './AiAgentSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
 import AiScopeManager from './AiScopeManager.vue'
 import AiPermissions from './AiPermissions.vue'
@@ -377,16 +385,7 @@ const showContinue = computed(() => {
   return true
 })
 
-const contextWindow = computed(() => {
-  const config = AbeleConfig.getInstance().ai
-  const providerId = session.value?.activeProviderId.value ?? config.activeProviderId
-  const modelId = session.value?.activeModelId.value ?? config.activeModelId
-  const provider =
-    config.providers.find((p) => p.id === providerId) ||
-    config.providers.find((p) => p.models.length > 0)
-  const model = provider?.models.find((m) => m.id === modelId) || provider?.models[0]
-  return model?.contextWindow || 0
-})
+const contextWindow = computed(() => session.value?.resolveModel()?.contextWindow || 0)
 
 const contextTokens = computed(() => {
   for (let i = messages.value.length - 1; i >= 0; i--) {
@@ -766,6 +765,19 @@ const onAbort = () => {
   }
 }
 
+const hasFallbackModel = computed(() => session.value?.hasFallbackModel ?? false)
+const fallbackModelName = computed(() => session.value?.resolveModel({ fallback: true })?.name ?? '')
+
+const onRetryRequest = async () => {
+  await session.value?.retryRequest()
+}
+
+const onRetryWithFallback = async () => {
+  const s = session.value
+  if (!s || !s.useFallbackModel()) return
+  await s.retryRequest()
+}
+
 const onContinue = async () => {
   scrollOnUserSend()
   await session.value?.sendMessage('Continue')
@@ -994,7 +1006,7 @@ const showDebug = () => {
 
 .abele-ai-chat__error {
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
   gap: var(--size-4-2);
   padding: var(--size-4-2) var(--size-4-3);
   color: var(--text-muted);
@@ -1004,5 +1016,22 @@ const showDebug = () => {
   margin: var(--size-4-2) 0;
   font-size: var(--font-small);
   word-break: break-word;
+}
+
+.abele-ai-chat__error-line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+}
+
+.abele-ai-chat__error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+
+  button {
+    font-size: var(--font-smallest);
+    padding: var(--size-2-1) var(--size-4-2);
+  }
 }
 </style>

@@ -22,6 +22,22 @@
         </select>
       </Setting>
 
+      <Setting name="Model" :desc="modelDesc">
+        <div class="abele-chat-settings__override">
+          <Dropdown
+            :model-value="modelKey"
+            :options="modelOptions"
+            @update:model-value="selectModel($event)"
+          />
+          <Icon
+            v-if="modelOverridden"
+            icon="rotate-ccw"
+            title="Back to the agent's model"
+            @click="resetModel"
+          />
+        </div>
+      </Setting>
+
       <Setting
         v-if="activeInterceptorId"
         name="Interceptor context"
@@ -98,10 +114,56 @@ import Search from './obsidian/Search.vue'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import Dropdown from './obsidian/Dropdown.vue'
+import Icon from './obsidian/Icon.vue'
 
 const emit = defineEmits<{ close: [] }>()
 
 const session = computed(() => ChatService.getInstance().activeSession.value)
+
+// ── Model override ──
+
+const modelOptions = computed(() => {
+  const opts: { value: string; display: string }[] = []
+  for (const provider of AbeleConfig.getInstance().ai.providers) {
+    for (const model of provider.models) {
+      opts.push({ value: `${provider.id}::${model.id}`, display: model.name || model.id })
+    }
+  }
+  return opts
+})
+
+const modelKey = computed(() => {
+  const s = session.value
+  if (!s) return ''
+  return s.activeModelId.value ? `${s.activeProviderId.value}::${s.activeModelId.value}` : ''
+})
+
+const modelOverridden = computed(() => session.value?.isOverridden('modelId') ?? false)
+
+const modelDesc = computed(() =>
+  modelOverridden.value
+    ? 'Overridden for this chat. The agent\'s own model no longer applies here.'
+    : `From the agent. Changing it here affects only this chat.`
+)
+
+function selectModel(key: string) {
+  const s = session.value
+  if (!s) return
+  const [providerId, modelId] = key.split('::')
+  s.activeProviderId.value = providerId || ''
+  s.activeModelId.value = modelId || ''
+  s.save()
+}
+
+function resetModel() {
+  const s = session.value
+  if (!s) return
+  s.clearOverride('providerId')
+  s.clearOverride('modelId')
+  s.save()
+}
 
 // ── Interceptor ──
 
@@ -185,6 +247,13 @@ function updateCustomText(value: string) {
 </script>
 
 <style lang="scss">
+.abele-chat-settings__override {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  min-width: 0;
+}
+
 .abele-chat-settings {
   padding: 8px 0;
 }

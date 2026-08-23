@@ -217,9 +217,24 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    */
   switchAgent(agentId: string): void {
     if (agentId === this.agentId.value) return
+
+    const target = AgentRegistry.getInstance().get(agentId)
     this.agentId.value = agentId
     this.overrides.value = {}
     this.syncScopeFromAgent()
+
+    // A divider, the way a mid-chat model switch already leaves one: the rest of the
+    // conversation was answered by something else, and that should be visible.
+    if (target && this.allChatMessages.length > 0) {
+      this.appendChatMessage({
+        id: nanoid(),
+        role: 'system',
+        content: `Agent: ${target.name}`,
+        timestamp: Date.now(),
+      })
+      this.updateVisibleMessages()
+      void this.save()
+    }
   }
 
   /**
@@ -337,7 +352,56 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   activeModel(): ModelConfig | null {
-    return this.chatService.getModelConfigFor(this.activeProviderId.value, this.activeModelId.value)
+    return this.resolveModel()
+  }
+
+  /**
+   * The model this chat will actually send to, with any per-chat override applied.
+   *
+   * Returns null when it cannot be resolved rather than substituting whatever model happens to
+   * be first: a chat quietly running on the wrong model is worse than one that says it cannot
+   * start.
+   */
+  resolveModel(options: { fallback?: boolean } = {}): ModelConfig | null {
+    const agent = this.agent.value
+    if (!agent) return null
+
+    const effective: AgentDefinition = options.fallback
+      ? agent
+      : { ...agent, providerId: this.activeProviderId.value, modelId: this.activeModelId.value }
+
+    return AgentRegistry.getInstance().resolveModel(effective, options)
+  }
+
+  /**
+   * Sends the conversation again, unchanged, after a failed request.
+   *
+   * Nothing is appended: the failure produced no assistant turn, so the history the model needs
+   * is exactly what it was a moment ago.
+   */
+  async retryRequest(): Promise<void> {
+    if (this.isStreaming.value || this.isExecutingTool.value) return
+    if (this.allInternalMessages.length === 0) return
+
+    this.error.value = null
+    await this.runAgentLoop()
+    await this.save()
+  }
+
+  /** Whether a fallback model is configured, so the UI knows to offer it after a failure. */
+  get hasFallbackModel(): boolean {
+    return Boolean(this.resolveModel({ fallback: true }))
+  }
+
+  /** Moves this chat onto the agent's fallback model and leaves it there. */
+  useFallbackModel(): boolean {
+    const agent = this.agent.value
+    const fallback = this.resolveModel({ fallback: true })
+    if (!agent || !fallback) return false
+
+    this.activeProviderId.value = agent.fallbackProviderId ?? ''
+    this.activeModelId.value = agent.fallbackModelId ?? ''
+    return true
   }
 
   /** Summarizes the conversation so far and continues from the summary. */
@@ -623,10 +687,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.error.value = null
 
     try {
-      const model = this.chatService.getModelConfigFor(
-        this.activeProviderId.value,
-        this.activeModelId.value
-      )
+      const model = this.resolveModel()
+      if (!model) {
+        this.error.value = this.agent.value
+          ? `Agent "${this.agent.value.name}" has no usable model configured`
+          : 'No agent is configured'
+        return
+      }
       const tools = this.getTools()
 
       // Show model indicator when model changes between messages

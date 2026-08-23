@@ -1,12 +1,23 @@
 <template>
   <ObsidianModal title="Workspace Scope" @close="emit('close')">
     <div class="abele-scope-mgr">
+      <AgentOverrideNotice
+        field="scope"
+        from-agent="Scope comes from this chat's agent."
+        overridden="Scope is overridden for this chat."
+      />
       <AiScopeEditor
         :entries="scopeEntries"
         :full-vault-access="scope?.fullVaultAccess.value ?? false"
         :show-current-file="true"
         @update:entries="onEntriesUpdate"
         @update:full-vault-access="scope?.setFullVaultAccess($event)"
+      />
+
+      <AgentOverrideNotice
+        field="permissionMode"
+        from-agent="Permission mode comes from this chat's agent."
+        overridden="Permission mode is overridden for this chat."
       />
 
       <Setting name="Permission mode" desc="Controls which file operations require your approval.">
@@ -26,6 +37,7 @@ import ObsidianModal from './obsidian/Modal.vue'
 import Setting from './obsidian/Setting.vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import AiScopeEditor from './AiScopeEditor.vue'
+import AgentOverrideNotice from './AgentOverrideNotice.vue'
 import type { ScopeEntry } from '@/ai/ScopeResolver'
 import { ChatService } from '@/ai/ChatService'
 import type { PermissionMode } from '@/ai/types'
