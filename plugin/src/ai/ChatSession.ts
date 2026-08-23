@@ -12,11 +12,14 @@ import type {
   AgentToolResult,
   AssistantMessage,
   Message,
+  ModelConfig,
   TextContent,
   ThinkingContent,
   ToolCallContent,
+  ToolDefinition,
 } from './client'
 import { ChatStorage } from './ChatStorage'
+import { ChatSummarizer, type SummarizerHost } from './ChatSummarizer'
 import {
   ChatMessage,
   ChatMetadata,
@@ -46,7 +49,7 @@ interface ToolDiffDetails {
   diff?: { old: string; new: string }
 }
 
-export class ChatSession {
+export class ChatSession implements SummarizerHost {
   /**
    * The session currently executing a tool or agent loop.
    * Set before tool/loop execution so DelegateTool can access session context.
@@ -57,15 +60,8 @@ export class ChatSession {
     return ChatSession._activeSession
   }
 
-  private static readonly AUTO_COMPACT_THRESHOLD = 0.9
-  private static readonly TITLE_MAX_TOKENS = 30
-  private static readonly TITLE_MAX_LENGTH = 60
-  private static readonly TITLE_MSG_PREVIEW_LENGTH = 200
   private static readonly TITLE_GENERATION_TRIGGERS = [1]
   private static readonly FALLBACK_TITLE_LENGTH = 50
-  private static readonly COMPACT_SYSTEM_PROMPT =
-    'You summarize conversations. Reply with ONLY the summary, nothing else.'
-  private static readonly COMPACT_MARKER = '[Conversation compacted]'
 
   private static readonly READ_TOOLS = ['read', 'ls', 'find', 'workspace', 'skill']
   private static readonly EDIT_TOOLS = ['edit', 'create', 'replace', 'write']
@@ -143,14 +139,75 @@ export class ChatSession {
   // Per-session scope
   public readonly scopeResolver: ScopeResolver
 
+  /** Title generation and compaction. Kept behind SummarizerHost, not reached into directly. */
+  private readonly summarizer: ChatSummarizer
+
   constructor(
     private readonly chatService: ChatService,
     id?: string
   ) {
     this.id = id || nanoid()
     this.scopeResolver = new ScopeResolver()
+    this.summarizer = new ChatSummarizer(this)
     this.resetPermissions()
     this.resetScope()
+  }
+
+  // ── SummarizerHost ─────────────────────────────────────────────
+
+  messagesForModel(): Message[] {
+    return this.getMessagesForModel()
+  }
+
+  toolDefs(): ToolDefinition[] {
+    return this.getTools().map((t) => ({
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
+    }))
+  }
+
+  hasInternalMessages(): boolean {
+    return this.allInternalMessages.length > 0
+  }
+
+  /**
+   * Records a compaction summary in both places it has to appear: as a divider the user sees,
+   * and as an internal system marker that `getMessagesForModel` truncates the history at.
+   */
+  applyCompactSummary(summary: string): void {
+    const divider: ChatMessage = {
+      id: nanoid(),
+      role: 'system',
+      content: summary,
+      timestamp: Date.now(),
+    }
+    this.appendChatMessage(divider)
+    this.updateVisibleMessages()
+
+    this.allInternalMessages.push({
+      role: 'system',
+      content: `${ChatSummarizer.COMPACT_MARKER}\n\n${summary}`,
+      timestamp: Date.now(),
+      chatMessageId: divider.id,
+    })
+  }
+
+  backgroundSignal(): AbortSignal {
+    return this.getBackgroundSignal()
+  }
+
+  auxiliaryModel(): ModelConfig {
+    return this.chatService.getAuxiliaryModelConfig()
+  }
+
+  activeModel(): ModelConfig | null {
+    return this.chatService.getModelConfigFor(this.activeProviderId.value, this.activeModelId.value)
+  }
+
+  /** Summarizes the conversation so far and continues from the summary. */
+  async compact(): Promise<void> {
+    return this.summarizer.compact()
   }
 
   // ── Permission / scope reset ────────────────────────────────────
@@ -442,7 +499,7 @@ export class ChatSession {
 
     for (let i = internal.length - 1; i >= 0; i--) {
       const m = internal[i]
-      if (m.role === 'system' && m.content.startsWith(ChatSession.COMPACT_MARKER)) {
+      if (m.role === 'system' && m.content.startsWith(ChatSummarizer.COMPACT_MARKER)) {
         return internal.slice(i)
       }
     }
@@ -691,18 +748,18 @@ export class ChatSession {
 
     if (ChatSession.TITLE_GENERATION_TRIGGERS.includes(this.userMessageCount)) {
       if (sequential) {
-        await this.generateTitle()
+        await this.summarizer.generateTitle()
       } else {
-        this.generateTitle().catch(() => {
+        this.summarizer.generateTitle().catch(() => {
           return
         })
       }
     }
 
     if (sequential) {
-      await this.autoCompactIfNeeded()
+      await this.summarizer.autoCompactIfNeeded()
     } else {
-      this.autoCompactIfNeeded().catch(() => {
+      this.summarizer.autoCompactIfNeeded().catch(() => {
         return
       })
     }
@@ -1351,18 +1408,18 @@ export class ChatSession {
 
     if (ChatSession.TITLE_GENERATION_TRIGGERS.includes(this.userMessageCount)) {
       if (sequential) {
-        await this.generateTitle()
+        await this.summarizer.generateTitle()
       } else {
-        this.generateTitle().catch(() => {
+        this.summarizer.generateTitle().catch(() => {
           return
         })
       }
     }
 
     if (sequential) {
-      await this.autoCompactIfNeeded()
+      await this.summarizer.autoCompactIfNeeded()
     } else {
-      this.autoCompactIfNeeded().catch(() => {
+      this.summarizer.autoCompactIfNeeded().catch(() => {
         return
       })
     }
@@ -1382,187 +1439,6 @@ export class ChatSession {
   private abortBackground(): void {
     this.backgroundAbort?.abort()
     this.backgroundAbort = null
-  }
-
-  private async generateTitle(): Promise<void> {
-    this.isGeneratingTitle.value = true
-    try {
-      const config = AbeleConfig.getInstance().ai
-      const model = this.chatService.getAuxiliaryModelConfig()
-      const client = new OpenAIClient()
-      const msgs = this.messages.value
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .slice(0, 6)
-        .map((m) => `[${m.role}]: ${m.content.slice(0, ChatSession.TITLE_MSG_PREVIEW_LENGTH)}`)
-        .join('\n')
-
-      const titlePrompt = (
-        config.prompts?.titleGeneration || DEFAULT_AI_SETTINGS.prompts.titleGeneration
-      ).replace('{{messages}}', msgs)
-      const titleSystem = config.prompts?.titleSystem || DEFAULT_AI_SETTINGS.prompts.titleSystem
-
-      const titleMessages: Message[] = [
-        {
-          role: 'user',
-          content: titlePrompt,
-          timestamp: Date.now(),
-        },
-      ]
-
-      const tools = this.getTools()
-      const toolDefs = tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        parameters: t.parameters,
-      }))
-
-      let title = ''
-      const signal = this.getBackgroundSignal()
-      for await (const event of client.stream(model, titleSystem, titleMessages, toolDefs, {
-        signal,
-      })) {
-        if (event.type === 'text_delta') title += event.delta
-      }
-
-      title = title
-        .trim()
-        .replace(/^["']|["']$/g, '')
-        .replace(/[\\/:*?"<>|]/g, '-')
-        .slice(0, ChatSession.TITLE_MAX_LENGTH)
-
-      if (!title || title === this.chatTitle.value) return
-
-      this.chatTitle.value = title
-
-      if (this.currentChatFile.value) {
-        const storage = ChatStorage.getInstance()
-        const newFile = await storage.renameChat(this.currentChatFile.value, title)
-        if (newFile) {
-          this.currentChatFile.value = newFile
-        }
-      }
-    } catch {
-      // Silently fail — title generation is best-effort
-    } finally {
-      this.isGeneratingTitle.value = false
-    }
-  }
-
-  async compact(): Promise<void> {
-    if (this.allInternalMessages.length === 0) return
-    if (this.isStreaming.value || this.isCompacting.value || this.isGeneratingTitle.value) return
-
-    this.isCompacting.value = true
-    this.error.value = null
-
-    try {
-      const config = AbeleConfig.getInstance().ai
-      const model = this.chatService.getAuxiliaryModelConfig()
-      const client = new OpenAIClient()
-
-      const modelMsgs = this.getMessagesForModel()
-
-      const msgsText = modelMsgs
-        .map((m) => {
-          if (m.role === 'user') return `[user]: ${m.content}`
-          if (m.role === 'assistant') {
-            const text = m.content
-              .filter((b): b is TextContent => b.type === 'text')
-              .map((b) => b.text)
-              .join('')
-            return text ? `[assistant]: ${text}` : null
-          }
-          if (m.role === 'toolResult') {
-            return `[tool ${m.toolName}]: ${m.content.map((c) => c.text).join('')}`
-          }
-          return null
-        })
-        .filter(Boolean)
-        .join('\n\n')
-
-      if (!msgsText) return
-
-      const compactPrompt = (
-        config.prompts?.compactPrompt || DEFAULT_AI_SETTINGS.prompts.compactPrompt
-      ).replace('{{messages}}', msgsText)
-
-      const compactMessages: Message[] = [
-        { role: 'user', content: compactPrompt, timestamp: Date.now() },
-      ]
-
-      const tools = this.getTools()
-      const toolDefs = tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        parameters: t.parameters,
-      }))
-
-      let summary = ''
-      const signal = this.getBackgroundSignal()
-      for await (const event of client.stream(
-        model,
-        ChatSession.COMPACT_SYSTEM_PROMPT,
-        compactMessages,
-        toolDefs,
-        { signal }
-      )) {
-        if (event.type === 'text_delta') summary += event.delta
-      }
-
-      summary = summary.trim()
-      if (!summary) return
-
-      const divider: ChatMessage = {
-        id: nanoid(),
-        role: 'system',
-        content: summary,
-        timestamp: Date.now(),
-      }
-      this.appendChatMessage(divider)
-      this.updateVisibleMessages()
-
-      const compactMarker: Message = {
-        role: 'system',
-        content: `${ChatSession.COMPACT_MARKER}\n\n${summary}`,
-        timestamp: Date.now(),
-        chatMessageId: divider.id,
-      }
-      this.allInternalMessages.push(compactMarker)
-
-      await this.save()
-    } catch (err: unknown) {
-      console.error('[Abele] compact error:', err)
-      const msg = err instanceof Error ? err.message : String(err)
-      this.error.value = `Compact failed: ${msg}`
-    } finally {
-      this.isCompacting.value = false
-    }
-  }
-
-  private async autoCompactIfNeeded(): Promise<void> {
-    try {
-      if (this.pendingToolCalls.value.length > 0) return
-
-      const model = this.chatService.getModelConfigFor(
-        this.activeProviderId.value,
-        this.activeModelId.value
-      )
-      if (!model.contextWindow) return
-
-      const lastAssistant = [...this.messages.value]
-        .reverse()
-        .find((m) => m.role === 'assistant' && m.usage)
-      if (!lastAssistant?.usage) return
-
-      const usage = lastAssistant.usage.total
-      const threshold = model.contextWindow * ChatSession.AUTO_COMPACT_THRESHOLD
-
-      if (usage >= threshold && this.getMessagesForModel().length > 2) {
-        await this.compact()
-      }
-    } catch {
-      // Auto-compact is best-effort
-    }
   }
 
   // ── Other ─────────────────────────────────────────────────────
