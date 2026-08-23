@@ -5,6 +5,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { ModelConfig } from './client'
 import { DEFAULT_AI_SETTINGS } from './types'
+import { AgentRegistry } from './agents/AgentRegistry'
 import { getNoteBody } from '@/helpers/notesUtils'
 import { ChatSession } from './ChatSession'
 
@@ -307,16 +308,18 @@ export class AgentService {
       return session.customSystemPrompt.value.replace(/\{\{date\}\}/g, date)
     }
 
-    // Global: note path
-    const config = AbeleConfig.getInstance().ai
-    if (config.systemPromptFromNote && config.systemPromptNotePath) {
-      const body = await this.readNoteBody(config.systemPromptNotePath)
-      if (body) return body.replace(/\{\{date\}\}/g, date)
+    // Global: the default agent's prompt blocks. Resolved on every call rather than cached, so
+    // editing the agent in settings reaches a chat already in progress.
+    const registry = AgentRegistry.getInstance()
+    const agent = registry.defaultAgent()
+    if (agent) {
+      const composed = await registry.buildSystemPrompt(agent)
+      if (composed) return composed
     }
 
-    // Global: inline text
-    const base = config.prompts?.system || DEFAULT_AI_SETTINGS.prompts.system
-    return base.replace(/\{\{date\}\}/g, date)
+    // No agent configured at all — migration should have prevented this, but a settings file
+    // edited by hand can still reach here, and a mute assistant is worse than a generic one.
+    return DEFAULT_AI_SETTINGS.prompts.system.replace(/\{\{date\}\}/g, date)
   }
 
   async getDelegateSystemPrompt(session: ChatSession): Promise<string> {
