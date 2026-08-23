@@ -62,6 +62,16 @@ export function parseYaml(raw: string): unknown {
   return JSON.parse(raw)
 }
 
+/**
+ * Desktop by default. Components that adapt to a narrow screen measure their own element
+ * rather than trusting this, so tests drive the layout through a ResizeObserver stub instead
+ * of flipping a global flag.
+ */
+export const Platform = {
+  isMobile: false,
+  isDesktop: true,
+}
+
 // Structural placeholders — present so imports resolve; not behaviourally modelled.
 export class App {}
 export class Vault {}
