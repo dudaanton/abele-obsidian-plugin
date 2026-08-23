@@ -67,6 +67,22 @@ parent puts on them, which keeps the test about the parent's own behaviour.
 Note that `@vueuse/core` registers observers in a post-flush watcher, so a test must await
 one tick after `mount` before the sentinel is being observed.
 
+`shallow: true` also stubs away every child's *slots*. A component whose content lives inside
+`Modal` or `Setting` renders nothing until those are replaced by stubs that render their slot:
+
+```ts
+global: {
+  stubs: {
+    ObsidianModal: { template: '<div><slot /></div>' },
+    Setting: { props: ['name', 'desc'], template: '<div><slot /></div>' },
+  },
+}
+```
+
+happy-dom has no `ResizeObserver`. A component that adapts to its own width needs a stub whose
+callback the test fires with a chosen width — which is also how the narrow layout is driven,
+rather than by faking a window size.
+
 ## Complexity tier — `tests/**/*.perf.test.ts`
 
 States the cost an algorithm *should* have. Kept out of `npm test` because it currently
@@ -130,6 +146,41 @@ window that no longer exists.
 
 The suite skips itself when Obsidian is not running or the build lacks the test hook, so
 `npm run test:all` stays usable with Obsidian closed.
+
+### Asserting that a layout does not break
+
+happy-dom cannot answer this, and a screenshot only answers it for whoever looks at it. In a
+running Obsidian the question is geometric and can be asserted: take the container's
+`getBoundingClientRect()`, walk its descendants, and fail on any whose right edge is beyond it.
+
+Two things must be filtered out or the check reports phantoms. Obsidian sizes a dropdown by
+cloning it off-screen — skip `.is-measuring`. And skip anything `visibility: hidden`,
+`display: none` or absolutely positioned, none of which push a layout sideways.
+
+Do not use `scrollWidth > clientWidth` for this: on a wrapped flex row it reports overflow that
+is not there.
+
+To reach a phone width, the two windows need different treatment. The main window takes CDP:
+
+```
+obsidian dev:cdp method=Emulation.setDeviceMetricsOverride \
+  params='{"width":360,"height":740,"deviceScaleFactor":2,"mobile":true}'
+```
+
+Since Obsidian 1.13 settings can open in **their own window**, which that override does not
+reach and whose minimum width is around 400px. Drive it through Electron instead — resize it,
+then raise its zoom factor until `innerWidth` reports the width you want:
+
+```js
+const w = require('electron').remote.BrowserWindow
+  .getAllWindows().find((x) => x.getTitle().startsWith('Settings'))
+w.setSize(400, 800)
+w.webContents.setZoomFactor(w.webContents.getZoomFactor() * (600 / 360))
+```
+
+That separate window is also why a component must measure **its own element** rather than
+`window.innerWidth`: in a component rendered into the settings window, `window` is the main
+one, and it will report the wrong screen entirely.
 
 ### Known rough edge
 

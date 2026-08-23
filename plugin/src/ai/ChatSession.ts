@@ -1469,11 +1469,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       .filter((id): id is string => Boolean(id))
   }
 
-  /** Get permissions snapshot for sub-agent runner */
-  getPermissions(): Record<string, ToolMode> {
-    return { ...this.toolModes.value }
-  }
-
   // ── Interceptor ────────────────────────────────────────────────
 
   private async sendDraftMessage(content: string, attachments?: string[]): Promise<void> {
