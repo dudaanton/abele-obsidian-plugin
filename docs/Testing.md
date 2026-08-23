@@ -4,7 +4,7 @@ Three tiers, each with its own command. All commands run from `plugin/`.
 
 | Command | Tier | Needs Obsidian | Runs on commit | Runs in CI |
 |---|---|---|---|---|
-| `npm test` | unit + integration | no | yes | yes |
+| `npm test` | unit + integration + component | no | yes | yes |
 | `npm run test:perf` | complexity | no | no | no |
 | `npm run test:e2e` | end-to-end | yes | no | no |
 | `npm run test:all` | everything | yes | no | no |
@@ -46,6 +46,27 @@ field directly rather than calling `init()`, which would also start a `VaultWatc
 ;(GlobalStore.getInstance() as unknown as { _app: unknown })._app = buildFakeVault(specs)
 ```
 
+## Component tier — `tests/component/`
+
+Vue components mounted with `@vue/test-utils` against happy-dom. Use it to assert what
+reaches the DOM — how many items a list renders, in what order, which elements exist.
+
+happy-dom computes no layout, so this tier can never assert how something *looks*:
+`getBoundingClientRect` returns zeros and nothing ever scrolls. Appearance and geometry
+belong to the e2e tier, which drives a real Obsidian.
+
+Because nothing scrolls, `IntersectionObserver` never fires on its own — and `@vueuse/core`
+silently degrades to a no-op when the constructor is missing, which would make a paging
+test pass without paging. `tests/helpers/fakeIntersectionObserver.ts` installs a stub whose
+callbacks a test invokes directly; `scrollIntoView(element)` returns how many observers it
+notified, so a test fails loudly when its target was never observed.
+
+Mount with `shallow: true` and assert on classes: stubbed children keep the classes the
+parent puts on them, which keeps the test about the parent's own behaviour.
+
+Note that `@vueuse/core` registers observers in a post-flush watcher, so a test must await
+one tick after `mount` before the sentinel is being observed.
+
 ## Complexity tier — `tests/**/*.perf.test.ts`
 
 States the cost an algorithm *should* have. Kept out of `npm test` because it currently
@@ -70,6 +91,9 @@ Three files, three concerns:
 - `responsiveness.e2e.test.ts` — **UI stalls**. Samples a 16ms timer across a resolution and
   reports the longest stretch the main thread went unserviced. That stall is what the user
   experiences as input lag.
+- `footerRender.e2e.test.ts` — **render cost**. Opens a wide group note and reports how much
+  DOM its footer produced and how long the main thread was blocked. The component tier
+  proves each list renders a single page; only this tier can show that the page is cheap.
 
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
 "mega group", where a single resolution currently takes about two minutes.
@@ -85,7 +109,7 @@ Setup:
 npm run build:test                        # development build, includes the test hook
 cp build/main.js  <vault>/.obsidian/plugins/abele/main.js
 cp build/main.css <vault>/.obsidian/plugins/abele/styles.css
-obsidian plugin:reload id=abele vault=<vault>
+obsidian vault=<vault> plugin:reload id=abele
 
 OBSIDIAN_TEST_VAULT=<vault> npm run test:e2e
 ```
@@ -93,6 +117,16 @@ OBSIDIAN_TEST_VAULT=<vault> npm run test:e2e
 Environment variables: `OBSIDIAN_TEST_VAULT` pins which window to drive (Obsidian can have
 several open, and the CLI otherwise targets whichever is frontmost); `OBSIDIAN_TEST_GROUP`
 selects the group note to measure; `OBSIDIAN_CLI` overrides the CLI path.
+
+`vault=<name>` must be passed **before** the command — `obsidian vault=X eval code=…`, not
+`obsidian eval code=… vault=X`. Passed after the command the CLI ignores it without an
+error and runs against whichever window is frontmost, so the tests would silently measure
+the wrong vault. `obsidianCli.ts` prepends it for this reason.
+
+Live windows can be listed with `obsidian dev:cdp method=Target.getTargets` — page targets
+carry the vault name in their title. A vault marked `"open": true` in `obsidian.json` whose
+window is actually gone cannot be reopened with `obsidian://open?vault=…`; the URL focuses a
+window that no longer exists.
 
 The suite skips itself when Obsidian is not running or the build lacks the test hook, so
 `npm run test:all` stays usable with Obsidian closed.

@@ -11,7 +11,7 @@
         @click="hideCompleted = !hideCompleted"
       />
     </div>
-    <div v-for="([date, dateTasks], index) in dates" :key="date" class="abele-timeline__date-block">
+    <div v-for="[date, dateTasks] in visible" :key="date" class="abele-timeline__date-block">
       <div
         class="abele-timeline__date-indicator"
         :class="{ 'abele-timeline__date-indicator_overdue': dayjs(date).isBefore(now, 'day') }"
@@ -37,6 +37,7 @@
         </div>
       </div>
     </div>
+    <div v-if="hasMore" ref="sentinel" class="abele-timeline__sentinel" />
     <div v-if="!dates.length" class="abele-timeline__no-tasks">No tasks to show.</div>
   </div>
 </template>
@@ -44,13 +45,20 @@
 <script setup lang="ts">
 import { Task } from '@/entities/Task'
 import TaskView from './Task.vue'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import dayjs from 'dayjs'
 import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { useDate } from '@/composables/useDate'
+import { usePagedList } from '@/composables/usePagedList'
 import { createTask } from '@/commands/createTask'
+
+/**
+ * Pages by date block rather than by task: a task that spans several days is deliberately
+ * repeated in every day of its range, so slicing the flat task list would tear a day in half.
+ */
+const PAGE_SIZE = 20
 
 const props = defineProps<{
   showAddButton?: boolean
@@ -85,6 +93,12 @@ const dates = computed(() => {
   return Array.from(datesSet.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1))
 })
 
+const { visible, hasMore, sentinel, reset } = usePagedList(() => dates.value, PAGE_SIZE)
+
+// Completed tasks reappear throughout the timeline, not at its end, so the previously
+// expanded window no longer matches what the reader has actually scrolled through.
+watch(hideCompleted, reset)
+
 const getDateWikilink = (dateStr: string) => {
   const date = dayjs(dateStr, DATE_FORMAT)
   const diff = date.startOf('day').diff(now.value.startOf('day'), 'day')
@@ -103,6 +117,10 @@ const getDateWikilink = (dateStr: string) => {
 </script>
 
 <style lang="scss">
+.abele-timeline__sentinel {
+  height: 1px;
+}
+
 .abele-timeline__header {
   display: flex;
   align-items: center;

@@ -12,12 +12,8 @@
       />
     </div>
     <div class="abele-todo-list__tasks">
-      <TaskView
-        v-for="task in tasksWithoutDates"
-        :key="task.id"
-        :task="task"
-        class="abele-todo-list__task"
-      />
+      <TaskView v-for="task in visible" :key="task.id" :task="task" class="abele-todo-list__task" />
+      <div v-if="hasMore" ref="sentinel" class="abele-todo-list__sentinel" />
     </div>
     <div v-if="!tasksWithoutDates.length" class="abele-todo-list__no-tasks">No tasks to show.</div>
   </div>
@@ -27,8 +23,9 @@
 import { Task } from '@/entities/Task'
 import TaskView from './Task.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { createTask } from '@/commands/createTask'
+import { usePagedList } from '@/composables/usePagedList'
 
 const props = defineProps<{
   showAddButton?: boolean
@@ -40,6 +37,12 @@ const hideCompleted = ref(true)
 const tasksWithoutDates = computed(() => {
   return hideCompleted.value ? props.tasks.filter((t) => !t.completedAt) : props.tasks
 })
+
+const { visible, hasMore, sentinel, reset } = usePagedList(() => tasksWithoutDates.value)
+
+// Revealing completed tasks interleaves them into the list rather than appending, so the
+// expanded window would no longer correspond to anything the reader scrolled past.
+watch(hideCompleted, reset)
 </script>
 
 <style lang="scss">
@@ -58,6 +61,10 @@ const tasksWithoutDates = computed(() => {
   display: flex;
   align-items: center;
   gap: calc(var(--p-spacing) / 2);
+}
+
+.abele-todo-list__sentinel {
+  height: 1px;
 }
 
 .abele-todo-list__tasks {

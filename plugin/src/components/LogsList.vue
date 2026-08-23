@@ -5,11 +5,12 @@
     </div>
     <div class="abele-logs-list__logs">
       <LogView
-        v-for="log in sortedLogs"
+        v-for="log in visible"
         :key="log.filePath"
         class="abele-logs-list__note"
         :log="log"
       />
+      <div v-if="hasMore" ref="sentinel" class="abele-logs-list__sentinel" />
     </div>
   </div>
 </template>
@@ -18,6 +19,7 @@
 import { Log } from '@/entities/Log'
 import LogView from './Log.vue'
 import { computed } from 'vue'
+import { usePagedList } from '@/composables/usePagedList'
 
 const props = defineProps<{
   logs: Log[]
@@ -28,6 +30,8 @@ const sortedLogs = computed(() => {
     return b.createdAt?.isBefore(a.createdAt) ? -1 : 1
   })
 })
+
+const { visible, hasMore, sentinel } = usePagedList(() => sortedLogs.value)
 </script>
 
 <style lang="scss">
@@ -37,6 +41,10 @@ const sortedLogs = computed(() => {
   gap: calc(var(--p-spacing) / 2);
   font-weight: bold;
   margin-bottom: var(--p-spacing);
+}
+
+.abele-logs-list__sentinel {
+  height: 1px;
 }
 
 .abele-logs-list__logs {

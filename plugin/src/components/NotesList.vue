@@ -7,7 +7,7 @@
       </button>
     </div>
     <div class="abele-notes-list__notes">
-      <div v-for="note in sortedNotes" :key="note.filePath" class="abele-notes-list__item">
+      <div v-for="note in visible" :key="note.filePath" class="abele-notes-list__item">
         <a class="internal-link" @click.prevent="openNote(note)">{{ note.name }}</a>
         <div class="abele-notes-list__meta">
           <span v-if="note.createdAt"
@@ -18,6 +18,7 @@
           >
         </div>
       </div>
+      <div v-if="hasMore" ref="sentinel" class="abele-notes-list__sentinel" />
     </div>
     <div v-if="!props.notes.length" class="abele-notes-list__no-notes">No notes to show.</div>
   </div>
@@ -28,6 +29,13 @@ import { computed, ref } from 'vue'
 import { Note } from '@/entities/Note'
 import { openFile } from '@/helpers/vaultUtils'
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
+import { usePagedList } from '@/composables/usePagedList'
+
+/**
+ * Larger than the other footer lists: a row here is a link and two dates, no child
+ * component and no markdown rendering, so it costs a fraction of a log or a task.
+ */
+const PAGE_SIZE = 50
 
 const props = defineProps<{
   notes: Note[]
@@ -35,10 +43,6 @@ const props = defineProps<{
 
 type SortBy = 'created' | 'updated'
 const sortBy = ref<SortBy>('created')
-
-function toggleSort() {
-  sortBy.value = sortBy.value === 'created' ? 'updated' : 'created'
-}
 
 const sortedNotes = computed(() => {
   return [...props.notes].sort((a, b) => {
@@ -50,6 +54,15 @@ const sortedNotes = computed(() => {
     return (b.createdAt?.unix() ?? 0) - (a.createdAt?.unix() ?? 0)
   })
 })
+
+const { visible, hasMore, sentinel, reset } = usePagedList(() => sortedNotes.value, PAGE_SIZE)
+
+function toggleSort() {
+  sortBy.value = sortBy.value === 'created' ? 'updated' : 'created'
+  // A different sort is a different list; keeping the expanded window would strand the
+  // reader in the middle of an order they never scrolled through.
+  reset()
+}
 
 function openNote(note: Note) {
   openFile(note.filePath)
@@ -71,6 +84,10 @@ function openNote(note: Note) {
   font-weight: normal;
   padding: 2px 6px;
   border-radius: var(--radius-s);
+}
+
+.abele-notes-list__sentinel {
+  height: 1px;
 }
 
 .abele-notes-list__notes {

@@ -19,7 +19,10 @@ const TARGET_VAULT = process.env.OBSIDIAN_TEST_VAULT ?? ''
 export class ObsidianUnavailableError extends Error {}
 
 function run(args: string[], timeoutMs = 240_000): string {
-  const fullArgs = TARGET_VAULT ? [...args, `vault=${TARGET_VAULT}`] : args
+  // `vault=` MUST precede the command. Passed after it the CLI ignores it without an error
+  // and runs against whichever window is frontmost, so the tests would silently measure
+  // whatever vault the user happened to be looking at.
+  const fullArgs = TARGET_VAULT ? [`vault=${TARGET_VAULT}`, ...args] : args
   try {
     return execFileSync(CLI, fullArgs, {
       encoding: 'utf8',

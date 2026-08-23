@@ -58,6 +58,23 @@ export interface ResponsivenessSample {
   resolved: number
 }
 
+export interface NoteRenderSample {
+  /** Longest stretch the main thread failed to service a 16ms timer, in milliseconds. */
+  longestStallMs: number
+  /** Sum of every stall beyond one frame — total time the UI was unusable. */
+  totalStalledMs: number
+  /** Elements below the note's footer once rendering settled. */
+  footerNodes: number
+  /** Per-list element counts, so a regression can be attributed to one list. */
+  noteRows: number
+  logs: number
+  taskViews: number
+  dateBlocks: number
+  markdownBlocks: number
+  /** Set once the sample is complete; poll this rather than awaiting across `eval`. */
+  done: boolean
+}
+
 interface AbeleTestApi {
   ScopeResolver: typeof ScopeResolver
   AgentService: typeof AgentService
@@ -73,6 +90,9 @@ interface AbeleTestApi {
   responsivenessResult: ResponsivenessSample | null
   /** Builds a note's relation set once, with instrumentation. */
   measureNoteRelations(notePath: string): NoteRelationsMeasurement
+  /** Opens a note and samples what its footer costs to render; poll `noteRenderResult`. */
+  startNoteRenderProbe(notePath: string, settleMs?: number): void
+  noteRenderResult: NoteRenderSample | null
 }
 
 declare global {
@@ -297,6 +317,70 @@ function measureNoteRelations(notePath: string): NoteRelationsMeasurement {
   }
 }
 
+/**
+ * Opens a note in the editor and measures what rendering its footer costs.
+ *
+ * This is the only tier that can see the problem at all: the footer's cost is DOM
+ * construction and layout, and the component tier runs on happy-dom, which computes no
+ * layout. Gathering the relations is cheap — it is mounting a component per relation that
+ * stalls the main thread — so the counts here are the real subject, and the stall follows
+ * from them.
+ *
+ * `settleMs` must outlast the render being measured; a value that is too small reports a
+ * partial DOM as if it were the final one.
+ */
+function startNoteRenderProbe(notePath: string, settleMs = 15_000): void {
+  const { app } = GlobalStore.getInstance()
+
+  globalThis.__abeleTest!.noteRenderResult = null
+
+  const file = app.vault.getAbstractFileByPath(notePath)
+  if (!(file instanceof TFile)) {
+    throw new Error(`Not a file: ${notePath}`)
+  }
+
+  const gaps: number[] = []
+  let previousTick = performance.now()
+  let timer: ReturnType<typeof setInterval> | null = null
+
+  // Emptying the leaf first is what makes the measurement mean anything. Opening a note
+  // that is already open reuses the mounted footer, so the sample would report whatever
+  // paging windows a previous run had already scrolled open rather than a fresh render.
+  const leaf = app.workspace.getLeaf(false)
+  void leaf.setViewState({ type: 'empty' }).then(() => {
+    setTimeout(() => {
+      previousTick = performance.now()
+      timer = setInterval(() => {
+        const now = performance.now()
+        gaps.push(now - previousTick)
+        previousTick = now
+      }, 16)
+
+      void leaf.openFile(file)
+
+      setTimeout(() => {
+        if (timer) clearInterval(timer)
+
+        const count = (selector: string): number => document.querySelectorAll(selector).length
+        // One frame is 16ms; anything beyond that is time the UI could not respond.
+        const stalls = gaps.map((gap) => gap - 16).filter((gap) => gap > 0)
+
+        globalThis.__abeleTest!.noteRenderResult = {
+          longestStallMs: stalls.length ? Math.max(...stalls) : 0,
+          totalStalledMs: stalls.reduce((sum, gap) => sum + gap, 0),
+          footerNodes: count('.abele-footer-view *'),
+          noteRows: count('.abele-notes-list__item'),
+          logs: count('.abele-log'),
+          taskViews: count('.abele-task-view'),
+          dateBlocks: count('.abele-timeline__date-block'),
+          markdownBlocks: count('.abele-markdown'),
+          done: true,
+        }
+      }, settleMs)
+    }, 200)
+  })
+}
+
 export function exposeTestApi(plugin: Plugin): void {
   globalThis.__abeleTest = {
     ScopeResolver,
@@ -309,6 +393,8 @@ export function exposeTestApi(plugin: Plugin): void {
     groupPathsViaLinkIndex,
     startResponsivenessProbe,
     responsivenessResult: null,
+    startNoteRenderProbe,
+    noteRenderResult: null,
   }
   console.debug('[Abele] test API exposed on window.__abeleTest (development build)')
 }

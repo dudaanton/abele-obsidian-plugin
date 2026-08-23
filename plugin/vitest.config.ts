@@ -22,7 +22,13 @@ export default defineConfig({
     // Includes the complexity tier: those assertions describe how much work an algorithm may
     // do, they run against the in-memory fake vault in milliseconds, and they are the guard
     // that stops group resolution from silently going quadratic again.
-    include: ['tests/unit/**/*.test.ts', 'tests/integration/**/*.test.ts'],
+    include: [
+      'tests/unit/**/*.test.ts',
+      'tests/integration/**/*.test.ts',
+      // Component tier: Vue components mounted against happy-dom. It computes no layout, so
+      // these assert what reaches the DOM and in what order, never how it looks.
+      'tests/component/**/*.test.ts',
+    ],
     reporters: 'default',
   },
 })
