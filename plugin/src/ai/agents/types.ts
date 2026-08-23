@@ -72,3 +72,21 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
 
   return { ...base, ...patch }
 }
+
+/**
+ * What a chat has deliberately changed relative to its agent.
+ *
+ * Sparse by design: a key present here means somebody changed it in this chat and it must stop
+ * tracking the agent; a key absent means the chat follows whatever the agent says today.
+ */
+export interface SessionOverrides {
+  providerId?: string
+  modelId?: string
+  permissionMode?: PermissionMode
+  toolModes?: Record<string, ToolMode>
+  scope?: ScopeEntry[]
+  fullVaultAccess?: boolean
+  prompts?: AgentPrompt[]
+}
+
+export type OverrideKey = keyof SessionOverrides

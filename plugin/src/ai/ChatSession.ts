@@ -1,4 +1,4 @@
-import { ref, shallowRef } from 'vue'
+import { computed, effectScope, ref, shallowRef, watch, type EffectScope } from 'vue'
 import { TFile } from 'obsidian'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
@@ -21,6 +21,13 @@ import type {
 import { ChatStorage } from './ChatStorage'
 import { ChatSummarizer, type SummarizerHost } from './ChatSummarizer'
 import { ChatInterceptor, type InterceptorHost } from './ChatInterceptor'
+import { AgentRegistry } from './agents/AgentRegistry'
+import type {
+  AgentDefinition,
+  OverrideKey,
+  ScopeEntry,
+  SessionOverrides,
+} from './agents/types'
 import {
   ChatMessage,
   ChatMetadata,
@@ -119,13 +126,37 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     resolve: (answers: string[] | null) => void
   } | null>(null)
 
-  // Per-chat model selection
-  public readonly activeProviderId = ref('')
-  public readonly activeModelId = ref('')
+  /** Which agent this chat runs on. Everything not overridden is resolved from it on each read. */
+  public readonly agentId = ref('')
+  /** Only what somebody deliberately changed in this chat. Empty means "follow the agent". */
+  public readonly overrides = ref<SessionOverrides>({})
+
+  /** The agent in force, falling back to the default one if this chat's agent was deleted. */
+  public readonly agent = computed<AgentDefinition | null>(() => {
+    const registry = AgentRegistry.getInstance()
+    return registry.get(this.agentId.value) ?? registry.defaultAgent()
+  })
+
+  // Per-chat model selection. Writable: assigning records an override, which is what every
+  // existing caller (the model picker, ChatService.switchModel) already means by assigning.
+  public readonly activeProviderId = computed<string>({
+    get: () => this.overrides.value.providerId ?? this.agent.value?.providerId ?? '',
+    set: (value) => this.setOverride('providerId', value),
+  })
+  public readonly activeModelId = computed<string>({
+    get: () => this.overrides.value.modelId ?? this.agent.value?.modelId ?? '',
+    set: (value) => this.setOverride('modelId', value),
+  })
 
   // Per-chat tool permissions
-  public readonly permissionMode = ref<PermissionMode>('confirm-all')
-  public readonly toolModes = ref<Record<string, ToolMode>>({})
+  public readonly permissionMode = computed<PermissionMode>({
+    get: () => this.overrides.value.permissionMode ?? this.agent.value?.permissionMode ?? 'confirm-all',
+    set: (value) => this.setOverride('permissionMode', value),
+  })
+  public readonly toolModes = computed<Record<string, ToolMode>>({
+    get: () => this.overrides.value.toolModes ?? this.agent.value?.toolModes ?? {},
+    set: (value) => this.setOverride('toolModes', value),
+  })
   public readonly customSystemPrompt = ref('')
   public readonly customSystemPromptNotePath = ref('')
 
@@ -138,6 +169,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   /** Title generation and compaction. Kept behind SummarizerHost, not reached into directly. */
   private readonly summarizer: ChatSummarizer
 
+  /** Set while the resolver is being rewritten from the agent, so the watcher stays quiet. */
+  private syncingScope = false
+  private readonly scopeEffects: EffectScope
+
   constructor(
     private readonly chatService: ChatService,
     id?: string
@@ -146,8 +181,111 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.scopeResolver = new ScopeResolver()
     this.summarizer = new ChatSummarizer(this)
     this.interceptor = new ChatInterceptor(this)
-    this.resetPermissions()
-    this.resetScope()
+    this.agentId.value = AgentRegistry.getInstance().defaultAgent()?.id ?? ''
+    this.scopeEffects = effectScope(true)
+    this.scopeEffects.run(() => this.watchScope())
+    this.syncScopeFromAgent()
+  }
+
+  // ── Agent binding ──────────────────────────────────────────────
+
+  private setOverride<K extends OverrideKey>(key: K, value: SessionOverrides[K]): void {
+    this.overrides.value = { ...this.overrides.value, [key]: value }
+  }
+
+  isOverridden(key: OverrideKey): boolean {
+    return this.overrides.value[key] !== undefined
+  }
+
+  /** Drops a per-chat value so the field follows the agent again. */
+  clearOverride(key: OverrideKey): void {
+    if (!this.isOverridden(key)) return
+
+    const next = { ...this.overrides.value }
+    delete next[key]
+    if (key === 'scope') delete next.fullVaultAccess
+    this.overrides.value = next
+
+    if (key === 'scope') this.syncScopeFromAgent()
+  }
+
+  /**
+   * Points the chat at a different agent.
+   *
+   * Overrides are dropped: they were expressed against the previous agent, and carrying, say,
+   * a narrowed tool set onto an agent that never had those tools is meaningless.
+   */
+  switchAgent(agentId: string): void {
+    if (agentId === this.agentId.value) return
+    this.agentId.value = agentId
+    this.overrides.value = {}
+    this.syncScopeFromAgent()
+  }
+
+  /**
+   * Keeps the scope resolver in step with the agent until this chat edits it.
+   *
+   * Scope cannot be a computed — `ScopeResolver` owns real state and resolves groups against
+   * the vault — so it is mirrored instead, in both directions: agent edits flow down while the
+   * chat has no scope override, and the first edit made here records one and stops the mirror.
+   */
+  private watchScope(): void {
+    watch(
+      () => this.agent.value?.scope,
+      () => {
+        if (!this.isOverridden('scope')) this.syncScopeFromAgent()
+      },
+      // Synchronous on purpose: a tool call checks scope the moment it runs, so a deferred
+      // sync would leave a window where the agent says one thing and the resolver another.
+      { deep: true, flush: 'sync' }
+    )
+
+    watch(
+      [this.scopeResolver.entries, this.scopeResolver.fullVaultAccess],
+      () => {
+        if (this.syncingScope) return
+        this.overrides.value = {
+          ...this.overrides.value,
+          scope: [...this.scopeResolver.entries.value],
+          fullVaultAccess: this.scopeResolver.fullVaultAccess.value,
+        }
+      },
+      { deep: true, flush: 'sync' }
+    )
+  }
+
+  private syncScopeFromAgent(): void {
+    const entries = this.overrides.value.scope ?? this.agent.value?.scope ?? []
+    const fullVault =
+      this.overrides.value.fullVaultAccess ?? this.agent.value?.fullVaultAccess ?? false
+    this.applyScope(entries, fullVault)
+  }
+
+  /** Replaces the resolver contents without the change reading as a user edit. */
+  private applyScope(entries: ScopeEntry[], fullVaultAccess: boolean): void {
+    this.syncingScope = true
+    try {
+      this.scopeResolver.clear()
+      this.scopeResolver.setFullVaultAccess(fullVaultAccess)
+      for (const entry of entries) {
+        switch (entry.type) {
+          case 'file':
+            this.scopeResolver.addFile(entry.path)
+            break
+          case 'folder':
+            this.scopeResolver.addFolder(entry.path)
+            break
+          case 'pattern':
+            this.scopeResolver.addPattern(entry.path)
+            break
+          case 'group':
+            this.scopeResolver.addGroup(entry.path)
+            break
+        }
+      }
+    } finally {
+      this.syncingScope = false
+    }
   }
 
   // ── SummarizerHost ─────────────────────────────────────────────
@@ -207,50 +345,25 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     return this.summarizer.compact()
   }
 
-  // ── Permission / scope reset ────────────────────────────────────
-
-  private resetPermissions(): void {
-    const config = AbeleConfig.getInstance().ai
-    this.activeProviderId.value = config.activeProviderId
-    this.activeModelId.value = config.activeModelId
-    this.permissionMode.value = config.permissionMode
-    this.toolModes.value = { ...config.toolModes }
-  }
-
   getToolMode(toolName: string): ToolMode {
     return this.toolModes.value[toolName] ?? 'off'
-  }
-
-  private resetScope(): void {
-    const config = AbeleConfig.getInstance().ai
-    this.scopeResolver.clear()
-    this.scopeResolver.setFullVaultAccess(config.defaultFullVaultAccess)
-    for (const entry of config.defaultScope || []) {
-      switch (entry.type) {
-        case 'file':
-          this.scopeResolver.addFile(entry.path)
-          break
-        case 'folder':
-          this.scopeResolver.addFolder(entry.path)
-          break
-        case 'pattern':
-          this.scopeResolver.addPattern(entry.path)
-          break
-        case 'group':
-          this.scopeResolver.addGroup(entry.path)
-          break
-      }
-    }
   }
 
   // ── Tools with session scope ────────────────────────────────────
 
   private getTools(): AgentTool[] {
+    const agent = this.agent.value
     const allTools = createAgentTools()
-    const filtered = allTools.filter((tool) => {
-      if (CORE_TOOLS.has(tool.name)) return true
-      return this.getToolMode(tool.name) !== 'off'
-    })
+
+    // Overrides win over the agent's own tool modes, so a chat that narrowed its permissions
+    // stays narrowed. Falls back to the agent when nothing was overridden here.
+    const effective = agent
+      ? { ...agent, toolModes: this.toolModes.value, maxDelegateDepth: agent.maxDelegateDepth }
+      : null
+    const filtered = effective
+      ? AgentRegistry.getInstance().filterTools(effective, allTools)
+      : allTools.filter((tool) => CORE_TOOLS.has(tool.name) || this.getToolMode(tool.name) !== 'off')
+
     return this.wrapToolsForSession(filtered)
   }
 
@@ -933,8 +1046,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.interceptor.agentId.value = ''
     this.interceptor.contextDepth.value = 0
     this.interceptor.error.value = null
-    this.resetPermissions()
-    this.resetScope()
+    this.agentId.value = AgentRegistry.getInstance().defaultAgent()?.id ?? ''
+    this.overrides.value = {}
+    this.syncScopeFromAgent()
   }
 
   // ── Save / Load ────────────────────────────────────────────────
@@ -1296,6 +1410,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.allMessages.value = []
     this.pendingToolCalls.value = []
     this.currentChatFile.value = null
+    this.scopeEffects.stop()
     this.scopeResolver.destroy()
   }
 }

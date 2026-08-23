@@ -1,3 +1,4 @@
+import { reactive, ref, isReactive } from 'vue'
 import { TFile } from 'obsidian'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -32,10 +33,35 @@ export class AgentRegistry {
     AgentRegistry.instance = null
   }
 
+  /**
+   * Bumped when the *set* of agents changes, or when settings are replaced wholesale.
+   *
+   * Field-level edits do not need it — those go through the reactive proxy below. This covers
+   * what a proxy cannot see: an agent appearing, disappearing, or the whole array being
+   * swapped out by a settings reload.
+   */
+  private readonly version = ref(0)
+
+  /**
+   * The agents, as a Vue-tracked array.
+   *
+   * `AbeleConfig` is a plain class, so an agent read out of it raw is invisible to `computed`.
+   * Wrapping once here means every consumer — settings editor, chat session, delegation —
+   * shares one proxy, and reading an agent field inside a computed registers a dependency.
+   * That is the entire mechanism behind editing an agent reaching a chat already in progress.
+   */
   private get agents(): AgentDefinition[] {
+    void this.version.value
+
     const ai = AbeleConfig.getInstance().ai
     if (!ai.agents) ai.agents = []
+    if (!isReactive(ai.agents)) ai.agents = reactive(ai.agents)
     return ai.agents
+  }
+
+  /** Call after settings are loaded or replaced, so tracked reads see the new array. */
+  notifyConfigReloaded(): void {
+    this.version.value++
   }
 
   // ── Lookup ────────────────────────────────────────────────────
@@ -61,6 +87,7 @@ export class AgentRegistry {
   }
 
   defaultAgent(): AgentDefinition | null {
+    void this.version.value
     const configured = this.get(AbeleConfig.getInstance().ai.defaultAgentId)
     return configured ?? this.agents[0] ?? null
   }
@@ -68,9 +95,12 @@ export class AgentRegistry {
   // ── Mutation ──────────────────────────────────────────────────
 
   create(overrides: Partial<AgentDefinition> = {}): AgentDefinition {
-    const agent = createAgent(overrides)
-    this.agents.push(agent)
-    return agent
+    const agents = this.agents
+    agents.push(createAgent(overrides))
+    this.version.value++
+    // Returns the proxy rather than the raw object, so a caller that holds on to it and edits
+    // it later still reaches everyone reading through the registry.
+    return agents[agents.length - 1]
   }
 
   update(id: string, patch: Partial<AgentDefinition>): void {
@@ -103,6 +133,7 @@ export class AgentRegistry {
     if (index === -1) return false
 
     this.agents.splice(index, 1)
+    this.version.value++
 
     const ai = AbeleConfig.getInstance().ai
     if (ai.defaultAgentId === id) ai.defaultAgentId = this.agents[0].id
@@ -112,6 +143,8 @@ export class AgentRegistry {
   setDefault(id: string): void {
     if (!this.get(id)) return
     AbeleConfig.getInstance().ai.defaultAgentId = id
+    // `defaultAgentId` lives on the plain config object, so nothing would notice on its own.
+    this.version.value++
   }
 
   // ── Model resolution ──────────────────────────────────────────

@@ -15,6 +15,7 @@ import { createApp, App as VueApp } from 'vue'
 import { createPinia } from 'pinia'
 import VueEntry from './App.vue'
 import { AbeleConfig } from './services/AbeleConfig'
+import { AgentRegistry } from './ai/agents/AgentRegistry'
 import { createTask, createTaskAndInsert } from './commands/createTask'
 import { createTransaction, createTransactionAndInsert } from './commands/createTransaction'
 import { createTimeEntry, stopActiveTimeEntry } from './commands/createTimeEntry'
@@ -122,6 +123,8 @@ export default class AbelePlugin extends Plugin {
     } // Ensure process is defined for Node.js compatibility
 
     await AbeleConfig.getInstance().loadSettings()
+    // Settings were just replaced wholesale; anything resolving an agent must see the new set.
+    AgentRegistry.getInstance().notifyConfigReloaded()
 
     // Apply body classes from settings
     if (AbeleConfig.getInstance().fullWidthSidebars) {
