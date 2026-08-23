@@ -69,6 +69,11 @@ export interface FakeApp {
     offref(ref: { id: string }): void
     resolvedLinks: Record<string, Record<string, number>>
   }
+  /** Obsidian's keychain. Tests seed it directly; production reads provider keys through it. */
+  secretStorage: {
+    getSecret(id: string): string
+    setSecret(id: string, value: string): void
+  }
   /** Invokes the handlers registered for an event, so tests can drive incremental updates. */
   emit(scope: 'vault' | 'metadataCache', name: string, ...args: unknown[]): void
   stats: FakeVaultStats
@@ -311,6 +316,13 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         return resolvedLinks
       },
     },
+    secretStorage: (() => {
+      const secrets = new Map<string, string>()
+      return {
+        getSecret: (id: string) => secrets.get(id) ?? '',
+        setSecret: (id: string, value: string) => void secrets.set(id, value),
+      }
+    })(),
     stats,
     resetStats() {
       stats.getFiles = 0
