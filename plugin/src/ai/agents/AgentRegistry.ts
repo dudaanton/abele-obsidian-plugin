@@ -1,6 +1,9 @@
+import { TFile } from 'obsidian'
+import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { createAgent, type AgentDefinition } from './types'
+import { getNoteBody } from '@/helpers/notesUtils'
+import { createAgent, type AgentDefinition, type AgentPrompt } from './types'
 import type { ModelConfig } from '@/ai/client'
 import type { AiModelConfig, AiProvider } from '@/ai/types'
 
@@ -153,5 +156,41 @@ export class AgentRegistry {
       if (model) return { provider, model }
     }
     return null
+  }
+
+  // ── System prompt ─────────────────────────────────────────────
+
+  /**
+   * Concatenates an agent's prompt blocks in order, blank line between them.
+   *
+   * A block that resolves to nothing — a note that was moved, an empty textarea — is dropped
+   * rather than contributing an empty line, so reordering blocks in the editor never changes
+   * the spacing the model sees.
+   */
+  async buildSystemPrompt(agent: AgentDefinition): Promise<string> {
+    const date = dayjs().format('YYYY-MM-DD')
+    const blocks: string[] = []
+
+    for (const prompt of agent.prompts || []) {
+      const text = await this.readPromptBlock(prompt)
+      if (text) blocks.push(text.replace(/\{\{date\}\}/g, date))
+    }
+
+    return blocks.join('\n\n')
+  }
+
+  private async readPromptBlock(prompt: AgentPrompt): Promise<string> {
+    if (prompt.type === 'text') return prompt.value.trim()
+
+    if (!prompt.value) return ''
+    const { app } = GlobalStore.getInstance()
+    const file = app.vault.getAbstractFileByPath(prompt.value)
+    if (!(file instanceof TFile)) {
+      console.warn(`[Abele] Agent prompt note not found, skipping: ${prompt.value}`)
+      return ''
+    }
+
+    const content = await app.vault.cachedRead(file)
+    return getNoteBody(content).trim()
   }
 }
