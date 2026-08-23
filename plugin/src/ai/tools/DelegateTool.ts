@@ -1,116 +1,174 @@
 import type { AgentTool } from '../client'
-import { ChatService } from '../ChatService'
 import { ChatSession } from '../ChatSession'
-import { CORE_TOOLS } from '../types'
-import { runSubAgentBatch, type SubAgentResult } from '../SubAgentRunner'
-import { createAgentTools } from './index'
+import { ChatService } from '../ChatService'
+import { AgentRegistry } from '../agents/AgentRegistry'
+import { DelegateRun, canDelegate, resolveTargetAgent } from '../DelegateRun'
+import type { RunBranch } from '../RunStorage'
+
+const DEFAULT_BATCH_SIZE = 5
+const MAX_BATCH_SIZE = 10
+const RESULT_PREVIEW = 200
+
+/**
+ * Lists the agents that can be delegated to, the way `SkillTool` lists skills.
+ *
+ * Utility agents are included on purpose: hidden from the chat picker is the point of them —
+ * they exist to be called by something else.
+ */
+function buildDescription(): string {
+  const agents = AgentRegistry.getInstance().list({ includeUtility: true })
+  const lines = agents
+    .map((a) => `- ${a.name}${a.description ? ': ' + a.description : ''}`)
+    .join('\n')
+
+  return [
+    'Hand a task to another agent. The sub-agent runs with its own instructions, tools and',
+    'permissions, plus whatever files this chat has in scope. Its whole conversation is kept',
+    'and can be opened, so you do not need to summarise it back.',
+    '',
+    'Pass `items` to fan out: each item gets its own sub-agent and its own fresh context.',
+    '',
+    agents.length ? `Available agents:\n${lines}` : 'No agents are configured.',
+  ].join('\n')
+}
 
 export function createDelegateTool(): AgentTool {
   return {
     name: 'delegate',
-    label: 'Delegate Tasks',
-    description:
-      'Delegate repetitive tasks to sub-agents for parallel processing. Each item is processed by an independent sub-agent with a fresh context. Use this when you need to process many items (URLs, files, etc.) with the same instructions. Sub-agents have the same tools and permissions as you (except delegate). They can create files if permission mode is allow-edit or allow-all. Returns a summary of results and errors.',
+    label: 'Delegate to agent',
+    description: buildDescription(),
     parameters: {
       type: 'object',
       properties: {
+        agent: {
+          type: 'string',
+          description: 'Name of the agent to hand the task to.',
+        },
         task: {
           type: 'string',
           description:
-            'Instructions for processing each item. Be specific — each sub-agent only sees this + one item.',
+            'What to do. Be specific — a sub-agent sees only this, and one item if you fan out.',
         },
         items: {
           type: 'array',
           items: { type: 'string' },
-          description: 'List of items to process (URLs, file paths, text, etc.)',
+          description:
+            'Optional. One sub-agent per item, each processing the task against its own item.',
         },
         batch_size: {
           type: 'number',
-          description: 'Number of sub-agents to run in parallel (default 5, max 10)',
+          description: `Sub-agents to run at once when fanning out (default ${DEFAULT_BATCH_SIZE}, max ${MAX_BATCH_SIZE}).`,
         },
       },
-      required: ['task', 'items'],
+      required: ['agent', 'task'],
     },
-    execute: async (_id, params, signal) => {
+    execute: async (toolCallId, params, signal) => {
+      const agentName = params.agent as string
       const task = params.task as string
-      const items = params.items as string[]
-      const batchSize = Math.min(Math.max((params.batch_size as number) || 5, 1), 10)
-
-      if (!task) throw new Error('Missing required parameter: task')
-      if (!items?.length) throw new Error('Missing required parameter: items')
-
-      const agent = ChatService.getInstance()
-      const session = ChatSession.getActiveSession()
-      const model = agent.getDelegateModelConfig()
-      const systemPrompt = await agent.getDelegateSystemPrompt(
-        session || agent.activeSession.value!
+      const items = (params.items as string[]) ?? []
+      const batchSize = Math.min(
+        Math.max((params.batch_size as number) || DEFAULT_BATCH_SIZE, 1),
+        MAX_BATCH_SIZE
       )
-      const permissions = session
-        ? session.getPermissions()
-        : agent.activeSession.value!.getPermissions()
 
-      // Build tools list: exclude delegate and filter off tools
-      const allTools = createAgentTools()
-      const tools = allTools.filter((t) => {
-        if (t.name === 'delegate') return false
-        if (CORE_TOOLS.has(t.name)) return true
-        return (permissions[t.name] ?? 'off') !== 'off'
+      if (!agentName) throw new Error('Missing required parameter: agent')
+      if (!task) throw new Error('Missing required parameter: task')
+
+      const parent = ChatSession.getActiveSession() ?? ChatService.getInstance().activeSession.value
+      if (!parent) throw new Error('No active chat to delegate from')
+
+      if (!canDelegate(parent)) {
+        const agent = parent.agent.value
+        throw new Error(
+          agent
+            ? `"${agent.name}" may delegate ${agent.maxDelegateDepth} level(s) deep and is already ${parent.depth} deep`
+            : 'This chat has no agent and cannot delegate'
+        )
+      }
+
+      const target = resolveTargetAgent(agentName)
+      if (!target) {
+        const available = AgentRegistry.getInstance()
+          .list({ includeUtility: true })
+          .map((a) => a.name)
+          .join(', ')
+        throw new Error(`Agent "${agentName}" not found. Available: ${available || 'none'}`)
+      }
+
+      const run = new DelegateRun({
+        agent: target,
+        task,
+        items,
+        batchSize,
+        parent,
+        parentToolCallId: toolCallId,
+        signal,
+        onProgress: (completed, total) => {
+          parent.updateDelegateProgress(`${target.name}: ${completed}/${total}`)
+        },
       })
 
-      const onProgress = (completed: number, total: number, results: SubAgentResult[]) => {
-        const succeeded = results.filter((r) => r.success).length
-        const failed = results.filter((r) => !r.success && r.error !== 'Aborted').length
-        const parts = [`${completed}/${total}`]
-        if (succeeded > 0) parts.push(`${succeeded} ok`)
-        if (failed > 0) parts.push(`${failed} failed`)
-        if (session) {
-          session.updateDelegateProgress(parts.join(', '))
-        }
-      }
+      // Recorded on the tool call before the work starts, so the branch can be opened while it
+      // is still running rather than only once it finishes.
+      parent.attachSubAgentRun(toolCallId, {
+        runId: run.runId,
+        agentId: target.id,
+        agentName: target.name,
+        path: run.path,
+        status: 'running',
+        branchCount: items.length || 1,
+      })
 
-      const results = await runSubAgentBatch(
-        items,
-        task,
-        tools,
-        model,
-        systemPrompt,
-        batchSize,
-        permissions,
-        signal,
-        onProgress
-      )
+      const result = await run.run()
 
-      // Build summary
-      const succeeded = results.filter((r) => r.success)
-      const failed = results.filter((r) => !r.success && r.error !== 'Aborted')
-      const aborted = results.filter((r) => r.error === 'Aborted')
+      parent.attachSubAgentRun(toolCallId, {
+        runId: run.runId,
+        agentId: target.id,
+        agentName: target.name,
+        path: run.path,
+        status: result.branches.some((b) => b.status === 'error') ? 'error' : 'done',
+        branchCount: result.branches.length,
+      })
 
-      const lines: string[] = []
-      lines.push(`## Delegate Results: ${succeeded.length}/${results.length} succeeded`)
-      if (aborted.length > 0) lines.push(`${aborted.length} aborted`)
-
-      if (succeeded.length > 0) {
-        lines.push('\n### Completed:')
-        for (const r of succeeded) {
-          const summary = r.text.length > 200 ? r.text.slice(0, 200) + '...' : r.text
-          lines.push(`- **${truncateItem(r.item)}**: ${summary}`)
-        }
-      }
-
-      if (failed.length > 0) {
-        lines.push('\n### Failed:')
-        for (const r of failed) {
-          lines.push(`- **${truncateItem(r.item)}**: ${r.error || 'Unknown error'}`)
-        }
-      }
-
-      return {
-        content: [{ type: 'text', text: lines.join('\n') }],
-      }
+      return { content: [{ type: 'text', text: summarise(target.name, result.branches) }] }
     },
   }
 }
 
-function truncateItem(item: string): string {
-  return item.length > 80 ? item.slice(0, 80) + '...' : item
+function summarise(agentName: string, branches: RunBranch[]): string {
+  const done = branches.filter((b) => b.status === 'done')
+  const failed = branches.filter((b) => b.status === 'error')
+  const aborted = branches.filter((b) => b.status === 'aborted')
+
+  // A single branch is not a batch; reporting "1/1 succeeded" reads like a machine.
+  if (branches.length === 1) {
+    const only = branches[0]
+    if (only.status === 'done') return only.result || '(the sub-agent returned nothing)'
+    return `${agentName} did not finish: ${only.error || only.status}`
+  }
+
+  const lines = [`## ${agentName}: ${done.length}/${branches.length} succeeded`]
+  if (aborted.length) lines.push(`${aborted.length} aborted`)
+
+  if (done.length) {
+    lines.push('\n### Completed:')
+    for (const branch of done) {
+      const text = branch.result ?? ''
+      const preview = text.length > RESULT_PREVIEW ? `${text.slice(0, RESULT_PREVIEW)}...` : text
+      lines.push(`- **${truncate(branch.item)}**: ${preview}`)
+    }
+  }
+
+  if (failed.length) {
+    lines.push('\n### Failed:')
+    for (const branch of failed) {
+      lines.push(`- **${truncate(branch.item)}**: ${branch.error || 'Unknown error'}`)
+    }
+  }
+
+  return lines.join('\n')
+}
+
+function truncate(item: string): string {
+  return item.length > 80 ? `${item.slice(0, 80)}...` : item
 }

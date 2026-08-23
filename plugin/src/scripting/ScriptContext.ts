@@ -18,7 +18,7 @@ import { createWriteFileTool } from '@/ai/tools/WriteFileTool'
 import { createGenerateImageTool } from '@/ai/tools/GenerateImageTool'
 import { createDownloadImageTool, createDownloadFileTool } from '@/ai/tools/DownloadImageTool'
 import { runSubAgent } from '@/ai/SubAgentRunner'
-import { ChatService } from '@/ai/ChatService'
+import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { createAgentTools } from '@/ai/tools'
 import { substituteSecrets } from '@/ai/tools/secretUtils'
 import type { FormField } from './types'
@@ -43,33 +43,6 @@ function stripPrefix(result: string): string {
   return result.replace(/^(?:Saved|Created):\s*/, '')
 }
 
-function resolveModelById(modelId: string): ModelConfig | null {
-  const config = AbeleConfig.getInstance().ai
-  for (const provider of config.providers) {
-    const model = provider.models.find((m) => m.id === modelId)
-    if (model) {
-      return {
-        id: model.id,
-        name: model.name,
-        baseUrl: provider.baseUrl,
-        apiKey: GlobalStore.getInstance().app.secretStorage.getSecret(provider.apiKeyId) || '',
-        contextWindow: model.contextWindow,
-        maxTokens: model.maxTokens,
-        supportsReasoning: model.supportsReasoning,
-      }
-    }
-  }
-  return null
-}
-
-function resolveModelBySlot(
-  slot: 'activeModelId' | 'wiseModelId' | 'delegateModelId'
-): ModelConfig | null {
-  const modelId = AbeleConfig.getInstance().ai[slot]
-  if (!modelId) return null
-  return resolveModelById(modelId)
-  return null
-}
 
 export function buildScriptContext(opts: {
   params: Record<string, unknown>
@@ -299,28 +272,67 @@ export function buildScriptContext(opts: {
 
     // ── AI ──
 
-    async agent(task: string, agentOpts?: { model?: string }): Promise<string> {
-      const chatService = ChatService.getInstance()
-      const modelType = agentOpts?.model ?? 'delegate'
-      const SLOTS: Record<string, 'activeModelId' | 'wiseModelId' | 'delegateModelId'> = {
-        primary: 'activeModelId',
-        delegate: 'delegateModelId',
-        wise: 'wiseModelId',
-      }
-      const slot = SLOTS[modelType]
-      const model = slot
-        ? (resolveModelBySlot(slot) ?? chatService.getDelegateModelConfig())
-        : (resolveModelById(modelType) ?? chatService.getDelegateModelConfig())
-      const config = AbeleConfig.getInstance().ai
-      const session = chatService.activeSession.value
-      const systemPrompt = session
-        ? await chatService.getDelegateSystemPrompt(session)
-        : config.prompts.system
-      const toolModes = { ...config.toolModes }
-      const allTools = createAgentTools()
-      const tools = allTools.filter((t) => t.name !== 'delegate')
+    /**
+     * Hands a task to an agent and returns what it came back with.
+     *
+     * Pass `items` to fan out — one sub-agent per item, results in the same order. Which agent
+     * runs is a deliberate choice now: the old `{ model: 'primary' | 'delegate' | 'wise' }`
+     * presets are gone along with those slots.
+     */
+    async agent(
+      task: string,
+      agentOpts?: { agent?: string; items?: string[]; batchSize?: number }
+    ): Promise<string | string[]> {
+      const registry = AgentRegistry.getInstance()
+      const requested = agentOpts?.agent
+      const target = requested ? registry.resolve(requested) : registry.defaultAgent()
 
-      return runSubAgent({ systemPrompt, userMessage: task, tools, model, signal: s }, toolModes)
+      if (!target) {
+        const available = registry
+          .list({ includeUtility: true })
+          .map((a) => a.name)
+          .join(', ')
+        throw new Error(
+          requested
+            ? `Agent "${requested}" not found. Available: ${available || 'none'}`
+            : 'No agent is configured'
+        )
+      }
+
+      const model = registry.resolveModel(target)
+      if (!model) throw new Error(`Agent "${target.name}" has no usable model configured`)
+
+      const systemPrompt = await registry.buildSystemPrompt(target)
+      const tools = registry.filterTools(target, createAgentTools())
+      const items = agentOpts?.items ?? []
+
+      const runOne = (message: string) =>
+        runSubAgent(
+          { systemPrompt, userMessage: message, tools, model, signal: s },
+          target.toolModes
+        )
+
+      if (!items.length) return runOne(task)
+
+      const batchSize = Math.min(Math.max(agentOpts?.batchSize ?? 5, 1), 10)
+      const results: string[] = []
+      for (let i = 0; i < items.length; i += batchSize) {
+        const slice = items.slice(i, i + batchSize)
+        results.push(...(await Promise.all(slice.map((item) => runOne(`${task}\n\n${item}`)))))
+      }
+      return results
+    },
+
+    /** The agents a script can choose between. */
+    agents(): Array<{ id: string; name: string; description: string; utility: boolean }> {
+      return AgentRegistry.getInstance()
+        .list({ includeUtility: true })
+        .map((a) => ({
+          id: a.id,
+          name: a.name,
+          description: a.description,
+          utility: a.utility,
+        }))
     },
 
     async generateImage(prompt: string, model?: string): Promise<string> {

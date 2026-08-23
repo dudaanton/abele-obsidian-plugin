@@ -35,7 +35,13 @@ import {
   CORE_TOOLS,
   migrateOldPermissions,
 } from './types'
-import type { ToolMode, PermissionMode, InterceptorChatMessage, AiSettings } from './types'
+import type {
+  ToolMode,
+  PermissionMode,
+  InterceptorChatMessage,
+  AiSettings,
+  SubAgentRunRef,
+} from './types'
 import type { UserContentPart } from './client'
 import { createAgentTools } from './tools'
 import { loadSkillContent } from './tools/SkillTool'
@@ -55,6 +61,24 @@ import type { ChatService } from './ChatService'
 /** Shape returned by tools that provide diff details */
 interface ToolDiffDetails {
   diff?: { old: string; new: string }
+}
+
+export type SessionKind = 'chat' | 'run'
+
+export interface SessionParent {
+  /** The session that delegated. */
+  sessionId: string
+  /** The tool call that started this run, so the branch renders under it. */
+  toolCallId: string
+}
+
+export interface SessionOptions {
+  kind?: SessionKind
+  agentId?: string
+  depth?: number
+  parent?: SessionParent
+  /** Called instead of writing a chat file, for a run whose coordinator owns persistence. */
+  onPersist?: () => void
 }
 
 export class ChatSession implements SummarizerHost, InterceptorHost {
@@ -173,15 +197,30 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private syncingScope = false
   private readonly scopeEffects: EffectScope
 
+  /** A chat a person talks to, or a run some agent was handed by another. */
+  public readonly kind: SessionKind
+  /** How many delegations deep this run sits. 0 for a chat a person opened. */
+  public readonly depth: number
+  /** Where a run came from, so its branch can be shown in the right place. */
+  public readonly parent: SessionParent | null
+  /** A run persists through its coordinator, never through ChatStorage. */
+  private readonly onPersist: (() => void) | null
+
   constructor(
     private readonly chatService: ChatService,
-    id?: string
+    id?: string,
+    options: SessionOptions = {}
   ) {
     this.id = id || nanoid()
+    this.kind = options.kind ?? 'chat'
+    this.depth = options.depth ?? 0
+    this.parent = options.parent ?? null
+    this.onPersist = options.onPersist ?? null
     this.scopeResolver = new ScopeResolver()
     this.summarizer = new ChatSummarizer(this)
     this.interceptor = new ChatInterceptor(this)
-    this.agentId.value = AgentRegistry.getInstance().defaultAgent()?.id ?? ''
+    this.agentId.value =
+      options.agentId || AgentRegistry.getInstance().defaultAgent()?.id || ''
     this.scopeEffects = effectScope(true)
     this.scopeEffects.run(() => this.watchScope())
     this.syncScopeFromAgent()
@@ -274,6 +313,42 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const fullVault =
       this.overrides.value.fullVaultAccess ?? this.agent.value?.fullVaultAccess ?? false
     this.applyScope(entries, fullVault)
+  }
+
+  /**
+   * Adds a delegating chat's scope on top of this run's own.
+   *
+   * Union, not replacement: the agent's scope says where it normally works, while the parent
+   * holds the task and therefore the files the task is about. Either alone leaves a run unable
+   * to do what it was asked.
+   */
+  applyScopeUnion(entries: ScopeEntry[], options: { fullVaultAccess?: boolean } = {}): void {
+    const own = this.overrides.value.scope ?? this.agent.value?.scope ?? []
+    const seen = new Set(own.map((e) => `${e.type}:${e.path}`))
+    const merged = [...own]
+
+    for (const entry of entries) {
+      const key = `${entry.type}:${entry.path}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      merged.push(entry)
+    }
+
+    const fullVault =
+      Boolean(options.fullVaultAccess) ||
+      (this.overrides.value.fullVaultAccess ?? this.agent.value?.fullVaultAccess ?? false)
+
+    this.overrides.value = { ...this.overrides.value, scope: merged, fullVaultAccess: fullVault }
+    this.applyScope(merged, fullVault)
+  }
+
+  /** The text the conversation ended on — what a delegated run reports back. */
+  lastAssistantText(): string {
+    for (let i = this.allChatMessages.length - 1; i >= 0; i--) {
+      const msg = this.allChatMessages[i]
+      if (msg.role === 'assistant' && msg.content.trim()) return msg.content.trim()
+    }
+    return ''
   }
 
   /** Replaces the resolver contents without the change reading as a user edit. */
@@ -456,6 +531,28 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   // ── Approval logic ──────────────────────────────────────────────
+
+  /**
+   * Why a run refused a tool, phrased so the agent can act on it.
+   *
+   * The distinction matters: out of scope is about *this* file, while a permission mode is
+   * about the whole run. Told apart, an agent can retry with a different path in the first
+   * case and stop asking in the second.
+   */
+  private refusalReason(toolName: string, args?: Record<string, unknown>): string {
+    if (args && ChatSession.SCOPED_TOOLS.includes(toolName)) {
+      const path = (args.path || args.from) as string
+      if (path && !this.scopeResolver.isInScope(path)) {
+        return `Access denied: ${path} is not in this run's workspace scope`
+      }
+    }
+
+    if (ChatSession.EDIT_TOOLS.includes(toolName)) {
+      return `Write operations are not permitted in this run (permission mode: ${this.permissionMode.value})`
+    }
+
+    return `${toolName} needs approval, which a delegated run cannot ask for`
+  }
 
   needsApproval(toolName: string, args?: Record<string, unknown>): boolean {
     const mode = this.permissionMode.value
@@ -722,9 +819,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           ? { reasoningEffort: model.reasoningEffort }
           : undefined,
         beforeToolCall: async (toolName, _id, args) => {
-          if (this.needsApproval(toolName, args)) {
-            return { pause: true }
+          if (!this.needsApproval(toolName, args)) return
+
+          // A run has nobody to ask, so a tool that would need approval is refused with a
+          // reason the agent can read and work around, rather than hanging forever.
+          if (this.kind === 'run') {
+            return { block: true, reason: this.refusalReason(toolName, args) }
           }
+          return { pause: true }
         },
       })
 
@@ -923,7 +1025,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     const sequential = AbeleConfig.getInstance().ai.sequentialAuxiliary
 
-    if (ChatSession.TITLE_GENERATION_TRIGGERS.includes(this.userMessageCount)) {
+    // A run is never listed anywhere, so naming it would be a request nobody reads the answer to.
+    const wantsTitle =
+      this.kind === 'chat' && ChatSession.TITLE_GENERATION_TRIGGERS.includes(this.userMessageCount)
+    if (wantsTitle) {
       if (sequential) {
         await this.summarizer.generateTitle()
       } else {
@@ -1179,6 +1284,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   async save(): Promise<void> {
     if (this.allChatMessages.length === 0) return
 
+    // A run lives inside its coordinator's file; it has no chat file of its own and must never
+    // appear in the chat history.
+    if (this.kind === 'run') {
+      this.onPersist?.()
+      return
+    }
+
     const config = AbeleConfig.getInstance().ai
     const title = this.chatTitle.value || this.fallbackTitle()
 
@@ -1337,6 +1449,27 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     )
   }
 
+  /**
+   * Records where a delegated run's transcript lives, on the tool call that started it.
+   *
+   * Only a pointer: a few dozen bytes, so the parent chat's write cost is unchanged no matter
+   * how much conversation the sub-agents produce.
+   */
+  attachSubAgentRun(toolCallId: string, run: SubAgentRunRef): void {
+    this.updateChatMessage(
+      (m) => m.toolCallId === toolCallId,
+      (m) => ({ ...m, subAgentRun: run })
+    )
+    void this.save()
+  }
+
+  /** Every run this chat started, so they can be cleaned up with it. */
+  subAgentRunIds(): string[] {
+    return this.allChatMessages
+      .map((m) => m.subAgentRun?.runId)
+      .filter((id): id is string => Boolean(id))
+  }
+
   /** Get permissions snapshot for sub-agent runner */
   getPermissions(): Record<string, ToolMode> {
     return { ...this.toolModes.value }
@@ -1431,7 +1564,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     const sequential = AbeleConfig.getInstance().ai.sequentialAuxiliary
 
-    if (ChatSession.TITLE_GENERATION_TRIGGERS.includes(this.userMessageCount)) {
+    // A run is never listed anywhere, so naming it would be a request nobody reads the answer to.
+    const wantsTitle =
+      this.kind === 'chat' && ChatSession.TITLE_GENERATION_TRIGGERS.includes(this.userMessageCount)
+    if (wantsTitle) {
       if (sequential) {
         await this.summarizer.generateTitle()
       } else {

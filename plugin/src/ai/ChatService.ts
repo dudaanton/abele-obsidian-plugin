@@ -271,27 +271,6 @@ export class ChatService {
     return this.getActiveModelConfig()
   }
 
-  getDelegateModelConfig(): ModelConfig {
-    const config = AbeleConfig.getInstance().ai
-    if (config.delegateModelId) {
-      for (const provider of config.providers) {
-        const model = provider.models.find((m) => m.id === config.delegateModelId)
-        if (model) {
-          return {
-            id: model.id,
-            name: model.name,
-            baseUrl: provider.baseUrl,
-            apiKey: GlobalStore.getInstance().app.secretStorage.getSecret(provider.apiKeyId) || '',
-            contextWindow: model.contextWindow,
-            maxTokens: model.maxTokens,
-            supportsReasoning: model.supportsReasoning,
-          }
-        }
-      }
-    }
-    return this.getActiveModelConfig()
-  }
-
   // ── System prompt ─────────────────────────────────────────────
 
   async getSystemPrompt(session: ChatSession): Promise<string> {
@@ -308,10 +287,10 @@ export class ChatService {
       return session.customSystemPrompt.value.replace(/\{\{date\}\}/g, date)
     }
 
-    // Global: the default agent's prompt blocks. Resolved on every call rather than cached, so
-    // editing the agent in settings reaches a chat already in progress.
+    // The session's own agent — not the default one. Resolved on every call rather than
+    // cached, so editing the agent in settings reaches a chat already in progress.
     const registry = AgentRegistry.getInstance()
-    const agent = registry.defaultAgent()
+    const agent = session.agent.value ?? registry.defaultAgent()
     if (agent) {
       const composed = await registry.buildSystemPrompt(agent)
       if (composed) return composed
@@ -320,10 +299,6 @@ export class ChatService {
     // No agent configured at all — migration should have prevented this, but a settings file
     // edited by hand can still reach here, and a mute assistant is worse than a generic one.
     return DEFAULT_AI_SETTINGS.prompts.system.replace(/\{\{date\}\}/g, date)
-  }
-
-  async getDelegateSystemPrompt(session: ChatSession): Promise<string> {
-    return this.getSystemPrompt(session)
   }
 
   private async readNoteBody(path: string): Promise<string | null> {

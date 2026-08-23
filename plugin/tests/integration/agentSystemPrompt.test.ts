@@ -4,7 +4,7 @@
  * winning, because chats saved before agents existed still carry them.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -14,11 +14,21 @@ import type { ChatSession } from '@/ai/ChatSession'
 
 /** The slice of ChatSession that getSystemPrompt actually reads. */
 function fakeSession(
-  overrides: { customSystemPrompt?: string; customSystemPromptNotePath?: string } = {}
+  overrides: {
+    customSystemPrompt?: string
+    customSystemPromptNotePath?: string
+    agentId?: string
+  } = {}
 ): ChatSession {
   return {
     customSystemPrompt: ref(overrides.customSystemPrompt ?? ''),
     customSystemPromptNotePath: ref(overrides.customSystemPromptNotePath ?? ''),
+    // The prompt comes from the session's own agent, so a fake without one is not a chat.
+    agent: computed(() =>
+      overrides.agentId
+        ? AgentRegistry.getInstance().get(overrides.agentId)
+        : AgentRegistry.getInstance().defaultAgent()
+    ),
   } as unknown as ChatSession
 }
 
@@ -89,6 +99,25 @@ describe('ChatService.getSystemPrompt', () => {
     )
 
     expect(prompt).toBe('Prompt from a note.')
+  })
+
+  it('uses the prompt of the agent this chat is on, not the default one', async () => {
+    const registry = AgentRegistry.getInstance()
+    const fallback = registry.create({
+      name: 'Default',
+      prompts: [{ type: 'text', value: 'Default agent.' }],
+    })
+    registry.setDefault(fallback.id)
+    const other = registry.create({
+      name: 'Researcher',
+      prompts: [{ type: 'text', value: 'Researcher agent.' }],
+    })
+
+    const prompt = await ChatService.getInstance().getSystemPrompt(
+      fakeSession({ agentId: other.id })
+    )
+
+    expect(prompt).toBe('Researcher agent.')
   })
 
   it('falls back to the built-in prompt when there is no agent at all', async () => {
