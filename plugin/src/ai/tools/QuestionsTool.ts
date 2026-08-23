@@ -1,5 +1,5 @@
 import type { AgentTool } from '../client'
-import { AgentService } from '../AgentService'
+import { ChatService } from '../ChatService'
 
 export function createQuestionsTool(): AgentTool {
   return {
@@ -33,7 +33,7 @@ export function createQuestionsTool(): AgentTool {
       const questions = params.questions as { question: string; options: string[] }[]
       if (!questions?.length) throw new Error('No questions provided')
 
-      const session = AgentService.getInstance().activeSession.value
+      const session = ChatService.getInstance().activeSession.value
       if (!session) throw new Error('No active session')
 
       const answers = await session.askQuestions(questions)

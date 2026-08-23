@@ -13,7 +13,7 @@ import type { SkillInfo } from '@/ai/tools/SkillTool'
  * The one place that answers what an agent is.
  *
  * Model, prompt, tool and skill resolution used to live in four independent copies —
- * `AgentService`, `ChatSession`, `WiseModelTool` and `ScriptContext`. They collapse here so a
+ * `ChatService`, `ChatSession`, `WiseModelTool` and `ScriptContext`. They collapse here so a
  * chat, a delegated run and a script all resolve an agent identically.
  *
  * Every accessor reads `AbeleConfig` on each call and mutations edit the stored objects in

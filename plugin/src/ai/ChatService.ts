@@ -17,8 +17,8 @@ interface TabsState {
   activeIndex: number
 }
 
-export class AgentService {
-  private static instance: AgentService | null = null
+export class ChatService {
+  private static instance: ChatService | null = null
 
   private sessions = new Map<string, ChatSession>()
   private tabsRestored = false
@@ -32,11 +32,11 @@ export class AgentService {
   /** Text to pre-fill in chat input (consumed by AiChat component) */
   public readonly pendingInput = ref<string | null>(null)
 
-  static getInstance(): AgentService {
-    if (!AgentService.instance) {
-      AgentService.instance = new AgentService()
+  static getInstance(): ChatService {
+    if (!ChatService.instance) {
+      ChatService.instance = new ChatService()
     }
-    return AgentService.instance
+    return ChatService.instance
   }
 
   private constructor() {
@@ -380,6 +380,6 @@ export class AgentService {
     this.sessions.clear()
     this.tabOrder.value = []
     this.activeTabId.value = null
-    AgentService.instance = null
+    ChatService.instance = null
   }
 }

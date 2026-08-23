@@ -14,11 +14,11 @@
 import { computed } from 'vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { AgentService } from '@/ai/AgentService'
+import { ChatService } from '@/ai/ChatService'
 
-const agentService = AgentService.getInstance()
+const chatService = ChatService.getInstance()
 const config = AbeleConfig.getInstance()
-const session = computed(() => agentService.activeSession.value)
+const session = computed(() => chatService.activeSession.value)
 
 const activeKey = computed(() => {
   const s = session.value
@@ -42,7 +42,7 @@ const options = computed(() => {
 
 const onSelect = (key: string) => {
   const [providerId, modelId] = key.split('::')
-  agentService.switchModel(providerId, modelId)
+  chatService.switchModel(providerId, modelId)
 }
 </script>
 

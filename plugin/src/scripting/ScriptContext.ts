@@ -18,7 +18,7 @@ import { createWriteFileTool } from '@/ai/tools/WriteFileTool'
 import { createGenerateImageTool } from '@/ai/tools/GenerateImageTool'
 import { createDownloadImageTool, createDownloadFileTool } from '@/ai/tools/DownloadImageTool'
 import { runSubAgent } from '@/ai/SubAgentRunner'
-import { AgentService } from '@/ai/AgentService'
+import { ChatService } from '@/ai/ChatService'
 import { createAgentTools } from '@/ai/tools'
 import { substituteSecrets } from '@/ai/tools/secretUtils'
 import type { FormField } from './types'
@@ -300,7 +300,7 @@ export function buildScriptContext(opts: {
     // ── AI ──
 
     async agent(task: string, agentOpts?: { model?: string }): Promise<string> {
-      const agentService = AgentService.getInstance()
+      const chatService = ChatService.getInstance()
       const modelType = agentOpts?.model ?? 'delegate'
       const SLOTS: Record<string, 'activeModelId' | 'wiseModelId' | 'delegateModelId'> = {
         primary: 'activeModelId',
@@ -309,12 +309,12 @@ export function buildScriptContext(opts: {
       }
       const slot = SLOTS[modelType]
       const model = slot
-        ? (resolveModelBySlot(slot) ?? agentService.getDelegateModelConfig())
-        : (resolveModelById(modelType) ?? agentService.getDelegateModelConfig())
+        ? (resolveModelBySlot(slot) ?? chatService.getDelegateModelConfig())
+        : (resolveModelById(modelType) ?? chatService.getDelegateModelConfig())
       const config = AbeleConfig.getInstance().ai
-      const session = agentService.activeSession.value
+      const session = chatService.activeSession.value
       const systemPrompt = session
-        ? await agentService.getDelegateSystemPrompt(session)
+        ? await chatService.getDelegateSystemPrompt(session)
         : config.prompts.system
       const toolModes = { ...config.toolModes }
       const allTools = createAgentTools()

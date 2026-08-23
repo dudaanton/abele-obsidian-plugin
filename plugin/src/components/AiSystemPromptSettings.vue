@@ -44,12 +44,12 @@ import { ref, computed, watch } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import Search from './obsidian/Search.vue'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
-import { AgentService } from '@/ai/AgentService'
+import { ChatService } from '@/ai/ChatService'
 
 const emit = defineEmits<{ close: [] }>()
 
-const agentService = AgentService.getInstance()
-const session = computed(() => agentService.activeSession.value)
+const chatService = ChatService.getInstance()
+const session = computed(() => chatService.activeSession.value)
 
 type Mode = 'default' | 'note' | 'custom'
 

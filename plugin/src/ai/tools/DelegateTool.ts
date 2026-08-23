@@ -1,5 +1,5 @@
 import type { AgentTool } from '../client'
-import { AgentService } from '../AgentService'
+import { ChatService } from '../ChatService'
 import { ChatSession } from '../ChatSession'
 import { CORE_TOOLS } from '../types'
 import { runSubAgentBatch, type SubAgentResult } from '../SubAgentRunner'
@@ -39,7 +39,7 @@ export function createDelegateTool(): AgentTool {
       if (!task) throw new Error('Missing required parameter: task')
       if (!items?.length) throw new Error('Missing required parameter: items')
 
-      const agent = AgentService.getInstance()
+      const agent = ChatService.getInstance()
       const session = ChatSession.getActiveSession()
       const model = agent.getDelegateModelConfig()
       const systemPrompt = await agent.getDelegateSystemPrompt(

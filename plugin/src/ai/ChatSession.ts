@@ -39,7 +39,7 @@ import {
   backfillChatMessageIds,
 } from './chatTree'
 
-import type { AgentService } from './AgentService'
+import type { ChatService } from './ChatService'
 
 /** Shape returned by tools that provide diff details */
 interface ToolDiffDetails {
@@ -144,7 +144,7 @@ export class ChatSession {
   public readonly scopeResolver: ScopeResolver
 
   constructor(
-    private readonly agentService: AgentService,
+    private readonly chatService: ChatService,
     id?: string
   ) {
     this.id = id || nanoid()
@@ -456,7 +456,7 @@ export class ChatSession {
     this.error.value = null
 
     try {
-      const model = this.agentService.getModelConfigFor(
+      const model = this.chatService.getModelConfigFor(
         this.activeProviderId.value,
         this.activeModelId.value
       )
@@ -481,7 +481,7 @@ export class ChatSession {
       const toSend = this.getMessagesForModel()
       const result = await this.agentLoop.run({
         model,
-        systemPrompt: await this.agentService.getSystemPrompt(this),
+        systemPrompt: await this.chatService.getSystemPrompt(this),
         tools,
         messages: toSend,
         streamOptions: model.reasoningEffort
@@ -928,7 +928,7 @@ export class ChatSession {
     )
 
     // Update tab state so new chats get persisted
-    this.agentService.saveTabs()
+    this.chatService.saveTabs()
   }
 
   async load(file: TFile): Promise<void> {
@@ -1122,7 +1122,7 @@ export class ChatSession {
       }
     }
     // Fallback to active model
-    return this.agentService.getActiveModelConfig()
+    return this.chatService.getActiveModelConfig()
   }
 
   private buildInterceptorContext(
@@ -1388,7 +1388,7 @@ export class ChatSession {
     this.isGeneratingTitle.value = true
     try {
       const config = AbeleConfig.getInstance().ai
-      const model = this.agentService.getAuxiliaryModelConfig()
+      const model = this.chatService.getAuxiliaryModelConfig()
       const client = new OpenAIClient()
       const msgs = this.messages.value
         .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -1457,7 +1457,7 @@ export class ChatSession {
 
     try {
       const config = AbeleConfig.getInstance().ai
-      const model = this.agentService.getAuxiliaryModelConfig()
+      const model = this.chatService.getAuxiliaryModelConfig()
       const client = new OpenAIClient()
 
       const modelMsgs = this.getMessagesForModel()
@@ -1543,7 +1543,7 @@ export class ChatSession {
     try {
       if (this.pendingToolCalls.value.length > 0) return
 
-      const model = this.agentService.getModelConfigFor(
+      const model = this.chatService.getModelConfigFor(
         this.activeProviderId.value,
         this.activeModelId.value
       )
@@ -1582,7 +1582,7 @@ export class ChatSession {
       parameters: t.parameters,
     }))
     return {
-      systemPrompt: this.agentService.getSystemPrompt(this),
+      systemPrompt: this.chatService.getSystemPrompt(this),
       tools,
       internalMessages: this.allInternalMessages,
       pendingToolCalls: this.pendingToolCalls.value.length

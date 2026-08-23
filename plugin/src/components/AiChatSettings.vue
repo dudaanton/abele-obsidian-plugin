@@ -79,12 +79,12 @@ import Setting from './obsidian/Setting.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Search from './obsidian/Search.vue'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
-import { AgentService } from '@/ai/AgentService'
+import { ChatService } from '@/ai/ChatService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 
 const emit = defineEmits<{ close: [] }>()
 
-const session = computed(() => AgentService.getInstance().activeSession.value)
+const session = computed(() => ChatService.getInstance().activeSession.value)
 
 // ── Interceptor ──
 

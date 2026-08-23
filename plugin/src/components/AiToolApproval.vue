@@ -81,14 +81,14 @@ import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 import Input from './obsidian/Input.vue'
 import Diff from './Diff.vue'
-import { AgentService } from '@/ai/AgentService'
+import { ChatService } from '@/ai/ChatService'
 import type { ChatMessage } from '@/ai/types'
 
 const props = defineProps<{
   message: ChatMessage
 }>()
 
-const session = computed(() => AgentService.getInstance().activeSession.value)
+const session = computed(() => ChatService.getInstance().activeSession.value)
 const isEditing = ref(false)
 const editedArgs = ref(JSON.stringify(props.message.toolParams, null, 2))
 const params = computed(() => props.message.toolParams || {})

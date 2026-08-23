@@ -27,14 +27,14 @@ import Setting from './obsidian/Setting.vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import AiScopeEditor from './AiScopeEditor.vue'
 import type { ScopeEntry } from '@/ai/ScopeResolver'
-import { AgentService } from '@/ai/AgentService'
+import { ChatService } from '@/ai/ChatService'
 import type { PermissionMode } from '@/ai/types'
 
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-const session = computed(() => AgentService.getInstance().activeSession.value)
+const session = computed(() => ChatService.getInstance().activeSession.value)
 const scope = computed(() => session.value?.scopeResolver)
 const permissionMode = computed(() => session.value?.permissionMode.value ?? 'confirm-all')
 const scopeEntries = computed(() => scope.value?.entries.value ?? [])

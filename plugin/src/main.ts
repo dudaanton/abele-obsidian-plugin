@@ -49,7 +49,7 @@ import {
 import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
 import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
-import { AgentService } from './ai/AgentService'
+import { ChatService } from './ai/ChatService'
 import { useFilesInAgent } from './helpers/useFilesInAgent'
 import { ScriptService } from './scripting/ScriptService'
 import { ScopeResolver } from './ai/ScopeResolver'
@@ -152,7 +152,7 @@ export default class AbelePlugin extends Plugin {
       GlobalStore.getInstance().initTimeTracking()
       SnippetService.getInstance().init()
       if (AbeleConfig.getInstance().ai.enabled) {
-        AgentService.getInstance().restoreTabs()
+        ChatService.getInstance().restoreTabs()
       }
     })
 
@@ -287,8 +287,8 @@ export default class AbelePlugin extends Plugin {
           const file = (leaf.view as any).file as TFile | undefined
           if (file?.extension === 'abchat') {
             leaf.detach()
-            const agentService = AgentService.getInstance()
-            agentService.openChatFile(file).then(() => {
+            const chatService = ChatService.getInstance()
+            chatService.openChatFile(file).then(() => {
               const { workspace } = this.app
               let aiLeaf = workspace.getLeavesOfType(AI_SIDEBAR_VIEW_TYPE)[0] ?? null
               if (!aiLeaf) {
@@ -326,8 +326,8 @@ export default class AbelePlugin extends Plugin {
               .setTitle('Use in AI Agent')
               .setIcon('bot')
               .onClick(async () => {
-                const agentService = AgentService.getInstance()
-                const session = agentService.activeSession.value
+                const chatService = ChatService.getInstance()
+                const session = chatService.activeSession.value
                 if (!session) return
                 session.scopeResolver.addFolder(file.path)
                 session.scopeResolver.invalidate()
@@ -428,12 +428,12 @@ export default class AbelePlugin extends Plugin {
                 const ref = file
                   ? `> From [[${file.basename}]]:\n> ${selection.replace(/\n/g, '\n> ')}\n\n`
                   : `> ${selection.replace(/\n/g, '\n> ')}\n\n`
-                const agentService = AgentService.getInstance()
-                agentService.pendingInput.value = ref
+                const chatService = ChatService.getInstance()
+                chatService.pendingInput.value = ref
 
                 // Add file to scope
                 if (file) {
-                  const session = agentService.activeSession.value
+                  const session = chatService.activeSession.value
                   if (session) {
                     const scope = session.scopeResolver
                     if (!scope.entries.value.some((e) => e.path === file.path)) {
@@ -930,7 +930,7 @@ export default class AbelePlugin extends Plugin {
     }
     SnippetService.destroy()
     ScriptService.destroy()
-    AgentService.getInstance().destroy()
+    ChatService.getInstance().destroy()
     ScopeResolver.getInstance().destroy()
     ChatStorage.destroy()
     GlobalStore.getInstance().destroy()

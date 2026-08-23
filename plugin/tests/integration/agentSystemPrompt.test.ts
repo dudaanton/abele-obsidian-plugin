@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { ref } from 'vue'
-import { AgentService } from '@/ai/AgentService'
+import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
@@ -28,7 +28,7 @@ beforeEach(() => {
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' }
 })
 
-describe('AgentService.getSystemPrompt', () => {
+describe('ChatService.getSystemPrompt', () => {
   it('returns the Default agent prompt blocks, concatenated', async () => {
     const registry = AgentRegistry.getInstance()
     const agent = registry.create({
@@ -40,7 +40,7 @@ describe('AgentService.getSystemPrompt', () => {
     })
     registry.setDefault(agent.id)
 
-    const prompt = await AgentService.getInstance().getSystemPrompt(fakeSession())
+    const prompt = await ChatService.getInstance().getSystemPrompt(fakeSession())
 
     expect(prompt).toBe('Block one.\n\nBlock two.')
   })
@@ -52,7 +52,7 @@ describe('AgentService.getSystemPrompt', () => {
       prompts: [{ type: 'text', value: 'Before.' }],
     })
     registry.setDefault(agent.id)
-    const service = AgentService.getInstance()
+    const service = ChatService.getInstance()
 
     expect(await service.getSystemPrompt(fakeSession())).toBe('Before.')
 
@@ -69,7 +69,7 @@ describe('AgentService.getSystemPrompt', () => {
     })
     registry.setDefault(agent.id)
 
-    const prompt = await AgentService.getInstance().getSystemPrompt(
+    const prompt = await ChatService.getInstance().getSystemPrompt(
       fakeSession({ customSystemPrompt: 'Chat override.' })
     )
 
@@ -84,7 +84,7 @@ describe('AgentService.getSystemPrompt', () => {
     })
     registry.setDefault(agent.id)
 
-    const prompt = await AgentService.getInstance().getSystemPrompt(
+    const prompt = await ChatService.getInstance().getSystemPrompt(
       fakeSession({ customSystemPromptNotePath: 'Prompts/Chat.md' })
     )
 
@@ -92,7 +92,7 @@ describe('AgentService.getSystemPrompt', () => {
   })
 
   it('falls back to the built-in prompt when there is no agent at all', async () => {
-    const prompt = await AgentService.getInstance().getSystemPrompt(fakeSession())
+    const prompt = await ChatService.getInstance().getSystemPrompt(fakeSession())
 
     expect(prompt).toBe(DEFAULT_AI_SETTINGS.prompts.system)
   })

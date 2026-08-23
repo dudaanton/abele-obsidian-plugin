@@ -10,7 +10,7 @@
  * module is dropped entirely from the production bundle.
  */
 import { ScopeResolver } from '@/ai/ScopeResolver'
-import { AgentService } from '@/ai/AgentService'
+import { ChatService } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -79,7 +79,7 @@ export interface NoteRenderSample {
 
 interface AbeleTestApi {
   ScopeResolver: typeof ScopeResolver
-  AgentService: typeof AgentService
+  ChatService: typeof ChatService
   GlobalStore: typeof GlobalStore
   plugin: Plugin
   measureGroupResolve(groupPath: string): GroupResolveMeasurement
@@ -149,7 +149,7 @@ function agentsSnapshot(): AgentsSnapshot {
 
 /** Resolves the prompt through the real chat path, overrides and all. */
 async function resolvedSystemPrompt(): Promise<string> {
-  const service = AgentService.getInstance()
+  const service = ChatService.getInstance()
   service.ensureInitialized()
   const session = service.activeSession.value
   if (!session) return ''
@@ -440,7 +440,7 @@ function startNoteRenderProbe(notePath: string, settleMs = 15_000): void {
 export function exposeTestApi(plugin: Plugin): void {
   globalThis.__abeleTest = {
     ScopeResolver,
-    AgentService,
+    ChatService,
     GlobalStore,
     plugin,
     measureGroupResolve,

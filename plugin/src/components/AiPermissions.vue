@@ -10,12 +10,12 @@
 import { computed } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import ToolModesEditor from './ToolModesEditor.vue'
-import { AgentService } from '@/ai/AgentService'
+import { ChatService } from '@/ai/ChatService'
 import type { ToolMode } from '@/ai/types'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
-const session = computed(() => AgentService.getInstance().activeSession.value)
+const session = computed(() => ChatService.getInstance().activeSession.value)
 
 const onUpdate = (toolName: string, mode: ToolMode) => {
   const s = session.value

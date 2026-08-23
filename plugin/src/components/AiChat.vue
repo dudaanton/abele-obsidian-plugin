@@ -9,10 +9,10 @@
     <!-- Tabs -->
     <AiChatTabs
       :tabs="tabInfos"
-      :can-create="agentService.canCreateTab"
-      @select="agentService.switchTab($event)"
-      @close="agentService.closeTab($event)"
-      @create="agentService.createTab()"
+      :can-create="chatService.canCreateTab"
+      @select="chatService.switchTab($event)"
+      @close="chatService.closeTab($event)"
+      @create="chatService.createTab()"
     />
 
     <!-- Header -->
@@ -186,7 +186,7 @@ import AiChatSettings from './AiChatSettings.vue'
 import AiSkillPromptPicker from './AiSkillPromptPicker.vue'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { AgentService } from '@/ai/AgentService'
+import { ChatService } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
 import type { TemplateVariable } from '@/templates/TemplateParser'
@@ -194,9 +194,9 @@ import { importExternalFile } from '@/ai/attachments'
 import { discoverSkills } from '@/ai/tools/SkillTool'
 import { getChildren } from '@/ai/chatTree'
 
-const agentService = AgentService.getInstance()
-agentService.ensureInitialized()
-const session = computed(() => agentService.activeSession.value)
+const chatService = ChatService.getInstance()
+chatService.ensureInitialized()
+const session = computed(() => chatService.activeSession.value)
 
 // Reactive state from active session
 const messages = computed(() => session.value?.messages.value ?? [])
@@ -240,13 +240,13 @@ const error = computed(() => session.value?.error.value ?? null)
 
 // Tab bar info
 const tabInfos = computed(() =>
-  agentService.tabOrder.value.map((id) => {
-    const s = agentService.getSession(id)
+  chatService.tabOrder.value.map((id) => {
+    const s = chatService.getSession(id)
     return {
       id,
       label: s?.chatTitle.value || 'New chat',
       isStreaming: s?.isStreaming.value ?? false,
-      isActive: id === agentService.activeTabId.value,
+      isActive: id === chatService.activeTabId.value,
     }
   })
 )
@@ -467,7 +467,7 @@ watch([messages, streamingContent, streamingThinking], doScroll)
 
 // Reset scroll when switching tabs
 watch(
-  () => agentService.activeTabId.value,
+  () => chatService.activeTabId.value,
   () => {
     shouldAutoScroll = true
     nextTick(doScroll)
@@ -477,11 +477,11 @@ watch(
 
 // Consume pending input from external sources (e.g. editor context menu)
 watch(
-  () => agentService.pendingInput.value,
+  () => chatService.pendingInput.value,
   (text) => {
     if (text) {
       chatInput.value?.setText(text)
-      agentService.pendingInput.value = null
+      chatService.pendingInput.value = null
     }
   }
 )
@@ -615,7 +615,7 @@ const applyAiModelProperty = (modelKey: string | undefined) => {
   }
 
   if (resolvedProviderId && resolvedModelId) {
-    agentService.switchModel(resolvedProviderId, resolvedModelId)
+    chatService.switchModel(resolvedProviderId, resolvedModelId)
   } else {
     new Notice(`Model not found: ${modelKey}`)
   }
@@ -777,14 +777,14 @@ const handleNewChat = async () => {
 
 const onLoadChat = async (file: TFile) => {
   // If this chat is already open in another tab, switch to it
-  const existing = agentService.getSessionByFile(file.path)
+  const existing = chatService.getSessionByFile(file.path)
   if (existing) {
-    agentService.switchTab(existing.id)
+    chatService.switchTab(existing.id)
     return
   }
   // Load into the current tab
   await session.value?.load(file)
-  agentService.saveTabs()
+  chatService.saveTabs()
 }
 
 const reloadChat = async () => {
