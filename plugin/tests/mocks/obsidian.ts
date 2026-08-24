@@ -72,6 +72,76 @@ export const Platform = {
   isDesktop: true,
 }
 
+/**
+ * Obsidian adds these to `HTMLElement` itself rather than shipping them as helpers, and
+ * components call them directly. happy-dom has no such thing, so they are installed here —
+ * on import of this module, exactly as the real plugin API does it.
+ */
+if (typeof HTMLElement !== 'undefined' && !('empty' in HTMLElement.prototype)) {
+  Object.defineProperties(HTMLElement.prototype, {
+    empty: {
+      value(this: HTMLElement) {
+        while (this.firstChild) this.removeChild(this.firstChild)
+      },
+    },
+    addClass: {
+      value(this: HTMLElement, ...classes: string[]) {
+        this.classList.add(...classes)
+      },
+    },
+    removeClass: {
+      value(this: HTMLElement, ...classes: string[]) {
+        this.classList.remove(...classes)
+      },
+    },
+    doc: {
+      get(this: HTMLElement) {
+        return this.ownerDocument
+      },
+    },
+  })
+}
+
+/** Draws a Lucide glyph into an element. Recorded as an attribute so tests can assert it. */
+export function setIcon(el: HTMLElement, icon: string): void {
+  el.setAttribute('data-icon', icon)
+}
+
+/**
+ * Enough of Obsidian's modal for components that mount one: a title, the two elements they
+ * reach for, and open/close. `onClose` is overridden by callers, so `close()` calls it.
+ */
+export class Modal {
+  containerEl: HTMLElement = document.createElement('div')
+  modalEl: HTMLElement = document.createElement('div')
+  contentEl: HTMLElement = document.createElement('div')
+  titleText = ''
+  isOpen = false
+
+  constructor(public app?: unknown) {
+    this.modalEl.appendChild(this.contentEl)
+    this.containerEl.appendChild(this.modalEl)
+  }
+
+  setTitle(title: string): this {
+    this.titleText = title
+    return this
+  }
+
+  open(): void {
+    this.isOpen = true
+    document.body.appendChild(this.containerEl)
+  }
+
+  close(): void {
+    this.isOpen = false
+    this.containerEl.remove()
+    this.onClose()
+  }
+
+  onClose(): void {}
+}
+
 // Structural placeholders — present so imports resolve; not behaviourally modelled.
 export class App {}
 export class Vault {}
@@ -81,6 +151,5 @@ export class MarkdownView {}
 export class WorkspaceLeaf {}
 export class Plugin {}
 export class PluginSettingTab {}
-export class Modal {}
 export class Setting {}
 export class Component {}

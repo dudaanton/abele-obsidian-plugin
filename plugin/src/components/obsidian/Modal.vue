@@ -12,6 +12,8 @@ import { onBeforeMount, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 
 const props = defineProps<{
   title?: string
+  /** `wide` for a form that needs more than Obsidian's default column. */
+  size?: 'default' | 'wide'
 }>()
 
 const modal = ref<Modal | null>(null)
@@ -36,6 +38,10 @@ onBeforeMount(() => {
   const { app } = GlobalStore.getInstance()
 
   modal.value = new ObsidianModal(app)
+
+  if (props.size === 'wide') {
+    modal.value.modalEl.addClass('abele-modal_wide')
+  }
 
   const contentEl = modal.value.contentEl
   const el = contentEl.doc.createElement('div')
@@ -63,3 +69,15 @@ const emit = defineEmits<{
   (e: 'expose-id', id: string): void
 }>()
 </script>
+
+<style lang="scss">
+/**
+ * Obsidian's default modal is a reading-width column. A form with its own navigation needs
+ * more, but never more than the window it opens in — settings can be a 900px window of its
+ * own, and on a phone the modal is the whole screen.
+ */
+.abele-modal_wide {
+  width: min(52rem, 92vw);
+  max-width: min(52rem, 92vw);
+}
+</style>
