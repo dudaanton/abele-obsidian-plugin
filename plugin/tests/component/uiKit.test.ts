@@ -144,6 +144,10 @@ describe('CardGrid', () => {
     expect(mount(CardGrid).classes()).not.toContain('abele-card-grid_wide')
     expect(mount(CardGrid, { props: { wide: true } }).classes()).toContain('abele-card-grid_wide')
   })
+
+  it('puts one card per row when they hold something to type into', () => {
+    expect(mount(CardGrid, { props: { stack: true } }).classes()).toContain('abele-card-grid_stack')
+  })
 })
 
 describe('Section', () => {

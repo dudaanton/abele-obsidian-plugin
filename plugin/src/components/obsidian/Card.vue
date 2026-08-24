@@ -65,11 +65,13 @@ const emit = defineEmits<{
   }
 }
 
+/** Wraps rather than pushing the actions off the edge when the card is phone-width. */
 .abele-card__head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--size-4-2);
+  flex-wrap: wrap;
+  gap: var(--size-2-2) var(--size-4-2);
   min-width: 0;
 }
 
@@ -78,6 +80,7 @@ const emit = defineEmits<{
   align-items: center;
   flex-wrap: wrap;
   gap: var(--size-2-2);
+  flex: 1 1 auto;
   min-width: 0;
 }
 

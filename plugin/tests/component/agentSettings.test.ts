@@ -1,5 +1,5 @@
 /**
- * The agents screen: the list, and the editor's section navigation.
+ * The agents screen: the list of agents and the editor behind a card.
  *
  * happy-dom computes no layout, so these assert what reaches the DOM and what the components do
  * with it — never how it looks. Whether anything overflows is settled in the running app, by
@@ -23,24 +23,7 @@ const provider: AiProvider = {
   models: [{ id: 'big', name: 'Big', contextWindow: 100, maxTokens: 10, supportsReasoning: false }],
 }
 
-/** happy-dom has no ResizeObserver, and the editor measures itself with one. */
-let observedWidth = 900
-class FakeResizeObserver {
-  constructor(private callback: ResizeObserverCallback) {}
-  observe(target: Element) {
-    this.callback(
-      [{ target, contentRect: { width: observedWidth } } as unknown as ResizeObserverEntry],
-      this as unknown as ResizeObserver
-    )
-  }
-  unobserve() {}
-  disconnect() {}
-}
-
 beforeEach(() => {
-  observedWidth = 900
-  ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver = FakeResizeObserver
-
   useVault([])
   AgentRegistry.destroy()
   AbeleConfig.getInstance().ai = {
@@ -57,23 +40,34 @@ afterEach(() => {
 })
 
 /**
- * The editor's content lives inside the modal's slot, and a shallow mount would drop it. This
- * stub keeps the modal out of the way while still rendering what it wraps.
+ * The kit renders for real here — a card, a badge and a tab strip are exactly what these
+ * screens are made of, so stubbing them would leave nothing worth asserting. Only the pieces
+ * that reach into Obsidian's own widget classes are stood in for.
  */
-const MODAL_STUB = {
-  ObsidianModal: { template: '<div class="modal-stub"><slot /></div>' },
-  // Setting wraps each control in its default slot; stubbed away, the controls never render.
-  Setting: {
-    props: ['name', 'desc'],
-    template: '<div class="setting-stub"><span>{{ name }}</span><slot /></div>',
-  },
+const OBSIDIAN_WIDGETS = {
+  Dropdown: { props: ['modelValue', 'options'], template: '<div class="dropdown-stub" />' },
+  Search: { props: ['modelValue'], template: '<div class="search-stub" />' },
+  AiScopeEditor: true,
+  ToolModesEditor: true,
+}
+
+function mountList() {
+  return mount(AgentsSettings, {
+    global: { stubs: { ...OBSIDIAN_WIDGETS, AgentEditorModal: true } },
+  })
 }
 
 function mountEditor(agentId: string) {
   return mount(AgentEditorModal, {
     props: { agentId },
-    shallow: true,
-    global: { stubs: MODAL_STUB },
+    global: {
+      stubs: {
+        ...OBSIDIAN_WIDGETS,
+        // The editor's content lives in the modal's slot; a stub that drops it would leave
+        // the whole form unrendered.
+        ObsidianModal: { template: '<div class="modal-stub"><slot /></div>' },
+      },
+    },
   })
 }
 
@@ -96,47 +90,73 @@ describe('the agents list', () => {
   it('shows every agent, utility ones included', () => {
     seedAgents()
 
-    const view = mount(AgentsSettings, { shallow: true })
+    const view = mountList()
 
-    const names = view.findAll('.abele-agent-card__name').map((n) => n.text())
-    expect(names).toEqual(['Researcher', 'Titler'])
+    expect(view.findAll('.abele-card__name').map((n) => n.text())).toEqual(['Researcher', 'Titler'])
   })
 
   it('marks which agent is the default and which are utility', () => {
     seedAgents()
 
-    const view = mount(AgentsSettings, { shallow: true })
+    const view = mountList()
 
-    const cards = view.findAll('.abele-agent-card')
-    expect(cards[0].findAll('.abele-agent-card__badge').map((b) => b.text())).toEqual(['default'])
-    expect(cards[1].findAll('.abele-agent-card__badge').map((b) => b.text())).toEqual(['utility'])
+    const cards = view.findAll('.abele-card')
+    expect(cards[0].findAll('.abele-badge').map((b) => b.text())).toEqual(['default'])
+    expect(cards[1].findAll('.abele-badge').map((b) => b.text())).toEqual(['utility'])
   })
 
   it('summarises the model, the prompts and the scope', () => {
     seedAgents()
 
-    const view = mount(AgentsSettings, { shallow: true })
+    const view = mountList()
 
-    const meta = view.findAll('.abele-agent-card')[0].findAll('.abele-agent-card__meta span')
+    const meta = view.findAll('.abele-card')[0].findAll('.abele-card__meta span')
     expect(meta.map((m) => m.text())).toEqual(['Big', '1 prompt', '1 scope entry'])
   })
 
   it('says so plainly when an agent has no model yet', () => {
     AgentRegistry.getInstance().create({ name: 'Fresh' })
 
-    const view = mount(AgentsSettings, { shallow: true })
+    const view = mountList()
 
-    expect(view.find('.abele-agent-card__meta').text()).toContain('no model')
+    expect(view.find('.abele-card__meta').text()).toContain('no model')
+  })
+
+  it('opens the editor when a card is pressed', async () => {
+    const { main } = seedAgents()
+    const view = mountList()
+
+    await view.findAll('.abele-card')[0].trigger('click')
+
+    expect(view.findComponent(AgentEditorModal).props('agentId')).toBe(main.id)
   })
 
   it('adds an agent and opens it for editing', async () => {
     seedAgents()
-    const view = mount(AgentsSettings, { shallow: true })
+    const view = mountList()
 
     await view.findComponent({ name: 'Button' }).vm.$emit('click')
 
     expect(AgentRegistry.getInstance().list({ includeUtility: true })).toHaveLength(3)
     expect(view.findComponent(AgentEditorModal).exists()).toBe(true)
+  })
+
+  it('refuses to remove the last agent, and says so by disabling the action', () => {
+    AgentRegistry.getInstance().create({ name: 'Only one' })
+
+    const view = mountList()
+
+    const trash = view.findAll('.abele-card__actions .abele-obsidian-icon')[2]
+    expect(trash.classes()).toContain('abele-obsidian-icon_disabled')
+  })
+
+  it('offers no way to make the default agent default again', () => {
+    seedAgents()
+
+    const view = mountList()
+
+    const star = view.findAll('.abele-card')[0].findAll('.abele-obsidian-icon')[0]
+    expect(star.classes()).toContain('abele-obsidian-icon_disabled')
   })
 })
 
@@ -146,58 +166,69 @@ describe('the agent editor', () => {
 
     const view = mountEditor(main.id)
 
-    const tabs = view.findAll('.abele-agent-editor__tab').map((t) => t.text())
-    expect(tabs).toEqual(['Basic', 'Prompts', 'Access', 'Skills', 'Delegation'])
+    expect(view.findAll('.abele-tabs__tab').map((t) => t.text())).toEqual([
+      'Basic',
+      'Prompts',
+      'Access',
+      'Skills',
+      'Delegation',
+    ])
   })
 
-  it('shows a section beside the nav when there is room', () => {
+  it('opens on the first section', () => {
     const { main } = seedAgents()
 
     const view = mountEditor(main.id)
 
-    expect(view.find('.abele-agent-editor__nav').exists()).toBe(true)
-    expect(view.find('.abele-agent-editor__body').exists()).toBe(true)
-    expect(view.find('.abele-agent-editor_narrow').exists()).toBe(false)
+    expect(view.find('.abele-tabs__tab_active').text()).toBe('Basic')
+    expect(view.find('.setting-item-name').text()).toBe('Name')
   })
 
-  it('shows only the section list when the editor is narrow', async () => {
-    // The width is measured from the element, not from a window: settings can live in their own
-    // window, where this component's `window` is the wrong one entirely.
-    observedWidth = 360
+  it('moves to another section when its tab is pressed', async () => {
     const { main } = seedAgents()
-
     const view = mountEditor(main.id)
-    await view.vm.$nextTick()
 
-    expect(view.find('.abele-agent-editor_narrow').exists()).toBe(true)
-    expect(view.find('.abele-agent-editor__nav').exists()).toBe(true)
-    expect(view.find('.abele-agent-editor__body').exists()).toBe(false)
+    await view.findAll('.abele-tabs__tab')[1].trigger('click')
+
+    expect(view.find('.abele-tabs__tab_active').text()).toBe('Prompts')
+    expect(view.findAll('.abele-card__name').map((c) => c.text())).toEqual(['Block 1'])
   })
 
-  it('descends into a section and back out again on a narrow screen', async () => {
-    observedWidth = 360
-    const { main } = seedAgents()
-    const view = mountEditor(main.id)
-    await view.vm.$nextTick()
+  it('says when an agent has no instructions of its own', async () => {
+    const bare = AgentRegistry.getInstance().create({ name: 'Bare' })
+    const view = mountEditor(bare.id)
 
-    await view.findAll('.abele-agent-editor__tab')[1].trigger('click')
-    expect(view.find('.abele-agent-editor__body').exists()).toBe(true)
-    expect(view.find('.abele-agent-editor__nav').exists()).toBe(false)
+    await view.findAll('.abele-tabs__tab')[1].trigger('click')
 
-    await view.find('.abele-agent-editor__back').trigger('click')
-    expect(view.find('.abele-agent-editor__nav').exists()).toBe(true)
-    expect(view.find('.abele-agent-editor__body').exists()).toBe(false)
+    expect(view.find('.abele-empty-state').text()).toContain('no instructions of its own')
   })
 
   it('writes an edit straight through to the stored agent', async () => {
     const { main } = seedAgents()
     const view = mountEditor(main.id)
 
-    const nameInput = view.findAllComponents(Input)[0]
-    await nameInput.vm.$emit('update:modelValue', 'Renamed')
+    await view.findAllComponents(Input)[0].vm.$emit('update:model-value', 'Renamed')
 
     // Straight through, not into a draft: an open chat on this agent must see it at once.
     expect(AgentRegistry.getInstance().get(main.id)?.name).toBe('Renamed')
     expect(view.emitted('changed')).toBeTruthy()
+  })
+
+  it('reorders prompt blocks', async () => {
+    const registry = AgentRegistry.getInstance()
+    const agent = registry.create({
+      name: 'Two blocks',
+      prompts: [
+        { type: 'text', value: 'first' },
+        { type: 'text', value: 'second' },
+      ],
+    })
+    const view = mountEditor(agent.id)
+    await view.findAll('.abele-tabs__tab')[1].trigger('click')
+
+    const secondCardActions = view.findAll('.abele-card__actions')[1]
+    await secondCardActions.findAll('.abele-obsidian-icon')[0].trigger('click')
+
+    expect(registry.get(agent.id)?.prompts.map((p) => p.value)).toEqual(['second', 'first'])
   })
 })

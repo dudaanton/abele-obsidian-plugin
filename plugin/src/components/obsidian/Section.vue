@@ -1,14 +1,18 @@
 <template>
   <section class="abele-section">
-    <h3 class="abele-section__heading">{{ title }}</h3>
-    <p v-if="desc" class="abele-section__desc">{{ desc }}</p>
+    <h3 v-if="title" class="abele-section__heading">{{ title }}</h3>
+    <p v-if="desc || $slots.desc" class="abele-section__desc">
+      <slot name="desc">{{ desc }}</slot>
+    </p>
     <slot />
   </section>
 </template>
 
 <script setup lang="ts">
 defineProps<{
-  title: string
+  /** Omitted when the group already has a heading above it — a tab label, say. */
+  title?: string
+  /** Plain text. For a description carrying markup, fill the `desc` slot instead. */
   desc?: string
 }>()
 </script>

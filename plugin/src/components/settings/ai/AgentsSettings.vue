@@ -1,44 +1,44 @@
 <template>
-  <div class="abele-agents-settings">
-    <p class="setting-item-description">
-      An agent is a model, a set of instructions, and what it is allowed to do. Chats run on one;
-      scripts and other agents can delegate to one.
-    </p>
+  <Section
+    desc="An agent is a model, a set of instructions, and what it is allowed to do. Chats run on
+      one; scripts and other agents can delegate to one."
+  >
+    <CardGrid wide>
+      <Card
+        v-for="agent in agents"
+        :key="agent.id"
+        :title="agent.name"
+        :description="agent.description"
+        :meta="metaFor(agent)"
+        clickable
+        @click="editingId = agent.id"
+      >
+        <template #badges>
+          <Badge v-if="agent.id === defaultAgentId" text="default" accent />
+          <Badge v-if="agent.utility" text="utility" />
+        </template>
 
-    <div v-for="agent in agents" :key="agent.id" class="abele-agent-card">
-      <div class="abele-agent-card__main" @click="editingId = agent.id">
-        <div class="abele-agent-card__title">
-          <span class="abele-agent-card__name">{{ agent.name }}</span>
-          <span v-if="agent.id === defaultAgentId" class="abele-agent-card__badge">default</span>
-          <span v-if="agent.utility" class="abele-agent-card__badge">utility</span>
-        </div>
-        <div v-if="agent.description" class="abele-agent-card__desc">{{ agent.description }}</div>
-        <div class="abele-agent-card__meta">
-          <span>{{ modelLabel(agent) }}</span>
-          <span>{{ agent.prompts.length }} prompt{{ agent.prompts.length === 1 ? '' : 's' }}</span>
-          <span>{{ scopeLabel(agent) }}</span>
-        </div>
-      </div>
+        <template #actions>
+          <Icon
+            icon="star"
+            tooltip="Make default"
+            :disabled="agent.id === defaultAgentId || agent.utility"
+            @click="makeDefault(agent.id)"
+          />
+          <Icon icon="copy" tooltip="Duplicate" @click="duplicate(agent.id)" />
+          <Icon
+            icon="trash"
+            tooltip="Delete"
+            :disabled="agents.length <= 1"
+            @click="remove(agent.id)"
+          />
+        </template>
+      </Card>
+    </CardGrid>
 
-      <div class="abele-agent-card__actions">
-        <Icon icon="pencil" title="Edit" @click="editingId = agent.id" />
-        <Icon
-          v-if="agent.id !== defaultAgentId && !agent.utility"
-          icon="star"
-          title="Make default"
-          @click="makeDefault(agent.id)"
-        />
-        <Icon icon="copy" title="Duplicate" @click="duplicate(agent.id)" />
-        <Icon
-          icon="trash"
-          :class="{ 'abele-agent-card__action_disabled': agents.length <= 1 }"
-          title="Delete"
-          @click="remove(agent.id)"
-        />
-      </div>
+    <div class="abele-agents-settings__actions">
+      <Button text="Add agent" accent @click="addAgent" />
     </div>
-
-    <Button text="Add agent" @click="addAgent" />
 
     <AgentEditorModal
       v-if="editingId"
@@ -46,14 +46,17 @@
       @close="editingId = ''"
       @changed="bump"
     />
-  </div>
+  </Section>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Notice } from 'obsidian'
 import Button from '../../obsidian/Button.vue'
 import Icon from '../../obsidian/Icon.vue'
+import Card from '../../obsidian/Card.vue'
+import CardGrid from '../../obsidian/CardGrid.vue'
+import Badge from '../../obsidian/Badge.vue'
+import Section from '../../obsidian/Section.vue'
 import AgentEditorModal from './AgentEditorModal.vue'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -76,11 +79,19 @@ const defaultAgentId = computed(() => {
   return config.ai.defaultAgentId
 })
 
+function metaFor(agent: AgentDefinition): string[] {
+  return [modelLabel(agent), promptLabel(agent), scopeLabel(agent)]
+}
+
 function modelLabel(agent: AgentDefinition): string {
   if (!agent.modelId) return 'no model'
   const provider = config.ai.providers.find((p) => p.id === agent.providerId)
   const model = provider?.models.find((m) => m.id === agent.modelId)
   return model?.name || agent.modelId
+}
+
+function promptLabel(agent: AgentDefinition): string {
+  return `${agent.prompts.length} prompt${agent.prompts.length === 1 ? '' : 's'}`
 }
 
 function scopeLabel(agent: AgentDefinition): string {
@@ -113,78 +124,18 @@ function makeDefault(id: string): void {
   persist()
 }
 
+/**
+ * The last agent stays: a chat has to run on something. The icon is disabled rather than
+ * hidden, so the row of actions does not reshuffle as agents come and go.
+ */
 function remove(id: string): void {
-  if (!registry.remove(id)) {
-    new Notice('The last agent cannot be removed — chats need something to run on.')
-    return
-  }
+  if (!registry.remove(id)) return
   persist()
 }
 </script>
 
 <style lang="scss">
-.abele-agent-card {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--size-4-2);
-  padding: var(--size-4-2);
-  margin-bottom: var(--size-4-2);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-}
-
-.abele-agent-card__main {
-  flex: 1 1 auto;
-  min-width: 0;
-  cursor: pointer;
-}
-
-.abele-agent-card__title {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--size-2-2);
-}
-
-.abele-agent-card__name {
-  font-weight: var(--font-medium);
-}
-
-.abele-agent-card__badge {
-  font-size: var(--font-smallest);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 0 var(--size-2-2);
-  border-radius: var(--radius-s);
-  background: var(--background-modifier-border);
-  color: var(--text-muted);
-}
-
-.abele-agent-card__desc {
-  color: var(--text-muted);
-  font-size: var(--font-small);
-  margin-top: var(--size-2-1);
-  overflow-wrap: anywhere;
-}
-
-.abele-agent-card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--size-4-2);
-  margin-top: var(--size-2-2);
-  color: var(--text-faint);
-  font-size: var(--font-smallest);
-}
-
-.abele-agent-card__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--size-2-1);
-  flex: 0 0 auto;
-}
-
-.abele-agent-card__action_disabled {
-  opacity: 0.3;
-  pointer-events: none;
+.abele-agents-settings__actions {
+  margin-top: var(--size-4-4);
 }
 </style>

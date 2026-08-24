@@ -38,6 +38,14 @@ defineProps<{
     flex: 1 1 14em;
     min-width: 0;
     flex-wrap: wrap;
+
+    // Obsidian's control column is a flex row that shrinks its children to fit, which would
+    // leave a dropdown as wide as its longest option and a text field far wider. Stretching
+    // both gives every row the same right-hand column.
+    .abele-obsidian-dropdown,
+    .abele-obsidian-search {
+      width: 100%;
+    }
   }
 
   .setting-item-name,
