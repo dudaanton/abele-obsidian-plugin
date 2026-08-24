@@ -132,7 +132,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private readonly log = new ChatLogWriter()
   private dirty = false
   private writing: Promise<void> | null = null
-  private persistTimer: ReturnType<typeof setTimeout> | null = null
+  private persistTimer: number | null = null
 
   // Reactive state for Vue components
   public readonly messages = ref<ChatMessage[]>([])
@@ -1313,7 +1313,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.dirty = true
     if (this.persistTimer !== null) return
 
-    this.persistTimer = setTimeout(() => {
+    this.persistTimer = window.setTimeout(() => {
       this.persistTimer = null
       void this.flush()
     }, PERSIST_INTERVAL_MS)
@@ -1328,7 +1328,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     }
 
     if (this.persistTimer !== null) {
-      clearTimeout(this.persistTimer)
+      window.clearTimeout(this.persistTimer)
       this.persistTimer = null
     }
 
@@ -1710,7 +1710,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   destroy(): void {
     if (this.persistTimer !== null) {
-      clearTimeout(this.persistTimer)
+      window.clearTimeout(this.persistTimer)
       this.persistTimer = null
     }
     this.abort()

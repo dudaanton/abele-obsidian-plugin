@@ -282,7 +282,7 @@ function startResponsivenessProbe(groupPath: string): void {
   let previousTick = performance.now()
   let ticks = 0
 
-  const timer = setInterval(() => {
+  const timer = window.setInterval(() => {
     const now = performance.now()
     gaps.push(now - previousTick)
     previousTick = now
@@ -290,7 +290,7 @@ function startResponsivenessProbe(groupPath: string): void {
   }, 16)
 
   // Let the ticker establish a baseline, then run the operation and sample past it.
-  setTimeout(() => {
+  window.setTimeout(() => {
     const scope = new ScopeResolver()
     scope.addGroup(groupPath)
 
@@ -298,8 +298,8 @@ function startResponsivenessProbe(groupPath: string): void {
     const resolved = scope.resolve()
     const operationMs = performance.now() - startedAt
 
-    setTimeout(() => {
-      clearInterval(timer)
+    window.setTimeout(() => {
+      window.clearInterval(timer)
       globalThis.__abeleTest!.responsivenessResult = {
         longestStallMs: gaps.length ? Math.max(...gaps) : 0,
         operationMs,
@@ -398,16 +398,16 @@ function startNoteRenderProbe(notePath: string, settleMs = 15_000): void {
 
   const gaps: number[] = []
   let previousTick = performance.now()
-  let timer: ReturnType<typeof setInterval> | null = null
+  let timer: number | null = null
 
   // Emptying the leaf first is what makes the measurement mean anything. Opening a note
   // that is already open reuses the mounted footer, so the sample would report whatever
   // paging windows a previous run had already scrolled open rather than a fresh render.
   const leaf = app.workspace.getLeaf(false)
   void leaf.setViewState({ type: 'empty' }).then(() => {
-    setTimeout(() => {
+    window.setTimeout(() => {
       previousTick = performance.now()
-      timer = setInterval(() => {
+      timer = window.setInterval(() => {
         const now = performance.now()
         gaps.push(now - previousTick)
         previousTick = now
@@ -415,8 +415,8 @@ function startNoteRenderProbe(notePath: string, settleMs = 15_000): void {
 
       void leaf.openFile(file)
 
-      setTimeout(() => {
-        if (timer) clearInterval(timer)
+      window.setTimeout(() => {
+        if (timer) window.clearInterval(timer)
 
         const count = (selector: string): number => document.querySelectorAll(selector).length
         // One frame is 16ms; anything beyond that is time the UI could not respond.

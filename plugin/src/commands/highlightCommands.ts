@@ -28,7 +28,7 @@ class ColorPickerModal extends SuggestModal<HighlightColor> {
   }
 
   onClose(): void {
-    setTimeout(() => {
+    window.setTimeout(() => {
       if (!this.picked) this.resolve(null)
     }, 0)
   }

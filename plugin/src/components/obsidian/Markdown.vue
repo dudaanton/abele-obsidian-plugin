@@ -51,7 +51,7 @@ onMounted(() => {
 watch(
   () => [props.text, props.filePath],
   () => {
-    setTimeout(() => {
+    window.setTimeout(() => {
       renderContent()
     }, 0)
   },

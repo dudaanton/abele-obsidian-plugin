@@ -68,12 +68,12 @@ onMounted(() => {
   props.entry.load()
   if (props.entry.isActive) {
     updateElapsed()
-    interval = setInterval(updateElapsed, 1000)
+    interval = window.setInterval(updateElapsed, 1000)
   }
 })
 
 onUnmounted(() => {
-  if (interval) clearInterval(interval)
+  if (interval) window.clearInterval(interval)
 })
 
 const formatDuration = (seconds: number): string => {

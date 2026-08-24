@@ -76,7 +76,7 @@ async function getOrCreateDailyNote(app: App, journal: Journal): Promise<TFile |
   journal.createJournalNote(today)
 
   // Wait a bit for file creation and return it
-  await new Promise((resolve) => setTimeout(resolve, 500))
+  await new Promise((resolve) => window.setTimeout(resolve, 500))
 
   file = app.vault.getAbstractFileByPath(notePath)
   if (file instanceof TFile) {

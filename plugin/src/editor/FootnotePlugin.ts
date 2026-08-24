@@ -215,7 +215,7 @@ class FootnoteOverlay {
     this.decorations = buildDecorations(this.parsedFootnotes, this.parsedDefinitions, view.state)
 
     this.rebuildOverlay()
-    requestAnimationFrame(() => this.position())
+    window.requestAnimationFrame(() => this.position())
 
     // Click handler for footnote links
     this.view.dom.addEventListener('click', this.handleClick)
@@ -277,7 +277,7 @@ class FootnoteOverlay {
     }
 
     if (update.geometryChanged || update.viewportChanged || update.docChanged) {
-      requestAnimationFrame(() => this.position())
+      window.requestAnimationFrame(() => this.position())
     }
   }
 

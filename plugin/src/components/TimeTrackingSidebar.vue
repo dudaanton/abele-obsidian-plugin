@@ -136,10 +136,10 @@ const updateActiveElapsed = () => {
 watch(
   () => activeEntries.value.length,
   (count) => {
-    if (activeInterval) clearInterval(activeInterval)
+    if (activeInterval) window.clearInterval(activeInterval)
     if (count > 0) {
       updateActiveElapsed()
-      activeInterval = setInterval(updateActiveElapsed, 1000)
+      activeInterval = window.setInterval(updateActiveElapsed, 1000)
     } else {
       activeElapsedMap.value = {}
     }
@@ -148,7 +148,7 @@ watch(
 )
 
 onUnmounted(() => {
-  if (activeInterval) clearInterval(activeInterval)
+  if (activeInterval) window.clearInterval(activeInterval)
   dailyChart?.dispose()
   dailyObserver?.disconnect()
   groupsPieChart?.dispose()

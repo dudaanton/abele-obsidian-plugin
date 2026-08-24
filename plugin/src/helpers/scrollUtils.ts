@@ -33,10 +33,10 @@ export function reliableScrollTo(offset: number, flash = true) {
       return
     }
 
-    setTimeout(() => {
+    window.setTimeout(() => {
       // If target is rendered, use native scrollIntoView for precise centering
       if (tryNativeCenter()) {
-        setTimeout(() => finish(), RETRY_DELAY)
+        window.setTimeout(() => finish(), RETRY_DELAY)
         return
       }
       tryScroll()
@@ -62,13 +62,13 @@ export function reliableScrollTo(offset: number, flash = true) {
 
   const centerAndFinish = () => {
     tryNativeCenter()
-    setTimeout(() => finish(), RETRY_DELAY)
+    window.setTimeout(() => finish(), RETRY_DELAY)
   }
 
   const finish = () => {
     cmView.dispatch({ selection: { anchor: offset } })
     cmView.focus()
-    if (flash) setTimeout(() => tryFlash(offset), 50)
+    if (flash) window.setTimeout(() => tryFlash(offset), 50)
   }
 
   tryScroll()
@@ -88,7 +88,7 @@ function tryFlash(offset: number) {
       lineEl.classList.remove(FLASH_CLASS)
       void (lineEl as HTMLElement).offsetWidth
       lineEl.classList.add(FLASH_CLASS)
-      setTimeout(() => lineEl.classList.remove(FLASH_CLASS), 2500)
+      window.setTimeout(() => lineEl.classList.remove(FLASH_CLASS), 2500)
     }
   } catch {
     // pos outside viewport

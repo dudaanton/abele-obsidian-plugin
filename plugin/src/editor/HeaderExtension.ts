@@ -59,7 +59,7 @@ export function createHeaderExtension(): Extension {
 
       update() {
         // metadata cache is not updated immediately
-        setTimeout(() => {
+        window.setTimeout(() => {
           if (this.destroyed) return
 
           const currentFile = this.view.state.field(editorInfoField)?.file ?? null

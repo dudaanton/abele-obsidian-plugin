@@ -83,7 +83,7 @@ const tab = ref<'skills' | 'prompts'>('skills')
 const search = ref('')
 
 onMounted(() => {
-  setTimeout(() => {
+  window.setTimeout(() => {
     const input = document.querySelector<HTMLInputElement>('.abele-sp-picker input')
     input?.focus()
   }, 100)

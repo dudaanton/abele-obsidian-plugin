@@ -314,7 +314,7 @@ export default class AbelePlugin extends Plugin {
 
         // Delayed cleanup for widgets whose DOM was removed without CodeMirror calling destroy().
         // The delay ensures CodeMirror's own destroy() runs first when it does fire.
-        setTimeout(() => {
+        window.setTimeout(() => {
           store.cleanupOrphanedWidgets()
         }, 500)
       })
@@ -890,7 +890,7 @@ export default class AbelePlugin extends Plugin {
             return
 
           // Wait for 1 second to ensure there is no content being added (e.g., from Obsidian Web Clipper)
-          await new Promise((res) => setTimeout(res, 1000))
+          await new Promise((res) => window.setTimeout(res, 1000))
 
           // Check if file is empty
           const content = await readFileContent(file)

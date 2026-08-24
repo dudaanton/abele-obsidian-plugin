@@ -46,7 +46,7 @@ export function createScreenshotTool(): AgentTool {
         targetLeaf = app.workspace.getLeaf('tab')
         await targetLeaf.openFile(file)
         // Brief delay to let the view render
-        await new Promise((r) => setTimeout(r, 500))
+        await new Promise((r) => window.setTimeout(r, 500))
       }
 
       const el = targetLeaf.view.containerEl

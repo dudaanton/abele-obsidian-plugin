@@ -86,7 +86,7 @@ export function createInspectViewTool(): AgentTool {
       if (!targetLeaf) {
         targetLeaf = app.workspace.getLeaf('tab')
         await targetLeaf.openFile(file)
-        await new Promise((r) => setTimeout(r, 500))
+        await new Promise((r) => window.setTimeout(r, 500))
       }
 
       const container = targetLeaf.view.containerEl

@@ -75,7 +75,7 @@ const filtered = computed(() => {
 })
 
 onMounted(() => {
-  setTimeout(() => {
+  window.setTimeout(() => {
     const input = document.querySelector<HTMLInputElement>('.abele-prompt-picker input')
     input?.focus()
   }, 100)
