@@ -1,6 +1,8 @@
 <template>
   <component
     :is="asTextArea ? 'textarea' : 'input'"
+    class="abele-obsidian-input"
+    :class="{ 'abele-obsidian-input_multiline': asTextArea }"
     :value="modelValue"
     type="text"
     :placeholder="placeholder"
@@ -23,10 +25,19 @@ const emit = defineEmits<{
 </script>
 
 <style lang="scss">
+/**
+ * The class goes on the element itself. It used to sit on a wrapper that this component never
+ * rendered, so the rules below never applied and every field fell back to the browser's
+ * intrinsic width — which is what pushed narrow settings panes sideways.
+ */
 .abele-obsidian-input {
-  input {
-    width: 100%;
-    min-width: 150px;
-  }
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.abele-obsidian-input_multiline {
+  min-height: 6em;
+  resize: vertical;
 }
 </style>
