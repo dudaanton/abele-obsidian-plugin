@@ -102,8 +102,16 @@
           />
 
           <div class="abele-agent-editor__actions">
-            <Button text="Add text block" @click="addPrompt('text')" />
-            <Button text="Add note block" @click="addPrompt('note')" />
+            <Button
+              text="Add text block"
+              tooltip="Append a block of instructions written here"
+              @click="addPrompt('text')"
+            />
+            <Button
+              text="Add note block"
+              tooltip="Append a block read from a note in the vault"
+              @click="addPrompt('note')"
+            />
           </div>
         </Section>
 

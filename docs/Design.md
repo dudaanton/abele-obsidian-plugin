@@ -21,6 +21,7 @@ not invent its own.
 | `Icon` | Anything the user presses that carries only a glyph. Has `disabled` and `tooltip`. |
 | `Input`, `Dropdown`, `Checkbox`, `Search`, `ColorPicker` | Form controls. |
 | `Modal` | A dialog. `size="wide"` when a form needs more than the default column. |
+| `ConfirmModal` | The question asked before something is destroyed. |
 
 If a screen needs something the kit does not have, the change belongs in the kit — with a
 test — not in the screen.
@@ -32,6 +33,17 @@ specificity (0,1,1) beats any single class of ours (0,1,0). A hand-styled button
 renders as a default grey button no matter what the component's stylesheet says. Use
 `Button`, use `Icon`, or use a non-button element with `role="button"` — the kit's `Tabs`
 does the last of these.
+
+**Every action says what it does.** A `Button` and a clickable `Icon` both take a `tooltip`,
+rendered with Obsidian's `setTooltip` so it is themed and appears without the browser's
+one-second delay. Write what pressing it *does* — "Move existing chat files to match the
+template above", not "Migrate". A disabled control says why it is disabled. A glyph that is
+pure decoration — a chevron, a status marker — takes no tooltip and no click handler.
+
+**Nothing is destroyed without being asked about.** Deleting an agent, a provider, a model or
+a secret goes through `ConfirmModal`, which names what will be lost. Never `window.confirm`:
+that dialog belongs to the operating system, ignores the theme, and blocks the whole app —
+including the separate window settings can open in.
 
 **Colour, spacing, radius and type come from Obsidian's variables.** `var(--size-4-2)`, not
 `8px`; `var(--text-muted)`, not `#888`. Literal lengths and hex colours are a bug: they stop

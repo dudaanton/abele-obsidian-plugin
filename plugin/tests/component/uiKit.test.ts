@@ -14,6 +14,9 @@ import CardGrid from '@/components/obsidian/CardGrid.vue'
 import Section from '@/components/obsidian/Section.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
 import ObsidianModal from '@/components/obsidian/Modal.vue'
+import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
+import Button from '@/components/obsidian/Button.vue'
+import Icon from '@/components/obsidian/Icon.vue'
 import Input from '@/components/obsidian/Input.vue'
 
 const TABS = [
@@ -195,6 +198,79 @@ describe('Modal', () => {
 
     expect(classOf(plain)).not.toContain('abele-modal_wide')
     expect(classOf(wide)).toContain('abele-modal_wide')
+  })
+})
+
+describe('ConfirmModal', () => {
+  const props = { title: 'Delete agent', message: 'Delete Researcher? This cannot be undone.' }
+
+  /** The dialog's content lives in the modal's slot, which a stub must keep. */
+  const mountConfirm = () =>
+    mount(ConfirmModal, {
+      props,
+      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+    })
+
+  it('names what is about to be lost', () => {
+    const view = mountConfirm()
+
+    expect(view.find('.abele-confirm__message').text()).toContain('Delete Researcher?')
+  })
+
+  it('marks the destructive choice as destructive', () => {
+    const view = mountConfirm()
+
+    const confirm = view.findAllComponents(Button)[1]
+    expect(confirm.props('warning')).toBe(true)
+    expect(confirm.props('text')).toBe('Delete')
+  })
+
+  it('destroys nothing when it is dismissed', async () => {
+    const view = mountConfirm()
+
+    await view.findAllComponents(Button)[0].vm.$emit('click')
+
+    expect(view.emitted('confirm')).toBeUndefined()
+    expect(view.emitted('close')).toBeTruthy()
+  })
+
+  it('confirms once, and closes itself afterwards', async () => {
+    const view = mountConfirm()
+
+    await view.findAllComponents(Button)[1].vm.$emit('click')
+
+    expect(view.emitted('confirm')).toHaveLength(1)
+    expect(view.emitted('close')).toHaveLength(1)
+  })
+})
+
+describe('tooltips', () => {
+  // Obsidian's `setTooltip` shows the text on hover and puts it on `aria-label`, so this is
+  // both the tooltip and what a screen reader announces.
+  it('a button says what it does', () => {
+    const view = mount(Button, { props: { text: 'Save', tooltip: 'Keep these settings' } })
+
+    expect(view.attributes('aria-label')).toBe('Keep these settings')
+  })
+
+  it('an icon says what it does', () => {
+    const view = mount(Icon, { props: { icon: 'trash', tooltip: 'Delete this agent' } })
+
+    expect(view.attributes('aria-label')).toBe('Delete this agent')
+  })
+
+  it('follows the label when it changes with the state', async () => {
+    const view = mount(Icon, { props: { icon: 'star', tooltip: 'Make this the default' } })
+
+    await view.setProps({ tooltip: 'Already the default' })
+
+    expect(view.attributes('aria-label')).toBe('Already the default')
+  })
+
+  it('a decorative glyph is left unlabelled', () => {
+    const view = mount(Icon, { props: { icon: 'bot' } })
+
+    expect(view.attributes('aria-label')).toBeUndefined()
   })
 })
 

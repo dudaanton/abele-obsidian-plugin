@@ -49,16 +49,16 @@
           </Setting>
           <div class="abele-links__url">
             <code>{{ buildUrl(link) }}</code>
-            <Icon icon="copy" @click="copyUrl(link)" />
+            <Icon icon="copy" tooltip="Copy this URL to the clipboard" @click="copyUrl(link)" />
           </div>
         </div>
-        <Icon icon="trash" @click="removeLink(idx)" />
+        <Icon icon="trash" tooltip="Remove this link" @click="removeLink(idx)" />
       </div>
     </div>
 
     <div v-else class="abele-links__empty">No links configured.</div>
 
-    <Button text="Add link" @click="addLink" />
+    <Button text="Add link" tooltip="Add another link to this list" @click="addLink" />
   </div>
 </template>
 

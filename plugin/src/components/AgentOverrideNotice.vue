@@ -9,6 +9,7 @@
       class="abele-override-notice__reset"
       icon="undo-2"
       :text-right="`Reset to ${agentName}`"
+      :tooltip="`Drop this chat's own setting and follow ${agentName} again`"
       @click="reset"
     />
   </div>

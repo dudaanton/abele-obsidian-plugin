@@ -21,24 +21,43 @@
         <template #actions>
           <Icon
             icon="star"
-            tooltip="Make default"
+            :tooltip="starTooltip(agent)"
             :disabled="agent.id === defaultAgentId || agent.utility"
             @click="makeDefault(agent.id)"
           />
-          <Icon icon="copy" tooltip="Duplicate" @click="duplicate(agent.id)" />
+          <Icon icon="copy" tooltip="Duplicate this agent" @click="duplicate(agent.id)" />
           <Icon
             icon="trash"
-            tooltip="Delete"
+            :tooltip="
+              agents.length <= 1
+                ? 'The last agent cannot be deleted — a chat has to run on something'
+                : 'Delete this agent'
+            "
             :disabled="agents.length <= 1"
-            @click="remove(agent.id)"
+            @click="pendingRemoval = agent"
           />
         </template>
       </Card>
     </CardGrid>
 
     <div class="abele-agents-settings__actions">
-      <Button text="Add agent" accent @click="addAgent" />
+      <Button
+        text="Add agent"
+        accent
+        tooltip="Create an agent and open it for editing"
+        @click="addAgent"
+      />
     </div>
+
+    <ConfirmModal
+      v-if="pendingRemoval"
+      title="Delete agent"
+      :message="`Delete ${pendingRemoval.name}? Chats still running on it will fall back to the
+        default agent. This cannot be undone.`"
+      :confirm-tooltip="`Delete ${pendingRemoval.name}`"
+      @confirm="remove(pendingRemoval.id)"
+      @close="pendingRemoval = null"
+    />
 
     <AgentEditorModal
       v-if="editingId"
@@ -57,6 +76,7 @@ import Card from '../../obsidian/Card.vue'
 import CardGrid from '../../obsidian/CardGrid.vue'
 import Badge from '../../obsidian/Badge.vue'
 import Section from '../../obsidian/Section.vue'
+import ConfirmModal from '../../obsidian/ConfirmModal.vue'
 import AgentEditorModal from './AgentEditorModal.vue'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -66,6 +86,8 @@ const registry = AgentRegistry.getInstance()
 const config = AbeleConfig.getInstance()
 
 const editingId = ref('')
+/** The agent a person asked to delete, held until they confirm. */
+const pendingRemoval = ref<AgentDefinition | null>(null)
 /** Nudged after an edit so labels derived from plain config fields refresh too. */
 const revision = ref(0)
 const bump = () => revision.value++
@@ -78,6 +100,12 @@ const defaultAgentId = computed(() => {
   void revision.value
   return config.ai.defaultAgentId
 })
+
+function starTooltip(agent: AgentDefinition): string {
+  if (agent.utility) return 'A utility agent cannot be the default — it is hidden from chats'
+  if (agent.id === defaultAgentId.value) return 'Already the default agent'
+  return 'Make this the default agent for new chats'
+}
 
 function metaFor(agent: AgentDefinition): string[] {
   return [modelLabel(agent), promptLabel(agent), scopeLabel(agent)]

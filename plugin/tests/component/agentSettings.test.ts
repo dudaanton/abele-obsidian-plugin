@@ -13,6 +13,7 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
 import Input from '@/components/obsidian/Input.vue'
+import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import { useVault } from '../helpers/testEnv'
 
 const provider: AiProvider = {
@@ -53,9 +54,20 @@ const OBSIDIAN_WIDGETS = {
 
 function mountList() {
   return mount(AgentsSettings, {
-    global: { stubs: { ...OBSIDIAN_WIDGETS, AgentEditorModal: true } },
+    global: {
+      stubs: {
+        ...OBSIDIAN_WIDGETS,
+        AgentEditorModal: true,
+        // The dialog's own behaviour is covered in the kit's tests; here what matters is
+        // whether the screen asks at all, and what it does with the answer.
+        ConfirmModal: { props: ['title', 'message'], template: '<div class="confirm-stub" />' },
+      },
+    },
   })
 }
+
+const trashOf = (view: ReturnType<typeof mountList>, idx: number) =>
+  view.findAll('.abele-card')[idx].findAll('.abele-obsidian-icon')[2]
 
 function mountEditor(agentId: string) {
   return mount(AgentEditorModal, {
@@ -146,8 +158,38 @@ describe('the agents list', () => {
 
     const view = mountList()
 
-    const trash = view.findAll('.abele-card__actions .abele-obsidian-icon')[2]
-    expect(trash.classes()).toContain('abele-obsidian-icon_disabled')
+    expect(trashOf(view, 0).classes()).toContain('abele-obsidian-icon_disabled')
+  })
+
+  it('asks before deleting an agent, rather than deleting on the first click', async () => {
+    seedAgents()
+    const view = mountList()
+
+    await trashOf(view, 0).trigger('click')
+
+    expect(AgentRegistry.getInstance().list({ includeUtility: true })).toHaveLength(2)
+    expect(view.findComponent(ConfirmModal).props('message')).toContain('Researcher')
+  })
+
+  it('deletes once the question is answered', async () => {
+    const { main } = seedAgents()
+    const view = mountList()
+    await trashOf(view, 0).trigger('click')
+
+    await view.findComponent(ConfirmModal).vm.$emit('confirm')
+
+    expect(AgentRegistry.getInstance().get(main.id)).toBeNull()
+  })
+
+  it('keeps the agent when the question is dismissed', async () => {
+    const { main } = seedAgents()
+    const view = mountList()
+    await trashOf(view, 0).trigger('click')
+
+    await view.findComponent(ConfirmModal).vm.$emit('close')
+
+    expect(AgentRegistry.getInstance().get(main.id)?.name).toBe('Researcher')
+    expect(view.findComponent(ConfirmModal).exists()).toBe(false)
   })
 
   it('offers no way to make the default agent default again', () => {

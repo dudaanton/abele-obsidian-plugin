@@ -36,20 +36,42 @@
       </template>
 
       <div class="abele-model-edit__actions">
-        <Button text="Save" :disabled="!form.id" @click="onSave" />
-        <Button v-if="!isNew" text="Delete" @click="onDelete" />
+        <Button
+          text="Save"
+          :disabled="!form.id"
+          tooltip="Keep these settings and close"
+          @click="onSave"
+        />
+        <Button
+          v-if="!isNew"
+          text="Delete"
+          warning
+          tooltip="Remove this image model from the provider"
+          @click="confirming = true"
+        />
       </div>
     </div>
+
+    <ConfirmModal
+      v-if="confirming"
+      title="Delete image model"
+      :message="`Delete ${form.name || form.id}? Agents using it will have no model until one is
+        chosen again.`"
+      :confirm-tooltip="`Delete ${form.name || form.id}`"
+      @confirm="onDelete"
+      @close="confirming = false"
+    />
   </ObsidianModal>
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import Button from '../obsidian/Button.vue'
+import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import type { ImageModelConfig2 } from '@/ai/types'
 
 const props = defineProps<{
@@ -65,6 +87,9 @@ const emit = defineEmits<{
 }>()
 
 const form = reactive<ImageModelConfig2>({ ...props.model })
+
+/** Held open until the question is answered — see docs/Design.md. */
+const confirming = ref(false)
 
 const sizeOptions = [
   { value: '1024x1024', display: '1024×1024' },

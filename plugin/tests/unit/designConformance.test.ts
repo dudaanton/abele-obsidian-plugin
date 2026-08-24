@@ -7,7 +7,8 @@
  * - a hand-styled `<button>` loses to Obsidian's `button:not(.clickable-icon)` and renders grey;
  * - a literal colour or length stops tracking the user's theme and zoom;
  * - an inline `style` attribute is a pattern nobody can find later;
- * - an unexplained `overflow-x` is how a pane starts scrolling sideways.
+ * - an unexplained `overflow-x` is how a pane starts scrolling sideways;
+ * - an action with no tooltip leaves a person guessing what a glyph does.
  */
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -63,6 +64,18 @@ function template(source: string): string {
   return match ? withoutComments(match[1]) : ''
 }
 
+/** Every `<Button …>` and `<Icon …>` in a template, with its attributes as written. */
+function componentTags(source: string): { tag: string; attrs: string }[] {
+  return [...template(source).matchAll(/<(Button|Icon)\b([^>]*?)\/?>/gs)].map((match) => ({
+    tag: match[1],
+    attrs: match[2] ?? '',
+  }))
+}
+
+/** A glyph that does nothing on click is decoration — a status marker, a chevron. */
+const isInteractive = (tag: { tag: string; attrs: string }) =>
+  tag.tag === 'Button' || tag.attrs.includes('@click')
+
 describe('the design standard', () => {
   it('covers the kit, the settings screens and the agent chat surfaces', () => {
     // A guard on the guard: a covered file renamed out of existence would otherwise make
@@ -99,6 +112,26 @@ describe('the design standard', () => {
     )
 
     expect(offenders.map(name)).toEqual([])
+  })
+
+  it('says what every action does', () => {
+    const offenders = FILES.filter((file) =>
+      componentTags(readFileSync(file, 'utf8'))
+        .filter(isInteractive)
+        .some((tag) => !/(^|\s):?tooltip[=\s]/.test(tag.attrs))
+    )
+
+    expect(offenders.map(name)).toEqual([])
+  })
+
+  it('finds the actions it is meant to be checking', () => {
+    // The rule above is a filter over a regex; if the regex stopped matching, it would pass
+    // by checking nothing.
+    const interactive = FILES.flatMap((file) =>
+      componentTags(readFileSync(file, 'utf8')).filter(isInteractive)
+    )
+
+    expect(interactive.length).toBeGreaterThan(20)
   })
 
   it('explains any element that scrolls sideways', () => {

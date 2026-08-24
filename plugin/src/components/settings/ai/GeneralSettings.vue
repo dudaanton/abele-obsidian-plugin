@@ -11,7 +11,11 @@
             <strong class="abele-ai-provider__name">{{
               provider.name || 'Unnamed Provider'
             }}</strong>
-            <Icon icon="trash" tooltip="Remove provider" @click="removeProvider(pIdx)" />
+            <Icon
+              icon="trash"
+              tooltip="Remove this provider and its models"
+              @click="askRemoveProvider(pIdx)"
+            />
           </div>
 
           <Setting name="Name" desc="Display name for this provider.">
@@ -142,7 +146,11 @@
         </div>
 
         <div class="abele-settings__ai-actions">
-          <Button text="Add Provider" @click="addProvider" />
+          <Button
+            text="Add Provider"
+            tooltip="Add another OpenAI-compatible provider"
+            @click="addProvider"
+          />
         </div>
       </Section>
 
@@ -186,6 +194,7 @@
           <Button
             :text="migrating ? 'Migrating...' : 'Migrate'"
             :disabled="migrating"
+            tooltip="Move existing chat files to match the template above"
             @click="migrateChats"
           />
         </Setting>
@@ -222,7 +231,11 @@
         <div v-for="(ip, ipIdx) in imageProviders" :key="ipIdx" class="abele-ai-provider">
           <div class="abele-ai-provider__header">
             <strong class="abele-ai-provider__name">{{ ip.name || 'Unnamed Provider' }}</strong>
-            <Icon icon="trash" tooltip="Remove provider" @click="removeImageProvider(ipIdx)" />
+            <Icon
+              icon="trash"
+              tooltip="Remove this provider and its models"
+              @click="askRemoveImageProvider(ipIdx)"
+            />
           </div>
 
           <Setting name="ID" desc="Short identifier used in model keys (e.g. openai, openrouter).">
@@ -318,7 +331,11 @@
         </div>
 
         <div class="abele-settings__ai-actions">
-          <Button text="Add Image Provider" @click="addImageProvider" />
+          <Button
+            text="Add Image Provider"
+            tooltip="Add another image generation provider"
+            @click="addImageProvider"
+          />
         </div>
 
         <Setting name="Default Image Model" desc="Used when agent doesn't specify a model.">
@@ -373,9 +390,10 @@
                 <Button
                   text="Save"
                   :disabled="!secretValueInputs[sIdx]"
+                  tooltip="Store this value in the keychain"
                   @click="applySecretValue(sIdx)"
                 />
-                <Icon icon="trash" tooltip="Remove" @click="removeSecret(sIdx)" />
+                <Icon icon="trash" tooltip="Remove this secret" @click="askRemoveSecret(sIdx)" />
                 <Icon icon="x" tooltip="Done" @click="editingSecretIdx = -1" />
               </div>
             </template>
@@ -383,7 +401,7 @@
         </CardGrid>
 
         <div class="abele-settings__ai-actions">
-          <Button text="Add secret" @click="addSecret" />
+          <Button text="Add secret" tooltip="Add another named secret" @click="addSecret" />
         </div>
       </Section>
 
@@ -435,6 +453,15 @@
           />
         </Setting>
       </Section>
+
+      <ConfirmModal
+        v-if="pendingRemoval"
+        :title="pendingRemoval.title"
+        :message="pendingRemoval.message"
+        :confirm-tooltip="pendingRemoval.title"
+        @confirm="pendingRemoval.run()"
+        @close="pendingRemoval = null"
+      />
     </template>
   </div>
 </template>
@@ -453,6 +480,7 @@ import Card from '../../obsidian/Card.vue'
 import CardGrid from '../../obsidian/CardGrid.vue'
 import Badge from '../../obsidian/Badge.vue'
 import EmptyState from '../../obsidian/EmptyState.vue'
+import ConfirmModal from '../../obsidian/ConfirmModal.vue'
 import ToolModesEditor from '../../ToolModesEditor.vue'
 import ModelEditModal from '../ModelEditModal.vue'
 import ImageModelEditModal from '../ImageModelEditModal.vue'
@@ -474,6 +502,16 @@ const IMAGE_API_TYPES = [
   { value: 'openai', display: 'OpenAI' },
   { value: 'openrouter', display: 'OpenRouter' },
 ]
+
+/**
+ * The question standing between a trash icon and something being gone. One slot: only one
+ * dialog can be open, and holding the action itself keeps the wiring in one place.
+ */
+const pendingRemoval = ref<{ title: string; message: string; run: () => void } | null>(null)
+
+function askRemoval(title: string, message: string, run: () => void): void {
+  pendingRemoval.value = { title, message, run }
+}
 
 const DEFAULT_CONTEXT_WINDOW = 128000
 const DEFAULT_MAX_TOKENS = 4096
@@ -665,6 +703,16 @@ const removeImageProvider = (idx: number) => {
   save()
 }
 
+const askRemoveImageProvider = (idx: number) => {
+  const provider = imageProviders.value[idx]
+  askRemoval(
+    'Remove provider',
+    `Remove ${provider.name || provider.id || 'this provider'} and its ` +
+      `${provider.models.length} model(s)? This cannot be undone.`,
+    () => removeImageProvider(idx)
+  )
+}
+
 const updateImageProvider = (idx: number, key: string, val: string) => {
   ;(imageProviders.value[idx] as any)[key] = val
   save()
@@ -755,8 +803,17 @@ const startEditSecret = (idx: number) => {
   secretValueInputs[idx] = keyId ? getSecretFullValue(keyId) : ''
 }
 
+const askRemoveSecret = (idx: number) => {
+  const secret = secrets.value[idx]
+  askRemoval(
+    'Remove secret',
+    `Remove ${secret.name || '(unnamed)'}? Any fetch call referring to it by name will stop ` +
+      'working, and the stored value is gone from the keychain.',
+    () => removeSecret(idx)
+  )
+}
+
 const removeSecret = (idx: number) => {
-  if (!confirm('Delete this secret?')) return
   const secret = secrets.value[idx]
   if (secret.keyId) {
     try {
@@ -806,8 +863,17 @@ const addProvider = () => {
   save()
 }
 
+const askRemoveProvider = (idx: number) => {
+  const provider = providers.value[idx]
+  askRemoval(
+    'Remove provider',
+    `Remove ${provider.name || 'this provider'} and its ${provider.models.length} model(s)? ` +
+      'Agents pointing at those models will have no model until one is chosen again.',
+    () => removeProvider(idx)
+  )
+}
+
 const removeProvider = (idx: number) => {
-  if (!confirm('Delete this provider and all its models?')) return
   const provider = providers.value[idx]
   if (provider.apiKeyId?.startsWith('abele-')) {
     // deleteSecret exists at runtime but is missing from obsidian.d.ts (as of 1.12.3)
@@ -907,8 +973,8 @@ const onModelSave = (pIdx: number, mIdx: number, model: AiModelConfig) => {
   save()
 }
 
+// The edit modal asks before it emits, so there is no second question here.
 const removeModel = (pIdx: number, mIdx: number) => {
-  if (!confirm('Delete this model?')) return
   providers.value[pIdx].models.splice(mIdx, 1)
   editingModel.value = null
   save()

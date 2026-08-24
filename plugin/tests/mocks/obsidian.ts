@@ -135,6 +135,15 @@ export function setIcon(el: HTMLElement, icon: string): void {
 }
 
 /**
+ * Obsidian's themed tooltip. The real one shows on hover and puts the text on `aria-label`,
+ * which is what tests assert against — so this mirrors that rather than inventing an attribute.
+ */
+export function setTooltip(el: HTMLElement, tooltip: string): void {
+  if (tooltip) el.setAttribute('aria-label', tooltip)
+  else el.removeAttribute('aria-label')
+}
+
+/**
  * Enough of Obsidian's modal for components that mount one: a title, the two elements they
  * reach for, and open/close. `onClose` is overridden by callers, so `close()` calls it.
  */
