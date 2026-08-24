@@ -6,7 +6,12 @@ on:
       - "*"
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   release:
+    # Nothing is published unless the tagged code type-checks and passes its tests.
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write

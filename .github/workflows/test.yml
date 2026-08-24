@@ -4,6 +4,9 @@ on:
   push:
     branches: ["master"]
   pull_request:
+  # Callable, so a release runs exactly these checks against the tag it is about to publish
+  # rather than a copy of them that can drift.
+  workflow_call:
 
 jobs:
   test:
