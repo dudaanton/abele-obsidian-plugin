@@ -80,7 +80,7 @@ export default class AbelePlugin extends Plugin {
   private vueApp: VueApp | null = null
 
   initializeVue() {
-    const rootContainer = document.createElement('div')
+    const rootContainer = createDiv()
     rootContainer.id = 'abele-vue-root'
     rootContainer.style.display = 'none'
     document.body.appendChild(rootContainer)

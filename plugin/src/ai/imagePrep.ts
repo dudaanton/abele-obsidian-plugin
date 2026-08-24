@@ -55,7 +55,7 @@ async function resizeImage(binary: ArrayBuffer, mime: string): Promise<string> {
     w = Math.round(w * scale)
     h = Math.round(h * scale)
 
-    const canvas = document.createElement('canvas')
+    const canvas = createEl('canvas')
     canvas.width = w
     canvas.height = h
     canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)

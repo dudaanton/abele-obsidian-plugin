@@ -30,7 +30,7 @@ export class GalleryWidget extends WidgetType {
   }
 
   toDOM() {
-    const container = document.createElement('div')
+    const container = createDiv()
     container.id = this.id
     container.classList.add('abele-gallery-widget-container')
 

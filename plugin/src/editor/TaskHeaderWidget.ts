@@ -14,7 +14,7 @@ export class TaskHeaderWidget extends WidgetType {
   }
 
   toDOM() {
-    const container = document.createElement('div')
+    const container = createDiv()
     container.id = this.id
     container.classList.add('abele-task-header-widget-container')
 

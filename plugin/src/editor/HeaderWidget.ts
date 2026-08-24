@@ -14,7 +14,7 @@ export class HeaderWidget extends WidgetType {
   }
 
   toDOM() {
-    const container = document.createElement('div')
+    const container = createDiv()
     container.id = this.id
     container.classList.add('abele-header-widget-container')
 

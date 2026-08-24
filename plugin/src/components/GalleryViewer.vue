@@ -188,7 +188,7 @@ function convertToPng(src: string): Promise<Blob> {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => {
-      const canvas = document.createElement('canvas')
+      const canvas = createEl('canvas')
       canvas.width = img.naturalWidth
       canvas.height = img.naturalHeight
       canvas.getContext('2d')!.drawImage(img, 0, 0)
@@ -236,7 +236,7 @@ async function rotateImage() {
 
   try {
     const img = await loadImage(imgUrl)
-    const canvas = document.createElement('canvas')
+    const canvas = createEl('canvas')
     canvas.width = img.naturalHeight
     canvas.height = img.naturalWidth
     const ctx = canvas.getContext('2d')!
@@ -272,7 +272,7 @@ async function stripMetadata() {
 
   try {
     const img = await loadImage(imgUrl)
-    const canvas = document.createElement('canvas')
+    const canvas = createEl('canvas')
     canvas.width = img.naturalWidth
     canvas.height = img.naturalHeight
     const ctx = canvas.getContext('2d')!

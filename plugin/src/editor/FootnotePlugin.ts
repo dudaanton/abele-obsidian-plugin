@@ -205,7 +205,7 @@ class FootnoteOverlay {
 
   constructor(view: EditorView) {
     this.view = view
-    this.overlay = document.createElement('div')
+    this.overlay = createDiv()
     this.overlay.classList.add('abele-footnotes-overlay')
     view.scrollDOM.appendChild(this.overlay)
 
@@ -313,7 +313,7 @@ class FootnoteOverlay {
 
   private createEntry(fn: ParsedFootnote, store: GlobalStore) {
     const id = genid()
-    const el = document.createElement('div')
+    const el = createDiv()
     el.classList.add('abele-footnote-widget-container')
     el.id = id
     el.createDiv({ attr: { 'data-footnote-id': id }, cls: 'abele-vue-mount' })

@@ -46,7 +46,7 @@ async function generateVideoThumbnail(videoBuffer: ArrayBuffer): Promise<ArrayBu
     const blob = new Blob([videoBuffer])
     const videoUrl = URL.createObjectURL(blob)
 
-    const video = document.createElement('video')
+    const video = createEl('video')
     video.src = videoUrl
     video.crossOrigin = 'anonymous'
 
@@ -62,7 +62,7 @@ async function generateVideoThumbnail(videoBuffer: ArrayBuffer): Promise<ArrayBu
       video.onseeked = resolve
     })
 
-    const canvas = document.createElement('canvas')
+    const canvas = createEl('canvas')
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
     const ctx = canvas.getContext('2d')

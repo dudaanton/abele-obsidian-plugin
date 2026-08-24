@@ -43,7 +43,7 @@ export class VueRenderer {
     const id = `vue-component-${Date.now()}-${Math.floor(Math.random() * 10000)}`
 
     // Create a wrapper div for the Vue app
-    const mountPoint = document.createElement('div')
+    const mountPoint = createDiv()
     mountPoint.id = id
     container.appendChild(mountPoint)
 

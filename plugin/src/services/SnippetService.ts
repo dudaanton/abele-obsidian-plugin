@@ -60,7 +60,7 @@ export class SnippetService {
     if (el) {
       el.textContent = content
     } else {
-      el = document.createElement('style')
+      el = createEl('style')
       el.setAttribute('data-abele-snippet', file.path)
       el.textContent = content
       document.head.appendChild(el)
