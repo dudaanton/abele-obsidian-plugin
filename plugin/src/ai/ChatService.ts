@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { TFile } from 'obsidian'
+import { App, TFile } from 'obsidian'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -58,11 +58,35 @@ export class ChatService {
     }
   }
 
+  /**
+   * Tab layout, read from Obsidian's vault-scoped store. It used to sit in a bare
+   * `localStorage` key, which is shared by every vault on the machine — so opening a second
+   * vault restored the first one's tabs, pointing at chat files that do not exist there. A
+   * layout still under the old key is moved across once and the old key dropped.
+   */
+  private static loadTabsState(app: App): TabsState | null {
+    const stored = app.loadLocalStorage(STORAGE_KEY) as TabsState | null
+    if (stored) return stored
+
+    const legacy = window.localStorage.getItem(STORAGE_KEY)
+    if (!legacy) return null
+
+    window.localStorage.removeItem(STORAGE_KEY)
+    try {
+      const migrated = JSON.parse(legacy) as TabsState
+      app.saveLocalStorage(STORAGE_KEY, migrated)
+      return migrated
+    } catch {
+      return null
+    }
+  }
+
   /** Call after plugin load to restore tabs from previous session */
   async restoreTabs(): Promise<void> {
     this.tabsRestored = true
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) {
+    const { app } = GlobalStore.getInstance()
+    const state = ChatService.loadTabsState(app)
+    if (!state) {
       if (this.sessions.size === 0) this.createTab()
       return
     }
@@ -74,13 +98,11 @@ export class ChatService {
     this.activeTabId.value = null
 
     try {
-      const state: TabsState = JSON.parse(raw)
       if (!state.tabs?.length) {
         this.createTab()
         return
       }
 
-      const { app } = GlobalStore.getInstance()
       let restoredAny = false
 
       for (const tab of state.tabs) {
@@ -136,7 +158,7 @@ export class ChatService {
         }),
       activeIndex: this.activeTabId.value ? this.tabOrder.value.indexOf(this.activeTabId.value) : 0,
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    GlobalStore.getInstance().app.saveLocalStorage(STORAGE_KEY, state)
   }
 
   // ── Session / tab management ──────────────────────────────────

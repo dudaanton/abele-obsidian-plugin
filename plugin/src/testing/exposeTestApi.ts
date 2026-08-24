@@ -276,7 +276,7 @@ function groupPathsViaLinkIndex(groupPath: string): string[] {
  * to await a promise across the eval boundary.
  */
 function startResponsivenessProbe(groupPath: string): void {
-  globalThis.__abeleTest!.responsivenessResult = null
+  window.__abeleTest!.responsivenessResult = null
 
   const gaps: number[] = []
   let previousTick = performance.now()
@@ -300,7 +300,7 @@ function startResponsivenessProbe(groupPath: string): void {
 
     window.setTimeout(() => {
       window.clearInterval(timer)
-      globalThis.__abeleTest!.responsivenessResult = {
+      window.__abeleTest!.responsivenessResult = {
         longestStallMs: gaps.length ? Math.max(...gaps) : 0,
         operationMs,
         ticks,
@@ -389,7 +389,7 @@ function measureNoteRelations(notePath: string): NoteRelationsMeasurement {
 function startNoteRenderProbe(notePath: string, settleMs = 15_000): void {
   const { app } = GlobalStore.getInstance()
 
-  globalThis.__abeleTest!.noteRenderResult = null
+  window.__abeleTest!.noteRenderResult = null
 
   const file = app.vault.getAbstractFileByPath(notePath)
   if (!(file instanceof TFile)) {
@@ -422,7 +422,7 @@ function startNoteRenderProbe(notePath: string, settleMs = 15_000): void {
         // One frame is 16ms; anything beyond that is time the UI could not respond.
         const stalls = gaps.map((gap) => gap - 16).filter((gap) => gap > 0)
 
-        globalThis.__abeleTest!.noteRenderResult = {
+        window.__abeleTest!.noteRenderResult = {
           longestStallMs: stalls.length ? Math.max(...stalls) : 0,
           totalStalledMs: stalls.reduce((sum, gap) => sum + gap, 0),
           footerNodes: count('.abele-footer-view *'),
@@ -439,7 +439,7 @@ function startNoteRenderProbe(notePath: string, settleMs = 15_000): void {
 }
 
 export function exposeTestApi(plugin: Plugin): void {
-  globalThis.__abeleTest = {
+  window.__abeleTest = {
     ScopeResolver,
     ChatService,
     AgentRegistry,
@@ -460,5 +460,5 @@ export function exposeTestApi(plugin: Plugin): void {
 }
 
 export function removeTestApi(): void {
-  delete globalThis.__abeleTest
+  delete window.__abeleTest
 }

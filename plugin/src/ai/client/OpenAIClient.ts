@@ -1,3 +1,4 @@
+import { requestUrl } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { prepareImageForApi } from '@/ai/imagePrep'
 import type {
@@ -98,18 +99,22 @@ export class OpenAIClient {
   async fetchModels(baseUrl: string, apiKey: string): Promise<RemoteModel[]> {
     const url = `${baseUrl.replace(/\/+$/, '')}/models`
 
-    const response = await fetch(url, {
+    // `requestUrl` rather than `fetch`: it goes out from the main process, so a provider that
+    // sends no CORS headers — most self-hosted ones — still answers. `throw: false` keeps the
+    // error message below, which reports the provider's own body.
+    const response = await requestUrl({
+      url,
       headers: {
         Authorization: `Bearer ${apiKey}`,
       },
+      throw: false,
     })
 
-    if (!response.ok) {
-      const text = await response.text().catch(() => '')
-      throw new Error(`Failed to fetch models: HTTP ${response.status} ${text}`)
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`Failed to fetch models: HTTP ${response.status} ${response.text ?? ''}`)
     }
 
-    const data = await response.json()
+    const data = response.json
     const models: RemoteModel[] = (data.data || []).map(
       (m: { id: string; owned_by?: string; created?: number }) => ({
         id: m.id,
@@ -136,6 +141,9 @@ export class OpenAIClient {
     const resolved = await OpenAIClient.resolveVaultImages(messages)
     const body = this.buildRequestBody(model, systemPrompt, resolved, tools, options)
 
+    // eslint-disable-next-line no-restricted-globals -- `requestUrl` buffers the whole response
+    // and takes no abort signal, so it can neither stream tokens as they arrive nor be stopped
+    // mid-answer. Both are the point of this call.
     const response = await fetch(this.getUrl(model), {
       method: 'POST',
       headers: {

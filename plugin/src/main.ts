@@ -117,7 +117,7 @@ export default class AbelePlugin extends Plugin {
     AbeleConfig.getInstance().init(this)
 
     await this.loadPluginData()
-    ;(globalThis as any).process = (globalThis as any).process || {
+    ;(window as any).process = (window as any).process || {
       env: { NODE_ENV: 'production' },
     } // Ensure process is defined for Node.js compatibility
 
@@ -939,7 +939,7 @@ export default class AbelePlugin extends Plugin {
     AbeleConfig.getInstance().destroy()
     VaultWatcherWrapper.destroy()
     if (process.env.NODE_ENV !== 'production') {
-      delete (globalThis as { __abeleTest?: unknown }).__abeleTest
+      delete (window as { __abeleTest?: unknown }).__abeleTest
     }
     console.debug('Obsidian Service Plugin unloaded.')
   }
