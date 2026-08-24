@@ -4,9 +4,13 @@
     <span class="abele-override-notice__text">
       {{ isOverridden ? overridden : fromAgent }}
     </span>
-    <button v-if="isOverridden" class="abele-override-notice__reset" @click="reset">
-      Reset to {{ agentName }}
-    </button>
+    <Icon
+      v-if="isOverridden"
+      class="abele-override-notice__reset"
+      icon="undo-2"
+      :text-right="`Reset to ${agentName}`"
+      @click="reset"
+    />
   </div>
 </template>
 
@@ -64,7 +68,5 @@ function reset() {
 
 .abele-override-notice__reset {
   flex: 0 0 auto;
-  font-size: var(--font-smallest);
-  padding: var(--size-2-1) var(--size-4-1);
 }
 </style>

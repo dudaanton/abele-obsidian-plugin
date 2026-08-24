@@ -72,8 +72,8 @@ const onSelect = (agentId: string) => {
   min-width: 0;
 
   .abele-obsidian-dropdown .dropdown {
-    max-width: 200px;
-    min-width: 80px;
+    max-width: 12em;
+    min-width: 5em;
     overflow: hidden;
     text-overflow: ellipsis;
   }

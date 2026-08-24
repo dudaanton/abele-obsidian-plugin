@@ -10,16 +10,14 @@
       <Icon
         icon="external-link"
         class="abele-run__open"
-        title="Open this run in its own tab"
+        tooltip="Open this run in its own tab"
         @click.stop="openInTab"
       />
     </div>
 
     <div v-if="expanded" class="abele-run__body">
-      <div v-if="loading" class="abele-run__note">Loading the transcript...</div>
-      <div v-else-if="!branches.length" class="abele-run__note">
-        Nothing was recorded for this run.
-      </div>
+      <EmptyState v-if="loading" text="Loading the transcript..." />
+      <EmptyState v-else-if="!branches.length" text="Nothing was recorded for this run." />
 
       <template v-else>
         <!-- One item: straight to its messages, with no list to click through. -->
@@ -49,6 +47,7 @@
 import { computed, ref, watch } from 'vue'
 import { Notice } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
+import EmptyState from './obsidian/EmptyState.vue'
 import AiRunBranch from './AiRunBranch.vue'
 import { ChatService } from '@/ai/ChatService'
 import { RunStorage, type RunBranch } from '@/ai/RunStorage'
@@ -175,11 +174,6 @@ async function openInTab(): Promise<void> {
 .abele-run__body {
   border-top: 1px solid var(--background-modifier-border);
   padding: var(--size-4-2);
-}
-
-.abele-run__note {
-  color: var(--text-muted);
-  font-size: var(--font-small);
 }
 
 .abele-run__sentinel {

@@ -11,6 +11,7 @@ import AiSubAgentRun from '@/components/AiSubAgentRun.vue'
 import AiRunBranch from '@/components/AiRunBranch.vue'
 import AiRunView from '@/components/AiRunView.vue'
 import AiRunMessage from '@/components/AiRunMessage.vue'
+import Badge from '@/components/obsidian/Badge.vue'
 import { RunStorage, type RunBranch, type RunFile } from '@/ai/RunStorage'
 import { ChatService } from '@/ai/ChatService'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -230,7 +231,7 @@ describe('the read-only run tab', () => {
   it('says plainly that it cannot be typed into', () => {
     const view = mount(AiRunView, { props: { run: runFile([branch('alpha')]) }, shallow: true })
 
-    expect(view.find('.abele-run-view__badge').text()).toBe('read-only')
+    expect(view.findComponent(Badge).props('text')).toBe('read-only')
     // No input, no approval, no questions — this conversation belongs to another agent.
     expect(view.find('textarea').exists()).toBe(false)
     expect(view.findAll('input')).toHaveLength(0)

@@ -130,14 +130,16 @@ describe('the override notice', () => {
     const view = mount(AgentOverrideNotice, { props, shallow: true })
 
     expect(view.find('.abele-override-notice__text').text()).toBe('Overridden here.')
-    expect(view.find('.abele-override-notice__reset').text()).toContain('Researcher')
+    expect(view.findComponent('.abele-override-notice__reset').props('textRight')).toContain(
+      'Researcher'
+    )
   })
 
   it('resets the field back to the agent', async () => {
     session.permissionMode.value = 'allow-all'
     const view = mount(AgentOverrideNotice, { props, shallow: true })
 
-    await view.find('.abele-override-notice__reset').trigger('click')
+    await view.findComponent('.abele-override-notice__reset').vm.$emit('click')
 
     expect(session.isOverridden('permissionMode')).toBe(false)
     expect(session.permissionMode.value).toBe('allow-edit')
@@ -151,7 +153,7 @@ describe('the override notice', () => {
       shallow: true,
     })
 
-    await view.find('.abele-override-notice__reset').trigger('click')
+    await view.findComponent('.abele-override-notice__reset').vm.$emit('click')
 
     expect(session.isOverridden('modelId')).toBe(false)
     expect(session.isOverridden('providerId')).toBe(false)

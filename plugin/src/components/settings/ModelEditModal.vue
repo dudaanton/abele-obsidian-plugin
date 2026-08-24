@@ -91,7 +91,7 @@ const onDelete = () => {
 
 <style lang="scss">
 .modal:has(.abele-model-edit) {
-  width: min(500px, 90vw);
+  width: min(31rem, 90vw);
 }
 
 .abele-model-edit__actions {

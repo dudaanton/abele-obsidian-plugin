@@ -4,20 +4,19 @@
       <div class="abele-run-view__title">
         <Icon icon="bot" no-hover />
         <span class="abele-run-view__agent">{{ run.agentName }}</span>
-        <span class="abele-run-view__badge">read-only</span>
+        <Badge class="abele-run-view__badge" text="read-only" />
       </div>
 
       <div class="abele-run-view__task">{{ run.task }}</div>
 
-      <button
+      <Icon
         v-if="run.parentChat"
         class="abele-run-view__parent"
-        :title="run.parentChat"
+        icon="corner-up-left"
+        :tooltip="run.parentChat"
+        text-right="Back to the chat that started this"
         @click="openParent"
-      >
-        <Icon icon="corner-up-left" no-hover />
-        <span>Back to the chat that started this</span>
-      </button>
+      />
     </div>
 
     <div class="abele-run-view__body">
@@ -27,9 +26,7 @@
         :branch="branch"
         :show-item="run.branches.length > 1"
       />
-      <div v-if="!run.branches.length" class="abele-run-view__empty">
-        This run recorded nothing.
-      </div>
+      <EmptyState v-if="!run.branches.length" text="This run recorded nothing." />
     </div>
   </div>
 </template>
@@ -37,6 +34,8 @@
 <script setup lang="ts">
 import { TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
+import Badge from './obsidian/Badge.vue'
+import EmptyState from './obsidian/EmptyState.vue'
 import AiRunBranch from './AiRunBranch.vue'
 import { ChatService } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -117,10 +116,5 @@ async function openParent(): Promise<void> {
   min-height: 0;
   overflow-y: auto;
   padding: var(--size-4-2) var(--size-4-3);
-}
-
-.abele-run-view__empty {
-  color: var(--text-muted);
-  font-size: var(--font-small);
 }
 </style>
