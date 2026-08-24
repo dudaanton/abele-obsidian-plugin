@@ -44,10 +44,22 @@ later. Give it a class, or give the kit a prop.
 element that is deliberately a scroller — a code block, a wide table — and it is stated as
 such in a comment. Tab strips wrap onto a second row rather than hiding tabs off the edge.
 
-**Measure the element, not the window.** Since Obsidian 1.13 settings can open in their own
-window, and a component rendered there sees the *main* window as `window` — so
-`window.innerWidth` reports the wrong screen. Use `ResizeObserver` on the element, which is
-also the honest question: a modal can be narrow inside a wide window.
+**Work in the element's own window, never in `window`.** Since Obsidian 1.13 settings can open
+in a window of their own, and code rendered there still sees the *main* window as `window` and
+the main document as `document`. This has produced three separate defects already:
+
+- a modal teleported by CSS selector found nothing, because `document.querySelector` never
+  sees the other window — teleport to an element instead;
+- a component read `window.innerWidth` and adapted to the wrong screen — measure the element
+  with a `ResizeObserver`, which is also the honest question, since a modal can be narrow
+  inside a wide window;
+- a suggester built its popup with the global `createDiv` and appended it to
+  `app.dom.appContainerEl`, so the note picker appeared over the note the user was reading, in
+  a different window from the field they were typing into — build in `el.ownerDocument` and
+  append within it.
+
+The rule that covers all three: reach for `el.ownerDocument` / `el.ownerDocument.defaultView`,
+never for the ambient `document` or `window`.
 
 **Class names are `abele-<block>__<element>_<modifier>`.** One block per component, named
 after the component.
