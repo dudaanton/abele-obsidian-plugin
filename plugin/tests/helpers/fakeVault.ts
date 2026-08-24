@@ -400,6 +400,13 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         return resolvedLinks
       },
     },
+    // Deletion goes through the file manager so it honours the user's "Deleted files"
+    // preference. The fake has no preference to honour, so it just drops the file.
+    fileManager: {
+      async trashFile(file: TFile) {
+        removeFile(file.path)
+      },
+    },
     secretStorage: (() => {
       const secrets = new Map<string, string>()
       return {

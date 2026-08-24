@@ -544,7 +544,7 @@ async function handleDeleteMenu(event: string) {
     props.gallery.removeBlock()
 
     for (const file of localFiles) {
-      await app.vault.trash(file, true)
+      await app.fileManager.trashFile(file)
     }
   }
 }

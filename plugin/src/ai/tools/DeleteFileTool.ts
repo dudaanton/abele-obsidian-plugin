@@ -24,7 +24,7 @@ export function createDeleteFileTool(opts?: { skipScope?: boolean }): AgentTool 
       const { app } = GlobalStore.getInstance()
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
-      await app.vault.trash(file, false)
+      await app.fileManager.trashFile(file)
       ScopeResolver.getInstance().invalidate()
       return { content: [{ type: 'text', text: `Deleted: ${path}` }] }
     },

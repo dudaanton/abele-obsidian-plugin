@@ -128,7 +128,7 @@ export class TimeEntry {
     const { app } = GlobalStore.getInstance()
     const file = getFileByPath(this.entryPath)
     if (file) {
-      await app.vault.delete(file)
+      await app.fileManager.trashFile(file)
     }
     this.cleanup()
   }

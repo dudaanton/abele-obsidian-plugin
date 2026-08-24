@@ -221,7 +221,7 @@ const deleteOne = async (item: MediaFileItem) => {
   if (!(file instanceof TFile)) return
 
   try {
-    await app.vault.trash(file, false)
+    await app.fileManager.trashFile(file)
     const idx = items.value.indexOf(item)
     if (idx !== -1) items.value[idx] = { ...item, status: 'deleted' }
   } catch (err: unknown) {
