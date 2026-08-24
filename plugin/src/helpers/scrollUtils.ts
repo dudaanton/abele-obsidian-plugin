@@ -47,7 +47,7 @@ export function reliableScrollTo(offset: number, flash = true) {
     try {
       const domPos = cmView.domAtPos(offset)
       const lineEl =
-        domPos.node instanceof HTMLElement
+        domPos.node.instanceOf(HTMLElement)
           ? domPos.node.closest('.cm-line')
           : (domPos.node.parentElement?.closest('.cm-line') ?? null)
       if (lineEl) {
@@ -81,7 +81,7 @@ function tryFlash(offset: number) {
   try {
     const domPos = cmView.domAtPos(offset)
     const lineEl =
-      domPos.node instanceof HTMLElement
+      domPos.node.instanceOf(HTMLElement)
         ? domPos.node.closest('.cm-line')
         : (domPos.node.parentElement?.closest('.cm-line') ?? null)
     if (lineEl) {

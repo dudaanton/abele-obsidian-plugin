@@ -171,7 +171,7 @@ export class ChatStorage {
       await config.saveSettings()
     }
 
-    return app.vault.getAbstractFileByPath(availablePath) as TFile
+    return app.vault.getFileByPath(availablePath)
   }
 
   async deleteChat(path: string): Promise<void> {

@@ -62,6 +62,7 @@ export interface FakeApp {
     getFiles(): TFile[]
     getMarkdownFiles(): TFile[]
     getAbstractFileByPath(path: string): TAbstractFile | null
+    getFileByPath(path: string): TFile | null
     read(file: TFile): Promise<string>
     cachedRead(file: TFile): Promise<string>
     on(name: string, callback: (...args: unknown[]) => void): { id: string }
@@ -331,6 +332,11 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       getAbstractFileByPath(path: string) {
         stats.getAbstractFileByPath++
         return byPath.get(path) ?? folders.get(path) ?? null
+      },
+      // Narrower than the above: a folder at this path is not a file, so it reads as absent.
+      getFileByPath(path: string) {
+        stats.getAbstractFileByPath++
+        return byPath.get(path) ?? null
       },
       async read(file: TFile) {
         stats.read++

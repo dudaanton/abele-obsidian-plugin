@@ -161,6 +161,21 @@ function installElementFactories(win: Window & typeof globalThis): void {
   g.createFragment = () => doc.createDocumentFragment()
 }
 
+/**
+ * Obsidian's cross-window type check. A popout window has its own `HTMLElement`, so a plain
+ * `instanceof` against the main window's constructor is false there; `instanceOf` compares
+ * against the constructor of the node's own window instead.
+ */
+if (typeof Node !== 'undefined' && !('instanceOf' in Node.prototype)) {
+  Object.defineProperty(Node.prototype, 'instanceOf', {
+    value(this: Node, type: { new (...args: never[]): unknown }) {
+      const win = (this.ownerDocument ?? (this as unknown as Document)).defaultView
+      const ctor = win ? (win as unknown as Record<string, unknown>)[type.name] : undefined
+      return this instanceof type || (typeof ctor === 'function' && this instanceof ctor)
+    },
+  })
+}
+
 if (typeof window !== 'undefined') {
   installElementFactories(window)
 

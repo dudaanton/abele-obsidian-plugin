@@ -34,7 +34,7 @@ export class SnippetService {
     return AbeleConfig.getInstance().snippetsFolder
   }
 
-  private isSnippet(file: TAbstractFile): boolean {
+  private isSnippet(file: TAbstractFile): file is TFile {
     return (
       file instanceof TFile && file.extension === 'css' && file.path.startsWith(this.folder + '/')
     )
@@ -81,13 +81,13 @@ export class SnippetService {
 
     this.eventRefs.push(
       app.vault.on('create', (file) => {
-        if (this.isSnippet(file)) this.injectStyle(file as TFile)
+        if (this.isSnippet(file)) this.injectStyle(file)
       })
     )
 
     this.eventRefs.push(
       app.vault.on('modify', (file) => {
-        if (this.isSnippet(file)) this.injectStyle(file as TFile)
+        if (this.isSnippet(file)) this.injectStyle(file)
       })
     )
 
@@ -106,7 +106,7 @@ export class SnippetService {
           this.removeStyle(oldPath)
         }
         // Add new style if it is now a snippet
-        if (this.isSnippet(file)) this.injectStyle(file as TFile)
+        if (this.isSnippet(file)) this.injectStyle(file)
       })
     )
   }

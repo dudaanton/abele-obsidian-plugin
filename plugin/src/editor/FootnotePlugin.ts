@@ -341,7 +341,7 @@ class FootnoteOverlay {
     try {
       const domPos = this.view.domAtPos(fn.refFrom)
       const lineEl =
-        domPos.node instanceof HTMLElement
+        domPos.node.instanceOf(HTMLElement)
           ? domPos.node.closest('.cm-line')
           : (domPos.node.parentElement?.closest('.cm-line') ?? null)
       if (lineEl) {
