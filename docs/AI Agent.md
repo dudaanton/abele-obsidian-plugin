@@ -328,7 +328,40 @@ When invoked without arguments (`/review`), the skill is loaded and waits for yo
 
 ## Chat Storage
 
-Chats are saved as JSON files in your vault.
+Chats are saved as `.abchat` files in your vault.
+
+### File Format
+
+An `.abchat` file is a log: one JSON record per line, appended as the conversation goes.
+
+```
+{"v":2,"k":"meta","type":"abele-chat","title":"...","activeLeafId":"..."}
+{"k":"msg","id":"m1","role":"user","content":"..."}
+{"k":"int","role":"assistant","toolCalls":[...]}
+```
+
+Reading a file replays it from the top: the last `meta` record wins, a `msg` record replaces
+any earlier one with the same id, and `int` records — the model's own context — accumulate.
+
+This is what makes a save cost what changed rather than what the conversation weighs. A turn
+appends a few lines; the file is rewritten in full only when a chat is created, when it is
+compacted (once the log holds twice as many records as live entities), or when a file written
+by an older build is migrated. Measured in a running Obsidian, an append is about 2ms whatever
+the size, against 5ms at 0.9MB and 27ms at 8.7MB for a full rewrite — and a long agentic chat
+saves at least once per tool call.
+
+It also means a write cut short by a crash costs the last line rather than the file, and that
+the file can be read with `head`, searched with `grep`, and repaired by deleting a line.
+
+### Format Versions
+
+| Version | Written by | Shape |
+|---------|-----------|-------|
+| 1 | before this change | a single JSON object, rewritten in full on every save |
+| 2 | current | the log described above |
+
+Both are read. A version 1 file is recognised by its first line and converted to version 2 the
+first time the chat is changed — opening one leaves it alone.
 
 ### Path Template
 
@@ -339,7 +372,7 @@ Configure in settings (default: `AI/Chats/{{name}}`):
 | `{{name}}` | Chat title (sanitized for filenames) |
 | `{{date}}` | Current date |
 
-The `.json` extension is added automatically.
+The `.abchat` extension is added automatically.
 
 ### What's Saved
 

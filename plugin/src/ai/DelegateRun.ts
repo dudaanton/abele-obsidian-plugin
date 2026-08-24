@@ -47,6 +47,10 @@ export class DelegateRun {
 
   async run(): Promise<DelegateRunResult> {
     const { items, batchSize, signal } = this.options
+
+    // The run file links back to the chat that started it, so that chat has to be on disk
+    // before the link is written. Its own writes are otherwise deferred.
+    await this.options.parent.flush()
     // No items means the task itself is the one piece of work.
     const work = items.length ? items : [this.options.task]
 

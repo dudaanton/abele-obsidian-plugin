@@ -84,8 +84,8 @@ beforeEach(() => {
   }
 
   const storage = ChatStorage.getInstance()
-  vi.spyOn(storage, 'saveChat').mockImplementation(async (_messages, metadata) => {
-    savedMetadata = metadata
+  vi.spyOn(storage, 'saveChat').mockImplementation(async (snapshot) => {
+    savedMetadata = snapshot.metadata
     return FAKE_FILE
   })
   vi.spyOn(storage, 'loadChat').mockImplementation(async () => storedChat)

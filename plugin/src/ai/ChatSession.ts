@@ -19,6 +19,7 @@ import type {
   ToolDefinition,
 } from './client'
 import { ChatStorage } from './ChatStorage'
+import { ChatLogWriter, type ChatSnapshot } from './ChatLog'
 import { ChatSummarizer, type SummarizerHost } from './ChatSummarizer'
 import { ChatInterceptor, type InterceptorHost } from './ChatInterceptor'
 import { AgentRegistry } from './agents/AgentRegistry'
@@ -52,6 +53,12 @@ import {
 } from './chatTree'
 
 import type { ChatService } from './ChatService'
+
+/**
+ * How long changes are gathered before they are written. Short enough that a crash costs at
+ * most a fraction of a turn, long enough that a burst of updates in one tick makes one write.
+ */
+const PERSIST_INTERVAL_MS = 300
 
 /** Shape returned by tools that provide diff details */
 interface ToolDiffDetails {
@@ -120,6 +127,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private toolAbortController: AbortController | null = null
   private generation = 0
   private lastModelId = ''
+
+  /** What the chat's file already holds, so a save writes only the difference. */
+  private readonly log = new ChatLogWriter()
+  private dirty = false
+  private writing: Promise<void> | null = null
+  private persistTimer: ReturnType<typeof setTimeout> | null = null
 
   // Reactive state for Vue components
   public readonly messages = ref<ChatMessage[]>([])
@@ -267,7 +280,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         timestamp: Date.now(),
       })
       this.updateVisibleMessages()
-      void this.save()
+      this.markDirty()
     }
   }
 
@@ -455,6 +468,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     this.error.value = null
     await this.runAgentLoop()
+    // A turn just ended: a natural point to be sure the disk has it.
     await this.save()
   }
 
@@ -858,7 +872,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
       if (this.needsApproval(tc.name, tc.arguments)) {
         this.ensurePendingToolCallMessage(tc)
-        await this.save()
+        this.markDirty()
         return // Wait for user approve/reject
       }
 
@@ -1018,6 +1032,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     if (gen !== this.generation) return
 
+    // A turn just ended: a natural point to be sure the disk has it.
     await this.save()
 
     const sequential = AbeleConfig.getInstance().ai.sequentialAuxiliary
@@ -1074,12 +1089,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     }
 
     if (controller.signal.aborted) {
-      await this.save()
+      this.markDirty()
       return
     }
 
     await this.processAllPendingToolCalls()
-    await this.save()
+    this.markDirty()
   }
 
   abortToolExecution(): void {
@@ -1114,7 +1129,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.pendingToolCalls.value = this.pendingToolCalls.value.slice(1)
 
     await this.processAllPendingToolCalls()
-    await this.save()
+    this.markDirty()
   }
 
   // ── Questions tool ──────────────────────────────────────────────
@@ -1179,7 +1194,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     if (args?.trim()) {
       await this.sendMessage(args.trim())
     } else {
-      await this.save()
+      this.markDirty()
     }
   }
 
@@ -1193,6 +1208,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   async reset(): Promise<void> {
     this.generation++
     await this.save()
+    this.log.forget()
+    this.dirty = false
     this.abort()
     this.abortBackground()
     this.allInternalMessages = []
@@ -1280,19 +1297,67 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   // ── Save / Load ────────────────────────────────────────────────
 
-  async save(): Promise<void> {
-    if (this.allChatMessages.length === 0) return
-
-    // A run lives inside its coordinator's file; it has no chat file of its own and must never
-    // appear in the chat history.
+  /**
+   * Notes that the chat has changed, without waiting for the disk.
+   *
+   * The agent loop calls this after every tool call, so it must not block: a save used to be
+   * awaited in that path, and cost time proportional to the whole conversation. Writes are
+   * coalesced over a short window and then append only what changed.
+   */
+  markDirty(): void {
     if (this.kind === 'run') {
       this.onPersist?.()
       return
     }
 
-    const config = AbeleConfig.getInstance().ai
-    const title = this.chatTitle.value || this.fallbackTitle()
+    this.dirty = true
+    if (this.persistTimer !== null) return
 
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null
+      void this.flush()
+    }, PERSIST_INTERVAL_MS)
+  }
+
+  /** Writes anything outstanding now. Called wherever losing the last change would matter. */
+  async flush(): Promise<void> {
+    // A run has no file of its own; its coordinator owns one and does its own coalescing.
+    if (this.kind === 'run') {
+      this.onPersist?.()
+      return
+    }
+
+    if (this.persistTimer !== null) {
+      clearTimeout(this.persistTimer)
+      this.persistTimer = null
+    }
+
+    // Never two writes at once: an append that overtook its predecessor would reorder records.
+    while (this.writing) await this.writing
+    if (!this.dirty) return
+
+    this.dirty = false
+    this.writing = this.writeNow()
+    try {
+      await this.writing
+    } catch (err) {
+      // The change is still only in memory, so it stays pending rather than being dropped:
+      // the next save retries it, and a flush at close gets one more chance.
+      this.dirty = true
+      console.error('[Abele] Failed to save chat', err)
+    } finally {
+      this.writing = null
+    }
+  }
+
+  /** Marks the chat changed and writes it immediately. */
+  async save(): Promise<void> {
+    this.markDirty()
+    await this.flush()
+  }
+
+  private snapshot(): ChatSnapshot {
+    const config = AbeleConfig.getInstance().ai
     const overrides = this.overrides.value
 
     const metadata: ChatMetadata = {
@@ -1306,7 +1371,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       providerId: this.activeProviderId.value || config.activeProviderId,
       modelId: this.activeModelId.value || config.activeModelId,
       created: this.chatCreated || (this.chatCreated = dayjs().format('YYYY-MM-DD')),
-      title,
+      title: this.chatTitle.value || this.fallbackTitle(),
       pendingToolCalls:
         this.pendingToolCalls.value.length > 0
           ? this.pendingToolCalls.value.map((tc) => ({
@@ -1324,12 +1389,29 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         : undefined,
     }
 
-    this.currentChatFile.value = await ChatStorage.getInstance().saveChat(
-      this.allChatMessages,
+    return {
       metadata,
-      this.currentChatFile.value || undefined,
-      this.allInternalMessages
+      messages: this.allChatMessages,
+      internalMessages: this.allInternalMessages,
+    }
+  }
+
+  private async writeNow(): Promise<void> {
+    if (this.allChatMessages.length === 0) return
+
+    const snapshot = this.snapshot()
+    const plan = this.log.plan(snapshot)
+    if (plan.kind === 'noop') return
+
+    const file = await ChatStorage.getInstance().saveChat(
+      snapshot,
+      plan,
+      this.currentChatFile.value || undefined
     )
+    if (!file) return
+
+    this.log.commit(snapshot, plan)
+    this.currentChatFile.value = file
 
     // Update tab state so new chats get persisted
     this.chatService.saveTabs()
@@ -1341,6 +1423,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     this.allChatMessages = result.messages.map((m) => (m.id ? m : { ...m, id: nanoid() }))
     this.allInternalMessages = result.internalMessages || []
+    // Seeds the writer with what the file already holds, so the first save of a reopened chat
+    // appends rather than rewriting it. A file in the older format is not adopted, so that
+    // first save rewrites it as a log — which is how a chat migrates.
+    this.log.adopt(result)
     this.currentChatFile.value = file
     this.chatTitle.value = result.metadata?.title || ''
     this.chatCreated = result.metadata?.created || ''
@@ -1433,7 +1519,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const leaf = findDeepestLeaf(this.allChatMessages, messageId)
     this.activeLeafId = leaf.id
     this.updateVisibleMessages()
-    this.save()
+    this.markDirty()
   }
 
   // ── Delegate support ──────────────────────────────────────────
@@ -1459,7 +1545,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       (m) => m.toolCallId === toolCallId,
       (m) => ({ ...m, subAgentRun: run })
     )
-    void this.save()
+    this.markDirty()
   }
 
   /** Every run this chat started, so they can be cleaned up with it. */
@@ -1488,7 +1574,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.updateVisibleMessages()
 
     await this.interceptor.review(userMsg.id)
-    await this.save()
+    this.markDirty()
   }
 
   abortInterceptor(): void {
@@ -1554,7 +1640,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     if (gen !== this.generation) return
 
-    await this.save()
+    this.markDirty()
 
     const sequential = AbeleConfig.getInstance().ai.sequentialAuxiliary
 
@@ -1623,6 +1709,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   destroy(): void {
+    if (this.persistTimer !== null) {
+      clearTimeout(this.persistTimer)
+      this.persistTimer = null
+    }
     this.abort()
     this.abortBackground()
     this.allInternalMessages = []

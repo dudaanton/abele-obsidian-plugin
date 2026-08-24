@@ -412,6 +412,10 @@ export class ChatService {
 
   destroy(): void {
     for (const session of this.sessions.values()) {
+      // Obsidian's unload is synchronous, so this cannot be awaited. Writes are deferred by
+      // a fraction of a second at most, and a turn ends with one, so what is at risk here is
+      // a partial turn — and starting it is what the flush is for.
+      void session.flush()
       session.destroy()
     }
     this.sessions.clear()
