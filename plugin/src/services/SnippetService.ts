@@ -127,9 +127,8 @@ export class SnippetService {
           const input = contentEl.createEl('input', {
             type: 'text',
             placeholder: 'filename',
-            cls: 'abele-snippet-name-input',
+            cls: 'abele-snippet-name-input abele-name-input',
           })
-          input.style.width = '100%'
           input.focus()
           input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && input.value.trim()) {

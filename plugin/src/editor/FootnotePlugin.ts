@@ -384,7 +384,7 @@ class FootnoteOverlay {
 
     if (rightSpace < 200) {
       for (const entry of this.entries.values()) {
-        entry.el.style.display = 'none'
+        entry.el.toggleClass('abele-footnote-widget-container_hidden', true)
       }
       return
     }
@@ -398,12 +398,11 @@ class FootnoteOverlay {
     for (const entry of sorted) {
       const coords = this.view.coordsAtPos(entry.footnote.refFrom)
       if (!coords) {
-        entry.el.style.display = 'none'
+        entry.el.toggleClass('abele-footnote-widget-container_hidden', true)
         continue
       }
 
-      entry.el.style.display = ''
-      entry.el.style.position = 'absolute'
+      entry.el.toggleClass('abele-footnote-widget-container_hidden', false)
       entry.el.style.width = `${sidenoteWidth}px`
       entry.el.style.left = `${contentRect.right - scrollerRect.left + 8}px`
 

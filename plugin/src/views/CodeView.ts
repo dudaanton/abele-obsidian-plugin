@@ -157,8 +157,8 @@ export class CodeView extends TextFileView {
 
   private toggleSearch() {
     if (!this.searchEl) return
-    const visible = this.searchEl.style.display !== 'none'
-    this.searchEl.style.display = visible ? 'none' : 'flex'
+    const visible = !this.searchEl.hasClass('abele-code-search_hidden')
+    this.searchEl.toggleClass('abele-code-search_hidden', visible)
     if (!visible) {
       // Pre-fill with selected text
       if (this.editor && this.searchInput) {
@@ -268,8 +268,7 @@ export class CodeView extends TextFileView {
     searchBtn.addEventListener('click', () => this.toggleSearch())
 
     // Search bar (hidden by default)
-    this.searchEl = header.createDiv({ cls: 'abele-code-search' })
-    this.searchEl.style.display = 'none'
+    this.searchEl = header.createDiv({ cls: 'abele-code-search abele-code-search_hidden' })
     const searchComponent = new TextComponent(this.searchEl)
     searchComponent.setPlaceholder('Find...')
     searchComponent.inputEl.addClass('abele-code-search__input')

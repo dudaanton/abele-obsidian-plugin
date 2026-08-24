@@ -404,7 +404,6 @@ export class ChartView extends BasesView {
 
     this.containerEl.empty()
     const chartDiv = this.containerEl.createDiv({ cls: 'abele-bases-echart' })
-    chartDiv.style.width = '100%'
     chartDiv.style.height = `${height}px`
 
     this.chart?.dispose()
