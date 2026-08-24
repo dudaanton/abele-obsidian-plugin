@@ -94,6 +94,33 @@ if (typeof HTMLElement !== 'undefined' && !('empty' in HTMLElement.prototype)) {
         this.classList.remove(...classes)
       },
     },
+    createDiv: {
+      value(this: HTMLElement, cls?: string) {
+        const el = this.ownerDocument.createElement('div')
+        if (cls) el.classList.add(...cls.split(' '))
+        this.appendChild(el)
+        return el
+      },
+    },
+    detach: {
+      value(this: HTMLElement) {
+        this.parentElement?.removeChild(this)
+      },
+    },
+    /** Obsidian's delegated listener: `el.on(event, selector, handler)`. */
+    on: {
+      value(
+        this: HTMLElement,
+        event: string,
+        selector: string,
+        handler: (ev: Event, target: HTMLElement) => void
+      ) {
+        this.addEventListener(event, (ev: Event) => {
+          const target = (ev.target as HTMLElement | null)?.closest(selector)
+          if (target instanceof HTMLElement && this.contains(target)) handler(ev, target)
+        })
+      },
+    },
     doc: {
       get(this: HTMLElement) {
         return this.ownerDocument
@@ -140,6 +167,15 @@ export class Modal {
   }
 
   onClose(): void {}
+}
+
+/** A keymap scope. Only registration is modelled; nothing here dispatches a key. */
+export class Scope {
+  readonly bindings: Array<{ modifiers: string[]; key: string }> = []
+
+  register(modifiers: string[], key: string, _handler: unknown): void {
+    this.bindings.push({ modifiers, key })
+  }
 }
 
 // Structural placeholders — present so imports resolve; not behaviourally modelled.
