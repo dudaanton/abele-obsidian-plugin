@@ -47,7 +47,7 @@
     </div>
 
     <!-- Charts -->
-    <ChartTabs v-model="chartTab" :tabs="chartTabs" />
+    <Tabs v-model="chartTab" :tabs="chartTabs" level="secondary" />
     <template v-if="chartTab === 'daily'">
       <div
         v-if="dailyChartData.length"
@@ -100,7 +100,7 @@ import {
 import { openFile } from '@/helpers/vaultUtils'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
-import ChartTabs from './obsidian/ChartTabs.vue'
+import Tabs from './obsidian/Tabs.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import TimeEntryItem from './TimeEntryItem.vue'
@@ -262,9 +262,9 @@ const totalTimeText = computed(() => {
 
 // --- Charts ---
 
-const chartTabs: Array<{ key: ChartTab; label: string }> = [
-  { key: 'daily', label: 'Daily' },
-  { key: 'groups', label: 'By Groups' },
+const chartTabs: Array<{ id: ChartTab; label: string }> = [
+  { id: 'daily', label: 'Daily' },
+  { id: 'groups', label: 'By Groups' },
 ]
 const chartTab = ref<ChartTab>('daily')
 

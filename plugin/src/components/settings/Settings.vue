@@ -11,41 +11,23 @@
       class="abele-settings__nav"
       :class="{ 'abele-settings__nav_mobile': isMobile }"
     >
-      <div
-        class="abele-settings__tab-group"
-        :class="{ 'abele-settings__tab-group_mobile': isMobile }"
-      >
-        <div
-          v-for="(tab, idx) in tabs"
-          :key="tab.id"
-          class="abele-settings__tab"
-          :class="{
-            'abele-settings__tab_active': activeTab === idx,
-            'abele-settings__tab_mobile': isMobile,
-          }"
-          @click="selectTab(idx)"
-        >
-          {{ tab.name }}
-          <Icon v-if="isMobile" icon="chevron-right" class="abele-settings__tab-chevron" />
-        </div>
-      </div>
-      <div v-if="!isMobile" class="abele-settings__fill" />
+      <Tabs v-model="activeTab" :tabs="tabs" :vertical="isMobile" @update:model-value="onSelect" />
     </nav>
 
     <!-- Tab content -->
     <div class="abele-settings__content" :class="{ 'abele-settings__content_mobile': isMobile }">
       <template v-if="!isMobile || !isMenuOpen">
-        <component :is="tabs[activeTab].component" />
+        <component :is="activeComponent" />
       </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, markRaw, type Component } from 'vue'
+import { ref, computed, onMounted, watch, markRaw, type Component } from 'vue'
 import { Platform } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
-import Icon from '../obsidian/Icon.vue'
+import Tabs from '../obsidian/Tabs.vue'
 import TasksSettings from './TasksSettings.vue'
 import LogsSettings from './LogsSettings.vue'
 import JournalsSettings from './JournalsSettings.vue'
@@ -56,25 +38,25 @@ import ScriptsSettings from './ScriptsSettings.vue'
 import LinksSettings from './LinksSettings.vue'
 import OtherSettings from './OtherSettings.vue'
 
-interface Tab {
+interface SettingsTab {
   id: string
-  name: string
+  label: string
   component: Component
 }
 
-const tabs: Tab[] = [
-  { id: 'tasks', name: 'Tasks', component: markRaw(TasksSettings) },
-  { id: 'logs', name: 'Logs', component: markRaw(LogsSettings) },
-  { id: 'journals', name: 'Journals', component: markRaw(JournalsSettings) },
-  { id: 'finance', name: 'Finance', component: markRaw(FinanceSettings) },
-  { id: 'time-tracking', name: 'Time Tracking', component: markRaw(TimeTrackingSettings) },
-  { id: 'ai', name: 'AI Agent', component: markRaw(AiSettings) },
-  { id: 'scripts', name: 'Scripts', component: markRaw(ScriptsSettings) },
-  { id: 'links', name: 'Links', component: markRaw(LinksSettings) },
-  { id: 'other', name: 'Other', component: markRaw(OtherSettings) },
+const tabs: SettingsTab[] = [
+  { id: 'tasks', label: 'Tasks', component: markRaw(TasksSettings) },
+  { id: 'logs', label: 'Logs', component: markRaw(LogsSettings) },
+  { id: 'journals', label: 'Journals', component: markRaw(JournalsSettings) },
+  { id: 'finance', label: 'Finance', component: markRaw(FinanceSettings) },
+  { id: 'time-tracking', label: 'Time Tracking', component: markRaw(TimeTrackingSettings) },
+  { id: 'ai', label: 'AI Agent', component: markRaw(AiSettings) },
+  { id: 'scripts', label: 'Scripts', component: markRaw(ScriptsSettings) },
+  { id: 'links', label: 'Links', component: markRaw(LinksSettings) },
+  { id: 'other', label: 'Other', component: markRaw(OtherSettings) },
 ]
 
-const activeTab = ref(0)
+const activeTab = ref(tabs[0].id)
 const isMenuOpen = ref(true)
 const isMobile = ref(Platform.isMobile)
 
@@ -84,8 +66,12 @@ const { app, settingsContainer } = GlobalStore.getInstance()
 // lookup around the settings UI must go through that window's own document.
 const settingsDoc = () => settingsContainer.value?.doc ?? document
 
-const selectTab = (idx: number) => {
-  activeTab.value = idx
+const activeComponent = computed(
+  () => (tabs.find((t) => t.id === activeTab.value) ?? tabs[0]).component
+)
+const activeLabel = computed(() => (tabs.find((t) => t.id === activeTab.value) ?? tabs[0]).label)
+
+const onSelect = () => {
   if (isMobile.value) {
     isMenuOpen.value = false
   }
@@ -115,7 +101,7 @@ watch(
     const titleEl = backBtn.parentElement?.lastChild as HTMLElement
 
     if (!isMenuOpen.value) {
-      if (titleEl) titleEl.textContent = tabs[activeTab.value].name
+      if (titleEl) titleEl.textContent = activeLabel.value
       backBtn.onclick = () => {
         isMenuOpen.value = true
       }
@@ -149,79 +135,13 @@ watch(
 }
 
 .abele-settings__nav {
-  display: flex;
   padding: var(--size-4-2) var(--size-4-4);
   border-bottom: 1px solid var(--background-modifier-border);
-  overflow-x: auto;
-  scrollbar-width: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
 
   &_mobile {
-    flex-direction: column;
     border-bottom: none;
     padding: 0;
   }
-}
-
-.abele-settings__tab-group {
-  display: flex;
-  gap: var(--size-4-1);
-
-  &_mobile {
-    flex-direction: column;
-    gap: 0;
-  }
-}
-
-.abele-settings__tab {
-  padding: var(--size-4-1) var(--size-4-3);
-  border-radius: var(--radius-s);
-  cursor: pointer;
-  white-space: nowrap;
-  color: var(--text-muted);
-  transition:
-    background-color 0.1s ease,
-    color 0.1s ease;
-
-  &:not(&_active):hover {
-    background-color: var(--background-modifier-hover);
-    color: var(--text-normal);
-  }
-
-  &_active {
-    background-color: var(--interactive-accent);
-    color: var(--text-on-accent);
-  }
-
-  &_mobile {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--size-4-2) var(--size-4-4);
-    border-radius: 0;
-    background-color: transparent;
-    color: var(--text-normal);
-
-    &:hover {
-      background-color: var(--background-modifier-hover);
-    }
-
-    &.abele-settings__tab_active {
-      background-color: var(--background-modifier-hover);
-      color: var(--text-normal);
-    }
-  }
-}
-
-.abele-settings__tab-chevron {
-  display: block;
-}
-
-.abele-settings__fill {
-  flex: 1;
 }
 
 .abele-settings__content {

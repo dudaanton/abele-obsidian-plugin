@@ -102,7 +102,7 @@
           </span>
         </div>
       </div>
-      <ChartTabs v-model="chartTab" :tabs="chartTabs" />
+      <Tabs v-model="chartTab" :tabs="chartTabs" level="secondary" />
       <template v-if="chartTab === 'expenses' || chartTab === 'income'">
         <div v-if="pieData.length" ref="pieChartEl" class="abele-finance-sidebar__pie-chart" />
         <div v-else class="abele-finance-sidebar__pie-empty">No data</div>
@@ -148,7 +148,7 @@ import { DATE_FORMAT } from '@/constants/dates'
 import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
 import { openFile } from '@/helpers/vaultUtils'
 import ObsidianIcon from './obsidian/Icon.vue'
-import ChartTabs from './obsidian/ChartTabs.vue'
+import Tabs from './obsidian/Tabs.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import TransactionItem from './TransactionItem.vue'
@@ -456,14 +456,14 @@ function resolveWikilink(wikilink: string): string | null {
 type ChartTab = 'expenses' | 'income' | 'calendar' | 'networth'
 const chartTab = ref<ChartTab>('expenses')
 const allChartTabs = [
-  { key: 'expenses' as ChartTab, label: 'Expenses' },
-  { key: 'income' as ChartTab, label: 'Income' },
-  { key: 'calendar' as ChartTab, label: 'Calendar' },
-  { key: 'networth' as ChartTab, label: 'Net Worth' },
+  { id: 'expenses' as ChartTab, label: 'Expenses' },
+  { id: 'income' as ChartTab, label: 'Income' },
+  { id: 'calendar' as ChartTab, label: 'Calendar' },
+  { id: 'networth' as ChartTab, label: 'Net Worth' },
 ]
 
 const chartTabs = computed(() =>
-  isCustomRange.value ? allChartTabs.filter((t) => t.key !== 'calendar') : allChartTabs
+  isCustomRange.value ? allChartTabs.filter((t) => t.id !== 'calendar') : allChartTabs
 )
 
 // Keep pieTab in sync for backward compat
