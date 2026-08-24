@@ -14,6 +14,12 @@ import prettierRecommended from 'eslint-plugin-prettier/recommended'
  * tens of thousands of lines. The ones that would fire in the hundreds are relaxed at the
  * bottom of this file, each with the reason it was relaxed. Everything under `obsidianmd/`
  * keeps the severity Obsidian gave it.
+ *
+ * **Run this from the repository root, not from `plugin/`.** Several rules
+ * (`validate-manifest`, `no-unsupported-api`) read `manifest.json` from the working directory,
+ * and the manifest lives in the root because that is where Obsidian's directory reads it. The
+ * `lint` script in `plugin/package.json` changes directory for you; paths below are therefore
+ * relative to the repository root.
  */
 
 /** Obsidian's own rules, lifted out of the preset so `.vue` files can be held to them too. */
@@ -46,7 +52,10 @@ const relaxedTypeCheckedRules = {
   '@typescript-eslint/no-empty-object-type': 'warn',
   '@typescript-eslint/no-empty-function': 'off',
   '@typescript-eslint/no-non-null-assertion': 'off',
-  '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+  '@typescript-eslint/no-unused-vars': [
+    'warn',
+    { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+  ],
   // Vite resolves everything into one bundle; devDependencies at build time are expected.
   'import/no-extraneous-dependencies': 'off',
 }
@@ -54,22 +63,32 @@ const relaxedTypeCheckedRules = {
 export default [
   {
     ignores: [
-      'node_modules/**',
-      'build/**',
-      'dist/**',
-      'coverage/**',
-      'scripts/**',
-      'main.js',
+      '**/node_modules/**',
+      'plugin/build/**',
+      'plugin/dist/**',
+      'plugin/coverage/**',
+      'plugin/scripts/**',
+      'plugin/main.js',
+      // Read from disk by `validate-manifest`, not linted as source files.
+      'manifest.json',
+      'versions.json',
     ],
   },
 
-  ...obsidianmd.configs.recommended,
+  // The preset points its JSON blocks at a root `package.json`; this project's lives in
+  // `plugin/`, so those blocks are re-aimed rather than re-declared — that keeps the plugins
+  // they register (`json`, `depend`) attached to the rules they enable.
+  ...obsidianmd.configs.recommended.map((entry) =>
+    Array.isArray(entry.files) && entry.files.includes('package.json')
+      ? { ...entry, files: entry.files.map((f) => (f === 'package.json' ? 'plugin/package.json' : f)) }
+      : entry
+  ),
 
   {
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['*.mjs', '*.mts', '*.ts'],
+          allowDefaultProject: ['plugin/*.mjs', 'plugin/*.mts', 'plugin/*.ts'],
         },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -81,9 +100,10 @@ export default [
    * matter most there — no hardcoded styles, popout-safe timers and documents, sentence case —
    * apply just as much inside a component. Vue files are parsed with `vue-eslint-parser` and
    * held to the same Obsidian rules.
+   *
+   * eslint-plugin-vue's flat presets leave their rule blocks unscoped, which would apply Vue
+   * rules to `package.json` and crash the JSON parser, so every block is pinned to `.vue`.
    */
-  // eslint-plugin-vue's flat presets leave their rule blocks unscoped, which would apply Vue
-  // rules to `package.json` and crash the JSON parser. Pin every block to `.vue`.
   ...pluginVue.configs['flat/recommended'].map((entry) => ({ ...entry, files: ['**/*.vue'] })),
   {
     files: ['**/*.vue'],
@@ -99,7 +119,7 @@ export default [
     plugins: { obsidianmd: obsidianmd.plugin ?? obsidianmd },
     rules: {
       ...obsidianRules,
-      // Needs type information, which is not available for `.vue` single-file components here.
+      // Need type information, which is not available for `.vue` single-file components here.
       'obsidianmd/no-unsupported-api': 'off',
       'obsidianmd/no-tfile-tfolder-cast': 'off',
       'obsidianmd/settings-tab/prefer-setting-definitions': 'off',
@@ -141,7 +161,7 @@ export default [
    * no TypeScript program here and would crash rather than report.
    */
   {
-    files: ['tests/**', '*.config.*', 'version-bump.mjs'],
+    files: ['plugin/tests/**', 'plugin/*.config.*', 'plugin/version-bump.mjs'],
     languageOptions: { parserOptions: { projectService: false, project: false } },
     rules: {
       ...tseslint.configs.disableTypeChecked.rules,

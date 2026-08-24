@@ -64,5 +64,5 @@ jobs:
             --title="$tag" \
             --notes="$changelog" \
             plugin/build/main.js \
-            plugin/manifest.json \
+            manifest.json \
             plugin/build/styles.css

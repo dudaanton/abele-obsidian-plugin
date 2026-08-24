@@ -34,7 +34,7 @@ echo "Copied main.js"
 cp "$BUILD_DIR/main.css" "$TARGET_VAULT_DIR/styles.css"
 echo "Copied styles.css"
 
-cp "$PLUGIN_DIR/manifest.json" "$TARGET_VAULT_DIR/manifest.json"
+cp "$PLUGIN_DIR/../manifest.json" "$TARGET_VAULT_DIR/manifest.json"
 echo "Copied manifest.json"
 
 echo "--- Plugin Build and Copy Complete ---"

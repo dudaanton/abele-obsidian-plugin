@@ -14,9 +14,9 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:all": "npm run test && npm run test:perf && npm run test:e2e",
     "prepare": "git config core.hooksPath .githooks",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "version": "node version-bump.mjs && git add manifest.json versions.json"
+    "lint": "cd .. && ./plugin/node_modules/.bin/eslint --no-config-lookup --config plugin/eslint.config.mjs .",
+    "lint:fix": "cd .. && ./plugin/node_modules/.bin/eslint --no-config-lookup --config plugin/eslint.config.mjs . --fix",
+    "version": "node version-bump.mjs && git add ../manifest.json ../versions.json"
   },
   "keywords": [],
   "author": "",

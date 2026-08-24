@@ -24,6 +24,6 @@ npm_package_version="$version" node version-bump.mjs
 
 cd ..
 
-git add plugin/package.json plugin/manifest.json plugin/versions.json
+git add plugin/package.json manifest.json versions.json
 git commit -m "chore: bump version to ${version}"
 git tag "$version"
