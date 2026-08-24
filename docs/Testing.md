@@ -22,6 +22,12 @@ depends on Obsidian's runtime.
 Pure functions, no Obsidian, no I/O. `tests/unit/pathsHelpers.test.ts` is the model to
 follow.
 
+`tests/unit/designConformance.test.ts` is the odd one out: it reads the component sources and
+enforces the rules in `Design.md` — no hand-styled `<button>`, no literal colours or pixel
+sizes, no inline `style` attributes, no unexplained `overflow-x`. Each rule is there because
+breaking it produced a visible defect at least once. When adding a rule, prove it fails:
+introduce the violation, watch the test go red, then take it out again.
+
 ## Integration tier — `tests/integration/`
 
 Real plugin classes against an in-memory vault. Two pieces make this work:
@@ -66,6 +72,22 @@ parent puts on them, which keeps the test about the parent's own behaviour.
 
 Note that `@vueuse/core` registers observers in a post-flush watcher, so a test must await
 one tick after `mount` before the sentinel is being observed.
+
+`shallow: true` also stubs away every child's *slots*. A component whose content lives inside
+`Modal` or `Setting` renders nothing until those are replaced by stubs that render their slot:
+
+```ts
+global: {
+  stubs: {
+    ObsidianModal: { template: '<div><slot /></div>' },
+    Setting: { props: ['name', 'desc'], template: '<div><slot /></div>' },
+  },
+}
+```
+
+happy-dom has no `ResizeObserver`. A component that adapts to its own width needs a stub whose
+callback the test fires with a chosen width — which is also how the narrow layout is driven,
+rather than by faking a window size.
 
 ## Complexity tier — `tests/**/*.perf.test.ts`
 
@@ -130,6 +152,69 @@ window that no longer exists.
 
 The suite skips itself when Obsidian is not running or the build lacks the test hook, so
 `npm run test:all` stays usable with Obsidian closed.
+
+### Asserting that a layout does not break
+
+happy-dom cannot answer this, and a screenshot only answers it for whoever looks at it. In a
+running Obsidian the question is geometric and can be asserted: take the container's
+`getBoundingClientRect()`, walk its descendants, and fail on any whose right edge is beyond it.
+
+`tests/e2e/settingsLayout.e2e.test.ts` does exactly that for every settings tab and every
+section of the agent editor. Read it before writing another of these — it also shows how to
+run an asynchronous probe, which matters (see below).
+
+Two things must be filtered out or the check reports phantoms. Obsidian sizes a dropdown by
+cloning it off-screen — skip `.is-measuring`. And skip anything `visibility: hidden`,
+`display: none` or absolutely positioned, none of which push a layout sideways.
+
+Do not use `scrollWidth > clientWidth` for this: on a wrapped flex row it reports overflow that
+is not there. It is still worth asserting `scrollWidth === clientWidth` on the *scroll
+container* itself, which is the thing a person sees a scrollbar on.
+
+Assert that the probe reached every screen it was meant to. A probe that silently failed to
+open a modal finds nothing wrong, which reads exactly like a pass.
+
+**`evalJson` cannot await a promise.** It wraps the expression in `JSON.stringify`, so an
+async probe stringifies to `{}` — and an empty report passes every assertion about it. Park
+the result on `window` and poll for it, as the responsiveness probe does.
+
+#### Choosing a width
+
+Resize the **settings window**, not the main one, and do not chase phone widths there:
+
+```js
+const w = require('electron').remote.BrowserWindow
+  .getAllWindows().find((x) => x.getTitle().startsWith('Settings'))
+w.setSize(620, 800)
+```
+
+Obsidian's own settings chrome stops adapting below roughly 600px in a desktop window: its
+sidebar keeps its width and hands the plugin under 100px, which no layout survives and which
+no user ever sees — a real phone runs the `.is-mobile` layout instead. What matters is the
+width of the pane the plugin is actually given. At a 620px window that pane is about 356px,
+which is a phone column, and it is a width a person can genuinely produce.
+
+The main window is a different matter and does take CDP:
+
+```
+obsidian dev:cdp method=Emulation.setDeviceMetricsOverride \
+  params='{"width":360,"height":740,"deviceScaleFactor":2,"mobile":true}'
+```
+
+That separate settings window is also why a component must measure **its own element** rather
+than `window.innerWidth`: in a component rendered into the settings window, `window` is the
+main one, and it will report the wrong screen entirely.
+
+#### Screenshots
+
+For looking rather than asserting, capture the settings window through Electron:
+
+```js
+const img = await w.webContents.capturePage()
+require('fs').writeFileSync('/tmp/settings.png', img.toPNG())
+```
+
+Screenshots are for the person doing the work. They are never committed.
 
 ### Known rough edge
 

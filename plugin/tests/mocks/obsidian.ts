@@ -62,6 +62,131 @@ export function parseYaml(raw: string): unknown {
   return JSON.parse(raw)
 }
 
+/**
+ * Desktop by default. Components that adapt to a narrow screen measure their own element
+ * rather than trusting this, so tests drive the layout through a ResizeObserver stub instead
+ * of flipping a global flag.
+ */
+export const Platform = {
+  isMobile: false,
+  isDesktop: true,
+}
+
+/**
+ * Obsidian adds these to `HTMLElement` itself rather than shipping them as helpers, and
+ * components call them directly. happy-dom has no such thing, so they are installed here —
+ * on import of this module, exactly as the real plugin API does it.
+ */
+if (typeof HTMLElement !== 'undefined' && !('empty' in HTMLElement.prototype)) {
+  Object.defineProperties(HTMLElement.prototype, {
+    empty: {
+      value(this: HTMLElement) {
+        while (this.firstChild) this.removeChild(this.firstChild)
+      },
+    },
+    addClass: {
+      value(this: HTMLElement, ...classes: string[]) {
+        this.classList.add(...classes)
+      },
+    },
+    removeClass: {
+      value(this: HTMLElement, ...classes: string[]) {
+        this.classList.remove(...classes)
+      },
+    },
+    createDiv: {
+      value(this: HTMLElement, cls?: string) {
+        const el = this.ownerDocument.createElement('div')
+        if (cls) el.classList.add(...cls.split(' '))
+        this.appendChild(el)
+        return el
+      },
+    },
+    detach: {
+      value(this: HTMLElement) {
+        this.parentElement?.removeChild(this)
+      },
+    },
+    /** Obsidian's delegated listener: `el.on(event, selector, handler)`. */
+    on: {
+      value(
+        this: HTMLElement,
+        event: string,
+        selector: string,
+        handler: (ev: Event, target: HTMLElement) => void
+      ) {
+        this.addEventListener(event, (ev: Event) => {
+          const target = (ev.target as HTMLElement | null)?.closest(selector)
+          if (target instanceof HTMLElement && this.contains(target)) handler(ev, target)
+        })
+      },
+    },
+    doc: {
+      get(this: HTMLElement) {
+        return this.ownerDocument
+      },
+    },
+  })
+}
+
+/** Draws a Lucide glyph into an element. Recorded as an attribute so tests can assert it. */
+export function setIcon(el: HTMLElement, icon: string): void {
+  el.setAttribute('data-icon', icon)
+}
+
+/**
+ * Obsidian's themed tooltip. The real one shows on hover and puts the text on `aria-label`,
+ * which is what tests assert against — so this mirrors that rather than inventing an attribute.
+ */
+export function setTooltip(el: HTMLElement, tooltip: string): void {
+  if (tooltip) el.setAttribute('aria-label', tooltip)
+  else el.removeAttribute('aria-label')
+}
+
+/**
+ * Enough of Obsidian's modal for components that mount one: a title, the two elements they
+ * reach for, and open/close. `onClose` is overridden by callers, so `close()` calls it.
+ */
+export class Modal {
+  containerEl: HTMLElement = document.createElement('div')
+  modalEl: HTMLElement = document.createElement('div')
+  contentEl: HTMLElement = document.createElement('div')
+  titleText = ''
+  isOpen = false
+
+  constructor(public app?: unknown) {
+    this.modalEl.appendChild(this.contentEl)
+    this.containerEl.appendChild(this.modalEl)
+  }
+
+  setTitle(title: string): this {
+    this.titleText = title
+    return this
+  }
+
+  open(): void {
+    this.isOpen = true
+    document.body.appendChild(this.containerEl)
+  }
+
+  close(): void {
+    this.isOpen = false
+    this.containerEl.remove()
+    this.onClose()
+  }
+
+  onClose(): void {}
+}
+
+/** A keymap scope. Only registration is modelled; nothing here dispatches a key. */
+export class Scope {
+  readonly bindings: Array<{ modifiers: string[]; key: string }> = []
+
+  register(modifiers: string[], key: string, _handler: unknown): void {
+    this.bindings.push({ modifiers, key })
+  }
+}
+
 // Structural placeholders — present so imports resolve; not behaviourally modelled.
 export class App {}
 export class Vault {}
@@ -71,6 +196,5 @@ export class MarkdownView {}
 export class WorkspaceLeaf {}
 export class Plugin {}
 export class PluginSettingTab {}
-export class Modal {}
 export class Setting {}
 export class Component {}

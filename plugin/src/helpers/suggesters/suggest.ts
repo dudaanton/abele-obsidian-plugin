@@ -108,7 +108,11 @@ export abstract class TextInputSuggest<T> implements ISuggestOwner<T> {
     this.inputEl = inputEl
     this.scope = new Scope()
 
-    this.suggestEl = createDiv('suggestion-container')
+    // Built in the input's own document, not through the global `createDiv`, which always
+    // builds in the main window. Since Obsidian 1.13 settings can open in a window of their
+    // own, and a popup created there would belong to the wrong document entirely.
+    this.suggestEl = inputEl.ownerDocument.createElement('div')
+    this.suggestEl.addClass('suggestion-container')
     const suggestion = this.suggestEl.createDiv('suggestion')
     this.suggest = new Suggest(this, suggestion, this.scope)
 
@@ -133,13 +137,27 @@ export abstract class TextInputSuggest<T> implements ISuggestOwner<T> {
 
     if (suggestions.length > 0) {
       this.suggest.setSuggestions(suggestions)
-      this.open(
-        (this.app as App & { dom: { appContainerEl: HTMLElement } }).dom.appContainerEl,
-        this.inputEl
-      )
+      this.open(this.container(), this.inputEl)
     } else {
       this.close()
     }
+  }
+
+  /**
+   * Where the popup is hung: the window the input actually lives in.
+   *
+   * `app.dom.appContainerEl` is the main window's, and a settings window opened since
+   * Obsidian 1.13 has no `.app-container` of its own — so anchoring there put the file
+   * suggestions on top of the note the user was reading, in a different window from the
+   * field they were typing into.
+   */
+  private container(): HTMLElement {
+    const doc = this.inputEl.ownerDocument
+    const appContainerEl = (this.app as App & { dom?: { appContainerEl?: HTMLElement } }).dom
+      ?.appContainerEl
+
+    if (appContainerEl && appContainerEl.ownerDocument === doc) return appContainerEl
+    return doc.body
   }
 
   open(container: HTMLElement, inputEl: HTMLElement): void {

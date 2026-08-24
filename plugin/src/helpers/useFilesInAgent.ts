@@ -1,5 +1,5 @@
 import { TFile } from 'obsidian'
-import { AgentService } from '@/ai/AgentService'
+import { ChatService } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AI_SIDEBAR_VIEW_TYPE } from '@/constants/views'
 
@@ -8,9 +8,9 @@ import { AI_SIDEBAR_VIEW_TYPE } from '@/constants/views'
  * Adds to the current active session's scope without replacing existing entries.
  */
 export async function useFilesInAgent(files: TFile[]): Promise<void> {
-  const agentService = AgentService.getInstance()
+  const chatService = ChatService.getInstance()
 
-  const session = agentService.activeSession.value
+  const session = chatService.activeSession.value
   if (!session) return
 
   const scope = session.scopeResolver

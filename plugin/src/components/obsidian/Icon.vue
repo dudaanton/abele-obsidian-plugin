@@ -1,12 +1,12 @@
 <template>
   <div
+    ref="el"
     class="abele-obsidian-icon"
     :class="{
       'abele-obsidian-icon_with-bg': withBg,
       'abele-obsidian-icon_no-hover': noHover,
       'abele-obsidian-icon_disabled': disabled,
     }"
-    :title="tooltip"
     @click="!disabled && emit('click', $event)"
   >
     <div v-if="textLeft" class="abele-obsidian-icon__text">{{ textLeft }}</div>
@@ -17,7 +17,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import { setIcon } from 'obsidian'
+import { setIcon, setTooltip } from 'obsidian'
 
 const props = defineProps<{
   icon?: string
@@ -33,7 +33,14 @@ const emit = defineEmits<{
   click: [event: MouseEvent]
 }>()
 
+const el = ref<HTMLElement>()
 const iconEl = ref<HTMLElement>()
+
+// Obsidian's own tooltip rather than the browser's `title`: it is styled with the theme and
+// appears without the second-long delay a native tooltip has.
+const updateTooltip = () => {
+  if (el.value) setTooltip(el.value, props.tooltip ?? '')
+}
 
 const updateIcon = () => {
   if (iconEl.value) {
@@ -44,8 +51,12 @@ const updateIcon = () => {
   }
 }
 
-onMounted(updateIcon)
+onMounted(() => {
+  updateIcon()
+  updateTooltip()
+})
 watch(() => props.icon, updateIcon)
+watch(() => props.tooltip, updateTooltip)
 </script>
 
 <style lang="scss">

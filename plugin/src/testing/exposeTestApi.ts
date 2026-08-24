@@ -10,8 +10,10 @@
  * module is dropped entirely from the production bundle.
  */
 import { ScopeResolver } from '@/ai/ScopeResolver'
-import { AgentService } from '@/ai/AgentService'
+import { ChatService } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import { NoteRelations } from '@/entities/NoteRelations'
 import { TFile } from 'obsidian'
 import type { Plugin } from 'obsidian'
@@ -77,7 +79,8 @@ export interface NoteRenderSample {
 
 interface AbeleTestApi {
   ScopeResolver: typeof ScopeResolver
-  AgentService: typeof AgentService
+  ChatService: typeof ChatService
+  AgentRegistry: typeof AgentRegistry
   GlobalStore: typeof GlobalStore
   plugin: Plugin
   measureGroupResolve(groupPath: string): GroupResolveMeasurement
@@ -93,11 +96,65 @@ interface AbeleTestApi {
   /** Opens a note and samples what its footer costs to render; poll `noteRenderResult`. */
   startNoteRenderProbe(notePath: string, settleMs?: number): void
   noteRenderResult: NoteRenderSample | null
+  /** The agents the running plugin resolved, and which one new chats start on. */
+  agentsSnapshot(): AgentsSnapshot
+  /** The system prompt a chat with no per-chat override would send right now. */
+  resolvedSystemPrompt(): Promise<string>
+}
+
+export interface AgentsSnapshot {
+  defaultAgentId: string
+  defaultAgentName: string
+  agents: Array<{
+    id: string
+    name: string
+    utility: boolean
+    providerId: string
+    modelId: string
+    promptBlocks: number
+    skillsMode: string
+    maxDelegateDepth: number
+  }>
 }
 
 declare global {
   // eslint-disable-next-line no-var
   var __abeleTest: AbeleTestApi | undefined
+}
+
+/**
+ * What the running plugin made of the settings on disk.
+ *
+ * Migration mutates the in-memory config and only reaches `data.json` on the next settings
+ * save, so reading the file proves nothing about what the app is actually using.
+ */
+function agentsSnapshot(): AgentsSnapshot {
+  const registry = AgentRegistry.getInstance()
+  const fallback = registry.defaultAgent()
+
+  return {
+    defaultAgentId: AbeleConfig.getInstance().ai.defaultAgentId || '',
+    defaultAgentName: fallback?.name ?? '',
+    agents: registry.list({ includeUtility: true }).map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      utility: agent.utility,
+      providerId: agent.providerId,
+      modelId: agent.modelId,
+      promptBlocks: agent.prompts.length,
+      skillsMode: agent.skillsMode,
+      maxDelegateDepth: agent.maxDelegateDepth,
+    })),
+  }
+}
+
+/** Resolves the prompt through the real chat path, overrides and all. */
+async function resolvedSystemPrompt(): Promise<string> {
+  const service = ChatService.getInstance()
+  service.ensureInitialized()
+  const session = service.activeSession.value
+  if (!session) return ''
+  return service.getSystemPrompt(session)
 }
 
 /**
@@ -384,7 +441,8 @@ function startNoteRenderProbe(notePath: string, settleMs = 15_000): void {
 export function exposeTestApi(plugin: Plugin): void {
   globalThis.__abeleTest = {
     ScopeResolver,
-    AgentService,
+    ChatService,
+    AgentRegistry,
     GlobalStore,
     plugin,
     measureGroupResolve,
@@ -395,6 +453,8 @@ export function exposeTestApi(plugin: Plugin): void {
     responsivenessResult: null,
     startNoteRenderProbe,
     noteRenderResult: null,
+    agentsSnapshot,
+    resolvedSystemPrompt,
   }
   console.debug('[Abele] test API exposed on window.__abeleTest (development build)')
 }

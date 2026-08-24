@@ -10,21 +10,21 @@
           :text="dateLink"
         />
       </div>
-        <div v-if="contentLoaded" class="abele-log__file-content-wrapper">
-          <ObsidianMarkdown
-            class="abele-log__file-content"
-            :class="{ 'abele-log__file-content--collapsed': isCollapsible && !isExpanded }"
-            :text="log.content"
-          />
-          <div
-            v-if="isCollapsible"
-            class="abele-log__toggle"
-            :class="{ 'abele-log__toggle--expanded': isExpanded }"
-            @click="isExpanded = !isExpanded"
-          >
-            <ObsidianIcon :icon="isExpanded ? 'chevron-up' : 'chevron-down'" no-hover />
-          </div>
+      <div v-if="contentLoaded" class="abele-log__file-content-wrapper">
+        <ObsidianMarkdown
+          class="abele-log__file-content"
+          :class="{ 'abele-log__file-content--collapsed': isCollapsible && !isExpanded }"
+          :text="log.content"
+        />
+        <div
+          v-if="isCollapsible"
+          class="abele-log__toggle"
+          :class="{ 'abele-log__toggle--expanded': isExpanded }"
+          @click="isExpanded = !isExpanded"
+        >
+          <ObsidianIcon :icon="isExpanded ? 'chevron-up' : 'chevron-down'" no-hover />
         </div>
+      </div>
     </div>
   </div>
 </template>

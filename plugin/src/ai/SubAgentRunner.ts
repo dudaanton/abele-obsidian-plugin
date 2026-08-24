@@ -19,17 +19,6 @@ export interface SubAgentTask {
   signal?: AbortSignal
 }
 
-export interface SubAgentResult {
-  /** The item that was processed */
-  item: string
-  /** Whether the task succeeded */
-  success: boolean
-  /** Result text from the agent */
-  text: string
-  /** Error message if failed */
-  error?: string
-}
-
 /**
  * Check if a tool call is allowed given current parent permissions.
  * Sub-agents: denied = immediate error, no approval prompts.
@@ -126,64 +115,4 @@ export async function runSubAgent(
   }
 
   return ''
-}
-
-/**
- * Run multiple items through sub-agents in batches.
- * Returns results for each item.
- */
-export async function runSubAgentBatch(
-  items: string[],
-  taskDescription: string,
-  tools: AgentTool[],
-  model: ModelConfig,
-  systemPrompt: string,
-  batchSize: number,
-  toolModes: Record<string, ToolMode>,
-  signal?: AbortSignal,
-  onProgress?: (completed: number, total: number, results: SubAgentResult[]) => void
-): Promise<SubAgentResult[]> {
-  const results: SubAgentResult[] = []
-
-  for (let i = 0; i < items.length; i += batchSize) {
-    if (signal?.aborted) {
-      for (let j = i; j < items.length; j++) {
-        results.push({ item: items[j], success: false, text: '', error: 'Aborted' })
-      }
-      break
-    }
-
-    const batch = items.slice(i, i + batchSize)
-
-    const batchPromises = batch.map(async (item): Promise<SubAgentResult> => {
-      if (signal?.aborted) {
-        return { item, success: false, error: 'Aborted', text: '' }
-      }
-
-      try {
-        const text = await runSubAgent(
-          {
-            systemPrompt,
-            userMessage: `${taskDescription}\n\nItem to process:\n${item}`,
-            tools,
-            model,
-            signal,
-          },
-          toolModes
-        )
-        return { item, success: true, text }
-      } catch (err) {
-        if (signal?.aborted) return { item, success: false, text: '', error: 'Aborted' }
-        const errorMsg = err instanceof Error ? err.message : String(err)
-        return { item, success: false, text: '', error: errorMsg }
-      }
-    })
-
-    const batchResults = await Promise.all(batchPromises)
-    results.push(...batchResults)
-
-    onProgress?.(results.length, items.length, results)
-  }
-
-  return results
 }

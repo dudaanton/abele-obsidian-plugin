@@ -13,7 +13,6 @@ import { createWebSearchTool } from './WebSearchTool'
 import { createReadImageTool } from './ReadImageTool'
 import { createFetchTool } from './FetchTool'
 import { createSkillTool } from './SkillTool'
-import { createWiseModelTool } from './WiseModelTool'
 import { createGenerateImageTool } from './GenerateImageTool'
 import { createEditImageTool } from './EditImageTool'
 import { createEvalJsTool } from './EvalJsTool'
@@ -71,7 +70,6 @@ export function getToolRegistry(): ToolInfo[] {
     fetch: { label: 'Fetch URL', category: 'Network' },
     download_image: { label: 'Download image', category: 'Network' },
     download_file: { label: 'Download file', category: 'Network' },
-    wise_model: { label: 'Wise model', category: 'AI' },
     generate_image: { label: 'Generate image', category: 'AI' },
     edit_image: { label: 'Edit image', category: 'AI' },
     eval_js: { label: 'Eval JS', category: 'AI' },
@@ -131,7 +129,6 @@ export function createAgentTools(): AgentTool[] {
     createReadImageTool(),
     createFetchTool(),
     createSkillTool(),
-    createWiseModelTool(),
     createGenerateImageTool(),
     createEditImageTool(),
     createEvalJsTool(),

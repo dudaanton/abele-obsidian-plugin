@@ -5,14 +5,16 @@ import dayjs from 'dayjs'
 import { getAvailablePath } from '@/helpers/vaultUtils'
 import { renderTemplate } from '@/helpers/notesUtils'
 import { DATE_FORMAT } from '@/constants/dates'
-import { ChatMessage, ChatMetadata, AiChatHistoryEntry } from './types'
-import type { Message } from './client'
-
-interface ChatFile {
-  metadata: ChatMetadata
-  messages: ChatMessage[]
-  internalMessages?: Message[]
-}
+import { AiChatHistoryEntry } from './types'
+import { RunStorage } from './RunStorage'
+import {
+  parseChat,
+  parseChatMetadata,
+  serializeChat,
+  type ChatSnapshot,
+  type ChatWritePlan,
+  type ParsedChat,
+} from './ChatLog'
 
 export class ChatStorage {
   private static instance: ChatStorage | null = null
@@ -34,22 +36,31 @@ export class ChatStorage {
     return rendered.endsWith('.abchat') ? rendered : `${rendered}.abchat`
   }
 
+  /**
+   * Writes what the plan says, and nothing more.
+   *
+   * The plan comes from the session's `ChatLogWriter`, which knows what the file already
+   * holds. A turn usually appends a few lines; the whole file is rewritten only for a new
+   * chat, a migration, or a compaction.
+   */
   async saveChat(
-    messages: ChatMessage[],
-    metadata: ChatMetadata,
-    existingFile?: TFile,
-    internalMessages?: Message[]
-  ): Promise<TFile> {
+    snapshot: ChatSnapshot,
+    plan: ChatWritePlan,
+    existingFile?: TFile
+  ): Promise<TFile | null> {
     const { app } = GlobalStore.getInstance()
-    const data: ChatFile = { metadata, messages, internalMessages }
-    const content = JSON.stringify(data, null, 2)
+    const { metadata } = snapshot
+
+    if (plan.kind === 'noop') return existingFile ?? null
 
     if (existingFile) {
-      await app.vault.modify(existingFile, content)
+      if (plan.kind === 'append') await app.vault.append(existingFile, plan.data)
+      else await app.vault.modify(existingFile, plan.content)
       this.updateHistoryEntry(existingFile.path, metadata.title || existingFile.basename)
       return existingFile
     }
 
+    const content = plan.kind === 'rewrite' ? plan.content : serializeChat(snapshot)
     const title = metadata.title || `Chat ${dayjs().format('YYYY-MM-DD HH-mm')}`
     const desiredPath = this.resolveChatPath(title)
 
@@ -69,23 +80,15 @@ export class ChatStorage {
     return file
   }
 
-  async loadChat(file: TFile): Promise<{
-    metadata: ChatMetadata | null
-    messages: ChatMessage[]
-    internalMessages?: Message[]
-  }> {
+  async loadChat(file: TFile): Promise<ParsedChat> {
     const { app } = GlobalStore.getInstance()
-    const content = await app.vault.read(file)
-    try {
-      const data: ChatFile = JSON.parse(content)
-      return {
-        metadata: data.metadata,
-        messages: data.messages || [],
-        internalMessages: data.internalMessages,
-      }
-    } catch {
-      return { metadata: null, messages: [] }
+    const parsed = parseChat(await app.vault.read(file))
+
+    if (parsed.damaged) {
+      console.warn(`[Abele] ${file.path}: skipped ${parsed.damaged} unreadable record(s)`)
     }
+
+    return parsed
   }
 
   getHistory(): AiChatHistoryEntry[] {
@@ -123,13 +126,13 @@ export class ChatStorage {
     let added = 0
     for (const file of files) {
       try {
-        const content = await app.vault.read(file)
-        const data: ChatFile = JSON.parse(content)
-        if (data.metadata?.type !== 'abele-chat') continue
+        // Only the metadata is needed here, and in a log that is one line out of thousands.
+        const metadata = parseChatMetadata(await app.vault.read(file))
+        if (metadata?.type !== 'abele-chat') continue
         config.ai.chatHistory.push({
           path: file.path,
-          title: data.metadata.title || file.basename,
-          created: data.metadata.created || '',
+          title: metadata.title || file.basename,
+          created: metadata.created || '',
         })
         added++
       } catch {
@@ -175,9 +178,25 @@ export class ChatStorage {
     const { app } = GlobalStore.getInstance()
     const file = app.vault.getAbstractFileByPath(path)
     if (file instanceof TFile) {
+      // Delegated runs live in sidecar files reachable only through this chat. Left behind,
+      // they would be unreachable clutter that nothing ever cleans up.
+      await this.deleteRunsOf(file)
       await app.vault.trash(file, false)
     }
     this.removeHistoryEntry(path)
+  }
+
+  private async deleteRunsOf(file: TFile): Promise<void> {
+    const { app } = GlobalStore.getInstance()
+    try {
+      const data = parseChat(await app.vault.read(file))
+      const runIds = (data.messages ?? [])
+        .map((m) => m.subAgentRun?.runId)
+        .filter((id): id is string => Boolean(id))
+      if (runIds.length) await RunStorage.getInstance().deleteRuns(runIds)
+    } catch {
+      // An unreadable chat file has no runs we can identify; deleting it is still correct.
+    }
   }
 
   async migrateChats(): Promise<number> {
@@ -216,10 +235,14 @@ export class ChatStorage {
     config.saveSettings()
   }
 
+  /**
+   * Settings are a single JSON file holding every setting and every chat's history entry, so
+   * writing them on a save that changed no title would cost more than the chat write itself.
+   */
   private updateHistoryEntry(path: string, title: string): void {
     const config = AbeleConfig.getInstance()
     const entry = config.ai.chatHistory?.find((e) => e.path === path)
-    if (entry) {
+    if (entry && entry.title !== title) {
       entry.title = title
       config.saveSettings()
     }

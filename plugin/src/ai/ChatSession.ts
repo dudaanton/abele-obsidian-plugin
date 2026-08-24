@@ -1,4 +1,4 @@
-import { ref, shallowRef } from 'vue'
+import { computed, effectScope, ref, shallowRef, watch, type EffectScope } from 'vue'
 import { TFile } from 'obsidian'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
@@ -12,11 +12,18 @@ import type {
   AgentToolResult,
   AssistantMessage,
   Message,
+  ModelConfig,
   TextContent,
   ThinkingContent,
   ToolCallContent,
+  ToolDefinition,
 } from './client'
 import { ChatStorage } from './ChatStorage'
+import { ChatLogWriter, type ChatSnapshot } from './ChatLog'
+import { ChatSummarizer, type SummarizerHost } from './ChatSummarizer'
+import { ChatInterceptor, type InterceptorHost } from './ChatInterceptor'
+import { AgentRegistry } from './agents/AgentRegistry'
+import type { AgentDefinition, OverrideKey, ScopeEntry, SessionOverrides } from './agents/types'
 import {
   ChatMessage,
   ChatMetadata,
@@ -24,7 +31,13 @@ import {
   CORE_TOOLS,
   migrateOldPermissions,
 } from './types'
-import type { ToolMode, PermissionMode, InterceptorChatMessage } from './types'
+import type {
+  ToolMode,
+  PermissionMode,
+  InterceptorChatMessage,
+  AiSettings,
+  SubAgentRunRef,
+} from './types'
 import type { UserContentPart } from './client'
 import { createAgentTools } from './tools'
 import { loadSkillContent } from './tools/SkillTool'
@@ -39,14 +52,38 @@ import {
   backfillChatMessageIds,
 } from './chatTree'
 
-import type { AgentService } from './AgentService'
+import type { ChatService } from './ChatService'
+
+/**
+ * How long changes are gathered before they are written. Short enough that a crash costs at
+ * most a fraction of a turn, long enough that a burst of updates in one tick makes one write.
+ */
+const PERSIST_INTERVAL_MS = 300
 
 /** Shape returned by tools that provide diff details */
 interface ToolDiffDetails {
   diff?: { old: string; new: string }
 }
 
-export class ChatSession {
+export type SessionKind = 'chat' | 'run'
+
+export interface SessionParent {
+  /** The session that delegated. */
+  sessionId: string
+  /** The tool call that started this run, so the branch renders under it. */
+  toolCallId: string
+}
+
+export interface SessionOptions {
+  kind?: SessionKind
+  agentId?: string
+  depth?: number
+  parent?: SessionParent
+  /** Called instead of writing a chat file, for a run whose coordinator owns persistence. */
+  onPersist?: () => void
+}
+
+export class ChatSession implements SummarizerHost, InterceptorHost {
   /**
    * The session currently executing a tool or agent loop.
    * Set before tool/loop execution so DelegateTool can access session context.
@@ -57,15 +94,8 @@ export class ChatSession {
     return ChatSession._activeSession
   }
 
-  private static readonly AUTO_COMPACT_THRESHOLD = 0.9
-  private static readonly TITLE_MAX_TOKENS = 30
-  private static readonly TITLE_MAX_LENGTH = 60
-  private static readonly TITLE_MSG_PREVIEW_LENGTH = 200
   private static readonly TITLE_GENERATION_TRIGGERS = [1]
   private static readonly FALLBACK_TITLE_LENGTH = 50
-  private static readonly COMPACT_SYSTEM_PROMPT =
-    'You summarize conversations. Reply with ONLY the summary, nothing else.'
-  private static readonly COMPACT_MARKER = '[Conversation compacted]'
 
   private static readonly READ_TOOLS = ['read', 'ls', 'find', 'workspace', 'skill']
   private static readonly EDIT_TOOLS = ['edit', 'create', 'replace', 'write']
@@ -98,6 +128,12 @@ export class ChatSession {
   private generation = 0
   private lastModelId = ''
 
+  /** What the chat's file already holds, so a save writes only the difference. */
+  private readonly log = new ChatLogWriter()
+  private dirty = false
+  private writing: Promise<void> | null = null
+  private persistTimer: ReturnType<typeof setTimeout> | null = null
+
   // Reactive state for Vue components
   public readonly messages = ref<ChatMessage[]>([])
   public readonly allMessages = ref<ChatMessage[]>([])
@@ -122,81 +158,362 @@ export class ChatSession {
     resolve: (answers: string[] | null) => void
   } | null>(null)
 
-  // Per-chat model selection
-  public readonly activeProviderId = ref('')
-  public readonly activeModelId = ref('')
+  /** Which agent this chat runs on. Everything not overridden is resolved from it on each read. */
+  public readonly agentId = ref('')
+  /** Only what somebody deliberately changed in this chat. Empty means "follow the agent". */
+  public readonly overrides = ref<SessionOverrides>({})
+
+  /** The agent in force, falling back to the default one if this chat's agent was deleted. */
+  public readonly agent = computed<AgentDefinition | null>(() => {
+    const registry = AgentRegistry.getInstance()
+    return registry.get(this.agentId.value) ?? registry.defaultAgent()
+  })
+
+  // Per-chat model selection. Writable: assigning records an override, which is what every
+  // existing caller (the model picker, ChatService.switchModel) already means by assigning.
+  public readonly activeProviderId = computed<string>({
+    get: () => this.overrides.value.providerId ?? this.agent.value?.providerId ?? '',
+    set: (value) => this.setOverride('providerId', value),
+  })
+  public readonly activeModelId = computed<string>({
+    get: () => this.overrides.value.modelId ?? this.agent.value?.modelId ?? '',
+    set: (value) => this.setOverride('modelId', value),
+  })
 
   // Per-chat tool permissions
-  public readonly permissionMode = ref<PermissionMode>('confirm-all')
-  public readonly toolModes = ref<Record<string, ToolMode>>({})
+  public readonly permissionMode = computed<PermissionMode>({
+    get: () =>
+      this.overrides.value.permissionMode ?? this.agent.value?.permissionMode ?? 'confirm-all',
+    set: (value) => this.setOverride('permissionMode', value),
+  })
+  public readonly toolModes = computed<Record<string, ToolMode>>({
+    get: () => this.overrides.value.toolModes ?? this.agent.value?.toolModes ?? {},
+    set: (value) => this.setOverride('toolModes', value),
+  })
   public readonly customSystemPrompt = ref('')
   public readonly customSystemPromptNotePath = ref('')
 
-  // Interceptor state
-  public readonly activeInterceptorId = ref('')
-  public readonly interceptorStreaming = ref(false)
-  public readonly interceptorStreamingContent = ref('')
-  public readonly interceptorError = ref<string | null>(null)
-  private interceptorAbort: AbortController | null = null
-  private lastInterceptorDraftId: string | null = null
+  /** Draft review before a message reaches the main agent. */
+  public readonly interceptor: ChatInterceptor
 
   // Per-session scope
   public readonly scopeResolver: ScopeResolver
 
+  /** Title generation and compaction. Kept behind SummarizerHost, not reached into directly. */
+  private readonly summarizer: ChatSummarizer
+
+  /** Set while the resolver is being rewritten from the agent, so the watcher stays quiet. */
+  private syncingScope = false
+  private readonly scopeEffects: EffectScope
+
+  /** A chat a person talks to, or a run some agent was handed by another. */
+  public readonly kind: SessionKind
+  /** How many delegations deep this run sits. 0 for a chat a person opened. */
+  public readonly depth: number
+  /** Where a run came from, so its branch can be shown in the right place. */
+  public readonly parent: SessionParent | null
+  /** A run persists through its coordinator, never through ChatStorage. */
+  private readonly onPersist: (() => void) | null
+
   constructor(
-    private readonly agentService: AgentService,
-    id?: string
+    private readonly chatService: ChatService,
+    id?: string,
+    options: SessionOptions = {}
   ) {
     this.id = id || nanoid()
+    this.kind = options.kind ?? 'chat'
+    this.depth = options.depth ?? 0
+    this.parent = options.parent ?? null
+    this.onPersist = options.onPersist ?? null
     this.scopeResolver = new ScopeResolver()
-    this.resetPermissions()
-    this.resetScope()
+    this.summarizer = new ChatSummarizer(this)
+    this.interceptor = new ChatInterceptor(this)
+    this.agentId.value = options.agentId || AgentRegistry.getInstance().defaultAgent()?.id || ''
+    this.scopeEffects = effectScope(true)
+    this.scopeEffects.run(() => this.watchScope())
+    this.syncScopeFromAgent()
   }
 
-  // ── Permission / scope reset ────────────────────────────────────
+  // ── Agent binding ──────────────────────────────────────────────
 
-  private resetPermissions(): void {
-    const config = AbeleConfig.getInstance().ai
-    this.activeProviderId.value = config.activeProviderId
-    this.activeModelId.value = config.activeModelId
-    this.permissionMode.value = config.permissionMode
-    this.toolModes.value = { ...config.toolModes }
+  private setOverride<K extends OverrideKey>(key: K, value: SessionOverrides[K]): void {
+    this.overrides.value = { ...this.overrides.value, [key]: value }
+  }
+
+  isOverridden(key: OverrideKey): boolean {
+    return this.overrides.value[key] !== undefined
+  }
+
+  /** Drops a per-chat value so the field follows the agent again. */
+  clearOverride(key: OverrideKey): void {
+    if (!this.isOverridden(key)) return
+
+    const next = { ...this.overrides.value }
+    delete next[key]
+    if (key === 'scope') delete next.fullVaultAccess
+    this.overrides.value = next
+
+    if (key === 'scope') this.syncScopeFromAgent()
+  }
+
+  /**
+   * Points the chat at a different agent.
+   *
+   * Overrides are dropped: they were expressed against the previous agent, and carrying, say,
+   * a narrowed tool set onto an agent that never had those tools is meaningless.
+   */
+  switchAgent(agentId: string): void {
+    if (agentId === this.agentId.value) return
+
+    const target = AgentRegistry.getInstance().get(agentId)
+    this.agentId.value = agentId
+    this.overrides.value = {}
+    this.syncScopeFromAgent()
+
+    // A divider, the way a mid-chat model switch already leaves one: the rest of the
+    // conversation was answered by something else, and that should be visible.
+    if (target && this.allChatMessages.length > 0) {
+      this.appendChatMessage({
+        id: nanoid(),
+        role: 'system',
+        content: `Agent: ${target.name}`,
+        timestamp: Date.now(),
+      })
+      this.updateVisibleMessages()
+      this.markDirty()
+    }
+  }
+
+  /**
+   * Keeps the scope resolver in step with the agent until this chat edits it.
+   *
+   * Scope cannot be a computed — `ScopeResolver` owns real state and resolves groups against
+   * the vault — so it is mirrored instead, in both directions: agent edits flow down while the
+   * chat has no scope override, and the first edit made here records one and stops the mirror.
+   */
+  private watchScope(): void {
+    watch(
+      () => this.agent.value?.scope,
+      () => {
+        if (!this.isOverridden('scope')) this.syncScopeFromAgent()
+      },
+      // Synchronous on purpose: a tool call checks scope the moment it runs, so a deferred
+      // sync would leave a window where the agent says one thing and the resolver another.
+      { deep: true, flush: 'sync' }
+    )
+
+    watch(
+      [this.scopeResolver.entries, this.scopeResolver.fullVaultAccess],
+      () => {
+        if (this.syncingScope) return
+        this.overrides.value = {
+          ...this.overrides.value,
+          scope: [...this.scopeResolver.entries.value],
+          fullVaultAccess: this.scopeResolver.fullVaultAccess.value,
+        }
+      },
+      { deep: true, flush: 'sync' }
+    )
+  }
+
+  private syncScopeFromAgent(): void {
+    const entries = this.overrides.value.scope ?? this.agent.value?.scope ?? []
+    const fullVault =
+      this.overrides.value.fullVaultAccess ?? this.agent.value?.fullVaultAccess ?? false
+    this.applyScope(entries, fullVault)
+  }
+
+  /**
+   * Adds a delegating chat's scope on top of this run's own.
+   *
+   * Union, not replacement: the agent's scope says where it normally works, while the parent
+   * holds the task and therefore the files the task is about. Either alone leaves a run unable
+   * to do what it was asked.
+   */
+  applyScopeUnion(entries: ScopeEntry[], options: { fullVaultAccess?: boolean } = {}): void {
+    const own = this.overrides.value.scope ?? this.agent.value?.scope ?? []
+    const seen = new Set(own.map((e) => `${e.type}:${e.path}`))
+    const merged = [...own]
+
+    for (const entry of entries) {
+      const key = `${entry.type}:${entry.path}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      merged.push(entry)
+    }
+
+    const fullVault =
+      Boolean(options.fullVaultAccess) ||
+      (this.overrides.value.fullVaultAccess ?? this.agent.value?.fullVaultAccess ?? false)
+
+    this.overrides.value = { ...this.overrides.value, scope: merged, fullVaultAccess: fullVault }
+    this.applyScope(merged, fullVault)
+  }
+
+  /** The text the conversation ended on — what a delegated run reports back. */
+  lastAssistantText(): string {
+    for (let i = this.allChatMessages.length - 1; i >= 0; i--) {
+      const msg = this.allChatMessages[i]
+      if (msg.role === 'assistant' && msg.content.trim()) return msg.content.trim()
+    }
+    return ''
+  }
+
+  /** Replaces the resolver contents without the change reading as a user edit. */
+  private applyScope(entries: ScopeEntry[], fullVaultAccess: boolean): void {
+    this.syncingScope = true
+    try {
+      this.scopeResolver.clear()
+      this.scopeResolver.setFullVaultAccess(fullVaultAccess)
+      for (const entry of entries) {
+        switch (entry.type) {
+          case 'file':
+            this.scopeResolver.addFile(entry.path)
+            break
+          case 'folder':
+            this.scopeResolver.addFolder(entry.path)
+            break
+          case 'pattern':
+            this.scopeResolver.addPattern(entry.path)
+            break
+          case 'group':
+            this.scopeResolver.addGroup(entry.path)
+            break
+        }
+      }
+    } finally {
+      this.syncingScope = false
+    }
+  }
+
+  // ── SummarizerHost ─────────────────────────────────────────────
+
+  messagesForModel(): Message[] {
+    return this.getMessagesForModel()
+  }
+
+  toolDefs(): ToolDefinition[] {
+    return this.getTools().map((t) => ({
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters,
+    }))
+  }
+
+  hasInternalMessages(): boolean {
+    return this.allInternalMessages.length > 0
+  }
+
+  /**
+   * Records a compaction summary in both places it has to appear: as a divider the user sees,
+   * and as an internal system marker that `getMessagesForModel` truncates the history at.
+   */
+  applyCompactSummary(summary: string): void {
+    const divider: ChatMessage = {
+      id: nanoid(),
+      role: 'system',
+      content: summary,
+      timestamp: Date.now(),
+    }
+    this.appendChatMessage(divider)
+    this.updateVisibleMessages()
+
+    this.allInternalMessages.push({
+      role: 'system',
+      content: `${ChatSummarizer.COMPACT_MARKER}\n\n${summary}`,
+      timestamp: Date.now(),
+      chatMessageId: divider.id,
+    })
+  }
+
+  backgroundSignal(): AbortSignal {
+    return this.getBackgroundSignal()
+  }
+
+  auxiliaryModel(): ModelConfig {
+    return this.chatService.getAuxiliaryModelConfig()
+  }
+
+  activeModel(): ModelConfig | null {
+    return this.resolveModel()
+  }
+
+  /**
+   * The model this chat will actually send to, with any per-chat override applied.
+   *
+   * Returns null when it cannot be resolved rather than substituting whatever model happens to
+   * be first: a chat quietly running on the wrong model is worse than one that says it cannot
+   * start.
+   */
+  resolveModel(options: { fallback?: boolean } = {}): ModelConfig | null {
+    const agent = this.agent.value
+    if (!agent) return null
+
+    const effective: AgentDefinition = options.fallback
+      ? agent
+      : { ...agent, providerId: this.activeProviderId.value, modelId: this.activeModelId.value }
+
+    return AgentRegistry.getInstance().resolveModel(effective, options)
+  }
+
+  /**
+   * Sends the conversation again, unchanged, after a failed request.
+   *
+   * Nothing is appended: the failure produced no assistant turn, so the history the model needs
+   * is exactly what it was a moment ago.
+   */
+  async retryRequest(): Promise<void> {
+    if (this.isStreaming.value || this.isExecutingTool.value) return
+    if (this.allInternalMessages.length === 0) return
+
+    this.error.value = null
+    await this.runAgentLoop()
+    // A turn just ended: a natural point to be sure the disk has it.
+    await this.save()
+  }
+
+  /** Whether a fallback model is configured, so the UI knows to offer it after a failure. */
+  get hasFallbackModel(): boolean {
+    return Boolean(this.resolveModel({ fallback: true }))
+  }
+
+  /** Moves this chat onto the agent's fallback model and leaves it there. */
+  useFallbackModel(): boolean {
+    const agent = this.agent.value
+    const fallback = this.resolveModel({ fallback: true })
+    if (!agent || !fallback) return false
+
+    this.activeProviderId.value = agent.fallbackProviderId ?? ''
+    this.activeModelId.value = agent.fallbackModelId ?? ''
+    return true
+  }
+
+  /** Summarizes the conversation so far and continues from the summary. */
+  async compact(): Promise<void> {
+    return this.summarizer.compact()
   }
 
   getToolMode(toolName: string): ToolMode {
     return this.toolModes.value[toolName] ?? 'off'
   }
 
-  private resetScope(): void {
-    const config = AbeleConfig.getInstance().ai
-    this.scopeResolver.clear()
-    this.scopeResolver.setFullVaultAccess(config.defaultFullVaultAccess)
-    for (const entry of config.defaultScope || []) {
-      switch (entry.type) {
-        case 'file':
-          this.scopeResolver.addFile(entry.path)
-          break
-        case 'folder':
-          this.scopeResolver.addFolder(entry.path)
-          break
-        case 'pattern':
-          this.scopeResolver.addPattern(entry.path)
-          break
-        case 'group':
-          this.scopeResolver.addGroup(entry.path)
-          break
-      }
-    }
-  }
-
   // ── Tools with session scope ────────────────────────────────────
 
   private getTools(): AgentTool[] {
+    const agent = this.agent.value
     const allTools = createAgentTools()
-    const filtered = allTools.filter((tool) => {
-      if (CORE_TOOLS.has(tool.name)) return true
-      return this.getToolMode(tool.name) !== 'off'
-    })
+
+    // Overrides win over the agent's own tool modes, so a chat that narrowed its permissions
+    // stays narrowed. Falls back to the agent when nothing was overridden here.
+    const effective = agent
+      ? { ...agent, toolModes: this.toolModes.value, maxDelegateDepth: agent.maxDelegateDepth }
+      : null
+    const filtered = effective
+      ? AgentRegistry.getInstance().filterTools(effective, allTools)
+      : allTools.filter(
+          (tool) => CORE_TOOLS.has(tool.name) || this.getToolMode(tool.name) !== 'off'
+        )
+
     return this.wrapToolsForSession(filtered)
   }
 
@@ -225,6 +542,28 @@ export class ChatSession {
   }
 
   // ── Approval logic ──────────────────────────────────────────────
+
+  /**
+   * Why a run refused a tool, phrased so the agent can act on it.
+   *
+   * The distinction matters: out of scope is about *this* file, while a permission mode is
+   * about the whole run. Told apart, an agent can retry with a different path in the first
+   * case and stop asking in the second.
+   */
+  private refusalReason(toolName: string, args?: Record<string, unknown>): string {
+    if (args && ChatSession.SCOPED_TOOLS.includes(toolName)) {
+      const path = (args.path || args.from) as string
+      if (path && !this.scopeResolver.isInScope(path)) {
+        return `Access denied: ${path} is not in this run's workspace scope`
+      }
+    }
+
+    if (ChatSession.EDIT_TOOLS.includes(toolName)) {
+      return `Write operations are not permitted in this run (permission mode: ${this.permissionMode.value})`
+    }
+
+    return `${toolName} needs approval, which a delegated run cannot ask for`
+  }
 
   needsApproval(toolName: string, args?: Record<string, unknown>): boolean {
     const mode = this.permissionMode.value
@@ -442,7 +781,7 @@ export class ChatSession {
 
     for (let i = internal.length - 1; i >= 0; i--) {
       const m = internal[i]
-      if (m.role === 'system' && m.content.startsWith(ChatSession.COMPACT_MARKER)) {
+      if (m.role === 'system' && m.content.startsWith(ChatSummarizer.COMPACT_MARKER)) {
         return internal.slice(i)
       }
     }
@@ -456,10 +795,13 @@ export class ChatSession {
     this.error.value = null
 
     try {
-      const model = this.agentService.getModelConfigFor(
-        this.activeProviderId.value,
-        this.activeModelId.value
-      )
+      const model = this.resolveModel()
+      if (!model) {
+        this.error.value = this.agent.value
+          ? `Agent "${this.agent.value.name}" has no usable model configured`
+          : 'No agent is configured'
+        return
+      }
       const tools = this.getTools()
 
       // Show model indicator when model changes between messages
@@ -481,16 +823,21 @@ export class ChatSession {
       const toSend = this.getMessagesForModel()
       const result = await this.agentLoop.run({
         model,
-        systemPrompt: await this.agentService.getSystemPrompt(this),
+        systemPrompt: await this.chatService.getSystemPrompt(this),
         tools,
         messages: toSend,
         streamOptions: model.reasoningEffort
           ? { reasoningEffort: model.reasoningEffort }
           : undefined,
         beforeToolCall: async (toolName, _id, args) => {
-          if (this.needsApproval(toolName, args)) {
-            return { pause: true }
+          if (!this.needsApproval(toolName, args)) return
+
+          // A run has nobody to ask, so a tool that would need approval is refused with a
+          // reason the agent can read and work around, rather than hanging forever.
+          if (this.kind === 'run') {
+            return { block: true, reason: this.refusalReason(toolName, args) }
           }
+          return { pause: true }
         },
       })
 
@@ -525,7 +872,7 @@ export class ChatSession {
 
       if (this.needsApproval(tc.name, tc.arguments)) {
         this.ensurePendingToolCallMessage(tc)
-        await this.save()
+        this.markDirty()
         return // Wait for user approve/reject
       }
 
@@ -645,7 +992,7 @@ export class ChatSession {
     if (this.isStreaming.value || this.isCompacting.value) return
 
     // Draft mode: interceptor is active → create draft, don't send to main AI
-    if (this.activeInterceptorId.value) {
+    if (this.interceptor.isActive) {
       return this.sendDraftMessage(content, attachments)
     }
 
@@ -685,24 +1032,28 @@ export class ChatSession {
 
     if (gen !== this.generation) return
 
+    // A turn just ended: a natural point to be sure the disk has it.
     await this.save()
 
     const sequential = AbeleConfig.getInstance().ai.sequentialAuxiliary
 
-    if (ChatSession.TITLE_GENERATION_TRIGGERS.includes(this.userMessageCount)) {
+    // A run is never listed anywhere, so naming it would be a request nobody reads the answer to.
+    const wantsTitle =
+      this.kind === 'chat' && ChatSession.TITLE_GENERATION_TRIGGERS.includes(this.userMessageCount)
+    if (wantsTitle) {
       if (sequential) {
-        await this.generateTitle()
+        await this.summarizer.generateTitle()
       } else {
-        this.generateTitle().catch(() => {
+        this.summarizer.generateTitle().catch(() => {
           return
         })
       }
     }
 
     if (sequential) {
-      await this.autoCompactIfNeeded()
+      await this.summarizer.autoCompactIfNeeded()
     } else {
-      this.autoCompactIfNeeded().catch(() => {
+      this.summarizer.autoCompactIfNeeded().catch(() => {
         return
       })
     }
@@ -738,12 +1089,12 @@ export class ChatSession {
     }
 
     if (controller.signal.aborted) {
-      await this.save()
+      this.markDirty()
       return
     }
 
     await this.processAllPendingToolCalls()
-    await this.save()
+    this.markDirty()
   }
 
   abortToolExecution(): void {
@@ -778,7 +1129,7 @@ export class ChatSession {
     this.pendingToolCalls.value = this.pendingToolCalls.value.slice(1)
 
     await this.processAllPendingToolCalls()
-    await this.save()
+    this.markDirty()
   }
 
   // ── Questions tool ──────────────────────────────────────────────
@@ -843,7 +1194,7 @@ export class ChatSession {
     if (args?.trim()) {
       await this.sendMessage(args.trim())
     } else {
-      await this.save()
+      this.markDirty()
     }
   }
 
@@ -857,6 +1208,8 @@ export class ChatSession {
   async reset(): Promise<void> {
     this.generation++
     await this.save()
+    this.log.forget()
+    this.dirty = false
     this.abort()
     this.abortBackground()
     this.allInternalMessages = []
@@ -875,31 +1228,150 @@ export class ChatSession {
     this.lastModelId = ''
     this.customSystemPrompt.value = ''
     this.customSystemPromptNotePath.value = ''
-    this.activeInterceptorId.value = ''
-    this.interceptorStreaming.value = false
-    this.interceptorStreamingContent.value = ''
-    this.interceptorError.value = null
-    this.interceptorAbort?.abort()
-    this.interceptorAbort = null
-    this.lastInterceptorDraftId = null
-    this.resetPermissions()
-    this.resetScope()
+    this.interceptor.abort()
+    this.interceptor.agentId.value = ''
+    this.interceptor.contextDepth.value = 0
+    this.interceptor.error.value = null
+    this.agentId.value = AgentRegistry.getInstance().defaultAgent()?.id ?? ''
+    this.overrides.value = {}
+    this.syncScopeFromAgent()
+  }
+
+  /**
+   * Restores which agent a chat runs on and what it changed relative to that agent.
+   *
+   * Chats saved before agents existed carry a full snapshot — model, permission mode, tool
+   * modes, scope — that was a copy of the global defaults at the moment the chat started, not
+   * a deliberate choice. They are restored as overrides rather than left to track the agent:
+   * turning them live would silently change how an old conversation behaves when reopened,
+   * which is exactly the surprise this design is meant to avoid.
+   */
+  private restoreAgentBinding(metadata: ChatMetadata | null | undefined): void {
+    const registry = AgentRegistry.getInstance()
+    const config = AbeleConfig.getInstance().ai
+
+    const storedAgent = metadata?.agentId ? registry.get(metadata.agentId) : null
+    this.agentId.value = storedAgent?.id ?? registry.defaultAgent()?.id ?? ''
+
+    if (metadata?.agentId && !storedAgent) {
+      console.warn(
+        `[Abele] Chat references a deleted agent (${metadata.agentId}); falling back to the default`
+      )
+    }
+
+    if (metadata?.overrides) {
+      this.overrides.value = { ...metadata.overrides }
+      this.syncScopeFromAgent()
+      return
+    }
+
+    this.overrides.value = metadata ? this.legacyOverrides(metadata, config) : {}
+    this.syncScopeFromAgent()
+  }
+
+  /** Converts a pre-agent chat's stored snapshot into overrides. */
+  private legacyOverrides(metadata: ChatMetadata, config: AiSettings): SessionOverrides {
+    const overrides: SessionOverrides = {}
+
+    if (metadata.providerId) overrides.providerId = metadata.providerId
+    if (metadata.modelId) overrides.modelId = metadata.modelId
+    if (metadata.permissionMode) overrides.permissionMode = metadata.permissionMode
+
+    if (metadata.toolModes) {
+      overrides.toolModes = { ...metadata.toolModes }
+    } else if (metadata.allowWebSearch !== undefined) {
+      // Older still: booleans per tool, from before toolModes existed.
+      overrides.toolModes = migrateOldPermissions(
+        metadata,
+        config as unknown as Record<string, any>
+      )
+    }
+
+    if (metadata.scopeEntries) {
+      overrides.scope = [...metadata.scopeEntries]
+      overrides.fullVaultAccess = metadata.fullVaultAccess ?? false
+    }
+
+    return overrides
   }
 
   // ── Save / Load ────────────────────────────────────────────────
 
-  async save(): Promise<void> {
-    if (this.allChatMessages.length === 0) return
+  /**
+   * Notes that the chat has changed, without waiting for the disk.
+   *
+   * The agent loop calls this after every tool call, so it must not block: a save used to be
+   * awaited in that path, and cost time proportional to the whole conversation. Writes are
+   * coalesced over a short window and then append only what changed.
+   */
+  markDirty(): void {
+    if (this.kind === 'run') {
+      this.onPersist?.()
+      return
+    }
 
+    this.dirty = true
+    if (this.persistTimer !== null) return
+
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null
+      void this.flush()
+    }, PERSIST_INTERVAL_MS)
+  }
+
+  /** Writes anything outstanding now. Called wherever losing the last change would matter. */
+  async flush(): Promise<void> {
+    // A run has no file of its own; its coordinator owns one and does its own coalescing.
+    if (this.kind === 'run') {
+      this.onPersist?.()
+      return
+    }
+
+    if (this.persistTimer !== null) {
+      clearTimeout(this.persistTimer)
+      this.persistTimer = null
+    }
+
+    // Never two writes at once: an append that overtook its predecessor would reorder records.
+    while (this.writing) await this.writing
+    if (!this.dirty) return
+
+    this.dirty = false
+    this.writing = this.writeNow()
+    try {
+      await this.writing
+    } catch (err) {
+      // The change is still only in memory, so it stays pending rather than being dropped:
+      // the next save retries it, and a flush at close gets one more chance.
+      this.dirty = true
+      console.error('[Abele] Failed to save chat', err)
+    } finally {
+      this.writing = null
+    }
+  }
+
+  /** Marks the chat changed and writes it immediately. */
+  async save(): Promise<void> {
+    this.markDirty()
+    await this.flush()
+  }
+
+  private snapshot(): ChatSnapshot {
     const config = AbeleConfig.getInstance().ai
-    const title = this.chatTitle.value || this.fallbackTitle()
+    const overrides = this.overrides.value
 
     const metadata: ChatMetadata = {
       type: 'abele-chat',
+      agentId: this.agentId.value || undefined,
+      // Only what this chat actually changed. Writing the resolved values instead would freeze
+      // the chat against today's agent and defeat the whole point of resolving on read.
+      overrides: Object.keys(overrides).length ? { ...overrides } : undefined,
+      // Kept for chats reopened by an older build, and for the history list, which shows the
+      // model a chat ran on without loading the session.
       providerId: this.activeProviderId.value || config.activeProviderId,
       modelId: this.activeModelId.value || config.activeModelId,
       created: this.chatCreated || (this.chatCreated = dayjs().format('YYYY-MM-DD')),
-      title,
+      title: this.chatTitle.value || this.fallbackTitle(),
       pendingToolCalls:
         this.pendingToolCalls.value.length > 0
           ? this.pendingToolCalls.value.map((tc) => ({
@@ -908,27 +1380,41 @@ export class ChatSession {
               arguments: tc.arguments,
             }))
           : undefined,
-      permissionMode: this.permissionMode.value,
-      toolModes: this.toolModes.value,
-      scopeEntries: this.scopeResolver.entries.value.length
-        ? [...this.scopeResolver.entries.value]
-        : undefined,
-      fullVaultAccess: this.scopeResolver.fullVaultAccess.value || undefined,
       activeLeafId: this.activeLeafId || undefined,
       customSystemPrompt: this.customSystemPrompt.value || undefined,
       customSystemPromptNotePath: this.customSystemPromptNotePath.value || undefined,
-      activeInterceptorId: this.activeInterceptorId.value || undefined,
+      interceptorAgentId: this.interceptor.agentId.value || undefined,
+      interceptorContextDepth: this.interceptor.agentId.value
+        ? this.interceptor.contextDepth.value
+        : undefined,
     }
 
-    this.currentChatFile.value = await ChatStorage.getInstance().saveChat(
-      this.allChatMessages,
+    return {
       metadata,
-      this.currentChatFile.value || undefined,
-      this.allInternalMessages
+      messages: this.allChatMessages,
+      internalMessages: this.allInternalMessages,
+    }
+  }
+
+  private async writeNow(): Promise<void> {
+    if (this.allChatMessages.length === 0) return
+
+    const snapshot = this.snapshot()
+    const plan = this.log.plan(snapshot)
+    if (plan.kind === 'noop') return
+
+    const file = await ChatStorage.getInstance().saveChat(
+      snapshot,
+      plan,
+      this.currentChatFile.value || undefined
     )
+    if (!file) return
+
+    this.log.commit(snapshot, plan)
+    this.currentChatFile.value = file
 
     // Update tab state so new chats get persisted
-    this.agentService.saveTabs()
+    this.chatService.saveTabs()
   }
 
   async load(file: TFile): Promise<void> {
@@ -937,6 +1423,10 @@ export class ChatSession {
 
     this.allChatMessages = result.messages.map((m) => (m.id ? m : { ...m, id: nanoid() }))
     this.allInternalMessages = result.internalMessages || []
+    // Seeds the writer with what the file already holds, so the first save of a reopened chat
+    // appends rather than rewriting it. A file in the older format is not adopted, so that
+    // first save rewrites it as a log — which is how a chat migrates.
+    this.log.adopt(result)
     this.currentChatFile.value = file
     this.chatTitle.value = result.metadata?.title || ''
     this.chatCreated = result.metadata?.created || ''
@@ -959,44 +1449,15 @@ export class ChatSession {
 
     this.userMessageCount = this.messages.value.filter((m) => m.role === 'user').length
 
-    // Restore per-chat model and permissions
-    const config = AbeleConfig.getInstance().ai
-    this.activeProviderId.value = result.metadata?.providerId ?? config.activeProviderId
-    this.activeModelId.value = result.metadata?.modelId ?? config.activeModelId
-    this.permissionMode.value = result.metadata?.permissionMode ?? config.permissionMode
-
-    if (result.metadata?.toolModes) {
-      this.toolModes.value = { ...result.metadata.toolModes }
-    } else {
-      // Migrate from old boolean format
-      this.toolModes.value = migrateOldPermissions(result.metadata, config as any)
-    }
-
-    // Restore scope
-    if (result.metadata?.scopeEntries) {
-      this.scopeResolver.clear()
-      this.scopeResolver.setFullVaultAccess(result.metadata.fullVaultAccess ?? false)
-      for (const entry of result.metadata.scopeEntries) {
-        switch (entry.type) {
-          case 'file':
-            this.scopeResolver.addFile(entry.path)
-            break
-          case 'folder':
-            this.scopeResolver.addFolder(entry.path)
-            break
-          case 'pattern':
-            this.scopeResolver.addPattern(entry.path)
-            break
-          case 'group':
-            this.scopeResolver.addGroup(entry.path)
-            break
-        }
-      }
-    }
+    this.restoreAgentBinding(result.metadata)
 
     this.customSystemPrompt.value = result.metadata?.customSystemPrompt || ''
     this.customSystemPromptNotePath.value = result.metadata?.customSystemPromptNotePath || ''
-    this.activeInterceptorId.value = result.metadata?.activeInterceptorId || ''
+    // `activeInterceptorId` is what pre-agent chats stored. Migration reuses each
+    // interceptor's own id as its agent id, so the old value maps across unchanged.
+    this.interceptor.agentId.value =
+      result.metadata?.interceptorAgentId || result.metadata?.activeInterceptorId || ''
+    this.interceptor.contextDepth.value = result.metadata?.interceptorContextDepth ?? 0
 
     // Restore pending tool calls
     if (result.metadata?.pendingToolCalls?.length) {
@@ -1058,7 +1519,7 @@ export class ChatSession {
     const leaf = findDeepestLeaf(this.allChatMessages, messageId)
     this.activeLeafId = leaf.id
     this.updateVisibleMessages()
-    this.save()
+    this.markDirty()
   }
 
   // ── Delegate support ──────────────────────────────────────────
@@ -1073,9 +1534,25 @@ export class ChatSession {
     )
   }
 
-  /** Get permissions snapshot for sub-agent runner */
-  getPermissions(): Record<string, ToolMode> {
-    return { ...this.toolModes.value }
+  /**
+   * Records where a delegated run's transcript lives, on the tool call that started it.
+   *
+   * Only a pointer: a few dozen bytes, so the parent chat's write cost is unchanged no matter
+   * how much conversation the sub-agents produce.
+   */
+  attachSubAgentRun(toolCallId: string, run: SubAgentRunRef): void {
+    this.updateChatMessage(
+      (m) => m.toolCallId === toolCallId,
+      (m) => ({ ...m, subAgentRun: run })
+    )
+    this.markDirty()
+  }
+
+  /** Every run this chat started, so they can be cleaned up with it. */
+  subAgentRunIds(): string[] {
+    return this.allChatMessages
+      .map((m) => m.subAgentRun?.runId)
+      .filter((id): id is string => Boolean(id))
   }
 
   // ── Interceptor ────────────────────────────────────────────────
@@ -1090,213 +1567,31 @@ export class ChatSession {
       attachments: attachments?.length ? attachments : undefined,
       timestamp: Date.now(),
       draft: true,
-      interceptorName: this.getInterceptorConfig()?.name || 'Interceptor',
+      interceptorName: this.interceptor.agentName,
       interceptorChat: [],
     }
     this.appendChatMessage(userMsg)
     this.updateVisibleMessages()
 
-    await this.runInterceptor(userMsg.id)
-    await this.save()
-  }
-
-  private getInterceptorConfig() {
-    const config = AbeleConfig.getInstance().ai
-    return config.interceptors.find((i) => i.id === this.activeInterceptorId.value) || null
-  }
-
-  private resolveInterceptorModel(interceptor: { modelId: string }) {
-    const config = AbeleConfig.getInstance().ai
-    for (const provider of config.providers) {
-      const model = provider.models.find((m) => m.id === interceptor.modelId)
-      if (model) {
-        return {
-          id: model.id,
-          name: model.name,
-          baseUrl: provider.baseUrl,
-          apiKey: GlobalStore.getInstance().app.secretStorage.getSecret(provider.apiKeyId) || '',
-          contextWindow: model.contextWindow,
-          maxTokens: model.maxTokens,
-          supportsReasoning: model.supportsReasoning,
-        }
-      }
-    }
-    // Fallback to active model
-    return this.agentService.getActiveModelConfig()
-  }
-
-  private buildInterceptorContext(
-    interceptor: { contextDepth: number },
-    draftContent: string
-  ): Message[] {
-    const msgs: Message[] = []
-
-    // Add recent main chat messages as context
-    if (interceptor.contextDepth !== 0) {
-      const visible = this.messages.value.filter(
-        (m) => !m.draft && (m.role === 'user' || m.role === 'assistant')
-      )
-      const slice =
-        interceptor.contextDepth === -1 ? visible : visible.slice(-interceptor.contextDepth)
-      for (const m of slice) {
-        msgs.push({ role: 'user', content: `[${m.role}]: ${m.content}`, timestamp: m.timestamp })
-      }
-    }
-
-    // Add the draft message for review
-    msgs.push({
-      role: 'user',
-      content: draftContent,
-      timestamp: Date.now(),
-    })
-    return msgs
-  }
-
-  private async runInterceptor(draftMsgId: string): Promise<void> {
-    const interceptor = this.getInterceptorConfig()
-    if (!interceptor) return
-
-    const draftMsg = this.allChatMessages.find((m) => m.id === draftMsgId)
-    if (!draftMsg) return
-
-    this.lastInterceptorDraftId = draftMsgId
-    this.interceptorError.value = null
-
-    const model = this.resolveInterceptorModel(interceptor)
-    console.debug('[Abele interceptor]', {
-      modelId: model.id,
-      baseUrl: model.baseUrl,
-      hasKey: !!model.apiKey,
-    })
-    const client = new OpenAIClient()
-    const messages = this.buildInterceptorContext(interceptor, draftMsg.content)
-
-    this.interceptorAbort = new AbortController()
-    this.interceptorStreaming.value = true
-    this.interceptorStreamingContent.value = ''
-
-    try {
-      let response = ''
-      for await (const event of client.stream(model, interceptor.systemPrompt, messages, [], {
-        signal: this.interceptorAbort.signal,
-      })) {
-        if (event.type === 'text_delta') {
-          response += event.delta
-          this.interceptorStreamingContent.value = response
-        }
-      }
-
-      if (response.trim()) {
-        const chatMsg: InterceptorChatMessage = {
-          id: nanoid(),
-          role: 'assistant',
-          content: response.trim(),
-          timestamp: Date.now(),
-        }
-        draftMsg.interceptorChat = [...(draftMsg.interceptorChat || []), chatMsg]
-        this.updateVisibleMessages()
-      }
-    } catch (err) {
-      if (this.interceptorAbort?.signal.aborted) return
-      const message = err instanceof Error ? err.message : String(err)
-      console.error('[Abele interceptor error]', err)
-      this.interceptorError.value = message
-    } finally {
-      this.interceptorStreaming.value = false
-      this.interceptorStreamingContent.value = ''
-      this.interceptorAbort = null
-    }
-  }
-
-  async retryInterceptor(): Promise<void> {
-    if (!this.lastInterceptorDraftId) return
-    this.interceptorError.value = null
-    await this.runInterceptor(this.lastInterceptorDraftId)
-    await this.save()
-  }
-
-  async sendInterceptorMessage(draftMsgId: string, content: string): Promise<void> {
-    if (this.interceptorStreaming.value) return
-
-    const interceptor = this.getInterceptorConfig()
-    if (!interceptor) return
-
-    const draftMsg = this.allChatMessages.find((m) => m.id === draftMsgId)
-    if (!draftMsg || !draftMsg.draft) return
-
-    // Add user message to sub-chat
-    const userReply: InterceptorChatMessage = {
-      id: nanoid(),
-      role: 'user',
-      content,
-      timestamp: Date.now(),
-    }
-    draftMsg.interceptorChat = [...(draftMsg.interceptorChat || []), userReply]
-    this.updateVisibleMessages()
-
-    // Build full interceptor conversation
-    const model = this.resolveInterceptorModel(interceptor)
-    const client = new OpenAIClient()
-
-    const messages: Message[] = this.buildInterceptorContext(interceptor, draftMsg.content)
-    // Add previous interceptor sub-chat messages
-    for (const msg of draftMsg.interceptorChat) {
-      if (msg.role === 'user') {
-        messages.push({ role: 'user', content: msg.content, timestamp: msg.timestamp })
-      } else {
-        messages.push({
-          role: 'assistant',
-          content: [{ type: 'text', text: msg.content }],
-          model: '',
-          usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
-          stopReason: 'stop',
-          timestamp: msg.timestamp,
-        })
-      }
-    }
-
-    this.interceptorError.value = null
-    this.interceptorAbort = new AbortController()
-    this.interceptorStreaming.value = true
-    this.interceptorStreamingContent.value = ''
-
-    try {
-      let response = ''
-      for await (const event of client.stream(model, interceptor.systemPrompt, messages, [], {
-        signal: this.interceptorAbort.signal,
-      })) {
-        if (event.type === 'text_delta') {
-          response += event.delta
-          this.interceptorStreamingContent.value = response
-        }
-      }
-
-      if (response.trim()) {
-        const chatMsg: InterceptorChatMessage = {
-          id: nanoid(),
-          role: 'assistant',
-          content: response.trim(),
-          timestamp: Date.now(),
-        }
-        draftMsg.interceptorChat = [...(draftMsg.interceptorChat || []), chatMsg]
-        this.updateVisibleMessages()
-      }
-    } catch (err) {
-      if (this.interceptorAbort?.signal.aborted) return
-      const message = err instanceof Error ? err.message : String(err)
-      console.error('[Abele interceptor error]', err)
-      this.interceptorError.value = message
-    } finally {
-      this.interceptorStreaming.value = false
-      this.interceptorStreamingContent.value = ''
-      this.interceptorAbort = null
-    }
-
-    await this.save()
+    await this.interceptor.review(userMsg.id)
+    this.markDirty()
   }
 
   abortInterceptor(): void {
-    this.interceptorAbort?.abort()
+    this.interceptor.abort()
+  }
+
+  async retryInterceptor(): Promise<void> {
+    await this.interceptor.retry()
+  }
+
+  async sendInterceptorMessage(draftMsgId: string, content: string): Promise<void> {
+    await this.interceptor.sendMessage(draftMsgId, content)
+  }
+
+  /** Looks up a message anywhere in the tree, not only on the visible branch. */
+  findMessage(id: string): ChatMessage | undefined {
+    return this.allChatMessages.find((m) => m.id === id)
   }
 
   updateDraftContent(draftMsgId: string, content: string): void {
@@ -1345,24 +1640,27 @@ export class ChatSession {
 
     if (gen !== this.generation) return
 
-    await this.save()
+    this.markDirty()
 
     const sequential = AbeleConfig.getInstance().ai.sequentialAuxiliary
 
-    if (ChatSession.TITLE_GENERATION_TRIGGERS.includes(this.userMessageCount)) {
+    // A run is never listed anywhere, so naming it would be a request nobody reads the answer to.
+    const wantsTitle =
+      this.kind === 'chat' && ChatSession.TITLE_GENERATION_TRIGGERS.includes(this.userMessageCount)
+    if (wantsTitle) {
       if (sequential) {
-        await this.generateTitle()
+        await this.summarizer.generateTitle()
       } else {
-        this.generateTitle().catch(() => {
+        this.summarizer.generateTitle().catch(() => {
           return
         })
       }
     }
 
     if (sequential) {
-      await this.autoCompactIfNeeded()
+      await this.summarizer.autoCompactIfNeeded()
     } else {
-      this.autoCompactIfNeeded().catch(() => {
+      this.summarizer.autoCompactIfNeeded().catch(() => {
         return
       })
     }
@@ -1384,187 +1682,6 @@ export class ChatSession {
     this.backgroundAbort = null
   }
 
-  private async generateTitle(): Promise<void> {
-    this.isGeneratingTitle.value = true
-    try {
-      const config = AbeleConfig.getInstance().ai
-      const model = this.agentService.getAuxiliaryModelConfig()
-      const client = new OpenAIClient()
-      const msgs = this.messages.value
-        .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .slice(0, 6)
-        .map((m) => `[${m.role}]: ${m.content.slice(0, ChatSession.TITLE_MSG_PREVIEW_LENGTH)}`)
-        .join('\n')
-
-      const titlePrompt = (
-        config.prompts?.titleGeneration || DEFAULT_AI_SETTINGS.prompts.titleGeneration
-      ).replace('{{messages}}', msgs)
-      const titleSystem = config.prompts?.titleSystem || DEFAULT_AI_SETTINGS.prompts.titleSystem
-
-      const titleMessages: Message[] = [
-        {
-          role: 'user',
-          content: titlePrompt,
-          timestamp: Date.now(),
-        },
-      ]
-
-      const tools = this.getTools()
-      const toolDefs = tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        parameters: t.parameters,
-      }))
-
-      let title = ''
-      const signal = this.getBackgroundSignal()
-      for await (const event of client.stream(model, titleSystem, titleMessages, toolDefs, {
-        signal,
-      })) {
-        if (event.type === 'text_delta') title += event.delta
-      }
-
-      title = title
-        .trim()
-        .replace(/^["']|["']$/g, '')
-        .replace(/[\\/:*?"<>|]/g, '-')
-        .slice(0, ChatSession.TITLE_MAX_LENGTH)
-
-      if (!title || title === this.chatTitle.value) return
-
-      this.chatTitle.value = title
-
-      if (this.currentChatFile.value) {
-        const storage = ChatStorage.getInstance()
-        const newFile = await storage.renameChat(this.currentChatFile.value, title)
-        if (newFile) {
-          this.currentChatFile.value = newFile
-        }
-      }
-    } catch {
-      // Silently fail — title generation is best-effort
-    } finally {
-      this.isGeneratingTitle.value = false
-    }
-  }
-
-  async compact(): Promise<void> {
-    if (this.allInternalMessages.length === 0) return
-    if (this.isStreaming.value || this.isCompacting.value || this.isGeneratingTitle.value) return
-
-    this.isCompacting.value = true
-    this.error.value = null
-
-    try {
-      const config = AbeleConfig.getInstance().ai
-      const model = this.agentService.getAuxiliaryModelConfig()
-      const client = new OpenAIClient()
-
-      const modelMsgs = this.getMessagesForModel()
-
-      const msgsText = modelMsgs
-        .map((m) => {
-          if (m.role === 'user') return `[user]: ${m.content}`
-          if (m.role === 'assistant') {
-            const text = m.content
-              .filter((b): b is TextContent => b.type === 'text')
-              .map((b) => b.text)
-              .join('')
-            return text ? `[assistant]: ${text}` : null
-          }
-          if (m.role === 'toolResult') {
-            return `[tool ${m.toolName}]: ${m.content.map((c) => c.text).join('')}`
-          }
-          return null
-        })
-        .filter(Boolean)
-        .join('\n\n')
-
-      if (!msgsText) return
-
-      const compactPrompt = (
-        config.prompts?.compactPrompt || DEFAULT_AI_SETTINGS.prompts.compactPrompt
-      ).replace('{{messages}}', msgsText)
-
-      const compactMessages: Message[] = [
-        { role: 'user', content: compactPrompt, timestamp: Date.now() },
-      ]
-
-      const tools = this.getTools()
-      const toolDefs = tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        parameters: t.parameters,
-      }))
-
-      let summary = ''
-      const signal = this.getBackgroundSignal()
-      for await (const event of client.stream(
-        model,
-        ChatSession.COMPACT_SYSTEM_PROMPT,
-        compactMessages,
-        toolDefs,
-        { signal }
-      )) {
-        if (event.type === 'text_delta') summary += event.delta
-      }
-
-      summary = summary.trim()
-      if (!summary) return
-
-      const divider: ChatMessage = {
-        id: nanoid(),
-        role: 'system',
-        content: summary,
-        timestamp: Date.now(),
-      }
-      this.appendChatMessage(divider)
-      this.updateVisibleMessages()
-
-      const compactMarker: Message = {
-        role: 'system',
-        content: `${ChatSession.COMPACT_MARKER}\n\n${summary}`,
-        timestamp: Date.now(),
-        chatMessageId: divider.id,
-      }
-      this.allInternalMessages.push(compactMarker)
-
-      await this.save()
-    } catch (err: unknown) {
-      console.error('[Abele] compact error:', err)
-      const msg = err instanceof Error ? err.message : String(err)
-      this.error.value = `Compact failed: ${msg}`
-    } finally {
-      this.isCompacting.value = false
-    }
-  }
-
-  private async autoCompactIfNeeded(): Promise<void> {
-    try {
-      if (this.pendingToolCalls.value.length > 0) return
-
-      const model = this.agentService.getModelConfigFor(
-        this.activeProviderId.value,
-        this.activeModelId.value
-      )
-      if (!model.contextWindow) return
-
-      const lastAssistant = [...this.messages.value]
-        .reverse()
-        .find((m) => m.role === 'assistant' && m.usage)
-      if (!lastAssistant?.usage) return
-
-      const usage = lastAssistant.usage.total
-      const threshold = model.contextWindow * ChatSession.AUTO_COMPACT_THRESHOLD
-
-      if (usage >= threshold && this.getMessagesForModel().length > 2) {
-        await this.compact()
-      }
-    } catch {
-      // Auto-compact is best-effort
-    }
-  }
-
   // ── Other ─────────────────────────────────────────────────────
 
   private fallbackTitle(): string {
@@ -1582,7 +1699,7 @@ export class ChatSession {
       parameters: t.parameters,
     }))
     return {
-      systemPrompt: this.agentService.getSystemPrompt(this),
+      systemPrompt: this.chatService.getSystemPrompt(this),
       tools,
       internalMessages: this.allInternalMessages,
       pendingToolCalls: this.pendingToolCalls.value.length
@@ -1592,6 +1709,10 @@ export class ChatSession {
   }
 
   destroy(): void {
+    if (this.persistTimer !== null) {
+      clearTimeout(this.persistTimer)
+      this.persistTimer = null
+    }
     this.abort()
     this.abortBackground()
     this.allInternalMessages = []
@@ -1601,6 +1722,7 @@ export class ChatSession {
     this.allMessages.value = []
     this.pendingToolCalls.value = []
     this.currentChatFile.value = null
+    this.scopeEffects.stop()
     this.scopeResolver.destroy()
   }
 }

@@ -7,7 +7,7 @@
             <div class="setting-item-name">
               {{ journal.name ? `${journal.name} journal` : `Journal #${id + 1}` }}
             </div>
-            <Icon icon="cross" @click="removeJournal(id)" />
+            <Icon icon="cross" tooltip="Remove this journal" @click="removeJournal(id)" />
           </div>
           <Setting name="Default journal">
             <Checkbox :is-enabled="journal.isDefault" @toggle="toggleJournalDefault(journal)" />
@@ -50,13 +50,15 @@
             <Dropdown
               :model-value="journal.recurrence"
               :options="journalReccurenceOptions"
-              @update:model-value="changeJournalReccurence(journal, $event as Journal['recurrence'])"
+              @update:model-value="
+                changeJournalReccurence(journal, $event as Journal['recurrence'])
+              "
             />
           </Setting>
         </div>
       </div>
     </div>
-    <Button text="Add journal" @click="addJournal" />
+    <Button text="Add journal" tooltip="Add another journal" @click="addJournal" />
   </div>
 </template>
 

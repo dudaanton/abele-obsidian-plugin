@@ -5,8 +5,10 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { ModelConfig } from './client'
 import { DEFAULT_AI_SETTINGS } from './types'
+import { AgentRegistry } from './agents/AgentRegistry'
 import { getNoteBody } from '@/helpers/notesUtils'
 import { ChatSession } from './ChatSession'
+import { RunStorage, type RunFile } from './RunStorage'
 
 const MAX_TABS = 8
 const STORAGE_KEY = 'abele-agent-tabs'
@@ -16,10 +18,17 @@ interface TabsState {
   activeIndex: number
 }
 
-export class AgentService {
-  private static instance: AgentService | null = null
+export class ChatService {
+  private static instance: ChatService | null = null
 
   private sessions = new Map<string, ChatSession>()
+  /**
+   * Read-only tabs showing a delegated run.
+   *
+   * A run is a file, not a live session — nothing can be typed into it and nothing streams
+   * from it, so it sits alongside the chat sessions rather than pretending to be one.
+   */
+  private runTabs = new Map<string, RunFile>()
   private tabsRestored = false
   public readonly activeTabId = ref<string | null>(null)
   public readonly tabOrder = ref<string[]>([])
@@ -31,11 +40,11 @@ export class AgentService {
   /** Text to pre-fill in chat input (consumed by AiChat component) */
   public readonly pendingInput = ref<string | null>(null)
 
-  static getInstance(): AgentService {
-    if (!AgentService.instance) {
-      AgentService.instance = new AgentService()
+  static getInstance(): ChatService {
+    if (!ChatService.instance) {
+      ChatService.instance = new ChatService()
     }
-    return AgentService.instance
+    return ChatService.instance
   }
 
   private constructor() {
@@ -119,10 +128,12 @@ export class AgentService {
   /** Persist current tabs state to localStorage */
   saveTabs(): void {
     const state: TabsState = {
-      tabs: this.tabOrder.value.map((id) => {
-        const session = this.sessions.get(id)
-        return { chatFilePath: session?.currentChatFile.value?.path ?? null }
-      }),
+      tabs: this.tabOrder.value
+        .filter((id) => !this.runTabs.has(id))
+        .map((id) => {
+          const session = this.sessions.get(id)
+          return { chatFilePath: session?.currentChatFile.value?.path ?? null }
+        }),
       activeIndex: this.activeTabId.value ? this.tabOrder.value.indexOf(this.activeTabId.value) : 0,
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
@@ -144,6 +155,11 @@ export class AgentService {
   }
 
   async closeTab(tabId: string): Promise<void> {
+    if (this.runTabs.has(tabId)) {
+      this.closeRunTab(tabId)
+      return
+    }
+
     const session = this.sessions.get(tabId)
     if (!session) return
 
@@ -167,6 +183,10 @@ export class AgentService {
   }
 
   switchTab(tabId: string): void {
+    if (this.runTabs.has(tabId)) {
+      this.activeTabId.value = tabId
+      return
+    }
     if (this.sessions.has(tabId)) {
       this.activeTabId.value = tabId
       this.saveTabs()
@@ -175,6 +195,49 @@ export class AgentService {
 
   getSession(tabId: string): ChatSession | null {
     return this.sessions.get(tabId) ?? null
+  }
+
+  // ── Run tabs ──────────────────────────────────────────────────
+
+  getRun(tabId: string): RunFile | null {
+    return this.runTabs.get(tabId) ?? null
+  }
+
+  isRunTab(tabId: string): boolean {
+    return this.runTabs.has(tabId)
+  }
+
+  /** The run shown in the active tab, if the active tab is a run. */
+  get activeRun(): RunFile | null {
+    return this.activeTabId.value ? (this.runTabs.get(this.activeTabId.value) ?? null) : null
+  }
+
+  /** Opens a delegated run in its own tab, or switches to it if already open. */
+  async openRun(runId: string): Promise<boolean> {
+    for (const [tabId, run] of this.runTabs) {
+      if (run.runId === runId) {
+        this.activeTabId.value = tabId
+        return true
+      }
+    }
+
+    const run = await RunStorage.getInstance().load(runId)
+    if (!run) return false
+
+    const tabId = `run:${runId}`
+    this.runTabs.set(tabId, run)
+    this.tabOrder.value = [...this.tabOrder.value, tabId]
+    this.activeTabId.value = tabId
+    return true
+  }
+
+  private closeRunTab(tabId: string): void {
+    this.runTabs.delete(tabId)
+    this.tabOrder.value = this.tabOrder.value.filter((id) => id !== tabId)
+
+    if (this.activeTabId.value === tabId) {
+      this.activeTabId.value = this.tabOrder.value[this.tabOrder.value.length - 1] ?? null
+    }
   }
 
   getSessionByFile(filePath: string): ChatSession | null {
@@ -270,27 +333,6 @@ export class AgentService {
     return this.getActiveModelConfig()
   }
 
-  getDelegateModelConfig(): ModelConfig {
-    const config = AbeleConfig.getInstance().ai
-    if (config.delegateModelId) {
-      for (const provider of config.providers) {
-        const model = provider.models.find((m) => m.id === config.delegateModelId)
-        if (model) {
-          return {
-            id: model.id,
-            name: model.name,
-            baseUrl: provider.baseUrl,
-            apiKey: GlobalStore.getInstance().app.secretStorage.getSecret(provider.apiKeyId) || '',
-            contextWindow: model.contextWindow,
-            maxTokens: model.maxTokens,
-            supportsReasoning: model.supportsReasoning,
-          }
-        }
-      }
-    }
-    return this.getActiveModelConfig()
-  }
-
   // ── System prompt ─────────────────────────────────────────────
 
   async getSystemPrompt(session: ChatSession): Promise<string> {
@@ -307,20 +349,18 @@ export class AgentService {
       return session.customSystemPrompt.value.replace(/\{\{date\}\}/g, date)
     }
 
-    // Global: note path
-    const config = AbeleConfig.getInstance().ai
-    if (config.systemPromptFromNote && config.systemPromptNotePath) {
-      const body = await this.readNoteBody(config.systemPromptNotePath)
-      if (body) return body.replace(/\{\{date\}\}/g, date)
+    // The session's own agent — not the default one. Resolved on every call rather than
+    // cached, so editing the agent in settings reaches a chat already in progress.
+    const registry = AgentRegistry.getInstance()
+    const agent = session.agent.value ?? registry.defaultAgent()
+    if (agent) {
+      const composed = await registry.buildSystemPrompt(agent)
+      if (composed) return composed
     }
 
-    // Global: inline text
-    const base = config.prompts?.system || DEFAULT_AI_SETTINGS.prompts.system
-    return base.replace(/\{\{date\}\}/g, date)
-  }
-
-  async getDelegateSystemPrompt(session: ChatSession): Promise<string> {
-    return this.getSystemPrompt(session)
+    // No agent configured at all — migration should have prevented this, but a settings file
+    // edited by hand can still reach here, and a mute assistant is worse than a generic one.
+    return DEFAULT_AI_SETTINGS.prompts.system.replace(/\{\{date\}\}/g, date)
   }
 
   private async readNoteBody(path: string): Promise<string | null> {
@@ -372,11 +412,16 @@ export class AgentService {
 
   destroy(): void {
     for (const session of this.sessions.values()) {
+      // Obsidian's unload is synchronous, so this cannot be awaited. Writes are deferred by
+      // a fraction of a second at most, and a turn ends with one, so what is at risk here is
+      // a partial turn — and starting it is what the flush is for.
+      void session.flush()
       session.destroy()
     }
     this.sessions.clear()
+    this.runTabs.clear()
     this.tabOrder.value = []
     this.activeTabId.value = null
-    AgentService.instance = null
+    ChatService.instance = null
   }
 }

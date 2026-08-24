@@ -111,6 +111,15 @@ The original version of the plugin, its architecture, and all core functionality
 
 The plugin is currently in very active development, so bugs are expected. I also haven't written detailed documentation yet. However, if you want to try it and can't get it running, please open an Issue — I'll try to help.
 
+## Documentation
+
+Notes for anyone working on the plugin live in [`docs/`](docs):
+
+- [Design](docs/Design.md) — the shared UI kit and the rules every screen follows.
+- [Testing](docs/Testing.md) — the three test tiers, and how to assert against a running Obsidian.
+- [AI Agent](docs/AI%20Agent.md) — agents, delegation and the scripting API.
+- [Templates](docs/Templates.md) and [URL Protocol](docs/URL%20Protocol.md).
+
 ## Installation
 
 TODO

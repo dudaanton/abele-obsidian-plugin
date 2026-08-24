@@ -1,3 +1,5 @@
+import type { AgentDefinition, SessionOverrides } from './agents/types'
+
 export interface AiProvider {
   id: string
   name: string
@@ -103,8 +105,6 @@ export interface AiSettings {
   activeProviderId: string
   activeModelId: string
   auxiliaryModelId: string
-  wiseModelId: string
-  delegateModelId: string
   sequentialAuxiliary: boolean
   permissionMode: PermissionMode
   toolModes: Record<string, ToolMode>
@@ -122,6 +122,9 @@ export interface AiSettings {
   systemPromptFromNote: boolean
   systemPromptNotePath: string
   interceptors: AiInterceptor[]
+  agents: AgentDefinition[]
+  /** Id of the agent new chats start on. */
+  defaultAgentId: string
   /** @deprecated migrated to imageProviders */
   openRouterApiKey?: string
   /** @deprecated migrated to imageProviders */
@@ -154,8 +157,6 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   activeProviderId: '',
   activeModelId: '',
   auxiliaryModelId: '',
-  wiseModelId: '',
-  delegateModelId: '',
   sequentialAuxiliary: false,
   permissionMode: 'confirm-all',
   toolModes: {
@@ -176,6 +177,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   systemPromptFromNote: false,
   systemPromptNotePath: '',
   interceptors: [],
+  agents: [],
+  defaultAgentId: '',
   prompts: {
     system:
       "You are an AI assistant integrated into Obsidian note-taking app through the Abele plugin. You can read, create, edit, delete, and move files in the user's vault. You can also search the web.\n\nWhen working with files, always explain what you're about to do before doing it. Be concise but thorough.",
@@ -200,8 +203,6 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
         'Load an image so you can see its contents. Images in workspace scope are loaded automatically; others require user approval.',
       fetch:
         'Send an HTTP request to any URL. Supports all methods, custom headers, and request body. Returns status code and response.',
-      wise_model:
-        'Consult a more powerful AI model for complex analysis, evaluation, or reasoning. Use when the task requires deeper expertise.',
       generate_image:
         'Generate an image from a text prompt. The image is saved to the vault attachments folder. Returns the path of the saved image.',
       edit_image:
@@ -246,7 +247,6 @@ export function migrateOldPermissions(
     { keys: ['allowWebSearch'], tools: ['web_search'] },
     { keys: ['allowFetch'], tools: ['fetch'] },
     { keys: ['allowDownload'], tools: ['download_image', 'download_file'] },
-    { keys: ['allowWiseModel'], tools: ['wise_model'] },
     { keys: ['allowImageGeneration'], tools: ['generate_image', 'edit_image'] },
     { keys: ['allowEvalJs'], tools: ['eval_js'] },
     { keys: ['allowDelegate'], tools: ['delegate'] },
@@ -297,6 +297,17 @@ export interface ChatMessageDiff {
   new: string
 }
 
+/** Where a delegated run's transcript lives, hung off the tool call that started it. */
+export interface SubAgentRunRef {
+  runId: string
+  agentId: string
+  agentName: string
+  /** Path of the run file, for opening the branch in its own tab. */
+  path: string
+  status: 'running' | 'done' | 'error' | 'aborted'
+  branchCount: number
+}
+
 export interface ChatMessage {
   id: string
   parentId?: string
@@ -316,10 +327,15 @@ export interface ChatMessage {
   interceptorName?: string
   interceptorChat?: InterceptorChatMessage[]
   interceptorCollapsed?: boolean
+  subAgentRun?: SubAgentRunRef
 }
 
 export interface ChatMetadata {
   type: 'abele-chat'
+  /** Which agent the chat runs on. Absent in chats saved before agents existed. */
+  agentId?: string
+  /** Only what this chat changed relative to its agent. */
+  overrides?: SessionOverrides
   providerId: string
   modelId: string
   created: string
@@ -349,5 +365,8 @@ export interface ChatMetadata {
   activeLeafId?: string
   customSystemPrompt?: string
   customSystemPromptNotePath?: string
+  interceptorAgentId?: string
+  interceptorContextDepth?: number
+  /** @deprecated pre-agent chats stored the interceptor id here; migrated on load. */
   activeInterceptorId?: string
 }

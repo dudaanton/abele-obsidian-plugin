@@ -1,6 +1,6 @@
 <template>
   <div class="abele-tool-modes">
-    <div v-if="!hideShowAll" class="abele-tool-modes__toggle">
+    <div v-if="!hideShowAll && !descriptionsOnly" class="abele-tool-modes__toggle">
       <Setting name="Show core tools" desc="Show always-on tools that cannot be disabled.">
         <Checkbox :is-enabled="showAll" @toggle="showAll = !showAll" />
       </Setting>
@@ -18,7 +18,8 @@
             :class="{ 'abele-tool-modes__desc-btn--active': isDescVisible(tool.name) }"
             @click="toggleDescEdit(tool.name)"
           />
-          <span v-if="isCore(tool.name)" class="abele-tool-modes__core">always on</span>
+          <span v-if="descriptionsOnly" />
+          <span v-else-if="isCore(tool.name)" class="abele-tool-modes__core">always on</span>
           <Dropdown
             v-else
             :model-value="getMode(tool.name)"
@@ -60,11 +61,14 @@ const props = withDefaults(
     showDescriptions?: boolean
     toolDescriptions?: Record<string, string>
     hideShowAll?: boolean
+    /** Edit only what each tool tells the model, with no per-agent mode dropdowns. */
+    descriptionsOnly?: boolean
   }>(),
   {
     showDescriptions: false,
     toolDescriptions: () => ({}),
     hideShowAll: false,
+    descriptionsOnly: false,
   }
 )
 
@@ -120,7 +124,8 @@ const visibleGroups = computed<ToolGroup[]>(() => {
   const groups = new Map<string, ToolEntry[]>()
 
   for (const tool of registry) {
-    if (!showAll.value && isCore(tool.name)) continue
+    // In descriptions-only mode every tool has a description worth editing, core included.
+    if (!props.descriptionsOnly && !showAll.value && isCore(tool.name)) continue
     if (!groups.has(tool.category)) groups.set(tool.category, [])
     groups.get(tool.category)!.push({ name: tool.name, label: tool.label })
   }

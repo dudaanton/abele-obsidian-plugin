@@ -48,21 +48,43 @@
       </Setting>
 
       <div class="abele-model-edit__actions">
-        <Button text="Save" :disabled="!form.id" @click="onSave" />
-        <Button v-if="!isNew" text="Delete" @click="onDelete" />
+        <Button
+          text="Save"
+          :disabled="!form.id"
+          tooltip="Keep these settings and close"
+          @click="onSave"
+        />
+        <Button
+          v-if="!isNew"
+          text="Delete"
+          warning
+          tooltip="Remove this model from the provider"
+          @click="confirming = true"
+        />
       </div>
     </div>
+
+    <ConfirmModal
+      v-if="confirming"
+      title="Delete model"
+      :message="`Delete ${form.name || form.id}? Agents using it will have no model until one is
+        chosen again.`"
+      :confirm-tooltip="`Delete ${form.name || form.id}`"
+      @confirm="onDelete"
+      @close="confirming = false"
+    />
   </ObsidianModal>
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import Setting from '../obsidian/Setting.vue'
 import Input from '../obsidian/Input.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import Button from '../obsidian/Button.vue'
+import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import type { AiModelConfig } from '@/ai/types'
 
 const props = defineProps<{
@@ -78,6 +100,9 @@ const emit = defineEmits<{
 
 const form = reactive<AiModelConfig>({ ...props.model })
 
+/** Held open until the question is answered — see docs/Design.md. */
+const confirming = ref(false)
+
 const onSave = () => {
   emit('save', { ...form })
   emit('close')
@@ -91,7 +116,7 @@ const onDelete = () => {
 
 <style lang="scss">
 .modal:has(.abele-model-edit) {
-  width: min(500px, 90vw);
+  width: min(31rem, 90vw);
 }
 
 .abele-model-edit__actions {
