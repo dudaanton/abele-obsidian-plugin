@@ -37,6 +37,12 @@ export interface FakeVaultStats {
   getFirstLinkpathDest: number
   getAbstractFileByPath: number
   read: number
+  /** Files created, whole-file rewrites, and appends — what a save costs the disk. */
+  create: number
+  modify: number
+  append: number
+  /** Bytes handed to the vault, which is what makes a rewrite visibly worse than an append. */
+  written: number
   /**
    * Reads of the whole `resolvedLinks` map. Backlink lookups walk it end to end, so one read
    * per lookup means the cost scales with how many paths are asked about; one read per burst
@@ -192,7 +198,45 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     getFirstLinkpathDest: 0,
     getAbstractFileByPath: 0,
     read: 0,
+    create: 0,
+    modify: 0,
+    append: 0,
+    written: 0,
     resolvedLinks: 0,
+  }
+
+  const addFile = (path: string): TFile => {
+    const existing = byPath.get(path)
+    if (existing) return existing
+
+    const file = new TFile()
+    file.path = path
+    file.name = path.split('/').pop() ?? path
+    const dot = file.name.lastIndexOf('.')
+    file.basename = dot > 0 ? file.name.slice(0, dot) : file.name
+    file.extension = dot > 0 ? file.name.slice(dot + 1) : ''
+
+    const parentPath = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+    const parent = ensureFolder(parentPath)
+    parent.children.push(file)
+    file.parent = parent
+
+    files.push(file)
+    byPath.set(path, file)
+    return file
+  }
+
+  const removeFile = (path: string): void => {
+    const file = byPath.get(path)
+    if (!file) return
+    byPath.delete(path)
+    rawByPath.delete(path)
+    const at = files.indexOf(file)
+    if (at !== -1) files.splice(at, 1)
+    if (file.parent) {
+      const idx = file.parent.children.indexOf(file)
+      if (idx !== -1) file.parent.children.splice(idx, 1)
+    }
   }
 
   const resolveLink = (linkpath: string): TFile | null => {
@@ -296,6 +340,46 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         stats.read++
         return rawByPath.get(file.path) ?? ''
       },
+
+      // ── Writing ──
+      //
+      // Enough to let code that persists into the vault run for real. Content is kept in the
+      // same map `read` serves, so a test can save something and read it back.
+
+      async create(path: string, content: string) {
+        stats.create++
+        stats.written += content.length
+        const file = addFile(path)
+        rawByPath.set(path, content)
+        return file
+      },
+      async modify(file: TFile, content: string) {
+        stats.modify++
+        stats.written += content.length
+        rawByPath.set(file.path, content)
+      },
+      async append(file: TFile, data: string) {
+        stats.append++
+        stats.written += data.length
+        rawByPath.set(file.path, (rawByPath.get(file.path) ?? '') + data)
+      },
+      async createFolder(path: string) {
+        return ensureFolder(path)
+      },
+
+      // Obsidian's raw filesystem view. Only existence is modelled: code that picks a free
+      // path asks the adapter rather than the file index.
+      adapter: {
+        async exists(path: string) {
+          return byPath.has(path) || folders.has(path)
+        },
+      },
+      async delete(file: TFile) {
+        removeFile(file.path)
+      },
+      async trash(file: TFile) {
+        removeFile(file.path)
+      },
     },
     metadataCache: {
       on: register('metadataCache'),
@@ -327,6 +411,10 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     resetStats() {
       stats.getFiles = 0
       stats.getMarkdownFiles = 0
+      stats.create = 0
+      stats.modify = 0
+      stats.append = 0
+      stats.written = 0
       stats.getFileCache = 0
       stats.getFirstLinkpathDest = 0
       stats.getAbstractFileByPath = 0
