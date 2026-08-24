@@ -31,6 +31,19 @@ jobs:
           npm ci
           npm run build
 
+      # The release publishes three files. A build that emits anything else has split a
+      # dynamic import into a chunk that would never reach a vault, leaving whatever sits
+      # behind that import broken for every user.
+      - name: Check the build is one file
+        working-directory: plugin
+        run: |
+          unexpected=$(ls build | grep -vE '^(main\.js|main\.css|styles\.css)$' || true)
+          if [ -n "$unexpected" ]; then
+            echo "Unexpected build output, which the release would not publish:"
+            echo "$unexpected"
+            exit 1
+          fi
+
       - name: Create release with changelog
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

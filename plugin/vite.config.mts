@@ -29,6 +29,14 @@ export default defineConfig(async ({ mode }) => {
       outDir: 'build',
       rollupOptions: {
         output: {
+          /**
+           * One file, always. A dynamic `import()` of a bundled dependency otherwise becomes
+           * its own chunk that `main.js` requires at runtime — and the release publishes only
+           * `main.js`, `manifest.json` and `styles.css`, so that chunk never reaches a vault
+           * and the feature behind the import throws. `script.unzip()` shipped broken this
+           * way. See docs/Testing.md.
+           */
+          inlineDynamicImports: true,
           assetFileNames: (assetInfo) => {
             if (assetInfo.name && assetInfo.name.endsWith('.css')) {
               return 'main.css'

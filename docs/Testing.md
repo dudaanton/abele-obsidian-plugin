@@ -240,6 +240,11 @@ Keep the import of `exposeTestApi` **static**. A dynamic `import()` makes Rollup
 separate chunk, which turns `build/main.js` into a stub that cannot resolve its own bundle —
 and the install scripts copy only `main.js`.
 
+The same trap caught `script.unzip()`, whose `await import('fflate')` shipped as a chunk that
+no release ever published. `build.rollupOptions.output.inlineDynamicImports` now forces a
+single file, and the release workflow fails if `build/` holds anything but `main.js` and
+`main.css`.
+
 ## Generating a test vault
 
 `scripts/generate-vault.mjs` writes a realistic vault: the `groups` relation graph,
