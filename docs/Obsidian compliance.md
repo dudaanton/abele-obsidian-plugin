@@ -48,6 +48,7 @@ ever receive.
 | Narrow with `instanceof` | `vault.getFileByPath()` and type guards instead of `as TFile`. |
 | Cross-window type checks | `node.instanceOf(HTMLElement)` inside the editor. |
 | `requestUrl` over `fetch` | Model lists and remote image downloads. |
+| Obsidian's `AbstractInputSuggest` | The path pickers extend it; the Popper copy is gone. |
 | Vault-scoped storage | Chat tabs use `App#saveLocalStorage`. |
 | Sentence case | Commands, view titles and notices. |
 | Quiet console by default | Diagnostics are `console.debug`, which Obsidian hides. |
@@ -79,42 +80,43 @@ field in the settings window, a modal's mount point — uses the second form. Ob
 types do not declare those methods on `Window`; `src/obsidian-window.d.ts` adds them, with the
 runtime behaviour it was verified against.
 
-## Deliberate deviations
+## Reproducing the review
 
-Five places knowingly break a rule. Each carries a comment at the site saying why, and
-`eslint-comments/no-restricted-disable` is switched off so the suppressions stay visible in the
-code rather than hidden in configuration.
+The community directory's automated review runs Obsidian's preset **as shipped**, not this
+project's configuration. A clean `npm run lint` therefore proves nothing about the review, and
+the first submission of 1.2.0 was rejected for four findings that were green locally.
 
-**Streaming chat requests use `fetch`** (`src/ai/client/OpenAIClient.ts`). `requestUrl` buffers
-the whole response and takes no abort signal, so it can neither stream tokens as they arrive
-nor stop mid-answer. Non-streaming calls in the same file do use `requestUrl`.
+```bash
+cd plugin && npm run lint:review
+```
 
-**Copying an image uses `fetch`** (`src/components/GalleryViewer.vue`). The URL is often an
-`app://` vault resource, which `requestUrl` does not serve. Downloading a *remote* image, where
-the address is always http(s), goes through `requestUrl`.
+`eslint.review.mjs` takes the preset whole with nothing relaxed. What matters in its output is
+anything under `eslint-comments/` — the preset **forbids `eslint-disable` comments for its own
+rules**, and the review reports each one as a **Risk**. That is what the four rejections were:
+not the underlying rules, but the act of silencing them.
 
-**Scripts are compiled with `new Function`** (`src/scripting/ScriptService.ts`). Running the
-user's own script is the feature; the code comes from a `.js` file in their vault and is handed
-only the capabilities in its context object.
+**So there are no `eslint-disable` comments for Obsidian's rules anywhere in `src/`.** Where an
+exception is genuinely needed it lives in `eslint.config.mjs`, which is this project's to set,
+with the reason recorded there. The review still sees and reports those two findings — as
+ordinary findings rather than as suppressions.
 
-**"Show on disk" uses Electron** (`src/components/GalleryViewer.vue`), behind
-`Platform.isDesktop` — see Mobile above.
+## Two findings that stand
+
+**Scripts are compiled with `new Function`** (`src/scripting/ScriptService.ts`). Running a
+script the user wrote in their own vault requires compiling it; there is no variant of the
+feature without dynamic evaluation. The code is handed only the capabilities in its context
+object. Reported by `no-new-func` and `no-implied-eval`.
 
 **The settings tab renders imperatively** (`src/settings.ts`). Obsidian 1.13 added
-`getSettingDefinitions()`, which makes settings searchable. Adopting it means describing every
-setting as data, and Abele's settings are a Vue application with its own tabs, cards and
-editors. The cost of staying imperative is that Abele's settings are found by opening the tab
-rather than by searching.
+`getSettingDefinitions()`, which makes settings searchable — but the tab is then rendered
+*declaratively from those definitions and `display()` is never called*. Abele's settings are a
+Vue application with its own tabs, cards, agent editor and scope editor, so adopting the API
+means replacing the entire settings UI, not annotating it. The cost of standing still is that
+Abele's settings are found by opening the tab rather than by searching.
 
 ## Known gaps
 
-Neither is enforced by Obsidian's linter, and both are worth doing.
-
-**`AbstractInputSuggest`.** `src/helpers/suggesters/suggest.ts` is a custom `TextInputSuggest`,
-kept because it accepts a `<textarea>` as well as an `<input>`, and because
-`tests/unit/textInputSuggest.test.ts` guards a shipped bug in it — a popup that opened in the
-main window while the user typed in the settings window. Swapping to the built-in would delete
-that code and the tests holding it, so it wants a change verified against a running app.
+Not enforced by Obsidian's linter, and worth doing.
 
 **`activeDocument`.** 31 places reach for `document` where a popped-out window would need
 `activeDocument`. Obsidian leaves `prefer-active-doc` switched off in its own preset, so this

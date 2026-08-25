@@ -35,6 +35,20 @@ jobs:
         working-directory: plugin
         run: npm run lint
 
+      # Obsidian's preset exactly as the community review runs it. Only the suppression rules
+      # are gated: the review reports an `eslint-disable` of one of its own rules as a Risk and
+      # rejects the submission, and a green `npm run lint` above does not catch that.
+      - name: No suppressions of Obsidian's rules
+        working-directory: plugin
+        run: |
+          found=$(npm run --silent lint:review 2>&1 | grep 'eslint-comments/' || true)
+          if [ -n "$found" ]; then
+            echo "The community review rejects these as Risks:"
+            echo "$found"
+            exit 1
+          fi
+          echo "No suppressions of Obsidian's rules."
+
       # Unit and integration tiers only. The e2e tier drives a running Obsidian desktop app
       # through its CLI and has no meaning on a headless runner.
       - name: Unit and integration tests

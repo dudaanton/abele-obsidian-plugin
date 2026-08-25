@@ -149,7 +149,7 @@ const attachSuggester = (
   suggester.selectSuggestion = (item: any) => {
     const path = item.path as string
     onSelect(path)
-    suggester.onInputChanged()
+    suggester.refresh()
   }
   suggesters.push(suggester)
 }

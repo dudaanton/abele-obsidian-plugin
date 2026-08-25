@@ -1,112 +1,118 @@
 /**
- * Where a text-input suggester hangs its popup.
+ * What the path pickers offer, and what taking one does.
  *
- * Since Obsidian 1.13 the settings pane can open in a window of its own. A popup built with
- * the global `createDiv` and appended to `app.dom.appContainerEl` then lands in the *main*
- * window — which is how the note picker in the agent editor ended up floating over the note
- * the user was reading, in a different window from the field they were typing into.
+ * These used to assert where the popup was hung, back when the plugin built its own with
+ * Popper — including the guard against a picker in the settings window putting its list in the
+ * main one. That code is gone: the pickers now extend Obsidian's `AbstractInputSuggest`, which
+ * owns the popup and the window it belongs to. Testing Obsidian's popup would be testing
+ * Obsidian, so what is left here is the part the plugin still decides.
+ *
+ * The field-writing case matters most. The Vue components observe these fields through
+ * `SearchComponent.onChange`, which listens for an `input` event — so a picker that sets
+ * `value` without firing the event would look right on screen and silently save nothing.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { App } from 'obsidian'
+import { TFile, TFolder } from 'obsidian'
+import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
 
-vi.mock('@popperjs/core', () => ({
-  // Positioning needs a layout engine; happy-dom has none, and none of this is about position.
-  createPopper: () => ({ destroy: () => undefined, update: () => undefined }),
-}))
+let app: App
 
-const { TextInputSuggest } = await import('@/helpers/suggesters/suggest')
-
-class PathSuggest extends TextInputSuggest<string> {
-  getSuggestions(): string[] {
-    return ['Notes/One.md', 'Notes/Two.md']
-  }
-  renderSuggestion(item: string, el: HTMLElement): void {
-    el.textContent = item
-  }
-  selectSuggestion(): void {
-    // Selection is not what these tests are about.
-  }
+function folder(path: string): TFolder {
+  const f = new TFolder()
+  f.path = path
+  f.name = path.split('/').pop() ?? path
+  return f
 }
 
-let appContainerEl: HTMLElement
-let app: App
+function file(path: string): TFile {
+  const f = new TFile()
+  f.path = path
+  f.name = path.split('/').pop() ?? path
+  f.extension = path.split('.').pop() ?? ''
+  return f
+}
+
+const tree = [folder('Notes'), folder('Notes/Projects'), folder('Archive'), file('Notes/One.md')]
 
 beforeEach(() => {
   document.body.innerHTML = ''
-  appContainerEl = document.createElement('div')
-  appContainerEl.classList.add('app-container')
-  document.body.appendChild(appContainerEl)
-
-  app = {
-    dom: { appContainerEl },
-    keymap: { pushScope: vi.fn(), popScope: vi.fn() },
-  } as unknown as App
+  app = { vault: { getAllLoadedFiles: () => tree } } as unknown as App
 })
 
-function inputIn(doc: Document): HTMLInputElement {
-  const input = doc.createElement('input')
-  input.type = 'text'
-  doc.body.appendChild(input)
-  return input
+function inputWithSuggest(): { input: HTMLInputElement; suggest: FolderSuggest } {
+  const input = document.createElement('input')
+  document.body.appendChild(input)
+  return { input, suggest: new FolderSuggest(app, input) }
 }
 
-/** Stands in for the settings window: a second document, as a separate window would be. */
-function otherWindowDocument(): Document {
-  return document.implementation.createHTMLDocument('settings')
-}
+describe('what a folder picker offers', () => {
+  it('offers folders and not files', () => {
+    const { suggest } = inputWithSuggest()
+    expect(suggest.getSuggestions('').map((f) => f.path)).toEqual([
+      'Notes',
+      'Notes/Projects',
+      'Archive',
+    ])
+  })
 
-describe('a suggester on an input in the main window', () => {
-  it('hangs its popup in the app container, as Obsidian does', () => {
-    const input = inputIn(document)
-    const suggest = new PathSuggest(app, input)
+  it('narrows to what the query matches, anywhere in the path', () => {
+    const { suggest } = inputWithSuggest()
+    expect(suggest.getSuggestions('proj').map((f) => f.path)).toEqual(['Notes/Projects'])
+  })
 
-    suggest.onInputChanged()
+  it('ignores case', () => {
+    const { suggest } = inputWithSuggest()
+    expect(suggest.getSuggestions('ARCH').map((f) => f.path)).toEqual(['Archive'])
+  })
 
-    expect(appContainerEl.querySelector('.suggestion-container')).not.toBeNull()
+  it('offers nothing when nothing matches', () => {
+    const { suggest } = inputWithSuggest()
+    expect(suggest.getSuggestions('nothing-like-this')).toEqual([])
+  })
+
+  it('draws a suggestion as its path', () => {
+    const { suggest } = inputWithSuggest()
+    const el = document.createElement('div')
+    suggest.renderSuggestion(folder('Notes/Projects'), el)
+    expect(el.textContent).toBe('Notes/Projects')
   })
 })
 
-describe('a suggester on an input in another window', () => {
-  it('builds the popup in that window, not the main one', () => {
-    const doc = otherWindowDocument()
-    const input = inputIn(doc)
-
-    const suggest = new PathSuggest(app, input)
-    suggest.onInputChanged()
-
-    const popup = doc.querySelector('.suggestion-container')
-    expect(popup).not.toBeNull()
-    expect(popup?.ownerDocument).toBe(doc)
+describe('taking a suggestion', () => {
+  it('writes the path into the field', () => {
+    const { input, suggest } = inputWithSuggest()
+    suggest.selectSuggestion(folder('Notes/Projects'))
+    expect(input.value).toBe('Notes/Projects')
   })
 
-  it('leaves nothing behind in the main window', () => {
-    const doc = otherWindowDocument()
-    const input = inputIn(doc)
+  it('fires an input event, which is how the settings field hears about it', () => {
+    const { input, suggest } = inputWithSuggest()
+    const heard = vi.fn()
+    input.addEventListener('input', heard)
 
-    new PathSuggest(app, input).onInputChanged()
+    suggest.selectSuggestion(folder('Notes/Projects'))
 
-    expect(document.querySelector('.suggestion-container')).toBeNull()
-    expect(appContainerEl.children).toHaveLength(0)
+    expect(heard).toHaveBeenCalledTimes(1)
   })
 
-  it('shows the suggestions it was given', () => {
-    const doc = otherWindowDocument()
-    const input = inputIn(doc)
-
-    new PathSuggest(app, input).onInputChanged()
-
-    const items = [...doc.querySelectorAll('.suggestion-item')].map((el) => el.textContent)
-    expect(items).toEqual(['Notes/One.md', 'Notes/Two.md'])
+  it('closes the list', () => {
+    const { suggest } = inputWithSuggest()
+    suggest.selectSuggestion(folder('Archive'))
+    expect((suggest as unknown as { closed: boolean }).closed).toBe(true)
   })
+})
 
-  it('takes the popup down again on close', () => {
-    const doc = otherWindowDocument()
-    const input = inputIn(doc)
-    const suggest = new PathSuggest(app, input)
-    suggest.onInputChanged()
+describe('refreshing without taking anything', () => {
+  it('re-runs the query and leaves the field alone', () => {
+    const { input, suggest } = inputWithSuggest()
+    input.value = 'proj'
+    const heard = vi.fn()
+    input.addEventListener('input', heard)
 
-    suggest.close()
+    suggest.refresh()
 
-    expect(doc.querySelector('.suggestion-container')).toBeNull()
+    expect(heard).toHaveBeenCalledTimes(1)
+    expect(input.value).toBe('proj')
   })
 })
