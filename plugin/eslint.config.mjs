@@ -159,20 +159,6 @@ export default [
       // TypeScript already reports an undefined identifier, and it knows about `process` and
       // `__dirname` from the types this project pulls in; ESLint does not and reports both.
       'no-undef': 'off',
-      /**
-       * Obsidian's preset forbids silencing its own rules, which is the right default. This
-       * plugin has exactly three places where a rule cannot be met, each carrying a comment
-       * saying why:
-       *
-       *   - `src/ai/client/OpenAIClient.ts` — `requestUrl` cannot stream or be aborted, and
-       *     both are the point of the chat request.
-       *   - `src/scripting/ScriptService.ts` — running the user's own script needs a compiler.
-       *   - `src/settings.ts`, `src/helpers/suggesters/suggest.ts` — described at each site.
-       *
-       * They are left visible as comments in the code rather than hidden in this file, so the
-       * rule that objects to them is what gets relaxed, not the rules themselves.
-       */
-      'eslint-comments/no-restricted-disable': 'off',
     },
   },
 
@@ -238,6 +224,36 @@ export default [
   },
 
   /**
+   * Two findings this plugin cannot clear, recorded here rather than silenced at the call site.
+   *
+   * Obsidian's preset forbids `eslint-disable` comments for its own rules, and its review
+   * reports any it finds as a **Risk** — which is what a first submission was rejected for. So
+   * the exception lives in this file, which is the project's to set, instead of in the source.
+   * Their review still reports both; it reports them as ordinary findings rather than as a
+   * suppression, and each is a deliberate, disclosed property of the plugin:
+   *
+   *   - Running a script the user wrote in their own vault requires compiling it. There is no
+   *     variant of that feature without dynamic evaluation.
+   *   - The settings tab is a Vue application. `getSettingDefinitions()` would make it
+   *     searchable, but Obsidian renders declaratively from it and never calls `display()`, so
+   *     adopting it means replacing the whole settings UI.
+   *
+   * Both are explained at their site and in docs/Obsidian compliance.md. Left as warnings so a
+   * *new* violation of either rule elsewhere still fails the build.
+   */
+  {
+    files: ['plugin/src/scripting/ScriptService.ts'],
+    rules: {
+      'obsidianmd/rule-custom-message': 'warn',
+      '@typescript-eslint/no-implied-eval': 'warn',
+    },
+  },
+  {
+    files: ['plugin/src/settings.ts'],
+    rules: { 'obsidianmd/settings-tab/prefer-setting-definitions': 'warn' },
+  },
+
+  /**
    * Tests drive the plugin from the outside: they build fixtures, reach for `globalThis`, and
    * write UI strings that are assertions rather than user-facing text. Obsidian's UI and
    * runtime rules do not apply to them. This block is last so that it also switches off the
@@ -245,7 +261,13 @@ export default [
    * no TypeScript program here and would crash rather than report.
    */
   {
-    files: ['plugin/tests/**', 'plugin/*.config.*', 'plugin/.prettierrc.mjs', 'plugin/version-bump.mjs'],
+    files: [
+      'plugin/tests/**',
+      'plugin/*.config.*',
+      'plugin/.prettierrc.mjs',
+      'plugin/eslint.review.mjs',
+      'plugin/version-bump.mjs',
+    ],
     languageOptions: { parserOptions: { projectService: false, project: false } },
     rules: {
       ...tseslint.configs.disableTypeChecked.rules,

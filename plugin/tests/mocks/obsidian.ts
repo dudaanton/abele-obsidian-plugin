@@ -107,6 +107,17 @@ if (typeof HTMLElement !== 'undefined' && !('empty' in HTMLElement.prototype)) {
         this.parentElement?.removeChild(this)
       },
     },
+    setText: {
+      value(this: HTMLElement, text: string) {
+        this.textContent = text
+      },
+    },
+    /** Obsidian's `el.trigger(type)` — dispatches a bubbling event of that name. */
+    trigger: {
+      value(this: HTMLElement, type: string) {
+        this.dispatchEvent(new Event(type, { bubbles: true }))
+      },
+    },
     /** Obsidian's delegated listener: `el.on(event, selector, handler)`. */
     on: {
       value(
@@ -125,6 +136,17 @@ if (typeof HTMLElement !== 'undefined' && !('empty' in HTMLElement.prototype)) {
       get(this: HTMLElement) {
         return this.ownerDocument
       },
+    },
+  })
+}
+
+/**
+ * Obsidian augments `String` with `contains`, and plugin code uses it in place of `includes`.
+ */
+if (typeof String !== 'undefined' && !('contains' in String.prototype)) {
+  Object.defineProperty(String.prototype, 'contains', {
+    value(this: string, needle: string) {
+      return this.includes(needle)
     },
   })
 }
@@ -218,6 +240,39 @@ if (typeof window !== 'undefined') {
       },
     })
   }
+}
+
+/**
+ * Obsidian's type-ahead base for a text field. The real one owns the popup, its placement and
+ * the keyboard; none of that is modelled here because none of it is the plugin's code any more.
+ * What the plugin still owns — which values match, how one is drawn, what selecting does — is
+ * driven directly by the tests.
+ */
+export abstract class AbstractInputSuggest<T> {
+  limit = 100
+
+  constructor(
+    public app: unknown,
+    protected textInputEl: HTMLInputElement
+  ) {}
+
+  setValue(value: string): void {
+    this.textInputEl.value = value
+  }
+
+  getValue(): string {
+    return this.textInputEl.value
+  }
+
+  close(): void {
+    this.closed = true
+  }
+
+  /** Not part of Obsidian's API — lets a test assert that selecting dismissed the list. */
+  closed = false
+
+  abstract renderSuggestion(value: T, el: HTMLElement): void
+  abstract selectSuggestion(value: T, evt?: MouseEvent | KeyboardEvent): void
 }
 
 /** Draws a Lucide glyph into an element. Recorded as an attribute so tests can assert it. */

@@ -174,9 +174,9 @@ function resolveFile(): TFile | null {
 async function copyImage() {
   try {
     // `fetch`, not `requestUrl`: this URL is often an `app://` vault resource for a local
-    // image, which `requestUrl` does not serve.
-    // eslint-disable-next-line no-restricted-globals -- see above
-    const response = await fetch(displayUrl.value)
+    // image, which `requestUrl` does not serve. Named on `window` for the same reason the
+    // timers are — it is the window's own implementation that is wanted.
+    const response = await window.fetch(displayUrl.value)
     const blob = await response.blob()
     const pngBlob = blob.type === 'image/png' ? blob : await convertToPng(displayUrl.value)
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })])

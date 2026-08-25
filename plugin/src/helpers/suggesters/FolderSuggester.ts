@@ -5,7 +5,7 @@ import { TextInputSuggest } from './suggest'
 
 // TODO: rewrite to vue
 export class FolderSuggest extends TextInputSuggest<TFolder> {
-  constructor(app: App, inputEl: HTMLInputElement | HTMLTextAreaElement) {
+  constructor(app: App, inputEl: HTMLInputElement) {
     super(app, inputEl)
   }
 
@@ -28,8 +28,6 @@ export class FolderSuggest extends TextInputSuggest<TFolder> {
   }
 
   selectSuggestion(file: TFolder): void {
-    this.inputEl.value = file.path
-    this.inputEl.trigger('input')
-    this.close()
+    this.applyValue(file.path)
   }
 }

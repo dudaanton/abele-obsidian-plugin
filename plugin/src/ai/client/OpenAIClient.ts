@@ -142,9 +142,11 @@ export class OpenAIClient {
     const body = this.buildRequestBody(model, systemPrompt, resolved, tools, options)
 
     // `requestUrl` buffers the whole response and takes no abort signal, so it can neither
-    // stream tokens as they arrive nor be stopped mid-answer. Both are the point of this call.
-    // eslint-disable-next-line no-restricted-globals -- streaming and abort, see above
-    const response = await fetch(this.getUrl(model), {
+    // stream tokens as they arrive nor be stopped mid-answer. Both are the point of this call:
+    // tokens appear as the model produces them, and Stop cancels the request. Every other
+    // request in this file goes through `requestUrl`. Named on `window` for the same reason
+    // the timers are — it is the window's own implementation that is wanted.
+    const response = await window.fetch(this.getUrl(model), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

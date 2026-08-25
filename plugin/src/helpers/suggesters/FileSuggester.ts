@@ -12,11 +12,7 @@ export enum FileSuggestMode {
 export class FileSuggest extends TextInputSuggest<TFile> {
   private allFileTypes: boolean
 
-  constructor(
-    app: App,
-    public inputEl: HTMLInputElement,
-    options?: { allFileTypes?: boolean }
-  ) {
+  constructor(app: App, inputEl: HTMLInputElement, options?: { allFileTypes?: boolean }) {
     super(app, inputEl)
     this.allFileTypes = options?.allFileTypes ?? false
   }
@@ -48,8 +44,6 @@ export class FileSuggest extends TextInputSuggest<TFile> {
   }
 
   selectSuggestion(file: TFile): void {
-    this.inputEl.value = file.path
-    this.inputEl.trigger('input')
-    this.close()
+    this.applyValue(file.path)
   }
 }
