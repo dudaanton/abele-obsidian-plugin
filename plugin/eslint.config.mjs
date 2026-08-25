@@ -254,6 +254,20 @@ export default [
   },
 
   /**
+   * `js-yaml` is declared because it is bundled — it used to arrive transitively, which meant
+   * the build depended on a package nothing asked for. `depend` would rather it were the `yaml`
+   * package. The real destination is neither: Obsidian exports `parseYaml`/`stringifyYaml`, and
+   * parts of this plugin already use them. Consolidating means every generated frontmatter is
+   * written by a different serialiser — `dump(…, { lineWidth: -1 })` keeps long URLs on one
+   * line, and Obsidian's takes no options — so it changes what lands in people's notes and
+   * belongs in its own change with tests, not in a release fix.
+   */
+  {
+    files: ['plugin/package.json'],
+    rules: { 'depend/ban-dependencies': 'warn' },
+  },
+
+  /**
    * Tests drive the plugin from the outside: they build fixtures, reach for `globalThis`, and
    * write UI strings that are assertions rather than user-facing text. Obsidian's UI and
    * runtime rules do not apply to them. This block is last so that it also switches off the
