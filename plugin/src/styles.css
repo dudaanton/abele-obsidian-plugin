@@ -94,6 +94,13 @@ body {
 
 .abele-footnote-widget-container {
   pointer-events: auto;
+  /* Placed by the sidenote layout pass, which writes only the measured top/left/width. */
+  position: absolute;
+}
+
+/* No room beside the text, or the reference scrolled out of view. */
+.abele-footnote-widget-container_hidden {
+  display: none;
 }
 
 /* Highlight the reference line when hovering a sidenote card */
@@ -326,6 +333,10 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
+.abele-code-search_hidden {
+  display: none;
+}
+
 .abele-code-search__input {
   flex: 1;
   min-width: 120px;
@@ -424,12 +435,28 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
 
 /* Chart codeblock */
 .abele-chart-container {
+  width: 100%;
   border-radius: var(--radius-m);
   overflow: hidden;
+}
+
+/* Chart rendered by a Bases view. Its height is set per chart from the view config. */
+.abele-bases-echart {
+  width: 100%;
 }
 
 .abele-chart-error {
   padding: var(--size-4-3);
   color: var(--text-error);
   font-size: var(--font-small);
+}
+
+/* Mount point for Vue teleports. It holds no visible content of its own. */
+#abele-vue-root {
+  display: none;
+}
+
+/* Single-field name prompt inside a modal. */
+.abele-name-input {
+  width: 100%;
 }

@@ -200,7 +200,6 @@ export function registerChartCodeblock(
 
     const height = config.height || 300
     const container = el.createDiv({ cls: 'abele-chart-container' })
-    container.style.width = '100%'
     container.style.height = `${height}px`
 
     let chart: EChartsType | null = null

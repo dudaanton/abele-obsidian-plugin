@@ -79,7 +79,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { Menu, Notice, TFile } from 'obsidian'
+import { FileSystemAdapter, Menu, Notice, Platform, TFile, requestUrl } from 'obsidian'
 import ObsidianIcon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { setCoverFromMedia } from '@/commands/setCover'
@@ -173,6 +173,9 @@ function resolveFile(): TFile | null {
 
 async function copyImage() {
   try {
+    // `fetch`, not `requestUrl`: this URL is often an `app://` vault resource for a local
+    // image, which `requestUrl` does not serve.
+    // eslint-disable-next-line no-restricted-globals -- see above
     const response = await fetch(displayUrl.value)
     const blob = await response.blob()
     const pngBlob = blob.type === 'image/png' ? blob : await convertToPng(displayUrl.value)
@@ -188,7 +191,7 @@ function convertToPng(src: string): Promise<Blob> {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => {
-      const canvas = document.createElement('canvas')
+      const canvas = createEl('canvas')
       canvas.width = img.naturalWidth
       canvas.height = img.naturalHeight
       canvas.getContext('2d')!.drawImage(img, 0, 0)
@@ -210,18 +213,26 @@ function openOnDisk() {
   const file = resolveFile()
   if (!file) return
 
-  try {
-    const { app } = GlobalStore.getInstance()
-    const basePath = (app.vault.adapter as any).basePath
-    if (basePath) {
-      const electron = require('electron')
-      electron.remote?.shell?.showItemInFolder(`${basePath}/${file.path}`) ??
-        electron.shell?.showItemInFolder(`${basePath}/${file.path}`)
+  // Obsidian exposes no cross-platform way to reveal a file in the OS file manager, so this
+  // reaches for Electron — which exists only on desktop. On mobile, and if anything about the
+  // call fails, the path is copied instead.
+  if (Platform.isDesktop) {
+    try {
+      const { app } = GlobalStore.getInstance()
+      const basePath = (app.vault.adapter as FileSystemAdapter).getBasePath()
+      if (basePath) {
+        const electron = require('electron')
+        electron.remote?.shell?.showItemInFolder(`${basePath}/${file.path}`) ??
+          electron.shell?.showItemInFolder(`${basePath}/${file.path}`)
+        return
+      }
+    } catch {
+      // Falls through to copying the path.
     }
-  } catch {
-    navigator.clipboard.writeText(currentImage.value.path)
-    new Notice('Path copied (could not open folder)')
   }
+
+  navigator.clipboard.writeText(currentImage.value.path)
+  new Notice('Path copied (could not open folder)')
 }
 
 async function rotateImage() {
@@ -236,7 +247,7 @@ async function rotateImage() {
 
   try {
     const img = await loadImage(imgUrl)
-    const canvas = document.createElement('canvas')
+    const canvas = createEl('canvas')
     canvas.width = img.naturalHeight
     canvas.height = img.naturalWidth
     const ctx = canvas.getContext('2d')!
@@ -272,7 +283,7 @@ async function stripMetadata() {
 
   try {
     const img = await loadImage(imgUrl)
-    const canvas = document.createElement('canvas')
+    const canvas = createEl('canvas')
     canvas.width = img.naturalWidth
     canvas.height = img.naturalHeight
     const ctx = canvas.getContext('2d')!
@@ -323,9 +334,13 @@ async function downloadImage() {
 
   try {
     const { app } = GlobalStore.getInstance()
-    const response = await fetch(image.path)
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const buffer = await response.arrayBuffer()
+    // `requestUrl` rather than `fetch`: this is always a remote address, and going out from
+    // the main process means a host that sends no CORS headers still serves the image.
+    const response = await requestUrl({ url: image.path, throw: false })
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+    const buffer = response.arrayBuffer
 
     let fileName: string
     try {
@@ -336,7 +351,7 @@ async function downloadImage() {
 
     // Ensure file has an extension
     if (!fileName.includes('.')) {
-      const contentType = response.headers.get('content-type') || ''
+      const contentType = response.headers['content-type'] || ''
       const ext = contentType.includes('png')
         ? 'png'
         : contentType.includes('webp')
@@ -391,7 +406,7 @@ function showMoreMenu(e: MouseEvent) {
     if (AbeleConfig.getInstance().ai.enabled) {
       menu.addItem((item) =>
         item
-          .setTitle('Use in AI Agent')
+          .setTitle('Use in AI agent')
           .setIcon('bot')
           .onClick(() => {
             const file = resolveFile()

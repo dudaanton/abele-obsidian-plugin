@@ -41,7 +41,7 @@ export function useTimerButton(
   })
 
   const timerElapsed = ref(0)
-  let timerInterval: ReturnType<typeof setInterval> | null = null
+  let timerInterval: number | null = null
 
   const updateElapsed = () => {
     if (!isTimerActiveForNote.value) {
@@ -66,12 +66,12 @@ export function useTimerButton(
   const startElapsedTimer = () => {
     stopElapsedTimer()
     updateElapsed()
-    timerInterval = setInterval(updateElapsed, 1000)
+    timerInterval = window.setInterval(updateElapsed, 1000)
   }
 
   const stopElapsedTimer = () => {
     if (timerInterval) {
-      clearInterval(timerInterval)
+      window.clearInterval(timerInterval)
       timerInterval = null
     }
   }

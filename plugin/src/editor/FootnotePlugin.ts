@@ -205,7 +205,7 @@ class FootnoteOverlay {
 
   constructor(view: EditorView) {
     this.view = view
-    this.overlay = document.createElement('div')
+    this.overlay = createDiv()
     this.overlay.classList.add('abele-footnotes-overlay')
     view.scrollDOM.appendChild(this.overlay)
 
@@ -215,7 +215,7 @@ class FootnoteOverlay {
     this.decorations = buildDecorations(this.parsedFootnotes, this.parsedDefinitions, view.state)
 
     this.rebuildOverlay()
-    requestAnimationFrame(() => this.position())
+    window.requestAnimationFrame(() => this.position())
 
     // Click handler for footnote links
     this.view.dom.addEventListener('click', this.handleClick)
@@ -277,7 +277,7 @@ class FootnoteOverlay {
     }
 
     if (update.geometryChanged || update.viewportChanged || update.docChanged) {
-      requestAnimationFrame(() => this.position())
+      window.requestAnimationFrame(() => this.position())
     }
   }
 
@@ -313,7 +313,7 @@ class FootnoteOverlay {
 
   private createEntry(fn: ParsedFootnote, store: GlobalStore) {
     const id = genid()
-    const el = document.createElement('div')
+    const el = createDiv()
     el.classList.add('abele-footnote-widget-container')
     el.id = id
     el.createDiv({ attr: { 'data-footnote-id': id }, cls: 'abele-vue-mount' })
@@ -341,7 +341,7 @@ class FootnoteOverlay {
     try {
       const domPos = this.view.domAtPos(fn.refFrom)
       const lineEl =
-        domPos.node instanceof HTMLElement
+        domPos.node.instanceOf(HTMLElement)
           ? domPos.node.closest('.cm-line')
           : (domPos.node.parentElement?.closest('.cm-line') ?? null)
       if (lineEl) {
@@ -384,7 +384,7 @@ class FootnoteOverlay {
 
     if (rightSpace < 200) {
       for (const entry of this.entries.values()) {
-        entry.el.style.display = 'none'
+        entry.el.toggleClass('abele-footnote-widget-container_hidden', true)
       }
       return
     }
@@ -398,12 +398,11 @@ class FootnoteOverlay {
     for (const entry of sorted) {
       const coords = this.view.coordsAtPos(entry.footnote.refFrom)
       if (!coords) {
-        entry.el.style.display = 'none'
+        entry.el.toggleClass('abele-footnote-widget-container_hidden', true)
         continue
       }
 
-      entry.el.style.display = ''
-      entry.el.style.position = 'absolute'
+      entry.el.toggleClass('abele-footnote-widget-container_hidden', false)
       entry.el.style.width = `${sidenoteWidth}px`
       entry.el.style.left = `${contentRect.right - scrollerRect.left + 8}px`
 

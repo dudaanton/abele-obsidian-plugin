@@ -289,7 +289,7 @@ export class Task {
 
     const file = getFileByPath(this.taskPath)
     if (file) {
-      await app.vault.delete(file)
+      await app.fileManager.trashFile(file)
     }
 
     this.cleanup()

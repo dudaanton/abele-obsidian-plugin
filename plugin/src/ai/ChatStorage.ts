@@ -171,7 +171,7 @@ export class ChatStorage {
       await config.saveSettings()
     }
 
-    return app.vault.getAbstractFileByPath(availablePath) as TFile
+    return app.vault.getFileByPath(availablePath)
   }
 
   async deleteChat(path: string): Promise<void> {
@@ -181,7 +181,7 @@ export class ChatStorage {
       // Delegated runs live in sidecar files reachable only through this chat. Left behind,
       // they would be unreachable clutter that nothing ever cleans up.
       await this.deleteRunsOf(file)
-      await app.vault.trash(file, false)
+      await app.fileManager.trashFile(file)
     }
     this.removeHistoryEntry(path)
   }

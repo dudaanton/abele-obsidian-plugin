@@ -2,7 +2,25 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { TFile } from 'obsidian'
 import { dump, load } from 'js-yaml'
 
-const INLINE_FIELD_RE = /(?<!\[)\[([^\[\]:]+(?<! )):: ([^\]]*)\](?!\])/g
+/**
+ * One `[key:: value]` occurrence.
+ *
+ * Written without lookbehind, which iOS does not support before 16.4 and which Obsidian's
+ * guidelines therefore rule out. The two conditions lookbehind used to express are handled
+ * differently:
+ *
+ *   - "not part of a `[[wiki link]]`" — the character before the bracket is checked in
+ *     `isFieldStart` rather than in the pattern, because a pattern that consumed it would
+ *     miss the second of two fields written back to back.
+ *   - "the key does not end in a space" — spelled out as "allowed characters, the last of
+ *     which is not a space".
+ */
+const INLINE_FIELD_RE = /\[([^[\]:]*[^[\]: ]):: ([^\]]*)\](?!\])/g
+
+/** True unless the `[` at `index` is the second bracket of a `[[wiki link]]`. */
+function isFieldStart(content: string, index: number): boolean {
+  return index === 0 || content[index - 1] !== '['
+}
 
 interface FieldOccurrence {
   key: string
@@ -14,12 +32,20 @@ export interface MigrateDataviewFieldsResult {
   skippedPaths: string[]
 }
 
-function parseInlineFields(content: string): FieldOccurrence[] {
+export function parseInlineFields(content: string): FieldOccurrence[] {
   const fields: FieldOccurrence[] = []
   for (const match of content.matchAll(INLINE_FIELD_RE)) {
+    if (!isFieldStart(content, match.index)) continue
     fields.push({ key: match[1].trim(), value: match[2].trim() })
   }
   return fields
+}
+
+/** Removes the same occurrences `parseInlineFields` reports, leaving the rest untouched. */
+export function stripInlineFields(content: string): string {
+  return content.replace(INLINE_FIELD_RE, (whole, _key, _value, index: number) =>
+    isFieldStart(content, index) ? '' : whole
+  )
 }
 
 function hasFrontmatter(content: string): { start: number; end: number; yaml: string } | null {
@@ -100,7 +126,7 @@ export async function migrateDataviewFields(dryRun = false): Promise<MigrateData
       existingFm[f.key] = coerceValue(f.value)
     }
 
-    let newBody = bodyContent.replace(INLINE_FIELD_RE, '')
+    let newBody = stripInlineFields(bodyContent)
     newBody = newBody.replace(/\n{3,}/g, '\n\n')
     newBody = newBody
       .split('\n')

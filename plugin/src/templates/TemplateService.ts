@@ -209,7 +209,7 @@ export class TemplateService {
    * Apply default template to a newly created file
    */
   async applyDefaultTemplate(file: TFile): Promise<boolean> {
-    console.log('apply default template for file', file.path)
+    console.debug('apply default template for file', file.path)
     const defaultTemplate = this.getDefaultTemplate()
     if (!defaultTemplate) return false
 
@@ -341,7 +341,7 @@ export class TemplateService {
   private async createFileWithPath(filePath: string, content: string): Promise<TFile> {
     const { app } = GlobalStore.getInstance()
 
-    console.log(content)
+    console.debug(content)
 
     // Ensure directory exists
     const pathParts = filePath.split('/')

@@ -19,7 +19,7 @@ export class TimeTrackingSidebarView extends ItemView {
   }
 
   getDisplayText() {
-    return 'Abele Time Tracking'
+    return 'Abele time tracking'
   }
 
   static getIcon() {

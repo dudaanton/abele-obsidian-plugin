@@ -62,6 +62,7 @@ export interface FakeApp {
     getFiles(): TFile[]
     getMarkdownFiles(): TFile[]
     getAbstractFileByPath(path: string): TAbstractFile | null
+    getFileByPath(path: string): TFile | null
     read(file: TFile): Promise<string>
     cachedRead(file: TFile): Promise<string>
     on(name: string, callback: (...args: unknown[]) => void): { id: string }
@@ -332,6 +333,11 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         stats.getAbstractFileByPath++
         return byPath.get(path) ?? folders.get(path) ?? null
       },
+      // Narrower than the above: a folder at this path is not a file, so it reads as absent.
+      getFileByPath(path: string) {
+        stats.getAbstractFileByPath++
+        return byPath.get(path) ?? null
+      },
       async read(file: TFile) {
         stats.read++
         return rawByPath.get(file.path) ?? ''
@@ -398,6 +404,13 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       get resolvedLinks() {
         stats.resolvedLinks++
         return resolvedLinks
+      },
+    },
+    // Deletion goes through the file manager so it honours the user's "Deleted files"
+    // preference. The fake has no preference to honour, so it just drops the file.
+    fileManager: {
+      async trashFile(file: TFile) {
+        removeFile(file.path)
       },
     },
     secretStorage: (() => {

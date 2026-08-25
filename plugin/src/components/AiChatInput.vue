@@ -229,7 +229,7 @@ let dragLeaveTimer: ReturnType<typeof setTimeout> | null = null
 
 const onDragOver = () => {
   if (dragLeaveTimer) {
-    clearTimeout(dragLeaveTimer)
+    window.clearTimeout(dragLeaveTimer)
     dragLeaveTimer = null
   }
   isDragging.value = true
@@ -237,7 +237,7 @@ const onDragOver = () => {
 
 const onDragLeave = () => {
   // Small delay to prevent flicker when moving between child elements
-  dragLeaveTimer = setTimeout(() => {
+  dragLeaveTimer = window.setTimeout(() => {
     isDragging.value = false
   }, 50)
 }

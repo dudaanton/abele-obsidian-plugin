@@ -34,7 +34,7 @@ export class SnippetService {
     return AbeleConfig.getInstance().snippetsFolder
   }
 
-  private isSnippet(file: TAbstractFile): boolean {
+  private isSnippet(file: TAbstractFile): file is TFile {
     return (
       file instanceof TFile && file.extension === 'css' && file.path.startsWith(this.folder + '/')
     )
@@ -60,7 +60,7 @@ export class SnippetService {
     if (el) {
       el.textContent = content
     } else {
-      el = document.createElement('style')
+      el = createEl('style')
       el.setAttribute('data-abele-snippet', file.path)
       el.textContent = content
       document.head.appendChild(el)
@@ -81,13 +81,13 @@ export class SnippetService {
 
     this.eventRefs.push(
       app.vault.on('create', (file) => {
-        if (this.isSnippet(file)) this.injectStyle(file as TFile)
+        if (this.isSnippet(file)) this.injectStyle(file)
       })
     )
 
     this.eventRefs.push(
       app.vault.on('modify', (file) => {
-        if (this.isSnippet(file)) this.injectStyle(file as TFile)
+        if (this.isSnippet(file)) this.injectStyle(file)
       })
     )
 
@@ -106,7 +106,7 @@ export class SnippetService {
           this.removeStyle(oldPath)
         }
         // Add new style if it is now a snippet
-        if (this.isSnippet(file)) this.injectStyle(file as TFile)
+        if (this.isSnippet(file)) this.injectStyle(file)
       })
     )
   }
@@ -127,9 +127,8 @@ export class SnippetService {
           const input = contentEl.createEl('input', {
             type: 'text',
             placeholder: 'filename',
-            cls: 'abele-snippet-name-input',
+            cls: 'abele-snippet-name-input abele-name-input',
           })
-          input.style.width = '100%'
           input.focus()
           input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && input.value.trim()) {

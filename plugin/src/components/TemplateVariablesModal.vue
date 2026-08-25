@@ -246,7 +246,7 @@ async function pickImageFromVault(name: string) {
 }
 
 function pickImageFromDisk(name: string) {
-  const input = document.createElement('input')
+  const input = createEl('input')
   input.type = 'file'
   input.accept = 'image/*'
   input.onchange = async () => {

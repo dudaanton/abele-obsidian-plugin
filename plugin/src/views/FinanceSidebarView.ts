@@ -19,7 +19,7 @@ export class FinanceSidebarView extends ItemView {
   }
 
   getDisplayText() {
-    return 'Abele Finance'
+    return 'Abele finance'
   }
 
   static getIcon() {

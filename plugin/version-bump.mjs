@@ -1,14 +1,25 @@
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync } from 'fs'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
 
-const targetVersion = process.env.npm_package_version;
+/**
+ * `manifest.json` and `versions.json` live in the repository root, which is where the Obsidian
+ * community directory reads them from. This script runs from `plugin/` as an npm `version`
+ * hook, so it resolves both files one level up rather than from the working directory.
+ */
+const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+const manifestPath = join(root, 'manifest.json')
+const versionsPath = join(root, 'versions.json')
+
+const targetVersion = process.env.npm_package_version
 
 // read minAppVersion from manifest.json and bump version to target version
-let manifest = JSON.parse(readFileSync("manifest.json", "utf8"));
-const { minAppVersion } = manifest;
-manifest.version = targetVersion;
-writeFileSync("manifest.json", JSON.stringify(manifest, null, "\t"));
+const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+const { minAppVersion } = manifest
+manifest.version = targetVersion
+writeFileSync(manifestPath, JSON.stringify(manifest, null, '\t') + '\n')
 
 // update versions.json with target version and minAppVersion from manifest.json
-let versions = JSON.parse(readFileSync("versions.json", "utf8"));
-versions[targetVersion] = minAppVersion;
-writeFileSync("versions.json", JSON.stringify(versions, null, "\t"));
+const versions = JSON.parse(readFileSync(versionsPath, 'utf8'))
+versions[targetVersion] = minAppVersion
+writeFileSync(versionsPath, JSON.stringify(versions, null, '\t') + '\n')

@@ -39,7 +39,7 @@ export class DelegateRun {
 
   private readonly branches: RunBranch[] = []
   private readonly sessions: ChatSession[] = []
-  private persistTimer: ReturnType<typeof setTimeout> | null = null
+  private persistTimer: number | null = null
   private persisting = false
   private status: RunStatus = 'running'
 
@@ -133,7 +133,7 @@ export class DelegateRun {
 
   private schedulePersist(): void {
     if (this.persistTimer) return
-    this.persistTimer = setTimeout(() => {
+    this.persistTimer = window.setTimeout(() => {
       this.persistTimer = null
       void this.persistNow()
     }, PERSIST_INTERVAL_MS)
@@ -168,7 +168,7 @@ export class DelegateRun {
 
   private destroy(): void {
     if (this.persistTimer) {
-      clearTimeout(this.persistTimer)
+      window.clearTimeout(this.persistTimer)
       this.persistTimer = null
     }
     for (const session of this.sessions) session.destroy()

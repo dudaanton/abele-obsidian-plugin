@@ -60,12 +60,12 @@ export class ReplacementAction {
           this.value,
           newProperties
         )
-        console.log('Set property:', this.property, newProperties[this.property])
+        console.debug('Set property:', this.property, newProperties[this.property])
         break
       case 'remove-property':
         delete newProperties[this.property]
         break
-      case 'add-to-list':
+      case 'add-to-list': {
         if (!Array.isArray(newProperties[this.property])) {
           newProperties[this.property] = []
         }
@@ -85,7 +85,8 @@ export class ReplacementAction {
         )
 
         break
-      case 'remove-from-list':
+      }
+      case 'remove-from-list': {
         let valueToRemove: string | string[] = this.convertValueToArrayIfNeeded(
           this.property,
           this.value,
@@ -102,6 +103,7 @@ export class ReplacementAction {
           )
         }
         break
+      }
       case 'replace-in-list':
         if (Array.isArray(newProperties[this.property])) {
           newProperties[this.property] = newProperties[this.property].map((item: any) =>
@@ -126,7 +128,7 @@ export class ReplacementAction {
 
     const regexMatch = this.oldValue.match(/^\/(.+)\/([gimsuvy]*)$/)
 
-    console.log(regexMatch)
+    console.debug(regexMatch)
 
     if (regexMatch) {
       try {

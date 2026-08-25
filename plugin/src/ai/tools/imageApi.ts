@@ -35,7 +35,8 @@ function resolve(modelKey?: string) {
 async function getApiKey(provider: ImageProvider): Promise<string> {
   if (!provider.apiKeyId)
     throw new Error(`API key not configured for image provider "${provider.name}"`)
-  const key = await GlobalStore.getInstance().app.secretStorage.getSecret(provider.apiKeyId)
+  // `getSecret` reads from the OS keychain synchronously; there is nothing to await.
+  const key = GlobalStore.getInstance().app.secretStorage.getSecret(provider.apiKeyId)
   if (!key) throw new Error(`API key not found in keychain for image provider "${provider.name}"`)
   return key
 }

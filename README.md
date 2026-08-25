@@ -116,6 +116,7 @@ The plugin is currently in very active development, so bugs are expected. I also
 Notes for anyone working on the plugin live in [`docs/`](docs):
 
 - [Design](docs/Design.md) — the shared UI kit and the rules every screen follows.
+- [Obsidian compliance](docs/Obsidian%20compliance.md) — the guidelines the plugin is held to, and where it knowingly departs from them.
 - [Testing](docs/Testing.md) — the three test tiers, and how to assert against a running Obsidian.
 - [AI Agent](docs/AI%20Agent.md) — agents, delegation and the scripting API.
 - [Templates](docs/Templates.md) and [URL Protocol](docs/URL%20Protocol.md).

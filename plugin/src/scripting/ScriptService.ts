@@ -68,8 +68,8 @@ export class ScriptService {
           const input = contentEl.createEl('input', {
             type: 'text',
             placeholder: 'filename',
+            cls: 'abele-name-input',
           })
-          input.style.width = '100%'
           input.focus()
           input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && input.value.trim()) {
@@ -301,6 +301,10 @@ export class ScriptService {
         formHandler,
       })
 
+      // Running the user's own script is the feature. The code comes from a `.js` file the
+      // user wrote in their own vault, and it is handed only the capabilities in `ctx`; there
+      // is no way to execute it without a compiler.
+      // eslint-disable-next-line obsidianmd/rule-custom-message, @typescript-eslint/no-implied-eval -- see above
       const fn = new Function(
         'ctx',
         `"use strict";

@@ -9,27 +9,27 @@ import { ScriptService } from '@/scripting/ScriptService'
 export async function handleLinkAction(app: App, params: Record<string, string>): Promise<void> {
   const linkName = params.name
   if (!linkName) {
-    new Notice('Abele Link: missing "name" parameter')
+    new Notice('Abele link: missing "name" parameter')
     return
   }
 
   const config = AbeleConfig.getInstance()
   const link = config.links.find((l) => l.name === linkName)
   if (!link) {
-    new Notice(`Abele Link: no link configured with name "${linkName}"`)
+    new Notice(`Abele link: no link configured with name "${linkName}"`)
     return
   }
 
   if (link.type === 'command') {
     if (!link.commandId) {
-      new Notice('Abele Link: no command configured')
+      new Notice('Abele link: no command configured')
       return
     }
     try {
       ;(app as any).commands.executeCommandById(link.commandId)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      new Notice(`Abele Link error: ${msg}`, 10000)
+      new Notice(`Abele link error: ${msg}`, 10000)
       console.error(`[Abele Link] Error executing command ${link.commandId}:`, err)
     }
     return
@@ -39,7 +39,7 @@ export async function handleLinkAction(app: App, params: Record<string, string>)
   const service = ScriptService.getInstance()
   const script = service.getAll().find((s) => s.meta.name === link.scriptName)
   if (!script) {
-    new Notice(`Abele Link: script "${link.scriptName}" not found`)
+    new Notice(`Abele link: script "${link.scriptName}" not found`)
     return
   }
 
@@ -59,7 +59,7 @@ export async function handleLinkAction(app: App, params: Record<string, string>)
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
-    new Notice(`Abele Link error: ${msg}`, 10000)
+    new Notice(`Abele link error: ${msg}`, 10000)
     console.error(`[Abele Link] Error executing ${link.scriptName}:`, err)
   }
 }

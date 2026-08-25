@@ -2,6 +2,14 @@ import { App, PluginSettingTab } from 'obsidian'
 import AbelePlugin from './main'
 import { GlobalStore } from './stores/GlobalStore'
 
+/**
+ * Obsidian 1.13 added a declarative settings API (`getSettingDefinitions()`) that makes a
+ * plugin's settings searchable from the settings search box. Adopting it means describing every
+ * setting as data, and this plugin's settings are a Vue application with its own tabs, cards and
+ * editors — the whole UI would have to be rebuilt to fit that shape. Left as it is on purpose;
+ * the cost is that Abele's settings are found by opening the tab rather than by searching.
+ */
+// eslint-disable-next-line obsidianmd/settings-tab/prefer-setting-definitions -- see above
 export class AbeleSettingTab extends PluginSettingTab {
   plugin: AbelePlugin
   private container: HTMLElement | null = null

@@ -233,7 +233,7 @@ const replaceOne = async (searchResult: SearchResult) => {
       }
       for (const key of Object.keys(frontmatter || {})) {
         if (!(key in searchResult.newFrontmatter)) {
-          console.log('Deleting key', key)
+          console.debug('Deleting key', key)
           delete frontmatter[key]
         }
       }

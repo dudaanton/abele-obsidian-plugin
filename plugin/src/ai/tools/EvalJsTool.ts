@@ -52,14 +52,14 @@ function runInWorker(code: string, timeout: number): Promise<string> {
     const url = URL.createObjectURL(blob)
     const worker = new Worker(url)
 
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       worker.terminate()
       URL.revokeObjectURL(url)
       reject(new Error(`Execution timed out after ${timeout / 1000}s`))
     }, timeout)
 
     worker.onmessage = (e) => {
-      clearTimeout(timer)
+      window.clearTimeout(timer)
       worker.terminate()
       URL.revokeObjectURL(url)
       const { ok, value } = e.data
@@ -71,7 +71,7 @@ function runInWorker(code: string, timeout: number): Promise<string> {
     }
 
     worker.onerror = (e) => {
-      clearTimeout(timer)
+      window.clearTimeout(timer)
       worker.terminate()
       URL.revokeObjectURL(url)
       reject(new Error(e.message || 'Worker error'))

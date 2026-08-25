@@ -48,7 +48,7 @@ export async function reduceImageFile(file: TFile): Promise<ReduceResult> {
       height = Math.round(height * ratio)
     }
 
-    const canvas = document.createElement('canvas')
+    const canvas = createEl('canvas')
     canvas.width = width
     canvas.height = height
     const ctx = canvas.getContext('2d')!

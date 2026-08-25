@@ -141,7 +141,7 @@ const onDayClick = (date: dayjs.Dayjs) => {
 
 const onTouchStart = (date: dayjs.Dayjs, event: TouchEvent) => {
   longPressFired = false
-  longPressTimer = setTimeout(() => {
+  longPressTimer = window.setTimeout(() => {
     longPressFired = true
     const touch = event.touches[0]
     emit(
@@ -160,7 +160,7 @@ const onContextMenu = (date: dayjs.Dayjs, event: MouseEvent) => {
 
 const onTouchEnd = () => {
   if (longPressTimer) {
-    clearTimeout(longPressTimer)
+    window.clearTimeout(longPressTimer)
     longPressTimer = null
   }
 }

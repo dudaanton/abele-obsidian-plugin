@@ -118,7 +118,6 @@ export interface AgentsSnapshot {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __abeleTest: AbeleTestApi | undefined
 }
 
@@ -276,13 +275,13 @@ function groupPathsViaLinkIndex(groupPath: string): string[] {
  * to await a promise across the eval boundary.
  */
 function startResponsivenessProbe(groupPath: string): void {
-  globalThis.__abeleTest!.responsivenessResult = null
+  window.__abeleTest!.responsivenessResult = null
 
   const gaps: number[] = []
   let previousTick = performance.now()
   let ticks = 0
 
-  const timer = setInterval(() => {
+  const timer = window.setInterval(() => {
     const now = performance.now()
     gaps.push(now - previousTick)
     previousTick = now
@@ -290,7 +289,7 @@ function startResponsivenessProbe(groupPath: string): void {
   }, 16)
 
   // Let the ticker establish a baseline, then run the operation and sample past it.
-  setTimeout(() => {
+  window.setTimeout(() => {
     const scope = new ScopeResolver()
     scope.addGroup(groupPath)
 
@@ -298,9 +297,9 @@ function startResponsivenessProbe(groupPath: string): void {
     const resolved = scope.resolve()
     const operationMs = performance.now() - startedAt
 
-    setTimeout(() => {
-      clearInterval(timer)
-      globalThis.__abeleTest!.responsivenessResult = {
+    window.setTimeout(() => {
+      window.clearInterval(timer)
+      window.__abeleTest!.responsivenessResult = {
         longestStallMs: gaps.length ? Math.max(...gaps) : 0,
         operationMs,
         ticks,
@@ -389,7 +388,7 @@ function measureNoteRelations(notePath: string): NoteRelationsMeasurement {
 function startNoteRenderProbe(notePath: string, settleMs = 15_000): void {
   const { app } = GlobalStore.getInstance()
 
-  globalThis.__abeleTest!.noteRenderResult = null
+  window.__abeleTest!.noteRenderResult = null
 
   const file = app.vault.getAbstractFileByPath(notePath)
   if (!(file instanceof TFile)) {
@@ -398,16 +397,16 @@ function startNoteRenderProbe(notePath: string, settleMs = 15_000): void {
 
   const gaps: number[] = []
   let previousTick = performance.now()
-  let timer: ReturnType<typeof setInterval> | null = null
+  let timer: number | null = null
 
   // Emptying the leaf first is what makes the measurement mean anything. Opening a note
   // that is already open reuses the mounted footer, so the sample would report whatever
   // paging windows a previous run had already scrolled open rather than a fresh render.
   const leaf = app.workspace.getLeaf(false)
   void leaf.setViewState({ type: 'empty' }).then(() => {
-    setTimeout(() => {
+    window.setTimeout(() => {
       previousTick = performance.now()
-      timer = setInterval(() => {
+      timer = window.setInterval(() => {
         const now = performance.now()
         gaps.push(now - previousTick)
         previousTick = now
@@ -415,14 +414,14 @@ function startNoteRenderProbe(notePath: string, settleMs = 15_000): void {
 
       void leaf.openFile(file)
 
-      setTimeout(() => {
-        if (timer) clearInterval(timer)
+      window.setTimeout(() => {
+        if (timer) window.clearInterval(timer)
 
         const count = (selector: string): number => document.querySelectorAll(selector).length
         // One frame is 16ms; anything beyond that is time the UI could not respond.
         const stalls = gaps.map((gap) => gap - 16).filter((gap) => gap > 0)
 
-        globalThis.__abeleTest!.noteRenderResult = {
+        window.__abeleTest!.noteRenderResult = {
           longestStallMs: stalls.length ? Math.max(...stalls) : 0,
           totalStalledMs: stalls.reduce((sum, gap) => sum + gap, 0),
           footerNodes: count('.abele-footer-view *'),
@@ -439,7 +438,7 @@ function startNoteRenderProbe(notePath: string, settleMs = 15_000): void {
 }
 
 export function exposeTestApi(plugin: Plugin): void {
-  globalThis.__abeleTest = {
+  window.__abeleTest = {
     ScopeResolver,
     ChatService,
     AgentRegistry,
@@ -460,5 +459,5 @@ export function exposeTestApi(plugin: Plugin): void {
 }
 
 export function removeTestApi(): void {
-  delete globalThis.__abeleTest
+  delete window.__abeleTest
 }

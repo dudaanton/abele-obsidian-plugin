@@ -55,7 +55,7 @@ for (const field of props.fields) {
 }
 
 onMounted(() => {
-  setTimeout(() => {
+  window.setTimeout(() => {
     const input = document.querySelector<HTMLInputElement>('.abele-script-form__input')
     input?.focus()
   }, 100)

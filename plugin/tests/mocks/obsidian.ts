@@ -129,6 +129,97 @@ if (typeof HTMLElement !== 'undefined' && !('empty' in HTMLElement.prototype)) {
   })
 }
 
+/**
+ * Obsidian's element factories, which it installs as globals rather than exporting. Verified
+ * against the running app: the bare `createEl`/`createDiv` build in the **main** document and
+ * return the element detached unless `parent` is given, while `doc.win.createDiv()` builds in
+ * that window's own document — which is why code that must land in a popout reaches through
+ * `ownerDocument.win` instead of calling the global.
+ */
+type ElInfo = { cls?: string; text?: string; attr?: Record<string, string>; parent?: Node }
+
+function buildEl<K extends keyof HTMLElementTagNameMap>(
+  doc: Document,
+  tag: K,
+  info?: ElInfo | string
+): HTMLElementTagNameMap[K] {
+  const o: ElInfo = typeof info === 'string' ? { cls: info } : (info ?? {})
+  const el = doc.createElement(tag)
+  if (o.cls) el.classList.add(...o.cls.split(' '))
+  if (o.text) el.textContent = o.text
+  if (o.attr) for (const [k, v] of Object.entries(o.attr)) el.setAttribute(k, v)
+  if (o.parent) o.parent.appendChild(el)
+  return el
+}
+
+function installElementFactories(win: Window & typeof globalThis): void {
+  const doc = win.document
+  const g = win as unknown as Record<string, unknown>
+  g.createEl = (tag: keyof HTMLElementTagNameMap, info?: ElInfo | string) => buildEl(doc, tag, info)
+  g.createDiv = (info?: ElInfo | string) => buildEl(doc, 'div', info)
+  g.createSpan = (info?: ElInfo | string) => buildEl(doc, 'span', info)
+  g.createFragment = () => doc.createDocumentFragment()
+}
+
+/**
+ * Obsidian's cross-window type check. A popout window has its own `HTMLElement`, so a plain
+ * `instanceof` against the main window's constructor is false there; `instanceOf` compares
+ * against the constructor of the node's own window instead.
+ */
+if (typeof Node !== 'undefined' && !('instanceOf' in Node.prototype)) {
+  Object.defineProperty(Node.prototype, 'instanceOf', {
+    value(this: Node, type: { new (...args: never[]): unknown }) {
+      const win = (this.ownerDocument ?? (this as unknown as Document)).defaultView
+      const ctor = win ? (win as unknown as Record<string, unknown>)[type.name] : undefined
+      return this instanceof type || (typeof ctor === 'function' && this instanceof ctor)
+    },
+  })
+}
+
+if (typeof window !== 'undefined') {
+  installElementFactories(window)
+
+  const g = globalThis as unknown as Record<string, unknown>
+  g.activeWindow = window
+  g.activeDocument = window.document
+
+  /**
+   * Every document Obsidian owns belongs to a window that carries the element factories, and
+   * `doc.win.createDiv()` is how code builds an element in *that* window rather than the main
+   * one. A document a test conjures up to stand in for a second window has no `defaultView`,
+   * so one is synthesised here with the factories bound to it — otherwise the double would
+   * report `null` for something the real app always provides.
+   */
+  // happy-dom's documents inherit from `HTMLDocument.prototype`, and `Document.prototype` is
+  // not on their chain — so the property goes on the prototype the live document actually has.
+  const documentPrototype = Object.getPrototypeOf(window.document) as object
+
+  if (!('win' in documentPrototype)) {
+    const synthesised = new WeakMap<Document, Record<string, unknown>>()
+
+    const windowFor = (doc: Document): Record<string, unknown> => {
+      let win = synthesised.get(doc)
+      if (!win) {
+        win = {
+          document: doc,
+          createEl: (tag: keyof HTMLElementTagNameMap, info?: ElInfo | string) =>
+            buildEl(doc, tag, info),
+          createDiv: (info?: ElInfo | string) => buildEl(doc, 'div', info),
+          createSpan: (info?: ElInfo | string) => buildEl(doc, 'span', info),
+        }
+        synthesised.set(doc, win)
+      }
+      return win
+    }
+
+    Object.defineProperty(documentPrototype, 'win', {
+      get(this: Document) {
+        return this.defaultView ?? windowFor(this)
+      },
+    })
+  }
+}
+
 /** Draws a Lucide glyph into an element. Recorded as an attribute so tests can assert it. */
 export function setIcon(el: HTMLElement, icon: string): void {
   el.setAttribute('data-icon', icon)

@@ -535,7 +535,7 @@ onMounted(() => {
 onUnmounted(() => mutObserver?.disconnect())
 
 onMounted(() => {
-  setTimeout(() => chatInput.value?.focus(), 150)
+  window.setTimeout(() => chatInput.value?.focus(), 150)
 })
 
 const onSend = async (content: string, attachments: string[] = []) => {
@@ -714,13 +714,13 @@ let dragLeaveTimer: ReturnType<typeof setTimeout> | null = null
 
 const onDragOver = () => {
   if (dragLeaveTimer) {
-    clearTimeout(dragLeaveTimer)
+    window.clearTimeout(dragLeaveTimer)
     dragLeaveTimer = null
   }
 }
 
 const onDragLeave = () => {
-  dragLeaveTimer = setTimeout(() => {
+  dragLeaveTimer = window.setTimeout(() => {
     dragLeaveTimer = null
   }, 50)
 }
@@ -831,7 +831,7 @@ const reloadChat = async () => {
 
 const showDebug = () => {
   const data = JSON.stringify(session.value?.getDebugData() ?? {}, null, 2)
-  console.log('[Abele AI Debug]', data)
+  console.debug('[Abele AI Debug]', data)
   navigator.clipboard.writeText(data).then(
     () => new Notice('Debug JSON copied to clipboard'),
     () => new Notice('Failed to copy to clipboard')

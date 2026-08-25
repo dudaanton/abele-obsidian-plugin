@@ -264,7 +264,7 @@ const mergeGroup = async (gIdx: number) => {
     for (const removePath of removePaths) {
       const file = app.vault.getAbstractFileByPath(removePath)
       if (file instanceof TFile) {
-        await app.vault.trash(file, false)
+        await app.fileManager.trashFile(file)
       }
     }
 

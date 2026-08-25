@@ -44,7 +44,9 @@ onBeforeMount(() => {
   }
 
   const contentEl = modal.value.contentEl
-  const el = contentEl.doc.createElement('div')
+  // Through `doc.win`, not the bare global: the global factory is bound to the main window's
+  // document, and the mount point has to belong to the window the modal opened in.
+  const el = contentEl.doc.win.createDiv()
   el.id = id.value
   contentEl.appendChild(el)
   wrapper.value = el

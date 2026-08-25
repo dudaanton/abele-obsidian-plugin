@@ -122,7 +122,7 @@ export function cleanFileName(fileName: string): string {
   // Remove invalid characters for file names
   return fileName
     .split('\n')[0]
-    .replace(/[\[\]\/\\?%*:|"<>]/g, '')
+    .replace(/[[\]/\\?%*:|"<>]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
 }

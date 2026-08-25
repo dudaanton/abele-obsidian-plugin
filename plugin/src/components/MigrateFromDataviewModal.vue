@@ -170,7 +170,7 @@ const parseTask = (line: string): ParsedTask => {
     return null
   }
 
-  const recurrence = extractAndRemove(/🔁\s+([^📅✅⏳]+)/)
+  const recurrence = extractAndRemove(/🔁\s+([^📅✅⏳]+)/u)
   const due = extractAndRemove(/📅\s+(\d{4}-\d{2}-\d{2})/)
   const completedAt = extractAndRemove(/✅\s+(\d{4}-\d{2}-\d{2})/)
   const scheduled = extractAndRemove(/⏳\s+(\d{4}-\d{2}-\d{2})/)
@@ -220,7 +220,7 @@ const createTasksNotes = async () => {
       continue
     }
 
-    console.log(note)
+    console.debug(note)
 
     const noteCache = app.metadataCache.getFileCache(note)
 

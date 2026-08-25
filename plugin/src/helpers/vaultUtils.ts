@@ -4,7 +4,7 @@ import { cleanFileName } from './pathsHelpers'
 
 export const getFileByPathOrName = (pathOrName: string): TFile | null => {
   const app = GlobalStore.getInstance().app
-  let file = app.vault.getAbstractFileByPath(pathOrName) as TFile
+  let file = app.vault.getFileByPath(pathOrName)
 
   if (!file) {
     file = app.metadataCache.getFirstLinkpathDest(pathOrName, '')
@@ -40,13 +40,13 @@ export async function createNewFileInVault(
     // Check if file already exists
     const existingFile = app.vault.getAbstractFileByPath(fullPath)
     if (existingFile instanceof TFile) {
-      console.log(`File ${fullPath} already exists, returning existing file`)
+      console.debug(`File ${fullPath} already exists, returning existing file`)
       return existingFile
     }
 
     // Create the file
     const file = await app.vault.create(fullPath, content)
-    console.log(`Created new file: ${file.path}`)
+    console.debug(`Created new file: ${file.path}`)
     return file
   } catch (error) {
     console.error(`Error creating file ${fileName}:`, error)
@@ -101,7 +101,11 @@ export async function readDiskFileContent(file: TFile | string): Promise<string>
 
 export const readFileContent = async (file: TFile | string): Promise<string> => {
   if (typeof file === 'string') {
-    file = GlobalStore.getInstance().app.vault.getAbstractFileByPath(file) as TFile
+    const resolved = GlobalStore.getInstance().app.vault.getFileByPath(file)
+    // `getFileByPath` reports a folder or a missing path as absent, where the old cast let
+    // both through to fail later on a property access.
+    if (!resolved) throw new Error(`File not found: ${file}`)
+    file = resolved
   }
 
   const activeLeaf = GlobalStore.getInstance()
@@ -158,7 +162,7 @@ export async function writeFileContent(file: TFile, content: string): Promise<vo
 // const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g
 
 // Combined regex to match either wiki links or markdown links
-export const linkRegex = /\!?\[\[([^\]|]+)(?:\|([^\]]+))?\]\]|\[([^\]]+)\]\(([^)]+)\)/g
+export const linkRegex = /!?\[\[([^\]|]+)(?:\|([^\]]+))?\]\]|\[([^\]]+)\]\(([^)]+)\)/g
 
 export async function openFile(pathOrName: string): Promise<void> {
   const { app } = GlobalStore.getInstance()
@@ -309,7 +313,7 @@ export function getOutgoingLinksByPath(path: string): string[] {
 
   app.metadataCache.trigger(path)
 
-  const file = app.vault.getAbstractFileByPath(path) as TFile
+  const file = app.vault.getFileByPath(path)
   if (!file) return []
 
   const outgoingLinks = []

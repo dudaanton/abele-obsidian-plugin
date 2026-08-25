@@ -200,7 +200,7 @@ export class Transaction {
     const { app } = GlobalStore.getInstance()
     const file = getFileByPathOrName(this.transactionPath)
     if (file) {
-      await app.vault.delete(file)
+      await app.fileManager.trashFile(file)
     }
     this.cleanup()
   }
