@@ -197,23 +197,24 @@ if (typeof window !== 'undefined') {
   if (!('win' in documentPrototype)) {
     const synthesised = new WeakMap<Document, Record<string, unknown>>()
 
+    const windowFor = (doc: Document): Record<string, unknown> => {
+      let win = synthesised.get(doc)
+      if (!win) {
+        win = {
+          document: doc,
+          createEl: (tag: keyof HTMLElementTagNameMap, info?: ElInfo | string) =>
+            buildEl(doc, tag, info),
+          createDiv: (info?: ElInfo | string) => buildEl(doc, 'div', info),
+          createSpan: (info?: ElInfo | string) => buildEl(doc, 'span', info),
+        }
+        synthesised.set(doc, win)
+      }
+      return win
+    }
+
     Object.defineProperty(documentPrototype, 'win', {
       get(this: Document) {
-        if (this.defaultView) return this.defaultView
-
-        let win = synthesised.get(this)
-        if (!win) {
-          const doc = this
-          win = {
-            document: doc,
-            createEl: (tag: keyof HTMLElementTagNameMap, info?: ElInfo | string) =>
-              buildEl(doc, tag, info),
-            createDiv: (info?: ElInfo | string) => buildEl(doc, 'div', info),
-            createSpan: (info?: ElInfo | string) => buildEl(doc, 'span', info),
-          }
-          synthesised.set(this, win)
-        }
-        return win
+        return this.defaultView ?? windowFor(this)
       },
     })
   }

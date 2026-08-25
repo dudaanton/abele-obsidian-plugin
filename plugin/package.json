@@ -29,7 +29,6 @@
     "@types/luxon": "^3.6.2",
     "@vitejs/plugin-vue": "^5.2.4",
     "@vue/test-utils": "^2.4.11",
-    "builtin-modules": "3.3.0",
     "esbuild": "0.17.3",
     "esbuild-plugin-vue3": "^0.3.2",
     "eslint": "^9.39.5",

@@ -143,7 +143,7 @@ export class OpenAIClient {
 
     // `requestUrl` buffers the whole response and takes no abort signal, so it can neither
     // stream tokens as they arrive nor be stopped mid-answer. Both are the point of this call.
-    // eslint-disable-next-line no-restricted-globals
+    // eslint-disable-next-line no-restricted-globals -- streaming and abort, see above
     const response = await fetch(this.getUrl(model), {
       method: 'POST',
       headers: {

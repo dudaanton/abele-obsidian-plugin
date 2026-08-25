@@ -162,7 +162,7 @@ export async function writeFileContent(file: TFile, content: string): Promise<vo
 // const markdownLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g
 
 // Combined regex to match either wiki links or markdown links
-export const linkRegex = /\!?\[\[([^\]|]+)(?:\|([^\]]+))?\]\]|\[([^\]]+)\]\(([^)]+)\)/g
+export const linkRegex = /!?\[\[([^\]|]+)(?:\|([^\]]+))?\]\]|\[([^\]]+)\]\(([^)]+)\)/g
 
 export async function openFile(pathOrName: string): Promise<void> {
   const { app } = GlobalStore.getInstance()

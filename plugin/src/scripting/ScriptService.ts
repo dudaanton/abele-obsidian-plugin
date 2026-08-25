@@ -304,7 +304,7 @@ export class ScriptService {
       // Running the user's own script is the feature. The code comes from a `.js` file the
       // user wrote in their own vault, and it is handed only the capabilities in `ctx`; there
       // is no way to execute it without a compiler.
-      // eslint-disable-next-line obsidianmd/rule-custom-message
+      // eslint-disable-next-line obsidianmd/rule-custom-message, @typescript-eslint/no-implied-eval -- see above
       const fn = new Function(
         'ctx',
         `"use strict";

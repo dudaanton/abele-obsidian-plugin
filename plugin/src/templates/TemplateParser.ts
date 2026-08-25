@@ -321,10 +321,11 @@ export async function applyTemplateVariables(
         value = resolveDateVariable(variable)
         break
 
-      case 'plugin':
+      case 'plugin': {
         const input = userValues.get(variable.name) || ''
         value = await resolvePluginVariable(variable, input)
         break
+      }
 
       case 'list':
         value = formatListValue(userValues.get(variable.name) || '[]', false)

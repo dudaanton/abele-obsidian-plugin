@@ -2,7 +2,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { TFile } from 'obsidian'
 import { dump, load } from 'js-yaml'
 
-const INLINE_FIELD_RE = /(?<!\[)\[([^\[\]:]+(?<! )):: ([^\]]*)\](?!\])/g
+const INLINE_FIELD_RE = /(?<!\[)\[([^[\]:]+(?<! )):: ([^\]]*)\](?!\])/g
 
 interface FieldOccurrence {
   key: string

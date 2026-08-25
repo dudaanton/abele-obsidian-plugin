@@ -151,6 +151,19 @@ export default [
       'obsidianmd/no-sample-code': 'off',
       'vue/multi-word-component-names': 'off',
       'vue/no-v-html': 'error',
+      /**
+       * Severities carried over from the project's previous `.eslintrc`. Two components take
+       * an object prop and edit it in place; the flat presets rate that an error, the project
+       * had already settled on a warning, and changing how those components communicate is not
+       * an Obsidian requirement.
+       */
+      'vue/no-mutating-props': ['warn', { shallowOnly: true }],
+      'vue/no-unused-vars': ['warn', { ignorePattern: '^_' }],
+      'vue/no-dupe-keys': 'warn',
+      'vue/no-use-v-if-with-v-for': 'warn',
+      'vue/require-toggle-inside-transition': 'warn',
+      'vue/require-v-for-key': 'warn',
+      'vue/valid-v-for': 'warn',
       // typescript-eslint switches these off for `.ts` because TypeScript already reports
       // them; the same applies inside a component's `<script setup lang="ts">`.
       'no-unused-vars': 'off',
@@ -171,6 +184,23 @@ export default [
       'vue/multi-word-component-names': 'off',
       // `console.debug` is the plugin's diagnostic channel and is kept deliberately.
       'no-console': ['warn', { allow: ['debug', 'warn', 'error'] }],
+      // TypeScript already reports an undefined identifier, and it knows about `process` and
+      // `__dirname` from the types this project pulls in; ESLint does not and reports both.
+      'no-undef': 'off',
+      /**
+       * Obsidian's preset forbids silencing its own rules, which is the right default. This
+       * plugin has exactly three places where a rule cannot be met, each carrying a comment
+       * saying why:
+       *
+       *   - `src/ai/client/OpenAIClient.ts` — `requestUrl` cannot stream or be aborted, and
+       *     both are the point of the chat request.
+       *   - `src/scripting/ScriptService.ts` — running the user's own script needs a compiler.
+       *   - `src/settings.ts`, `src/helpers/suggesters/suggest.ts` — described at each site.
+       *
+       * They are left visible as comments in the code rather than hidden in this file, so the
+       * rule that objects to them is what gets relaxed, not the rules themselves.
+       */
+      'eslint-comments/no-restricted-disable': 'off',
     },
   },
 

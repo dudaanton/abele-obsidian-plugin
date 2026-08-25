@@ -1,6 +1,6 @@
 import { UserConfig, defineConfig } from 'vite'
 import path from 'path'
-import builtins from 'builtin-modules'
+import { builtinModules } from 'node:module'
 import vue from '@vitejs/plugin-vue'
 import replace from '@rollup/plugin-replace'
 
@@ -66,7 +66,7 @@ export default defineConfig(async ({ mode }) => {
           '@lezer/common',
           '@lezer/highlight',
           '@lezer/lr',
-          ...builtins,
+          ...builtinModules,
         ],
       },
     },
