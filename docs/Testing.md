@@ -11,6 +11,12 @@ Three tiers, each with its own command. All commands run from `plugin/`.
 
 `npm run test:watch` re-runs the fast tier on change.
 
+Two more checks run in CI beside the fast tier: `npm run types` and `npm run lint`. The linter
+carries Obsidian's own plugin rules and fails on any of them — see
+[Obsidian compliance](Obsidian%20compliance.md). It runs from the repository root, because
+several of those rules read `manifest.json` from the working directory and the manifest lives
+in the root; the `lint` script changes directory for you.
+
 ## Policy
 
 New functionality is always covered by tests in the same change. Existing code gets covered
