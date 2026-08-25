@@ -121,8 +121,7 @@ export abstract class TextInputSuggest<T> implements ISuggestOwner<T> {
     // Built in the input's own document, not through the global `createDiv`, which always
     // builds in the main window. Since Obsidian 1.13 settings can open in a window of their
     // own, and a popup created there would belong to the wrong document entirely.
-    // eslint-disable-next-line obsidianmd/prefer-create-el
-    this.suggestEl = inputEl.ownerDocument.createElement('div')
+    this.suggestEl = inputEl.ownerDocument.win.createDiv()
     this.suggestEl.addClass('suggestion-container')
     const suggestion = this.suggestEl.createDiv('suggestion')
     this.suggest = new Suggest(this, suggestion, this.scope)

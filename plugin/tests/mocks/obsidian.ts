@@ -183,10 +183,37 @@ if (typeof window !== 'undefined') {
   g.activeWindow = window
   g.activeDocument = window.document
 
-  if (typeof Document !== 'undefined' && !('win' in Document.prototype)) {
-    Object.defineProperty(Document.prototype, 'win', {
+  /**
+   * Every document Obsidian owns belongs to a window that carries the element factories, and
+   * `doc.win.createDiv()` is how code builds an element in *that* window rather than the main
+   * one. A document a test conjures up to stand in for a second window has no `defaultView`,
+   * so one is synthesised here with the factories bound to it — otherwise the double would
+   * report `null` for something the real app always provides.
+   */
+  // happy-dom's documents inherit from `HTMLDocument.prototype`, and `Document.prototype` is
+  // not on their chain — so the property goes on the prototype the live document actually has.
+  const documentPrototype = Object.getPrototypeOf(window.document) as object
+
+  if (!('win' in documentPrototype)) {
+    const synthesised = new WeakMap<Document, Record<string, unknown>>()
+
+    Object.defineProperty(documentPrototype, 'win', {
       get(this: Document) {
-        return this.defaultView
+        if (this.defaultView) return this.defaultView
+
+        let win = synthesised.get(this)
+        if (!win) {
+          const doc = this
+          win = {
+            document: doc,
+            createEl: (tag: keyof HTMLElementTagNameMap, info?: ElInfo | string) =>
+              buildEl(doc, tag, info),
+            createDiv: (info?: ElInfo | string) => buildEl(doc, 'div', info),
+            createSpan: (info?: ElInfo | string) => buildEl(doc, 'span', info),
+          }
+          synthesised.set(this, win)
+        }
+        return win
       },
     })
   }
