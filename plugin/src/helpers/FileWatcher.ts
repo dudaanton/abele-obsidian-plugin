@@ -1,4 +1,4 @@
-import { App, TFile, TAbstractFile, EventRef } from 'obsidian'
+import { App, TFile } from 'obsidian'
 import { comparePaths } from './pathsHelpers'
 import { VaultWatcherWrapper } from './VaultWatcherWrapper'
 

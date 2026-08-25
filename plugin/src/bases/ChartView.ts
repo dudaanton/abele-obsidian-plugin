@@ -197,9 +197,9 @@ export class ChartView extends BasesView {
             if (point.group !== group) continue
             const val = point.values.get(prop)
             if (val !== undefined) {
-              const idx = dateIndex.get(point.date)!
+              const idx = dateIndex.get(point.date)
               if (chartType === 'bar' && data[idx] !== null) {
-                data[idx] = data[idx]! + val
+                data[idx] = data[idx] + val
               } else {
                 data[idx] = val
               }
@@ -221,7 +221,7 @@ export class ChartView extends BasesView {
     const xLabels = allDates.map((d) => formatDateLabel(d, dateFmt))
     this.ensureChart()
 
-    this.chart!.setOption(
+    this.chart.setOption(
       {
         tooltip: { trigger: 'axis' },
         legend: {
@@ -341,7 +341,7 @@ export class ChartView extends BasesView {
     const xLabels = allDates.map((d) => formatDateLabel(d, dateFmt))
     this.ensureChart()
 
-    this.chart!.setOption(
+    this.chart.setOption(
       {
         tooltip: {
           trigger: 'item',

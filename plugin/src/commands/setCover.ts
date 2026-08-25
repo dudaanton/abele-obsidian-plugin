@@ -1,6 +1,5 @@
 import { Notice, TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { getMediaType } from '@/helpers/galleryUtils'
 import { getAttachmentFolder } from '@/ai/tools/imageUtils'
 
 const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'mkv', 'avi', 'ogv']

@@ -3,14 +3,11 @@ import { TFile } from 'obsidian'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentLoop } from './client/AgentLoop'
-import { OpenAIClient } from './client/OpenAIClient'
 import type {
   AgentEvent,
   AgentTool,
   AgentToolResult,
-  AssistantMessage,
   Message,
   ModelConfig,
   TextContent,
@@ -27,14 +24,12 @@ import type { AgentDefinition, OverrideKey, ScopeEntry, SessionOverrides } from 
 import {
   ChatMessage,
   ChatMetadata,
-  DEFAULT_AI_SETTINGS,
   CORE_TOOLS,
   migrateOldPermissions,
 } from './types'
 import type {
   ToolMode,
   PermissionMode,
-  InterceptorChatMessage,
   AiSettings,
   SubAgentRunRef,
 } from './types'
@@ -615,7 +610,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       case 'message_end': {
         const msg = event.message
         if (msg.role === 'assistant') {
-          const am = msg as AssistantMessage
+          const am = msg
 
           if (am.errorMessage) {
             this.error.value = am.errorMessage
@@ -1283,7 +1278,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       // Older still: booleans per tool, from before toolModes existed.
       overrides.toolModes = migrateOldPermissions(
         metadata,
-        config as unknown as Record<string, any>
+        config
       )
     }
 
@@ -1505,7 +1500,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     let current: ChatMessage | undefined = msg
     while (current && current.role !== 'user') {
       current = current.parentId
-        ? this.allChatMessages.find((m) => m.id === current!.parentId)
+        ? this.allChatMessages.find((m) => m.id === current.parentId)
         : undefined
     }
 

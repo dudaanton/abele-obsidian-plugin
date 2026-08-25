@@ -44,16 +44,6 @@ function extFromUrl(url: string): string | null {
   return null
 }
 
-interface DownloadOptions {
-  url: string
-  filename?: string
-  defaultExt: string
-  overrideExt?: string
-  method?: string
-  headers?: Record<string, string>
-  body?: string
-}
-
 async function downloadToVault(
   rawUrl: string,
   filename: string | undefined,
@@ -93,7 +83,7 @@ async function downloadToVault(
     }
   }
 
-  const response = await requestUrl(reqOpts as any)
+  const response = await requestUrl(reqOpts)
   if (response.status < 200 || response.status >= 300) {
     const text = response.text?.slice(0, 500) || ''
     throw new Error(`HTTP ${response.status}: ${text}`)

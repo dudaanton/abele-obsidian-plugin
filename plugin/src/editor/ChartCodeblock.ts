@@ -228,7 +228,7 @@ export function registerChartCodeblock(
           mutObs.disconnect()
         }
       })
-      mutObs.observe(el.parentElement!, { childList: true, subtree: true })
+      mutObs.observe(el.parentElement, { childList: true, subtree: true })
     }
 
     // ResizeObserver fires when container gets dimensions (after DOM insert + layout)

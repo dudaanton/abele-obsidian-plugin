@@ -1,5 +1,4 @@
 import type { AgentTool } from '../client'
-import { AbeleConfig } from '@/services/AbeleConfig'
 import { ScopeResolver } from '../ScopeResolver'
 import { saveImageToVault } from './imageUtils'
 import { callImageApi, listImageModelKeys } from './imageApi'

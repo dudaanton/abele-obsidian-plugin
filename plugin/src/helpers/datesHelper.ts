@@ -25,7 +25,7 @@ export const formatDateToDisplay = (date: dayjs.Dayjs): string => {
  */
 export function extractDateFromFilename(filename: string): dayjs.Dayjs | null {
   const dateMatch = filename.match(DATE_REGEX)
-  return dateMatch ? (dayjs(dateMatch[0]) as dayjs.Dayjs) : null
+  return dateMatch ? (dayjs(dateMatch[0])) : null
 }
 
 export function parseDateOrNull(date: string | null | undefined): dayjs.Dayjs | null {

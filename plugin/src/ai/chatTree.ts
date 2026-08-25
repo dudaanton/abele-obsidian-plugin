@@ -46,7 +46,7 @@ export function findDeepestLeaf(messages: ChatMessage[], startId: string): ChatM
   for (const m of messages) {
     const pid = m.parentId
     if (!childrenMap.has(pid)) childrenMap.set(pid, [])
-    childrenMap.get(pid)!.push(m)
+    childrenMap.get(pid).push(m)
   }
   // Sort children by timestamp
   for (const children of childrenMap.values()) {
@@ -62,7 +62,7 @@ export function findDeepestLeaf(messages: ChatMessage[], startId: string): ChatM
     currentId = children[0].id
   }
 
-  return map.get(currentId) || map.get(startId)!
+  return map.get(currentId) || map.get(startId)
 }
 
 /**

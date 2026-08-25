@@ -166,7 +166,7 @@ export class ChatService {
   createTab(): string {
     if (this.sessions.size >= MAX_TABS) {
       // Return active tab if at limit
-      return this.activeTabId.value!
+      return this.activeTabId.value
     }
     const session = new ChatSession(this)
     this.sessions.set(session.id, session)

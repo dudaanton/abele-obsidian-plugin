@@ -252,7 +252,6 @@ export class Gallery {
     const block = this.findBlockInText(lines)
     if (!block) return
 
-    const from = { line: block.headerLine, ch: 0 }
     const toLine =
       block.lastImageLine + 1 < lines.length ? block.lastImageLine + 1 : block.lastImageLine
     const toCh = block.lastImageLine + 1 < lines.length ? 0 : lines[block.lastImageLine].length

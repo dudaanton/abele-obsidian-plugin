@@ -1,5 +1,5 @@
 import { AgentLoop } from './client/AgentLoop'
-import type { AgentTool, ModelConfig, Message, AssistantMessage, TextContent } from './client'
+import type { AgentTool, ModelConfig, Message, TextContent } from './client'
 import { ScopeResolver } from './ScopeResolver'
 import { ChatSession } from './ChatSession'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -105,9 +105,7 @@ export async function runSubAgent(
   })
 
   // Extract final text from last assistant message
-  const lastAssistant = [...result.messages].reverse().find((m) => m.role === 'assistant') as
-    | AssistantMessage
-    | undefined
+  const lastAssistant = [...result.messages].reverse().find((m) => m.role === 'assistant')
 
   if (lastAssistant) {
     const texts = lastAssistant.content.filter((c): c is TextContent => c.type === 'text')

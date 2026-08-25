@@ -1,6 +1,6 @@
 import { EditorView, ViewPlugin, ViewUpdate, Decoration, DecorationSet } from '@codemirror/view'
 import { EditorState, RangeSetBuilder } from '@codemirror/state'
-import { editorLivePreviewField, editorInfoField, Platform } from 'obsidian'
+import { editorLivePreviewField, editorInfoField } from 'obsidian'
 import { Footnote } from '@/entities/Footnote'
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -49,7 +49,6 @@ function parseFootnotes(state: EditorState) {
     const label = match[1]
     const firstLineContent = match[2]
     const lines = [firstLineContent]
-    let endLine = i
 
     for (let j = i + 1; j <= state.doc.lines; j++) {
       const nextLine = state.doc.line(j)
@@ -61,7 +60,6 @@ function parseFootnotes(state: EditorState) {
           // Continuation follows — include blank lines
           for (let b = j; b < k; b++) lines.push('')
           lines.push(state.doc.line(k).text.replace(/^(?:\t| {2,})/, ''))
-          endLine = k
           j = k
           continue
         }
@@ -70,7 +68,6 @@ function parseFootnotes(state: EditorState) {
       }
       if (/^(?:\t| {2,})/.test(nextLine.text)) {
         lines.push(nextLine.text.replace(/^(?:\t| {2,})/, ''))
-        endLine = j
       } else {
         break
       }

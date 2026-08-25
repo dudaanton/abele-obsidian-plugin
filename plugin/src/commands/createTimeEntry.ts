@@ -1,4 +1,4 @@
-import { TimeEntry, TimeEntryCreateDTO, DATETIME_FORMAT } from '@/entities/TimeEntry'
+import { TimeEntryCreateDTO, DATETIME_FORMAT } from '@/entities/TimeEntry'
 import { TimeEntryNoteTemplate } from '@/templates/TimeEntryNoteTemplate'
 import { extractAliasOrNameFromWikilink } from '@/helpers/pathsHelpers'
 import { renderTemplate } from '@/helpers/notesUtils'
@@ -49,7 +49,7 @@ export const stopActiveTimeEntry = async (): Promise<boolean> => {
   const rawList = toRaw(store.timeEntryList.value) as unknown as TimeEntryList | null
   if (!rawList) return false
 
-  const actives = rawList.activeEntries.value as TimeEntry[]
+  const actives = rawList.activeEntries.value
   if (!actives.length) return false
 
   const now = dayjs()

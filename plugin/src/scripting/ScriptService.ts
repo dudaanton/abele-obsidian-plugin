@@ -14,7 +14,6 @@ import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
 import { parseScriptHeader, extractScriptBody } from './ScriptParser'
 import { buildScriptContext } from './ScriptContext'
 import type { ParsedScript, FormField } from './types'
-import { ChatService } from '@/ai/ChatService'
 import { ref } from 'vue'
 
 export class ScriptService {

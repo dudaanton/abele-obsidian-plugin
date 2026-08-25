@@ -182,7 +182,7 @@ function measureGroupResolve(groupPath: string): GroupResolveMeasurement {
 
   app.metadataCache.getFileCache = function instrumentedGetFileCache(...args: unknown[]) {
     fileCacheReads++
-    return (originalGetFileCache as (...a: unknown[]) => unknown).apply(this, args)
+    return (originalGetFileCache).apply(this, args)
   } as typeof app.metadataCache.getFileCache
 
   app.metadataCache.getFirstLinkpathDest = function instrumentedDest(...args: unknown[]) {
@@ -275,7 +275,7 @@ function groupPathsViaLinkIndex(groupPath: string): string[] {
  * to await a promise across the eval boundary.
  */
 function startResponsivenessProbe(groupPath: string): void {
-  window.__abeleTest!.responsivenessResult = null
+  window.__abeleTest.responsivenessResult = null
 
   const gaps: number[] = []
   let previousTick = performance.now()
@@ -299,7 +299,7 @@ function startResponsivenessProbe(groupPath: string): void {
 
     window.setTimeout(() => {
       window.clearInterval(timer)
-      window.__abeleTest!.responsivenessResult = {
+      window.__abeleTest.responsivenessResult = {
         longestStallMs: gaps.length ? Math.max(...gaps) : 0,
         operationMs,
         ticks,
@@ -337,7 +337,7 @@ function measureNoteRelations(notePath: string): NoteRelationsMeasurement {
 
   app.metadataCache.getFileCache = function instrumented(...args: unknown[]) {
     fileCacheReads++
-    return (originalGetFileCache as (...a: unknown[]) => unknown).apply(this, args)
+    return (originalGetFileCache).apply(this, args)
   } as typeof app.metadataCache.getFileCache
 
   app.metadataCache.getFirstLinkpathDest = function instrumented(...args: unknown[]) {
@@ -388,7 +388,7 @@ function measureNoteRelations(notePath: string): NoteRelationsMeasurement {
 function startNoteRenderProbe(notePath: string, settleMs = 15_000): void {
   const { app } = GlobalStore.getInstance()
 
-  window.__abeleTest!.noteRenderResult = null
+  window.__abeleTest.noteRenderResult = null
 
   const file = app.vault.getAbstractFileByPath(notePath)
   if (!(file instanceof TFile)) {
@@ -421,7 +421,7 @@ function startNoteRenderProbe(notePath: string, settleMs = 15_000): void {
         // One frame is 16ms; anything beyond that is time the UI could not respond.
         const stalls = gaps.map((gap) => gap - 16).filter((gap) => gap > 0)
 
-        window.__abeleTest!.noteRenderResult = {
+        window.__abeleTest.noteRenderResult = {
           longestStallMs: stalls.length ? Math.max(...stalls) : 0,
           totalStalledMs: stalls.reduce((sum, gap) => sum + gap, 0),
           footerNodes: count('.abele-footer-view *'),

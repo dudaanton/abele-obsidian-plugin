@@ -1,5 +1,4 @@
 import { requestUrl } from 'obsidian'
-import { GlobalStore } from '@/stores/GlobalStore'
 import { prepareImageForApi } from '@/ai/imagePrep'
 import type {
   AssistantMessage,
@@ -9,14 +8,12 @@ import type {
   ToolCallContent,
   ToolDefinition,
   Message,
-  UserMessage,
   ModelConfig,
   StreamOptions,
   StreamEvent,
   StopReason,
   Usage,
-  UserContentPart,
-} from './types'
+  } from './types'
 
 // ── OpenAI API types (request/response) ─────────────────────
 
@@ -319,7 +316,7 @@ export class OpenAIClient {
       const msg = result[i]
       if (msg.role !== 'user' || !Array.isArray(msg.content)) continue
 
-      const parts = msg.content as UserContentPart[]
+      const parts = msg.content
       const hasVaultRef = parts.some(
         (p) => p.type === 'image_url' && p.image_url.url.startsWith(OpenAIClient.VAULT_PREFIX)
       )
@@ -342,7 +339,7 @@ export class OpenAIClient {
         })
       )
 
-      result[i] = { ...msg, content: resolvedParts } as UserMessage
+      result[i] = { ...msg, content: resolvedParts }
     }
 
     return result
@@ -536,7 +533,7 @@ export class OpenAIClient {
       yield { type: 'thinking_end', thinking: (block as ThinkingContent).thinking }
     } else if (block.type === 'toolCall') {
       // Parse accumulated partial args
-      const tc = block as ToolCallContent & { partialArgs?: string }
+      const tc = block
       if (tc.partialArgs) {
         tc.arguments = this.parseJsonSafe(tc.partialArgs)
       }

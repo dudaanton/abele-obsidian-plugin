@@ -72,7 +72,7 @@ export class BalanceIndex {
       }
     }
 
-    return role === 'from' ? -transaction.amount! : transaction.amount!
+    return role === 'from' ? -transaction.amount : transaction.amount
   }
 
   rebuild(): void {
@@ -108,7 +108,7 @@ export class BalanceIndex {
   }
 
   private addTransactionEntries(transaction: Transaction): void {
-    const dateStr = transaction.date!.format(DATE_FORMAT)
+    const dateStr = transaction.date.format(DATE_FORMAT)
     const currency = transaction.currency || ''
 
     if (transaction.from) {
@@ -146,7 +146,7 @@ export class BalanceIndex {
     if (!this.accountEntries.has(key)) {
       this.accountEntries.set(key, [])
     }
-    this.accountEntries.get(key)!.push(entry)
+    this.accountEntries.get(key).push(entry)
   }
 
   private sortAndComputePrefixSums(accountPath: string): void {

@@ -12,8 +12,6 @@ import { BalanceIndex } from '@/entities/BalanceIndex'
 import { extractAliasOrNameFromWikilink } from '@/helpers/pathsHelpers'
 import { parseNoteContent, renderTemplate } from '@/helpers/notesUtils'
 import {
-  cleanFileName,
-  cleanNoteName,
   getFolderFromPath,
   normalizePath,
   resolvePath,

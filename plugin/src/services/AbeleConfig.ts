@@ -2,7 +2,6 @@ import { Journal, JournalDTO } from '@/entities/Journal'
 import {
   AiSettings,
   DEFAULT_AI_SETTINGS,
-  AiProvider,
   ImageProvider,
   migrateOldPermissions,
 } from '@/ai/types'

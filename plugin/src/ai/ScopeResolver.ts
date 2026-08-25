@@ -270,7 +270,7 @@ export class ScopeResolver {
     // Iterative rather than recursive: a group tree can be thousands of nodes deep-ish and
     // wide, and this runs synchronously on the agent's tool-call path.
     while (pending.length > 0) {
-      const current = pending.pop() as string
+      const current = pending.pop()
       if (visited.has(current)) continue
       visited.add(current)
 

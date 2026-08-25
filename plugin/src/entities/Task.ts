@@ -10,7 +10,7 @@ import {
   wikilinkToPath,
 } from '@/helpers/pathsHelpers'
 import { RecurrenceParser } from '@/helpers/RecurrenceParser'
-import { cleanTaskName, createTaskLinkRegex, getRecurrentTaskTitle } from '@/helpers/tasksUtils'
+import { createTaskLinkRegex, getRecurrentTaskTitle } from '@/helpers/tasksUtils'
 import {
   getBacklinksByPath,
   getEditorForFile,

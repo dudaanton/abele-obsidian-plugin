@@ -51,7 +51,7 @@ export async function reduceImageFile(file: TFile): Promise<ReduceResult> {
     const canvas = createEl('canvas')
     canvas.width = width
     canvas.height = height
-    const ctx = canvas.getContext('2d')!
+    const ctx = canvas.getContext('2d')
     ctx.drawImage(img, 0, 0, width, height)
 
     const mimeType = file.extension === 'png' ? 'image/png' : 'image/jpeg'

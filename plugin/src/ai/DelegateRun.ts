@@ -4,7 +4,7 @@ import { ChatSession } from './ChatSession'
 import { ChatService } from './ChatService'
 import { AgentRegistry } from './agents/AgentRegistry'
 import { RunStorage, type RunBranch, type RunFile, type RunStatus } from './RunStorage'
-import type { AgentDefinition, ScopeEntry } from './agents/types'
+import type { AgentDefinition } from './agents/types'
 
 /** How often the run file is rewritten while sub-agents are streaming. */
 const PERSIST_INTERVAL_MS = 300
@@ -109,7 +109,7 @@ export class DelegateRun {
 
     // The target agent's own scope, plus whatever the delegating chat has open. Without the
     // union a chat could not hand a sub-agent the very file it wants processed.
-    session.applyScopeUnion(parent.scopeResolver.entries.value as ScopeEntry[], {
+    session.applyScopeUnion(parent.scopeResolver.entries.value, {
       fullVaultAccess: parent.scopeResolver.fullVaultAccess.value,
     })
 

@@ -122,7 +122,7 @@ async function callOpenAi(
       quality: model.quality || 'medium',
       output_format: model.outputFormat || 'png',
     }
-    const images = req.sourceImages!.map((dataUrl, i) => ({
+    const images = req.sourceImages.map((dataUrl, i) => ({
       name: 'image[]',
       data: dataUrlToBytes(dataUrl),
       filename: `image${i}.png`,

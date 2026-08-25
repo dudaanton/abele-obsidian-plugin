@@ -1,7 +1,6 @@
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { NoteRelations } from '@/entities/NoteRelations'
-import { AbeleConfig } from '@/services/AbeleConfig'
 import { DATE_FORMAT } from '@/constants/dates'
 import { parseDateOrNull } from '@/helpers/datesHelper'
 import { normalizePath, TFile } from 'obsidian'

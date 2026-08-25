@@ -3,12 +3,10 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { TimeEntryNoteTemplate } from '@/templates/TimeEntryNoteTemplate'
 import { getAvailablePath } from '@/helpers/vaultUtils'
 import { cleanFileName, extractAliasOrNameFromWikilink } from '@/helpers/pathsHelpers'
-import { DATETIME_FORMAT } from '@/entities/TimeEntry'
 import { renderTemplate } from '@/helpers/notesUtils'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DATE_FORMAT } from '@/constants/dates'
 import dayjs from 'dayjs'
-import { TFile } from 'obsidian'
 
 const TOGGL_API = 'https://api.track.toggl.com/api/v9'
 

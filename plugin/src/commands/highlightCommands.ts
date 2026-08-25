@@ -46,7 +46,7 @@ function pickColor(app: App): Promise<HighlightColor | null> {
 }
 
 export function removeHighlight(editor: Editor) {
-  const existing = getHighlightAtCursor(editor as any)
+  const existing = getHighlightAtCursor(editor)
   if (!existing) return
 
   const content = editor.getValue()
@@ -67,7 +67,7 @@ export async function insertHighlight(editor: Editor) {
   const app = GlobalStore.getInstance().app
 
   // Check if cursor is inside an existing highlight
-  const existing = getHighlightAtCursor(editor as any)
+  const existing = getHighlightAtCursor(editor)
 
   const color = await pickColor(app)
   if (!color) return

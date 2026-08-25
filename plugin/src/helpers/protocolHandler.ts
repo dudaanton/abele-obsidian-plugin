@@ -129,7 +129,7 @@ export async function handleProtocolAction(
   let file: TFile | null = null
 
   if (parsed.daily !== undefined) {
-    const journal = findJournal(parsed.journal!)
+    const journal = findJournal(parsed.journal)
     if (!journal) return // Already validated above
 
     file = await getOrCreateDailyNote(app, journal)
@@ -139,5 +139,5 @@ export async function handleProtocolAction(
 
   if (!file) return
 
-  await modifyFileContent(app, file, parsed.data, parsed.mode!)
+  await modifyFileContent(app, file, parsed.data, parsed.mode)
 }

@@ -58,7 +58,7 @@ async function resizeImage(binary: ArrayBuffer, mime: string): Promise<string> {
     const canvas = createEl('canvas')
     canvas.width = w
     canvas.height = h
-    canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h)
 
     // JPEG for photos (much smaller), keep PNG for small/transparent images
     const useJpeg = binary.byteLength > 500_000 || scale < 1
