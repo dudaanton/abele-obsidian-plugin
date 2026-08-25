@@ -21,21 +21,32 @@ defineProps<{
 /**
  * Obsidian's `.setting-item` is a nowrap row sized for its own settings pane. Ours are
  * narrower — a plugin tab inside the pane, and narrower still inside a modal — so the label
- * and the control are allowed to stack instead of pushing the pane sideways. Equal flex
- * bases mean they only stack once neither fits.
+ * and the control are allowed to stack instead of pushing the pane sideways.
+ *
+ * That stacking is a grid rather than a wrapping flex row, and the reason is that Obsidian
+ * stacks the row itself in at least three ways: `flex-direction: column` under `.is-phone`,
+ * the same under a container query, and the breakpoint of that query is not stable — the
+ * bundled stylesheet says 340px where the running app says 400px. A flex basis is measured
+ * along whichever axis the container happens to be on, so every one of those turned the 14em
+ * that puts the halves side by side into 14em of *height*: rows 496px tall with a 172px void
+ * under the label and another under the control, on phones and in any narrow settings window.
+ *
+ * A grid has no such axis to flip. `flex-direction` does not apply to it, so it does not
+ * matter which of those rules wins or what the breakpoint becomes: two columns while both fit
+ * at their 14em, one column when they do not. `min(14em, 100%)` keeps the track from
+ * outgrowing a pane narrower than 14em, which would scroll it sideways.
  */
 .abele-obsidian-setting {
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(14em, 100%), 1fr));
   gap: var(--size-4-1) var(--size-4-2);
 
   > .setting-item-info {
-    flex: 1 1 14em;
     min-width: 0;
     margin-right: 0;
   }
 
   > .setting-item-control {
-    flex: 1 1 14em;
     min-width: 0;
     flex-wrap: wrap;
 

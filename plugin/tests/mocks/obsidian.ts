@@ -343,4 +343,40 @@ export class WorkspaceLeaf {}
 export class Plugin {}
 export class PluginSettingTab {}
 export class Setting {}
-export class Component {}
+/**
+ * A component is a lifecycle handle: things that render into the DOM take one so their
+ * children can be unloaded with them. Nothing here has children to unload, so the methods
+ * only have to exist — but they do have to exist, or mounting anything that renders markdown
+ * dies in `onMounted`.
+ */
+export class Component {
+  load(): void {}
+  unload(): void {}
+  onload(): void {}
+  onunload(): void {}
+  addChild<T>(child: T): T {
+    return child
+  }
+  removeChild<T>(child: T): T {
+    return child
+  }
+  register(): void {}
+  registerEvent(): void {}
+}
+
+/**
+ * Markdown is rendered by Obsidian itself, so there is nothing here to reproduce — the text
+ * is written in as text. That is enough for tests that ask what a component put on screen
+ * and around it; how the markdown itself comes out is Obsidian's business.
+ */
+export const MarkdownRenderer = {
+  render: async (
+    _app: unknown,
+    markdown: string,
+    el: HTMLElement,
+    _sourcePath: string,
+    _component: unknown
+  ): Promise<void> => {
+    el.setText(markdown)
+  },
+}

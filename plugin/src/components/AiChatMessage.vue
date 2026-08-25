@@ -547,9 +547,23 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   }
 }
 
-.abele-chat-msg__icon {
+/**
+ * The icon and the timestamp sit beside the message's first line, so both are given a box
+ * exactly one line tall and their content centred in it. `1lh` is that line — the element's
+ * own font size times its line height — which is why this holds when the font changes:
+ * a phone's larger text moves the icon with it. It replaced four hand-picked pixel offsets
+ * that were tuned against one desktop font size and left the icons sitting ~4px low
+ * everywhere else.
+ */
+.abele-chat-msg__icon,
+.abele-chat-msg__time {
   flex-shrink: 0;
-  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  height: 1lh;
+}
+
+.abele-chat-msg__icon {
   color: var(--text-faint);
   cursor: pointer;
 
@@ -558,24 +572,22 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   }
 }
 
-// Per-type icon vertical offset
-.abele-chat-msg_user > .abele-chat-msg__icon {
-  margin-top: 7px;
+// The tool rows set a smaller font on their line, so their icon matches it to stay on it.
+.abele-chat-msg_tool-call > .abele-chat-msg__icon,
+.abele-chat-msg_tool-result > .abele-chat-msg__icon {
+  font-size: var(--font-small);
 }
-.abele-chat-msg_assistant > .abele-chat-msg__icon {
-  margin-top: 4px;
+
+// A user message is a bubble, and its text starts below the bubble's own padding.
+.abele-chat-msg_user > .abele-chat-msg__icon,
+.abele-chat-msg_user > .abele-chat-msg__time {
+  margin-top: var(--size-4-1);
 }
 
 .abele-chat-msg__time {
-  flex-shrink: 0;
   font-size: var(--font-smaller);
   color: var(--text-faint);
-  margin-top: 3px;
   white-space: nowrap;
-}
-
-.abele-chat-msg_user > .abele-chat-msg__time {
-  margin-top: 7px;
 }
 
 .abele-chat-msg__body {
@@ -754,7 +766,6 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   gap: var(--size-4-1);
   font-size: var(--font-small);
   color: var(--text-muted);
-  padding-top: 5px;
   overflow: hidden;
 
   code {
@@ -793,7 +804,16 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   font-style: italic;
 }
 
+/**
+ * The badge keeps its word. It is a flex item next to a file path that can be arbitrarily
+ * long, and the body around it sets `word-break: break-word` — so left to shrink it collapsed
+ * to a single character's width and broke "failed" across three lines. The path has an
+ * ellipsis and can give up the room instead.
+ */
 .abele-chat-msg__tool-err-badge {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  word-break: normal;
   color: var(--text-error);
   font-size: var(--font-smaller);
 }

@@ -1,5 +1,5 @@
 /**
- * Nothing in the settings pane scrolls sideways.
+ * Nothing in the settings pane scrolls sideways, and nothing in it stands in empty space.
  *
  * happy-dom computes no layout, so this is the only tier that can answer the question. It is
  * asked geometrically: take the container's rectangle, walk its descendants, and fail on any
@@ -9,6 +9,17 @@
  * Two kinds of element are skipped or the check reports phantoms: Obsidian sizes a dropdown by
  * cloning it off-screen (`.is-measuring`), and anything hidden or absolutely positioned pushes
  * no layout sideways.
+ *
+ * The second question is vertical and is asked of a phone. Obsidian stacks a settings row on
+ * a phone — `.is-phone .modal .setting-item` is a column — which turns any horizontal flex
+ * basis the plugin sets into a height. A 14em basis meant for side-by-side halves became a
+ * 224px-tall label and a 224px-tall control, so every row was 496px of mostly nothing. The
+ * check is therefore not "is the row short enough" but "does either half of it hold more
+ * space than its own contents occupy", which is the shape of that bug and of its relatives.
+ *
+ * The phone is reached by putting Obsidian's own `is-phone` class on the settings document
+ * rather than by emulating a device: those rules are keyed on exactly that class, and adding
+ * it neither reloads the app nor leaves anything behind.
  *
  * Requires Obsidian running with the plugin installed — see docs/Testing.md.
  */
@@ -20,26 +31,33 @@ interface Overflow {
   over: string[]
   /** How far the container itself can be scrolled sideways. Must be zero. */
   scroll: number
+  /** Halves of a settings row that are taller than what they hold, with the surplus. */
+  voids: string[]
 }
 
 type Report = Record<string, Overflow>
 
 /**
- * A desktop settings window, and one narrow enough that the content pane is phone-column wide.
+ * A desktop settings window, one narrow enough that the content pane is phone-column wide, and
+ * that same narrow window running Obsidian's phone rules.
  *
  * 620 rather than 360: Obsidian's own settings chrome does not adapt below roughly 600px in a
  * desktop window — its sidebar keeps its width and leaves the plugin under 100px, which no
- * layout survives and which no user ever sees. A real phone runs the `.is-mobile` layout
- * instead. What matters here is the width of the pane the plugin is given, and at 620 that is
- * about 356px.
+ * layout survives and which no user ever sees. What matters here is the width of the pane the
+ * plugin is given, and at 620 that is about 356px — a phone's column.
  */
-const WIDTHS = [900, 620]
+const PASSES = [
+  { label: '900px', width: 900, phone: false },
+  { label: '620px', width: 620, phone: false },
+  { label: '620px as a phone', width: 620, phone: true },
+]
 
 /**
  * The probe is asynchronous — it clicks through tabs and waits for each to render — and
  * `evalJson` cannot await a promise, so the result is parked on the window and polled for.
  */
-const PROBE = `(() => { window.__abeleLayoutProbe = null; (async () => {
+const probeFor = (phone: boolean) =>
+  `(() => { window.__abeleLayoutProbe = null; (async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
   app.setting.open()
   app.setting.openTabById('abele')
@@ -48,6 +66,12 @@ const PROBE = `(() => { window.__abeleLayoutProbe = null; (async () => {
   const d = app.setting.activeTab.containerEl.ownerDocument
   const view = d.defaultView
   const qa = (s) => [...d.querySelectorAll(s)]
+
+  const phoneClasses = ['is-mobile', 'is-phone']
+  if (${phone}) {
+    d.body.classList.add(...phoneClasses)
+    await wait(400)
+  }
 
   const measure = (rootSel) => {
     const root = d.querySelector(rootSel)
@@ -66,33 +90,60 @@ const PROBE = `(() => { window.__abeleLayoutProbe = null; (async () => {
       for (const c of el.children) walk(c)
     }
     for (const c of root.children) walk(c)
-    return { over, scroll: root.scrollWidth - root.clientWidth }
+
+    // A settings row is two halves, each sized around the children it holds. A half taller
+    // than the children it holds is holding empty space, which is what a broken row looks
+    // like from the outside. Rows measured whole would not show it: theirs added up.
+    const voids = []
+    for (const row of [...root.querySelectorAll('.abele-obsidian-setting')]) {
+      for (const half of ['.setting-item-info', '.setting-item-control']) {
+        const el = row.querySelector(half)
+        if (!el || !el.children.length) continue
+        const rects = [...el.children]
+          .map((c) => c.getBoundingClientRect())
+          .filter((r) => r.height > 0)
+        const height = el.getBoundingClientRect().height
+        if (!height || !rects.length) continue
+        const held = Math.max(...rects.map((r) => r.bottom)) - Math.min(...rects.map((r) => r.top))
+        if (height - held > 4) {
+          const name = (row.querySelector('.setting-item-name') || {}).textContent || '?'
+          voids.push(name.trim().slice(0, 28) + ' ' + half + ' +' + Math.round(height - held))
+        }
+      }
+    }
+
+    return { over, scroll: root.scrollWidth - root.clientWidth, voids }
   }
 
   const report = {}
-  const topTabs = () => qa('.abele-settings__nav .abele-tabs__tab')
-  for (const tab of topTabs()) {
-    const label = tab.textContent.trim()
-    tab.click()
-    await wait(250)
-    report[label] = measure('.abele-settings__content')
-  }
+  try {
+    const topTabs = () => qa('.abele-settings__nav .abele-tabs__tab')
+    for (const tab of topTabs()) {
+      const label = tab.textContent.trim()
+      tab.click()
+      await wait(250)
+      report[label] = measure('.abele-settings__content')
+    }
 
-  topTabs().find((t) => t.textContent.includes('AI Agent')).click()
-  await wait(300)
-  qa('.abele-ai-settings__tabs .abele-tabs__tab')
-    .find((t) => t.textContent.trim() === 'Agents')
-    .click()
-  await wait(300)
-  report['AI → Agents'] = measure('.abele-settings__content')
-
-  d.querySelector('.abele-card').click()
-  await wait(500)
-  for (const section of qa('.abele-agent-editor .abele-tabs__tab')) {
-    const label = section.textContent.trim()
-    section.click()
+    topTabs().find((t) => t.textContent.includes('AI Agent')).click()
     await wait(300)
-    report['agent editor → ' + label] = measure('.abele-agent-editor')
+    qa('.abele-ai-settings__tabs .abele-tabs__tab')
+      .find((t) => t.textContent.trim() === 'Agents')
+      .click()
+    await wait(300)
+    report['AI → Agents'] = measure('.abele-settings__content')
+
+    d.querySelector('.abele-card').click()
+    await wait(500)
+    for (const section of qa('.abele-agent-editor .abele-tabs__tab')) {
+      const label = section.textContent.trim()
+      section.click()
+      await wait(300)
+      report['agent editor → ' + label] = measure('.abele-agent-editor')
+    }
+  } finally {
+    // Whatever happened above, the settings document is handed back as it was found.
+    d.body.classList.remove(...phoneClasses)
   }
 
   const { remote } = require('electron')
@@ -113,8 +164,8 @@ const resize = (width: number) =>
     return w ? w.getSize()[0] : 0
   })()`
 
-async function runProbe(): Promise<Report> {
-  evalRaw(PROBE, 120_000)
+async function runProbe(phone: boolean): Promise<Report> {
+  evalRaw(probeFor(phone), 120_000)
 
   const deadline = Date.now() + 120_000
   while (Date.now() < deadline) {
@@ -129,47 +180,54 @@ async function runProbe(): Promise<Report> {
 const available = isObsidianRunning()
 
 describe.skipIf(!available)('the settings pane', () => {
-  const reports = new Map<number, Report>()
+  const reports = new Map<string, Report>()
 
-  const reportFor = (width: number): Report => {
-    const report = reports.get(width)
-    if (!report) throw new Error(`No report was gathered at ${width}px`)
+  const reportFor = (label: string): Report => {
+    const report = reports.get(label)
+    if (!report) throw new Error(`No report was gathered at ${label}`)
     return report
   }
 
   beforeAll(async () => {
-    for (const width of WIDTHS) {
-      evalJson<number>(resize(width), 60_000)
+    for (const pass of PASSES) {
+      evalJson<number>(resize(pass.width), 60_000)
       await new Promise((resolve) => setTimeout(resolve, 1000))
-      reports.set(width, await runProbe())
+      reports.set(pass.label, await runProbe(pass.phone))
     }
     console.info(`\n  vault ...................... ${activeVaultName()}\n`)
-  }, 300_000)
+  }, 400_000)
 
   afterAll(() => {
     if (available) evalJson<number>(resize(900), 60_000)
   })
 
-  for (const width of WIDTHS) {
-    describe(`at ${width}px`, () => {
+  for (const pass of PASSES) {
+    describe(`at ${pass.label}`, () => {
       it('puts nothing past the right edge of the pane it was given', () => {
-        const report = reportFor(width)
+        const report = reportFor(pass.label)
         const offenders = Object.entries(report).filter(([, r]) => r.over.length)
 
         expect(Object.fromEntries(offenders)).toEqual({})
       })
 
       it('leaves nothing to scroll sideways', () => {
-        const report = reportFor(width)
+        const report = reportFor(pass.label)
         const scrollers = Object.entries(report).filter(([, r]) => r.scroll !== 0)
 
         expect(Object.fromEntries(scrollers)).toEqual({})
       })
 
+      it('gives no half of a settings row more room than it fills', () => {
+        const report = reportFor(pass.label)
+        const offenders = Object.entries(report).filter(([, r]) => r.voids.length)
+
+        expect(Object.fromEntries(offenders)).toEqual({})
+      })
+
       it('actually reached every screen', () => {
         // Without this a probe that silently failed to open the editor would report nothing
         // wrong, which reads exactly like a pass.
-        const report = reportFor(width)
+        const report = reportFor(pass.label)
 
         expect(Object.keys(report)).toContain('AI → Agents')
         expect(Object.keys(report).filter((k) => k.startsWith('agent editor'))).toHaveLength(5)
