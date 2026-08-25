@@ -22,6 +22,25 @@ import prettierRecommended from 'eslint-plugin-prettier/recommended'
  * relative to the repository root.
  */
 
+/**
+ * The sentence-case rule *replaces* its brand list when given one, so the shipped list is
+ * loaded and this project's own names appended — otherwise passing `Abele` would silently
+ * lose `Markdown`, `Obsidian`, `GitHub` and the rest. `Cursor` is dropped: it ships as the
+ * name of the editor, which would capitalise the caret in "Paste from clipboard at cursor".
+ * The fallback keeps the rule usable if a future version moves the file.
+ */
+const shippedBrands = await import('eslint-plugin-obsidianmd/dist/lib/rules/ui/brands.js')
+  .then((m) => m.DEFAULT_BRANDS)
+  .catch(() => ['Obsidian', 'Markdown', 'GitHub', 'OpenAI'])
+
+const brands = [
+  ...shippedBrands.filter((brand) => brand !== 'Cursor'),
+  'Abele',
+  'Dataview',
+  'Firefly III',
+  'Toggl',
+]
+
 /** Obsidian's own rules, lifted out of the preset so `.vue` files can be held to them too. */
 const obsidianRules = Object.fromEntries(
   obsidianmd.configs.recommended
@@ -146,6 +165,8 @@ export default [
     plugins: { '@typescript-eslint': tseslint.plugin },
     rules: {
       ...relaxedTypeCheckedRules,
+      // Proper nouns this codebase uses; see `brands` above.
+      'obsidianmd/ui/sentence-case': ['warn', { brands }],
       'prettier/prettier': 'warn',
       'vue/multi-word-component-names': 'off',
       // `console.debug` is the plugin's diagnostic channel and is kept deliberately.

@@ -321,11 +321,11 @@ export default class AbelePlugin extends Plugin {
 
     this.registerEvent(
       this.app.workspace.on('file-menu', (menu, file) => {
-        // "Use in AI Agent" for folders
+        // "Use in AI agent" for folders
         if (file instanceof TFolder && AbeleConfig.getInstance().ai.enabled) {
           menu.addItem((item) => {
             item
-              .setTitle('Use in AI Agent')
+              .setTitle('Use in AI agent')
               .setIcon('bot')
               .onClick(async () => {
                 const chatService = ChatService.getInstance()
@@ -360,11 +360,11 @@ export default class AbelePlugin extends Plugin {
           })
         }
 
-        // "Use in AI Agent" for all files
+        // "Use in AI agent" for all files
         if (AbeleConfig.getInstance().ai.enabled) {
           menu.addItem((item) => {
             item
-              .setTitle('Use in AI Agent')
+              .setTitle('Use in AI agent')
               .setIcon('bot')
               .onClick(() => useFilesInAgent([file]))
           })
@@ -423,7 +423,7 @@ export default class AbelePlugin extends Plugin {
           if (!selection) return
           menu.addItem((item) => {
             item
-              .setTitle('Use in AI Agent')
+              .setTitle('Use in AI agent')
               .setIcon('bot')
               .onClick(async () => {
                 const file = view.file
@@ -577,7 +577,7 @@ export default class AbelePlugin extends Plugin {
 
     this.addCommand({
       id: 'migrate-from-dataview',
-      name: 'Migrate tasks from Dataview to Abele',
+      name: 'Migrate tasks from Dataview',
       icon: 'database',
       callback: () => {
         migrateFromDataview()
@@ -622,7 +622,7 @@ export default class AbelePlugin extends Plugin {
 
     this.addCommand({
       id: 'migrate-dataview-fields',
-      name: 'Migrate from dataview fields',
+      name: 'Migrate from Dataview fields',
       icon: 'database',
       callback: () => {
         GlobalStore.getInstance().migrateDataviewFieldsModalOpened.value = true
@@ -631,7 +631,7 @@ export default class AbelePlugin extends Plugin {
 
     this.addCommand({
       id: 'show-todo-sidebar',
-      name: 'Show TODO sidebar',
+      name: 'Show todo sidebar',
       icon: 'check-square',
       callback: () => {
         this.activateView(TODO_SIDEBAR_VIEW_TYPE)

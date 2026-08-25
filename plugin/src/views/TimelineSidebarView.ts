@@ -19,7 +19,7 @@ export class TimelineSidebarView extends ItemView {
   }
 
   getDisplayText() {
-    return 'Abele Timeline'
+    return 'Abele timeline'
   }
 
   static getIcon() {

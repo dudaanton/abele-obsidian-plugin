@@ -19,7 +19,7 @@ export class AiSidebarView extends ItemView {
   }
 
   getDisplayText() {
-    return 'Abele AI Chat'
+    return 'Abele AI chat'
   }
 
   static getIcon() {

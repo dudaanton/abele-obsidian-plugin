@@ -19,7 +19,7 @@ export class TodoSidebarView extends ItemView {
   }
 
   getDisplayText() {
-    return 'Abele TODO'
+    return 'Abele todo'
   }
 
   static getIcon() {

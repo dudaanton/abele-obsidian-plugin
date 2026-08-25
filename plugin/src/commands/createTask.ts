@@ -37,7 +37,7 @@ export const createTask = async (
 
 export const createTaskAndInsert = async (editor: Editor) => {
   if (!editor) {
-    new Notice('No active markdown editor found.', 3000)
+    new Notice('No active Markdown editor found.', 3000)
     return
   }
 
