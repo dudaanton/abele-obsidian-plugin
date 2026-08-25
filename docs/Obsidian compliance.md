@@ -51,6 +51,20 @@ ever receive.
 | Vault-scoped storage | Chat tabs use `App#saveLocalStorage`. |
 | Sentence case | Commands, view titles and notices. |
 | Quiet console by default | Diagnostics are `console.debug`, which Obsidian hides. |
+| No lookbehind in regexes | Rewritten out of the Dataview migration; iOS lacks it before 16.4. |
+| Node and Electron behind a platform check | One feature, guarded by `Platform.isDesktop`. |
+
+Two of these are not caught by the linter and were found by reading: `regex-lookbehind` only
+inspects `new RegExp('…')` strings, not regex literals, and `no-nodejs-modules` looks at import
+statements, not a bare `require('electron')`. Both are worth re-checking by hand.
+
+## Mobile
+
+`manifest.json` declares `isDesktopOnly: false`, and the plugin holds to it. Exactly one
+feature needs the desktop: "Show on disk" in the gallery viewer reveals a file in the OS file
+manager, which Obsidian offers no cross-platform API for. It sits behind `Platform.isDesktop`
+and falls back to copying the path, so on a phone the menu entry still does something useful
+rather than throwing.
 
 ### Which window an element belongs to
 
@@ -67,7 +81,7 @@ runtime behaviour it was verified against.
 
 ## Deliberate deviations
 
-Four places knowingly break a rule. Each carries a comment at the site saying why, and
+Five places knowingly break a rule. Each carries a comment at the site saying why, and
 `eslint-comments/no-restricted-disable` is switched off so the suppressions stay visible in the
 code rather than hidden in configuration.
 
@@ -82,6 +96,9 @@ the address is always http(s), goes through `requestUrl`.
 **Scripts are compiled with `new Function`** (`src/scripting/ScriptService.ts`). Running the
 user's own script is the feature; the code comes from a `.js` file in their vault and is handed
 only the capabilities in its context object.
+
+**"Show on disk" uses Electron** (`src/components/GalleryViewer.vue`), behind
+`Platform.isDesktop` — see Mobile above.
 
 **The settings tab renders imperatively** (`src/settings.ts`). Obsidian 1.13 added
 `getSettingDefinitions()`, which makes settings searchable. Adopting it means describing every
