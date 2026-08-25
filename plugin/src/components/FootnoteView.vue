@@ -30,7 +30,8 @@ function scrollToReference() {
 }
 
 function remove() {
-  removeFootnote(props.footnote.label)
+  // Asks the user first; nothing here waits on the answer.
+  void removeFootnote(props.footnote.label)
 }
 </script>
 

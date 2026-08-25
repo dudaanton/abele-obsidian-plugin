@@ -1,4 +1,4 @@
-import { Editor, MarkdownView, Notice } from 'obsidian'
+import { App, Editor, MarkdownView, Modal, Notice, Setting } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 
 const FOOTNOTE_REF_RE = /\[\^(\d+)\]/g
@@ -106,26 +106,44 @@ export function reindexFootnotes(editor: Editor) {
  * Remove a footnote by label: deletes all [^label] references in body text
  * and the [^label]: definition block.
  */
-export function removeFootnote(label: string): void {
-  if (!confirm(`Remove footnote [^${label}]?`)) return
-
+export async function removeFootnote(label: string): Promise<void> {
   const { app } = GlobalStore.getInstance()
+
+  // The note is found before the question is asked, not after. While the dialog is up the
+  // workspace has no active Markdown view, and focus is not restored by the time the dialog's
+  // promise settles — asking afterwards found nothing and the command quietly did nothing.
   const view = app.workspace.getActiveViewOfType(MarkdownView)
   if (!view) return
 
+  // Asked with Obsidian's own modal rather than `confirm()`: that dialog belongs to the
+  // operating system, ignores the theme, and blocks the whole app — see docs/Design.md.
+  const confirmed = await askToRemove(app, label)
+  if (!confirmed) return
+
   const editor = view.editor
   const cursor = editor.getCursor()
-  const content = editor.getValue()
-  const lines = content.split('\n')
+  const result = withoutFootnote(editor.getValue(), label)
 
+  editor.setValue(result)
+  const lineCount = result.split('\n').length
+  editor.setCursor({ line: Math.min(cursor.line, lineCount - 1), ch: cursor.ch })
+  new Notice(`Removed footnote [^${label}]`)
+}
+
+/**
+ * The note without a footnote: every `[^label]` reference dropped from the prose, and the
+ * `[^label]: …` definition dropped along with the indented lines that continue it.
+ */
+export function withoutFootnote(content: string, label: string): string {
+  const lines = content.split('\n')
   const escapedLabel = escapeRegex(label)
   const refRe = new RegExp(`\\[\\^${escapedLabel}\\]`, 'g')
+  const defRe = new RegExp(`^\\[\\^${escapedLabel}\\]:\\s*`)
   const result: string[] = []
   let i = 0
 
   while (i < lines.length) {
-    const defMatch = new RegExp(`^\\[\\^${escapedLabel}\\]:\\s*`).exec(lines[i])
-    if (defMatch) {
+    if (defRe.test(lines[i])) {
       // Skip the definition and its continuation lines
       i++
       i = skipContinuationLines(lines, i)
@@ -136,9 +154,43 @@ export function removeFootnote(label: string): void {
     i++
   }
 
-  editor.setValue(result.join('\n'))
-  editor.setCursor({ line: Math.min(cursor.line, result.length - 1), ch: cursor.ch })
-  new Notice(`Removed footnote [^${label}]`)
+  return result.join('\n')
+}
+
+/** Obsidian's own confirmation dialog. Resolves false if the user closes it any other way. */
+function askToRemove(app: App, label: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const modal = new Modal(app)
+    let answered = false
+
+    modal.setTitle(`Remove footnote [^${label}]?`)
+    modal.contentEl.createEl('p', {
+      text: 'The footnote and every reference to it are removed from this note.',
+    })
+
+    new Setting(modal.contentEl)
+      .addButton((button) =>
+        button.setButtonText('Cancel').onClick(() => {
+          modal.close()
+        })
+      )
+      .addButton((button) =>
+        button
+          .setButtonText('Remove')
+          .setWarning()
+          .onClick(() => {
+            answered = true
+            modal.close()
+            resolve(true)
+          })
+      )
+
+    modal.onClose = () => {
+      if (!answered) resolve(false)
+    }
+
+    modal.open()
+  })
 }
 
 // --- helpers ---

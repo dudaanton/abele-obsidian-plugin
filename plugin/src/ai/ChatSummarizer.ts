@@ -206,7 +206,19 @@ export class ChatSummarizer {
   private renderForSummary(messages: Message[]): string {
     return messages
       .map((m) => {
-        if (m.role === 'user') return `[user]: ${m.content}`
+        if (m.role === 'user') {
+          // A turn with attachments carries its content as parts rather than a string, so the
+          // text has to be read out of them — interpolating the array would hand the model
+          // `[object Object]` in place of everything the user wrote.
+          const text =
+            typeof m.content === 'string'
+              ? m.content
+              : m.content
+                  .filter((part): part is TextContent => part.type === 'text')
+                  .map((part) => part.text)
+                  .join('')
+          return text ? `[user]: ${text}` : null
+        }
         if (m.role === 'assistant') {
           const text = m.content
             .filter((b): b is TextContent => b.type === 'text')

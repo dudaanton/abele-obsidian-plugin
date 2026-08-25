@@ -172,6 +172,87 @@ describe('ChatSummarizer.compact', () => {
   })
 })
 
+/**
+ * A user turn carrying attachments has `content` as an array of parts rather than a string —
+ * see `UserMessage` in `ai/client/types.ts`. The transcript handed to the summarising model
+ * has to read the text out of those parts, the way the assistant branch already does. It used
+ * to interpolate the array straight into a template string, so everything the user actually
+ * typed reached the model as `[object Object]` and was summarised away.
+ */
+describe('the transcript a summary is made from', () => {
+  const transcript = () =>
+    (calls[0].messages[0].content as string).split('\n\n').filter((l) => l.startsWith('[user]'))
+
+  it('carries the text of a plain user turn', async () => {
+    nextResponse = 'ok'
+    const { host } = buildHost({
+      messagesForModel: () => [{ role: 'user', content: 'what does the parser do', timestamp: 1 }],
+    })
+
+    await new ChatSummarizer(host).compact()
+
+    expect(transcript()).toEqual(['[user]: what does the parser do'])
+  })
+
+  it('carries the text the user typed alongside an attachment', async () => {
+    nextResponse = 'ok'
+    const { host } = buildHost({
+      messagesForModel: () => [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'what is in this screenshot' },
+            { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
+          ],
+          timestamp: 1,
+        },
+      ],
+    })
+
+    await new ChatSummarizer(host).compact()
+
+    expect(transcript()).toEqual(['[user]: what is in this screenshot'])
+  })
+
+  it('never lets a content part reach the model as [object Object]', async () => {
+    nextResponse = 'ok'
+    const { host } = buildHost({
+      messagesForModel: () => [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'compare these' },
+            { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
+          ],
+          timestamp: 1,
+        },
+      ],
+    })
+
+    await new ChatSummarizer(host).compact()
+
+    expect(calls[0].messages[0].content as string).not.toContain('[object Object]')
+  })
+
+  it('drops a turn that carried no text at all, as it does for the assistant', async () => {
+    nextResponse = 'ok'
+    const { host } = buildHost({
+      messagesForModel: () => [
+        {
+          role: 'user',
+          content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } }],
+          timestamp: 1,
+        },
+        { role: 'user', content: 'and this one', timestamp: 2 },
+      ],
+    })
+
+    await new ChatSummarizer(host).compact()
+
+    expect(transcript()).toEqual(['[user]: and this one'])
+  })
+})
+
 describe('ChatSummarizer.autoCompactIfNeeded', () => {
   it('compacts once reported usage crosses 90% of the context window', async () => {
     nextResponse = 'summary'

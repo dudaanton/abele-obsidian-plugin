@@ -692,7 +692,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Paste from clipboard at cursor',
       icon: 'clipboard-paste',
       editorCallback: async (editor: Editor) => {
-        void pasteFromClipboard(editor)
+        await pasteFromClipboard(editor)
       },
     })
 
