@@ -11,6 +11,11 @@ Three tiers, each with its own command. All commands run from `plugin/`.
 
 `npm run test:watch` re-runs the fast tier on change.
 
+**Do not touch Obsidian while the e2e tier runs.** There is one app and one CLI; a stray
+`obsidian eval` — opening settings, resizing a window — races the probe the tests are waiting
+on, and the run hangs rather than failing. A suite that sat for 25 minutes with no output was
+this, not a slow test.
+
 Two more checks run in CI beside the fast tier: `npm run types` and `npm run lint`. The linter
 carries Obsidian's own plugin rules and fails on any of them — see
 [Obsidian compliance](Obsidian%20compliance.md). It runs from the repository root, because
@@ -252,6 +257,12 @@ single file, and the release workflow fails if `build/` holds anything but `main
 `main.css`.
 
 ## Generating a test vault
+
+**Four of the six e2e files need this vault.** `footerRender`, `groups`, `noteRelations` and
+`scopeResolver` all address notes under `ScaleTest/`, and without them they fail with
+`Group note ScaleTest/Notes/Projects.md not found in vault "<name>"`, an empty membership
+snapshot, or a render probe that never finishes — nine failures that look alarming and mean
+only that the fixture is absent. `settingsLayout` and `responsiveness` run without it.
 
 `scripts/generate-vault.mjs` writes a realistic vault: the `groups` relation graph,
 journals, tasks, finance accounts/transactions/categories, time entries and `.abchat` files.
