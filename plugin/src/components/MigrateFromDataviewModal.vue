@@ -220,7 +220,7 @@ const createTasksNotes = async () => {
       continue
     }
 
-    console.log(note)
+    console.debug(note)
 
     const noteCache = app.metadataCache.getFileCache(note)
 

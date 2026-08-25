@@ -40,13 +40,13 @@ export async function createNewFileInVault(
     // Check if file already exists
     const existingFile = app.vault.getAbstractFileByPath(fullPath)
     if (existingFile instanceof TFile) {
-      console.log(`File ${fullPath} already exists, returning existing file`)
+      console.debug(`File ${fullPath} already exists, returning existing file`)
       return existingFile
     }
 
     // Create the file
     const file = await app.vault.create(fullPath, content)
-    console.log(`Created new file: ${file.path}`)
+    console.debug(`Created new file: ${file.path}`)
     return file
   } catch (error) {
     console.error(`Error creating file ${fileName}:`, error)

@@ -11,7 +11,7 @@ export const createTask = async (
   data?: TaskCreateDTO,
   focus = true
 ): Promise<{ task: Task; wikilink: string }> => {
-  console.log(data)
+  console.debug(data)
   const availablePath = await getAvailablePath(
     getNewTaskPathFromString(data?.title ?? DEFAULT_TASK_NAME)
   )

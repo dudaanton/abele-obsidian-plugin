@@ -831,7 +831,7 @@ const reloadChat = async () => {
 
 const showDebug = () => {
   const data = JSON.stringify(session.value?.getDebugData() ?? {}, null, 2)
-  console.log('[Abele AI Debug]', data)
+  console.debug('[Abele AI Debug]', data)
   navigator.clipboard.writeText(data).then(
     () => new Notice('Debug JSON copied to clipboard'),
     () => new Notice('Failed to copy to clipboard')

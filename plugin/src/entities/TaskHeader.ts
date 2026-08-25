@@ -209,7 +209,7 @@ export class TaskHeader {
     const file = getFileByPath(this.filePath)
     const currentContent = await parseNoteContent(file, editor.getValue())
 
-    console.log(this.createdAt)
+    console.debug(this.createdAt)
 
     const newContent = new TaskNoteTemplate(app).createTemplate({
       ...this,

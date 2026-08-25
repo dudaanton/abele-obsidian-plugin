@@ -301,6 +301,9 @@ export class ScriptService {
         formHandler,
       })
 
+      // eslint-disable-next-line no-new-func -- running the user's own script is the feature.
+      // The code comes from a `.js` file the user wrote in their own vault, and it is handed
+      // only the capabilities in `ctx`; there is no way to execute it without a compiler.
       const fn = new Function(
         'ctx',
         `"use strict";

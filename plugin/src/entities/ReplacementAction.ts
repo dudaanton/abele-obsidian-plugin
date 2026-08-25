@@ -60,7 +60,7 @@ export class ReplacementAction {
           this.value,
           newProperties
         )
-        console.log('Set property:', this.property, newProperties[this.property])
+        console.debug('Set property:', this.property, newProperties[this.property])
         break
       case 'remove-property':
         delete newProperties[this.property]
@@ -126,7 +126,7 @@ export class ReplacementAction {
 
     const regexMatch = this.oldValue.match(/^\/(.+)\/([gimsuvy]*)$/)
 
-    console.log(regexMatch)
+    console.debug(regexMatch)
 
     if (regexMatch) {
       try {

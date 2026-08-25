@@ -165,7 +165,7 @@ export class Log {
           }
 
           this.load(true)
-          console.log('log file changed')
+          console.debug('log file changed')
         },
         AbeleConfig.getInstance().refreshDelay,
         true
@@ -182,7 +182,7 @@ export class Log {
               this.targetFilePath = event.newPath
             }
 
-            console.log('target file changed')
+            console.debug('target file changed')
             this.load(true)
             this.loadContent()
           },
