@@ -49,6 +49,19 @@ const obsidianRules = Object.fromEntries(
 )
 
 /**
+ * Obsidian's rules ship as warnings, and `npm run lint` exits 0 on warnings — so a new
+ * violation would pass CI unnoticed. The codebase is clean of them, so they are raised to
+ * errors here (options preserved) and CI fails on the next one. Everything outside
+ * `obsidianmd/` keeps the severity the preset gave it.
+ */
+const asError = (entry) => {
+  const severity = Array.isArray(entry) ? entry[0] : entry
+  // A rule the preset switches off stays off: Obsidian chose not to require it.
+  if (severity === 'off' || severity === 0) return entry
+  return Array.isArray(entry) ? ['error', ...entry.slice(1)] : 'error'
+}
+
+/**
  * Rules from the bundled `recommended-type-checked` preset that this codebase does not follow.
  * They are switched off rather than left failing so that a real Obsidian violation is never
  * buried under hundreds of pre-existing findings.
@@ -178,8 +191,18 @@ export default [
     plugins: { '@typescript-eslint': tseslint.plugin },
     rules: {
       ...relaxedTypeCheckedRules,
+      ...Object.fromEntries(
+        Object.entries(obsidianRules).map(([rule, entry]) => [rule, asError(entry)])
+      ),
+      // The global `app` is Obsidian's debugging handle; everything here reaches the real one
+      // through `GlobalStore`. `fetch` and `localStorage` have Obsidian equivalents.
+      'no-restricted-globals': asError(
+        obsidianmd.configs.recommended
+          .flatMap((entry) => Object.entries(entry.rules ?? {}))
+          .find(([rule]) => rule === 'no-restricted-globals')?.[1] ?? 'error'
+      ),
       // Proper nouns this codebase uses; see `brands` above.
-      'obsidianmd/ui/sentence-case': ['warn', { brands }],
+      'obsidianmd/ui/sentence-case': ['error', { brands }],
       'prettier/prettier': 'warn',
       'vue/multi-word-component-names': 'off',
       // `console.debug` is the plugin's diagnostic channel and is kept deliberately.

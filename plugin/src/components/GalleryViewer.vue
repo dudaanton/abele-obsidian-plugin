@@ -79,7 +79,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { Menu, Notice, TFile } from 'obsidian'
+import { Menu, Notice, TFile, requestUrl } from 'obsidian'
 import ObsidianIcon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { setCoverFromMedia } from '@/commands/setCover'
@@ -173,6 +173,9 @@ function resolveFile(): TFile | null {
 
 async function copyImage() {
   try {
+    // `fetch`, not `requestUrl`: this URL is often an `app://` vault resource for a local
+    // image, which `requestUrl` does not serve.
+    // eslint-disable-next-line no-restricted-globals -- see above
     const response = await fetch(displayUrl.value)
     const blob = await response.blob()
     const pngBlob = blob.type === 'image/png' ? blob : await convertToPng(displayUrl.value)
@@ -323,9 +326,13 @@ async function downloadImage() {
 
   try {
     const { app } = GlobalStore.getInstance()
-    const response = await fetch(image.path)
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const buffer = await response.arrayBuffer()
+    // `requestUrl` rather than `fetch`: this is always a remote address, and going out from
+    // the main process means a host that sends no CORS headers still serves the image.
+    const response = await requestUrl({ url: image.path, throw: false })
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+    const buffer = response.arrayBuffer
 
     let fileName: string
     try {
@@ -336,7 +343,7 @@ async function downloadImage() {
 
     // Ensure file has an extension
     if (!fileName.includes('.')) {
-      const contentType = response.headers.get('content-type') || ''
+      const contentType = response.headers['content-type'] || ''
       const ext = contentType.includes('png')
         ? 'png'
         : contentType.includes('webp')
