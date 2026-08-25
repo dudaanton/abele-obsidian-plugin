@@ -79,7 +79,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { Menu, Notice, TFile, requestUrl } from 'obsidian'
+import { FileSystemAdapter, Menu, Notice, Platform, TFile, requestUrl } from 'obsidian'
 import ObsidianIcon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { setCoverFromMedia } from '@/commands/setCover'
@@ -213,18 +213,26 @@ function openOnDisk() {
   const file = resolveFile()
   if (!file) return
 
-  try {
-    const { app } = GlobalStore.getInstance()
-    const basePath = (app.vault.adapter as any).basePath
-    if (basePath) {
-      const electron = require('electron')
-      electron.remote?.shell?.showItemInFolder(`${basePath}/${file.path}`) ??
-        electron.shell?.showItemInFolder(`${basePath}/${file.path}`)
+  // Obsidian exposes no cross-platform way to reveal a file in the OS file manager, so this
+  // reaches for Electron — which exists only on desktop. On mobile, and if anything about the
+  // call fails, the path is copied instead.
+  if (Platform.isDesktop) {
+    try {
+      const { app } = GlobalStore.getInstance()
+      const basePath = (app.vault.adapter as FileSystemAdapter).getBasePath()
+      if (basePath) {
+        const electron = require('electron')
+        electron.remote?.shell?.showItemInFolder(`${basePath}/${file.path}`) ??
+          electron.shell?.showItemInFolder(`${basePath}/${file.path}`)
+        return
+      }
+    } catch {
+      // Falls through to copying the path.
     }
-  } catch {
-    navigator.clipboard.writeText(currentImage.value.path)
-    new Notice('Path copied (could not open folder)')
   }
+
+  navigator.clipboard.writeText(currentImage.value.path)
+  new Notice('Path copied (could not open folder)')
 }
 
 async function rotateImage() {
