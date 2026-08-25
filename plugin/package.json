@@ -23,6 +23,8 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.38.6",
     "@eslint/js": "^9.39.5",
     "@eslint/json": "^0.14.0",
     "@rollup/plugin-replace": "^6.0.2",
@@ -69,6 +71,7 @@
     "file-type": "^20.5.0",
     "fparser": "^4.2.0",
     "front-matter": "^4.0.2",
+    "js-yaml": "^4.3.1",
     "lucide-vue-next": "^0.284.0",
     "nanoid": "^5.1.6",
     "pinia": "^3.0.2",

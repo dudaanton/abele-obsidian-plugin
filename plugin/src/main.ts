@@ -72,7 +72,8 @@ import { handleLinkAction } from './helpers/linkHandler'
 import { registerChartCodeblock } from './editor/ChartCodeblock'
 import { SnippetService } from './services/SnippetService'
 
-interface PluginData {}
+/** Plugin-level data in `data.json` that is not part of the settings object. */
+type PluginData = Record<string, unknown>
 
 export default class AbelePlugin extends Plugin {
   private data: PluginData = {}
@@ -152,9 +153,9 @@ export default class AbelePlugin extends Plugin {
       GlobalStore.getInstance().initTasksList()
       GlobalStore.getInstance().initFinance()
       GlobalStore.getInstance().initTimeTracking()
-      SnippetService.getInstance().init()
+      void SnippetService.getInstance().init()
       if (AbeleConfig.getInstance().ai.enabled) {
-        ChatService.getInstance().restoreTabs()
+        void ChatService.getInstance().restoreTabs()
       }
     })
 
@@ -290,14 +291,14 @@ export default class AbelePlugin extends Plugin {
           if (file?.extension === 'abchat') {
             leaf.detach()
             const chatService = ChatService.getInstance()
-            chatService.openChatFile(file).then(() => {
+            void chatService.openChatFile(file).then(() => {
               const { workspace } = this.app
               let aiLeaf = workspace.getLeavesOfType(AI_SIDEBAR_VIEW_TYPE)[0] ?? null
               if (!aiLeaf) {
                 aiLeaf = workspace.getRightLeaf(false)
-                aiLeaf.setViewState({ type: AI_SIDEBAR_VIEW_TYPE, active: true })
+                void aiLeaf.setViewState({ type: AI_SIDEBAR_VIEW_TYPE, active: true })
               }
-              workspace.revealLeaf(aiLeaf)
+              void workspace.revealLeaf(aiLeaf)
             })
             return
           }
@@ -339,7 +340,7 @@ export default class AbelePlugin extends Plugin {
                   leaf = workspace.getRightLeaf(false)
                   await leaf.setViewState({ type: AI_SIDEBAR_VIEW_TYPE, active: true })
                 }
-                workspace.revealLeaf(leaf)
+                void workspace.revealLeaf(leaf)
               })
           })
           return
@@ -454,7 +455,7 @@ export default class AbelePlugin extends Plugin {
                   leaf = workspace.getRightLeaf(false)
                   await leaf.setViewState({ type: AI_SIDEBAR_VIEW_TYPE, active: true })
                 }
-                workspace.revealLeaf(leaf)
+                void workspace.revealLeaf(leaf)
               })
           })
         })
@@ -517,7 +518,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Create new task',
       icon: 'circle-plus',
       callback: () => {
-        createTask()
+        void createTask()
       },
     })
 
@@ -526,7 +527,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Create new task and insert into current note',
       icon: 'list-plus',
       editorCallback: (editor: Editor) => {
-        createTaskAndInsert(editor)
+        void createTaskAndInsert(editor)
       },
     })
 
@@ -535,7 +536,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Find and replace in frontmatter and content of all notes, matching the criteria',
       icon: 'replace-all',
       callback: () => {
-        findAndReplace()
+        void findAndReplace()
       },
     })
 
@@ -580,7 +581,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Migrate tasks from Dataview',
       icon: 'database',
       callback: () => {
-        migrateFromDataview()
+        void migrateFromDataview()
       },
     })
 
@@ -598,7 +599,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Create new transaction',
       icon: 'receipt',
       callback: () => {
-        createTransaction()
+        void createTransaction()
       },
     })
 
@@ -607,7 +608,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Create new transaction and insert into current note',
       icon: 'receipt',
       editorCallback: (editor: Editor) => {
-        createTransactionAndInsert(editor)
+        void createTransactionAndInsert(editor)
       },
     })
 
@@ -616,7 +617,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Show timeline sidebar',
       icon: 'calendar-range',
       callback: () => {
-        this.activateView(TIMELINE_SIDEBAR_VIEW_TYPE)
+        void this.activateView(TIMELINE_SIDEBAR_VIEW_TYPE)
       },
     })
 
@@ -634,7 +635,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Show todo sidebar',
       icon: 'check-square',
       callback: () => {
-        this.activateView(TODO_SIDEBAR_VIEW_TYPE)
+        void this.activateView(TODO_SIDEBAR_VIEW_TYPE)
       },
     })
 
@@ -643,7 +644,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Show finance sidebar',
       icon: 'wallet',
       callback: () => {
-        this.activateView(FINANCE_SIDEBAR_VIEW_TYPE)
+        void this.activateView(FINANCE_SIDEBAR_VIEW_TYPE)
       },
     })
 
@@ -661,7 +662,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Show time tracking sidebar',
       icon: 'timer',
       callback: () => {
-        this.activateView(TIME_TRACKING_SIDEBAR_VIEW_TYPE)
+        void this.activateView(TIME_TRACKING_SIDEBAR_VIEW_TYPE)
       },
     })
 
@@ -672,7 +673,7 @@ export default class AbelePlugin extends Plugin {
       callback: () => {
         const file = this.app.workspace.getActiveFile()
         if (file) {
-          createTimeEntry({ groups: [`[[${file.basename}]]`] })
+          void createTimeEntry({ groups: [`[[${file.basename}]]`] })
         }
       },
     })
@@ -682,7 +683,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Stop active timer',
       icon: 'square',
       callback: () => {
-        stopActiveTimeEntry()
+        void stopActiveTimeEntry()
       },
     })
 
@@ -691,7 +692,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Paste from clipboard at cursor',
       icon: 'clipboard-paste',
       editorCallback: async (editor: Editor) => {
-        pasteFromClipboard(editor)
+        void pasteFromClipboard(editor)
       },
     })
 
@@ -711,7 +712,7 @@ export default class AbelePlugin extends Plugin {
       callback: () => {
         const file = this.app.workspace.getActiveFile()
         if (file) {
-          createNoteInGroup(file)
+          void createNoteInGroup(file)
         }
       },
     })
@@ -766,7 +767,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Insert colored highlight',
       icon: 'highlighter',
       editorCallback: (editor: Editor) => {
-        insertHighlight(editor)
+        void insertHighlight(editor)
       },
     })
 
@@ -784,7 +785,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Set cover from first image/video in note',
       icon: 'image',
       callback: () => {
-        setCoverFromFirstMedia()
+        void setCoverFromFirstMedia()
       },
     })
 
@@ -807,7 +808,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Create CSS snippet',
       icon: 'palette',
       callback: () => {
-        SnippetService.getInstance().createSnippet()
+        void SnippetService.getInstance().createSnippet()
       },
     })
 
@@ -826,24 +827,24 @@ export default class AbelePlugin extends Plugin {
       name: 'Create script',
       icon: 'scroll-text',
       callback: () => {
-        ScriptService.getInstance().createScript()
+        void ScriptService.getInstance().createScript()
       },
     })
 
     this.addRibbonIcon(TimelineSidebarView.getIcon(), 'Show timeline sidebar', () => {
-      this.activateView(TIMELINE_SIDEBAR_VIEW_TYPE)
+      void this.activateView(TIMELINE_SIDEBAR_VIEW_TYPE)
     })
 
     this.addRibbonIcon(TodoSidebarView.getIcon(), 'Show todo sidebar', () => {
-      this.activateView(TODO_SIDEBAR_VIEW_TYPE)
+      void this.activateView(TODO_SIDEBAR_VIEW_TYPE)
     })
 
     this.addRibbonIcon(FinanceSidebarView.getIcon(), 'Show finance sidebar', () => {
-      this.activateView(FINANCE_SIDEBAR_VIEW_TYPE)
+      void this.activateView(FINANCE_SIDEBAR_VIEW_TYPE)
     })
 
     this.addRibbonIcon(TimeTrackingSidebarView.getIcon(), 'Show time tracking', () => {
-      this.activateView(TIME_TRACKING_SIDEBAR_VIEW_TYPE)
+      void this.activateView(TIME_TRACKING_SIDEBAR_VIEW_TYPE)
     })
 
     // AI Agent — conditional on settings
@@ -856,9 +857,9 @@ export default class AbelePlugin extends Plugin {
     this.registerObsidianProtocolHandler('abele', (params) => {
       const exec = () => {
         if (params.name) {
-          handleLinkAction(this.app, params)
+          void handleLinkAction(this.app, params)
         } else {
-          handleProtocolAction(this.app, params)
+          void handleProtocolAction(this.app, params)
         }
       }
 
@@ -908,12 +909,12 @@ export default class AbelePlugin extends Plugin {
       name: 'Show AI chat sidebar',
       icon: 'bot',
       callback: () => {
-        this.activateView(AI_SIDEBAR_VIEW_TYPE)
+        void this.activateView(AI_SIDEBAR_VIEW_TYPE)
       },
     })
 
     this.addRibbonIcon(AiSidebarView.getIcon(), 'Show AI chat', () => {
-      this.activateView(AI_SIDEBAR_VIEW_TYPE)
+      void this.activateView(AI_SIDEBAR_VIEW_TYPE)
     })
 
     if (AbeleConfig.getInstance().ai.scriptsEnabled) {
@@ -968,7 +969,7 @@ export default class AbelePlugin extends Plugin {
       await leaf.setViewState({ type: viewType, active: true })
     }
 
-    workspace.revealLeaf(leaf)
+    void workspace.revealLeaf(leaf)
   }
 
   async loadPluginData() {
