@@ -44,8 +44,9 @@ onBeforeMount(() => {
   }
 
   const contentEl = modal.value.contentEl
-  // eslint-disable-next-line obsidianmd/prefer-create-el -- the global factory is bound to the
-  // main window's document; the mount point has to belong to the window the modal opened in.
+  // The global factory is bound to the main window's document; the mount point has to belong
+  // to the window the modal opened in.
+  // eslint-disable-next-line obsidianmd/prefer-create-el
   const el = contentEl.doc.createElement('div')
   el.id = id.value
   contentEl.appendChild(el)

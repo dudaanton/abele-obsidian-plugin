@@ -141,9 +141,9 @@ export class OpenAIClient {
     const resolved = await OpenAIClient.resolveVaultImages(messages)
     const body = this.buildRequestBody(model, systemPrompt, resolved, tools, options)
 
-    // eslint-disable-next-line no-restricted-globals -- `requestUrl` buffers the whole response
-    // and takes no abort signal, so it can neither stream tokens as they arrive nor be stopped
-    // mid-answer. Both are the point of this call.
+    // `requestUrl` buffers the whole response and takes no abort signal, so it can neither
+    // stream tokens as they arrive nor be stopped mid-answer. Both are the point of this call.
+    // eslint-disable-next-line no-restricted-globals
     const response = await fetch(this.getUrl(model), {
       method: 'POST',
       headers: {

@@ -1,3 +1,5 @@
+/* eslint-disable obsidianmd/prefer-abstract-input-suggest -- this file is that custom
+   implementation on purpose; the class comment below says why. */
 // Credits go to Templater Plugin: https://github.com/SilentVoid13/Templater
 
 import { App, ISuggestOwner, Scope } from 'obsidian'
@@ -94,6 +96,14 @@ class Suggest<T> {
   }
 }
 
+/**
+ * Obsidian ships `AbstractInputSuggest`, and its ESLint rule asks plugins to use it. This one
+ * is kept deliberately: it accepts a `<textarea>` as well as an `<input>`, which the built-in
+ * does not, and where it hangs its popup is covered by `tests/unit/textInputSuggest.test.ts` —
+ * the guard against a shipped bug where the popup opened in the main window while the user was
+ * typing in the settings window. Moving to the built-in would delete that code and the tests
+ * that hold it, so it stays until the swap can be verified against a running app.
+ */
 export abstract class TextInputSuggest<T> implements ISuggestOwner<T> {
   protected app: App
   protected inputEl: HTMLInputElement | HTMLTextAreaElement
@@ -111,8 +121,7 @@ export abstract class TextInputSuggest<T> implements ISuggestOwner<T> {
     // Built in the input's own document, not through the global `createDiv`, which always
     // builds in the main window. Since Obsidian 1.13 settings can open in a window of their
     // own, and a popup created there would belong to the wrong document entirely.
-    // eslint-disable-next-line obsidianmd/prefer-create-el -- the global factory is bound to
-    // the main window's document, so it cannot build the popup in the window the input is in.
+    // eslint-disable-next-line obsidianmd/prefer-create-el
     this.suggestEl = inputEl.ownerDocument.createElement('div')
     this.suggestEl.addClass('suggestion-container')
     const suggestion = this.suggestEl.createDiv('suggestion')

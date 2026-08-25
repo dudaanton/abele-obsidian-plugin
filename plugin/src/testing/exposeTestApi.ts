@@ -118,7 +118,6 @@ export interface AgentsSnapshot {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __abeleTest: AbeleTestApi | undefined
 }
 

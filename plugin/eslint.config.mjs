@@ -182,7 +182,7 @@ export default [
    * no TypeScript program here and would crash rather than report.
    */
   {
-    files: ['plugin/tests/**', 'plugin/*.config.*', 'plugin/version-bump.mjs'],
+    files: ['plugin/tests/**', 'plugin/*.config.*', 'plugin/.prettierrc.mjs', 'plugin/version-bump.mjs'],
     languageOptions: { parserOptions: { projectService: false, project: false } },
     rules: {
       ...tseslint.configs.disableTypeChecked.rules,
