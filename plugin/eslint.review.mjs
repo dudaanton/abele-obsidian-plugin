@@ -8,6 +8,10 @@
  *
  *   cd plugin && npm run lint:review
  *
+ * Run from the repository root — the script changes directory for you — because
+ * `validate-manifest` and `no-unsupported-api` read `manifest.json` from the working directory
+ * and the manifest lives in the root. Run from `plugin/` they find nothing and stay silent.
+ *
  * What matters in the output is anything under `eslint-comments/` — the review reports those as
  * **Risks**, because the preset forbids silencing its own rules. The wall of
  * `@typescript-eslint/*` findings below them is the bundled `recommended-type-checked` preset,
@@ -17,13 +21,13 @@ import obsidianmd from 'eslint-plugin-obsidianmd'
 
 export default [
   {
-    ignores: ['**/node_modules/**', 'build/**', 'main.js', 'eslint.config.mjs', 'eslint.review.mjs'],
+    ignores: ['**/node_modules/**', 'plugin/build/**', 'plugin/main.js'],
   },
   ...obsidianmd.configs.recommended,
   {
     languageOptions: {
       parserOptions: {
-        projectService: { allowDefaultProject: ['*.mjs', '*.mts'] },
+        projectService: { allowDefaultProject: ['plugin/*.mjs', 'plugin/*.mts'] },
         tsconfigRootDir: import.meta.dirname,
       },
     },

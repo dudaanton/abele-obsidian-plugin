@@ -17,7 +17,7 @@
     "lint": "cd .. && ./plugin/node_modules/.bin/eslint --no-config-lookup --config plugin/eslint.config.mjs .",
     "lint:fix": "cd .. && ./plugin/node_modules/.bin/eslint --no-config-lookup --config plugin/eslint.config.mjs . --fix",
     "version": "node version-bump.mjs && git add ../manifest.json ../versions.json",
-    "lint:review": "eslint --no-config-lookup --config eslint.review.mjs src"
+    "lint:review": "cd .. && ./plugin/node_modules/.bin/eslint --no-config-lookup --config plugin/eslint.review.mjs plugin/src"
   },
   "keywords": [],
   "author": "",
