@@ -127,62 +127,11 @@ export default [
     },
   },
 
-  /**
-   * Obsidian's preset only looks at `.ts`. Most of this plugin's UI is Vue, and the rules that
-   * matter most there — no hardcoded styles, popout-safe timers and documents, sentence case —
-   * apply just as much inside a component. Vue files are parsed with `vue-eslint-parser` and
-   * held to the same Obsidian rules.
-   *
-   * eslint-plugin-vue's flat presets leave their rule blocks unscoped, which would apply Vue
-   * rules to `package.json` and crash the JSON parser, so every block is pinned to `.vue`.
-   */
+  // eslint-plugin-vue's flat presets leave their rule blocks unscoped, which would apply Vue
+  // rules to `package.json` and crash the JSON parser, so every block is pinned to `.vue`.
+  // They sit above `prettierRecommended` so that eslint-config-prettier can switch off the
+  // formatting rules among them.
   ...pluginVue.configs['flat/recommended'].map((entry) => ({ ...entry, files: ['**/*.vue'] })),
-  {
-    files: ['**/*.vue'],
-    languageOptions: {
-      parser: vueParser,
-      parserOptions: {
-        parser: tseslint.parser,
-        ecmaVersion: 'latest',
-        sourceType: 'module',
-        extraFileExtensions: ['.vue'],
-      },
-    },
-    plugins: { obsidianmd: obsidianmd.plugin ?? obsidianmd },
-    rules: {
-      ...obsidianRules,
-      // Need type information, which is not available for `.vue` single-file components here.
-      'obsidianmd/no-unsupported-api': 'off',
-      'obsidianmd/no-tfile-tfolder-cast': 'off',
-      'obsidianmd/settings-tab/prefer-setting-definitions': 'off',
-      'obsidianmd/settings-tab/require-display': 'off',
-      'obsidianmd/settings-tab/prefer-update-over-display': 'off',
-      'obsidianmd/settings-tab/no-deprecated-display': 'off',
-      'obsidianmd/validate-manifest': 'off',
-      'obsidianmd/validate-license': 'off',
-      'obsidianmd/sample-names': 'off',
-      'obsidianmd/no-sample-code': 'off',
-      'vue/multi-word-component-names': 'off',
-      'vue/no-v-html': 'error',
-      /**
-       * Severities carried over from the project's previous `.eslintrc`. Two components take
-       * an object prop and edit it in place; the flat presets rate that an error, the project
-       * had already settled on a warning, and changing how those components communicate is not
-       * an Obsidian requirement.
-       */
-      'vue/no-mutating-props': ['warn', { shallowOnly: true }],
-      'vue/no-unused-vars': ['warn', { ignorePattern: '^_' }],
-      'vue/no-dupe-keys': 'warn',
-      'vue/no-use-v-if-with-v-for': 'warn',
-      'vue/require-toggle-inside-transition': 'warn',
-      'vue/require-v-for-key': 'warn',
-      'vue/valid-v-for': 'warn',
-      // typescript-eslint switches these off for `.ts` because TypeScript already reports
-      // them; the same applies inside a component's `<script setup lang="ts">`.
-      'no-unused-vars': 'off',
-      'no-undef': 'off',
-    },
-  },
 
   prettierRecommended,
 
@@ -224,6 +173,67 @@ export default [
        * rule that objects to them is what gets relaxed, not the rules themselves.
        */
       'eslint-comments/no-restricted-disable': 'off',
+    },
+  },
+
+  /**
+   * Obsidian's preset only looks at `.ts`. Most of this plugin's UI is Vue, and the rules that
+   * matter most there — no hardcoded styles, popout-safe timers and documents, sentence case —
+   * apply just as much inside a component. Vue files are parsed with `vue-eslint-parser` and
+   * held to the same Obsidian rules.
+   *
+   * eslint-plugin-vue's flat presets leave their rule blocks unscoped, which would apply Vue
+   * rules to `package.json` and crash the JSON parser, so every block is pinned to `.vue`.
+   */
+  {
+    files: ['**/*.vue'],
+    languageOptions: {
+      parser: vueParser,
+      parserOptions: {
+        parser: tseslint.parser,
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+        extraFileExtensions: ['.vue'],
+      },
+    },
+    plugins: { obsidianmd: obsidianmd.plugin ?? obsidianmd },
+    rules: {
+      // Same rules and the same raised severity as the block above, so a component is held to
+      // the guidelines exactly as a `.ts` file is.
+      ...Object.fromEntries(
+        Object.entries(obsidianRules).map(([rule, entry]) => [rule, asError(entry)])
+      ),
+      'obsidianmd/ui/sentence-case': ['error', { brands }],
+      // Need type information, which is not available for `.vue` single-file components here.
+      'obsidianmd/no-unsupported-api': 'off',
+      'obsidianmd/no-tfile-tfolder-cast': 'off',
+      'obsidianmd/settings-tab/prefer-setting-definitions': 'off',
+      'obsidianmd/settings-tab/require-display': 'off',
+      'obsidianmd/settings-tab/prefer-update-over-display': 'off',
+      'obsidianmd/settings-tab/no-deprecated-display': 'off',
+      'obsidianmd/validate-manifest': 'off',
+      'obsidianmd/validate-license': 'off',
+      'obsidianmd/sample-names': 'off',
+      'obsidianmd/no-sample-code': 'off',
+      'vue/multi-word-component-names': 'off',
+      'vue/no-v-html': 'error',
+      /**
+       * Severities carried over from the project's previous `.eslintrc`. Two components take
+       * an object prop and edit it in place; the flat presets rate that an error, the project
+       * had already settled on a warning, and changing how those components communicate is not
+       * an Obsidian requirement.
+       */
+      'vue/no-mutating-props': ['warn', { shallowOnly: true }],
+      'vue/no-unused-vars': ['warn', { ignorePattern: '^_' }],
+      'vue/no-dupe-keys': 'warn',
+      'vue/no-use-v-if-with-v-for': 'warn',
+      'vue/require-toggle-inside-transition': 'warn',
+      'vue/require-v-for-key': 'warn',
+      'vue/valid-v-for': 'warn',
+      // typescript-eslint switches these off for `.ts` because TypeScript already reports
+      // them; the same applies inside a component's `<script setup lang="ts">`.
+      'no-unused-vars': 'off',
+      'no-undef': 'off',
     },
   },
 
