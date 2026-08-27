@@ -226,27 +226,39 @@ if (typeof window !== 'undefined') {
   // not on their chain — so the property goes on the prototype the live document actually has.
   const documentPrototype = Object.getPrototypeOf(window.document) as object
 
-  if (!('win' in documentPrototype)) {
-    const synthesised = new WeakMap<Document, Record<string, unknown>>()
+  const synthesised = new WeakMap<Document, Record<string, unknown>>()
 
-    const windowFor = (doc: Document): Record<string, unknown> => {
-      let win = synthesised.get(doc)
-      if (!win) {
-        win = {
-          document: doc,
-          createEl: (tag: keyof HTMLElementTagNameMap, info?: ElInfo | string) =>
-            buildEl(doc, tag, info),
-          createDiv: (info?: ElInfo | string) => buildEl(doc, 'div', info),
-          createSpan: (info?: ElInfo | string) => buildEl(doc, 'span', info),
-        }
-        synthesised.set(doc, win)
+  const windowFor = (doc: Document): Record<string, unknown> => {
+    let win = synthesised.get(doc)
+    if (!win) {
+      win = {
+        document: doc,
+        createEl: (tag: keyof HTMLElementTagNameMap, info?: ElInfo | string) =>
+          buildEl(doc, tag, info),
+        createDiv: (info?: ElInfo | string) => buildEl(doc, 'div', info),
+        createSpan: (info?: ElInfo | string) => buildEl(doc, 'span', info),
       }
-      return win
+      synthesised.set(doc, win)
     }
+    return win
+  }
 
+  if (!('win' in documentPrototype)) {
     Object.defineProperty(documentPrototype, 'win', {
       get(this: Document) {
         return this.defaultView ?? windowFor(this)
+      },
+    })
+  }
+
+  // Obsidian puts `win` on every node, not only on documents: code that must schedule a frame
+  // or a timer in the window an element actually lives in reaches for `el.win` — which in a
+  // popout is not the global one.
+  if (!('win' in Node.prototype)) {
+    Object.defineProperty(Node.prototype, 'win', {
+      get(this: Node) {
+        const doc = this.ownerDocument ?? (this as unknown as Document)
+        return doc.defaultView ?? windowFor(doc)
       },
     })
   }

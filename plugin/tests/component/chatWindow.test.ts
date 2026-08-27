@@ -188,3 +188,114 @@ describe('a message arriving while the chat is open', () => {
     expect(rendered.at(-1)?.props('message').id).toBe('newest')
   })
 })
+
+describe('the view while older messages are being revealed', () => {
+  /**
+   * These mount into the document rather than beside it. The anchoring drops an anchor whose
+   * element has left the page, and a wrapper mounted the default way is detached — so every
+   * element in it reports itself disconnected and the anchor would be dropped immediately.
+   */
+  let attached: ReturnType<typeof mount> | null = null
+
+  afterEach(() => {
+    attached?.unmount()
+    attached = null
+    document.body.replaceChildren()
+  })
+
+  const mountAttached = () => {
+    attached = mount(AiChat, { attachTo: document.body })
+    return attached
+  }
+
+  /**
+   * happy-dom lays nothing out, so the layout is modelled: every message has a height, the
+   * container's rectangle starts at zero, and an element's rectangle follows from what is
+   * above it and where the container is scrolled. That is enough to ask the only question
+   * that matters — does what the reader is looking at stay where it was.
+   */
+  function layoutModel(wrapper: ReturnType<typeof mount>) {
+    const container = wrapper.find('.abele-ai-chat__messages').element as HTMLElement
+    const heights = new Map<Element, number>()
+    let scrollTop = 0
+
+    Object.defineProperty(container, 'scrollTop', {
+      configurable: true,
+      get: () => scrollTop,
+      set: (v: number) => {
+        scrollTop = v
+      },
+    })
+    Object.defineProperty(container, 'scrollHeight', {
+      configurable: true,
+      get: () => [...heights.values()].reduce((sum, h) => sum + h, 0),
+    })
+    Object.defineProperty(container, 'clientHeight', { configurable: true, get: () => 800 })
+    container.getBoundingClientRect = () => ({ top: 0, height: 800 }) as DOMRect
+
+    /** Re-measures every message against the model. Call after mounting or resizing them. */
+    const relayout = () => {
+      let offset = 0
+      for (const el of container.querySelectorAll('.abele-chat-msg')) {
+        const top = offset
+        const height = heights.get(el) ?? 0
+        Object.defineProperty(el, 'getBoundingClientRect', {
+          configurable: true,
+          value: () => ({ top: top - scrollTop, height }) as DOMRect,
+        })
+        offset += height
+      }
+    }
+
+    const setHeights = (height: number) => {
+      for (const el of container.querySelectorAll('.abele-chat-msg')) heights.set(el, height)
+      relayout()
+    }
+
+    return { container, setHeights, relayout, scrollTo: (v: number) => (scrollTop = v) }
+  }
+
+  it('keeps the message the reader was on where it was, after the revealed ones render', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
+    const wrapper = mountAttached()
+    const model = layoutModel(wrapper)
+
+    // The page as it stands: every message rendered, the reader at the very top.
+    model.setHeights(100)
+    model.scrollTo(0)
+    await wrapper.find('.abele-ai-chat__messages').trigger('scroll')
+    await nextTick()
+
+    // The revealed messages mount empty and stay that way for a while: markdown is rendered
+    // after mounting, awaited, and queued again behind a timeout. Frames pass with nothing to
+    // correct — and only then do the messages take up room. This is the moment the view
+    // jumped, and a correction measured once, early, is exactly what missed it.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    model.setHeights(100)
+    await new Promise((resolve) => setTimeout(resolve, 80))
+
+    // A page of 30 messages, 100px each, appeared above: staying put means scrolling by that.
+    expect(model.container.scrollTop).toBe(DEFAULT_TAIL_PAGE_SIZE * 100)
+  })
+
+  it('leaves the reader alone once they scroll themselves', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
+    const wrapper = mountAttached()
+    const model = layoutModel(wrapper)
+    model.setHeights(100)
+    model.scrollTo(0)
+    const container = wrapper.find('.abele-ai-chat__messages')
+    await container.trigger('scroll')
+    await nextTick()
+
+    // The reader scrolls away before the revealed messages have rendered. 1500 is a position
+    // that exists in the page as it stands — 30 messages of 100px — and is nowhere near its
+    // bottom, so nothing else has an opinion about where the view should be.
+    model.scrollTo(1500)
+    await container.trigger('scroll')
+    model.setHeights(100)
+    await new Promise((resolve) => setTimeout(resolve, 60))
+
+    expect(model.container.scrollTop).toBe(1500)
+  })
+})

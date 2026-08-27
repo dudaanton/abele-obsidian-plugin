@@ -478,22 +478,69 @@ const {
 } = useTailPagedList(() => messages.value)
 
 /**
+ * What the reader was looking at while older messages are being revealed above it.
+ *
+ * A message rather than a height. Reading the growth of `scrollHeight` once, on the tick
+ * after the page is revealed, corrects for nothing: a message renders its markdown
+ * asynchronously — `MarkdownRenderer.render` is awaited, and a re-render is queued behind a
+ * timeout — so at that point the messages just mounted are still nearly empty, and their real
+ * height arrives afterwards and shoves the view down. Holding one element still is immune to
+ * that, however late and however often the heights change.
+ */
+let anchor: { el: HTMLElement; offset: number } | null = null
+
+/** How far the anchor sits below the top of the scroll container. Negative when above it. */
+const offsetOf = (el: HTMLElement, container: HTMLElement) =>
+  el.getBoundingClientRect().top - container.getBoundingClientRect().top
+
+/** Takes the topmost rendered message as the anchor: the page is revealed above it. */
+const captureAnchor = () => {
+  const container = messagesContainer.value
+  const first = container?.querySelector<HTMLElement>('.abele-chat-msg')
+  anchor = container && first ? { el: first, offset: offsetOf(first, container) } : null
+}
+
+/** Puts the anchor back where it was, whatever has grown around it since. */
+const holdAnchor = () => {
+  const container = messagesContainer.value
+  if (!container || !anchor) return
+  if (!anchor.el.isConnected) {
+    anchor = null
+    return
+  }
+
+  const drift = offsetOf(anchor.el, container) - anchor.offset
+  if (Math.abs(drift) < 1) return
+  scrollSetByCode = true
+  container.scrollTop += drift
+}
+
+/**
  * Reveals the previous page, keeping the reader where they are.
  *
- * The messages appear *above* what is on screen, which pushes it down by their height. That
- * height is only known once they are mounted, so the correction is the growth of
- * `scrollHeight` across the update — measured rather than guessed at.
+ * The anchor is held for a moment rather than once, because that is how long the revealed
+ * messages take to render themselves. Held with the frames rather than with a timer: a frame
+ * is when layout has settled, and there is nothing to correct between them.
  */
+const ANCHOR_HOLD_MS = 1500
+
 const loadOlder = () => {
   const el = messagesContainer.value
   if (!el || !hasOlder.value) return
 
-  const heightBefore = el.scrollHeight
+  captureAnchor()
   showOlder()
-  void nextTick(() => {
-    scrollSetByCode = true
-    el.scrollTop += el.scrollHeight - heightBefore
-  })
+
+  // The chat can be in a popped-out window, whose frames and clock are not the main one's.
+  const win = el.win
+  const until = win.performance.now() + ANCHOR_HOLD_MS
+  const hold = () => {
+    if (!anchor) return
+    holdAnchor()
+    if (win.performance.now() < until) win.requestAnimationFrame(hold)
+    else anchor = null
+  }
+  void nextTick(() => win.requestAnimationFrame(hold))
 }
 
 const onMessagesScroll = () => {
@@ -503,6 +550,8 @@ const onMessagesScroll = () => {
   }
   const el = messagesContainer.value
   if (!el) return
+  // The reader has taken over; whatever was being held is where they left it.
+  anchor = null
   shouldAutoScroll = el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD_PX
   if (el.scrollTop < LOAD_OLDER_THRESHOLD_PX) loadOlder()
 }
@@ -566,7 +615,12 @@ let mutObserver: MutationObserver | null = null
 onMounted(() => {
   nextTick(() => {
     if (messagesContainer.value) {
-      mutObserver = new MutationObserver(() => doScroll())
+      mutObserver = new MutationObserver(() => {
+        // A message that has just rendered its markdown changes the subtree and the layout
+        // with it — which is exactly when the anchor needs putting back.
+        holdAnchor()
+        doScroll()
+      })
       mutObserver.observe(messagesContainer.value, {
         childList: true,
         subtree: true,
