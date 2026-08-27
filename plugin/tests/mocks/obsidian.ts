@@ -334,6 +334,34 @@ export class Modal {
   onClose(): void {}
 }
 
+/**
+ * The pickers Obsidian builds on its modal — a plain list and a fuzzy-matched one. Nothing
+ * here picks anything; they exist so that a module defining a subclass can be imported at
+ * all, which is what any test mounting a component that offers a picker needs.
+ */
+export class SuggestModal<T> extends Modal {
+  limit = 0
+  emptyStateText = ''
+  inputEl: HTMLInputElement = document.createElement('input')
+
+  setPlaceholder(): void {}
+  getSuggestions(_query: string): T[] {
+    return []
+  }
+  renderSuggestion(_value: T, _el: HTMLElement): void {}
+  onChooseSuggestion(_value: T, _evt: unknown): void {}
+}
+
+export class FuzzySuggestModal<T> extends SuggestModal<T> {
+  getItems(): T[] {
+    return []
+  }
+  getItemText(_item: T): string {
+    return ''
+  }
+  onChooseItem(_item: T, _evt: unknown): void {}
+}
+
 /** A keymap scope. Only registration is modelled; nothing here dispatches a key. */
 export class Scope {
   readonly bindings: Array<{ modifiers: string[]; key: string }> = []

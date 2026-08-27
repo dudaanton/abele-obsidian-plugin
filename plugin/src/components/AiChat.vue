@@ -37,8 +37,13 @@
           <span class="abele-ai-chat__empty-text">What's on your mind?</span>
         </div>
 
+        <div v-if="olderCount" class="abele-ai-chat__older">
+          <Icon icon="chevron-up" no-hover />
+          <span>{{ olderCount }} earlier messages</span>
+        </div>
+
         <AiChatMessage
-          v-for="msg in messages"
+          v-for="msg in visibleMessages"
           :key="msg.id"
           :message="msg"
           :branch-info="branchInfoMap.get(msg.id)"
@@ -186,6 +191,7 @@ import { Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import AiChatMessage from './AiChatMessage.vue'
+import { useTailPagedList } from '@/composables/useTailPagedList'
 import AiChatInput from './AiChatInput.vue'
 import AiChatTabs from './AiChatTabs.vue'
 import AiRunView from './AiRunView.vue'
@@ -452,8 +458,43 @@ const pendingPromptAllVars = ref<TemplateVariable[]>([])
 const pendingPromptUserVars = ref<TemplateVariable[]>([])
 
 const AUTO_SCROLL_THRESHOLD_PX = 60
+/** How close to the top counts as asking for the messages above. */
+const LOAD_OLDER_THRESHOLD_PX = 200
 let shouldAutoScroll = true
 let scrollSetByCode = false
+
+/**
+ * Only the end of the conversation is mounted; scrolling back reveals the rest.
+ *
+ * Every message mounts a component, and an assistant message mounts a markdown renderer with
+ * it, so a long conversation paid for all of it before showing anything.
+ */
+const {
+  visible: visibleMessages,
+  hasMore: hasOlder,
+  hidden: olderCount,
+  showMore: showOlder,
+  reset: resetWindow,
+} = useTailPagedList(() => messages.value)
+
+/**
+ * Reveals the previous page, keeping the reader where they are.
+ *
+ * The messages appear *above* what is on screen, which pushes it down by their height. That
+ * height is only known once they are mounted, so the correction is the growth of
+ * `scrollHeight` across the update — measured rather than guessed at.
+ */
+const loadOlder = () => {
+  const el = messagesContainer.value
+  if (!el || !hasOlder.value) return
+
+  const heightBefore = el.scrollHeight
+  showOlder()
+  void nextTick(() => {
+    scrollSetByCode = true
+    el.scrollTop += el.scrollHeight - heightBefore
+  })
+}
 
 const onMessagesScroll = () => {
   if (scrollSetByCode) {
@@ -463,6 +504,7 @@ const onMessagesScroll = () => {
   const el = messagesContainer.value
   if (!el) return
   shouldAutoScroll = el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD_PX
+  if (el.scrollTop < LOAD_OLDER_THRESHOLD_PX) loadOlder()
 }
 
 const doScroll = () => {
@@ -487,7 +529,9 @@ watch(
   () => chatService.activeTabId.value,
   () => {
     shouldAutoScroll = true
-    nextTick(doScroll)
+    // Another conversation entirely: it starts at its end, like this one did.
+    resetWindow()
+    void nextTick(doScroll)
     chatInput.value?.setText('')
   }
 )
@@ -888,6 +932,17 @@ const showDebug = () => {
 
 .abele-ai-chat__header-active {
   color: var(--interactive-accent) !important;
+}
+
+/** The marker above the oldest rendered message, saying what scrolling further would show. */
+.abele-ai-chat__older {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--size-4-1);
+  padding: var(--size-4-2) 0;
+  color: var(--text-faint);
+  font-size: var(--font-smaller);
 }
 
 .abele-ai-chat__messages {
