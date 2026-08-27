@@ -11,6 +11,7 @@ import {
 import './styles.css'
 import { GlobalStore } from './stores/GlobalStore'
 import { pasteFromClipboard } from './commands/pasteFromClipboard'
+import { registerFocusRelease } from './helpers/fieldFocus'
 import { createApp, App as VueApp } from 'vue'
 import { createPinia } from 'pinia'
 import VueEntry from './App.vue'
@@ -160,6 +161,9 @@ export default class AbelePlugin extends Plugin {
     })
 
     this.addSettingTab(new AbeleSettingTab(this.app, this))
+
+    // On a phone a tap beside a field does not take its focus away, so the keyboard stays up.
+    registerFocusRelease(this)
 
     console.debug('Abele Plugin loaded.')
 
