@@ -189,9 +189,15 @@ const each = await agent("Extract the date", { items: paths })
 | \`notice(message, timeout?)\` | — | Show Obsidian notification |
 | \`setStatus(text)\` | — | Set status bar text (auto-cleared when script ends) |
 | \`form(fields)\` | \`object \\| null\` | Show form modal (command palette only) |
+| \`show(markdown, title?)\` | — | Show rendered markdown to read (command palette only) |
 
-\`form\` fields: \`[{ name, label, type?, options?, default?, required? }]\`
-Types: \`"text"\` (default), \`"textarea"\`, \`"select"\`, \`"boolean"\`
+\`form\` fields: \`[{ name, label, type?, options?, default?, required?, text? }]\`
+Types: \`"text"\` (default), \`"textarea"\`, \`"select"\`, \`"boolean"\`, \`"markdown"\`
+
+A \`"markdown"\` field asks for nothing: it renders \`text\` as markdown for the person to read
+and select, and returns no value. Use it to explain a form, or to put a result beside the
+questions. \`show(markdown, title?)\` is the same block on its own — prefer it over
+\`notice\` for anything long: a notice is truncated, disappears, and cannot be selected.
 
 ---
 

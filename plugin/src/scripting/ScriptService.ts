@@ -307,7 +307,7 @@ export class ScriptService {
         'ctx',
         `"use strict";
         return (async () => {
-          const { dayjs, read, edit, write, create, remove, move, copy, ls, find, replace, open, setCover, agent, form, log, params, signal, fetch, applyTemplate, listTemplates, createFromTemplate, generateImage, downloadImage, downloadFile, notice, runScript, setStatus, activeNotePath } = ctx;
+          const { dayjs, read, edit, write, create, remove, move, copy, ls, find, replace, open, setCover, agent, form, log, params, signal, fetch, applyTemplate, listTemplates, createFromTemplate, generateImage, downloadImage, downloadFile, notice, show, runScript, setStatus, activeNotePath } = ctx;
           ${script.code}
         })()`
       )

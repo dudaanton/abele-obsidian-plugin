@@ -416,6 +416,23 @@ export function buildScriptContext(opts: {
       }
       return opts.formHandler(fields)
     },
+
+    /**
+     * Puts a piece of markdown in front of the user to read.
+     *
+     * A notice is the wrong place for anything long: it is truncated, it goes away by itself,
+     * and its text cannot be selected. This is a form that asks nothing — the same modal,
+     * rendering the text and offering only a way to close it — so a script can hand back
+     * something worth reading rather than a fragment of it.
+     */
+    async show(text: string, title?: string): Promise<void> {
+      if (!opts.formHandler) {
+        throw new Error(
+          'Showing text is only available when the script is run from the command palette.'
+        )
+      }
+      await opts.formHandler([{ name: 'text', label: title ?? '', type: 'markdown', text }])
+    },
   }
 }
 
