@@ -5,10 +5,22 @@
       <span>{{ headerText }}</span>
     </div>
 
-    <!-- Create / Write: show file content preview -->
-    <template v-if="message.toolName === 'create' || message.toolName === 'write'">
+    <!-- Create: the file does not exist yet, so its content is all there is to show -->
+    <template v-if="message.toolName === 'create'">
       <div class="abele-tool-approval__path">{{ params.path }}</div>
       <pre class="abele-tool-approval__code"><code>{{ params.content }}</code></pre>
+    </template>
+
+    <!-- Write: an overwrite of a file that exists, so show what it does to it -->
+    <template v-else-if="message.toolName === 'write'">
+      <div class="abele-tool-approval__path">{{ params.path }}</div>
+      <Diff
+        v-if="currentContent !== null"
+        :text-left="currentContent"
+        :text-right="String(params.content || '')"
+        class="abele-tool-approval__diff"
+      />
+      <pre v-else class="abele-tool-approval__code"><code>{{ params.content }}</code></pre>
     </template>
 
     <!-- Edit: show diff -->
@@ -76,12 +88,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 import Input from './obsidian/Input.vue'
 import Diff from './Diff.vue'
 import { ChatService } from '@/ai/ChatService'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { TFile } from 'obsidian'
 import type { ChatMessage } from '@/ai/types'
 
 const props = defineProps<{
@@ -111,6 +125,41 @@ const headerText = computed(() => {
       return `Execute ${props.message.toolName}`
   }
 })
+
+/**
+ * What the file being written holds right now, or null when there is nothing to compare
+ * against — the path names no file, or reading it failed.
+ *
+ * `write` replaces a file whole, and it only accepts a file that already exists: shown as
+ * plain content, its preview says what the file will contain but not what is being taken
+ * away. A diff answers the question actually being asked for approval. `create`, whose file
+ * does not exist yet, keeps the plain preview: there is nothing to diff against.
+ */
+const currentContent = ref<string | null>(null)
+
+watch(
+  () => [props.message.toolName, params.value.path] as const,
+  ([toolName, path]) => {
+    currentContent.value = null
+    if (toolName !== 'write' || typeof path !== 'string' || !path) return
+
+    const { app } = GlobalStore.getInstance()
+    const file = app.vault.getAbstractFileByPath(path)
+    if (!(file instanceof TFile)) return
+
+    void app.vault
+      .read(file)
+      .then((content) => {
+        // The path can change while the read is in flight; a stale answer must not land.
+        if (params.value.path === path) currentContent.value = content
+      })
+      .catch(() => {
+        // An unreadable file is not worth an error in an approval prompt — it falls back to
+        // showing the content that would be written.
+      })
+  },
+  { immediate: true }
+)
 
 const parseError = ref('')
 
