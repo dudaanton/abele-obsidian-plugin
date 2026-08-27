@@ -36,6 +36,8 @@ export interface AbeleSettings {
   timeTrackAllNotes?: boolean // Show timer button for all notes
   // Links
   links?: LinkDefinition[]
+  // Buttons added to the header of notes of a given type
+  headerButtons?: HeaderButtonDefinition[]
   // Other
   snippetsFolder?: string
   fullWidthSidebars?: boolean
@@ -48,6 +50,26 @@ export interface LinkDefinition {
   scriptName: string
   commandId: string
   waitForSync: boolean
+}
+
+/**
+ * A button placed in the header of every note of a given type, running a script.
+ *
+ * `params` holds a value per parameter the script declares, and each value is a template:
+ * `{{title}}`, `{{path}}` and any frontmatter field of the note are substituted before the
+ * script runs, which is what lets one button mean something different on each note.
+ */
+export interface HeaderButtonDefinition {
+  id: string
+  /** Shown on the button, beside its icon. */
+  name: string
+  /** A lucide icon name, as everywhere else in the header. */
+  icon: string
+  /** Note types this button belongs to, matched against the note's `type` frontmatter. */
+  noteTypes: string[]
+  scriptName: string
+  /** Parameter values, by parameter name. Empty means the script's own default. */
+  params: Record<string, string>
 }
 
 export const DEFAULT_SETTINGS: AbeleSettings = {
@@ -74,6 +96,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   timeTrackableNoteTypes: ['task'],
   timeTrackAllNotes: false,
   links: [],
+  headerButtons: [],
   snippetsFolder: '',
   fullWidthSidebars: false,
 }
@@ -106,6 +129,7 @@ export class AbeleConfig {
   public timeTrackableNoteTypes: string[]
   public timeTrackAllNotes: boolean
   public links: LinkDefinition[]
+  public headerButtons: HeaderButtonDefinition[]
   public snippetsFolder: string
   public fullWidthSidebars: boolean
 
@@ -295,6 +319,14 @@ export class AbeleConfig {
       commandId: l.commandId || '',
       waitForSync: l.waitForSync ?? true,
     }))
+    // Older settings files have no buttons at all, and a button saved before a field existed
+    // is missing it rather than holding a default — so each one is filled in on the way in.
+    this.headerButtons = (settings?.headerButtons || []).map((b) => ({
+      ...b,
+      icon: b.icon || 'play',
+      noteTypes: b.noteTypes || [],
+      params: b.params || {},
+    }))
     this.snippetsFolder = settings?.snippetsFolder ?? DEFAULT_SETTINGS.snippetsFolder
     this.fullWidthSidebars = settings?.fullWidthSidebars ?? DEFAULT_SETTINGS.fullWidthSidebars
   }
@@ -324,6 +356,7 @@ export class AbeleConfig {
       timeTrackableNoteTypes: [...this.timeTrackableNoteTypes],
       timeTrackAllNotes: this.timeTrackAllNotes,
       links: [...this.links],
+      headerButtons: [...this.headerButtons],
       snippetsFolder: this.snippetsFolder,
       fullWidthSidebars: this.fullWidthSidebars,
     }

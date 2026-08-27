@@ -31,7 +31,17 @@ export class TFolder extends TAbstractFile {
 }
 
 export class Notice {
-  constructor(public message: string) {}
+  /**
+   * Every notice raised, in order. A notice is often the whole of what a code path does for
+   * the user — "script not found" changes nothing else — so tests need to see them.
+   * Clear it in a test's setup: nothing else does.
+   */
+  static readonly shown: string[] = []
+
+  constructor(public message: string) {
+    Notice.shown.push(message)
+  }
+
   hide(): void {}
 }
 

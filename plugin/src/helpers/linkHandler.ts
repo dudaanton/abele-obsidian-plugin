@@ -1,6 +1,6 @@
 import { App, Notice } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { ScriptService } from '@/scripting/ScriptService'
+import { runScriptByName } from '@/scripting/runScript'
 
 /**
  * Handle obsidian://abele?name=xxx&param1=val1&param2=val2
@@ -35,31 +35,12 @@ export async function handleLinkAction(app: App, params: Record<string, string>)
     return
   }
 
-  // type === 'script'
-  const service = ScriptService.getInstance()
-  const script = service.getAll().find((s) => s.meta.name === link.scriptName)
-  if (!script) {
-    new Notice(`Abele link: script "${link.scriptName}" not found`)
-    return
-  }
-
-  // Apply param defaults, then override with URL query params
-  const scriptParams: Record<string, unknown> = {}
-  for (const p of script.meta.params) {
-    if (p.default !== undefined) scriptParams[p.name] = p.default
-  }
+  // type === 'script'. `name` and `vault` address the link itself rather than the script, so
+  // they are not passed on; everything else in the URL is a parameter.
+  const supplied: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(params)) {
-    if (key !== 'name' && key !== 'vault') scriptParams[key] = value
+    if (key !== 'name' && key !== 'vault') supplied[key] = value
   }
 
-  try {
-    const result = await service.execute(script.path, scriptParams)
-    if (result?.trim()) {
-      new Notice(result.length > 500 ? result.slice(0, 500) + '...' : result, 10000)
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
-    new Notice(`Abele link error: ${msg}`, 10000)
-    console.error(`[Abele Link] Error executing ${link.scriptName}:`, err)
-  }
+  await runScriptByName(link.scriptName, supplied, 'Abele link')
 }

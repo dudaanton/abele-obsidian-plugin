@@ -42,6 +42,16 @@
       <Icon icon="chevron-last" :disabled="doesNextJournalNoteExist" @click="goToNextJournalNote" />
     </div>
   </div>
+  <div v-if="scriptButtons.length" class="abele-header-view">
+    <Icon
+      v-for="button in scriptButtons"
+      :key="button.id"
+      :icon="button.icon || 'play'"
+      :text-right="button.name"
+      :tooltip="`Run ${button.scriptName}`"
+      @click="runButton(button)"
+    />
+  </div>
   <div v-if="showTimerButton" class="abele-header-view">
     <Icon
       :icon="isTimerActiveForNote ? 'timer-off' : 'timer'"
@@ -61,6 +71,9 @@ import { Choice, useMenu } from '@/composables/useMenu'
 import { useTimerButton } from '@/composables/useTimerButton'
 import { createTransaction } from '@/commands/createTransaction'
 import { getFrontmatterFromCache } from '@/helpers/notesUtils'
+import { buttonParams, buttonsForType, noteVariables } from '@/helpers/headerButtons'
+import { runScriptByName } from '@/scripting/runScript'
+import type { HeaderButtonDefinition } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { BalanceIndex } from '@/entities/BalanceIndex'
 import { AccountsList } from '@/entities/AccountsList'
@@ -120,6 +133,23 @@ const accountBalances = computed(() => {
     formatted: fmt(bi.getBalanceAtDateByCurrency(props.header.filePath, dayjs(), cur)),
   }))
 })
+
+/**
+ * Buttons configured for this note's type.
+ *
+ * `header.type` is read from frontmatter when the header loads, and the header reloads when
+ * the file changes — so a note that gains or loses its `type` gains or loses these with it.
+ */
+const scriptButtons = computed(() =>
+  buttonsForType(AbeleConfig.getInstance().headerButtons, props.header.type)
+)
+
+const runButton = async (button: HeaderButtonDefinition) => {
+  // The note is read at the moment the button is pressed rather than when it was drawn: what
+  // the parameters describe is the note as it stands now.
+  const params = buttonParams(button, noteVariables(props.header.filePath))
+  await runScriptByName(button.scriptName, params)
+}
 
 const addNextTransaction = async () => {
   const fm = getFrontmatterFromCache(props.header.filePath)
