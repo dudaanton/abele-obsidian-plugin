@@ -10,6 +10,7 @@
  * messages the loop is handed and when, so the fake is written as a script of iterations.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { ChatSession } from '@/ai/ChatSession'
 import { ChatService } from '@/ai/ChatService'
 import { AgentLoop } from '@/ai/client/AgentLoop'
@@ -146,6 +147,120 @@ describe('sending while the agent is working', () => {
 
     expect(turns).toEqual(['summarise these notes', 'one more thing'])
     expect(session.queuedMessages.value).toEqual([])
+  })
+})
+
+describe('sending while the chat is being compacted', () => {
+  /** The turn each call to the loop was started for. */
+  let turns: string[]
+
+  /**
+   * Compaction as it actually runs: the turn that starts it does not wait for it, so by the
+   * time the person types into it that turn is over and there is no loop to hand it to. Only
+   * the first turn crosses the threshold, as only one of them does in a real chat.
+   */
+  function compactionThatOutlivesTheTurn() {
+    const summarizer = (
+      session as unknown as { summarizer: { autoCompactIfNeeded: () => unknown } }
+    ).summarizer
+    let due = true
+    vi.spyOn(summarizer, 'autoCompactIfNeeded').mockImplementation(async () => {
+      if (!due) return
+      due = false
+      session.isCompacting.value = true
+    })
+  }
+
+  /** Compaction finishing, the watch that reacts to it running, and the turns it starts. */
+  async function compactionEnds() {
+    session.isCompacting.value = false
+    await nextTick()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+
+  beforeEach(() => {
+    turns = []
+    vi.spyOn(AgentLoop.prototype, 'run').mockImplementation(async (opts) => {
+      turns.push(String(opts.messages[opts.messages.length - 1].content))
+      return { messages: [...opts.messages, reply('done')] }
+    })
+    compactionThatOutlivesTheTurn()
+  })
+
+  it('waits rather than being sent into a chat that is busy summarising itself', async () => {
+    await session.sendMessage('summarise these notes')
+
+    await session.sendMessage('and also check the dates')
+
+    expect(session.queuedMessages.value.map((q) => q.content)).toEqual(['and also check the dates'])
+    expect(turns).toEqual(['summarise these notes'])
+  })
+
+  it('gets its turn when the compaction ends, rather than sitting there until the next message', async () => {
+    await session.sendMessage('summarise these notes')
+    await session.sendMessage('and also check the dates')
+
+    await compactionEnds()
+
+    expect(turns).toEqual(['summarise these notes', 'and also check the dates'])
+    expect(session.queuedMessages.value).toEqual([])
+  })
+
+  it('takes everything queued, in the order it was typed', async () => {
+    await session.sendMessage('summarise these notes')
+    await session.sendMessage('first correction')
+    await session.sendMessage('second correction')
+
+    await compactionEnds()
+
+    expect(turns).toEqual(['summarise these notes', 'first correction', 'second correction'])
+  })
+
+  it('is not sent into a compaction that began before the turn could drain it', async () => {
+    // Typed while the loop was running, so it is still queued when the turn ends — and by
+    // then compaction has begun, since it starts running the moment it is called.
+    vi.spyOn(AgentLoop.prototype, 'run').mockImplementation(async (opts) => {
+      turns.push(String(opts.messages[opts.messages.length - 1].content))
+      if (turns.length === 1) {
+        session.isStreaming.value = true
+        await session.sendMessage('and also check the dates')
+        await session.sendMessage('and the totals')
+        session.isStreaming.value = false
+      }
+      return { messages: [...opts.messages, reply('done')] }
+    })
+
+    await session.sendMessage('summarise these notes')
+
+    expect(turns).toEqual(['summarise these notes'])
+    expect(session.isCompacting.value).toBe(true)
+    // Untouched, and in the order they were typed: taking one out only to put it back would
+    // send it to the end of the queue, behind the message that came after it.
+    expect(session.queuedMessages.value.map((q) => q.content)).toEqual([
+      'and also check the dates',
+      'and the totals',
+    ])
+  })
+
+  it('is left alone while a tool is waiting to be approved', async () => {
+    await session.sendMessage('summarise these notes')
+    await session.sendMessage('and also check the dates')
+    // The loop is paused on a tool call: it resumes when the person answers, and takes the
+    // queue with it — starting a turn now would send the message into the middle of that.
+    session.pendingToolCalls.value = [{ id: 't1', name: 'write' }] as never
+
+    await compactionEnds()
+
+    expect(session.queuedMessages.value.map((q) => q.content)).toEqual(['and also check the dates'])
+  })
+
+  it('is emptied by a compaction that was started by hand, not only an automatic one', async () => {
+    session.isCompacting.value = true
+    await session.sendMessage('and also check the dates')
+
+    await compactionEnds()
+
+    expect(turns).toEqual(['and also check the dates'])
   })
 })
 

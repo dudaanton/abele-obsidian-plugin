@@ -198,7 +198,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   /** Set while the resolver is being rewritten from the agent, so the watcher stays quiet. */
   private syncingScope = false
-  private readonly scopeEffects: EffectScope
+  private readonly effects: EffectScope
 
   /** A chat a person talks to, or a run some agent was handed by another. */
   public readonly kind: SessionKind
@@ -223,8 +223,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.summarizer = new ChatSummarizer(this)
     this.interceptor = new ChatInterceptor(this)
     this.agentId.value = options.agentId || AgentRegistry.getInstance().defaultAgent()?.id || ''
-    this.scopeEffects = effectScope(true)
-    this.scopeEffects.run(() => this.watchScope())
+    this.effects = effectScope(true)
+    this.effects.run(() => {
+      this.watchScope()
+      this.watchCompaction()
+    })
     this.syncScopeFromAgent()
   }
 
@@ -308,6 +311,20 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       },
       { deep: true, flush: 'sync' }
     )
+  }
+
+  /**
+   * Gives what was typed during a compaction a turn once it is over.
+   *
+   * Compaction is the other thing that makes a chat busy, and unlike a turn it has no loop to
+   * hand a queued message to. It also runs detached from the turn that starts it, so that turn
+   * has already drained the queue and finished by the time anything is typed into it — which
+   * left such a message waiting for the next one sent by hand. Watching the flag rather than
+   * draining where compaction is started covers the manual one too.
+   */
+  private watchCompaction(): void {
+    // Both edges: `drainQueue` is the one that knows a chat still compacting is not ready.
+    watch(this.isCompacting, () => void this.drainQueue())
   }
 
   private syncScopeFromAgent(): void {
@@ -1035,14 +1052,27 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       })
     }
 
-    // Typed after the loop's last iteration, so nothing was left running to inject it: it
-    // gets a turn of its own. Waiting on approval is not the moment — the loop resumes on
-    // its own once the tool is answered, and takes the queue with it.
-    if (this.queuedMessages.value.length && !this.pendingToolCalls.value.length) {
-      const [next, ...rest] = this.queuedMessages.value
-      this.queuedMessages.value = rest
-      await this.sendMessage(next.content, next.attachments)
-    }
+    await this.drainQueue()
+  }
+
+  /**
+   * Starts a turn for the next queued message, when nothing is running to take it.
+   *
+   * Most of what is queued reaches the model through `beforeIteration`, handed to the loop
+   * that is already running. What is left was typed when there was no such loop — after its
+   * last iteration, or while the chat was being compacted — so it needs a turn of its own.
+   * Waiting on approval is not the moment: the loop resumes once the tool is answered, and
+   * takes the queue with it.
+   */
+  private async drainQueue(): Promise<void> {
+    if (this.isStreaming.value || this.isCompacting.value) return
+    if (this.pendingToolCalls.value.length) return
+
+    const [next, ...rest] = this.queuedMessages.value
+    if (!next) return
+
+    this.queuedMessages.value = rest
+    await this.sendMessage(next.content, next.attachments)
   }
 
   /**
@@ -1709,6 +1739,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         return
       })
     }
+
+    await this.drainQueue()
   }
 
   getDraftMessage(): ChatMessage | null {
@@ -1767,7 +1799,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.allMessages.value = []
     this.pendingToolCalls.value = []
     this.currentChatFile.value = null
-    this.scopeEffects.stop()
+    this.effects.stop()
     this.scopeResolver.destroy()
   }
 }
