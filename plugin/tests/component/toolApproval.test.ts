@@ -1,5 +1,6 @@
 /**
- * What an approval prompt shows before a tool is allowed to run.
+ * What an approval prompt shows before a tool is allowed to run, and what it offers to stop
+ * asking about.
  *
  * `write` replaces a file whole and refuses a path that names no file — so what it is really
  * asking approval for is the difference between what the file holds and what it would hold.
@@ -9,11 +10,12 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 import AiToolApproval from '@/components/AiToolApproval.vue'
 import Diff from '@/components/Diff.vue'
 import { ChatService } from '@/ai/ChatService'
-import type { ChatMessage } from '@/ai/types'
+import Button from '@/components/obsidian/Button.vue'
+import type { ChatMessage, PermissionMode } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 
@@ -118,5 +120,67 @@ describe('an edit', () => {
     const diff = wrapper.findComponent(Diff)
     expect(diff.props('textLeft')).toBe('before')
     expect(diff.props('textRight')).toBe('after')
+  })
+})
+
+/**
+ * A session standing in for the chat behind the prompt: what mode it is in, and what happens
+ * when a call is approved.
+ */
+function sessionIn(mode: PermissionMode) {
+  const permissionMode = ref<PermissionMode>(mode)
+  const approvals: string[] = []
+  vi.spyOn(ChatService.getInstance(), 'activeSession', 'get').mockReturnValue({
+    value: {
+      permissionMode,
+      getToolMode: () => 'off',
+      toolModes: ref({}),
+      approveToolCall: () => approvals.push('approved'),
+      rejectToolCall: () => approvals.push('rejected'),
+    },
+  } as never)
+  return { permissionMode, approvals }
+}
+
+const buttonSaying = (wrapper: ReturnType<typeof approval>, text: string) =>
+  wrapper.findAllComponents(Button).find((b) => b.props('text') === text)
+
+describe('being offered to stop confirming every write', () => {
+  it('is offered on a write, while each one is still being confirmed', () => {
+    sessionIn('confirm-all')
+
+    const wrapper = approval('create', { path: 'Notes/New.md', content: 'x' })
+
+    expect(buttonSaying(wrapper, 'Approve all')).toBeDefined()
+  })
+
+  it('turns on the mode and approves the call that asked', () => {
+    const { permissionMode, approvals } = sessionIn('confirm-all')
+    const wrapper = approval('write', { path: EXISTING, content: 'x' })
+
+    buttonSaying(wrapper, 'Approve all')?.vm.$emit('click')
+
+    expect(permissionMode.value).toBe('allow-edit')
+    expect(approvals).toEqual(['approved'])
+  })
+
+  it('is not offered again once writes already go through', () => {
+    sessionIn('allow-edit')
+
+    const wrapper = approval('write', { path: EXISTING, content: 'x' })
+
+    expect(buttonSaying(wrapper, 'Approve all')).toBeUndefined()
+  })
+
+  it('is not offered for what the mode would not cover — deleting, moving, running code', () => {
+    sessionIn('confirm-all')
+
+    for (const [tool, params] of [
+      ['rm', { path: EXISTING }],
+      ['mv', { from: EXISTING, to: 'Notes/Moved.md' }],
+      ['eval_js', { code: 'x' }],
+    ] as const) {
+      expect(buttonSaying(approval(tool, params), 'Approve all')).toBeUndefined()
+    }
   })
 })

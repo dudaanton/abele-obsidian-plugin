@@ -21,7 +21,7 @@ import { ChatSummarizer, type SummarizerHost } from './ChatSummarizer'
 import { ChatInterceptor, type InterceptorHost } from './ChatInterceptor'
 import { AgentRegistry } from './agents/AgentRegistry'
 import type { AgentDefinition, OverrideKey, ScopeEntry, SessionOverrides } from './agents/types'
-import { ChatMessage, ChatMetadata, CORE_TOOLS, migrateOldPermissions } from './types'
+import { ChatMessage, ChatMetadata, CORE_TOOLS, WRITE_TOOLS, migrateOldPermissions } from './types'
 import type { ToolMode, PermissionMode, AiSettings, SubAgentRunRef, QueuedMessage } from './types'
 import type { UserContentPart } from './client'
 import { createAgentTools } from './tools'
@@ -83,7 +83,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private static readonly FALLBACK_TITLE_LENGTH = 50
 
   private static readonly READ_TOOLS = ['read', 'ls', 'find', 'workspace', 'skill']
-  private static readonly EDIT_TOOLS = ['edit', 'create', 'replace', 'write']
+  private static readonly EDIT_TOOLS = WRITE_TOOLS
   private static readonly SCOPED_TOOLS = [
     'read',
     'edit',
@@ -545,11 +545,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    * case and stop asking in the second.
    */
   private refusalReason(toolName: string, args?: Record<string, unknown>): string {
-    if (args && ChatSession.SCOPED_TOOLS.includes(toolName)) {
-      const path = (args.path || args.from) as string
-      if (path && !this.scopeResolver.isInScope(path)) {
-        return `Access denied: ${path} is not in this run's workspace scope`
-      }
+    const denied = this.outOfScopePath(toolName, args)
+    if (denied) {
+      return `Access denied: ${denied} is not in this run's workspace scope`
     }
 
     if (ChatSession.EDIT_TOOLS.includes(toolName)) {
@@ -559,16 +557,18 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     return `${toolName} needs approval, which a delegated run cannot ask for`
   }
 
+  /** The path a call reads or changes, when the session's scope does not cover it. */
+  private outOfScopePath(toolName: string, args?: Record<string, unknown>): string | null {
+    if (!args || !ChatSession.SCOPED_TOOLS.includes(toolName)) return null
+    const path = (args.path || args.from) as string
+    return path && !this.scopeResolver.isInScope(path) ? path : null
+  }
+
   needsApproval(toolName: string, args?: Record<string, unknown>): boolean {
     const mode = this.permissionMode.value
 
-    // Out-of-scope file access always requires approval
-    if (args && ChatSession.SCOPED_TOOLS.includes(toolName)) {
-      const path = (args.path || args.from) as string
-      if (path && !this.scopeResolver.isInScope(path)) {
-        return true
-      }
-    }
+    // Out-of-scope file access always requires approval, whatever the mode says about writes.
+    if (this.outOfScopePath(toolName, args)) return true
 
     // Core read tools: never need approval
     if (ChatSession.READ_TOOLS.includes(toolName)) return false

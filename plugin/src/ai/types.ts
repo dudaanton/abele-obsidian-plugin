@@ -152,6 +152,14 @@ export interface AiSettings {
   imageGeneration?: any
 }
 
+/**
+ * Tools that write to a file the vault already holds, or make a new one.
+ *
+ * These are what `allow-edit` stops asking about, which is why the list is shared: the
+ * approval prompt offers that mode only for a call the mode would actually cover.
+ */
+export const WRITE_TOOLS = ['edit', 'create', 'replace', 'write']
+
 /** Tools always sent to agent, governed by permissionMode */
 export const CORE_TOOLS = new Set([
   'read',

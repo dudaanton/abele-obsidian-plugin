@@ -80,6 +80,12 @@
 
     <div class="abele-tool-approval__actions">
       <Button text="Approve" @click="approve" />
+      <Button
+        v-if="canApproveAllWrites"
+        text="Approve all"
+        tooltip="Stop asking about writes inside the scope. Anything outside it still asks."
+        @click="approveAllWrites"
+      />
       <Button v-if="canAllowAll" text="Allow all" @click="allowAll" />
       <Button text="Edit" @click="toggleEdit" />
       <Button text="Reject" @click="reject" />
@@ -96,6 +102,7 @@ import Diff from './Diff.vue'
 import { ChatService } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TFile } from 'obsidian'
+import { WRITE_TOOLS } from '@/ai/types'
 import type { ChatMessage } from '@/ai/types'
 
 const props = defineProps<{
@@ -176,6 +183,27 @@ const approve = () => {
   } else {
     session.value?.approveToolCall()
   }
+}
+
+/**
+ * Whether this call is one that "approve all" would cover.
+ *
+ * The mode it turns on stops asking about writes and nothing else, so it is offered only for
+ * a write, and only while the chat is still confirming each one. Deleting, moving and copying
+ * keep asking under it, and so does any path outside the scope.
+ */
+const canApproveAllWrites = computed(() => {
+  const s = session.value
+  const name = props.message.toolName
+  if (!s || !name || !WRITE_TOOLS.includes(name)) return false
+  return s.permissionMode.value === 'confirm-all'
+})
+
+const approveAllWrites = () => {
+  const s = session.value
+  if (!s) return
+  s.permissionMode.value = 'allow-edit'
+  s.approveToolCall()
 }
 
 const canAllowAll = computed(() => {
