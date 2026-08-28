@@ -7,6 +7,11 @@
  * closes its list on the input's `blur`, and taking focus away on `touchstart` would remove
  * the list before the tap could choose from it.
  *
+ * The plugin also puts a class of its own on `<body>`, which is an ancestor of every field
+ * in the app. Reading ownership from an ancestor's class therefore has to stop short of it,
+ * or every field in Obsidian counts as the plugin's — which is what happened, and what broke
+ * the toolbar above the phone's keyboard.
+ *
  * The listener itself is registered here too. The decision being right is worth nothing if
  * it is never consulted, and `touchstart` is the part that keeps a desktop out of this
  * entirely — a mouse never raises it.
@@ -53,8 +58,30 @@ function screen(): {
   return { field, blank, otherField, suggestion, foreignField }
 }
 
+/** Obsidian's own editor, with the toolbar a phone shows above the keyboard. */
+function noteBeingEdited(): { editor: HTMLElement; toolbarButton: HTMLElement } {
+  const view = document.createElement('div')
+  view.className = 'markdown-source-view'
+  const editor = document.createElement('div')
+  editor.className = 'cm-content'
+  editor.setAttribute('contenteditable', 'true')
+  view.appendChild(editor)
+  document.body.appendChild(view)
+
+  const toolbar = document.createElement('div')
+  toolbar.className = 'mobile-toolbar'
+  const toolbarButton = document.createElement('div')
+  toolbarButton.className = 'mobile-toolbar-option'
+  toolbar.appendChild(toolbarButton)
+  document.body.appendChild(toolbar)
+
+  return { editor, toolbarButton }
+}
+
 beforeEach(() => {
   document.body.replaceChildren()
+  // What the plugin actually leaves on the body while it is loaded.
+  document.body.className = 'abele-full-width-sidebars'
 })
 
 describe('deciding whether a tap takes the focus away', () => {
@@ -156,5 +183,48 @@ describe('the listener', () => {
     registered[0].handler({ target: null } as unknown as Event)
 
     expect(blur).not.toHaveBeenCalled()
+  })
+})
+
+describe('a note being written in Obsidian itself', () => {
+  it('keeps its focus when the toolbar above the keyboard is pressed', () => {
+    const { editor, toolbarButton } = noteBeingEdited()
+
+    expect(releasesFocus(toolbarButton, editor)).toBe(false)
+  })
+
+  it("keeps its focus wherever else the tap lands, because the field is not the plugin's", () => {
+    const { editor } = noteBeingEdited()
+    const elsewhere = document.createElement('div')
+    document.body.appendChild(elsewhere)
+
+    expect(releasesFocus(elsewhere, editor)).toBe(false)
+  })
+
+  it("is not made the plugin's by the class the plugin leaves on the body", () => {
+    const { editor } = noteBeingEdited()
+    document.body.className = ''
+    const elsewhere = document.createElement('div')
+    document.body.appendChild(elsewhere)
+    const withoutBodyClass = releasesFocus(elsewhere, editor)
+
+    document.body.className = 'abele-full-width-sidebars'
+
+    expect(releasesFocus(elsewhere, editor)).toBe(withoutBodyClass)
+  })
+})
+
+describe("the plugin's own field, with that same class on the body", () => {
+  it('still gives up its focus to a tap on empty space', () => {
+    const { field, blank } = screen()
+
+    expect(releasesFocus(blank, field)).toBe(true)
+  })
+
+  it('keeps it when the tap is on the toolbar above the keyboard, which acts on the editor', () => {
+    const { field } = screen()
+    const { toolbarButton } = noteBeingEdited()
+
+    expect(releasesFocus(toolbarButton, field)).toBe(false)
   })
 })

@@ -25,10 +25,16 @@ const FIELD = 'input, textarea, select, [contenteditable="true"]'
  * away before the press could choose from it. Obsidian defends the same boundary from its
  * side, by cancelling the default action of a press on a suggestion.
  */
-const KEEPS_FOCUS = '.suggestion-container, .menu, .prompt'
+const KEEPS_FOCUS = '.suggestion-container, .menu, .prompt, .mobile-toolbar'
 
-/** Everything this plugin renders is under a class of its own. Nothing of Obsidian's is. */
-const OURS = '[class*="abele-"]'
+/**
+ * Everything this plugin renders is under a class of its own — but so, on a phone, is the
+ * whole app: the plugin puts `abele-full-width-sidebars` on `<body>`, which is an ancestor of
+ * every field in Obsidian. Matching it made every field in the app look like one of ours, so
+ * typing in a note and reaching for the toolbar above the keyboard released the editor's
+ * focus and the keyboard went down with it, taking the tap with it.
+ */
+const OURS = '[class*="abele-"]:not(body):not(html)'
 
 /**
  * Whether a touch landing on `target` should take focus away from `active`.
