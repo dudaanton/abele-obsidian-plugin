@@ -124,6 +124,19 @@ describe('a note of a configured type', () => {
     expect(execute.mock.calls[0][1].query).toBe('The Third Man (watched)')
   })
 
+  it('keeps its buttons together rather than spread across the note', async () => {
+    // They were laid out like the journal row, whose three groups belong at the edges and the
+    // middle. Two script buttons pushed that far apart read as two unrelated things.
+    configureButtons([{ name: 'Fetch details' }, { name: 'Refresh poster' }])
+
+    const wrapper = mount(HeaderView, { props: { header: await headerFor(FILM) } })
+
+    const row = wrapper
+      .findAll('.abele-header-view')
+      .find((el) => el.text().includes('Fetch details'))!
+    expect(row.classes()).not.toContain('abele-header-view--spread')
+  })
+
   it('shows every button configured for that type', async () => {
     configureButtons([{ name: 'Fetch details' }, { name: 'Refresh poster' }])
 

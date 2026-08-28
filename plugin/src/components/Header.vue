@@ -8,7 +8,7 @@
   <div v-else-if="header.type === 'transaction'" class="abele-header-view">
     <Icon icon="copy-plus" text-right="Add next" @click="addNextTransaction" />
   </div>
-  <div v-else-if="header.journal" class="abele-header-view">
+  <div v-else-if="header.journal" class="abele-header-view abele-header-view--spread">
     <div class="abele-header-view__icons-set">
       <Icon
         icon="chevron-first"
@@ -329,7 +329,6 @@ onMounted(() => {
 .abele-header-view {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
   gap: var(--size-4-2);
   margin-bottom: var(--p-spacing);
   padding-bottom: var(--size-4-2);
@@ -355,6 +354,16 @@ onMounted(() => {
 
 .abele-header-view--column {
   flex-direction: column;
+}
+
+/**
+ * Only the journal row is a spread: it is three groups — back, the journal's name, forward —
+ * that belong at the left edge, the middle and the right edge. Every other row is a run of
+ * buttons, and pushing those apart across the width of a note leaves each one somewhere
+ * different depending on how many there are.
+ */
+.abele-header-view--spread {
+  justify-content: space-between;
 }
 
 .abele-header-view__icons-set {
