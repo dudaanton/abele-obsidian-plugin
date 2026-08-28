@@ -120,15 +120,27 @@ function onCancel() {
  * Text a script wants read, rather than answered.
  *
  * Selectable on purpose: Obsidian sets `user-select: none` across its interface, so a block
- * meant to be copied out of has to say otherwise. Bounded and scrollable, because a script
- * can produce a document and the modal should not grow past the window.
+ * meant to be copied out of has to say otherwise.
+ *
+ * It does not scroll: Obsidian's own modal is already capped at 85vh and scrolls what it
+ * holds, so a second bounded box inside it gave a long document two scrollbars side by side
+ * and stopped the modal short of the height it was allowed. One box scrolls, and it is the
+ * one with the close button on it.
  */
 .abele-script-form__markdown {
   user-select: text;
   -webkit-user-select: text;
-  max-height: 60vh;
-  overflow-y: auto;
   overflow-wrap: break-word;
+
+  // `overflow-wrap` above breaks a long line of code where it has to, so the only thing left
+  // that cannot be made narrower is a table. Without this the modal is what scrolls sideways,
+  // and every line of prose in it travels with the one wide table.
+  table {
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    overflow-x: auto;
+  }
 }
 
 .abele-script-form__required {
