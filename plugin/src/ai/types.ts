@@ -1,4 +1,16 @@
+import type { TFile } from 'obsidian'
 import type { AgentDefinition, SessionOverrides } from './agents/types'
+
+/**
+ * What is typed into the chat but not sent yet.
+ *
+ * Each tab keeps its own: switching to another conversation to look something up is not a
+ * decision to throw away the message being composed in this one.
+ */
+export interface ChatDraft {
+  text: string
+  attachments: TFile[]
+}
 
 export interface AiProvider {
   id: string

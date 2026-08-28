@@ -210,6 +210,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
 import type { TemplateVariable } from '@/templates/TemplateParser'
 import { importExternalFile } from '@/ai/attachments'
+import type { ChatDraft } from '@/ai/types'
 import { discoverSkills } from '@/ai/tools/SkillTool'
 import { getChildren } from '@/ai/chatTree'
 
@@ -573,15 +574,35 @@ const scrollOnUserSend = () => {
 
 watch([messages, streamingContent, streamingThinking], doScroll)
 
+/**
+ * What was typed in each tab and not sent.
+ *
+ * The input is one component shared by every tab, so leaving it alone would show the message
+ * being composed in one conversation while another is open. It used to be emptied instead,
+ * which threw the message away for anyone who switched tabs to check something.
+ */
+const drafts = new Map<string, ChatDraft>()
+const NO_DRAFT: ChatDraft = { text: '', attachments: [] }
+
 // Reset scroll when switching tabs
 watch(
   () => chatService.activeTabId.value,
-  () => {
+  (tabId, previousTabId) => {
     shouldAutoScroll = true
     // Another conversation entirely: it starts at its end, like this one did.
     resetWindow()
     void nextTick(doScroll)
-    chatInput.value?.setText('')
+
+    // The input still holds the tab being left — the DOM has not been updated yet.
+    if (previousTabId) drafts.set(previousTabId, chatInput.value?.takeDraft() ?? NO_DRAFT)
+    for (const id of drafts.keys()) {
+      if (!chatService.tabOrder.value.includes(id)) drafts.delete(id)
+    }
+
+    // On a tab held by a delegated run the input is not mounted at all, so the one being
+    // returned to is put back a tick later, once there is an input to put it in.
+    const draft = tabId ? drafts.get(tabId) : undefined
+    void nextTick(() => chatInput.value?.putDraft(draft ?? NO_DRAFT))
   }
 )
 

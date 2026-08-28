@@ -84,6 +84,7 @@ import Icon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { pickVaultFile } from '@/helpers/suggesters/VaultFilePicker'
 import { importExternalFile, getAttachmentIcon, ALLOWED_ACCEPT } from '@/ai/attachments'
+import type { ChatDraft } from '@/ai/types'
 
 const props = defineProps<{
   isStreaming: boolean
@@ -291,6 +292,15 @@ const setText = (value: string) => {
   nextTick(autoResize)
 }
 
+/** Hand the unsent input to whoever is keeping it while another tab is open. */
+const takeDraft = (): ChatDraft => ({ text: text.value, attachments: attachments.value })
+
+const putDraft = (draft: ChatDraft) => {
+  text.value = draft.text
+  attachments.value = draft.attachments
+  nextTick(autoResize)
+}
+
 const addAttachment = (file: TFile) => {
   if (!attachments.value.some((a) => a.path === file.path)) {
     attachments.value = [...attachments.value, file]
@@ -302,7 +312,7 @@ function focus() {
   inputEl.value?.focus()
 }
 
-defineExpose({ setText, addAttachment, focus })
+defineExpose({ setText, addAttachment, focus, takeDraft, putDraft })
 
 const onKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Enter' && e.shiftKey) {
