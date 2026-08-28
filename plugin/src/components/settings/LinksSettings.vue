@@ -27,10 +27,10 @@
             name="Script"
             desc="Script to execute when the link is opened."
           >
-            <Dropdown
-              :model-value="link.scriptName"
-              :options="scriptOptions"
-              @update:model-value="updateField(idx, 'scriptName', $event)"
+            <Button
+              :text="link.scriptName || 'Choose script...'"
+              tooltip="Search the scripts for the one this link runs"
+              @click="chooseScript(idx)"
             />
           </Setting>
           <Setting
@@ -38,10 +38,10 @@
             name="Command"
             desc="Obsidian command to execute when the link is opened."
           >
-            <Dropdown
-              :model-value="link.commandId"
-              :options="commandOptions"
-              @update:model-value="updateField(idx, 'commandId', $event)"
+            <Button
+              :text="commandLabel(link.commandId)"
+              tooltip="Search the commands for the one this link runs"
+              @click="chooseCommand(idx)"
             />
           </Setting>
           <Setting name="Wait for sync" desc="Wait for Obsidian Sync to finish before executing.">
@@ -63,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { debounce, Notice } from 'obsidian'
 import { nanoid } from 'nanoid'
 import Setting from '../obsidian/Setting.vue'
@@ -74,6 +74,7 @@ import Icon from '../obsidian/Icon.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import { AbeleConfig, type LinkDefinition } from '@/services/AbeleConfig'
 import { ScriptService } from '@/scripting/ScriptService'
+import { pickScript, pickCommand, listCommands } from '@/helpers/suggesters/RunnablePicker'
 import { GlobalStore } from '@/stores/GlobalStore'
 
 const config = AbeleConfig.getInstance()
@@ -86,23 +87,21 @@ const typeOptions = [
   { value: 'command', display: 'Command' },
 ]
 
-const scriptOptions = computed(() => {
-  const scripts = ScriptService.getInstance().getAll()
-  return [
-    { value: '', display: '(select script)' },
-    ...scripts.map((s) => ({ value: s.meta.name, display: s.meta.name })),
-  ]
-})
+/** A link stores a command's id; what a person recognises is its name. */
+const commandLabel = (id: string): string => {
+  if (!id) return 'Choose command...'
+  return listCommands(app).find((command) => command.id === id)?.name ?? id
+}
 
-const commandOptions = computed(() => {
-  const commands = (app as any).commands.listCommands() as { id: string; name: string }[]
-  return [
-    { value: '', display: '(select command)' },
-    ...commands
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((c) => ({ value: c.id, display: c.name })),
-  ]
-})
+const chooseScript = async (idx: number) => {
+  const script = await pickScript(app, ScriptService.getInstance().getAll())
+  if (script) updateField(idx, 'scriptName', script.meta.name)
+}
+
+const chooseCommand = async (idx: number) => {
+  const command = await pickCommand(app)
+  if (command) updateField(idx, 'commandId', command.id)
+}
 
 const save = debounce(async () => {
   config.links = JSON.parse(JSON.stringify(links.value))

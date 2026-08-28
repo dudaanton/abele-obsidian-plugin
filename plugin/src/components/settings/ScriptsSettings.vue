@@ -58,10 +58,10 @@
                 />
               </Setting>
               <Setting name="Script" desc="Script the button runs.">
-                <Dropdown
-                  :model-value="button.scriptName"
-                  :options="scriptOptions"
-                  @update:model-value="updateField(idx, 'scriptName', $event)"
+                <Button
+                  :text="button.scriptName || 'Choose script...'"
+                  tooltip="Search the scripts for the one this button runs"
+                  @click="chooseScript(idx)"
                 />
               </Setting>
 
@@ -102,13 +102,14 @@ import Section from '../obsidian/Section.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import Search from '../obsidian/Search.vue'
 import Input from '../obsidian/Input.vue'
-import Dropdown from '../obsidian/Dropdown.vue'
 import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
 import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
 import { AbeleConfig, type HeaderButtonDefinition } from '@/services/AbeleConfig'
 import { ScriptService } from '@/scripting/ScriptService'
 import { findScriptByName } from '@/scripting/runScript'
+import { pickScript } from '@/helpers/suggesters/RunnablePicker'
+import { GlobalStore } from '@/stores/GlobalStore'
 import type { ScriptParam } from '@/scripting/types'
 
 const config = AbeleConfig.getInstance()
@@ -159,11 +160,6 @@ const buttons = ref<HeaderButtonDefinition[]>(
   JSON.parse(JSON.stringify(config.headerButtons || []))
 )
 
-const scriptOptions = computed(() => [
-  { value: '', display: '(select script)' },
-  ...discoveredScripts.value.map((s) => ({ value: s.meta.name, display: s.meta.name })),
-])
-
 /**
  * The parameters the chosen script declares. The form is built from these rather than from
  * free-form key/value rows, so a button cannot be configured with a parameter its script has
@@ -197,6 +193,11 @@ const addButton = () => {
 const removeButton = (idx: number) => {
   buttons.value.splice(idx, 1)
   saveButtons()
+}
+
+const chooseScript = async (idx: number) => {
+  const script = await pickScript(GlobalStore.getInstance().app, discoveredScripts.value)
+  if (script) updateField(idx, 'scriptName', script.meta.name)
 }
 
 const updateField = (idx: number, field: 'name' | 'icon' | 'scriptName', value: string) => {
