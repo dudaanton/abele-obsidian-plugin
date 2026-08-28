@@ -17,6 +17,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
 import { DEFAULT_TAIL_PAGE_SIZE } from '@/composables/useTailPagedList'
 import { useVault } from '../helpers/testEnv'
+import { fakeChatSession } from '../helpers/fakeChatSession'
 
 function conversation(count: number): ChatMessage[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -29,55 +30,6 @@ function conversation(count: number): ChatMessage[] {
 
 const messages = ref<ChatMessage[]>([])
 
-/**
- * Enough of a session for the chat to render one.
- *
- * The component reads a good deal of a session, and every reactive member it reaches for has
- * to exist or the render throws before a single message is mounted. Nothing here does
- * anything: the question is what gets drawn, not what happens when it is used.
- */
-function fakeSession() {
-  const off = ref(false)
-  const nothing = () => {}
-  return {
-    messages,
-    allMessages: messages,
-    isStreaming: off,
-    isGeneratingTitle: off,
-    isCompacting: off,
-    isExecutingTool: off,
-    hideReasoning: off,
-    hasFallbackModel: off,
-    streamingContent: ref(''),
-    streamingThinking: ref(''),
-    error: ref(null),
-    currentChatFile: ref(null),
-    pendingQuestions: ref(null),
-    pendingToolCalls: ref([]),
-    scopeResolver: { summary: ref('No files') },
-    interceptor: { streaming: off, streamingContent: ref(''), error: ref(null) },
-    getDraftMessage: () => null,
-    getDebugData: () => ({}),
-    getToolMode: () => 'ask',
-    resolveModel: () => null,
-    toolModes: ref({}),
-    load: nothing,
-    reset: nothing,
-    sendMessage: nothing,
-    createBranch: nothing,
-    switchBranch: nothing,
-    repeatMessage: nothing,
-    retryFromMessage: nothing,
-    retryRequest: nothing,
-    retryInterceptor: nothing,
-    sendInterceptorMessage: nothing,
-    confirmDraft: nothing,
-    injectSkill: nothing,
-    answerCurrentQuestion: nothing,
-    abortQuestions: nothing,
-  }
-}
-
 beforeEach(() => {
   useVault([])
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
@@ -85,7 +37,7 @@ beforeEach(() => {
   const service = ChatService.getInstance()
   vi.spyOn(service, 'ensureInitialized').mockImplementation(() => {})
   vi.spyOn(service, 'activeSession', 'get').mockReturnValue({
-    value: fakeSession(),
+    value: fakeChatSession({ messages }),
   } as never)
 })
 

@@ -37,7 +37,22 @@
         <span v-if="tokenDisplay" class="abele-chat-input__tokens">{{ tokenDisplay }}</span>
       </div>
       <div class="abele-chat-input__toolbar-right" @mousedown.prevent>
-        <Icon v-if="isStreaming" icon="square" with-bg @click="emit('abort')" />
+        <template v-if="isStreaming">
+          <Icon
+            v-if="text.trim() || attachments.length"
+            icon="send-horizontal"
+            with-bg
+            tooltip="Send when the agent gets there"
+            @click="send"
+          />
+          <Icon
+            icon="square"
+            with-bg
+            tooltip="Stop"
+            class="abele-chat-input__stop"
+            @click="emit('abort')"
+          />
+        </template>
         <Icon v-else-if="isBusy" icon="loader" no-hover class="abele-chat-input__spinner" />
         <template v-else>
           <div v-if="scopeLabel" class="abele-chat-input__scope-badge" @click="emit('openScope')">
@@ -129,7 +144,11 @@ const onInput = (e: Event) => {
 }
 
 const send = () => {
-  if (props.isStreaming || props.isBusy) return
+  // Streaming is deliberately not a guard: the session queues that message and gives it to
+  // the loop at its next iteration. An auxiliary task the user chose to run on its own still
+  // holds the input, because that is what running it sequentially means.
+  if (props.isBusy) return
+
   const msg = text.value.trim()
   if (!msg && !attachments.value.length) return
 

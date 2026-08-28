@@ -21,18 +21,8 @@ import { ChatSummarizer, type SummarizerHost } from './ChatSummarizer'
 import { ChatInterceptor, type InterceptorHost } from './ChatInterceptor'
 import { AgentRegistry } from './agents/AgentRegistry'
 import type { AgentDefinition, OverrideKey, ScopeEntry, SessionOverrides } from './agents/types'
-import {
-  ChatMessage,
-  ChatMetadata,
-  CORE_TOOLS,
-  migrateOldPermissions,
-} from './types'
-import type {
-  ToolMode,
-  PermissionMode,
-  AiSettings,
-  SubAgentRunRef,
-} from './types'
+import { ChatMessage, ChatMetadata, CORE_TOOLS, migrateOldPermissions } from './types'
+import type { ToolMode, PermissionMode, AiSettings, SubAgentRunRef, QueuedMessage } from './types'
 import type { UserContentPart } from './client'
 import { createAgentTools } from './tools'
 import { loadSkillContent } from './tools/SkillTool'
@@ -136,6 +126,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   public readonly streamingContent = ref('')
   public readonly streamingThinking = ref('')
   public readonly pendingToolCalls = ref<ToolCallContent[]>([])
+  /**
+   * Messages typed while the model was already working.
+   *
+   * Sending used to be refused outright while a turn was running, so a correction thought of
+   * mid-answer had to be held by the person until the agent stopped. These wait instead, and
+   * go in at the next iteration of the loop — before the next reply or tool call — rather
+   * than after the whole turn.
+   */
+  public readonly queuedMessages = ref<QueuedMessage[]>([])
   public readonly isGeneratingTitle = ref(false)
   public readonly isCompacting = ref(false)
   public readonly isExecutingTool = ref(false)
@@ -824,6 +823,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         streamOptions: model.reasoningEffort
           ? { reasoningEffort: model.reasoningEffort }
           : undefined,
+        beforeIteration: () => this.takeQueued(),
         beforeToolCall: async (toolName, _id, args) => {
           if (!this.needsApproval(toolName, args)) return
 
@@ -984,7 +984,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   // ── Public API ──────────────────────────────────────────────────
 
   async sendMessage(content: string, attachments?: string[]): Promise<void> {
-    if (this.isStreaming.value || this.isCompacting.value) return
+    // Busy is not a reason to lose what was typed: it waits its turn instead. `takeQueued`
+    // hands it to the loop that is already running, at its next iteration.
+    if (this.isStreaming.value || this.isCompacting.value) {
+      this.queuedMessages.value = [
+        ...this.queuedMessages.value,
+        { id: nanoid(), content, attachments: attachments?.length ? attachments : undefined },
+      ]
+      return
+    }
 
     // Draft mode: interceptor is active → create draft, don't send to main AI
     if (this.interceptor.isActive) {
@@ -995,33 +1003,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.error.value = null
     this.userMessageCount++
 
-    const userMsg: ChatMessage = {
-      id: nanoid(),
-      role: 'user',
-      content,
-      attachments: attachments?.length ? attachments : undefined,
-      timestamp: Date.now(),
-    }
-    this.appendChatMessage(userMsg)
-    this.updateVisibleMessages()
-
-    if (attachments?.length) {
-      const parts = await resolveAttachmentsForApi(attachments)
-      const allParts: UserContentPart[] = [{ type: 'text', text: content }, ...parts]
-      this.allInternalMessages.push({
-        role: 'user',
-        content: allParts,
-        timestamp: Date.now(),
-        chatMessageId: userMsg.id,
-      })
-    } else {
-      this.allInternalMessages.push({
-        role: 'user',
-        content,
-        timestamp: Date.now(),
-        chatMessageId: userMsg.id,
-      })
-    }
+    this.allInternalMessages.push(await this.userMessage(content, attachments))
 
     await this.runAgentLoop()
 
@@ -1052,6 +1034,73 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         return
       })
     }
+
+    // Typed after the loop's last iteration, so nothing was left running to inject it: it
+    // gets a turn of its own. Waiting on approval is not the moment — the loop resumes on
+    // its own once the tool is answered, and takes the queue with it.
+    if (this.queuedMessages.value.length && !this.pendingToolCalls.value.length) {
+      const [next, ...rest] = this.queuedMessages.value
+      this.queuedMessages.value = rest
+      await this.sendMessage(next.content, next.attachments)
+    }
+  }
+
+  /**
+   * Put a message from the person into the conversation.
+   *
+   * The chat bubble is appended here; the message the model will be shown is returned rather
+   * than stored, because where it belongs depends on whether a loop is already running — a
+   * fresh turn pushes it into the history, an injected one lets the loop carry it.
+   */
+  private async userMessage(content: string, attachments?: string[]): Promise<Message> {
+    const userMsg: ChatMessage = {
+      id: nanoid(),
+      role: 'user',
+      content,
+      attachments: attachments?.length ? attachments : undefined,
+      timestamp: Date.now(),
+    }
+    this.appendChatMessage(userMsg)
+    this.updateVisibleMessages()
+
+    if (attachments?.length) {
+      const parts = await resolveAttachmentsForApi(attachments)
+      const allParts: UserContentPart[] = [{ type: 'text', text: content }, ...parts]
+      return {
+        role: 'user',
+        content: allParts,
+        timestamp: Date.now(),
+        chatMessageId: userMsg.id,
+      }
+    }
+    return { role: 'user', content, timestamp: Date.now(), chatMessageId: userMsg.id }
+  }
+
+  /**
+   * Everything queued since the loop started, as messages for the model.
+   *
+   * Emptied before the messages are built so that anything typed while this is running waits
+   * for the iteration after, rather than being handed over twice.
+   */
+  private async takeQueued(): Promise<Message[]> {
+    const queued = this.queuedMessages.value
+    if (!queued.length) return []
+    this.queuedMessages.value = []
+
+    const messages: Message[] = []
+    for (const q of queued) messages.push(await this.userMessage(q.content, q.attachments))
+    return messages
+  }
+
+  /** Drop what is waiting and hand it back, for whoever stopped the agent to keep. */
+  takeQueuedMessages(): QueuedMessage[] {
+    const queued = this.queuedMessages.value
+    this.queuedMessages.value = []
+    return queued
+  }
+
+  removeQueuedMessage(id: string): void {
+    this.queuedMessages.value = this.queuedMessages.value.filter((m) => m.id !== id)
   }
 
   async approveToolCall(modifiedArgs?: Record<string, unknown>): Promise<void> {
@@ -1196,12 +1245,16 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   abort(): void {
     this.agentLoop?.abort()
     this.isStreaming.value = false
+    // Stopping stops what was lined up behind it too. Whoever stopped it keeps the text —
+    // the chat hands it back to the input rather than dropping it.
+    this.queuedMessages.value = []
   }
 
   // ── Reset (new chat within this session / tab) ─────────────────
 
   async reset(): Promise<void> {
     this.generation++
+    this.queuedMessages.value = []
     await this.save()
     this.log.forget()
     this.dirty = false
@@ -1276,10 +1329,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       overrides.toolModes = { ...metadata.toolModes }
     } else if (metadata.allowWebSearch !== undefined) {
       // Older still: booleans per tool, from before toolModes existed.
-      overrides.toolModes = migrateOldPermissions(
-        metadata,
-        config
-      )
+      overrides.toolModes = migrateOldPermissions(metadata, config)
     }
 
     if (metadata.scopeEntries) {

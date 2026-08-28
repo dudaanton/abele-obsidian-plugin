@@ -17,51 +17,9 @@ import { ChatService } from '@/ai/ChatService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
+import { fakeChatSession } from '../helpers/fakeChatSession'
 
 const messages = ref<ChatMessage[]>([])
-
-/** Enough of a session for the chat to render; every member it reaches for has to exist. */
-function fakeSession() {
-  const off = ref(false)
-  const nothing = () => {}
-  return {
-    messages,
-    allMessages: messages,
-    isStreaming: off,
-    isGeneratingTitle: off,
-    isCompacting: off,
-    isExecutingTool: off,
-    hideReasoning: off,
-    hasFallbackModel: off,
-    streamingContent: ref(''),
-    streamingThinking: ref(''),
-    error: ref(null),
-    currentChatFile: ref(null),
-    pendingQuestions: ref(null),
-    pendingToolCalls: ref([]),
-    scopeResolver: { summary: ref('No files') },
-    interceptor: { streaming: off, streamingContent: ref(''), error: ref(null) },
-    getDraftMessage: () => null,
-    getDebugData: () => ({}),
-    getToolMode: () => 'ask',
-    resolveModel: () => null,
-    toolModes: ref({}),
-    load: nothing,
-    reset: nothing,
-    sendMessage: nothing,
-    createBranch: nothing,
-    switchBranch: nothing,
-    repeatMessage: nothing,
-    retryFromMessage: nothing,
-    retryRequest: nothing,
-    retryInterceptor: nothing,
-    sendInterceptorMessage: nothing,
-    confirmDraft: nothing,
-    injectSkill: nothing,
-    answerCurrentQuestion: nothing,
-    abortQuestions: nothing,
-  }
-}
 
 let service: ChatService
 
@@ -74,7 +32,7 @@ beforeEach(() => {
   service.activeTabId.value = 'tab-a'
   vi.spyOn(service, 'ensureInitialized').mockImplementation(() => {})
   vi.spyOn(service, 'activeSession', 'get').mockReturnValue({
-    value: fakeSession(),
+    value: fakeChatSession({ messages }),
   } as never)
 })
 

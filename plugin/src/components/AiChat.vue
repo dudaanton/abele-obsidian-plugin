@@ -91,6 +91,20 @@
           </div>
         </div>
 
+        <!-- Waiting to be sent: typed while the agent was working -->
+        <div v-if="queuedMessages.length" class="abele-ai-chat__queued">
+          <div v-for="q in queuedMessages" :key="q.id" class="abele-ai-chat__queued-item">
+            <Icon icon="clock" no-hover class="abele-ai-chat__queued-icon" />
+            <span class="abele-ai-chat__queued-text">{{ q.content }}</span>
+            <Icon
+              icon="x"
+              tooltip="Remove from the queue"
+              class="abele-ai-chat__queued-remove"
+              @click="onRemoveQueued(q.id)"
+            />
+          </div>
+        </div>
+
         <!-- Background task indicators -->
         <div v-if="isGeneratingTitle" class="abele-ai-chat__aux-status">
           <Icon icon="heading" />
@@ -895,12 +909,34 @@ const onFileDrop = async (e: DragEvent) => {
 const onAbort = () => {
   const s = session.value
   if (!s) return
+
+  // Stopping cancels what was queued behind the answer, so the text goes back where it was
+  // typed rather than disappearing: after whatever is in the box now, in the order it was sent.
+  const queued = s.takeQueuedMessages()
+  if (queued.length) {
+    const { app } = GlobalStore.getInstance()
+    const draft = chatInput.value?.takeDraft() ?? { text: '', attachments: [] }
+    const files = queued
+      .flatMap((q) => q.attachments ?? [])
+      .map((path) => app.vault.getAbstractFileByPath(path))
+      .filter((file): file is TFile => file instanceof TFile)
+    chatInput.value?.putDraft({
+      text: [...queued.map((q) => q.content), draft.text].filter(Boolean).join('\n'),
+      attachments: [...draft.attachments, ...files.filter((f) => !draft.attachments.includes(f))],
+    })
+  }
+
   if (isExecutingTool.value) {
     s.abortToolExecution()
   } else {
     s.abort()
   }
 }
+
+/** Typed while the agent was working, waiting for the next iteration of its loop. */
+const queuedMessages = computed(() => session.value?.queuedMessages.value ?? [])
+
+const onRemoveQueued = (id: string) => session.value?.removeQueuedMessage(id)
 
 const hasFallbackModel = computed(() => session.value?.hasFallbackModel ?? false)
 const fallbackModelName = computed(
@@ -1108,6 +1144,40 @@ const showDebug = () => {
     border-radius: var(--radius-s);
     font-size: 0.9em;
   }
+}
+
+/**
+ * Messages waiting their turn. They are not in the conversation yet — the agent has not been
+ * shown them — so they read as pending rather than as sent: muted, dashed, and each with a
+ * way out of the queue.
+ */
+.abele-ai-chat__queued {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+  padding: var(--size-4-2) var(--size-4-3);
+}
+
+.abele-ai-chat__queued-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2);
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  color: var(--text-muted);
+  font-size: var(--font-small);
+}
+
+.abele-ai-chat__queued-icon {
+  flex-shrink: 0;
+}
+
+.abele-ai-chat__queued-text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .abele-ai-chat__aux-status {

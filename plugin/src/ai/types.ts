@@ -12,6 +12,13 @@ export interface ChatDraft {
   attachments: TFile[]
 }
 
+/** A message the person sent while the agent was working, waiting for the next iteration. */
+export interface QueuedMessage {
+  id: string
+  content: string
+  attachments?: string[]
+}
+
 export interface AiProvider {
   id: string
   name: string

@@ -34,6 +34,14 @@ export interface AgentLoopOptions {
     reason?: string
     modifiedArgs?: Record<string, unknown>
   } | void>
+  /**
+   * Called before every request to the model, including the first.
+   *
+   * Whatever it returns is added to the conversation the model is about to see. This is how a
+   * message typed while the loop was already running reaches the model at the next iteration
+   * instead of waiting for the whole turn to finish.
+   */
+  beforeIteration?: () => Promise<Message[]> | Message[]
 }
 
 type Listener = (event: AgentEvent) => void
@@ -107,6 +115,11 @@ export class AgentLoop {
       let maxTurns = AgentLoop.MAX_TURNS
       while (maxTurns-- > 0) {
         if (signal.aborted) break
+
+        if (opts.beforeIteration) {
+          const injected = await opts.beforeIteration()
+          if (injected.length) messages.push(...injected)
+        }
 
         // Stream LLM response
         const assistantMsg = await this.streamTurn(
