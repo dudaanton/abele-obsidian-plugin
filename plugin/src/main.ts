@@ -54,6 +54,8 @@ import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
 import { ChatService } from './ai/ChatService'
 import { useFilesInAgent } from './helpers/useFilesInAgent'
 import { ScriptService } from './scripting/ScriptService'
+import { showMarkdown } from './scripting/formModal'
+import { SCRIPT_API_DOCS } from './scripting/apiDocs'
 import { ScopeResolver } from './ai/ScopeResolver'
 import { ChatStorage } from './ai/ChatStorage'
 import weekday from 'dayjs/plugin/weekday'
@@ -919,6 +921,17 @@ export default class AbelePlugin extends Plugin {
 
     this.addRibbonIcon(AiSidebarView.getIcon(), 'Show AI chat', () => {
       void this.activateView(AI_SIDEBAR_VIEW_TYPE)
+    })
+
+    // Registered whether or not scripts are enabled: the reference is what someone reads
+    // while deciding to turn them on.
+    this.addCommand({
+      id: 'show-script-api',
+      name: 'Show script API reference',
+      icon: 'book-open',
+      callback: () => {
+        void showMarkdown(SCRIPT_API_DOCS, 'Script API')
+      },
     })
 
     if (AbeleConfig.getInstance().ai.scriptsEnabled) {

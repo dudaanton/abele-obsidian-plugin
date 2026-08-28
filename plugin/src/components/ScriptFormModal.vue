@@ -2,7 +2,7 @@
   <ObsidianModal :title="title" @close="onCancel">
     <form class="abele-script-form" @submit.prevent="onSubmit">
       <div v-for="field in fields" :key="field.name" class="abele-script-form__field">
-        <label v-if="field.label" class="abele-script-form__label">
+        <label v-if="field.label && field !== titleField" class="abele-script-form__label">
           {{ field.label }}
           <span v-if="field.required" class="abele-script-form__required">*</span>
         </label>
@@ -59,8 +59,20 @@ const emit = defineEmits<{
 /** A `markdown` field is there to be read, so it is not a value the form collects. */
 const asksSomething = computed(() => props.fields.some((f) => f.type !== 'markdown'))
 
+/**
+ * A form that asks nothing is a document, and a document's heading belongs in the title bar
+ * of the window rather than repeated above its own text. The field keeping that heading is
+ * therefore rendered without its label.
+ */
+const titleField = computed(() =>
+  asksSomething.value ? null : (props.fields.find((f) => f.label) ?? null)
+)
+
 /** "Script Parameters" is the wrong heading for something that asks for no parameters. */
-const title = computed(() => (asksSomething.value ? 'Script Parameters' : 'Script'))
+const title = computed(() => {
+  if (asksSomething.value) return 'Script Parameters'
+  return titleField.value?.label || 'Script'
+})
 
 const values = reactive<Record<string, string>>({})
 for (const field of props.fields) {

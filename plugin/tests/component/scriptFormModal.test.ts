@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { Modal } from 'obsidian'
 import ScriptFormModal from '@/components/ScriptFormModal.vue'
 import Markdown from '@/components/obsidian/Markdown.vue'
 import type { FormField } from '@/scripting/types'
@@ -127,5 +128,45 @@ describe('a form that does ask something', () => {
 
     submitForm()
     expect(resolved).toEqual({ query: '' })
+  })
+})
+
+/** The modal's own heading, as it was set on the Obsidian modal being opened. */
+function headingWhenOpening(fields: FormField[]): string | undefined {
+  const setTitle = vi.spyOn(Modal.prototype, 'setTitle')
+  openWith(fields)
+  return setTitle.mock.calls.at(-1)?.[0]
+}
+
+describe('the heading of a form with nothing to answer', () => {
+  it('is the label of what it shows, put where a window keeps its title', () => {
+    expect(headingWhenOpening([prose])).toBe('What was found')
+  })
+
+  it('is not repeated above the text it names', () => {
+    openWith([prose])
+
+    expect(inDocument('.abele-script-form__label')).toBeNull()
+  })
+
+  it('falls back to naming the thing when the script gave no title', () => {
+    expect(
+      headingWhenOpening([{ name: 'note', label: '', type: 'markdown', text: 'Read me.' }])
+    ).toBe('Script')
+  })
+})
+
+describe('the heading of a form that does ask something', () => {
+  it('still says what is being asked for', () => {
+    expect(headingWhenOpening([question, prose])).toBe('Script Parameters')
+  })
+
+  it('leaves the label of a markdown block beside the questions where it is', () => {
+    openWith([question, prose])
+
+    const labels = [...document.querySelectorAll('.abele-script-form__label')].map((l) =>
+      l.textContent?.trim()
+    )
+    expect(labels).toContain('What was found')
   })
 })

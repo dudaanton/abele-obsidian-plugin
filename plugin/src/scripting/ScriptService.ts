@@ -13,6 +13,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
 import { parseScriptHeader, extractScriptBody } from './ScriptParser'
 import { buildScriptContext } from './ScriptContext'
+import { showFormModal } from './formModal'
 import type { ParsedScript, FormField } from './types'
 import { ref } from 'vue'
 
@@ -347,9 +348,7 @@ export class ScriptService {
     }
 
     try {
-      const result = await this.execute(path, params, undefined, (fields) =>
-        this.showFormModal(fields)
-      )
+      const result = await this.execute(path, params, undefined, showFormModal)
       if (result.trim()) {
         new Notice(result.length > 500 ? result.slice(0, 500) + '...' : result, 10000)
       } else {
@@ -382,7 +381,7 @@ export class ScriptService {
       required: p.required,
       default: p.selection && selection ? selection : p.default,
     }))
-    const result = await this.showFormModal(fields)
+    const result = await showFormModal(fields)
     if (!result) return null
 
     const typed: Record<string, unknown> = {}
@@ -393,19 +392,6 @@ export class ScriptService {
       else typed[p.name] = v
     }
     return typed
-  }
-
-  /**
-   * Show a form modal and return the values.
-   * This resolves when the user submits or null on cancel.
-   */
-  private showFormModal(fields: FormField[]): Promise<Record<string, string> | null> {
-    const store = GlobalStore.getInstance()
-    return new Promise((resolve) => {
-      store.scriptFormFields.value = fields
-      store.scriptFormResolve.value = resolve
-      store.scriptFormModalOpened.value = true
-    })
   }
 }
 

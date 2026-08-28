@@ -23,6 +23,7 @@ import { cleanTaskName } from '@/helpers/tasksUtils'
 import { getAvailablePath, readFileContent } from '@/helpers/vaultUtils'
 import { VaultWatcher } from '@/helpers/VaultWatcher'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import type { FormField } from '@/scripting/types'
 import { App, TFile } from 'obsidian'
 import { computed, ref, shallowRef, toRaw } from 'vue'
 import type { FindAndReplaceInstance } from '@/bases/FindAndReplaceView'
@@ -51,16 +52,7 @@ export class GlobalStore {
   public readonly migrateDataviewFieldsModalOpened = ref(false)
   public readonly migrateFromTogglModalOpened = ref(false)
   public readonly scriptFormModalOpened = ref(false)
-  public readonly scriptFormFields = ref<
-    Array<{
-      name: string
-      label: string
-      type?: string
-      options?: string[]
-      default?: string
-      required?: boolean
-    }>
-  >([])
+  public readonly scriptFormFields = ref<FormField[]>([])
   public readonly scriptFormResolve = ref<((result: Record<string, string> | null) => void) | null>(
     null
   )
