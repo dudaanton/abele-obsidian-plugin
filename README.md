@@ -119,6 +119,7 @@ Notes for anyone working on the plugin live in [`docs/`](docs):
 - [Obsidian compliance](docs/Obsidian%20compliance.md) — the guidelines the plugin is held to, and where it knowingly departs from them.
 - [Testing](docs/Testing.md) — the three test tiers, and how to assert against a running Obsidian.
 - [AI Agent](docs/AI%20Agent.md) — agents, delegation and the scripting API.
+- [Agent reference](docs/Agent%20reference.md) — the docs the agent itself reads, and the rules for keeping them true.
 - [Templates](docs/Templates.md) and [URL Protocol](docs/URL%20Protocol.md).
 
 ## Installation

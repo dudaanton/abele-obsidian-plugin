@@ -1,0 +1,59 @@
+# Tools
+
+The tool catalogue, grouped as the settings screen groups it, with the distinctions that are
+easy to get wrong. Which of these an agent actually has depends on its own tool settings.
+
+## Files
+
+`read`, `write`, `create`, `edit`, `replace`, `rm`, `mv`, `cp`, `ls`, `find`, `open`,
+`read_image`, `workspace`, `screenshot`, `inspect_view`.
+
+- `edit` replaces one exact string in one file. `replace` applies a list of replacement actions
+  and is the one for a bulk, rule-driven change. `write` overwrites the whole file — reach for
+  it only when the whole file is being rewritten.
+- `create` makes a new file and its parent folders.
+- `find` searches by name, property or content and takes structured criteria, not just a word.
+- `workspace` says what is open right now; `open` puts a file in front of the person.
+- `rm` moves to trash rather than destroying.
+
+Every one of these is bounded by the agent's scope.
+
+## Vault data
+
+`read_logs`, `read_backlinks`, `read_tasks`, `read_transactions`.
+
+These read the plugin's own structures rather than raw files: the logs shown on a note, what
+links to it, the tasks and transactions related to it. Prefer them to reconstructing the same
+answer by reading notes and parsing frontmatter — they walk `groups` the way the plugin does,
+which a hand-rolled search will not.
+
+## Network
+
+`web_search` (Brave), `fetch`, `download_image`, `download_file`.
+
+`fetch` brings back a page; the vault may hold a skill that teaches a better way of turning one
+into markdown. Downloads land in the vault, so they are subject to scope.
+
+## AI
+
+`generate_image`, `edit_image`, `eval_js`, `questions`, `delegate`.
+
+`questions` is how to ask the person something and get a structured answer back rather than
+guessing. `eval_js` runs JavaScript inside Obsidian — powerful and easy to misuse; for anything
+meant to be repeated, write a script instead (see the `scripts` section).
+
+## Templates
+
+`list_templates`, `apply_template`, `skill`.
+
+## Docs
+
+`template_docs`, `chart_docs`, `script_api_docs`, and this reference itself, `query_docs`.
+
+Fetch the reference before writing the thing it describes. The script API and the template
+syntax both have details that cannot be guessed.
+
+## Scripts
+
+`create_script`, plus one tool per script the vault has, named `script_<name>`. A script the
+person has written is a tool an agent can call by name, with its declared parameters.

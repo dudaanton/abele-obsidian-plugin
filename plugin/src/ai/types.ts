@@ -192,6 +192,10 @@ export const CORE_TOOLS = new Set([
   'skill',
   'list_templates',
   'apply_template',
+  // Read-only, one small call, and the thing that stops an agent guessing at this vault's own
+  // conventions. The other doc tools are opt-in because they are only wanted while writing the
+  // thing they describe; this one is wanted before touching anything.
+  'query_docs',
 ])
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {

@@ -29,6 +29,7 @@ import { createScreenshotTool } from './ScreenshotTool'
 import { createInspectViewTool } from './InspectViewTool'
 import { createChartDocsTool } from './ChartDocsTool'
 import { createTemplateDocsTool } from './TemplateDocsTool'
+import { createQueryDocsTool } from './QueryDocsTool'
 import {
   createReadLogsTool,
   createReadBacklinksTool,
@@ -85,6 +86,7 @@ export function getToolRegistry(): ToolInfo[] {
     apply_template: { label: 'Apply template', category: 'Templates' },
     skill: { label: 'Skill', category: 'Templates' },
     script_api_docs: { label: 'Script API docs', category: 'Docs' },
+    query_docs: { label: 'Query docs', category: 'Docs' },
     create_script: { label: 'Create script', category: 'Scripts' },
   }
 
@@ -142,6 +144,7 @@ export function createAgentTools(): AgentTool[] {
     createOpenFileTool(),
     createQuestionsTool(),
     createChartDocsTool(),
+    createQueryDocsTool(),
     createTemplateDocsTool(),
     createReadLogsTool(),
     createReadBacklinksTool(),
