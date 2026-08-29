@@ -1,54 +1,85 @@
 <template>
   <div ref="root" class="abele-voice">
     <template v-if="recorder.state.value === 'idle' && !busy">
-      <Icon
-        icon="mic"
-        with-bg
-        class="abele-voice__record"
-        tooltip="Start recording"
-        @click="begin"
-      />
-      <span class="abele-voice__hint">{{ recorder.error.value || 'Tap to record' }}</span>
-      <Icon icon="x" tooltip="Close voice input" @click="emit('close')" />
+      <div class="abele-voice__row">
+        <Icon
+          icon="mic"
+          with-bg
+          class="abele-voice__record"
+          tooltip="Start recording"
+          @click="begin"
+        />
+        <span class="abele-voice__hint">{{ recorder.error.value || 'Tap to record' }}</span>
+        <Icon icon="x" tooltip="Close voice input" @click="emit('close')" />
+      </div>
     </template>
 
     <template v-else-if="listening">
-      <Icon
-        :icon="recorder.state.value === 'paused' ? 'mic' : 'pause'"
-        with-bg
-        :class="{ 'abele-voice__live': recorder.state.value === 'recording' }"
-        :tooltip="recorder.state.value === 'paused' ? 'Carry on recording' : 'Pause'"
-        @click="recorder.state.value === 'paused' ? recorder.resume() : recorder.pause()"
-      />
-      <Waveform :levels="tail" label="What is being recorded" />
-      <span class="abele-voice__time">{{ clock(recorder.elapsed.value) }}</span>
-      <Icon icon="trash-2" tooltip="Throw the recording away" @click="discard" />
-      <Icon icon="check" with-bg tooltip="Finish recording" @click="finish" />
+      <div class="abele-voice__row">
+        <Icon
+          :icon="recorder.state.value === 'paused' ? 'mic' : 'pause'"
+          with-bg
+          :class="{ 'abele-voice__live': recorder.state.value === 'recording' }"
+          :tooltip="recorder.state.value === 'paused' ? 'Carry on recording' : 'Pause'"
+          @click="recorder.state.value === 'paused' ? recorder.resume() : recorder.pause()"
+        />
+        <Waveform :levels="tail" label="What is being recorded" />
+        <span class="abele-voice__time">{{ clock(recorder.elapsed.value) }}</span>
+        <Icon icon="trash-2" tooltip="Throw the recording away" @click="discard" />
+        <Icon icon="check" with-bg tooltip="Finish recording" @click="finish" />
+      </div>
     </template>
 
     <template v-else-if="recorder.state.value === 'requesting'">
-      <Icon icon="loader" no-hover class="abele-voice__spinner" />
-      <span class="abele-voice__hint">Waiting for the microphone…</span>
-      <Icon icon="x" tooltip="Close voice input" @click="discard" />
+      <div class="abele-voice__row">
+        <Icon icon="loader" no-hover class="abele-voice__spinner" />
+        <span class="abele-voice__hint">Waiting for the microphone…</span>
+        <Icon icon="x" tooltip="Close voice input" @click="discard" />
+      </div>
     </template>
 
     <template v-else-if="busy">
-      <Icon icon="loader" no-hover class="abele-voice__spinner" />
-      <span class="abele-voice__hint">Transcribing…</span>
+      <div class="abele-voice__row">
+        <Icon icon="loader" no-hover class="abele-voice__spinner" />
+        <span class="abele-voice__hint">Transcribing…</span>
+      </div>
     </template>
 
+    <!--
+      Two rows once there is something to do with the recording: the panel is as narrow as the
+      chat sidebar, and three labelled actions beside the waveform leave the waveform a stub.
+    -->
     <template v-else>
-      <Icon
-        :icon="playing ? 'pause' : 'play'"
-        with-bg
-        :tooltip="playing ? 'Pause' : 'Listen to it'"
-        @click="togglePlay"
-      />
-      <Waveform :levels="recorder.levels.value" :progress="progress" label="The recording" />
-      <span class="abele-voice__time">{{ clock(recorder.elapsed.value) }}</span>
-      <Icon icon="trash-2" tooltip="Throw the recording away" @click="discard" />
-      <Button text="Text" tooltip="Transcribe it into the text field" @click="toText" />
-      <Button v-if="canSend" text="Send" accent tooltip="Transcribe it and send" @click="toSend" />
+      <div class="abele-voice__row">
+        <Icon
+          :icon="playing ? 'pause' : 'play'"
+          with-bg
+          :tooltip="playing ? 'Pause' : 'Listen to it'"
+          @click="togglePlay"
+        />
+        <Waveform :levels="recorder.levels.value" :progress="progress" label="The recording" />
+        <span class="abele-voice__time">{{ clock(recorder.elapsed.value) }}</span>
+      </div>
+      <div class="abele-voice__row">
+        <Icon icon="trash-2" tooltip="Throw the recording away" @click="discard" />
+        <div class="abele-voice__actions">
+          <Button text="Copy" tooltip="Transcribe it and copy the text" @click="toClipboard" />
+          <!-- The main action where there is nowhere to send: a note takes the words directly. -->
+          <Button
+            text="Insert"
+            :accent="!canSend"
+            tooltip="Transcribe it into the text field"
+            @click="toText"
+          />
+          <Button
+            v-if="canSend"
+            text="Send"
+            accent
+            tooltip="Transcribe it and send"
+            @click="toSend"
+          />
+        </div>
+      </div>
     </template>
 
     <span v-if="failure" class="abele-voice__error">{{ failure }}</span>
@@ -57,6 +88,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, useTemplateRef } from 'vue'
+import { Notice } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Button from './obsidian/Button.vue'
 import Waveform from './obsidian/Waveform.vue'
@@ -175,6 +207,17 @@ const toText = async () => {
   emit('close')
 }
 
+/** The words to the clipboard: for somewhere this panel cannot reach on its own. */
+const toClipboard = async () => {
+  const text = await words()
+  if (text === null) return
+
+  await win().navigator.clipboard.writeText(text)
+  new Notice('Transcript copied')
+  recorder.reset()
+  emit('close')
+}
+
 const toSend = async () => {
   const text = await words()
   if (text === null) return
@@ -195,12 +238,26 @@ onBeforeUnmount(() => {
 <style lang="scss">
 .abele-voice {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--size-4-2);
   padding: var(--size-4-2);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
   background-color: var(--background-secondary);
+}
+
+.abele-voice__row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  min-width: 0;
+}
+
+/** Away from the trash, which is the one press in the row that cannot be taken back. */
+.abele-voice__actions {
+  display: flex;
+  gap: var(--size-4-1);
+  margin-left: auto;
 }
 
 .abele-voice__hint {

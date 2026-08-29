@@ -154,11 +154,27 @@ describe('once there is a recording', () => {
     recorder.recording.value = new Blob(['audio'])
   })
 
-  it('offers to listen to it and to turn it into text', () => {
-    const wrapper = open()
+  it('offers to listen to it, and every way of taking the words away', () => {
+    const wrapper = open({ canSend: true })
 
     expect(icons(wrapper)).toContain('Listen to it')
-    expect(wrapper.findAllComponents(Button).map((b) => b.props('text'))).toContain('Text')
+    expect(wrapper.findAllComponents(Button).map((b) => b.props('text'))).toEqual([
+      'Copy',
+      'Insert',
+      'Send',
+    ])
+  })
+
+  /** Two grey buttons and no primary is a panel that does not say what it is for. */
+  it('marks out the main action, which is sending in a chat and inserting in a note', () => {
+    const accented = (props: Record<string, unknown>) =>
+      open(props)
+        .findAllComponents(Button)
+        .filter((b) => b.props('accent'))
+        .map((b) => b.props('text'))
+
+    expect(accented({ canSend: true })).toEqual(['Send'])
+    expect(accented({})).toEqual(['Insert'])
   })
 
   it('offers sending only where there is somewhere to send it', () => {
@@ -176,7 +192,7 @@ describe('once there is a recording', () => {
   it('hands over the words and closes', async () => {
     const wrapper = open()
 
-    await clickButton(wrapper, 'Text')
+    await clickButton(wrapper, 'Insert')
 
     expect(toWav).toHaveBeenCalled()
     expect(wrapper.emitted('text')?.[0]).toEqual(['привет как дела'])
@@ -197,7 +213,7 @@ describe('once there is a recording', () => {
     transcribe.mockRejectedValue(new Error('Insufficient credits'))
     const wrapper = open()
 
-    await clickButton(wrapper, 'Text')
+    await clickButton(wrapper, 'Insert')
 
     expect(wrapper.text()).toContain('Insufficient credits')
     expect(wrapper.emitted('text')).toBeFalsy()
@@ -210,12 +226,62 @@ describe('once there is a recording', () => {
     transcribe.mockReturnValue(new Promise<string>((resolve) => (release = resolve)))
     const wrapper = open()
 
-    void clickButton(wrapper, 'Text')
+    void clickButton(wrapper, 'Insert')
     await flushPromises()
     expect(wrapper.text()).toContain('Transcribing')
 
     release('готово')
     await flushPromises()
     expect(wrapper.emitted('text')?.[0]).toEqual(['готово'])
+  })
+})
+
+describe('copying the words out', () => {
+  let written: string[]
+
+  beforeEach(() => {
+    recorder.state.value = 'recorded'
+    recorder.recording.value = new Blob(['audio'])
+    written = []
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: (text: string) => (written.push(text), Promise.resolve()) },
+    })
+  })
+
+  it('puts the transcript on the clipboard', async () => {
+    await clickButton(open(), 'Copy')
+
+    expect(written).toEqual(['привет как дела'])
+  })
+
+  it('is done with the recording afterwards, as the other two are', async () => {
+    const wrapper = open()
+
+    await clickButton(wrapper, 'Copy')
+
+    expect(recorder.reset).toHaveBeenCalled()
+    expect(wrapper.emitted('close')).toBeTruthy()
+  })
+
+  it('does not also put the words where they were not asked for', async () => {
+    const wrapper = open({ canSend: true })
+
+    await clickButton(wrapper, 'Copy')
+
+    expect(wrapper.emitted('text')).toBeFalsy()
+    expect(wrapper.emitted('send')).toBeFalsy()
+  })
+
+  /** Nothing to copy: the clipboard keeps what it had and the recording is still there. */
+  it('leaves the clipboard alone when transcribing failed', async () => {
+    transcribe.mockRejectedValue(new Error('Insufficient credits'))
+    const wrapper = open()
+
+    await clickButton(wrapper, 'Copy')
+
+    expect(written).toEqual([])
+    expect(recorder.reset).not.toHaveBeenCalled()
+    expect(wrapper.emitted('close')).toBeFalsy()
   })
 })
