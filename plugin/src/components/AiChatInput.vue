@@ -140,7 +140,11 @@ const emit = defineEmits<{
 }>()
 
 const TEXTAREA_MIN_HEIGHT = 34
-const TEXTAREA_MAX_HEIGHT = 80
+/**
+ * Six lines or so before it starts scrolling. Three was what it used to be, which is not
+ * enough to see a paragraph you are still writing. The stylesheet caps it at the same number.
+ */
+const TEXTAREA_MAX_HEIGHT = 140
 
 const text = ref('')
 const inputEl = ref<HTMLTextAreaElement | null>(null)
@@ -461,7 +465,9 @@ onUnmounted(() => {
   color: var(--text-normal);
   height: 34px;
   min-height: 34px;
-  max-height: 80px;
+  // Keep in step with `TEXTAREA_MAX_HEIGHT`: the script sizes the field as it is typed into,
+  // and this stops it going further if anything else ever sets a height.
+  max-height: 140px;
   overflow-y: hidden;
   box-sizing: border-box;
 

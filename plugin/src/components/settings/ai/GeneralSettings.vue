@@ -228,6 +228,36 @@
       </Section>
 
       <Section
+        title="When a request fails"
+        desc="Only failures that pass on their own are repeated — a rate limit, an overloaded provider, a dropped connection. A rejected key or a bad request is not tried again."
+      >
+        <Setting name="Try again automatically" desc="How many further tries after the first.">
+          <Dropdown
+            :model-value="String(retry.attempts)"
+            :options="[
+              { value: '0', display: 'Off' },
+              { value: '1', display: 'Once' },
+              { value: '2', display: 'Twice' },
+              { value: '3', display: 'Three times' },
+              { value: '5', display: 'Five times' },
+            ]"
+            @update:model-value="setRetry('attempts', Number($event))"
+          />
+        </Setting>
+
+        <Setting
+          v-if="retry.attempts > 0"
+          name="First wait"
+          desc="Seconds before the first retry. Each one after doubles it, up to a minute."
+        >
+          <Input
+            :model-value="String(Math.round(retry.firstDelayMs / 1000))"
+            @update:model-value="setRetry('firstDelayMs', Math.max(1, Number($event) || 1) * 1000)"
+          />
+        </Setting>
+      </Section>
+
+      <Section
         title="Voice input"
         desc="Dictate into the chat, or into a note with the “Dictate into the note” command. OpenRouter has no transcription endpoint, so the audio goes to a model that hears — these two were picked for price, for running in Europe, and for not training on what is sent."
       >
@@ -556,6 +586,7 @@ import Icon from '../../obsidian/Icon.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TRANSCRIPTION_MODELS } from '@/ai/transcription'
+import { DEFAULT_RETRY, type RetrySettings } from '@/ai/retry'
 import {
   DEFAULT_VOICE_SETTINGS,
   voiceKeyId,
@@ -733,6 +764,16 @@ const applyBraveSecret = () => {
   braveSearchApiKey.value = 'abele-brave-search'
   app.secretStorage.setSecret('abele-brave-search', braveSecretInput.value)
   braveSecretInput.value = ''
+  save()
+}
+
+// ── Retrying a failed request ───────────────────────────────
+
+const retry = ref<RetrySettings>({ ...DEFAULT_RETRY, ...(config.ai.autoRetry ?? {}) })
+
+const setRetry = (key: keyof RetrySettings, value: number) => {
+  retry.value = { ...retry.value, [key]: value }
+  config.ai = { ...config.ai, autoRetry: { ...retry.value } }
   save()
 }
 

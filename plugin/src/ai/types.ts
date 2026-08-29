@@ -125,6 +125,11 @@ export interface VoiceSettings {
   language: string
 }
 
+export interface RetrySettings {
+  attempts: number
+  firstDelayMs: number
+}
+
 export interface AiSettings {
   enabled: boolean
   providers: AiProvider[]
@@ -153,6 +158,8 @@ export interface AiSettings {
   defaultAgentId: string
   /** Voice input: which model turns speech into text, and where its key lives. */
   voice?: VoiceSettings
+  /** Trying a failed request again on its own. Off unless asked for. */
+  autoRetry?: RetrySettings
   /** @deprecated migrated to imageProviders */
   openRouterApiKey?: string
   /** @deprecated migrated to imageProviders */

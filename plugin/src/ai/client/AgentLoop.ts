@@ -130,7 +130,18 @@ export class AgentLoop {
           { ...opts.streamOptions, signal }
         )
 
-        messages.push(assistantMsg)
+        /*
+         * A failed turn is announced but not kept.
+         *
+         * The provider produced no answer, so leaving its empty shell in the conversation
+         * makes the next request carry an assistant turn with nothing in it — and "retry",
+         * which sends the conversation again, then sends something different from what
+         * failed. Providers refuse that: an empty assistant turn, or two in a row.
+         *
+         * Aborting is different. The reader stopped it, and whatever had been said by then
+         * is real, so it stays.
+         */
+        if (assistantMsg.stopReason !== 'error') messages.push(assistantMsg)
         this.emit({ type: 'message_end', message: assistantMsg })
 
         // Stop conditions

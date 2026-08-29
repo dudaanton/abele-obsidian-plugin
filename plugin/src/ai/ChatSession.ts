@@ -3,6 +3,7 @@ import { TFile } from 'obsidian'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { DEFAULT_RETRY, backoffDelay, isTransient } from './retry'
 import { AgentLoop } from './client/AgentLoop'
 import type {
   AgentEvent,
@@ -103,6 +104,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private unsubscribe: (() => void) | null = null
   private streamStartTime = 0
   private allInternalMessages: Message[] = []
+  /** The countdown to an automatic retry, for the chat to show; null when nothing is waiting. */
+  readonly retrying = ref<{ attempt: number; of: number; secondsLeft: number } | null>(null)
+  private retryTimer: number | null = null
+  private retryCancel: (() => void) | null = null
   private allChatMessages: ChatMessage[] = []
   private activeLeafId: string | null = null
   private userMessageCount = 0
@@ -474,6 +479,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    * is exactly what it was a moment ago.
    */
   async retryRequest(): Promise<void> {
+    // Pressing it during a countdown means now, not in eight seconds.
+    this.cancelAutoRetry()
     if (this.isStreaming.value || this.isExecutingTool.value) return
     if (this.allInternalMessages.length === 0) return
 
@@ -631,6 +638,21 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           if (am.errorMessage) {
             this.error.value = am.errorMessage
             console.error('[Abele AI]', am.errorMessage)
+          }
+
+          /*
+           * A failed turn is an error to show, not a message to keep.
+           *
+           * The provider gave no answer, so appending its empty shell put a blank bubble at
+           * the end of the chat — and the loop kept it in the history too, which made "retry"
+           * send the conversation *plus* an empty assistant turn. Providers refuse that.
+           * The loop now leaves it out of the history; this leaves it out of the chat.
+           */
+          if (am.stopReason === 'error') {
+            this.streamingContent.value = ''
+            this.streamingThinking.value = ''
+            this.streamStartTime = 0
+            break
           }
 
           const textParts = am.content.filter((c): c is TextContent => c.type === 'text')
@@ -799,7 +821,66 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     return internal
   }
 
+  /**
+   * A turn, tried again by itself when the failure was the sort that passes on its own.
+   *
+   * Off unless asked for. What it repeats is decided by `isTransient`: a rate limit or a
+   * dropped connection is worth another go, a rejected key is not — that would be the same
+   * refusal five times over with a growing wait between them.
+   */
   private async runAgentLoop(): Promise<void> {
+    const settings = { ...DEFAULT_RETRY, ...(AbeleConfig.getInstance().ai.autoRetry ?? {}) }
+
+    for (let attempt = 0; ; attempt++) {
+      await this.runAgentLoopOnce()
+
+      const failure = this.error.value
+      if (!failure || attempt >= settings.attempts || !isTransient(failure)) return
+      // The reader is in charge: a pending tool call or a stopped turn is not retried behind
+      // their back.
+      if (this.pendingToolCalls.value.length) return
+
+      const carryOn = await this.waitBeforeRetry(
+        backoffDelay(attempt + 1, settings.firstDelayMs),
+        attempt + 1,
+        settings.attempts
+      )
+      if (!carryOn) return
+    }
+  }
+
+  /** Counts down out loud, so a chat that looks stuck says what it is waiting for. */
+  private waitBeforeRetry(ms: number, attempt: number, of: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      let left = Math.ceil(ms / 1000)
+      this.retrying.value = { attempt, of, secondsLeft: left }
+
+      const finish = (carryOn: boolean) => {
+        if (this.retryTimer !== null) window.clearTimeout(this.retryTimer)
+        this.retryTimer = null
+        this.retryCancel = null
+        this.retrying.value = null
+        resolve(carryOn)
+      }
+
+      const tick = () => {
+        left -= 1
+        if (left <= 0) return finish(true)
+        this.retrying.value = { attempt, of, secondsLeft: left }
+        this.retryTimer = window.setTimeout(tick, 1000)
+      }
+
+      this.retryCancel = () => finish(false)
+      this.retryTimer = window.setTimeout(tick, 1000)
+    })
+  }
+
+  /** Stops a countdown: the reader asked for something else, or gave up on it. */
+  cancelAutoRetry(): void {
+    this.retryCancel?.()
+  }
+
+  private async runAgentLoopOnce(): Promise<void> {
     this.isStreaming.value = true
     this.streamingContent.value = ''
     this.streamingThinking.value = ''
@@ -1273,6 +1354,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   abort(): void {
+    this.cancelAutoRetry()
     this.agentLoop?.abort()
     this.isStreaming.value = false
     // Stopping stops what was lined up behind it too. Whoever stopped it keeps the text —

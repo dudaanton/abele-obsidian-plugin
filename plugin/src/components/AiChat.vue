@@ -153,8 +153,15 @@
             <Icon icon="alert-triangle" />
             <span>{{ error }}</span>
           </div>
+          <div v-if="retrying" class="abele-ai-chat__error-line">
+            <span>
+              Trying again in {{ retrying.secondsLeft }}s ({{ retrying.attempt }} of
+              {{ retrying.of }})
+            </span>
+          </div>
           <div class="abele-ai-chat__error-actions">
-            <button @click="onRetryRequest">Retry</button>
+            <button @click="onRetryRequest">{{ retrying ? 'Retry now' : 'Retry' }}</button>
+            <button v-if="retrying" @click="session?.cancelAutoRetry()">Stop trying</button>
             <button v-if="hasFallbackModel" @click="onRetryWithFallback">
               Retry on {{ fallbackModelName }}
             </button>
@@ -974,6 +981,9 @@ const queuedMessages = computed(() => session.value?.queuedMessages.value ?? [])
 const onRemoveQueued = (id: string) => session.value?.removeQueuedMessage(id)
 
 const hasFallbackModel = computed(() => session.value?.hasFallbackModel ?? false)
+
+/** The countdown to an automatic retry, when one is running. */
+const retrying = computed(() => session.value?.retrying.value ?? null)
 const fallbackModelName = computed(
   () => session.value?.resolveModel({ fallback: true })?.name ?? ''
 )
