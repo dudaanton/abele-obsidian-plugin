@@ -333,11 +333,27 @@ export class ChatService {
     }
   }
 
-  getAuxiliaryModelConfig(): ModelConfig {
+  /**
+   * The model for the plugin's own background work on a chat — naming it, compacting it.
+   *
+   * Asked in order: what the agent says, then the plugin-wide setting, then the model the chat
+   * is already talking to. That last step is the point: this used to fall through to the
+   * globally "active" model, which itself falls back to the first model of the first provider,
+   * so a chat could have its title written by a model nobody chose for anything.
+   *
+   * The chat is optional because the old signature had no argument, and the plugin has one
+   * caller — the background prompts screen — with no chat in hand.
+   */
+  getAuxiliaryModelConfig(session?: ChatSession): ModelConfig {
     const config = AbeleConfig.getInstance().ai
-    if (!config.auxiliaryModelId) return this.getActiveModelConfig()
 
-    for (const provider of config.providers) {
+    const agent = session?.agent.value
+    if (agent) {
+      const ownChoice = AgentRegistry.getInstance().resolveModel(agent, { background: true })
+      if (ownChoice) return ownChoice
+    }
+
+    for (const provider of config.auxiliaryModelId ? config.providers : []) {
       const model = provider.models.find((m) => m.id === config.auxiliaryModelId)
       if (model) {
         return {
@@ -352,7 +368,7 @@ export class ChatService {
       }
     }
 
-    return this.getActiveModelConfig()
+    return session?.activeModel() ?? this.getActiveModelConfig()
   }
 
   // ── System prompt ─────────────────────────────────────────────

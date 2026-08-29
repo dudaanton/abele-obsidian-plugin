@@ -159,10 +159,14 @@
         desc="Chat models are chosen per agent, on the Agents tab. This one is used for the
           plugin's own background work — naming chats and compacting long conversations."
       >
-        <Setting name="Auxiliary Model" desc="Used for chat titles and compaction.">
+        <Setting
+          name="Auxiliary Model"
+          desc="Used for chat titles and compaction. Left unset, each chat uses the model it is
+            already talking to; an agent can name one of its own, which wins over this."
+        >
           <Dropdown
             :model-value="auxModelKey"
-            :options="[{ value: '', display: 'First available' }, ...modelOptions]"
+            :options="[{ value: '', display: 'Same as the chat' }, ...modelOptions]"
             @update:model-value="selectAuxModel($event)"
           />
         </Setting>

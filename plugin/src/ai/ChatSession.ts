@@ -447,7 +447,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   auxiliaryModel(): ModelConfig {
-    return this.chatService.getAuxiliaryModelConfig()
+    return this.chatService.getAuxiliaryModelConfig(this)
   }
 
   activeModel(): ModelConfig | null {

@@ -49,6 +49,18 @@
               @update:model-value="selectFallback($event)"
             />
           </Setting>
+
+          <Setting
+            name="Background model"
+            desc="For naming and compacting this agent's chats. Unset, the plugin-wide Background
+              Model setting decides — and unset there too, the chat's own model does."
+          >
+            <Dropdown
+              :model-value="backgroundKey"
+              :options="[{ value: '', display: 'Follow the setting' }, ...modelOptions]"
+              @update:model-value="selectBackground($event)"
+            />
+          </Setting>
         </template>
 
         <!-- Prompts -->
@@ -306,6 +318,21 @@ const fallbackKey = computed(() =>
 function selectModel(key: string): void {
   const [providerId, modelId] = key.split('::')
   patch({ providerId: providerId || '', modelId: modelId || '' })
+}
+
+const backgroundKey = computed(() =>
+  agent.value?.auxiliaryModelId
+    ? `${agent.value.auxiliaryProviderId ?? ''}::${agent.value.auxiliaryModelId}`
+    : ''
+)
+
+function selectBackground(key: string): void {
+  if (!key) {
+    patch({ auxiliaryProviderId: undefined, auxiliaryModelId: undefined })
+    return
+  }
+  const [providerId, modelId] = key.split('::')
+  patch({ auxiliaryProviderId: providerId || '', auxiliaryModelId: modelId || '' })
 }
 
 function selectFallback(key: string): void {

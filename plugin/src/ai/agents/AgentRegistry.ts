@@ -155,9 +155,16 @@ export class AgentRegistry {
    * Null is a real answer, not a failure to be papered over: silently substituting some other
    * model is how a chat ends up quietly running on the wrong one. Callers decide what to show.
    */
-  resolveModel(agent: AgentDefinition, options: { fallback?: boolean } = {}): ModelConfig | null {
-    const providerId = options.fallback ? agent.fallbackProviderId : agent.providerId
-    const modelId = options.fallback ? agent.fallbackModelId : agent.modelId
+  resolveModel(
+    agent: AgentDefinition,
+    options: { fallback?: boolean; background?: boolean } = {}
+  ): ModelConfig | null {
+    const chosen = options.background
+      ? { providerId: agent.auxiliaryProviderId, modelId: agent.auxiliaryModelId }
+      : options.fallback
+        ? { providerId: agent.fallbackProviderId, modelId: agent.fallbackModelId }
+        : { providerId: agent.providerId, modelId: agent.modelId }
+    const { providerId, modelId } = chosen
     if (!modelId) return null
 
     const found = this.findModel(providerId ?? '', modelId)

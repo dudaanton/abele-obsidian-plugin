@@ -24,6 +24,13 @@ export interface AgentDefinition {
   modelId: string
   fallbackProviderId?: string
   fallbackModelId?: string
+  /**
+   * For the plugin's own background work on this agent's chats — naming them, compacting them.
+   * Empty means the plugin-wide Background Model setting decides, and if that is unset too, the
+   * chat's own model does.
+   */
+  auxiliaryProviderId?: string
+  auxiliaryModelId?: string
 
   /** Concatenated in order, blank line between blocks. */
   prompts: AgentPrompt[]
