@@ -37,6 +37,7 @@ import TimeTrackingSettings from './TimeTrackingSettings.vue'
 import ScriptsSettings from './ScriptsSettings.vue'
 import LinksSettings from './LinksSettings.vue'
 import OtherSettings from './OtherSettings.vue'
+import TransferSettings from './TransferSettings.vue'
 
 interface SettingsTab {
   id: string
@@ -53,6 +54,7 @@ const tabs: SettingsTab[] = [
   { id: 'ai', label: 'AI Agent', component: markRaw(AiSettings) },
   { id: 'scripts', label: 'Scripts', component: markRaw(ScriptsSettings) },
   { id: 'links', label: 'Links', component: markRaw(LinksSettings) },
+  { id: 'transfer', label: 'Transfer', component: markRaw(TransferSettings) },
   { id: 'other', label: 'Other', component: markRaw(OtherSettings) },
 ]
 

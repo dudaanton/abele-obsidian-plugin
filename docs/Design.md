@@ -21,6 +21,7 @@ not invent its own.
 | `Icon` | Anything the user presses that carries only a glyph. Has `disabled` and `tooltip`. |
 | `Input`, `Dropdown`, `Checkbox`, `Search`, `ColorPicker` | Form controls. |
 | `Modal` | A dialog. `size="wide"` when a form needs more than the default column. |
+| `QrCode` | A QR code, drawn as SVG from whatever text it is given. |
 | `ConfirmModal` | The question asked before something is destroyed. |
 
 If a screen needs something the kit does not have, the change belongs in the kit — with a
@@ -48,6 +49,11 @@ including the separate window settings can open in.
 **Colour, spacing, radius and type come from Obsidian's variables.** `var(--size-4-2)`, not
 `8px`; `var(--text-muted)`, not `#888`. Literal lengths and hex colours are a bug: they stop
 tracking the user's theme and their zoom level.
+
+**The one exception to the colours is `QrCode`.** It is dark modules on a light plate in
+every theme, because that is what a camera expects — several scanners refuse an inverted code
+outright, and a themed QR inverts the moment the user switches to a dark theme. The exception
+is named in the component and nowhere else: no other element sets a colour of its own.
 
 **No `style="…"` attributes.** A one-off margin in the template is a pattern nobody can find
 later. Give it a class, or give the kit a prop.
