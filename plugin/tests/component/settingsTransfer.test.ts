@@ -11,6 +11,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import TransferSettings from '@/components/settings/TransferSettings.vue'
 import TransferScanModal from '@/components/settings/transfer/TransferScanModal.vue'
 import TransferShowModal from '@/components/settings/transfer/TransferShowModal.vue'
+import TransferPreviewModal from '@/components/settings/transfer/TransferPreviewModal.vue'
 import Input from '@/components/obsidian/Input.vue'
 import Checkbox from '@/components/obsidian/Checkbox.vue'
 import Button from '@/components/obsidian/Button.vue'
@@ -53,9 +54,9 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/** The rows of the sending screen, by the name each one shows. */
+/** The cards of the sending screen, by the name each one shows. */
 const rowNamed = (wrapper: ReturnType<typeof mount>, name: string) =>
-  wrapper.findAll('.abele-transfer__entry').find((row) => row.text().includes(name))
+  wrapper.findAll('.abele-card').find((card) => card.text().includes(name))
 
 const clickButton = async (wrapper: ReturnType<typeof mount>, text: string) => {
   const button = wrapper.findAllComponents(Button).find((b) => b.props('text') === text)
@@ -124,6 +125,56 @@ describe('choosing what to send', () => {
     await clickButton(wrapper, 'Show QR')
 
     expect(wrapper.findComponent(TransferShowModal).props('code')).toBeUndefined()
+  })
+})
+
+describe('the preview of what will be sent', () => {
+  const openPreview = async () => {
+    const wrapper = open(TransferSettings)
+    await rowNamed(wrapper, 'openwebui')?.trigger('click')
+    await flushPromises()
+    await clickButton(wrapper, 'Preview')
+    return wrapper
+  }
+
+  it('shows the settings themselves, not a count of them', async () => {
+    const wrapper = await openPreview()
+
+    expect(wrapper.findComponent(TransferPreviewModal).exists()).toBe(true)
+    expect(wrapper.text()).toContain('https://openwebui.example')
+  })
+
+  it('says what it comes to, in items, keys and codes', async () => {
+    const wrapper = await openPreview()
+
+    expect(wrapper.text()).toContain('1 item')
+    expect(wrapper.text()).toContain('1 key')
+    expect(wrapper.text()).toContain('1 code')
+  })
+
+  /** A preview anyone can be looking over your shoulder at is not the place for the key. */
+  it('masks the key it would send', async () => {
+    const wrapper = await openPreview()
+
+    expect(wrapper.text()).not.toContain('sk-the-secret')
+    expect(wrapper.text()).toContain('key-p1')
+  })
+
+  /**
+   * The provider still names the keychain slot it uses — that is settings, and the other side
+   * needs it. What must not be there is the block of keys, because none are going.
+   */
+  it('shows no keys block at all when they are being left behind', async () => {
+    const wrapper = open(TransferSettings)
+    await wrapper.findComponent(Checkbox).vm.$emit('toggle')
+    await rowNamed(wrapper, 'openwebui')?.trigger('click')
+    await flushPromises()
+    await clickButton(wrapper, 'Preview')
+
+    const preview = wrapper.findComponent(TransferPreviewModal)
+    expect(preview.text()).not.toContain('Keys')
+    expect(preview.text()).not.toContain('1 key')
+    expect(preview.text()).toContain('apiKeyId')
   })
 })
 

@@ -1,7 +1,8 @@
 <template>
   <div
     class="abele-card"
-    :class="{ 'abele-card_clickable': clickable }"
+    :class="{ 'abele-card_clickable': clickable, 'abele-card_selected': selected }"
+    :aria-pressed="selected === undefined ? undefined : selected"
     :role="clickable ? 'button' : undefined"
     :tabindex="clickable ? 0 : undefined"
     @click="clickable && emit('click')"
@@ -30,15 +31,25 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  title: string
-  /** A secondary identifier — a model id, a path. Rendered in the monospace face. */
-  subtitle?: string
-  description?: string
-  /** Short facts about the item, shown as one faint row. */
-  meta?: string[]
-  clickable?: boolean
-}>()
+/**
+ * `selected` is given an explicit `undefined` default: Vue otherwise casts an absent boolean
+ * prop to `false`, and a card nobody is choosing between would then announce itself as an
+ * unpressed button to anyone using a screen reader.
+ */
+withDefaults(
+  defineProps<{
+    title: string
+    /** A secondary identifier — a model id, a path. Rendered in the monospace face. */
+    subtitle?: string
+    description?: string
+    /** Short facts about the item, shown as one faint row. */
+    meta?: string[]
+    clickable?: boolean
+    /** For a card that is one of several being picked from. */
+    selected?: boolean
+  }>(),
+  { subtitle: undefined, description: undefined, meta: undefined, selected: undefined }
+)
 
 const emit = defineEmits<{
   (e: 'click'): void
@@ -63,6 +74,15 @@ const emit = defineEmits<{
   &:hover {
     border-color: var(--interactive-accent);
   }
+}
+
+/**
+ * Chosen, rather than hovered: the accent is what the theme uses to say "this one", and the
+ * tint keeps a selected card legible in a grid where the border alone is easy to miss.
+ */
+.abele-card_selected {
+  border-color: var(--interactive-accent);
+  background-color: var(--background-modifier-hover);
 }
 
 /** Wraps rather than pushing the actions off the edge when the card is phone-width. */

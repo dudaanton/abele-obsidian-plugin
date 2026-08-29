@@ -11,45 +11,52 @@
         <Checkbox :is-enabled="withKeys" @toggle="withKeys = !withKeys" />
       </Setting>
 
-      <div v-for="group in groups" :key="group.section" class="abele-transfer__group">
-        <div class="abele-transfer__group-head">
-          <Checkbox :is-enabled="allChosen(group)" @toggle="toggleGroup(group)" />
-          <span class="abele-transfer__group-name">{{ group.label }}</span>
-          <Badge :text="String(group.entries.length)" />
-        </div>
-
-        <div
-          v-for="entry in group.entries"
-          :key="key(entry)"
-          class="abele-transfer__entry"
-          role="button"
-          tabindex="0"
-          @click="toggle(entry)"
-          @keydown.enter="toggle(entry)"
-          @keydown.space.prevent="toggle(entry)"
-        >
-          <Checkbox :is-enabled="chosen.has(key(entry))" @toggle="toggle(entry)" />
-          <span class="abele-transfer__entry-name">{{ entry.label }}</span>
-          <Icon
-            v-if="withKeys && (entry.secretIds?.length || entry.sensitive)"
-            icon="key-round"
-            no-hover
-            class="abele-transfer__entry-key"
+      <template v-for="group in groups" :key="group.section">
+        <Setting :name="group.label" :desc="counted(group)">
+          <Button
+            v-if="group.entries.length > 1"
+            :text="allChosen(group) ? 'Clear' : 'Select all'"
+            :tooltip="allChosen(group) ? `Send none of the ${group.label.toLowerCase()}` : `Send all of the ${group.label.toLowerCase()}`"
+            @click="toggleGroup(group)"
           />
-        </div>
-      </div>
+        </Setting>
+
+        <CardGrid wide>
+          <Card
+            v-for="entry in group.entries"
+            :key="key(entry)"
+            :title="entry.label"
+            :meta="details(entry)"
+            clickable
+            :selected="chosen.has(key(entry))"
+            @click="toggle(entry)"
+          >
+            <template #badges>
+              <Badge v-if="withKeys && carriesKey(entry)" text="key" />
+            </template>
+          </Card>
+        </CardGrid>
+      </template>
 
       <EmptyState v-if="!groups.length" text="Nothing here can be transferred yet." />
 
       <Setting :name="summary" :desc="codesSummary">
+        <Button
+          text="Preview"
+          :disabled="!chosen.size"
+          :tooltip="
+            chosen.size ? 'See exactly what would be sent' : 'Choose something to send first'
+          "
+          @click="previewing = true"
+        />
         <Button
           text="Show QR"
           accent
           :disabled="!chosen.size"
           :tooltip="
             chosen.size
-              ? 'Show what you ticked as a QR code to read on the other device'
-              : 'Tick something to send first'
+              ? 'Show what you chose as a QR code to read on the other device'
+              : 'Choose something to send first'
           "
           @click="show"
         />
@@ -69,6 +76,13 @@
       </Setting>
     </Section>
 
+    <TransferPreviewModal
+      v-if="previewing"
+      :payload="preview"
+      :codes="codes"
+      @close="previewing = false"
+    />
+
     <TransferShowModal
       v-if="sending"
       :frames="sending.frames"
@@ -86,10 +100,13 @@ import { Notice } from 'obsidian'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
+import Card from '../obsidian/Card.vue'
+import CardGrid from '../obsidian/CardGrid.vue'
 import Button from '../obsidian/Button.vue'
 import Badge from '../obsidian/Badge.vue'
 import Icon from '../obsidian/Icon.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
+import TransferPreviewModal from './transfer/TransferPreviewModal.vue'
 import TransferShowModal from './transfer/TransferShowModal.vue'
 import TransferScanModal, { type Applied } from './transfer/TransferScanModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -135,6 +152,29 @@ const toggle = (entry: TransferEntry) => {
 
 const allChosen = (group: Group) => group.entries.every((entry) => chosen.value.has(key(entry)))
 
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`
+
+const counted = (group: Group) => plural(group.entries.length, 'item')
+
+const carriesKey = (entry: TransferEntry) => !!entry.secretIds?.length || !!entry.sensitive
+
+/**
+ * What the card says about itself beyond its name — enough to tell one provider from another
+ * without opening the preview.
+ */
+const details = (entry: TransferEntry): string[] => {
+  const data = entry.data as Record<string, unknown>
+  if (!data || typeof data !== 'object') return []
+
+  const facts: string[] = []
+  if (typeof data.baseUrl === 'string' && data.baseUrl) facts.push(data.baseUrl)
+  if (Array.isArray(data.models)) facts.push(plural(data.models.length, 'model'))
+  if (typeof data.description === 'string' && data.description) facts.push(data.description)
+  if (!facts.length) facts.push(plural(Object.keys(data).length, 'setting'))
+
+  return facts
+}
+
 const toggleGroup = (group: Group) => {
   const next = new Set(chosen.value)
   const removing = allChosen(group)
@@ -147,9 +187,7 @@ const toggleGroup = (group: Group) => {
 
 const picked = computed(() => entries.value.filter((entry) => chosen.value.has(key(entry))))
 
-const summary = computed(() =>
-  chosen.value.size === 1 ? '1 item selected' : `${chosen.value.size} items selected`
-)
+const summary = computed(() => `${plural(chosen.value.size, 'item')} selected`)
 
 /**
  * How many codes it will take, worked out by actually packing it.
@@ -183,6 +221,11 @@ const reader = () => {
   const { app } = GlobalStore.getInstance()
   return (id: string) => app.secretStorage.getSecret(id) || ''
 }
+
+const previewing = ref(false)
+
+/** Exactly what would go, built the same way the codes are — keys included or not. */
+const preview = computed(() => buildPayload(picked.value, reader()))
 
 const sending = ref<{ frames: string[]; code?: string } | null>(null)
 const scanning = ref(false)

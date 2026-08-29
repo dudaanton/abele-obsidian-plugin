@@ -64,9 +64,16 @@ function template(source: string): string {
   return match ? withoutComments(match[1]) : ''
 }
 
-/** Every `<Button …>` and `<Icon …>` in a template, with its attributes as written. */
+/**
+ * Every `<Button …>` and `<Icon …>` in a template, with its attributes as written.
+ *
+ * Quoted values are consumed whole rather than scanned character by character: an attribute
+ * is allowed to contain `>` — `v-if="items.length > 1"` — and stopping at the first one cuts
+ * the tag short, which used to report a button as missing the tooltip written further along.
+ */
 function componentTags(source: string): { tag: string; attrs: string }[] {
-  return [...template(source).matchAll(/<(Button|Icon)\b([^>]*?)\/?>/gs)].map((match) => ({
+  const tags = /<(Button|Icon)\b((?:"[^"]*"|'[^']*'|[^>])*?)\/?>/gs
+  return [...template(source).matchAll(tags)].map((match) => ({
     tag: match[1],
     attrs: match[2] ?? '',
   }))
@@ -122,6 +129,13 @@ describe('the design standard', () => {
     )
 
     expect(offenders.map(name)).toEqual([])
+  })
+
+  it('reads a whole tag even when an attribute holds a comparison', () => {
+    // The guard on the guard's parser: this tag has its tooltip after a `>` in a directive.
+    const source = `<template><Button v-if="items.length > 1" text="Go" tooltip="Go there" /></template>`
+
+    expect(componentTags(source)[0].attrs).toContain('tooltip="Go there"')
   })
 
   it('finds the actions it is meant to be checking', () => {

@@ -142,6 +142,29 @@ describe('Card', () => {
   })
 })
 
+describe('Card being chosen from', () => {
+  it('says so, for anyone not going by colour', () => {
+    const wrapper = mount(Card, { props: { title: 'AI general', clickable: true, selected: true } })
+
+    expect(wrapper.find('.abele-card').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.find('.abele-card').classes()).toContain('abele-card_selected')
+  })
+
+  it('is plainly not chosen when it is not', () => {
+    const wrapper = mount(Card, { props: { title: 'AI general', clickable: true, selected: false } })
+
+    expect(wrapper.find('.abele-card').attributes('aria-pressed')).toBe('false')
+    expect(wrapper.find('.abele-card').classes()).not.toContain('abele-card_selected')
+  })
+
+  /** A card nobody is choosing between is not "unpressed" — it is not a choice at all. */
+  it('claims no pressed state when it is not one of a selection', () => {
+    const wrapper = mount(Card, { props: { title: 'AI general', clickable: true } })
+
+    expect(wrapper.find('.abele-card').attributes('aria-pressed')).toBeUndefined()
+  })
+})
+
 describe('CardGrid', () => {
   it('gives cards carrying a description a wider column', () => {
     expect(mount(CardGrid).classes()).not.toContain('abele-card-grid_wide')
