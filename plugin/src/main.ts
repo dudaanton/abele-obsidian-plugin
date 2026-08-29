@@ -946,7 +946,9 @@ export default class AbelePlugin extends Plugin {
       name: 'Show script API reference',
       icon: 'book-open',
       callback: () => {
-        void showMarkdown(SCRIPT_API_DOCS, 'Script API')
+        // No title: the reference opens with its own heading, which the modal lifts into the
+        // title bar rather than showing a second name above it.
+        void showMarkdown(SCRIPT_API_DOCS)
       },
     })
 

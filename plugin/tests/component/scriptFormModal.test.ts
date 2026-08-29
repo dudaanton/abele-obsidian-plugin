@@ -11,6 +11,7 @@ import { mount } from '@vue/test-utils'
 import { Modal } from 'obsidian'
 import ScriptFormModal from '@/components/ScriptFormModal.vue'
 import Markdown from '@/components/obsidian/Markdown.vue'
+import ObsidianModal from '@/components/obsidian/Modal.vue'
 import type { FormField } from '@/scripting/types'
 import { useVault } from '../helpers/testEnv'
 
@@ -168,5 +169,73 @@ describe('the heading of a form that does ask something', () => {
       l.textContent?.trim()
     )
     expect(labels).toContain('What was found')
+  })
+})
+
+describe('a document', () => {
+  const reference: FormField = {
+    name: 'docs',
+    label: '',
+    type: 'markdown',
+    text: '# Script API Reference\n\nScripts are async functions.\n\n## Header\n\nText.',
+  }
+
+  it('opens in the wider column, so its code has room to be read', () => {
+    const wrapper = openWith([reference])
+
+    expect(wrapper.findComponent(ObsidianModal).props('size')).toBe('wide')
+  })
+
+  it('leaves a form asking questions in the column a form belongs in', () => {
+    const wrapper = openWith([question, prose])
+
+    expect(wrapper.findComponent(ObsidianModal).props('size')).toBe('default')
+  })
+
+  /**
+   * `MarkdownRenderer` writes the reading view's markup, and its styling — code blocks and
+   * their copy button, tables, heading spacing — is all under `.markdown-rendered`.
+   */
+  it('is rendered with the styling Obsidian gives a rendered document', () => {
+    const wrapper = openWith([reference])
+
+    expect(wrapper.findComponent(Markdown).props('asDocument')).toBe(true)
+  })
+
+  it('is not, when the markdown is one block beside the questions', () => {
+    const wrapper = openWith([question, prose])
+
+    expect(wrapper.findComponent(Markdown).props('asDocument')).toBe(false)
+  })
+
+  it('takes its own opening heading as the name of the window', () => {
+    expect(headingWhenOpening([reference])).toBe('Script API Reference')
+  })
+
+  it('does not then repeat that heading as the first line of the text', () => {
+    const wrapper = openWith([reference])
+
+    expect(wrapper.findComponent(Markdown).props('text')).toBe(
+      'Scripts are async functions.\n\n## Header\n\nText.'
+    )
+  })
+
+  it('keeps a heading the window is not already carrying', () => {
+    const wrapper = openWith([{ ...reference, label: 'Something else' }])
+
+    expect(wrapper.findComponent(Markdown).props('text')).toBe(reference.text)
+  })
+
+  /** Thousands of pixels of reference, and the button that closes it is at the end of them. */
+  it('keeps the way out in sight rather than at the foot of the text', () => {
+    openWith([reference])
+
+    expect(inDocument('.abele-script-form__actions_sticky')).not.toBeNull()
+  })
+
+  it('does not pin the row of a form, which is short enough to reach', () => {
+    openWith([question])
+
+    expect(inDocument('.abele-script-form__actions_sticky')).toBeNull()
   })
 })

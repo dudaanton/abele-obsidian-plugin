@@ -1,5 +1,6 @@
 <template>
-  <ObsidianModal :title="title" @close="onCancel">
+  <!-- A document gets the wider column: a reference full of code reads badly in a form's. -->
+  <ObsidianModal :title="title" :size="asksSomething ? 'default' : 'wide'" @close="onCancel">
     <form class="abele-script-form" @submit.prevent="onSubmit">
       <div v-for="field in fields" :key="field.name" class="abele-script-form__field">
         <label v-if="field.label && field !== titleField" class="abele-script-form__label">
@@ -8,7 +9,8 @@
         </label>
         <Markdown
           v-if="field.type === 'markdown'"
-          :text="field.text || field.default || ''"
+          :text="bodyOf(field)"
+          :as-document="!asksSomething"
           class="abele-script-form__markdown"
         />
         <select
@@ -31,7 +33,10 @@
         />
         <input v-else v-model="values[field.name]" type="text" class="abele-script-form__input" />
       </div>
-      <div class="abele-script-form__actions">
+      <div
+        class="abele-script-form__actions"
+        :class="{ 'abele-script-form__actions_sticky': !asksSomething }"
+      >
         <!-- Nothing to fill in means nothing to run: the form is something to read. -->
         <button v-if="asksSomething" type="submit" class="mod-cta">Run</button>
         <button type="button" @click="onCancel">{{ asksSomething ? 'Cancel' : 'Close' }}</button>
@@ -68,11 +73,34 @@ const titleField = computed(() =>
   asksSomething.value ? null : (props.fields.find((f) => f.label) ?? null)
 )
 
+/**
+ * A document that opens with a top-level heading is naming itself, and a name belongs in the
+ * title bar. Used when the script named nothing itself; stripped from the text below either
+ * way, so the window never carries the same heading twice.
+ */
+const LEADING_HEADING = /^\s*#[^\S\n]+(.+?)[^\S\n]*(?:\n|$)\n*/
+
+const documentField = computed(() =>
+  asksSomething.value ? null : (props.fields.find((f) => f.type === 'markdown') ?? null)
+)
+
+const ownHeading = computed(() => {
+  const field = documentField.value
+  if (!field) return ''
+  return LEADING_HEADING.exec(field.text || field.default || '')?.[1] ?? ''
+})
+
 /** "Script Parameters" is the wrong heading for something that asks for no parameters. */
 const title = computed(() => {
   if (asksSomething.value) return 'Script Parameters'
-  return titleField.value?.label || 'Script'
+  return titleField.value?.label || ownHeading.value || 'Script'
 })
+
+const bodyOf = (field: FormField): string => {
+  const text = field.text || field.default || ''
+  const named = field === documentField.value && ownHeading.value === title.value
+  return named ? text.replace(LEADING_HEADING, '') : text
+}
 
 const values = reactive<Record<string, string>>({})
 for (const field of props.fields) {
@@ -156,5 +184,21 @@ function onCancel() {
   display: flex;
   gap: var(--size-4-2);
   justify-content: flex-end;
+}
+
+/**
+ * A reference runs to thousands of pixels, and a button at the end of it is a button nobody
+ * reaches. Obsidian scrolls the modal itself, so the row sticks to the bottom of that.
+ *
+ * The offset is the modal's own padding, `.modal { padding: var(--size-4-4) }`: text is drawn
+ * into that padding as it scrolls past, so a row stopping at the content edge leaves a strip
+ * of it showing underneath. The row reaches the bottom edge and carries the padding itself.
+ */
+.abele-script-form__actions_sticky {
+  position: sticky;
+  bottom: calc(var(--size-4-4) * -1);
+  padding: var(--size-4-3) 0 var(--size-4-4);
+  border-top: 1px solid var(--background-modifier-border);
+  background-color: var(--modal-background, var(--background-primary));
 }
 </style>

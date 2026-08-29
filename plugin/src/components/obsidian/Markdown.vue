@@ -1,5 +1,10 @@
 <template>
-  <div ref="target" class="abele-markdown" @click="handleClick"></div>
+  <div
+    ref="target"
+    class="abele-markdown"
+    :class="{ 'markdown-rendered': asDocument }"
+    @click="handleClick"
+  ></div>
 </template>
 
 <script setup lang="ts">
@@ -10,6 +15,16 @@ import { onMounted, onUnmounted, ref, watch } from 'vue'
 const props = defineProps<{
   text: string
   filePath?: string
+  /**
+   * For a whole document rather than a line or two of prose.
+   *
+   * `MarkdownRenderer` produces the markup of Obsidian's reading view, but the styling for it
+   * — code blocks, tables, heading spacing — hangs off `.markdown-rendered`, which nothing
+   * adds for us. Without it a code block arrives with no background and its copy button
+   * dropped underneath as a block of its own. It is opt-in because those same rules bring
+   * reading-view margins, which are wrong for markdown sitting inside a row or a card.
+   */
+  asDocument?: boolean
 }>()
 
 let component: Component | null = null
