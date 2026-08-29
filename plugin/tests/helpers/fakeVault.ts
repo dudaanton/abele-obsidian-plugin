@@ -412,6 +412,34 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       async trashFile(file: TFile) {
         removeFile(file.path)
       },
+      /**
+       * The real one also rewrites every link pointing at the file; nothing here needs that
+       * yet. What it does need is the part that catches people out: Obsidian moves the file
+       * *in place*, so everything already holding that `TFile` keeps working. A fake that
+       * made a new one instead would leave every existing reference pointing at a ghost.
+       */
+      async renameFile(file: TFile, to: string) {
+        const body = rawByPath.get(file.path)
+        byPath.delete(file.path)
+        rawByPath.delete(file.path)
+        if (file.parent) {
+          const idx = file.parent.children.indexOf(file)
+          if (idx !== -1) file.parent.children.splice(idx, 1)
+        }
+
+        file.path = to
+        file.name = to.split('/').pop() ?? to
+        const dot = file.name.lastIndexOf('.')
+        file.basename = dot > 0 ? file.name.slice(0, dot) : file.name
+        file.extension = dot > 0 ? file.name.slice(dot + 1) : ''
+
+        const parent = ensureFolder(to.includes('/') ? to.slice(0, to.lastIndexOf('/')) : '')
+        parent.children.push(file)
+        file.parent = parent
+
+        byPath.set(to, file)
+        if (body !== undefined) rawByPath.set(to, body)
+      },
     },
     secretStorage: (() => {
       const secrets = new Map<string, string>()

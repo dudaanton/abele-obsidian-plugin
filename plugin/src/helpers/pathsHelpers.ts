@@ -118,13 +118,61 @@ export function removeAliasFromWikilink(link: string): string {
   return link
 }
 
+/**
+ * Characters a file or folder name cannot carry, and why it is two groups.
+ *
+ * Obsidian's own new-file dialog refuses `* " \ / < > : | ?`. The rest — `#`, `^`, `[`, `]` —
+ * it writes to disk without complaint, and then nothing can link to the result: `[[Note#x]]`
+ * addresses a heading, `[[Note^x]]` a block, and a bracket ends the link. In a vault built on
+ * links, a note nothing can point at is a note that has been lost on creation.
+ */
+export const FORBIDDEN_NAME_CHARS = '*"\\/<>:|?#^[]'
+
 export function cleanFileName(fileName: string): string {
   // Remove invalid characters for file names
   return fileName
     .split('\n')[0]
-    .replace(/[[\]/\\?%*:|"<>]/g, '')
+    .replace(/[[\]/\\?%*:|"<>#^]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+/** Which forbidden characters a single name carries, in the order they appear, without repeats. */
+export function invalidNameChars(name: string): string[] {
+  const found: string[] = []
+  for (const char of name) {
+    if (FORBIDDEN_NAME_CHARS.includes(char) && !found.includes(char)) found.push(char)
+  }
+  return found
+}
+
+/**
+ * What is wrong with a path, in a sentence, or `null` when nothing is.
+ *
+ * Checked a segment at a time so that `/` keeps its job of separating them, and every segment
+ * is checked because a folder named with a `#` breaks the links of everything inside it.
+ */
+export function checkVaultPath(path: string): string | null {
+  const segments = path.split('/').filter(Boolean)
+  if (!segments.length) return `"${path}" is not a path.`
+
+  for (const segment of segments) {
+    const bad = invalidNameChars(segment)
+    if (!bad.length) continue
+
+    const suggestion = segments
+      .map((part) => cleanFileName(part))
+      .filter(Boolean)
+      .join('/')
+    const chars = bad.map((char) => `"${char}"`).join(', ')
+    const plural = bad.length > 1 ? 'characters' : 'a character'
+    return (
+      `"${segment}" cannot be used as a name: it contains ${chars}, ` +
+      `${plural} no wikilink can point past. Try "${suggestion}".`
+    )
+  }
+
+  return null
 }
 
 /**

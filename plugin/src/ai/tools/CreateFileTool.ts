@@ -1,6 +1,7 @@
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
+import { checkVaultPath } from '@/helpers/pathsHelpers'
 
 export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
@@ -19,6 +20,10 @@ export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool 
       const { path, content } = params as { path: string; content: string }
       if (!path) throw new Error('Missing required parameter: path')
       if (content == null) throw new Error('Missing required parameter: content')
+      // Before anything is written: Obsidian's own API takes a name with a `#` in it happily,
+      // and the note that comes out cannot be linked to from anywhere.
+      const wrong = checkVaultPath(path)
+      if (wrong) throw new Error(`Cannot create ${path}. ${wrong}`)
       const { app } = GlobalStore.getInstance()
       if (app.vault.getAbstractFileByPath(path)) throw new Error(`File already exists: ${path}`)
 

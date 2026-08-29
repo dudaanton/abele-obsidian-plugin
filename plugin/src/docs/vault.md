@@ -4,6 +4,16 @@ The shape of every kind of note the plugin owns: which `type` marks it, which pr
 carries, and where new ones are put. Dates are `YYYY-MM-DD` and times are `HH:mm` unless said
 otherwise; a note that breaks that is a note the plugin will read wrongly.
 
+## Naming notes
+
+A note's name cannot contain `* " \ / < > : | ?` — Obsidian refuses those itself — nor `#`,
+`^`, `[` or `]`, which it will write to disk and then never link to: `[[Note#x]]` addresses a
+heading, `[[Note^x]]` a block, and a bracket ends the link. `create`, `mv` and `cp` refuse such
+a name and say which character is at fault and what to use instead.
+
+The usual way this happens is deriving a name from a markdown heading and keeping the `# `.
+Strip it. Apostrophes, commas, ampersands and percent signs are all fine.
+
 ## Tasks
 
 `type: task`. One note per task, in the tasks folder (`Tasks` by default).

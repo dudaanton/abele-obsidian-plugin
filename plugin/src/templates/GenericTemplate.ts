@@ -1,5 +1,6 @@
 import { GlobalStore } from '@/stores/GlobalStore'
-import { App, MarkdownView, TFile, normalizePath } from 'obsidian'
+import { checkVaultPath } from '@/helpers/pathsHelpers'
+import { App, MarkdownView, Notice, TFile, normalizePath } from 'obsidian'
 
 /**
  * Abstract generic class for creating note templates
@@ -65,6 +66,9 @@ export abstract class GenericTemplate<T> {
         }
       }
     } catch (error) {
+      // The note does not exist afterwards either way; without this the only trace was a line
+      // in a console nobody has open, and the person is left thinking it worked.
+      new Notice(`Could not create ${fullpath}: ${error instanceof Error ? error.message : error}`)
       console.error(`Error creating note ${fullpath}:`, error)
     }
   }
@@ -89,6 +93,11 @@ export abstract class GenericTemplate<T> {
     }
 
     const normalizedPath = normalizePath(filePath)
+
+    // Same guard as the agent's `create`, for the same reason: a name carrying a `#` or a `^`
+    // is written to disk without complaint and can never be linked to afterwards.
+    const wrong = checkVaultPath(normalizedPath)
+    if (wrong) throw new Error(`Cannot create ${normalizedPath}. ${wrong}`)
 
     const existing = app.vault.getAbstractFileByPath(normalizedPath)
     if (existing) {
