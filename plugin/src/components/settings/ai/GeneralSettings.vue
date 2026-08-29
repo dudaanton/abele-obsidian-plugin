@@ -227,6 +227,74 @@
         </Setting>
       </Section>
 
+      <Section
+        title="Voice input"
+        desc="Dictate into the chat, or into a note with the “Dictate into the note” command. OpenRouter has no transcription endpoint, so the audio goes to a model that hears — these two were picked for price, for running in Europe, and for not training on what is sent."
+      >
+        <Setting name="Model" desc="What turns speech into text.">
+          <Dropdown
+            :model-value="voiceModelChoice"
+            :options="voiceModelOptions"
+            @update:model-value="chooseVoiceModel"
+          />
+        </Setting>
+
+        <Setting v-if="voiceModelNote" :name="voiceModelName" :desc="voiceModelNote" />
+
+        <template v-if="voiceModelChoice === 'custom'">
+          <Setting name="Model id" desc="Any model that accepts audio, as its provider names it.">
+            <Input
+              :model-value="voice.modelId"
+              placeholder="vendor/model"
+              @update:model-value="setVoice('modelId', $event)"
+            />
+          </Setting>
+          <Setting name="Endpoint" desc="Left empty, OpenRouter's chat completions.">
+            <Input
+              :model-value="voice.endpoint"
+              placeholder="https://openrouter.ai/api/v1/chat/completions"
+              @update:model-value="setVoice('endpoint', $event)"
+            />
+          </Setting>
+        </template>
+
+        <Setting
+          name="Language"
+          desc="Told to the model as a hint. Left empty, it works it out from the audio."
+        >
+          <Input
+            :model-value="voice.language"
+            placeholder="Russian"
+            @update:model-value="setVoice('language', $event)"
+          />
+        </Setting>
+
+        <Setting name="OpenRouter API key" desc="Stored in the keychain, shared with image generation.">
+          <div class="abele-ai-provider__secret">
+            <span v-if="getSecretDisplay(voiceKeyName)" class="abele-ai-provider__secret-mask">
+              {{ getSecretDisplay(voiceKeyName) }}
+            </span>
+            <div class="abele-ai-provider__secret-row">
+              <input
+                type="password"
+                class="abele-obsidian-input"
+                :value="voiceSecretInput"
+                :placeholder="getSecretDisplay(voiceKeyName) ? 'New key...' : 'sk-or-...'"
+                @input="voiceSecretInput = ($event.target as HTMLInputElement).value"
+                @keydown.enter="applyVoiceSecret"
+              />
+              <Icon
+                v-if="voiceSecretInput"
+                icon="check"
+                with-bg
+                tooltip="Save key"
+                @click="applyVoiceSecret"
+              />
+            </div>
+          </div>
+        </Setting>
+      </Section>
+
       <Section title="Image Generation">
         <div v-for="(ip, ipIdx) in imageProviders" :key="ipIdx" class="abele-ai-provider">
           <div class="abele-ai-provider__header">
@@ -487,6 +555,12 @@ import ImageModelEditModal from '../ImageModelEditModal.vue'
 import Icon from '../../obsidian/Icon.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { TRANSCRIPTION_MODELS } from '@/ai/transcription'
+import {
+  DEFAULT_VOICE_SETTINGS,
+  voiceKeyId,
+  type VoiceSettings,
+} from '@/ai/transcriptionSettings'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { OpenAIClient } from '@/ai/client'
 import type { RemoteModel } from '@/ai/client'
@@ -660,6 +734,57 @@ const applyBraveSecret = () => {
   app.secretStorage.setSecret('abele-brave-search', braveSecretInput.value)
   braveSecretInput.value = ''
   save()
+}
+
+// ── Voice input ─────────────────────────────────────────────
+
+const voice = ref<VoiceSettings>({ ...DEFAULT_VOICE_SETTINGS, ...(config.ai.voice ?? {}) })
+const voiceSecretInput = ref('')
+
+const voiceKeyName = computed(() => voiceKeyId(voice.value))
+
+const voiceModelOptions = [
+  ...TRANSCRIPTION_MODELS.map((model) => ({ value: model.id, display: model.name })),
+  { value: 'custom', display: 'Something else…' },
+]
+
+/** A model that is not one of the two is shown as "something else", with its id spelled out. */
+const voiceModelChoice = computed(() =>
+  TRANSCRIPTION_MODELS.some((model) => model.id === voice.value.modelId)
+    ? voice.value.modelId
+    : 'custom'
+)
+
+const voiceModelName = computed(
+  () => TRANSCRIPTION_MODELS.find((m) => m.id === voice.value.modelId)?.name ?? ''
+)
+
+const voiceModelNote = computed(
+  () => TRANSCRIPTION_MODELS.find((m) => m.id === voice.value.modelId)?.note ?? ''
+)
+
+const saveVoice = () => {
+  config.ai = { ...config.ai, voice: { ...voice.value } }
+  save()
+}
+
+const setVoice = (key: keyof VoiceSettings, value: string) => {
+  voice.value = { ...voice.value, [key]: value }
+  saveVoice()
+}
+
+const chooseVoiceModel = (value: string) => {
+  // "Something else" keeps whatever id was there rather than blanking it, so switching back
+  // and forth does not lose what was typed.
+  if (value !== 'custom') setVoice('modelId', value)
+  else if (voiceModelChoice.value !== 'custom') setVoice('modelId', '')
+}
+
+const applyVoiceSecret = () => {
+  if (!voiceSecretInput.value) return
+  app.secretStorage.setSecret(voiceKeyName.value, voiceSecretInput.value)
+  voiceSecretInput.value = ''
+  saveVoice()
 }
 
 // ── Image providers ─────────────────────────────────────────

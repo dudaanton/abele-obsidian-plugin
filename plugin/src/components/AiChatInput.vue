@@ -32,6 +32,16 @@
       @blur="emit('focus', false)"
     />
 
+    <VoiceRecorder
+      v-if="voiceOpen"
+      can-send
+      auto-start
+      class="abele-chat-input__voice"
+      @text="onVoiceText"
+      @send="onVoiceSend"
+      @close="voiceOpen = false"
+    />
+
     <div class="abele-chat-input__toolbar">
       <div class="abele-chat-input__toolbar-left">
         <span v-if="tokenDisplay" class="abele-chat-input__tokens">{{ tokenDisplay }}</span>
@@ -62,6 +72,13 @@
           <Icon icon="sparkles" with-bg @click="emit('openSkillPrompt')" />
           <Icon icon="shield" with-bg @click="emit('openPermissions')" />
           <Icon icon="paperclip" with-bg @click="showAttachMenu" />
+          <Icon
+            icon="mic"
+            with-bg
+            :tooltip="voiceOpen ? 'Close voice input' : 'Dictate a message'"
+            :class="{ 'abele-chat-input__mic_open': voiceOpen }"
+            @click="voiceOpen = !voiceOpen"
+          />
           <Icon
             v-if="canContinue && !text.trim() && !attachments.length"
             icon="play"
@@ -96,6 +113,7 @@
 import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { Menu, TFile, Notice } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
+import VoiceRecorder from './VoiceRecorder.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { pickVaultFile } from '@/helpers/suggesters/VaultFilePicker'
 import { importExternalFile, getAttachmentIcon, ALLOWED_ACCEPT } from '@/ai/attachments'
@@ -169,6 +187,31 @@ const send = () => {
   text.value = ''
   attachments.value = []
   nextTick(autoResize)
+}
+
+/**
+ * Voice sits under the field rather than replacing it: what was dictated is added to whatever
+ * was already typed, and any attachments go along with it, because a recording is one more
+ * thing said in the message rather than a message of its own.
+ */
+const voiceOpen = ref(false)
+
+const withDictated = (dictated: string) => {
+  const existing = text.value.trim()
+  return existing ? `${existing} ${dictated}` : dictated
+}
+
+const onVoiceText = (dictated: string) => {
+  text.value = withDictated(dictated)
+  nextTick(() => {
+    autoResize()
+    inputEl.value?.focus()
+  })
+}
+
+const onVoiceSend = (dictated: string) => {
+  text.value = withDictated(dictated)
+  nextTick(send)
 }
 
 const showAttachMenu = (event: MouseEvent) => {
@@ -426,6 +469,14 @@ onUnmounted(() => {
     border-color: var(--interactive-accent);
     outline: none;
   }
+}
+
+.abele-chat-input__voice {
+  margin: var(--size-4-2) 0;
+}
+
+.abele-chat-input__mic_open {
+  color: var(--interactive-accent);
 }
 
 .abele-chat-input__toolbar {

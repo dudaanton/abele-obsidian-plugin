@@ -74,6 +74,7 @@ import { handleProtocolAction } from './helpers/protocolHandler'
 import { handleLinkAction } from './helpers/linkHandler'
 import { registerChartCodeblock } from './editor/ChartCodeblock'
 import { SnippetService } from './services/SnippetService'
+import { dictate } from '@/audio/voiceModal'
 
 /** Plugin-level data in `data.json` that is not part of the settings object. */
 type PluginData = Record<string, unknown>
@@ -925,6 +926,21 @@ export default class AbelePlugin extends Plugin {
 
     // Registered whether or not scripts are enabled: the reference is what someone reads
     // while deciding to turn them on.
+    this.addCommand({
+      id: 'voice-input',
+      name: 'Dictate into the note',
+      icon: 'mic',
+      editorCallback: (editor) => {
+        void dictate(this.app).then((text) => {
+          if (!text) return
+          // At the cursor, and the cursor after it: dictating twice in a row should append
+          // rather than overwrite what the first go put there.
+          editor.replaceSelection(text)
+          editor.focus()
+        })
+      },
+    })
+
     this.addCommand({
       id: 'show-script-api',
       name: 'Show script API reference',

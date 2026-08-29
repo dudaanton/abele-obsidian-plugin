@@ -118,6 +118,13 @@ export interface InterceptorChatMessage {
   timestamp: number
 }
 
+export interface VoiceSettings {
+  modelId: string
+  endpoint: string
+  apiKeyId: string
+  language: string
+}
+
 export interface AiSettings {
   enabled: boolean
   providers: AiProvider[]
@@ -144,6 +151,8 @@ export interface AiSettings {
   agents: AgentDefinition[]
   /** Id of the agent new chats start on. */
   defaultAgentId: string
+  /** Voice input: which model turns speech into text, and where its key lives. */
+  voice?: VoiceSettings
   /** @deprecated migrated to imageProviders */
   openRouterApiKey?: string
   /** @deprecated migrated to imageProviders */
