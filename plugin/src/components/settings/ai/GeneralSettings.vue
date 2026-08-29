@@ -462,7 +462,13 @@
             :clickable="editingSecretIdx !== sIdx"
             @click="startEditSecret(sIdx)"
           >
-            <template v-if="editingSecretIdx === sIdx">
+            <!--
+              Clicks inside the open editor must not reach the card, which would read them as
+              "open me". Save and Cancel both close the card, and the browser runs a microtask
+              checkpoint between two listeners of one click — long enough for Vue to re-render
+              the card as clickable again before the click finishes bubbling into it.
+            -->
+            <div v-if="editingSecretIdx === sIdx" class="abele-ai-secret__editor" @click.stop>
               <Input
                 :model-value="secret.name"
                 placeholder="Secret name"
@@ -487,14 +493,19 @@
               <div class="abele-ai-secret__row">
                 <Button
                   text="Save"
+                  accent
                   :disabled="!secretValueInputs[sIdx]"
                   tooltip="Store this value in the keychain"
                   @click="applySecretValue(sIdx)"
                 />
                 <Icon icon="trash" tooltip="Remove this secret" @click="askRemoveSecret(sIdx)" />
-                <Icon icon="x" tooltip="Done" @click="editingSecretIdx = -1" />
+                <Icon
+                  icon="x"
+                  tooltip="Cancel — leave the stored value as it is"
+                  @click="cancelEditSecret(sIdx)"
+                />
               </div>
-            </template>
+            </div>
           </Card>
         </CardGrid>
 
@@ -946,6 +957,11 @@ const selectDefaultImageModel = (key: string) => {
 
 const editingSecretIdx = ref(-1)
 
+/** The name the open card started with, so that cancelling puts it back. */
+let secretNameBefore = ''
+/** A secret added but never stored — cancelling it should leave nothing behind. */
+let secretIsNew = false
+
 const getSecretFullValue = (secretId: string): string => {
   if (!secretId) return ''
   return app.secretStorage.getSecret(secretId) || ''
@@ -960,13 +976,29 @@ const copySecret = (secretId: string) => {
 
 const addSecret = () => {
   secrets.value.push({ name: '', keyId: '' })
-  editingSecretIdx.value = secrets.value.length - 1
+  startEditSecret(secrets.value.length - 1)
+  secretIsNew = true
 }
 
 const startEditSecret = (idx: number) => {
   editingSecretIdx.value = idx
+  secretNameBefore = secrets.value[idx].name
+  secretIsNew = false
   const keyId = secrets.value[idx].keyId
   secretValueInputs[idx] = keyId ? getSecretFullValue(keyId) : ''
+}
+
+/** Closes the card and undoes the sitting, unsaved edit — the name included. */
+const cancelEditSecret = (idx: number) => {
+  editingSecretIdx.value = -1
+  secretValueInputs[idx] = ''
+  if (secretIsNew) {
+    secrets.value.splice(idx, 1)
+  } else {
+    secrets.value[idx].name = secretNameBefore
+  }
+  secretIsNew = false
+  save()
 }
 
 const askRemoveSecret = (idx: number) => {
@@ -1010,9 +1042,11 @@ const applySecretValue = (idx: number) => {
   app.secretStorage.setSecret(secret.keyId, value)
   secretValueInputs[idx] = ''
   editingSecretIdx.value = -1
+  secretIsNew = false
   // Force re-render so getSecretDisplay() re-evaluates with the new keychain value
   secrets.value = [...secrets.value]
   save()
+  new Notice(`Saved ${secret.name || 'the secret'} to the keychain`)
 }
 
 // ── Provider management ─────────────────────────────────────
@@ -1199,6 +1233,14 @@ const updatePrompt = (field: keyof Omit<AiPrompts, 'toolDescriptions'>, value: s
 .abele-ai-provider__name {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/** Was a bare `<template>`; the wrapper keeps the card's own column layout. */
+.abele-ai-secret__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+  min-width: 0;
 }
 
 .abele-ai-secret__row {
