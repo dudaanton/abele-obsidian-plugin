@@ -39,11 +39,22 @@ const providerNamed = (id: string, name: string) => ({
 })
 
 beforeEach(() => {
-  app = useVault([])
+  app = useVault([
+    { path: 'Scripts/tally.js', content: 'const run = () => 42\n' },
+    {
+      path: 'Notes/Writing.md',
+      frontmatter: { type: 'abele-skill', name: 'writing', description: 'How to write' },
+      content: 'Write plainly.',
+    },
+  ])
   const config = AbeleConfig.getInstance()
   config.applySettings({
     refreshDelay: 500,
-    ai: { ...DEFAULT_AI_SETTINGS, providers: [providerNamed('p1', 'openwebui')] } as AiSettings,
+    ai: {
+      ...DEFAULT_AI_SETTINGS,
+      providers: [providerNamed('p1', 'openwebui')],
+      scriptsFolder: 'Scripts',
+    } as AiSettings,
   })
   app.secretStorage.setSecret('key-p1', 'sk-the-secret')
   original = app.secretStorage.setSecret.bind(app.secretStorage)
@@ -240,6 +251,87 @@ describe('reading a transfer on the other device', () => {
     await paste(wrapper, [...frames].reverse())
 
     expect(wrapper.text()).toContain('openwebui')
+  })
+})
+
+
+describe('the scripts, skills and prompts themselves', () => {
+  const sendFile = async (name: string) => {
+    const wrapper = open(TransferSettings)
+    await flushPromises()
+    await rowNamed(wrapper, name)?.trigger('click')
+    // Nothing here needs a key, so the transfer stays open and needs no code.
+    await wrapper.findComponent(Checkbox).vm.$emit('toggle')
+    await flushPromises()
+    await clickButton(wrapper, 'Show QR')
+    await waitFor(() => wrapper.findComponent(TransferShowModal).exists())
+
+    return wrapper.findComponent(TransferShowModal).props('frames') as string[]
+  }
+
+  it('offers a script that lives in the scripts folder', async () => {
+    const wrapper = open(TransferSettings)
+    await flushPromises()
+
+    expect(rowNamed(wrapper, 'tally.js')).toBeTruthy()
+  })
+
+  it('offers a skill by the name it calls itself', async () => {
+    const wrapper = open(TransferSettings)
+    await flushPromises()
+
+    expect(rowNamed(wrapper, 'writing')).toBeTruthy()
+  })
+
+  it('writes an arriving script into this vault', async () => {
+    const frames = await sendFile('tally.js')
+    const receiving = useVault([])
+    AbeleConfig.getInstance().ai = {
+      ...DEFAULT_AI_SETTINGS,
+      scriptsFolder: 'Scripts',
+    } as AiSettings
+
+    const wrapper = open(TransferScanModal)
+    await clickButton(wrapper, 'Paste the text')
+    await wrapper.findComponent(Input).vm.$emit('update:model-value', frames.join('\n'))
+    await waitFor(() => wrapper.text().includes('to apply'))
+    await clickButton(wrapper, 'Apply')
+    await flushPromises()
+
+    const written = receiving.vault.getFileByPath('Scripts/tally.js')
+    expect(written).toBeTruthy()
+    expect(await receiving.vault.read(written!)).toBe('const run = () => 42\n')
+  })
+
+  /** The other device is entitled to keep its scripts somewhere else entirely. */
+  it('puts it in the folder this vault uses, not the one it came from', async () => {
+    const frames = await sendFile('tally.js')
+    const receiving = useVault([])
+    AbeleConfig.getInstance().ai = {
+      ...DEFAULT_AI_SETTINGS,
+      scriptsFolder: 'Automation',
+    } as AiSettings
+
+    const wrapper = open(TransferScanModal)
+    await clickButton(wrapper, 'Paste the text')
+    await wrapper.findComponent(Input).vm.$emit('update:model-value', frames.join('\n'))
+    await waitFor(() => wrapper.text().includes('to apply'))
+    await clickButton(wrapper, 'Apply')
+    await flushPromises()
+
+    expect(receiving.vault.getFileByPath('Automation/tally.js')).toBeTruthy()
+    expect(receiving.vault.getFileByPath('Scripts/tally.js')).toBeNull()
+  })
+
+  it('says a file this vault already has, unchanged, would change nothing', async () => {
+    const frames = await sendFile('tally.js')
+
+    const wrapper = open(TransferScanModal)
+    await clickButton(wrapper, 'Paste the text')
+    await wrapper.findComponent(Input).vm.$emit('update:model-value', frames.join('\n'))
+    await waitFor(() => wrapper.text().includes('to apply'))
+
+    expect(wrapper.text()).toContain('unchanged')
   })
 })
 

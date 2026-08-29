@@ -12,7 +12,7 @@
  */
 import type { AbeleSettings } from '@/services/AbeleConfig'
 import type { AiSettings } from '@/ai/types'
-import type { SectionId, TransferEntry, TransferPayload } from './types'
+import { FILE_SECTION_LABELS, isFileSection, type SectionId, type TransferEntry, type TransferPayload } from './types'
 
 interface Identified {
   id: string
@@ -140,7 +140,7 @@ export const SECTIONS: Section[] = [
     s.keyId ? [s.keyId] : []
   ),
   aiBlock('ai-prompts', 'Prompts', ['prompts']),
-  aiBlock('scripts', 'Scripts', ['scriptsEnabled', 'scriptsFolder']),
+  aiBlock('scripts', 'Script settings', ['scriptsEnabled', 'scriptsFolder']),
   {
     kind: 'list',
     id: 'links',
@@ -209,7 +209,17 @@ export const SECTIONS: Section[] = [
 
 const sectionById = new Map(SECTIONS.map((section) => [section.id, section]))
 
-export const sectionLabel = (id: SectionId): string => sectionById.get(id)?.label ?? id
+export const sectionLabel = (id: SectionId): string =>
+  sectionById.get(id)?.label ??
+  FILE_SECTION_LABELS[id as keyof typeof FILE_SECTION_LABELS] ??
+  id
+
+/** The settings half of a mixed list; the files are planned and written by `files.ts`. */
+export const settingsOnly = (entries: TransferEntry[]): TransferEntry[] =>
+  entries.filter((entry) => !isFileSection(entry.section))
+
+export const filesOnly = (entries: TransferEntry[]): TransferEntry[] =>
+  entries.filter((entry) => isFileSection(entry.section))
 
 /** Everything the settings hold that could be sent. An empty section offers nothing. */
 export function collectEntries(settings: AbeleSettings): TransferEntry[] {
@@ -276,7 +286,7 @@ export interface PlannedEntry {
 }
 
 export function planEntries(entries: TransferEntry[], settings: AbeleSettings): PlannedEntry[] {
-  return entries.map((entry) => {
+  return settingsOnly(entries).map((entry) => {
     const section = sectionById.get(entry.section)
     if (!section) return { entry, status: 'new' as const }
 
@@ -296,9 +306,12 @@ export function planEntries(entries: TransferEntry[], settings: AbeleSettings): 
 
 /** The settings as they would be with these entries in them. The original is left alone. */
 export function applyEntries(entries: TransferEntry[], settings: AbeleSettings): AbeleSettings {
-  const next = structuredClone(settings)
+  // Through JSON rather than `structuredClone`: the live settings are observed by the app, so
+  // their arrays are reactive proxies, and cloning one of those throws `DataCloneError`. These
+  // settings are JSON on disk anyway, so nothing survives the trip that was not already there.
+  const next = JSON.parse(JSON.stringify(settings)) as AbeleSettings
 
-  for (const entry of entries) {
+  for (const entry of settingsOnly(entries)) {
     const section = sectionById.get(entry.section)
     if (!section) continue
 

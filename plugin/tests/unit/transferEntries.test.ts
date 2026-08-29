@@ -7,6 +7,7 @@
  * the rules about what may be overwritten are testable without one.
  */
 import { describe, it, expect } from 'vitest'
+import { reactive } from 'vue'
 import {
   collectEntries,
   buildPayload,
@@ -207,6 +208,22 @@ describe('applying what was accepted', () => {
 
     expect(next.tasksFolder).toBe('Дела')
     expect(next.refreshDelay).toBe(500)
+  })
+
+  /**
+   * The settings the app actually holds are watched by Vue, which means their arrays are
+   * proxies — and `structuredClone` refuses a proxy outright. Applying a transfer threw
+   * `DataCloneError` in the running plugin while every test here passed on plain objects.
+   */
+  it('applies to the settings the running app holds, proxies and all', () => {
+    const observed = reactive(settings())
+    const arriving = collectEntries(
+      settings({ ai: { ...settings().ai!, providers: [provider('p2', 'groq')] } })
+    ).filter((e) => e.section === 'ai-providers')
+
+    const next = applyEntries(arriving, observed)
+
+    expect(next.ai?.providers.map((p) => p.id)).toEqual(['p1', 'p2'])
   })
 
   it('does not change the settings object it was given', () => {

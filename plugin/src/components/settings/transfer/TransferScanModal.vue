@@ -104,7 +104,15 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { createReceiver } from '@/transfer/frames'
 import { decodePayload, isEncrypted } from '@/transfer/payload'
-import { applyEntries, planEntries, sectionLabel, type PlannedEntry } from '@/transfer/entries'
+import {
+  applyEntries,
+  filesOnly,
+  planEntries,
+  sectionLabel,
+  settingsOnly,
+  type PlannedEntry,
+} from '@/transfer/entries'
+import { applyFiles, planFiles, readCurrent } from '@/transfer/files'
 import { readCodes } from '@/transfer/scan'
 import type { SectionId, TransferPayload } from '@/transfer/types'
 
@@ -112,6 +120,8 @@ import type { SectionId, TransferPayload } from '@/transfer/types'
 export interface Applied {
   items: number
   keysRefused: number
+  /** Files the vault would not take — a path it refuses, or a folder it cannot make. */
+  filesRefused: number
 }
 
 const emit = defineEmits<{ (e: 'close'): void; (e: 'applied', result: Applied): void }>()
@@ -142,6 +152,11 @@ const sync = () => {
 }
 const blob = ref<Uint8Array | null>(null)
 const payload = ref<TransferPayload | null>(null)
+
+/** What this vault holds today for the files about to arrive, for telling new from changed. */
+const current = ref(new Map<string, string>())
+
+const scriptsFolder = () => AbeleConfig.getInstance().ai.scriptsFolder || ''
 
 const label = (section: SectionId) => sectionLabel(section)
 
@@ -174,8 +189,18 @@ const open = async () => {
     return
   }
 
-  payload.value = result.payload
-  accepted.value = new Set(planEntries(result.payload.entries, settings()).map((item) => id(item)))
+  await accept(result.payload)
+}
+
+/** Everything a decoded payload needs before the review can be drawn. */
+const accept = async (opened: TransferPayload) => {
+  current.value = await readCurrent(
+    GlobalStore.getInstance().app,
+    filesOnly(opened.entries),
+    scriptsFolder()
+  )
+  payload.value = opened
+  accepted.value = new Set(planned.value.map((item) => id(item)))
   phase.value = 'review'
 }
 
@@ -192,9 +217,7 @@ const unlock = async () => {
   }
 
   error.value = ''
-  payload.value = result.payload
-  accepted.value = new Set(planEntries(result.payload.entries, settings()).map((item) => id(item)))
-  phase.value = 'review'
+  await accept(result.payload)
 }
 
 const reset = () => {
@@ -206,9 +229,15 @@ const reset = () => {
 
 const settings = () => AbeleConfig.getInstance().exportSettings()
 
-const planned = computed<PlannedEntry[]>(() =>
-  payload.value ? planEntries(payload.value.entries, settings()) : []
-)
+const planned = computed<PlannedEntry[]>(() => {
+  const entries = payload.value?.entries
+  if (!entries) return []
+
+  return [
+    ...planEntries(entries, settings()),
+    ...planFiles(filesOnly(entries), current.value, scriptsFolder()),
+  ]
+})
 
 const id = (item: PlannedEntry) => `${item.entry.section}:${item.entry.id}`
 
@@ -270,7 +299,20 @@ const apply = async () => {
   }
 
   await config.saveSettings()
-  emit('applied', { items: chosen.length, keysRefused })
+
+  // The files go in after the settings, so a script lands in the folder that just arrived
+  // with them rather than the one this vault had a moment ago.
+  const files = await applyFiles(
+    GlobalStore.getInstance().app,
+    filesOnly(chosen),
+    scriptsFolder()
+  )
+
+  emit('applied', {
+    items: settingsOnly(chosen).length + files.written,
+    keysRefused,
+    filesRefused: files.failed.length,
+  })
 }
 
 /* ------------------------------------------------------------------ reading from a camera */

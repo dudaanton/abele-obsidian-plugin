@@ -10,6 +10,9 @@ export const TRANSFER_SECTIONS = [
   'ai-secrets',
   'ai-prompts',
   'scripts',
+  'script-files',
+  'skill-notes',
+  'prompt-notes',
   'links',
   'header-buttons',
   'journals',
@@ -20,6 +23,18 @@ export const TRANSFER_SECTIONS = [
 ] as const
 
 export type SectionId = (typeof TRANSFER_SECTIONS)[number]
+
+/** The sections whose entries are files in the vault rather than settings. */
+export const FILE_SECTIONS = ['script-files', 'skill-notes', 'prompt-notes'] as const
+
+export const FILE_SECTION_LABELS: Record<(typeof FILE_SECTIONS)[number], string> = {
+  'script-files': 'Scripts',
+  'skill-notes': 'Skills',
+  'prompt-notes': 'Prompt notes',
+}
+
+export const isFileSection = (section: SectionId): boolean =>
+  (FILE_SECTIONS as readonly string[]).includes(section)
 
 /**
  * One thing that can travel on its own: a provider, an agent, a link — or a whole block of
@@ -38,6 +53,18 @@ export interface TransferEntry {
   secretIds?: string[]
   /** The entry's own data holds a credential, which is what forces the whole transfer shut. */
   sensitive?: boolean
+}
+
+/**
+ * A file travelling whole: a script, a skill, a prompt.
+ *
+ * `base` is the folder a script came out of, kept only so a vault with no scripts folder of
+ * its own has somewhere to put it.
+ */
+export interface TransferFile {
+  path: string
+  content: string
+  base?: string
 }
 
 export interface TransferPayload {

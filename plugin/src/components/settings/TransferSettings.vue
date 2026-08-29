@@ -95,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Notice } from 'obsidian'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
@@ -112,11 +112,34 @@ import TransferScanModal, { type Applied } from './transfer/TransferScanModal.vu
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { collectEntries, buildPayload, needsCode, sectionLabel } from '@/transfer/entries'
+import { collectFiles } from '@/transfer/files'
 import { encodePayload, newTransferCode } from '@/transfer/payload'
 import { toFrames, newTransferId, FRAME_PAYLOAD_BYTES } from '@/transfer/frames'
-import type { SectionId, TransferEntry } from '@/transfer/types'
+import {
+  isFileSection,
+  TRANSFER_SECTIONS,
+  type SectionId,
+  type TransferEntry,
+  type TransferFile,
+} from '@/transfer/types'
 
-const entries = computed(() => collectEntries(AbeleConfig.getInstance().exportSettings()))
+const settingsEntries = computed(() => collectEntries(AbeleConfig.getInstance().exportSettings()))
+
+/**
+ * The scripts, skills and prompts themselves, read out of the vault.
+ *
+ * Read once when the screen opens rather than as the payload is packed: the preview and the
+ * card list both want to know what is actually in them, and a handful of small files is a
+ * cheaper thing to hold than a special case for "the content arrives later".
+ */
+const fileEntries = ref<TransferEntry[]>([])
+
+onMounted(async () => {
+  const { app } = GlobalStore.getInstance()
+  fileEntries.value = await collectFiles(app, AbeleConfig.getInstance().ai.scriptsFolder || '')
+})
+
+const entries = computed(() => [...settingsEntries.value, ...fileEntries.value])
 
 const key = (entry: TransferEntry) => `${entry.section}:${entry.id}`
 
@@ -134,10 +157,12 @@ const groups = computed<Group[]>(() => {
     bySection.set(entry.section, list)
   }
 
-  return [...bySection].map(([section, list]) => ({
+  // In the order the sections are declared, so the files sit beside the settings they belong
+  // to rather than wherever the two collections happened to be concatenated.
+  return TRANSFER_SECTIONS.filter((section) => bySection.has(section)).map((section) => ({
     section,
     label: sectionLabel(section),
-    entries: list,
+    entries: bySection.get(section) ?? [],
   }))
 })
 
@@ -167,6 +192,12 @@ const details = (entry: TransferEntry): string[] => {
   if (!data || typeof data !== 'object') return []
 
   const facts: string[] = []
+  if (isFileSection(entry.section)) {
+    const file = entry.data as TransferFile
+    facts.push(file.base ? `${file.base}/${file.path}` : file.path)
+    facts.push(`${file.content.length} characters`)
+    return facts
+  }
   if (typeof data.baseUrl === 'string' && data.baseUrl) facts.push(data.baseUrl)
   if (Array.isArray(data.models)) facts.push(plural(data.models.length, 'model'))
   if (typeof data.description === 'string' && data.description) facts.push(data.description)
@@ -238,15 +269,18 @@ const show = async () => {
   sending.value = { frames: toFrames(blob, newTransferId()), code }
 }
 
-const onApplied = ({ items, keysRefused }: Applied) => {
+const onApplied = ({ items, keysRefused, filesRefused }: Applied) => {
   scanning.value = false
 
-  const applied = items === 1 ? 'Applied 1 item.' : `Applied ${items} items.`
-  const refused = keysRefused
-    ? ` ${keysRefused === 1 ? 'One key' : `${keysRefused} keys`} could not be stored — the name this vault uses for it is one Obsidian will not take.`
-    : ''
+  const parts = [`Applied ${plural(items, 'item')}.`]
+  if (keysRefused) {
+    parts.push(
+      `${plural(keysRefused, 'key')} could not be stored — the name this vault uses for it is one Obsidian will not take.`
+    )
+  }
+  if (filesRefused) parts.push(`${plural(filesRefused, 'file')} could not be written.`)
 
-  new Notice(`${applied}${refused}`)
+  new Notice(parts.join(' '))
 }
 </script>
 
