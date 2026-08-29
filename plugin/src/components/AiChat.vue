@@ -31,7 +31,15 @@
       </div>
 
       <!-- Messages -->
-      <div ref="messagesContainer" class="abele-ai-chat__messages" @scroll="onMessagesScroll">
+      <div
+        ref="messagesContainer"
+        class="abele-ai-chat__messages"
+        @scroll="onMessagesScroll"
+        @wheel.passive="readerTakesOver"
+        @touchstart.passive="readerTakesOver"
+        @mousedown="readerTakesOver"
+        @keydown="readerTakesOver"
+      >
         <div v-if="messages.length === 0" class="abele-ai-chat__empty">
           <Icon icon="tree-deciduous" no-hover class="abele-ai-chat__empty-icon" />
           <span class="abele-ai-chat__empty-text">What's on your mind?</span>
@@ -476,7 +484,23 @@ const AUTO_SCROLL_THRESHOLD_PX = 60
 /** How close to the top counts as asking for the messages above. */
 const LOAD_OLDER_THRESHOLD_PX = 200
 let shouldAutoScroll = true
-let scrollSetByCode = false
+
+/**
+ * Where the code last left the scroll, for telling its own scrolling from the reader's.
+ *
+ * A position rather than a flag saying the next scroll event is the code's. That flag was
+ * wrong whenever a scroll produced no event to spend it on — scrolling to the bottom of a
+ * chat already at its bottom changes nothing, and nothing is what the browser reports — and
+ * the reader's next scroll was then read as the code's and ignored, which is how a chat being
+ * streamed into pulled them back down the moment they scrolled up to read something.
+ */
+let codeScrollTop: number | null = null
+
+/** Scrolls the container, remembering where the browser actually settled. */
+const scrollContainerTo = (el: HTMLElement, top: number) => {
+  el.scrollTop = top
+  codeScrollTop = el.scrollTop
+}
 
 /**
  * Only the end of the conversation is mounted; scrolling back reveals the rest.
@@ -526,8 +550,21 @@ const holdAnchor = () => {
 
   const drift = offsetOf(anchor.el, container) - anchor.offset
   if (Math.abs(drift) < 1) return
-  scrollSetByCode = true
-  container.scrollTop += drift
+  scrollContainerTo(container, container.scrollTop + drift)
+}
+
+/**
+ * The reader taking over, told from their input rather than from a scroll event.
+ *
+ * A scroll event says where the container is, not who put it there, and while the anchor is
+ * held that is not enough: the reader scrolls, the hold puts the container back in the same
+ * frame, and the browser reports the two as one event reading exactly the held position —
+ * indistinguishable from the hold correcting itself. So the hold held on, and the chat
+ * refused to scroll back for as long as it lasted. A wheel, a finger, a key or the scrollbar
+ * being taken hold of says what the scroll event cannot.
+ */
+const readerTakesOver = () => {
+  anchor = null
 }
 
 /**
@@ -559,12 +596,11 @@ const loadOlder = () => {
 }
 
 const onMessagesScroll = () => {
-  if (scrollSetByCode) {
-    scrollSetByCode = false
-    return
-  }
   const el = messagesContainer.value
   if (!el) return
+  // The container is exactly where it was put, so nobody has moved it since.
+  if (codeScrollTop !== null && Math.abs(el.scrollTop - codeScrollTop) < 1) return
+  codeScrollTop = null
   // The reader has taken over; whatever was being held is where they left it.
   anchor = null
   shouldAutoScroll = el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD_PX
@@ -576,8 +612,7 @@ const doScroll = () => {
   nextTick(() => {
     const el = messagesContainer.value
     if (!el) return
-    scrollSetByCode = true
-    el.scrollTop = el.scrollHeight
+    scrollContainerTo(el, el.scrollHeight)
   })
 }
 

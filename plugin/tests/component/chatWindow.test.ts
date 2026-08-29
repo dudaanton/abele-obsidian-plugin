@@ -29,15 +29,18 @@ function conversation(count: number): ChatMessage[] {
 }
 
 const messages = ref<ChatMessage[]>([])
+/** What the assistant is saying right now — the chat follows it while it grows. */
+const streaming = ref('')
 
 beforeEach(() => {
   useVault([])
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
   messages.value = []
+  streaming.value = ''
   const service = ChatService.getInstance()
   vi.spyOn(service, 'ensureInitialized').mockImplementation(() => {})
   vi.spyOn(service, 'activeSession', 'get').mockReturnValue({
-    value: fakeChatSession({ messages }),
+    value: fakeChatSession({ messages, overrides: { streamingContent: streaming } }),
   } as never)
 })
 
@@ -141,72 +144,72 @@ describe('a message arriving while the chat is open', () => {
   })
 })
 
-describe('the view while older messages are being revealed', () => {
-  /**
-   * These mount into the document rather than beside it. The anchoring drops an anchor whose
-   * element has left the page, and a wrapper mounted the default way is detached — so every
-   * element in it reports itself disconnected and the anchor would be dropped immediately.
-   */
-  let attached: ReturnType<typeof mount> | null = null
+/**
+ * These mount into the document rather than beside it. The anchoring drops an anchor whose
+ * element has left the page, and a wrapper mounted the default way is detached — so every
+ * element in it reports itself disconnected and the anchor would be dropped immediately.
+ */
+let attached: ReturnType<typeof mount> | null = null
 
-  afterEach(() => {
-    attached?.unmount()
-    attached = null
-    document.body.replaceChildren()
+afterEach(() => {
+  attached?.unmount()
+  attached = null
+  document.body.replaceChildren()
+})
+
+const mountAttached = () => {
+  attached = mount(AiChat, { attachTo: document.body })
+  return attached
+}
+
+/**
+ * happy-dom lays nothing out, so the layout is modelled: every message has a height, the
+ * container's rectangle starts at zero, and an element's rectangle follows from what is
+ * above it and where the container is scrolled. That is enough to ask the only question
+ * that matters — does what the reader is looking at stay where it was.
+ */
+function layoutModel(wrapper: ReturnType<typeof mount>) {
+  const container = wrapper.find('.abele-ai-chat__messages').element as HTMLElement
+  const heights = new Map<Element, number>()
+  let scrollTop = 0
+
+  Object.defineProperty(container, 'scrollTop', {
+    configurable: true,
+    get: () => scrollTop,
+    set: (v: number) => {
+      scrollTop = v
+    },
   })
+  Object.defineProperty(container, 'scrollHeight', {
+    configurable: true,
+    get: () => [...heights.values()].reduce((sum, h) => sum + h, 0),
+  })
+  Object.defineProperty(container, 'clientHeight', { configurable: true, get: () => 800 })
+  container.getBoundingClientRect = () => ({ top: 0, height: 800 }) as DOMRect
 
-  const mountAttached = () => {
-    attached = mount(AiChat, { attachTo: document.body })
-    return attached
+  /** Re-measures every message against the model. Call after mounting or resizing them. */
+  const relayout = () => {
+    let offset = 0
+    for (const el of container.querySelectorAll('.abele-chat-msg')) {
+      const top = offset
+      const height = heights.get(el) ?? 0
+      Object.defineProperty(el, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => ({ top: top - scrollTop, height }) as DOMRect,
+      })
+      offset += height
+    }
   }
 
-  /**
-   * happy-dom lays nothing out, so the layout is modelled: every message has a height, the
-   * container's rectangle starts at zero, and an element's rectangle follows from what is
-   * above it and where the container is scrolled. That is enough to ask the only question
-   * that matters — does what the reader is looking at stay where it was.
-   */
-  function layoutModel(wrapper: ReturnType<typeof mount>) {
-    const container = wrapper.find('.abele-ai-chat__messages').element as HTMLElement
-    const heights = new Map<Element, number>()
-    let scrollTop = 0
-
-    Object.defineProperty(container, 'scrollTop', {
-      configurable: true,
-      get: () => scrollTop,
-      set: (v: number) => {
-        scrollTop = v
-      },
-    })
-    Object.defineProperty(container, 'scrollHeight', {
-      configurable: true,
-      get: () => [...heights.values()].reduce((sum, h) => sum + h, 0),
-    })
-    Object.defineProperty(container, 'clientHeight', { configurable: true, get: () => 800 })
-    container.getBoundingClientRect = () => ({ top: 0, height: 800 }) as DOMRect
-
-    /** Re-measures every message against the model. Call after mounting or resizing them. */
-    const relayout = () => {
-      let offset = 0
-      for (const el of container.querySelectorAll('.abele-chat-msg')) {
-        const top = offset
-        const height = heights.get(el) ?? 0
-        Object.defineProperty(el, 'getBoundingClientRect', {
-          configurable: true,
-          value: () => ({ top: top - scrollTop, height }) as DOMRect,
-        })
-        offset += height
-      }
-    }
-
-    const setHeights = (height: number) => {
-      for (const el of container.querySelectorAll('.abele-chat-msg')) heights.set(el, height)
-      relayout()
-    }
-
-    return { container, setHeights, relayout, scrollTo: (v: number) => (scrollTop = v) }
+  const setHeights = (height: number) => {
+    for (const el of container.querySelectorAll('.abele-chat-msg')) heights.set(el, height)
+    relayout()
   }
 
+  return { container, setHeights, relayout, scrollTo: (v: number) => (scrollTop = v) }
+}
+
+describe('the view while older messages are being revealed', () => {
   it('keeps the message the reader was on where it was, after the revealed ones render', async () => {
     messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
     const wrapper = mountAttached()
@@ -249,5 +252,118 @@ describe('the view while older messages are being revealed', () => {
     await new Promise((resolve) => setTimeout(resolve, 60))
 
     expect(model.container.scrollTop).toBe(1500)
+  })
+
+  // Every way a reader starts scrolling for themselves: the wheel, a finger, the keys, and
+  // taking hold of the scrollbar, which is a press on the container and nothing else.
+  it.each(['wheel', 'touchstart', 'keydown', 'mousedown'])(
+    'lets the reader scroll away with the %s while the revealed messages are still growing',
+    async (input) => {
+      messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
+      const wrapper = mountAttached()
+      const model = layoutModel(wrapper)
+      const container = wrapper.find('.abele-ai-chat__messages')
+
+      model.setHeights(100)
+      model.scrollTo(0)
+      await container.trigger('scroll')
+      await nextTick()
+
+      // The revealed page takes up room, and the hold answers by scrolling to keep the reader's
+      // message where it was. From here on it is correcting every frame.
+      model.setHeights(100)
+      await new Promise((resolve) => setTimeout(resolve, 60))
+
+      /*
+       * The reader scrolls up into what was just revealed. Their scroll and the correction that
+       * answers it happen in the same frame, and the container reports one scroll event for
+       * both, reading exactly the position the hold put it back to — so the scroll event cannot
+       * say who moved it. Their wheel can, and nothing else in the page turns one.
+       */
+      model.scrollTo(2000)
+      await container.trigger(input)
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      expect(model.container.scrollTop).toBe(2000)
+    }
+  )
+
+  it('does not mistake the correction it just made for the reader moving', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
+    const wrapper = mountAttached()
+    const model = layoutModel(wrapper)
+    const container = wrapper.find('.abele-ai-chat__messages')
+
+    model.setHeights(100)
+    model.scrollTo(0)
+    await container.trigger('scroll')
+    await nextTick()
+
+    model.setHeights(100)
+    await new Promise((resolve) => setTimeout(resolve, 60))
+
+    // The browser reports the correction, as it reports every scroll. Reading that as the
+    // reader having taken over would end the hold at the first thing it did, and the messages
+    // still rendering below would push the view around for the rest of their arrival.
+    await container.trigger('scroll')
+    model.setHeights(150)
+    await new Promise((resolve) => setTimeout(resolve, 80))
+
+    // 30 messages of 150px above the one being read, which is still where it was.
+    expect(model.container.scrollTop).toBe(DEFAULT_TAIL_PAGE_SIZE * 150)
+  })
+})
+
+/**
+ * A chat follows the reply being streamed into it, until the reader scrolls back to read
+ * something. Then it has to stay where they left it, however much more of the reply arrives.
+ */
+describe('the view while a reply is streaming', () => {
+  it('stays where the reader scrolled to, however much more arrives', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE)
+    const wrapper = mountAttached()
+    const model = layoutModel(wrapper)
+    const container = wrapper.find('.abele-ai-chat__messages')
+    model.setHeights(100)
+
+    // A first chunk, with the chat already at the bottom: it scrolls to where it already is,
+    // which no browser reports as a scroll.
+    streaming.value = 'The answer'
+    await nextTick()
+    await nextTick()
+
+    model.scrollTo(1000)
+    await container.trigger('scroll')
+
+    streaming.value = 'The answer, at greater length'
+    await nextTick()
+    await nextTick()
+
+    expect(model.container.scrollTop).toBe(1000)
+  })
+
+  it('follows the reply again once the reader comes back to the bottom', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE)
+    const wrapper = mountAttached()
+    const model = layoutModel(wrapper)
+    const container = wrapper.find('.abele-ai-chat__messages')
+    model.setHeights(100)
+
+    streaming.value = 'The answer'
+    await nextTick()
+    await nextTick()
+
+    model.scrollTo(1000)
+    await container.trigger('scroll')
+
+    // Back to the end of the conversation, which is the reader asking to be taken along again.
+    model.scrollTo(2200)
+    await container.trigger('scroll')
+
+    streaming.value = 'The answer, at greater length'
+    await nextTick()
+    await nextTick()
+
+    expect(model.container.scrollTop).toBe(3000)
   })
 })
