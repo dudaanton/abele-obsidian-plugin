@@ -57,6 +57,18 @@ defineProps<{
     .abele-obsidian-search {
       width: 100%;
     }
+
+    /**
+     * The select inside it needs saying separately, and with a heavier selector than looks
+     * necessary. Obsidian sizes a dropdown by measuring its widest option into
+     * `--dropdown-fitted-width` and applying it through `.setting-item-control select.dropdown`
+     * — an element selector our `.abele-obsidian-dropdown .dropdown` loses to. Its measurement
+     * came out at 61px for "Off / Ask / Auto", which was not enough to draw "Off" beside the
+     * chevron: every tool in the agent's access list read "O…".
+     */
+    select.dropdown {
+      width: 100%;
+    }
   }
 
   .setting-item-name,

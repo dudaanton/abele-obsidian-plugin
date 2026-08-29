@@ -148,6 +148,19 @@ describe('the design standard', () => {
     expect(interactive.length).toBeGreaterThan(20)
   })
 
+  /**
+   * Not a rule about our own markup, but the one place where losing a line of CSS is invisible
+   * to every other test here: Obsidian sizes a dropdown through
+   * `.setting-item-control select.dropdown`, which outweighs a class selector of ours, and its
+   * fitted width was too narrow to show "Off" beside the chevron. Nothing in a component test
+   * sees another application's stylesheet, so the override is guarded by name.
+   */
+  it('keeps the override that stops Obsidian shrinking a dropdown to a letter', () => {
+    const setting = readFileSync(join(ROOT, 'obsidian', 'Setting.vue'), 'utf8')
+
+    expect(styleBlock(setting)).toMatch(/select\.dropdown\s*\{[^}]*width:\s*100%/)
+  })
+
   it('explains any element that scrolls sideways', () => {
     const offenders = FILES.filter((file) => {
       const source = readFileSync(file, 'utf8')
