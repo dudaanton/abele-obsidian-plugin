@@ -62,6 +62,7 @@ export class GlobalStore {
   public readonly aiSidebarId = ref<string | null>(null)
   public readonly financeSidebarId = ref<string | null>(null)
   public readonly timeTrackingSidebarId = ref<string | null>(null)
+  public readonly scriptRunsId = ref<string | null>(null)
   public readonly findAndReplaceBasesInstances = shallowRef<Map<string, FindAndReplaceInstance>>(
     new Map()
   )

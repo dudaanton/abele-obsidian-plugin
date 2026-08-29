@@ -14,8 +14,23 @@ import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
 import { parseScriptHeader, extractScriptBody } from './ScriptParser'
 import { buildScriptContext } from './ScriptContext'
 import { showFormModal } from './formModal'
+import { ScriptRuns, type RunSource } from './ScriptRuns'
 import type { ParsedScript, FormField } from './types'
 import { ref } from 'vue'
+
+/**
+ * How to run a script, beyond which one and with what.
+ *
+ * `execute` used to take these as trailing arguments and still does — an `AbortSignal` in the
+ * third place means the same as it always did — so nothing that called it before has to change.
+ */
+export interface ExecuteOptions {
+  signal?: AbortSignal
+  formHandler?: (fields: FormField[]) => Promise<Record<string, string> | null>
+  /** Who asked for the run, for the list of runs. Assumed to be an agent when unsaid: that is
+   * the one caller that cannot be given a better answer from inside. */
+  source?: RunSource
+}
 
 export class ScriptService {
   private static instance: ScriptService | null = null
@@ -25,7 +40,6 @@ export class ScriptService {
   private watcherCallbackId: symbol | null = null
   private createEventRef: EventRef | null = null
   private statusBarEl: HTMLElement | null = null
-  private runningAbort: AbortController | null = null
 
   /** Reactive list for settings UI */
   public readonly scriptList = ref<ParsedScript[]>([])
@@ -258,38 +272,71 @@ export class ScriptService {
     }
   }
 
-  private showRunningStatus(scriptName: string, controller: AbortController) {
+  /**
+   * What the status bar says while scripts are going.
+   *
+   * It used to be one line per `execute` call with a stop button on it, which broke as soon as
+   * two scripts ran at once — whichever finished first cleared the other's line. It now counts
+   * what is running and opens the list, where each run has its own stop.
+   */
+  private renderStatusBar() {
+    const running = ScriptRuns.getInstance().running()
+    if (!running.length) {
+      this.clearStatus()
+      return
+    }
+
     const plugin = AbeleConfig.getInstance().plugin
     if (!plugin) return
     if (!this.statusBarEl) {
       this.statusBarEl = plugin.addStatusBarItem()
+      this.statusBarEl.addClass('mod-clickable')
+      this.statusBarEl.addEventListener('click', () => {
+        void this.openRuns()
+      })
     }
-    this.statusBarEl.empty()
-    this.statusBarEl.addClass('mod-clickable')
-    this.statusBarEl.setAttribute('aria-label', 'Stop script')
-    this.statusBarEl.setText(`⏹ ${scriptName}`)
-    this.statusBarEl.addEventListener('click', () => {
-      controller.abort()
-      new Notice(`Script "${scriptName}" stopped.`)
-    })
+    this.statusBarEl.setAttribute('aria-label', 'Show script runs')
+
+    const only = running.length === 1 ? running[0] : null
+    const label = only ? only.name : `${running.length} scripts`
+    this.statusBarEl.setText(only?.note ? `▶ ${label} — ${only.note}` : `▶ ${label}`)
+  }
+
+  private async openRuns() {
+    const { app } = GlobalStore.getInstance()
+    const { SCRIPT_RUNS_VIEW_TYPE } = await import('@/views/ScriptRunsView')
+    const existing = app.workspace.getLeavesOfType(SCRIPT_RUNS_VIEW_TYPE)[0]
+    const leaf = existing ?? app.workspace.getRightLeaf(false)
+    if (!existing) await leaf?.setViewState({ type: SCRIPT_RUNS_VIEW_TYPE, active: true })
+    if (leaf) void app.workspace.revealLeaf(leaf)
   }
 
   async execute(
     path: string,
     params: Record<string, unknown>,
-    signal?: AbortSignal,
+    options?: AbortSignal | ExecuteOptions,
     formHandler?: (fields: FormField[]) => Promise<Record<string, string> | null>
   ): Promise<string> {
+    const opts: ExecuteOptions =
+      options instanceof AbortSignal ? { signal: options, formHandler } : (options ?? {})
+    const signal = opts.signal
     const script = this.scripts.get(path)
     if (!script) throw new Error(`Script not found: ${path}`)
 
     const combinedController = new AbortController()
-    this.runningAbort = combinedController
 
     const onAbort = () => combinedController.abort()
     signal?.addEventListener('abort', onAbort)
 
-    this.showRunningStatus(script.meta.name, combinedController)
+    const runs = ScriptRuns.getInstance()
+    const runId = runs.start({
+      path,
+      name: script.meta.name,
+      params,
+      source: opts.source ?? 'agent',
+      stop: () => combinedController.abort(),
+    })
+    this.renderStatusBar()
 
     const logs: string[] = []
 
@@ -298,7 +345,12 @@ export class ScriptService {
         params,
         signal: combinedController.signal,
         logs,
-        formHandler,
+        formHandler: opts.formHandler ?? formHandler,
+        onLog: (text) => runs.append(runId, text),
+        onStatus: (text) => {
+          runs.setNote(runId, text)
+          this.renderStatusBar()
+        },
       })
 
       // Running the user's own script is the feature. The code comes from a `.js` file the
@@ -327,10 +379,16 @@ export class ScriptService {
             ? JSON.stringify(result, null, 2)
             : String(result)
           : ''
+      runs.finish(runId, output + resultStr)
       return output + resultStr
+    } catch (err) {
+      // A script that was told to stop threw the same way a broken one does; the list should
+      // not read the two alike, and only the controller knows which happened.
+      if (combinedController.signal.aborted) runs.markStopped(runId)
+      else runs.fail(runId, err instanceof Error ? err.message : String(err))
+      throw err
     } finally {
-      this.runningAbort = null
-      this.clearStatus()
+      this.renderStatusBar()
       signal?.removeEventListener('abort', onAbort)
     }
   }
@@ -348,7 +406,10 @@ export class ScriptService {
     }
 
     try {
-      const result = await this.execute(path, params, undefined, showFormModal)
+      const result = await this.execute(path, params, {
+        formHandler: showFormModal,
+        source: 'command',
+      })
       if (result.trim()) {
         new Notice(result.length > 500 ? result.slice(0, 500) + '...' : result, 10000)
       } else {

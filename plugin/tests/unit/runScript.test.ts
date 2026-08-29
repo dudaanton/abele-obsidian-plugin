@@ -89,7 +89,9 @@ describe('running one', () => {
       query: 'The Third Man',
       mode: 'full',
       depth: '2',
-    })
+    },
+      { source: 'note' }
+    )
   })
 
   it('says so rather than executing anything when the name matches no script', async () => {

@@ -47,6 +47,10 @@ export function buildScriptContext(opts: {
   signal: AbortSignal
   logs: string[]
   formHandler?: (fields: FormField[]) => Promise<Record<string, string> | null>
+  /** Told each line as it is printed, so a run can be watched rather than only read after. */
+  onLog?: (text: string) => void
+  /** Told what the script says it is doing, when there is a run to attribute it to. */
+  onStatus?: (text: string) => void
 }) {
   const s = opts.signal
 
@@ -75,9 +79,11 @@ export function buildScriptContext(opts: {
     // ── Logging ──
 
     log(...args: unknown[]) {
-      opts.logs.push(
-        args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ')
-      )
+      const line = args
+        .map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a)))
+        .join(' ')
+      opts.logs.push(line)
+      opts.onLog?.(line)
     },
 
     // ── Workspace ──
@@ -394,7 +400,7 @@ export function buildScriptContext(opts: {
       const service = ScriptService.getInstance()
       const script = service.getAll().find((sc) => sc.meta.name === name)
       if (!script) throw new Error(`Script not found: ${name}`)
-      return service.execute(script.path, scriptParams || {}, s)
+      return service.execute(script.path, scriptParams || {}, { signal: s, source: 'script' })
     },
 
     // ── UI ──
@@ -404,6 +410,10 @@ export function buildScriptContext(opts: {
     },
 
     async setStatus(statusText: string) {
+      if (opts.onStatus) {
+        opts.onStatus(statusText)
+        return
+      }
       const { ScriptService } = await import('./ScriptService')
       ScriptService.getInstance().setStatus(statusText)
     },

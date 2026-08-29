@@ -109,7 +109,9 @@ describe('a note of a configured type', () => {
     expect(execute).toHaveBeenCalledWith('Scripts/Fetch.js', {
       query: 'The Third Man',
       mode: 'full',
-    })
+    },
+      { source: 'note' }
+    )
   })
 
   it('fills the note into the parameters, so the same button means this note', async () => {

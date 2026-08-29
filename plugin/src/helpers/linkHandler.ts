@@ -42,5 +42,5 @@ export async function handleLinkAction(app: App, params: Record<string, string>)
     if (key !== 'name' && key !== 'vault') supplied[key] = value
   }
 
-  await runScriptByName(link.scriptName, supplied, 'Abele link')
+  await runScriptByName(link.scriptName, supplied, 'Abele link', 'link')
 }

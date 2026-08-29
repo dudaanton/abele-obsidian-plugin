@@ -48,6 +48,7 @@ import {
   TIME_TRACKING_SIDEBAR_VIEW_TYPE,
   TimeTrackingSidebarView,
 } from './views/TimeTrackingSidebarView'
+import { SCRIPT_RUNS_VIEW_TYPE, ScriptRunsView } from './views/ScriptRunsView'
 import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
 import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
@@ -173,6 +174,7 @@ export default class AbelePlugin extends Plugin {
     this.registerView(TIMELINE_SIDEBAR_VIEW_TYPE, (leaf) => new TimelineSidebarView(leaf, this.app))
     this.registerView(TODO_SIDEBAR_VIEW_TYPE, (leaf) => new TodoSidebarView(leaf, this.app))
     this.registerView(FINANCE_SIDEBAR_VIEW_TYPE, (leaf) => new FinanceSidebarView(leaf, this.app))
+    this.registerView(SCRIPT_RUNS_VIEW_TYPE, (leaf) => new ScriptRunsView(leaf, this.app))
     this.registerView(
       TIME_TRACKING_SIDEBAR_VIEW_TYPE,
       (leaf) => new TimeTrackingSidebarView(leaf, this.app)
@@ -854,6 +856,10 @@ export default class AbelePlugin extends Plugin {
       void this.activateView(TIME_TRACKING_SIDEBAR_VIEW_TYPE)
     })
 
+    this.addRibbonIcon(ScriptRunsView.getIcon(), 'Show script runs', () => {
+      void this.activateView(SCRIPT_RUNS_VIEW_TYPE)
+    })
+
     // AI Agent — conditional on settings
     if (AbeleConfig.getInstance().ai.enabled) {
       this.registerAiFeatures()
@@ -938,6 +944,15 @@ export default class AbelePlugin extends Plugin {
           editor.replaceSelection(text)
           editor.focus()
         })
+      },
+    })
+
+    this.addCommand({
+      id: 'show-script-runs',
+      name: 'Show script runs',
+      icon: ScriptRunsView.getIcon(),
+      callback: () => {
+        void this.activateView(SCRIPT_RUNS_VIEW_TYPE)
       },
     })
 

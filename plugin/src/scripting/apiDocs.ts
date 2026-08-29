@@ -189,7 +189,7 @@ const each = await agent("Extract the date", { items: paths })
 | Function | Returns | Description |
 |----------|---------|-------------|
 | \`notice(message, timeout?)\` | — | Show Obsidian notification |
-| \`setStatus(text)\` | — | Set status bar text (auto-cleared when script ends) |
+| \`setStatus(text)\` | — | Say what the script is doing now — shown in the status bar and against the run |
 | \`form(fields)\` | \`object \\| null\` | Show form modal (command palette only) |
 | \`show(markdown, title?)\` | — | Show rendered markdown to read (command palette only) |
 
@@ -214,6 +214,10 @@ questions. \`show(markdown, title?)\` is the same block on its own — prefer it
 
 \`log()\` output is captured and returned as the script result.
 You can also \`return "result"\` directly.
+
+Every run is listed while Obsidian is open — its status, how long it took, each \`log()\` line
+with the time it was printed, and what it returned — under **Show script runs**, where it can
+also be stopped or run again. Nothing about a run is written to the vault.
 
 ---
 

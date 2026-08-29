@@ -1,5 +1,6 @@
 import { Notice } from 'obsidian'
 import { ScriptService } from './ScriptService'
+import type { RunSource } from './ScriptRuns'
 import type { ParsedScript } from './types'
 
 /**
@@ -51,7 +52,8 @@ export function scriptParams(
 export async function runScriptByName(
   name: string,
   supplied: Record<string, unknown>,
-  label = 'Abele'
+  label = 'Abele',
+  source: RunSource = 'note'
 ): Promise<void> {
   const script = findScriptByName(name)
   if (!script) {
@@ -62,7 +64,8 @@ export async function runScriptByName(
   try {
     const result = await ScriptService.getInstance().execute(
       script.path,
-      scriptParams(script, supplied)
+      scriptParams(script, supplied),
+      { source }
     )
     if (result?.trim()) {
       new Notice(result.length > 500 ? result.slice(0, 500) + '...' : result, 10000)
