@@ -9,6 +9,7 @@ export const TRANSFER_SECTIONS = [
   'ai-interceptors',
   'ai-secrets',
   'ai-prompts',
+  'ai-voice',
   'scripts',
   'script-files',
   'skill-notes',

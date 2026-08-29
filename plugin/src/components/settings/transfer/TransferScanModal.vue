@@ -54,9 +54,18 @@
       </template>
 
       <template v-else>
-        <p class="abele-transfer-scan__hint">
-          Made {{ madeAt }}. Tick what to keep; nothing else is touched.
-        </p>
+        <p class="abele-transfer-scan__hint">Made {{ madeAt }}. Tick what to keep.</p>
+
+        <Setting name="What to do with what is already here" :desc="modeNote">
+          <Dropdown
+            :model-value="mode"
+            :options="[
+              { value: 'merge', display: 'Keep it, and add these' },
+              { value: 'replace', display: 'Replace it with these' },
+            ]"
+            @update:model-value="mode = $event as ApplyMode"
+          />
+        </Setting>
 
         <div
           v-for="item in planned"
@@ -100,16 +109,19 @@ import Input from '../../obsidian/Input.vue'
 import Checkbox from '../../obsidian/Checkbox.vue'
 import Badge from '../../obsidian/Badge.vue'
 import Setting from '../../obsidian/Setting.vue'
+import Dropdown from '../../obsidian/Dropdown.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { createReceiver } from '@/transfer/frames'
 import { decodePayload, isEncrypted } from '@/transfer/payload'
 import {
   applyEntries,
+  removedByReplace,
   filesOnly,
   planEntries,
   sectionLabel,
   settingsOnly,
+  type ApplyMode,
   type PlannedEntry,
 } from '@/transfer/entries'
 import { applyFiles, planFiles, readCurrent } from '@/transfer/files'
@@ -249,6 +261,28 @@ const toggle = (item: PlannedEntry) => {
   accepted.value = next
 }
 
+/**
+ * Merging by default, because it is the one that cannot lose anything. Replacing is what you
+ * want when this device is meant to end up matching the other one.
+ */
+const mode = ref<ApplyMode>('merge')
+
+const going = computed(() =>
+  payload.value ? removedByReplace(acceptedEntries.value, settings()) : []
+)
+
+const modeNote = computed(() => {
+  if (mode.value === 'merge') return 'Anything here that the transfer does not mention is left alone.'
+  if (!going.value.length) return 'Nothing here would be removed: the transfer covers all of it.'
+
+  const names = going.value.map((item) => item.label).join(', ')
+  return `${going.value.length === 1 ? 'This will be removed' : 'These will be removed'}: ${names}. Scripts, skills and prompts are never deleted.`
+})
+
+const acceptedEntries = computed(() =>
+  planned.value.filter((item) => accepted.value.has(id(item))).map((item) => item.entry)
+)
+
 const acceptedSummary = computed(() =>
   accepted.value.size === 1 ? '1 item to apply' : `${accepted.value.size} items to apply`
 )
@@ -274,9 +308,9 @@ const onPasted = (value: string) => {
 const apply = async () => {
   if (!payload.value) return
 
-  const chosen = planned.value.filter((item) => accepted.value.has(id(item))).map((i) => i.entry)
+  const chosen = acceptedEntries.value
   const config = AbeleConfig.getInstance()
-  config.applySettings(applyEntries(chosen, config.exportSettings()))
+  config.applySettings(applyEntries(chosen, config.exportSettings(), mode.value))
 
   const { app } = GlobalStore.getInstance()
   let keysRefused = 0

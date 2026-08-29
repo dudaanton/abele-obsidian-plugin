@@ -12,6 +12,7 @@
  */
 import type { AbeleSettings } from '@/services/AbeleConfig'
 import type { AiSettings } from '@/ai/types'
+import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { FILE_SECTION_LABELS, isFileSection, type SectionId, type TransferEntry, type TransferPayload } from './types'
 
 interface Identified {
@@ -124,7 +125,17 @@ export const SECTIONS: Section[] = [
     'allowWebSearch',
     'allowFetch',
     'allowWiseModel',
-  ]),
+  ], {
+    // The setting holds the *name* of the key, not the key: without this the other device
+    // gets a name pointing at an empty slot in its own keychain.
+    secretsOf: (settings) => {
+      const id = ai(settings).braveSearchApiKey
+      return id ? [id] : []
+    },
+  }),
+  aiBlock('ai-voice', 'Voice input', ['voice'], {
+    secretsOf: (settings) => [ai(settings).voice?.apiKeyId || DEFAULT_TRANSCRIPTION.apiKeyId],
+  }),
   aiList('ai-providers', 'AI providers', 'providers', (p: Identified & { apiKeyId?: string }) =>
     p.apiKeyId ? [p.apiKeyId] : []
   ),
@@ -304,14 +315,58 @@ export function planEntries(entries: TransferEntry[], settings: AbeleSettings): 
   })
 }
 
+/**
+ * Merging adds what arrived to what is here; replacing makes what is here into what arrived.
+ *
+ * Replacing is per section, and only for the sections the transfer carried: a transfer of
+ * providers must not empty the agents. Files are never dropped either way — see
+ * `removedByReplace`.
+ */
+export type ApplyMode = 'merge' | 'replace'
+
+/** What replacing would take out of this vault: local items the transfer did not carry. */
+export function removedByReplace(
+  entries: TransferEntry[],
+  settings: AbeleSettings
+): { section: SectionId; id: string; label: string }[] {
+  const arriving = settingsOnly(entries)
+  const sections = new Set(arriving.map((entry) => entry.section))
+
+  return [...sections].flatMap((id) => {
+    const section = sectionById.get(id)
+    if (section?.kind !== 'list') return []
+
+    const keeping = new Set(arriving.filter((e) => e.section === id).map((e) => e.id))
+    return section
+      .read(settings)
+      .filter((item) => !keeping.has(item.id))
+      .map((item) => ({ section: id, id: item.id, label: item.name || item.id }))
+  })
+}
+
 /** The settings as they would be with these entries in them. The original is left alone. */
-export function applyEntries(entries: TransferEntry[], settings: AbeleSettings): AbeleSettings {
+export function applyEntries(
+  entries: TransferEntry[],
+  settings: AbeleSettings,
+  mode: ApplyMode = 'merge'
+): AbeleSettings {
   // Through JSON rather than `structuredClone`: the live settings are observed by the app, so
   // their arrays are reactive proxies, and cloning one of those throws `DataCloneError`. These
   // settings are JSON on disk anyway, so nothing survives the trip that was not already there.
   const next = JSON.parse(JSON.stringify(settings)) as AbeleSettings
 
-  for (const entry of settingsOnly(entries)) {
+  const arriving = settingsOnly(entries)
+
+  if (mode === 'replace') {
+    // Emptied first, then filled by the loop below: doing it in one pass would drop items the
+    // transfer is about to put back, in an order nobody asked for.
+    for (const id of new Set(arriving.map((entry) => entry.section))) {
+      const section = sectionById.get(id)
+      if (section?.kind === 'list') section.write(next, [])
+    }
+  }
+
+  for (const entry of arriving) {
     const section = sectionById.get(entry.section)
     if (!section) continue
 

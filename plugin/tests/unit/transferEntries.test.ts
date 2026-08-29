@@ -14,6 +14,7 @@ import {
   needsCode,
   planEntries,
   applyEntries,
+  removedByReplace,
 } from '@/transfer/entries'
 import type { AbeleSettings } from '@/services/AbeleConfig'
 import type { AiSettings } from '@/ai/types'
@@ -83,6 +84,81 @@ describe('what the sending side offers', () => {
     const entries = collectEntries(settings())
 
     expect(find(entries, 'finance', 'finance')?.sensitive).toBe(true)
+  })
+})
+
+describe('settings that arrived later than the transfer did', () => {
+  /**
+   * The section lists the keys it carries by name, so anything added to the settings after it
+   * was written is silently left behind. Voice input was exactly that.
+   */
+  it('carries the voice settings', () => {
+    const entries = collectEntries(
+      settings({
+        ai: {
+          ...settings().ai!,
+          voice: { modelId: 'google/gemini-3.5-flash-lite', endpoint: '', apiKeyId: '', language: 'Russian' },
+        } as AiSettings,
+      })
+    )
+
+    const voice = find(entries, 'ai-voice', 'ai-voice')
+    expect(voice).toBeTruthy()
+    expect(JSON.stringify(voice?.data)).toContain('Russian')
+  })
+
+  it('takes the OpenRouter key along with them', () => {
+    const entries = collectEntries(
+      settings({
+        ai: {
+          ...settings().ai!,
+          voice: { modelId: 'm', endpoint: '', apiKeyId: '', language: '' },
+        } as AiSettings,
+      })
+    )
+
+    expect(find(entries, 'ai-voice', 'ai-voice')?.secretIds).toEqual(['abele-openrouter'])
+  })
+
+  it('takes the key of a voice setup pointed somewhere else', () => {
+    const entries = collectEntries(
+      settings({
+        ai: {
+          ...settings().ai!,
+          voice: { modelId: 'm', endpoint: 'https://elsewhere', apiKeyId: 'abele-elsewhere', language: '' },
+        } as AiSettings,
+      })
+    )
+
+    expect(find(entries, 'ai-voice', 'ai-voice')?.secretIds).toEqual(['abele-elsewhere'])
+  })
+
+  /** The same gap, one section over: the name of the Brave key travelled, the key did not. */
+  it('takes the Brave search key with the settings that name it', () => {
+    const entries = collectEntries(settings())
+
+    expect(find(entries, 'ai-general', 'ai-general')?.secretIds).toEqual(['abele-brave-search'])
+  })
+
+  it('offers no voice entry at all when voice was never set up', () => {
+    const entries = collectEntries(settings())
+
+    expect(entries.some((e) => e.section === 'ai-voice')).toBe(false)
+  })
+
+  it('writes the voice settings into the vault they land in', () => {
+    const arriving = collectEntries(
+      settings({
+        ai: {
+          ...settings().ai!,
+          voice: { modelId: 'mistralai/voxtral-small-24b-2507', endpoint: '', apiKeyId: '', language: '' },
+        } as AiSettings,
+      })
+    ).filter((e) => e.section === 'ai-voice')
+
+    const next = applyEntries(arriving, settings())
+
+    expect(next.ai?.voice?.modelId).toBe('mistralai/voxtral-small-24b-2507')
   })
 })
 
@@ -163,6 +239,66 @@ describe('what the receiving side is told will happen', () => {
     const planned = planEntries(collectEntries(settings()), settings())
 
     expect(planned.find((p) => p.entry.id === 'p1')?.status).toBe('same')
+  })
+})
+
+describe('replacing rather than merging', () => {
+  const arriving = () =>
+    collectEntries(
+      settings({ ai: { ...settings().ai!, providers: [provider('p2', 'groq')] } })
+    ).filter((e) => e.section === 'ai-providers')
+
+  it('leaves the vault with exactly what arrived, and nothing it had before', () => {
+    const next = applyEntries(arriving(), settings(), 'replace')
+
+    expect(next.ai?.providers.map((p) => p.id)).toEqual(['p2'])
+  })
+
+  it('is not what merging does, which keeps both', () => {
+    const next = applyEntries(arriving(), settings(), 'merge')
+
+    expect(next.ai?.providers.map((p) => p.id)).toEqual(['p1', 'p2'])
+  })
+
+  /** Replacing what was sent must not empty what was not: an untouched list stays untouched. */
+  it('touches only the sections the transfer actually carried', () => {
+    const next = applyEntries(arriving(), settings(), 'replace')
+
+    expect(next.ai?.agents).toHaveLength(1)
+    expect(next.links).toEqual(settings().links)
+  })
+
+  it('says beforehand what replacing would take away', () => {
+    const going = removedByReplace(arriving(), settings())
+
+    expect(going.map((item) => item.label)).toEqual(['openwebui'])
+  })
+
+  it('has nothing to take away when the transfer holds everything already here', () => {
+    const same = collectEntries(settings()).filter((e) => e.section === 'ai-providers')
+
+    expect(removedByReplace(same, settings())).toEqual([])
+  })
+
+  /**
+   * Scripts, skills and prompts are files in the vault. Dropping a provider from the settings
+   * is one thing; deleting somebody's notes because they were not in the transfer is another,
+   * so replacing never reaches them.
+   */
+  it('never proposes removing a file', () => {
+    const withFiles = [
+      ...arriving(),
+      {
+        section: 'script-files' as const,
+        id: 'Scripts/other.js',
+        label: 'other.js',
+        data: { path: 'other.js', content: '', base: 'Scripts' },
+      },
+    ]
+
+    expect(removedByReplace(withFiles, settings()).every((i) => i.section === 'ai-providers')).toBe(
+      true
+    )
   })
 })
 

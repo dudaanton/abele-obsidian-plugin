@@ -25,7 +25,16 @@ let app: FakeApp
 let original: (id: string, value: string) => void
 
 /** The dialog itself belongs to Obsidian; what these tests ask about is what it holds. */
-const STUBS = { ObsidianModal: { template: '<div><slot /></div>' } }
+const STUBS = {
+  ObsidianModal: { template: '<div><slot /></div>' },
+  // Obsidian's own widget, which needs a real app to construct.
+  Dropdown: {
+    name: 'Dropdown',
+    props: ['modelValue', 'options'],
+    emits: ['update:model-value'],
+    template: '<div class="dropdown-stub" />',
+  },
+}
 
 const open = <T>(component: T, props: Record<string, unknown> = {}) =>
   mount(component as never, { props, global: { stubs: STUBS } })
@@ -332,6 +341,77 @@ describe('the scripts, skills and prompts themselves', () => {
     await waitFor(() => wrapper.text().includes('to apply'))
 
     expect(wrapper.text()).toContain('unchanged')
+  })
+})
+
+describe('choosing between keeping and replacing', () => {
+  /** The sender has one provider; this vault has a different one. */
+  const arrive = async () => {
+    const wrapper = open(TransferSettings)
+    await flushPromises()
+    await rowNamed(wrapper, 'openwebui')?.trigger('click')
+    await wrapper.findComponent(Checkbox).vm.$emit('toggle')
+    await flushPromises()
+    await clickButton(wrapper, 'Show QR')
+    await waitFor(() => wrapper.findComponent(TransferShowModal).exists())
+    const frames = wrapper.findComponent(TransferShowModal).props('frames') as string[]
+
+    AbeleConfig.getInstance().ai = {
+      ...DEFAULT_AI_SETTINGS,
+      providers: [providerNamed('local', 'mine')],
+    } as AiSettings
+
+    const receiving = open(TransferScanModal)
+    await clickButton(receiving, 'Paste the text')
+    await receiving.findComponent(Input).vm.$emit('update:model-value', frames.join('\n'))
+    await waitFor(() => receiving.text().includes('to apply'))
+
+    return receiving
+  }
+
+  const chooseMode = async (wrapper: ReturnType<typeof open>, mode: string) => {
+    const dropdown = wrapper
+      .findAllComponents({ name: 'Dropdown' })
+      .find((d) => (d.props('options') as { value: string }[])?.some((o) => o.value === 'replace'))
+    await dropdown?.vm.$emit('update:model-value', mode)
+    await flushPromises()
+  }
+
+  it('keeps what is already here by default', async () => {
+    const wrapper = await arrive()
+
+    await clickButton(wrapper, 'Apply')
+
+    expect(AbeleConfig.getInstance().ai.providers.map((p) => p.name)).toEqual([
+      'mine',
+      'openwebui',
+    ])
+  })
+
+  it('replaces it when that is what was chosen', async () => {
+    const wrapper = await arrive()
+
+    await chooseMode(wrapper, 'replace')
+    await clickButton(wrapper, 'Apply')
+
+    expect(AbeleConfig.getInstance().ai.providers.map((p) => p.name)).toEqual(['openwebui'])
+  })
+
+  it('names what replacing would take away, before it does', async () => {
+    const wrapper = await arrive()
+
+    await chooseMode(wrapper, 'replace')
+
+    expect(wrapper.text()).toContain('will be removed')
+    expect(wrapper.text()).toContain('mine')
+  })
+
+  it('promises to leave the scripts and notes alone either way', async () => {
+    const wrapper = await arrive()
+
+    await chooseMode(wrapper, 'replace')
+
+    expect(wrapper.text()).toContain('never deleted')
   })
 })
 
