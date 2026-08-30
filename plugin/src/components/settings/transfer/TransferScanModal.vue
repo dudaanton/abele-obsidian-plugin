@@ -130,7 +130,7 @@ import {
   type PlannedEntry,
 } from '@/transfer/entries'
 import { applyFiles, planFiles, readCurrent } from '@/transfer/files'
-import { readCodes } from '@/transfer/scan'
+import { readCodes, readableSize, closerLooks, type Rect } from '@/transfer/scan'
 import type { SectionId, TransferPayload } from '@/transfer/types'
 
 /** What was written, and what the keychain would not take — the parent says so out loud. */
@@ -410,7 +410,7 @@ const grab = async () => {
   const element = video.value
   if (!element?.videoWidth) return
 
-  const canvas = win().document.createEl('canvas')
+  const canvas = win().createEl('canvas')
   canvas.width = element.videoWidth
   canvas.height = element.videoHeight
   const context = canvas.getContext('2d')
@@ -423,7 +423,7 @@ const grab = async () => {
 }
 
 const pickPhoto = () => {
-  const input = win().document.createEl('input')
+  const input = win().createEl('input')
   input.type = 'file'
   input.accept = 'image/*'
   // What turns the file picker into the camera on a phone, without asking for the camera
@@ -441,7 +441,7 @@ const pickPhoto = () => {
  * matters for. Any file the picker will hand over: it is read as text and searched for frames.
  */
 const pickFile = () => {
-  const input = win().document.createEl('input')
+  const input = win().createEl('input')
   input.type = 'file'
   input.onchange = () => void fromText(input.files?.[0])
   input.click()
@@ -460,17 +460,54 @@ const fromFile = async (file?: File) => {
   if (!file) return
 
   const bitmap = await createImageBitmap(file)
-  const canvas = win().document.createEl('canvas')
+  const found = await lookAt(bitmap)
 
-  canvas.width = bitmap.width
-  canvas.height = bitmap.height
-  const context = canvas.getContext('2d')
-  if (!context) return
-
-  context.drawImage(bitmap, 0, 0)
-  const found = await readCodes(context.getImageData(0, 0, canvas.width, canvas.height))
   if (!found.length) error.value = 'No code in that picture.'
   for (const text of found) await take(text)
+}
+
+/**
+ * The picture whole, and then square by square if that gave nothing.
+ *
+ * Both are drawn small enough to be read without a photograph's worth of memory behind them;
+ * the squares are drawn from the original, so what they lose in width they keep in detail.
+ */
+const lookAt = async (bitmap: ImageBitmap): Promise<string[]> => {
+  const whole = pixels(bitmap, { x: 0, y: 0, width: bitmap.width, height: bitmap.height })
+  const found = whole ? await readCodes(whole) : []
+  if (found.length) return found
+
+  for (const look of closerLooks(bitmap.width, bitmap.height)) {
+    const image = pixels(bitmap, look)
+    const closer = image ? await readCodes(image) : []
+    if (closer.length) return closer
+  }
+
+  return []
+}
+
+const pixels = (bitmap: ImageBitmap, from: Rect): ImageData | null => {
+  const size = readableSize(from.width, from.height)
+  const canvas = win().createEl('canvas')
+  canvas.width = size.width
+  canvas.height = size.height
+
+  const context = canvas.getContext('2d')
+  if (!context) return null
+
+  context.drawImage(
+    bitmap,
+    from.x,
+    from.y,
+    from.width,
+    from.height,
+    0,
+    0,
+    size.width,
+    size.height
+  )
+
+  return context.getImageData(0, 0, size.width, size.height)
 }
 
 onBeforeUnmount(stopCamera)

@@ -616,9 +616,10 @@ describe('reading a transfer out of a file', () => {
         this.onchange?.()
       },
     }
-    // `createEl` is Obsidian's, and belongs to the window the settings opened in — here there
-    // is only one window and no Obsidian, so it is put there for the picker to find.
-    Object.defineProperty(document, 'createEl', {
+    // `createEl` is Obsidian's, and belongs to the window the settings opened in. It has to be
+    // the window's and not the document's: the document's appends what it makes, which for a
+    // file picker is an error rather than an element.
+    Object.defineProperty(window, 'createEl', {
       value: (tag: string) => (tag === 'input' ? input : document.createElement(tag)),
       configurable: true,
     })
