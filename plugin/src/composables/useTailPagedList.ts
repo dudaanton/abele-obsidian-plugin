@@ -10,9 +10,9 @@ import { computed, ref, watch, type ComputedRef } from 'vue'
  * mounts a markdown renderer with it — so a long chat pays that price in full before showing
  * anything, though almost none of it is on screen.
  *
- * What arrives at the end is always rendered: the slice is taken from the end, so a message
- * added while the conversation is open — or streamed into it — is inside the window by
- * construction, however far back the window has been grown.
+ * What arrives at the end is always rendered, and nothing leaves the top when it does: the
+ * window is anchored where it starts, so a message added while the conversation is open — or
+ * streamed into it — simply lengthens it.
  *
  * Growing the window puts content *above* what the reader is looking at, which moves it down
  * the page. Whoever calls `showMore` owns that: the scroll position has to be corrected by
@@ -44,28 +44,53 @@ export function useTailPagedList<T>(
   source: () => readonly T[],
   pageSize: number = DEFAULT_TAIL_PAGE_SIZE
 ): TailPagedList<T> {
-  const visibleCount = ref(pageSize)
+  /**
+   * How many entries at the start are held back.
+   *
+   * Counted from the start rather than from the end, and that is the whole of it. A window of
+   * "the last thirty" moves forward every time something is appended, so each new message
+   * dropped the oldest rendered one and the page shifted up by its height under whoever was
+   * reading it. An agent's reply appends several — the answer, a tool call, its result — so a
+   * reader who scrolled back mid-reply was thrown about until the reply ended. Holding the
+   * start still leaves everything above them where it is and grows the window at the end,
+   * which is where the new message went.
+   *
+   * `null` until there is a list to measure: a chat's messages arrive after the component.
+   */
+  const held = ref<number | null>(null)
 
   const all = computed(() => source())
   const total = computed(() => all.value.length)
-  const hidden = computed(() => Math.max(0, total.value - visibleCount.value))
+  const hidden = computed(() =>
+    Math.min(held.value ?? Math.max(0, total.value - pageSize), total.value)
+  )
   const hasMore = computed(() => hidden.value > 0)
-  const visible = computed(() => all.value.slice(Math.max(0, total.value - visibleCount.value)))
+  const visible = computed(() => all.value.slice(hidden.value))
 
   const showMore = (): void => {
-    if (hasMore.value) visibleCount.value += pageSize
+    if (hasMore.value) held.value = Math.max(0, hidden.value - pageSize)
   }
 
   const reset = (): void => {
-    visibleCount.value = pageSize
+    held.value = null
   }
 
-  // A source that shrinks has been replaced rather than added to — a different conversation,
-  // or one whose history was rewritten. Holding on to a window grown for the old one would
-  // render the whole of the new one.
-  watch(total, (now, before) => {
-    if (now < before) reset()
-  })
+  watch(
+    total,
+    (now, before = 0) => {
+      // A source that shrinks has been replaced rather than added to — a different
+      // conversation, or one whose history was rewritten. Holding on to a window grown for the
+      // old one would render the whole of the new one.
+      if (now < before) {
+        held.value = null
+        return
+      }
+      // The first sight of a non-empty list is what the window is anchored against; after
+      // that, what arrives at the end is simply rendered.
+      if (held.value === null && now > 0) held.value = Math.max(0, now - pageSize)
+    },
+    { immediate: true }
+  )
 
   return { visible, hasMore, hidden, total, showMore, reset }
 }

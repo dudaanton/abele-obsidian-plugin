@@ -44,36 +44,68 @@ const handleClick = (event: MouseEvent) => {
   emit('click')
 }
 
+/**
+ * Which render is the current one.
+ *
+ * Rendering goes through Obsidian and takes as long as it takes, while the text it was asked
+ * about can change again meanwhile — a streamed reply changes it on every token. Without this
+ * an earlier render finishing late writes its older text over a newer one.
+ */
+let generation = 0
+
 const renderContent = async () => {
   if (!target.value || !component) return
 
-  target.value?.empty()
+  const mine = ++generation
+  // Built away from the page and swapped in whole. Emptying the element first left it with no
+  // height until the render landed, which in a chat being streamed into collapses the scroll
+  // range several times a second: the browser clamps the reader's position and drags them
+  // down, and they cannot read what has already arrived until the reply ends.
+  const next = createDiv()
+
   await MarkdownRenderer.render(
     GlobalStore.getInstance().app,
     props.text || '',
-    target.value,
+    next,
     props.filePath || '',
     component
   )
+
+  if (mine !== generation || !target.value) return
+
+  target.value.empty()
+  while (next.firstChild) target.value.appendChild(next.firstChild)
 }
 
 onMounted(() => {
   component = new Component()
   component.load()
-  renderContent()
+  void renderContent()
 })
+
+/**
+ * One render per burst, and one that stops when the component does.
+ *
+ * A stream changes the text faster than a render takes, and every change used to queue a
+ * render of its own that nothing could call off — so a reply arriving in fifty tokens left
+ * fifty renders racing into the same element, and any of them still pending when the chat
+ * closed fired at an element that had gone.
+ */
+let renderTimer = 0
+const win = () => target.value?.win ?? window
 
 watch(
   () => [props.text, props.filePath],
   () => {
-    window.setTimeout(() => {
-      renderContent()
-    }, 0)
+    win().clearTimeout(renderTimer)
+    renderTimer = win().setTimeout(() => void renderContent(), 0)
   },
-  { immediate: true, deep: true }
+  { deep: true }
 )
 
 onUnmounted(() => {
+  win().clearTimeout(renderTimer)
+  generation++
   component?.unload()
   component = null
 })
