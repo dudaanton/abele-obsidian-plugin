@@ -1,7 +1,7 @@
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
-import { checkVaultPath } from '@/helpers/pathsHelpers'
+import { toSafeVaultPath, describeRename } from '@/helpers/pathsHelpers'
 
 export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
@@ -20,14 +20,18 @@ export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool 
       const { path, content } = params as { path: string; content: string }
       if (!path) throw new Error('Missing required parameter: path')
       if (content == null) throw new Error('Missing required parameter: content')
-      // Before anything is written: Obsidian's own API takes a name with a `#` in it happily,
-      // and the note that comes out cannot be linked to from anywhere.
-      const wrong = checkVaultPath(path)
-      if (wrong) throw new Error(`Cannot create ${path}. ${wrong}`)
-      const { app } = GlobalStore.getInstance()
-      if (app.vault.getAbstractFileByPath(path)) throw new Error(`File already exists: ${path}`)
+      // Obsidian's own API takes a name with a `#` in it happily, and the note that comes out
+      // cannot be linked to from anywhere. Cleaned rather than refused: the work the caller
+      // was doing is worth more than the punctuation, and the reply says what it ended up as.
+      const safePath = toSafeVaultPath(path)
+      const renamed = describeRename(path, safePath)
 
-      const parentFolder = path.split('/').slice(0, -1).join('/')
+      const { app } = GlobalStore.getInstance()
+      if (app.vault.getAbstractFileByPath(safePath)) {
+        throw new Error(`File already exists: ${safePath}`)
+      }
+
+      const parentFolder = safePath.split('/').slice(0, -1).join('/')
       if (parentFolder) {
         const parts = parentFolder.split('/')
         let current = ''
@@ -36,12 +40,14 @@ export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool 
           if (!app.vault.getAbstractFileByPath(current)) await app.vault.createFolder(current)
         }
       }
-      await app.vault.create(path, content)
+      await app.vault.create(safePath, content)
       // Add new file to scope so agent can read/edit it
-      if (!opts?.skipScope) ScopeResolver.getInstance().addFile(path)
+      if (!opts?.skipScope) ScopeResolver.getInstance().addFile(safePath)
       return {
-        content: [{ type: 'text', text: `Created: ${path}` }],
-        details: { diff: { old: '', new: content } },
+        content: [{ type: 'text', text: `Created: ${safePath}${renamed ? ` (${renamed})` : ''}` }],
+        // The path as well as the diff: it may not be the one that was asked for, and the
+        // script API hands it straight back to the script.
+        details: { diff: { old: '', new: content }, path: safePath },
       }
     },
   }

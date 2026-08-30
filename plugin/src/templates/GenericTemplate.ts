@@ -1,5 +1,5 @@
 import { GlobalStore } from '@/stores/GlobalStore'
-import { checkVaultPath } from '@/helpers/pathsHelpers'
+import { toSafeVaultPath } from '@/helpers/pathsHelpers'
 import { App, MarkdownView, Notice, TFile, normalizePath } from 'obsidian'
 
 /**
@@ -23,8 +23,9 @@ export abstract class GenericTemplate<T> {
     // Get the path from the parameters
     const path = this.getPath(params)
 
-    // Return the full path with filename
-    return `${path}/${filename}.md`
+    // Cleaned here as well as at the point of writing, so that the "does it already exist"
+    // check above is asking about the file that will actually be made.
+    return toSafeVaultPath(`${path}/${filename}.md`)
   }
 
   /**
@@ -92,12 +93,10 @@ export abstract class GenericTemplate<T> {
       }
     }
 
-    const normalizedPath = normalizePath(filePath)
-
-    // Same guard as the agent's `create`, for the same reason: a name carrying a `#` or a `^`
-    // is written to disk without complaint and can never be linked to afterwards.
-    const wrong = checkVaultPath(normalizedPath)
-    if (wrong) throw new Error(`Cannot create ${normalizedPath}. ${wrong}`)
+    // Same cleaning as the agent's `create`, for the same reason: a name carrying a `#` or a
+    // `^` is written to disk without complaint and can never be linked to afterwards. The new
+    // note is opened straight afterwards, so its real name is in front of the person anyway.
+    const normalizedPath = toSafeVaultPath(normalizePath(filePath))
 
     const existing = app.vault.getAbstractFileByPath(normalizedPath)
     if (existing) {

@@ -6,13 +6,18 @@ otherwise; a note that breaks that is a note the plugin will read wrongly.
 
 ## Naming notes
 
-A note's name cannot contain `* " \ / < > : | ?` — Obsidian refuses those itself — nor `#`,
-`^`, `[` or `]`, which it will write to disk and then never link to: `[[Note#x]]` addresses a
-heading, `[[Note^x]]` a block, and a bracket ends the link. `create`, `mv` and `cp` refuse such
-a name and say which character is at fault and what to use instead.
+A note's name cannot carry `* " \ / < > : | ?` — Obsidian refuses those itself — nor `#`, `^`,
+`[` or `]`, which it will write to disk and then never link to: `[[Note#x]]` addresses a
+heading, `[[Note^x]]` a block, and a bracket ends the link.
+
+`create`, `mv` and `cp` take those characters out rather than refusing, and their reply says
+what the note is really called: `Created: Notes/Weekly report.md (renamed from "# Weekly
+report.md": "#" cannot be used in a name)`. **Read the path back from the reply** — linking to
+the name you asked for will point at nothing. A name that cleans to one already taken is still
+refused, because that is a collision rather than a typo.
 
 The usual way this happens is deriving a name from a markdown heading and keeping the `# `.
-Strip it. Apostrophes, commas, ampersands and percent signs are all fine.
+Apostrophes, commas, ampersands and percent signs are all fine and are left alone.
 
 ## Tasks
 

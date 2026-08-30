@@ -58,10 +58,14 @@ All async. Full vault access — no scope restrictions.
 | \`read(path)\` | \`string\` | Read file content |
 | \`edit(path, oldString, newString)\` | — | Replace first exact match of \`oldString\` with \`newString\` |
 | \`write(path, content)\` | — | Overwrite entire file with new content |
-| \`create(path, content)\` | — | Create new file (parent folders created automatically) |
+| \`create(path, content)\` | \`string\` | Create new file (parent folders created automatically). Returns the path it was created at |
 | \`remove(path)\` | — | Move file to trash |
-| \`move(from, to)\` | — | Move or rename a file |
-| \`copy(from, to)\` | — | Copy a file |
+| \`move(from, to)\` | \`string\` | Move or rename a file. Returns where it ended up |
+| \`copy(from, to)\` | \`string\` | Copy a file. Returns where the copy ended up |
+
+A name cannot carry \`* " \\ / < > : | ?\`, nor \`#\`, \`^\`, \`[\` or \`]\` — a wikilink cannot point
+past those. They are taken out rather than refused, which is why these three return the path:
+use what comes back, not the string you passed.
 | \`ls(path?)\` | \`string[]\` | List folder contents (file/folder paths). Omit path for vault root |
 | \`find(opts)\` | \`string[]\` | Search files (see below) |
 | \`replace(path, actions)\` | \`string\` | Apply replacement actions to a file (see below) |

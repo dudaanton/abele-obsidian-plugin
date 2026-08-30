@@ -37,6 +37,23 @@ async function call(
   return text(await tool.execute(nanoid(), params, signal))
 }
 
+/**
+ * Calls a tool that writes a file and returns where it ended up.
+ *
+ * Not always where it was asked to: a name carrying a `#` is cleaned on the way in, and a
+ * script that went on to link to the name it passed would be linking to nothing.
+ */
+async function callForPath(
+  tool: AgentTool,
+  params: Record<string, unknown>,
+  fallback: string,
+  signal?: AbortSignal
+): Promise<string> {
+  const result = await tool.execute(nanoid(), params, signal)
+  const details = result.details as { path?: string } | undefined
+  return details?.path ?? fallback
+}
+
 /** Strip "Saved: " or "Created: " prefix from tool results to return clean paths */
 function stripPrefix(result: string): string {
   return result.replace(/^(?:Saved|Created):\s*/, '')
@@ -106,20 +123,23 @@ export function buildScriptContext(opts: {
       await call(writeTool, { path, content }, s)
     },
 
-    async create(path: string, content: string) {
-      await call(createTool, { path, content }, s)
+    /** Returns the path the file was actually created at — see `callForPath`. */
+    async create(path: string, content: string): Promise<string> {
+      return callForPath(createTool, { path, content }, path, s)
     },
 
     async remove(path: string) {
       await call(deleteTool, { path }, s)
     },
 
-    async move(from: string, to: string) {
-      await call(moveTool, { from, to }, s)
+    /** Returns where the file ended up, which may not be `to`. */
+    async move(from: string, to: string): Promise<string> {
+      return callForPath(moveTool, { from, to }, to, s)
     },
 
-    async copy(from: string, to: string) {
-      await call(copyTool, { from, to }, s)
+    /** Returns where the copy ended up, which may not be `to`. */
+    async copy(from: string, to: string): Promise<string> {
+      return callForPath(copyTool, { from, to }, to, s)
     },
 
     async ls(path?: string): Promise<string[]> {

@@ -1,7 +1,7 @@
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
-import { checkVaultPath } from '@/helpers/pathsHelpers'
+import { toSafeVaultPath, describeRename } from '@/helpers/pathsHelpers'
 import { TFile } from 'obsidian'
 
 export function createCopyFileTool(opts?: { skipScope?: boolean }): AgentTool {
@@ -21,19 +21,26 @@ export function createCopyFileTool(opts?: { skipScope?: boolean }): AgentTool {
       const { from, to } = params as { from: string; to: string }
       if (!from) throw new Error('Missing required parameter: from')
       if (!to) throw new Error('Missing required parameter: to')
-      const wrong = checkVaultPath(to)
-      if (wrong) throw new Error(`Cannot copy to ${to}. ${wrong}`)
+      const safeTo = toSafeVaultPath(to)
+      const renamed = describeRename(to, safeTo)
       if (!opts?.skipScope && !ScopeResolver.getInstance().isInScope(from)) {
         throw new Error(`Access denied: ${from} is not in workspace scope`)
       }
       const { app } = GlobalStore.getInstance()
       const file = app.vault.getAbstractFileByPath(from)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${from}`)
-      if (app.vault.getAbstractFileByPath(to)) throw new Error(`Destination exists: ${to}`)
+      if (app.vault.getAbstractFileByPath(safeTo)) {
+        throw new Error(`Destination exists: ${safeTo}`)
+      }
       const content = await app.vault.read(file)
-      await app.vault.create(to, content)
+      await app.vault.create(safeTo, content)
       ScopeResolver.getInstance().invalidate()
-      return { content: [{ type: 'text', text: `Copied: ${from} → ${to}` }] }
+      return {
+        content: [
+          { type: 'text', text: `Copied: ${from} → ${safeTo}${renamed ? ` (${renamed})` : ''}` },
+        ],
+        details: { path: safeTo },
+      }
     },
   }
 }

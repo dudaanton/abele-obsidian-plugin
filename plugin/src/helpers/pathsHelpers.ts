@@ -147,32 +147,43 @@ export function invalidNameChars(name: string): string[] {
 }
 
 /**
- * What is wrong with a path, in a sentence, or `null` when nothing is.
+ * The same path with the unusable characters taken out — the name that will actually be made.
  *
- * Checked a segment at a time so that `/` keeps its job of separating them, and every segment
- * is checked because a folder named with a `#` breaks the links of everything inside it.
+ * Cleaned a segment at a time so that `/` keeps its job of separating them, and every segment
+ * is cleaned because a folder named with a `#` breaks the links of everything inside it.
+ * Only the forbidden characters go: `%`, apostrophes, commas and the rest are perfectly good
+ * in a name and taking them out would be rewriting somebody's title for them.
+ *
+ * A segment that is nothing but forbidden characters would otherwise vanish and shorten the
+ * path, so it becomes `Untitled` instead.
  */
-export function checkVaultPath(path: string): string | null {
+export function toSafeVaultPath(path: string): string {
   const segments = path.split('/').filter(Boolean)
-  if (!segments.length) return `"${path}" is not a path.`
 
-  for (const segment of segments) {
-    const bad = invalidNameChars(segment)
-    if (!bad.length) continue
+  return segments
+    .map((segment) => {
+      let cleaned = segment
+      for (const char of FORBIDDEN_NAME_CHARS) cleaned = cleaned.split(char).join('')
+      cleaned = cleaned.replace(/\s+/g, ' ').trim()
+      return cleaned && cleaned !== '.md' ? cleaned : 'Untitled'
+    })
+    .join('/')
+}
 
-    const suggestion = segments
-      .map((part) => cleanFileName(part))
-      .filter(Boolean)
-      .join('/')
-    const chars = bad.map((char) => `"${char}"`).join(', ')
-    const plural = bad.length > 1 ? 'characters' : 'a character'
-    return (
-      `"${segment}" cannot be used as a name: it contains ${chars}, ` +
-      `${plural} no wikilink can point past. Try "${suggestion}".`
-    )
-  }
+/**
+ * How the name had to change, in a few words, or `null` when it did not.
+ *
+ * Whoever asked for the file is going to look for it under the name they gave, so a rename has
+ * to come back with the result rather than only happening.
+ */
+export function describeRename(from: string, to: string): string | null {
+  if (from === to) return null
 
-  return null
+  const bad = invalidNameChars(from.split('/').join(''))
+  const chars = bad.map((char) => `"${char}"`).join(', ')
+  return bad.length
+    ? `renamed from "${from}": ${chars} cannot be used in a name`
+    : `renamed from "${from}"`
 }
 
 /**
