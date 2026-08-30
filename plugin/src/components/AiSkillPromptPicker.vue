@@ -1,6 +1,6 @@
 <template>
   <Modal title="Skills & Prompts" @close="emit('close')">
-    <div class="abele-sp-picker">
+    <div ref="rootEl" class="abele-sp-picker">
       <div class="abele-sp-picker__tabs">
         <button
           class="abele-sp-picker__tab"
@@ -59,7 +59,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, useTemplateRef } from 'vue'
 import { TFile } from 'obsidian'
 import Modal from './obsidian/Modal.vue'
 import Input from './obsidian/Input.vue'
@@ -82,12 +82,21 @@ const { app } = GlobalStore.getInstance()
 const tab = ref<'skills' | 'prompts'>('skills')
 const search = ref('')
 
+/**
+ * Inside this picker rather than through the global `document`: opened from the settings
+ * window, the global lookup finds a field on the main one. Cleared on the way out, or a
+ * picker dismissed within the hundred milliseconds reaches for a document that has gone.
+ */
+const rootEl = useTemplateRef<HTMLElement>('rootEl')
+let focusTimer = 0
+
 onMounted(() => {
-  window.setTimeout(() => {
-    const input = document.querySelector<HTMLInputElement>('.abele-sp-picker input')
-    input?.focus()
+  focusTimer = window.setTimeout(() => {
+    rootEl.value?.querySelector<HTMLInputElement>('input')?.focus()
   }, 100)
 })
+
+onBeforeUnmount(() => window.clearTimeout(focusTimer))
 
 const skills = computed(() => discoverSkills())
 

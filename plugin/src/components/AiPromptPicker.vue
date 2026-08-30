@@ -1,6 +1,6 @@
 <template>
   <Modal title="Select Prompt" @close="emit('close')">
-    <form class="abele-prompt-picker" @submit.prevent="confirm">
+    <form ref="rootEl" class="abele-prompt-picker" @submit.prevent="confirm">
       <Input v-model="search" placeholder="Search prompts..." />
 
       <div class="abele-prompt-picker__list">
@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, useTemplateRef } from 'vue'
 import { TFile } from 'obsidian'
 import Modal from './obsidian/Modal.vue'
 import Input from './obsidian/Input.vue'
@@ -74,12 +74,21 @@ const filtered = computed(() => {
   )
 })
 
+/**
+ * Inside this picker rather than through the global `document`: opened from the settings
+ * window, the global lookup finds a field on the main one. Cleared on the way out, or a
+ * picker dismissed within the hundred milliseconds reaches for a document that has gone.
+ */
+const rootEl = useTemplateRef<HTMLFormElement>('rootEl')
+let focusTimer = 0
+
 onMounted(() => {
-  window.setTimeout(() => {
-    const input = document.querySelector<HTMLInputElement>('.abele-prompt-picker input')
-    input?.focus()
+  focusTimer = window.setTimeout(() => {
+    rootEl.value?.querySelector<HTMLInputElement>('input')?.focus()
   }, 100)
 })
+
+onBeforeUnmount(() => window.clearTimeout(focusTimer))
 
 const confirm = () => {
   if (!selected.value) return

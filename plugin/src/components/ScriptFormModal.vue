@@ -1,7 +1,7 @@
 <template>
   <!-- A document gets the wider column: a reference full of code reads badly in a form's. -->
   <ObsidianModal :title="title" :size="asksSomething ? 'default' : 'wide'" @close="onCancel">
-    <form class="abele-script-form" @submit.prevent="onSubmit">
+    <form ref="formEl" class="abele-script-form" @submit.prevent="onSubmit">
       <div v-for="field in fields" :key="field.name" class="abele-script-form__field">
         <label v-if="field.label && field !== titleField" class="abele-script-form__label">
           {{ field.label }}
@@ -46,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, onMounted } from 'vue'
+import { computed, reactive, onMounted, onBeforeUnmount, useTemplateRef } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Markdown from './obsidian/Markdown.vue'
@@ -108,12 +108,24 @@ for (const field of props.fields) {
   values[field.name] = field.default ?? (field.type === 'boolean' ? 'false' : '')
 }
 
+/**
+ * Puts the cursor in the first field, once the modal has been teleported into place.
+ *
+ * Inside the form rather than through the global `document`: a modal opened from the settings
+ * window belongs to that window, and the global lookup would find whatever field happened to
+ * be on the main one. The timer is cleared on the way out — a modal dismissed inside the
+ * hundred milliseconds used to leave it running, reaching for a document no longer there.
+ */
+const formEl = useTemplateRef<HTMLFormElement>('formEl')
+let focusTimer = 0
+
 onMounted(() => {
-  window.setTimeout(() => {
-    const input = document.querySelector<HTMLInputElement>('.abele-script-form__input')
-    input?.focus()
+  focusTimer = window.setTimeout(() => {
+    formEl.value?.querySelector<HTMLInputElement>('.abele-script-form__input')?.focus()
   }, 100)
 })
+
+onBeforeUnmount(() => window.clearTimeout(focusTimer))
 
 function onSubmit() {
   props.resolve({ ...values })
