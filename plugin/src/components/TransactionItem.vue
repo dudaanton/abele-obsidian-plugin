@@ -158,13 +158,19 @@ onMounted(() => {
 
 .abele-transaction-view__main {
   display: flex;
-  justify-content: space-between;
   align-items: flex-start;
   gap: 0.5em;
 }
 
+/*
+ * Wide enough for its text and no wider. It used to take the whole row, which put the chevron
+ * that expands the note against the right edge — a hand's breadth from the title it belongs to
+ * and level with nothing, since the amount beside it is centred on the row rather than on the
+ * first line. Only a title long enough to fill the row still pushes it there, and then it is
+ * where the text ends anyway.
+ */
 .abele-transaction-view__title {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
