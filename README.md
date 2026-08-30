@@ -46,11 +46,13 @@ In Ābele, tasks are notes. Deadlines, completion status, creation date — all 
 
 Tasks being notes means a task can carry a long description and everything attached to it. Automatic title setting lets titles hold links to other notes, so a task appears in every relevant context.
 
-<img src="assets/screens/timeline.jpg" alt="The calendar and the task timeline" width="420">
+<img src="assets/screens/timeline.jpg" alt="The task timeline" width="420">
 
 ### Journals and Calendar
 
 Besides daily notes I keep monthly and yearly ones, plus a separate daily health journal for data exported from Apple Health, which I don't want mixed into my main journal. Journals group the notes belonging to one journal, create them from a configurable path, switch between several journals for the same date, open from a calendar click, and mark which dates have notes and open tasks.
+
+<img src="assets/screens/calendar.jpg" alt="The month calendar, marked with notes and open tasks" width="420">
 
 ### Financial Tracker
 
