@@ -62,6 +62,7 @@ import ObsidianMarkdown from './obsidian/Markdown.vue'
 import { openFile } from '@/helpers/vaultUtils'
 import { useElementVisibility } from '@vueuse/core'
 import { Menu } from 'obsidian'
+import { formatAmount } from '@/helpers/moneyFormat'
 
 export type TransactionType = 'income' | 'expense' | 'transfer'
 
@@ -115,13 +116,6 @@ const onContextMenu = (e: MouseEvent) => {
       })
   })
   menu.showAtPosition({ x: e.clientX, y: e.clientY })
-}
-
-function formatAmount(value: number): string {
-  return value.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
 }
 
 onMounted(() => {

@@ -31,6 +31,7 @@ import { DATE_FORMAT } from '@/constants/dates'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
 import dayjs from 'dayjs'
 import { toRaw, unref } from 'vue'
+import { formatAmount } from '@/helpers/moneyFormat'
 
 const props = defineProps<{
   accountPath: string
@@ -183,8 +184,7 @@ const chartData = computed(() => {
 
 const monthTotals = computed(() => {
   const { seriesList } = chartData.value
-  const fmt = (n: number) =>
-    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const fmt = formatAmount
 
   return seriesList.map((s) => ({
     currency: s.name,
@@ -226,8 +226,7 @@ function renderChart() {
       animation: false,
       tooltip: {
         trigger: 'axis',
-        valueFormatter: (v: number) =>
-          v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        valueFormatter: (v: number) => formatAmount(v),
       },
       legend: hasLegend
         ? { data: seriesList.map((s) => s.name), bottom: 0, type: 'scroll' }
