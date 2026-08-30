@@ -4,112 +4,123 @@
 
 An Obsidian plugin that adds a lot of functionality I personally find missing:
 
-- Tasks
-- Calendar
-- Journals
 - Logs
-- Templates
+- Tasks
+- Journals and Calendar
 - Financial Tracker
 - Time Tracker
 - Image Galleries
-- AI Agent
+- Charts
+- Templates
+- AI Agents
+- Scripts
 - Various helper tools, etc.
 
-I've been working on this plugin for several years. Originally, it was more of a collection of helpers that were hard to adapt to workflows different from my own. It was also heavily dependent on the Dataview API. Recently, I decided to rewrite it from scratch to make it more universal and as independent as possible from other plugins. My goal is to consolidate all the functionality I need into a single plugin.
+I've been working on this plugin for several years. It started as a collection of helpers that were hard to adapt to workflows other than my own, and it depended heavily on the Dataview API. I rewrote it from scratch to make it more universal and as independent of other plugins as possible. My goal is to consolidate all the functionality I need into a single plugin.
+
+Everything in it is a note. A task is a note, a transaction is a note, a time entry is a note, and notes belong to each other through the `groups` frontmatter property. `groups` is a graph rather than a folder tree: a note can belong to several groups, and a group can belong to another group. Every list and every timeline in the plugin follows those links, and so does everything an agent is allowed to see.
+
+Most of my recent work has gone into the last two items on that list. A script is plain JavaScript that runs inside Obsidian with the whole vault in scope, so anything the plugin doesn't do, I can write once and then run from a command, a note header, a link, or an agent. Agents and scripts are the part I'd point at first now. The rest of the plugin is what they're built on.
 
 The plugin has been tested on a vault with over 16k notes on both desktop and iOS.
 
 ## Features
 
-Currently, the plugin has the following features.
-
 ### Logs
 
-This is the first and probably the most important feature for my Obsidian workflow. Logs are individual paragraphs or entire notes that are displayed in full, in chronological order, within related notes. I write most of my notes in daily notes. For example, I can write something like:
+The first and probably the most important feature for my Obsidian workflow. Logs are individual paragraphs or whole notes that appear in full, in chronological order, inside related notes. I write most of my notes in daily notes, so I can write something like:
 
 ```
 Met with [[John]] and [[Anna]] at [[Coffee House]], then went to the movies to watch [[Interstellar]]
 ```
 
-and this entry will appear in the timeline of each linked note — `[[John]]`, `[[Anna]]`, `[[Coffee House]]`, and `[[Interstellar]]` — so when I visit them, I'll know the context and when I interacted with them.
+and this entry appears in the timeline of every linked note — `[[John]]`, `[[Anna]]`, `[[Coffee House]]`, `[[Interstellar]]` — so when I visit them, I know the context and when I interacted with them.
 
-What's also important is the cross-linking of logs, tasks, and other notes. My notes are grouped using the frontmatter property `groups`. For example, `[[Interstellar]]` would have a `groups` link to `[[Movies]]`, and if I visit Movies, I'll see in chronological order which movies I watched and when, along with the context.
-
-As mentioned above, logs can be individual paragraphs or entire notes. If a link to a related note is only in the note's text, only that paragraph will be displayed in the logs of the related note. But you can make an entire note a log by linking it via the `groups` property. This is how I write meeting reports, for example, since they usually span more than one paragraph.
+Logs cross-link through `groups` too. `[[Interstellar]]` has a `groups` link to `[[Movies]]`, so Movies shows which movies I watched and when, with the context. A link in a note's text contributes only that paragraph; a link in the `groups` property makes the whole note a log. That's how I write meeting reports, which rarely fit in one paragraph.
 
 ### Tasks
 
-There are many ways to manage tasks in Obsidian. I used to use the excellent Tasks plugin, which treated markdown checkboxes as tasks and allowed managing them via Dataview. It was generally convenient, and its functionality was enough for me for a long time, but eventually I decided to switch to a more Obsidian-native approach.
+In Ābele, tasks are notes. Deadlines, completion status, creation date — all of it lives in their properties. Tasks appear in the general timeline, in related notes, in daily notes, and as a general list. I deliberately left out priorities, nesting and tags, since I find them distracting. I have over 1000 tasks in Obsidian now, open and closed, and I no longer keep a personal task list anywhere else.
 
-In Ābele, tasks are notes. All their information — deadlines, completion status, creation date, etc. — is stored in their properties. Tasks are displayed in several ways: in the general timeline, in related notes, in daily notes, and as a general list. I intentionally avoided complicating them with priorities, nesting, tags, etc., as I find these distracting. I currently have over 1000 tasks (both open and closed) in Obsidian, and I no longer maintain any other personal task lists anywhere. I find this approach maximally effective.
+Tasks being notes means a task can carry a long description and everything attached to it. Automatic title setting lets titles hold links to other notes, so a task appears in every relevant context.
 
-Having tasks as separate notes allows for very detailed descriptions, attaching all necessary information. The automatic title setting makes it possible to write titles with links to other notes, so the task appears in all relevant contexts.
+### Journals and Calendar
 
-### Journals
-
-Besides daily notes, I keep monthly and yearly ones, as well as a separate daily health journal where I collect data exported from Apple Health — and I don't want to mix it with my main journal. To manage them effectively, navigate between adjacent notes, quickly create them, and have quick access to them, I developed the journals functionality. It groups notes belonging to one journal, automatically creates them using configurable paths for each journal, allows switching between multiple journals for a specific date, opens them via calendar click, and shows which dates have journal notes and open tasks.
+Besides daily notes I keep monthly and yearly ones, plus a separate daily health journal for data exported from Apple Health, which I don't want mixed into my main journal. Journals group the notes belonging to one journal, create them from a configurable path, switch between several journals for the same date, open from a calendar click, and mark which dates have notes and open tasks.
 
 ### Financial Tracker
 
-This is a relatively new feature of the plugin. I previously used Firefly III, but I missed the linking capabilities that Obsidian provides and wanted a simpler way to create transactions. Firefly's analytics were also rather inconvenient. All of this led to a natural conclusion — adding financial tracking support directly in Obsidian.
+I used to use [Firefly III](https://www.firefly-iii.org), but I missed the linking Obsidian gives you, and creating a transaction there was more work than it should have been.
 
-Each transaction is a separate file with `from`, `to`, amount, and currency specified in its properties. `From` and `To` are simply links to account notes, which come in the following types: assets, income, expenses, and liabilities. Depending on the account types, a transaction is counted as positive, negative, or neutral (for transfers between wallets) in the overall balance.
-
-Transaction lists and analytics are available in the finance sidebar, in all account notes, and in all notes referenced by a transaction.
-
-The module supports multi-currency operations in the same way Firefly does — by specifying the amount in two currencies.
+Each transaction is a separate file with `from`, `to`, amount and currency in its properties. `From` and `To` are links to account notes, which are assets, income, expenses or liabilities, and their types decide whether a transaction counts as positive, negative or neutral in the balance. Multi-currency works the way Firefly does it, by giving the amount in two currencies. Transaction lists and analytics appear in the finance sidebar, in account notes, and in every note a transaction links to.
 
 ### Time Tracker
 
-The time tracker serves as my replacement for Toggl. It's conceptually very similar to the financial module, except instead of transactions there are time entries. Each time entry has a start and end time, as well as a `groups` property that links to the note being tracked. It follows the same Obsidian-native approach where one time entry = one file.
+The time tracker is my replacement for [Toggl](https://toggl.com), and conceptually it's the finance module with time entries instead of transactions. One entry is one file, with a start, an end, and a `groups` property pointing at whatever is being tracked.
 
-As with finances, the list of time entries can be viewed in the sidebar and in all notes linked to time entries, as well as their groups and so on up the tree. This means if you have tasks under a project and you track time against them, the project note will display the total time spent on it.
+Entries appear in the sidebar and in every note they link to, then in their groups, and so on up the tree — so if you track time against tasks under a project, the project note shows the total. For reports I use Obsidian's own Bases, which exports a CSV of all tasks and projects.
 
-For reports, I use the built-in Bases functionality, which allows exporting a ready-made CSV file for all tasks and projects.
+### Image Galleries
 
-### AI Agent
+Working with images was a long-standing pain point in my Obsidian workflow. This module handles adding, arranging, moving and editing images inside a note.
 
-My goal was never to create a new Claude Code or a full-fledged replacement inside Obsidian. The main reason I decided to embed an agent chat in Obsidian is that I want fine-grained control over file access that I grant to agents. Since my file structure is flat, simply granting access to a folder wouldn't work.
+### Charts
 
-Instead, I implemented a very flexible access system with a virtual filesystem for agents. You can grant access to individual files, folders, patterns, and — most importantly — entire branches of files linked through the `groups` property. For example, you can grant access to a "My Project" group, and all notes referencing that project through `groups`, as well as all their sub-notes and so on, will be accessible to the agent.
-
-To enable the agent to work with Obsidian, it has basic file operation tools, web search (via Brave Search), fetch, image reading/generating, and various other essential capabilities.
-
-There is also support for skills and a prompt library. My favorite skill is probably "defuddle", which teaches the agent how to load website content efficiently, directly in markdown format.
-
-### Images Gallery
-
-Another long-standing pain point in my Obsidian workflow — working with images — is solved by this module. You can conveniently add and manage image display within notes, move them, edit them, and much more.
-
-### Charts Bases View
-
-Since my Obsidian vault contains a lot of numerical data (finances, time tracking, and beyond), I wanted to be able to visualize it as charts to see trends, correlations, and analytics. And since I already had to add charts for other modules, I added a new Obsidian Bases View type for charts.
-
-You can build various types of charts using any data from your notes.
+My vault holds a lot of numbers — finances, time tracking and beyond — and I wanted to see the trends in them. Charts are a new Obsidian Bases view type, and they build from any data in your notes.
 
 ### Templates
 
-For templates, I used to use the powerful Templater plugin for Obsidian. Personally, I didn't find it very convenient, and it seemed unsafe since it executed JS directly from notes. I wanted a more lightweight solution with more convenient template selection, so I wrote my own templating implementation.
+I used to use [Templater](https://github.com/SilentVoid13/Templater), which is powerful, but I didn't find it convenient, and I wanted something lighter and wired into the rest of the plugin rather than sitting beside it. So I wrote my own. Over time templates ended up used by every other module, and became one of the foundations of the plugin.
 
-Over time, templates became used across all other modules, becoming an important foundation of the entire plugin.
+### AI Agents
+
+My goal was never to build a new Claude Code inside Obsidian. What I wanted was fine-grained control over the file access I hand to an agent — my vault is flat, so granting access to a folder means nothing.
+
+So access is a scope built from files, folders, patterns and, most usefully, groups. Grant an agent the "My Project" group and it gets every note linking to that project through `groups`, everything under those, and so on down the graph. If a path falls outside the scope, the tools refuse it.
+
+An agent is a named configuration: a model and a fallback, a system prompt composed from text blocks and vault notes, which tools it may use and whether each one asks first, its scope, and how far it may delegate. A chat picks an agent, and can override the model, permissions or scope for itself without touching the agent. Utility agents stay out of the chat picker, to be called by scripts, delegation or message interceptors instead.
+
+An agent with delegation depth above zero can hand a self-contained task to another agent, or fan the same task out over a list of items with one sub-agent per item. Every delegated run keeps its full transcript, readable inline in the chat or in its own tab.
+
+To work with a vault, agents have file operations, search, the plugin's own relation tools (the logs, backlinks, tasks and transactions of a note), web search and fetch, image reading and generation, voice input, and the ability to run any script. There is also a prompt library and support for skills. My favorites are still ["defuddle"](https://github.com/kepano/defuddle), which teaches the agent to load a website straight into clean markdown, and "deepresearch", which has it dig into a topic iteratively, through web search and whatever other tools it has to hand.
+
+### Scripts
+
+Skills are not deterministic. An agent follows one today and does something odd with it tomorrow, and for anything I want to happen the same way every time, that isn't good enough. So I wanted a way to build automations inside Obsidian, with agents and for agents, that runs predictably, and that the agents themselves can write for me.
+
+A script is a JavaScript file in the vault that runs inside Obsidian with full vault access, and a comment header declaring its name, icon and parameters:
+
+```js
+// @name Tag untagged notes
+// @description Finds notes without tags and adds one
+// @icon tag
+// @param tag string "Tag to add" = "todo"
+```
+
+Parameters become a form when a person runs the script, and arguments when an agent or another script calls it. In the body you get file operations, structured search, the template engine, `fetch`, forms and markdown modals, `dayjs`, and `agent()` — so a script can hand the fuzzy part of a job to a model and keep the rest exact. Whatever it logs becomes its output.
+
+There are four ways to start one: the command palette, a button in a note's header that runs it against that note, an `abele://` link, or an agent calling it as a tool. Every run of the session is listed with its status, its log lines and what it returned, and can be stopped or run again from there.
 
 ### Find and replace
 
-In addition to the above functionality, the plugin also includes a very powerful find-and-replace tool for note contents. I created it to facilitate vault migration between different structures.
+A find-and-replace tool for note contents, which I built for vault migration. Moving 6000 notes to an almost completely flat structure, following [@kepano's approach](https://stephango.com/vault), meant rewriting properties based on a note's directory, merging several properties into one, replacing text only in notes carrying a given property. So it works with conditions and handles frontmatter properly, rather than treating a note as text.
 
-When I first started using Obsidian, out of habit I created many different root and nested folders, trying to organize my vault that way. But over time, I started relying heavily on internal links and increasingly navigated to notes from the context of other notes. I also read [@kepano's approach](https://stephango.com/vault) to organizing his vault and decided to switch to an almost completely flat structure. Almost all my notes (except journal ones, located in `Journals/YYYY` folders) are in a single `Notes` folder. At the time of migration, my vault had around 6000 notes, so I needed a flexible tool that could bulk-update note properties based on their directories, move them, add new properties (including link and list types), merge values of multiple properties, replace text in notes containing specific properties, and much more.
+### Smaller things
 
-For these purposes, I wrote the find-and-replace module, which works with conditions, allows smart frontmatter property replacement, and much more.
+- Deep links (`abele://`) that open a note, run a command, or run a script with parameters
+- Footnote sidenotes, and colored highlights with `=={color} text==`
+- CSS snippets loaded and hot-reloaded from a folder in the vault
+- Settings transfer to another device over QR codes, scripts, skills and prompts included
 
 ## Roadmap
 
-Currently, the plan includes some refactoring and performance optimization, plus fixing known bugs.
+Mostly agents right now, and bug fixes. I'm using the plugin to build custom learning systems for myself, which is how I keep finding out what it's missing. There will be more Bases views, and I hope for more capable APIs once Obsidian supports them.
 
 ## Development approach
 
-The original version of the plugin, its architecture, and all core functionality — including logs, journals, tasks, timeline, templates, find and replace, and most of the UI and helpers — were written entirely by hand. Over time, I started using LLMs more actively, including agents recently, as they've finally become reliable enough. So the plugin is now developed in part with the help of LLMs. I think it's important to mention this. That said, I review the code and periodically refactor it, and I always verify the plugin's functionality before pushing it here.
+The original version of the plugin, its architecture and all its core functionality — logs, journals, tasks, timeline, templates, find and replace, most of the UI and the helpers — were written entirely by hand. It isn't built that way anymore. I don't write the code now: development is fully agent-driven, and what I look at is the architecture rather than the implementation. To keep control over what the agents change, I've more or less moved to TDD. I still check that the plugin works before pushing it here, and I think all of this is worth saying plainly.
 
-The plugin is currently in very active development, so bugs are expected. I also haven't written detailed documentation yet. However, if you want to try it and can't get it running, please open an Issue — I'll try to help.
+It's in very active development, so bugs are expected, and I haven't written detailed documentation yet. If you want to try it and can't get it running, open an Issue and I'll try to help.
 
 ## Documentation
 
