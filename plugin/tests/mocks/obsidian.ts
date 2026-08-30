@@ -415,6 +415,29 @@ export class Component {
 }
 
 /**
+ * A pane with a header and a body. Only the shape matters here: everything that renders into
+ * one reaches for `containerEl.children[1]`, because that is where Obsidian puts the content
+ * and `children[0]` is the header.
+ */
+export class ItemView extends Component {
+  containerEl: HTMLElement
+  app: unknown
+
+  constructor(public leaf: WorkspaceLeaf) {
+    super()
+    this.containerEl = document.createElement('div')
+    this.containerEl.appendChild(document.createElement('div'))
+    this.containerEl.appendChild(document.createElement('div'))
+  }
+}
+
+/** Obsidian's Bases view. Nothing here uses it; it only has to be a class to extend. */
+export class BasesView {}
+
+/** The editor Obsidian gives a plain-text file. Again, only the class is needed. */
+export class TextFileView extends ItemView {}
+
+/**
  * Markdown is rendered by Obsidian itself, so there is nothing here to reproduce — the text
  * is written in as text. That is enough for tests that ask what a component put on screen
  * and around it; how the markdown itself comes out is Obsidian's business.

@@ -36,10 +36,14 @@ export class ScriptRunsView extends ItemView {
     const widgetContainer = createDiv({ attr: { [SCRIPT_RUNS_ID_ATTR]: this.id } })
     container.appendChild(widgetContainer)
 
-    GlobalStore.getInstance().scriptRunsId.value = this.id
+    const open = GlobalStore.getInstance().scriptRunsIds
+    open.value = [...open.value, this.id]
   }
 
   async onClose() {
-    GlobalStore.getInstance().scriptRunsId.value = null
+    // Only this pane's own id: a second panel of the same kind may have opened since, and
+    // clearing the whole slot is what left the one still on screen blank.
+    const open = GlobalStore.getInstance().scriptRunsIds
+    open.value = open.value.filter((id) => id !== this.id)
   }
 }

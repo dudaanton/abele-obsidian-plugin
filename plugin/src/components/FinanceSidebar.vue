@@ -154,6 +154,7 @@ import DateDivider from './obsidian/DateDivider.vue'
 import TransactionItem from './TransactionItem.vue'
 import dayjs from 'dayjs'
 import { toRaw } from 'vue'
+import { formatAmount } from '@/helpers/moneyFormat'
 
 const PAGE_SIZE = 20
 const visibleCount = ref(PAGE_SIZE)
@@ -518,7 +519,7 @@ function renderPieChart() {
         enterable: false,
         confine: true,
         formatter: (p: any) =>
-          `${p.marker} ${p.name}: ${p.value.toLocaleString(undefined, { minimumFractionDigits: 2 })} (${p.percent}%)`,
+          `${p.marker} ${p.name}: ${formatAmount(p.value)} (${p.percent}%)`,
       },
       series: [
         {
@@ -902,14 +903,6 @@ const dayTxTotals = (date: string): string[] => {
   )
 }
 
-// --- Formatting ---
-
-function formatAmount(value: number): string {
-  return value.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
-}
 </script>
 
 <style lang="scss">

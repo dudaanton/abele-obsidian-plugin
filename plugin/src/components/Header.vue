@@ -81,6 +81,7 @@ import dayjs from 'dayjs'
 import { toRaw, unref } from 'vue'
 import { parseDateOrNull } from '@/helpers/datesHelper'
 import { wikilinkToPath } from '@/helpers/pathsHelpers'
+import { formatAmount } from '@/helpers/moneyFormat'
 
 const props = defineProps<{
   header: Header
@@ -97,8 +98,7 @@ const accountBalances = computed(() => {
   const account = al.accounts.get(props.header.filePath)
   if (!account) return []
 
-  const fmt = (n: number) =>
-    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const fmt = formatAmount
 
   if (account.accountType === 'computed' && account.sourceAccounts.length) {
     const { app } = store

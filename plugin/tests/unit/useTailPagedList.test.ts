@@ -77,7 +77,33 @@ describe('a list that changes while it is open', () => {
 
     source.value = [...source.value, 'm4']
 
-    expect(visible.value).toEqual(['m2', 'm3', 'm4'])
+    expect(visible.value.at(-1)).toBe('m4')
+  })
+
+  /**
+   * The window is anchored at its start, not at its end. A window of "the last three" moves
+   * forward on every append, dropping the oldest rendered entry — which in a chat takes a
+   * message's worth of height out from above whoever is reading and shifts the page up under
+   * them. An agent's reply appends several in a row, so scrolling back mid-reply was hopeless.
+   */
+  it('drops nothing from the top when something is added at the bottom', () => {
+    const source = ref(upTo(10))
+    const { visible } = useTailPagedList(() => source.value, 3)
+    const before = [...visible.value]
+
+    source.value = [...source.value, 'm11']
+
+    expect(visible.value).toEqual([...before, 'm11'])
+  })
+
+  it("holds the top still through a whole reply's worth of them", () => {
+    const source = ref(upTo(10))
+    const { visible, hidden } = useTailPagedList(() => source.value, 3)
+
+    for (const extra of ['m11', 'm12', 'm13', 'm14']) source.value = [...source.value, extra]
+
+    expect(visible.value[0]).toBe('m8')
+    expect(hidden.value).toBe(7)
   })
 
   it('keeps a grown window growing with the list, so streaming stays visible', () => {
@@ -88,7 +114,7 @@ describe('a list that changes while it is open', () => {
     source.value = [...source.value, 'm11']
 
     expect(visible.value.at(-1)).toBe('m11')
-    expect(visible.value).toHaveLength(6)
+    expect(visible.value[0]).toBe('m5')
   })
 
   it('starts again at the end when the list is replaced by a shorter one', async () => {

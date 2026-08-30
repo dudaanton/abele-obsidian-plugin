@@ -37,25 +37,46 @@
   >
     <FootnoteView :footnote="footnote as Footnote" />
   </Teleport>
-  <Teleport v-if="timelineSidebarId" :to="`[${TIMELINE_SIDEBAR_ID_ATTR}='${timelineSidebarId}']`">
+  <Teleport
+    v-for="id in timelineSidebarIds"
+    :key="id"
+    :to="`[${TIMELINE_SIDEBAR_ID_ATTR}='${id}']`"
+  >
     <TimelineSidebarView />
   </Teleport>
-  <Teleport v-if="todoSidebarId" :to="`[${TODO_SIDEBAR_ID_ATTR}='${todoSidebarId}']`">
+  <Teleport
+    v-for="id in todoSidebarIds"
+    :key="id"
+    :to="`[${TODO_SIDEBAR_ID_ATTR}='${id}']`"
+  >
     <TodoSidebarView />
   </Teleport>
-  <Teleport v-if="aiSidebarId" :to="`[${AI_SIDEBAR_ID_ATTR}='${aiSidebarId}']`">
+  <Teleport
+    v-for="id in aiSidebarIds"
+    :key="id"
+    :to="`[${AI_SIDEBAR_ID_ATTR}='${id}']`"
+  >
     <AiChatView />
   </Teleport>
-  <Teleport v-if="financeSidebarId" :to="`[${FINANCE_SIDEBAR_ID_ATTR}='${financeSidebarId}']`">
+  <Teleport
+    v-for="id in financeSidebarIds"
+    :key="id"
+    :to="`[${FINANCE_SIDEBAR_ID_ATTR}='${id}']`"
+  >
     <FinanceSidebarView />
   </Teleport>
   <Teleport
-    v-if="timeTrackingSidebarId"
-    :to="`[${TIME_TRACKING_SIDEBAR_ID_ATTR}='${timeTrackingSidebarId}']`"
+    v-for="id in timeTrackingSidebarIds"
+    :key="id"
+    :to="`[${TIME_TRACKING_SIDEBAR_ID_ATTR}='${id}']`"
   >
     <TimeTrackingSidebarView />
   </Teleport>
-  <Teleport v-if="scriptRunsId" :to="`[${SCRIPT_RUNS_ID_ATTR}='${scriptRunsId}']`">
+  <Teleport
+    v-for="id in scriptRunsIds"
+    :key="id"
+    :to="`[${SCRIPT_RUNS_ID_ATTR}='${id}']`"
+  >
     <ScriptRunsView />
   </Teleport>
   <Teleport
@@ -173,12 +194,12 @@ const {
   scriptFormModalOpened,
   scriptFormFields,
   scriptFormResolve,
-  timelineSidebarId,
-  todoSidebarId,
-  aiSidebarId,
-  financeSidebarId,
-  timeTrackingSidebarId,
-  scriptRunsId,
+  timelineSidebarIds,
+  todoSidebarIds,
+  aiSidebarIds,
+  financeSidebarIds,
+  timeTrackingSidebarIds,
+  scriptRunsIds,
   findAndReplaceBasesInstances,
   settingsContainer,
 } = GlobalStore.getInstance()

@@ -62,6 +62,7 @@ import ObsidianMarkdown from './obsidian/Markdown.vue'
 import { openFile } from '@/helpers/vaultUtils'
 import { useElementVisibility } from '@vueuse/core'
 import { Menu } from 'obsidian'
+import { formatAmount } from '@/helpers/moneyFormat'
 
 export type TransactionType = 'income' | 'expense' | 'transfer'
 
@@ -117,13 +118,6 @@ const onContextMenu = (e: MouseEvent) => {
   menu.showAtPosition({ x: e.clientX, y: e.clientY })
 }
 
-function formatAmount(value: number): string {
-  return value.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
-}
-
 onMounted(() => {
   props.transaction.load()
 })
@@ -158,13 +152,19 @@ onMounted(() => {
 
 .abele-transaction-view__main {
   display: flex;
-  justify-content: space-between;
   align-items: flex-start;
   gap: 0.5em;
 }
 
+/*
+ * Wide enough for its text and no wider. It used to take the whole row, which put the chevron
+ * that expands the note against the right edge — a hand's breadth from the title it belongs to
+ * and level with nothing, since the amount beside it is centred on the row rather than on the
+ * first line. Only a title long enough to fill the row still pushes it there, and then it is
+ * where the text ends anyway.
+ */
 .abele-transaction-view__title {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

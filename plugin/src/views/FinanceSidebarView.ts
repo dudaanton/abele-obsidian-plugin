@@ -36,11 +36,14 @@ export class FinanceSidebarView extends ItemView {
     const widgetContainer = createDiv({ attr: { [FINANCE_SIDEBAR_ID_ATTR]: this.id } })
     container.appendChild(widgetContainer)
 
-    GlobalStore.getInstance().financeSidebarId.value = this.id
+    const open = GlobalStore.getInstance().financeSidebarIds
+    open.value = [...open.value, this.id]
   }
 
   async onClose() {
-    const store = GlobalStore.getInstance()
-    store.financeSidebarId.value = null
+    // Only this pane's own id: a second panel of the same kind may have opened since, and
+    // clearing the whole slot is what left the one still on screen blank.
+    const open = GlobalStore.getInstance().financeSidebarIds
+    open.value = open.value.filter((id) => id !== this.id)
   }
 }

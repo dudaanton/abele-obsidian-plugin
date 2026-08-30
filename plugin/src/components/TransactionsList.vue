@@ -32,6 +32,7 @@ import { DATE_FORMAT } from '@/constants/dates'
 import { computed, ref, unref } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import dayjs from 'dayjs'
+import { formatAmount } from '@/helpers/moneyFormat'
 
 const PAGE_SIZE = 20
 
@@ -128,7 +129,7 @@ const dayTotals = (date: string): string[] => {
   }
   return Array.from(byCurrency.entries()).map(
     ([cur, amount]) =>
-      `${amount >= 0 ? '+' : ''}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur}`
+      `${amount >= 0 ? '+' : ''}${formatAmount(amount)} ${cur}`
   )
 }
 

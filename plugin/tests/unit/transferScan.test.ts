@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import qr from 'qrcode-generator'
-import { readCodes } from '@/transfer/scan'
+import { readCodes, readableSize, closerLooks, READABLE_PIXELS } from '@/transfer/scan'
 import { toFrames } from '@/transfer/frames'
 
 /** The same picture a screen would show: dark modules, light plate, a quiet zone around it. */
@@ -115,5 +115,75 @@ describe('when the engine brings its own decoder', () => {
     )
 
     await expect(readCodes(render(frame))).resolves.toEqual([frame])
+  })
+})
+
+/**
+ * A photograph of a screen full of codes.
+ *
+ * This is the case the whole feature turns on: a phone whose webview has no camera can only
+ * take photos, and taking one photo per code is what made a real transfer unusable. Chromium's
+ * own decoder reads every code in a picture; the bundled one reads a single code, so the
+ * picture is looked at again square by square until they have all been found.
+ */
+
+/**
+ * How much of a photograph is looked at, at a time.
+ *
+ * One code in three would not read off a phone that has no camera in its webview and could
+ * only photograph them. A photograph is twelve megapixels: a canvas of it and the bytes of
+ * that canvas come to fifty megabytes before the decoder has allocated anything, on a device
+ * that refuses rather than swaps — and refuses silently, handing back a picture of nothing.
+ * So the picture is drawn at a size a code is still legible at and no larger.
+ */
+describe('the size a picture is read at', () => {
+  it('leaves a small one exactly as it is', () => {
+    expect(readableSize(640, 480)).toEqual({ width: 640, height: 480 })
+  })
+
+  it('brings a phone photograph down to something a phone can hold', () => {
+    const size = readableSize(4032, 3024)
+
+    expect(size.width * size.height).toBeLessThanOrEqual(READABLE_PIXELS)
+    // A code needs its modules to survive, which they do not if the picture is squashed.
+    expect(size.width / size.height).toBeCloseTo(4032 / 3024, 2)
+  })
+
+  it('keeps enough of it for the modules of a code to survive', () => {
+    const size = readableSize(4032, 3024)
+
+    // A frame is 93 modules across; a code filling a third of the frame is still 4 px a module.
+    expect(size.width / 3 / 93).toBeGreaterThan(3)
+  })
+})
+
+describe('the squares looked at when the whole picture gave nothing', () => {
+  const looks = () => closerLooks(4032, 3024)
+
+  it('covers the picture in two grids, so a code has somewhere to sit whole', () => {
+    expect(looks()).toHaveLength(2 * 2 + 3 * 3)
+  })
+
+  it('stays inside the picture, wherever the square would have run over the edge', () => {
+    for (const look of looks()) {
+      expect(look.x).toBeGreaterThanOrEqual(0)
+      expect(look.y).toBeGreaterThanOrEqual(0)
+      expect(look.x + look.width).toBeLessThanOrEqual(4032)
+      expect(look.y + look.height).toBeLessThanOrEqual(3024)
+    }
+  })
+
+  /** A code cut in half by a boundary reads in no square at all, so the squares overlap. */
+  it('overlaps its neighbours rather than tiling the picture exactly', () => {
+    const across = looks().filter((look) => look.y === 0 && look.height > 0)
+    const covered = across.reduce((sum, look) => sum + look.width, 0)
+
+    expect(covered).toBeGreaterThan(4032)
+  })
+
+  it('leaves each square small enough to be worth drawing at its own size', () => {
+    for (const look of looks()) {
+      expect(readableSize(look.width, look.height).width).toBeLessThanOrEqual(look.width)
+    }
   })
 })

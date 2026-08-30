@@ -57,12 +57,22 @@ export class GlobalStore {
     null
   )
 
-  public readonly timelineSidebarId = ref<string | null>(null)
-  public readonly todoSidebarId = ref<string | null>(null)
-  public readonly aiSidebarId = ref<string | null>(null)
-  public readonly financeSidebarId = ref<string | null>(null)
-  public readonly timeTrackingSidebarId = ref<string | null>(null)
-  public readonly scriptRunsId = ref<string | null>(null)
+  /**
+   * The panels of each kind that are open, by the id written on the container each one put in
+   * its own pane. The Vue app teleports a component into every id on the list.
+   *
+   * A list rather than one id apiece. Obsidian opens a second instance of a view before
+   * closing the first — restoring a layout, reattaching a drawer on a phone — and with a
+   * single slot the one that went away cleared what the one still on screen was using. The
+   * panel then sat blank until the app was restarted, which is what a fresh install looked
+   * like. Two of a kind at once is also a thing a person does: one in each dock.
+   */
+  public readonly timelineSidebarIds = ref<string[]>([])
+  public readonly todoSidebarIds = ref<string[]>([])
+  public readonly aiSidebarIds = ref<string[]>([])
+  public readonly financeSidebarIds = ref<string[]>([])
+  public readonly timeTrackingSidebarIds = ref<string[]>([])
+  public readonly scriptRunsIds = ref<string[]>([])
   public readonly findAndReplaceBasesInstances = shallowRef<Map<string, FindAndReplaceInstance>>(
     new Map()
   )
@@ -334,7 +344,12 @@ export class GlobalStore {
     this.transactionsList.value = null
     this.accountsList.value?.cleanup()
     this.accountsList.value = null
-    this.aiSidebarId.value = null
+    this.timelineSidebarIds.value = []
+    this.todoSidebarIds.value = []
+    this.aiSidebarIds.value = []
+    this.financeSidebarIds.value = []
+    this.timeTrackingSidebarIds.value = []
+    this.scriptRunsIds.value = []
     this._vaultWatcher.cleanup()
 
     console.debug('GlobalStore destroyed')

@@ -860,10 +860,8 @@ export default class AbelePlugin extends Plugin {
       void this.activateView(SCRIPT_RUNS_VIEW_TYPE)
     })
 
-    // AI Agent — conditional on settings
-    if (AbeleConfig.getInstance().ai.enabled) {
-      this.registerAiFeatures()
-    }
+    // AI Agent — conditional on settings, and switched on later as often as at startup
+    this.syncAiFeatures()
 
     // Register protocol handler for obsidian://abele
     // Routes to link handler when "name" param is present, otherwise to protocol action
@@ -914,6 +912,40 @@ export default class AbelePlugin extends Plugin {
         })
       )
     })
+  }
+
+  /** True once the agent's commands and ribbon icon are on the screen. */
+  private aiFeaturesRegistered = false
+
+  /** True once the scripts in the vault have been read and turned into commands. */
+  private scriptsStarted = false
+
+  /**
+   * Puts the agent's commands and ribbon icon up, once the setting says so.
+   *
+   * Called at load and again after every settings save, because turning the agent on is
+   * something people do on a fresh install — and until now nothing appeared until Obsidian was
+   * restarted, which left the setting looking as if it had not taken.
+   *
+   * Only one way round. Obsidian has no way to take a command or a ribbon icon back, so
+   * turning the agent off still needs a restart to clear them; leaving them up is the smaller
+   * of the two annoyances, and the commands do nothing without a model configured anyway.
+   */
+  syncAiFeatures() {
+    const { ai } = AbeleConfig.getInstance()
+    if (!ai.enabled) return
+
+    if (!this.aiFeaturesRegistered) {
+      this.aiFeaturesRegistered = true
+      this.registerAiFeatures()
+    }
+
+    // Scripts are a second switch behind the first, and turning that one on used to need a
+    // restart of its own.
+    if (ai.scriptsEnabled && !this.scriptsStarted) {
+      this.scriptsStarted = true
+      this.app.workspace.onLayoutReady(() => ScriptService.getInstance().init())
+    }
   }
 
   registerAiFeatures() {
@@ -967,11 +999,6 @@ export default class AbelePlugin extends Plugin {
       },
     })
 
-    if (AbeleConfig.getInstance().ai.scriptsEnabled) {
-      this.app.workspace.onLayoutReady(() => {
-        ScriptService.getInstance().init()
-      })
-    }
   }
 
   onunload() {
