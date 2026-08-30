@@ -51,6 +51,12 @@ interface ToolDiffDetails {
   diff?: { old: string; new: string }
 }
 
+/** The call at the head of the pending queue that the reader has just let through by hand. */
+interface ApprovedCall {
+  /** What they approved it with, when they edited the arguments before saying yes. */
+  args?: Record<string, unknown>
+}
+
 export type SessionKind = 'chat' | 'run'
 
 export interface SessionParent {
@@ -959,22 +965,58 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   // ── Pending tool calls processing ──────────────────────────────
 
-  private async processAllPendingToolCalls(): Promise<void> {
-    while (this.pendingToolCalls.value.length > 0) {
-      const tc = this.pendingToolCalls.value[0]
+  /**
+   * Works down the queue of calls a paused turn left behind, stopping at the first that has
+   * to be asked about.
+   *
+   * The chat stays marked as working for the whole run of them, and every one of them gets a
+   * controller the stop button can reach. Only the call approved by hand used to be marked:
+   * a model asks for several at a time, so under "allow all" everything behind the first one
+   * ran with the composer showing its idle buttons — no spinner, a greyed send arrow where
+   * the stop square belongs, and nothing to press to call off a script taking its time.
+   *
+   * `approved` is the call at the head of the queue that the reader has just allowed, with
+   * the arguments they allowed it with. It runs without being asked about again, whatever
+   * the mode still says; everything behind it is checked as usual.
+   */
+  private async processAllPendingToolCalls(approved?: ApprovedCall): Promise<void> {
+    let head = approved
 
-      if (this.needsApproval(tc.name, tc.arguments)) {
+    try {
+      while (this.pendingToolCalls.value.length > 0) {
+        const tc = this.pendingToolCalls.value[0]
+
+        if (!head && this.needsApproval(tc.name, tc.arguments)) {
+          this.ensurePendingToolCallMessage(tc)
+          this.markDirty()
+          return // Wait for user approve/reject
+        }
+
         this.ensurePendingToolCallMessage(tc)
-        this.markDirty()
-        return // Wait for user approve/reject
-      }
 
-      // Auto-approved — execute immediately
-      this.ensurePendingToolCallMessage(tc)
-      await this.executeCurrentPendingTool()
+        const controller = new AbortController()
+        this.toolAbortController = controller
+        this.isExecutingTool.value = true
+        try {
+          await this.executeCurrentPendingTool(head?.args, controller.signal)
+        } finally {
+          this.toolAbortController = null
+        }
+        head = undefined
+
+        if (controller.signal.aborted) {
+          this.markDirty()
+          return
+        }
+      }
+    } finally {
+      // Cleared here rather than around each call: between two of them the flag would drop
+      // for long enough to render, and the composer would blink back to its idle buttons.
+      this.isExecutingTool.value = false
     }
 
-    // All pending tools resolved — restart loop
+    // All pending tools resolved — restart loop. `runAgentLoop` raises the streaming flag
+    // before it yields, so the chat never reads as idle in between.
     await this.runAgentLoop()
   }
 
@@ -1233,22 +1275,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       }
     }
 
-    const controller = new AbortController()
-    this.toolAbortController = controller
-    this.isExecutingTool.value = true
-    try {
-      await this.executeCurrentPendingTool(modifiedArgs, controller.signal)
-    } finally {
-      this.isExecutingTool.value = false
-      this.toolAbortController = null
-    }
-
-    if (controller.signal.aborted) {
-      this.markDirty()
-      return
-    }
-
-    await this.processAllPendingToolCalls()
+    await this.processAllPendingToolCalls({ args: modifiedArgs })
     this.markDirty()
   }
 
