@@ -431,6 +431,12 @@ export class ItemView extends Component {
   }
 }
 
+/** Obsidian's Bases view. Nothing here uses it; it only has to be a class to extend. */
+export class BasesView {}
+
+/** The editor Obsidian gives a plain-text file. Again, only the class is needed. */
+export class TextFileView extends ItemView {}
+
 /**
  * Markdown is rendered by Obsidian itself, so there is nothing here to reproduce — the text
  * is written in as text. That is enough for tests that ask what a component put on screen

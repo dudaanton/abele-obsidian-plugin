@@ -213,6 +213,11 @@ export class AbeleConfig {
     }
 
     await this.plugin.saveData(this.exportSettings())
+
+    // The agent's commands and ribbon icon are registered from a setting, and this is the one
+    // road every settings change takes — so switching it on takes effect here rather than at
+    // the next restart.
+    this.plugin.syncAiFeatures()
   }
 
   applySettings(settings?: AbeleSettings): void {
