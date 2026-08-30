@@ -10,11 +10,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import TransferSettings from '@/components/settings/TransferSettings.vue'
 import TransferScanModal from '@/components/settings/transfer/TransferScanModal.vue'
-import TransferShowModal from '@/components/settings/transfer/TransferShowModal.vue'
+import TransferSendModal from '@/components/settings/transfer/TransferSendModal.vue'
 import TransferPreviewModal from '@/components/settings/transfer/TransferPreviewModal.vue'
 import Input from '@/components/obsidian/Input.vue'
 import Checkbox from '@/components/obsidian/Checkbox.vue'
 import Button from '@/components/obsidian/Button.vue'
+import QrCode from '@/components/obsidian/QrCode.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiSettings } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
@@ -109,7 +110,7 @@ describe('choosing what to send', () => {
 
   it('will not make a transfer out of nothing', () => {
     const wrapper = open(TransferSettings)
-    const show = wrapper.findAllComponents(Button).find((b) => b.props('text') === 'Show QR')
+    const show = wrapper.findAllComponents(Button).find((b) => b.props('text') === 'Send')
 
     expect(show?.props('disabled')).toBe(true)
   })
@@ -127,10 +128,10 @@ describe('choosing what to send', () => {
     const wrapper = open(TransferSettings)
 
     await rowNamed(wrapper, 'openwebui')?.trigger('click')
-    await clickButton(wrapper, 'Show QR')
-    await waitFor(() => wrapper.findComponent(TransferShowModal).exists())
+    await clickButton(wrapper, 'Send')
+    await waitFor(() => wrapper.findComponent(TransferSendModal).exists())
 
-    const shown = wrapper.findComponent(TransferShowModal)
+    const shown = wrapper.findComponent(TransferSendModal)
     expect(shown.exists()).toBe(true)
     expect(shown.props('frames').length).toBeGreaterThan(0)
     expect(shown.props('code')).toMatch(/^[A-Z2-9]{8}$/)
@@ -142,9 +143,9 @@ describe('choosing what to send', () => {
     // The first checkbox on the screen is the one that decides about keys.
     await wrapper.findComponent(Checkbox).vm.$emit('toggle')
     await rowNamed(wrapper, 'openwebui')?.trigger('click')
-    await clickButton(wrapper, 'Show QR')
+    await clickButton(wrapper, 'Send')
 
-    expect(wrapper.findComponent(TransferShowModal).props('code')).toBeUndefined()
+    expect(wrapper.findComponent(TransferSendModal).props('code')).toBeUndefined()
   })
 })
 
@@ -206,9 +207,9 @@ describe('reading a transfer on the other device', () => {
     // Keys off: the locked case has its own test, and this one is about what arrives.
     await wrapper.findComponent(Checkbox).vm.$emit('toggle')
     await flushPromises()
-    await clickButton(wrapper, 'Show QR')
+    await clickButton(wrapper, 'Send')
 
-    return wrapper.findComponent(TransferShowModal).props('frames') as string[]
+    return wrapper.findComponent(TransferSendModal).props('frames') as string[]
   }
 
   const paste = async (wrapper: ReturnType<typeof mount>, frames: string[]) => {
@@ -272,10 +273,10 @@ describe('the scripts, skills and prompts themselves', () => {
     // Nothing here needs a key, so the transfer stays open and needs no code.
     await wrapper.findComponent(Checkbox).vm.$emit('toggle')
     await flushPromises()
-    await clickButton(wrapper, 'Show QR')
-    await waitFor(() => wrapper.findComponent(TransferShowModal).exists())
+    await clickButton(wrapper, 'Send')
+    await waitFor(() => wrapper.findComponent(TransferSendModal).exists())
 
-    return wrapper.findComponent(TransferShowModal).props('frames') as string[]
+    return wrapper.findComponent(TransferSendModal).props('frames') as string[]
   }
 
   it('offers a script that lives in the scripts folder', async () => {
@@ -352,9 +353,9 @@ describe('choosing between keeping and replacing', () => {
     await rowNamed(wrapper, 'openwebui')?.trigger('click')
     await wrapper.findComponent(Checkbox).vm.$emit('toggle')
     await flushPromises()
-    await clickButton(wrapper, 'Show QR')
-    await waitFor(() => wrapper.findComponent(TransferShowModal).exists())
-    const frames = wrapper.findComponent(TransferShowModal).props('frames') as string[]
+    await clickButton(wrapper, 'Send')
+    await waitFor(() => wrapper.findComponent(TransferSendModal).exists())
+    const frames = wrapper.findComponent(TransferSendModal).props('frames') as string[]
 
     AbeleConfig.getInstance().ai = {
       ...DEFAULT_AI_SETTINGS,
@@ -419,9 +420,9 @@ describe('a transfer that carries a key', () => {
   const lockedFrames = async () => {
     const wrapper = open(TransferSettings)
     await rowNamed(wrapper, 'openwebui')?.trigger('click')
-    await clickButton(wrapper, 'Show QR')
-    await waitFor(() => wrapper.findComponent(TransferShowModal).exists())
-    const shown = wrapper.findComponent(TransferShowModal)
+    await clickButton(wrapper, 'Send')
+    await waitFor(() => wrapper.findComponent(TransferSendModal).exists())
+    const shown = wrapper.findComponent(TransferSendModal)
 
     return { frames: shown.props('frames') as string[], code: shown.props('code') as string }
   }
@@ -474,9 +475,9 @@ describe('a transfer that carries a key', () => {
 
     const wrapper = open(TransferSettings)
     for (const name of ['openwebui', 'other']) await rowNamed(wrapper, name)?.trigger('click')
-    await clickButton(wrapper, 'Show QR')
-    await waitFor(() => wrapper.findComponent(TransferShowModal).exists())
-    const shown = wrapper.findComponent(TransferShowModal)
+    await clickButton(wrapper, 'Send')
+    await waitFor(() => wrapper.findComponent(TransferSendModal).exists())
+    const shown = wrapper.findComponent(TransferSendModal)
     const frames = shown.props('frames') as string[]
     const code = shown.props('code') as string
 
@@ -509,5 +510,150 @@ describe('a transfer that carries a key', () => {
     await clickButton(wrapper, 'Apply')
 
     expect(app.secretStorage.getSecret('key-p1')).toBe('sk-the-secret')
+  })
+})
+
+/**
+ * The roads that are not a picture.
+ *
+ * A real set of settings came to eighty-four codes, on a phone whose webview has no camera at
+ * all — so the codes were being photographed one at a time, which is the opposite of what this
+ * feature is for. The transfer therefore also goes as one line of text, to paste or to save as
+ * a file, and it is the same frame the codes are made of so the receiving side is unchanged.
+ */
+describe('sending without a camera', () => {
+  const clipboard = () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(window.navigator, 'clipboard', { value: { writeText }, configurable: true })
+    return writeText
+  }
+
+  const send = async () => {
+    const wrapper = open(TransferSettings)
+    await rowNamed(wrapper, 'openwebui')?.trigger('click')
+    // Keys off: what is being asked here is how the transfer travels, not how it is locked.
+    await wrapper.findComponent(Checkbox).vm.$emit('toggle')
+    await flushPromises()
+    await clickButton(wrapper, 'Send')
+    await waitFor(() => wrapper.findComponent(TransferSendModal).exists())
+
+    return wrapper.findComponent(TransferSendModal)
+  }
+
+  it('copies the whole transfer as one line, not as a pile of codes', async () => {
+    const writeText = clipboard()
+    const modal = await send()
+
+    await clickButton(modal, 'Copy the text')
+
+    const copied = writeText.mock.calls[0][0] as string
+    expect(copied.split('\n')).toHaveLength(1)
+    expect(copied).toBe(modal.props('text'))
+  })
+
+  it('is read on the other side in one paste', async () => {
+    const modal = await send()
+    const text = modal.props('text') as string
+    AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, providers: [] } as AiSettings
+
+    const wrapper = open(TransferScanModal)
+    await clickButton(wrapper, 'Paste the text')
+    await wrapper.findComponent(Input).vm.$emit('update:model-value', text)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('openwebui')
+  })
+
+  it('saves it into the vault, under a name a file may have', async () => {
+    const modal = await send()
+
+    await clickButton(modal, 'Save a file')
+
+    const saved = app.vault.getFiles().filter((file) => file.path.startsWith('Abele transfer'))
+    expect(saved).toHaveLength(1)
+    expect(saved[0].path).toMatch(/^Abele transfer \d{4}-\d\d-\d\d \d\d-\d\d-\d\d\.txt$/)
+    await expect(app.vault.read(saved[0])).resolves.toBe(modal.props('text'))
+  })
+})
+
+describe('what the sending screen leads with', () => {
+  const modalWith = (count: number) =>
+    open(TransferSendModal, {
+      frames: Array.from({ length: count }, (_, i) => `ABL1:ABCD:${i + 1}/${count}:AAAA:X`),
+      text: 'ABL1:ABCD:1/1:AAAA:X',
+    })
+
+  it('shows a short series straight away, because a camera can still do it', () => {
+    const modal = modalWith(3)
+
+    expect(modal.findComponent(QrCode).exists()).toBe(true)
+  })
+
+  it('does not put eighty-four codes in front of anyone', () => {
+    const modal = modalWith(84)
+
+    expect(modal.findComponent(QrCode).exists()).toBe(false)
+    expect(modal.text()).toContain('84 codes')
+  })
+
+  it('still shows them to whoever asks', async () => {
+    const modal = modalWith(84)
+
+    await clickButton(modal, 'Show the codes')
+
+    expect(modal.findComponent(QrCode).exists()).toBe(true)
+  })
+})
+
+describe('reading a transfer out of a file', () => {
+  /** The picker is the browser's; what is being tested is what happens to what it hands back. */
+  const pick = async (wrapper: ReturnType<typeof mount>, contents: string) => {
+    const input = {
+      type: '',
+      files: [new File([contents], 'transfer.txt', { type: 'text/plain' })],
+      onchange: null as (() => void) | null,
+      click() {
+        this.onchange?.()
+      },
+    }
+    // `createEl` is Obsidian's, and belongs to the window the settings opened in — here there
+    // is only one window and no Obsidian, so it is put there for the picker to find.
+    Object.defineProperty(document, 'createEl', {
+      value: (tag: string) => (tag === 'input' ? input : document.createElement(tag)),
+      configurable: true,
+    })
+
+    await clickButton(wrapper, 'Open a file')
+    await flushPromises()
+  }
+
+  const transferText = async () => {
+    const wrapper = open(TransferSettings)
+    await rowNamed(wrapper, 'openwebui')?.trigger('click')
+    await wrapper.findComponent(Checkbox).vm.$emit('toggle')
+    await flushPromises()
+    await clickButton(wrapper, 'Send')
+    await waitFor(() => wrapper.findComponent(TransferSendModal).exists())
+
+    return wrapper.findComponent(TransferSendModal).props('text') as string
+  }
+
+  it('takes the whole transfer out of the file it was saved as', async () => {
+    const text = await transferText()
+    AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, providers: [] } as AiSettings
+
+    const wrapper = open(TransferScanModal)
+    await pick(wrapper, text)
+
+    expect(wrapper.text()).toContain('openwebui')
+  })
+
+  /** A file picked by mistake must say so, rather than looking like nothing happened. */
+  it('says so when there is no transfer in it', async () => {
+    const wrapper = open(TransferScanModal)
+
+    await pick(wrapper, 'Dear diary, today I picked the wrong file.')
+
+    expect(wrapper.text()).toContain('No transfer in that file.')
   })
 })

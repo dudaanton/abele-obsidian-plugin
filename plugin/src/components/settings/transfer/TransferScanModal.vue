@@ -17,6 +17,11 @@
             @click="pickPhoto"
           />
           <Button
+            text="Open a file"
+            tooltip="Read a transfer saved as a file on the other device"
+            @click="pickFile"
+          />
+          <Button
             text="Paste the text"
             tooltip="Paste the transfer as text instead of reading a code"
             @click="pasting = !pasting"
@@ -141,6 +146,9 @@ const emit = defineEmits<{ (e: 'close'): void; (e: 'applied', result: Applied): 
 const root = useTemplateRef<HTMLElement>('root')
 const video = useTemplateRef<HTMLVideoElement>('video')
 
+/** Settings can open in a window of their own, and its timers and pickers are that window's. */
+const win = () => root.value?.win ?? window
+
 const phase = ref<'collect' | 'code' | 'review'>('collect')
 const error = ref('')
 const pasting = ref(false)
@@ -175,15 +183,16 @@ const label = (section: SectionId) => sectionLabel(section)
 const statusWord = (status: PlannedEntry['status']) =>
   status === 'new' ? 'new' : status === 'replace' ? 'replaces' : 'unchanged'
 
-/** A frame from anywhere: the camera, a photo, or pasted text. */
+/** A frame from anywhere: the camera, a photo, a file, or pasted text. */
 const take = async (text: string) => {
-  if (!receiver.accept(text)) return
+  if (!receiver.accept(text)) return false
   sync()
-  if (!receiver.done) return
+  if (!receiver.done) return true
 
   blob.value = receiver.assemble()
   stopCamera()
   await open()
+  return true
 }
 
 const open = async () => {
@@ -302,7 +311,20 @@ const madeAt = computed(() => {
 
 const onPasted = (value: string) => {
   pasted.value = value
-  for (const line of value.split(/\s+/)) if (line) void take(line)
+  void swallow(value)
+}
+
+/**
+ * Everything in a piece of text that turns out to be part of this transfer.
+ *
+ * Split on whitespace rather than on lines, because the text has been through a message by the
+ * time it arrives: something along the way may have wrapped it, and a frame that has been
+ * wrapped is one the checksum will refuse anyway.
+ */
+const swallow = async (text: string) => {
+  let any = false
+  for (const token of text.split(/\s+/)) if (token && (await take(token))) any = true
+  return any
 }
 
 const apply = async () => {
@@ -373,11 +395,11 @@ const startCamera = async () => {
 
   // Four looks a second: the sending side holds each code for the best part of one, and
   // decoding a frame costs more than the interval saves.
-  timer = root.value?.win.setInterval(() => void grab(), 250) ?? null
+  timer = win().setInterval(() => void grab(), 250)
 }
 
 const stopCamera = () => {
-  if (timer !== null) root.value?.win.clearInterval(timer)
+  if (timer !== null) win().clearInterval(timer)
   timer = null
   stream?.getTracks().forEach((track) => track.stop())
   stream = null
@@ -388,7 +410,7 @@ const grab = async () => {
   const element = video.value
   if (!element?.videoWidth) return
 
-  const canvas = element.doc.win.createEl('canvas')
+  const canvas = win().document.createEl('canvas')
   canvas.width = element.videoWidth
   canvas.height = element.videoHeight
   const context = canvas.getContext('2d')
@@ -400,12 +422,8 @@ const grab = async () => {
   }
 }
 
-/* -------------------------------------------------------------------- reading from a photo */
-
 const pickPhoto = () => {
-  const input = root.value?.doc.win.createEl('input')
-  if (!input) return
-
+  const input = win().document.createEl('input')
   input.type = 'file'
   input.accept = 'image/*'
   // What turns the file picker into the camera on a phone, without asking for the camera
@@ -415,12 +433,34 @@ const pickPhoto = () => {
   input.click()
 }
 
+/* --------------------------------------------------------------------- reading from a file */
+
+/**
+ * The other side can save the whole transfer as a file, which is the road that does not need a
+ * camera at all — and the phone that has no camera in its webview is exactly the one this
+ * matters for. Any file the picker will hand over: it is read as text and searched for frames.
+ */
+const pickFile = () => {
+  const input = win().document.createEl('input')
+  input.type = 'file'
+  input.onchange = () => void fromText(input.files?.[0])
+  input.click()
+}
+
+const fromText = async (file?: File) => {
+  if (!file) return
+
+  error.value = ''
+  if (!(await swallow(await file.text()))) error.value = 'No transfer in that file.'
+}
+
+/* -------------------------------------------------------------------- reading from a photo */
+
 const fromFile = async (file?: File) => {
   if (!file) return
 
   const bitmap = await createImageBitmap(file)
-  const canvas = root.value?.doc.win.createEl('canvas')
-  if (!canvas) return
+  const canvas = win().document.createEl('canvas')
 
   canvas.width = bitmap.width
   canvas.height = bitmap.height

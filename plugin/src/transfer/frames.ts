@@ -98,14 +98,30 @@ export function newTransferId(random: () => number = Math.random): string {
   return Array.from({ length: 4 }, () => ALPHABET[Math.floor(random() * ALPHABET.length)]).join('')
 }
 
+function write(data: Uint8Array, index: number, total: number, id: string): string {
+  const body = `${FRAME_PREFIX}:${id}:${index}/${total}:${toBase32(data)}`
+  return `${body}:${checksum(body).toUpperCase()}`
+}
+
 export function toFrames(blob: Uint8Array, id: string): string[] {
   const total = Math.max(1, Math.ceil(blob.length / FRAME_PAYLOAD_BYTES))
 
-  return Array.from({ length: total }, (_, i) => {
-    const data = toBase32(blob.slice(i * FRAME_PAYLOAD_BYTES, (i + 1) * FRAME_PAYLOAD_BYTES))
-    const body = `${FRAME_PREFIX}:${id}:${i + 1}/${total}:${data}`
-    return `${body}:${checksum(body).toUpperCase()}`
-  })
+  return Array.from({ length: total }, (_, i) =>
+    write(blob.slice(i * FRAME_PAYLOAD_BYTES, (i + 1) * FRAME_PAYLOAD_BYTES), i + 1, total, id)
+  )
+}
+
+/**
+ * The same transfer as one line of text, for the roads that are not a picture: copied into a
+ * message, or saved as a file and sent.
+ *
+ * Nothing is cut, because nothing needs to be — the size limit belongs to the camera, not to
+ * the format. It is still written as a frame, and a frame that says it is the first of one, so
+ * the receiving side reads it through the same door as everything else without knowing where
+ * it came from.
+ */
+export function toText(blob: Uint8Array, id: string): string {
+  return write(blob, 1, 1, id)
 }
 
 const FRAME_RE = new RegExp(`^${FRAME_PREFIX}:([A-Z2-7]{4}):(\\d+)/(\\d+):([A-Z2-7]*):([0-9A-Z]+)$`)

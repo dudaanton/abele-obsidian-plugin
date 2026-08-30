@@ -2,7 +2,7 @@
   <div class="abele-transfer">
     <Section
       title="Send to another device"
-      desc="Tick what should travel. What you pick becomes a QR code — or a short series of them, shown one after another — for the other device to read."
+      desc="Tick what should travel. What you pick can go as a QR code, as text to paste, or as a file to send."
     >
       <Setting
         name="Include keys"
@@ -50,12 +50,12 @@
           @click="previewing = true"
         />
         <Button
-          text="Show QR"
+          text="Send"
           accent
           :disabled="!chosen.size"
           :tooltip="
             chosen.size
-              ? 'Show what you chose as a QR code to read on the other device'
+              ? 'Hand what you chose to the other device'
               : 'Choose something to send first'
           "
           @click="show"
@@ -67,7 +67,7 @@
       title="Receive from another device"
       desc="Read the codes the other device is showing. Nothing is written until you have seen what arrived."
     >
-      <Setting name="Read a transfer" desc="Camera, a photo of the code, or the text itself.">
+      <Setting name="Read a transfer" desc="Camera, a photo of the code, a file, or the text itself.">
         <Button
           text="Scan"
           tooltip="Read a transfer from another device"
@@ -83,9 +83,10 @@
       @close="previewing = false"
     />
 
-    <TransferShowModal
+    <TransferSendModal
       v-if="sending"
       :frames="sending.frames"
+      :text="sending.text"
       :code="sending.code"
       @close="sending = null"
     />
@@ -107,14 +108,14 @@ import Badge from '../obsidian/Badge.vue'
 import Icon from '../obsidian/Icon.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import TransferPreviewModal from './transfer/TransferPreviewModal.vue'
-import TransferShowModal from './transfer/TransferShowModal.vue'
+import TransferSendModal from './transfer/TransferSendModal.vue'
 import TransferScanModal, { type Applied } from './transfer/TransferScanModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { collectEntries, buildPayload, needsCode, sectionLabel } from '@/transfer/entries'
 import { collectFiles } from '@/transfer/files'
 import { encodePayload, newTransferCode } from '@/transfer/payload'
-import { toFrames, newTransferId, FRAME_PAYLOAD_BYTES } from '@/transfer/frames'
+import { toFrames, toText, newTransferId, FRAME_PAYLOAD_BYTES } from '@/transfer/frames'
 import {
   isFileSection,
   TRANSFER_SECTIONS,
@@ -244,7 +245,10 @@ watch(
 const codesSummary = computed(() => {
   if (!picked.value.length) return 'Nothing selected yet.'
   if (codes.value <= 1) return 'Fits in one code.'
-  return `Takes ${codes.value} codes, shown one after another.`
+  if (codes.value <= 6) return `Takes ${codes.value} codes, shown one after another.`
+  // Said here rather than only in the modal, because this is where what goes in is decided:
+  // a hundred codes is a sign to send fewer things, or to send it as text.
+  return `Takes ${codes.value} codes — too many to photograph, so it would go as text or as a file.`
 })
 
 const reader = () => {
@@ -258,7 +262,7 @@ const previewing = ref(false)
 /** Exactly what would go, built the same way the codes are — keys included or not. */
 const preview = computed(() => buildPayload(picked.value, reader()))
 
-const sending = ref<{ frames: string[]; code?: string } | null>(null)
+const sending = ref<{ frames: string[]; text: string; code?: string } | null>(null)
 const scanning = ref(false)
 
 const show = async () => {
@@ -266,7 +270,8 @@ const show = async () => {
   const code = needsCode(payload) ? newTransferCode() : undefined
   const blob = await encodePayload(payload, code)
 
-  sending.value = { frames: toFrames(blob, newTransferId()), code }
+  const id = newTransferId()
+  sending.value = { frames: toFrames(blob, id), text: toText(blob, id), code }
 }
 
 const onApplied = ({ items, keysRefused, filesRefused }: Applied) => {

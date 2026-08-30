@@ -110,7 +110,7 @@ A find-and-replace tool for note contents, which I built for vault migration. Mo
 - Deep links (`abele://`) that open a note, run a command, or run a script with parameters
 - Footnote sidenotes, and colored highlights with `=={color} text==`
 - CSS snippets loaded and hot-reloaded from a folder in the vault
-- Settings transfer to another device over QR codes, scripts, skills and prompts included
+- Settings transfer to another device — QR codes, a line of text, or a file — scripts, skills and prompts included
 
 ## Roadmap
 

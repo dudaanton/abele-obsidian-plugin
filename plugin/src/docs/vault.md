@@ -102,3 +102,11 @@ and read it from every relevant context.
 Notes with `type: abele-skill` or `type: abele-prompt`. A skill teaches an agent how to do
 something and is loaded on demand with the `skill` tool; a prompt is a reusable piece of text
 for the person to insert into a chat. Both are ordinary notes and can be edited as such.
+
+## Transfer files
+
+Files in the vault root named `Abele transfer <date> <time>.txt` are settings on their way to
+another device: one line beginning `ABL1:`, holding the settings the person ticked on the
+Transfer tab, compressed and — if a key went with them — encrypted. They are not notes, they
+are not content, and nothing reads them except the Transfer tab on the receiving device. Leave
+them alone; the person deletes them when the transfer has landed.

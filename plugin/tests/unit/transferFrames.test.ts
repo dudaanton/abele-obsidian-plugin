@@ -7,7 +7,7 @@
  * it belongs to, where it sits, and whether it arrived intact.
  */
 import { describe, it, expect } from 'vitest'
-import { toFrames, parseFrame, createReceiver, FRAME_PREFIX } from '@/transfer/frames'
+import { toFrames, toText, parseFrame, createReceiver, FRAME_PREFIX } from '@/transfer/frames'
 
 const blob = (length: number): Uint8Array =>
   Uint8Array.from({ length }, (_, i) => (i * 7 + 11) % 256)
@@ -113,5 +113,41 @@ describe('collecting a series', () => {
 
     expect(receiver.id).toBe('WXYZ')
     expect(receiver.received).toBe(1)
+  })
+})
+
+/**
+ * A transfer that is not going through a camera has no reason to be cut up: the frame size is
+ * what a phone can read off a screen, and a message or a file does not care.
+ */
+describe('the whole transfer as one line', () => {
+  it('holds a blob that would have taken many codes', () => {
+    const original = blob(40_000)
+
+    expect(toFrames(original, 'ABCD').length).toBeGreaterThan(50)
+    expect(toText(original, 'ABCD').split('\n')).toHaveLength(1)
+  })
+
+  it('is read by the same receiver, which finds it whole', () => {
+    const original = blob(40_000)
+    const receiver = createReceiver()
+
+    expect(receiver.accept(toText(original, 'ABCD'))).toBe(true)
+
+    expect(receiver.done).toBe(true)
+    expect(receiver.assemble()).toEqual(original)
+  })
+
+  it('says it is the first of one, so nothing waits for a second', () => {
+    const parsed = parseFrame(toText(blob(9000), 'ABCD'))
+
+    expect(parsed?.index).toBe(1)
+    expect(parsed?.total).toBe(1)
+  })
+
+  it('is refused whole when it arrives cut short', () => {
+    const text = toText(blob(9000), 'ABCD')
+
+    expect(parseFrame(text.slice(0, 400) + text.slice(-8))).toBeNull()
   })
 })
