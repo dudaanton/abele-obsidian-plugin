@@ -38,11 +38,15 @@ and this entry appears in the timeline of every linked note — `[[John]]`, `[[A
 
 Logs cross-link through `groups` too. `[[Interstellar]]` has a `groups` link to `[[Movies]]`, so Movies shows which movies I watched and when, with the context. A link in a note's text contributes only that paragraph; a link in the `groups` property makes the whole note a log. That's how I write meeting reports, which rarely fit in one paragraph.
 
+<img src="assets/screens/logs.jpg" alt="Journal entries about a dozen films, gathered on the Movies note" width="420">
+
 ### Tasks
 
 In Ābele, tasks are notes. Deadlines, completion status, creation date — all of it lives in their properties. Tasks appear in the general timeline, in related notes, in daily notes, and as a general list. I deliberately left out priorities, nesting and tags, since I find them distracting. I have over 1000 tasks in Obsidian now, open and closed, and I no longer keep a personal task list anywhere else.
 
 Tasks being notes means a task can carry a long description and everything attached to it. Automatic title setting lets titles hold links to other notes, so a task appears in every relevant context.
+
+<img src="assets/screens/timeline.jpg" alt="The calendar and the task timeline" width="420">
 
 ### Journals and Calendar
 
@@ -54,11 +58,15 @@ I used to use [Firefly III](https://www.firefly-iii.org), but I missed the linki
 
 Each transaction is a separate file with `from`, `to`, amount and currency in its properties. `From` and `To` are links to account notes, which are assets, income, expenses or liabilities, and their types decide whether a transaction counts as positive, negative or neutral in the balance. Multi-currency works the way Firefly does it, by giving the amount in two currencies. Transaction lists and analytics appear in the finance sidebar, in account notes, and in every note a transaction links to.
 
+<img src="assets/screens/finance.jpg" alt="The finance sidebar" width="420">
+
 ### Time Tracker
 
 The time tracker is my replacement for [Toggl](https://toggl.com), and conceptually it's the finance module with time entries instead of transactions. One entry is one file, with a start, an end, and a `groups` property pointing at whatever is being tracked.
 
 Entries appear in the sidebar and in every note they link to, then in their groups, and so on up the tree — so if you track time against tasks under a project, the project note shows the total. For reports I use Obsidian's own Bases, which exports a CSV of all tasks and projects.
+
+<img src="assets/screens/time.jpg" alt="Time tracking" width="420">
 
 ### Image Galleries
 
@@ -83,6 +91,8 @@ An agent is a named configuration: a model and a fallback, a system prompt compo
 An agent with delegation depth above zero can hand a self-contained task to another agent, or fan the same task out over a list of items with one sub-agent per item. Every delegated run keeps its full transcript, readable inline in the chat or in its own tab.
 
 To work with a vault, agents have file operations, search, the plugin's own relation tools (the logs, backlinks, tasks and transactions of a note), web search and fetch, image reading and generation, voice input, and the ability to run any script. There is also a prompt library and support for skills. My favorites are still ["defuddle"](https://github.com/kepano/defuddle), which teaches the agent to load a website straight into clean markdown, and "deepresearch", which has it dig into a topic iteratively, through web search and whatever other tools it has to hand.
+
+![An agent filling out a note, beside the scripts it has run](assets/screens/hero-agent.jpg)
 
 ### Scripts
 
