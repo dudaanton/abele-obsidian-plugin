@@ -82,11 +82,16 @@
       <Button text="Approve" @click="approve" />
       <Button
         v-if="canApproveAllWrites"
-        text="Approve all"
+        text="Always allow writes"
         tooltip="Stop asking about writes inside the scope. Anything outside it still asks."
         @click="approveAllWrites"
       />
-      <Button v-if="canAllowAll" text="Allow all" @click="allowAll" />
+      <Button
+        v-if="canAllowAll"
+        text="Always allow"
+        :tooltip="`Stop asking about ${message.toolName}. Every other tool still asks.`"
+        @click="allowAll"
+      />
       <Button text="Edit" @click="toggleEdit" />
       <Button text="Reject" @click="reject" />
     </div>
@@ -186,7 +191,7 @@ const approve = () => {
 }
 
 /**
- * Whether this call is one that "approve all" would cover.
+ * Whether this call is one that "always allow writes" would cover.
  *
  * The mode it turns on stops asking about writes and nothing else, so it is offered only for
  * a write, and only while the chat is still confirming each one. Deleting, moving and copying
@@ -206,12 +211,19 @@ const approveAllWrites = () => {
   s.approveToolCall()
 }
 
+/**
+ * Whether this one tool can be put on automatic.
+ *
+ * Offered only while it is still in ask mode. What it covers is this tool and nothing else,
+ * which is why the button names it: labelled "Allow all" it was read as letting the agent get
+ * on with everything, and the next call to a different tool asking again looked like the
+ * button not having taken.
+ */
 const canAllowAll = computed(() => {
   const name = props.message.toolName
   if (!name) return false
   const s = session.value
   if (!s) return false
-  // Can "allow all" if this tool is in ask mode (not auto yet)
   return s.getToolMode(name) === 'ask'
 })
 

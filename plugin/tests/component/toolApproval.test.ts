@@ -15,7 +15,7 @@ import AiToolApproval from '@/components/AiToolApproval.vue'
 import Diff from '@/components/Diff.vue'
 import { ChatService } from '@/ai/ChatService'
 import Button from '@/components/obsidian/Button.vue'
-import type { ChatMessage, PermissionMode } from '@/ai/types'
+import type { ChatMessage, PermissionMode, ToolMode } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 
@@ -127,19 +127,20 @@ describe('an edit', () => {
  * A session standing in for the chat behind the prompt: what mode it is in, and what happens
  * when a call is approved.
  */
-function sessionIn(mode: PermissionMode) {
+function sessionIn(mode: PermissionMode, toolMode: ToolMode = 'off') {
   const permissionMode = ref<PermissionMode>(mode)
+  const toolModes = ref<Record<string, ToolMode>>({})
   const approvals: string[] = []
   vi.spyOn(ChatService.getInstance(), 'activeSession', 'get').mockReturnValue({
     value: {
       permissionMode,
-      getToolMode: () => 'off',
-      toolModes: ref({}),
+      getToolMode: () => toolMode,
+      toolModes,
       approveToolCall: () => approvals.push('approved'),
       rejectToolCall: () => approvals.push('rejected'),
     },
   } as never)
-  return { permissionMode, approvals }
+  return { permissionMode, toolModes, approvals }
 }
 
 const buttonSaying = (wrapper: ReturnType<typeof approval>, text: string) =>
@@ -151,14 +152,14 @@ describe('being offered to stop confirming every write', () => {
 
     const wrapper = approval('create', { path: 'Notes/New.md', content: 'x' })
 
-    expect(buttonSaying(wrapper, 'Approve all')).toBeDefined()
+    expect(buttonSaying(wrapper, 'Always allow writes')).toBeDefined()
   })
 
   it('turns on the mode and approves the call that asked', () => {
     const { permissionMode, approvals } = sessionIn('confirm-all')
     const wrapper = approval('write', { path: EXISTING, content: 'x' })
 
-    buttonSaying(wrapper, 'Approve all')?.vm.$emit('click')
+    buttonSaying(wrapper, 'Always allow writes')?.vm.$emit('click')
 
     expect(permissionMode.value).toBe('allow-edit')
     expect(approvals).toEqual(['approved'])
@@ -169,7 +170,7 @@ describe('being offered to stop confirming every write', () => {
 
     const wrapper = approval('write', { path: EXISTING, content: 'x' })
 
-    expect(buttonSaying(wrapper, 'Approve all')).toBeUndefined()
+    expect(buttonSaying(wrapper, 'Always allow writes')).toBeUndefined()
   })
 
   it('is not offered for what the mode would not cover — deleting, moving, running code', () => {
@@ -180,7 +181,80 @@ describe('being offered to stop confirming every write', () => {
       ['mv', { from: EXISTING, to: 'Notes/Moved.md' }],
       ['eval_js', { code: 'x' }],
     ] as const) {
-      expect(buttonSaying(approval(tool, params), 'Approve all')).toBeUndefined()
+      expect(buttonSaying(approval(tool, params), 'Always allow writes')).toBeUndefined()
     }
+  })
+})
+
+/**
+ * The button that stops a tool being asked about, and what it says it does.
+ *
+ * It was labelled "Allow all", which was read as "let the agent get on with everything" — the
+ * natural reading with twenty calls queued behind the prompt. What it actually does is put
+ * this one tool on automatic; the next call to anything else asks again, which looks like the
+ * button not having worked. Both buttons now name their scope on their face.
+ */
+describe('being offered to stop confirming one tool', () => {
+  const SCRIPT = 'script_english-word-card'
+
+  it('is offered while that tool is still being asked about', () => {
+    sessionIn('confirm-all', 'ask')
+
+    const wrapper = approval(SCRIPT, { word: 'ellipsis' })
+
+    expect(buttonSaying(wrapper, 'Always allow')).toBeDefined()
+  })
+
+  it('does not claim to allow everything', () => {
+    sessionIn('confirm-all', 'ask')
+
+    const wrapper = approval(SCRIPT, { word: 'ellipsis' })
+
+    expect(buttonSaying(wrapper, 'Allow all')).toBeUndefined()
+  })
+
+  it('names the tool it would stop asking about', () => {
+    sessionIn('confirm-all', 'ask')
+
+    const wrapper = approval(SCRIPT, { word: 'ellipsis' })
+
+    expect(buttonSaying(wrapper, 'Always allow')?.props('tooltip')).toContain(SCRIPT)
+  })
+
+  it('says that everything else still asks', () => {
+    sessionIn('confirm-all', 'ask')
+
+    const wrapper = approval(SCRIPT, { word: 'ellipsis' })
+
+    expect(buttonSaying(wrapper, 'Always allow')?.props('tooltip')).toMatch(/still ask/i)
+  })
+
+  it('puts that tool on automatic and approves the call that asked', () => {
+    const { toolModes, approvals } = sessionIn('confirm-all', 'ask')
+    const wrapper = approval(SCRIPT, { word: 'ellipsis' })
+
+    buttonSaying(wrapper, 'Always allow')?.vm.$emit('click')
+
+    expect(toolModes.value).toEqual({ [SCRIPT]: 'auto' })
+    expect(approvals).toEqual(['approved'])
+  })
+
+  it('is not offered once that tool already goes through', () => {
+    sessionIn('confirm-all', 'auto')
+
+    const wrapper = approval(SCRIPT, { word: 'ellipsis' })
+
+    expect(buttonSaying(wrapper, 'Always allow')).toBeUndefined()
+  })
+})
+
+describe('the button that stops confirming every write', () => {
+  it('says on its face that writes are all it covers', () => {
+    sessionIn('confirm-all')
+
+    const wrapper = approval('write', { path: EXISTING, content: 'x' })
+
+    expect(buttonSaying(wrapper, 'Always allow writes')).toBeDefined()
+    expect(buttonSaying(wrapper, 'Approve all')).toBeUndefined()
   })
 })
