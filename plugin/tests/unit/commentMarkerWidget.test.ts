@@ -8,35 +8,38 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { CommentMarkerWidget } from '@/editor/CommentMarkerWidget'
+import type { EditorView } from '@codemirror/view'
 
 const noop = () => {}
+/** The widget only carries the view through to the handler, so an empty object is enough. */
+const VIEW = {} as EditorView
 
 describe('the comment marker widget', () => {
   it('carries its ids where the tests and the harness look for them', () => {
-    const el = new CommentMarkerWidget(['k7d2ph', '3mq0xa'], 'idle', false, noop).toDOM()
+    const el = new CommentMarkerWidget(['k7d2ph', '3mq0xa'], 'idle', false, noop).toDOM(VIEW)
 
     expect(el.getAttribute('data-comment-ids')).toBe('k7d2ph,3mq0xa')
     expect(el.classList.contains('abele-comment-marker')).toBe(true)
   })
 
   it('draws the comment glyph', () => {
-    const el = new CommentMarkerWidget(['k7d2ph'], 'idle', false, noop).toDOM()
+    const el = new CommentMarkerWidget(['k7d2ph'], 'idle', false, noop).toDOM(VIEW)
 
     expect(el.querySelector('[data-icon="message-circle"]')).not.toBeNull()
   })
 
   it('counts the comments only when there is more than one', () => {
-    const one = new CommentMarkerWidget(['k7d2ph'], 'idle', false, noop).toDOM()
-    const two = new CommentMarkerWidget(['k7d2ph', '3mq0xa'], 'idle', false, noop).toDOM()
+    const one = new CommentMarkerWidget(['k7d2ph'], 'idle', false, noop).toDOM(VIEW)
+    const two = new CommentMarkerWidget(['k7d2ph', '3mq0xa'], 'idle', false, noop).toDOM(VIEW)
 
     expect(one.querySelector('.abele-comment-marker__count')).toBeNull()
     expect(two.querySelector('.abele-comment-marker__count')?.textContent).toBe('2')
   })
 
   it('says what state the session is in', () => {
-    const busy = new CommentMarkerWidget(['k7d2ph'], 'busy', false, noop).toDOM()
-    const pending = new CommentMarkerWidget(['k7d2ph'], 'pending', false, noop).toDOM()
-    const failed = new CommentMarkerWidget(['k7d2ph'], 'error', true, noop).toDOM()
+    const busy = new CommentMarkerWidget(['k7d2ph'], 'busy', false, noop).toDOM(VIEW)
+    const pending = new CommentMarkerWidget(['k7d2ph'], 'pending', false, noop).toDOM(VIEW)
+    const failed = new CommentMarkerWidget(['k7d2ph'], 'error', true, noop).toDOM(VIEW)
 
     expect(busy.classList.contains('abele-comment-marker_busy')).toBe(true)
     expect(pending.classList.contains('abele-comment-marker_pending')).toBe(true)
@@ -45,18 +48,20 @@ describe('the comment marker widget', () => {
   })
 
   it('adds no state class when the comment is idle and closed', () => {
-    const el = new CommentMarkerWidget(['k7d2ph'], 'idle', false, noop).toDOM()
+    const el = new CommentMarkerWidget(['k7d2ph'], 'idle', false, noop).toDOM(VIEW)
 
     expect(el.className).toBe('abele-comment-marker')
   })
 
-  it('hands the ids to the click handler', () => {
+  it('hands the press the ids and the view that drew it', () => {
     const onClick = vi.fn()
-    const el = new CommentMarkerWidget(['k7d2ph'], 'idle', false, onClick).toDOM()
+    const el = new CommentMarkerWidget(['k7d2ph'], 'idle', false, onClick).toDOM(VIEW)
 
     el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 
-    expect(onClick).toHaveBeenCalledWith(['k7d2ph'])
+    // The view travels with the press because the margin that decides where the card goes is
+    // this pane's, not whichever pane Obsidian last called active.
+    expect(onClick).toHaveBeenCalledWith(['k7d2ph'], VIEW)
   })
 
   it('keeps its DOM while the ids and the state hold', () => {

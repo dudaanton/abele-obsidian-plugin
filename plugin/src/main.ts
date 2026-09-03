@@ -951,10 +951,11 @@ export default class AbelePlugin extends Plugin {
     // The editor's comment field reads this synchronously to draw each marker's icon.
     setCommentInfoSource(CommentService.getInstance())
 
-    // The editor extension owns the press; the service owns which card is open. Injected
-    // rather than imported, so `CommentPlugin` and `CommentService` do not import each other.
-    setCommentClickHandler((ids) => {
-      CommentService.getInstance().toggleOpen(ids)
+    // The editor owns the press and measures its own margin; the service owns where the card
+    // goes with it. Injected rather than imported, so `CommentPlugin` and `CommentService` do
+    // not import each other.
+    setCommentClickHandler((ids, hasRoom) => {
+      CommentService.getInstance().openFrom(ids, hasRoom)
     })
 
     this.addCommand({

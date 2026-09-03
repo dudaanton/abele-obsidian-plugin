@@ -2,6 +2,8 @@ import { ref, shallowReactive, watch, type Ref, type WatchStopHandle } from 'vue
 import { TFile, TFolder } from 'obsidian'
 import dayjs from 'dayjs'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { CommentEntry } from '@/entities/Comment'
+import { genid } from '@/helpers/vueUtils'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { insertMarker, newCommentId, removeMarkerId } from '@/editor/commentMarkers'
 import {
@@ -49,6 +51,46 @@ export class CommentService implements CommentInfoSource {
   toggleOpen(ids: string[]): void {
     const openHere = ids.some((id) => id === this.open.value)
     this.open.value = openHere ? null : (ids[0] ?? null)
+  }
+
+  /**
+   * A press on a marker, answered with the host the pane can actually show.
+   *
+   * With room beside the text the card is a sidenote and the press is a toggle. Without —
+   * a narrow split, a phone — there is nowhere to hang it, so the same card goes into a sheet
+   * and the sheet expands it on mount; `open` is left alone here so that one value goes on
+   * saying which card is open and the marker's icon keeps agreeing with what is on screen.
+   */
+  openFrom(ids: string[], hasRoom: boolean): void {
+    if (hasRoom) {
+      this.toggleOpen(ids)
+      return
+    }
+
+    const entry = this.hostFor(ids)
+    if (!entry) return
+
+    GlobalStore.getInstance().commentSheet.value = entry
+  }
+
+  /**
+   * The margin host these ids belong to, or one made for the occasion.
+   *
+   * Hosts belong to live-preview views and are dropped when one closes, so a press that lands
+   * while the list is being rebuilt would otherwise open nothing. The anchor of any loaded
+   * comment at this marker names the note, which is all a sheet needs.
+   */
+  private hostFor(ids: string[]): CommentEntry | null {
+    const key = ids.join(',')
+    const known = GlobalStore.getInstance().commentsContainers.value.find(
+      (entry) => entry.ids.join(',') === key
+    )
+    if (known) return known
+
+    const note = ids.map((id) => this.sessionFor(id)?.anchor.value?.note).find(Boolean)
+    if (!note) return null
+
+    return new CommentEntry({ id: genid(), ids: [...ids], notePath: note, markerFrom: 0 })
   }
 
   /**

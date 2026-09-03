@@ -9,7 +9,7 @@
  * is point-anchored and idle until `CommentService` is installed. A test that wants a quote
  * installs a source of its own and puts the silent one back afterwards.
  */
-import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { EditorSelection, EditorState } from '@codemirror/state'
 import { Decoration, EditorView } from '@codemirror/view'
 import { TFile, editorInfoField, editorLivePreviewField } from 'obsidian'
@@ -79,9 +79,10 @@ function atomicRangesOf(state: EditorState): { from: number; to: number }[] {
 /**
  * Enough of an `EditorView` for the margin provider: it reads the state, hangs its hosts in the
  * scroller and measures. happy-dom lays nothing out, so the rects are stubbed as they are in
- * `marginOverlay.test.ts`.
+ * `marginOverlay.test.ts`. `contentRight` is what makes the margin wide or narrow: the overlay
+ * measures `scroller.right - content.right`, and `MARGIN_MIN_SPACE` is 200.
  */
-function fakeView(state: EditorState): EditorView {
+function fakeView(state: EditorState, options: { contentRight?: number } = {}): EditorView {
   const document = window.document
   const scrollDOM = document.createElement('div')
   const contentDOM = document.createElement('div')
@@ -91,7 +92,7 @@ function fakeView(state: EditorState): EditorView {
   const rect = (right: number) =>
     ({ left: 0, top: 0, right, bottom: 0, width: right, height: 0, x: 0, y: 0 }) as DOMRect
   scrollDOM.getBoundingClientRect = () => rect(1000)
-  contentDOM.getBoundingClientRect = () => rect(700)
+  contentDOM.getBoundingClientRect = () => rect(options.contentRight ?? 700)
 
   return { state, scrollDOM, contentDOM, coordsAtPos: () => null } as unknown as EditorView
 }
@@ -113,7 +114,8 @@ function decorationsOf(state: EditorState): Deco[] {
 
 describe('the comment decorations', () => {
   it('replaces the marker with a widget carrying its ids', () => {
-    const found = decorationsOf(stateFor(DOC))
+    const state = stateFor(DOC)
+    const found = decorationsOf(state)
 
     expect(found).toHaveLength(1)
     expect(found[0].from).toBe(MARKER_FROM)
@@ -121,7 +123,7 @@ describe('the comment decorations', () => {
 
     const widget = found[0].value.spec.widget as CommentMarkerWidget
 
-    expect(widget.toDOM().getAttribute('data-comment-ids')).toBe('k7d2ph')
+    expect(widget.toDOM(fakeView(state)).getAttribute('data-comment-ids')).toBe('k7d2ph')
   })
 
   it('leaves the marker as text outside live preview', () => {
@@ -166,8 +168,9 @@ describe('the comment decorations', () => {
       touch: () => {},
     })
 
-    const found = decorationsOf(stateFor('Passage%%c:k7d2ph,3mq0xa%%'))
-    const el = (found[0].value.spec.widget as CommentMarkerWidget).toDOM()
+    const state = stateFor('Passage%%c:k7d2ph,3mq0xa%%')
+    const found = decorationsOf(state)
+    const el = (found[0].value.spec.widget as CommentMarkerWidget).toDOM(fakeView(state))
 
     expect(el.classList.contains('abele-comment-marker_pending')).toBe(true)
   })
@@ -317,26 +320,43 @@ describe('a marker that was copied along with its text', () => {
   })
 })
 
-describe('pressing a marker', () => {
-  // The handler asks the workspace for the live editor so it can measure the margin. There is
-  // no workspace in this tier, and an app with none at all throws before the handler is
-  // reached — so the smallest one that answers the question is installed here.
-  beforeEach(() => {
-    ;(GlobalStore.getInstance() as unknown as { _app: unknown })._app = {
-      workspace: { getActiveViewOfType: () => null },
-    }
-  })
+/** The widget the field put over the marker, which is what a press arrives on. */
+function widgetOf(state: EditorState): CommentMarkerWidget {
+  const found = decorationsOf(state).find((deco) => deco.value.spec.widget)
+  return found?.value.spec.widget as CommentMarkerWidget
+}
 
+describe('where a press on a marker is sent', () => {
   afterEach(() => setCommentClickHandler(() => {}))
 
-  it('hands the ids to whatever was installed to handle them', () => {
+  it('measures the pane the icon was drawn in, not the one Obsidian calls active', () => {
     const handler = vi.fn()
     setCommentClickHandler(handler)
+    const state = stateFor(DOC)
+    // 1000 - 700 = 300px of margin: room for a card. 1000 - 900 = 100px: none.
+    const wide = fakeView(state)
+    const narrow = fakeView(state, { contentRight: 900 })
 
-    const found = decorationsOf(stateFor(DOC))
-    const widget = found[0].value.spec.widget as CommentMarkerWidget
-    widget.toDOM().dispatchEvent(new MouseEvent('click'))
+    widgetOf(state).toDOM(narrow).dispatchEvent(new MouseEvent('click'))
 
-    expect(handler).toHaveBeenCalledWith(['k7d2ph'], false)
+    expect(handler).toHaveBeenLastCalledWith(['k7d2ph'], false)
+
+    widgetOf(state).toDOM(wide).dispatchEvent(new MouseEvent('click'))
+
+    expect(handler).toHaveBeenLastCalledWith(['k7d2ph'], true)
+  })
+
+  it('measures before it reads, because an overlay reports no room until it has', () => {
+    // `hasRoom()` answers `false` until the first `position()`, so a press that read the
+    // overlay without measuring it would send every first card to a sheet, however wide the
+    // pane. This is that regression, written as a test: the view is fresh, and the answer is
+    // still `true`.
+    const handler = vi.fn()
+    setCommentClickHandler(handler)
+    const state = stateFor(DOC)
+
+    widgetOf(state).toDOM(fakeView(state)).dispatchEvent(new MouseEvent('click'))
+
+    expect(handler).toHaveBeenCalledWith(['k7d2ph'], true)
   })
 })

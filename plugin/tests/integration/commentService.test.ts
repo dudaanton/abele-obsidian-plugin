@@ -6,7 +6,7 @@
  * file only ever has one session writing it.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { nextTick, toRaw } from 'vue'
 import { TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
 import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
@@ -16,6 +16,8 @@ import { parseChatMetadata } from '@/ai/ChatLog'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { CommentEntry } from '@/entities/Comment'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 
@@ -59,6 +61,8 @@ beforeEach(() => {
   }).id
   vi.spyOn(ChatService.getInstance(), 'saveTabs').mockImplementation(() => {})
   vi.spyOn(ChatService.getInstance(), 'revealSidebar').mockResolvedValue(undefined)
+  GlobalStore.getInstance().commentsContainers.value = []
+  GlobalStore.getInstance().commentSheet.value = null
 })
 
 describe('creating a comment', () => {
@@ -488,5 +492,61 @@ describe('which card is open', () => {
     await nextTick()
 
     expect(vi.mocked(dispatchCommentsChanged).mock.calls.flat()).toContain('Notes/A.md')
+  })
+})
+
+describe('choosing a host for the card', () => {
+  const hostFor = (ids: string[]) =>
+    new CommentEntry({ id: 'vue-1', ids, notePath: 'Notes/A.md', markerFrom: SELECTION_END })
+
+  it('leaves the card in the margin when the pane has room for one', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const id = session.commentId as string
+    GlobalStore.getInstance().commentsContainers.value = [hostFor([id])]
+
+    service.openFrom([id], true)
+
+    expect(service.open.value).toBe(id)
+    expect(GlobalStore.getInstance().commentSheet.value).toBeNull()
+  })
+
+  it('sends it to a sheet when there is no margin to put it in', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const id = session.commentId as string
+    const host = hostFor([id])
+    GlobalStore.getInstance().commentsContainers.value = [host]
+
+    service.openFrom([id], false)
+
+    // The sheet expands the card itself, on mount: one value says which card is open, and the
+    // sheet is the thing that knows it is showing one.
+    // `toRaw`: the store's list is a deep-reactive ref, so what came back is a proxy of the
+    // very entry the margin is hosting — which is the point of the assertion.
+    expect(toRaw(GlobalStore.getInstance().commentSheet.value)).toBe(host)
+    expect(service.open.value).toBeNull()
+  })
+
+  it('still opens a sheet when the marker has no host in the margin', async () => {
+    // The hosts belong to live-preview views and are dropped when one closes. A press that
+    // lands between the drop and the rebuild must still open the conversation; the note comes
+    // from the comment's own anchor, which is what the sheet titles itself with.
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const id = session.commentId as string
+
+    service.openFrom([id], false)
+
+    expect(GlobalStore.getInstance().commentSheet.value?.ids).toEqual([id])
+    expect(GlobalStore.getInstance().commentSheet.value?.notePath).toBe('Notes/A.md')
+  })
+
+  it('does nothing at all for an id nothing knows about', async () => {
+    const service = CommentService.getInstance()
+
+    service.openFrom(['zzz999'], false)
+
+    expect(GlobalStore.getInstance().commentSheet.value).toBeNull()
   })
 })

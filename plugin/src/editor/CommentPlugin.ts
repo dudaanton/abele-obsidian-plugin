@@ -126,20 +126,27 @@ export function setCommentClickHandler(handler: (ids: string[], hasRoom: boolean
   commentClickHandler = handler
 }
 
-function handleMarkerClick(ids: string[]): void {
-  const view = activeEditorView()
-  const overlay = view ? marginOverlayFor(view) : null
-  // `hasRoom()` answers `false` until the first measurement, so ask for one before reading it.
-  overlay?.position()
-  const room = overlay?.hasRoom() ?? false
+/**
+ * Where a press on a marker goes: the margin when the pane holding this icon has room for a
+ * card beside its text, a sheet when it has not.
+ *
+ * The view is the one CodeMirror gave the widget, not `getActiveViewOfType`. A marker can be
+ * pressed in a split that is not the focused pane, or in a popout window where there is no
+ * active markdown view at all, and the margin measured then belongs to another note or to
+ * nothing — a wide pane gets a sheet, a narrow one gets a card it cannot show.
+ *
+ * `hasRoom()` answers `false` until the first measurement, so ask for one before reading it.
+ * The reading is deliberate rather than a subscription: `onRoomChange` never reports the state
+ * it starts in, and a card that is already open when the margin goes stays as it is — see the
+ * decision recorded in the phase 5 plan.
+ */
+function handleMarkerClick(ids: string[], view: EditorView): void {
+  const overlay = marginOverlayFor(view)
+  overlay.position()
+  const room = overlay.hasRoom()
 
   console.debug('abele: comment marker clicked', ids.join(','), 'margin room:', room)
   commentClickHandler(ids, room)
-}
-
-function activeEditorView(): EditorView | null {
-  const mdView = GlobalStore.getInstance().app.workspace.getActiveViewOfType(MarkdownView)
-  return (mdView as unknown as { editor?: { cm?: EditorView } })?.editor?.cm ?? null
 }
 
 function buildCommentDecorations(state: EditorState): DecorationSet {
