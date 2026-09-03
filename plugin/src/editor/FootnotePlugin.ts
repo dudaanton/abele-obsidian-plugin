@@ -5,11 +5,11 @@ import { Footnote } from '@/entities/Footnote'
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { reliableScrollTo } from '@/helpers/scrollUtils'
+import { marginOverlayFor, type MarginEntry } from './MarginOverlay'
 
 const FOOTNOTE_REF_RE = /\[\^([^\]]+)\]/g
 const FOOTNOTE_DEF_RE = /^\[\^([^\]]+)\]:\s*(.*)/
 
-const SIDENOTE_GAP = 4
 const HIGHLIGHT_CLASS = 'abele-footnote-ref-highlight'
 
 interface ParsedFootnote {
@@ -189,9 +189,13 @@ function buildDecorations(
   return builder.finish()
 }
 
-class FootnoteOverlay {
+/**
+ * Footnotes as a margin provider: it parses them, decorates the references, and owns the
+ * container each sidenote is rendered into — the shared `MarginOverlay` places them, together
+ * with anything else anchored in the same note.
+ */
+class FootnoteProvider {
   private view: EditorView
-  private overlay: HTMLElement
   private entries = new Map<string, { id: string; el: HTMLElement; footnote: ParsedFootnote }>()
   private destroyed = false
   private highlightedLine: HTMLElement | null = null
@@ -202,9 +206,6 @@ class FootnoteOverlay {
 
   constructor(view: EditorView) {
     this.view = view
-    this.overlay = createDiv()
-    this.overlay.classList.add('abele-footnotes-overlay')
-    view.scrollDOM.appendChild(this.overlay)
 
     const parsed = parseFootnotes(view.state)
     this.parsedFootnotes = parsed.footnotes
@@ -212,7 +213,7 @@ class FootnoteOverlay {
     this.decorations = buildDecorations(this.parsedFootnotes, this.parsedDefinitions, view.state)
 
     this.rebuildOverlay()
-    window.requestAnimationFrame(() => this.position())
+    window.requestAnimationFrame(() => marginOverlayFor(this.view).position())
 
     // Click handler for footnote links
     this.view.dom.addEventListener('click', this.handleClick)
@@ -274,7 +275,7 @@ class FootnoteOverlay {
     }
 
     if (update.geometryChanged || update.viewportChanged || update.docChanged) {
-      window.requestAnimationFrame(() => this.position())
+      window.requestAnimationFrame(() => marginOverlayFor(this.view).position())
     }
   }
 
@@ -306,6 +307,23 @@ class FootnoteOverlay {
         this.createEntry(fn, store)
       }
     }
+
+    this.syncOverlay()
+  }
+
+  /**
+   * The overlay stacks whatever it is given by document position, so the list is rebuilt from
+   * scratch: a reference that moved carries a new `refFrom`, and a footnote that went is gone
+   * from the map by now.
+   */
+  private syncOverlay() {
+    const entries: MarginEntry[] = [...this.entries.values()].map((entry) => ({
+      id: entry.id,
+      kind: 'footnote' as const,
+      anchorPos: entry.footnote.refFrom,
+      el: entry.el,
+    }))
+    marginOverlayFor(this.view).setEntries('footnote', entries)
   }
 
   private createEntry(fn: ParsedFootnote, store: GlobalStore) {
@@ -314,7 +332,6 @@ class FootnoteOverlay {
     el.classList.add('abele-footnote-widget-container')
     el.id = id
     el.createDiv({ attr: { 'data-footnote-id': id }, cls: 'abele-vue-mount' })
-    this.overlay.appendChild(el)
 
     el.addEventListener('mouseenter', () => this.highlightRef(fn))
     el.addEventListener('mouseleave', () => this.clearHighlight())
@@ -337,10 +354,9 @@ class FootnoteOverlay {
     this.clearHighlight()
     try {
       const domPos = this.view.domAtPos(fn.refFrom)
-      const lineEl =
-        domPos.node.instanceOf(HTMLElement)
-          ? domPos.node.closest('.cm-line')
-          : (domPos.node.parentElement?.closest('.cm-line') ?? null)
+      const lineEl = domPos.node.instanceOf(HTMLElement)
+        ? domPos.node.closest('.cm-line')
+        : (domPos.node.parentElement?.closest('.cm-line') ?? null)
       if (lineEl) {
         lineEl.classList.add(HIGHLIGHT_CLASS)
         this.highlightedLine = lineEl as HTMLElement
@@ -367,50 +383,6 @@ class FootnoteOverlay {
     this.entries.delete(label)
   }
 
-  private position() {
-    if (this.destroyed || this.entries.size === 0) return
-
-    const contentDOM = this.view.contentDOM
-    const scroller = this.view.scrollDOM
-
-    const contentRect = contentDOM.getBoundingClientRect()
-    const scrollerRect = scroller.getBoundingClientRect()
-
-    const rightSpace = scrollerRect.right - contentRect.right
-    const sidenoteWidth = Math.min(300, Math.max(180, rightSpace - 16))
-
-    if (rightSpace < 200) {
-      for (const entry of this.entries.values()) {
-        entry.el.toggleClass('abele-footnote-widget-container_hidden', true)
-      }
-      return
-    }
-
-    const sorted = [...this.entries.values()].sort(
-      (a, b) => a.footnote.refFrom - b.footnote.refFrom
-    )
-
-    let lastBottom = -Infinity
-
-    for (const entry of sorted) {
-      const coords = this.view.coordsAtPos(entry.footnote.refFrom)
-      if (!coords) {
-        entry.el.toggleClass('abele-footnote-widget-container_hidden', true)
-        continue
-      }
-
-      entry.el.toggleClass('abele-footnote-widget-container_hidden', false)
-      entry.el.style.width = `${sidenoteWidth}px`
-      entry.el.style.left = `${contentRect.right - scrollerRect.left + 8}px`
-
-      const targetTop = coords.top - scrollerRect.top + scroller.scrollTop
-      const actualTop = Math.max(targetTop, lastBottom + SIDENOTE_GAP)
-
-      entry.el.style.top = `${actualTop}px`
-      lastBottom = actualTop + entry.el.offsetHeight
-    }
-  }
-
   destroy() {
     this.destroyed = true
     this.clearHighlight()
@@ -425,10 +397,12 @@ class FootnoteOverlay {
       entry.el.remove()
     }
     this.entries.clear()
-    this.overlay.remove()
+    // The plugin is destroyed with the view, and so is the layer — including any other
+    // provider's entries in it. `destroy()` is idempotent, so a second provider may call it too.
+    marginOverlayFor(this.view).destroy()
   }
 }
 
-export const footnoteExtensions = ViewPlugin.fromClass(FootnoteOverlay, {
+export const footnoteExtensions = ViewPlugin.fromClass(FootnoteProvider, {
   decorations: (v) => v.decorations,
 })

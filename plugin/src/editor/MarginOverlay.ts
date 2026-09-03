@@ -93,7 +93,7 @@ export class MarginOverlay {
   constructor(view: EditorView) {
     this.view = view
     // The layer belongs to the window the editor is in, which is not the main one in a popout.
-    this.layer = view.scrollDOM.ownerDocument.createElement('div')
+    this.layer = view.scrollDOM.ownerDocument.win.createDiv()
     // `abele-footnotes-overlay` is kept on the element so anything that addressed the footnote
     // layer by name — a user's CSS snippet, an e2e selector — still matches now comments share it.
     this.layer.classList.add('abele-margin-overlay', 'abele-footnotes-overlay')

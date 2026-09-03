@@ -83,8 +83,10 @@ body {
   border-radius: var(--radius-s);
 }
 
-/* Footnote sidenotes overlay — lives inside cm-scroller, out of document flow */
-.abele-footnotes-overlay {
+/* Margin overlay — one layer per editor view, inside cm-scroller, out of document flow.
+   Footnotes hang here, and comments join them; the element also keeps the older
+   `abele-footnotes-overlay` class so anything addressing it by that name still matches. */
+.abele-margin-overlay {
   position: absolute;
   top: 0;
   left: 0;
