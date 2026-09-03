@@ -7,8 +7,8 @@
  * a fence it renders as text, and in frontmatter it breaks the YAML.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { Editor, Notice, TFile } from 'obsidian'
-import { commentHere } from '@/commands/commentCommands'
+import { Editor, MarkdownView, Notice, TFile } from 'obsidian'
+import { commentHere, commentHereInView } from '@/commands/commentCommands'
 import { CommentService } from '@/ai/CommentService'
 import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
 import { useVault } from '../helpers/testEnv'
@@ -104,6 +104,49 @@ describe('a place that cannot hold a marker', () => {
 
     await commentHere(fakeEditor(inline, { ch: 15 }), noteFile())
 
+    expect(create).not.toHaveBeenCalled()
+  })
+})
+
+describe('the two entry points', () => {
+  /**
+   * The buffer runs ahead of the file. Obsidian writes an edited note out on a debounce, and
+   * `CommentService.create` edits the *file* through `vault.process` — so a comment made on a
+   * paragraph typed a second ago would put the marker at an offset the file does not have,
+   * and the write would drop everything since the last save.
+   */
+  it('writes the note out before it asks for a marker', async () => {
+    const order: string[] = []
+    const save = vi.fn(async () => {
+      order.push('save')
+    })
+    create.mockImplementation(async () => {
+      order.push('create')
+      return { commentId: 'k7d2ph' }
+    })
+
+    const view = {
+      file: noteFile(),
+      editor: fakeEditor(PROSE, { ch: 0, to: SELECTION.length, selection: SELECTION }),
+      save,
+    } as unknown as MarkdownView
+
+    await commentHereInView(view)
+
+    expect(order).toEqual(['save', 'create'])
+  })
+
+  it('does nothing in a pane with no file', async () => {
+    const save = vi.fn(async () => {})
+    const view = {
+      file: null,
+      editor: fakeEditor(PROSE, { ch: 0 }),
+      save,
+    } as unknown as MarkdownView
+
+    await commentHereInView(view)
+
+    expect(save).not.toHaveBeenCalled()
     expect(create).not.toHaveBeenCalled()
   })
 })

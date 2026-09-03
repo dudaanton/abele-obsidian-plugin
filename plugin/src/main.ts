@@ -21,7 +21,7 @@ import { createTask, createTaskAndInsert } from './commands/createTask'
 import { createTransaction, createTransactionAndInsert } from './commands/createTransaction'
 import { createTimeEntry, stopActiveTimeEntry } from './commands/createTimeEntry'
 import { createNoteInGroup } from './commands/createNoteInGroup'
-import { commentHere } from './commands/commentCommands'
+import { commentHereInView } from './commands/commentCommands'
 import {
   createNoteFromTemplate,
   replaceNoteWithTemplate,
@@ -961,24 +961,25 @@ export default class AbelePlugin extends Plugin {
       id: 'comment-here',
       name: 'Comment here',
       icon: 'message-circle-plus',
-      editorCallback: (editor: Editor, view: MarkdownView) => {
-        if (view.file) void commentHere(editor, view.file)
+      editorCallback: (_editor: Editor, view: MarkdownView) => {
+        void commentHereInView(view)
       },
     })
 
     // Beside "Use in AI agent", and unlike it, offered with or without a selection: a
     // comment at the caret is a question about the place, not about a passage.
     this.registerEvent(
-      this.app.workspace.on('editor-menu', (menu, editor, view) => {
-        const file = view.file
-        if (!file) return
+      this.app.workspace.on('editor-menu', (menu, _editor, view) => {
+        // A `MarkdownFileInfo` has no `save()`, and a comment cannot wait on a buffer nobody
+        // can flush — only a real pane is offered the item.
+        if (!(view instanceof MarkdownView) || !view.file) return
 
         menu.addItem((item) => {
           item
             .setTitle('Ask here')
             .setIcon('message-circle-plus')
             .onClick(() => {
-              void commentHere(editor, file)
+              void commentHereInView(view)
             })
         })
       })

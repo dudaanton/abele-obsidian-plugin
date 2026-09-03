@@ -6,7 +6,7 @@
  * immediately after the end of the selection, which is what makes the quote resolvable later:
  * the editor looks for text ending exactly there before it looks anywhere else.
  */
-import { Editor, Notice, TFile } from 'obsidian'
+import { Editor, MarkdownView, Notice, TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
 import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
 import { isCommentablePosition } from '@/editor/commentMarkers'
@@ -29,4 +29,22 @@ export async function commentHere(editor: Editor, file: TFile): Promise<void> {
   // Expanded and focused: someone who just asked for a comment is about to type a question.
   if (session.commentId) service.open.value = session.commentId
   dispatchCommentsChanged(file.path)
+}
+
+/**
+ * The way in from a pane: both entry points come through here.
+ *
+ * The note is written out first. Obsidian keeps the edited buffer in the editor and flushes it
+ * on a debounce, while `CommentService.create` edits the *file* through `vault.process` — so
+ * commenting on a paragraph typed a moment ago would anchor the marker at an offset the file
+ * on disk does not have, and the write would go on to drop everything since the last save.
+ * `commentHere` is left taking `(editor, file)` so that a caller holding those two, and no
+ * view, can still use it.
+ */
+export async function commentHereInView(view: MarkdownView): Promise<void> {
+  const file = view.file
+  if (!file) return
+
+  await view.save()
+  await commentHere(view.editor, file)
 }
