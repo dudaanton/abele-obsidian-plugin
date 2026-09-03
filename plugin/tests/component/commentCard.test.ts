@@ -1,29 +1,332 @@
 /**
- * The margin card, as phase 2 leaves it: a placeholder that names the comments sitting at its
- * marker and nothing else. Phase 4 replaces the body with the thread and the input, and grows
- * this file with it; what must hold from here on is that the card is reachable from an entry
- * and says which comments it stands for.
+ * The card in the margin: what it says folded, what it opens into, and what it refuses to do.
+ *
+ * A sidenote is 180–300 px wide and stacked against its neighbours, so folded it shows four
+ * things — whose agent, how it is doing, what was asked, how the answer starts — and each of
+ * the last two is clamped to two lines by CSS this tier cannot measure. What it *can* hold is
+ * the markup those rules hang off, and the wiring of every action in the header.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { nextTick, ref, type Ref } from 'vue'
 import CommentCard from '@/components/CommentCard.vue'
+import CommentThread from '@/components/CommentThread.vue'
+import CommentInput from '@/components/CommentInput.vue'
+import Badge from '@/components/obsidian/Badge.vue'
+import Button from '@/components/obsidian/Button.vue'
+import Icon from '@/components/obsidian/Icon.vue'
+import Tabs from '@/components/obsidian/Tabs.vue'
+import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import { CommentEntry } from '@/entities/Comment'
+import { CommentService } from '@/ai/CommentService'
+import { ChatService } from '@/ai/ChatService'
+import type { ChatMessage } from '@/ai/types'
+import { fakeChatSession } from '../helpers/fakeChatSession'
+import { useVault } from '../helpers/testEnv'
 
-function entryFor(ids: string[]): CommentEntry {
-  return new CommentEntry({ id: 'vue-1', ids, notePath: 'Notes/Anchor.md', markerFrom: 20 })
+const NOTE = 'Notes/Anchor.md'
+const QUOTE = 'The selected passage'
+const BODY = `${QUOTE}%%c:k7d2ph%% and more.`
+
+type FakeSession = ReturnType<typeof fakeChatSession>
+
+const open: Ref<string | null> = ref(null)
+const remove = vi.fn()
+const expand = vi.fn()
+const load = vi.fn()
+
+let sessions: Record<string, FakeSession>
+
+beforeEach(() => {
+  useVault([{ path: NOTE, content: BODY }])
+  open.value = null
+  sessions = {}
+  remove.mockReset()
+  expand.mockReset()
+  load.mockReset().mockResolvedValue(null)
+
+  vi.spyOn(CommentService, 'getInstance').mockReturnValue({
+    open,
+    load,
+    remove,
+    expand,
+    sessionFor: (id: string) => sessions[id] ?? null,
+  } as never)
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+function message(over: Partial<ChatMessage> & Pick<ChatMessage, 'role'>): ChatMessage {
+  return { id: `m-${over.role}`, content: '', timestamp: 1, ...over } as ChatMessage
 }
 
-describe('the comment card', () => {
-  it('names the comment it stands for and the note it is anchored in', () => {
-    const wrapper = mount(CommentCard, { props: { entry: entryFor(['k7d2ph']) } })
+function entryFor(ids: string[]): CommentEntry {
+  return new CommentEntry({ id: 'vue-1', ids, notePath: NOTE, markerFrom: QUOTE.length })
+}
 
-    expect(wrapper.text()).toContain('k7d2ph')
-    expect(wrapper.text()).toContain('Notes/Anchor.md')
+function seed(id: string, overrides: Record<string, unknown> = {}, messages: ChatMessage[] = []) {
+  const session = fakeChatSession({ messages: ref(messages), overrides })
+  sessions[id] = session
+  return session
+}
+
+/**
+ * The note is read asynchronously for the changed-quote check, so give it two ticks.
+ *
+ * `ObsidianModal` is stubbed for the same reason `modelEditModal.test.ts` stubs it: the real
+ * one opens an Obsidian modal and appends it to the document, which outlives the test.
+ */
+async function mountCard(ids: string[]) {
+  const view = mount(CommentCard, {
+    props: { entry: entryFor(ids) },
+    attachTo: document.body,
+    global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+  })
+  await nextTick()
+  await nextTick()
+  return view
+}
+
+describe('a folded card', () => {
+  it('names the agent and shows the question and the start of the answer', async () => {
+    seed('k7d2ph', {}, [
+      message({ role: 'user', content: 'What does this mean?' }),
+      message({ role: 'assistant', content: 'It means this.' }),
+    ])
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(Badge).props('text')).toBe('Comment')
+    expect(view.find('.abele-comment-card__line_user').text()).toBe('What does this mean?')
+    expect(view.find('.abele-comment-card__line_assistant').text()).toBe('It means this.')
+    expect(view.findComponent(CommentThread).exists()).toBe(false)
   })
 
-  it('names every comment when a marker carries several', () => {
-    const wrapper = mount(CommentCard, { props: { entry: entryFor(['k7d2ph', '3mq0xa']) } })
+  it('is the way in, all of it', async () => {
+    seed('k7d2ph')
 
-    expect(wrapper.text()).toContain('k7d2ph, 3mq0xa')
+    const view = await mountCard(['k7d2ph'])
+    const summary = view.find('.abele-comment-card__summary')
+    expect(summary.attributes('role')).toBe('button')
+
+    await summary.trigger('click')
+
+    expect(open.value).toBe('k7d2ph')
+  })
+
+  it('wears the state of its conversation', async () => {
+    seed('k7d2ph', { commentState: ref('pending') })
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.classes()).toContain('abele-comment-card_pending')
+    expect(view.find('.abele-comment-card__state_pending').exists()).toBe(true)
+  })
+
+  it('shows no state dot when there is nothing to say', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.find('.abele-comment-card__state').exists()).toBe(false)
+  })
+})
+
+describe('an opened card', () => {
+  beforeEach(() => {
+    open.value = 'k7d2ph'
+  })
+
+  it('carries the thread, the composer and the three actions', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(CommentThread).exists()).toBe(true)
+    expect(view.findComponent(CommentInput).exists()).toBe(true)
+    expect(view.findAllComponents(Icon).map((i) => i.props('icon'))).toEqual([
+      'panel-right-open',
+      'trash-2',
+      'chevron-up',
+      // The composer's own send button comes last.
+      'send-horizontal',
+    ])
+  })
+
+  it('folds again from the chevron', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+    await view.findAllComponents(Icon)[2].vm.$emit('click')
+
+    expect(open.value).toBeNull()
+  })
+
+  it('promotes the comment into a chat', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+    await view.findAllComponents(Icon)[0].vm.$emit('click')
+
+    expect(expand).toHaveBeenCalledWith('k7d2ph')
+  })
+
+  it('asks before it destroys a conversation', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+    expect(view.findComponent(ConfirmModal).exists()).toBe(false)
+
+    await view.findAllComponents(Icon)[1].vm.$emit('click')
+    expect(view.findComponent(ConfirmModal).exists()).toBe(true)
+    expect(remove).not.toHaveBeenCalled()
+
+    await view.findComponent(ConfirmModal).vm.$emit('confirm')
+    expect(remove).toHaveBeenCalledWith('k7d2ph')
+  })
+
+  it('sends what was typed to the session it is showing', async () => {
+    const sendMessage = vi.fn()
+    seed('k7d2ph', { sendMessage })
+
+    const view = await mountCard(['k7d2ph'])
+    await view.findComponent(CommentInput).vm.$emit('send', 'Why?')
+
+    expect(sendMessage).toHaveBeenCalledWith('Why?')
+  })
+
+  it('stops the agent from the same place', async () => {
+    const abort = vi.fn()
+    seed('k7d2ph', { abort })
+
+    const view = await mountCard(['k7d2ph'])
+    await view.findComponent(CommentInput).vm.$emit('abort')
+
+    expect(abort).toHaveBeenCalled()
+  })
+
+  it('refuses the composer while the file is still being read', async () => {
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(CommentInput).props('disabled')).toBe(true)
+    expect(view.findComponent(CommentThread).exists()).toBe(false)
+  })
+
+  it('asks for the comments at its marker to be read', async () => {
+    await mountCard(['k7d2ph', '3mq0xa'])
+
+    expect(load.mock.calls.map(([id]) => id)).toEqual(['k7d2ph', '3mq0xa'])
+  })
+})
+
+describe('a marker carrying several comments', () => {
+  beforeEach(() => {
+    open.value = 'k7d2ph'
+  })
+
+  it('shows one thread at a time behind a small strip', async () => {
+    const first = seed('k7d2ph')
+    const second = seed('3mq0xa')
+
+    const view = await mountCard(['k7d2ph', '3mq0xa'])
+    const tabs = view.findComponent(Tabs)
+
+    expect(tabs.props('level')).toBe('secondary')
+    expect(tabs.props('tabs')).toEqual([
+      { id: 'k7d2ph', label: '1' },
+      { id: '3mq0xa', label: '2' },
+    ])
+    // Identity by `===` rather than `toBe`: vitest diffs a session's reactive graph on a
+    // failure and runs out of heap doing it — see the contract's addenda.
+    expect(view.findComponent(CommentThread).props('session') === first).toBe(true)
+
+    await tabs.vm.$emit('update:modelValue', '3mq0xa')
+    await nextTick()
+
+    // The strip moves the marker's open state too, so the icon keeps agreeing with the card.
+    expect(open.value).toBe('3mq0xa')
+    expect(view.findComponent(CommentThread).props('session') === second).toBe(true)
+  })
+
+  it('shows no strip for a single comment', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(Tabs).exists()).toBe(false)
+  })
+})
+
+describe('a comment that was promoted into a chat', () => {
+  beforeEach(() => {
+    open.value = 'k7d2ph'
+  })
+
+  it('reads back the first exchange and sends the reader to the sidebar', async () => {
+    const switchTab = vi.fn()
+    const revealSidebar = vi.fn().mockResolvedValue(undefined)
+    vi.spyOn(ChatService, 'getInstance').mockReturnValue({ switchTab, revealSidebar } as never)
+
+    seed('k7d2ph', { kind: 'chat' }, [
+      message({ id: 'u1', role: 'user', content: 'What does this mean?' }),
+      message({ id: 'a1', role: 'assistant', content: 'It means this.' }),
+      message({ id: 'a2', role: 'assistant', content: 'And also this.' }),
+    ])
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(CommentInput).exists()).toBe(false)
+    expect(view.findAll('.abele-comment-card__readonly-msg')).toHaveLength(2)
+
+    const button = view.findComponent(Button)
+    expect(button.props('text')).toBe('Open in sidebar')
+
+    await button.vm.$emit('click')
+    expect(switchTab).toHaveBeenCalledWith('session-1')
+    expect(revealSidebar).toHaveBeenCalled()
+  })
+
+  it('offers no second promotion', async () => {
+    seed('k7d2ph', { kind: 'chat' })
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findAllComponents(Icon).map((i) => i.props('icon'))).not.toContain(
+      'panel-right-open'
+    )
+  })
+})
+
+describe('a quote that no longer exists', () => {
+  beforeEach(() => {
+    open.value = 'k7d2ph'
+  })
+
+  it('says so quietly and shows what was quoted', async () => {
+    seed('k7d2ph', { anchor: ref({ note: NOTE, quote: 'A passage nobody kept' }) })
+
+    const view = await mountCard(['k7d2ph'])
+
+    const notice = view.find('.abele-comment-card__notice')
+    expect(notice.text()).toContain('The quoted text was changed')
+    expect(notice.find('.abele-comment-card__quote').text()).toBe('A passage nobody kept')
+  })
+
+  it('says nothing while the quote is still in the note', async () => {
+    seed('k7d2ph', { anchor: ref({ note: NOTE, quote: QUOTE }) })
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.find('.abele-comment-card__notice').exists()).toBe(false)
+  })
+
+  it('says nothing about a comment that never quoted anything', async () => {
+    seed('k7d2ph', { anchor: ref({ note: NOTE }) })
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.find('.abele-comment-card__notice').exists()).toBe(false)
   })
 })

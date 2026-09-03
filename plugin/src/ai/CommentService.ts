@@ -97,8 +97,12 @@ export class CommentService implements CommentInfoSource {
    * and the comment is read again from its file. And after a restart an expanded comment
    * comes back as one of `ChatService`'s tabs, which this adopts — otherwise the first
    * `touch` would build a second session on a file that already has one writing it.
+   *
+   * Public because the card needs it: after "open as chat" a session leaves `sessions` for
+   * `expanded`, and the card still has to render it — read-only, with its first exchange and
+   * a way into the sidebar.
    */
-  private sessionFor(id: string): ChatSession | null {
+  sessionFor(id: string): ChatSession | null {
     const known = this.sessions.get(id) ?? this.expanded.get(id) ?? null
     if (known && !known.isDestroyed) return known
     if (known) this.forget(id)
