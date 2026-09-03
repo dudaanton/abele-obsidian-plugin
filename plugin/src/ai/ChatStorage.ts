@@ -228,7 +228,8 @@ export class ChatStorage {
 
   // ── History management (stored in plugin data.json) ──
 
-  private addHistoryEntry(entry: AiChatHistoryEntry): void {
+  /** Public because expansion adds a comment file to the history the moment it becomes a chat. */
+  addHistoryEntry(entry: AiChatHistoryEntry): void {
     const config = AbeleConfig.getInstance()
     if (!config.ai.chatHistory) config.ai.chatHistory = []
     config.ai.chatHistory.unshift(entry)
@@ -255,7 +256,8 @@ export class ChatStorage {
     config.saveSettings()
   }
 
-  private async ensureFolder(path: string): Promise<void> {
+  /** Public because `CommentService` creates the comment folder before writing into it. */
+  async ensureFolder(path: string): Promise<void> {
     const { app } = GlobalStore.getInstance()
     const parts = path.split('/')
     let current = ''

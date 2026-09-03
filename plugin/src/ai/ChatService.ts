@@ -9,6 +9,7 @@ import { AgentRegistry } from './agents/AgentRegistry'
 import { getNoteBody } from '@/helpers/notesUtils'
 import { ChatSession } from './ChatSession'
 import { RunStorage, type RunFile } from './RunStorage'
+import { AI_SIDEBAR_VIEW_TYPE } from '@/constants/views'
 import { buildCommentContext } from './commentContext'
 
 const MAX_TABS = 8
@@ -175,6 +176,37 @@ export class ChatService {
     this.activeTabId.value = session.id
     if (this.tabsRestored) this.saveTabs()
     return session.id
+  }
+
+  /**
+   * Takes a session somebody else built and shows it as a tab.
+   *
+   * The tab limit is not applied: this is only ever reached by an explicit act — expanding a
+   * comment — and refusing it would leave the person looking at a card that says it opened
+   * something and a sidebar that did not.
+   */
+  adoptSession(session: ChatSession): void {
+    if (this.sessions.has(session.id)) {
+      this.switchTab(session.id)
+      return
+    }
+
+    this.sessions.set(session.id, session)
+    this.tabOrder.value = [...this.tabOrder.value, session.id]
+    this.activeTabId.value = session.id
+    this.saveTabs()
+  }
+
+  /** Puts the chat sidebar in front of the person, opening it in the right split if needed. */
+  async revealSidebar(): Promise<void> {
+    const { workspace } = GlobalStore.getInstance().app
+
+    let leaf = workspace.getLeavesOfType(AI_SIDEBAR_VIEW_TYPE)[0] ?? null
+    if (!leaf) {
+      leaf = workspace.getRightLeaf(false)
+      await leaf.setViewState({ type: AI_SIDEBAR_VIEW_TYPE, active: true })
+    }
+    void workspace.revealLeaf(leaf)
   }
 
   async closeTab(tabId: string): Promise<void> {
