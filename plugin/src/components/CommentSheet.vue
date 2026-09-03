@@ -13,10 +13,11 @@
  * The same component the margin hosts, told only which host it is in — which is the point:
  * one card, two hosts, and no second implementation of a thread to keep in step. What the
  * sheet contributes is a column, and a frame with its own way out, so the card drops the fold
- * chevron that would otherwise sit beside the dialog's × doing the same thing. Obsidian sizes the dialog (capped on the desktop, the whole
- * screen on a phone, shorter again while the keyboard is up) and the kit's `sheet` size makes
- * its boxes shrinkable; here the thread takes the room that is left and the input keeps its
- * own, so the field a person is typing in is the last row whatever the height turns out to be.
+ * chevron that would otherwise sit beside the dialog's × doing the same thing. The kit's
+ * `sheet` size caps the dialog at the band `visualViewport` says is visible — which is what
+ * the keyboard takes away — and makes its boxes shrinkable; here the thread takes the room
+ * that is left and the input keeps its own, so the field a person is typing in is the last
+ * row whatever the height turns out to be.
  *
  * Which card is expanded is `CommentService.open`, not a ref of ours: the marker in the text
  * draws itself open from that same value, and two sources for one fact is how a full-height

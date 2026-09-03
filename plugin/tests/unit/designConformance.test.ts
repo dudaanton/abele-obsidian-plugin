@@ -166,6 +166,47 @@ describe('the design standard', () => {
     expect(styleBlock(setting)).toMatch(/select\.dropdown\s*\{[^}]*width:\s*100%/)
   })
 
+  /**
+   * The other rule of Obsidian's that no test of ours can see, and the one a phone caught.
+   *
+   * Obsidian sizes `.modal` against the window (`85vh`, or `100vh` on a phone) and pads it
+   * only left and right under `.is-phone`. Neither accounts for the on-screen keyboard or for
+   * the notch, so a sheet grew behind the keyboard with its composer under it, and its header
+   * sat in the cut-out. The cap and the two insets are what fixed it; nothing else here would
+   * notice them going.
+   */
+  it('caps a sheet by what is visible and pads it clear of the notch', () => {
+    const modal = styleBlock(readFileSync(join(ROOT, 'obsidian', 'Modal.vue'), 'utf8'))
+
+    // `min()` with Obsidian's own cap, so the desktop dialog stays the size it was.
+    expect(modal).toMatch(
+      /max-height:\s*min\(var\(--dialog-max-height[^)]*\),\s*var\(--abele-sheet-height/
+    )
+    // `max()` against the padding a dialog has anyway, so nothing shrinks off the desktop.
+    expect(modal).toMatch(/padding-top:\s*max\(\s*var\(--size-4-4\),\s*var\(--safe-area-inset-top/)
+    expect(modal).toMatch(
+      /padding-bottom:\s*max\(\s*var\(--size-4-4\),\s*var\(--safe-area-inset-bottom/
+    )
+  })
+
+  /**
+   * Specificity, which is the half of this that a rule of ours cannot express on its own.
+   *
+   * `.is-phone .modal` sets `padding: 0 …` with two class names and outweighs `.abele-modal_sheet`,
+   * so the insets asked for above never reached the phone that reported the defect. The rule
+   * that wins is the one named here, and it is the only place the sheet is pinned to the band
+   * `visualViewport` reported rather than centred in a window the keyboard is covering.
+   */
+  it('wins against the phone rule that zeroes the vertical padding of a dialog', () => {
+    const modal = styleBlock(readFileSync(join(ROOT, 'obsidian', 'Modal.vue'), 'utf8'))
+    const phone = /body\.is-phone \.abele-modal_sheet\s*\{([^}]*)\}/.exec(modal)?.[1] ?? ''
+
+    expect(phone).toMatch(/padding-top:\s*max\(/)
+    expect(phone).toMatch(/padding-bottom:\s*max\(/)
+    expect(phone).toMatch(/margin-top:\s*var\(--abele-sheet-offset/)
+    expect(phone).toMatch(/height:\s*var\(--abele-sheet-height/)
+  })
+
   it('explains any element that scrolls sideways', () => {
     const offenders = FILES.filter((file) => {
       const source = readFileSync(file, 'utf8')

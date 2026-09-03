@@ -4,8 +4,8 @@
  * happy-dom computes no layout, so nothing here can prove the input stays above the keyboard —
  * that is the screenshot pass. What it can prove is the wiring that decides it: the kit is
  * asked for a sheet rather than a dialog, the card is handed the same entry the marker knows,
- * and the one value that says a card is expanded is set while the sheet lives and put back
- * when it goes.
+ * the one value that says a card is expanded is set while the sheet lives and put back when it
+ * goes, and the dialog is told how much viewport there actually is.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
@@ -160,5 +160,129 @@ describe('the comment sheet', () => {
     view.unmount()
 
     expect(service.open.value).toBe('3mq0xa')
+  })
+})
+
+/**
+ * The visible viewport, which on a phone is not the window.
+ *
+ * A dialog sized against the window grows under the on-screen keyboard, and the field a person
+ * is typing in is the row that goes under it first. `visualViewport` is the only thing that
+ * says how much of the window is actually being looked at, so the sheet writes it onto the
+ * dialog as two lengths and the stylesheet caps the height with them. None of that can be seen
+ * here — happy-dom computes no layout and has no `visualViewport` at all — but the wiring can:
+ * the numbers reach the element, they follow the viewport, and they stop when the sheet does.
+ */
+describe('the comment sheet against the visible viewport', () => {
+  /** Enough of a `VisualViewport` to be listened to, and to count who is listening. */
+  const fakeViewport = (height: number, offsetTop: number) => {
+    const listeners = new Map<string, Set<EventListener>>()
+    return {
+      height,
+      offsetTop,
+      listenerCount: () => [...listeners.values()].reduce((n, set) => n + set.size, 0),
+      emit(type: string) {
+        for (const fn of listeners.get(type) ?? []) fn(new Event(type))
+      },
+      addEventListener(type: string, fn: EventListener) {
+        if (!listeners.has(type)) listeners.set(type, new Set())
+        listeners.get(type)!.add(fn)
+      },
+      removeEventListener(type: string, fn: EventListener) {
+        listeners.get(type)?.delete(fn)
+      },
+    }
+  }
+
+  type Viewport = ReturnType<typeof fakeViewport>
+
+  /**
+   * Installed on the window the dialog's own element belongs to, which is what the component
+   * reads: a modal opened from the settings window lives in that window's document, and the
+   * bare global would be the main window's every time.
+   */
+  const install = (viewport: Viewport | null): void => {
+    Object.defineProperty(window, 'visualViewport', {
+      value: viewport,
+      configurable: true,
+      writable: true,
+    })
+  }
+
+  /** The real kit modal this time: the element the lengths are written on is its own. */
+  const mountReal = () =>
+    mount(CommentSheet, {
+      props: { entry: entry() },
+      global: { stubs: { CommentCard: CardStub } },
+    })
+
+  const sheetEl = () => document.querySelector('.abele-modal_sheet') as HTMLElement
+
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).visualViewport
+  })
+
+  it('writes what is visible onto the dialog', () => {
+    install(fakeViewport(420, 12))
+
+    const view = mountReal()
+
+    expect(sheetEl().style.getPropertyValue('--abele-sheet-height')).toBe('420px')
+    expect(sheetEl().style.getPropertyValue('--abele-sheet-offset')).toBe('12px')
+
+    view.unmount()
+  })
+
+  it('listens for the viewport changing under it', () => {
+    const viewport = fakeViewport(844, 0)
+    install(viewport)
+
+    const view = mountReal()
+
+    // Both, and not just `resize`: iOS moves the visible band without resizing it whenever it
+    // scrolls a focused field into view, and that arrives as `scroll`.
+    expect(viewport.listenerCount()).toBe(2)
+
+    view.unmount()
+  })
+
+  it('follows the keyboard up and back down', () => {
+    const viewport = fakeViewport(844, 0)
+    install(viewport)
+    const view = mountReal()
+
+    viewport.height = 420
+    viewport.offsetTop = 24
+    viewport.emit('resize')
+
+    expect(sheetEl().style.getPropertyValue('--abele-sheet-height')).toBe('420px')
+    expect(sheetEl().style.getPropertyValue('--abele-sheet-offset')).toBe('24px')
+
+    viewport.height = 844
+    viewport.offsetTop = 0
+    viewport.emit('scroll')
+
+    expect(sheetEl().style.getPropertyValue('--abele-sheet-height')).toBe('844px')
+
+    view.unmount()
+  })
+
+  it('stops listening when the sheet closes', () => {
+    const viewport = fakeViewport(844, 0)
+    install(viewport)
+    const view = mountReal()
+
+    view.unmount()
+
+    // A dialog that has gone still holding the viewport is a leak per comment opened.
+    expect(viewport.listenerCount()).toBe(0)
+  })
+
+  it('opens all the same where there is no visible viewport to ask', () => {
+    install(null)
+
+    // The desktop of an older Electron, and every test tier: the stylesheet's own fallback
+    // takes over, and nothing here may throw on the way.
+    expect(() => mountReal().unmount()).not.toThrow()
   })
 })
