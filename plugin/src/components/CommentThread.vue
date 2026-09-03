@@ -242,8 +242,18 @@ const retry = () => void props.session.retryRequest()
   font-size: var(--font-smallest);
 }
 
+/**
+ * A glyph at the size of the line it labels.
+ *
+ * The kit's `Icon` draws at Obsidian's default `--icon-size` of 18px, which beside a
+ * `--font-smallest` label is nearly twice the height of the text and reads as the loudest
+ * thing in the card. The padding goes for the same reason: this is a bullet, not a button.
+ */
 .abele-comment-thread__tool-icon {
   flex: 0 0 auto;
+  --icon-size: var(--icon-xs);
+  height: auto;
+  padding: 0;
 }
 
 .abele-comment-thread__tool-name {
