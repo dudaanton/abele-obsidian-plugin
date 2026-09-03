@@ -11,6 +11,7 @@
  */
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { ChatService } from '@/ai/ChatService'
+import { CommentService } from '@/ai/CommentService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -80,6 +81,7 @@ export interface NoteRenderSample {
 interface AbeleTestApi {
   ScopeResolver: typeof ScopeResolver
   ChatService: typeof ChatService
+  CommentService: typeof CommentService
   AgentRegistry: typeof AgentRegistry
   GlobalStore: typeof GlobalStore
   plugin: Plugin
@@ -441,6 +443,7 @@ export function exposeTestApi(plugin: Plugin): void {
   window.__abeleTest = {
     ScopeResolver,
     ChatService,
+    CommentService,
     AgentRegistry,
     GlobalStore,
     plugin,
