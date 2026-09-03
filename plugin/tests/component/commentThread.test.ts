@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import CommentThread from '@/components/CommentThread.vue'
 import Button from '@/components/obsidian/Button.vue'
 import Markdown from '@/components/obsidian/Markdown.vue'
@@ -164,5 +164,73 @@ describe('a turn that failed', () => {
     await retry!.vm.$emit('click')
 
     expect(retryRequest).toHaveBeenCalled()
+  })
+})
+
+/**
+ * The thread is a scroller with a ceiling, so a reply arriving lands below the fold unless the
+ * card follows it. happy-dom lays nothing out, so the two measurements the rule turns on are
+ * stubbed and the assertion is on `scrollTop` — the arithmetic, not the appearance.
+ */
+describe('following a reply that is still arriving', () => {
+  function sized(el: HTMLElement, scrollHeight: number, clientHeight = 100) {
+    Object.defineProperty(el, 'scrollHeight', { value: scrollHeight, configurable: true })
+    Object.defineProperty(el, 'clientHeight', { value: clientHeight, configurable: true })
+  }
+
+  function growing() {
+    const messages = ref<ChatMessage[]>([message({ id: 'u1', role: 'user', content: 'Why?' })])
+    const session = fakeChatSession({ messages })
+    const view = mount(CommentThread, {
+      props: { session: session as unknown as ChatSession },
+      attachTo: document.body,
+    })
+    return { view, messages, root: view.element as HTMLElement }
+  }
+
+  it('keeps the end in view for a reader who was already there', async () => {
+    const { view, messages, root } = growing()
+    sized(root, 400)
+    root.scrollTop = 300
+
+    messages.value = [...messages.value, message({ id: 'a1', role: 'assistant', content: 'So.' })]
+    sized(root, 700)
+    await nextTick()
+
+    expect(root.scrollTop).toBe(700)
+    view.unmount()
+  })
+
+  it('leaves a reader who scrolled back where they were', async () => {
+    const { view, messages, root } = growing()
+    sized(root, 400)
+    root.scrollTop = 0
+    await view.trigger('scroll')
+
+    messages.value = [...messages.value, message({ id: 'a1', role: 'assistant', content: 'So.' })]
+    sized(root, 700)
+    await nextTick()
+
+    expect(root.scrollTop).toBe(0)
+    view.unmount()
+  })
+
+  it('follows the text of a reply as it streams', async () => {
+    const streamingContent = ref('')
+    const session = fakeChatSession({ overrides: { isStreaming: ref(true), streamingContent } })
+    const view = mount(CommentThread, {
+      props: { session: session as unknown as ChatSession },
+      attachTo: document.body,
+    })
+    const root = view.element as HTMLElement
+    sized(root, 200)
+    root.scrollTop = 100
+
+    streamingContent.value = 'It begins'
+    sized(root, 500)
+    await nextTick()
+
+    expect(root.scrollTop).toBe(500)
+    view.unmount()
   })
 })

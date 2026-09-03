@@ -30,7 +30,7 @@
  * question in the margin needs: a field that starts at one line, grows to five and then
  * scrolls, and a button that becomes a stop while the agent is working.
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import Icon from './obsidian/Icon.vue'
 import Input from './obsidian/Input.vue'
 
@@ -42,6 +42,14 @@ const props = defineProps<{
   busy: boolean
   /** The comment file has not been read yet: there is nothing to send to. */
   disabled?: boolean
+  /**
+   * Take the caret on mount.
+   *
+   * Only for a comment that was just made, which is the one case where the reader is already
+   * typing. Expanding a comment to read it must leave the caret in the note, or a press on a
+   * marker throws the person out of the passage they were reading.
+   */
+  focus?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -51,8 +59,41 @@ const emit = defineEmits<{
 
 const text = ref('')
 const field = ref<{ $el: HTMLTextAreaElement } | null>(null)
+const rows = ref(1)
 
-const rows = computed(() => Math.min(MAX_ROWS, Math.max(1, text.value.split('\n').length)))
+/**
+ * How many rows what has been typed actually needs.
+ *
+ * Newlines are only half of it: a sidenote is 300 px at its widest, so an ordinary question
+ * wraps two or three times before it ever reaches one. Only the element knows where it wrapped,
+ * so the field is dropped to a single row, measured, and put back — `scrollHeight` then holds
+ * the whole content and `clientHeight` one row of it, with the padding taken out of both.
+ */
+function measuredRows(el: HTMLTextAreaElement): number {
+  const style = el.ownerDocument.defaultView?.getComputedStyle(el)
+  const padding =
+    (parseFloat(style?.paddingTop ?? '') || 0) + (parseFloat(style?.paddingBottom ?? '') || 0)
+
+  const previous = el.rows
+  el.rows = 1
+  const rowHeight = el.clientHeight - padding
+  const contentHeight = el.scrollHeight - padding
+  el.rows = previous
+
+  // Nothing has been laid out yet — a fresh mount, or a test tier with no layout at all.
+  if (rowHeight <= 0 || contentHeight <= 0) return 1
+
+  return Math.ceil(contentHeight / rowHeight)
+}
+
+function resize(): void {
+  const el = field.value?.$el
+  const written = text.value.split('\n').length
+  rows.value = Math.min(MAX_ROWS, Math.max(1, written, el ? measuredRows(el) : 1))
+}
+
+// After the render, so the element being measured is holding the text being measured.
+watch(text, resize, { flush: 'post' })
 
 const sendDisabled = computed(() => {
   if (props.disabled) return true
@@ -94,9 +135,10 @@ function onKeydown(event: KeyboardEvent): void {
   send()
 }
 
-// The card is opened by a press — on the marker, on the collapsed card, or by the command that
-// just created the comment — and every one of those means "I want to type here".
-onMounted(() => field.value?.$el.focus())
+onMounted(() => {
+  resize()
+  if (props.focus) field.value?.$el.focus()
+})
 </script>
 
 <style lang="scss">

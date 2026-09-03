@@ -12,7 +12,7 @@ import CommentInput from '@/components/CommentInput.vue'
 import Input from '@/components/obsidian/Input.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 
-const mountInput = (props: { busy?: boolean; disabled?: boolean } = {}) =>
+const mountInput = (props: { busy?: boolean; disabled?: boolean; focus?: boolean } = {}) =>
   mount(CommentInput, { props: { busy: false, ...props }, attachTo: document.body })
 
 describe('the comment input', () => {
@@ -92,10 +92,40 @@ describe('the comment input', () => {
     expect(view.emitted('send')).toBeUndefined()
   })
 
-  it('puts the caret where the question goes', () => {
-    // Creating a comment opens the card expanded and expects to be typed into straight away.
+  it('grows for a question that wraps without a newline', async () => {
+    // A sidenote is 300 px at its widest, so most questions wrap before they reach a newline.
+    // Counting newlines alone leaves a three-line question showing one line of itself.
     const view = mountInput()
+    const field = view.find('textarea').element
+    Object.defineProperty(field, 'clientHeight', { value: 20, configurable: true })
+    Object.defineProperty(field, 'scrollHeight', { value: 60, configurable: true })
+
+    await view.find('textarea').setValue('one sentence, long enough to wrap three times over')
+
+    expect(view.findComponent(Input).props('rows')).toBe(3)
+  })
+
+  it('stops at five rows however far the text wraps', async () => {
+    const view = mountInput()
+    const field = view.find('textarea').element
+    Object.defineProperty(field, 'clientHeight', { value: 20, configurable: true })
+    Object.defineProperty(field, 'scrollHeight', { value: 400, configurable: true })
+
+    await view.find('textarea').setValue('a very long sentence indeed')
+
+    expect(view.findComponent(Input).props('rows')).toBe(5)
+  })
+
+  it('puts the caret where the question goes when the card asks for it', () => {
+    // Creating a comment opens the card expanded and expects to be typed into straight away.
+    const view = mountInput({ focus: true })
 
     expect(document.activeElement).toBe(view.find('textarea').element)
+  })
+
+  it('leaves the caret in the note when an existing comment is merely expanded', () => {
+    const view = mountInput()
+
+    expect(document.activeElement).not.toBe(view.find('textarea').element)
   })
 })

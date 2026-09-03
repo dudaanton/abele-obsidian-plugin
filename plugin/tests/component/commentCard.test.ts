@@ -7,7 +7,7 @@
  * the markup those rules hang off, and the wiring of every action in the header.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick, ref, type Ref } from 'vue'
 import CommentCard from '@/components/CommentCard.vue'
 import CommentThread from '@/components/CommentThread.vue'
@@ -60,6 +60,13 @@ afterEach(() => {
 
 function message(over: Partial<ChatMessage> & Pick<ChatMessage, 'role'>): ChatMessage {
   return { id: `m-${over.role}`, content: '', timestamp: 1, ...over } as ChatMessage
+}
+
+/** Header actions by what they are, not by where they sit: an added action must not renumber. */
+function action(view: VueWrapper, icon: string) {
+  const found = view.findAllComponents(Icon).find((i) => i.props('icon') === icon)
+  if (!found) throw new Error(`no action carrying the icon "${icon}"`)
+  return found
 }
 
 function entryFor(ids: string[]): CommentEntry {
@@ -116,6 +123,26 @@ describe('a folded card', () => {
     expect(open.value).toBe('k7d2ph')
   })
 
+  it('opens from the keyboard on Space as well as on Enter', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+    await view.find('.abele-comment-card__summary').trigger('keydown', { key: ' ' })
+
+    expect(open.value).toBe('k7d2ph')
+  })
+
+  it('shows the answer that is arriving, not the one before it', async () => {
+    seed('k7d2ph', { isStreaming: ref(true), streamingContent: ref('Half a thou') }, [
+      message({ id: 'u1', role: 'user', content: 'Why?' }),
+      message({ id: 'a1', role: 'assistant', content: 'An older answer.' }),
+    ])
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.find('.abele-comment-card__line_assistant').text()).toBe('Half a thou')
+  })
+
   it('wears the state of its conversation', async () => {
     seed('k7d2ph', { commentState: ref('pending') })
 
@@ -159,7 +186,7 @@ describe('an opened card', () => {
     seed('k7d2ph')
 
     const view = await mountCard(['k7d2ph'])
-    await view.findAllComponents(Icon)[2].vm.$emit('click')
+    await action(view, 'chevron-up').vm.$emit('click')
 
     expect(open.value).toBeNull()
   })
@@ -168,7 +195,7 @@ describe('an opened card', () => {
     seed('k7d2ph')
 
     const view = await mountCard(['k7d2ph'])
-    await view.findAllComponents(Icon)[0].vm.$emit('click')
+    await action(view, 'panel-right-open').vm.$emit('click')
 
     expect(expand).toHaveBeenCalledWith('k7d2ph')
   })
@@ -179,12 +206,40 @@ describe('an opened card', () => {
     const view = await mountCard(['k7d2ph'])
     expect(view.findComponent(ConfirmModal).exists()).toBe(false)
 
-    await view.findAllComponents(Icon)[1].vm.$emit('click')
+    await action(view, 'trash-2').vm.$emit('click')
     expect(view.findComponent(ConfirmModal).exists()).toBe(true)
     expect(remove).not.toHaveBeenCalled()
 
     await view.findComponent(ConfirmModal).vm.$emit('confirm')
     expect(remove).toHaveBeenCalledWith('k7d2ph')
+  })
+
+  it('folds the card it is about to destroy', async () => {
+    // `CommentService.remove` clears `open` too, but only after several vault writes — and a
+    // card left expanded meanwhile is a card rendering a session being torn down under it.
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+    await action(view, 'trash-2').vm.$emit('click')
+    await view.findComponent(ConfirmModal).vm.$emit('confirm')
+
+    expect(open.value).toBeNull()
+  })
+
+  it('takes the caret for a comment with nothing in it yet', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(CommentInput).props('focus')).toBe(true)
+  })
+
+  it('leaves the caret in the note when an existing conversation is expanded', async () => {
+    seed('k7d2ph', {}, [message({ id: 'u1', role: 'user', content: 'Asked already' })])
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(CommentInput).props('focus')).toBe(false)
   })
 
   it('sends what was typed to the session it is showing', async () => {
@@ -248,6 +303,19 @@ describe('a marker carrying several comments', () => {
     // The strip moves the marker's open state too, so the icon keeps agreeing with the card.
     expect(open.value).toBe('3mq0xa')
     expect(view.findComponent(CommentThread).props('session') === second).toBe(true)
+  })
+
+  it('keeps a half-typed question with the comment it was meant for', async () => {
+    seed('k7d2ph')
+    seed('3mq0xa')
+
+    const view = await mountCard(['k7d2ph', '3mq0xa'])
+    await view.find('textarea').setValue('Half a question')
+
+    await view.findComponent(Tabs).vm.$emit('update:modelValue', '3mq0xa')
+    await nextTick()
+
+    expect(view.find('textarea').element.value).toBe('')
   })
 
   it('shows no strip for a single comment', async () => {

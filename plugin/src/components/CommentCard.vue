@@ -9,6 +9,7 @@
       tabindex="0"
       @click="openCard"
       @keydown.enter.prevent="openCard"
+      @keydown.space.prevent="openCard"
     >
       <div class="abele-comment-card__head">
         <div class="abele-comment-card__agent">
@@ -89,7 +90,16 @@
       <template v-else>
         <CommentThread v-if="session" :session="session" />
         <EmptyState v-else text="Reading this comment…" />
-        <CommentInput :busy="busy" :disabled="!session" @send="onSend" @abort="onAbort" />
+        <!-- Keyed by the comment: a half-typed question belongs to the tab it was typed in,
+             and a shared composer would carry it over to the next one. -->
+        <CommentInput
+          :key="activeId"
+          :busy="busy"
+          :disabled="!session"
+          :focus="fresh"
+          @send="onSend"
+          @abort="onAbort"
+        />
       </template>
     </template>
 
@@ -170,14 +180,30 @@ const question = computed(
   () => messages.value.find((msg) => msg.role === 'user' && !msg.draft)?.content ?? ''
 )
 
-/** How the newest answer begins, or how it is beginning right now. */
+/**
+ * How the newest answer begins, or how it is beginning right now.
+ *
+ * What is arriving wins over what arrived: a folded card sitting on the previous answer while
+ * the next one streams into the thread is a card telling the reader the wrong thing.
+ */
 const answer = computed(() => {
+  const arriving = session.value?.streamingContent.value ?? ''
+  if (arriving) return arriving
+
   for (let i = messages.value.length - 1; i >= 0; i--) {
     const msg = messages.value[i]
     if (msg.role === 'assistant' && msg.content) return msg.content
   }
-  return session.value?.streamingContent.value ?? ''
+  return ''
 })
+
+/**
+ * A comment nobody has said anything in yet, which is a comment that was just made.
+ *
+ * The composer takes the caret for one of these and for no other: expanding a comment to read
+ * it must leave the caret in the passage the reader was reading.
+ */
+const fresh = computed(() => !!session.value && messages.value.length === 0)
 
 /** Read-only after promotion: the question and the first answer, and nothing else. */
 const firstExchange = computed(() => {
@@ -244,7 +270,13 @@ const showComment = (id: string) => {
   service.open.value = id
 }
 const openAsChat = () => void service.expand(activeId.value)
-const remove = () => void service.remove(activeId.value)
+const remove = () => {
+  const id = activeId.value
+  // `CommentService.remove` clears this too, but only after the marker and the file are gone;
+  // until then the card would go on rendering a session being torn down under it.
+  if (service.open.value === id) service.open.value = null
+  void service.remove(id)
+}
 
 const openInSidebar = () => {
   const current = session.value

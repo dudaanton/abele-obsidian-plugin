@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-comment-thread">
+  <div ref="root" class="abele-comment-thread" @scroll="onScroll">
     <div
       v-for="msg in visible"
       :key="msg.id"
@@ -89,7 +89,7 @@
  * needs is a side, a tint and one line per tool call; the diff and the argument editor are
  * behind "open as chat", one press away in the card's header.
  */
-import { computed } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import Button from './obsidian/Button.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import Icon from './obsidian/Icon.vue'
@@ -158,6 +158,48 @@ function summarise(msg: ChatMessage): string {
 
   return text.length > ARG_SUMMARY_LIMIT ? `${text.slice(0, ARG_SUMMARY_LIMIT)}…` : text
 }
+
+/**
+ * The thread scrolls, so a reply arriving lands below the fold unless the card follows it.
+ *
+ * It follows only a reader who was already at the end: someone who has scrolled back to read
+ * an earlier answer is reading it, and dragging them to the bottom on every streamed token is
+ * the single most irritating thing a chat can do.
+ */
+const root = ref<HTMLElement | null>(null)
+
+/** Within a line of the end still counts as the end — a reader there is following, not reading back. */
+const STICK_SLACK = 24
+
+let stick = true
+
+function onScroll(): void {
+  const el = root.value
+  if (el) stick = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_SLACK
+}
+
+function scrollToEnd(): void {
+  const el = root.value
+  if (el) el.scrollTop = el.scrollHeight
+}
+
+watch(
+  () => [
+    visible.value.length,
+    streamingContent.value,
+    streamingThinking.value,
+    props.session.pendingToolCalls.value.length,
+    error.value,
+  ],
+  () => {
+    if (stick) scrollToEnd()
+  },
+  // After the render, so the height being scrolled to is the height of what just arrived.
+  { flush: 'post' }
+)
+
+// A card opened on a conversation opens on its latest turn, not on its first.
+onMounted(scrollToEnd)
 
 const approve = () => void props.session.approveToolCall()
 const deny = () => void props.session.rejectToolCall('Denied from the comment card')
