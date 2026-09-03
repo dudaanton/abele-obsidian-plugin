@@ -156,6 +156,138 @@ export function isCommentablePosition(text: string, pos: number): boolean {
   return true
 }
 
+/**
+ * Constructs a marker must never be written into the middle of.
+ *
+ * Everything here is Markdown that a dozen characters dropped into it destroys, and every one
+ * of them was watched doing it in live preview: `![[pic.p%%c:…%%ng]]` renders as the literal
+ * text of a broken embed, `[[Bo%%c:…%%oks|the books]]` becomes a link to a note nobody has,
+ * `Claim[^%%c:…%%1]` stops being a footnote and `> [!no%%c:…%%te]` stops being that callout.
+ *
+ * All of them are single-line by definition, so the search is over one line. A construct that
+ * survives a marker — a heading, a blockquote, a list item's text, a table cell — is not here:
+ * `%%…%%` is Obsidian's own comment syntax and reads as nothing wherever it is allowed to.
+ */
+const INLINE_CONSTRUCTS = [
+  /!?\[\[[^[\]\n]*\]\]/g, // wikilink and embed, alias, heading and block reference included
+  /!?\[[^[\]\n]*\]\([^()\n]*\)/g, // markdown link and image
+  /\[\^[^\]\s\n]+\]/g, // footnote reference
+  /\[![^\]\n]+\][-+]?[ \t]*/g, // the type of a callout, with the space that has to follow it
+  /==[^\n]+?==/g, // highlight
+]
+
+/**
+ * A task box, which is only one at the head of a list item.
+ *
+ * The trailing space belongs to the box, here and in the callout above: Obsidian reads
+ * `- [ ] text`, and `- [ ]%%c:…%%text` is a bullet with brackets in it. Both were watched
+ * failing that way in live preview, one marker to the left of where they now go.
+ */
+const CHECKBOX = /^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[[^\]\n]\][ \t]*/
+
+/** How many nestings deep the search goes: a link inside a highlight is two. */
+const MAX_NESTING = 8
+
+/** The end of the construct `pos` fell inside, if it fell inside one. */
+function constructEnd(text: string, pos: number): number | undefined {
+  const lineFrom = text.lastIndexOf('\n', pos - 1) + 1
+  const newline = text.indexOf('\n', pos)
+  const line = text.slice(lineFrom, newline === -1 ? text.length : newline)
+  const at = pos - lineFrom
+
+  const box = CHECKBOX.exec(line)
+  if (box && at > 0 && at < box[0].length) return lineFrom + box[0].length
+
+  for (const pattern of INLINE_CONSTRUCTS) {
+    pattern.lastIndex = 0
+    let match: RegExpExecArray | null
+    while ((match = pattern.exec(line)) !== null) {
+      const end = match.index + match[0].length
+      if (at > match.index && at < end) return lineFrom + end
+    }
+  }
+
+  return undefined
+}
+
+/**
+ * The position carried out of every construct it sits inside.
+ *
+ * Inline code is one of them, and the only one already known to `excludedRegions`. A single
+ * hop is not always enough — a link inside a highlight leaves the marker between `]]` and the
+ * closing `==`, which is still inside somebody's markup — so it repeats until nothing moves.
+ */
+function pastConstructs(text: string, pos: number): number {
+  const code = excludedRegions(text).filter((region) => region.kind === 'inline')
+  let at = pos
+
+  for (let hop = 0; hop < MAX_NESTING; hop++) {
+    const inCode = code.find((region) => at > region.from && at < region.to)
+    const next = inCode ? inCode.to : constructEnd(text, at)
+    if (next === undefined || next <= at) break
+    at = next
+  }
+
+  return at
+}
+
+/** Pipes, dashes and colons and nothing else: the row that tells Obsidian these lines are a table. */
+const TABLE_RULE = /^[ \t|:-]+$/
+
+const isTableRule = (line: string): boolean =>
+  TABLE_RULE.test(line) && line.includes('|') && line.includes('-')
+
+/**
+ * Whether `pos` is on the row of dashes shaping a table.
+ *
+ * That row is the whole of what makes a table a table, and a marker anywhere on it — including
+ * at either end — leaves the block rendering as raw pipes. There is nothing on the line to
+ * move past, so this is a refusal rather than a nudge.
+ */
+function onTableRule(text: string, pos: number): boolean {
+  const lineFrom = text.lastIndexOf('\n', pos - 1) + 1
+  const newline = text.indexOf('\n', pos)
+  const lineTo = newline === -1 ? text.length : newline
+  if (pos > lineTo) return false
+
+  const line = text.slice(lineFrom, lineTo)
+  if (!isTableRule(line)) return false
+
+  // A rule with no header above it is a line of dashes in prose, not a table.
+  const above = text.lastIndexOf('\n', lineFrom - 2) + 1
+  return lineFrom > 0 && text.slice(above, lineFrom - 1).includes('|')
+}
+
+/** Where a comment's marker goes, and how far its quote reaches. `null` when there is nowhere. */
+export interface CommentAnchorPoint {
+  pos: number
+  quoteTo: number
+}
+
+/**
+ * Where a comment made over a selection ending at `pos` should be anchored.
+ *
+ * The marker goes at the end of the selection, and a finger — or a double-click — puts that end
+ * wherever it lands, which is often the middle of a link, an embed or a footnote. So the
+ * position is first carried out to the end of whatever construct it is inside, and the quote
+ * is carried with it: the passage the reader chose plus the rest of the thing they stopped
+ * halfway through, which is what keeps the underline over something recognisable.
+ *
+ * `null` is the refusal, and there are three of them: a fence, where the marker would render
+ * as text; frontmatter, where it breaks the YAML; and a table's row of dashes, where it breaks
+ * the table. None of the three has an end worth moving to.
+ */
+export function anchorFor(text: string, pos: number): CommentAnchorPoint | null {
+  const at = pastConstructs(text, pos)
+
+  // Checked after the hop rather than before: `isCommentablePosition` also refuses the inside
+  // of inline code, which is a place the hop has just carried the position out of.
+  if (!isCommentablePosition(text, at)) return null
+  if (onTableRule(text, at)) return null
+
+  return { pos: at, quoteTo: at }
+}
+
 export function markerText(ids: string[]): string {
   return `%%c:${ids.join(',')}%%`
 }

@@ -4,38 +4,49 @@
  * Both entry points — the command for a hotkey and "Ask here" in the editor's context menu —
  * come through here, so that "where the marker goes" has one definition. The marker sits
  * immediately after the end of the selection, which is what makes the quote resolvable later:
- * the editor looks for text ending exactly there before it looks anywhere else.
+ * the editor looks for text ending exactly there before it looks anywhere else. `anchorFor`
+ * decides what "the end of the selection" means when the selection stopped halfway through a
+ * link, an embed or anything else a marker written into the middle of would break.
  */
 import { Editor, MarkdownView, Notice, TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
 import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
-import { isCommentablePosition, stripMarkers } from '@/editor/commentMarkers'
+import { anchorFor, stripMarkers } from '@/editor/commentMarkers'
 
 export async function commentHere(editor: Editor, file: TFile): Promise<void> {
   const text = editor.getValue()
   const selection = editor.getSelection()
-  const pos = editor.posToOffset(selection ? editor.getCursor('to') : editor.getCursor())
-  const from = selection ? editor.posToOffset(editor.getCursor('from')) : pos
+  const to = editor.posToOffset(selection ? editor.getCursor('to') : editor.getCursor())
+  const from = selection ? editor.posToOffset(editor.getCursor('from')) : to
+
+  /**
+   * Where the marker may go, which is not always where the selection stopped.
+   *
+   * A selection that ended in the middle of a link, an embed, a footnote or a checkbox is
+   * carried out to the end of it — a marker written inside any of those destroys it. A fence,
+   * frontmatter and the row of dashes shaping a table have no such end, and are declined.
+   */
+  const anchor = anchorFor(text, to)
+  if (!anchor) {
+    new Notice('A comment cannot be anchored inside code, frontmatter or a table divider')
+    return
+  }
 
   /**
    * The reader's prose, with none of our syntax in it.
    *
-   * A marker is drawn as an atomic widget, so a selection dragged as far as the icon covers
-   * it rather than stopping in front of it — and the raw `%%c:…%%` comes back in the middle
-   * of what `getSelection` returns. Saved as the quote it would never match the note again,
-   * and the commented passage would silently lose its underline.
+   * Read from the note rather than from `getSelection`, because the anchor above may have
+   * reached past where the selection stopped, and the quote has to cover what the marker now
+   * sits after or it will not resolve. Markers are stripped for the same reason the quote is
+   * prose: one of them is drawn as an atomic widget, so a selection dragged as far as the icon
+   * covers it rather than stopping in front of it, and the raw `%%c:…%%` comes back in the
+   * middle of what was chosen. Saved that way it would never match the note again, and the
+   * commented passage would silently lose its underline.
    */
-  const quoted = selection ? stripMarkers(selection) : ''
-
-  // A marker in a fence renders as text, and one in frontmatter breaks the YAML. Neither is
-  // recoverable by the reader, so the command declines rather than writing it.
-  if (!isCommentablePosition(text, pos)) {
-    new Notice('A comment cannot be anchored inside code or frontmatter')
-    return
-  }
+  const quoted = selection ? stripMarkers(text.slice(from, anchor.quoteTo)) : ''
 
   const service = CommentService.getInstance()
-  const session = await service.create(file, pos, quoted.trim() ? quoted : undefined, from)
+  const session = await service.create(file, anchor.pos, quoted.trim() ? quoted : undefined, from)
 
   // Expanded and focused: someone who just asked for a comment is about to type a question.
   if (session.commentId) service.open.value = session.commentId

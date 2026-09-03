@@ -140,6 +140,53 @@ describe('commenting on a passage that already carries a marker', () => {
   })
 })
 
+/**
+ * Selecting something that is not prose.
+ *
+ * The end of a selection is wherever a finger let go, and half of Markdown is a construct that
+ * `%%c:…%%` dropped into its middle destroys. `anchorFor` carries the marker out to the end of
+ * whatever it landed in; what is checked here is that the quote is carried with it, because a
+ * quote that stops halfway through a link is a quote the note no longer contains.
+ */
+describe('commenting on a selection that ended inside a construct', () => {
+  const LINKED = 'Go [[target|shown]] now.'
+
+  it('anchors past the closing brackets and quotes the whole link', async () => {
+    const cut = 'Go [[target|sho'
+
+    await commentHere(fakeEditor(LINKED, { ch: 0, to: cut.length, selection: cut }), noteFile())
+
+    expect(create).toHaveBeenCalledWith(
+      expect.anything(),
+      'Go [[target|shown]]'.length,
+      'Go [[target|shown]]',
+      0
+    )
+  })
+
+  it('leaves a selection that stopped cleanly where it stopped', async () => {
+    const whole = 'Go [[target|shown]]'
+
+    await commentHere(fakeEditor(LINKED, { ch: 0, to: whole.length, selection: whole }), noteFile())
+
+    expect(create).toHaveBeenCalledWith(expect.anything(), whole.length, whole, 0)
+  })
+
+  /** No selection, so no quote — but the caret is still carried out of the embed. */
+  it('carries a caret dropped inside an embed out of it', async () => {
+    const embed = 'See ![[pic.png]] here.'
+
+    await commentHere(fakeEditor(embed, { ch: 'See ![[pic.p'.length }), noteFile())
+
+    expect(create).toHaveBeenCalledWith(
+      expect.anything(),
+      'See ![[pic.png]]'.length,
+      undefined,
+      'See ![[pic.p'.length
+    )
+  })
+})
+
 describe('a place that cannot hold a marker', () => {
   it('refuses inside a fenced block and says why', async () => {
     const fenced = '```\nconst a = 1\n```'
@@ -147,15 +194,39 @@ describe('a place that cannot hold a marker', () => {
     await commentHere(fakeEditor(fenced, { ch: 8 }), noteFile())
 
     expect(create).not.toHaveBeenCalled()
-    expect(Notice.shown).toEqual(['A comment cannot be anchored inside code or frontmatter'])
+    expect(Notice.shown).toEqual([
+      'A comment cannot be anchored inside code, frontmatter or a table divider',
+    ])
   })
 
-  it('refuses inside inline code', async () => {
+  /**
+   * The row of dashes is the whole of what makes those lines a table: a marker anywhere on it
+   * leaves the block rendering as raw pipes, and there is nothing on the line to move past.
+   */
+  it('refuses the row of dashes that shapes a table', async () => {
+    const table = '| a | b |\n| --- | --- |\n| one | two |'
+
+    await commentHere(fakeEditor(table, { ch: table.indexOf('| ---') + 5 }), noteFile())
+
+    expect(create).not.toHaveBeenCalled()
+    expect(Notice.shown).toEqual([
+      'A comment cannot be anchored inside code, frontmatter or a table divider',
+    ])
+  })
+
+  /** Inline code is no longer one of them: there is a backtick to move past. */
+  it('carries a caret inside inline code out to the closing backtick', async () => {
     const inline = 'A value in `backticks` here.'
 
     await commentHere(fakeEditor(inline, { ch: 15 }), noteFile())
 
-    expect(create).not.toHaveBeenCalled()
+    expect(Notice.shown).toEqual([])
+    expect(create).toHaveBeenCalledWith(
+      expect.anything(),
+      'A value in `backticks`'.length,
+      undefined,
+      15
+    )
   })
 })
 

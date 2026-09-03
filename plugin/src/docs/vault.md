@@ -118,6 +118,13 @@ anything depends on how the comment was made, not on what precedes the marker: o
 selection quotes that passage, one made without quotes nothing and marks a position instead.
 Markers inside fenced code, inline code and frontmatter are not markers.
 
+A marker is never written into the middle of a construct that a dozen characters would break: a
+`[[link]]` or `![[embed]]`, a `[text](url)` link, inline code, a `==highlight==`, a `[^1]`
+footnote reference, a callout's `[!type]` or a task's `[ ]` box. A comment made on a selection
+that ended halfway through one of those is anchored after the end of it instead, and its quote
+reaches that far as well. A fence, frontmatter and the row of dashes shaping a table have no
+such end, and a comment there is refused rather than written.
+
 **Never write, move or edit a marker.** It is an index into a file the plugin owns: an id with
 no file behind it draws an icon that opens nothing, and a marker carried away from its passage
 silently reattaches somebody's conversation to different text. Editing the note *around* a
