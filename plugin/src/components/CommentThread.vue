@@ -53,11 +53,7 @@
       v-if="streamingContent"
       class="abele-comment-thread__msg abele-comment-thread__msg_assistant"
     >
-      <Markdown
-        class="abele-comment-thread__body"
-        :text="streamingContent"
-        :file-path="notePath"
-      />
+      <Markdown class="abele-comment-thread__body" :text="streamingContent" :file-path="notePath" />
     </div>
     <div v-if="waiting" class="abele-comment-thread__waiting">Working…</div>
 

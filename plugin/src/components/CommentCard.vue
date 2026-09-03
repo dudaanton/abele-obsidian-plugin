@@ -75,11 +75,7 @@
            keeps only enough of it to say which one this marker leads to. -->
       <template v-if="promoted">
         <div class="abele-comment-card__readonly">
-          <div
-            v-for="msg in firstExchange"
-            :key="msg.id"
-            class="abele-comment-card__readonly-msg"
-          >
+          <div v-for="msg in firstExchange" :key="msg.id" class="abele-comment-card__readonly-msg">
             <Markdown :text="msg.content" :file-path="entry.notePath" />
           </div>
         </div>

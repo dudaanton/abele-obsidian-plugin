@@ -122,9 +122,7 @@ function activeMarkers(state: EditorState): ParsedMarker[] {
  */
 let commentClickHandler: (ids: string[], hasRoom: boolean) => void = () => {}
 
-export function setCommentClickHandler(
-  handler: (ids: string[], hasRoom: boolean) => void
-): void {
+export function setCommentClickHandler(handler: (ids: string[], hasRoom: boolean) => void): void {
   commentClickHandler = handler
 }
 

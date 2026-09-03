@@ -108,9 +108,7 @@ describe('a tool call', () => {
       {
         approveToolCall,
         rejectToolCall,
-        pendingToolCalls: ref([
-          { type: 'toolCall', id: 'call-1', name: 'read', arguments: {} },
-        ]),
+        pendingToolCalls: ref([{ type: 'toolCall', id: 'call-1', name: 'read', arguments: {} }]),
       },
       [call]
     )
