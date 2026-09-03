@@ -43,6 +43,13 @@ export class GlobalStore {
   public readonly galleriesContainers = ref<Array<Gallery>>([])
   public readonly footnotesContainers = ref<Array<Footnote>>([])
   public readonly commentsContainers = ref<Array<CommentEntry>>([])
+  /**
+   * The comment whose card is in a sheet rather than in the margin, or nothing.
+   *
+   * A card has two hosts and one component: this is the second host. It is a single value and
+   * not a list, because a sheet is modal — nothing behind it can be pressed to open another.
+   */
+  public readonly commentSheet = ref<CommentEntry | null>(null)
   public readonly findAndReplaceModalOpened = ref(false)
   public readonly migrateFromDataviewModalOpened = ref(false)
   public readonly saveMediaModalOpened = ref(false)
@@ -338,6 +345,9 @@ export class GlobalStore {
     this.footnotesContainers.value = []
     for (const comment of this.commentsContainers.value) comment.cleanup()
     this.commentsContainers.value = []
+    // The entry the sheet is showing has just been cleaned up; a dialog holding one is a
+    // dialog drawing a card for a marker that no longer exists.
+    this.commentSheet.value = null
 
     this.tasksList.value?.cleanup()
     this.tasksList.value = null
