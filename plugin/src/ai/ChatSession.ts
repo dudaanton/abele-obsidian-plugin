@@ -23,7 +23,15 @@ import { ChatInterceptor, type InterceptorHost } from './ChatInterceptor'
 import { AgentRegistry } from './agents/AgentRegistry'
 import type { AgentDefinition, OverrideKey, ScopeEntry, SessionOverrides } from './agents/types'
 import { ChatMessage, ChatMetadata, CORE_TOOLS, WRITE_TOOLS, migrateOldPermissions } from './types'
-import type { ToolMode, PermissionMode, AiSettings, SubAgentRunRef, QueuedMessage } from './types'
+import type {
+  CommentAnchor,
+  ToolMode,
+  PermissionMode,
+  AiSettings,
+  SubAgentRunRef,
+  QueuedMessage,
+} from './types'
+import type { CommentState } from '@/editor/CommentPlugin'
 import type { UserContentPart } from './client'
 import { createAgentTools } from './tools'
 import { loadSkillContent } from './tools/SkillTool'
@@ -57,7 +65,7 @@ interface ApprovedCall {
   args?: Record<string, unknown>
 }
 
-export type SessionKind = 'chat' | 'run'
+export type SessionKind = 'chat' | 'run' | 'comment'
 
 export interface SessionParent {
   /** The session that delegated. */
@@ -73,6 +81,8 @@ export interface SessionOptions {
   parent?: SessionParent
   /** Called instead of writing a chat file, for a run whose coordinator owns persistence. */
   onPersist?: () => void
+  /** Where a comment sits. Seeds the note into scope and travels in the file's meta record. */
+  anchor?: CommentAnchor
 }
 
 export class ChatSession implements SummarizerHost, InterceptorHost {
@@ -174,6 +184,23 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     return registry.get(this.agentId.value) ?? registry.defaultAgent()
   })
 
+  /** The comment's id, which is its file's basename. Null for anything not anchored. */
+  get commentId(): string | null {
+    if (!this.anchor.value) return null
+    return this.currentChatFile.value?.basename ?? null
+  }
+
+  /**
+   * What the marker's icon shows. Pending comes first: a turn waiting on approval is still
+   * streaming as far as the loop is concerned, and "answer me" is the more useful thing to say.
+   */
+  public readonly commentState = computed<CommentState>(() => {
+    if (this.pendingToolCalls.value.length || this.pendingQuestions.value) return 'pending'
+    if (this.isStreaming.value || this.isExecutingTool.value) return 'busy'
+    if (this.error.value) return 'error'
+    return 'idle'
+  })
+
   // Per-chat model selection. Writable: assigning records an override, which is what every
   // existing caller (the model picker, ChatService.switchModel) already means by assigning.
   public readonly activeProviderId = computed<string>({
@@ -211,8 +238,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private syncingScope = false
   private readonly effects: EffectScope
 
-  /** A chat a person talks to, or a run some agent was handed by another. */
-  public readonly kind: SessionKind
+  /**
+   * A chat a person talks to, a run some agent was handed by another, or a comment anchored
+   * in a note. Not readonly: expanding a comment turns it into a chat in place.
+   */
+  public kind: SessionKind
+  /** Where this session is anchored, for a comment and for a chat expanded from one. */
+  public readonly anchor = shallowRef<CommentAnchor | null>(null)
   /** How many delegations deep this run sits. 0 for a chat a person opened. */
   public readonly depth: number
   /** Where a run came from, so its branch can be shown in the right place. */
@@ -234,6 +266,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.summarizer = new ChatSummarizer(this)
     this.interceptor = new ChatInterceptor(this)
     this.agentId.value = options.agentId || AgentRegistry.getInstance().defaultAgent()?.id || ''
+    this.anchor.value = options.anchor ?? null
     this.effects = effectScope(true)
     this.effects.run(() => {
       this.watchScope()
@@ -403,6 +436,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
             break
         }
       }
+
+      // The note a comment is anchored to is part of what the session *is*, not something
+      // anyone chose in it — so it goes on top of the agent's scope and survives a switch,
+      // and it is added inside `syncingScope` so it is never recorded as an override.
+      if (this.anchor.value) this.scopeResolver.addFile(this.anchor.value.note)
     } finally {
       this.syncingScope = false
     }
@@ -1421,6 +1459,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.interceptor.error.value = null
     this.agentId.value = AgentRegistry.getInstance().defaultAgent()?.id ?? ''
     this.overrides.value = {}
+    this.anchor.value = null
     this.syncScopeFromAgent()
   }
 
@@ -1547,6 +1586,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const metadata: ChatMetadata = {
       type: 'abele-chat',
       agentId: this.agentId.value || undefined,
+      // Written whenever there is an anchor, expanded comments included: the marker in the
+      // note has to keep finding this file, and `kind` is how a reopened one knows what it is.
+      kind: this.anchor.value ? (this.kind === 'comment' ? 'comment' : 'chat') : undefined,
+      anchor: this.anchor.value ?? undefined,
       // Only what this chat actually changed. Writing the resolved values instead would freeze
       // the chat against today's agent and defeat the whole point of resolving on read.
       overrides: Object.keys(overrides).length ? { ...overrides } : undefined,
@@ -1581,7 +1624,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   private async writeNow(): Promise<void> {
-    if (this.allChatMessages.length === 0) return
+    // Nothing to write and nowhere to write it: a tab nobody has typed into yet. Once a file
+    // exists — a comment's, written before its first turn — a meta change is worth a save.
+    if (this.allChatMessages.length === 0 && !this.currentChatFile.value) return
 
     const snapshot = this.snapshot()
     const plan = this.log.plan(snapshot)
@@ -1614,6 +1659,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.currentChatFile.value = file
     this.chatTitle.value = result.metadata?.title || ''
     this.chatCreated = result.metadata?.created || ''
+    // Before `restoreAgentBinding`, which rebuilds the scope: the anchor has to be in place
+    // by then or the note is left out until the next agent change.
+    if (result.metadata?.kind) this.kind = result.metadata.kind
+    this.anchor.value = result.metadata?.anchor ?? null
 
     // Migrate old flat format → tree format once
     const needsMigration =

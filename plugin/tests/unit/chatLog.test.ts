@@ -244,3 +244,24 @@ describe('planning a save', () => {
     expect(parseChat(plan.kind === 'rewrite' ? plan.content : '').version).toBe(2)
   })
 })
+
+describe('a comment chat', () => {
+  it('round-trips its kind and anchor through the log', () => {
+    const snap = snapshot({
+      metadata: metadata({ kind: 'comment', anchor: { note: 'Notes/A.md', quote: 'a passage' } }),
+    })
+
+    const parsed = parseChat(serializeChat(snap))
+
+    expect(parsed.metadata?.kind).toBe('comment')
+    expect(parsed.metadata?.anchor).toEqual({ note: 'Notes/A.md', quote: 'a passage' })
+  })
+
+  it('leaves a cursor comment without a quote', () => {
+    const snap = snapshot({ metadata: metadata({ kind: 'comment', anchor: { note: 'Notes/A.md' } }) })
+
+    const parsed = parseChat(serializeChat(snap))
+
+    expect(parsed.metadata?.anchor).toEqual({ note: 'Notes/A.md' })
+  })
+})

@@ -223,3 +223,45 @@ describe('a chat whose agent is gone', () => {
     expect(session.activeModelId.value).toBe('small')
   })
 })
+
+describe('a comment session', () => {
+  it('puts the anchored note in scope on top of the agent scope', () => {
+    seedAgent({ scope: [{ type: 'folder', path: 'Notes' }] })
+
+    const session = new ChatSession(ChatService.getInstance(), undefined, {
+      kind: 'comment',
+      anchor: { note: 'Journal/2026-09-02.md', quote: 'a passage' },
+    })
+
+    expect(session.scopeResolver.entries.value).toEqual([
+      { type: 'folder', path: 'Notes' },
+      { type: 'file', path: 'Journal/2026-09-02.md' },
+    ])
+    expect(session.scopeResolver.isInScope('Journal/2026-09-02.md')).toBe(true)
+  })
+
+  /** The note is the session's own context, not something anyone chose in this chat. */
+  it('does not record the note as a scope override', () => {
+    seedAgent()
+
+    const session = new ChatSession(ChatService.getInstance(), undefined, {
+      kind: 'comment',
+      anchor: { note: 'Journal/2026-09-02.md' },
+    })
+
+    expect(session.isOverridden('scope')).toBe(false)
+  })
+
+  it('keeps the note in scope after the agent is switched', () => {
+    seedAgent()
+    const other = AgentRegistry.getInstance().create({ name: 'Other', scope: [] })
+    const session = new ChatSession(ChatService.getInstance(), undefined, {
+      kind: 'comment',
+      anchor: { note: 'Journal/2026-09-02.md' },
+    })
+
+    session.switchAgent(other.id)
+
+    expect(session.scopeResolver.isInScope('Journal/2026-09-02.md')).toBe(true)
+  })
+})

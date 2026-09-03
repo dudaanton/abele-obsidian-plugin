@@ -144,6 +144,10 @@ export interface AiSettings {
   defaultScope: Array<{ type: 'file' | 'folder' | 'pattern' | 'group'; path: string }>
   defaultFullVaultAccess: boolean
   chatFolder: string
+  /** Agent comment chats run on. The default agent when unset or pointing at a deleted one. */
+  commentAgentId?: string
+  /** Plain folder path — no template variables, so a marker's id is all a lookup needs. */
+  commentFolder: string
   chatHistory: AiChatHistoryEntry[]
   braveSearchApiKey: string
   imageProviders: ImageProvider[]
@@ -174,7 +178,10 @@ export interface AiSettings {
  * These are what `allow-edit` stops asking about, which is why the list is shared: the
  * approval prompt offers that mode only for a call the mode would actually cover.
  */
-export const WRITE_TOOLS = ['edit', 'create', 'replace', 'write']
+/** The tool a comment chat uses to rewrite its own passage. Session-scoped, never in `createAgentTools()`. */
+export const EDIT_SELECTION_TOOL = 'edit_selection'
+
+export const WRITE_TOOLS = ['edit', 'create', 'replace', 'write', EDIT_SELECTION_TOOL]
 
 /** Tools always sent to agent, governed by permissionMode */
 export const CORE_TOOLS = new Set([
@@ -216,6 +223,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   defaultScope: [],
   defaultFullVaultAccess: false,
   chatFolder: 'AI/Chats/{{name}}',
+  commentFolder: 'AI/Comments',
   chatHistory: [],
   braveSearchApiKey: '',
   imageProviders: [],
@@ -377,10 +385,21 @@ export interface ChatMessage {
   subAgentRun?: SubAgentRunRef
 }
 
+/** Where a comment chat sits: the note holding its marker, and the text it was made on. */
+export interface CommentAnchor {
+  note: string
+  /** The selected text. Absent for a cursor comment, which is anchored to a point. */
+  quote?: string
+}
+
 export interface ChatMetadata {
   type: 'abele-chat'
   /** Which agent the chat runs on. Absent in chats saved before agents existed. */
   agentId?: string
+  /** Absent means an ordinary chat. A comment keeps its kind once expanded, see `anchor`. */
+  kind?: 'chat' | 'comment'
+  /** Set for a comment and for a chat expanded from one, so the marker still finds the file. */
+  anchor?: CommentAnchor
   /** Only what this chat changed relative to its agent. */
   overrides?: SessionOverrides
   providerId: string
