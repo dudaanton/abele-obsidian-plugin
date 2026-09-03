@@ -8,8 +8,8 @@ import { DEFAULT_AI_SETTINGS, EDIT_SELECTION_TOOL, type AiSettings } from '@/ai/
  * renamed or deleted the migrated agents never gets them resurrected. The legacy fields are
  * deliberately left in place — settings UI still edits them until phases 3 and 5 remove it.
  */
-function migrateLegacyAgents(ai: AiSettings): void {
-  if (ai.agents?.length) return
+function migrateLegacyAgents(ai: AiSettings): boolean {
+  if (ai.agents?.length) return false
 
   const agents: AgentDefinition[] = []
 
@@ -56,6 +56,7 @@ function migrateLegacyAgents(ai: AiSettings): void {
 
   ai.agents = agents
   ai.defaultAgentId = base.id
+  return true
 }
 
 /**
@@ -79,8 +80,8 @@ export const COMMENT_AGENT_PROMPT = [
  * Created once and left alone afterwards — it is an ordinary agent from that moment, editable
  * and deletable like any other, so nothing here reaches back in to correct it.
  */
-export function ensureCommentAgent(ai: AiSettings): void {
-  if (ai.commentAgentId) return
+export function ensureCommentAgent(ai: AiSettings): boolean {
+  if (ai.commentAgentId) return false
   if (!ai.agents) ai.agents = []
 
   const agent = createAgent({
@@ -116,11 +117,21 @@ export function ensureCommentAgent(ai: AiSettings): void {
 
   ai.agents.push(agent)
   ai.commentAgentId = agent.id
+  return true
 }
 
-export function migrateAgents(ai: AiSettings): void {
-  migrateLegacyAgents(ai)
+/**
+ * Returns whether anything was changed, because migration touches the in-memory settings only.
+ *
+ * The caller is what writes them. Without that a vault that already had agents would seed a
+ * fresh Comment agent on every single launch — a new id each time, leaving every comment file
+ * written before the next save pointing at an agent that no longer exists.
+ */
+export function migrateAgents(ai: AiSettings): boolean {
+  const legacy = migrateLegacyAgents(ai)
   // Outside the legacy migration on purpose: that one is a no-op the moment any agent exists,
   // and a vault that has had agents since before comments still needs this one.
-  ensureCommentAgent(ai)
+  const comment = ensureCommentAgent(ai)
+
+  return legacy || comment
 }

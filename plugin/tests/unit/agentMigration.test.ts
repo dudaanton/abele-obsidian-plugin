@@ -176,6 +176,40 @@ describe('the Comment agent', () => {
     expect(prompt.length).toBeGreaterThan(100)
   })
 
+  /**
+   * Migration only mutates memory, so `AbeleConfig` has to be told when to write. Without
+   * this every launch on a vault that already has agents mints another Comment agent with a
+   * new id, and every comment file written before then points at one that is gone.
+   */
+  it('reports that it changed the settings, so they get saved', () => {
+    const ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' } as AiSettings
+
+    expect(migrateAgents(ai)).toBe(true)
+  })
+
+  it('reports no change on the next run, so nothing is written for nothing', () => {
+    const ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' } as AiSettings
+    migrateAgents(ai)
+
+    expect(migrateAgents(ai)).toBe(false)
+  })
+
+  it('leaves settings that already name a comment agent alone', () => {
+    const existing = createAgent({ id: 'comment-1', name: 'My commenter' })
+    const ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: [createAgent({ id: 'existing', name: 'Default' }), existing],
+      defaultAgentId: 'existing',
+      commentAgentId: 'comment-1',
+    } as AiSettings
+
+    const changed = migrateAgents(ai)
+
+    expect(changed).toBe(false)
+    expect(ai.commentAgentId).toBe('comment-1')
+    expect(ai.agents).toHaveLength(2)
+  })
+
   /** Settings are saved after migration, but not always before the next load. */
   it('is not created a second time', () => {
     const ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' } as AiSettings
