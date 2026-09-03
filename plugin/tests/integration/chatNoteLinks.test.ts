@@ -460,3 +460,37 @@ describe('a rename reaching an expanded comment nobody has open', () => {
     expect(meta?.touched?.map((t) => t.path)).toEqual(['Notes/Renamed.md'])
   })
 })
+
+describe('who pays for a recap', () => {
+  const wants = (session: ChatSession): boolean =>
+    (session as unknown as { wantsRecap(): boolean }).wantsRecap()
+
+  it('is asked for only after a turn that wrote', async () => {
+    const session = newSession()
+    expect(wants(session)).toBe(false)
+
+    await toolOf(session, 'edit').execute('c1', {
+      path: NOTE_A,
+      old_string: 'alpha',
+      new_string: 'ALPHA',
+    })
+
+    expect(wants(session)).toBe(true)
+  })
+
+  /** A comment is on the margin, where no card shows a recap. It pays for one when promoted. */
+  it('is never asked for by a comment, however much it writes', async () => {
+    const service = CommentService.getInstance()
+    const note = app.vault.getAbstractFileByPath(NOTE_A) as TFile
+    const session = await service.create(note, 5, 'alpha')
+
+    await toolOf(session, 'edit').execute('c1', {
+      path: NOTE_A,
+      old_string: 'content',
+      new_string: 'CONTENT',
+    })
+
+    expect(paths(session)).toEqual([NOTE_A])
+    expect(wants(session)).toBe(false)
+  })
+})

@@ -59,7 +59,19 @@ export class ChatSummarizer {
   private static readonly RECAP_SYSTEM_PROMPT =
     'You summarize what was done in a conversation. Reply with ONLY the sentence, nothing else.'
   private static readonly RECAP_MAX_LENGTH = 200
+  /**
+   * How much of the conversation a recap sees.
+   *
+   * A recap runs after every turn that wrote, unlike a title, which runs once — so the whole
+   * transcript per turn would make the background cost of a long working session grow with the
+   * square of its length. The end of the conversation is what the work was.
+   */
+  private static readonly RECAP_WINDOW = 8
+  private static readonly RECAP_MSG_PREVIEW_LENGTH = 500
   static readonly COMPACT_MARKER = '[Conversation compacted]'
+
+  /** The notes named in the last recap this asked for, so the same work is not resummarised. */
+  private lastRecapNotes = ''
 
   constructor(private readonly host: SummarizerHost) {}
 
@@ -142,10 +154,18 @@ export class ChatSummarizer {
       const client = new OpenAIClient()
 
       const notes = this.host.touchedNotes()
-      const conversation = this.renderForSummary(this.host.messagesForModel())
-      const body = notes.length
-        ? `Notes written: ${notes.join(', ')}\n\n${conversation}`
-        : conversation
+      // Nothing was written, so there is no card for a sentence to appear on.
+      if (!notes.length) return
+      // A turn that rewrote a note this chat had already written says nothing new about which
+      // notes it worked on, and the sentence it would produce is the sentence already there.
+      const key = notes.join('\n')
+      if (key === this.lastRecapNotes) return
+
+      const conversation = this.renderForSummary(
+        this.host.messagesForModel().slice(-ChatSummarizer.RECAP_WINDOW),
+        ChatSummarizer.RECAP_MSG_PREVIEW_LENGTH
+      )
+      const body = `Notes written: ${notes.join(', ')}\n\n${conversation}`
 
       const prompt = (
         config.prompts?.recapPrompt || DEFAULT_AI_SETTINGS.prompts.recapPrompt
@@ -169,6 +189,9 @@ export class ChatSummarizer {
         .trim()
         .slice(0, ChatSummarizer.RECAP_MAX_LENGTH)
 
+      // Recorded whatever the model came back with, an empty or unchanged sentence included:
+      // asking again for the same notes would only produce the same answer.
+      this.lastRecapNotes = key
       if (!recap || recap === this.host.recap.value) return
 
       this.host.recap.value = recap
@@ -261,7 +284,16 @@ export class ChatSummarizer {
     }
   }
 
-  private renderForSummary(messages: Message[]): string {
+  /**
+   * The conversation as a block of text.
+   *
+   * `previewLength` bounds each message, for a caller that runs often enough to care what one
+   * costs. Compaction passes nothing: it is replacing the history, so it may not lose any of it.
+   */
+  private renderForSummary(messages: Message[], previewLength?: number): string {
+    const cut = (text: string): string =>
+      previewLength && text.length > previewLength ? `${text.slice(0, previewLength)}…` : text
+
     return messages
       .map((m) => {
         if (m.role === 'user') {
@@ -275,17 +307,17 @@ export class ChatSummarizer {
                   .filter((part): part is TextContent => part.type === 'text')
                   .map((part) => part.text)
                   .join('')
-          return text ? `[user]: ${text}` : null
+          return text ? `[user]: ${cut(text)}` : null
         }
         if (m.role === 'assistant') {
           const text = m.content
             .filter((b): b is TextContent => b.type === 'text')
             .map((b) => b.text)
             .join('')
-          return text ? `[assistant]: ${text}` : null
+          return text ? `[assistant]: ${cut(text)}` : null
         }
         if (m.role === 'toolResult') {
-          return `[tool ${m.toolName}]: ${m.content.map((c) => c.text).join('')}`
+          return `[tool ${m.toolName}]: ${cut(m.content.map((c) => c.text).join(''))}`
         }
         return null
       })

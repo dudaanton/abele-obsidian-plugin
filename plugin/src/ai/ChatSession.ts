@@ -1478,8 +1478,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // A recap describes what the chat did to a note, so unlike a title it is regenerated on
     // every turn that wrote, not once. The mirror follows it, since the sentence is part of
     // what the card under the note shows.
-    if (this.wroteThisTurn) {
-      this.wroteThisTurn = false
+    if (this.wantsRecap()) {
       if (sequential) await this.summarizer.generateRecap()
       else {
         this.summarizer.generateRecap().catch(() => {
@@ -1945,17 +1944,41 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.chatService.saveTabs()
   }
 
+  /** The notes this chat has written to, for the recap prompt. Part of `SummarizerHost`. */
+  touchedNotes(): string[] {
+    return this.touched.value.map((note) => note.path)
+  }
+
+  /**
+   * Whether the turn that just ended earns a recap.
+   *
+   * A run is never listed, and a comment lives on the margin where no card shows a sentence —
+   * it pays for one when somebody expands it, and not before. Same rule as the title, for the
+   * same reason: a background request nobody reads the answer to.
+   */
+  private wantsRecap(): boolean {
+    return this.kind === 'chat' && this.wroteThisTurn
+  }
+
+  /**
+   * Writes the one recap a chat expanded from a comment never had.
+   *
+   * Fire and forget, like every other background request: the expansion has already happened
+   * and must not wait on a model, nor fail because one was not reachable.
+   */
+  recapIfMissing(): void {
+    if (!this.touched.value.length || this.recap.value) return
+    this.summarizer.generateRecap().catch(() => {
+      return
+    })
+  }
+
   /**
    * Copies `touched` and `recap` into this chat's history entry.
    *
    * Not private: the rename walk and a live check both drive it. Does nothing for a chat that
    * has written to nothing, and nothing for a comment, whose path has no entry to write into.
    */
-  /** The notes this chat has written to, for the recap prompt. Part of `SummarizerHost`. */
-  touchedNotes(): string[] {
-    return this.touched.value.map((note) => note.path)
-  }
-
   mirrorNoteLinks(): void {
     const path = this.currentChatFile.value?.path
     if (!path || !this.touched.value.length) return
@@ -2225,8 +2248,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // A recap describes what the chat did to a note, so unlike a title it is regenerated on
     // every turn that wrote, not once. The mirror follows it, since the sentence is part of
     // what the card under the note shows.
-    if (this.wroteThisTurn) {
-      this.wroteThisTurn = false
+    if (this.wantsRecap()) {
       if (sequential) await this.summarizer.generateRecap()
       else {
         this.summarizer.generateRecap().catch(() => {
