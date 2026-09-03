@@ -494,3 +494,46 @@ describe('who pays for a recap', () => {
     expect(wants(session)).toBe(false)
   })
 })
+
+describe('a tab given a new chat', () => {
+  it('forgets which notes the last chat recapped, so the next one gets a sentence', async () => {
+    const session = newSession()
+    const summarizer = (session as unknown as { summarizer: { forgetRecap: () => void } })
+      .summarizer
+    const forget = vi.spyOn(summarizer, 'forgetRecap')
+
+    await session.reset()
+
+    expect(forget).toHaveBeenCalled()
+  })
+})
+
+describe('a comment folder the settings no longer name', () => {
+  /**
+   * `CommentService` falls back to the built-in folder when the setting is blank. The rename
+   * skip has to agree with it, or both walks go at the same file again.
+   */
+  it('is still a comment folder as far as the rename walk is concerned', async () => {
+    const service = CommentService.getInstance()
+    const note = app.vault.getAbstractFileByPath(NOTE_A) as TFile
+    const session = await service.create(note, 5, 'alpha')
+    const id = session.commentId!
+    session.noteTouched(NOTE_A)
+    await session.save()
+    expect(await service.expand(id)).toBe(true)
+
+    service.destroy()
+    ChatService.getInstance().destroy()
+    AbeleConfig.getInstance().ai.commentFolder = ''
+
+    await Promise.all([
+      service.handleRename(NOTE_A, 'Notes/Renamed.md'),
+      ChatStorage.getInstance().handleNoteRename(NOTE_A, 'Notes/Renamed.md'),
+    ])
+
+    const file = app.vault.getAbstractFileByPath(`AI/Comments/${id}.abchat`) as TFile
+    const meta = parseChatMetadata(await app.vault.read(file))
+    expect(meta?.anchor?.note).toBe('Notes/Renamed.md')
+    expect(meta?.touched?.map((t) => t.path)).toEqual(['Notes/Renamed.md'])
+  })
+})

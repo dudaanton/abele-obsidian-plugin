@@ -5,7 +5,7 @@ import dayjs from 'dayjs'
 import { getAvailablePath } from '@/helpers/vaultUtils'
 import { renderTemplate } from '@/helpers/notesUtils'
 import { DATE_FORMAT } from '@/constants/dates'
-import { AiChatHistoryEntry, type TouchedNote } from './types'
+import { AiChatHistoryEntry, DEFAULT_AI_SETTINGS, type TouchedNote } from './types'
 import { RunStorage } from './RunStorage'
 import { ChatService } from './ChatService'
 import {
@@ -281,10 +281,20 @@ export class ChatStorage {
     config.saveSettings()
   }
 
+  /**
+   * The folder comments live in.
+   *
+   * Here rather than on `CommentService`, which reads it through this: the two answers have to
+   * be the same one, and a blank setting meaning the built-in folder to one reader and nothing
+   * at all to the other is how the rename skip stopped holding.
+   */
+  static commentsFolder(): string {
+    return AbeleConfig.getInstance().ai.commentFolder || DEFAULT_AI_SETTINGS.commentFolder
+  }
+
   /** Whether a chat file lives in the comments folder, and so is a comment's to rewrite. */
   private isCommentPath(path: string): boolean {
-    const folder = AbeleConfig.getInstance().ai.commentFolder
-    return !!folder && path.startsWith(`${folder}/`)
+    return path.startsWith(`${ChatStorage.commentsFolder()}/`)
   }
 
   /**

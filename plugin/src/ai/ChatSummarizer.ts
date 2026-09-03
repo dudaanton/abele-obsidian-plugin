@@ -76,6 +76,17 @@ export class ChatSummarizer {
   constructor(private readonly host: SummarizerHost) {}
 
   /**
+   * Drops what the last recap was about.
+   *
+   * One tab keeps one summarizer across every chat started in it, so the key has to go when the
+   * conversation does — otherwise a second chat that worked on the same notes would be told it
+   * had already been summarised, and would never get a sentence at all.
+   */
+  forgetRecap(): void {
+    this.lastRecapNotes = ''
+  }
+
+  /**
    * Names the chat from its opening exchange.
    *
    * Best-effort throughout: a title is a convenience, and a failed background request must

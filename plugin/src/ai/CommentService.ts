@@ -16,7 +16,7 @@ import { ChatService } from './ChatService'
 import { ChatStorage } from './ChatStorage'
 import { AgentRegistry } from './agents/AgentRegistry'
 import { parseChatMetadata, serializeChat, serializeMetadata } from './ChatLog'
-import { DEFAULT_AI_SETTINGS, type ChatMetadata, type CommentAnchor } from './types'
+import { type ChatMetadata, type CommentAnchor } from './types'
 
 /** As long as a chat's own fallback title, which this stands in for. */
 const COMMENT_TITLE_LENGTH = 50
@@ -148,7 +148,7 @@ export class CommentService implements CommentInfoSource {
   private settling = false
 
   private folder(): string {
-    return AbeleConfig.getInstance().ai.commentFolder || DEFAULT_AI_SETTINGS.commentFolder
+    return ChatStorage.commentsFolder()
   }
 
   commentPath(id: string): string {

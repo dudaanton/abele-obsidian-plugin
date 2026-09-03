@@ -1749,6 +1749,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.touched.value = []
     this.recap.value = ''
     this.wroteThisTurn = false
+    // The summarizer outlives the conversation — one per tab, not one per chat.
+    this.summarizer.forgetRecap()
     this.syncScopeFromAgent()
   }
 

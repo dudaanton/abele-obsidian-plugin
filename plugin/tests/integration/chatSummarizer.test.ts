@@ -370,6 +370,23 @@ describe('ChatSummarizer.generateRecap', () => {
     expect(calls).toHaveLength(1)
   })
 
+  /**
+   * The summarizer outlives the conversation: one tab, one `ChatSummarizer`, and a new chat
+   * started in it through `reset()`. Without forgetting, a second chat over the same notes
+   * would silently never get a sentence.
+   */
+  it('asks again for the same notes once the tab has been given a new chat', async () => {
+    nextResponse = 'Tidied A.'
+    const { host } = buildHost()
+    const summarizer = new ChatSummarizer(host)
+
+    await summarizer.generateRecap()
+    summarizer.forgetRecap()
+    await summarizer.generateRecap()
+
+    expect(calls).toHaveLength(2)
+  })
+
   it('asks again once another note has been written', async () => {
     nextResponse = 'Tidied A.'
     let notes = ['Notes/A.md']
