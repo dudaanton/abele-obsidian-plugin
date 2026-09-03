@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick, ref, type Ref } from 'vue'
-import { TFile } from 'obsidian'
+import { Notice, TFile } from 'obsidian'
 import CommentCard from '@/components/CommentCard.vue'
 import CommentThread from '@/components/CommentThread.vue'
 import CommentInput from '@/components/CommentInput.vue'
@@ -644,5 +644,90 @@ describe('the agent a comment runs on', () => {
 
     expect(view.findComponent(Dropdown).exists()).toBe(false)
     expect(view.findComponent(Badge).props('text')).toBe('Comment')
+  })
+})
+
+/**
+ * A turn that has stopped to ask something is holding half of itself open.
+ *
+ * The card already tells `busy` from `pending` — the dot on its edge is drawn from the same
+ * distinction — and the composer needs to hear about it, because a note kept now lands between
+ * a `tool_use` and its `tool_result` and the next question is refused by the model over it.
+ * The session refuses it too; this is what stops the person finding that out by pressing.
+ */
+describe('a card over a conversation waiting to be answered', () => {
+  beforeEach(() => {
+    open.value = 'k7d2ph'
+    Notice.shown.length = 0
+  })
+
+  it('tells the composer, which is where the note button is', async () => {
+    seed('k7d2ph', { commentState: ref('pending') })
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(CommentInput).props('pending')).toBe(true)
+    // Streaming is the other thing, and it is reported separately: the send button stops it.
+    expect(view.findComponent(CommentInput).props('busy')).toBe(false)
+  })
+
+  it('leaves the composer alone when nothing is being waited on', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(CommentInput).props('pending')).toBe(false)
+  })
+
+  it('says why a note was refused rather than swallowing it', async () => {
+    seed('k7d2ph', { addUserNote: vi.fn().mockResolvedValue(false) })
+
+    const view = await mountCard(['k7d2ph'])
+    await view.findComponent(CommentInput).vm.$emit('note', 'Come back to this')
+    await nextTick()
+
+    expect(Notice.shown).toContain('Finish or dismiss the pending step first')
+  })
+
+  it('says nothing when the note was kept', async () => {
+    seed('k7d2ph', { addUserNote: vi.fn().mockResolvedValue(true) })
+
+    const view = await mountCard(['k7d2ph'])
+    await view.findComponent(CommentInput).vm.$emit('note', 'Come back to this')
+    await nextTick()
+
+    expect(Notice.shown).toEqual([])
+  })
+})
+
+/**
+ * An agent can be deleted while a comment that ran on it is still in the vault.
+ *
+ * `session.agent` falls back to the default one so the conversation keeps working, but the
+ * picker's value is the raw `agentId`, and a `select` given a value none of its options carry
+ * shows the first option instead — the card would sit there naming an agent this comment has
+ * nothing to do with. The id is shown as itself, marked, which is at least true.
+ */
+describe('a comment whose agent has been deleted', () => {
+  beforeEach(() => {
+    open.value = 'k7d2ph'
+    AgentRegistry.destroy()
+    AbeleConfig.getInstance().ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: [createAgent({ id: 'writer', name: 'Writer' })],
+      commentAgentId: '',
+    }
+  })
+
+  it('keeps the missing agent in the list, and says that is what it is', async () => {
+    seed('k7d2ph', { agentId: ref('gone-agent') })
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(Dropdown).props('options')).toEqual([
+      { value: 'writer', display: 'Writer' },
+      { value: 'gone-agent', display: 'gone-agent (deleted)' },
+    ])
+    expect(view.findComponent(Dropdown).props('modelValue')).toBe('gone-agent')
   })
 })

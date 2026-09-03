@@ -16,6 +16,7 @@ import VoiceRecorder from '@/components/VoiceRecorder.vue'
 const mountInput = (
   props: {
     busy?: boolean
+    pending?: boolean
     disabled?: boolean
     focus?: boolean
     host?: 'margin' | 'sheet'
@@ -279,5 +280,52 @@ describe('dictating into a comment', () => {
     await recorder(view).vm.$emit('close')
 
     expect(recorder(view).exists()).toBe(false)
+  })
+})
+
+/**
+ * A turn stopped for an approval is still a turn.
+ *
+ * `busy` says the agent is streaming or running something; `pending` says it has stopped to ask
+ * — for a tool call, or for an answer — and is holding half a turn open. A note put into the
+ * middle of that lands between a `tool_use` and its `tool_result`, and the next question is
+ * refused by the model over it. The card's state dot already tells the two apart; the composer
+ * has to as well, or the one button that can break a conversation is live exactly there.
+ */
+describe('a composer over a conversation waiting to be answered', () => {
+  it('will not keep a note while the agent is waiting on an approval', async () => {
+    const view = mountInput({ pending: true })
+    await view.find('textarea').setValue('A thought')
+
+    expect(button(view, 'sticky-note').props('disabled')).toBe(true)
+
+    await button(view, 'sticky-note').trigger('click')
+    await view.find('textarea').trigger('keydown', { key: 'Enter', altKey: true })
+
+    expect(view.emitted('note')).toBeUndefined()
+  })
+
+  it('says which of the two is in the way', () => {
+    expect(button(mountInput({ pending: true }), 'sticky-note').props('tooltip')).toBe(
+      'Answer the step the agent is waiting on before keeping a note'
+    )
+  })
+
+  it('offers no dictated note either, since it would go the same way', async () => {
+    const view = mountInput({ pending: true })
+    await button(view, 'mic').trigger('click')
+
+    expect(view.findComponent(VoiceRecorder).props('canNote')).toBe(false)
+    // Sending still works: a question typed now waits its turn instead of being lost.
+    expect(view.findComponent(VoiceRecorder).props('canSend')).toBe(true)
+  })
+
+  it('still sends and still dictates, which is what waiting its turn is for', async () => {
+    const view = mountInput({ pending: true })
+    await view.find('textarea').setValue('A question')
+
+    await view.find('textarea').trigger('keydown', { key: 'Enter' })
+
+    expect(view.emitted('send')).toEqual([['A question']])
   })
 })

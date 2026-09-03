@@ -73,10 +73,10 @@ carries on. Compaction uses the background model.
 A chat can also be a **comment chat**: one anchored to a passage in a note and answered on the
 margin beside it. It starts on the agent named by `commentAgentId` and the person can point it
 at another from the card's own header, so each comment runs on the agent it was given. It is
-scoped to the note it is anchored in on top of that agent's own scope, and is told at the start of every turn where it
-is — the note, the quoted passage, the paragraph around it. Its file lives in the comments
-folder rather than the chat folder. Opening one as a full chat keeps the anchor and the file
-where it is, moves it into the chat history and the sidebar, and takes `edit_selection` away,
-because from then on it is an ordinary chat. That is reversible: an expanded comment can be
-sent back to its note, which closes the sidebar tab, drops it from the chat history and makes
-it a comment again — the same conversation, back on the margin.
+scoped to the note it is anchored in on top of that agent's own scope, and is told at the start
+of every turn where it is — the note, the quoted passage, the paragraph around it. Its file
+lives in the comments folder rather than the chat folder. Opening one as a full chat keeps the
+anchor and the file where it is, moves it into the chat history and the sidebar, and takes
+`edit_selection` away, because from then on it is an ordinary chat. That is reversible: an
+expanded comment can be sent back to its note, which closes the sidebar tab, drops it from the
+chat history and makes it a comment again — the same conversation, back on the margin.

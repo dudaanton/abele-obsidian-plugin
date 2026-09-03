@@ -4,7 +4,7 @@
     <VoiceRecorder
       v-if="voiceOpen"
       can-send
-      can-note
+      :can-note="!noteBlocked"
       auto-start
       class="abele-comment-input__voice"
       @text="onVoiceText"
@@ -58,8 +58,9 @@
  * full chat, which is one press away in the card's header. What is here is what a question in
  * the margin needs: a field that starts at one line, grows to five and then scrolls, a button
  * that becomes a stop while the agent is working, beside it the one that keeps the words
- * without asking anybody anything, and the microphone, because a comment is most often made
- * on a phone where typing beside the text is the slowest way to say anything.
+ * without asking anybody anything — dark while a turn is open, because a note in the middle of
+ * one is a conversation the model will refuse — and the microphone, because a comment is most
+ * often made on a phone where typing beside the text is the slowest way to say anything.
  *
  * The voice panel is the sidebar's own `VoiceRecorder`, mounted the way `AiChatInput` mounts
  * it. It answers with words and with which of the three endings was pressed; recording,
@@ -77,6 +78,15 @@ const props = withDefaults(
   defineProps<{
     /** The session is streaming or running a tool, so the button stops it instead of sending. */
     busy: boolean
+    /**
+     * The turn has stopped to ask something — an approval, or a question — and is holding
+     * half of itself open.
+     *
+     * Not the same as `busy`, and the difference matters to one button: a note put in now
+     * lands between a `tool_use` and its `tool_result`, and the next question is refused by
+     * the model over it. Sending is unaffected — a question typed now waits its turn.
+     */
+    pending?: boolean
     /** The comment file has not been read yet: there is nothing to send to. */
     disabled?: boolean
     /**
@@ -156,14 +166,17 @@ const sendTooltip = computed(() => {
 })
 
 /**
- * Nothing to keep, or nowhere to keep it yet — and not while a turn is running: a note joins
- * the same history the agent is being answered from, and putting one in halfway through would
- * land it among the messages that turn is still writing.
+ * Not while a turn is open: a note joins the same history the agent is being answered from,
+ * and putting one in halfway through leaves it among the messages that turn is still writing.
+ * `ChatSession.addUserNote` refuses it as well — this is so the button says so first.
  */
-const noteDisabled = computed(() => props.disabled || props.busy || text.value.trim().length === 0)
+const noteBlocked = computed(() => props.disabled || props.busy || props.pending)
+
+const noteDisabled = computed(() => noteBlocked.value || text.value.trim().length === 0)
 
 const noteTooltip = computed(() => {
   if (props.busy) return 'Wait for the agent to finish before keeping a note'
+  if (props.pending) return 'Answer the step the agent is waiting on before keeping a note'
   if (props.disabled) return 'This comment is still being read from the vault'
   return 'Save as note, without asking the agent (Alt+Enter)'
 })

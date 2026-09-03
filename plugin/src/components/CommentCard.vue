@@ -120,6 +120,7 @@
         <CommentInput
           :key="activeId"
           :busy="busy"
+          :pending="pending"
           :disabled="!session"
           :focus="fresh"
           :host="host"
@@ -156,7 +157,7 @@
  * that question too, but it cannot tell the card, and the card cannot reach into the editor.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { TFile, type EventRef } from 'obsidian'
+import { Notice, TFile, type EventRef } from 'obsidian'
 import Badge from './obsidian/Badge.vue'
 import Button from './obsidian/Button.vue'
 import ConfirmModal from './obsidian/ConfirmModal.vue'
@@ -244,10 +245,19 @@ const agentOptions = computed(() => {
   const named = registry.get(AbeleConfig.getInstance().ai.commentAgentId ?? '')
   if (named && !listed.some((agent) => agent.id === named.id)) listed.unshift(named)
 
-  const current = registry.get(agentId.value)
-  if (current && !listed.some((agent) => agent.id === current.id)) listed.push(current)
+  const options = listed.map((agent) => ({ value: agent.id, display: agent.name }))
 
-  return listed.map((agent) => ({ value: agent.id, display: agent.name }))
+  // The agent this conversation is on, whatever has become of it. A `select` handed a value
+  // none of its options carry shows the first one instead, so a comment left on a deleted
+  // agent would sit there naming one it has nothing to do with; the id, marked, is at least
+  // true. `session.agent` has already fallen back to the default, so the chat still works.
+  const current = agentId.value
+  if (current && !options.some((option) => option.value === current)) {
+    const known = registry.get(current)
+    options.push({ value: current, display: known ? known.name : `${current} (deleted)` })
+  }
+
+  return options
 })
 
 const chooseAgent = (id: string) => {
@@ -256,6 +266,12 @@ const chooseAgent = (id: string) => {
 }
 const state = computed(() => session.value?.commentState.value ?? 'idle')
 const busy = computed(() => state.value === 'busy')
+/**
+ * A turn that has stopped to ask something — an approval, or a question — rather than one that
+ * is running. The composer needs the two apart: a note kept now would land in the middle of
+ * that turn, while a question typed now simply waits for it.
+ */
+const pending = computed(() => state.value === 'pending')
 const promoted = computed(() => session.value?.kind === 'chat')
 
 /**
@@ -422,8 +438,18 @@ async function reveal(): Promise<void> {
 const openInSidebar = () => void reveal()
 
 const onSend = (text: string) => void session.value?.sendMessage(text)
-/** Kept, not asked: the words go into the conversation and no agent is started. */
-const onNote = (text: string) => void session.value?.addUserNote(text)
+/**
+ * Kept, not asked: the words go into the conversation and no agent is started.
+ *
+ * The session refuses one in the middle of a turn — the composer's button is already dark
+ * there, so this is the race between the two — and a refusal that said nothing would look
+ * exactly like a note that was saved.
+ */
+const onNote = (text: string) =>
+  void (async () => {
+    const kept = await session.value?.addUserNote(text)
+    if (kept === false) new Notice('Finish or dismiss the pending step first')
+  })()
 const onAbort = () => session.value?.abort()
 </script>
 

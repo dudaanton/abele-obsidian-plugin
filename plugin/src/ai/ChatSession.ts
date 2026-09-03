@@ -1250,13 +1250,24 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    * somewhere the agent will never see them.
    *
    * `sendMessage` cannot do this with a flag: everything after the push is what it is for.
+   *
+   * Returns whether the note was kept, so a caller can say why it was not.
    */
-  async addUserNote(content: string): Promise<void> {
+  async addUserNote(content: string): Promise<boolean> {
+    // Nothing may be pushed into the middle of a turn. A `tool_use` and its `tool_result` are
+    // one pair as far as every provider is concerned, and a note landing between them is a
+    // history the next request is rejected for — so a turn in flight, a turn paused on an
+    // approval and a turn waiting on an answer are all refused. `sendMessage` can queue
+    // instead; a note has nothing to be queued for, since nothing is going to run.
+    if (this.isStreaming.value || this.isCompacting.value) return false
+    if (this.pendingToolCalls.value.length || this.pendingQuestions.value) return false
+
     const text = content.trim()
-    if (!text) return
+    if (!text) return false
 
     this.allInternalMessages.push(await this.userMessage(text))
     await this.save()
+    return true
   }
 
   async sendMessage(content: string, attachments?: string[]): Promise<void> {
