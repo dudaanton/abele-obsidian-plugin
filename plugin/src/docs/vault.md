@@ -122,8 +122,10 @@ A marker is never written into the middle of a construct that a dozen characters
 `[[link]]` or `![[embed]]`, a `[text](url)` link, inline code, a `==highlight==`, a `[^1]`
 footnote reference, a callout's `[!type]` or a task's `[ ]` box. A comment made on a selection
 that ended halfway through one of those is anchored after the end of it instead, and its quote
-reaches that far as well. A fence, frontmatter and the row of dashes shaping a table have no
-such end, and a comment there is refused rather than written.
+reaches that far as well. A fence, frontmatter, any line of a table and a callout's title line
+have no such end, and a comment there is refused rather than written — the last two are drawn
+by widgets of Obsidian's own, which swallow a marker whole and leave a comment nothing can
+reach. The body lines of a callout take one normally.
 
 **Never write, move or edit a marker.** It is an index into a file the plugin owns: an id with
 no file behind it draws an icon that opens nothing, and a marker carried away from its passage

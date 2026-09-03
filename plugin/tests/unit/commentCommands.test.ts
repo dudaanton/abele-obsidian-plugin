@@ -195,7 +195,7 @@ describe('a place that cannot hold a marker', () => {
 
     expect(create).not.toHaveBeenCalled()
     expect(Notice.shown).toEqual([
-      'A comment cannot be anchored inside code, frontmatter or a table divider',
+      'A comment cannot be anchored inside code, frontmatter, a table or a callout title',
     ])
   })
 
@@ -210,8 +210,46 @@ describe('a place that cannot hold a marker', () => {
 
     expect(create).not.toHaveBeenCalled()
     expect(Notice.shown).toEqual([
-      'A comment cannot be anchored inside code, frontmatter or a table divider',
+      'A comment cannot be anchored inside code, frontmatter, a table or a callout title',
     ])
+  })
+
+  /**
+   * Both of these are drawn by a widget of Obsidian's own — the cells of a table, and a
+   * callout's header — and a marker written into either is swallowed by it: the comment is
+   * made, and there is nothing on screen to open it with ever again.
+   */
+  it('refuses a cell of a table', async () => {
+    const table = '| a | b |\n| --- | --- |\n| one | two |'
+
+    await commentHere(fakeEditor(table, { ch: table.indexOf('one') + 3 }), noteFile())
+
+    expect(create).not.toHaveBeenCalled()
+    expect(Notice.shown).toEqual([
+      'A comment cannot be anchored inside code, frontmatter, a table or a callout title',
+    ])
+  })
+
+  it("refuses a callout's title line, and takes the body of it", async () => {
+    const callout = '> [!note] Titled\n> Body of it.'
+
+    await commentHere(fakeEditor(callout, { ch: callout.indexOf('Titled') + 6 }), noteFile())
+
+    expect(create).not.toHaveBeenCalled()
+    expect(Notice.shown).toEqual([
+      'A comment cannot be anchored inside code, frontmatter, a table or a callout title',
+    ])
+
+    Notice.shown.length = 0
+    await commentHere(fakeEditor(callout, { ch: callout.length }), noteFile())
+
+    expect(Notice.shown).toEqual([])
+    expect(create).toHaveBeenCalledWith(
+      expect.anything(),
+      callout.length,
+      undefined,
+      callout.length
+    )
   })
 
   /** Inline code is no longer one of them: there is a backtick to move past. */

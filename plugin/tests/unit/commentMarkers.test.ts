@@ -240,11 +240,21 @@ describe('anchoring on something that is not plain text', () => {
     expect(at(numbered, after(numbered, '1. ['))).toBe(after(numbered, '1. [x] '))
   })
 
-  /** And past the callout's space for the same reason: `> [!note]%%c:…%%` is a blockquote. */
-  it('carries one that stopped inside a callout type past its bracket and space', () => {
+  /**
+   * A callout's own line is refused outright now — Obsidian draws it as a header the marker
+   * would vanish into — so there is nothing left to carry. The hop past the type still stands
+   * for a callout that opens somewhere a title line cannot: inside a list item, say.
+   */
+  it('refuses one that stopped inside a callout type', () => {
     const text = '> [!note] Title\n> Body text.'
 
-    expect(at(text, after(text, '> [!no'))).toBe(after(text, '> [!note] '))
+    expect(anchorFor(text, after(text, '> [!no'))).toBeNull()
+  })
+
+  it('carries one that stopped inside a callout type opened inside a list item', () => {
+    const text = '- > [!note] Title'
+
+    expect(at(text, after(text, '- > [!no'))).toBe(after(text, '- > [!note] '))
   })
 
   it('keeps going until it is outside every construct it landed in', () => {
@@ -271,9 +281,10 @@ describe('anchoring on something that is not plain text', () => {
   })
 
   /**
-   * The row of dashes is the only thing telling Obsidian those lines are a table, and a marker
-   * anywhere on it leaves the whole block rendering as raw pipes and dashes. There is nowhere
-   * on that line to move to, so the comment is declined.
+   * A table is rendered by a widget of Obsidian's own, and the widget draws the cells rather
+   * than the text: a marker written into any of those lines is swallowed whole — no icon, no
+   * way back to the comment — and one on the row of dashes leaves the block rendering as raw
+   * pipes instead. Neither has anywhere on the line to move to, so the whole block is refused.
    */
   describe('a table', () => {
     const table = ['| a | b |', '| --- | --- |', '| one | two |', '', 'after'].join('\n')
@@ -284,9 +295,18 @@ describe('anchoring on something that is not plain text', () => {
       expect(anchorFor(table, table.indexOf('| ---') + '| --- | --- |'.length)).toBeNull()
     })
 
-    it('leaves a cell alone, which a marker does not break', () => {
-      expect(at(table, after(table, '| one'))).toBe(after(table, '| one'))
-      expect(at(table, after(table, '| a'))).toBe(after(table, '| a'))
+    it('refuses a cell, which the widget swallows the marker in', () => {
+      expect(anchorFor(table, after(table, '| one'))).toBeNull()
+      expect(anchorFor(table, after(table, '| one | two |'))).toBeNull()
+    })
+
+    it('refuses the header row as well as the body', () => {
+      expect(anchorFor(table, after(table, '| a'))).toBeNull()
+      expect(anchorFor(table, table.indexOf('| a | b |'))).toBeNull()
+    })
+
+    it('leaves the prose after it alone', () => {
+      expect(at(table, after(table, 'after'))).toBe(after(table, 'after'))
     })
 
     it('is only a table when a row of dashes says so', () => {
@@ -294,6 +314,54 @@ describe('anchoring on something that is not plain text', () => {
       const prose = 'A thought.\n--- and another\nmore'
 
       expect(at(prose, prose.indexOf('---') + 2)).toBe(prose.indexOf('---') + 2)
+    })
+
+    it('leaves a pipe used in prose where it is', () => {
+      const prose = 'Read it as a | b, meaning either.'
+
+      expect(at(prose, after(prose, 'a | b'))).toBe(after(prose, 'a | b'))
+    })
+  })
+
+  /**
+   * A callout's title line is drawn by Obsidian as the callout's header — the `> [!type]` part
+   * disappears into a fold arrow and an icon, and a marker left on that line goes with it. The
+   * body is ordinary text inside a blockquote, and keeps its marker.
+   */
+  describe('a callout', () => {
+    const callout = ['> [!note] Titled', '> Body of it.', '', 'after'].join('\n')
+
+    it('refuses the title line', () => {
+      expect(anchorFor(callout, after(callout, '> [!note] Titled'))).toBeNull()
+      expect(anchorFor(callout, after(callout, '> [!note]'))).toBeNull()
+      expect(anchorFor(callout, 0)).toBeNull()
+    })
+
+    it('refuses a title line with no title on it', () => {
+      const bare = ['> [!warning]', '> Body of it.'].join('\n')
+
+      expect(anchorFor(bare, after(bare, '> [!warning]'))).toBeNull()
+    })
+
+    it('refuses a foldable one, and a nested one', () => {
+      const folded = ['> [!tip]- Folded', '> > [!note] Inner', '> > Inner body.'].join('\n')
+
+      expect(anchorFor(folded, after(folded, '> [!tip]- Folded'))).toBeNull()
+      expect(anchorFor(folded, after(folded, '> > [!note] Inner'))).toBeNull()
+      expect(at(folded, after(folded, 'Inner body.'))).toBe(after(folded, 'Inner body.'))
+    })
+
+    it('leaves the body of it alone', () => {
+      expect(at(callout, after(callout, '> Body of it.'))).toBe(after(callout, '> Body of it.'))
+      expect(at(callout, after(callout, 'after'))).toBe(after(callout, 'after'))
+    })
+
+    it('leaves a quotation that is not a callout alone', () => {
+      const quote = ['> Ordinary quotation.', 'after'].join('\n')
+
+      expect(at(quote, after(quote, 'Ordinary quotation.'))).toBe(
+        after(quote, 'Ordinary quotation.')
+      )
     })
   })
 

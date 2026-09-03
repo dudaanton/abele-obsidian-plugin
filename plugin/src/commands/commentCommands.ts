@@ -24,11 +24,13 @@ export async function commentHere(editor: Editor, file: TFile): Promise<void> {
    *
    * A selection that ended in the middle of a link, an embed, a footnote or a checkbox is
    * carried out to the end of it — a marker written inside any of those destroys it. A fence,
-   * frontmatter and the row of dashes shaping a table have no such end, and are declined.
+   * frontmatter, a table and a callout's title line have no such end, and are declined: the
+   * first two break on a marker, and the last two are drawn by widgets that swallow it, so the
+   * comment would be made and never be reachable again.
    */
   const anchor = anchorFor(text, to)
   if (!anchor) {
-    new Notice('A comment cannot be anchored inside code, frontmatter or a table divider')
+    new Notice('A comment cannot be anchored inside code, frontmatter, a table or a callout title')
     return
   }
 

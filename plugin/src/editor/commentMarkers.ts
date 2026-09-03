@@ -237,25 +237,66 @@ const TABLE_RULE = /^[ \t|:-]+$/
 const isTableRule = (line: string): boolean =>
   TABLE_RULE.test(line) && line.includes('|') && line.includes('-')
 
+/** A line shaped like part of a table: it opens with a pipe, or it is the row of dashes. */
+const isTableLine = (line: string): boolean => /^[ \t]*\|/.test(line) || isTableRule(line)
+
 /**
- * Whether `pos` is on the row of dashes shaping a table.
+ * The type of a callout, at the head of the line that carries its title.
  *
- * That row is the whole of what makes a table a table, and a marker anywhere on it — including
- * at either end — leaves the block rendering as raw pipes. There is nothing on the line to
- * move past, so this is a refusal rather than a nudge.
+ * `> [!note]`, `> [!tip]- Folded`, and the same nested inside another callout. Only the head
+ * of the line counts: `[!note]` written mid-sentence is text, and Obsidian renders it as text.
  */
-function onTableRule(text: string, pos: number): boolean {
-  const lineFrom = text.lastIndexOf('\n', pos - 1) + 1
+const CALLOUT_TITLE = /^[ \t>]*>[ \t]*\[![^\]\n]+\]/
+
+/** The line `pos` sits on, and where in the text it starts and ends. */
+function lineAt(text: string, pos: number): { from: number; to: number; line: string } {
+  const from = text.lastIndexOf('\n', pos - 1) + 1
   const newline = text.indexOf('\n', pos)
-  const lineTo = newline === -1 ? text.length : newline
-  if (pos > lineTo) return false
+  const to = newline === -1 ? text.length : newline
+  return { from, to, line: text.slice(from, to) }
+}
 
-  const line = text.slice(lineFrom, lineTo)
-  if (!isTableRule(line)) return false
+/**
+ * Whether `pos` is anywhere on a table.
+ *
+ * A table is drawn by a widget of Obsidian's own, and the widget draws the cells rather than
+ * the text of the line: a marker written into a cell is swallowed by it — no icon, nothing to
+ * press, and a comment that cannot be reached again. The row of dashes is worse still, since
+ * it is the whole of what makes those lines a table and a marker on it leaves the block
+ * rendering as raw pipes. Nowhere on any of those lines is there an end to move past, so the
+ * whole block is a refusal rather than a nudge.
+ *
+ * A block of table-shaped lines is only a table when a row of dashes says so; without one
+ * they are lines that happen to start with a pipe, and Obsidian renders them as prose.
+ */
+function onTableRow(text: string, pos: number): boolean {
+  const here = lineAt(text, pos)
+  if (pos > here.to || !isTableLine(here.line)) return false
 
-  // A rule with no header above it is a line of dashes in prose, not a table.
-  const above = text.lastIndexOf('\n', lineFrom - 2) + 1
-  return lineFrom > 0 && text.slice(above, lineFrom - 1).includes('|')
+  const lines = text.split('\n')
+  const index = text.slice(0, here.from).split('\n').length - 1
+
+  for (let i = index; i >= 0 && isTableLine(lines[i]); i--) if (isTableRule(lines[i])) return true
+  for (let i = index; i < lines.length && isTableLine(lines[i]); i++) {
+    if (isTableRule(lines[i])) return true
+  }
+
+  return false
+}
+
+/**
+ * Whether `pos` is on the line that names a callout.
+ *
+ * That line is not shown: Obsidian renders it as the callout's header — an icon, the title,
+ * and a fold arrow — and a marker left on it is drawn nowhere at all. The body is ordinary
+ * text inside a blockquote and keeps its marker, which is why this asks about the one line
+ * rather than the block.
+ */
+function onCalloutTitle(text: string, pos: number): boolean {
+  const here = lineAt(text, pos)
+  if (pos > here.to) return false
+
+  return CALLOUT_TITLE.test(here.line)
 }
 
 /** Where a comment's marker goes, and how far its quote reaches. `null` when there is nowhere. */
@@ -273,9 +314,10 @@ export interface CommentAnchorPoint {
  * is carried with it: the passage the reader chose plus the rest of the thing they stopped
  * halfway through, which is what keeps the underline over something recognisable.
  *
- * `null` is the refusal, and there are three of them: a fence, where the marker would render
- * as text; frontmatter, where it breaks the YAML; and a table's row of dashes, where it breaks
- * the table. None of the three has an end worth moving to.
+ * `null` is the refusal, and there are four of them: a fence, where the marker would render as
+ * text; frontmatter, where it breaks the YAML; a table, whose widget swallows the marker in a
+ * cell and whose row of dashes the marker breaks; and a callout's title line, which is drawn
+ * as a header the marker disappears into. None of the four has an end worth moving to.
  */
 export function anchorFor(text: string, pos: number): CommentAnchorPoint | null {
   const at = pastConstructs(text, pos)
@@ -283,7 +325,7 @@ export function anchorFor(text: string, pos: number): CommentAnchorPoint | null 
   // Checked after the hop rather than before: `isCommentablePosition` also refuses the inside
   // of inline code, which is a place the hop has just carried the position out of.
   if (!isCommentablePosition(text, at)) return null
-  if (onTableRule(text, at)) return null
+  if (onTableRow(text, at) || onCalloutTitle(text, at)) return null
 
   return { pos: at, quoteTo: at }
 }
