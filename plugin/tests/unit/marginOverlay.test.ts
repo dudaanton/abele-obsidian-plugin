@@ -9,7 +9,19 @@
  * measuring is kept out of this function and stubbed in the tests that drive the overlay.
  */
 import { describe, it, expect } from 'vitest'
-import { stackEntries, MARGIN_MIN_SPACE, SIDENOTE_GAP } from '@/editor/MarginOverlay'
+// The stand-in for the plugin API installs Obsidian's `HTMLElement` helpers on import —
+// the overlay calls `toggleClass`, which happy-dom does not ship.
+import 'obsidian'
+import type { EditorView } from '@codemirror/view'
+import {
+  stackEntries,
+  MARGIN_MIN_SPACE,
+  SIDENOTE_GAP,
+  MarginOverlay,
+  marginOverlayFor,
+  type MarginEntry,
+  type MarginEntryKind,
+} from '@/editor/MarginOverlay'
 
 describe('stacking margin entries', () => {
   it('leaves an entry where its anchor is when nothing is above it', () => {
@@ -81,5 +93,210 @@ describe('stacking margin entries', () => {
   it('states the width below which the margin is unusable', () => {
     expect(MARGIN_MIN_SPACE).toBe(200)
     expect(SIDENOTE_GAP).toBe(4)
+  })
+})
+
+/**
+ * A stand-in for the editor view. A real `EditorView` cannot be built here: happy-dom
+ * computes no layout, so `coordsAtPos` has nothing to measure, and Obsidian's editor state
+ * fields are not modelled. The overlay touches four things — `scrollDOM`, `contentDOM`,
+ * `coordsAtPos` and the scroller's `scrollTop` — and all four are stubbed.
+ */
+function fakeView(opts: {
+  contentRight: number
+  scrollerRight: number
+  /** Document position → top in viewport coordinates; a missing position is out of view. */
+  tops?: Record<number, number>
+  scrollTop?: number
+}): EditorView {
+  const doc = window.document
+  const scrollDOM = doc.createElement('div')
+  const contentDOM = doc.createElement('div')
+  scrollDOM.appendChild(contentDOM)
+  doc.body.appendChild(scrollDOM)
+
+  const rect = (right: number) =>
+    ({ left: 0, top: 0, right, bottom: 0, width: right, height: 0, x: 0, y: 0 }) as DOMRect
+
+  scrollDOM.getBoundingClientRect = () => rect(opts.scrollerRight)
+  contentDOM.getBoundingClientRect = () => rect(opts.contentRight)
+  Object.defineProperty(scrollDOM, 'scrollTop', { value: opts.scrollTop ?? 0, writable: true })
+
+  return {
+    scrollDOM,
+    contentDOM,
+    coordsAtPos: (pos: number) => {
+      const top = opts.tops?.[pos]
+      return top === undefined ? null : { top, bottom: top, left: 0, right: 0 }
+    },
+  } as unknown as EditorView
+}
+
+function fakeEntry(
+  kind: MarginEntryKind,
+  id: string,
+  anchorPos: number,
+  height: number
+): MarginEntry {
+  const el = window.document.createElement('div')
+  el.classList.add(`abele-${kind}-widget-container`)
+  // happy-dom reports 0 for every measured box; the height is what the stack is made of.
+  Object.defineProperty(el, 'offsetHeight', { value: height })
+  return { id, kind, anchorPos, el }
+}
+
+describe('the margin overlay', () => {
+  it('adds one layer to the scroller and takes it away again', () => {
+    const view = fakeView({ contentRight: 700, scrollerRight: 1000 })
+    const overlay = new MarginOverlay(view)
+
+    const layer = view.scrollDOM.querySelector('.abele-margin-overlay')
+    expect(layer).not.toBeNull()
+    // The old name stays on the element: anything that styled the footnote layer by it holds.
+    expect(layer?.classList.contains('abele-footnotes-overlay')).toBe(true)
+
+    overlay.destroy()
+    expect(view.scrollDOM.querySelector('.abele-margin-overlay')).toBeNull()
+  })
+
+  it('stacks footnotes and comments in one column', () => {
+    const view = fakeView({
+      contentRight: 700,
+      scrollerRight: 1000,
+      tops: { 10: 0, 20: 10, 300: 90, 400: 400 },
+    })
+    const overlay = new MarginOverlay(view)
+    const f1 = fakeEntry('footnote', 'f1', 10, 40)
+    const f2 = fakeEntry('footnote', 'f2', 400, 10)
+    const c1 = fakeEntry('comment', 'c1', 20, 50)
+    const c2 = fakeEntry('comment', 'c2', 300, 30)
+
+    overlay.setEntries('footnote', [f1, f2])
+    overlay.setEntries('comment', [c1, c2])
+    overlay.position()
+
+    expect(f1.el.style.top).toBe('0px')
+    expect(c1.el.style.top).toBe('44px')
+    expect(c2.el.style.top).toBe('98px')
+    expect(f2.el.style.top).toBe('400px')
+  })
+
+  it('gives every entry the same measured width and left edge', () => {
+    const view = fakeView({ contentRight: 700, scrollerRight: 1000, tops: { 10: 0 } })
+    const overlay = new MarginOverlay(view)
+    const entry = fakeEntry('footnote', 'f1', 10, 40)
+
+    overlay.setEntries('footnote', [entry])
+    overlay.position()
+
+    // 300 px of margin: min(300, max(180, 300 - 16)) wide, 8 px right of the text column.
+    expect(entry.el.style.width).toBe('284px')
+    expect(entry.el.style.left).toBe('708px')
+  })
+
+  it('hides an entry whose anchor scrolled out of view, by its own kind', () => {
+    const view = fakeView({ contentRight: 700, scrollerRight: 1000, tops: { 10: 0 } })
+    const overlay = new MarginOverlay(view)
+    const shown = fakeEntry('footnote', 'f1', 10, 40)
+    const gone = fakeEntry('comment', 'c1', 999, 40)
+
+    overlay.setEntries('footnote', [shown])
+    overlay.setEntries('comment', [gone])
+    overlay.position()
+
+    expect(shown.el.classList.contains('abele-footnote-widget-container_hidden')).toBe(false)
+    expect(gone.el.classList.contains('abele-comment-widget-container_hidden')).toBe(true)
+  })
+
+  it('leaves one provider alone when another replaces its entries', () => {
+    const view = fakeView({ contentRight: 700, scrollerRight: 1000, tops: { 10: 0, 20: 10 } })
+    const overlay = new MarginOverlay(view)
+    const footnote = fakeEntry('footnote', 'f1', 10, 40)
+    const comment = fakeEntry('comment', 'c1', 20, 50)
+
+    overlay.setEntries('footnote', [footnote])
+    overlay.setEntries('comment', [comment])
+    overlay.position()
+    overlay.setEntries('footnote', [])
+    overlay.position()
+
+    expect(footnote.el.isConnected).toBe(false)
+    expect(comment.el.isConnected).toBe(true)
+    // Nothing above it any more, so it sits at its anchor.
+    expect(comment.el.style.top).toBe('10px')
+  })
+
+  it('keeps one overlay per view and forgets it when it is destroyed', () => {
+    const view = fakeView({ contentRight: 700, scrollerRight: 1000 })
+    const other = fakeView({ contentRight: 700, scrollerRight: 1000 })
+
+    const overlay = marginOverlayFor(view)
+    expect(marginOverlayFor(view)).toBe(overlay)
+    expect(marginOverlayFor(other)).not.toBe(overlay)
+
+    overlay.destroy()
+    expect(marginOverlayFor(view)).not.toBe(overlay)
+  })
+})
+
+describe('whether the margin has room', () => {
+  it('reports no room under 200px and hides everything', () => {
+    const view = fakeView({ contentRight: 900, scrollerRight: 1000, tops: { 10: 0 } })
+    const overlay = new MarginOverlay(view)
+    const footnote = fakeEntry('footnote', 'f1', 10, 40)
+    const comment = fakeEntry('comment', 'c1', 10, 40)
+
+    overlay.setEntries('footnote', [footnote])
+    overlay.setEntries('comment', [comment])
+    overlay.position()
+
+    expect(overlay.hasRoom()).toBe(false)
+    expect(footnote.el.classList.contains('abele-footnote-widget-container_hidden')).toBe(true)
+    expect(comment.el.classList.contains('abele-comment-widget-container_hidden')).toBe(true)
+    expect(footnote.el.style.top).toBe('')
+  })
+
+  it('reports room at exactly 200px', () => {
+    const view = fakeView({ contentRight: 800, scrollerRight: 1000, tops: { 10: 0 } })
+    const overlay = new MarginOverlay(view)
+
+    overlay.setEntries('footnote', [fakeEntry('footnote', 'f1', 10, 40)])
+    overlay.position()
+
+    expect(overlay.hasRoom()).toBe(true)
+  })
+
+  it('tells a listener when the answer changes, and only then', () => {
+    let scrollerRight = 1000
+    const view = fakeView({ contentRight: 700, scrollerRight: 1000, tops: { 10: 0 } })
+    view.scrollDOM.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        top: 0,
+        right: scrollerRight,
+        bottom: 0,
+        width: scrollerRight,
+        height: 0,
+        x: 0,
+        y: 0,
+      }) as DOMRect
+
+    const overlay = new MarginOverlay(view)
+    const seen: boolean[] = []
+    const stop = overlay.onRoomChange((hasRoom) => seen.push(hasRoom))
+
+    overlay.position()
+    overlay.position()
+    expect(seen).toEqual([true])
+
+    scrollerRight = 800
+    overlay.position()
+    expect(seen).toEqual([true, false])
+
+    stop()
+    scrollerRight = 1000
+    overlay.position()
+    expect(seen).toEqual([true, false])
+    expect(overlay.hasRoom()).toBe(true)
   })
 })

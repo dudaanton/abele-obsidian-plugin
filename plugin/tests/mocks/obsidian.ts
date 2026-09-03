@@ -104,6 +104,13 @@ if (typeof HTMLElement !== 'undefined' && !('empty' in HTMLElement.prototype)) {
         this.classList.remove(...classes)
       },
     },
+    toggleClass: {
+      value(this: HTMLElement, classes: string | string[], value: boolean) {
+        for (const cls of Array.isArray(classes) ? classes : [classes]) {
+          this.classList.toggle(cls, value)
+        }
+      },
+    },
     createDiv: {
       value(this: HTMLElement, cls?: string) {
         const el = this.ownerDocument.createElement('div')
