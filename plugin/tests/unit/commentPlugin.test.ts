@@ -175,6 +175,22 @@ describe('the comment decorations', () => {
     expect(el.classList.contains('abele-comment-marker_pending')).toBe(true)
   })
 
+  /**
+   * The count, from the note's text to the DOM the phone draws.
+   *
+   * A phone reported "no number on the icon", and the cause was upstream of the widget: two
+   * comments on one passage were writing two markers, so each icon carried a single id and
+   * had nothing to count. This is the other half of that — one marker with two ids does put
+   * the digit on screen.
+   */
+  it('counts the comments of a marker that carries more than one', () => {
+    const state = stateFor('Passage%%c:k7d2ph,3mq0xa%%')
+    const found = decorationsOf(state)
+    const el = (found[0].value.spec.widget as CommentMarkerWidget).toDOM(fakeView(state))
+
+    expect(el.querySelector('.abele-comment-marker__count')?.textContent).toBe('2')
+  })
+
   it('asks the source to load every id it can see', () => {
     const seen: { notePath: string; ids: string[] }[] = []
     setCommentInfoSource({

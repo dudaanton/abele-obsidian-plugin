@@ -140,6 +140,9 @@ export function parseMarkers(text: string): ParsedMarker[] {
  * of the ``` line breaks the fence just as surely as one inside it. Inline code is refused
  * strictly inside, because commenting on `a value in backticks` is a normal thing to do and
  * the selection ends exactly at the closing backtick.
+ *
+ * A position inside an existing marker is *not* refused: nothing is written there, the id is
+ * appended to the marker that is already sitting on that spot. See `insertMarker`.
  */
 export function isCommentablePosition(text: string, pos: number): boolean {
   for (const region of excludedRegions(text)) {
@@ -150,26 +153,67 @@ export function isCommentablePosition(text: string, pos: number): boolean {
     }
   }
 
-  return !parseMarkers(text).some((marker) => pos > marker.from && pos < marker.to)
+  return true
 }
 
 export function markerText(ids: string[]): string {
   return `%%c:${ids.join(',')}%%`
 }
 
+/** Whitespace without a line break: the width of the gap a merge is allowed to cross. */
+const SAME_LINE_GAP = /^[^\S\n]*$/
+
+/**
+ * The marker a comment made over `from`–`pos` should join, if there is one.
+ *
+ * On a desktop the second comment on a passage ends exactly where the first one's marker
+ * begins, and that was the whole rule. A phone does not aim that well: the widget is atomic,
+ * so a selection dragged as far as the icon ends on the marker's far side or somewhere inside
+ * it, and a comment placed a moment later lands after the marker rather than on it. Each of
+ * those is the same act, and refusing to merge them is what put two icons side by side, one
+ * comment on each and no count on either.
+ *
+ * So four ways in, all of them meaning "this passage": the position sits anywhere from the
+ * marker's start to its end; whitespace is all that separates the two, on either side, on the
+ * same line; or the selection swallowed the marker whole. A line break is where it stops — a
+ * marker at the end of the paragraph above is about another passage, whatever the distance.
+ */
+function mergeTarget(text: string, from: number, pos: number): ParsedMarker | undefined {
+  let best: ParsedMarker | undefined
+  let bestDistance = Infinity
+
+  for (const marker of parseMarkers(text)) {
+    const inside = pos >= marker.from && pos <= marker.to
+    const swallowed = marker.from >= from && marker.to <= pos
+    const after = marker.to <= pos && SAME_LINE_GAP.test(text.slice(marker.to, pos))
+    const before = marker.from >= pos && SAME_LINE_GAP.test(text.slice(pos, marker.from))
+    if (!inside && !swallowed && !after && !before) continue
+
+    const distance = inside ? 0 : Math.min(Math.abs(pos - marker.to), Math.abs(marker.from - pos))
+    if (distance < bestDistance) {
+      bestDistance = distance
+      best = marker
+    }
+  }
+
+  return best
+}
+
 /**
  * Returns the new text and the marker written or extended.
  *
- * A second comment on the same selection appends its id to the marker already sitting there
- * rather than writing another beside it — "the same selection" being a selection that ends
- * exactly where an existing marker begins.
+ * A second comment on the same passage appends its id to the marker already sitting there
+ * rather than writing another beside it. `from` is where the selection started — a caret has
+ * none, so it defaults to the position itself; see `mergeTarget` for what counts as the same
+ * passage.
  */
 export function insertMarker(
   text: string,
   pos: number,
-  id: string
+  id: string,
+  from: number = pos
 ): { text: string; marker: ParsedMarker } {
-  const existing = parseMarkers(text).find((marker) => marker.from === pos)
+  const existing = mergeTarget(text, from, pos)
 
   if (existing) {
     const ids = [...existing.ids, id]

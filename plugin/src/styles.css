@@ -530,6 +530,14 @@ body.is-mobile .abele-comment-marker {
   justify-content: center;
 }
 
+/* Read at arm's length: the smallest size in the theme is a size nobody reads on a phone, and
+   a muted digit beside an accent glyph reads as part of the glyph. */
+body.is-mobile .abele-comment-marker__count {
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  color: var(--text-accent);
+}
+
 /* The passage a comment is anchored to */
 .abele-comment__quote {
   border-bottom: 1px solid var(--text-accent);

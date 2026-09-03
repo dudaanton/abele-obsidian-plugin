@@ -67,7 +67,9 @@ describe('commenting on a selection', () => {
       noteFile()
     )
 
-    expect(create).toHaveBeenCalledWith(expect.anything(), SELECTION.length, SELECTION)
+    // The fourth argument is where the selection started: a marker inside it is one the
+    // comment is about, and `insertMarker` merges into it rather than writing a neighbour.
+    expect(create).toHaveBeenCalledWith(expect.anything(), SELECTION.length, SELECTION, 0)
   })
 
   it('leaves the new card open, with the marker repainted', async () => {
@@ -85,7 +87,56 @@ describe('commenting at the caret', () => {
   it('anchors where the caret is and quotes nothing', async () => {
     await commentHere(fakeEditor(PROSE, { ch: 4 }), noteFile())
 
-    expect(create).toHaveBeenCalledWith(expect.anything(), 4, undefined)
+    expect(create).toHaveBeenCalledWith(expect.anything(), 4, undefined, 4)
+  })
+})
+
+/**
+ * The phone's cases. A marker is drawn as an atomic widget, so a selection dragged as far as
+ * the icon does not stop at the marker's start — it covers it, and what comes back from
+ * `getSelection` has the raw `%%c:…%%` in the middle of it.
+ */
+describe('commenting on a passage that already carries a marker', () => {
+  const MARKED = `${SELECTION}%%c:k7d2ph%% and more.`
+
+  it('takes the marker out of the quote it saves', async () => {
+    const covered = `${SELECTION}%%c:k7d2ph%%`
+
+    await commentHere(
+      fakeEditor(MARKED, { ch: 0, to: covered.length, selection: covered }),
+      noteFile()
+    )
+
+    // The quote is the reader's prose, never our syntax: with the marker left in it, nothing
+    // in the note would ever match it again and the passage would lose its underline.
+    expect(create).toHaveBeenCalledWith(expect.anything(), covered.length, SELECTION, 0)
+  })
+
+  it('starts a comment from a caret inside the marker rather than refusing it', async () => {
+    await commentHere(fakeEditor(MARKED, { ch: SELECTION.length + 4 }), noteFile())
+
+    expect(Notice.shown).toEqual([])
+    expect(create).toHaveBeenCalled()
+  })
+
+  it('quotes nothing when the selection was only a marker', async () => {
+    const marker = '%%c:k7d2ph%%'
+
+    await commentHere(
+      fakeEditor(MARKED, {
+        ch: SELECTION.length,
+        to: SELECTION.length + marker.length,
+        selection: marker,
+      }),
+      noteFile()
+    )
+
+    expect(create).toHaveBeenCalledWith(
+      expect.anything(),
+      SELECTION.length + marker.length,
+      undefined,
+      SELECTION.length
+    )
   })
 })
 

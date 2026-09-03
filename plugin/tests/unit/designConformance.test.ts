@@ -265,6 +265,19 @@ describe('the comment marker, which lives in the stylesheet', () => {
     expect(mobile).toMatch(/justify-content:\s*center/)
   })
 
+  /**
+   * The digit that says how many comments a marker carries — the one thing a phone reported
+   * missing. It was missing because the markers were not merging, but the size it is drawn at
+   * is what keeps it readable once they do: `--font-smallest` beside a 24 px target is a mark
+   * nobody makes out at arm's length.
+   */
+  it('draws the count at a size a phone can read', () => {
+    const mobile = rule('body.is-mobile .abele-comment-marker__count')
+
+    expect(mobile).toMatch(/font-size:\s*var\(--font-ui-smaller\)/)
+    expect(mobile).toMatch(/color:\s*var\(--text-accent\)/)
+  })
+
   it('centres the glyph inside it, on the line it interrupts', () => {
     expect(rule('.abele-comment-marker')).toMatch(/align-items:\s*center/)
   })

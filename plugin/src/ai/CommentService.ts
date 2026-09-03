@@ -211,12 +211,21 @@ export class CommentService implements CommentInfoSource {
    *
    * The file is written here rather than left to the session, because a session with no
    * messages writes nothing — and the marker would then point at a file that does not exist.
+   *
+   * `from` is where the selection started; it defaults to `pos`, which is what a caret is.
+   * Both ends travel because a marker the selection covered is one this comment is about, and
+   * `insertMarker` merges into it instead of writing a second icon beside it.
    */
-  async create(note: TFile, pos: number, quote: string | undefined): Promise<ChatSession> {
+  async create(
+    note: TFile,
+    pos: number,
+    quote: string | undefined,
+    from: number = pos
+  ): Promise<ChatSession> {
     const { app } = GlobalStore.getInstance()
     const id = newCommentId()
 
-    await app.vault.process(note, (text) => insertMarker(text, pos, id).text)
+    await app.vault.process(note, (text) => insertMarker(text, pos, id, from).text)
 
     // The folder has a new file in it, so what was known to be absent may not be any more.
     this.missing.clear()

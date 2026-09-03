@@ -107,6 +107,26 @@ describe('creating a comment', () => {
     expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
   })
 
+  /**
+   * The phone's case, end to end.
+   *
+   * The marker is an atomic widget, so a second selection dragged as far as the icon ends on
+   * the marker's far side rather than at its start. That used to write a second marker beside
+   * the first — two icons, one comment each, and no count on either, which is what the phone
+   * reported.
+   */
+  it('appends its id when the second selection ended on the far side of the marker', async () => {
+    const service = CommentService.getInstance()
+    const first = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const markerEnd = SELECTION_END + `%%c:${first.commentId}%%`.length
+
+    const second = await service.create(noteFile(), markerEnd, 'The selected passage')
+
+    expect(await noteText()).toBe(
+      `Before. The selected passage%%c:${first.commentId},${second.commentId}%% After.\n`
+    )
+  })
+
   it('appends its id to the marker already there rather than writing a second one', async () => {
     const service = CommentService.getInstance()
     const first = await service.create(noteFile(), SELECTION_END, 'The selected passage')

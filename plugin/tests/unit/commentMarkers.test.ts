@@ -135,10 +135,16 @@ describe('deciding whether a comment can go here', () => {
     expect(isCommentablePosition(text, text.indexOf('` now') + 1)).toBe(true)
   })
 
-  it('refuses a position in the middle of an existing marker', () => {
+  /**
+   * A position inside a marker used to be refused, because writing a marker there would have
+   * nested one inside the other. It merges now — `insertMarker` appends the id to whatever it
+   * lands on — and a phone is where this matters: the widget is atomic, so a selection dragged
+   * onto the icon ends on the marker rather than beside it.
+   */
+  it('allows a position inside an existing marker, which merges into it', () => {
     const text = 'x%%c:k7d2ph%%y'
 
-    expect(isCommentablePosition(text, 5)).toBe(false)
+    expect(isCommentablePosition(text, 5)).toBe(true)
     expect(isCommentablePosition(text, 1)).toBe(true)
     expect(isCommentablePosition(text, 13)).toBe(true)
   })
@@ -163,6 +169,61 @@ describe('inserting a marker', () => {
     const result = insertMarker('Passage%%c:k7d2ph%% and more.', 23, '3mq0xa')
 
     expect(result.text).toBe('Passage%%c:k7d2ph%% and%%c:3mq0xa%% more.')
+  })
+
+  /**
+   * The phone's cases, which is where a second comment on the same passage was ending up as a
+   * second icon beside the first — two markers, one comment each, and no count on either.
+   *
+   * The widget is atomic, so a selection dragged as far as the icon does not stop politely at
+   * the marker's start: it ends on the marker's far side, or somewhere in the middle of it.
+   * Each of these is the same act as the exact hit and merges the same way.
+   */
+  describe('near an existing marker', () => {
+    const DOC = 'Passage%%c:k7d2ph%% and more.'
+
+    it('appends when the selection ended on the far side of the marker', () => {
+      const result = insertMarker(DOC, 19, '3mq0xa')
+
+      expect(result.text).toBe('Passage%%c:k7d2ph,3mq0xa%% and more.')
+      expect(result.marker.ids).toEqual(['k7d2ph', '3mq0xa'])
+    })
+
+    it('appends when the position fell inside the marker', () => {
+      expect(insertMarker(DOC, 18, '3mq0xa').text).toBe('Passage%%c:k7d2ph,3mq0xa%% and more.')
+      expect(insertMarker(DOC, 12, '3mq0xa').text).toBe('Passage%%c:k7d2ph,3mq0xa%% and more.')
+    })
+
+    it('appends across the space that follows the marker', () => {
+      expect(insertMarker(DOC, 20, '3mq0xa').text).toBe('Passage%%c:k7d2ph,3mq0xa%% and more.')
+    })
+
+    it('appends across the space that precedes the marker', () => {
+      const spaced = 'Passage %%c:k7d2ph%% and more.'
+
+      expect(insertMarker(spaced, 7, '3mq0xa').text).toBe('Passage %%c:k7d2ph,3mq0xa%% and more.')
+    })
+
+    it('appends when the selection swallowed the marker whole', () => {
+      // "passage%%c:k7d2ph%% and", selected from 0: the marker is inside what was chosen.
+      const result = insertMarker(DOC, 23, '3mq0xa', 0)
+
+      expect(result.text).toBe('Passage%%c:k7d2ph,3mq0xa%% and more.')
+    })
+
+    it('leaves a marker on another line alone', () => {
+      const lines = 'Passage%%c:k7d2ph%%\nA second paragraph.'
+
+      expect(insertMarker(lines, 20, '3mq0xa').text).toBe(
+        'Passage%%c:k7d2ph%%\n%%c:3mq0xa%%A second paragraph.'
+      )
+    })
+
+    it('takes the nearer marker when two of them are in reach', () => {
+      const two = 'a%%c:aaaaaa%%   %%c:bbbbbb%%b'
+
+      expect(insertMarker(two, 15, 'cccccc').text).toBe('a%%c:aaaaaa%%   %%c:bbbbbb,cccccc%%b')
+    })
   })
 })
 
