@@ -215,6 +215,28 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     return this.pendingToolCalls.value.length > 0 || this.pendingQuestions.value !== null
   }
 
+  isPinned(messageId: string): boolean {
+    return this.pinned.value.includes(messageId)
+  }
+
+  /**
+   * Puts a message in the note's margin and writes the file.
+   *
+   * Both mutators replace the array rather than pushing into it: `pinned` is a `shallowRef`,
+   * and a push into the same array changes nothing anything is watching.
+   */
+  async pin(messageId: string): Promise<void> {
+    if (this.isPinned(messageId)) return
+    this.pinned.value = [...this.pinned.value, messageId]
+    await this.save()
+  }
+
+  async unpin(messageId: string): Promise<void> {
+    if (!this.isPinned(messageId)) return
+    this.pinned.value = this.pinned.value.filter((id) => id !== messageId)
+    await this.save()
+  }
+
   /** The comment's id, which is its file's basename. Null for anything not anchored. */
   get commentId(): string | null {
     if (!this.anchor.value) return null
@@ -291,6 +313,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
   /** Where this session is anchored, for a comment and for a chat expanded from one. */
   public readonly anchor = shallowRef<CommentAnchor | null>(null)
+
+  /**
+   * The messages this comment keeps in the note's margin, oldest pin first.
+   *
+   * The one place a pin is recorded. The margin entry, the card and the action in the thread
+   * all read this ref, so there is never a second answer to whether a message is pinned.
+   */
+  public readonly pinned = shallowRef<string[]>([])
 
   private destroyed = false
 
@@ -1599,6 +1629,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.agentId.value = AgentRegistry.getInstance().defaultAgent()?.id ?? ''
     this.overrides.value = {}
     this.anchor.value = null
+    this.pinned.value = []
     this.syncScopeFromAgent()
   }
 
@@ -1729,6 +1760,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       // note has to keep finding this file, and `kind` is how a reopened one knows what it is.
       kind: this.anchor.value ? (this.kind === 'comment' ? 'comment' : 'chat') : undefined,
       anchor: this.anchor.value ?? undefined,
+      // Absent rather than empty when nothing is pinned: an unpin should leave the file the
+      // way it was before the pin, not carrying a field that says nothing.
+      pinned: this.pinned.value.length ? [...this.pinned.value] : undefined,
       // Only what this chat actually changed. Writing the resolved values instead would freeze
       // the chat against today's agent and defeat the whole point of resolving on read.
       overrides: Object.keys(overrides).length ? { ...overrides } : undefined,
@@ -1802,6 +1836,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // by then or the note is left out until the next agent change.
     if (result.metadata?.kind) this.kind = result.metadata.kind
     this.anchor.value = result.metadata?.anchor ?? null
+    this.pinned.value = result.metadata?.pinned ?? []
 
     // Migrate old flat format → tree format once
     const needsMigration =
