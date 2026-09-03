@@ -12,6 +12,13 @@
       @keydown="onKeydown"
     />
     <Icon
+      class="abele-comment-input__note"
+      icon="sticky-note"
+      :disabled="noteDisabled"
+      :tooltip="noteTooltip"
+      @click="note"
+    />
+    <Icon
       class="abele-comment-input__send"
       :icon="busy ? 'square' : 'send-horizontal'"
       :disabled="sendDisabled"
@@ -25,10 +32,11 @@
 /**
  * The composer of a comment chat: one field and one button, and deliberately nothing else.
  *
- * No attachments, no voice, no slash commands — each of those is a reason to open the comment
- * as a full chat, which is one press away in the card's header. What is here is what a
- * question in the margin needs: a field that starts at one line, grows to five and then
- * scrolls, and a button that becomes a stop while the agent is working.
+ * No attachments and no slash commands — each of those is a reason to open the comment as a
+ * full chat, which is one press away in the card's header. What is here is what a question in
+ * the margin needs: a field that starts at one line, grows to five and then scrolls, a button
+ * that becomes a stop while the agent is working, and beside it the one that keeps the words
+ * without asking anybody anything.
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import Icon from './obsidian/Icon.vue'
@@ -65,6 +73,8 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'send', text: string): void
+  /** Keep these words in the conversation, and start nothing. */
+  (e: 'note', text: string): void
   (e: 'abort'): void
 }>()
 
@@ -117,6 +127,19 @@ const sendTooltip = computed(() => {
   return 'Send this question'
 })
 
+/**
+ * Nothing to keep, or nowhere to keep it yet — and not while a turn is running: a note joins
+ * the same history the agent is being answered from, and putting one in halfway through would
+ * land it among the messages that turn is still writing.
+ */
+const noteDisabled = computed(() => props.disabled || props.busy || text.value.trim().length === 0)
+
+const noteTooltip = computed(() => {
+  if (props.busy) return 'Wait for the agent to finish before keeping a note'
+  if (props.disabled) return 'This comment is still being read from the vault'
+  return 'Save as note, without asking the agent (Alt+Enter)'
+})
+
 function send(): void {
   const content = text.value.trim()
   if (props.disabled || !content) return
@@ -133,8 +156,15 @@ function onSend(): void {
   send()
 }
 
+function note(): void {
+  if (noteDisabled.value) return
+
+  emit('note', text.value.trim())
+  text.value = ''
+}
+
 /**
- * Enter sends and Shift+Enter opens a line.
+ * Enter sends, Alt+Enter keeps a note, and Shift+Enter opens a line.
  *
  * `isComposing` is what keeps an IME out of it: committing a Japanese or Chinese candidate
  * with Enter would otherwise post the half-typed question the candidate was part of.
@@ -143,6 +173,7 @@ function onKeydown(event: KeyboardEvent): void {
   if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return
 
   event.preventDefault()
+  if (event.altKey) return note()
   send()
 }
 
@@ -171,6 +202,7 @@ onMounted(() => {
   max-height: 8em;
 }
 
+.abele-comment-input__note,
 .abele-comment-input__send {
   flex: 0 0 auto;
 }
@@ -195,6 +227,8 @@ body.is-mobile .abele-comment-input__field {
   padding: var(--size-4-1) var(--size-4-2);
 }
 
+.abele-comment-input_sheet .abele-comment-input__note,
+body.is-mobile .abele-comment-input__note,
 .abele-comment-input_sheet .abele-comment-input__send,
 body.is-mobile .abele-comment-input__send {
   min-width: var(--size-4-9);

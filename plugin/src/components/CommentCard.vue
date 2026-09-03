@@ -117,6 +117,7 @@
           :focus="fresh"
           :host="host"
           @send="onSend"
+          @note="onNote"
           @abort="onAbort"
         />
       </template>
@@ -409,6 +410,8 @@ async function reveal(): Promise<void> {
 const openInSidebar = () => void reveal()
 
 const onSend = (text: string) => void session.value?.sendMessage(text)
+/** Kept, not asked: the words go into the conversation and no agent is started. */
+const onNote = (text: string) => void session.value?.addUserNote(text)
 const onAbort = () => session.value?.abort()
 </script>
 

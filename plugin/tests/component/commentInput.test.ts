@@ -21,6 +21,13 @@ const mountInput = (
   } = {}
 ) => mount(CommentInput, { props: { busy: false, ...props }, attachTo: document.body })
 
+/** By what it is, not by where it sits: a second action must not renumber the first. */
+const button = (view: ReturnType<typeof mountInput>, icon: string) => {
+  const found = view.findAllComponents(Icon).find((i) => i.props('icon') === icon)
+  if (!found) throw new Error(`no button carrying the icon "${icon}"`)
+  return found
+}
+
 describe('the comment input', () => {
   /**
    * The margin's composer is small on purpose — a 300 px sidenote beside the text — and a
@@ -93,8 +100,7 @@ describe('the comment input', () => {
   it('becomes a stop button while the agent is working', async () => {
     const view = mountInput({ busy: true })
 
-    const send = view.findComponent(Icon)
-    expect(send.props('icon')).toBe('square')
+    const send = button(view, 'square')
 
     await send.trigger('click')
 
@@ -106,7 +112,7 @@ describe('the comment input', () => {
     const view = mountInput({ disabled: true })
 
     expect(view.findComponent(Input).props('disabled')).toBe(true)
-    expect(view.findComponent(Icon).props('disabled')).toBe(true)
+    expect(button(view, 'send-horizontal').props('disabled')).toBe(true)
 
     await view.find('textarea').setValue('Anything')
     await view.find('textarea').trigger('keydown', { key: 'Enter' })
@@ -149,5 +155,66 @@ describe('the comment input', () => {
     const view = mountInput()
 
     expect(document.activeElement).not.toBe(view.find('textarea').element)
+  })
+})
+
+/**
+ * Half of what people write into a comment is not a question.
+ *
+ * A comment is a place in a note as much as it is a chat — a reminder, a second thought,
+ * something to come back to — and running a model over that is a wait and a cost for an answer
+ * nobody wanted. The second button keeps the words in the conversation and starts nothing;
+ * whatever is asked afterwards carries them along, which is the whole reason to write them
+ * here rather than in the note.
+ */
+describe('keeping a note instead of asking', () => {
+  it('offers a second button that says what it does', () => {
+    const view = mountInput()
+
+    expect(button(view, 'sticky-note').props('tooltip')).toBe(
+      'Save as note, without asking the agent (Alt+Enter)'
+    )
+  })
+
+  it('hands the words over and empties itself', async () => {
+    const view = mountInput()
+    await view.find('textarea').setValue('Come back to this paragraph')
+
+    await button(view, 'sticky-note').trigger('click')
+
+    expect(view.emitted('note')).toEqual([['Come back to this paragraph']])
+    expect(view.emitted('send')).toBeUndefined()
+    expect(view.findComponent(Input).props('modelValue')).toBe('')
+  })
+
+  it('takes Alt+Enter, which is Enter without the model', async () => {
+    const view = mountInput()
+    await view.find('textarea').setValue('A thought, not a question')
+
+    await view.find('textarea').trigger('keydown', { key: 'Enter', altKey: true })
+
+    expect(view.emitted('note')).toEqual([['A thought, not a question']])
+    expect(view.emitted('send')).toBeUndefined()
+  })
+
+  it('keeps nothing when there is nothing but whitespace', async () => {
+    const view = mountInput()
+    await view.find('textarea').setValue('   ')
+
+    await view.find('textarea').trigger('keydown', { key: 'Enter', altKey: true })
+
+    expect(view.emitted('note')).toBeUndefined()
+  })
+
+  /** A note goes into the same history the running turn is being answered from. */
+  it('waits its turn while the agent is working', async () => {
+    const view = mountInput({ busy: true })
+    await view.find('textarea').setValue('A thought')
+
+    expect(button(view, 'sticky-note').props('disabled')).toBe(true)
+
+    await button(view, 'sticky-note').trigger('click')
+
+    expect(view.emitted('note')).toBeUndefined()
   })
 })

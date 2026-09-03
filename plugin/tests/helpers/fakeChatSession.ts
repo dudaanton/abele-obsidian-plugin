@@ -58,6 +58,7 @@ export function fakeChatSession({
     load: nothing,
     reset: nothing,
     sendMessage: nothing,
+    addUserNote: nothing,
     switchAgent: nothing,
     createBranch: nothing,
     switchBranch: nothing,

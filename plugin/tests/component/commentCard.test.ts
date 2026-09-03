@@ -219,9 +219,23 @@ describe('an opened card', () => {
       'panel-right-open',
       'trash-2',
       'chevron-up',
-      // The composer's own send button comes last.
+      // The composer's own buttons come last: keep a note, and send.
+      'sticky-note',
       'send-horizontal',
     ])
+  })
+
+  /** A note is the composer's word for it; the session's is a user turn nobody answered. */
+  it('keeps a note in the conversation without starting the agent', async () => {
+    const addUserNote = vi.fn()
+    const sendMessage = vi.fn()
+    seed('k7d2ph', { addUserNote, sendMessage })
+
+    const view = await mountCard(['k7d2ph'])
+    await view.findComponent(CommentInput).vm.$emit('note', 'Come back to this')
+
+    expect(addUserNote).toHaveBeenCalledWith('Come back to this')
+    expect(sendMessage).not.toHaveBeenCalled()
   })
 
   it('drops the folded surface once it is open', async () => {

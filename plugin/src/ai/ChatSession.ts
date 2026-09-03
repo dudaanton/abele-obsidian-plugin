@@ -1217,6 +1217,25 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   // ── Public API ──────────────────────────────────────────────────
 
+  /**
+   * Words the person put into the conversation without asking the agent anything.
+   *
+   * This is the first half of `sendMessage` and nothing else: the bubble appears, the message
+   * joins the history the model is built from, the file is written. No loop, no title, no
+   * compaction — nothing that would make a request. Whatever is asked next carries the notes
+   * with it as ordinary user turns, which is the point of keeping them here rather than
+   * somewhere the agent will never see them.
+   *
+   * `sendMessage` cannot do this with a flag: everything after the push is what it is for.
+   */
+  async addUserNote(content: string): Promise<void> {
+    const text = content.trim()
+    if (!text) return
+
+    this.allInternalMessages.push(await this.userMessage(text))
+    await this.save()
+  }
+
   async sendMessage(content: string, attachments?: string[]): Promise<void> {
     // Busy is not a reason to lose what was typed: it waits its turn instead. `takeQueued`
     // hands it to the loop that is already running, at its next iteration.

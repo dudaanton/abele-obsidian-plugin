@@ -128,7 +128,9 @@ Each comment is a chat file of its own at `AI/Comments/<id>.abchat` — the fold
 `commentFolder` in the settings — in the same format as any other `.abchat`. The quoted
 passage lives there, as `anchor.quote` in the file's metadata, together with `anchor.note`,
 the note the marker sits in. The note carries the marker and nothing else. Comment files stay
-out of the chat history until somebody opens one as a full chat.
+out of the chat history until somebody opens one as a full chat. Not every user turn in one was
+a question: a comment may hold notes the person kept without asking anything, which no agent
+has answered and which are simply part of the conversation from then on.
 
 ## Transfer files
 
