@@ -252,7 +252,11 @@ export class ChatStorage {
     }
   }
 
-  private removeHistoryEntry(path: string): void {
+  /**
+   * Public for the other direction: a comment returned to its note is a margin note again,
+   * and a margin note has no business in the list of conversations somebody browses.
+   */
+  removeHistoryEntry(path: string): void {
     const config = AbeleConfig.getInstance()
     if (!config.ai.chatHistory) return
     config.ai.chatHistory = config.ai.chatHistory.filter((e) => e.path !== path)

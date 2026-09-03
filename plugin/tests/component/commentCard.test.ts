@@ -42,6 +42,7 @@ const OTHER = 'Notes/Elsewhere.md'
 const open: Ref<string | null> = ref(null)
 const remove = vi.fn()
 const expand = vi.fn()
+const collapse = vi.fn()
 const load = vi.fn()
 /** Ids the service has written off, which is what the card says so instead of reading. */
 const missing = new Set<string>()
@@ -66,6 +67,7 @@ beforeEach(() => {
   missing.clear()
   remove.mockReset()
   expand.mockReset()
+  collapse.mockReset()
   load.mockReset().mockResolvedValue(null)
 
   vi.spyOn(CommentService, 'getInstance').mockReturnValue({
@@ -73,6 +75,7 @@ beforeEach(() => {
     load,
     remove,
     expand,
+    collapse,
     isMissing: (id: string) => missing.has(id),
     sessionFor: (id: string) => sessions[id] ?? null,
   } as never)
@@ -426,6 +429,25 @@ describe('a comment that was promoted into a chat', () => {
     expect(revealSidebar).toHaveBeenCalled()
     // Same again: what was asked for is on the sidebar, behind whatever this card is in.
     expect(view.emitted('promoted')).toHaveLength(1)
+  })
+
+  it('takes the conversation back to the margin it came from', async () => {
+    seed('k7d2ph', { kind: 'chat' }, [
+      message({ id: 'u1', role: 'user', content: 'What does this mean?' }),
+    ])
+
+    const view = await mountCard(['k7d2ph'])
+    const back = view
+      .findAllComponents(Button)
+      .find((button) => button.props('text') === 'Back to comment')
+    expect(back).toBeDefined()
+
+    await back!.vm.$emit('click')
+    await nextTick()
+
+    expect(collapse).toHaveBeenCalledWith('k7d2ph')
+    // Nothing has been handed to the sidebar, so a sheet has no reason to get out of the way.
+    expect(view.emitted('promoted')).toBeUndefined()
   })
 
   it('offers no second promotion', async () => {

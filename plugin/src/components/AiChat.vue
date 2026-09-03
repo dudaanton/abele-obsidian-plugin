@@ -22,6 +22,15 @@
       <div class="abele-ai-chat__header">
         <AiAgentSelector />
         <div class="abele-ai-chat__header-actions">
+          <!-- Only for a comment that was expanded into this tab: the way back to the margin
+               it came from, which is where the conversation started. -->
+          <Icon
+            v-if="expandedComment"
+            icon="panel-right-close"
+            with-bg
+            tooltip="Back to the note, as a comment in the margin"
+            @click="backToNote"
+          />
           <Icon icon="refresh-cw" with-bg title="Reload from disk" @click="reloadChat" />
           <Icon icon="sliders-horizontal" with-bg @click="chatSettingsOpen = true" />
           <Icon icon="plus" with-bg @click="handleNewChat" />
@@ -235,7 +244,10 @@ import AiSkillPromptPicker from './AiSkillPromptPicker.vue'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChatService } from '@/ai/ChatService'
+import { CommentService } from '@/ai/CommentService'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { parseMarkers } from '@/editor/commentMarkers'
+import { reliableScrollTo } from '@/helpers/scrollUtils'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
 import type { TemplateVariable } from '@/templates/TemplateParser'
 import { importExternalFile } from '@/ai/attachments'
@@ -676,7 +688,7 @@ watch(
 onMounted(() => {
   if (Platform.isMobile && chatContainer.value) {
     nextTick(() => {
-      const el = chatContainer.value!
+      const el = chatContainer.value
       const safeArea =
         parseInt(
           getComputedStyle(document.documentElement).getPropertyValue('--safe-area-inset-bottom')
@@ -1027,6 +1039,43 @@ const reloadChat = async () => {
   }
   await session.value?.load(file)
   new Notice('Chat reloaded from disk')
+}
+
+/**
+ * A comment that was promoted into this tab, which is the only chat with a way back.
+ *
+ * A comment being read in the sidebar without having been expanded — the card hands one over
+ * on `openFile` — is anchored too, so the kind is what tells them apart.
+ */
+const expandedComment = computed(
+  () => !!session.value?.anchor.value && session.value?.kind === 'chat'
+)
+
+/**
+ * Back to the margin: the conversation returns to its card, and the reader returns to the
+ * passage it was written against.
+ *
+ * The note is opened before the marker is looked for, because the offset is only useful once
+ * there is an editor showing that note to scroll.
+ */
+async function backToNote(): Promise<void> {
+  const current = session.value
+  const id = current?.commentId
+  const note = current?.anchor.value?.note
+  if (!id || !note) return
+
+  await CommentService.getInstance().collapse(id)
+
+  const { app } = GlobalStore.getInstance()
+  await app.workspace.openLinkText(note, '', false)
+
+  const file = app.vault.getAbstractFileByPath(note)
+  if (!(file instanceof TFile)) return
+
+  const marker = parseMarkers(await app.vault.cachedRead(file)).find((candidate) =>
+    candidate.ids.includes(id)
+  )
+  if (marker) reliableScrollTo(marker.from)
 }
 
 const showDebug = () => {

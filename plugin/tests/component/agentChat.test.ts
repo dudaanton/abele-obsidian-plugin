@@ -4,10 +4,16 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
+import { TFile } from 'obsidian'
+import AiChat from '@/components/AiChat.vue'
 import AiAgentSelector from '@/components/AiAgentSelector.vue'
+import Icon from '@/components/obsidian/Icon.vue'
 import AgentOverrideNotice from '@/components/AgentOverrideNotice.vue'
 import { ChatService } from '@/ai/ChatService'
 import { ChatSession } from '@/ai/ChatSession'
+import { CommentService } from '@/ai/CommentService'
+import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
@@ -199,5 +205,70 @@ describe('resolving the model a chat will send to', () => {
   it('declines to move when no fallback exists', () => {
     expect(session.useFallbackModel()).toBe(false)
     expect(session.activeModelId.value).toBe('big')
+  })
+})
+
+/**
+ * The way back out of a comment that was expanded into a chat.
+ *
+ * The header is where a per-chat action belongs, and this one is per-chat in the strictest
+ * sense: it exists only while the chat in front of the reader is a comment's, and pressing it
+ * puts the conversation back in the margin of the note it was written against.
+ */
+describe('an expanded comment in the sidebar', () => {
+  const collapse = vi.fn()
+  const openLinkText = vi.fn().mockResolvedValue(undefined)
+
+  /** A comment file, so the session has an id to be collapsed by. */
+  function anchor(kind: 'chat' | 'comment') {
+    const file = new TFile()
+    file.path = 'AI/Comments/k7d2ph.abchat'
+    file.basename = 'k7d2ph'
+    session.currentChatFile.value = file
+    session.anchor.value = { note: 'Notes/A.md' }
+    session.kind = kind
+  }
+
+  beforeEach(() => {
+    collapse.mockReset()
+    openLinkText.mockClear()
+    ;(GlobalStore.getInstance().app as unknown as { workspace: unknown }).workspace = {
+      openLinkText,
+    }
+    vi.spyOn(ChatService.getInstance(), 'ensureInitialized').mockImplementation(() => {})
+    vi.spyOn(CommentService, 'getInstance').mockReturnValue({ collapse } as never)
+  })
+
+  const backToNote = () => {
+    // The agent picker's dropdown is Obsidian's own component and is stubbed the way the
+    // comment card stubs it; what is being asked here is which actions the header carries.
+    const view = mount(AiChat, { attachTo: document.body, global: { stubs: { Dropdown: true } } })
+    const icon = view
+      .findAllComponents(Icon)
+      .find((candidate) => candidate.props('icon') === 'panel-right-close')
+    return { view, icon }
+  }
+
+  it('is not offered in a chat that was never a comment', () => {
+    expect(backToNote().icon).toBeUndefined()
+  })
+
+  it('is not offered in a comment still being read in the sidebar', () => {
+    anchor('comment')
+
+    expect(backToNote().icon).toBeUndefined()
+  })
+
+  it('collapses the chat and opens the note it is anchored to', async () => {
+    anchor('chat')
+
+    const { icon } = backToNote()
+    expect(icon).toBeDefined()
+
+    await icon!.vm.$emit('click')
+    await nextTick()
+
+    expect(collapse).toHaveBeenCalledWith('k7d2ph')
+    expect(openLinkText).toHaveBeenCalledWith('Notes/A.md', '', false)
   })
 })

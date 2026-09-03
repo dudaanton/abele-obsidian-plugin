@@ -97,11 +97,18 @@
             <Markdown :text="msg.content" :file-path="entry.notePath" />
           </div>
         </div>
-        <Button
-          text="Open in sidebar"
-          tooltip="Show this chat in the AI sidebar"
-          @click="openInSidebar"
-        />
+        <div class="abele-comment-card__promoted-actions">
+          <Button
+            text="Open in sidebar"
+            tooltip="Show this chat in the AI sidebar"
+            @click="openInSidebar"
+          />
+          <Button
+            text="Back to comment"
+            tooltip="Close the sidebar tab and go on with this conversation here"
+            @click="demote"
+          />
+        </div>
       </template>
 
       <template v-else>
@@ -389,6 +396,11 @@ async function promote(): Promise<void> {
 }
 
 const openAsChat = () => void promote()
+/**
+ * The way back. Nothing is emitted: the conversation is coming *out* of the sidebar, so the
+ * host has no reason to move — the card is where the reader is about to go on typing.
+ */
+const demote = (): void => void service.collapse(activeId.value)
 const remove = () => {
   const id = activeId.value
   // `CommentService.remove` clears this too, but only after the marker and the file are gone;
@@ -587,6 +599,16 @@ body.is-mobile .abele-comment-card__agent .abele-obsidian-dropdown .dropdown {
 .abele-comment-card__quote {
   color: var(--text-faint);
   overflow-wrap: anywhere;
+}
+
+/**
+ * Both ways out of a promoted card. They wrap rather than shrink: a sidenote is 180 px at its
+ * narrowest and two buttons on one line there would be two truncated labels.
+ */
+.abele-comment-card__promoted-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
 }
 
 .abele-comment-card__readonly {

@@ -77,4 +77,6 @@ scoped to the note it is anchored in on top of that agent's own scope, and is to
 is — the note, the quoted passage, the paragraph around it. Its file lives in the comments
 folder rather than the chat folder. Opening one as a full chat keeps the anchor and the file
 where it is, moves it into the chat history and the sidebar, and takes `edit_selection` away,
-because from then on it is an ordinary chat.
+because from then on it is an ordinary chat. That is reversible: an expanded comment can be
+sent back to its note, which closes the sidebar tab, drops it from the chat history and makes
+it a comment again — the same conversation, back on the margin.

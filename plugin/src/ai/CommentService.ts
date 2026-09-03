@@ -463,6 +463,46 @@ export class CommentService implements CommentInfoSource {
   }
 
   /**
+   * The way back from a full chat to the card in the margin — `expand` undone, step for step.
+   *
+   * Everything that made it a chat goes: the kind, the agent, the entry in the history, the
+   * tab. The one thing that does not is the session — it is released rather than closed, so
+   * the same object goes on writing the same file and the conversation the person has just
+   * been having is the conversation the card opens with.
+   */
+  async collapse(id: string): Promise<void> {
+    const session = this.sessionFor(id)
+    if (!session || !this.expanded.has(id)) return
+
+    session.kind = 'comment'
+
+    // Back onto the agent comments are written by. When `commentAgentId` names nothing — or
+    // names an agent since deleted — the chat's own agent is kept: a comment answered by the
+    // wrong agent is odd, and a comment answered by no agent at all cannot answer anything.
+    const registry = AgentRegistry.getInstance()
+    const commentAgent = registry.get(AbeleConfig.getInstance().ai.commentAgentId ?? '')
+    if (commentAgent) session.switchAgent(commentAgent.id)
+
+    const file = session.currentChatFile.value
+    // Out of the history it was put into on the way up: this is a margin note again, and the
+    // list of chats is a list of conversations somebody goes looking for.
+    if (file) ChatStorage.getInstance().removeHistoryEntry(file.path)
+
+    // Released, not closed: `closeTab` destroys, and there would be nothing left to show.
+    await ChatService.getInstance().releaseSession(session.id)
+
+    this.expanded.delete(id)
+    this.adopt(id, session)
+    await session.save()
+
+    // Opened rather than merely repainted: the person pressed "back to the note" and the card
+    // they were reading is what they are coming back to.
+    this.open.value = id
+    const note = session.anchor.value?.note
+    if (note) dispatchCommentsChanged(note)
+  }
+
+  /**
    * What to call an expanded comment in the history list.
    *
    * A comment has no title of its own — title generation is gated on `kind === 'chat'`, which

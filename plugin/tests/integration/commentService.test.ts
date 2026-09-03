@@ -321,6 +321,125 @@ describe('expanding a comment into a chat', () => {
   })
 })
 
+/**
+ * The way back, which is what an expanded comment had none of: everything `expand` did is
+ * undone, and the one thing that must not happen is the conversation ending. The session goes
+ * on writing the same file — it only stops being a tab and becomes a card again.
+ *
+ * Sessions are compared with `===` rather than handed to `toBe`: a `ChatSession` printed as a
+ * diff is pages of reactive internals, and identity is the whole question here.
+ */
+describe('returning an expanded comment to its note', () => {
+  it('puts the kind back, in memory and in the file', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+    await service.collapse(id)
+
+    expect(session.kind).toBe('comment')
+    const file = app.vault.getAbstractFileByPath(service.commentPath(id)) as TFile
+    expect(parseChatMetadata((await app.vault.read(file)) as string)?.kind).toBe('comment')
+  })
+
+  it('puts it back on the comment agent', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+
+    await service.expand(session.commentId!)
+    await service.collapse(session.commentId!)
+
+    expect(session.agentId.value).toBe(AbeleConfig.getInstance().ai.commentAgentId)
+  })
+
+  /** No `commentAgentId`, no agent to go back to — and a comment on no agent answers nothing. */
+  it('stays on the chat agent when no comment agent is configured', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    AbeleConfig.getInstance().ai.commentAgentId = ''
+
+    await service.expand(session.commentId!)
+    await service.collapse(session.commentId!)
+
+    expect(session.agentId.value).toBe(AgentRegistry.getInstance().defaultAgent()?.id)
+  })
+
+  it('takes it out of the chat history, since it is a margin note again', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+
+    await service.expand(session.commentId!)
+    await service.collapse(session.commentId!)
+
+    expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
+  })
+
+  it('closes the tab without ending the conversation in it', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const chatService = ChatService.getInstance()
+
+    await service.expand(id)
+    await service.collapse(id)
+
+    expect(chatService.getSessionByFile(service.commentPath(id))).toBeNull()
+    expect(chatService.tabOrder.value).not.toContain(session.id)
+    expect(session.isDestroyed).toBe(false)
+  })
+
+  /** The sidebar has to show something, and an empty tab bar is a sidebar that shows nothing. */
+  it('leaves a tab behind when the comment was the only one', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const chatService = ChatService.getInstance()
+
+    await service.expand(session.commentId!)
+    await service.collapse(session.commentId!)
+
+    expect(chatService.tabOrder.value).toHaveLength(1)
+    expect(chatService.tabOrder.value).not.toContain(session.id)
+  })
+
+  it('is the same session, answering for the same id, back in the margin', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+    await service.collapse(id)
+
+    expect(service.sessions.has(id)).toBe(true)
+    expect(service.sessionFor(id) === session).toBe(true)
+    expect((await service.load(id)) === session).toBe(true)
+  })
+
+  it('opens the card again and repaints the note it is anchored to', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+    vi.mocked(dispatchCommentsChanged).mockClear()
+    await service.collapse(id)
+
+    expect(service.open.value).toBe(id)
+    expect(vi.mocked(dispatchCommentsChanged).mock.calls.flat()).toContain('Notes/A.md')
+  })
+
+  it('does nothing for a comment that was never expanded', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.collapse(id)
+
+    expect(session.kind).toBe('comment')
+    expect(service.open.value).toBeNull()
+  })
+})
+
 describe('an expanded comment whose tab is closed', () => {
   /**
    * `closeTab` destroys the session. Holding on to the corpse leaves the marker reporting a
