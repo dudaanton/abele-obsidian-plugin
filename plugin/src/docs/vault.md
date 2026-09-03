@@ -103,6 +103,18 @@ Notes with `type: abele-skill` or `type: abele-prompt`. A skill teaches an agent
 something and is loaded on demand with the `skill` tool; a prompt is a reusable piece of text
 for the person to insert into a chat. Both are ordinary notes and can be edited as such.
 
+## Chats
+
+Chats are `.abchat` files under the chat folder, one JSON record per line. Besides the
+conversation, a chat's metadata record remembers what it *did*: `touched` lists the notes it
+wrote to — created, edited, replaced or moved, never merely read — each with the time it was
+last written, and `recap` is a one-sentence summary of the work, written by the background
+model after a turn that wrote something. Both are copied into the chat index in the plugin's
+settings, which is what draws the **Chats** list under a note: one card per chat that changed
+it, with its title, its recap and the date it was changed. A comment chat carries the same
+fields but is not in the index, so it appears in no footer until it is opened as a full chat.
+Renaming a note rewrites the path in both places. Do not edit these fields by hand.
+
 ## Comments
 
 A comment chat is a conversation anchored to one place in a note. The anchor is a marker

@@ -80,3 +80,6 @@ anchor and the file where it is, moves it into the chat history and the sidebar,
 `edit_selection` away, because from then on it is an ordinary chat. That is reversible: an
 expanded comment can be sent back to its note, which closes the sidebar tab, drops it from the
 chat history and makes it a comment again — the same conversation, back on the margin.
+
+Writing to a note links this chat to it: the note shows a card for every chat that changed it,
+so what you do here is visible from there afterwards. Reading a note links nothing.
