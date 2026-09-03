@@ -821,7 +821,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           // The one place that sees a tool's name, its arguments and its result together, so
           // the one place a successful write becomes a link. A run is skipped: it is never
           // listed anywhere, and its writes belong to the chat that delegated them.
-          if (this.kind !== 'run' && TOUCHING_TOOLS.includes(tool.name) && !result.isError) {
+          // A call that failed threw, and never reaches this line — which is the whole check
+          // that a write that did not happen links nothing.
+          if (this.kind !== 'run' && TOUCHING_TOOLS.includes(tool.name)) {
             const details = result.details as ToolWriteDetails | undefined
             this.noteTouched(details?.path ?? (typeof params.path === 'string' ? params.path : ''))
           }
@@ -1444,6 +1446,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const gen = this.generation
     this.error.value = null
     this.userMessageCount++
+    this.wroteThisTurn = false
 
     this.allInternalMessages.push(await this.userMessage(content, attachments))
 
@@ -1467,6 +1470,22 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           return
         })
       }
+    }
+
+    // A recap describes what the chat did to a note, so unlike a title it is regenerated on
+    // every turn that wrote, not once. The mirror follows it, since the sentence is part of
+    // what the card under the note shows.
+    if (this.wroteThisTurn) {
+      this.wroteThisTurn = false
+      if (sequential) await this.summarizer.generateRecap()
+      else {
+        this.summarizer.generateRecap().catch(() => {
+          return
+        })
+      }
+      // Ahead of the recap rather than after it: the links are already known, and the
+      // sentence, when it lands, mirrors itself through the save `generateRecap` makes.
+      this.mirrorNoteLinks()
     }
 
     if (sequential) {
@@ -1929,6 +1948,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    * Not private: the rename walk and a live check both drive it. Does nothing for a chat that
    * has written to nothing, and nothing for a comment, whose path has no entry to write into.
    */
+  /** The notes this chat has written to, for the recap prompt. Part of `SummarizerHost`. */
+  touchedNotes(): string[] {
+    return this.touched.value.map((note) => note.path)
+  }
+
   mirrorNoteLinks(): void {
     const path = this.currentChatFile.value?.path
     if (!path || !this.touched.value.length) return
@@ -2071,6 +2095,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    *
    * Only a pointer: a few dozen bytes, so the parent chat's write cost is unchanged no matter
    * how much conversation the sub-agents produce.
+   *
+   * TODO: a run's writes link no note to anything. The run's own wrapper skips them, and the
+   * parent's wrapper never sees them — so a note changed only by a delegated run shows no card
+   * for the chat that asked for the change. Carrying the run's `touched` back through here, so
+   * the parent adopts them, is the follow-up.
    */
   attachSubAgentRun(toolCallId: string, run: SubAgentRunRef): void {
     this.updateChatMessage(
@@ -2149,6 +2178,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const gen = this.generation
     this.error.value = null
     this.userMessageCount++
+    this.wroteThisTurn = false
 
     if (draftMsg.attachments?.length) {
       const parts = await resolveAttachmentsForApi(draftMsg.attachments)
@@ -2187,6 +2217,22 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           return
         })
       }
+    }
+
+    // A recap describes what the chat did to a note, so unlike a title it is regenerated on
+    // every turn that wrote, not once. The mirror follows it, since the sentence is part of
+    // what the card under the note shows.
+    if (this.wroteThisTurn) {
+      this.wroteThisTurn = false
+      if (sequential) await this.summarizer.generateRecap()
+      else {
+        this.summarizer.generateRecap().catch(() => {
+          return
+        })
+      }
+      // Ahead of the recap rather than after it: the links are already known, and the
+      // sentence, when it lands, mirrors itself through the save `generateRecap` makes.
+      this.mirrorNoteLinks()
     }
 
     if (sequential) {

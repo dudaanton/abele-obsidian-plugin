@@ -22,6 +22,10 @@ export interface SummarizerHost {
   isStreaming: Ref<boolean>
   error: Ref<string | null>
   pendingToolCalls: Ref<ToolCallContent[]>
+  /** One sentence on what the chat did, shown on the card under a note it changed. */
+  recap: Ref<string>
+  /** The notes the chat has written to, so the recap can name them. */
+  touchedNotes(): string[]
   /** Messages as the model sees them on the active branch. */
   messagesForModel(): Message[]
   /** Tool definitions sent alongside a background request. */
@@ -52,6 +56,9 @@ export class ChatSummarizer {
   private static readonly TITLE_MSG_PREVIEW_LENGTH = 200
   private static readonly COMPACT_SYSTEM_PROMPT =
     'You summarize conversations. Reply with ONLY the summary, nothing else.'
+  private static readonly RECAP_SYSTEM_PROMPT =
+    'You summarize what was done in a conversation. Reply with ONLY the sentence, nothing else.'
+  private static readonly RECAP_MAX_LENGTH = 200
   static readonly COMPACT_MARKER = '[Conversation compacted]'
 
   constructor(private readonly host: SummarizerHost) {}
@@ -117,6 +124,57 @@ export class ChatSummarizer {
       // Silently fail — title generation is best-effort
     } finally {
       this.host.isGeneratingTitle.value = false
+    }
+  }
+
+  /**
+   * One sentence on what the chat did to the notes it changed.
+   *
+   * Unlike a title, which names a conversation once, this describes work — so it is
+   * regenerated after every turn that wrote something. Best-effort throughout, exactly like
+   * `generateTitle`: a failed background request never surfaces as a chat error, and never
+   * replaces a sentence that was already there.
+   */
+  async generateRecap(): Promise<void> {
+    try {
+      const config = AbeleConfig.getInstance().ai
+      const model = this.host.auxiliaryModel()
+      const client = new OpenAIClient()
+
+      const notes = this.host.touchedNotes()
+      const conversation = this.renderForSummary(this.host.messagesForModel())
+      const body = notes.length
+        ? `Notes written: ${notes.join(', ')}\n\n${conversation}`
+        : conversation
+
+      const prompt = (
+        config.prompts?.recapPrompt || DEFAULT_AI_SETTINGS.prompts.recapPrompt
+      ).replace('{{messages}}', body)
+
+      let recap = ''
+      const signal = this.host.backgroundSignal()
+      for await (const event of client.stream(
+        model,
+        ChatSummarizer.RECAP_SYSTEM_PROMPT,
+        [{ role: 'user', content: prompt, timestamp: Date.now() }],
+        this.host.toolDefs(),
+        { signal }
+      )) {
+        if (event.type === 'text_delta') recap += event.delta
+      }
+
+      recap = recap
+        .trim()
+        .replace(/^["']|["']$/g, '')
+        .trim()
+        .slice(0, ChatSummarizer.RECAP_MAX_LENGTH)
+
+      if (!recap || recap === this.host.recap.value) return
+
+      this.host.recap.value = recap
+      await this.host.save()
+    } catch {
+      // Silently fail — a recap is best-effort, and never the chat's problem to report.
     }
   }
 

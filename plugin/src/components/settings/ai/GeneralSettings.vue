@@ -568,6 +568,18 @@
           />
         </Setting>
 
+        <Setting
+          name="Chat Recap Prompt"
+          :desc="`Prompt for the sentence shown on a chat's card under a note it changed. Use ${MESSAGES_TOKEN} as placeholder.`"
+        >
+          <Input
+            :model-value="prompts.recapPrompt || ''"
+            as-text-area
+            :placeholder="defaultPrompts.recapPrompt"
+            @update:model-value="updatePrompt('recapPrompt', $event)"
+          />
+        </Setting>
+
         <Setting name="Title System Prompt" desc="System prompt for the title generation model.">
           <Input
             :model-value="prompts.titleSystem || ''"

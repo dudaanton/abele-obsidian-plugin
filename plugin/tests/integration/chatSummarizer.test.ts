@@ -52,6 +52,8 @@ function buildHost(overrides: Partial<SummarizerHost> = {}) {
     isStreaming: ref(false),
     error: ref<string | null>(null),
     pendingToolCalls: ref<ToolCallContent[]>([]),
+    recap: ref(''),
+    touchedNotes: () => ['Notes/A.md'],
     messagesForModel: () => [
       { role: 'user', content: 'question', timestamp: 1 },
       { role: 'user', content: 'another', timestamp: 2 },
@@ -296,5 +298,62 @@ describe('ChatSummarizer.autoCompactIfNeeded', () => {
     await new ChatSummarizer(host).autoCompactIfNeeded()
 
     expect(applied).toEqual([])
+  })
+})
+
+describe('ChatSummarizer.generateRecap', () => {
+  it('records the sentence and saves it', async () => {
+    nextResponse = 'Tidied the Arashiyama note and checked its links.'
+    const { host, saveCount } = buildHost()
+
+    await new ChatSummarizer(host).generateRecap()
+
+    expect(host.recap.value).toBe('Tidied the Arashiyama note and checked its links.')
+    expect(saveCount()).toBe(1)
+  })
+
+  it('names the notes that were written, alongside the conversation', async () => {
+    nextResponse = 'ok'
+    const { host } = buildHost({ touchedNotes: () => ['Notes/A.md', 'Notes/B.md'] })
+
+    await new ChatSummarizer(host).generateRecap()
+
+    const sent = calls[0].messages[0].content as string
+    expect(sent).toContain('Notes/A.md')
+    expect(sent).toContain('Notes/B.md')
+    expect(sent).toContain('[user]: question')
+  })
+
+  it('uses the prompt the settings hold rather than the built-in one', async () => {
+    nextResponse = 'ok'
+    AbeleConfig.getInstance().ai.prompts = {
+      ...DEFAULT_AI_SETTINGS.prompts,
+      recapPrompt: 'MY OWN PROMPT\n\n{{messages}}',
+    }
+    const { host } = buildHost()
+
+    await new ChatSummarizer(host).generateRecap()
+
+    expect(calls[0].messages[0].content as string).toContain('MY OWN PROMPT')
+  })
+
+  it('leaves the recap alone when the request fails, and reports nothing', async () => {
+    nextError = new Error('offline')
+    const { host } = buildHost({ recap: ref('What it said before') })
+
+    await new ChatSummarizer(host).generateRecap()
+
+    expect(host.recap.value).toBe('What it said before')
+    expect(host.error.value).toBeNull()
+  })
+
+  it('strips the quotes a model puts round a sentence, and cuts a long one', async () => {
+    nextResponse = `"${'word '.repeat(80)}"`
+    const { host } = buildHost()
+
+    await new ChatSummarizer(host).generateRecap()
+
+    expect(host.recap.value.startsWith('"')).toBe(false)
+    expect(host.recap.value.length).toBeLessThanOrEqual(200)
   })
 })
