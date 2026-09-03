@@ -18,10 +18,12 @@ import {
   CommentInfo,
   CommentInfoSource,
   commentExtensions,
+  firstOccurrences,
   markersOf,
   setCommentInfoSource,
   commentStateField,
 } from '@/editor/CommentPlugin'
+import { parseMarkers } from '@/editor/commentMarkers'
 import { CommentMarkerWidget } from '@/editor/CommentMarkerWidget'
 import { marginOverlayFor } from '@/editor/MarginOverlay'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -281,5 +283,35 @@ describe('the margin provider at teardown', () => {
     provider.destroy()
 
     expect(view.scrollDOM.querySelector('.abele-margin-overlay')).toBeNull()
+  })
+})
+
+describe('a marker that was copied along with its text', () => {
+  it('leaves the card with the first occurrence in the document', () => {
+    const markers = parseMarkers('One%%c:k7d2ph%% and a pasted copy%%c:k7d2ph%%.')
+    expect(markers).toHaveLength(2)
+
+    const kept = firstOccurrences(markers)
+
+    expect(kept).toHaveLength(1)
+    expect(kept[0].from).toBe(markers[0].from)
+  })
+
+  it('keeps a marker carrying a different set of ids', () => {
+    const markers = parseMarkers('One%%c:k7d2ph%% and another%%c:3mq0xa%%.')
+
+    expect(firstOccurrences(markers).map((marker) => marker.ids.join(','))).toEqual([
+      'k7d2ph',
+      '3mq0xa',
+    ])
+  })
+
+  it('counts the same two comments in the other order as a set of its own', () => {
+    // `insertMarker` only ever appends, so a marker written by the plugin cannot reach this
+    // state — but a marker edited by hand can, and two ids in the other order are two
+    // different conversations to look at. Better a second card than a card nobody can reach.
+    const markers = parseMarkers('One%%c:k7d2ph,3mq0xa%% two%%c:3mq0xa,k7d2ph%%.')
+
+    expect(firstOccurrences(markers)).toHaveLength(2)
   })
 })

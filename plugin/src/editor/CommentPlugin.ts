@@ -264,6 +264,26 @@ export function dispatchCommentsChanged(notePath: string): void {
   })
 }
 
+/**
+ * One card per id set, given to the first marker in document order that carries it.
+ *
+ * Copying a commented passage copies its marker with it, and both copies then claim the same
+ * comments. A host is keyed by its ids, so the second marker finds the first one's host and
+ * hands the overlay a second entry pointing at the same element and the same teleport id —
+ * the layer appends one node twice and stacks it against itself, and Vue mounts a card into a
+ * slot another card already has. The later occurrences keep their icon and lose their card.
+ */
+export function firstOccurrences(markers: ParsedMarker[]): ParsedMarker[] {
+  const seen = new Set<string>()
+
+  return markers.filter((marker) => {
+    const key = marker.ids.join(',')
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 /** A marker's host in the margin: the element Vue teleports a `CommentCard` into. */
 interface HostedEntry {
   /** The marker's ids joined — the identity that survives an edit elsewhere in the note. */
@@ -333,7 +353,8 @@ export class CommentEntries implements PluginValue {
     const store = GlobalStore.getInstance()
     const state = this.view.state
     const notePath = state.field(editorInfoField, false)?.file?.path ?? ''
-    const markers = activeMarkers(state)
+    // The icons come from every marker; the cards come from the first of each id set.
+    const markers = firstOccurrences(activeMarkers(state))
 
     for (const hosted of [...this.hosted]) {
       if (!markers.some((marker) => marker.ids.join(',') === hosted.key)) this.drop(hosted, store)
