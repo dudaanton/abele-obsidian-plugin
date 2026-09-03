@@ -279,6 +279,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.effects.run(() => {
       this.watchScope()
       this.watchCompaction()
+      this.watchAnchoredNote()
     })
     this.syncScopeFromAgent()
   }
@@ -377,6 +378,24 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private watchCompaction(): void {
     // Both edges: `drainQueue` is the one that knows a chat still compacting is not ready.
     watch(this.isCompacting, () => void this.drainQueue())
+  }
+
+  /**
+   * A comment whose note is renamed keeps that note in scope.
+   *
+   * `applyScope` is the only place the anchored file is added, so a rename that rewrote the
+   * anchor would otherwise leave the resolver naming a path the vault no longer has. Watched
+   * on the path rather than on the anchor: `edit_selection` replaces the anchor on every write
+   * to move the quote, and rebuilding the scope for that would be waste.
+   */
+  private watchAnchoredNote(): void {
+    // Synchronous, like `watchScope`: the resolver is read by the next tool call, and a scope
+    // that is only correct after a microtask is a scope that is wrong when it is asked.
+    watch(
+      () => this.anchor.value?.note,
+      () => this.syncScopeFromAgent(),
+      { flush: 'sync' }
+    )
   }
 
   private syncScopeFromAgent(): void {

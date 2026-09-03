@@ -265,3 +265,36 @@ describe('a comment session', () => {
     expect(session.scopeResolver.isInScope('Journal/2026-09-02.md')).toBe(true)
   })
 })
+
+describe('a comment whose note is renamed under it', () => {
+  /**
+   * `CommentService.handleRename` rewrites the anchor; the scope has to follow, or the agent
+   * is left holding a path that no longer names anything and cannot read its own note.
+   */
+  it('follows the note to its new path', () => {
+    seedAgent()
+    const session = new ChatSession(ChatService.getInstance(), undefined, {
+      kind: 'comment',
+      anchor: { note: 'Journal/2026-09-02.md' },
+    })
+
+    session.anchor.value = { note: 'Journal/Renamed.md' }
+
+    expect(session.scopeResolver.isInScope('Journal/Renamed.md')).toBe(true)
+    expect(session.scopeResolver.isInScope('Journal/2026-09-02.md')).toBe(false)
+  })
+
+  /** A rewritten quote is not a move, and rebuilding the scope for it would be waste. */
+  it('leaves the scope alone when only the quote changes', () => {
+    seedAgent()
+    const session = new ChatSession(ChatService.getInstance(), undefined, {
+      kind: 'comment',
+      anchor: { note: 'Journal/2026-09-02.md', quote: 'before' },
+    })
+    const entries = session.scopeResolver.entries.value
+
+    session.anchor.value = { note: 'Journal/2026-09-02.md', quote: 'after' }
+
+    expect(session.scopeResolver.entries.value).toBe(entries)
+  })
+})
