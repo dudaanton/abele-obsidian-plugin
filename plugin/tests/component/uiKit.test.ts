@@ -313,3 +313,30 @@ describe('Input', () => {
     expect(view.classes()).toContain('abele-obsidian-input_multiline')
   })
 })
+
+describe('Input as a textarea', () => {
+  it('stands at the number of rows it is given', () => {
+    const view = mount(Input, { props: { asTextArea: true, rows: 2, modelValue: 'a\nb' } })
+
+    const field = view.find('textarea')
+    expect(field.attributes('rows')).toBe('2')
+    // The six-line floor is for a field nobody sized; a sized one would only be pushed open
+    // by it, and a one-line question would arrive looking like a form.
+    expect(field.classes()).toContain('abele-obsidian-input_sized')
+  })
+
+  it('keeps the six-line floor for a textarea nobody sized', () => {
+    const view = mount(Input, { props: { asTextArea: true, modelValue: '' } })
+
+    const field = view.find('textarea')
+    expect(field.attributes('rows')).toBeUndefined()
+    expect(field.classes()).toContain('abele-obsidian-input_multiline')
+    expect(field.classes()).not.toContain('abele-obsidian-input_sized')
+  })
+
+  it('does not size a single-line input', () => {
+    const view = mount(Input, { props: { rows: 3, modelValue: '' } })
+
+    expect(view.find('input').attributes('rows')).toBeUndefined()
+  })
+})

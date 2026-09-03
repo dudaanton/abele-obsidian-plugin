@@ -30,6 +30,7 @@ const COVERED_FILES = [
   'AiRunMessage.vue',
   'AiRunView.vue',
   'CommentCard.vue',
+  'CommentInput.vue',
 ].map((name) => join(ROOT, name))
 
 /** The one component allowed to be a `<button>`: everything else goes through it. */
