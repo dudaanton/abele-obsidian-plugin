@@ -5,13 +5,15 @@ easy to get wrong. Which of these an agent actually has depends on its own tool 
 
 ## Files
 
-`read`, `write`, `create`, `edit`, `replace`, `rm`, `mv`, `cp`, `ls`, `find`, `open`,
-`read_image`, `workspace`, `screenshot`, `inspect_view`.
+`read`, `write`, `create`, `edit`, `replace`, `edit_selection`, `rm`, `mv`, `cp`, `ls`, `find`,
+`open`, `read_image`, `workspace`, `screenshot`, `inspect_view`.
 
 - `edit` replaces one exact string in one file. `replace` applies a list of replacement actions
   and is the one for a bulk, rule-driven change. `write` overwrites the whole file — reach for
   it only when the whole file is being rewritten.
 - `create` makes a new file and its parent folders.
+- `edit_selection` exists only inside a comment chat. It rewrites the passage that comment is
+  anchored to and nothing else in the note; there is no path to give it.
 - `find` searches by name, property or content and takes structured criteria, not just a word.
 - `workspace` says what is open right now; `open` puts a file in front of the person.
 - `rm` moves to trash rather than destroying.

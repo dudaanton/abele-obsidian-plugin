@@ -48,9 +48,10 @@ Real plugin classes against an in-memory vault. Two pieces make this work:
   is implemented, so reaching for an unmodelled API fails loudly instead of passing against
   a stub.
 - `tests/helpers/fakeVault.ts` — builds an `app` with `vault.getFiles`,
-  `vault.getAbstractFileByPath`, `metadataCache.getFileCache`,
-  `metadataCache.getFirstLinkpathDest` and `metadataCache.resolvedLinks`. Link resolution
-  follows Obsidian's precedence: exact path, then path + `.md`, then an unambiguous basename.
+  `vault.getAbstractFileByPath`, `vault.create`, `vault.modify`, `vault.append`,
+  `vault.process`, `metadataCache.getFileCache`, `metadataCache.getFirstLinkpathDest` and
+  `metadataCache.resolvedLinks`. Link resolution follows Obsidian's precedence: exact path,
+  then path + `.md`, then an unambiguous basename.
 
 Every lookup increments a counter in `app.stats`, which lets a test assert on how much work
 an algorithm does rather than how long it took. Operation counts are identical on every

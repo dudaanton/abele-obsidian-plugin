@@ -22,7 +22,14 @@ import { ChatSummarizer, type SummarizerHost } from './ChatSummarizer'
 import { ChatInterceptor, type InterceptorHost } from './ChatInterceptor'
 import { AgentRegistry } from './agents/AgentRegistry'
 import type { AgentDefinition, OverrideKey, ScopeEntry, SessionOverrides } from './agents/types'
-import { ChatMessage, ChatMetadata, CORE_TOOLS, WRITE_TOOLS, migrateOldPermissions } from './types'
+import {
+  ChatMessage,
+  ChatMetadata,
+  CORE_TOOLS,
+  EDIT_SELECTION_TOOL,
+  WRITE_TOOLS,
+  migrateOldPermissions,
+} from './types'
 import type {
   CommentAnchor,
   ToolMode,
@@ -34,6 +41,7 @@ import type {
 import type { CommentState } from '@/editor/CommentPlugin'
 import type { UserContentPart } from './client'
 import { createAgentTools } from './tools'
+import { createEditSelectionTool } from './tools/EditSelectionTool'
 import { loadSkillContent } from './tools/SkillTool'
 import { ScopeResolver } from './ScopeResolver'
 import { resolveAttachmentsForApi } from './attachments'
@@ -576,7 +584,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           (tool) => CORE_TOOLS.has(tool.name) || this.getToolMode(tool.name) !== 'off'
         )
 
-    return this.wrapToolsForSession(filtered)
+    // Appended after the agent's filter, not through it: `filterTools` drops any non-core
+    // tool the agent has no mode for, and this one belongs to the session's kind rather than
+    // to the agent. `toolModes` still governs whether it needs approval.
+    const withSelection =
+      this.kind === 'comment' && this.anchor.value?.quote
+        ? [...filtered, createEditSelectionTool(this)]
+        : filtered
+
+    return this.wrapToolsForSession(withSelection)
   }
 
   /**
@@ -641,6 +657,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // Core read tools: never need approval
     if (ChatSession.READ_TOOLS.includes(toolName)) return false
     if (toolName === 'read_image' || toolName === 'questions') return false
+
+    // The one write with a mode of its own. It touches a single passage the person pointed
+    // at, so letting it run unattended is a reasonable thing to want without opening up
+    // `edit` on the whole vault. Anything short of `auto` falls through to the write rule.
+    if (toolName === EDIT_SELECTION_TOOL) {
+      if ((this.toolModes.value[EDIT_SELECTION_TOOL] ?? 'ask') === 'auto') return false
+    }
 
     // Core edit tools: governed by permissionMode
     if (ChatSession.EDIT_TOOLS.includes(toolName)) {

@@ -364,6 +364,17 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         stats.written += content.length
         rawByPath.set(file.path, content)
       },
+      /**
+       * Obsidian's read-modify-write under one lock. Modelled because the tools that edit a
+       * note someone may be typing into use it rather than read-then-modify.
+       */
+      async process(file: TFile, fn: (data: string) => string) {
+        stats.modify++
+        const next = fn(rawByPath.get(file.path) ?? '')
+        stats.written += next.length
+        rawByPath.set(file.path, next)
+        return next
+      },
       async append(file: TFile, data: string) {
         stats.append++
         stats.written += data.length
