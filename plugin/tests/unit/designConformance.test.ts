@@ -15,6 +15,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 const ROOT = join(__dirname, '..', '..', 'src', 'components')
+const STYLES = join(__dirname, '..', '..', 'src', 'styles.css')
 
 /**
  * What the standard covers today: the shared kit, every settings screen, and the chat
@@ -180,5 +181,40 @@ describe('the design standard', () => {
     })
 
     expect(offenders.map(name)).toEqual([])
+  })
+})
+
+/**
+ * Three facts that live in `src/styles.css` and nowhere else.
+ *
+ * A marker is a CodeMirror widget, so its appearance is not in any component's `<style>` block
+ * and no test above can see it. Each rule here was a decision: a finger needs a target of its
+ * own on a phone, the glyph has to sit in the middle of that target rather than in a corner of
+ * it, and the underline is the only thing on screen that says which words a comment is about.
+ */
+describe('the comment marker, which lives in the stylesheet', () => {
+  const css = readFileSync(STYLES, 'utf8')
+
+  /** The body of the first rule with this exact selector. */
+  const rule = (selector: string): string => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`${escaped}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? ''
+  }
+
+  it('gives a finger something to hit', () => {
+    const mobile = rule('body.is-mobile .abele-comment-marker')
+
+    // --size-4-6 is Obsidian's 24px step, which is its own minimum for a touch target.
+    expect(mobile).toMatch(/min-width:\s*var\(--size-4-6\)/)
+    expect(mobile).toMatch(/min-height:\s*var\(--size-4-6\)/)
+    expect(mobile).toMatch(/justify-content:\s*center/)
+  })
+
+  it('centres the glyph inside it, on the line it interrupts', () => {
+    expect(rule('.abele-comment-marker')).toMatch(/align-items:\s*center/)
+  })
+
+  it('keeps the underline that says which words the comment is about', () => {
+    expect(rule('.abele-comment__quote')).toMatch(/border-bottom:\s*1px solid var\(--text-accent\)/)
   })
 })
