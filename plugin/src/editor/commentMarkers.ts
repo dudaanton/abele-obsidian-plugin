@@ -35,21 +35,51 @@ interface Region {
   kind: RegionKind
 }
 
+/** A run of backticks that is allowed to open or close a span, after the escape is taken off. */
+interface BacktickRun {
+  index: number
+  length: number
+}
+
+/**
+ * The backtick runs of one line, with `\\`` read as the literal backtick it is.
+ *
+ * A backslash escapes only the backtick immediately after it, so an escaped run of one is gone
+ * altogether and a longer one is a run one shorter starting a character later. The backslash
+ * itself can be escaped — `\\\\` then a backtick is a backslash and a span — which is why the
+ * count of backslashes is taken and its parity, not just the character before.
+ */
+function backtickRuns(line: string): BacktickRun[] {
+  const runs: BacktickRun[] = []
+
+  for (const run of line.matchAll(/`+/g)) {
+    const index = run.index ?? 0
+    let backslashes = 0
+    while (index - backslashes - 1 >= 0 && line[index - backslashes - 1] === '\\') backslashes++
+
+    const escaped = backslashes % 2 === 1
+    const length = escaped ? run[0].length - 1 : run[0].length
+    if (length > 0) runs.push({ index: escaped ? index + 1 : index, length })
+  }
+
+  return runs
+}
+
 /**
  * Backtick runs on one line: a run of n backticks opens a span and the next run of exactly n
  * closes it. Enough for the question being asked — is this text code — without a parser.
  */
 function inlineCodeRegions(line: string, base: number): Region[] {
   const regions: Region[] = []
-  const runs = [...line.matchAll(/`+/g)]
+  const runs = backtickRuns(line)
 
   for (let i = 0; i < runs.length; i++) {
     const open = runs[i]
     for (let j = i + 1; j < runs.length; j++) {
-      if (runs[j][0].length !== open[0].length) continue
+      if (runs[j].length !== open.length) continue
       regions.push({
-        from: base + (open.index ?? 0),
-        to: base + (runs[j].index ?? 0) + runs[j][0].length,
+        from: base + open.index,
+        to: base + runs[j].index + runs[j].length,
         kind: 'inline',
       })
       i = j
@@ -172,7 +202,10 @@ const INLINE_CONSTRUCTS = [
   /!?\[\[[^[\]\n]*\]\]/g, // wikilink and embed, alias, heading and block reference included
   /!?\[[^[\]\n]*\]\([^()\n]*\)/g, // markdown link and image
   /\[\^[^\]\s\n]+\]/g, // footnote reference
-  /\[![^\]\n]+\][-+]?[ \t]*/g, // the type of a callout, with the space that has to follow it
+  // The type of a callout, with the space that has to follow it. Anchored to the blockquote
+  // that opens it — a list item may carry that blockquote — because `[!x]` written mid-sentence
+  // is prose, and carrying a marker to the end of it moves it past text nothing would break.
+  /^[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+)?[ \t>]*>[ \t]*\[![^\]\n]+\][-+]?[ \t]*/g,
   /==[^\n]+?==/g, // highlight
 ]
 

@@ -96,6 +96,12 @@ describe('finding the markers in a note', () => {
     expect(parseMarkers(text).map((marker) => marker.ids[0])).toEqual(['bbbbbb'])
   })
 
+  it('keeps a marker between backslash-escaped backticks, which are text and not a span', () => {
+    const text = 'call \\`x %%c:aaaaaa%%\\` here%%c:bbbbbb%%'
+
+    expect(parseMarkers(text).map((marker) => marker.ids[0])).toEqual(['aaaaaa', 'bbbbbb'])
+  })
+
   it('ignores a marker in the frontmatter', () => {
     const text = ['---', 'title: A %%c:aaaaaa%%', '---', 'Body%%c:bbbbbb%%'].join('\n')
 
@@ -215,6 +221,24 @@ describe('anchoring on something that is not plain text', () => {
     expect(at(text, after(text, 'A `val'))).toBe(after(text, 'A `value`'))
   })
 
+  /**
+   * `\\`` is one character of text, not the edge of a code span, so there is no construct here
+   * to be carried out of and the position stays where the reader put it.
+   */
+  it('leaves a position between backslash-escaped backticks where it is', () => {
+    const text = 'Use \\`not code\\` here.'
+
+    expect(isCommentablePosition(text, after(text, 'Use \\`not co'))).toBe(true)
+    expect(at(text, after(text, 'Use \\`not co'))).toBe(after(text, 'Use \\`not co'))
+  })
+
+  /** An escaped backslash is not an escape of what follows it: that backtick still opens a span. */
+  it('still carries one out of a span opened after an escaped backslash', () => {
+    const text = 'Ends in \\\\`value` here.'
+
+    expect(at(text, after(text, '\\\\`val'))).toBe(after(text, '\\\\`value`'))
+  })
+
   it('carries one that stopped inside a highlight past the closing equals', () => {
     const text = 'A ==marked== word.'
 
@@ -255,6 +279,16 @@ describe('anchoring on something that is not plain text', () => {
     const text = '- > [!note] Title'
 
     expect(at(text, after(text, '- > [!no'))).toBe(after(text, '- > [!note] '))
+  })
+
+  /**
+   * A callout is opened by `[!type]` at the head of a blockquote and nowhere else; written
+   * mid-sentence the same brackets are prose, and a marker inside them belongs where it fell.
+   */
+  it('leaves a bracketed exclamation in prose alone', () => {
+    const text = 'The rule [!important] applies here.'
+
+    expect(at(text, after(text, '[!impo'))).toBe(after(text, '[!impo'))
   })
 
   it('keeps going until it is outside every construct it landed in', () => {
