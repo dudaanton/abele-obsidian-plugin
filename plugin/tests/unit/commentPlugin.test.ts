@@ -9,7 +9,7 @@
  * is point-anchored and idle until `CommentService` is installed. A test that wants a quote
  * installs a source of its own and puts the silent one back afterwards.
  */
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { EditorSelection, EditorState } from '@codemirror/state'
 import { Decoration, EditorView } from '@codemirror/view'
 import { TFile, editorInfoField, editorLivePreviewField } from 'obsidian'
@@ -19,6 +19,7 @@ import {
   CommentInfoSource,
   commentExtensions,
   firstOccurrences,
+  setCommentClickHandler,
   markersOf,
   setCommentInfoSource,
   commentStateField,
@@ -313,5 +314,29 @@ describe('a marker that was copied along with its text', () => {
     const markers = parseMarkers('One%%c:k7d2ph,3mq0xa%% two%%c:3mq0xa,k7d2ph%%.')
 
     expect(firstOccurrences(markers)).toHaveLength(2)
+  })
+})
+
+describe('pressing a marker', () => {
+  // The handler asks the workspace for the live editor so it can measure the margin. There is
+  // no workspace in this tier, and an app with none at all throws before the handler is
+  // reached — so the smallest one that answers the question is installed here.
+  beforeEach(() => {
+    ;(GlobalStore.getInstance() as unknown as { _app: unknown })._app = {
+      workspace: { getActiveViewOfType: () => null },
+    }
+  })
+
+  afterEach(() => setCommentClickHandler(() => {}))
+
+  it('hands the ids to whatever was installed to handle them', () => {
+    const handler = vi.fn()
+    setCommentClickHandler(handler)
+
+    const found = decorationsOf(stateFor(DOC))
+    const widget = found[0].value.spec.widget as CommentMarkerWidget
+    widget.toDOM().dispatchEvent(new MouseEvent('click'))
+
+    expect(handler).toHaveBeenCalledWith(['k7d2ph'], false)
   })
 })

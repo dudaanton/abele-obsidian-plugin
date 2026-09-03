@@ -113,9 +113,21 @@ function activeMarkers(state: EditorState): ParsedMarker[] {
 }
 
 /**
- * Phase 4 opens the card from here and phase 5 chooses between the margin and the sheet.
- * Until then the click is only recorded, so that a live check can show the widget is wired.
+ * What a press on a marker does.
+ *
+ * Injected rather than imported: `CommentService` already imports this module for
+ * `dispatchCommentsChanged`, and importing it back would close a cycle for one call.
+ * `main.ts` imports both and installs the handler there. `hasRoom` is the margin's answer,
+ * which phase 5 routes on when it sends a card to a sheet instead.
  */
+let commentClickHandler: (ids: string[], hasRoom: boolean) => void = () => {}
+
+export function setCommentClickHandler(
+  handler: (ids: string[], hasRoom: boolean) => void
+): void {
+  commentClickHandler = handler
+}
+
 function handleMarkerClick(ids: string[]): void {
   const view = activeEditorView()
   const overlay = view ? marginOverlayFor(view) : null
@@ -123,8 +135,8 @@ function handleMarkerClick(ids: string[]): void {
   overlay?.position()
   const room = overlay?.hasRoom() ?? false
 
-  // Phase 4 opens the card here; phase 5 sends it to the sheet instead when there is no room.
   console.debug('abele: comment marker clicked', ids.join(','), 'margin room:', room)
+  commentClickHandler(ids, room)
 }
 
 function activeEditorView(): EditorView | null {

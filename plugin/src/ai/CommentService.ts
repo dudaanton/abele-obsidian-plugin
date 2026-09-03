@@ -42,6 +42,30 @@ export class CommentService implements CommentInfoSource {
   readonly open: Ref<string | null> = ref(null)
 
   /**
+   * A press on a marker: fold the card if one of its comments is the open one, otherwise show
+   * the first. A marker carrying several opens on the one it was left showing last only by
+   * accident — the card's own strip is where the rest are picked from.
+   */
+  toggleOpen(ids: string[]): void {
+    const openHere = ids.some((id) => id === this.open.value)
+    this.open.value = openHere ? null : (ids[0] ?? null)
+  }
+
+  /**
+   * The marker draws itself open from the same value the card does, so both notes have to be
+   * told: the one that lost the open card and the one that gained it. They are usually the
+   * same note, which is what the set is for.
+   */
+  private readonly openWatcher = watch(this.open, (id, previous) => {
+    const notes = new Set<string>()
+    for (const which of [previous, id]) {
+      const note = which ? this.sessionFor(which)?.anchor.value?.note : null
+      if (note) notes.add(note)
+    }
+    for (const note of notes) dispatchCommentsChanged(note)
+  })
+
+  /**
    * Comments promoted into full chats.
    *
    * `ChatService` owns these now, but the marker is still in the note and the editor still
@@ -457,6 +481,9 @@ export class CommentService implements CommentInfoSource {
   // ── Teardown ──────────────────────────────────────────────────
 
   destroy(): void {
+    // Stopped first: it must not fire on the `open.value = null` further down.
+    this.openWatcher()
+
     for (const stop of this.watchers.values()) stop()
     this.watchers.clear()
 

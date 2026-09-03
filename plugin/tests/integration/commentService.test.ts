@@ -6,8 +6,10 @@
  * file only ever has one session writing it.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
+import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { parseChatMetadata } from '@/ai/ChatLog'
@@ -451,5 +453,40 @@ describe('the note being renamed', () => {
     await service.handleRename('Notes/Elsewhere.md', 'Notes/Moved.md')
 
     expect(session.anchor.value?.note).toBe('Notes/A.md')
+  })
+})
+
+describe('which card is open', () => {
+  it('opens the first comment of a marker and closes it again', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const id = session.commentId as string
+
+    service.toggleOpen([id])
+    expect(service.open.value).toBe(id)
+
+    service.toggleOpen([id])
+    expect(service.open.value).toBeNull()
+  })
+
+  it('moves the open card rather than closing it when another marker is pressed', async () => {
+    const service = CommentService.getInstance()
+    const first = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    service.open.value = first.commentId
+
+    service.toggleOpen(['zzz999'])
+
+    expect(service.open.value).toBe('zzz999')
+  })
+
+  it('repaints the note that lost the open card and the note that gained one', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    vi.mocked(dispatchCommentsChanged).mockClear()
+
+    service.open.value = session.commentId
+    await nextTick()
+
+    expect(vi.mocked(dispatchCommentsChanged).mock.calls.flat()).toContain('Notes/A.md')
   })
 })

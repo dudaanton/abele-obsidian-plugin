@@ -31,7 +31,11 @@ import { taskStateField } from './editor/TaskPlugin'
 import { galleryExtensions } from './editor/GalleryPlugin'
 import { footnoteExtensions } from './editor/FootnotePlugin'
 import { highlightStateField } from './editor/HighlightPlugin'
-import { commentExtensions, setCommentInfoSource } from '@/editor/CommentPlugin'
+import {
+  commentExtensions,
+  setCommentClickHandler,
+  setCommentInfoSource,
+} from '@/editor/CommentPlugin'
 import { insertGallery, convertImagesToGalleries } from './commands/galleryCommands'
 import { reindexFootnotes } from './commands/footnoteCommands'
 import { insertHighlight, removeHighlight } from './commands/highlightCommands'
@@ -945,6 +949,12 @@ export default class AbelePlugin extends Plugin {
   registerAiFeatures() {
     // The editor's comment field reads this synchronously to draw each marker's icon.
     setCommentInfoSource(CommentService.getInstance())
+
+    // The editor extension owns the press; the service owns which card is open. Injected
+    // rather than imported, so `CommentPlugin` and `CommentService` do not import each other.
+    setCommentClickHandler((ids) => {
+      CommentService.getInstance().toggleOpen(ids)
+    })
 
     this.registerEvent(
       this.app.vault.on('rename', (file, oldPath) => {
