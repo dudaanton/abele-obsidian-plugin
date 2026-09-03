@@ -303,7 +303,8 @@ describe('the comment marker, which lives in the stylesheet', () => {
     const mobile = rule('body.is-mobile .abele-comment-marker__count')
 
     expect(mobile).toMatch(/font-size:\s*var\(--font-ui-smaller\)/)
-    expect(mobile).toMatch(/color:\s*var\(--text-accent\)/)
+    // The marker's colour, not a muted grey: on a failed comment the digit turns red with it.
+    expect(mobile).toMatch(/color:\s*inherit/)
   })
 
   it('centres the glyph inside it, on the line it interrupts', () => {

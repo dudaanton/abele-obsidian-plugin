@@ -567,7 +567,9 @@ body.is-mobile .abele-comment-marker_pending::after {
 body.is-mobile .abele-comment-marker__count {
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-semibold);
-  color: var(--text-accent);
+  /* The marker's own colour, so the digit turns with the state: an accent glyph beside a red
+     one, on a marker whose comment failed, reads as two markers rather than one. */
+  color: inherit;
 }
 
 /* The passage a comment is anchored to */
