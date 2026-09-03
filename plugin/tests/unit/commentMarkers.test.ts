@@ -188,6 +188,14 @@ describe('stripping markers for the agent', () => {
   it('can be called twice with the same result', () => {
     expect(stripMarkers(stripMarkers('One%%c:aaaaaa%%.'))).toBe('One.')
   })
+
+  it('leaves a marker inside a fenced code block alone', () => {
+    // Documentation of this very syntax is the case: the fenced example is the user's prose
+    // about markers, not a marker, and stripping it would edit what they wrote.
+    const text = ['Real%%c:aaaaaa%%', '```', 'Example: %%c:bbbbbb%%', '```'].join('\n')
+
+    expect(stripMarkers(text)).toBe(['Real', '```', 'Example: %%c:bbbbbb%%', '```'].join('\n'))
+  })
 })
 
 describe('resolving the quoted range', () => {

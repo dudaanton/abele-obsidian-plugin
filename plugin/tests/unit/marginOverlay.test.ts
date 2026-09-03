@@ -19,6 +19,7 @@ import {
   SIDENOTE_GAP,
   MarginOverlay,
   marginOverlayFor,
+  marginOverlayIfAny,
   type MarginEntry,
   type MarginEntryKind,
 } from '@/editor/MarginOverlay'
@@ -251,6 +252,23 @@ describe('the margin overlay', () => {
 
     expect(marginOverlayFor(view)).toBe(registered)
     registered.destroy()
+  })
+
+  it('answers what a view already has without building one', () => {
+    const view = fakeView({ contentRight: 700, scrollerRight: 1000 })
+
+    expect(marginOverlayIfAny(view)).toBeUndefined()
+    // Asking must not have created one: a teardown path reads through this.
+    expect(view.scrollDOM.querySelector('.abele-margin-overlay')).toBeNull()
+
+    const overlay = marginOverlayFor(view)
+
+    expect(marginOverlayIfAny(view)).toBe(overlay)
+
+    overlay.destroy()
+
+    expect(marginOverlayIfAny(view)).toBeUndefined()
+    expect(view.scrollDOM.querySelector('.abele-margin-overlay')).toBeNull()
   })
 
   it('takes its entries out of the document when it is destroyed', () => {

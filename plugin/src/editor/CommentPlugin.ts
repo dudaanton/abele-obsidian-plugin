@@ -17,6 +17,7 @@ import {
   Range,
   StateEffect,
   StateField,
+  Text,
 } from '@codemirror/state'
 import {
   Decoration,
@@ -30,7 +31,7 @@ import { MarkdownView, editorInfoField, editorLivePreviewField } from 'obsidian'
 import { CommentMarkerWidget } from './CommentMarkerWidget'
 import { ParsedMarker, parseMarkers, resolveQuote } from './commentMarkers'
 import { CommentEntry } from '@/entities/Comment'
-import { MarginEntry, marginOverlayFor } from './MarginOverlay'
+import { MarginEntry, marginOverlayFor, marginOverlayIfAny } from './MarginOverlay'
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 
@@ -80,6 +81,38 @@ function markerState(infos: (CommentInfo | undefined)[]): CommentState {
 }
 
 /**
+ * One parse per document.
+ *
+ * The field, the atomic-range facet and the transaction filter all want the same markers on the
+ * same keystroke, and `parseMarkers` walks the whole note to find them. A CodeMirror `Text` is
+ * immutable and a new one is made for every change, so it is exactly the right key: one document
+ * is parsed once however many readers it has, and an edited document parses again.
+ */
+const markersByDoc = new WeakMap<Text, ParsedMarker[]>()
+
+export function markersOf(doc: Text): ParsedMarker[] {
+  const known = markersByDoc.get(doc)
+  if (known) return known
+
+  const markers = parseMarkers(doc.toString())
+  markersByDoc.set(doc, markers)
+  return markers
+}
+
+/**
+ * The markers this state should act on, and the one guard all three extensions share.
+ *
+ * Live preview, and a pane that holds a file: guarding them differently is how an editor with
+ * no file ends up showing the raw marker as text while Backspace still swallows it whole.
+ */
+function activeMarkers(state: EditorState): ParsedMarker[] {
+  if (!state.field(editorLivePreviewField, false)) return []
+  if (!state.field(editorInfoField, false)?.file?.path) return []
+
+  return markersOf(state.doc)
+}
+
+/**
  * Phase 4 opens the card from here and phase 5 chooses between the margin and the sheet.
  * Until then the click is only recorded, so that a live check can show the widget is wired.
  */
@@ -100,14 +133,11 @@ function activeEditorView(): EditorView | null {
 }
 
 function buildCommentDecorations(state: EditorState): DecorationSet {
-  if (!state.field(editorLivePreviewField, false)) return Decoration.none
-
-  const notePath = state.field(editorInfoField, false)?.file?.path
-  if (!notePath) return Decoration.none
-
-  const text = state.doc.toString()
-  const markers = parseMarkers(text)
+  const markers = activeMarkers(state)
   if (markers.length === 0) return Decoration.none
+
+  const notePath = state.field(editorInfoField, false)?.file?.path ?? ''
+  const text = state.doc.toString()
 
   const decorations: Range<Decoration>[] = []
 
@@ -177,14 +207,11 @@ const atomicMarker = Decoration.replace({})
  * This cannot be derived from `commentStateField`: that set also holds the quote marks, and
  * making the user's own prose atomic would leave them unable to edit the passage.
  */
-const commentAtomicRanges = EditorView.atomicRanges.of((view) => {
-  const state = view.state
-  if (!state.field(editorLivePreviewField, false)) return Decoration.none
-
-  return Decoration.set(
-    parseMarkers(state.doc.toString()).map((marker) => atomicMarker.range(marker.from, marker.to))
+const commentAtomicRanges = EditorView.atomicRanges.of((view) =>
+  Decoration.set(
+    activeMarkers(view.state).map((marker) => atomicMarker.range(marker.from, marker.to))
   )
-})
+)
 
 /**
  * Moves the caret over a marker in both directions, in the spirit of `galleryCursorFilter`.
@@ -197,9 +224,8 @@ const commentAtomicRanges = EditorView.atomicRanges.of((view) => {
 export const commentCursorFilter: Extension = EditorState.transactionFilter.of((tr) => {
   if (tr.docChanged) return tr
   if (tr.newSelection.eq(tr.startState.selection)) return tr
-  if (!tr.startState.field(editorLivePreviewField, false)) return tr
 
-  const markers = parseMarkers(tr.startState.doc.toString())
+  const markers = activeMarkers(tr.startState)
   if (markers.length === 0) return tr
 
   const oldHead = tr.startState.selection.main.head
@@ -254,7 +280,7 @@ interface HostedEntry {
  * the note does not tear the card down and take a half-written question with it. The live
  * position travels to the overlay as `anchorPos`, which is rebuilt on every sync.
  */
-class CommentEntries implements PluginValue {
+export class CommentEntries implements PluginValue {
   private hosted: HostedEntry[] = []
   private destroyed = false
 
@@ -298,15 +324,16 @@ class CommentEntries implements PluginValue {
     const store = GlobalStore.getInstance()
     for (const hosted of [...this.hosted]) this.drop(hosted, store)
     // Not `destroy()`: the overlay is shared with footnotes, and `FootnotePlugin` owns that call.
-    marginOverlayFor(this.view).setEntries('comment', [])
+    // `IfAny`, because footnotes are registered first and their destroy has already run — asking
+    // to create here would put a new layer on a scroller that is on its way out.
+    marginOverlayIfAny(this.view)?.setEntries('comment', [])
   }
 
   private sync() {
     const store = GlobalStore.getInstance()
     const state = this.view.state
     const notePath = state.field(editorInfoField, false)?.file?.path ?? ''
-    const live = state.field(editorLivePreviewField, false)
-    const markers = notePath && live ? parseMarkers(state.doc.toString()) : []
+    const markers = activeMarkers(state)
 
     for (const hosted of [...this.hosted]) {
       if (!markers.some((marker) => marker.ids.join(',') === hosted.key)) this.drop(hosted, store)

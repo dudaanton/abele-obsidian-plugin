@@ -11,16 +11,20 @@
  */
 import { describe, it, expect, afterEach } from 'vitest'
 import { EditorSelection, EditorState } from '@codemirror/state'
-import { Decoration } from '@codemirror/view'
+import { Decoration, EditorView } from '@codemirror/view'
 import { TFile, editorInfoField, editorLivePreviewField } from 'obsidian'
 import {
+  CommentEntries,
   CommentInfo,
   CommentInfoSource,
-  commentCursorFilter,
-  commentStateField,
+  commentExtensions,
+  markersOf,
   setCommentInfoSource,
+  commentStateField,
 } from '@/editor/CommentPlugin'
 import { CommentMarkerWidget } from '@/editor/CommentMarkerWidget'
+import { marginOverlayFor } from '@/editor/MarginOverlay'
+import { GlobalStore } from '@/stores/GlobalStore'
 
 const NOTE = 'Notes/Anchor.md'
 const DOC = 'The selected passage%%c:k7d2ph%% and more.'
@@ -39,17 +43,54 @@ function noteFile(): TFile {
   return file
 }
 
-function stateFor(doc: string, options: { live?: boolean; head?: number } = {}): EditorState {
+function stateFor(
+  doc: string,
+  options: { live?: boolean; head?: number; file?: boolean } = {}
+): EditorState {
   return EditorState.create({
     doc,
     selection: EditorSelection.cursor(options.head ?? 0),
     extensions: [
       editorLivePreviewField.init(() => options.live ?? true),
-      editorInfoField.init(() => ({ file: noteFile() })),
-      commentStateField,
-      commentCursorFilter,
+      editorInfoField.init(() => ({ file: options.file === false ? null : noteFile() })),
+      // The shipped array, so the atomic ranges under test are the ones the editor loads.
+      commentExtensions,
     ],
   })
+}
+
+/**
+ * The stretches the editor refuses to put a caret inside — read out of the facet, because
+ * `atomicRanges` is what makes Backspace take the whole marker and it is not in the field's set.
+ */
+function atomicRangesOf(state: EditorState): { from: number; to: number }[] {
+  const found: { from: number; to: number }[] = []
+  for (const provider of state.facet(EditorView.atomicRanges)) {
+    provider({ state } as unknown as EditorView).between(0, state.doc.length, (from, to) => {
+      found.push({ from, to })
+    })
+  }
+  return found
+}
+
+/**
+ * Enough of an `EditorView` for the margin provider: it reads the state, hangs its hosts in the
+ * scroller and measures. happy-dom lays nothing out, so the rects are stubbed as they are in
+ * `marginOverlay.test.ts`.
+ */
+function fakeView(state: EditorState): EditorView {
+  const document = window.document
+  const scrollDOM = document.createElement('div')
+  const contentDOM = document.createElement('div')
+  scrollDOM.appendChild(contentDOM)
+  document.body.appendChild(scrollDOM)
+
+  const rect = (right: number) =>
+    ({ left: 0, top: 0, right, bottom: 0, width: right, height: 0, x: 0, y: 0 }) as DOMRect
+  scrollDOM.getBoundingClientRect = () => rect(1000)
+  contentDOM.getBoundingClientRect = () => rect(700)
+
+  return { state, scrollDOM, contentDOM, coordsAtPos: () => null } as unknown as EditorView
 }
 
 /** `Range` from CodeMirror is a class, so the shape the test collects is spelled out here. */
@@ -175,5 +216,70 @@ describe('the caret and a marker', () => {
     const applied = state.update({ selection: EditorSelection.cursor(MARKER_FROM + 1) })
 
     expect(applied.state.selection.main.head).toBe(MARKER_FROM + 1)
+  })
+})
+
+describe('parsing the document once', () => {
+  it('gives every reader the same markers for one document', () => {
+    const state = stateFor(DOC)
+
+    // The field, the atomic-range facet and the cursor filter all ask on the same keystroke.
+    expect(markersOf(state.doc)).toBe(markersOf(state.doc))
+  })
+
+  it('parses again once the document has changed', () => {
+    const state = stateFor(DOC)
+    const next = state.update({ changes: { from: 0, insert: 'X' } }).state
+
+    expect(markersOf(next.doc)).not.toBe(markersOf(state.doc))
+    expect(markersOf(next.doc)[0].from).toBe(MARKER_FROM + 1)
+  })
+})
+
+describe('an editor the extensions want nothing to do with', () => {
+  it('makes the marker atomic in a live-preview pane that has a file', () => {
+    expect(atomicRangesOf(stateFor(DOC))).toEqual([{ from: MARKER_FROM, to: MARKER_TO }])
+  })
+
+  it('makes nothing atomic outside live preview', () => {
+    expect(atomicRangesOf(stateFor(DOC, { live: false }))).toEqual([])
+  })
+
+  it('leaves a pane with no file alone in every one of the three', () => {
+    // All three guard alike, so a fileless editor cannot show the raw marker as text while
+    // Backspace still swallows it whole.
+    const state = stateFor(DOC, { file: false, head: MARKER_FROM })
+
+    expect(decorationsOf(state)).toEqual([])
+    expect(atomicRangesOf(state)).toEqual([])
+    expect(
+      state.update({ selection: EditorSelection.cursor(MARKER_FROM + 1) }).state.selection.main.head
+    ).toBe(MARKER_FROM + 1)
+  })
+})
+
+describe('the margin provider at teardown', () => {
+  it('gives its hosts back to the store when the view goes', () => {
+    const store = GlobalStore.getInstance()
+    store.commentsContainers.value = []
+    const provider = new CommentEntries(fakeView(stateFor(DOC)))
+
+    expect(store.commentsContainers.value).toHaveLength(1)
+
+    provider.destroy()
+
+    expect(store.commentsContainers.value).toHaveLength(0)
+  })
+
+  it('does not build a layer on a view whose overlay has already gone', () => {
+    // `footnoteExtensions` is registered before `commentExtensions`, so by the time this
+    // provider is torn down the footnote one has already called `MarginOverlay.destroy()`.
+    const view = fakeView(stateFor(DOC))
+    const provider = new CommentEntries(view)
+
+    marginOverlayFor(view).destroy()
+    provider.destroy()
+
+    expect(view.scrollDOM.querySelector('.abele-margin-overlay')).toBeNull()
   })
 })

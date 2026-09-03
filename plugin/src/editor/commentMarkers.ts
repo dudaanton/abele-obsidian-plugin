@@ -198,9 +198,23 @@ export function removeMarkerId(text: string, id: string): string {
   return text.slice(0, marker.from) + written + text.slice(marker.to)
 }
 
+/**
+ * The note as the agent should read it. Routed through `parseMarkers` rather than the raw
+ * regex, so that a fenced example of the syntax — someone's notes *about* comment markers —
+ * survives being sent to a model and, more to the point, survives being written back.
+ */
 export function stripMarkers(text: string): string {
-  COMMENT_MARKER_RE.lastIndex = 0
-  return text.replace(COMMENT_MARKER_RE, '')
+  const markers = parseMarkers(text)
+  if (markers.length === 0) return text
+
+  let stripped = ''
+  let at = 0
+  for (const marker of markers) {
+    stripped += text.slice(at, marker.from)
+    at = marker.to
+  }
+
+  return stripped + text.slice(at)
 }
 
 export type ResolvedRange = { from: number; to: number } | null

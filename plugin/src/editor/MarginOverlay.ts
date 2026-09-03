@@ -208,6 +208,17 @@ export class MarginOverlay {
   }
 }
 
+/**
+ * The overlay this view already has, or nothing.
+ *
+ * A teardown path must ask through this rather than through `marginOverlayFor`: the first
+ * provider to be destroyed takes the layer with it and evicts the map entry, so the second one
+ * asking to create would hang a fresh layer on a scroller that is going away.
+ */
+export function marginOverlayIfAny(view: EditorView): MarginOverlay | undefined {
+  return overlays.get(view)
+}
+
 /** One overlay per view, created on first use, destroyed with the view. */
 export function marginOverlayFor(view: EditorView): MarginOverlay {
   let overlay = overlays.get(view)
