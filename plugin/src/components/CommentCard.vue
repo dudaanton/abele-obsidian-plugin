@@ -153,6 +153,18 @@ const props = defineProps<{
   entry: CommentEntry
 }>()
 
+const emit = defineEmits<{
+  /**
+   * The conversation has been handed to the sidebar — by "open as chat", or by "open in
+   * sidebar" on a card that was promoted already.
+   *
+   * The margin ignores this: a sidenote sits beside the text and hides nothing. A sheet does
+   * not, and on a phone it is the whole screen, so it leaves on hearing it. `CommentService`
+   * cannot say this itself — `expand` never touches `open`, and the reveal is the card's.
+   */
+  (e: 'promoted'): void
+}>()
+
 const service = CommentService.getInstance()
 
 /** Which of the marker's comments the card is showing. */
@@ -283,7 +295,12 @@ const fold = () => {
 const showComment = (id: string) => {
   service.open.value = id
 }
-const openAsChat = () => void service.expand(activeId.value)
+async function promote(): Promise<void> {
+  await service.expand(activeId.value)
+  emit('promoted')
+}
+
+const openAsChat = () => void promote()
 const remove = () => {
   const id = activeId.value
   // `CommentService.remove` clears this too, but only after the marker and the file are gone;
@@ -292,14 +309,17 @@ const remove = () => {
   void service.remove(id)
 }
 
-const openInSidebar = () => {
+async function reveal(): Promise<void> {
   const current = session.value
   if (!current) return
 
   const chatService = ChatService.getInstance()
   chatService.switchTab(current.id)
-  void chatService.revealSidebar()
+  await chatService.revealSidebar()
+  emit('promoted')
 }
+
+const openInSidebar = () => void reveal()
 
 const onSend = (text: string) => void session.value?.sendMessage(text)
 const onAbort = () => session.value?.abort()

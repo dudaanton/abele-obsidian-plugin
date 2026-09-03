@@ -30,8 +30,22 @@ const ModalStub = {
 const CardStub = {
   name: 'CommentCard',
   props: ['entry'],
+  emits: ['promoted'],
   template: '<div class="card-stub" />',
 }
+
+/**
+ * A stand-in for a comment read from its file. `anchor` is a ref the service's own watcher
+ * dereferences whenever the open card changes, and it is empty here because a note would send
+ * that watcher into the editor, which this tier has none of.
+ */
+const loadedComment = () =>
+  ({
+    id: 'session-1',
+    anchor: { value: null },
+    flush: async () => {},
+    destroy: () => {},
+  }) as unknown as ChatSession
 
 const entry = () =>
   new CommentEntry({
@@ -94,11 +108,7 @@ describe('the comment sheet', () => {
     // A stand-in for a loaded comment: this tier never opens a file, and what is asserted is
     // that closing a sheet folds a card rather than disposing of the conversation behind it.
     // `destroy()` flushes and disposes of whatever is in the map, so the stub answers both.
-    service.sessions.set('k7d2ph', {
-      id: 'session-1',
-      flush: async () => {},
-      destroy: () => {},
-    } as unknown as ChatSession)
+    service.sessions.set('k7d2ph', loadedComment())
     const view = mountSheet()
 
     view.unmount()
@@ -117,6 +127,22 @@ describe('the comment sheet', () => {
     await nextTick()
 
     expect(view.emitted('close')).toHaveLength(1)
+  })
+
+  it('gets out of the way when the card it hosts is promoted into a chat', async () => {
+    const service = CommentService.getInstance()
+    service.sessions.set('k7d2ph', loadedComment())
+    const view = mountSheet()
+    await nextTick()
+
+    // "Open as chat" and "Open in sidebar" both reveal the sidebar; a sheet left standing
+    // covers the very thing that was asked for, and on a phone it covers all of it.
+    view.findComponent(CardStub).vm.$emit('promoted')
+    await nextTick()
+
+    expect(view.emitted('close')).toHaveLength(1)
+    // Promotion moves the conversation; it does not end it.
+    expect(service.sessions.get('k7d2ph')).toBeTruthy()
   })
 
   it('leaves a card that belongs to another marker alone when it closes', () => {

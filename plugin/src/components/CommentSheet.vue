@@ -1,7 +1,7 @@
 <template>
   <ObsidianModal :title="title" size="sheet" @close="emit('close')">
     <div class="abele-comment-sheet">
-      <CommentCard :entry="entry" />
+      <CommentCard :entry="entry" @promoted="emit('close')" />
     </div>
   </ObsidianModal>
 </template>
@@ -94,15 +94,25 @@ watch(
  * The one thing that scrolls. In the margin the thread is capped, so a long conversation
  * cannot push the next sidenote off the page; here there is no next sidenote and the cap is
  * what would keep the input away from the bottom.
+ *
+ * The size is set again here because the thread sets its own: `--font-ui-small` is the size a
+ * 300 px sidenote needs, and it does not inherit the card's. A sheet is read at arm's length
+ * on a phone, so its conversation is set at the size the rest of a dialog is.
  */
 .abele-comment-sheet .abele-comment-thread {
   flex: 1 1 auto;
   min-height: 0;
   max-height: none;
+  font-size: var(--font-ui-medium);
 }
 
 /* Whatever the keyboard leaves of the viewport, the field is the last row of the column. */
 .abele-comment-sheet .abele-comment-input {
   flex: 0 0 auto;
+}
+
+/* And what is typed is read at the size of what is answered. */
+.abele-comment-sheet .abele-comment-input__field {
+  font-size: var(--font-ui-medium);
 }
 </style>

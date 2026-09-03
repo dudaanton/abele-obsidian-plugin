@@ -207,13 +207,17 @@ describe('an opened card', () => {
     expect(open.value).toBeNull()
   })
 
-  it('promotes the comment into a chat', async () => {
+  it('promotes the comment into a chat, and says so', async () => {
     seed('k7d2ph')
 
     const view = await mountCard(['k7d2ph'])
     await action(view, 'panel-right-open').vm.$emit('click')
+    await nextTick()
 
     expect(expand).toHaveBeenCalledWith('k7d2ph')
+    // The conversation is a sidebar tab now. A host that covers the sidebar — the sheet —
+    // has to get out of the way, and only the card knows the promotion happened.
+    expect(view.emitted('promoted')).toHaveLength(1)
   })
 
   it('asks before it destroys a conversation', async () => {
@@ -368,8 +372,11 @@ describe('a comment that was promoted into a chat', () => {
     expect(button.props('text')).toBe('Open in sidebar')
 
     await button.vm.$emit('click')
+    await nextTick()
     expect(switchTab).toHaveBeenCalledWith('session-1')
     expect(revealSidebar).toHaveBeenCalled()
+    // Same again: what was asked for is on the sidebar, behind whatever this card is in.
+    expect(view.emitted('promoted')).toHaveLength(1)
   })
 
   it('offers no second promotion', async () => {
