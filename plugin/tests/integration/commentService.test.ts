@@ -169,3 +169,123 @@ describe('removing a comment', () => {
     expect(await noteText()).toBe(`Before. The selected passage%%c:${second.commentId}%% After.\n`)
   })
 })
+
+/** A comment with something in it, since an empty one has nothing to expand into. */
+async function answeredComment() {
+  const service = CommentService.getInstance()
+  const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+  ;(session as unknown as { allChatMessages: unknown[] }).allChatMessages = [
+    { id: 'm1', role: 'user', content: 'what does this mean?', timestamp: 1 },
+  ]
+  await session.save()
+  return session
+}
+
+describe('expanding a comment into a chat', () => {
+  it('flips the kind, in memory and in the file', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+
+    expect(session.kind).toBe('chat')
+    const file = app.vault.getAbstractFileByPath(service.commentPath(id)) as TFile
+    expect(parseChatMetadata((await app.vault.read(file)) as string)?.kind).toBe('chat')
+  })
+
+  it('keeps the anchor, so the marker still finds the file', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+
+    await service.expand(session.commentId!)
+
+    expect(session.anchor.value?.note).toBe('Notes/A.md')
+    expect(session.scopeResolver.isInScope('Notes/A.md')).toBe(true)
+  })
+
+  it('moves it onto the default agent', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+
+    await service.expand(session.commentId!)
+
+    expect(session.agentId.value).toBe(AgentRegistry.getInstance().defaultAgent()?.id)
+  })
+
+  it('puts it in the chat history and hands it to the sidebar as a tab', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+
+    expect(AbeleConfig.getInstance().ai.chatHistory.map((e) => e.path)).toEqual([
+      service.commentPath(id),
+    ])
+    expect(ChatService.getInstance().getSessionByFile(service.commentPath(id))).toBe(session)
+    expect(ChatService.getInstance().revealSidebar).toHaveBeenCalled()
+  })
+
+  it('takes edit_selection away, because it is no longer a comment', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+
+    await service.expand(session.commentId!)
+
+    expect(session.toolDefs().map((t) => t.name)).not.toContain('edit_selection')
+  })
+
+  it('is still the one session for that id, so nothing loads the file twice', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+
+    expect(service.sessions.has(id)).toBe(false)
+    expect(service.get(id)?.state).toBe('idle')
+    expect(await service.load(id)).toBe(session)
+  })
+})
+
+describe('the note being renamed', () => {
+  it('follows it in a comment nobody has open', async () => {
+    const service = CommentService.getInstance()
+    const session = await CommentService.getInstance().create(
+      noteFile(),
+      SELECTION_END,
+      'The selected passage'
+    )
+    const id = session.commentId!
+    service.destroy()
+
+    await CommentService.getInstance().handleRename('Notes/A.md', 'Notes/B.md')
+
+    const file = app.vault.getAbstractFileByPath(
+      CommentService.getInstance().commentPath(id)
+    ) as TFile
+    expect(parseChatMetadata((await app.vault.read(file)) as string)?.anchor).toEqual({
+      note: 'Notes/B.md',
+      quote: 'The selected passage',
+    })
+  })
+
+  it('follows it in a comment already loaded', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+
+    await service.handleRename('Notes/A.md', 'Notes/B.md')
+
+    expect(session.anchor.value?.note).toBe('Notes/B.md')
+  })
+
+  it('leaves a comment on some other note alone', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+
+    await service.handleRename('Notes/Elsewhere.md', 'Notes/Moved.md')
+
+    expect(session.anchor.value?.note).toBe('Notes/A.md')
+  })
+})

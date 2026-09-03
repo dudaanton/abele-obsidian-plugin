@@ -48,6 +48,16 @@ const META_PREFIX = `{"v":${CHAT_FORMAT_VERSION},"k":"meta"`
 const metaLine = (metadata: ChatMetadata): string =>
   JSON.stringify({ v: CHAT_FORMAT_VERSION, k: 'meta', ...metadata })
 
+/**
+ * One metadata record, ready to append.
+ *
+ * For a writer with no session in hand — `CommentService` following a note rename. Appending
+ * it updates the file's metadata, because `parseChatMetadata` reads the last such record.
+ */
+export function serializeMetadata(metadata: ChatMetadata): string {
+  return metaLine(metadata) + '\n'
+}
+
 const messageLine = (message: ChatMessage): string => JSON.stringify({ k: 'msg', ...message })
 
 const internalLine = (message: Message): string => JSON.stringify({ k: 'int', ...message })

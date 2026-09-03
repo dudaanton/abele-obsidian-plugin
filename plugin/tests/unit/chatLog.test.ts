@@ -8,7 +8,9 @@
 import { describe, it, expect } from 'vitest'
 import {
   serializeChat,
+  serializeMetadata,
   parseChat,
+  parseChatMetadata,
   ChatLogWriter,
   CHAT_FORMAT_VERSION,
   type ChatSnapshot,
@@ -258,10 +260,24 @@ describe('a comment chat', () => {
   })
 
   it('leaves a cursor comment without a quote', () => {
-    const snap = snapshot({ metadata: metadata({ kind: 'comment', anchor: { note: 'Notes/A.md' } }) })
+    const snap = snapshot({
+      metadata: metadata({ kind: 'comment', anchor: { note: 'Notes/A.md' } }),
+    })
 
     const parsed = parseChat(serializeChat(snap))
 
     expect(parsed.metadata?.anchor).toEqual({ note: 'Notes/A.md' })
+  })
+
+  it('takes a new metadata record rather than a rewrite when its note moves', () => {
+    const original = serializeChat(
+      snapshot({ metadata: metadata({ kind: 'comment', anchor: { note: 'Old.md' } }) })
+    )
+
+    const updated =
+      original + serializeMetadata(metadata({ kind: 'comment', anchor: { note: 'New.md' } }))
+
+    expect(parseChatMetadata(updated)?.anchor).toEqual({ note: 'New.md' })
+    expect(parseChat(updated).messages).toHaveLength(1)
   })
 })

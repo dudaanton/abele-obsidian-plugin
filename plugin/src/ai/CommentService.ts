@@ -1,5 +1,5 @@
 import { ref, shallowReactive, watch, type Ref, type WatchStopHandle } from 'vue'
-import { TFile } from 'obsidian'
+import { TFile, TFolder } from 'obsidian'
 import dayjs from 'dayjs'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -13,7 +13,7 @@ import { ChatSession } from './ChatSession'
 import { ChatService } from './ChatService'
 import { ChatStorage } from './ChatStorage'
 import { AgentRegistry } from './agents/AgentRegistry'
-import { parseChatMetadata, serializeChat } from './ChatLog'
+import { parseChatMetadata, serializeChat, serializeMetadata } from './ChatLog'
 import { DEFAULT_AI_SETTINGS, type ChatMetadata, type CommentAnchor } from './types'
 
 /**
@@ -158,7 +158,7 @@ export class CommentService implements CommentInfoSource {
     if (known) return known
 
     const pending = this.loading.get(id)
-    if (pending) return pending
+    if (pending !== undefined) return pending
 
     const task = (async (): Promise<ChatSession | null> => {
       const { app } = GlobalStore.getInstance()
@@ -177,6 +177,108 @@ export class CommentService implements CommentInfoSource {
     } finally {
       this.loading.delete(id)
     }
+  }
+
+  // ── Becoming a chat ───────────────────────────────────────────
+
+  /**
+   * Promotes a comment into a full chat, spec §3.
+   *
+   * The file does not move and the anchor is not dropped: the marker keeps resolving, and the
+   * card goes on showing the first exchange with a way back into the sidebar. What changes is
+   * who it is for — the default agent, a tab, and a place in the history.
+   */
+  async expand(id: string): Promise<void> {
+    const session = this.sessions.get(id)
+    if (!session) return
+
+    session.kind = 'chat'
+
+    const fallback = AgentRegistry.getInstance().defaultAgent()
+    // `switchAgent` re-syncs the scope, and the anchored note survives that: `applyScope`
+    // puts it back. Overrides are dropped, which is right — they were the comment agent's.
+    if (fallback) session.switchAgent(fallback.id)
+
+    const file = session.currentChatFile.value
+    if (file) {
+      // Explicit, because `refreshHistory` only ever scans the chat folder. Known entries are
+      // kept whatever folder they are in, so this one stays.
+      ChatStorage.getInstance().addHistoryEntry({
+        path: file.path,
+        title: session.chatTitle.value || file.basename,
+        created: dayjs().format('YYYY-MM-DD'),
+      })
+    }
+
+    this.sessions.delete(id)
+    this.expanded.set(id, session)
+
+    const chatService = ChatService.getInstance()
+    chatService.adoptSession(session)
+    await session.save()
+    await chatService.revealSidebar()
+
+    const note = session.anchor.value?.note
+    if (note) dispatchCommentsChanged(note)
+  }
+
+  /**
+   * A comment file opened in a leaf by hand.
+   *
+   * The sidebar can only show a chat, so this is taken as asking for one — the same move the
+   * card's "open as chat" makes. Going through `expand` is what keeps a single session on the
+   * file; `ChatService.openChatFile` would have built a second one on top of it.
+   */
+  async openFile(file: TFile): Promise<void> {
+    const chatService = ChatService.getInstance()
+
+    const already = chatService.getSessionByFile(file.path)
+    if (already) {
+      chatService.switchTab(already.id)
+      await chatService.revealSidebar()
+      return
+    }
+
+    const id = file.basename
+    if (!(await this.load(id))) return
+    await this.expand(id)
+  }
+
+  // ── Following the note ────────────────────────────────────────
+
+  /**
+   * Rewrites `anchor.note` in every comment that pointed at `oldPath`.
+   *
+   * Renames are rare and comments are one flat folder, so reading each one's metadata is
+   * cheaper to write and to trust than an index that has to be kept correct.
+   */
+  async handleRename(oldPath: string, newPath: string): Promise<void> {
+    const { app } = GlobalStore.getInstance()
+    const folder = app.vault.getAbstractFileByPath(this.folder())
+    if (!(folder instanceof TFolder)) return
+
+    for (const child of folder.children) {
+      if (!(child instanceof TFile) || child.extension !== 'abchat') continue
+
+      const loaded = this.sessionFor(child.basename)
+      if (loaded) {
+        const anchor = loaded.anchor.value
+        if (anchor?.note !== oldPath) continue
+        loaded.anchor.value = { ...anchor, note: newPath }
+        // The session owns this file; letting it write keeps its log writer in step.
+        await loaded.save()
+        continue
+      }
+
+      const metadata = parseChatMetadata(await app.vault.read(child))
+      if (metadata?.anchor?.note !== oldPath) continue
+      await app.vault.append(
+        child,
+        serializeMetadata({ ...metadata, anchor: { ...metadata.anchor, note: newPath } })
+      )
+    }
+
+    dispatchCommentsChanged(newPath)
   }
 
   // ── Removing one ──────────────────────────────────────────────

@@ -31,7 +31,7 @@ import { taskStateField } from './editor/TaskPlugin'
 import { galleryExtensions } from './editor/GalleryPlugin'
 import { footnoteExtensions } from './editor/FootnotePlugin'
 import { highlightStateField } from './editor/HighlightPlugin'
-import { commentExtensions } from '@/editor/CommentPlugin'
+import { commentExtensions, setCommentInfoSource } from '@/editor/CommentPlugin'
 import { insertGallery, convertImagesToGalleries } from './commands/galleryCommands'
 import { reindexFootnotes } from './commands/footnoteCommands'
 import { insertHighlight, removeHighlight } from './commands/highlightCommands'
@@ -54,6 +54,7 @@ import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
 import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
 import { ChatService } from './ai/ChatService'
+import { CommentService } from './ai/CommentService'
 import { useFilesInAgent } from './helpers/useFilesInAgent'
 import { ScriptService } from './scripting/ScriptService'
 import { showMarkdown } from './scripting/formModal'
@@ -301,16 +302,7 @@ export default class AbelePlugin extends Plugin {
           const file = (leaf.view as any).file as TFile | undefined
           if (file?.extension === 'abchat') {
             leaf.detach()
-            const chatService = ChatService.getInstance()
-            void chatService.openChatFile(file).then(() => {
-              const { workspace } = this.app
-              let aiLeaf = workspace.getLeavesOfType(AI_SIDEBAR_VIEW_TYPE)[0] ?? null
-              if (!aiLeaf) {
-                aiLeaf = workspace.getRightLeaf(false)
-                void aiLeaf.setViewState({ type: AI_SIDEBAR_VIEW_TYPE, active: true })
-              }
-              void workspace.revealLeaf(aiLeaf)
-            })
+            void this.openAbchatFile(file)
             return
           }
         }
@@ -951,6 +943,16 @@ export default class AbelePlugin extends Plugin {
   }
 
   registerAiFeatures() {
+    // The editor's comment field reads this synchronously to draw each marker's icon.
+    setCommentInfoSource(CommentService.getInstance())
+
+    this.registerEvent(
+      this.app.vault.on('rename', (file, oldPath) => {
+        if (!(file instanceof TFile) || file.extension !== 'md') return
+        void CommentService.getInstance().handleRename(oldPath, file.path)
+      })
+    )
+
     this.addCommand({
       id: 'show-ai-sidebar',
       name: 'Show AI chat sidebar',
@@ -1012,6 +1014,7 @@ export default class AbelePlugin extends Plugin {
     }
     SnippetService.destroy()
     ScriptService.destroy()
+    CommentService.getInstance().destroy()
     ChatService.getInstance().destroy()
     ScopeResolver.getInstance().destroy()
     ChatStorage.destroy()
@@ -1033,6 +1036,26 @@ export default class AbelePlugin extends Plugin {
   ) {
     const registered = this.registerMarkdownCodeBlockProcessor(language, processor)
     registered.sortOrder = priority
+  }
+
+  /**
+   * A chat file belongs in the sidebar, not in a leaf.
+   *
+   * A comment file is the same idea taken one step further: it has no reader of its own until
+   * its card is on screen, so opening it by hand is taken as asking for the chat. Expansion is
+   * the route rather than `openChatFile` because `CommentService` may already have a session
+   * writing that file, and two writers on one log interleave records.
+   */
+  private async openAbchatFile(file: TFile): Promise<void> {
+    const comments = CommentService.getInstance()
+    if (comments.isCommentFile(file)) {
+      await comments.openFile(file)
+      return
+    }
+
+    const chatService = ChatService.getInstance()
+    await chatService.openChatFile(file)
+    await chatService.revealSidebar()
   }
 
   async activateView(viewType: string) {
