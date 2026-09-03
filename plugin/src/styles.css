@@ -600,3 +600,15 @@ body.is-mobile .abele-comment-marker__count {
 .abele-comment-widget-container_hidden {
   display: none;
 }
+
+/* Margin host for a pinned message. Named after the container above so HIDDEN_CLASS reads the
+   same way; the overlay parks it at the top of the view rather than beside its anchor. */
+.abele-comment-pin-container {
+  pointer-events: auto;
+  position: absolute;
+}
+
+/* Toggled by name from HIDDEN_CLASS in MarginOverlay.ts, like the one above. */
+.abele-comment-pin-container_hidden {
+  display: none;
+}

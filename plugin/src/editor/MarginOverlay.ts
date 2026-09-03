@@ -8,7 +8,7 @@ import type { EditorView } from '@codemirror/view'
  * Providers own what goes in an entry — its element, its Vue teleport target, its lifetime —
  * and register it here by kind. The overlay owns only where it sits and whether it is shown.
  */
-export type MarginEntryKind = 'footnote' | 'comment'
+export type MarginEntryKind = 'footnote' | 'comment' | 'pin'
 
 export interface MarginEntry {
   /** Unique across kinds; providers use `genid()`. */
@@ -18,6 +18,8 @@ export interface MarginEntry {
   anchorPos: number
   /** The container Vue teleports into; the overlay owns its position. */
   el: HTMLElement
+  /** Parked at the top of the visible margin rather than beside its anchor. */
+  sticky?: boolean
 }
 
 /** px of right-hand margin below which the overlay reports no room and hides every entry. */
@@ -32,6 +34,17 @@ export interface StackItem {
   /** Top of the anchor in scroller coordinates, or null when the anchor is out of view. */
   top: number | null
   height: number
+  /** Parked at the top of the visible margin rather than beside its anchor. */
+  sticky?: boolean
+}
+
+export interface StackOptions {
+  gap?: number
+  /**
+   * Top of the visible area, in the same coordinates as `StackItem.top` — the scroller's
+   * `scrollTop`. Only the sticky items read it.
+   */
+  viewportTop?: number
 }
 
 export interface StackPlacement {
@@ -45,12 +58,23 @@ export interface StackPlacement {
  * it. Kept free of the DOM and of CodeMirror so it can be tested without a layout engine —
  * measuring `top` and `height` is the caller's job.
  */
-export function stackEntries(items: StackItem[], gap: number = SIDENOTE_GAP): StackPlacement[] {
+export function stackEntries(items: StackItem[], options: StackOptions = {}): StackPlacement[] {
+  const { gap = SIDENOTE_GAP, viewportTop = 0 } = options
   const sorted = [...items].sort((a, b) => a.anchorPos - b.anchorPos)
   const placements: StackPlacement[] = []
   let lastBottom = -Infinity
 
-  for (const item of sorted) {
+  // Pinned first, and at the top of the view rather than at their anchors: that is the whole
+  // of what pinning means. `top` is not consulted — a pin whose anchor scrolled away is
+  // exactly the pin that has work to do. The sort is stable, so two pins on one marker keep
+  // the order they were pinned in.
+  for (const item of sorted.filter((item) => item.sticky)) {
+    const top = Math.max(viewportTop + gap, lastBottom + gap)
+    placements.push({ id: item.id, top })
+    lastBottom = top + item.height
+  }
+
+  for (const item of sorted.filter((item) => !item.sticky)) {
     if (item.top === null) {
       placements.push({ id: item.id, top: null })
       continue
@@ -78,6 +102,7 @@ const SIDENOTE_LEFT_OFFSET = 8
 const HIDDEN_CLASS: Record<MarginEntryKind, string> = {
   footnote: 'abele-footnote-widget-container_hidden',
   comment: 'abele-comment-widget-container_hidden',
+  pin: 'abele-comment-pin-container_hidden',
 }
 
 const overlays = new WeakMap<EditorView, MarginOverlay>()
@@ -155,7 +180,9 @@ export class MarginOverlay {
         anchorPos: entry.anchorPos,
         top: this.topOf(entry.anchorPos, scrollerRect.top),
         height: entry.el.offsetHeight,
-      }))
+        sticky: entry.sticky,
+      })),
+      { viewportTop: this.view.scrollDOM.scrollTop }
     )
 
     const byId = new Map(entries.map((entry) => [entry.id, entry]))
