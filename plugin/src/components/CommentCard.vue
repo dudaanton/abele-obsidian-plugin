@@ -496,12 +496,26 @@ const onAbort = () => session.value?.abort()
 /**
  * The picker at the size of the badge it replaces. Obsidian's own dropdown is a form control
  * built for a settings row, and at that height it is the tallest thing in a sidenote header.
+ *
+ * Only the vertical padding is taken back. The chevron is a background image drawn 12 px in
+ * from the right edge, and the 32 px of right padding is the room it stands in — a compact
+ * shorthand takes that room away and the glyph lands on the last letter of the agent's name,
+ * which is what the first phone screenshot showed.
  */
 .abele-comment-card__agent .abele-obsidian-dropdown .dropdown {
   max-width: 10em;
   height: auto;
-  padding: var(--size-2-1) var(--size-4-1);
+  padding: var(--size-2-1) var(--size-4-6) var(--size-2-1) var(--size-4-2);
   font-size: var(--font-ui-smaller);
+}
+
+/**
+ * A phone, where the picker is something to hit rather than something to read. The composer
+ * below it takes `--size-4-9` for the same reason; a 21 px control in a header is a miss.
+ */
+body.is-mobile .abele-comment-card__agent .abele-obsidian-dropdown .dropdown {
+  min-height: var(--size-4-9);
+  font-size: var(--font-ui-small);
 }
 
 .abele-comment-card__hint {

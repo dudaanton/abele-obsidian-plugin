@@ -235,6 +235,25 @@ describe('the design standard', () => {
     expect(send).toMatch(/min-height:\s*var\(--size-4-9\)/)
   })
 
+  /**
+   * The header's agent picker, which is a native `select` wearing a badge's clothes.
+   *
+   * Obsidian draws the chevron as a background image 12 px in from the right edge and reserves
+   * the room for it with `padding-right: 32px`. A compact padding shorthand takes that room
+   * away and the chevron lands on the last letter of the agent's name — which is what the
+   * first phone screenshot showed. The room is padding, not decoration, so it is guarded.
+   */
+  it('leaves the agent picker room for the chevron Obsidian draws in it', () => {
+    const card = styleBlock(readFileSync(join(ROOT, 'CommentCard.vue'), 'utf8'))
+
+    const picker =
+      /\.abele-comment-card__agent \.abele-obsidian-dropdown \.dropdown\s*\{([^}]*)\}/.exec(
+        card
+      )?.[1] ?? ''
+    // --size-4-6 is 24px: 12px to the chevron plus the glyph itself.
+    expect(picker).toMatch(/padding:[^;]*var\(--size-4-6\)/)
+  })
+
   it('explains any element that scrolls sideways', () => {
     const offenders = FILES.filter((file) => {
       const source = readFileSync(file, 'utf8')

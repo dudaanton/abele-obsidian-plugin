@@ -112,4 +112,16 @@ watch(
 .abele-comment-sheet .abele-comment-input {
   flex: 0 0 auto;
 }
+
+/**
+ * The agent picker, at the size the rest of a sheet is hit at.
+ *
+ * The margin's is a badge with a chevron, sized to a 300 px sidenote header. A sheet is the
+ * whole screen of a phone — and a narrow desktop pane, which is the other thing that opens one
+ * — so the picker goes back to a control a thumb can land on, as the composer below it does.
+ */
+.abele-comment-sheet .abele-comment-card__agent .abele-obsidian-dropdown .dropdown {
+  min-height: var(--size-4-9);
+  font-size: var(--font-ui-small);
+}
 </style>
