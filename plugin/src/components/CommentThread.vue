@@ -36,6 +36,20 @@
           :text="msg.content"
           :file-path="notePath"
         />
+        <!-- Only in the margin: a sheet is what a phone opens instead of one, and there is
+             nowhere for a pinned message to go there. -->
+        <div v-if="host === 'margin'" class="abele-comment-thread__actions">
+          <Icon
+            class="abele-comment-thread__pin"
+            :icon="session.isPinned(msg.id) ? 'pin-off' : 'pin'"
+            :tooltip="
+              session.isPinned(msg.id)
+                ? 'Take this message out of the margin'
+                : 'Keep this message at the top of the margin'
+            "
+            @click="togglePin(msg)"
+          />
+        </div>
       </template>
     </div>
 
@@ -100,9 +114,17 @@ import type { ChatMessage } from '@/ai/types'
 /** How much of a tool's arguments fits on one line at sidenote width. */
 const ARG_SUMMARY_LIMIT = 48
 
-const props = defineProps<{
-  session: ChatSession
-}>()
+const props = withDefaults(
+  defineProps<{
+    session: ChatSession
+    /**
+     * Where the thread is being shown. A margin can hold a pinned message at its top; a sheet
+     * is the phone's stand-in for a margin and has nowhere to put one.
+     */
+    host?: 'margin' | 'sheet'
+  }>(),
+  { host: 'margin' }
+)
 
 const notePath = computed(() => props.session.anchor.value?.note ?? '')
 
@@ -236,6 +258,9 @@ onBeforeUnmount(() => {
   growth = null
 })
 
+const togglePin = (msg: ChatMessage): void =>
+  void (props.session.isPinned(msg.id) ? props.session.unpin(msg.id) : props.session.pin(msg.id))
+
 const approve = () => void props.session.approveToolCall()
 const deny = () => void props.session.rejectToolCall('Denied from the comment card')
 const answer = (option: string) => props.session.answerCurrentQuestion(option)
@@ -265,6 +290,40 @@ const retry = () => void props.session.retryRequest()
 .abele-comment-thread__msg {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/**
+ * The row's own actions, out of the way until the row is reached for.
+ *
+ * `visibility` and not `display`: the box keeps its room either way, so the thread does not
+ * jump a line taller under the pointer as it moves down the conversation.
+ */
+.abele-comment-thread__actions {
+  display: flex;
+  justify-content: flex-end;
+  visibility: hidden;
+}
+
+.abele-comment-thread__msg:hover .abele-comment-thread__actions,
+.abele-comment-thread__msg:focus-within .abele-comment-thread__actions {
+  visibility: visible;
+}
+
+/** A per-message control at the size of the text it belongs to, like the tool-call bullet. */
+.abele-comment-thread__pin {
+  --icon-size: var(--icon-xs);
+  height: auto;
+  padding: var(--size-2-1);
+  color: var(--text-faint);
+}
+
+/**
+ * A phone, where there is no hover to reveal it and no margin to pin into. The `host` prop
+ * already takes it away wherever a sheet is what opened — this covers the tablet-sized case
+ * Obsidian still calls mobile, where a card can be in a margin and a pointer never arrives.
+ */
+body.is-mobile .abele-comment-thread__actions {
+  display: none;
 }
 
 /**

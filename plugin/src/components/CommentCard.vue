@@ -116,7 +116,7 @@
       </template>
 
       <template v-else>
-        <CommentThread v-if="session" :session="session" />
+        <CommentThread v-if="session" :session="session" :host="host" />
         <EmptyState v-else-if="lost" text="This comment's file is missing." />
         <EmptyState v-else text="Reading this comment…" />
         <!-- Keyed by the comment: a half-typed question belongs to the tab it was typed in,

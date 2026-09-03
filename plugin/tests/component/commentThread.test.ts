@@ -12,6 +12,7 @@ import { mount } from '@vue/test-utils'
 import { nextTick, ref } from 'vue'
 import CommentThread from '@/components/CommentThread.vue'
 import Button from '@/components/obsidian/Button.vue'
+import Icon from '@/components/obsidian/Icon.vue'
 import Markdown from '@/components/obsidian/Markdown.vue'
 import type { ChatMessage } from '@/ai/types'
 import type { ChatSession } from '@/ai/ChatSession'
@@ -26,10 +27,14 @@ function message(over: Partial<ChatMessage> & Pick<ChatMessage, 'role'>): ChatMe
   return { id: 'm1', content: '', timestamp: 1, ...over } as ChatMessage
 }
 
-function render(overrides: Record<string, unknown> = {}, messages: ChatMessage[] = []) {
+function render(
+  overrides: Record<string, unknown> = {},
+  messages: ChatMessage[] = [],
+  host?: 'margin' | 'sheet'
+) {
   const session = fakeChatSession({ messages: ref(messages), overrides })
   const view = mount(CommentThread, {
-    props: { session: session as unknown as ChatSession },
+    props: { session: session as unknown as ChatSession, ...(host ? { host } : {}) },
   })
   return { view, session }
 }
@@ -277,5 +282,67 @@ describe('following a reply that is still arriving', () => {
 
     expect(root.scrollTop).toBe(700)
     view.unmount()
+  })
+})
+
+/**
+ * Pinning, which is the one per-message action a margin has room for.
+ *
+ * It is on the row rather than in the header because it is about *this* message, and there is
+ * no per-message menu at this width to hide it in. A sheet has no margin behind it to pin to,
+ * so the control is simply absent there.
+ */
+describe('pinning a message from its row', () => {
+  it('offers the action on a message somebody said, and not on a tool call', () => {
+    const { view } = render({}, [
+      message({ id: 'u1', role: 'user', content: 'What does this mean?' }),
+      message({ id: 'a1', role: 'assistant', content: 'It means this.' }),
+      message({ id: 't1', role: 'tool-call', toolName: 'read_file', toolCallId: 'call-1' }),
+    ])
+
+    const rows = view.findAll('.abele-comment-thread__msg')
+    expect(rows[0].findAll('.abele-comment-thread__pin')).toHaveLength(1)
+    expect(rows[1].findAll('.abele-comment-thread__pin')).toHaveLength(1)
+    expect(rows[2].findAll('.abele-comment-thread__pin')).toHaveLength(0)
+  })
+
+  it('pins a message that is not pinned and unpins one that is', async () => {
+    const pin = vi.fn()
+    const unpin = vi.fn()
+    const { view } = render({ pin, unpin }, [
+      message({ id: 'a1', role: 'assistant', content: 'It means this.' }),
+    ])
+
+    await view.find('.abele-comment-thread__pin').trigger('click')
+    expect(pin).toHaveBeenCalledWith('a1')
+
+    const pinned = render({ pin, unpin, isPinned: (id: string) => id === 'a1' }, [
+      message({ id: 'a1', role: 'assistant', content: 'It means this.' }),
+    ])
+    await pinned.view.find('.abele-comment-thread__pin').trigger('click')
+    expect(unpin).toHaveBeenCalledWith('a1')
+  })
+
+  it('shows which way the press goes in the glyph itself', () => {
+    const loose = render({}, [message({ id: 'a1', role: 'assistant', content: 'A' })])
+    expect(loose.view.findComponent(Icon).props('icon')).toBe('pin')
+
+    const kept = render({ isPinned: () => true }, [
+      message({ id: 'a1', role: 'assistant', content: 'A' }),
+    ])
+    expect(kept.view.findComponent(Icon).props('icon')).toBe('pin-off')
+  })
+
+  it('offers nothing to pin in a sheet, where there is no margin to pin to', () => {
+    const { view } = render(
+      {},
+      [
+        message({ id: 'u1', role: 'user', content: 'A question.' }),
+        message({ id: 'a1', role: 'assistant', content: 'An answer.' }),
+      ],
+      'sheet'
+    )
+
+    expect(view.findAll('.abele-comment-thread__pin')).toHaveLength(0)
   })
 })

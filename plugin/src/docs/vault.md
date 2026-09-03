@@ -141,6 +141,12 @@ out of the chat history until somebody opens one as a full chat. Not every user 
 a question: a comment may hold notes the person kept without asking anything, which no agent
 has answered and which are simply part of the conversation from then on.
 
+A single message in a comment can be *pinned*: its id is listed in `pinned` in the file's
+metadata, and the plugin keeps that message on a small card at the top of the note's margin
+until it is unpinned. Like the marker, `pinned` is not something to write by hand — an id with
+no message behind it is a card the plugin will not draw, and the reader has no way to see that
+anything was meant to be there.
+
 ## Transfer files
 
 Files in the vault root named `Abele transfer <date> <time>.txt` are settings on their way to

@@ -53,6 +53,12 @@ export function fakeChatSession({
     agent: ref({ id: 'comment-agent', name: 'Comment' }),
     agentId: ref('comment-agent'),
     commentState: ref<CommentState>('idle'),
+    // Pinning. `pinned` is the one record of it on a real session, and the three methods below
+    // are what a row and a pin card call; a test that cares about either overrides them.
+    pinned: shallowRef<string[]>([]),
+    isPinned: () => false,
+    pin: nothing,
+    unpin: nothing,
     getDraftMessage: () => null,
     getDebugData: () => ({}),
     getToolMode: () => 'ask',
