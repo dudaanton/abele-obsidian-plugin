@@ -128,6 +128,11 @@ Three files, three concerns:
 - `footerRender.e2e.test.ts` — **render cost**. Opens a wide group note and reports how much
   DOM its footer produced and how long the main thread was blocked. The component tier
   proves each list renders a single page; only this tier can show that the page is cheap.
+- `commentChats.e2e.test.ts` — **comment chats end to end**. Runs the comment command on a
+  selection in a scratch note and checks what the app shows: no raw `%%c:…%%` in the editor, an
+  icon carrying the comment id, the card in the margin when there is room, the chat file under
+  the comment folder, and — under `app.emulateMobile(true)` — the same card as a sheet with its
+  input in sight. Cleans the note and the file up after itself.
 
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
 "mega group", where a single resolution currently takes about two minutes.
