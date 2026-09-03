@@ -198,10 +198,15 @@ describe('inserting a marker', () => {
       expect(insertMarker(DOC, 20, '3mq0xa').text).toBe('Passage%%c:k7d2ph,3mq0xa%% and more.')
     })
 
-    it('appends across the space that precedes the marker', () => {
+    // The other way round is a separate comment. A caret set down at the end of the sentence
+    // before an existing marker is somebody commenting on that sentence, and joining the two
+    // would answer their comment with a thread about the passage after it.
+    it('writes its own marker before the space that precedes one', () => {
       const spaced = 'Passage %%c:k7d2ph%% and more.'
 
-      expect(insertMarker(spaced, 7, '3mq0xa').text).toBe('Passage %%c:k7d2ph,3mq0xa%% and more.')
+      expect(insertMarker(spaced, 7, '3mq0xa').text).toBe(
+        'Passage%%c:3mq0xa%% %%c:k7d2ph%% and more.'
+      )
     })
 
     it('appends when the selection swallowed the marker whole', () => {
@@ -220,9 +225,12 @@ describe('inserting a marker', () => {
     })
 
     it('takes the nearer marker when two of them are in reach', () => {
-      const two = 'a%%c:aaaaaa%%   %%c:bbbbbb%%b'
+      // A selection from the start of the line swallowed both; the one it ended beside wins.
+      const two = 'a%%c:aaaaaa%% b%%c:bbbbbb%% c'
 
-      expect(insertMarker(two, 15, 'cccccc').text).toBe('a%%c:aaaaaa%%   %%c:bbbbbb,cccccc%%b')
+      expect(insertMarker(two, two.length, 'cccccc', 0).text).toBe(
+        'a%%c:aaaaaa%% b%%c:bbbbbb,cccccc%% c'
+      )
     })
   })
 })

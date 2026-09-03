@@ -173,10 +173,16 @@ const SAME_LINE_GAP = /^[^\S\n]*$/
  * those is the same act, and refusing to merge them is what put two icons side by side, one
  * comment on each and no count on either.
  *
- * So four ways in, all of them meaning "this passage": the position sits anywhere from the
- * marker's start to its end; whitespace is all that separates the two, on either side, on the
- * same line; or the selection swallowed the marker whole. A line break is where it stops — a
- * marker at the end of the paragraph above is about another passage, whatever the distance.
+ * So three ways in, all of them meaning "this passage": the position sits anywhere from the
+ * marker's start to its end; whitespace on the same line is all that separates a marker from
+ * a position after it; or the selection swallowed the marker whole. A line break is where it
+ * stops — a marker at the end of the paragraph above is about another passage, whatever the
+ * distance.
+ *
+ * A position *before* a marker is not one of them. On a phone the gap is the widget's own
+ * width and merging across it was a fair guess; on a desktop a caret set down at the end of
+ * the previous sentence is somebody starting a distinct comment, and joining it to the marker
+ * beyond the space took their comment away from them.
  */
 function mergeTarget(text: string, from: number, pos: number): ParsedMarker | undefined {
   let best: ParsedMarker | undefined
@@ -186,8 +192,7 @@ function mergeTarget(text: string, from: number, pos: number): ParsedMarker | un
     const inside = pos >= marker.from && pos <= marker.to
     const swallowed = marker.from >= from && marker.to <= pos
     const after = marker.to <= pos && SAME_LINE_GAP.test(text.slice(marker.to, pos))
-    const before = marker.from >= pos && SAME_LINE_GAP.test(text.slice(pos, marker.from))
-    if (!inside && !swallowed && !after && !before) continue
+    if (!inside && !swallowed && !after) continue
 
     const distance = inside ? 0 : Math.min(Math.abs(pos - marker.to), Math.abs(marker.from - pos))
     if (distance < bestDistance) {
