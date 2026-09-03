@@ -26,7 +26,7 @@ import {
 } from '@/editor/CommentPlugin'
 import { parseMarkers } from '@/editor/commentMarkers'
 import { CommentMarkerWidget } from '@/editor/CommentMarkerWidget'
-import { marginOverlayFor } from '@/editor/MarginOverlay'
+import { MarginOverlay, marginOverlayFor, type MarginEntry } from '@/editor/MarginOverlay'
 import { GlobalStore } from '@/stores/GlobalStore'
 
 const NOTE = 'Notes/Anchor.md'
@@ -303,6 +303,143 @@ describe('the margin provider at teardown', () => {
     provider.destroy()
 
     expect(view.scrollDOM.querySelector('.abele-margin-overlay')).toBeNull()
+  })
+})
+
+/**
+ * A pinned message is a second kind of margin entry from the same walk over the same markers.
+ * It is sticky, so the overlay parks it at the top of the view rather than at its anchor, and
+ * its `markerFrom` is refreshed on every sync — the press on it has to scroll somewhere real.
+ */
+describe('the margin provider and pinned messages', () => {
+  /** A source that answers for the doc's one marker and nothing else. */
+  const sourceWith = (pinned: string[]) =>
+    setCommentInfoSource({
+      get: (id: string): CommentInfo | undefined =>
+        id === 'k7d2ph' ? { state: 'idle', open: false, pinned } : undefined,
+      touch: () => {},
+    })
+
+  const pinEntries = (spy: ReturnType<typeof vi.spyOn>): MarginEntry[] => {
+    const call = spy.mock.calls.filter((args) => args[0] === 'pin').pop()
+    return (call?.[1] ?? []) as MarginEntry[]
+  }
+
+  /** What CodeMirror hands `update()`; the provider reads six fields off it and no more. */
+  function fakeUpdate(view: EditorView, startState: EditorState) {
+    ;(view as unknown as { state: EditorState }).state = view.state
+    return {
+      docChanged: true,
+      geometryChanged: false,
+      viewportChanged: false,
+      state: view.state,
+      startState,
+      transactions: [],
+    } as unknown as Parameters<CommentEntries['update']>[0]
+  }
+
+  it('hosts one sticky entry per pinned message', () => {
+    const store = GlobalStore.getInstance()
+    store.pinsContainers.value = []
+    sourceWith(['m1', 'm2'])
+    const spy = vi.spyOn(MarginOverlay.prototype, 'setEntries')
+
+    const provider = new CommentEntries(fakeView(stateFor(DOC)))
+
+    expect(store.pinsContainers.value.map((pin) => pin.messageId)).toEqual(['m1', 'm2'])
+    expect(store.pinsContainers.value.every((pin) => pin.commentId === 'k7d2ph')).toBe(true)
+    const entries = pinEntries(spy)
+    expect(entries).toHaveLength(2)
+    expect(entries.every((entry) => entry.kind === 'pin' && entry.sticky === true)).toBe(true)
+    expect(entries.map((entry) => entry.anchorPos)).toEqual([MARKER_FROM, MARKER_FROM])
+
+    spy.mockRestore()
+    provider.destroy()
+  })
+
+  it('refreshes the anchor and the marker offset after an edit earlier in the note', () => {
+    const store = GlobalStore.getInstance()
+    store.pinsContainers.value = []
+    sourceWith(['m1'])
+    const spy = vi.spyOn(MarginOverlay.prototype, 'setEntries')
+
+    const before = stateFor(DOC)
+    const view = fakeView(before)
+    const provider = new CommentEntries(view)
+    const moved = stateFor(`Added. ${DOC}`)
+    ;(view as unknown as { state: EditorState }).state = moved
+
+    provider.update(fakeUpdate(view, before))
+
+    expect(pinEntries(spy).map((entry) => entry.anchorPos)).toEqual([MARKER_FROM + 7])
+    expect(store.pinsContainers.value.map((pin) => pin.markerFrom)).toEqual([MARKER_FROM + 7])
+
+    spy.mockRestore()
+    provider.destroy()
+  })
+
+  it('hosts nothing when the comment has no pinned message', () => {
+    const store = GlobalStore.getInstance()
+    store.pinsContainers.value = []
+    sourceWith([])
+    const spy = vi.spyOn(MarginOverlay.prototype, 'setEntries')
+
+    const provider = new CommentEntries(fakeView(stateFor(DOC)))
+
+    expect(store.pinsContainers.value).toHaveLength(0)
+    expect(spy.mock.calls.some((args) => args[0] === 'pin')).toBe(true)
+    expect(pinEntries(spy)).toEqual([])
+
+    spy.mockRestore()
+    provider.destroy()
+  })
+
+  it('gives its pins back to the store when the view goes', () => {
+    const store = GlobalStore.getInstance()
+    store.pinsContainers.value = []
+    sourceWith(['m1'])
+    const provider = new CommentEntries(fakeView(stateFor(DOC)))
+
+    expect(store.pinsContainers.value).toHaveLength(1)
+
+    provider.destroy()
+
+    expect(store.pinsContainers.value).toHaveLength(0)
+  })
+
+  it('re-stacks on a scroll, once per frame however many events arrive', async () => {
+    // A sticky entry is the first thing here whose place depends on `scrollTop`, and CodeMirror
+    // raises no update for a scroll inside the rendered viewport.
+    sourceWith(['m1'])
+    const frame = () => new Promise((resolve) => window.requestAnimationFrame(() => resolve(null)))
+    const view = fakeView(stateFor(DOC))
+    const provider = new CommentEntries(view)
+    // The frame the constructor's own `sync()` asked for, out of the way before anything counts.
+    await frame()
+    const spy = vi.spyOn(MarginOverlay.prototype, 'position')
+
+    view.scrollDOM.dispatchEvent(new Event('scroll'))
+    view.scrollDOM.dispatchEvent(new Event('scroll'))
+    view.scrollDOM.dispatchEvent(new Event('scroll'))
+    await frame()
+
+    expect(spy).toHaveBeenCalledTimes(1)
+
+    spy.mockRestore()
+    provider.destroy()
+  })
+
+  it('stops listening to the scroller once the view is gone', () => {
+    sourceWith(['m1'])
+    const view = fakeView(stateFor(DOC))
+    const provider = new CommentEntries(view)
+    provider.destroy()
+    const spy = vi.spyOn(MarginOverlay.prototype, 'position')
+
+    view.scrollDOM.dispatchEvent(new Event('scroll'))
+
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
   })
 })
 

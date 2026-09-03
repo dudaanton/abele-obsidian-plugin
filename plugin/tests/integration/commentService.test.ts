@@ -149,6 +149,7 @@ describe('reporting to the editor', () => {
       quote: 'The selected passage',
       state: 'idle',
       open: false,
+      pinned: [],
     })
   })
 

@@ -285,7 +285,9 @@ export class CommentService implements CommentInfoSource {
 
     this.watchers.set(
       id,
-      watch(session.commentState, () => {
+      // `pinned` rides along with the state: pinning is done on one session, and every editor
+      // showing the note has to rebuild its margin from it.
+      watch([session.commentState, session.pinned], () => {
         const note = session.anchor.value?.note
         if (note) dispatchCommentsChanged(note)
       })
@@ -302,6 +304,11 @@ export class CommentService implements CommentInfoSource {
       quote: session.anchor.value?.quote,
       state: session.commentState.value,
       open: this.open.value === id,
+      // Only pins whose message is still in the conversation: a retry or a branch can take one
+      // away, and a host for a message nobody can render is a hole in the margin's stack.
+      pinned: session.pinned.value.filter((mid) =>
+        session.messages.value.some((message) => message.id === mid)
+      ),
     }
   }
 
