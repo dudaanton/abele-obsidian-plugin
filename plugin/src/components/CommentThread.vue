@@ -252,6 +252,14 @@ const retry = () => void props.session.retryRequest()
   /* Deliberately a scroller: a long thread must not push the next sidenote off the page. */
   max-height: 24em;
   overflow-y: auto;
+  /**
+   * The hairline the composer draws below the conversation, drawn above it as well. A thread
+   * opens at its latest turn, so the top of the box holds whatever line the scroll cut in
+   * half; against the header alone that reads as broken text, and under a rule it reads as a
+   * message scrolled beneath one.
+   */
+  padding-top: var(--size-2-2);
+  border-top: 1px solid var(--background-modifier-border);
 }
 
 .abele-comment-thread__msg {
