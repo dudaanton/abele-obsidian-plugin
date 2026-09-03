@@ -6,8 +6,10 @@
  * in a component. These tests are about the file, which is the part a restart depends on.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
+import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
 import { ChatService } from '@/ai/ChatService'
 import { ChatSession } from '@/ai/ChatSession'
 import { ChatStorage } from '@/ai/ChatStorage'
@@ -125,6 +127,52 @@ describe('pinning a message in a comment', () => {
     await reopened.load(app.vault.getAbstractFileByPath(path) as TFile)
     expect(reopened.pinned.value).toEqual([])
     reopened.destroy()
+  })
+
+  it('drops a pinned id no message in the file carries, and writes the file back', async () => {
+    // A hand-edited file, or a message a format change lost: the id draws nothing and can
+    // never be unpinned from the margin, because there is no card to press pin-off on.
+    const session = await answeredComment()
+    await session.pin('m1')
+    const id = session.commentId!
+    const path = CommentService.getInstance().commentPath(id)
+    const file = app.vault.getAbstractFileByPath(path) as TFile
+    await app.vault.modify(
+      file,
+      ((await app.vault.read(file)) as string).replace('["m1"]', '["m1","ghost"]')
+    )
+
+    const reopened = new ChatSession()
+    await reopened.load(file)
+
+    expect(reopened.pinned.value).toEqual(['m1'])
+    expect((await metadataOf(id))?.pinned).toEqual(['m1'])
+    reopened.destroy()
+  })
+
+  it('keeps a pin on a branch the chat is not showing, out of sight rather than gone', async () => {
+    // Measured against the whole tree and not the visible path: switching back to that branch
+    // is one press away, and a pin thrown away on the way past could not come back.
+    const session = await answeredComment()
+    await session.pin('m1')
+    session.messages.value = []
+
+    expect(CommentService.getInstance().get(session.commentId!)?.pinned).toEqual([])
+    expect((await metadataOf(session.commentId!))?.pinned).toEqual(['m1'])
+  })
+
+  it('repaints the note when the visible messages change under a pin', async () => {
+    // A retry or a branch switch takes the pinned message off the visible path. Nothing else
+    // tells the editor, so the host would sit there drawing a card over a message that is no
+    // longer in the conversation until something unrelated happened to re-sync it.
+    const session = await answeredComment()
+    await session.pin('m1')
+    vi.mocked(dispatchCommentsChanged).mockClear()
+
+    session.messages.value = []
+    await nextTick()
+
+    expect(dispatchCommentsChanged).toHaveBeenCalledWith('Notes/A.md')
   })
 
   it('does nothing when asked to unpin something that is not pinned', async () => {

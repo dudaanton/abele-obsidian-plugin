@@ -143,6 +143,49 @@ describe('stacking margin entries', () => {
     ])
   })
 
+  /**
+   * The sticky block pushes down what it would otherwise be drawn over, and nothing else.
+   *
+   * A card whose anchor is above the visible area still has a measured `top` while its line is
+   * inside CodeMirror's rendered range. Clamping that one to the bottom of the pins drags it
+   * into the reader's view and stands it beside text it has nothing to do with.
+   */
+  it('leaves an ordinary entry anchored above the view where its anchor is', () => {
+    const placements = stackEntries(
+      [
+        { id: 'pin', anchorPos: 10, top: 0, height: 100, sticky: true },
+        { id: 'above', anchorPos: 20, top: 1500, height: 40 },
+        { id: 'inside', anchorPos: 30, top: 2050, height: 40 },
+      ],
+      { viewportTop: 2000 }
+    )
+
+    expect(placements).toEqual([
+      { id: 'pin', top: 2004 },
+      // 1500 + 40 is still above 2000, so the pins are nowhere near it.
+      { id: 'above', top: 1500 },
+      // The pins end at 2104; this one would have been drawn under them.
+      { id: 'inside', top: 2108 },
+    ])
+  })
+
+  it('clamps an entry the sticky block only just reaches, by its own height', () => {
+    // Anchored above the view, but tall enough to reach into it: this one is drawn over the
+    // pins unless it is pushed, which is why the test is on `top + height` and not on `top`.
+    const placements = stackEntries(
+      [
+        { id: 'pin', anchorPos: 10, top: 0, height: 100, sticky: true },
+        { id: 'tall', anchorPos: 20, top: 1900, height: 400 },
+      ],
+      { viewportTop: 2000 }
+    )
+
+    expect(placements).toEqual([
+      { id: 'pin', top: 2004 },
+      { id: 'tall', top: 2108 },
+    ])
+  })
+
   it('places exactly as it always did when nothing is sticky and no options are given', () => {
     const items = [
       { id: 'a', anchorPos: 10, top: 0, height: 40 },

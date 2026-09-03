@@ -74,12 +74,23 @@ export function stackEntries(items: StackItem[], options: StackOptions = {}): St
     lastBottom = top + item.height
   }
 
+  // The ordinary entries stack among themselves from their own anchors, so the running bottom
+  // starts again here. The sticky block is a floor rather than a predecessor: it pushes down
+  // only what would otherwise be drawn under it.
+  const stickyBottom = lastBottom
+  lastBottom = -Infinity
+
   for (const item of sorted.filter((item) => !item.sticky)) {
     if (item.top === null) {
       placements.push({ id: item.id, top: null })
       continue
     }
-    const top = Math.max(item.top, lastBottom + gap)
+    // An entry that ends above the visible area is beside text nobody can see, and clamping it
+    // to the bottom of the pins would drag it into view and stand it next to unrelated prose.
+    // The test is on its bottom edge, not its top: a tall card anchored just above the fold
+    // still reaches into the view, and that one has to clear the pins.
+    const floor = item.top + item.height > viewportTop ? stickyBottom + gap : -Infinity
+    const top = Math.max(item.top, floor, lastBottom + gap)
     placements.push({ id: item.id, top })
     lastBottom = top + item.height
   }

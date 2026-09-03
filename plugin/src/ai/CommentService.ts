@@ -286,8 +286,10 @@ export class CommentService implements CommentInfoSource {
     this.watchers.set(
       id,
       // `pinned` rides along with the state: pinning is done on one session, and every editor
-      // showing the note has to rebuild its margin from it.
-      watch([session.commentState, session.pinned], () => {
+      // showing the note has to rebuild its margin from it. So does the visible conversation:
+      // a retry or a branch switch takes a pinned message off the path, and `get` stops
+      // reporting it — but nothing else would tell the margin to drop the card.
+      watch([session.commentState, session.pinned, session.messages], () => {
         const note = session.anchor.value?.note
         if (note) dispatchCommentsChanged(note)
       })

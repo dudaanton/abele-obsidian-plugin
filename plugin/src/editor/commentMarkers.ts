@@ -198,14 +198,26 @@ export function isCommentablePosition(text: string, pos: number): boolean {
  * survives a marker — a heading, a blockquote, a list item's text, a table cell — is not here:
  * `%%…%%` is Obsidian's own comment syntax and reads as nothing wherever it is allowed to.
  */
+/**
+ * The head of a line that opens a callout: the blockquote it sits in, then its `[!type]`.
+ *
+ * One definition, used twice — by the hop below and by `onCalloutTitle` further down — so the
+ * line a marker is carried out of and the line it is refused on cannot drift apart.
+ *
+ * Only a blockquote opens a callout. `[!note]` written mid-sentence is prose, and so, watched
+ * in live preview on 2026-09-03, are `- > [!note]` and `> - > [!note]`: Obsidian draws neither
+ * as a callout and leaves both as the literal text they are. A list marker is therefore not
+ * part of this prefix — a position on one of those lines is ordinary text, with nothing to be
+ * carried out of and nothing to refuse.
+ */
+const CALLOUT_HEAD = String.raw`^[ \t>]*>[ \t]*\[![^\]\n]+\]`
+
 const INLINE_CONSTRUCTS = [
   /!?\[\[[^[\]\n]*\]\]/g, // wikilink and embed, alias, heading and block reference included
   /!?\[[^[\]\n]*\]\([^()\n]*\)/g, // markdown link and image
   /\[\^[^\]\s\n]+\]/g, // footnote reference
-  // The type of a callout, with the space that has to follow it. Anchored to the blockquote
-  // that opens it — a list item may carry that blockquote — because `[!x]` written mid-sentence
-  // is prose, and carrying a marker to the end of it moves it past text nothing would break.
-  /^[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+)?[ \t>]*>[ \t]*\[![^\]\n]+\][-+]?[ \t]*/g,
+  // The type of a callout, with the fold marker and the space that have to follow it.
+  new RegExp(String.raw`${CALLOUT_HEAD}[-+]?[ \t]*`, 'g'),
   /==[^\n]+?==/g, // highlight
 ]
 
@@ -276,10 +288,11 @@ const isTableLine = (line: string): boolean => /^[ \t]*\|/.test(line) || isTable
 /**
  * The type of a callout, at the head of the line that carries its title.
  *
- * `> [!note]`, `> [!tip]- Folded`, and the same nested inside another callout. Only the head
- * of the line counts: `[!note]` written mid-sentence is text, and Obsidian renders it as text.
+ * `> [!note]`, `> [!tip]- Folded`, and the same nested inside another callout. The shape is
+ * `CALLOUT_HEAD` above and nothing else: what counts as opening a callout is answered in one
+ * place, whether the answer is a nudge or a refusal.
  */
-const CALLOUT_TITLE = /^[ \t>]*>[ \t]*\[![^\]\n]+\]/
+const CALLOUT_TITLE = new RegExp(CALLOUT_HEAD)
 
 /** The line `pos` sits on, and where in the text it starts and ends. */
 function lineAt(text: string, pos: number): { from: number; to: number; line: string } {

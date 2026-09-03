@@ -226,6 +226,26 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    */
   public readonly moving = ref(false)
 
+  /**
+   * Drops pinned ids no message in this file carries. True when something went.
+   *
+   * Measured against the whole tree and not the visible path: a branch the chat is not on is
+   * one press away, and a pin waiting there is out of sight rather than gone. What this
+   * catches is an id nothing can ever render again — a file edited by hand, or a message some
+   * format change lost — which would otherwise sit in the metadata forever, drawing nothing
+   * and offering nobody a card to press pin-off on.
+   */
+  private prunePinned(): boolean {
+    if (this.pinned.value.length === 0) return false
+
+    const known = new Set(this.allChatMessages.map((msg) => msg.id))
+    const kept = this.pinned.value.filter((id) => known.has(id))
+    if (kept.length === this.pinned.value.length) return false
+
+    this.pinned.value = kept
+    return true
+  }
+
   isPinned(messageId: string): boolean {
     return this.pinned.value.includes(messageId)
   }
@@ -1878,7 +1898,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       result.metadata?.activeLeafId || findDefaultLeaf(this.allChatMessages)?.id || null
     this.updateVisibleMessages()
 
-    if (needsMigration) {
+    const pruned = this.prunePinned()
+
+    if (needsMigration || pruned) {
       await this.save()
     }
 

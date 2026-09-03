@@ -275,10 +275,19 @@ describe('anchoring on something that is not plain text', () => {
     expect(anchorFor(text, after(text, '> [!no'))).toBeNull()
   })
 
-  it('carries one that stopped inside a callout type opened inside a list item', () => {
-    const text = '- > [!note] Title'
+  /**
+   * A list item's blockquote does not open a callout, and neither does a blockquote's list.
+   * Watched in live preview on 2026-09-03: `- > [!note] Title` and `> - > [!tip] Title` are
+   * both drawn as the literal text they are — no header, no icon, no fold arrow — while
+   * `> [!note] Title` on its own is a callout. So there is nothing here to be carried out of
+   * and nothing to refuse: the position stays where the reader put it.
+   */
+  it('leaves a bracketed type alone where a blockquote did not open a callout', () => {
+    const listed = '- > [!note] Title'
+    expect(at(listed, after(listed, '- > [!no'))).toBe(after(listed, '- > [!no'))
 
-    expect(at(text, after(text, '- > [!no'))).toBe(after(text, '- > [!note] '))
+    const quoted = '> - > [!tip] Title'
+    expect(at(quoted, after(quoted, '> - > [!ti'))).toBe(after(quoted, '> - > [!ti'))
   })
 
   /**

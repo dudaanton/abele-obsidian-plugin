@@ -380,10 +380,18 @@ export class CommentEntries implements PluginValue {
    *
    * Coalesced to one `position()` per frame: a scroll fires a burst of events, and each one
    * would otherwise pay for a full measure of every entry in the margin.
+   *
+   * The frame is asked of the window this editor is in, like the observer above: a popout has
+   * a clock of its own, and a note open in one would otherwise re-measure on the beat of a
+   * window it is not drawn in — or not at all, once that window is closed.
    */
   private positionSoon() {
     if (this.frame !== null) return
-    this.frame = window.requestAnimationFrame(() => {
+
+    const win = this.viewWindow()
+    if (!win) return
+
+    this.frame = win.requestAnimationFrame(() => {
       this.frame = null
       if (this.destroyed) return
       marginOverlayFor(this.view).position()
@@ -413,7 +421,7 @@ export class CommentEntries implements PluginValue {
     this.destroyed = true
     this.view.scrollDOM.removeEventListener('scroll', this.onScroll)
     this.sizes?.disconnect()
-    if (this.frame !== null) window.cancelAnimationFrame(this.frame)
+    if (this.frame !== null) this.viewWindow()?.cancelAnimationFrame(this.frame)
     this.frame = null
     const store = GlobalStore.getInstance()
     for (const hosted of [...this.hosted]) this.drop(hosted, store)

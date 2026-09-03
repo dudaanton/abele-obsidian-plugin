@@ -288,6 +288,7 @@ const retry = () => void props.session.retryRequest()
 }
 
 .abele-comment-thread__msg {
+  position: relative;
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -295,18 +296,24 @@ const retry = () => void props.session.retryRequest()
 /**
  * The row's own actions, out of the way until the row is reached for.
  *
- * `visibility` and not `display`: the box keeps its room either way, so the thread does not
- * jump a line taller under the pointer as it moves down the conversation.
+ * Out of flow entirely, at the row's top corner. Reserving the room instead — a hidden box
+ * that still takes its line — puts an empty strip under every message in the thread, and at
+ * sidenote width that strip is most of a short answer. Out of flow, nothing reflows when the
+ * pointer arrives either, which is what reserving the room was for.
  */
 .abele-comment-thread__actions {
-  display: flex;
-  justify-content: flex-end;
-  visibility: hidden;
+  display: none;
+  position: absolute;
+  top: 0;
+  inset-inline-end: 0;
+  /* Over the end of the first line rather than beside it: at 180 px there is no beside. */
+  border-radius: var(--radius-s);
+  background-color: var(--background-secondary);
 }
 
 .abele-comment-thread__msg:hover .abele-comment-thread__actions,
 .abele-comment-thread__msg:focus-within .abele-comment-thread__actions {
-  visibility: visible;
+  display: flex;
 }
 
 /** A per-message control at the size of the text it belongs to, like the tool-call bullet. */
@@ -321,8 +328,10 @@ const retry = () => void props.session.retryRequest()
  * A phone, where there is no hover to reveal it and no margin to pin into. The `host` prop
  * already takes it away wherever a sheet is what opened — this covers the tablet-sized case
  * Obsidian still calls mobile, where a card can be in a margin and a pointer never arrives.
+ * Spelled deeply enough to outrank the two hover rules above, which a tablet with a mouse —
+ * or `emulateMobile` on a desktop — would otherwise still match.
  */
-body.is-mobile .abele-comment-thread__actions {
+body.is-mobile .abele-comment-thread__msg .abele-comment-thread__actions {
   display: none;
 }
 
