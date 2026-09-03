@@ -29,7 +29,7 @@ const ModalStub = {
 /** The card has a test of its own; here it stands for "whatever was handed the entry". */
 const CardStub = {
   name: 'CommentCard',
-  props: ['entry'],
+  props: ['entry', 'host'],
   emits: ['promoted'],
   template: '<div class="card-stub" />',
 }
@@ -94,6 +94,13 @@ describe('the comment sheet', () => {
     // `toRaw`, because a mounted component's props are reactive: the card is handed a proxy
     // of the entry the test made, and identity is the assertion that matters.
     expect(toRaw(view.findComponent(CardStub).props('entry'))).toBe(subject)
+  })
+
+  it('tells the card it is hosted here, so it offers no second way to close', () => {
+    const view = mountSheet()
+
+    // The dialog already has an ×; a fold chevron beside it is two controls for one act.
+    expect(view.findComponent(CardStub).props('host')).toBe('sheet')
   })
 
   it('expands the card it is showing, everywhere', () => {

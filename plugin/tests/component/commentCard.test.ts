@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick, ref, type Ref } from 'vue'
+import { TFile } from 'obsidian'
 import CommentCard from '@/components/CommentCard.vue'
 import CommentThread from '@/components/CommentThread.vue'
 import CommentInput from '@/components/CommentInput.vue'
@@ -23,6 +24,7 @@ import { ChatService } from '@/ai/ChatService'
 import type { ChatMessage } from '@/ai/types'
 import { fakeChatSession } from '../helpers/fakeChatSession'
 import { useVault } from '../helpers/testEnv'
+import type { FakeApp } from '../helpers/fakeVault'
 
 const NOTE = 'Notes/Anchor.md'
 const QUOTE = 'The selected passage'
@@ -30,17 +32,29 @@ const BODY = `${QUOTE}%%c:k7d2ph%% and more.`
 
 type FakeSession = ReturnType<typeof fakeChatSession>
 
+const OTHER = 'Notes/Elsewhere.md'
+
 const open: Ref<string | null> = ref(null)
 const remove = vi.fn()
 const expand = vi.fn()
 const load = vi.fn()
+/** Ids the service has written off, which is what the card says so instead of reading. */
+const missing = new Set<string>()
 
 let sessions: Record<string, FakeSession>
+let app: FakeApp
+
+const noteFile = () => app.vault.getAbstractFileByPath(NOTE) as TFile
+const otherFile = () => app.vault.getAbstractFileByPath(OTHER) as TFile
 
 beforeEach(() => {
-  useVault([{ path: NOTE, content: BODY }])
+  app = useVault([
+    { path: NOTE, content: BODY },
+    { path: OTHER, content: 'Nothing to do with it.' },
+  ])
   open.value = null
   sessions = {}
+  missing.clear()
   remove.mockReset()
   expand.mockReset()
   load.mockReset().mockResolvedValue(null)
@@ -50,6 +64,7 @@ beforeEach(() => {
     load,
     remove,
     expand,
+    isMissing: (id: string) => missing.has(id),
     sessionFor: (id: string) => sessions[id] ?? null,
   } as never)
 })
@@ -85,9 +100,9 @@ function seed(id: string, overrides: Record<string, unknown> = {}, messages: Cha
  * `ObsidianModal` is stubbed for the same reason `modelEditModal.test.ts` stubs it: the real
  * one opens an Obsidian modal and appends it to the document, which outlives the test.
  */
-async function mountCard(ids: string[]) {
+async function mountCard(ids: string[], host?: 'margin' | 'sheet') {
   const view = mount(CommentCard, {
-    props: { entry: entryFor(ids) },
+    props: { entry: entryFor(ids), ...(host ? { host } : {}) },
     attachTo: document.body,
     global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
   })
@@ -419,5 +434,93 @@ describe('a quote that no longer exists', () => {
     const view = await mountCard(['k7d2ph'])
 
     expect(view.find('.abele-comment-card__notice').exists()).toBe(false)
+  })
+})
+
+/**
+ * The note is a fact the card holds a copy of, and a copy read once is a copy that goes stale:
+ * the reader edits the passage, or an agent rewrites it, and the notice keeps the answer from
+ * whenever the card happened to be mounted.
+ */
+describe('the note the card was reading', () => {
+  it('is read again when the card is opened', async () => {
+    seed('k7d2ph', { anchor: ref({ note: NOTE, quote: QUOTE }) })
+    const view = await mountCard(['k7d2ph'])
+    await app.vault.modify(noteFile(), 'Nothing like it%%c:k7d2ph%% and more.')
+
+    open.value = 'k7d2ph'
+    await nextTick()
+    await nextTick()
+
+    expect(view.find('.abele-comment-card__notice').exists()).toBe(true)
+  })
+
+  it('is read again when the note changes under an open card', async () => {
+    open.value = 'k7d2ph'
+    seed('k7d2ph', { anchor: ref({ note: NOTE, quote: QUOTE }) })
+    const view = await mountCard(['k7d2ph'])
+    expect(view.find('.abele-comment-card__notice').exists()).toBe(false)
+
+    await app.vault.modify(noteFile(), 'Nothing like it%%c:k7d2ph%% and more.')
+    app.emit('vault', 'modify', noteFile())
+    await nextTick()
+    await nextTick()
+
+    expect(view.find('.abele-comment-card__notice').exists()).toBe(true)
+  })
+
+  it('is left alone when some other note changes', async () => {
+    open.value = 'k7d2ph'
+    seed('k7d2ph', { anchor: ref({ note: NOTE, quote: QUOTE }) })
+    await mountCard(['k7d2ph'])
+    const reads = app.stats.read
+
+    app.emit('vault', 'modify', otherFile())
+    await nextTick()
+
+    expect(app.stats.read).toBe(reads)
+  })
+
+  it('stops being listened for once the card goes', async () => {
+    open.value = 'k7d2ph'
+    seed('k7d2ph')
+    const offref = vi.spyOn(app.vault, 'offref')
+    const view = await mountCard(['k7d2ph'])
+
+    view.unmount()
+
+    expect(offref).toHaveBeenCalled()
+  })
+})
+
+describe('a comment with no file behind it', () => {
+  beforeEach(() => {
+    open.value = 'k7d2ph'
+  })
+
+  it('is still being read while nothing has been settled either way', async () => {
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.text()).toContain('Reading this comment')
+  })
+
+  it('says the file is missing once the service has written it off', async () => {
+    missing.add('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.text()).toContain("This comment's file is missing")
+    expect(view.text()).not.toContain('Reading this comment')
+  })
+})
+
+describe('the same card in a sheet', () => {
+  it('leaves the closing to the dialog rather than offering a second way out', async () => {
+    open.value = 'k7d2ph'
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'], 'sheet')
+
+    expect(view.findAllComponents(Icon).map((i) => i.props('icon'))).not.toContain('chevron-up')
   })
 })

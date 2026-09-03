@@ -129,7 +129,12 @@ export class CommentService implements CommentInfoSource {
    * load finds nothing, the answer repaints the field, the field touches the id again. They
    * are forgotten whenever the folder's contents may have changed under us.
    */
-  private readonly missing = new Set<string>()
+  private readonly missing = shallowReactive(new Set<string>())
+
+  /** True once an id has been written off, which is what a card says instead of "reading…". */
+  isMissing(id: string): boolean {
+    return this.missing.has(id)
+  }
 
   /**
    * Bumped when a comment is removed, so a load already reading that file does not adopt it

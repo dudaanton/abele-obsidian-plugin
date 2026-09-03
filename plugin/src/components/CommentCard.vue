@@ -57,7 +57,14 @@
             tooltip="Delete this comment, its marker and its chat file"
             @click="pendingRemoval = activeId"
           />
-          <Icon icon="chevron-up" tooltip="Fold this comment back to a summary" @click="fold" />
+          <!-- Not in a sheet: the dialog's own × is already the way out, and two controls for
+               one act on a phone header is one of them nobody presses. -->
+          <Icon
+            v-if="host !== 'sheet'"
+            icon="chevron-up"
+            tooltip="Fold this comment back to a summary"
+            @click="fold"
+          />
         </div>
       </div>
 
@@ -92,6 +99,7 @@
 
       <template v-else>
         <CommentThread v-if="session" :session="session" />
+        <EmptyState v-else-if="lost" text="This comment's file is missing." />
         <EmptyState v-else text="Reading this comment…" />
         <!-- Keyed by the comment: a half-typed question belongs to the tab it was typed in,
              and a shared composer would carry it over to the next one. -->
@@ -131,8 +139,8 @@
  * answer a single question — is the quoted passage still there. The editor's own field asks
  * that question too, but it cannot tell the card, and the card cannot reach into the editor.
  */
-import { computed, onMounted, ref, watch } from 'vue'
-import { TFile } from 'obsidian'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { TFile, type EventRef } from 'obsidian'
 import Badge from './obsidian/Badge.vue'
 import Button from './obsidian/Button.vue'
 import ConfirmModal from './obsidian/ConfirmModal.vue'
@@ -149,9 +157,18 @@ import { parseMarkers, resolveQuote } from '@/editor/commentMarkers'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { ChatMessage } from '@/ai/types'
 
-const props = defineProps<{
-  entry: CommentEntry
-}>()
+const props = withDefaults(
+  defineProps<{
+    entry: CommentEntry
+    /**
+     * Where the card is being shown. The margin is a sidenote beside the text; a sheet is a
+     * dialog that has drawn its own frame and its own way out, so the card gives back the
+     * actions the frame already provides.
+     */
+    host?: 'margin' | 'sheet'
+  }>(),
+  { host: 'margin' }
+)
 
 const emit = defineEmits<{
   /**
@@ -181,6 +198,13 @@ watch(openId, (id) => {
 })
 
 const session = computed(() => service.sessionFor(activeId.value))
+/**
+ * The service has looked for this comment's file and found nothing there.
+ *
+ * Until it says so there is no telling a load in flight from a load that will never arrive,
+ * and "Reading this comment…" over a file somebody deleted by hand never stops being read.
+ */
+const lost = computed(() => service.isMissing(activeId.value))
 const agentName = computed(() => session.value?.agent.value?.name ?? 'Comment')
 const state = computed(() => session.value?.commentState.value ?? 'idle')
 const busy = computed(() => state.value === 'busy')
@@ -272,15 +296,38 @@ const quoteLost = computed(() => {
   return resolveQuote(text, marker, wanted) === null
 })
 
+/**
+ * The note changing under the card, which is the other half of the answer going stale.
+ *
+ * A reader editing the passage the comment was written about is the ordinary way this
+ * happens, and nothing else tells the card: the editor's own field knows, but it cannot
+ * reach in here. Registered and dropped with the component, so a card that has left the
+ * margin stops reading notes.
+ */
+let modifyRef: EventRef | null = null
+
 onMounted(() => {
   // Every comment at this marker, whether or not its tab is the one showing: the strip names
   // them all and the state dot has to be right before anyone presses anything.
   for (const id of props.entry.ids) void service.load(id)
   void readNote()
+
+  const { app } = GlobalStore.getInstance()
+  modifyRef = app.vault.on('modify', (file) => {
+    if (file.path === props.entry.notePath) void readNote()
+  })
 })
 
+onBeforeUnmount(() => {
+  if (!modifyRef) return
+  GlobalStore.getInstance().app.vault.offref(modifyRef)
+  modifyRef = null
+})
+
+// Expanding is when the notice is first read, so the note behind it is read again then — a
+// card folded since it was mounted has been showing an answer from whenever that was.
 watch(
-  () => [props.entry.notePath, quote.value],
+  () => [props.entry.notePath, quote.value, expanded.value],
   () => {
     void readNote()
   }
