@@ -108,6 +108,7 @@
           :busy="busy"
           :disabled="!session"
           :focus="fresh"
+          :host="host"
           @send="onSend"
           @abort="onAbort"
         />

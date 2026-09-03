@@ -112,9 +112,4 @@ watch(
 .abele-comment-sheet .abele-comment-input {
   flex: 0 0 auto;
 }
-
-/* And what is typed is read at the size of what is answered. */
-.abele-comment-sheet .abele-comment-input__field {
-  font-size: var(--font-ui-medium);
-}
 </style>

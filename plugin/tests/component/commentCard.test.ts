@@ -189,6 +189,14 @@ describe('an opened card', () => {
     open.value = 'k7d2ph'
   })
 
+  it('tells the composer which host it is in, so a sheet gets a field a thumb can hit', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'], 'sheet')
+
+    expect(view.findComponent(CommentInput).props('host')).toBe('sheet')
+  })
+
   it('carries the thread, the composer and the three actions', async () => {
     seed('k7d2ph')
 

@@ -207,6 +207,34 @@ describe('the design standard', () => {
     expect(phone).toMatch(/height:\s*var\(--abele-sheet-height/)
   })
 
+  /**
+   * The composer, at the two sizes it is drawn at.
+   *
+   * The margin's is small because a sidenote is 300 px wide; a phone got that same field and
+   * reported it as unreadable, and iOS answers a field set under 16 px by zooming the note
+   * into it. Neither the size nor the reason is visible to any component test — happy-dom
+   * computes no layout — so the rule is guarded by name, as the sheet's own insets are.
+   */
+  it('sizes the composer for a thumb in a sheet and on a phone', () => {
+    const input = styleBlock(readFileSync(join(ROOT, 'CommentInput.vue'), 'utf8'))
+
+    const field =
+      /\.abele-comment-input_sheet \.abele-comment-input__field,\s*body\.is-mobile \.abele-comment-input__field\s*\{([^}]*)\}/.exec(
+        input
+      )?.[1] ?? ''
+    // 16 px: below it, focusing the field zooms the whole note on iOS.
+    expect(field).toMatch(/font-size:\s*var\(--font-ui-medium\)/)
+    expect(field).toMatch(/min-height:\s*var\(--input-height\)/)
+
+    const send =
+      /\.abele-comment-input_sheet \.abele-comment-input__send,\s*body\.is-mobile \.abele-comment-input__send\s*\{([^}]*)\}/.exec(
+        input
+      )?.[1] ?? ''
+    // --size-4-9 is 36 px, the smallest square a thumb hits reliably.
+    expect(send).toMatch(/min-width:\s*var\(--size-4-9\)/)
+    expect(send).toMatch(/min-height:\s*var\(--size-4-9\)/)
+  })
+
   it('explains any element that scrolls sideways', () => {
     const offenders = FILES.filter((file) => {
       const source = readFileSync(file, 'utf8')

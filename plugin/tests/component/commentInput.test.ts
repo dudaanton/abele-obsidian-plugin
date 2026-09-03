@@ -12,10 +12,32 @@ import CommentInput from '@/components/CommentInput.vue'
 import Input from '@/components/obsidian/Input.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 
-const mountInput = (props: { busy?: boolean; disabled?: boolean; focus?: boolean } = {}) =>
-  mount(CommentInput, { props: { busy: false, ...props }, attachTo: document.body })
+const mountInput = (
+  props: {
+    busy?: boolean
+    disabled?: boolean
+    focus?: boolean
+    host?: 'margin' | 'sheet'
+  } = {}
+) => mount(CommentInput, { props: { busy: false, ...props }, attachTo: document.body })
 
 describe('the comment input', () => {
+  /**
+   * The margin's composer is small on purpose — a 300 px sidenote beside the text — and a
+   * phone got the same one: a field set below 16 px, which iOS answers by zooming the whole
+   * note the moment it is focused. The sheet host is what says "this is the screen, not a
+   * margin", and the stylesheet sizes the field and the send button from it.
+   */
+  it('is drawn at reading size when it is the whole screen', () => {
+    const view = mountInput({ host: 'sheet' })
+
+    expect(view.classes()).toContain('abele-comment-input_sheet')
+  })
+
+  it('keeps the compact composer the margin needs by default', () => {
+    expect(mountInput().classes()).not.toContain('abele-comment-input_sheet')
+  })
+
   it('invites a question', () => {
     const view = mountInput()
 
