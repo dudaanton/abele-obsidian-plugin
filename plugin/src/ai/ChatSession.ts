@@ -215,6 +215,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     return this.pendingToolCalls.value.length > 0 || this.pendingQuestions.value !== null
   }
 
+  /**
+   * True while `CommentService` is carrying this conversation between the margin and a tab.
+   *
+   * A move rewrites what the file says this is, waits on the write, and only then moves the
+   * maps that answer for the id — so a second press landing inside that gap works from a
+   * conversation half of which has already moved: two history entries, or a session dropped
+   * from `sessions` and never filed in `expanded`. Reactive, because both the card and the
+   * sidebar draw their button from it while the move is in flight.
+   */
+  public readonly moving = ref(false)
+
   isPinned(messageId: string): boolean {
     return this.pinned.value.includes(messageId)
   }
@@ -394,12 +405,30 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    * The half of `switchAgent` that leaves no trace, for a caller that may have to put the
    * binding back: the log only ever appends, so a divider written for a move that is then
    * undone can be taken out of memory but never out of the file.
+   *
+   * Returns whether anything moved, which is what a caller writing the divider itself has to
+   * gate on: a chat already on that agent has not switched to it, and saying that it has puts
+   * a line into the conversation for a thing that did not happen.
    */
-  bindAgent(agentId: string): void {
-    if (agentId === this.agentId.value) return
+  bindAgent(agentId: string): boolean {
+    if (agentId === this.agentId.value) return false
 
     this.agentId.value = agentId
     this.overrides.value = {}
+    this.syncScopeFromAgent()
+    return true
+  }
+
+  /**
+   * Puts back the per-chat values a binding dropped, the resolver with them.
+   *
+   * `bindAgent` clears the overrides because they were expressed against the agent being left
+   * — but a move that had to be undone was never a move, and the narrowed scope or tool set
+   * somebody set in this chat is theirs. The scope is re-read rather than only recorded: it
+   * was applied to the resolver from the agent when the overrides went.
+   */
+  restoreOverrides(overrides: SessionOverrides): void {
+    this.overrides.value = { ...overrides }
     this.syncScopeFromAgent()
   }
 
@@ -426,9 +455,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   /** Points the chat at a different agent, and leaves the divider saying so. */
   switchAgent(agentId: string): void {
-    if (agentId === this.agentId.value) return
+    if (!this.bindAgent(agentId)) return
 
-    this.bindAgent(agentId)
     this.noteAgentSwitch(agentId)
   }
 

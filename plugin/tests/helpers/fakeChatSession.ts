@@ -23,14 +23,20 @@ export function fakeChatSession({
 }: FakeSessionOptions = {}) {
   const off = ref(false)
   const nothing = () => {}
+  // The four the real `isMidTurn` is computed over, held apart so the getter below can read
+  // them: a test that sets `pendingToolCalls` gets a mid-turn session without saying so twice.
+  const isStreaming = ref(false)
+  const isCompacting = ref(false)
+  const pendingToolCalls = ref<unknown[]>([])
+  const pendingQuestions = ref<unknown>(null)
   return {
     id: 'session-1',
     messages,
     allMessages: messages,
     queuedMessages,
-    isStreaming: off,
+    isStreaming,
     isGeneratingTitle: off,
-    isCompacting: off,
+    isCompacting,
     isExecutingTool: off,
     hideReasoning: off,
     hasFallbackModel: off,
@@ -38,11 +44,15 @@ export function fakeChatSession({
     streamingThinking: ref(''),
     error: ref(null),
     currentChatFile: ref(null),
-    pendingQuestions: ref(null),
-    pendingToolCalls: ref([]),
-    // A getter on the real session, over the four refs above it. A plain value here, because
-    // a test that wants a mid-turn card says so rather than arranging the state that implies it.
-    isMidTurn: false,
+    pendingQuestions,
+    pendingToolCalls,
+    /** Derived exactly as the real session derives it, so a test can set either side. */
+    get isMidTurn(): boolean {
+      if (isStreaming.value || isCompacting.value) return true
+      return pendingToolCalls.value.length > 0 || pendingQuestions.value !== null
+    },
+    /** Set by `CommentService` for the length of a move; nothing here moves on its own. */
+    moving: ref(false),
     scopeResolver: { summary: ref('No files') },
     interceptor: { streaming: off, streamingContent: ref(''), error: ref(null) },
     // Comment sessions. A card reads the agent's name for its badge, the anchor for the quote

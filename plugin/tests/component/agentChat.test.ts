@@ -300,4 +300,31 @@ describe('an expanded comment in the sidebar', () => {
     expect(Notice.shown).toContain('Finish or dismiss the pending step first')
     expect(openLinkText).not.toHaveBeenCalled()
   })
+
+  /**
+   * A move already running is a different refusal from a turn in flight: nothing is wrong, and
+   * what was asked for is already happening. Pressing twice on a slow disk is how it is met.
+   */
+  it('is dark while the same move is already running, and says so', async () => {
+    anchor('chat')
+    session.moving.value = true
+
+    const { icon } = backToNote()
+
+    expect(icon!.props('disabled')).toBe(true)
+    expect(icon!.props('tooltip')).toBe('This comment is being moved')
+  })
+
+  it('does not ask a second time for a move it can see running', async () => {
+    anchor('chat')
+    session.moving.value = true
+
+    const { icon } = backToNote()
+    await icon!.vm.$emit('click')
+    await nextTick()
+
+    expect(Notice.shown).toEqual(['Already moving this comment'])
+    expect(collapse).not.toHaveBeenCalled()
+    expect(openLinkText).not.toHaveBeenCalled()
+  })
 })

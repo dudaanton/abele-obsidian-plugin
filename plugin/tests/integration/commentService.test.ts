@@ -619,6 +619,142 @@ describe('a move whose save fails', () => {
 
     expect(session.allMessages.value).toHaveLength(messages)
   })
+
+  /**
+   * The binding drops the per-chat overrides, because they were expressed against the agent
+   * being left. A move that was undone left no agent, so they are somebody's settings still.
+   */
+  it('gives back the per-chat overrides the binding dropped', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+    session.activeModelId.value = 'chosen-by-hand'
+    session.applyScope([{ type: 'file', path: 'Notes/A.md' }])
+    const overrides = { ...session.overrides.value }
+    refuseToSave(session)
+
+    await expect(service.collapse(id)).rejects.toThrow('disk full')
+
+    expect(session.overrides.value).toEqual(overrides)
+    expect(session.activeModelId.value).toBe('chosen-by-hand')
+    // The resolver, not only the record of it: the binding applied the agent's scope over this
+    // one on its way past, so putting the override back has to put the resolver back with it.
+    expect(session.scopeResolver.entries.value).toEqual([{ type: 'file', path: 'Notes/A.md' }])
+  })
+})
+
+/**
+ * A vault where the comment agent *is* the default agent.
+ *
+ * Both moves rebind the agent, and both used to write the divider that records a switch even
+ * when there was nothing to switch to — so a round trip left two "Agent: X" lines in a
+ * conversation nobody had moved between agents at all.
+ */
+describe('a comment on the same agent it would be moved to', () => {
+  beforeEach(() => {
+    AbeleConfig.getInstance().ai.commentAgentId = AgentRegistry.getInstance().defaultAgent()!.id
+  })
+
+  it('says nothing about an agent that did not change, either way', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const before = session.allMessages.value.length
+
+    await service.expand(id)
+    await service.collapse(id)
+
+    expect(session.allMessages.value).toHaveLength(before)
+    expect(session.allMessages.value.some((m) => m.role === 'system')).toBe(false)
+  })
+
+  /** The move itself is unaffected; only the note about it goes. */
+  it('still moves the comment there and back', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    expect(await service.expand(id)).toBe(true)
+    expect(session.kind).toBe('chat')
+
+    expect(await service.collapse(id)).toBe(true)
+    expect(session.kind).toBe('comment')
+    expect(service.sessions.get(id) === session).toBe(true)
+  })
+})
+
+/**
+ * Two presses on the same move.
+ *
+ * A move writes the file and only then moves the maps that answer for the id, so a second one
+ * starting inside that gap works from a conversation half of which has already moved: a second
+ * history entry, or a session dropped from `sessions` and never filed under `expanded`. The
+ * session says it is on its way, and the second press is refused with that.
+ */
+describe('a comment already being moved', () => {
+  /** A save that hangs until it is let go, which is what holds a move open. */
+  function hangingSave(session: ChatSession) {
+    let release = (): void => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.spyOn(session, 'save').mockImplementation(() => held)
+    return release
+  }
+
+  it('refuses a second promotion while the first is still writing', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const release = hangingSave(session)
+
+    const first = service.expand(id)
+    await nextTick()
+
+    expect(session.moving.value).toBe(true)
+    expect(await service.expand(id)).toBe(false)
+    expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
+
+    release()
+    expect(await first).toBe(true)
+    expect(session.moving.value).toBe(false)
+    expect(AbeleConfig.getInstance().ai.chatHistory).toHaveLength(1)
+  })
+
+  it('refuses a second return to the margin while the first is still writing', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+    const release = hangingSave(session)
+
+    const first = service.collapse(id)
+    await nextTick()
+
+    expect(session.moving.value).toBe(true)
+    expect(await service.collapse(id)).toBe(false)
+    expect(service.sessions.has(id)).toBe(false)
+
+    release()
+    expect(await first).toBe(true)
+    expect(session.moving.value).toBe(false)
+    expect(service.sessions.get(id) === session).toBe(true)
+  })
+
+  it('is on its way again once a failed move has let go', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    vi.spyOn(session, 'save').mockRejectedValueOnce(new Error('disk full'))
+
+    await expect(service.expand(id)).rejects.toThrow('disk full')
+
+    expect(session.moving.value).toBe(false)
+    expect(await service.expand(id)).toBe(true)
+  })
 })
 
 describe('an expanded comment whose tab is closed', () => {

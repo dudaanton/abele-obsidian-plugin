@@ -28,12 +28,8 @@
             v-if="expandedComment"
             icon="panel-right-close"
             with-bg
-            :disabled="midTurn"
-            :tooltip="
-              midTurn
-                ? 'The agent is still working — finish or dismiss the pending step first'
-                : 'Back to the note, as a comment in the margin'
-            "
+            :disabled="blocked"
+            :tooltip="blocked ? blockedTooltip : 'Back to the note, as a comment in the margin'"
             @click="backToNote"
           />
           <Icon icon="refresh-cw" with-bg title="Reload from disk" @click="reloadChat" />
@@ -1057,11 +1053,19 @@ const expandedComment = computed(
 )
 
 /**
- * A turn the conversation may not be moved out from under — see `ChatSession.isMidTurn`. The
- * way back to the margin rebinds the agent and rewrites what the file says this is, neither of
- * which may happen between a `tool_use` and its result.
+ * A turn the conversation may not be moved out from under — see `ChatSession.isMidTurn` — and
+ * a move already under way, which a second one must not overtake. The way back to the margin
+ * rebinds the agent and rewrites what the file says this is, neither of which may happen
+ * between a `tool_use` and its result.
  */
 const midTurn = computed(() => !!session.value?.isMidTurn)
+const moving = computed(() => !!session.value?.moving.value)
+const blocked = computed(() => midTurn.value || moving.value)
+const blockedTooltip = computed(() =>
+  moving.value
+    ? 'This comment is being moved'
+    : 'The agent is still working — finish or dismiss the pending step first'
+)
 
 /**
  * Back to the margin: the conversation returns to its card, and the reader returns to the
@@ -1076,8 +1080,14 @@ async function backToNote(): Promise<void> {
   const note = current?.anchor.value?.note
   if (!id || !note) return
 
-  // Refused in the middle of a turn, the way a note typed into a card is: the action above is
-  // already dark there, so this is the race between the two.
+  // Refused in the middle of a turn, the way a note typed into a card is, and refused while
+  // the same move is already running: the action above is already dark for both, so this is
+  // the race between the two. Which reason it was is read before the call, since a move in
+  // flight may have finished by the time the service answers.
+  if (moving.value) {
+    new Notice('Already moving this comment')
+    return
+  }
   if (!(await CommentService.getInstance().collapse(id))) {
     new Notice('Finish or dismiss the pending step first')
     return

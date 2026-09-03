@@ -56,8 +56,8 @@
           <Icon
             v-if="!promoted"
             icon="panel-right-open"
-            :disabled="midTurn"
-            :tooltip="midTurn ? BUSY_TOOLTIP : 'Open this comment as a full chat in the sidebar'"
+            :disabled="blocked"
+            :tooltip="blocked ? blockedTooltip : 'Open this comment as a full chat in the sidebar'"
             @click="openAsChat"
           />
           <Icon
@@ -106,9 +106,11 @@
           />
           <Button
             text="Back to comment"
-            :disabled="midTurn"
+            :disabled="blocked"
             :tooltip="
-              midTurn ? BUSY_TOOLTIP : 'Close the sidebar tab and go on with this conversation here'
+              blocked
+                ? blockedTooltip
+                : 'Close the sidebar tab and go on with this conversation here'
             "
             @click="demote"
           />
@@ -286,9 +288,15 @@ const promoted = computed(() => session.value?.kind === 'chat')
  * the press, and say why they are dark.
  */
 const midTurn = computed(() => !!session.value?.isMidTurn)
+/** A move already under way — the file is being written, and the maps have yet to follow. */
+const moving = computed(() => !!session.value?.moving.value)
+const blocked = computed(() => midTurn.value || moving.value)
 const BUSY_TOOLTIP = 'The agent is still working — finish or dismiss the pending step first'
+const MOVING_TOOLTIP = 'This comment is being moved'
+const blockedTooltip = computed(() => (moving.value ? MOVING_TOOLTIP : BUSY_TOOLTIP))
 /** The same words the composer answers a refused note with; it is the same refusal. */
 const BUSY_NOTICE = 'Finish or dismiss the pending step first'
+const MOVING_NOTICE = 'Already moving this comment'
 
 /**
  * A digit is all the label a 300 px strip has room for, so the glyph and the tooltip carry the
@@ -423,11 +431,19 @@ const showComment = (id: string) => {
   service.open.value = id
 }
 /**
- * The service refuses a move made in the middle of a turn — the button above is already dark
- * there, so this is the race between the two, and a refusal that said nothing would look
- * exactly like a promotion that happened somewhere out of sight.
+ * The service refuses a move made in the middle of a turn, and one made while a move is
+ * already under way — the button above is already dark for both, so this is the race between
+ * the two, and a refusal that said nothing would look exactly like a promotion that happened
+ * somewhere out of sight.
+ *
+ * Which of the two it was is read here rather than after the call: by the time the service has
+ * answered, the move that was in flight may have finished and the reason be gone.
  */
 async function promote(): Promise<void> {
+  if (moving.value) {
+    new Notice(MOVING_NOTICE)
+    return
+  }
   if (!(await service.expand(activeId.value))) {
     new Notice(BUSY_NOTICE)
     return
@@ -442,6 +458,10 @@ const openAsChat = () => void promote()
  */
 const demote = (): void =>
   void (async () => {
+    if (moving.value) {
+      new Notice(MOVING_NOTICE)
+      return
+    }
     if (!(await service.collapse(activeId.value))) new Notice(BUSY_NOTICE)
   })()
 const remove = () => {

@@ -717,7 +717,10 @@ describe('a card over a conversation that is mid-turn', () => {
   })
 
   it('darkens the way into the sidebar, and says why', async () => {
-    seed('k7d2ph', { isMidTurn: true })
+    const session = seed('k7d2ph')
+    // The state itself, not a flag standing in for it: the session derives `isMidTurn` from
+    // this exactly as the card reads it back.
+    session.pendingToolCalls.value = [{ id: 'tc1', name: 'read_note', input: {} }]
 
     const view = await mountCard(['k7d2ph'])
     const promote = action(view, 'panel-right-open')
@@ -735,9 +738,10 @@ describe('a card over a conversation that is mid-turn', () => {
   })
 
   it('darkens the way back to the margin, and says why', async () => {
-    seed('k7d2ph', { kind: 'chat', isMidTurn: true }, [
+    const session = seed('k7d2ph', { kind: 'chat' }, [
       message({ id: 'u1', role: 'user', content: 'What does this mean?' }),
     ])
+    session.isStreaming.value = true
 
     const view = await mountCard(['k7d2ph'])
     const back = view
@@ -773,6 +777,77 @@ describe('a card over a conversation that is mid-turn', () => {
     await nextTick()
 
     expect(Notice.shown).toContain('Finish or dismiss the pending step first')
+  })
+})
+
+/**
+ * A move already on its way.
+ *
+ * The service writes the file and only then moves the maps that answer for the id; a second
+ * press landing inside that gap is refused, and it is a different refusal from a turn in
+ * flight — nothing is wrong, the thing asked for is already happening.
+ */
+describe('a card over a comment that is being moved', () => {
+  beforeEach(() => {
+    open.value = 'k7d2ph'
+    Notice.shown.length = 0
+  })
+
+  it('darkens the way into the sidebar while the move runs', async () => {
+    const session = seed('k7d2ph')
+    session.moving.value = true
+
+    const view = await mountCard(['k7d2ph'])
+    const promote = action(view, 'panel-right-open')
+
+    expect(promote.props('disabled')).toBe(true)
+    expect(promote.props('tooltip')).toBe('This comment is being moved')
+  })
+
+  it('darkens the way back to the margin while the move runs', async () => {
+    const session = seed('k7d2ph', { kind: 'chat' }, [
+      message({ id: 'u1', role: 'user', content: 'Why?' }),
+    ])
+    session.moving.value = true
+
+    const view = await mountCard(['k7d2ph'])
+    const back = view
+      .findAllComponents(Button)
+      .find((button) => button.props('text') === 'Back to comment')
+
+    expect(back!.props('disabled')).toBe(true)
+    expect(back!.props('tooltip')).toBe('This comment is being moved')
+  })
+
+  it('says the move is already happening rather than blaming the agent', async () => {
+    const session = seed('k7d2ph')
+    session.moving.value = true
+
+    const view = await mountCard(['k7d2ph'])
+    await action(view, 'panel-right-open').vm.$emit('click')
+    await nextTick()
+
+    expect(Notice.shown).toEqual(['Already moving this comment'])
+    // The service is not asked at all: it would refuse, and the card knows why already.
+    expect(expand).not.toHaveBeenCalled()
+    expect(view.emitted('promoted')).toBeUndefined()
+  })
+
+  it('says the same for a return to the margin', async () => {
+    const session = seed('k7d2ph', { kind: 'chat' }, [
+      message({ id: 'u1', role: 'user', content: 'Why?' }),
+    ])
+    session.moving.value = true
+
+    const view = await mountCard(['k7d2ph'])
+    const back = view
+      .findAllComponents(Button)
+      .find((button) => button.props('text') === 'Back to comment')
+    await back!.vm.$emit('click')
+    await nextTick()
+
+    expect(Notice.shown).toEqual(['Already moving this comment'])
+    expect(collapse).not.toHaveBeenCalled()
   })
 })
 

@@ -436,7 +436,8 @@ export class CommentService implements CommentInfoSource {
     // Not into the middle of a turn: the kind, the agent and the scope are all read by a
     // request already in flight, and the switch would append a divider between a `tool_use`
     // and its `tool_result`. The same refusal `addUserNote` makes, for the same reason.
-    if (session.isMidTurn) return false
+    // And not twice at once — see `ChatSession.moving`.
+    if (session.isMidTurn || session.moving.value) return false
 
     // Read before anything is touched: the name wanted here is the question that started the
     // comment, and `titleFor` reads the visible path a divider would recompute.
@@ -444,57 +445,67 @@ export class CommentService implements CommentInfoSource {
 
     const previousKind = session.kind
     const previousAgentId = session.agentId.value
+    const previousOverrides = session.overrides.value
     const previousTitle = session.chatTitle.value
 
-    session.kind = 'chat'
-
-    const fallback = AgentRegistry.getInstance().defaultAgent()
-    // Bound rather than switched: nothing is said about the move until the file has taken it.
-    // The binding re-syncs the scope, and the anchored note survives that — `applyScope` puts
-    // it back. Overrides are dropped, which is right: they were the comment agent's.
-    if (fallback) session.bindAgent(fallback.id)
-
-    const file = session.currentChatFile.value
-    // Named before it is saved, not after: `saveChat` pushes the snapshot's title back over
-    // the history entry, and an unnamed chat falls back to "<date> Chat" — which tells a
-    // person browsing the list rather less than the question they asked does.
-    if (file) session.chatTitle.value = title
-
+    session.moving.value = true
     try {
-      await session.save()
-    } catch (e) {
-      // The file still says "comment", so nothing here may say otherwise: a session filed as a
-      // chat over a file that is not one comes back after a restart as both, read twice and
-      // written by two sessions. Everything the save was for goes back instead.
-      session.kind = previousKind
-      session.chatTitle.value = previousTitle
-      session.bindAgent(previousAgentId)
-      throw e
+      session.kind = 'chat'
+
+      const fallback = AgentRegistry.getInstance().defaultAgent()
+      // Bound rather than switched: nothing is said about the move until the file has taken it.
+      // The binding re-syncs the scope, and the anchored note survives that — `applyScope` puts
+      // it back. Overrides are dropped, which is right: they were the comment agent's.
+      const switched = fallback ? session.bindAgent(fallback.id) : false
+
+      const file = session.currentChatFile.value
+      // Named before it is saved, not after: `saveChat` pushes the snapshot's title back over
+      // the history entry, and an unnamed chat falls back to "<date> Chat" — which tells a
+      // person browsing the list rather less than the question they asked does.
+      if (file) session.chatTitle.value = title
+
+      try {
+        await session.save()
+      } catch (e) {
+        // The file still says "comment", so nothing here may say otherwise: a session filed as
+        // a chat over a file that is not one comes back after a restart as both, read twice and
+        // written by two sessions. Everything the save was for goes back instead, the per-chat
+        // overrides included — the binding dropped them for a move that never happened.
+        session.kind = previousKind
+        session.chatTitle.value = previousTitle
+        session.bindAgent(previousAgentId)
+        session.restoreOverrides(previousOverrides)
+        throw e
+      }
+
+      // Persisted, so it can be said out loud — and only if there was a switch to speak of.
+      // A vault whose comment agent *is* the default agent switches nothing here, and a
+      // divider for that is a line about something that did not happen.
+      if (switched && fallback) session.noteAgentSwitch(fallback.id)
+
+      if (file) {
+        // Explicit, because `refreshHistory` only ever scans the chat folder. Known entries are
+        // kept whatever folder they are in, so this one stays.
+        ChatStorage.getInstance().addHistoryEntry({
+          path: file.path,
+          title,
+          created: dayjs().format('YYYY-MM-DD'),
+        })
+      }
+
+      this.sessions.delete(id)
+      this.expanded.set(id, session)
+
+      const chatService = ChatService.getInstance()
+      chatService.adoptSession(session)
+      await chatService.revealSidebar()
+
+      const note = session.anchor.value?.note
+      if (note) dispatchCommentsChanged(note)
+      return true
+    } finally {
+      session.moving.value = false
     }
-
-    // Persisted, so it can be said out loud.
-    if (fallback) session.noteAgentSwitch(fallback.id)
-
-    if (file) {
-      // Explicit, because `refreshHistory` only ever scans the chat folder. Known entries are
-      // kept whatever folder they are in, so this one stays.
-      ChatStorage.getInstance().addHistoryEntry({
-        path: file.path,
-        title,
-        created: dayjs().format('YYYY-MM-DD'),
-      })
-    }
-
-    this.sessions.delete(id)
-    this.expanded.set(id, session)
-
-    const chatService = ChatService.getInstance()
-    chatService.adoptSession(session)
-    await chatService.revealSidebar()
-
-    const note = session.anchor.value?.note
-    if (note) dispatchCommentsChanged(note)
-    return true
   }
 
   /**
@@ -511,9 +522,9 @@ export class CommentService implements CommentInfoSource {
     const session = this.sessionFor(id)
     if (!session || !this.expanded.has(id)) return false
 
-    // Not out of the middle of a turn, exactly as it may not be promoted into one: see
-    // `expand`, and `ChatSession.isMidTurn` for what a turn is here.
-    if (session.isMidTurn) return false
+    // Not out of the middle of a turn, exactly as it may not be promoted into one, and not
+    // while it is already on its way: see `ChatSession.isMidTurn` and `moving`.
+    if (session.isMidTurn || session.moving.value) return false
 
     // Back onto the agent comments are written by. When `commentAgentId` names nothing — or
     // names an agent since deleted — the chat's own agent is kept: a comment answered by the
@@ -523,39 +534,48 @@ export class CommentService implements CommentInfoSource {
 
     const previousKind = session.kind
     const previousAgentId = session.agentId.value
+    const previousOverrides = session.overrides.value
 
-    session.kind = 'comment'
-    // Bound rather than switched, so a write that fails leaves nothing behind to take back.
-    if (commentAgent) session.bindAgent(commentAgent.id)
-
+    session.moving.value = true
     try {
-      // Released, not closed: `closeTab` destroys, and there would be nothing left to show.
-      // It saves first, and everything below waits on that — a file still saying "chat" under
-      // maps saying "comment" is a comment the next restart loads twice.
-      await ChatService.getInstance().releaseSession(session.id)
-    } catch (e) {
-      session.kind = previousKind
-      session.bindAgent(previousAgentId)
-      throw e
+      session.kind = 'comment'
+      // Bound rather than switched, so a write that fails leaves nothing behind to take back.
+      const switched = commentAgent ? session.bindAgent(commentAgent.id) : false
+
+      try {
+        // Released, not closed: `closeTab` destroys, and there would be nothing left to show.
+        // It saves first, and everything below waits on that — a file still saying "chat" under
+        // maps saying "comment" is a comment the next restart loads twice.
+        await ChatService.getInstance().releaseSession(session.id)
+      } catch (e) {
+        session.kind = previousKind
+        session.bindAgent(previousAgentId)
+        session.restoreOverrides(previousOverrides)
+        throw e
+      }
+
+      // Persisted, so it can be said out loud — and only if there was a switch to speak of. In
+      // a vault where the comment agent is the default agent there is none, and a divider for
+      // it would be a line about a thing that did not happen, once each way round the trip.
+      if (switched && commentAgent) session.noteAgentSwitch(commentAgent.id)
+
+      const file = session.currentChatFile.value
+      // Out of the history it was put into on the way up: this is a margin note again, and the
+      // list of chats is a list of conversations somebody goes looking for.
+      if (file) ChatStorage.getInstance().removeHistoryEntry(file.path)
+
+      this.expanded.delete(id)
+      this.adopt(id, session)
+
+      // Opened rather than merely repainted: the person pressed "back to the note" and the card
+      // they were reading is what they are coming back to.
+      this.open.value = id
+      const note = session.anchor.value?.note
+      if (note) dispatchCommentsChanged(note)
+      return true
+    } finally {
+      session.moving.value = false
     }
-
-    // Persisted, so it can be said out loud.
-    if (commentAgent) session.noteAgentSwitch(commentAgent.id)
-
-    const file = session.currentChatFile.value
-    // Out of the history it was put into on the way up: this is a margin note again, and the
-    // list of chats is a list of conversations somebody goes looking for.
-    if (file) ChatStorage.getInstance().removeHistoryEntry(file.path)
-
-    this.expanded.delete(id)
-    this.adopt(id, session)
-
-    // Opened rather than merely repainted: the person pressed "back to the note" and the card
-    // they were reading is what they are coming back to.
-    this.open.value = id
-    const note = session.anchor.value?.note
-    if (note) dispatchCommentsChanged(note)
-    return true
   }
 
   /**
