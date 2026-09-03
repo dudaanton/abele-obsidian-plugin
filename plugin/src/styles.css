@@ -462,3 +462,96 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
 .abele-name-input {
   width: 100%;
 }
+
+/* Comment markers — the icon that stands where %%c:…%% is in live preview */
+.abele-comment-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  margin-inline-start: var(--size-2-1);
+  padding: 0 var(--size-2-1);
+  border-radius: var(--radius-s);
+  color: var(--text-accent);
+  cursor: var(--cursor-link);
+  line-height: 1;
+}
+
+.abele-comment-marker:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.abele-comment-marker__icon .svg-icon {
+  width: var(--icon-s);
+  height: var(--icon-s);
+}
+
+.abele-comment-marker__count {
+  font-size: var(--font-smallest);
+  color: var(--text-muted);
+}
+
+/* Streaming or running a tool. Several comments can be working at once, so the marker itself
+   has to say which one is busy. */
+.abele-comment-marker_busy {
+  animation: abele-comment-marker-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes abele-comment-marker-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* Waiting on the user: a tool approval or a question. */
+.abele-comment-marker_pending::after {
+  content: '';
+  width: var(--size-2-1);
+  height: var(--size-2-1);
+  border-radius: var(--radius-l);
+  background-color: var(--text-warning);
+}
+
+.abele-comment-marker_error {
+  color: var(--text-error);
+}
+
+.abele-comment-marker_open {
+  background-color: var(--background-modifier-hover);
+}
+
+/* A finger is not a mouse pointer; Obsidian's own mobile sizing is the 24px step. */
+body.is-mobile .abele-comment-marker {
+  min-width: var(--size-4-6);
+  min-height: var(--size-4-6);
+  justify-content: center;
+}
+
+/* The passage a comment is anchored to */
+.abele-comment__quote {
+  border-bottom: 1px solid var(--text-accent);
+}
+
+.abele-comment__quote_open {
+  background-color: var(--text-highlight-bg);
+}
+
+.abele-comment__quote_busy {
+  border-bottom-style: dashed;
+}
+
+/* Margin host for a comment card. The overlay writes top, left and width; everything that
+   makes it a layer belongs here. */
+.abele-comment-widget-container {
+  pointer-events: auto;
+  position: absolute;
+}
+
+/* No room beside the text, or the marker scrolled out of view. The overlay toggles this
+   modifier by name — see HIDDEN_CLASS in MarginOverlay.ts — so it has to exist here. */
+.abele-comment-widget-container_hidden {
+  display: none;
+}

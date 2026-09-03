@@ -78,7 +78,13 @@ describe('finding the markers in a note', () => {
   })
 
   it('ignores a marker inside a fenced code block', () => {
-    const text = ['before%%c:aaaaaa%%', '```js', 'const x = 1 // %%c:bbbbbb%%', '```', 'after'].join('\n')
+    const text = [
+      'before%%c:aaaaaa%%',
+      '```js',
+      'const x = 1 // %%c:bbbbbb%%',
+      '```',
+      'after',
+    ].join('\n')
 
     expect(parseMarkers(text).map((marker) => marker.ids[0])).toEqual(['aaaaaa'])
   })

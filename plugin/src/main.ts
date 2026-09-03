@@ -31,6 +31,7 @@ import { taskStateField } from './editor/TaskPlugin'
 import { galleryExtensions } from './editor/GalleryPlugin'
 import { footnoteExtensions } from './editor/FootnotePlugin'
 import { highlightStateField } from './editor/HighlightPlugin'
+import { commentExtensions } from '@/editor/CommentPlugin'
 import { insertGallery, convertImagesToGalleries } from './commands/galleryCommands'
 import { reindexFootnotes } from './commands/footnoteCommands'
 import { insertHighlight, removeHighlight } from './commands/highlightCommands'
@@ -267,6 +268,7 @@ export default class AbelePlugin extends Plugin {
     this.registerEditorExtension(createHeaderExtension())
     this.registerEditorExtension(footnoteExtensions)
     this.registerEditorExtension(highlightStateField)
+    this.registerEditorExtension(commentExtensions)
 
     // this.registerPriorityCodeblockPostProcessor(
     //   TASK_CODEBLOCK_KEYWORD,
