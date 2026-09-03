@@ -97,6 +97,15 @@ export class GlobalStore {
   public readonly settingsContainer = shallowRef<HTMLElement | null>(null)
   public readonly themeVersion = ref(0)
 
+  /**
+   * Bumped whenever a chat's note links change in the index.
+   *
+   * The index lives in `AbeleConfig.ai.chatHistory`, a plain object Vue never made reactive, so
+   * the **Chats** list under a note has nothing to depend on. This counter is that dependency,
+   * and the only reason `useChatLinks` recomputes at all.
+   */
+  public readonly chatLinksVersion = ref(0)
+
   public readonly weekStartsOnMonday = ref(AbeleConfig.getInstance().weekStartsOnMonday)
 
   public readonly selectedJournal = computed(() => {

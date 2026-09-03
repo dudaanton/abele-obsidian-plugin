@@ -5,7 +5,7 @@ import dayjs from 'dayjs'
 import { getAvailablePath } from '@/helpers/vaultUtils'
 import { renderTemplate } from '@/helpers/notesUtils'
 import { DATE_FORMAT } from '@/constants/dates'
-import { AiChatHistoryEntry } from './types'
+import { AiChatHistoryEntry, type TouchedNote } from './types'
 import { RunStorage } from './RunStorage'
 import {
   parseChat,
@@ -133,6 +133,11 @@ export class ChatStorage {
           path: file.path,
           title: metadata.title || file.basename,
           created: metadata.created || '',
+          // The file is the source of truth for these three; this is where the index is
+          // rebuilt out of it, for a chat that arrived by sync or a restore.
+          notes: metadata.touched?.length ? metadata.touched : undefined,
+          recap: metadata.recap || undefined,
+          agentId: metadata.agentId || undefined,
         })
         added++
       } catch {
@@ -236,6 +241,33 @@ export class ChatStorage {
     // reopened from its file — so without this the same conversation is listed twice.
     if (config.ai.chatHistory.some((e) => e.path === entry.path)) return
     config.ai.chatHistory.unshift(entry)
+    config.saveSettings()
+  }
+
+  /**
+   * Mirrors a chat's note links into its history entry, so a footer never opens a chat file.
+   *
+   * A no-op when the path has no entry — which is how an unexpanded comment stays out of every
+   * footer without a rule of its own: a comment is not in the history until it is expanded.
+   */
+  linkNotes(chatPath: string, notes: TouchedNote[], recap?: string, agentId?: string): void {
+    const config = AbeleConfig.getInstance()
+    const entry = config.ai.chatHistory?.find((e) => e.path === chatPath)
+    if (!entry) return
+
+    const next = notes.length ? notes : undefined
+    const unchanged =
+      JSON.stringify(entry.notes) === JSON.stringify(next) &&
+      entry.recap === (recap || undefined) &&
+      entry.agentId === (agentId || undefined)
+    // Settings are one JSON file holding every chat's entry, so a save that changed nothing
+    // costs more than the chat write that prompted it. Same guard as `updateHistoryEntry`.
+    if (unchanged) return
+
+    entry.notes = next
+    entry.recap = recap || undefined
+    entry.agentId = agentId || undefined
+    GlobalStore.getInstance().chatLinksVersion.value++
     config.saveSettings()
   }
 

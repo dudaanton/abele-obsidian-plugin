@@ -11,13 +11,22 @@ import type { TFile } from 'obsidian'
 import { ChatSession } from '@/ai/ChatSession'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
+import { CommentService } from '@/ai/CommentService'
+import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { parseChatMetadata } from '@/ai/ChatLog'
+import { parseChatMetadata, serializeChat } from '@/ai/ChatLog'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
 import type { AgentTool } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
+
+// The editor is not standing up here: `dispatchCommentsChanged` walks the workspace's leaves,
+// which a fake vault has none of. Nothing in this file observes the repaint.
+vi.mock('@/editor/CommentPlugin', () => ({
+  dispatchCommentsChanged: vi.fn(),
+  setCommentInfoSource: vi.fn(),
+}))
 
 const NOTE_A = 'Notes/A.md'
 const NOTE_B = 'Notes/B.md'
@@ -52,6 +61,7 @@ beforeEach(() => {
   ])
   AgentRegistry.destroy()
   ChatStorage.destroy()
+  CommentService.getInstance().destroy()
   ChatService.getInstance().destroy()
   AbeleConfig.getInstance().ai = {
     ...DEFAULT_AI_SETTINGS,
@@ -59,10 +69,17 @@ beforeEach(() => {
     defaultAgentId: '',
     chatHistory: [],
     chatFolder: 'AI/Chats/{{name}}',
+    commentFolder: 'AI/Comments',
   }
   AbeleConfig.getInstance().saveSettings = vi.fn(async () => {})
   AgentRegistry.getInstance().setDefault(AgentRegistry.getInstance().create({ name: 'D' }).id)
+  AbeleConfig.getInstance().ai.commentAgentId = AgentRegistry.getInstance().create({
+    name: 'Comment',
+    utility: true,
+  }).id
+  GlobalStore.getInstance().chatLinksVersion.value = 0
   vi.spyOn(ChatService.getInstance(), 'saveTabs').mockImplementation(() => {})
+  vi.spyOn(ChatService.getInstance(), 'revealSidebar').mockResolvedValue(undefined)
 })
 
 describe('a chat that writes to a note', () => {
@@ -152,5 +169,112 @@ describe('a delegated run', () => {
       new_string: 'ALPHA',
     })
     expect(session.touched.value).toEqual([])
+  })
+})
+
+const entryOf = (session: ChatSession) =>
+  ChatStorage.getInstance()
+    .getHistory()
+    .find((e) => e.path === session.currentChatFile.value?.path)
+
+describe('the chat index, which is what a footer actually reads', () => {
+  it('carries the links the file holds, once the chat has been saved', async () => {
+    const session = newSession()
+    await toolOf(session, 'edit').execute('c1', {
+      path: NOTE_A,
+      old_string: 'alpha',
+      new_string: 'ALPHA',
+    })
+    await session.save()
+
+    expect(entryOf(session)?.notes).toEqual(session.touched.value)
+  })
+
+  it('says it has changed, since the settings object is not one Vue watches', async () => {
+    const store = GlobalStore.getInstance()
+    const session = newSession()
+
+    await toolOf(session, 'edit').execute('c1', {
+      path: NOTE_A,
+      old_string: 'alpha',
+      new_string: 'ALPHA',
+    })
+    await session.save()
+
+    expect(store.chatLinksVersion.value).toBeGreaterThan(0)
+  })
+
+  it('leaves a chat with no entry alone, and says nothing changed', () => {
+    const store = GlobalStore.getInstance()
+
+    ChatStorage.getInstance().linkNotes('AI/Comments/abc.abchat', [{ path: NOTE_A, at: 'now' }])
+
+    expect(ChatStorage.getInstance().getHistory()).toEqual([])
+    expect(store.chatLinksVersion.value).toBe(0)
+  })
+
+  it('is rebuilt out of a chat file dropped into the folder by hand', async () => {
+    const at = '2026-09-03T10:00:00.000Z'
+    await app.vault.create(
+      'AI/Chats/Dropped.abchat',
+      serializeChat({
+        metadata: {
+          type: 'abele-chat',
+          agentId: 'agent-7',
+          providerId: 'p',
+          modelId: 'm',
+          created: '2026-09-03',
+          title: 'Dropped',
+          touched: [{ path: NOTE_A, at }],
+          recap: 'Tidied A.',
+        },
+        messages: [],
+        internalMessages: [],
+      })
+    )
+
+    await ChatStorage.getInstance().refreshHistory()
+
+    const entry = ChatStorage.getInstance()
+      .getHistory()
+      .find((e) => e.title === 'Dropped')
+    expect(entry?.notes).toEqual([{ path: NOTE_A, at }])
+    expect(entry?.recap).toBe('Tidied A.')
+    expect(entry?.agentId).toBe('agent-7')
+  })
+})
+
+describe('a comment that wrote to a note', () => {
+  /** The margin is where a comment lives until somebody promotes it. */
+  it('records the link in its own file but appears in no footer', async () => {
+    const service = CommentService.getInstance()
+    const note = app.vault.getAbstractFileByPath(NOTE_A) as TFile
+    const session = await service.create(note, 5, 'alpha')
+
+    await toolOf(session, 'edit').execute('c1', {
+      path: NOTE_A,
+      old_string: 'content',
+      new_string: 'CONTENT',
+    })
+    await session.save()
+
+    expect(paths(session)).toEqual([NOTE_A])
+    expect(ChatStorage.getInstance().getHistory()).toEqual([])
+  })
+
+  it('brings its links with it when it is expanded into a chat', async () => {
+    const service = CommentService.getInstance()
+    const note = app.vault.getAbstractFileByPath(NOTE_A) as TFile
+    const session = await service.create(note, 5, 'alpha')
+    await toolOf(session, 'edit').execute('c1', {
+      path: NOTE_A,
+      old_string: 'content',
+      new_string: 'CONTENT',
+    })
+    await session.save()
+
+    expect(await service.expand(session.commentId!)).toBe(true)
+
+    expect(entryOf(session)?.notes).toEqual(session.touched.value)
   })
 })

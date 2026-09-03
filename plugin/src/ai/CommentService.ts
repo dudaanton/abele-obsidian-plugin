@@ -493,6 +493,9 @@ export class CommentService implements CommentInfoSource {
           title,
           created: dayjs().format('YYYY-MM-DD'),
         })
+        // A comment records the notes it wrote to but has no entry to mirror them into; now
+        // that it has one, the chat arrives carrying the work it already did.
+        session.mirrorNoteLinks()
       }
 
       this.sessions.delete(id)

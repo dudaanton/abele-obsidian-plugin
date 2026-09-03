@@ -1916,9 +1916,28 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     this.log.commit(snapshot, plan)
     this.currentChatFile.value = file
+    // The first moment a new chat has a path to key its index entry on.
+    this.mirrorNoteLinks()
 
     // Update tab state so new chats get persisted
     this.chatService.saveTabs()
+  }
+
+  /**
+   * Copies `touched` and `recap` into this chat's history entry.
+   *
+   * Not private: the rename walk and a live check both drive it. Does nothing for a chat that
+   * has written to nothing, and nothing for a comment, whose path has no entry to write into.
+   */
+  mirrorNoteLinks(): void {
+    const path = this.currentChatFile.value?.path
+    if (!path || !this.touched.value.length) return
+    ChatStorage.getInstance().linkNotes(
+      path,
+      this.touched.value,
+      this.recap.value,
+      this.agentId.value
+    )
   }
 
   async load(file: TFile): Promise<void> {
