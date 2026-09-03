@@ -9,6 +9,7 @@ import { AgentRegistry } from './agents/AgentRegistry'
 import { getNoteBody } from '@/helpers/notesUtils'
 import { ChatSession } from './ChatSession'
 import { RunStorage, type RunFile } from './RunStorage'
+import { buildCommentContext } from './commentContext'
 
 const MAX_TABS = 8
 const STORAGE_KEY = 'abele-agent-tabs'
@@ -374,6 +375,33 @@ export class ChatService {
   // ── System prompt ─────────────────────────────────────────────
 
   async getSystemPrompt(session: ChatSession): Promise<string> {
+    return this.withCommentContext(session, await this.basePrompt(session))
+  }
+
+  /**
+   * A comment is told where it sits, after whatever prompt it runs on.
+   *
+   * Rebuilt on every turn from the note as it is now: a comment that answered about a passage
+   * the person has since rewritten is worse than no comment at all.
+   */
+  private async withCommentContext(session: ChatSession, prompt: string): Promise<string> {
+    if (session.kind !== 'comment') return prompt
+    const anchor = session.anchor.value
+    if (!anchor) return prompt
+
+    const noteText = await this.readCommentNote(anchor.note)
+    return `${prompt}\n\n${buildCommentContext(anchor, noteText, session.commentId ?? undefined)}`
+  }
+
+  /** The note's body, frontmatter dropped. Empty when it has been deleted under the comment. */
+  private async readCommentNote(path: string): Promise<string> {
+    const { app } = GlobalStore.getInstance()
+    const file = app.vault.getAbstractFileByPath(path)
+    if (!(file instanceof TFile)) return ''
+    return getNoteBody(await app.vault.cachedRead(file))
+  }
+
+  private async basePrompt(session: ChatSession): Promise<string> {
     const date = dayjs().format('YYYY-MM-DD')
 
     // Per-chat override: note path
