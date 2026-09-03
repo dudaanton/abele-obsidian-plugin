@@ -1,3 +1,5 @@
+import { StateField } from '@codemirror/state'
+
 /**
  * Minimal stand-in for the `obsidian` module.
  *
@@ -29,6 +31,22 @@ export class TFolder extends TAbstractFile {
     return this.path === '/' || this.path === ''
   }
 }
+
+/**
+ * Obsidian installs these two on every markdown editor: whether the pane is in live preview,
+ * and which file it holds. Every editor extension in this plugin reads both, so a test that
+ * builds an `EditorState` supplies them with `field.init(...)`. The defaults are what an
+ * editor that had neither would report, which is the safe answer: render nothing.
+ */
+export const editorLivePreviewField = StateField.define<boolean>({
+  create: () => false,
+  update: (value) => value,
+})
+
+export const editorInfoField = StateField.define<{ file: TFile | null }>({
+  create: () => ({ file: null }),
+  update: (value) => value,
+})
 
 export class Notice {
   /**
