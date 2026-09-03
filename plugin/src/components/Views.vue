@@ -133,11 +133,7 @@
     :resolve="scriptFormResolve"
     @close="scriptFormModalOpened = false"
   />
-  <CommentSheet
-    v-if="commentSheet"
-    :entry="commentSheet as CommentEntry"
-    @close="commentSheet = null"
-  />
+  <CommentSheet v-if="commentSheet" :entry="commentSheet" @close="commentSheet = null" />
   <Teleport v-if="settingsContainer" :to="settingsContainer">
     <SettingsView />
   </Teleport>

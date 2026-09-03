@@ -49,7 +49,7 @@ export class GlobalStore {
    * A card has two hosts and one component: this is the second host. It is a single value and
    * not a list, because a sheet is modal — nothing behind it can be pressed to open another.
    */
-  public readonly commentSheet = ref<CommentEntry | null>(null)
+  public readonly commentSheet = shallowRef<CommentEntry | null>(null)
   public readonly findAndReplaceModalOpened = ref(false)
   public readonly migrateFromDataviewModalOpened = ref(false)
   public readonly saveMediaModalOpened = ref(false)

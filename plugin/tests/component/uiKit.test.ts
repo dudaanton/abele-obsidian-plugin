@@ -236,6 +236,18 @@ describe('Modal', () => {
     expect(classOf(sheet)).not.toContain('abele-modal_wide')
     expect(classOf(plain)).not.toContain('abele-modal_sheet')
   })
+
+  /**
+   * The sheet's column runs through the element this component appends, so the stylesheet has
+   * to be able to name it. Reaching it as `.modal-content > div` would make every rule depend
+   * on the shape of the DOM the kit happens to build.
+   */
+  it('names the element it mounts into', () => {
+    const view = mount(ObsidianModal)
+    const modalEl = (view.vm as unknown as { modal: { modalEl: HTMLElement } }).modal.modalEl
+
+    expect(modalEl.querySelector('.abele-modal__body')).not.toBeNull()
+  })
 })
 
 describe('ConfirmModal', () => {

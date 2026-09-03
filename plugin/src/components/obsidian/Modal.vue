@@ -54,6 +54,10 @@ onBeforeMount(() => {
   // document, and the mount point has to belong to the window the modal opened in.
   const el = contentEl.doc.win.createDiv()
   el.id = id.value
+  // Named, not just numbered: the sheet's stylesheet has to reach this element, and the id is
+  // a fresh one per dialog. Reaching it as `.modal-content > div` would tie every rule to the
+  // shape of the DOM this component happens to build.
+  el.addClass('abele-modal__body')
   contentEl.appendChild(el)
   wrapper.value = el
   if (props.title) {
@@ -97,7 +101,8 @@ const emit = defineEmits<{
  * missing is that its boxes are not columns, so a child asking to scroll grows the dialog
  * instead and pushes whatever follows it off the bottom. Three boxes stand between that
  * height and the content: the modal, its content element, and the mount point this component
- * appends — the last is ours, and it is why this rule cannot live in the screen above.
+ * appends as `.abele-modal__body` — the last is ours, and it is why this rule cannot live in
+ * the screen above.
  */
 .abele-modal_sheet {
   display: flex;
@@ -105,7 +110,7 @@ const emit = defineEmits<{
 }
 
 .abele-modal_sheet .modal-content,
-.abele-modal_sheet .modal-content > div {
+.abele-modal_sheet .abele-modal__body {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;

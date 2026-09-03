@@ -195,11 +195,25 @@ describe('the design standard', () => {
 describe('the comment marker, which lives in the stylesheet', () => {
   const css = readFileSync(STYLES, 'utf8')
 
-  /** The body of the first rule with this exact selector. */
-  const rule = (selector: string): string => {
+  /**
+   * The body of the first rule with this exact selector.
+   *
+   * Anchored, because a selector is also the tail of every selector that qualifies it:
+   * unanchored, `.abele-comment-marker` matches `body.is-mobile .abele-comment-marker` and an
+   * assertion about the desktop rule would quietly be reading the phone's.
+   */
+  const ruleIn = (source: string, selector: string): string => {
     const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    return new RegExp(`${escaped}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? ''
+    return new RegExp(`(?:^|[,}])\\s*${escaped}\\s*\\{([^}]*)\\}`, 'm').exec(source)?.[1] ?? ''
   }
+  const rule = (selector: string): string => ruleIn(css, selector)
+
+  it('reads the rule it was asked for, not one whose selector ends with it', () => {
+    const sample = 'body.is-mobile .abele-x {\n  min-width: 1px;\n}\n.abele-x {\n  color: red;\n}\n'
+
+    expect(ruleIn(sample, '.abele-x')).toContain('color: red')
+    expect(ruleIn(sample, '.abele-x')).not.toContain('min-width')
+  })
 
   it('gives a finger something to hit', () => {
     const mobile = rule('body.is-mobile .abele-comment-marker')
