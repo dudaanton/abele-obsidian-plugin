@@ -107,8 +107,8 @@ for the person to insert into a chat. Both are ordinary notes and can be edited 
 
 Chats are `.abchat` files under the chat folder, one JSON record per line. Besides the
 conversation, a chat's metadata record remembers what it *did*: `touched` lists the notes it
-wrote to — created, edited, replaced or moved, never merely read — each with the time it was
-last written, and `recap` is a one-sentence summary of the work, written by the background
+wrote to — created, edited, replaced, moved or copied into place, never merely read — each with
+the time it was last written, and `recap` is a one-sentence summary of the work, written by the background
 model after a turn that wrote something. Both are copied into the chat index in the plugin's
 settings, which is what draws the **Chats** list under a note: one card per chat that changed
 it, with its title, its recap and the date it was changed. A comment chat carries the same

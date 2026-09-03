@@ -142,11 +142,46 @@ describe('pinning a message in a comment', () => {
       ((await app.vault.read(file)) as string).replace('["m1"]', '["m1","ghost"]')
     )
 
-    const reopened = new ChatSession()
+    // Given the service every session gets, so its `saveTabs` is the real one rather than a
+    // throw swallowed into the log.
+    const reopened = new ChatSession(ChatService.getInstance())
     await reopened.load(file)
 
     expect(reopened.pinned.value).toEqual(['m1'])
     expect((await metadataOf(id))?.pinned).toEqual(['m1'])
+    reopened.destroy()
+  })
+
+  /**
+   * The prune writes the file, and used to write it before the agent had been restored from it
+   * — so a comment reopened with a stale pin came back filed under the default agent, with the
+   * overrides it had chosen dropped.
+   */
+  it('keeps the agent the comment ran on when the prune writes the file back', async () => {
+    const session = await answeredComment()
+    await session.pin('m1')
+    const id = session.commentId!
+    const commentAgentId = AbeleConfig.getInstance().ai.commentAgentId
+    const path = CommentService.getInstance().commentPath(id)
+    const file = app.vault.getAbstractFileByPath(path) as TFile
+    await app.vault.modify(
+      file,
+      ((await app.vault.read(file)) as string).replace(
+        '"pinned":["m1"]',
+        '"pinned":["m1","ghost"],"pendingToolCalls":[{"id":"t1","name":"edit","arguments":{}}]'
+      )
+    )
+    CommentService.getInstance().destroy()
+
+    const reopened = new ChatSession(ChatService.getInstance())
+    await reopened.load(file)
+
+    expect(reopened.pinned.value).toEqual(['m1'])
+    expect(reopened.agentId.value).toBe(commentAgentId)
+    const written = await metadataOf(id)
+    expect(written?.agentId).toBe(commentAgentId)
+    // The same ordering trap one field along: a call still waiting on approval.
+    expect(written?.pendingToolCalls?.map((c) => c.id)).toEqual(['t1'])
     reopened.destroy()
   })
 

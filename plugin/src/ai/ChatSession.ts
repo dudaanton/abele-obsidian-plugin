@@ -2025,10 +2025,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     const pruned = this.prunePinned()
 
-    if (needsMigration || pruned) {
-      await this.save()
-    }
-
     this.userMessageCount = this.messages.value.filter((m) => m.role === 'user').length
 
     this.restoreAgentBinding(result.metadata)
@@ -2049,6 +2045,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         name: tc.name,
         arguments: tc.arguments,
       }))
+    }
+
+    // Last, after everything the file said has been restored. This writes a fresh snapshot, so
+    // anything not yet put back is written out as absent: run earlier it filed the chat under
+    // the default agent, dropped the overrides it was saved with, and forgot the tool call it
+    // was waiting on approval for.
+    if (needsMigration || pruned) {
+      await this.save()
     }
   }
 
