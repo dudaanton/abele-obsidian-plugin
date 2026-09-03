@@ -1,30 +1,52 @@
 <template>
   <div class="abele-comment-input" :class="{ 'abele-comment-input_sheet': host === 'sheet' }">
-    <Input
-      ref="field"
-      class="abele-comment-input__field"
-      as-text-area
-      :rows="rows"
-      :model-value="text"
-      :disabled="disabled"
-      placeholder="Ask about this…"
-      @update:model-value="text = $event"
-      @keydown="onKeydown"
+    <!-- Above the field, as in the sidebar: what was dictated lands in what was already typed. -->
+    <VoiceRecorder
+      v-if="voiceOpen"
+      can-send
+      can-note
+      auto-start
+      class="abele-comment-input__voice"
+      @text="onVoiceText"
+      @send="onVoiceSend"
+      @note="onVoiceNote"
+      @close="voiceOpen = false"
     />
-    <Icon
-      class="abele-comment-input__note"
-      icon="sticky-note"
-      :disabled="noteDisabled"
-      :tooltip="noteTooltip"
-      @click="note"
-    />
-    <Icon
-      class="abele-comment-input__send"
-      :icon="busy ? 'square' : 'send-horizontal'"
-      :disabled="sendDisabled"
-      :tooltip="sendTooltip"
-      @click="onSend"
-    />
+    <div class="abele-comment-input__row">
+      <Input
+        ref="field"
+        class="abele-comment-input__field"
+        as-text-area
+        :rows="rows"
+        :model-value="text"
+        :disabled="disabled"
+        placeholder="Ask about this…"
+        @update:model-value="text = $event"
+        @keydown="onKeydown"
+      />
+      <Icon
+        class="abele-comment-input__mic"
+        icon="mic"
+        :class="{ 'abele-comment-input__mic_open': voiceOpen }"
+        :disabled="disabled"
+        :tooltip="voiceOpen ? 'Close voice input' : 'Dictate instead of typing'"
+        @click="voiceOpen = !voiceOpen"
+      />
+      <Icon
+        class="abele-comment-input__note"
+        icon="sticky-note"
+        :disabled="noteDisabled"
+        :tooltip="noteTooltip"
+        @click="note"
+      />
+      <Icon
+        class="abele-comment-input__send"
+        :icon="busy ? 'square' : 'send-horizontal'"
+        :disabled="sendDisabled"
+        :tooltip="sendTooltip"
+        @click="onSend"
+      />
+    </div>
   </div>
 </template>
 
@@ -35,12 +57,18 @@
  * No attachments and no slash commands — each of those is a reason to open the comment as a
  * full chat, which is one press away in the card's header. What is here is what a question in
  * the margin needs: a field that starts at one line, grows to five and then scrolls, a button
- * that becomes a stop while the agent is working, and beside it the one that keeps the words
- * without asking anybody anything.
+ * that becomes a stop while the agent is working, beside it the one that keeps the words
+ * without asking anybody anything, and the microphone, because a comment is most often made
+ * on a phone where typing beside the text is the slowest way to say anything.
+ *
+ * The voice panel is the sidebar's own `VoiceRecorder`, mounted the way `AiChatInput` mounts
+ * it. It answers with words and with which of the three endings was pressed; recording,
+ * transcribing and every failure of either belong to it and are not repeated here.
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import Icon from './obsidian/Icon.vue'
 import Input from './obsidian/Input.vue'
+import VoiceRecorder from './VoiceRecorder.vue'
 
 /** Past this the field scrolls; a card that grew with its thread would walk over its neighbour. */
 const MAX_ROWS = 5
@@ -156,6 +184,33 @@ function onSend(): void {
   send()
 }
 
+/**
+ * The panel sits over the composer rather than replacing it, so what is dictated joins what
+ * was already typed: a recording is one more thing said in the message, not a message of its
+ * own. The same rule the sidebar keeps.
+ */
+const voiceOpen = ref(false)
+
+const withDictated = (dictated: string) => {
+  const existing = text.value.trim()
+  return existing ? `${existing} ${dictated}` : dictated
+}
+
+const onVoiceText = (dictated: string) => {
+  text.value = withDictated(dictated)
+  field.value?.$el.focus()
+}
+
+const onVoiceSend = (dictated: string) => {
+  text.value = withDictated(dictated)
+  send()
+}
+
+const onVoiceNote = (dictated: string) => {
+  text.value = withDictated(dictated)
+  note()
+}
+
 function note(): void {
   if (noteDisabled.value) return
 
@@ -186,10 +241,19 @@ onMounted(() => {
 <style lang="scss">
 .abele-comment-input {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
   gap: var(--size-2-2);
+  min-width: 0;
   padding-top: var(--size-2-2);
   border-top: 1px solid var(--background-modifier-border);
+}
+
+/* The field and its buttons: one row, whatever the voice panel above it is doing. */
+.abele-comment-input__row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--size-2-2);
+  min-width: 0;
 }
 
 .abele-comment-input__field {
@@ -202,9 +266,26 @@ onMounted(() => {
   max-height: 8em;
 }
 
+.abele-comment-input__mic,
 .abele-comment-input__note,
 .abele-comment-input__send {
   flex: 0 0 auto;
+}
+
+/* Open, the microphone is the thing the panel below belongs to. */
+.abele-comment-input__mic_open {
+  color: var(--interactive-accent);
+}
+
+/**
+ * The panel is the sidebar's, and the sidebar is wider than a sidenote: its own row is a
+ * waveform between two controls, which at 300 px leaves the waveform a stub. Nothing here
+ * changes that — the panel wraps its actions onto a second row itself — but the text it is
+ * set in is the card's, not the pane's.
+ */
+.abele-comment-input__voice {
+  min-width: 0;
+  font-size: var(--font-ui-small);
 }
 
 /**
@@ -227,6 +308,8 @@ body.is-mobile .abele-comment-input__field {
   padding: var(--size-4-1) var(--size-4-2);
 }
 
+.abele-comment-input_sheet .abele-comment-input__mic,
+body.is-mobile .abele-comment-input__mic,
 .abele-comment-input_sheet .abele-comment-input__note,
 body.is-mobile .abele-comment-input__note,
 .abele-comment-input_sheet .abele-comment-input__send,

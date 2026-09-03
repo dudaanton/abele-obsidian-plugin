@@ -11,6 +11,7 @@ import { mount } from '@vue/test-utils'
 import CommentInput from '@/components/CommentInput.vue'
 import Input from '@/components/obsidian/Input.vue'
 import Icon from '@/components/obsidian/Icon.vue'
+import VoiceRecorder from '@/components/VoiceRecorder.vue'
 
 const mountInput = (
   props: {
@@ -216,5 +217,67 @@ describe('keeping a note instead of asking', () => {
     await button(view, 'sticky-note').trigger('click')
 
     expect(view.emitted('note')).toBeUndefined()
+  })
+})
+
+/**
+ * Dictation, which the sidebar has had all along.
+ *
+ * The same panel, mounted the same way `AiChatInput` mounts it: the microphone opens it, it
+ * starts listening on its own, and what comes back goes into the field, or straight out as a
+ * question, or straight out as a note. Nothing about recording or transcribing is reimplemented
+ * here, which is why none of it is tested here either.
+ */
+describe('dictating into a comment', () => {
+  const recorder = (view: ReturnType<typeof mountInput>) => view.findComponent(VoiceRecorder)
+
+  it('opens on the microphone and starts listening at once', async () => {
+    const view = mountInput()
+    expect(recorder(view).exists()).toBe(false)
+
+    await button(view, 'mic').trigger('click')
+
+    expect(recorder(view).props('autoStart')).toBe(true)
+    // A comment takes a question or a note, so the panel offers both endings.
+    expect(recorder(view).props('canSend')).toBe(true)
+    expect(recorder(view).props('canNote')).toBe(true)
+  })
+
+  it('puts the words in the field, to be read before they are sent', async () => {
+    const view = mountInput()
+    await button(view, 'mic').trigger('click')
+
+    await recorder(view).vm.$emit('text', 'что это значит')
+
+    expect(view.findComponent(Input).props('modelValue')).toBe('что это значит')
+    expect(view.emitted('send')).toBeUndefined()
+  })
+
+  it('sends what was dictated, when that is what was pressed', async () => {
+    const view = mountInput()
+    await button(view, 'mic').trigger('click')
+
+    await recorder(view).vm.$emit('send', 'что это значит')
+
+    expect(view.emitted('send')).toEqual([['что это значит']])
+  })
+
+  it('keeps what was dictated as a note, without asking anybody', async () => {
+    const view = mountInput()
+    await button(view, 'mic').trigger('click')
+
+    await recorder(view).vm.$emit('note', 'вернуться к этому абзацу')
+
+    expect(view.emitted('note')).toEqual([['вернуться к этому абзацу']])
+    expect(view.emitted('send')).toBeUndefined()
+  })
+
+  it('closes when the panel says it is done', async () => {
+    const view = mountInput()
+    await button(view, 'mic').trigger('click')
+
+    await recorder(view).vm.$emit('close')
+
+    expect(recorder(view).exists()).toBe(false)
   })
 })

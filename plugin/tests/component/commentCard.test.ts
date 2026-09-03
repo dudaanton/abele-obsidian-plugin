@@ -208,7 +208,7 @@ describe('an opened card', () => {
     expect(view.findComponent(CommentInput).props('host')).toBe('sheet')
   })
 
-  it('carries the thread, the composer and the three actions', async () => {
+  it('carries the thread, the composer and the actions of both', async () => {
     seed('k7d2ph')
 
     const view = await mountCard(['k7d2ph'])
@@ -219,7 +219,8 @@ describe('an opened card', () => {
       'panel-right-open',
       'trash-2',
       'chevron-up',
-      // The composer's own buttons come last: keep a note, and send.
+      // The composer's own buttons come last: dictate, keep a note, and send.
+      'mic',
       'sticky-note',
       'send-horizontal',
     ])

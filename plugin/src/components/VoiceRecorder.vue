@@ -71,6 +71,13 @@
             tooltip="Transcribe it into the text field"
             @click="toText"
           />
+          <!-- Where the words can stay put: a comment keeps notes as well as questions. -->
+          <Button
+            v-if="canNote"
+            text="Note"
+            tooltip="Transcribe it and keep it, without asking the agent"
+            @click="toNote"
+          />
           <Button
             v-if="canSend"
             text="Send"
@@ -97,16 +104,27 @@ import { toWav } from '@/audio/wav'
 import { transcribe } from '@/ai/transcription'
 import { transcriptionOptions } from '@/ai/transcriptionSettings'
 
-const props = withDefaults(defineProps<{ canSend?: boolean; autoStart?: boolean }>(), {
-  canSend: false,
-  autoStart: false,
-})
+const props = withDefaults(
+  defineProps<{
+    canSend?: boolean
+    /** The caller can keep the words without sending them anywhere — a comment can. */
+    canNote?: boolean
+    autoStart?: boolean
+  }>(),
+  {
+    canSend: false,
+    canNote: false,
+    autoStart: false,
+  }
+)
 
 const emit = defineEmits<{
   /** The words, for the caller to put wherever they belong. */
   (e: 'text', text: string): void
   /** The words, and the caller should send them on. */
   (e: 'send', text: string): void
+  /** The words, to be kept where the caller keeps notes — nothing is to be asked of a model. */
+  (e: 'note', text: string): void
   (e: 'close'): void
 }>()
 
@@ -223,6 +241,15 @@ const toSend = async () => {
   if (text === null) return
 
   emit('send', text)
+  recorder.reset()
+  emit('close')
+}
+
+const toNote = async () => {
+  const text = await words()
+  if (text === null) return
+
+  emit('note', text)
   recorder.reset()
   emit('close')
 }
