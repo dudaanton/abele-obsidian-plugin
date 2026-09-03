@@ -18,9 +18,14 @@ import Button from '@/components/obsidian/Button.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import Tabs from '@/components/obsidian/Tabs.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
+import Dropdown from '@/components/obsidian/Dropdown.vue'
 import { CommentEntry } from '@/entities/Comment'
 import { CommentService } from '@/ai/CommentService'
 import { ChatService } from '@/ai/ChatService'
+import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { createAgent } from '@/ai/agents/types'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import type { ChatMessage } from '@/ai/types'
 import { fakeChatSession } from '../helpers/fakeChatSession'
 import { useVault } from '../helpers/testEnv'
@@ -52,6 +57,10 @@ beforeEach(() => {
     { path: NOTE, content: BODY },
     { path: OTHER, content: 'Nothing to do with it.' },
   ])
+  // The header's agent picker reads the registry, which reads these: a card cannot be drawn
+  // in a vault with no AI settings at all.
+  AgentRegistry.destroy()
+  AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, agents: [] }
   open.value = null
   sessions = {}
   missing.clear()
@@ -104,7 +113,9 @@ async function mountCard(ids: string[], host?: 'margin' | 'sheet') {
   const view = mount(CommentCard, {
     props: { entry: entryFor(ids), ...(host ? { host } : {}) },
     attachTo: document.body,
-    global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+    global: {
+      stubs: { ObsidianModal: { template: '<div><slot /></div>' }, Dropdown: true },
+    },
   })
   await nextTick()
   await nextTick()
@@ -530,5 +541,71 @@ describe('the same card in a sheet', () => {
     const view = await mountCard(['k7d2ph'], 'sheet')
 
     expect(view.findAllComponents(Icon).map((i) => i.props('icon'))).not.toContain('chevron-up')
+  })
+})
+
+/**
+ * A comment is a chat, and a chat runs on an agent — so the card says which, and lets it be
+ * changed without opening the conversation as a full one.
+ *
+ * The list is the one a person would recognise: the agents they configured. Utility agents are
+ * kept out, because they exist for scripts and delegation rather than for being talked to —
+ * with one exception, the agent `commentAgentId` names, which is a utility agent in every
+ * vault that took the default and is the very agent this card is running on.
+ */
+describe('the agent a comment runs on', () => {
+  const AGENTS = [
+    createAgent({ id: 'comment-agent', name: 'Comment', utility: true }),
+    createAgent({ id: 'writer', name: 'Writer' }),
+    createAgent({ id: 'summariser', name: 'Summariser', utility: true }),
+  ]
+
+  beforeEach(() => {
+    open.value = 'k7d2ph'
+    AgentRegistry.destroy()
+    AbeleConfig.getInstance().ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: AGENTS.map((agent) => ({ ...agent })),
+      commentAgentId: 'comment-agent',
+    }
+  })
+
+  it('offers the configured agents and the comment agent, and no other utility one', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(Dropdown).props('options')).toEqual([
+      { value: 'comment-agent', display: 'Comment' },
+      { value: 'writer', display: 'Writer' },
+    ])
+  })
+
+  it('shows the one this conversation is already on', async () => {
+    seed('k7d2ph', { agentId: ref('writer') })
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(Dropdown).props('modelValue')).toBe('writer')
+  })
+
+  it('switches the session, which is what carries the choice into the file', async () => {
+    const switchAgent = vi.fn()
+    seed('k7d2ph', { switchAgent })
+
+    const view = await mountCard(['k7d2ph'])
+    await view.findComponent(Dropdown).vm.$emit('update:model-value', 'writer')
+
+    expect(switchAgent).toHaveBeenCalledWith('writer')
+  })
+
+  it('says nothing twice: the picker replaces the badge only once the card is open', async () => {
+    open.value = null
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(Dropdown).exists()).toBe(false)
+    expect(view.findComponent(Badge).props('text')).toBe('Comment')
   })
 })

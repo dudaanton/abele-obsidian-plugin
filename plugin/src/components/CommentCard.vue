@@ -38,7 +38,14 @@
     <template v-else>
       <div class="abele-comment-card__head">
         <div class="abele-comment-card__agent">
-          <Badge :text="agentName" />
+          <!-- Open, the badge becomes the choice it was only reporting. -->
+          <Dropdown
+            v-if="session"
+            :model-value="agentId"
+            :options="agentOptions"
+            @update:model-value="chooseAgent"
+          />
+          <Badge v-else :text="agentName" />
         </div>
         <span
           v-if="state !== 'idle'"
@@ -145,6 +152,7 @@ import { TFile, type EventRef } from 'obsidian'
 import Badge from './obsidian/Badge.vue'
 import Button from './obsidian/Button.vue'
 import ConfirmModal from './obsidian/ConfirmModal.vue'
+import Dropdown from './obsidian/Dropdown.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
@@ -154,6 +162,8 @@ import CommentThread from './CommentThread.vue'
 import { CommentEntry } from '@/entities/Comment'
 import { CommentService } from '@/ai/CommentService'
 import { ChatService } from '@/ai/ChatService'
+import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import { parseMarkers, resolveQuote } from '@/editor/commentMarkers'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { ChatMessage } from '@/ai/types'
@@ -207,6 +217,35 @@ const session = computed(() => service.sessionFor(activeId.value))
  */
 const lost = computed(() => service.isMissing(activeId.value))
 const agentName = computed(() => session.value?.agent.value?.name ?? 'Comment')
+const agentId = computed(() => session.value?.agentId.value ?? '')
+
+/**
+ * Which agents this comment may be handed to.
+ *
+ * The agents a person configured, minus the utility ones — those exist for scripts and for
+ * delegation, and a list of them is a list of things nobody meant to talk to. Two are let
+ * back in because leaving them out would be worse: the agent `commentAgentId` names, which is
+ * a utility agent in every vault that took the default and is the one this card starts on,
+ * and whichever agent this conversation is already running on, so the picker can always show
+ * its own value rather than silently sitting on the first option.
+ */
+const agentOptions = computed(() => {
+  const registry = AgentRegistry.getInstance()
+  const listed = registry.list()
+
+  const named = registry.get(AbeleConfig.getInstance().ai.commentAgentId ?? '')
+  if (named && !listed.some((agent) => agent.id === named.id)) listed.unshift(named)
+
+  const current = registry.get(agentId.value)
+  if (current && !listed.some((agent) => agent.id === current.id)) listed.push(current)
+
+  return listed.map((agent) => ({ value: agent.id, display: agent.name }))
+})
+
+const chooseAgent = (id: string) => {
+  if (!id || id === agentId.value) return
+  session.value?.switchAgent(id)
+}
 const state = computed(() => session.value?.commentState.value ?? 'idle')
 const busy = computed(() => state.value === 'busy')
 const promoted = computed(() => session.value?.kind === 'chat')
@@ -449,6 +488,17 @@ const onAbort = () => session.value?.abort()
 .abele-comment-card__agent {
   min-width: 0;
   overflow: hidden;
+}
+
+/**
+ * The picker at the size of the badge it replaces. Obsidian's own dropdown is a form control
+ * built for a settings row, and at that height it is the tallest thing in a sidenote header.
+ */
+.abele-comment-card__agent .abele-obsidian-dropdown .dropdown {
+  max-width: 10em;
+  height: auto;
+  padding: var(--size-2-1) var(--size-4-1);
+  font-size: var(--font-ui-smaller);
 }
 
 .abele-comment-card__hint {
