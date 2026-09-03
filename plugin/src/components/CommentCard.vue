@@ -56,7 +56,8 @@
           <Icon
             v-if="!promoted"
             icon="panel-right-open"
-            tooltip="Open this comment as a full chat in the sidebar"
+            :disabled="midTurn"
+            :tooltip="midTurn ? BUSY_TOOLTIP : 'Open this comment as a full chat in the sidebar'"
             @click="openAsChat"
           />
           <Icon
@@ -105,7 +106,10 @@
           />
           <Button
             text="Back to comment"
-            tooltip="Close the sidebar tab and go on with this conversation here"
+            :disabled="midTurn"
+            :tooltip="
+              midTurn ? BUSY_TOOLTIP : 'Close the sidebar tab and go on with this conversation here'
+            "
             @click="demote"
           />
         </div>
@@ -275,6 +279,18 @@ const pending = computed(() => state.value === 'pending')
 const promoted = computed(() => session.value?.kind === 'chat')
 
 /**
+ * A turn nothing may be moved out from under: see `ChatSession.isMidTurn`.
+ *
+ * Promoting and demoting both rebind the agent and rewrite what the file says this is, and
+ * neither can be done in the middle of a turn. The buttons go dark rather than refusing on
+ * the press, and say why they are dark.
+ */
+const midTurn = computed(() => !!session.value?.isMidTurn)
+const BUSY_TOOLTIP = 'The agent is still working — finish or dismiss the pending step first'
+/** The same words the composer answers a refused note with; it is the same refusal. */
+const BUSY_NOTICE = 'Finish or dismiss the pending step first'
+
+/**
  * A digit is all the label a 300 px strip has room for, so the glyph and the tooltip carry the
  * rest of the meaning — what is being switched between, and how many there are.
  */
@@ -406,8 +422,16 @@ const fold = () => {
 const showComment = (id: string) => {
   service.open.value = id
 }
+/**
+ * The service refuses a move made in the middle of a turn — the button above is already dark
+ * there, so this is the race between the two, and a refusal that said nothing would look
+ * exactly like a promotion that happened somewhere out of sight.
+ */
 async function promote(): Promise<void> {
-  await service.expand(activeId.value)
+  if (!(await service.expand(activeId.value))) {
+    new Notice(BUSY_NOTICE)
+    return
+  }
   emit('promoted')
 }
 
@@ -416,7 +440,10 @@ const openAsChat = () => void promote()
  * The way back. Nothing is emitted: the conversation is coming *out* of the sidebar, so the
  * host has no reason to move — the card is where the reader is about to go on typing.
  */
-const demote = (): void => void service.collapse(activeId.value)
+const demote = (): void =>
+  void (async () => {
+    if (!(await service.collapse(activeId.value))) new Notice(BUSY_NOTICE)
+  })()
 const remove = () => {
   const id = activeId.value
   // `CommentService.remove` clears this too, but only after the marker and the file are gone;

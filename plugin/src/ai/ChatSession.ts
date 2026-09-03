@@ -200,6 +200,21 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     return registry.get(this.agentId.value) ?? registry.defaultAgent()
   })
 
+  /**
+   * True while the conversation must not be touched from outside.
+   *
+   * A `tool_use` and its `tool_result` are one pair as far as every provider is concerned, so
+   * anything inserted between them is a history the next request is rejected for — and the
+   * agent binding, the scope and the kind are all read by a turn already in flight. A turn
+   * running, a turn paused on an approval, a turn waiting on an answer and a compaction
+   * rewriting the history are the four states that means, and everything that would edit the
+   * conversation under one of them asks here first.
+   */
+  get isMidTurn(): boolean {
+    if (this.isStreaming.value || this.isCompacting.value) return true
+    return this.pendingToolCalls.value.length > 0 || this.pendingQuestions.value !== null
+  }
+
   /** The comment's id, which is its file's basename. Null for anything not anchored. */
   get commentId(): string | null {
     if (!this.anchor.value) return null
@@ -341,31 +356,50 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   /**
-   * Points the chat at a different agent.
+   * Points the chat at a different agent and says nothing about it.
    *
    * Overrides are dropped: they were expressed against the previous agent, and carrying, say,
    * a narrowed tool set onto an agent that never had those tools is meaningless.
+   *
+   * The half of `switchAgent` that leaves no trace, for a caller that may have to put the
+   * binding back: the log only ever appends, so a divider written for a move that is then
+   * undone can be taken out of memory but never out of the file.
    */
-  switchAgent(agentId: string): void {
+  bindAgent(agentId: string): void {
     if (agentId === this.agentId.value) return
 
-    const target = AgentRegistry.getInstance().get(agentId)
     this.agentId.value = agentId
     this.overrides.value = {}
     this.syncScopeFromAgent()
+  }
 
-    // A divider, the way a mid-chat model switch already leaves one: the rest of the
-    // conversation was answered by something else, and that should be visible.
-    if (target && this.allChatMessages.length > 0) {
-      this.appendChatMessage({
-        id: nanoid(),
-        role: 'system',
-        content: `Agent: ${target.name}`,
-        timestamp: Date.now(),
-      })
-      this.updateVisibleMessages()
-      this.markDirty()
-    }
+  /**
+   * The record of a switch: a divider, the way a mid-chat model switch already leaves one —
+   * the rest of the conversation was answered by something else, and that should be visible.
+   *
+   * Separate from the binding so that a caller whose move has to be persisted before it counts
+   * can write it once the file has taken the change, and not at all if it has not.
+   */
+  noteAgentSwitch(agentId: string): void {
+    const target = AgentRegistry.getInstance().get(agentId)
+    if (!target || this.allChatMessages.length === 0) return
+
+    this.appendChatMessage({
+      id: nanoid(),
+      role: 'system',
+      content: `Agent: ${target.name}`,
+      timestamp: Date.now(),
+    })
+    this.updateVisibleMessages()
+    this.markDirty()
+  }
+
+  /** Points the chat at a different agent, and leaves the divider saying so. */
+  switchAgent(agentId: string): void {
+    if (agentId === this.agentId.value) return
+
+    this.bindAgent(agentId)
+    this.noteAgentSwitch(agentId)
   }
 
   /**
@@ -1254,13 +1288,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    * Returns whether the note was kept, so a caller can say why it was not.
    */
   async addUserNote(content: string): Promise<boolean> {
-    // Nothing may be pushed into the middle of a turn. A `tool_use` and its `tool_result` are
-    // one pair as far as every provider is concerned, and a note landing between them is a
-    // history the next request is rejected for — so a turn in flight, a turn paused on an
-    // approval and a turn waiting on an answer are all refused. `sendMessage` can queue
-    // instead; a note has nothing to be queued for, since nothing is going to run.
-    if (this.isStreaming.value || this.isCompacting.value) return false
-    if (this.pendingToolCalls.value.length || this.pendingQuestions.value) return false
+    // Nothing may be pushed into the middle of a turn — see `isMidTurn`. `sendMessage` can
+    // queue instead; a note has nothing to be queued for, since nothing is going to run.
+    if (this.isMidTurn) return false
 
     const text = content.trim()
     if (!text) return false

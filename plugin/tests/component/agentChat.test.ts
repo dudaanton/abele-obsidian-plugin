@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
-import { TFile } from 'obsidian'
+import { Notice, TFile } from 'obsidian'
 import AiChat from '@/components/AiChat.vue'
 import AiAgentSelector from '@/components/AiAgentSelector.vue'
 import Icon from '@/components/obsidian/Icon.vue'
@@ -230,8 +230,10 @@ describe('an expanded comment in the sidebar', () => {
   }
 
   beforeEach(() => {
-    collapse.mockReset()
+    // Answers whether the chat moved. True is the ordinary case; the refusal is its own test.
+    collapse.mockReset().mockResolvedValue(true)
     openLinkText.mockClear()
+    Notice.shown.length = 0
     ;(GlobalStore.getInstance().app as unknown as { workspace: unknown }).workspace = {
       openLinkText,
     }
@@ -270,5 +272,32 @@ describe('an expanded comment in the sidebar', () => {
 
     expect(collapse).toHaveBeenCalledWith('k7d2ph')
     expect(openLinkText).toHaveBeenCalledWith('Notes/A.md', '', false)
+  })
+
+  /**
+   * The way back rebinds the agent and rewrites what the file says this conversation is, and
+   * neither may happen between a `tool_use` and the `tool_result` that has to follow it. The
+   * service refuses it; the header is what stops the reader finding that out by pressing.
+   */
+  it('is dark while the agent is mid-turn, and says why', () => {
+    anchor('chat')
+    session.pendingToolCalls.value = [{ id: 'tc1', name: 'read_note', input: {} }] as never
+
+    const { icon } = backToNote()
+
+    expect(icon!.props('disabled')).toBe(true)
+    expect(icon!.props('tooltip')).toContain('still working')
+  })
+
+  it('says why it was refused rather than leaving the note half-opened', async () => {
+    anchor('chat')
+    collapse.mockResolvedValue(false)
+
+    const { icon } = backToNote()
+    await icon!.vm.$emit('click')
+    await nextTick()
+
+    expect(Notice.shown).toContain('Finish or dismiss the pending step first')
+    expect(openLinkText).not.toHaveBeenCalled()
   })
 })

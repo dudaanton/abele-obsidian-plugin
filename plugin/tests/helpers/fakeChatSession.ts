@@ -40,6 +40,9 @@ export function fakeChatSession({
     currentChatFile: ref(null),
     pendingQuestions: ref(null),
     pendingToolCalls: ref([]),
+    // A getter on the real session, over the four refs above it. A plain value here, because
+    // a test that wants a mid-turn card says so rather than arranging the state that implies it.
+    isMidTurn: false,
     scopeResolver: { summary: ref('No files') },
     interceptor: { streaming: off, streamingContent: ref(''), error: ref(null) },
     // Comment sessions. A card reads the agent's name for its badge, the anchor for the quote

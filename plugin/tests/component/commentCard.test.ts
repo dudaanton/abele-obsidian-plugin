@@ -66,8 +66,10 @@ beforeEach(() => {
   sessions = {}
   missing.clear()
   remove.mockReset()
-  expand.mockReset()
-  collapse.mockReset()
+  // Both answer whether the comment moved. True is the ordinary case; a test about a refusal
+  // says so for itself.
+  expand.mockReset().mockResolvedValue(true)
+  collapse.mockReset().mockResolvedValue(true)
   load.mockReset().mockResolvedValue(null)
 
   vi.spyOn(CommentService, 'getInstance').mockReturnValue({
@@ -697,6 +699,80 @@ describe('a card over a conversation waiting to be answered', () => {
     await nextTick()
 
     expect(Notice.shown).toEqual([])
+  })
+})
+
+/**
+ * Moving a conversation that is in the middle of a turn.
+ *
+ * Promoting a comment and sending a chat back to the margin both rebind the agent and rewrite
+ * what the file says the conversation is — neither of which may land between a `tool_use` and
+ * the `tool_result` that has to follow it. The service refuses both; the card is what stops
+ * the person finding that out by pressing, and says so if they press anyway.
+ */
+describe('a card over a conversation that is mid-turn', () => {
+  beforeEach(() => {
+    open.value = 'k7d2ph'
+    Notice.shown.length = 0
+  })
+
+  it('darkens the way into the sidebar, and says why', async () => {
+    seed('k7d2ph', { isMidTurn: true })
+
+    const view = await mountCard(['k7d2ph'])
+    const promote = action(view, 'panel-right-open')
+
+    expect(promote.props('disabled')).toBe(true)
+    expect(promote.props('tooltip')).toContain('still working')
+  })
+
+  it('leaves it alone when the conversation is idle', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(action(view, 'panel-right-open').props('disabled')).toBe(false)
+  })
+
+  it('darkens the way back to the margin, and says why', async () => {
+    seed('k7d2ph', { kind: 'chat', isMidTurn: true }, [
+      message({ id: 'u1', role: 'user', content: 'What does this mean?' }),
+    ])
+
+    const view = await mountCard(['k7d2ph'])
+    const back = view
+      .findAllComponents(Button)
+      .find((button) => button.props('text') === 'Back to comment')
+
+    expect(back!.props('disabled')).toBe(true)
+    expect(back!.props('tooltip')).toContain('still working')
+  })
+
+  it('says why a promotion was refused rather than claiming it happened', async () => {
+    seed('k7d2ph')
+    expand.mockResolvedValue(false)
+
+    const view = await mountCard(['k7d2ph'])
+    await action(view, 'panel-right-open').vm.$emit('click')
+    await nextTick()
+
+    expect(Notice.shown).toContain('Finish or dismiss the pending step first')
+    // Nothing has been handed to the sidebar, so a sheet must not go anywhere.
+    expect(view.emitted('promoted')).toBeUndefined()
+  })
+
+  it('says why a return to the margin was refused', async () => {
+    seed('k7d2ph', { kind: 'chat' }, [message({ id: 'u1', role: 'user', content: 'Why?' })])
+    collapse.mockResolvedValue(false)
+
+    const view = await mountCard(['k7d2ph'])
+    const back = view
+      .findAllComponents(Button)
+      .find((button) => button.props('text') === 'Back to comment')
+    await back!.vm.$emit('click')
+    await nextTick()
+
+    expect(Notice.shown).toContain('Finish or dismiss the pending step first')
   })
 })
 

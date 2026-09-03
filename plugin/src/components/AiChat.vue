@@ -28,7 +28,12 @@
             v-if="expandedComment"
             icon="panel-right-close"
             with-bg
-            tooltip="Back to the note, as a comment in the margin"
+            :disabled="midTurn"
+            :tooltip="
+              midTurn
+                ? 'The agent is still working — finish or dismiss the pending step first'
+                : 'Back to the note, as a comment in the margin'
+            "
             @click="backToNote"
           />
           <Icon icon="refresh-cw" with-bg title="Reload from disk" @click="reloadChat" />
@@ -1052,6 +1057,13 @@ const expandedComment = computed(
 )
 
 /**
+ * A turn the conversation may not be moved out from under — see `ChatSession.isMidTurn`. The
+ * way back to the margin rebinds the agent and rewrites what the file says this is, neither of
+ * which may happen between a `tool_use` and its result.
+ */
+const midTurn = computed(() => !!session.value?.isMidTurn)
+
+/**
  * Back to the margin: the conversation returns to its card, and the reader returns to the
  * passage it was written against.
  *
@@ -1064,7 +1076,12 @@ async function backToNote(): Promise<void> {
   const note = current?.anchor.value?.note
   if (!id || !note) return
 
-  await CommentService.getInstance().collapse(id)
+  // Refused in the middle of a turn, the way a note typed into a card is: the action above is
+  // already dark there, so this is the race between the two.
+  if (!(await CommentService.getInstance().collapse(id))) {
+    new Notice('Finish or dismiss the pending step first')
+    return
+  }
 
   const { app } = GlobalStore.getInstance()
   await app.workspace.openLinkText(note, '', false)

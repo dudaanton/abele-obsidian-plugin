@@ -454,10 +454,169 @@ describe('returning an expanded comment to its note', () => {
     const session = await answeredComment()
     const id = session.commentId!
 
-    await service.collapse(id)
+    expect(await service.collapse(id)).toBe(false)
 
     expect(session.kind).toBe('comment')
     expect(service.open.value).toBeNull()
+  })
+})
+
+/**
+ * Moving a comment while its agent is still working.
+ *
+ * Both moves rebind the agent, and rebinding appends a divider and re-syncs the scope — into
+ * a request that has already been built from both, and, when a tool call is waiting, between
+ * a `tool_use` and the `tool_result` that has to follow it. So both are refused for as long as
+ * `addUserNote` refuses a note, and for the same reason. The refusal is a `false`, not a
+ * throw: the card and the sidebar say why.
+ */
+describe('a comment whose agent is mid-turn', () => {
+  /** One waiting tool call, as far as anything reading `pendingToolCalls` can tell. */
+  const A_TOOL_CALL = [{ id: 'tc1', name: 'read_note', input: {} }] as never
+
+  it('is not promoted while the answer is still arriving', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    session.isStreaming.value = true
+
+    expect(await service.expand(id)).toBe(false)
+
+    expect(session.kind).toBe('comment')
+    expect(session.agentId.value).toBe(AbeleConfig.getInstance().ai.commentAgentId)
+    expect(service.sessions.get(id) === session).toBe(true)
+    expect(ChatService.getInstance().getSessionByFile(service.commentPath(id))).toBeNull()
+    expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
+  })
+
+  it('is not promoted while a tool call is waiting to be approved', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    session.pendingToolCalls.value = A_TOOL_CALL
+
+    expect(await service.expand(id)).toBe(false)
+
+    expect(session.kind).toBe('comment')
+    expect(service.sessions.get(id) === session).toBe(true)
+    expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
+  })
+
+  it('leaves the conversation untouched when a promotion is refused', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const before = session.allMessages.value.length
+    session.isStreaming.value = true
+
+    await service.expand(id)
+
+    expect(session.allMessages.value).toHaveLength(before)
+  })
+
+  it('is not sent back to the margin while the answer is still arriving', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const chatService = ChatService.getInstance()
+
+    await service.expand(id)
+    const messages = session.allMessages.value.length
+    session.isStreaming.value = true
+
+    expect(await service.collapse(id)).toBe(false)
+
+    expect(session.kind).toBe('chat')
+    expect(session.agentId.value).toBe(AgentRegistry.getInstance().defaultAgent()?.id)
+    expect(session.allMessages.value).toHaveLength(messages)
+    expect(service.sessions.has(id)).toBe(false)
+    expect(chatService.getSessionByFile(service.commentPath(id)) === session).toBe(true)
+    expect(AbeleConfig.getInstance().ai.chatHistory.map((e) => e.path)).toEqual([
+      service.commentPath(id),
+    ])
+  })
+
+  it('is not sent back to the margin while a tool call is waiting', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+    session.pendingToolCalls.value = A_TOOL_CALL
+
+    expect(await service.collapse(id)).toBe(false)
+
+    expect(session.kind).toBe('chat')
+    expect(ChatService.getInstance().getSessionByFile(service.commentPath(id)) === session).toBe(
+      true
+    )
+  })
+})
+
+/**
+ * A write that fails in the middle of a move.
+ *
+ * The file is the one thing both sides of a move have to agree with: a session filed as a
+ * comment over a file that still says "chat" is loaded twice on the next restart, once by the
+ * marker and once by the tab that was restored — two writers on one log. So the persisted
+ * change goes first and the moves wait on it, and a save that throws puts back everything it
+ * was given.
+ */
+describe('a move whose save fails', () => {
+  const refuseToSave = (session: ChatSession) =>
+    vi.spyOn(session, 'save').mockRejectedValue(new Error('disk full'))
+
+  it('leaves the comment a comment when promoting it cannot be written', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    refuseToSave(session)
+
+    await expect(service.expand(id)).rejects.toThrow('disk full')
+
+    expect(session.kind).toBe('comment')
+    expect(session.agentId.value).toBe(AbeleConfig.getInstance().ai.commentAgentId)
+    expect(service.sessions.get(id) === session).toBe(true)
+    expect(ChatService.getInstance().getSessionByFile(service.commentPath(id))).toBeNull()
+    expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
+  })
+
+  it('leaves the chat a chat when sending it back cannot be written', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const chatService = ChatService.getInstance()
+
+    await service.expand(id)
+    const tabs = [...chatService.tabOrder.value]
+    refuseToSave(session)
+
+    await expect(service.collapse(id)).rejects.toThrow('disk full')
+
+    expect(session.kind).toBe('chat')
+    expect(session.agentId.value).toBe(AgentRegistry.getInstance().defaultAgent()?.id)
+    expect(service.sessions.has(id)).toBe(false)
+    expect(service.sessionFor(id) === session).toBe(true)
+    expect(chatService.tabOrder.value).toEqual(tabs)
+    expect(chatService.getSessionByFile(service.commentPath(id)) === session).toBe(true)
+    expect(AbeleConfig.getInstance().ai.chatHistory.map((e) => e.path)).toEqual([
+      service.commentPath(id),
+    ])
+  })
+
+  /** Nothing about the failed move is said in the conversation: the log only ever appends. */
+  it('leaves no divider behind for a switch that was undone', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+    const messages = session.allMessages.value.length
+    refuseToSave(session)
+
+    await expect(service.collapse(id)).rejects.toThrow('disk full')
+
+    expect(session.allMessages.value).toHaveLength(messages)
   })
 })
 
