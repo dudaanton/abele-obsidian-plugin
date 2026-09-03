@@ -102,6 +102,8 @@ interface AbeleTestApi {
   agentsSnapshot(): AgentsSnapshot
   /** The system prompt a chat with no per-chat override would send right now. */
   resolvedSystemPrompt(): Promise<string>
+  /** Paths in the live chat history — the list the history modal shows. */
+  chatHistoryPaths(): string[]
 }
 
 export interface AgentsSnapshot {
@@ -439,6 +441,14 @@ function startNoteRenderProbe(notePath: string, settleMs = 15_000): void {
   })
 }
 
+/**
+ * The live history, not the copy on disk: migration and every save run against the in-memory
+ * settings, so reading `data.json` says nothing about what the app is actually using.
+ */
+function chatHistoryPaths(): string[] {
+  return (AbeleConfig.getInstance().ai.chatHistory || []).map((entry) => entry.path)
+}
+
 export function exposeTestApi(plugin: Plugin): void {
   window.__abeleTest = {
     ScopeResolver,
@@ -457,6 +467,7 @@ export function exposeTestApi(plugin: Plugin): void {
     noteRenderResult: null,
     agentsSnapshot,
     resolvedSystemPrompt,
+    chatHistoryPaths,
   }
   console.debug('[Abele] test API exposed on window.__abeleTest (development build)')
 }
