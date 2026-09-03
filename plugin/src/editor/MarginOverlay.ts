@@ -139,9 +139,12 @@ export class MarginOverlay {
     )
     const left = contentRect.right - scrollerRect.left + SIDENOTE_LEFT_OFFSET
 
-    // Width first, for every entry: an entry's height follows from the width it is given, and
-    // everything below it in the stack follows from that height.
+    // Width and visibility first, for every entry: a hidden entry is `display: none` and
+    // measures 0, and an entry's height follows from the width it is given — so both have to be
+    // settled before anything is measured. The stacking loop below puts `_hidden` back on the
+    // entries whose anchor turns out to be off screen.
     for (const entry of entries) {
+      entry.el.toggleClass(HIDDEN_CLASS[entry.kind], false)
       entry.el.style.width = `${width}px`
       entry.el.style.left = `${left}px`
     }
@@ -186,7 +189,9 @@ export class MarginOverlay {
     this.byKind.clear()
     this.roomListeners.clear()
     this.layer.remove()
-    overlays.delete(this.view)
+    // Only the overlay the map points at may evict itself: a second one built on the same view
+    // going away must not take the registered one with it.
+    if (overlays.get(this.view) === this) overlays.delete(this.view)
   }
 
   /** Top of a document position in scroller coordinates, or null when it is out of view. */

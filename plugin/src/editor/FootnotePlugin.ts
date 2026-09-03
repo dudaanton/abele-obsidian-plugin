@@ -213,7 +213,11 @@ class FootnoteProvider {
     this.decorations = buildDecorations(this.parsedFootnotes, this.parsedDefinitions, view.state)
 
     this.rebuildOverlay()
-    window.requestAnimationFrame(() => marginOverlayFor(this.view).position())
+    // A frame that lands after the view is gone must not build a layer on a torn-down scroller.
+    window.requestAnimationFrame(() => {
+      if (this.destroyed) return
+      marginOverlayFor(this.view).position()
+    })
 
     // Click handler for footnote links
     this.view.dom.addEventListener('click', this.handleClick)
@@ -275,7 +279,10 @@ class FootnoteProvider {
     }
 
     if (update.geometryChanged || update.viewportChanged || update.docChanged) {
-      window.requestAnimationFrame(() => marginOverlayFor(this.view).position())
+      window.requestAnimationFrame(() => {
+        if (this.destroyed) return
+        marginOverlayFor(this.view).position()
+      })
     }
   }
 

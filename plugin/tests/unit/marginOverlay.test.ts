@@ -140,8 +140,12 @@ function fakeEntry(
 ): MarginEntry {
   const el = window.document.createElement('div')
   el.classList.add(`abele-${kind}-widget-container`)
-  // happy-dom reports 0 for every measured box; the height is what the stack is made of.
-  Object.defineProperty(el, 'offsetHeight', { value: height })
+  // happy-dom reports 0 for every measured box; the height is what the stack is made of. A
+  // hidden entry is `display: none` in the real thing, and a box that is not laid out measures
+  // 0 — which is what makes the order of un-hiding and measuring matter.
+  Object.defineProperty(el, 'offsetHeight', {
+    get: () => (el.classList.contains(`abele-${kind}-widget-container_hidden`) ? 0 : height),
+  })
   return { id, kind, anchorPos, el }
 }
 
@@ -237,6 +241,45 @@ describe('the margin overlay', () => {
     overlay.destroy()
     expect(marginOverlayFor(view)).not.toBe(overlay)
   })
+
+  it('keeps the registered overlay when a second one on the same view is destroyed', () => {
+    const view = fakeView({ contentRight: 700, scrollerRight: 1000 })
+    const registered = marginOverlayFor(view)
+
+    // Phase 2 has two providers on one view; only the one in the map may be evicted from it.
+    new MarginOverlay(view).destroy()
+
+    expect(marginOverlayFor(view)).toBe(registered)
+    registered.destroy()
+  })
+
+  it('takes its entries out of the document when it is destroyed', () => {
+    const view = fakeView({ contentRight: 700, scrollerRight: 1000, tops: { 10: 0, 20: 10 } })
+    const overlay = new MarginOverlay(view)
+    const footnote = fakeEntry('footnote', 'f1', 10, 40)
+    const comment = fakeEntry('comment', 'c1', 20, 50)
+
+    overlay.setEntries('footnote', [footnote])
+    overlay.setEntries('comment', [comment])
+    overlay.position()
+    overlay.destroy()
+
+    expect(footnote.el.isConnected).toBe(false)
+    expect(comment.el.isConnected).toBe(false)
+  })
+
+  it('does nothing when a provider registers or re-measures after it is destroyed', () => {
+    const view = fakeView({ contentRight: 700, scrollerRight: 1000, tops: { 10: 0 } })
+    const overlay = new MarginOverlay(view)
+
+    overlay.destroy()
+    const late = fakeEntry('comment', 'c1', 10, 40)
+    overlay.setEntries('comment', [late])
+    overlay.position()
+
+    expect(late.el.isConnected).toBe(false)
+    expect(late.el.style.top).toBe('')
+  })
 })
 
 describe('whether the margin has room', () => {
@@ -298,5 +341,40 @@ describe('whether the margin has room', () => {
     overlay.position()
     expect(seen).toEqual([true, false])
     expect(overlay.hasRoom()).toBe(true)
+  })
+
+  it('measures an entry only after taking the hidden modifier off it', () => {
+    // A pane too narrow to hold the column hides every entry; a hidden entry is not laid out,
+    // so it measures 0. Widening the pane must un-hide them before their heights are read, or
+    // two entries anchored on the same line stack a bare gap apart and draw on top of each other.
+    let scrollerRight = 800
+    const view = fakeView({ contentRight: 700, scrollerRight: 800, tops: { 10: 100, 12: 100 } })
+    view.scrollDOM.getBoundingClientRect = () =>
+      ({
+        left: 0,
+        top: 0,
+        right: scrollerRight,
+        bottom: 0,
+        width: scrollerRight,
+        height: 0,
+        x: 0,
+        y: 0,
+      }) as DOMRect
+
+    const overlay = new MarginOverlay(view)
+    const first = fakeEntry('footnote', 'f1', 10, 24)
+    const second = fakeEntry('comment', 'c1', 12, 24)
+
+    overlay.setEntries('footnote', [first])
+    overlay.setEntries('comment', [second])
+    overlay.position()
+    expect(overlay.hasRoom()).toBe(false)
+    expect(first.el.classList.contains('abele-footnote-widget-container_hidden')).toBe(true)
+
+    scrollerRight = 1000
+    overlay.position()
+
+    expect(first.el.style.top).toBe('100px')
+    expect(second.el.style.top).toBe(`${100 + 24 + SIDENOTE_GAP}px`)
   })
 })
