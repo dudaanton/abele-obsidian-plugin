@@ -616,11 +616,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     // Appended after the agent's filter, not through it: `filterTools` drops any non-core
     // tool the agent has no mode for, and this one belongs to the session's kind rather than
-    // to the agent. `toolModes` still governs whether it needs approval.
-    const withSelection =
-      this.kind === 'comment' && this.anchor.value?.quote
-        ? [...filtered, createEditSelectionTool(this)]
-        : filtered
+    // to the agent. `toolModes` still governs whether it needs approval — and `off` there is
+    // an answer too, or a comment agent set to never rewrite the note would be handed the one
+    // tool that does.
+    const offered =
+      this.kind === 'comment' &&
+      this.anchor.value?.quote &&
+      (this.toolModes.value[EDIT_SELECTION_TOOL] ?? 'ask') !== 'off'
+    const withSelection = offered ? [...filtered, createEditSelectionTool(this)] : filtered
 
     return this.wrapToolsForSession(withSelection)
   }

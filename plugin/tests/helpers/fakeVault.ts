@@ -81,6 +81,12 @@ export interface FakeApp {
     getSecret(id: string): string
     setSecret(id: string, value: string): void
   }
+  /**
+   * Obsidian's vault-scoped key/value store, where the chat tab layout lives. Backed by a map
+   * rather than `window.localStorage`, which is shared by every test in a file.
+   */
+  loadLocalStorage(key: string): unknown
+  saveLocalStorage(key: string, value: unknown): void
   /** Invokes the handlers registered for an event, so tests can drive incremental updates. */
   emit(scope: 'vault' | 'metadataCache', name: string, ...args: unknown[]): void
   stats: FakeVaultStats
@@ -312,7 +318,15 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     // Tests build a fresh app per case, so unregistering is unnecessary.
   }
 
+  const localStore = new Map<string, unknown>()
+
   return {
+    loadLocalStorage(key: string) {
+      return localStore.has(key) ? localStore.get(key) : null
+    },
+    saveLocalStorage(key: string, value: unknown) {
+      localStore.set(key, value)
+    },
     emit(scope: 'vault' | 'metadataCache', name: string, ...args: unknown[]) {
       for (const callback of handlers.get(`${scope}:${name}`) ?? []) callback(...args)
     },

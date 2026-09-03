@@ -336,7 +336,17 @@ export class CommentService implements CommentInfoSource {
       }
 
       const session = new ChatSession(ChatService.getInstance(), undefined, { kind: 'comment' })
-      await session.load(file)
+      try {
+        await session.load(file)
+      } catch (e) {
+        // A file that will not parse is a file no repeat will fix, and the marker asks again
+        // every repaint — so it is written off here rather than retried for ever, and the
+        // half-built session goes with it.
+        console.error(`[Abele] Failed to read comment ${id}:`, e)
+        session.destroy()
+        this.missing.add(id)
+        return null
+      }
 
       if ((this.generations.get(id) ?? 0) !== generation) {
         // Removed while this was reading it. Filing it now would put a deleted comment back.
@@ -354,6 +364,20 @@ export class CommentService implements CommentInfoSource {
     } finally {
       this.loading.delete(id)
     }
+  }
+
+  /**
+   * The session for a comment file `ChatService` is restoring a tab for.
+   *
+   * It is `load` plus the bookkeeping `expand` does: the tab owns the session from here on, so
+   * it moves to `expanded` and is closed through `ChatService` rather than destroyed here.
+   * Loading it and *then* letting `restoreTabs` build its own is what put two log writers on
+   * one file — the editor is up before `onLayoutReady`, so the comment is usually read first.
+   */
+  async handOverToTab(id: string): Promise<ChatSession | null> {
+    const session = await this.load(id)
+    if (session && this.sessions.delete(id)) this.expanded.set(id, session)
+    return session
   }
 
   // ── Becoming a chat ───────────────────────────────────────────

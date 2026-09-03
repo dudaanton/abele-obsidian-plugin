@@ -8,6 +8,7 @@ import { DEFAULT_AI_SETTINGS } from './types'
 import { AgentRegistry } from './agents/AgentRegistry'
 import { getNoteBody } from '@/helpers/notesUtils'
 import { ChatSession } from './ChatSession'
+import { CommentService } from './CommentService'
 import { RunStorage, type RunFile } from './RunStorage'
 import { AI_SIDEBAR_VIEW_TYPE } from '@/constants/views'
 import { buildCommentContext } from './commentContext'
@@ -117,6 +118,23 @@ export class ChatService {
 
         const file = app.vault.getAbstractFileByPath(tab.chatFilePath)
         if (!(file instanceof TFile)) continue
+
+        // A comment file may already have a session on it: the note's editor initialises
+        // before `onLayoutReady`, so a marker on screen has been read and loaded by the time
+        // this runs. Building a second session here would put two log writers on one file.
+        const comments = CommentService.getInstance()
+        if (comments.isCommentFile(file)) {
+          try {
+            const adopted = await comments.handOverToTab(file.basename)
+            if (!adopted) continue
+            this.sessions.set(adopted.id, adopted)
+            this.tabOrder.value = [...this.tabOrder.value, adopted.id]
+            restoredAny = true
+          } catch (e) {
+            console.error(`[Abele] Failed to restore tab ${tab.chatFilePath}:`, e)
+          }
+          continue
+        }
 
         const session = new ChatSession(this)
         this.sessions.set(session.id, session)

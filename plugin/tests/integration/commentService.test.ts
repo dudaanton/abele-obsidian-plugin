@@ -5,12 +5,13 @@
  * someone expands it — it is a margin note, not a conversation anyone browses — and that one
  * file only ever has one session writing it.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { nextTick, toRaw } from 'vue'
 import { TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
 import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
 import { ChatService } from '@/ai/ChatService'
+import { ChatSession } from '@/ai/ChatSession'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { parseChatMetadata, serializeChat } from '@/ai/ChatLog'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
@@ -333,6 +334,21 @@ describe('an expanded comment whose tab is closed', () => {
 
     expect(ChatService.getInstance().getSessionByFile(service.commentPath(id))).toBeTruthy()
   })
+
+  /** Each reopening expands again, and a history that lists one chat twice is a list nobody trusts. */
+  it('is listed in the history once, however often it is reopened', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = service.sessions.keys().next().value as string
+    await service.expand(id)
+    await ChatService.getInstance().closeTab(session.id)
+
+    const file = app.vault.getAbstractFileByPath(service.commentPath(id)) as TFile
+    await service.openFile(file)
+
+    const listed = AbeleConfig.getInstance().ai.chatHistory?.filter((e) => e.path === file.path)
+    expect(listed).toHaveLength(1)
+  })
 })
 
 describe('an expanded comment after a restart', () => {
@@ -353,6 +369,60 @@ describe('an expanded comment after a restart', () => {
 
     expect(found === restored).toBe(true)
     expect(CommentService.getInstance().get(id)?.quote).toBe('The selected passage')
+  })
+
+  /**
+   * And the other order, which is the one that actually happens: the note's editor is up
+   * before `onLayoutReady`, so the comment has a session before `restoreTabs` sees the saved
+   * layout. Building a second one there would put two log writers on one `.abchat`.
+   */
+  it('is the session ChatService restores, not a second one on the same file', async () => {
+    const service = CommentService.getInstance()
+    const created = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const id = created.commentId!
+    const path = service.commentPath(id)
+    app.saveLocalStorage('abele-agent-tabs', { tabs: [{ chatFilePath: path }], activeIndex: 0 })
+
+    // A restart: both singletons are new, and the editor gets there first.
+    service.destroy()
+    ChatService.getInstance().destroy()
+    vi.spyOn(ChatService.getInstance(), 'saveTabs').mockImplementation(() => {})
+    const loaded = await CommentService.getInstance().load(id)
+
+    await ChatService.getInstance().restoreTabs()
+
+    expect(ChatService.getInstance().getSessionByFile(path) === loaded).toBe(true)
+    expect(ChatService.getInstance().getAllSessions()).toHaveLength(1)
+  })
+})
+
+describe('a comment whose file will not read', () => {
+  // The read is faked on the prototype, so it has to be put back before the next test loads
+  // anything. The spies `beforeEach` sets up are made again there.
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('is written off rather than left half-built, and is not tried again', async () => {
+    const service = CommentService.getInstance()
+    const created = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const id = created.commentId!
+    service.destroy()
+
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const read = vi
+      .spyOn(ChatSession.prototype, 'load')
+      .mockRejectedValue(new Error('corrupt comment'))
+    const fresh = CommentService.getInstance()
+
+    expect(await fresh.load(id)).toBeNull()
+    expect(fresh.sessions.size).toBe(0)
+    expect((read.mock.instances[0] as ChatSession).isDestroyed).toBe(true)
+
+    // Written off, so the marker repainting does not start the same failing read for ever.
+    fresh.touch('Notes/A.md', [id])
+    await nextTick()
+    expect(read).toHaveBeenCalledTimes(1)
   })
 })
 

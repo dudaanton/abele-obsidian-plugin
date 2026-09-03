@@ -118,6 +118,13 @@ describe('when a session gets the tool at all', () => {
     expect(session.toolDefs().map((t) => t.name)).not.toContain(EDIT_SELECTION_TOOL)
   })
 
+  it('is withheld when the agent turned it off', async () => {
+    const session = await commentSession()
+    session.toolModes.value = { [EDIT_SELECTION_TOOL]: 'off' }
+
+    expect(session.toolDefs().map((t) => t.name)).not.toContain(EDIT_SELECTION_TOOL)
+  })
+
   it('is withheld from an ordinary chat', () => {
     const session = new ChatSession(ChatService.getInstance())
 

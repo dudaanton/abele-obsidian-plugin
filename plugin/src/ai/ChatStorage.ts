@@ -232,6 +232,9 @@ export class ChatStorage {
   addHistoryEntry(entry: AiChatHistoryEntry): void {
     const config = AbeleConfig.getInstance()
     if (!config.ai.chatHistory) config.ai.chatHistory = []
+    // The path is the identity of a chat, and expansion runs again every time a comment is
+    // reopened from its file — so without this the same conversation is listed twice.
+    if (config.ai.chatHistory.some((e) => e.path === entry.path)) return
     config.ai.chatHistory.unshift(entry)
     config.saveSettings()
   }
