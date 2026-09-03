@@ -16,6 +16,7 @@
     <TimeEntryListView v-if="timeEntries.length" :time-entries="timeEntries" />
     <NotesList v-if="notes.length" :notes="notes" />
     <LogsList v-if="logs.length" :logs="logs" />
+    <ChatsList v-if="chats.length" :chats="chats" />
   </div>
 </template>
 
@@ -30,6 +31,8 @@ import TransactionsListView from './TransactionsList.vue'
 import TimeEntryListView from './TimeEntryListView.vue'
 import NotesList from './NotesList.vue'
 import LogsList from './LogsList.vue'
+import ChatsList from './ChatsList.vue'
+import { useChatLinks } from '@/composables/useChatLinks'
 
 const props = defineProps<{
   footer: Footer
@@ -82,6 +85,10 @@ const logs = computed(() => {
     (a, b) => b.getLogDateOrToday().unix() - a.getLogDateOrToday().unix()
   )
 })
+
+// A getter, not `props.footer.filePath` read once: the entity's own `FileWatcher` rewrites
+// that field in place on a rename, and the list has to follow the note.
+const chats = useChatLinks(() => props.footer.filePath)
 
 onMounted(() => {
   props.footer.load()

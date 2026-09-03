@@ -20,7 +20,13 @@
     </div>
 
     <div v-if="subtitle" class="abele-card__subtitle">{{ subtitle }}</div>
-    <div v-if="description" class="abele-card__description">{{ description }}</div>
+    <div
+      v-if="description"
+      class="abele-card__description"
+      :class="{ 'abele-card__description_clamped': clampDescription }"
+    >
+      {{ description }}
+    </div>
 
     <div v-if="meta?.length" class="abele-card__meta">
       <span v-for="entry in meta" :key="entry">{{ entry }}</span>
@@ -44,6 +50,8 @@ withDefaults(
     description?: string
     /** Short facts about the item, shown as one faint row. */
     meta?: string[]
+    /** Cuts the description at two lines, for a list where one long card buries the next. */
+    clampDescription?: boolean
     clickable?: boolean
     /** For a card that is one of several being picked from. */
     selected?: boolean
@@ -128,6 +136,14 @@ const emit = defineEmits<{
   font-size: var(--font-small);
   color: var(--text-muted);
   overflow-wrap: anywhere;
+}
+
+/** Two lines, then an ellipsis: a card in a list is a summary, not the thing itself. */
+.abele-card__description_clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .abele-card__meta {

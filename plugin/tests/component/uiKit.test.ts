@@ -129,6 +129,18 @@ describe('Card', () => {
     expect(live.emitted('click')).toEqual([[]])
   })
 
+  /** A recap sentence in a footer list is a summary; unclamped, one card buries the next. */
+  it('cuts the description short only when it is asked to', () => {
+    expect(mount(Card, { props }).find('.abele-card__description').classes()).not.toContain(
+      'abele-card__description_clamped'
+    )
+    expect(
+      mount(Card, { props: { ...props, clampDescription: true } })
+        .find('.abele-card__description')
+        .classes()
+    ).toContain('abele-card__description_clamped')
+  })
+
   it('does not open when an action inside it is pressed', async () => {
     // The delete icon sits inside the card that opens the editor; pressing it must not do both.
     const view = mount(Card, {
@@ -151,7 +163,9 @@ describe('Card being chosen from', () => {
   })
 
   it('is plainly not chosen when it is not', () => {
-    const wrapper = mount(Card, { props: { title: 'AI general', clickable: true, selected: false } })
+    const wrapper = mount(Card, {
+      props: { title: 'AI general', clickable: true, selected: false },
+    })
 
     expect(wrapper.find('.abele-card').attributes('aria-pressed')).toBe('false')
     expect(wrapper.find('.abele-card').classes()).not.toContain('abele-card_selected')
