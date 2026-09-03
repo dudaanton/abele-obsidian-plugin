@@ -1,4 +1,12 @@
-import { computed, effectScope, ref, shallowRef, watch, type EffectScope } from 'vue'
+import {
+  computed,
+  effectScope,
+  ref,
+  shallowRef,
+  watch,
+  type EffectScope,
+  type ShallowRef,
+} from 'vue'
 import { TFile } from 'obsidian'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
@@ -248,9 +256,24 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   /**
    * A chat a person talks to, a run some agent was handed by another, or a comment anchored
-   * in a note. Not readonly: expanding a comment turns it into a chat in place.
+   * in a note. Not readonly: expanding a comment turns it into a chat in place, and returning
+   * it turns it back.
+   *
+   * Reactive behind an accessor rather than a bare field, so that every `session.kind` already
+   * written stays what it was while the views that switch on it follow the change. The card in
+   * the margin is the one that must: it reads this to choose between a live thread and the
+   * read-only summary of a conversation that has moved to the sidebar, and a plain field left
+   * it showing whichever of the two it was mounted with.
    */
-  public kind: SessionKind
+  private readonly kindRef: ShallowRef<SessionKind>
+
+  get kind(): SessionKind {
+    return this.kindRef.value
+  }
+
+  set kind(value: SessionKind) {
+    this.kindRef.value = value
+  }
   /** Where this session is anchored, for a comment and for a chat expanded from one. */
   public readonly anchor = shallowRef<CommentAnchor | null>(null)
 
@@ -277,7 +300,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     options: SessionOptions = {}
   ) {
     this.id = id || nanoid()
-    this.kind = options.kind ?? 'chat'
+    this.kindRef = shallowRef(options.kind ?? 'chat')
     this.depth = options.depth ?? 0
     this.parent = options.parent ?? null
     this.onPersist = options.onPersist ?? null

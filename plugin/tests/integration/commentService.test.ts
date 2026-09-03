@@ -6,7 +6,7 @@
  * file only ever has one session writing it.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
-import { nextTick, toRaw } from 'vue'
+import { computed, nextTick, toRaw } from 'vue'
 import { TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
 import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
@@ -426,6 +426,27 @@ describe('returning an expanded comment to its note', () => {
 
     expect(service.open.value).toBe(id)
     expect(vi.mocked(dispatchCommentsChanged).mock.calls.flat()).toContain('Notes/A.md')
+  })
+
+  /**
+   * The card decides between a thread and a read-only summary on `session.kind`, and it reads
+   * it inside a computed. A plain field would leave the card showing whatever it was showing
+   * when it was mounted: a live composer over a conversation that has moved to the sidebar,
+   * and — coming back — a read-only summary of a comment that is answering again.
+   */
+  it('is a change the card can see, both ways', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const promoted = computed(() => session.kind === 'chat')
+
+    expect(promoted.value).toBe(false)
+
+    await service.expand(id)
+    expect(promoted.value).toBe(true)
+
+    await service.collapse(id)
+    expect(promoted.value).toBe(false)
   })
 
   it('does nothing for a comment that was never expanded', async () => {
