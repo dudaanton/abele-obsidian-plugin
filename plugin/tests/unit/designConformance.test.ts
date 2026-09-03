@@ -32,6 +32,7 @@ const COVERED_FILES = [
   'AiRunView.vue',
   'CommentCard.vue',
   'CommentInput.vue',
+  'CommentPin.vue',
   'CommentSheet.vue',
   'CommentThread.vue',
 ].map((name) => join(ROOT, name))
