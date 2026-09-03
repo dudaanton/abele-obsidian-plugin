@@ -371,3 +371,92 @@ describe('a note that was renamed', () => {
     expect(meta?.anchor?.note).toBe(NOTE_B)
   })
 })
+
+describe('a note moved or copied', () => {
+  it('is recorded where the file ended up, not where it started', async () => {
+    const session = newSession()
+
+    await toolOf(session, 'mv').execute('c1', { from: NOTE_A, to: 'Notes/Moved.md' })
+    await toolOf(session, 'cp').execute('c2', { from: NOTE_B, to: 'Notes/Copy.md' })
+
+    expect(paths(session)).toEqual(['Notes/Moved.md', 'Notes/Copy.md'])
+  })
+
+  /** A `replace` whose actions all came to nothing wrote nothing, so it links nothing. */
+  it('links nothing when a replace changed nothing', async () => {
+    const session = newSession()
+    // `replace` reads the frontmatter and looks for an open editor; the fake vault has
+    // neither, and nothing here is about either.
+    ;(app as unknown as { fileManager: Record<string, unknown> }).fileManager.processFrontMatter =
+      async (_f: unknown, fn: (fm: Record<string, unknown>) => void) => fn({})
+    ;(app as unknown as { workspace: unknown }).workspace = { getLeavesOfType: () => [] }
+
+    const result = await toolOf(session, 'replace').execute('c1', {
+      path: NOTE_A,
+      actions: [{ type: 'remove-property', property: 'never-set' }],
+    })
+
+    expect(result.content[0].text).toBe('no changes')
+    expect(session.touched.value).toEqual([])
+  })
+})
+
+describe('the index saying it has changed', () => {
+  it('says so when a chat leaves the history, so its card goes with it', () => {
+    const store = GlobalStore.getInstance()
+    ChatStorage.getInstance().addHistoryEntry({
+      path: 'AI/Chats/Gone.abchat',
+      title: 'Gone',
+      created: '2026-09-03',
+      notes: [{ path: NOTE_A, at: 'now' }],
+    })
+    const before = store.chatLinksVersion.value
+
+    ChatStorage.getInstance().removeHistoryEntry('AI/Chats/Gone.abchat')
+
+    expect(store.chatLinksVersion.value).toBeGreaterThan(before)
+  })
+
+  it('says so when a chat arrives in it, so its card can appear', () => {
+    const store = GlobalStore.getInstance()
+    const before = store.chatLinksVersion.value
+
+    ChatStorage.getInstance().addHistoryEntry({
+      path: 'AI/Chats/Arrived.abchat',
+      title: 'Arrived',
+      created: '2026-09-03',
+    })
+
+    expect(store.chatLinksVersion.value).toBeGreaterThan(before)
+  })
+})
+
+describe('a rename reaching an expanded comment nobody has open', () => {
+  /**
+   * Both walks used to run at once over the same file, each reading before the other appended.
+   * Whichever landed last reverted the other's field — the anchor or the links, at random.
+   */
+  it('keeps both the anchor and the links, whichever walk finishes first', async () => {
+    const service = CommentService.getInstance()
+    const note = app.vault.getAbstractFileByPath(NOTE_A) as TFile
+    const session = await service.create(note, 5, 'alpha')
+    const id = session.commentId!
+    session.noteTouched(NOTE_A)
+    await session.save()
+    expect(await service.expand(id)).toBe(true)
+
+    // Neither walk finds a live session, so both would go to the file.
+    service.destroy()
+    ChatService.getInstance().destroy()
+
+    await Promise.all([
+      service.handleRename(NOTE_A, 'Notes/Renamed.md'),
+      ChatStorage.getInstance().handleNoteRename(NOTE_A, 'Notes/Renamed.md'),
+    ])
+
+    const file = app.vault.getAbstractFileByPath(`AI/Comments/${id}.abchat`) as TFile
+    const meta = parseChatMetadata(await app.vault.read(file))
+    expect(meta?.anchor?.note).toBe('Notes/Renamed.md')
+    expect(meta?.touched?.map((t) => t.path)).toEqual(['Notes/Renamed.md'])
+  })
+})

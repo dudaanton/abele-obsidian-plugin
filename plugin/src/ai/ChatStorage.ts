@@ -149,6 +149,9 @@ export class ChatStorage {
 
     if (added) {
       config.ai.chatHistory.sort((a, b) => (b.created || '').localeCompare(a.created || ''))
+      // Those entries were built out of the files' own `touched`, so they carry links nothing
+      // has drawn yet.
+      GlobalStore.getInstance().chatLinksVersion.value++
       config.saveSettings()
     }
 
@@ -175,6 +178,8 @@ export class ChatStorage {
     if (entry) {
       entry.path = availablePath
       entry.title = newTitle
+      // The card opens the chat by path, and the title is what it shows.
+      GlobalStore.getInstance().chatLinksVersion.value++
       await config.saveSettings()
     }
 
@@ -243,6 +248,9 @@ export class ChatStorage {
     // reopened from its file — so without this the same conversation is listed twice.
     if (config.ai.chatHistory.some((e) => e.path === entry.path)) return
     config.ai.chatHistory.unshift(entry)
+    // A chat arriving in the index may already name notes — an expanded comment does, and so
+    // does one that came in by sync. Without this its card never appears under them.
+    GlobalStore.getInstance().chatLinksVersion.value++
     config.saveSettings()
   }
 
@@ -271,6 +279,12 @@ export class ChatStorage {
     entry.agentId = agentId || undefined
     GlobalStore.getInstance().chatLinksVersion.value++
     config.saveSettings()
+  }
+
+  /** Whether a chat file lives in the comments folder, and so is a comment's to rewrite. */
+  private isCommentPath(path: string): boolean {
+    const folder = AbeleConfig.getInstance().ai.commentFolder
+    return !!folder && path.startsWith(`${folder}/`)
   }
 
   /**
@@ -310,17 +324,19 @@ export class ChatStorage {
         continue
       }
 
+      // A comment's file belongs to `CommentService.handleRename`, which rewrites `touched`
+      // there alongside the anchor. Both walks run on the same rename, and two of them reading
+      // this file and appending to it would leave whichever landed last overwriting the
+      // other's field — the anchor or the links, at random.
+      if (this.isCommentPath(entry.path)) continue
+
       const file = app.vault.getAbstractFileByPath(entry.path)
       if (!(file instanceof TFile)) continue
       const metadata = parseChatMetadata(await app.vault.read(file))
       if (!metadata?.touched?.length) continue
-      await app.vault.append(
-        file,
-        serializeMetadata({
-          ...metadata,
-          touched: ChatStorage.renamedNotes(metadata.touched, oldPath, newPath),
-        })
-      )
+      const touched = ChatStorage.renamedNotes(metadata.touched, oldPath, newPath)
+      if (JSON.stringify(touched) === JSON.stringify(metadata.touched)) continue
+      await app.vault.append(file, serializeMetadata({ ...metadata, touched }))
     }
 
     GlobalStore.getInstance().chatLinksVersion.value++
@@ -348,6 +364,9 @@ export class ChatStorage {
     const config = AbeleConfig.getInstance()
     if (!config.ai.chatHistory) return
     config.ai.chatHistory = config.ai.chatHistory.filter((e) => e.path !== path)
+    // The entry carried the links, so its card has to go with it — a comment sent back to its
+    // note, or a chat deleted, must not leave a card behind pointing at nothing.
+    GlobalStore.getInstance().chatLinksVersion.value++
     config.saveSettings()
   }
 

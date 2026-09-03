@@ -824,8 +824,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           // A call that failed threw, and never reaches this line — which is the whole check
           // that a write that did not happen links nothing.
           if (this.kind !== 'run' && TOUCHING_TOOLS.includes(tool.name)) {
+            // The tool says what it wrote, and only when it wrote something. Falling back to
+            // the `path` argument instead would link a call that came to nothing — a `replace`
+            // whose actions all matched nothing asks about a file it then leaves alone.
             const details = result.details as ToolWriteDetails | undefined
-            this.noteTouched(details?.path ?? (typeof params.path === 'string' ? params.path : ''))
+            this.noteTouched(details?.path ?? '')
           }
           return result
         } finally {
