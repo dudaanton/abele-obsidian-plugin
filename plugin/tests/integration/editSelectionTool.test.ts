@@ -79,6 +79,21 @@ describe('edit_selection', () => {
     expect(session.anchor.value?.quote).toBe('a rewritten passage')
   })
 
+  /**
+   * Empty text would set the stored quote to '', and a comment with no quote loses the tool
+   * altogether — so the agent would delete the passage and be unable to put anything back.
+   */
+  it('refuses to blank the passage', async () => {
+    const session = await commentSession()
+    const tool = createEditSelectionTool(session)
+
+    await expect(tool.execute('c1', { text: '   ' })).rejects.toThrow(/replacement text/)
+
+    const note = app.vault.getAbstractFileByPath('Notes/A.md') as TFile
+    expect(await app.vault.read(note)).toBe(NOTE)
+    expect(session.anchor.value?.quote).toBe('The selected passage')
+  })
+
   it('refuses when the passage is no longer in the note', async () => {
     const session = await commentSession()
     const note = app.vault.getAbstractFileByPath('Notes/A.md') as TFile

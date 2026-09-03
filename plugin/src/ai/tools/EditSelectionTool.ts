@@ -29,6 +29,13 @@ export function createEditSelectionTool(session: ChatSession): AgentTool {
     execute: async (_id, params) => {
       const { text } = params as { text: string }
       if (text == null) throw new Error('Missing required parameter: text')
+      // Blanking the passage would set the stored quote to '', and a comment with no quote is
+      // no longer offered this tool — so the agent could delete the text and not put it back.
+      if (text.trim() === '') {
+        throw new Error(
+          'edit_selection needs replacement text. To remove the passage, ask the person to delete it.'
+        )
+      }
 
       const anchor = session.anchor.value
       const commentId = session.commentId

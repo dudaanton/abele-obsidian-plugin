@@ -39,7 +39,6 @@ function installWorkspace(): void {
   }
   view.file = { path: NOTE_PATH }
   view.editor = { cm: { dispatch: () => void dispatches++ } }
-
   ;(app as unknown as { workspace: unknown }).workspace = {
     iterateAllLeaves(callback: (leaf: { view: unknown }) => void) {
       callback({ view })

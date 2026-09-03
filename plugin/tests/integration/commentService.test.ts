@@ -189,13 +189,19 @@ describe('removing a comment', () => {
   })
 })
 
-/** A comment with something in it, since an empty one has nothing to expand into. */
+/**
+ * A comment with something in it, since an empty one has nothing to expand into.
+ *
+ * The message goes into both the whole conversation and the visible path, which is what
+ * `appendChatMessage` does for a real turn — the visible one is what the card and the title
+ * read from, so setting only the private list would be a fixture nothing else resembles.
+ */
 async function answeredComment() {
   const service = CommentService.getInstance()
   const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
-  ;(session as unknown as { allChatMessages: unknown[] }).allChatMessages = [
-    { id: 'm1', role: 'user', content: 'what does this mean?', timestamp: 1 },
-  ]
+  const asked = { id: 'm1', role: 'user', content: 'what does this mean?', timestamp: 1 }
+  ;(session as unknown as { allChatMessages: unknown[] }).allChatMessages = [asked]
+  session.messages.value = [asked as never]
   await session.save()
   return session
 }
@@ -244,6 +250,26 @@ describe('expanding a comment into a chat', () => {
     ])
     expect(ChatService.getInstance().getSessionByFile(service.commentPath(id))).toBe(session)
     expect(ChatService.getInstance().revealSidebar).toHaveBeenCalled()
+  })
+
+  it('names the history entry after the question that was asked', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+
+    expect(AbeleConfig.getInstance().ai.chatHistory[0].title).toBe('what does this mean?')
+  })
+
+  it('falls back to the id when there is nothing to name it after', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const id = session.commentId!
+
+    await service.expand(id)
+
+    expect(AbeleConfig.getInstance().ai.chatHistory[0].title).toBe(id)
   })
 
   it('takes edit_selection away, because it is no longer a comment', async () => {

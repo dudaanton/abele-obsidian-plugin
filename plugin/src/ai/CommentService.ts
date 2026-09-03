@@ -16,6 +16,9 @@ import { AgentRegistry } from './agents/AgentRegistry'
 import { parseChatMetadata, serializeChat, serializeMetadata } from './ChatLog'
 import { DEFAULT_AI_SETTINGS, type ChatMetadata, type CommentAnchor } from './types'
 
+/** As long as a chat's own fallback title, which this stands in for. */
+const COMMENT_TITLE_LENGTH = 50
+
 /**
  * The comments of this vault: their files, their sessions, and the markers that point at them.
  *
@@ -287,6 +290,9 @@ export class CommentService implements CommentInfoSource {
     if (!session) return
 
     session.kind = 'chat'
+    // Read before the agent switch, which appends a divider message and recomputes the
+    // visible path: the name wanted here is the question that started the comment.
+    const title = session.chatTitle.value || this.titleFor(session) || id
 
     const fallback = AgentRegistry.getInstance().defaultAgent()
     // `switchAgent` re-syncs the scope, and the anchored note survives that: `applyScope`
@@ -295,11 +301,16 @@ export class CommentService implements CommentInfoSource {
 
     const file = session.currentChatFile.value
     if (file) {
+      // Named before it is saved, not after: `saveChat` pushes the snapshot's title back over
+      // the history entry, and an unnamed chat falls back to "<date> Chat" — which tells a
+      // person browsing the list rather less than the question they asked does.
+      session.chatTitle.value = title
+
       // Explicit, because `refreshHistory` only ever scans the chat folder. Known entries are
       // kept whatever folder they are in, so this one stays.
       ChatStorage.getInstance().addHistoryEntry({
         path: file.path,
-        title: session.chatTitle.value || file.basename,
+        title,
         created: dayjs().format('YYYY-MM-DD'),
       })
     }
@@ -314,6 +325,20 @@ export class CommentService implements CommentInfoSource {
 
     const note = session.anchor.value?.note
     if (note) dispatchCommentsChanged(note)
+  }
+
+  /**
+   * What to call an expanded comment in the history list.
+   *
+   * A comment has no title of its own — title generation is gated on `kind === 'chat'`, which
+   * it was not until a moment ago — and the file name is a random six characters, which tells
+   * a person browsing the list nothing. The question that was asked does.
+   */
+  private titleFor(session: ChatSession): string {
+    const asked = session.messages.value.find((message) => message.role === 'user')
+    if (!asked) return ''
+
+    return asked.content.replace(/\s+/g, ' ').trim().slice(0, COMMENT_TITLE_LENGTH)
   }
 
   /**

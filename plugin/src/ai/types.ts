@@ -173,14 +173,19 @@ export interface AiSettings {
 }
 
 /**
+ * The tool a comment chat uses to rewrite its own passage.
+ *
+ * Session-scoped: never in `createAgentTools()`, appended by `ChatSession.getTools` to a
+ * comment that has a quote. Declared before `WRITE_TOOLS`, which names it.
+ */
+export const EDIT_SELECTION_TOOL = 'edit_selection'
+
+/**
  * Tools that write to a file the vault already holds, or make a new one.
  *
  * These are what `allow-edit` stops asking about, which is why the list is shared: the
  * approval prompt offers that mode only for a call the mode would actually cover.
  */
-/** The tool a comment chat uses to rewrite its own passage. Session-scoped, never in `createAgentTools()`. */
-export const EDIT_SELECTION_TOOL = 'edit_selection'
-
 export const WRITE_TOOLS = ['edit', 'create', 'replace', 'write', EDIT_SELECTION_TOOL]
 
 /** Tools always sent to agent, governed by permissionMode */
