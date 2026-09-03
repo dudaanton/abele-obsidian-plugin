@@ -639,21 +639,38 @@ export class CommentService implements CommentInfoSource {
     for (const child of folder.children) {
       if (!(child instanceof TFile) || child.extension !== 'abchat') continue
 
+      // Either condition, not just the anchor: a comment can write to a note it is not
+      // anchored in, and its own file is the only copy of those links until it is expanded.
       const loaded = this.sessionFor(child.basename)
       if (loaded) {
         const anchor = loaded.anchor.value
-        if (anchor?.note !== oldPath) continue
-        loaded.anchor.value = { ...anchor, note: newPath }
+        const anchored = anchor?.note === oldPath
+        const wrote = loaded.touched.value.some((note) => note.path === oldPath)
+        if (!anchored && !wrote) continue
+        if (anchored && anchor) loaded.anchor.value = { ...anchor, note: newPath }
+        if (wrote) {
+          loaded.touched.value = ChatStorage.renamedNotes(loaded.touched.value, oldPath, newPath)
+        }
         // The session owns this file; letting it write keeps its log writer in step.
         await loaded.save()
         continue
       }
 
       const metadata = parseChatMetadata(await app.vault.read(child))
-      if (metadata?.anchor?.note !== oldPath) continue
+      if (!metadata) continue
+      const anchored = metadata.anchor?.note === oldPath
+      const wrote = metadata.touched?.some((note) => note.path === oldPath) ?? false
+      if (!anchored && !wrote) continue
       await app.vault.append(
         child,
-        serializeMetadata({ ...metadata, anchor: { ...metadata.anchor, note: newPath } })
+        serializeMetadata({
+          ...metadata,
+          anchor:
+            anchored && metadata.anchor ? { ...metadata.anchor, note: newPath } : metadata.anchor,
+          touched: metadata.touched
+            ? ChatStorage.renamedNotes(metadata.touched, oldPath, newPath)
+            : undefined,
+        })
       )
     }
 

@@ -7,10 +7,12 @@ import { renderTemplate } from '@/helpers/notesUtils'
 import { DATE_FORMAT } from '@/constants/dates'
 import { AiChatHistoryEntry, type TouchedNote } from './types'
 import { RunStorage } from './RunStorage'
+import { ChatService } from './ChatService'
 import {
   parseChat,
   parseChatMetadata,
   serializeChat,
+  serializeMetadata,
   type ChatSnapshot,
   type ChatWritePlan,
   type ParsedChat,
@@ -269,6 +271,60 @@ export class ChatStorage {
     entry.agentId = agentId || undefined
     GlobalStore.getInstance().chatLinksVersion.value++
     config.saveSettings()
+  }
+
+  /**
+   * Rewrites one note path in a list of links, keeping when it was written.
+   *
+   * Static because `CommentService` needs the same rewrite over a comment's file, and a rename
+   * that produced two different answers in the two places is the bug this avoids.
+   */
+  static renamedNotes(notes: TouchedNote[], oldPath: string, newPath: string): TouchedNote[] {
+    return notes.map((note) => (note.path === oldPath ? { path: newPath, at: note.at } : note))
+  }
+
+  /**
+   * Follows a renamed note into every chat that wrote it — the index entry and the file both.
+   *
+   * Only the chats that name the old path are read: a rename of a note nothing worked on costs
+   * one walk of an in-memory array and no disk at all.
+   */
+  async handleNoteRename(oldPath: string, newPath: string): Promise<void> {
+    const { app } = GlobalStore.getInstance()
+    const config = AbeleConfig.getInstance()
+    const affected = this.getHistory().filter((entry) =>
+      entry.notes?.some((note) => note.path === oldPath)
+    )
+    if (!affected.length) return
+
+    for (const entry of affected) {
+      entry.notes = ChatStorage.renamedNotes(entry.notes ?? [], oldPath, newPath)
+
+      // Through the open session when there is one, so its log writer stays in step with the
+      // file it thinks it wrote; otherwise straight onto the end of the file, which is what a
+      // chat log is — the last meta record wins.
+      const session = ChatService.getInstance().getSessionByFile(entry.path)
+      if (session) {
+        session.touched.value = ChatStorage.renamedNotes(session.touched.value, oldPath, newPath)
+        await session.save()
+        continue
+      }
+
+      const file = app.vault.getAbstractFileByPath(entry.path)
+      if (!(file instanceof TFile)) continue
+      const metadata = parseChatMetadata(await app.vault.read(file))
+      if (!metadata?.touched?.length) continue
+      await app.vault.append(
+        file,
+        serializeMetadata({
+          ...metadata,
+          touched: ChatStorage.renamedNotes(metadata.touched, oldPath, newPath),
+        })
+      )
+    }
+
+    GlobalStore.getInstance().chatLinksVersion.value++
+    await config.saveSettings()
   }
 
   /**

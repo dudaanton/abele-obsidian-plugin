@@ -16,7 +16,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { parseChatMetadata, serializeChat } from '@/ai/ChatLog'
-import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
+import { DEFAULT_AI_SETTINGS, type ChatMessage, type TouchedNote } from '@/ai/types'
 import type { AgentTool } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
@@ -276,5 +276,98 @@ describe('a comment that wrote to a note', () => {
     expect(await service.expand(session.commentId!)).toBe(true)
 
     expect(entryOf(session)?.notes).toEqual(session.touched.value)
+  })
+})
+
+describe('a note that was renamed', () => {
+  const AT = '2026-09-03T10:00:00.000Z'
+
+  /** A chat file in the folder, in the index, carrying a link to `NOTE_A`. */
+  async function seedChat(name: string, notes: TouchedNote[]): Promise<TFile> {
+    const path = `AI/Chats/${name}.abchat`
+    await app.vault.create(
+      path,
+      serializeChat({
+        metadata: {
+          type: 'abele-chat',
+          providerId: 'p',
+          modelId: 'm',
+          created: '2026-09-03',
+          title: name,
+          touched: notes,
+        },
+        messages: [],
+        internalMessages: [],
+      })
+    )
+    ChatStorage.getInstance().addHistoryEntry({
+      path,
+      title: name,
+      created: '2026-09-03',
+      notes,
+    })
+    return app.vault.getAbstractFileByPath(path) as TFile
+  }
+
+  it('is renamed in the index too, and only where it is named', async () => {
+    await seedChat('Touched A', [{ path: NOTE_A, at: AT }])
+    await seedChat('Touched B', [{ path: NOTE_B, at: AT }])
+    const before = GlobalStore.getInstance().chatLinksVersion.value
+
+    await ChatStorage.getInstance().handleNoteRename(NOTE_A, 'Notes/Renamed.md')
+
+    const history = ChatStorage.getInstance().getHistory()
+    expect(history.find((e) => e.title === 'Touched A')?.notes).toEqual([
+      { path: 'Notes/Renamed.md', at: AT },
+    ])
+    expect(history.find((e) => e.title === 'Touched B')?.notes).toEqual([{ path: NOTE_B, at: AT }])
+    expect(GlobalStore.getInstance().chatLinksVersion.value).toBeGreaterThan(before)
+  })
+
+  it('is renamed in the chat file, which is the source of truth', async () => {
+    const file = await seedChat('Touched A', [{ path: NOTE_A, at: AT }])
+
+    await ChatStorage.getInstance().handleNoteRename(NOTE_A, 'Notes/Renamed.md')
+
+    const meta = parseChatMetadata(await app.vault.read(file))
+    expect(meta?.touched).toEqual([{ path: 'Notes/Renamed.md', at: AT }])
+  })
+
+  it('reaches a session already holding that file open, without reloading it', async () => {
+    const file = await seedChat('Touched A', [{ path: NOTE_A, at: AT }])
+    const session = newSession()
+    await session.load(file)
+    ChatService.getInstance().adoptSession(session)
+
+    await ChatStorage.getInstance().handleNoteRename(NOTE_A, 'Notes/Renamed.md')
+
+    expect(paths(session)).toEqual(['Notes/Renamed.md'])
+  })
+
+  it('never opens a chat that did not write the note', async () => {
+    await seedChat('Touched B', [{ path: NOTE_B, at: AT }])
+    app.resetStats()
+
+    await ChatStorage.getInstance().handleNoteRename(NOTE_A, 'Notes/Renamed.md')
+
+    expect(app.stats.read).toBe(0)
+  })
+
+  it('reaches a comment anchored elsewhere that happened to write it', async () => {
+    const service = CommentService.getInstance()
+    const noteB = app.vault.getAbstractFileByPath(NOTE_B) as TFile
+    const session = await service.create(noteB, 4, 'beta')
+    const id = session.commentId!
+    session.noteTouched(NOTE_A)
+    await session.save()
+    // Forgotten, so the rename walk has to read the file rather than the live session.
+    service.destroy()
+
+    await service.handleRename(NOTE_A, 'Notes/Renamed.md')
+
+    const file = app.vault.getAbstractFileByPath(`AI/Comments/${id}.abchat`) as TFile
+    const meta = parseChatMetadata(await app.vault.read(file))
+    expect(meta?.touched?.map((t) => t.path)).toEqual(['Notes/Renamed.md'])
+    expect(meta?.anchor?.note).toBe(NOTE_B)
   })
 })
