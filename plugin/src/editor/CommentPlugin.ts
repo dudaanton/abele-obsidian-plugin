@@ -256,12 +256,27 @@ interface HostedEntry {
  */
 class CommentEntries implements PluginValue {
   private hosted: HostedEntry[] = []
+  private destroyed = false
 
   constructor(private readonly view: EditorView) {
     this.sync()
   }
 
+  /**
+   * A frame that lands after the view is gone must not build a layer on a torn-down scroller:
+   * `marginOverlayFor` would make a fresh overlay for a dead view. `FootnoteProvider` guards
+   * its own frames the same way.
+   */
+  private positionSoon() {
+    window.requestAnimationFrame(() => {
+      if (this.destroyed) return
+      marginOverlayFor(this.view).position()
+    })
+  }
+
   update(update: ViewUpdate) {
+    if (this.destroyed) return
+
     if (
       update.docChanged ||
       update.state.field(editorLivePreviewField, false) !==
@@ -274,11 +289,12 @@ class CommentEntries implements PluginValue {
     // The same three signals the footnote provider re-measures on. A card's height is not
     // known until it has been laid out, so the re-stack waits for the next frame.
     if (update.geometryChanged || update.viewportChanged || update.docChanged) {
-      window.requestAnimationFrame(() => marginOverlayFor(this.view).position())
+      this.positionSoon()
     }
   }
 
   destroy() {
+    this.destroyed = true
     const store = GlobalStore.getInstance()
     for (const hosted of [...this.hosted]) this.drop(hosted, store)
     // Not `destroy()`: the overlay is shared with footnotes, and `FootnotePlugin` owns that call.
@@ -306,7 +322,7 @@ class CommentEntries implements PluginValue {
     })
 
     marginOverlayFor(this.view).setEntries('comment', entries)
-    window.requestAnimationFrame(() => marginOverlayFor(this.view).position())
+    this.positionSoon()
   }
 
   private host(
