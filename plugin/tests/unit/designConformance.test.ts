@@ -254,6 +254,37 @@ describe('the design standard', () => {
     expect(picker).toMatch(/padding:[^;]*var\(--size-4-6\)/)
   })
 
+  /**
+   * The button Obsidian appends to every code block, and the fourth of its rules that no test
+   * of ours can see.
+   *
+   * `MarkdownRenderer` puts a `button.copy-code-button` inside each `pre`, and Obsidian's own
+   * stylesheet only positions it under `.markdown-rendered` — a class the kit's `Markdown`
+   * adds only for a whole document, which a card in the margin is not. Unstyled the button
+   * keeps Obsidian's default `button` chrome and lands under the code as a grey slab, and
+   * `.is-mobile` shows it always rather than on hover, which is how a phone reported it.
+   */
+  it('tames the copy button Obsidian appends to a code block in a comment', () => {
+    const thread = styleBlock(readFileSync(join(ROOT, 'CommentThread.vue'), 'utf8'))
+
+    // Absolute against the block, which is what `position: relative` on the `pre` is for.
+    const pre = /\.abele-comment-thread__body pre\s*\{([^}]*)\}/.exec(thread)?.[1] ?? ''
+    expect(pre).toMatch(/position:\s*relative/)
+    // Room at the end of the first line, so the code does not run under the button.
+    expect(pre).toMatch(/padding-inline-end:\s*var\(--size-4-12\)/)
+
+    const button =
+      /\.abele-comment-thread__body \.copy-code-button\s*\{([^}]*)\}/.exec(thread)?.[1] ?? ''
+    expect(button).toMatch(/position:\s*absolute/)
+    expect(button).toMatch(/top:\s*var\(--size-4-1\)/)
+    expect(button).toMatch(/inset-inline-end:\s*var\(--size-4-1\)/)
+    expect(button).toMatch(/color:\s*var\(--text-muted\)/)
+    // Obsidian's default button is a raised slab; in a sidenote it has to be a glyph.
+    expect(button).toMatch(/box-shadow:\s*none/)
+    expect(button).toMatch(/font-size:\s*var\(--font-ui-smaller\)/)
+    expect(button).toMatch(/--icon-size:\s*var\(--icon-xs\)/)
+  })
+
   it('explains any element that scrolls sideways', () => {
     const offenders = FILES.filter((file) => {
       const source = readFileSync(file, 'utf8')

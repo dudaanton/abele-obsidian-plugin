@@ -309,6 +309,45 @@ const retry = () => void props.session.retryRequest()
   }
 }
 
+/**
+ * Obsidian's own copy button, which it appends to every `pre` it renders.
+ *
+ * Its stylesheet positions the button only under `.markdown-rendered`, and the kit's
+ * `Markdown` adds that class for a whole document — which a card in the margin is not. So the
+ * button arrived here wearing Obsidian's default `button` chrome and sitting below the code as
+ * a grey slab, and `.is-mobile` shows it permanently rather than on hover: a phone screenshot
+ * of a comment thread was most of a code block and then a large grey square.
+ *
+ * The rules are `AiChatMessage`'s, at a sidenote's size. Flat selectors rather than nested
+ * ones, because the test that guards them reads this stylesheet as text.
+ */
+.abele-comment-thread__body pre {
+  position: relative;
+  /* Room for the button at the end of the first line, so the code does not run under it. */
+  padding-inline-end: var(--size-4-12);
+}
+
+.abele-comment-thread__body .copy-code-button {
+  position: absolute;
+  top: var(--size-4-1);
+  inset-inline-end: var(--size-4-1);
+  width: auto;
+  height: auto;
+  padding: var(--size-2-1) var(--size-2-2);
+  color: var(--text-muted);
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  font-size: var(--font-ui-smaller);
+  /* Obsidian draws the glyph at `--icon-size`; the card's default would be taller than the label. */
+  --icon-size: var(--icon-xs);
+}
+
+.abele-comment-thread__body .copy-code-button:hover {
+  color: var(--text-normal);
+  background-color: var(--background-modifier-hover);
+}
+
 .abele-comment-thread__thinking {
   color: var(--text-faint);
   font-size: var(--font-smallest);
