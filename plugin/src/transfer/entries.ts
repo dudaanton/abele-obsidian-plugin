@@ -13,7 +13,13 @@
 import type { AbeleSettings } from '@/services/AbeleConfig'
 import type { AiSettings } from '@/ai/types'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
-import { FILE_SECTION_LABELS, isFileSection, type SectionId, type TransferEntry, type TransferPayload } from './types'
+import {
+  FILE_SECTION_LABELS,
+  isFileSection,
+  type SectionId,
+  type TransferEntry,
+  type TransferPayload,
+} from './types'
 
 interface Identified {
   id: string
@@ -104,35 +110,42 @@ const rootBlock = (
  * in, meaningless in the vault it would arrive at, and the longest thing in the settings.
  */
 export const SECTIONS: Section[] = [
-  aiBlock('ai-general', 'AI general', [
-    'enabled',
-    'activeProviderId',
-    'activeModelId',
-    'auxiliaryModelId',
-    'wiseModelId',
-    'sequentialAuxiliary',
-    'permissionMode',
-    'toolModes',
-    'defaultScope',
-    'defaultFullVaultAccess',
-    'chatFolder',
-    'braveSearchApiKey',
-    'defaultImageModel',
-    'systemPrompt',
-    'systemPromptFromNote',
-    'systemPromptNotePath',
-    'defaultAgentId',
-    'allowWebSearch',
-    'allowFetch',
-    'allowWiseModel',
-  ], {
-    // The setting holds the *name* of the key, not the key: without this the other device
-    // gets a name pointing at an empty slot in its own keychain.
-    secretsOf: (settings) => {
-      const id = ai(settings).braveSearchApiKey
-      return id ? [id] : []
-    },
-  }),
+  aiBlock(
+    'ai-general',
+    'AI general',
+    [
+      'enabled',
+      'activeProviderId',
+      'activeModelId',
+      'auxiliaryModelId',
+      'wiseModelId',
+      'sequentialAuxiliary',
+      'permissionMode',
+      'toolModes',
+      'defaultScope',
+      'defaultFullVaultAccess',
+      'chatFolder',
+      'commentAgentId',
+      'commentFolder',
+      'braveSearchApiKey',
+      'defaultImageModel',
+      'systemPrompt',
+      'systemPromptFromNote',
+      'systemPromptNotePath',
+      'defaultAgentId',
+      'allowWebSearch',
+      'allowFetch',
+      'allowWiseModel',
+    ],
+    {
+      // The setting holds the *name* of the key, not the key: without this the other device
+      // gets a name pointing at an empty slot in its own keychain.
+      secretsOf: (settings) => {
+        const id = ai(settings).braveSearchApiKey
+        return id ? [id] : []
+      },
+    }
+  ),
   aiBlock('ai-voice', 'Voice input', ['voice'], {
     secretsOf: (settings) => [ai(settings).voice?.apiKeyId || DEFAULT_TRANSCRIPTION.apiKeyId],
   }),
@@ -221,9 +234,7 @@ export const SECTIONS: Section[] = [
 const sectionById = new Map(SECTIONS.map((section) => [section.id, section]))
 
 export const sectionLabel = (id: SectionId): string =>
-  sectionById.get(id)?.label ??
-  FILE_SECTION_LABELS[id as keyof typeof FILE_SECTION_LABELS] ??
-  id
+  sectionById.get(id)?.label ?? FILE_SECTION_LABELS[id as keyof typeof FILE_SECTION_LABELS] ?? id
 
 /** The settings half of a mixed list; the files are planned and written by `files.ts`. */
 export const settingsOnly = (entries: TransferEntry[]): TransferEntry[] =>

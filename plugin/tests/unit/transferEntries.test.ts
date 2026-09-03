@@ -97,7 +97,12 @@ describe('settings that arrived later than the transfer did', () => {
       settings({
         ai: {
           ...settings().ai!,
-          voice: { modelId: 'google/gemini-3.5-flash-lite', endpoint: '', apiKeyId: '', language: 'Russian' },
+          voice: {
+            modelId: 'google/gemini-3.5-flash-lite',
+            endpoint: '',
+            apiKeyId: '',
+            language: 'Russian',
+          },
         } as AiSettings,
       })
     )
@@ -125,7 +130,12 @@ describe('settings that arrived later than the transfer did', () => {
       settings({
         ai: {
           ...settings().ai!,
-          voice: { modelId: 'm', endpoint: 'https://elsewhere', apiKeyId: 'abele-elsewhere', language: '' },
+          voice: {
+            modelId: 'm',
+            endpoint: 'https://elsewhere',
+            apiKeyId: 'abele-elsewhere',
+            language: '',
+          },
         } as AiSettings,
       })
     )
@@ -151,7 +161,12 @@ describe('settings that arrived later than the transfer did', () => {
       settings({
         ai: {
           ...settings().ai!,
-          voice: { modelId: 'mistralai/voxtral-small-24b-2507', endpoint: '', apiKeyId: '', language: '' },
+          voice: {
+            modelId: 'mistralai/voxtral-small-24b-2507',
+            endpoint: '',
+            apiKeyId: '',
+            language: '',
+          },
         } as AiSettings,
       })
     ).filter((e) => e.section === 'ai-voice')
@@ -159,6 +174,50 @@ describe('settings that arrived later than the transfer did', () => {
     const next = applyEntries(arriving, settings())
 
     expect(next.ai?.voice?.modelId).toBe('mistralai/voxtral-small-24b-2507')
+  })
+
+  /** The same gap again, one feature later: comment chats were added after this list. */
+  it('carries the comment agent and the folder comments live in', () => {
+    const entries = collectEntries(
+      settings({
+        ai: {
+          ...settings().ai!,
+          commentAgentId: 'u1',
+          commentFolder: 'AI/Comments',
+        } as AiSettings,
+      })
+    )
+
+    expect(find(entries, 'ai-general', 'ai-general')?.data).toMatchObject({
+      commentAgentId: 'u1',
+      commentFolder: 'AI/Comments',
+    })
+  })
+
+  it('writes both into the vault they land in', () => {
+    const arriving = collectEntries(
+      settings({
+        ai: {
+          ...settings().ai!,
+          commentAgentId: 'u1',
+          commentFolder: 'Notes/Comments',
+        } as AiSettings,
+      })
+    ).filter((e) => e.section === 'ai-general')
+
+    const next = applyEntries(arriving, settings())
+
+    expect(next.ai?.commentAgentId).toBe('u1')
+    expect(next.ai?.commentFolder).toBe('Notes/Comments')
+  })
+
+  /** An agent id is not a key. Adding one must not add a slot to the keychain list. */
+  it('asks the keychain for nothing extra on account of them', () => {
+    const entries = collectEntries(
+      settings({ ai: { ...settings().ai!, commentAgentId: 'u1' } as AiSettings })
+    )
+
+    expect(find(entries, 'ai-general', 'ai-general')?.secretIds).toEqual(['abele-brave-search'])
   })
 })
 
