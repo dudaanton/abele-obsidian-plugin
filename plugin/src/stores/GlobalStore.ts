@@ -1,3 +1,4 @@
+import { CommentEntry } from '@/entities/Comment'
 import { Footer } from '@/entities/Footer'
 import { Footnote } from '@/entities/Footnote'
 import { Gallery } from '@/entities/Gallery'
@@ -41,6 +42,7 @@ export class GlobalStore {
   public readonly headersContainers = ref<Array<Header>>([])
   public readonly galleriesContainers = ref<Array<Gallery>>([])
   public readonly footnotesContainers = ref<Array<Footnote>>([])
+  public readonly commentsContainers = ref<Array<CommentEntry>>([])
   public readonly findAndReplaceModalOpened = ref(false)
   public readonly migrateFromDataviewModalOpened = ref(false)
   public readonly saveMediaModalOpened = ref(false)
@@ -311,6 +313,7 @@ export class GlobalStore {
     cleanupArray(this.tasksHeadersContainers.value, 'data-task-header-id')
     cleanupArray(this.galleriesContainers.value, 'data-gallery-id')
     cleanupArray(this.footnotesContainers.value, 'data-footnote-id')
+    cleanupArray(this.commentsContainers.value, 'data-comment-id')
   }
 
   public destroy(): void {
@@ -333,6 +336,8 @@ export class GlobalStore {
     this.galleriesContainers.value = []
     for (const fn of this.footnotesContainers.value) fn.cleanup()
     this.footnotesContainers.value = []
+    for (const comment of this.commentsContainers.value) comment.cleanup()
+    this.commentsContainers.value = []
 
     this.tasksList.value?.cleanup()
     this.tasksList.value = null

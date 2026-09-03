@@ -38,6 +38,13 @@
     <FootnoteView :footnote="footnote as Footnote" />
   </Teleport>
   <Teleport
+    v-for="comment in commentsContainers"
+    :key="comment.id"
+    :to="`[data-comment-id='${comment.id}']`"
+  >
+    <CommentCard :entry="comment as CommentEntry" />
+  </Teleport>
+  <Teleport
     v-for="id in timelineSidebarIds"
     :key="id"
     :to="`[${TIMELINE_SIDEBAR_ID_ATTR}='${id}']`"
@@ -141,12 +148,14 @@ import TaskHeaderView from './TaskHeader.vue'
 import HeaderView from './Header.vue'
 import FooterView from './Footer.vue'
 import FootnoteView from './FootnoteView.vue'
+import CommentCard from './CommentCard.vue'
 import { Task } from '@/entities/Task'
 import { Gallery } from '@/entities/Gallery'
 import { TaskHeader } from '@/entities/TaskHeader'
 import { Header } from '@/entities/Header'
 import { Footer } from '@/entities/Footer'
 import { Footnote } from '@/entities/Footnote'
+import { CommentEntry } from '@/entities/Comment'
 import TimelineSidebarView from './TimelineSidebar.vue'
 import TodoSidebarView from './TodoSidebar.vue'
 import FindAndReplaceBases from './FindAndReplaceBases.vue'
@@ -181,6 +190,7 @@ const {
   headersContainers,
   footersContainers,
   footnotesContainers,
+  commentsContainers,
   findAndReplaceModalOpened,
   migrateFromDataviewModalOpened,
   saveMediaModalOpened,
