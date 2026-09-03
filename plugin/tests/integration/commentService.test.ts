@@ -12,7 +12,7 @@ import { CommentService } from '@/ai/CommentService'
 import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
-import { parseChatMetadata } from '@/ai/ChatLog'
+import { parseChatMetadata, serializeChat } from '@/ai/ChatLog'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
@@ -548,5 +548,102 @@ describe('choosing a host for the card', () => {
     service.openFrom(['zzz999'], false)
 
     expect(GlobalStore.getInstance().commentSheet.value).toBeNull()
+  })
+})
+
+/** Lets Promise chains and their `.then` continuations run to the end. */
+const flush = async () => {
+  for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0))
+}
+
+describe('a comment file appearing under the folder', () => {
+  it('lets a marker that had given up on it find it again', async () => {
+    const service = CommentService.getInstance()
+    service.touch('Notes/A.md', ['zzz999'])
+    await flush()
+    const load = vi.spyOn(service, 'load')
+
+    // Written directly, the way a sync or a restore would put it there — not through `create`.
+    await app.vault.create(
+      service.commentPath('zzz999'),
+      serializeChat({
+        metadata: {
+          type: 'abele-chat',
+          kind: 'comment',
+          anchor: { note: 'Notes/A.md', quote: 'The selected passage' },
+          providerId: 'p1',
+          modelId: 'm1',
+          created: '2026-09-02',
+        },
+        messages: [],
+        internalMessages: [],
+      })
+    )
+
+    service.handleFileCreated('zzz999')
+    service.touch('Notes/A.md', ['zzz999'])
+    await flush()
+
+    expect(load).toHaveBeenCalledWith('zzz999')
+    expect(service.sessions.has('zzz999')).toBe(true)
+  })
+
+  it('repaints the note of a comment the service already has a session for', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const id = session.commentId!
+    vi.mocked(dispatchCommentsChanged).mockClear()
+    // `missing` and a live session do not actually overlap in practice — this pins the branch
+    // that repaints when the service already knows the id, in case a stale event ever crosses
+    // one with the other.
+    ;(service as unknown as { missing: Set<string> }).missing.add(id)
+
+    service.handleFileCreated(id)
+
+    expect(vi.mocked(dispatchCommentsChanged).mock.calls.flat()).toContain('Notes/A.md')
+  })
+
+  it('does nothing for an id that was never missing', () => {
+    const service = CommentService.getInstance()
+    vi.mocked(dispatchCommentsChanged).mockClear()
+
+    service.handleFileCreated('never999')
+
+    expect(vi.mocked(dispatchCommentsChanged)).not.toHaveBeenCalled()
+  })
+})
+
+describe('a comment file disappearing from under the folder', () => {
+  it('forgets the session and repaints the note that showed it', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const id = session.commentId!
+    vi.mocked(dispatchCommentsChanged).mockClear()
+
+    service.handleFileDeleted(id)
+
+    expect(service.sessions.has(id)).toBe(false)
+    expect(session.isDestroyed).toBe(true)
+    expect(vi.mocked(dispatchCommentsChanged).mock.calls.flat()).toContain('Notes/A.md')
+  })
+
+  it('clears the open card if it was the one showing', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const id = session.commentId!
+    service.open.value = id
+
+    service.handleFileDeleted(id)
+
+    expect(service.open.value).toBeNull()
+  })
+
+  it('does nothing for an id nobody was tracking', () => {
+    const service = CommentService.getInstance()
+    vi.mocked(dispatchCommentsChanged).mockClear()
+
+    service.handleFileDeleted('zzz999')
+
+    expect(vi.mocked(dispatchCommentsChanged)).not.toHaveBeenCalled()
   })
 })

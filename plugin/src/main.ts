@@ -993,6 +993,26 @@ export default class AbelePlugin extends Plugin {
       })
     )
 
+    // A comment file arriving or leaving from outside `CommentService` itself — sync, a
+    // restore, or a person deleting one by hand — rather than through `create`/`remove`.
+    this.registerEvent(
+      this.app.vault.on('create', (file) => {
+        if (!(file instanceof TFile) || file.extension !== 'abchat') return
+        const comments = CommentService.getInstance()
+        if (!comments.isCommentFile(file)) return
+        comments.handleFileCreated(file.basename)
+      })
+    )
+
+    this.registerEvent(
+      this.app.vault.on('delete', (file) => {
+        if (!(file instanceof TFile) || file.extension !== 'abchat') return
+        const comments = CommentService.getInstance()
+        if (!comments.isCommentFile(file)) return
+        comments.handleFileDeleted(file.basename)
+      })
+    )
+
     this.addCommand({
       id: 'show-ai-sidebar',
       name: 'Show AI chat sidebar',

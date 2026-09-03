@@ -484,6 +484,46 @@ export class CommentService implements CommentInfoSource {
     dispatchCommentsChanged(newPath)
   }
 
+  // ── Following the folder ──────────────────────────────────────
+
+  /**
+   * A `.abchat` file appeared under the comments folder — sync, a restore, or a device catching
+   * up on a comment made elsewhere. Only `missing` needs correcting: an id that was never
+   * written off has nothing to clear, and a session already loaded is not re-read here, only
+   * on the next `touch`.
+   */
+  handleFileCreated(id: string): void {
+    if (!this.missing.delete(id)) return
+
+    const note = this.sessionFor(id)?.anchor.value?.note
+    if (note) dispatchCommentsChanged(note)
+  }
+
+  /**
+   * A `.abchat` file vanished from under the comments folder — sync, a restore going the other
+   * way, or somebody deleting it by hand outside the plugin. The marker is not touched; forgets
+   * whatever session was reading the file, so the next `touch` reads it again rather than one
+   * that no longer matches what is on disk.
+   */
+  handleFileDeleted(id: string): void {
+    const session = this.sessions.get(id) ?? this.expanded.get(id) ?? null
+    const note = session?.anchor.value?.note ?? null
+
+    this.watchers.get(id)?.()
+    this.watchers.delete(id)
+    this.sessions.delete(id)
+    this.expanded.delete(id)
+    this.missing.add(id)
+    if (this.open.value === id) this.open.value = null
+
+    if (session) {
+      // Unload is synchronous, so this cannot be awaited — starting the write is the point.
+      void session.flush()
+      session.destroy()
+    }
+    if (note) dispatchCommentsChanged(note)
+  }
+
   // ── Removing one ──────────────────────────────────────────────
 
   /**
