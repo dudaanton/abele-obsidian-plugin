@@ -340,3 +340,32 @@ describe('Input as a textarea', () => {
     expect(view.find('input').attributes('rows')).toBeUndefined()
   })
 })
+
+/**
+ * A strip whose labels are too short to explain themselves — the comment card numbers its
+ * tabs "1" and "2" — needs the glyph and the tooltip to say what is being switched between.
+ */
+describe('Tabs whose labels cannot carry the meaning', () => {
+  it('draws a glyph beside a tab that asks for one', () => {
+    const view = mount(Tabs, {
+      props: { tabs: [{ id: 'a', label: '1', icon: 'message-circle' }], modelValue: 'a' },
+    })
+
+    expect(view.findComponent(Icon).props('icon')).toBe('message-circle')
+  })
+
+  it('says what a tab is when its label cannot', () => {
+    const view = mount(Tabs, {
+      props: { tabs: [{ id: 'a', label: '1', tooltip: 'Comment 1 of 2' }], modelValue: 'a' },
+    })
+
+    expect(view.find('.abele-tabs__tab').attributes('aria-label')).toBe('Comment 1 of 2')
+  })
+
+  it('leaves an ordinary tab bare', () => {
+    const view = mount(Tabs, { props: { tabs: [{ id: 'a', label: 'General' }], modelValue: 'a' } })
+
+    expect(view.findComponent(Icon).exists()).toBe(false)
+    expect(view.find('.abele-tabs__tab').attributes('aria-label')).toBeUndefined()
+  })
+})

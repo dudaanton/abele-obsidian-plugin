@@ -152,6 +152,14 @@ describe('a folded card', () => {
     expect(view.find('.abele-comment-card__state_pending').exists()).toBe(true)
   })
 
+  it('is one surface while it is folded, so the hover is not a box in a box', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.classes()).toContain('abele-comment-card_collapsed')
+  })
+
   it('shows no state dot when there is nothing to say', async () => {
     seed('k7d2ph')
 
@@ -180,6 +188,14 @@ describe('an opened card', () => {
       // The composer's own send button comes last.
       'send-horizontal',
     ])
+  })
+
+  it('drops the folded surface once it is open', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.classes()).not.toContain('abele-comment-card_collapsed')
   })
 
   it('folds again from the chevron', async () => {
@@ -290,8 +306,8 @@ describe('a marker carrying several comments', () => {
 
     expect(tabs.props('level')).toBe('secondary')
     expect(tabs.props('tabs')).toEqual([
-      { id: 'k7d2ph', label: '1' },
-      { id: '3mq0xa', label: '2' },
+      { id: 'k7d2ph', label: '1', icon: 'message-circle', tooltip: 'Comment 1 of 2' },
+      { id: '3mq0xa', label: '2', icon: 'message-circle', tooltip: 'Comment 2 of 2' },
     ])
     // Identity by `===` rather than `toBe`: vitest diffs a session's reactive graph on a
     // failure and runs out of heap doing it — see the contract's addenda.

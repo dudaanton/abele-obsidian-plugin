@@ -1,5 +1,8 @@
 <template>
-  <div class="abele-comment-card" :class="`abele-comment-card_${state}`">
+  <div
+    class="abele-comment-card"
+    :class="[`abele-comment-card_${state}`, { 'abele-comment-card_collapsed': !expanded }]"
+  >
     <!-- Folded: the whole card is one control, because at this size anything smaller is a
          target nobody can hit. `role="button"` rather than a `<button>` — see docs/Design.md. -->
     <div
@@ -171,7 +174,18 @@ const state = computed(() => session.value?.commentState.value ?? 'idle')
 const busy = computed(() => state.value === 'busy')
 const promoted = computed(() => session.value?.kind === 'chat')
 
-const tabs = computed(() => props.entry.ids.map((id, index) => ({ id, label: String(index + 1) })))
+/**
+ * A digit is all the label a 300 px strip has room for, so the glyph and the tooltip carry the
+ * rest of the meaning — what is being switched between, and how many there are.
+ */
+const tabs = computed(() =>
+  props.entry.ids.map((id, index) => ({
+    id,
+    label: String(index + 1),
+    icon: 'message-circle',
+    tooltip: `Comment ${index + 1} of ${props.entry.ids.length}`,
+  }))
+)
 
 const messages = computed<ChatMessage[]>(() => session.value?.messages.value ?? [])
 
@@ -305,6 +319,25 @@ const onAbort = () => session.value?.abort()
 }
 
 /**
+ * Folded, the whole card is one control, so the whole card answers the pointer. The tint used
+ * to sit on the summary, which is inset by the card's own padding and read as a box drawn
+ * inside a box.
+ */
+.abele-comment-card_collapsed:hover {
+  /**
+   * `--background-modifier-hover` is translucent, so it has to sit *over* the card's own fill
+   * rather than replace it — as a background it would leave the card lighter than it was,
+   * which reads as the card losing its surface instead of answering the pointer. A gradient of
+   * one colour is the one-element way to layer it.
+   */
+  background-image: linear-gradient(
+    var(--background-modifier-hover),
+    var(--background-modifier-hover)
+  );
+  border-color: var(--background-modifier-border-hover);
+}
+
+/**
  * Waiting on the reader, or failed. The marker in the text says the same thing from the same
  * `commentState`, so the two cannot drift apart; the card says it along its edge because at
  * this width a banner would be most of the card.
@@ -326,14 +359,8 @@ const onAbort = () => session.value?.abort()
   flex-direction: column;
   gap: var(--size-2-1);
   min-width: 0;
-  border-radius: var(--radius-s);
   cursor: var(--cursor-link);
-
-  // Folded, the card is one target, so the whole of it has to answer the pointer — a card
-  // that looks inert is a card nobody tries to open.
-  &:hover {
-    background-color: var(--background-modifier-hover);
-  }
+  border-radius: var(--radius-s);
 
   &:focus-visible {
     outline: 1px solid var(--background-modifier-border-focus);

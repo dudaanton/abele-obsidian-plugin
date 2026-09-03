@@ -153,7 +153,8 @@ onMounted(() => {
 .abele-comment-input__field {
   flex: 1 1 auto;
   min-width: 0;
-  padding: var(--size-2-1) var(--size-2-3);
+  /* The card's own horizontal rhythm: anything tighter reads as narrower than a native field. */
+  padding: var(--size-2-1) var(--size-4-2);
   font-size: var(--font-ui-small);
   /* Five lines and then it scrolls, which is what `rows` stops counting at. */
   max-height: 8em;
