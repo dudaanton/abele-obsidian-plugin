@@ -5,7 +5,7 @@ import { Footnote } from '@/entities/Footnote'
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { reliableScrollTo } from '@/helpers/scrollUtils'
-import { marginOverlayFor, type MarginEntry } from './MarginOverlay'
+import { marginOverlayFor, marginOverlayIfAny, type MarginEntry } from './MarginOverlay'
 
 const FOOTNOTE_REF_RE = /\[\^([^\]]+)\]/g
 const FOOTNOTE_DEF_RE = /^\[\^([^\]]+)\]:\s*(.*)/
@@ -194,7 +194,11 @@ function buildDecorations(
  * container each sidenote is rendered into — the shared `MarginOverlay` places them, together
  * with anything else anchored in the same note.
  */
-class FootnoteProvider {
+/**
+ * Exported for the teardown tests: what is worth pinning down is that a dying view is left
+ * alone, and that reads as a provider being constructed and destroyed.
+ */
+export class FootnoteProvider {
   private view: EditorView
   private entries = new Map<string, { id: string; el: HTMLElement; footnote: ParsedFootnote }>()
   private destroyed = false
@@ -405,8 +409,9 @@ class FootnoteProvider {
     }
     this.entries.clear()
     // The plugin is destroyed with the view, and so is the layer — including any other
-    // provider's entries in it. `destroy()` is idempotent, so a second provider may call it too.
-    marginOverlayFor(this.view).destroy()
+    // provider's entries in it. Asked for rather than made: whoever went first has already
+    // taken the layer, and `marginOverlayFor` would hang a fresh one on a dying scroller.
+    marginOverlayIfAny(this.view)?.destroy()
   }
 }
 

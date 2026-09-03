@@ -535,8 +535,11 @@ body.is-mobile .abele-comment-marker {
   border-bottom: 1px solid var(--text-accent);
 }
 
+/* The tint of a selection rather than of a highlight: `--text-highlight-bg` is the yellow a
+   person's own `==highlight==` is painted in, so a passage marked with it reads as text
+   somebody marked up instead of as the one the open card beside it is about. */
 .abele-comment__quote_open {
-  background-color: var(--text-highlight-bg);
+  background-color: var(--text-selection);
 }
 
 .abele-comment__quote_busy {

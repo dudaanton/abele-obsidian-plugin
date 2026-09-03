@@ -231,4 +231,16 @@ describe('the comment marker, which lives in the stylesheet', () => {
   it('keeps the underline that says which words the comment is about', () => {
     expect(rule('.abele-comment__quote')).toMatch(/border-bottom:\s*1px solid var\(--text-accent\)/)
   })
+
+  /**
+   * `--text-highlight-bg` is the yellow a person's own `==highlight==` is painted in, so an
+   * open comment tinted with it reads as text somebody marked up rather than as the passage
+   * the card beside it is about.
+   */
+  it('does not tint the open passage in the colour of a manual highlight', () => {
+    const open = rule('.abele-comment__quote_open')
+
+    expect(open).toMatch(/background-color:/)
+    expect(open).not.toContain('--text-highlight-bg')
+  })
 })
