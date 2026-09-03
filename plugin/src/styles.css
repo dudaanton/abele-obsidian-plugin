@@ -474,6 +474,15 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   color: var(--text-accent);
   cursor: var(--cursor-link);
   line-height: 1;
+  /* The state dot hangs off the corner of this box. */
+  position: relative;
+}
+
+/* Its own box, so the pulse below can scale it: a transform on an inline element does
+   nothing at all. */
+.abele-comment-marker__icon {
+  display: inline-flex;
+  align-items: center;
 }
 
 .abele-comment-marker:hover {
@@ -491,28 +500,45 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
 }
 
 /* Streaming or running a tool. Several comments can be working at once, so the marker itself
-   has to say which one is busy. */
+   has to say which one is busy — and at a phone's reading distance a marker fading by a
+   fraction says nothing, so the glyph beats instead: accent, and both size and opacity. The
+   animation is on the glyph rather than on the marker, which also carries the count and the
+   dot; fading the box would take those with it. */
 .abele-comment-marker_busy {
-  animation: abele-comment-marker-pulse 1.4s ease-in-out infinite;
+  color: var(--text-accent);
+}
+
+.abele-comment-marker_busy .abele-comment-marker__icon {
+  animation: abele-comment-marker-pulse 1.2s ease-in-out infinite;
 }
 
 @keyframes abele-comment-marker-pulse {
   0%,
   100% {
     opacity: 1;
+    transform: scale(1);
   }
   50% {
-    opacity: 0.4;
+    opacity: 0.45;
+    transform: scale(0.8);
   }
 }
 
-/* Waiting on the user: a tool approval or a question. */
+/* Waiting on the user: a tool approval or a question. A dot hung off the corner of the glyph
+   rather than set beside it — inside the drawing it was read as part of the drawing, and at
+   `--size-2-1` it was two pixels, which a phone reported as nothing at all. The ring is the
+   page's own colour, so the dot stays a dot over a descender or a mark of the text. */
 .abele-comment-marker_pending::after {
   content: '';
-  width: var(--size-2-1);
-  height: var(--size-2-1);
+  position: absolute;
+  top: 0;
+  inset-inline-end: 0;
+  width: var(--size-2-3);
+  height: var(--size-2-3);
   border-radius: var(--radius-l);
   background-color: var(--text-warning);
+  box-shadow: 0 0 0 1px var(--background-primary);
+  transform: translate(30%, -30%);
 }
 
 .abele-comment-marker_error {
@@ -528,6 +554,12 @@ body.is-mobile .abele-comment-marker {
   min-width: var(--size-4-6);
   min-height: var(--size-4-6);
   justify-content: center;
+}
+
+/* The target is half again as big on a phone, and the dot that hangs on it grows with it. */
+body.is-mobile .abele-comment-marker_pending::after {
+  width: var(--size-4-2);
+  height: var(--size-4-2);
 }
 
 /* Read at arm's length: the smallest size in the theme is a size nobody reads on a phone, and

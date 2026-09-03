@@ -10,9 +10,13 @@
  * round trip through `dispatchCommentsChanged`, and mocking that away would guard nothing.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { MarkdownView } from 'obsidian'
+import { nextTick } from 'vue'
+import { MarkdownView, TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
 import { ChatService } from '@/ai/ChatService'
+import { ChatSession } from '@/ai/ChatSession'
+import { CommentEntry } from '@/entities/Comment'
+import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { serializeChat } from '@/ai/ChatLog'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
@@ -159,6 +163,74 @@ describe('several markers on one note', () => {
 
     service.touch(NOTE_PATH, ['aaa111'])
     await settle()
+
+    expect(dispatches).toBe(1)
+  })
+})
+
+/**
+ * The icon and the conversation behind it.
+ *
+ * A phone reported that a marker never says an agent is working, and the answer is one
+ * dispatch: `commentState` is a computed on the session, and the service watches it so that
+ * every editor showing the note repaints. It has to hold for both hosts — a card in the
+ * margin and a sheet over the note, which on a phone is the only host there is — and for a
+ * comment that came back as a tab after a restart, which is the one that had no watcher.
+ */
+describe('a comment whose state changes', () => {
+  const noteFile = () => app.vault.getAbstractFileByPath(NOTE_PATH) as TFile
+
+  it('repaints the marker while the sheet it is open in streams', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), 8, 'The selected passage')
+    // The phone's host. It is the same session the margin card would hold, which is the point:
+    // the icon in the text follows the conversation wherever the conversation is being shown.
+    GlobalStore.getInstance().commentSheet.value = new CommentEntry({
+      id: 'vue-1',
+      ids: [session.commentId!],
+      notePath: NOTE_PATH,
+      markerFrom: 8,
+    })
+    await settle()
+    dispatches = 0
+
+    session.isStreaming.value = true
+    await nextTick()
+
+    expect(dispatches).toBe(1)
+  })
+
+  it('repaints it again when the answer has arrived', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), 8, 'The selected passage')
+    session.isStreaming.value = true
+    await settle()
+    dispatches = 0
+
+    session.isStreaming.value = false
+    await nextTick()
+
+    expect(dispatches).toBe(1)
+  })
+
+  /**
+   * A comment expanded into a chat before a restart comes back as one of `ChatService`'s tabs,
+   * and the service adopts it the first time the editor asks about the id. Adopting it without
+   * watching it left the marker frozen on whatever state it was drawn in.
+   */
+  it('repaints it for a comment that came back as a tab', async () => {
+    await writeComment('aaa111', 'The selected passage')
+    const chats = ChatService.getInstance()
+    const restored = new ChatSession(chats, undefined, { kind: 'comment' })
+    await restored.load(app.vault.getAbstractFileByPath('AI/Comments/aaa111.abchat') as TFile)
+    chats.adoptSession(restored)
+
+    const service = CommentService.getInstance()
+    expect(service.sessionFor('aaa111')).toBe(restored)
+    dispatches = 0
+
+    restored.isStreaming.value = true
+    await nextTick()
 
     expect(dispatches).toBe(1)
   })

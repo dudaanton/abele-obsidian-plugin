@@ -192,6 +192,9 @@ export class CommentService implements CommentInfoSource {
     if (!restored) return null
 
     this.expanded.set(id, restored)
+    // Watched like any other: a comment that came back as a tab is still drawn as an icon in
+    // the note, and an unwatched session leaves that icon frozen on whatever it last showed.
+    this.watchState(id, restored)
     return restored
   }
 
@@ -266,6 +269,20 @@ export class CommentService implements CommentInfoSource {
   /** Files it and starts watching its state, so the icon follows the conversation. */
   private adopt(id: string, session: ChatSession): void {
     this.sessions.set(id, session)
+    this.watchState(id, session)
+  }
+
+  /**
+   * The one thing that makes a marker say what its conversation is doing.
+   *
+   * Streaming, running a tool, waiting on an approval, failed — all of it is `commentState`,
+   * and the icon is redrawn by dispatching into every editor showing the note. It holds for
+   * both hosts, because both show the same session: a card in the margin, and the sheet a
+   * phone opens instead.
+   */
+  private watchState(id: string, session: ChatSession): void {
+    if (this.watchers.has(id)) return
+
     this.watchers.set(
       id,
       watch(session.commentState, () => {

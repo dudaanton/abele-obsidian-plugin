@@ -282,6 +282,45 @@ describe('the comment marker, which lives in the stylesheet', () => {
     expect(rule('.abele-comment-marker')).toMatch(/align-items:\s*center/)
   })
 
+  /**
+   * The three states, as a phone sees them.
+   *
+   * All three were drawn for a mouse pointer a foot from the screen: the busy state faded the
+   * whole marker in and out by a fraction, and the "waiting on you" dot was `--size-2-1` — two
+   * pixels, which the phone reported as invisible. What is asserted here is what makes each
+   * one legible at arm's length: the glyph itself pulses, the dot is a dot rather than a
+   * speck and hangs off the corner instead of sitting inside the drawing, and both grow with
+   * the 24 px target on a phone.
+   */
+  it('pulses the glyph itself while an agent is working', () => {
+    expect(rule('.abele-comment-marker_busy')).toMatch(/color:\s*var\(--text-accent\)/)
+    // On the glyph, not on the marker: a box that also holds the count and the dot cannot
+    // fade without taking both of them with it.
+    expect(rule('.abele-comment-marker_busy .abele-comment-marker__icon')).toMatch(
+      /animation:\s*abele-comment-marker-pulse/
+    )
+  })
+
+  it('hangs the waiting dot off the glyph rather than inside it', () => {
+    const dot = rule('.abele-comment-marker_pending::after')
+
+    // Absolute against the marker, which is what `position: relative` there is for.
+    expect(rule('.abele-comment-marker')).toMatch(/position:\s*relative/)
+    expect(dot).toMatch(/position:\s*absolute/)
+    expect(dot).toMatch(/width:\s*var\(--size-2-3\)/)
+    expect(dot).toMatch(/height:\s*var\(--size-2-3\)/)
+    expect(dot).toMatch(/background-color:\s*var\(--text-warning\)/)
+
+    // A phone's target is half again as big, and so is the dot on it.
+    const mobile = rule('body.is-mobile .abele-comment-marker_pending::after')
+    expect(mobile).toMatch(/width:\s*var\(--size-4-2\)/)
+    expect(mobile).toMatch(/height:\s*var\(--size-4-2\)/)
+  })
+
+  it('says a comment failed in the theme own error colour', () => {
+    expect(rule('.abele-comment-marker_error')).toMatch(/color:\s*var\(--text-error\)/)
+  })
+
   it('keeps the underline that says which words the comment is about', () => {
     expect(rule('.abele-comment__quote')).toMatch(/border-bottom:\s*1px solid var\(--text-accent\)/)
   })
