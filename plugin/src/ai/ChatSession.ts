@@ -253,6 +253,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   public kind: SessionKind
   /** Where this session is anchored, for a comment and for a chat expanded from one. */
   public readonly anchor = shallowRef<CommentAnchor | null>(null)
+
+  private destroyed = false
+
+  /**
+   * True once `destroy()` has run. Anything holding a session it does not own — the comment
+   * service holds the ones it handed to `ChatService` — checks this before answering from it,
+   * because a closed tab leaves a session that reports state nothing will ever update again.
+   */
+  get isDestroyed(): boolean {
+    return this.destroyed
+  }
   /** How many delegations deep this run sits. 0 for a chat a person opened. */
   public readonly depth: number
   /** Where a run came from, so its branch can be shown in the right place. */
@@ -1986,6 +1997,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   destroy(): void {
+    this.destroyed = true
     if (this.persistTimer !== null) {
       window.clearTimeout(this.persistTimer)
       this.persistTimer = null

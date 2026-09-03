@@ -86,8 +86,33 @@ export class CommentService implements CommentInfoSource {
     return file.path === this.commentPath(file.basename)
   }
 
+  /**
+   * The session answering for this id, whoever is holding it.
+   *
+   * Two things are reconciled here rather than at every call site. A session whose tab was
+   * closed has been destroyed and reports state nothing updates any more, so it is dropped
+   * and the comment is read again from its file. And after a restart an expanded comment
+   * comes back as one of `ChatService`'s tabs, which this adopts — otherwise the first
+   * `touch` would build a second session on a file that already has one writing it.
+   */
   private sessionFor(id: string): ChatSession | null {
-    return this.sessions.get(id) ?? this.expanded.get(id) ?? null
+    const known = this.sessions.get(id) ?? this.expanded.get(id) ?? null
+    if (known && !known.isDestroyed) return known
+    if (known) this.forget(id)
+
+    const restored = ChatService.getInstance().getSessionByFile(this.commentPath(id))
+    if (!restored) return null
+
+    this.expanded.set(id, restored)
+    return restored
+  }
+
+  /** Drops every trace of a session without touching the file it was read from. */
+  private forget(id: string): void {
+    this.watchers.get(id)?.()
+    this.watchers.delete(id)
+    this.sessions.delete(id)
+    this.expanded.delete(id)
   }
 
   // ── Making one ────────────────────────────────────────────────

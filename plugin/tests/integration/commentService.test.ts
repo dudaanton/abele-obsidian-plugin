@@ -268,6 +268,125 @@ describe('expanding a comment into a chat', () => {
   })
 })
 
+describe('an expanded comment whose tab is closed', () => {
+  /**
+   * `closeTab` destroys the session. Holding on to the corpse leaves the marker reporting a
+   * state nothing updates and unable to open anything, so it is dropped and read again.
+   */
+  it('is read from the file again rather than answered from the closed session', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    await service.expand(id)
+
+    await ChatService.getInstance().closeTab(session.id)
+
+    expect(service.get(id)).toBeUndefined()
+    const reopened = await service.load(id)
+    // Compared as a boolean: a failed identity check on a session would have vitest diff two
+    // reactive object graphs against each other, which exhausts the heap before it prints.
+    expect(reopened === session).toBe(false)
+    expect(reopened?.anchor.value?.note).toBe('Notes/A.md')
+  })
+
+  it('opens again from the file explorer', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = service.sessions.keys().next().value as string
+    await service.expand(id)
+    await ChatService.getInstance().closeTab(session.id)
+
+    const file = app.vault.getAbstractFileByPath(service.commentPath(id)) as TFile
+    await service.openFile(file)
+
+    expect(ChatService.getInstance().getSessionByFile(service.commentPath(id))).toBeTruthy()
+  })
+})
+
+describe('an expanded comment after a restart', () => {
+  /**
+   * `restoreTabs` rebuilds it as an ordinary chat tab, and the marker is still in the note —
+   * so the first `touch` must find that session rather than build a second one on the file.
+   */
+  it('is answered from the tab ChatService already restored, not loaded twice', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    await service.expand(id)
+    // A restart: CommentService forgets everything, ChatService keeps the tab.
+    const restored = ChatService.getInstance().getSessionByFile(service.commentPath(id))
+    CommentService.getInstance().destroy()
+
+    const found = await CommentService.getInstance().load(id)
+
+    expect(found === restored).toBe(true)
+    expect(CommentService.getInstance().get(id)?.quote).toBe('The selected passage')
+  })
+})
+
+describe('opening a comment file by hand', () => {
+  it('is recognised by its path', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const file = app.vault.getAbstractFileByPath(service.commentPath(session.commentId!)) as TFile
+
+    expect(service.isCommentFile(file)).toBe(true)
+  })
+
+  it('does not claim an ordinary chat file', async () => {
+    const file = (await app.vault.create('AI/Chats/Some chat.abchat', '')) as TFile
+
+    expect(CommentService.getInstance().isCommentFile(file)).toBe(false)
+  })
+
+  it('expands it into a tab', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const file = app.vault.getAbstractFileByPath(service.commentPath(id)) as TFile
+
+    await service.openFile(file)
+
+    expect(session.kind).toBe('chat')
+    expect(ChatService.getInstance().getSessionByFile(file.path) === session).toBe(true)
+    expect(ChatService.getInstance().revealSidebar).toHaveBeenCalled()
+  })
+
+  it('just shows the tab when it is already open', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const file = app.vault.getAbstractFileByPath(service.commentPath(id)) as TFile
+    await service.openFile(file)
+    const tabs = ChatService.getInstance().getAllSessions().length
+
+    await service.openFile(file)
+
+    expect(ChatService.getInstance().getAllSessions()).toHaveLength(tabs)
+  })
+
+  it('does nothing for a comment file with no session and no content', async () => {
+    const file = (await app.vault.create('AI/Comments/nope99.abchat', '')) as TFile
+
+    await expect(CommentService.getInstance().openFile(file)).resolves.toBeUndefined()
+  })
+})
+
+describe('shutting the service down', () => {
+  it('lets go of every comment and forgets which card was open', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const id = session.commentId!
+    service.open.value = id
+
+    service.destroy()
+
+    expect(service.sessions.size).toBe(0)
+    expect(service.open.value).toBeNull()
+    expect(CommentService.getInstance()).not.toBe(service)
+  })
+})
+
 describe('the note being renamed', () => {
   it('follows it in a comment nobody has open', async () => {
     const service = CommentService.getInstance()
