@@ -40,7 +40,7 @@ export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
       await app.vault.modify(file, content.replace(old_string, new_string))
       return {
         content: [{ type: 'text', text: `Edited: ${path}` }],
-        details: { diff: { old: old_string, new: new_string } },
+        details: { diff: { old: old_string, new: new_string }, path },
       }
     },
   }

@@ -35,6 +35,8 @@ import {
   ChatMetadata,
   CORE_TOOLS,
   EDIT_SELECTION_TOOL,
+  TOUCHING_TOOLS,
+  type TouchedNote,
   WRITE_TOOLS,
   migrateOldPermissions,
 } from './types'
@@ -70,9 +72,11 @@ import type { ChatService } from './ChatService'
  */
 const PERSIST_INTERVAL_MS = 300
 
-/** Shape returned by tools that provide diff details */
-interface ToolDiffDetails {
+/** Shape returned by tools that say what they changed: the diff, and the file it landed in. */
+interface ToolWriteDetails {
   diff?: { old: string; new: string }
+  /** The file the call actually wrote. Absent from a tool that changed nothing. */
+  path?: string
 }
 
 /** The call at the head of the pending queue that the reader has just let through by hand. */
@@ -268,6 +272,27 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     await this.save()
   }
 
+  /**
+   * Records that this chat wrote to `path`.
+   *
+   * Called by the tool wrapper on every successful write, and public so a live check can drive
+   * a link without a model behind it. Only `.md` paths are kept: a footer exists under a note,
+   * so a chat that wrote a `.canvas` or another chat file has nothing to appear under.
+   */
+  noteTouched(path: string): void {
+    const clean = path.trim().replace(/^\.?\//, '')
+    if (!clean.endsWith('.md')) return
+    if (clean === this.currentChatFile.value?.path) return
+
+    this.wroteThisTurn = true
+    const at = new Date().toISOString()
+    const existing = this.touched.value.find((note) => note.path === clean)
+    this.touched.value = existing
+      ? this.touched.value.map((note) => (note.path === clean ? { path: clean, at } : note))
+      : [...this.touched.value, { path: clean, at }]
+    this.markDirty()
+  }
+
   /** The comment's id, which is its file's basename. Null for anything not anchored. */
   get commentId(): string | null {
     if (!this.anchor.value) return null
@@ -352,6 +377,20 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    * all read this ref, so there is never a second answer to whether a message is pinned.
    */
   public readonly pinned = shallowRef<string[]>([])
+
+  /**
+   * The notes this chat wrote to, oldest first write first.
+   *
+   * Replaced, never pushed into: a `shallowRef` does not see a push, and every view of this
+   * list is downstream of the ref.
+   */
+  public readonly touched = shallowRef<TouchedNote[]>([])
+
+  /** One sentence on what this chat did, for the card under a note it changed. */
+  public readonly recap = ref('')
+
+  /** Set by `noteTouched`, read at the end of a turn to decide whether to recap. */
+  private wroteThisTurn = false
 
   private destroyed = false
 
@@ -778,7 +817,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         ScopeResolver.setActiveInstance(this.scopeResolver)
         ChatSession._activeSession = this
         try {
-          return await tool.execute(id, params, signal)
+          const result = await tool.execute(id, params, signal)
+          // The one place that sees a tool's name, its arguments and its result together, so
+          // the one place a successful write becomes a link. A run is skipped: it is never
+          // listed anywhere, and its writes belong to the chat that delegated them.
+          if (this.kind !== 'run' && TOUCHING_TOOLS.includes(tool.name) && !result.isError) {
+            const details = result.details as ToolWriteDetails | undefined
+            this.noteTouched(details?.path ?? (typeof params.path === 'string' ? params.path : ''))
+          }
+          return result
         } finally {
           ScopeResolver.setActiveInstance(null)
           ChatSession._activeSession = null
@@ -961,7 +1008,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
             m.toolStatus === 'pending',
           (m) => {
             const resultText = event.result.content?.map((c) => c.text).join('') || ''
-            const diff = (event.result.details as ToolDiffDetails)?.diff
+            const diff = (event.result.details as ToolWriteDetails)?.diff
             return {
               ...m,
               toolResult: resultText,
@@ -1320,7 +1367,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       (m) => m.role === 'tool-call' && m.toolCallId === tc.id,
       (m) => {
         const resultText = toolResult.content.map((c) => c.text).join('')
-        const diff = (toolResult.details as ToolDiffDetails)?.diff
+        const diff = (toolResult.details as ToolWriteDetails)?.diff
         return {
           ...m,
           toolResult: resultText,
@@ -1678,6 +1725,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.overrides.value = {}
     this.anchor.value = null
     this.pinned.value = []
+    this.touched.value = []
+    this.recap.value = ''
+    this.wroteThisTurn = false
     this.syncScopeFromAgent()
   }
 
@@ -1811,6 +1861,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       // Absent rather than empty when nothing is pinned: an unpin should leave the file the
       // way it was before the pin, not carrying a field that says nothing.
       pinned: this.pinned.value.length ? [...this.pinned.value] : undefined,
+      // Absent rather than empty for the same reason as `pinned`: a chat that changed nothing
+      // says nothing about notes.
+      touched: this.touched.value.length ? [...this.touched.value] : undefined,
+      recap: this.recap.value || undefined,
       // Only what this chat actually changed. Writing the resolved values instead would freeze
       // the chat against today's agent and defeat the whole point of resolving on read.
       overrides: Object.keys(overrides).length ? { ...overrides } : undefined,
@@ -1885,6 +1939,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     if (result.metadata?.kind) this.kind = result.metadata.kind
     this.anchor.value = result.metadata?.anchor ?? null
     this.pinned.value = result.metadata?.pinned ?? []
+    this.touched.value = result.metadata?.touched ?? []
+    this.recap.value = result.metadata?.recap ?? ''
 
     // Migrate old flat format → tree format once
     const needsMigration =

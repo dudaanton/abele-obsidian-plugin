@@ -165,6 +165,9 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
       if (newPath !== path) parts.push(`moved to ${newPath}`)
       return {
         content: [{ type: 'text', text: parts.length ? parts.join(', ') : 'no changes' }],
+        // The path after a `move` action, not the one asked about: the file that was written
+        // is the one at the end.
+        details: { path: newPath },
       }
     },
   }
