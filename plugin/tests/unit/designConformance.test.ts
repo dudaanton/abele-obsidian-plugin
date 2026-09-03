@@ -15,6 +15,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 const ROOT = join(__dirname, '..', '..', 'src', 'components')
+const STYLES = join(__dirname, '..', '..', 'src', 'styles.css')
 
 /**
  * What the standard covers today: the shared kit, every settings screen, and the chat
@@ -29,6 +30,10 @@ const COVERED_FILES = [
   'AiRunBranch.vue',
   'AiRunMessage.vue',
   'AiRunView.vue',
+  'CommentCard.vue',
+  'CommentInput.vue',
+  'CommentSheet.vue',
+  'CommentThread.vue',
 ].map((name) => join(ROOT, name))
 
 /** The one component allowed to be a `<button>`: everything else goes through it. */
@@ -176,5 +181,66 @@ describe('the design standard', () => {
     })
 
     expect(offenders.map(name)).toEqual([])
+  })
+})
+
+/**
+ * Three facts that live in `src/styles.css` and nowhere else.
+ *
+ * A marker is a CodeMirror widget, so its appearance is not in any component's `<style>` block
+ * and no test above can see it. Each rule here was a decision: a finger needs a target of its
+ * own on a phone, the glyph has to sit in the middle of that target rather than in a corner of
+ * it, and the underline is the only thing on screen that says which words a comment is about.
+ */
+describe('the comment marker, which lives in the stylesheet', () => {
+  const css = readFileSync(STYLES, 'utf8')
+
+  /**
+   * The body of the first rule with this exact selector.
+   *
+   * Anchored, because a selector is also the tail of every selector that qualifies it:
+   * unanchored, `.abele-comment-marker` matches `body.is-mobile .abele-comment-marker` and an
+   * assertion about the desktop rule would quietly be reading the phone's.
+   */
+  const ruleIn = (source: string, selector: string): string => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`(?:^|[,}])\\s*${escaped}\\s*\\{([^}]*)\\}`, 'm').exec(source)?.[1] ?? ''
+  }
+  const rule = (selector: string): string => ruleIn(css, selector)
+
+  it('reads the rule it was asked for, not one whose selector ends with it', () => {
+    const sample = 'body.is-mobile .abele-x {\n  min-width: 1px;\n}\n.abele-x {\n  color: red;\n}\n'
+
+    expect(ruleIn(sample, '.abele-x')).toContain('color: red')
+    expect(ruleIn(sample, '.abele-x')).not.toContain('min-width')
+  })
+
+  it('gives a finger something to hit', () => {
+    const mobile = rule('body.is-mobile .abele-comment-marker')
+
+    // --size-4-6 is Obsidian's 24px step, which is its own minimum for a touch target.
+    expect(mobile).toMatch(/min-width:\s*var\(--size-4-6\)/)
+    expect(mobile).toMatch(/min-height:\s*var\(--size-4-6\)/)
+    expect(mobile).toMatch(/justify-content:\s*center/)
+  })
+
+  it('centres the glyph inside it, on the line it interrupts', () => {
+    expect(rule('.abele-comment-marker')).toMatch(/align-items:\s*center/)
+  })
+
+  it('keeps the underline that says which words the comment is about', () => {
+    expect(rule('.abele-comment__quote')).toMatch(/border-bottom:\s*1px solid var\(--text-accent\)/)
+  })
+
+  /**
+   * `--text-highlight-bg` is the yellow a person's own `==highlight==` is painted in, so an
+   * open comment tinted with it reads as text somebody marked up rather than as the passage
+   * the card beside it is about.
+   */
+  it('does not tint the open passage in the colour of a manual highlight', () => {
+    const open = rule('.abele-comment__quote_open')
+
+    expect(open).toMatch(/background-color:/)
+    expect(open).not.toContain('--text-highlight-bg')
   })
 })

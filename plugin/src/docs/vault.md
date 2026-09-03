@@ -103,6 +103,33 @@ Notes with `type: abele-skill` or `type: abele-prompt`. A skill teaches an agent
 something and is loaded on demand with the `skill` tool; a prompt is a reusable piece of text
 for the person to insert into a chat. Both are ordinary notes and can be edited as such.
 
+## Comments
+
+A comment chat is a conversation anchored to one place in a note. The anchor is a marker
+written into the note's own text:
+
+    The passage somebody asked about%%c:k7d2ph%%
+    The same passage with two chats on it%%c:k7d2ph,3mq0xa%%
+    A comment on a position rather than on any text:%%c:v9s1bn%%
+
+`%%c:`, then one or more ids separated by commas, then `%%`. An id is six characters of
+`[a-z0-9]`. The marker sits immediately after the passage it is about. Whether it quotes
+anything depends on how the comment was made, not on what precedes the marker: one made with a
+selection quotes that passage, one made without quotes nothing and marks a position instead.
+Markers inside fenced code, inline code and frontmatter are not markers.
+
+**Never write, move or edit a marker.** It is an index into a file the plugin owns: an id with
+no file behind it draws an icon that opens nothing, and a marker carried away from its passage
+silently reattaches somebody's conversation to different text. Editing the note *around* a
+marker is fine — surviving that is what it is for. To change the commented passage itself, use
+`edit_selection` rather than `edit`: it moves the stored quote with the text.
+
+Each comment is a chat file of its own at `AI/Comments/<id>.abchat` — the folder is
+`commentFolder` in the settings — in the same format as any other `.abchat`. The quoted
+passage lives there, as `anchor.quote` in the file's metadata, together with `anchor.note`,
+the note the marker sits in. The note carries the marker and nothing else. Comment files stay
+out of the chat history until somebody opens one as a full chat.
+
 ## Transfer files
 
 Files in the vault root named `Abele transfer <date> <time>.txt` are settings on their way to

@@ -228,9 +228,13 @@ export class ChatStorage {
 
   // ── History management (stored in plugin data.json) ──
 
-  private addHistoryEntry(entry: AiChatHistoryEntry): void {
+  /** Public because expansion adds a comment file to the history the moment it becomes a chat. */
+  addHistoryEntry(entry: AiChatHistoryEntry): void {
     const config = AbeleConfig.getInstance()
     if (!config.ai.chatHistory) config.ai.chatHistory = []
+    // The path is the identity of a chat, and expansion runs again every time a comment is
+    // reopened from its file — so without this the same conversation is listed twice.
+    if (config.ai.chatHistory.some((e) => e.path === entry.path)) return
     config.ai.chatHistory.unshift(entry)
     config.saveSettings()
   }
@@ -255,7 +259,8 @@ export class ChatStorage {
     config.saveSettings()
   }
 
-  private async ensureFolder(path: string): Promise<void> {
+  /** Public because `CommentService` creates the comment folder before writing into it. */
+  async ensureFolder(path: string): Promise<void> {
     const { app } = GlobalStore.getInstance()
     const parts = path.split('/')
     let current = ''

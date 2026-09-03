@@ -204,7 +204,12 @@ export class AbeleConfig {
       throw new Error('AbeleConfig not initialized with plugin instance.')
     }
 
-    this.applySettings(await this.plugin.loadData())
+    const migrated = this.applySettings(await this.plugin.loadData())
+
+    // Migration only rewrites the settings held in memory. Persisting it here is what stops
+    // the same migration running again on the next launch — and, for the Comment agent,
+    // what stops a fresh one being minted every time the vault is opened.
+    if (migrated) await this.writeSettings()
   }
 
   async saveSettings() {
@@ -212,7 +217,7 @@ export class AbeleConfig {
       throw new Error('AbeleConfig not initialized with plugin instance.')
     }
 
-    await this.plugin.saveData(this.exportSettings())
+    await this.writeSettings()
 
     // The agent's commands and ribbon icon are registered from a setting, and this is the one
     // road every settings change takes — so switching it on takes effect here rather than at
@@ -220,7 +225,19 @@ export class AbeleConfig {
     this.plugin.syncAiFeatures()
   }
 
-  applySettings(settings?: AbeleSettings): void {
+  /**
+   * The write on its own, without the feature sync.
+   *
+   * A save during `loadSettings` must not register the AI features early: `onload` does that
+   * itself, further down, and doing it here would reorder half the plugin's startup.
+   */
+  private async writeSettings(): Promise<void> {
+    if (!this.plugin) return
+    await this.plugin.saveData(this.exportSettings())
+  }
+
+  /** Returns whether a migration rewrote anything, so the caller knows to persist it. */
+  applySettings(settings?: AbeleSettings): boolean {
     this.refreshDelay = settings?.refreshDelay || DEFAULT_SETTINGS.refreshDelay
     this.tasksFolder = settings?.tasksFolder || DEFAULT_SETTINGS.tasksFolder
     this.logsNotesTypes = settings?.logsNotesTypes || [...DEFAULT_SETTINGS.logsNotesTypes]
@@ -240,7 +257,7 @@ export class AbeleConfig {
     this.ai = settings?.ai ? { ...DEFAULT_AI_SETTINGS, ...settings.ai } : { ...DEFAULT_AI_SETTINGS }
     // Runs before the legacy migrations below, so a settings file predating both is folded
     // into an agent using the values it actually had on disk.
-    migrateAgents(this.ai)
+    const migrated = migrateAgents(this.ai)
     // Migrate old boolean permissions to toolModes
     if (
       settings?.ai &&
@@ -334,6 +351,8 @@ export class AbeleConfig {
     }))
     this.snippetsFolder = settings?.snippetsFolder ?? DEFAULT_SETTINGS.snippetsFolder
     this.fullWidthSidebars = settings?.fullWidthSidebars ?? DEFAULT_SETTINGS.fullWidthSidebars
+
+    return migrated
   }
 
   exportSettings(): AbeleSettings {

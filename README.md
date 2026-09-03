@@ -94,6 +94,8 @@ An agent with delegation depth above zero can hand a self-contained task to anot
 
 To work with a vault, agents have file operations, search, the plugin's own relation tools (the logs, backlinks, tasks and transactions of a note), web search and fetch, image reading and generation, voice input, and the ability to run any script. There is also a prompt library and support for skills. My favorites are still ["defuddle"](https://github.com/kepano/defuddle), which teaches the agent to load a website straight into clean markdown, and "deepresearch", which has it dig into a topic iteratively, through web search and whatever other tools it has to hand.
 
+Any of that can also be asked in place. Select a passage in a note, ask your question, and the chat opens on the margin beside it — anchored to that passage, scoped to that note, and able to edit the text it is about. It is an ordinary chat underneath, so when a question turns into work, open it in the sidebar and carry on there.
+
 ![An agent filling out a note, beside the scripts it has run](assets/screens/hero-agent.jpg)
 
 ### Scripts
@@ -121,6 +123,7 @@ A find-and-replace tool for note contents, which I built for vault migration. Mo
 
 - Deep links (`abele://`) that open a note, run a command, or run a script with parameters
 - Footnote sidenotes, and colored highlights with `=={color} text==`
+- Comment chats anchored to a passage, answered on the margin of the note
 - CSS snippets loaded and hot-reloaded from a folder in the vault
 - Settings transfer to another device — QR codes, a line of text, or a file — scripts, skills and prompts included
 

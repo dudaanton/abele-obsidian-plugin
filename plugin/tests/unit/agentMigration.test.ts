@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { migrateAgents } from '@/ai/agents/migration'
-import { DEFAULT_AI_SETTINGS, type AiSettings } from '@/ai/types'
+import { createAgent } from '@/ai/agents/types'
+import { DEFAULT_AI_SETTINGS, EDIT_SELECTION_TOOL, type AiSettings } from '@/ai/types'
 
 /** A settings object shaped like one saved by the pre-agent plugin. */
 function legacySettings(overrides: Partial<AiSettings> = {}): AiSettings {
@@ -19,14 +20,20 @@ function legacySettings(overrides: Partial<AiSettings> = {}): AiSettings {
   }
 }
 
+/**
+ * The agents the legacy fold produced. The Comment agent is seeded beside them by a step of
+ * its own, so counting it here would say the fold made an agent it did not make.
+ */
+const migrated = (ai: AiSettings) => ai.agents.filter((a) => a.id !== ai.commentAgentId)
+
 describe('migrateAgents', () => {
   it('folds the global settings into one agent named Default', () => {
     const ai = legacySettings()
 
     migrateAgents(ai)
 
-    expect(ai.agents).toHaveLength(1)
-    const agent = ai.agents[0]
+    expect(migrated(ai)).toHaveLength(1)
+    const agent = migrated(ai)[0]
     expect(agent.name).toBe('Default')
     expect(agent.utility).toBe(false)
     expect(agent.providerId).toBe('openai')
@@ -114,9 +121,9 @@ describe('migrateAgents', () => {
 
     migrateAgents(ai)
 
-    expect(ai.agents).toHaveLength(1)
-    expect(ai.agents[0].id).toBe(firstId)
-    expect(ai.agents[0].name).toBe('Renamed by the user')
+    expect(migrated(ai)).toHaveLength(1)
+    expect(migrated(ai)[0].id).toBe(firstId)
+    expect(migrated(ai)[0].name).toBe('Renamed by the user')
   })
 
   it('still produces a usable Default when nothing was ever configured', () => {
@@ -124,10 +131,107 @@ describe('migrateAgents', () => {
 
     migrateAgents(ai)
 
-    expect(ai.agents).toHaveLength(1)
-    expect(ai.agents[0].name).toBe('Default')
-    expect(ai.defaultAgentId).toBe(ai.agents[0].id)
+    expect(migrated(ai)).toHaveLength(1)
+    expect(migrated(ai)[0].name).toBe('Default')
+    expect(ai.defaultAgentId).toBe(migrated(ai)[0].id)
     // Falls back to the built-in prompt rather than leaving the agent mute.
-    expect(ai.agents[0].prompts[0].value).toBe(DEFAULT_AI_SETTINGS.prompts.system)
+    expect(migrated(ai)[0].prompts[0].value).toBe(DEFAULT_AI_SETTINGS.prompts.system)
+  })
+})
+
+describe('the Comment agent', () => {
+  it('is created on a fresh install and pointed at by the setting', () => {
+    const ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' } as AiSettings
+
+    migrateAgents(ai)
+
+    const comment = ai.agents.find((a) => a.id === ai.commentAgentId)
+    expect(comment?.name).toBe('Comment')
+    expect(comment?.utility).toBe(true)
+    expect(comment?.fullVaultAccess).toBe(false)
+    expect(comment?.skillsMode).toBe('all')
+    expect(comment?.maxDelegateDepth).toBe(0)
+  })
+
+  it('lets it search and fetch without asking, and ask before rewriting the passage', () => {
+    const ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' } as AiSettings
+
+    migrateAgents(ai)
+
+    const comment = ai.agents.find((a) => a.id === ai.commentAgentId)
+    expect(comment?.toolModes.web_search).toBe('auto')
+    expect(comment?.toolModes.fetch).toBe('auto')
+    expect(comment?.toolModes[EDIT_SELECTION_TOOL]).toBe('ask')
+    // Every other write is core, and `confirm-all` is what makes those ask.
+    expect(comment?.permissionMode).toBe('confirm-all')
+  })
+
+  it('tells the model it is answering in place, briefly', () => {
+    const ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' } as AiSettings
+
+    migrateAgents(ai)
+
+    const prompt = ai.agents.find((a) => a.id === ai.commentAgentId)?.prompts[0]?.value ?? ''
+    expect(prompt).toContain('edit_selection')
+    expect(prompt.length).toBeGreaterThan(100)
+  })
+
+  /**
+   * Migration only mutates memory, so `AbeleConfig` has to be told when to write. Without
+   * this every launch on a vault that already has agents mints another Comment agent with a
+   * new id, and every comment file written before then points at one that is gone.
+   */
+  it('reports that it changed the settings, so they get saved', () => {
+    const ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' } as AiSettings
+
+    expect(migrateAgents(ai)).toBe(true)
+  })
+
+  it('reports no change on the next run, so nothing is written for nothing', () => {
+    const ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' } as AiSettings
+    migrateAgents(ai)
+
+    expect(migrateAgents(ai)).toBe(false)
+  })
+
+  it('leaves settings that already name a comment agent alone', () => {
+    const existing = createAgent({ id: 'comment-1', name: 'My commenter' })
+    const ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: [createAgent({ id: 'existing', name: 'Default' }), existing],
+      defaultAgentId: 'existing',
+      commentAgentId: 'comment-1',
+    } as AiSettings
+
+    const changed = migrateAgents(ai)
+
+    expect(changed).toBe(false)
+    expect(ai.commentAgentId).toBe('comment-1')
+    expect(ai.agents).toHaveLength(2)
+  })
+
+  /** Settings are saved after migration, but not always before the next load. */
+  it('is not created a second time', () => {
+    const ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' } as AiSettings
+    migrateAgents(ai)
+    const first = ai.commentAgentId
+
+    migrateAgents(ai)
+
+    expect(ai.commentAgentId).toBe(first)
+    expect(ai.agents.filter((a) => a.name === 'Comment')).toHaveLength(1)
+  })
+
+  it('is added to a vault that already has agents but no comment agent', () => {
+    const ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: [createAgent({ id: 'existing', name: 'Default' })],
+      defaultAgentId: 'existing',
+    } as AiSettings
+
+    migrateAgents(ai)
+
+    expect(ai.commentAgentId).toBeTruthy()
+    expect(ai.agents).toHaveLength(2)
   })
 })

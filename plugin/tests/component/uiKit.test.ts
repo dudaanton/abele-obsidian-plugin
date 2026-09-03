@@ -212,15 +212,41 @@ describe('EmptyState', () => {
 })
 
 describe('Modal', () => {
+  const classOf = (v: ReturnType<typeof mount>) =>
+    (v.vm as unknown as { modal: { modalEl: HTMLElement } }).modal.modalEl.className
+
   it('widens only when asked', () => {
     const plain = mount(ObsidianModal)
     const wide = mount(ObsidianModal, { props: { size: 'wide' as const } })
 
-    const classOf = (v: ReturnType<typeof mount>) =>
-      (v.vm as unknown as { modal: { modalEl: HTMLElement } }).modal.modalEl.className
-
     expect(classOf(plain)).not.toContain('abele-modal_wide')
     expect(classOf(wide)).toContain('abele-modal_wide')
+  })
+
+  /**
+   * A sheet is not a wider dialog: it is a dialog whose body fills the height Obsidian gave it.
+   * The class is what the stylesheet hangs the column on, all the way down to the mount point
+   * this component makes — which is why the flag lives here and not in the screen using it.
+   */
+  it('marks a sheet as a sheet, and only a sheet', () => {
+    const sheet = mount(ObsidianModal, { props: { size: 'sheet' as const } })
+    const plain = mount(ObsidianModal)
+
+    expect(classOf(sheet)).toContain('abele-modal_sheet')
+    expect(classOf(sheet)).not.toContain('abele-modal_wide')
+    expect(classOf(plain)).not.toContain('abele-modal_sheet')
+  })
+
+  /**
+   * The sheet's column runs through the element this component appends, so the stylesheet has
+   * to be able to name it. Reaching it as `.modal-content > div` would make every rule depend
+   * on the shape of the DOM the kit happens to build.
+   */
+  it('names the element it mounts into', () => {
+    const view = mount(ObsidianModal)
+    const modalEl = (view.vm as unknown as { modal: { modalEl: HTMLElement } }).modal.modalEl
+
+    expect(modalEl.querySelector('.abele-modal__body')).not.toBeNull()
   })
 })
 
@@ -311,5 +337,61 @@ describe('Input', () => {
 
     expect(view.element.tagName).toBe('TEXTAREA')
     expect(view.classes()).toContain('abele-obsidian-input_multiline')
+  })
+})
+
+describe('Input as a textarea', () => {
+  it('stands at the number of rows it is given', () => {
+    const view = mount(Input, { props: { asTextArea: true, rows: 2, modelValue: 'a\nb' } })
+
+    const field = view.find('textarea')
+    expect(field.attributes('rows')).toBe('2')
+    // The six-line floor is for a field nobody sized; a sized one would only be pushed open
+    // by it, and a one-line question would arrive looking like a form.
+    expect(field.classes()).toContain('abele-obsidian-input_sized')
+  })
+
+  it('keeps the six-line floor for a textarea nobody sized', () => {
+    const view = mount(Input, { props: { asTextArea: true, modelValue: '' } })
+
+    const field = view.find('textarea')
+    expect(field.attributes('rows')).toBeUndefined()
+    expect(field.classes()).toContain('abele-obsidian-input_multiline')
+    expect(field.classes()).not.toContain('abele-obsidian-input_sized')
+  })
+
+  it('does not size a single-line input', () => {
+    const view = mount(Input, { props: { rows: 3, modelValue: '' } })
+
+    expect(view.find('input').attributes('rows')).toBeUndefined()
+  })
+})
+
+/**
+ * A strip whose labels are too short to explain themselves — the comment card numbers its
+ * tabs "1" and "2" — needs the glyph and the tooltip to say what is being switched between.
+ */
+describe('Tabs whose labels cannot carry the meaning', () => {
+  it('draws a glyph beside a tab that asks for one', () => {
+    const view = mount(Tabs, {
+      props: { tabs: [{ id: 'a', label: '1', icon: 'message-circle' }], modelValue: 'a' },
+    })
+
+    expect(view.findComponent(Icon).props('icon')).toBe('message-circle')
+  })
+
+  it('says what a tab is when its label cannot', () => {
+    const view = mount(Tabs, {
+      props: { tabs: [{ id: 'a', label: '1', tooltip: 'Comment 1 of 2' }], modelValue: 'a' },
+    })
+
+    expect(view.find('.abele-tabs__tab').attributes('aria-label')).toBe('Comment 1 of 2')
+  })
+
+  it('leaves an ordinary tab bare', () => {
+    const view = mount(Tabs, { props: { tabs: [{ id: 'a', label: 'General' }], modelValue: 'a' } })
+
+    expect(view.findComponent(Icon).exists()).toBe(false)
+    expect(view.find('.abele-tabs__tab').attributes('aria-label')).toBeUndefined()
   })
 })

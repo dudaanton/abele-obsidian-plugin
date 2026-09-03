@@ -1,5 +1,6 @@
 import type { AgentTool } from '../client'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { EDIT_SELECTION_TOOL } from '../types'
 import { createReadFileTool } from './ReadFileTool'
 import { createLsTool } from './LsTool'
 import { createFindTool } from './FindTool'
@@ -103,6 +104,10 @@ export function getToolRegistry(): ToolInfo[] {
       category: info?.category || (t.name.startsWith('script_') ? 'Scripts' : 'Other'),
     })
   }
+
+  // Session-scoped, so it is not in `createAgentTools()` — but the agent editor still has to
+  // offer its mode, and the Comment agent ships with one set.
+  result.push({ name: EDIT_SELECTION_TOOL, label: 'Edit selection', category: 'Files' })
 
   result.sort((a, b) => {
     const ai = CATEGORY_ORDER.indexOf(a.category)

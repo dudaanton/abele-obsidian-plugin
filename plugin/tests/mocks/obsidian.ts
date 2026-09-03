@@ -1,3 +1,5 @@
+import { StateField } from '@codemirror/state'
+
 /**
  * Minimal stand-in for the `obsidian` module.
  *
@@ -29,6 +31,22 @@ export class TFolder extends TAbstractFile {
     return this.path === '/' || this.path === ''
   }
 }
+
+/**
+ * Obsidian installs these two on every markdown editor: whether the pane is in live preview,
+ * and which file it holds. Every editor extension in this plugin reads both, so a test that
+ * builds an `EditorState` supplies them with `field.init(...)`. The defaults are what an
+ * editor that had neither would report, which is the safe answer: render nothing.
+ */
+export const editorLivePreviewField = StateField.define<boolean>({
+  create: () => false,
+  update: (value) => value,
+})
+
+export const editorInfoField = StateField.define<{ file: TFile | null }>({
+  create: () => ({ file: null }),
+  update: (value) => value,
+})
 
 export class Notice {
   /**
@@ -104,12 +122,21 @@ if (typeof HTMLElement !== 'undefined' && !('empty' in HTMLElement.prototype)) {
         this.classList.remove(...classes)
       },
     },
+    toggleClass: {
+      value(this: HTMLElement, classes: string | string[], value: boolean) {
+        for (const cls of Array.isArray(classes) ? classes : [classes]) {
+          this.classList.toggle(cls, value)
+        }
+      },
+    },
+    /**
+     * Obsidian's takes either a class name or the same `{ cls, text, attr }` info the element
+     * factories take, and appends to `this` either way — `FootnotePlugin` and `CommentPlugin`
+     * both build their Vue mount point with the object form.
+     */
     createDiv: {
-      value(this: HTMLElement, cls?: string) {
-        const el = this.ownerDocument.createElement('div')
-        if (cls) el.classList.add(...cls.split(' '))
-        this.appendChild(el)
-        return el
+      value(this: HTMLElement, info?: ElInfo | string) {
+        return buildEl(this.ownerDocument, 'div', { ...normalizeElInfo(info), parent: this })
       },
     },
     detach: {
@@ -170,12 +197,17 @@ if (typeof String !== 'undefined' && !('contains' in String.prototype)) {
  */
 type ElInfo = { cls?: string; text?: string; attr?: Record<string, string>; parent?: Node }
 
+/** Both forms Obsidian accepts: a bare class name, or the full info object. */
+function normalizeElInfo(info?: ElInfo | string): ElInfo {
+  return typeof info === 'string' ? { cls: info } : (info ?? {})
+}
+
 function buildEl<K extends keyof HTMLElementTagNameMap>(
   doc: Document,
   tag: K,
   info?: ElInfo | string
 ): HTMLElementTagNameMap[K] {
-  const o: ElInfo = typeof info === 'string' ? { cls: info } : (info ?? {})
+  const o: ElInfo = normalizeElInfo(info)
   const el = doc.createElement(tag)
   if (o.cls) el.classList.add(...o.cls.split(' '))
   if (o.text) el.textContent = o.text

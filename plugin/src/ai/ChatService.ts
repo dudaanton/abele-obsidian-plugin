@@ -8,7 +8,10 @@ import { DEFAULT_AI_SETTINGS } from './types'
 import { AgentRegistry } from './agents/AgentRegistry'
 import { getNoteBody } from '@/helpers/notesUtils'
 import { ChatSession } from './ChatSession'
+import { CommentService } from './CommentService'
 import { RunStorage, type RunFile } from './RunStorage'
+import { AI_SIDEBAR_VIEW_TYPE } from '@/constants/views'
+import { buildCommentContext } from './commentContext'
 
 const MAX_TABS = 8
 const STORAGE_KEY = 'abele-agent-tabs'
@@ -116,6 +119,23 @@ export class ChatService {
         const file = app.vault.getAbstractFileByPath(tab.chatFilePath)
         if (!(file instanceof TFile)) continue
 
+        // A comment file may already have a session on it: the note's editor initialises
+        // before `onLayoutReady`, so a marker on screen has been read and loaded by the time
+        // this runs. Building a second session here would put two log writers on one file.
+        const comments = CommentService.getInstance()
+        if (comments.isCommentFile(file)) {
+          try {
+            const adopted = await comments.handOverToTab(file.basename)
+            if (!adopted) continue
+            this.sessions.set(adopted.id, adopted)
+            this.tabOrder.value = [...this.tabOrder.value, adopted.id]
+            restoredAny = true
+          } catch (e) {
+            console.error(`[Abele] Failed to restore tab ${tab.chatFilePath}:`, e)
+          }
+          continue
+        }
+
         const session = new ChatSession(this)
         this.sessions.set(session.id, session)
         this.tabOrder.value = [...this.tabOrder.value, session.id]
@@ -174,6 +194,37 @@ export class ChatService {
     this.activeTabId.value = session.id
     if (this.tabsRestored) this.saveTabs()
     return session.id
+  }
+
+  /**
+   * Takes a session somebody else built and shows it as a tab.
+   *
+   * The tab limit is not applied: this is only ever reached by an explicit act — expanding a
+   * comment — and refusing it would leave the person looking at a card that says it opened
+   * something and a sidebar that did not.
+   */
+  adoptSession(session: ChatSession): void {
+    if (this.sessions.has(session.id)) {
+      this.switchTab(session.id)
+      return
+    }
+
+    this.sessions.set(session.id, session)
+    this.tabOrder.value = [...this.tabOrder.value, session.id]
+    this.activeTabId.value = session.id
+    this.saveTabs()
+  }
+
+  /** Puts the chat sidebar in front of the person, opening it in the right split if needed. */
+  async revealSidebar(): Promise<void> {
+    const { workspace } = GlobalStore.getInstance().app
+
+    let leaf = workspace.getLeavesOfType(AI_SIDEBAR_VIEW_TYPE)[0] ?? null
+    if (!leaf) {
+      leaf = workspace.getRightLeaf(false)
+      await leaf.setViewState({ type: AI_SIDEBAR_VIEW_TYPE, active: true })
+    }
+    void workspace.revealLeaf(leaf)
   }
 
   async closeTab(tabId: string): Promise<void> {
@@ -374,6 +425,33 @@ export class ChatService {
   // ── System prompt ─────────────────────────────────────────────
 
   async getSystemPrompt(session: ChatSession): Promise<string> {
+    return this.withCommentContext(session, await this.basePrompt(session))
+  }
+
+  /**
+   * A comment is told where it sits, after whatever prompt it runs on.
+   *
+   * Rebuilt on every turn from the note as it is now: a comment that answered about a passage
+   * the person has since rewritten is worse than no comment at all.
+   */
+  private async withCommentContext(session: ChatSession, prompt: string): Promise<string> {
+    if (session.kind !== 'comment') return prompt
+    const anchor = session.anchor.value
+    if (!anchor) return prompt
+
+    const noteText = await this.readCommentNote(anchor.note)
+    return `${prompt}\n\n${buildCommentContext(anchor, noteText, session.commentId ?? undefined)}`
+  }
+
+  /** The note's body, frontmatter dropped. Empty when it has been deleted under the comment. */
+  private async readCommentNote(path: string): Promise<string> {
+    const { app } = GlobalStore.getInstance()
+    const file = app.vault.getAbstractFileByPath(path)
+    if (!(file instanceof TFile)) return ''
+    return getNoteBody(await app.vault.cachedRead(file))
+  }
+
+  private async basePrompt(session: ChatSession): Promise<string> {
     const date = dayjs().format('YYYY-MM-DD')
 
     // Per-chat override: note path

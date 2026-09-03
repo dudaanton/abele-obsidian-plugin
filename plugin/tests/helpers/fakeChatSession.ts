@@ -6,8 +6,9 @@
  * these tests ask what gets drawn, not what happens when it is used, so each test overrides
  * the few members its own question is about.
  */
-import { ref, type Ref } from 'vue'
-import type { ChatMessage, QueuedMessage } from '@/ai/types'
+import { ref, shallowRef, type Ref } from 'vue'
+import type { CommentState } from '@/editor/CommentPlugin'
+import type { ChatMessage, CommentAnchor, QueuedMessage } from '@/ai/types'
 
 export interface FakeSessionOptions {
   messages?: Ref<ChatMessage[]>
@@ -23,6 +24,7 @@ export function fakeChatSession({
   const off = ref(false)
   const nothing = () => {}
   return {
+    id: 'session-1',
     messages,
     allMessages: messages,
     queuedMessages,
@@ -40,6 +42,13 @@ export function fakeChatSession({
     pendingToolCalls: ref([]),
     scopeResolver: { summary: ref('No files') },
     interceptor: { streaming: off, streamingContent: ref(''), error: ref(null) },
+    // Comment sessions. A card reads the agent's name for its badge, the anchor for the quote
+    // it is attached to, and `commentState` for the dot that has to agree with the marker.
+    kind: 'comment' as 'chat' | 'run' | 'comment',
+    commentId: 'k7d2ph' as string | null,
+    anchor: shallowRef<CommentAnchor | null>({ note: 'Notes/Anchor.md' }),
+    agent: ref({ id: 'comment-agent', name: 'Comment' }),
+    commentState: ref<CommentState>('idle'),
     getDraftMessage: () => null,
     getDebugData: () => ({}),
     getToolMode: () => 'ask',
@@ -57,6 +66,8 @@ export function fakeChatSession({
     sendInterceptorMessage: nothing,
     confirmDraft: nothing,
     injectSkill: nothing,
+    approveToolCall: nothing,
+    rejectToolCall: nothing,
     answerCurrentQuestion: nothing,
     abortQuestions: nothing,
     abort: nothing,

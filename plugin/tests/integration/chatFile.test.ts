@@ -10,7 +10,7 @@ import { TFile } from 'obsidian'
 import { ChatSession } from '@/ai/ChatSession'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
-import { parseChat, parseChatMetadata } from '@/ai/ChatLog'
+import { parseChat, parseChatMetadata, serializeChat } from '@/ai/ChatLog'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiProvider, type SubAgentRunRef } from '@/ai/types'
@@ -374,5 +374,35 @@ describe('the history list', () => {
     // The first meta record still carries the old title; the last one is the truth.
     expect(metadata?.title).toBe('Renamed later')
     expect(metadata?.type).toBe('abele-chat')
+  })
+})
+
+describe('a chat file that holds only metadata', () => {
+  /**
+   * A comment file is written before its session ever runs a turn, so the guard that stops a
+   * brand-new tab creating a file must not also stop an existing file being updated.
+   */
+  it('is saved when something other than a message changes', async () => {
+    const file = await app.vault.create(
+      'AI/Chats/empty.abchat',
+      serializeChat({
+        metadata: {
+          type: 'abele-chat',
+          providerId: 'p1',
+          modelId: 'm1',
+          created: '2026-09-02',
+          title: 'Empty',
+        },
+        messages: [],
+        internalMessages: [],
+      })
+    )
+    const session = newSession()
+    await session.load(file)
+
+    session.chatTitle.value = 'Renamed'
+    await session.save()
+
+    expect(parseChatMetadata((await app.vault.read(file)) as string)?.title).toBe('Renamed')
   })
 })

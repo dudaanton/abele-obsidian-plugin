@@ -48,9 +48,10 @@ Real plugin classes against an in-memory vault. Two pieces make this work:
   is implemented, so reaching for an unmodelled API fails loudly instead of passing against
   a stub.
 - `tests/helpers/fakeVault.ts` — builds an `app` with `vault.getFiles`,
-  `vault.getAbstractFileByPath`, `metadataCache.getFileCache`,
-  `metadataCache.getFirstLinkpathDest` and `metadataCache.resolvedLinks`. Link resolution
-  follows Obsidian's precedence: exact path, then path + `.md`, then an unambiguous basename.
+  `vault.getAbstractFileByPath`, `vault.create`, `vault.modify`, `vault.append`,
+  `vault.process`, `metadataCache.getFileCache`, `metadataCache.getFirstLinkpathDest` and
+  `metadataCache.resolvedLinks`. Link resolution follows Obsidian's precedence: exact path,
+  then path + `.md`, then an unambiguous basename.
 
 Every lookup increments a counter in `app.stats`, which lets a test assert on how much work
 an algorithm does rather than how long it took. Operation counts are identical on every
@@ -127,6 +128,11 @@ Three files, three concerns:
 - `footerRender.e2e.test.ts` — **render cost**. Opens a wide group note and reports how much
   DOM its footer produced and how long the main thread was blocked. The component tier
   proves each list renders a single page; only this tier can show that the page is cheap.
+- `commentChats.e2e.test.ts` — **comment chats end to end**. Runs the comment command on a
+  selection in a scratch note and checks what the app shows: no raw `%%c:…%%` in the editor, an
+  icon carrying the comment id, the card in the margin when there is room, the chat file under
+  the comment folder, and — under `app.emulateMobile(true)` — the same card as a sheet with its
+  input in sight. Cleans the note and the file up after itself.
 
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
 "mega group", where a single resolution currently takes about two minutes.

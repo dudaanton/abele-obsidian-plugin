@@ -163,3 +163,36 @@ describe('the pieces used directly', () => {
     expect(tableOfContents()).toContain('overview')
   })
 })
+
+/**
+ * Comments are a thing an agent meets in the middle of a note — a marker it must not touch and
+ * a file it must not go looking for — so the reference has to say both before it meets one.
+ */
+describe('what an agent is told about comments', () => {
+  it('gives comments a topic of their own in the vault section', () => {
+    const text = readTopic('vault', 'comments')
+
+    expect(text).toContain('%%c:')
+    expect(text).toContain('AI/Comments')
+    expect(text).toContain('.abchat')
+  })
+
+  it('warns the marker off being written or moved by hand', () => {
+    expect(readTopic('vault', 'comments')).toContain('Never write, move or edit a marker')
+  })
+
+  it('says the quoted passage is kept in the chat file, not in the note', () => {
+    expect(readTopic('vault', 'comments')).toContain('anchor.quote')
+  })
+
+  it('tells the chats topic that a comment is a chat and can become a full one', () => {
+    const text = readTopic('agent', 'chats')
+
+    expect(text).toContain('comment chat')
+    expect(text).toContain('commentAgentId')
+  })
+
+  it('names the tool that edits a commented passage among the file tools', () => {
+    expect(readTopic('tools', 'files')).toContain('edit_selection')
+  })
+})

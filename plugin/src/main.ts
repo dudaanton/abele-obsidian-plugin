@@ -21,6 +21,7 @@ import { createTask, createTaskAndInsert } from './commands/createTask'
 import { createTransaction, createTransactionAndInsert } from './commands/createTransaction'
 import { createTimeEntry, stopActiveTimeEntry } from './commands/createTimeEntry'
 import { createNoteInGroup } from './commands/createNoteInGroup'
+import { commentHereInView } from './commands/commentCommands'
 import {
   createNoteFromTemplate,
   replaceNoteWithTemplate,
@@ -31,6 +32,11 @@ import { taskStateField } from './editor/TaskPlugin'
 import { galleryExtensions } from './editor/GalleryPlugin'
 import { footnoteExtensions } from './editor/FootnotePlugin'
 import { highlightStateField } from './editor/HighlightPlugin'
+import {
+  commentExtensions,
+  setCommentClickHandler,
+  setCommentInfoSource,
+} from '@/editor/CommentPlugin'
 import { insertGallery, convertImagesToGalleries } from './commands/galleryCommands'
 import { reindexFootnotes } from './commands/footnoteCommands'
 import { insertHighlight, removeHighlight } from './commands/highlightCommands'
@@ -53,6 +59,7 @@ import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
 import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
 import { ChatService } from './ai/ChatService'
+import { CommentService } from './ai/CommentService'
 import { useFilesInAgent } from './helpers/useFilesInAgent'
 import { ScriptService } from './scripting/ScriptService'
 import { showMarkdown } from './scripting/formModal'
@@ -267,6 +274,7 @@ export default class AbelePlugin extends Plugin {
     this.registerEditorExtension(createHeaderExtension())
     this.registerEditorExtension(footnoteExtensions)
     this.registerEditorExtension(highlightStateField)
+    this.registerEditorExtension(commentExtensions)
 
     // this.registerPriorityCodeblockPostProcessor(
     //   TASK_CODEBLOCK_KEYWORD,
@@ -299,16 +307,7 @@ export default class AbelePlugin extends Plugin {
           const file = (leaf.view as any).file as TFile | undefined
           if (file?.extension === 'abchat') {
             leaf.detach()
-            const chatService = ChatService.getInstance()
-            void chatService.openChatFile(file).then(() => {
-              const { workspace } = this.app
-              let aiLeaf = workspace.getLeavesOfType(AI_SIDEBAR_VIEW_TYPE)[0] ?? null
-              if (!aiLeaf) {
-                aiLeaf = workspace.getRightLeaf(false)
-                void aiLeaf.setViewState({ type: AI_SIDEBAR_VIEW_TYPE, active: true })
-              }
-              void workspace.revealLeaf(aiLeaf)
-            })
+            void this.openAbchatFile(file)
             return
           }
         }
@@ -949,6 +948,71 @@ export default class AbelePlugin extends Plugin {
   }
 
   registerAiFeatures() {
+    // The editor's comment field reads this synchronously to draw each marker's icon.
+    setCommentInfoSource(CommentService.getInstance())
+
+    // The editor owns the press and measures its own margin; the service owns where the card
+    // goes with it. Injected rather than imported, so `CommentPlugin` and `CommentService` do
+    // not import each other.
+    setCommentClickHandler((ids, hasRoom) => {
+      CommentService.getInstance().openFrom(ids, hasRoom)
+    })
+
+    this.addCommand({
+      id: 'comment-here',
+      name: 'Comment here',
+      icon: 'message-circle-plus',
+      editorCallback: (_editor: Editor, view: MarkdownView) => {
+        void commentHereInView(view)
+      },
+    })
+
+    // Beside "Use in AI agent", and unlike it, offered with or without a selection: a
+    // comment at the caret is a question about the place, not about a passage.
+    this.registerEvent(
+      this.app.workspace.on('editor-menu', (menu, _editor, view) => {
+        // A `MarkdownFileInfo` has no `save()`, and a comment cannot wait on a buffer nobody
+        // can flush — only a real pane is offered the item.
+        if (!(view instanceof MarkdownView) || !view.file) return
+
+        menu.addItem((item) => {
+          item
+            .setTitle('Ask here')
+            .setIcon('message-circle-plus')
+            .onClick(() => {
+              void commentHereInView(view)
+            })
+        })
+      })
+    )
+
+    this.registerEvent(
+      this.app.vault.on('rename', (file, oldPath) => {
+        if (!(file instanceof TFile) || file.extension !== 'md') return
+        void CommentService.getInstance().handleRename(oldPath, file.path)
+      })
+    )
+
+    // A comment file arriving or leaving from outside `CommentService` itself — sync, a
+    // restore, or a person deleting one by hand — rather than through `create`/`remove`.
+    this.registerEvent(
+      this.app.vault.on('create', (file) => {
+        if (!(file instanceof TFile) || file.extension !== 'abchat') return
+        const comments = CommentService.getInstance()
+        if (!comments.isCommentFile(file)) return
+        comments.handleFileCreated(file.basename)
+      })
+    )
+
+    this.registerEvent(
+      this.app.vault.on('delete', (file) => {
+        if (!(file instanceof TFile) || file.extension !== 'abchat') return
+        const comments = CommentService.getInstance()
+        if (!comments.isCommentFile(file)) return
+        comments.handleFileDeleted(file.basename)
+      })
+    )
+
     this.addCommand({
       id: 'show-ai-sidebar',
       name: 'Show AI chat sidebar',
@@ -998,7 +1062,6 @@ export default class AbelePlugin extends Plugin {
         void showMarkdown(SCRIPT_API_DOCS)
       },
     })
-
   }
 
   onunload() {
@@ -1010,6 +1073,7 @@ export default class AbelePlugin extends Plugin {
     }
     SnippetService.destroy()
     ScriptService.destroy()
+    CommentService.getInstance().destroy()
     ChatService.getInstance().destroy()
     ScopeResolver.getInstance().destroy()
     ChatStorage.destroy()
@@ -1031,6 +1095,26 @@ export default class AbelePlugin extends Plugin {
   ) {
     const registered = this.registerMarkdownCodeBlockProcessor(language, processor)
     registered.sortOrder = priority
+  }
+
+  /**
+   * A chat file belongs in the sidebar, not in a leaf.
+   *
+   * A comment file is the same idea taken one step further: it has no reader of its own until
+   * its card is on screen, so opening it by hand is taken as asking for the chat. Expansion is
+   * the route rather than `openChatFile` because `CommentService` may already have a session
+   * writing that file, and two writers on one log interleave records.
+   */
+  private async openAbchatFile(file: TFile): Promise<void> {
+    const comments = CommentService.getInstance()
+    if (comments.isCommentFile(file)) {
+      await comments.openFile(file)
+      return
+    }
+
+    const chatService = ChatService.getInstance()
+    await chatService.openChatFile(file)
+    await chatService.revealSidebar()
   }
 
   async activateView(viewType: string) {
