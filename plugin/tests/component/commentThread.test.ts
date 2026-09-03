@@ -233,4 +233,22 @@ describe('following a reply that is still arriving', () => {
     expect(root.scrollTop).toBe(500)
     view.unmount()
   })
+
+  it('keeps the end in view while the markdown of a reply is still landing', async () => {
+    // `Markdown` renders through Obsidian, which answers whenever it answers: the thread is
+    // nearly empty when it mounts and grows several times afterwards with nothing in the
+    // session changing. Watching the session alone leaves the card sitting at the top.
+    const { view, root } = growing()
+    sized(root, 400)
+    root.scrollTop = 300
+
+    root
+      .querySelector('.abele-comment-thread__msg')
+      ?.appendChild(root.ownerDocument.createElement('p'))
+    sized(root, 700)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(root.scrollTop).toBe(700)
+    view.unmount()
+  })
 })

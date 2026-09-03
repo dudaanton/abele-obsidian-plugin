@@ -89,7 +89,7 @@
  * needs is a side, a tint and one line per tool call; the diff and the argument editor are
  * behind "open as chat", one press away in the card's header.
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Button from './obsidian/Button.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import Icon from './obsidian/Icon.vue'
@@ -198,8 +198,35 @@ watch(
   { flush: 'post' }
 )
 
+/**
+ * The height changes for reasons the session cannot report.
+ *
+ * `Markdown` renders through Obsidian and answers whenever it answers, so the thread is
+ * nearly empty at mount and grows several times afterwards; a `<details>` opening does the
+ * same. Watching the messages alone leaves a card opened on a long conversation sitting at
+ * its first line. The observer is built from the element's own window, not the ambient one —
+ * settings can render this in a window of their own.
+ */
+let growth: MutationObserver | null = null
+
 // A card opened on a conversation opens on its latest turn, not on its first.
-onMounted(scrollToEnd)
+onMounted(() => {
+  scrollToEnd()
+
+  const el = root.value
+  const view = el?.ownerDocument.defaultView
+  if (!el || !view?.MutationObserver) return
+
+  growth = new view.MutationObserver(() => {
+    if (stick) scrollToEnd()
+  })
+  growth.observe(el, { childList: true, subtree: true, characterData: true })
+})
+
+onBeforeUnmount(() => {
+  growth?.disconnect()
+  growth = null
+})
 
 const approve = () => void props.session.approveToolCall()
 const deny = () => void props.session.rejectToolCall('Denied from the comment card')
