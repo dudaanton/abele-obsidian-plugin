@@ -113,9 +113,10 @@ written into the note's own text:
     A comment on a position rather than on any text:%%c:v9s1bn%%
 
 `%%c:`, then one or more ids separated by commas, then `%%`. An id is six characters of
-`[a-z0-9]`. The marker sits immediately after the passage it is about; one that follows a
-space or a colon comments on that position and quotes nothing. Markers inside fenced code,
-inline code and frontmatter are not markers.
+`[a-z0-9]`. The marker sits immediately after the passage it is about. Whether it quotes
+anything depends on how the comment was made, not on what precedes the marker: one made with a
+selection quotes that passage, one made without quotes nothing and marks a position instead.
+Markers inside fenced code, inline code and frontmatter are not markers.
 
 **Never write, move or edit a marker.** It is an index into a file the plugin owns: an id with
 no file behind it draws an icon that opens nothing, and a marker carried away from its passage

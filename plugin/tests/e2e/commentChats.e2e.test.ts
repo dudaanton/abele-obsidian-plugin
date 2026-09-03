@@ -207,16 +207,49 @@ beforeAll(async () => {
 
   evalAsync(cleanupScript, 30_000)
 
-  const desktop = evalAsync<DesktopReport>(desktopScript, 60_000)
-
-  let mobile: MobileReport = { sheetOpen: false, sheetInputVisible: false, error: '' }
-  if (desktop.markerIds) {
-    await setMobile(true)
-    mobile = evalAsync<MobileReport>(mobileScript, 30_000)
-    await setMobile(false)
+  let desktop: DesktopReport = {
+    via: 'none',
+    rawMarkerText: true,
+    markerIds: '',
+    hasRoom: false,
+    cardVisible: false,
+    commentPath: '',
+    commentFileExists: false,
+    error: '',
   }
+  let mobile: MobileReport = { sheetOpen: false, sheetInputVisible: false, error: '' }
+  let cleanup: CleanupReport = { cleaned: false, error: '' }
+  let mobileOn = false
 
-  const cleanup = evalAsync<CleanupReport>(cleanupScript, 30_000)
+  // A CLI timeout or a non-zero exit throws out of `run()` (see obsidianCli.ts), and a plain
+  // sequence of awaits would then skip straight past both the phone toggle and the cleanup
+  // call below it — leaving the probe note, and the mobile emulation, behind in the demo
+  // vault. `finally` is what makes both unconditional; each is wrapped in its own `try` too,
+  // so a broken CLI on the way out cannot swallow the failure that got us here.
+  try {
+    desktop = evalAsync<DesktopReport>(desktopScript, 60_000)
+
+    if (desktop.markerIds) {
+      await setMobile(true)
+      mobileOn = true
+      mobile = evalAsync<MobileReport>(mobileScript, 30_000)
+    }
+  } finally {
+    if (mobileOn) {
+      try {
+        await setMobile(false)
+      } catch (e) {
+        mobile.error =
+          (mobile.error ? mobile.error + '; ' : '') + String((e as Error)?.message ?? e)
+      }
+    }
+
+    try {
+      cleanup = evalAsync<CleanupReport>(cleanupScript, 30_000)
+    } catch (e) {
+      cleanup = { cleaned: false, error: String((e as Error)?.message ?? e) }
+    }
+  }
 
   report = {
     ...desktop,
