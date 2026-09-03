@@ -40,6 +40,8 @@ export interface AiPrompts {
   system: string
   titleGeneration: string
   titleSystem: string
+  /** Asks the auxiliary model for the sentence shown on the card under a note this chat changed. */
+  recapPrompt: string
   compactPrompt: string
   toolDescriptions: Record<string, string>
 }
@@ -47,10 +49,32 @@ export interface AiPrompts {
 export type PermissionMode = 'confirm-all' | 'allow-edit' | 'allow-all'
 export type ToolMode = 'off' | 'ask' | 'auto'
 
+/**
+ * A note a chat wrote to, and when it last did.
+ *
+ * Per note rather than one timestamp per chat: the card under a note says when *this* note was
+ * changed, and a chat that worked on three notes over a week would otherwise date all three by
+ * whichever it touched last.
+ */
+export interface TouchedNote {
+  path: string
+  /** ISO timestamp of the last write this chat made to `path`. */
+  at: string
+}
+
 export interface AiChatHistoryEntry {
   path: string
   title: string
   created: string
+  /**
+   * Mirrored from the chat file's `touched`, so the footer under a note never opens a chat.
+   * The file is the source of truth; this is a cache rebuilt by `refreshHistory`.
+   */
+  notes?: TouchedNote[]
+  /** Mirrored from the chat file's `recap`. */
+  recap?: string
+  /** Mirrored from the chat file's `agentId`, for the badge on the card. */
+  agentId?: string
 }
 
 export interface AiSecret {
@@ -188,6 +212,15 @@ export const EDIT_SELECTION_TOOL = 'edit_selection'
  */
 export const WRITE_TOOLS = ['edit', 'create', 'replace', 'write', EDIT_SELECTION_TOOL]
 
+/**
+ * Tools whose success means a file in the vault changed — what links a chat to a note.
+ *
+ * Wider than `WRITE_TOOLS`: moving or copying a note produces one, and a note that arrived
+ * that way was changed by the chat as surely as one it edited. `rm` is absent — a deleted note
+ * has no footer for the link to show in.
+ */
+export const TOUCHING_TOOLS = [...WRITE_TOOLS, 'mv', 'cp']
+
 /** Tools always sent to agent, governed by permissionMode */
 export const CORE_TOOLS = new Set([
   'read',
@@ -245,6 +278,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
     titleGeneration:
       'Generate a short title (3-6 words, no quotes) for this conversation:\n\n{{messages}}',
     titleSystem: 'You generate concise chat titles. Reply with ONLY the title, nothing else.',
+    recapPrompt:
+      'In one sentence (max 20 words, no quotes), say what was done in this conversation and to which notes:\n\n{{messages}}',
     compactPrompt:
       'Summarize the conversation below into a concise context summary. Preserve key decisions, file paths, code changes, and any pending tasks. The summary will replace the conversation history, so include everything needed to continue the work.\n\n{{messages}}',
     toolDescriptions: {
@@ -405,6 +440,12 @@ export interface ChatMetadata {
   kind?: 'chat' | 'comment'
   /** Set for a comment and for a chat expanded from one, so the marker still finds the file. */
   anchor?: CommentAnchor
+  /** Message ids kept in the note's margin, in the order they were pinned. */
+  pinned?: string[]
+  /** Notes this chat wrote to, deduped by path, in the order they were first written. */
+  touched?: TouchedNote[]
+  /** One sentence on what this chat did, by the auxiliary model. Regenerated after a write. */
+  recap?: string
   /** Only what this chat changed relative to its agent. */
   overrides?: SessionOverrides
   providerId: string

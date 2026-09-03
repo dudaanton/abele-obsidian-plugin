@@ -8,6 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import {
+  anchorFor,
   COMMENT_ID_RE,
   COMMENT_MARKER_RE,
   insertMarker,
@@ -95,6 +96,12 @@ describe('finding the markers in a note', () => {
     expect(parseMarkers(text).map((marker) => marker.ids[0])).toEqual(['bbbbbb'])
   })
 
+  it('keeps a marker between backslash-escaped backticks, which are text and not a span', () => {
+    const text = 'call \\`x %%c:aaaaaa%%\\` here%%c:bbbbbb%%'
+
+    expect(parseMarkers(text).map((marker) => marker.ids[0])).toEqual(['aaaaaa', 'bbbbbb'])
+  })
+
   it('ignores a marker in the frontmatter', () => {
     const text = ['---', 'title: A %%c:aaaaaa%%', '---', 'Body%%c:bbbbbb%%'].join('\n')
 
@@ -135,12 +142,276 @@ describe('deciding whether a comment can go here', () => {
     expect(isCommentablePosition(text, text.indexOf('` now') + 1)).toBe(true)
   })
 
-  it('refuses a position in the middle of an existing marker', () => {
+  /**
+   * A position inside a marker used to be refused, because writing a marker there would have
+   * nested one inside the other. It merges now — `insertMarker` appends the id to whatever it
+   * lands on — and a phone is where this matters: the widget is atomic, so a selection dragged
+   * onto the icon ends on the marker rather than beside it.
+   */
+  it('allows a position inside an existing marker, which merges into it', () => {
     const text = 'x%%c:k7d2ph%%y'
 
-    expect(isCommentablePosition(text, 5)).toBe(false)
+    expect(isCommentablePosition(text, 5)).toBe(true)
     expect(isCommentablePosition(text, 1)).toBe(true)
     expect(isCommentablePosition(text, 13)).toBe(true)
+  })
+})
+
+/**
+ * Selecting something that is not plain prose.
+ *
+ * A marker goes at the end of the selection, and a finger — or a double-click on a word — puts
+ * that end wherever it lands. Half of Markdown is a construct that a dozen characters of
+ * `%%c:…%%` dropped into its middle destroys: `![[pic.p%%c:…%%ng]]` stops being an image,
+ * `Claim[^%%c:…%%1]` stops being a footnote, `- [ %%c:…%%]` stops being a checkbox. Each of
+ * those was rendered in the running app before this existed, and each came out broken.
+ *
+ * The rule is one rule: a position inside such a construct moves to the end of it, and the
+ * quote follows so the underline still covers what was chosen. Where there is no end to move
+ * to — a fence, frontmatter, the row of dashes that shapes a table — the comment is refused
+ * instead, which is what `null` says.
+ */
+describe('anchoring on something that is not plain text', () => {
+  /** Where the marker would go for a selection ending at `at` characters into `text`. */
+  const at = (text: string, pos: number) => anchorFor(text, pos)?.pos
+
+  const after = (text: string, part: string) => text.indexOf(part) + part.length
+
+  it('leaves a position in prose where it is', () => {
+    const text = 'Plain enough prose.'
+
+    expect(anchorFor(text, 5)).toEqual({ pos: 5, quoteTo: 5 })
+  })
+
+  it('carries a selection that stopped inside a link target past the closing brackets', () => {
+    const text = 'Go [[target|shown]] now.'
+
+    expect(at(text, after(text, '[[tar'))).toBe(after(text, '[[target|shown]]'))
+    expect(at(text, after(text, '[[target|sho'))).toBe(after(text, '[[target|shown]]'))
+  })
+
+  it('carries one that stopped inside an embed, including between the two brackets', () => {
+    const text = 'See ![[pic.png]] here.'
+
+    expect(at(text, after(text, '![[pic.p'))).toBe(after(text, '![[pic.png]]'))
+    // The gap between `]` and `]`, which is where a marker turned the image into literal text.
+    expect(at(text, after(text, '![[pic.png]'))).toBe(after(text, '![[pic.png]]'))
+  })
+
+  it('leaves a position that already sits after the construct alone', () => {
+    const text = 'See ![[pic.png]] here.'
+
+    expect(at(text, after(text, '![[pic.png]]'))).toBe(after(text, '![[pic.png]]'))
+    expect(at(text, text.indexOf('!['))).toBe(text.indexOf('!['))
+  })
+
+  it('carries one that stopped inside a markdown link past its target', () => {
+    const text = 'Read [the page](https://example.com/x) today.'
+
+    expect(at(text, after(text, '[the pa'))).toBe(after(text, '[the page](https://example.com/x)'))
+    expect(at(text, after(text, '](https://exa'))).toBe(
+      after(text, '[the page](https://example.com/x)')
+    )
+  })
+
+  /** It used to be refused outright; there is an end to move to, so it is offered instead. */
+  it('carries one that stopped inside inline code past the closing backtick', () => {
+    const text = 'A `value` here.'
+
+    expect(at(text, after(text, 'A `val'))).toBe(after(text, 'A `value`'))
+  })
+
+  /**
+   * `\\`` is one character of text, not the edge of a code span, so there is no construct here
+   * to be carried out of and the position stays where the reader put it.
+   */
+  it('leaves a position between backslash-escaped backticks where it is', () => {
+    const text = 'Use \\`not code\\` here.'
+
+    expect(isCommentablePosition(text, after(text, 'Use \\`not co'))).toBe(true)
+    expect(at(text, after(text, 'Use \\`not co'))).toBe(after(text, 'Use \\`not co'))
+  })
+
+  /** An escaped backslash is not an escape of what follows it: that backtick still opens a span. */
+  it('still carries one out of a span opened after an escaped backslash', () => {
+    const text = 'Ends in \\\\`value` here.'
+
+    expect(at(text, after(text, '\\\\`val'))).toBe(after(text, '\\\\`value`'))
+  })
+
+  it('carries one that stopped inside a highlight past the closing equals', () => {
+    const text = 'A ==marked== word.'
+
+    expect(at(text, after(text, 'A ==mark'))).toBe(after(text, 'A ==marked=='))
+  })
+
+  it('carries one that stopped inside a footnote reference past its bracket', () => {
+    const text = 'Claim[^1] follows.'
+
+    expect(at(text, after(text, 'Claim[^'))).toBe(after(text, 'Claim[^1]'))
+  })
+
+  /**
+   * Past the space as well as the box: Obsidian reads `- [ ] text`, and a marker wedged
+   * between the bracket and the space leaves a bullet with brackets in it rather than a task.
+   */
+  it('carries one that stopped inside a checkbox past the box and its space', () => {
+    const text = '- [ ] do the thing'
+
+    expect(at(text, after(text, '- ['))).toBe(after(text, '- [ ] '))
+
+    const numbered = '1. [x] done already'
+    expect(at(numbered, after(numbered, '1. ['))).toBe(after(numbered, '1. [x] '))
+  })
+
+  /**
+   * A callout's own line is refused outright now — Obsidian draws it as a header the marker
+   * would vanish into — so there is nothing left to carry. The hop past the type still stands
+   * for a callout that opens somewhere a title line cannot: inside a list item, say.
+   */
+  it('refuses one that stopped inside a callout type', () => {
+    const text = '> [!note] Title\n> Body text.'
+
+    expect(anchorFor(text, after(text, '> [!no'))).toBeNull()
+  })
+
+  /**
+   * A list item's blockquote does not open a callout, and neither does a blockquote's list.
+   * Watched in live preview on 2026-09-03: `- > [!note] Title` and `> - > [!tip] Title` are
+   * both drawn as the literal text they are — no header, no icon, no fold arrow — while
+   * `> [!note] Title` on its own is a callout. So there is nothing here to be carried out of
+   * and nothing to refuse: the position stays where the reader put it.
+   */
+  it('leaves a bracketed type alone where a blockquote did not open a callout', () => {
+    const listed = '- > [!note] Title'
+    expect(at(listed, after(listed, '- > [!no'))).toBe(after(listed, '- > [!no'))
+
+    const quoted = '> - > [!tip] Title'
+    expect(at(quoted, after(quoted, '> - > [!ti'))).toBe(after(quoted, '> - > [!ti'))
+  })
+
+  /**
+   * A callout is opened by `[!type]` at the head of a blockquote and nowhere else; written
+   * mid-sentence the same brackets are prose, and a marker inside them belongs where it fell.
+   */
+  it('leaves a bracketed exclamation in prose alone', () => {
+    const text = 'The rule [!important] applies here.'
+
+    expect(at(text, after(text, '[!impo'))).toBe(after(text, '[!impo'))
+  })
+
+  it('keeps going until it is outside every construct it landed in', () => {
+    // Inside the link, which is inside the highlight: one hop clears the link and leaves the
+    // marker between `]]` and `==`, which is still inside somebody's markup.
+    const text = 'A ==see [[target|shown]] now== word.'
+
+    expect(at(text, after(text, '[[tar'))).toBe(after(text, '==see [[target|shown]] now=='))
+  })
+
+  it('refuses a fence, its own lines included, and frontmatter', () => {
+    const fenced = ['prose', '```', 'code', '```', 'more'].join('\n')
+
+    expect(anchorFor(fenced, fenced.indexOf('code') + 2)).toBeNull()
+    expect(anchorFor(fenced, fenced.indexOf('```'))).toBeNull()
+    expect(anchorFor(['---', 'title: A', '---', 'Body'].join('\n'), 6)).toBeNull()
+  })
+
+  /** A construct inside a fence is the reader's example of one, and is still refused. */
+  it('does not let a construct inside a fence talk it out of refusing', () => {
+    const fenced = ['```', 'See ![[pic.png]] here', '```'].join('\n')
+
+    expect(anchorFor(fenced, fenced.indexOf('pic') + 1)).toBeNull()
+  })
+
+  /**
+   * A table is rendered by a widget of Obsidian's own, and the widget draws the cells rather
+   * than the text: a marker written into any of those lines is swallowed whole — no icon, no
+   * way back to the comment — and one on the row of dashes leaves the block rendering as raw
+   * pipes instead. Neither has anywhere on the line to move to, so the whole block is refused.
+   */
+  describe('a table', () => {
+    const table = ['| a | b |', '| --- | --- |', '| one | two |', '', 'after'].join('\n')
+
+    it('refuses the row of dashes that shapes it', () => {
+      expect(anchorFor(table, table.indexOf('| ---') + 5)).toBeNull()
+      expect(anchorFor(table, table.indexOf('| ---'))).toBeNull()
+      expect(anchorFor(table, table.indexOf('| ---') + '| --- | --- |'.length)).toBeNull()
+    })
+
+    it('refuses a cell, which the widget swallows the marker in', () => {
+      expect(anchorFor(table, after(table, '| one'))).toBeNull()
+      expect(anchorFor(table, after(table, '| one | two |'))).toBeNull()
+    })
+
+    it('refuses the header row as well as the body', () => {
+      expect(anchorFor(table, after(table, '| a'))).toBeNull()
+      expect(anchorFor(table, table.indexOf('| a | b |'))).toBeNull()
+    })
+
+    it('leaves the prose after it alone', () => {
+      expect(at(table, after(table, 'after'))).toBe(after(table, 'after'))
+    })
+
+    it('is only a table when a row of dashes says so', () => {
+      // Three dashes in prose, with no table above them: an ordinary line, and commentable.
+      const prose = 'A thought.\n--- and another\nmore'
+
+      expect(at(prose, prose.indexOf('---') + 2)).toBe(prose.indexOf('---') + 2)
+    })
+
+    it('leaves a pipe used in prose where it is', () => {
+      const prose = 'Read it as a | b, meaning either.'
+
+      expect(at(prose, after(prose, 'a | b'))).toBe(after(prose, 'a | b'))
+    })
+  })
+
+  /**
+   * A callout's title line is drawn by Obsidian as the callout's header — the `> [!type]` part
+   * disappears into a fold arrow and an icon, and a marker left on that line goes with it. The
+   * body is ordinary text inside a blockquote, and keeps its marker.
+   */
+  describe('a callout', () => {
+    const callout = ['> [!note] Titled', '> Body of it.', '', 'after'].join('\n')
+
+    it('refuses the title line', () => {
+      expect(anchorFor(callout, after(callout, '> [!note] Titled'))).toBeNull()
+      expect(anchorFor(callout, after(callout, '> [!note]'))).toBeNull()
+      expect(anchorFor(callout, 0)).toBeNull()
+    })
+
+    it('refuses a title line with no title on it', () => {
+      const bare = ['> [!warning]', '> Body of it.'].join('\n')
+
+      expect(anchorFor(bare, after(bare, '> [!warning]'))).toBeNull()
+    })
+
+    it('refuses a foldable one, and a nested one', () => {
+      const folded = ['> [!tip]- Folded', '> > [!note] Inner', '> > Inner body.'].join('\n')
+
+      expect(anchorFor(folded, after(folded, '> [!tip]- Folded'))).toBeNull()
+      expect(anchorFor(folded, after(folded, '> > [!note] Inner'))).toBeNull()
+      expect(at(folded, after(folded, 'Inner body.'))).toBe(after(folded, 'Inner body.'))
+    })
+
+    it('leaves the body of it alone', () => {
+      expect(at(callout, after(callout, '> Body of it.'))).toBe(after(callout, '> Body of it.'))
+      expect(at(callout, after(callout, 'after'))).toBe(after(callout, 'after'))
+    })
+
+    it('leaves a quotation that is not a callout alone', () => {
+      const quote = ['> Ordinary quotation.', 'after'].join('\n')
+
+      expect(at(quote, after(quote, 'Ordinary quotation.'))).toBe(
+        after(quote, 'Ordinary quotation.')
+      )
+    })
+  })
+
+  it('leaves a selection that ran across two paragraphs where it ended', () => {
+    const text = 'First para.\n\nSecond para.'
+
+    expect(anchorFor(text, text.length)).toEqual({ pos: text.length, quoteTo: text.length })
   })
 })
 
@@ -163,6 +434,69 @@ describe('inserting a marker', () => {
     const result = insertMarker('Passage%%c:k7d2ph%% and more.', 23, '3mq0xa')
 
     expect(result.text).toBe('Passage%%c:k7d2ph%% and%%c:3mq0xa%% more.')
+  })
+
+  /**
+   * The phone's cases, which is where a second comment on the same passage was ending up as a
+   * second icon beside the first — two markers, one comment each, and no count on either.
+   *
+   * The widget is atomic, so a selection dragged as far as the icon does not stop politely at
+   * the marker's start: it ends on the marker's far side, or somewhere in the middle of it.
+   * Each of these is the same act as the exact hit and merges the same way.
+   */
+  describe('near an existing marker', () => {
+    const DOC = 'Passage%%c:k7d2ph%% and more.'
+
+    it('appends when the selection ended on the far side of the marker', () => {
+      const result = insertMarker(DOC, 19, '3mq0xa')
+
+      expect(result.text).toBe('Passage%%c:k7d2ph,3mq0xa%% and more.')
+      expect(result.marker.ids).toEqual(['k7d2ph', '3mq0xa'])
+    })
+
+    it('appends when the position fell inside the marker', () => {
+      expect(insertMarker(DOC, 18, '3mq0xa').text).toBe('Passage%%c:k7d2ph,3mq0xa%% and more.')
+      expect(insertMarker(DOC, 12, '3mq0xa').text).toBe('Passage%%c:k7d2ph,3mq0xa%% and more.')
+    })
+
+    it('appends across the space that follows the marker', () => {
+      expect(insertMarker(DOC, 20, '3mq0xa').text).toBe('Passage%%c:k7d2ph,3mq0xa%% and more.')
+    })
+
+    // The other way round is a separate comment. A caret set down at the end of the sentence
+    // before an existing marker is somebody commenting on that sentence, and joining the two
+    // would answer their comment with a thread about the passage after it.
+    it('writes its own marker before the space that precedes one', () => {
+      const spaced = 'Passage %%c:k7d2ph%% and more.'
+
+      expect(insertMarker(spaced, 7, '3mq0xa').text).toBe(
+        'Passage%%c:3mq0xa%% %%c:k7d2ph%% and more.'
+      )
+    })
+
+    it('appends when the selection swallowed the marker whole', () => {
+      // "passage%%c:k7d2ph%% and", selected from 0: the marker is inside what was chosen.
+      const result = insertMarker(DOC, 23, '3mq0xa', 0)
+
+      expect(result.text).toBe('Passage%%c:k7d2ph,3mq0xa%% and more.')
+    })
+
+    it('leaves a marker on another line alone', () => {
+      const lines = 'Passage%%c:k7d2ph%%\nA second paragraph.'
+
+      expect(insertMarker(lines, 20, '3mq0xa').text).toBe(
+        'Passage%%c:k7d2ph%%\n%%c:3mq0xa%%A second paragraph.'
+      )
+    })
+
+    it('takes the nearer marker when two of them are in reach', () => {
+      // A selection from the start of the line swallowed both; the one it ended beside wins.
+      const two = 'a%%c:aaaaaa%% b%%c:bbbbbb%% c'
+
+      expect(insertMarker(two, two.length, 'cccccc', 0).text).toBe(
+        'a%%c:aaaaaa%% b%%c:bbbbbb,cccccc%% c'
+      )
+    })
   })
 })
 

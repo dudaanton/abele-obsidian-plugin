@@ -22,6 +22,16 @@
       <div class="abele-ai-chat__header">
         <AiAgentSelector />
         <div class="abele-ai-chat__header-actions">
+          <!-- Only for a comment that was expanded into this tab: the way back to the margin
+               it came from, which is where the conversation started. -->
+          <Icon
+            v-if="expandedComment"
+            icon="panel-right-close"
+            with-bg
+            :disabled="blocked"
+            :tooltip="blocked ? blockedTooltip : 'Back to the note, as a comment in the margin'"
+            @click="backToNote"
+          />
           <Icon icon="refresh-cw" with-bg title="Reload from disk" @click="reloadChat" />
           <Icon icon="sliders-horizontal" with-bg @click="chatSettingsOpen = true" />
           <Icon icon="plus" with-bg @click="handleNewChat" />
@@ -235,7 +245,10 @@ import AiSkillPromptPicker from './AiSkillPromptPicker.vue'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChatService } from '@/ai/ChatService'
+import { CommentService } from '@/ai/CommentService'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { parseMarkers } from '@/editor/commentMarkers'
+import { reliableScrollTo } from '@/helpers/scrollUtils'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
 import type { TemplateVariable } from '@/templates/TemplateParser'
 import { importExternalFile } from '@/ai/attachments'
@@ -676,7 +689,7 @@ watch(
 onMounted(() => {
   if (Platform.isMobile && chatContainer.value) {
     nextTick(() => {
-      const el = chatContainer.value!
+      const el = chatContainer.value
       const safeArea =
         parseInt(
           getComputedStyle(document.documentElement).getPropertyValue('--safe-area-inset-bottom')
@@ -1027,6 +1040,69 @@ const reloadChat = async () => {
   }
   await session.value?.load(file)
   new Notice('Chat reloaded from disk')
+}
+
+/**
+ * A comment that was promoted into this tab, which is the only chat with a way back.
+ *
+ * A comment being read in the sidebar without having been expanded — the card hands one over
+ * on `openFile` — is anchored too, so the kind is what tells them apart.
+ */
+const expandedComment = computed(
+  () => !!session.value?.anchor.value && session.value?.kind === 'chat'
+)
+
+/**
+ * A turn the conversation may not be moved out from under — see `ChatSession.isMidTurn` — and
+ * a move already under way, which a second one must not overtake. The way back to the margin
+ * rebinds the agent and rewrites what the file says this is, neither of which may happen
+ * between a `tool_use` and its result.
+ */
+const midTurn = computed(() => !!session.value?.isMidTurn)
+const moving = computed(() => !!session.value?.moving.value)
+const blocked = computed(() => midTurn.value || moving.value)
+const blockedTooltip = computed(() =>
+  moving.value
+    ? 'This comment is being moved'
+    : 'The agent is still working — finish or dismiss the pending step first'
+)
+
+/**
+ * Back to the margin: the conversation returns to its card, and the reader returns to the
+ * passage it was written against.
+ *
+ * The note is opened before the marker is looked for, because the offset is only useful once
+ * there is an editor showing that note to scroll.
+ */
+async function backToNote(): Promise<void> {
+  const current = session.value
+  const id = current?.commentId
+  const note = current?.anchor.value?.note
+  if (!id || !note) return
+
+  // Refused in the middle of a turn, the way a note typed into a card is, and refused while
+  // the same move is already running: the action above is already dark for both, so this is
+  // the race between the two. Which reason it was is read before the call, since a move in
+  // flight may have finished by the time the service answers.
+  if (moving.value) {
+    new Notice('Already moving this comment')
+    return
+  }
+  if (!(await CommentService.getInstance().collapse(id))) {
+    new Notice('Finish or dismiss the pending step first')
+    return
+  }
+
+  const { app } = GlobalStore.getInstance()
+  await app.workspace.openLinkText(note, '', false)
+
+  const file = app.vault.getAbstractFileByPath(note)
+  if (!(file instanceof TFile)) return
+
+  const marker = parseMarkers(await app.vault.cachedRead(file)).find((candidate) =>
+    candidate.ids.includes(id)
+  )
+  if (marker) reliableScrollTo(marker.from)
 }
 
 const showDebug = () => {

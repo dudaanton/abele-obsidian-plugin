@@ -23,14 +23,20 @@ export function fakeChatSession({
 }: FakeSessionOptions = {}) {
   const off = ref(false)
   const nothing = () => {}
+  // The four the real `isMidTurn` is computed over, held apart so the getter below can read
+  // them: a test that sets `pendingToolCalls` gets a mid-turn session without saying so twice.
+  const isStreaming = ref(false)
+  const isCompacting = ref(false)
+  const pendingToolCalls = ref<unknown[]>([])
+  const pendingQuestions = ref<unknown>(null)
   return {
     id: 'session-1',
     messages,
     allMessages: messages,
     queuedMessages,
-    isStreaming: off,
+    isStreaming,
     isGeneratingTitle: off,
-    isCompacting: off,
+    isCompacting,
     isExecutingTool: off,
     hideReasoning: off,
     hasFallbackModel: off,
@@ -38,8 +44,15 @@ export function fakeChatSession({
     streamingThinking: ref(''),
     error: ref(null),
     currentChatFile: ref(null),
-    pendingQuestions: ref(null),
-    pendingToolCalls: ref([]),
+    pendingQuestions,
+    pendingToolCalls,
+    /** Derived exactly as the real session derives it, so a test can set either side. */
+    get isMidTurn(): boolean {
+      if (isStreaming.value || isCompacting.value) return true
+      return pendingToolCalls.value.length > 0 || pendingQuestions.value !== null
+    },
+    /** Set by `CommentService` for the length of a move; nothing here moves on its own. */
+    moving: ref(false),
     scopeResolver: { summary: ref('No files') },
     interceptor: { streaming: off, streamingContent: ref(''), error: ref(null) },
     // Comment sessions. A card reads the agent's name for its badge, the anchor for the quote
@@ -48,7 +61,14 @@ export function fakeChatSession({
     commentId: 'k7d2ph' as string | null,
     anchor: shallowRef<CommentAnchor | null>({ note: 'Notes/Anchor.md' }),
     agent: ref({ id: 'comment-agent', name: 'Comment' }),
+    agentId: ref('comment-agent'),
     commentState: ref<CommentState>('idle'),
+    // Pinning. `pinned` is the one record of it on a real session, and the three methods below
+    // are what a row and a pin card call; a test that cares about either overrides them.
+    pinned: shallowRef<string[]>([]),
+    isPinned: () => false,
+    pin: nothing,
+    unpin: nothing,
     getDraftMessage: () => null,
     getDebugData: () => ({}),
     getToolMode: () => 'ask',
@@ -57,6 +77,8 @@ export function fakeChatSession({
     load: nothing,
     reset: nothing,
     sendMessage: nothing,
+    addUserNote: nothing,
+    switchAgent: nothing,
     createBranch: nothing,
     switchBranch: nothing,
     repeatMessage: nothing,

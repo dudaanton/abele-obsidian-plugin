@@ -52,6 +52,8 @@ function buildHost(overrides: Partial<SummarizerHost> = {}) {
     isStreaming: ref(false),
     error: ref<string | null>(null),
     pendingToolCalls: ref<ToolCallContent[]>([]),
+    recap: ref(''),
+    touchedNotes: () => ['Notes/A.md'],
     messagesForModel: () => [
       { role: 'user', content: 'question', timestamp: 1 },
       { role: 'user', content: 'another', timestamp: 2 },
@@ -296,5 +298,134 @@ describe('ChatSummarizer.autoCompactIfNeeded', () => {
     await new ChatSummarizer(host).autoCompactIfNeeded()
 
     expect(applied).toEqual([])
+  })
+})
+
+describe('ChatSummarizer.generateRecap', () => {
+  it('records the sentence and saves it', async () => {
+    nextResponse = 'Tidied the Arashiyama note and checked its links.'
+    const { host, saveCount } = buildHost()
+
+    await new ChatSummarizer(host).generateRecap()
+
+    expect(host.recap.value).toBe('Tidied the Arashiyama note and checked its links.')
+    expect(saveCount()).toBe(1)
+  })
+
+  it('names the notes that were written, alongside the conversation', async () => {
+    nextResponse = 'ok'
+    const { host } = buildHost({ touchedNotes: () => ['Notes/A.md', 'Notes/B.md'] })
+
+    await new ChatSummarizer(host).generateRecap()
+
+    const sent = calls[0].messages[0].content as string
+    expect(sent).toContain('Notes/A.md')
+    expect(sent).toContain('Notes/B.md')
+    expect(sent).toContain('[user]: question')
+  })
+
+  it('uses the prompt the settings hold rather than the built-in one', async () => {
+    nextResponse = 'ok'
+    AbeleConfig.getInstance().ai.prompts = {
+      ...DEFAULT_AI_SETTINGS.prompts,
+      recapPrompt: 'MY OWN PROMPT\n\n{{messages}}',
+    }
+    const { host } = buildHost()
+
+    await new ChatSummarizer(host).generateRecap()
+
+    expect(calls[0].messages[0].content as string).toContain('MY OWN PROMPT')
+  })
+
+  /** A recap runs after every writing turn, so a whole transcript per turn is the wrong cost. */
+  it('sends a bounded window of the conversation, not all of it', async () => {
+    nextResponse = 'ok'
+    const long = 'x'.repeat(5000)
+    const { host } = buildHost({
+      messagesForModel: () =>
+        Array.from({ length: 40 }, (_, i) => ({
+          role: 'user' as const,
+          content: `${i}: ${long}`,
+          timestamp: i,
+        })),
+    })
+
+    await new ChatSummarizer(host).generateRecap()
+
+    const sent = calls[0].messages[0].content as string
+    expect(sent.length).toBeLessThan(6000)
+    // The end of the conversation is what the work was, so that is the end that is kept.
+    expect(sent).toContain('39: ')
+    expect(sent).not.toContain('0: ')
+  })
+
+  it('does not ask again while the same notes are the ones that were written', async () => {
+    nextResponse = 'Tidied A.'
+    const { host } = buildHost()
+    const summarizer = new ChatSummarizer(host)
+
+    await summarizer.generateRecap()
+    await summarizer.generateRecap()
+
+    expect(calls).toHaveLength(1)
+  })
+
+  /**
+   * The summarizer outlives the conversation: one tab, one `ChatSummarizer`, and a new chat
+   * started in it through `reset()`. Without forgetting, a second chat over the same notes
+   * would silently never get a sentence.
+   */
+  it('asks again for the same notes once the tab has been given a new chat', async () => {
+    nextResponse = 'Tidied A.'
+    const { host } = buildHost()
+    const summarizer = new ChatSummarizer(host)
+
+    await summarizer.generateRecap()
+    summarizer.forgetRecap()
+    await summarizer.generateRecap()
+
+    expect(calls).toHaveLength(2)
+  })
+
+  it('asks again once another note has been written', async () => {
+    nextResponse = 'Tidied A.'
+    let notes = ['Notes/A.md']
+    const { host } = buildHost({ touchedNotes: () => notes })
+    const summarizer = new ChatSummarizer(host)
+
+    await summarizer.generateRecap()
+    notes = ['Notes/A.md', 'Notes/B.md']
+    await summarizer.generateRecap()
+
+    expect(calls).toHaveLength(2)
+  })
+
+  it('asks nothing when the chat has written to nothing', async () => {
+    nextResponse = 'ok'
+    const { host } = buildHost({ touchedNotes: () => [] })
+
+    await new ChatSummarizer(host).generateRecap()
+
+    expect(calls).toHaveLength(0)
+  })
+
+  it('leaves the recap alone when the request fails, and reports nothing', async () => {
+    nextError = new Error('offline')
+    const { host } = buildHost({ recap: ref('What it said before') })
+
+    await new ChatSummarizer(host).generateRecap()
+
+    expect(host.recap.value).toBe('What it said before')
+    expect(host.error.value).toBeNull()
+  })
+
+  it('strips the quotes a model puts round a sentence, and cuts a long one', async () => {
+    nextResponse = `"${'word '.repeat(80)}"`
+    const { host } = buildHost()
+
+    await new ChatSummarizer(host).generateRecap()
+
+    expect(host.recap.value.startsWith('"')).toBe(false)
+    expect(host.recap.value.length).toBeLessThanOrEqual(200)
   })
 })

@@ -16,7 +16,7 @@ import { ChatService } from './ChatService'
 import { ChatStorage } from './ChatStorage'
 import { AgentRegistry } from './agents/AgentRegistry'
 import { parseChatMetadata, serializeChat, serializeMetadata } from './ChatLog'
-import { DEFAULT_AI_SETTINGS, type ChatMetadata, type CommentAnchor } from './types'
+import { type ChatMetadata, type CommentAnchor } from './types'
 
 /** As long as a chat's own fallback title, which this stands in for. */
 const COMMENT_TITLE_LENGTH = 50
@@ -148,7 +148,7 @@ export class CommentService implements CommentInfoSource {
   private settling = false
 
   private folder(): string {
-    return AbeleConfig.getInstance().ai.commentFolder || DEFAULT_AI_SETTINGS.commentFolder
+    return ChatStorage.commentsFolder()
   }
 
   commentPath(id: string): string {
@@ -192,6 +192,9 @@ export class CommentService implements CommentInfoSource {
     if (!restored) return null
 
     this.expanded.set(id, restored)
+    // Watched like any other: a comment that came back as a tab is still drawn as an icon in
+    // the note, and an unwatched session leaves that icon frozen on whatever it last showed.
+    this.watchState(id, restored)
     return restored
   }
 
@@ -211,12 +214,21 @@ export class CommentService implements CommentInfoSource {
    *
    * The file is written here rather than left to the session, because a session with no
    * messages writes nothing — and the marker would then point at a file that does not exist.
+   *
+   * `from` is where the selection started; it defaults to `pos`, which is what a caret is.
+   * Both ends travel because a marker the selection covered is one this comment is about, and
+   * `insertMarker` merges into it instead of writing a second icon beside it.
    */
-  async create(note: TFile, pos: number, quote: string | undefined): Promise<ChatSession> {
+  async create(
+    note: TFile,
+    pos: number,
+    quote: string | undefined,
+    from: number = pos
+  ): Promise<ChatSession> {
     const { app } = GlobalStore.getInstance()
     const id = newCommentId()
 
-    await app.vault.process(note, (text) => insertMarker(text, pos, id).text)
+    await app.vault.process(note, (text) => insertMarker(text, pos, id, from).text)
 
     // The folder has a new file in it, so what was known to be absent may not be any more.
     this.missing.clear()
@@ -257,9 +269,27 @@ export class CommentService implements CommentInfoSource {
   /** Files it and starts watching its state, so the icon follows the conversation. */
   private adopt(id: string, session: ChatSession): void {
     this.sessions.set(id, session)
+    this.watchState(id, session)
+  }
+
+  /**
+   * The one thing that makes a marker say what its conversation is doing.
+   *
+   * Streaming, running a tool, waiting on an approval, failed — all of it is `commentState`,
+   * and the icon is redrawn by dispatching into every editor showing the note. It holds for
+   * both hosts, because both show the same session: a card in the margin, and the sheet a
+   * phone opens instead.
+   */
+  private watchState(id: string, session: ChatSession): void {
+    if (this.watchers.has(id)) return
+
     this.watchers.set(
       id,
-      watch(session.commentState, () => {
+      // `pinned` rides along with the state: pinning is done on one session, and every editor
+      // showing the note has to rebuild its margin from it. So does the visible conversation:
+      // a retry or a branch switch takes a pinned message off the path, and `get` stops
+      // reporting it — but nothing else would tell the margin to drop the card.
+      watch([session.commentState, session.pinned, session.messages], () => {
         const note = session.anchor.value?.note
         if (note) dispatchCommentsChanged(note)
       })
@@ -276,6 +306,11 @@ export class CommentService implements CommentInfoSource {
       quote: session.anchor.value?.quote,
       state: session.commentState.value,
       open: this.open.value === id,
+      // Only pins whose message is still in the conversation: a retry or a branch can take one
+      // away, and a host for a message nobody can render is a hole in the margin's stack.
+      pinned: session.pinned.value.filter((mid) =>
+        session.messages.value.some((message) => message.id === mid)
+      ),
     }
   }
 
@@ -393,47 +428,161 @@ export class CommentService implements CommentInfoSource {
    * The file does not move and the anchor is not dropped: the marker keeps resolving, and the
    * card goes on showing the first exchange with a way back into the sidebar. What changes is
    * who it is for — the default agent, a tab, and a place in the history.
+   *
+   * Returns whether the comment moved, so a caller can say why it did not.
    */
-  async expand(id: string): Promise<void> {
+  async expand(id: string): Promise<boolean> {
     const session = this.sessions.get(id)
-    if (!session) return
+    if (!session) return false
 
-    session.kind = 'chat'
-    // Read before the agent switch, which appends a divider message and recomputes the
-    // visible path: the name wanted here is the question that started the comment.
+    // Not into the middle of a turn: the kind, the agent and the scope are all read by a
+    // request already in flight, and the switch would append a divider between a `tool_use`
+    // and its `tool_result`. The same refusal `addUserNote` makes, for the same reason.
+    // And not twice at once — see `ChatSession.moving`.
+    if (session.isMidTurn || session.moving.value) return false
+
+    // Read before anything is touched: the name wanted here is the question that started the
+    // comment, and `titleFor` reads the visible path a divider would recompute.
     const title = session.chatTitle.value || this.titleFor(session) || id
 
-    const fallback = AgentRegistry.getInstance().defaultAgent()
-    // `switchAgent` re-syncs the scope, and the anchored note survives that: `applyScope`
-    // puts it back. Overrides are dropped, which is right — they were the comment agent's.
-    if (fallback) session.switchAgent(fallback.id)
+    const previousKind = session.kind
+    const previousAgentId = session.agentId.value
+    const previousOverrides = session.overrides.value
+    const previousTitle = session.chatTitle.value
 
-    const file = session.currentChatFile.value
-    if (file) {
+    session.moving.value = true
+    try {
+      session.kind = 'chat'
+
+      const fallback = AgentRegistry.getInstance().defaultAgent()
+      // Bound rather than switched: nothing is said about the move until the file has taken it.
+      // The binding re-syncs the scope, and the anchored note survives that — `applyScope` puts
+      // it back. Overrides are dropped, which is right: they were the comment agent's.
+      const switched = fallback ? session.bindAgent(fallback.id) : false
+
+      const file = session.currentChatFile.value
       // Named before it is saved, not after: `saveChat` pushes the snapshot's title back over
       // the history entry, and an unnamed chat falls back to "<date> Chat" — which tells a
       // person browsing the list rather less than the question they asked does.
-      session.chatTitle.value = title
+      if (file) session.chatTitle.value = title
 
-      // Explicit, because `refreshHistory` only ever scans the chat folder. Known entries are
-      // kept whatever folder they are in, so this one stays.
-      ChatStorage.getInstance().addHistoryEntry({
-        path: file.path,
-        title,
-        created: dayjs().format('YYYY-MM-DD'),
-      })
+      try {
+        await session.save()
+      } catch (e) {
+        // The file still says "comment", so nothing here may say otherwise: a session filed as
+        // a chat over a file that is not one comes back after a restart as both, read twice and
+        // written by two sessions. Everything the save was for goes back instead, the per-chat
+        // overrides included — the binding dropped them for a move that never happened.
+        session.kind = previousKind
+        session.chatTitle.value = previousTitle
+        session.bindAgent(previousAgentId)
+        session.restoreOverrides(previousOverrides)
+        throw e
+      }
+
+      // Persisted, so it can be said out loud — and only if there was a switch to speak of.
+      // A vault whose comment agent *is* the default agent switches nothing here, and a
+      // divider for that is a line about something that did not happen.
+      if (switched && fallback) session.noteAgentSwitch(fallback.id)
+
+      if (file) {
+        // Explicit, because `refreshHistory` only ever scans the chat folder. Known entries are
+        // kept whatever folder they are in, so this one stays.
+        ChatStorage.getInstance().addHistoryEntry({
+          path: file.path,
+          title,
+          created: dayjs().format('YYYY-MM-DD'),
+        })
+        // A comment records the notes it wrote to but has no entry to mirror them into; now
+        // that it has one, the chat arrives carrying the work it already did — including the
+        // one recap it never paid for while it was on the margin.
+        session.mirrorNoteLinks()
+        session.recapIfMissing()
+      }
+
+      this.sessions.delete(id)
+      this.expanded.set(id, session)
+
+      const chatService = ChatService.getInstance()
+      chatService.adoptSession(session)
+      await chatService.revealSidebar()
+
+      const note = session.anchor.value?.note
+      if (note) dispatchCommentsChanged(note)
+      return true
+    } finally {
+      session.moving.value = false
     }
+  }
 
-    this.sessions.delete(id)
-    this.expanded.set(id, session)
+  /**
+   * The way back from a full chat to the card in the margin — `expand` undone, step for step.
+   *
+   * Everything that made it a chat goes: the kind, the agent, the entry in the history, the
+   * tab. The one thing that does not is the session — it is released rather than closed, so
+   * the same object goes on writing the same file and the conversation the person has just
+   * been having is the conversation the card opens with.
+   *
+   * Returns whether the chat moved, so a caller can say why it did not.
+   */
+  async collapse(id: string): Promise<boolean> {
+    const session = this.sessionFor(id)
+    if (!session || !this.expanded.has(id)) return false
 
-    const chatService = ChatService.getInstance()
-    chatService.adoptSession(session)
-    await session.save()
-    await chatService.revealSidebar()
+    // Not out of the middle of a turn, exactly as it may not be promoted into one, and not
+    // while it is already on its way: see `ChatSession.isMidTurn` and `moving`.
+    if (session.isMidTurn || session.moving.value) return false
 
-    const note = session.anchor.value?.note
-    if (note) dispatchCommentsChanged(note)
+    // Back onto the agent comments are written by. When `commentAgentId` names nothing — or
+    // names an agent since deleted — the chat's own agent is kept: a comment answered by the
+    // wrong agent is odd, and a comment answered by no agent at all cannot answer anything.
+    const registry = AgentRegistry.getInstance()
+    const commentAgent = registry.get(AbeleConfig.getInstance().ai.commentAgentId ?? '')
+
+    const previousKind = session.kind
+    const previousAgentId = session.agentId.value
+    const previousOverrides = session.overrides.value
+
+    session.moving.value = true
+    try {
+      session.kind = 'comment'
+      // Bound rather than switched, so a write that fails leaves nothing behind to take back.
+      const switched = commentAgent ? session.bindAgent(commentAgent.id) : false
+
+      try {
+        // Released, not closed: `closeTab` destroys, and there would be nothing left to show.
+        // It saves first, and everything below waits on that — a file still saying "chat" under
+        // maps saying "comment" is a comment the next restart loads twice.
+        await ChatService.getInstance().releaseSession(session.id)
+      } catch (e) {
+        session.kind = previousKind
+        session.bindAgent(previousAgentId)
+        session.restoreOverrides(previousOverrides)
+        throw e
+      }
+
+      // Persisted, so it can be said out loud — and only if there was a switch to speak of. In
+      // a vault where the comment agent is the default agent there is none, and a divider for
+      // it would be a line about a thing that did not happen, once each way round the trip.
+      if (switched && commentAgent) session.noteAgentSwitch(commentAgent.id)
+
+      const file = session.currentChatFile.value
+      // Out of the history it was put into on the way up: this is a margin note again, and the
+      // list of chats is a list of conversations somebody goes looking for.
+      if (file) ChatStorage.getInstance().removeHistoryEntry(file.path)
+
+      this.expanded.delete(id)
+      this.adopt(id, session)
+
+      // Opened rather than merely repainted: the person pressed "back to the note" and the card
+      // they were reading is what they are coming back to.
+      this.open.value = id
+      const note = session.anchor.value?.note
+      if (note) dispatchCommentsChanged(note)
+      return true
+    } finally {
+      session.moving.value = false
+    }
   }
 
   /**
@@ -492,21 +641,38 @@ export class CommentService implements CommentInfoSource {
     for (const child of folder.children) {
       if (!(child instanceof TFile) || child.extension !== 'abchat') continue
 
+      // Either condition, not just the anchor: a comment can write to a note it is not
+      // anchored in, and its own file is the only copy of those links until it is expanded.
       const loaded = this.sessionFor(child.basename)
       if (loaded) {
         const anchor = loaded.anchor.value
-        if (anchor?.note !== oldPath) continue
-        loaded.anchor.value = { ...anchor, note: newPath }
+        const anchored = anchor?.note === oldPath
+        const wrote = loaded.touched.value.some((note) => note.path === oldPath)
+        if (!anchored && !wrote) continue
+        if (anchored && anchor) loaded.anchor.value = { ...anchor, note: newPath }
+        if (wrote) {
+          loaded.touched.value = ChatStorage.renamedNotes(loaded.touched.value, oldPath, newPath)
+        }
         // The session owns this file; letting it write keeps its log writer in step.
         await loaded.save()
         continue
       }
 
       const metadata = parseChatMetadata(await app.vault.read(child))
-      if (metadata?.anchor?.note !== oldPath) continue
+      if (!metadata) continue
+      const anchored = metadata.anchor?.note === oldPath
+      const wrote = metadata.touched?.some((note) => note.path === oldPath) ?? false
+      if (!anchored && !wrote) continue
       await app.vault.append(
         child,
-        serializeMetadata({ ...metadata, anchor: { ...metadata.anchor, note: newPath } })
+        serializeMetadata({
+          ...metadata,
+          anchor:
+            anchored && metadata.anchor ? { ...metadata.anchor, note: newPath } : metadata.anchor,
+          touched: metadata.touched
+            ? ChatStorage.renamedNotes(metadata.touched, oldPath, newPath)
+            : undefined,
+        })
       )
     }
 

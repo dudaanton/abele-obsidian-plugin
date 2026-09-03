@@ -255,6 +255,35 @@ export class ChatService {
     this.saveTabs()
   }
 
+  /**
+   * Gives a session back to whoever built it, without ending the conversation in it.
+   *
+   * `closeTab` saves and then destroys, which is right for a chat somebody is finished with.
+   * A comment going back to its margin is not finished: the same session goes on writing the
+   * same file as a card, so it is only dropped from the tabs here. Saved first all the same —
+   * the tab bar is where its last edits were made.
+   */
+  async releaseSession(tabId: string): Promise<void> {
+    const session = this.sessions.get(tabId)
+    if (!session) return
+
+    await session.save()
+    this.sessions.delete(tabId)
+    this.tabOrder.value = this.tabOrder.value.filter((id) => id !== tabId)
+
+    // Always keep at least one tab, as closing does: an empty tab bar is a sidebar showing
+    // nothing at all, and the person has just been sent back to the note.
+    if (this.sessions.size === 0) {
+      this.createTab()
+      return
+    }
+
+    if (this.activeTabId.value === tabId) {
+      this.activeTabId.value = this.tabOrder.value[this.tabOrder.value.length - 1]
+    }
+    this.saveTabs()
+  }
+
   switchTab(tabId: string): void {
     if (this.runTabs.has(tabId)) {
       this.activeTabId.value = tabId

@@ -67,7 +67,9 @@ describe('commenting on a selection', () => {
       noteFile()
     )
 
-    expect(create).toHaveBeenCalledWith(expect.anything(), SELECTION.length, SELECTION)
+    // The fourth argument is where the selection started: a marker inside it is one the
+    // comment is about, and `insertMarker` merges into it rather than writing a neighbour.
+    expect(create).toHaveBeenCalledWith(expect.anything(), SELECTION.length, SELECTION, 0)
   })
 
   it('leaves the new card open, with the marker repainted', async () => {
@@ -85,7 +87,103 @@ describe('commenting at the caret', () => {
   it('anchors where the caret is and quotes nothing', async () => {
     await commentHere(fakeEditor(PROSE, { ch: 4 }), noteFile())
 
-    expect(create).toHaveBeenCalledWith(expect.anything(), 4, undefined)
+    expect(create).toHaveBeenCalledWith(expect.anything(), 4, undefined, 4)
+  })
+})
+
+/**
+ * The phone's cases. A marker is drawn as an atomic widget, so a selection dragged as far as
+ * the icon does not stop at the marker's start — it covers it, and what comes back from
+ * `getSelection` has the raw `%%c:…%%` in the middle of it.
+ */
+describe('commenting on a passage that already carries a marker', () => {
+  const MARKED = `${SELECTION}%%c:k7d2ph%% and more.`
+
+  it('takes the marker out of the quote it saves', async () => {
+    const covered = `${SELECTION}%%c:k7d2ph%%`
+
+    await commentHere(
+      fakeEditor(MARKED, { ch: 0, to: covered.length, selection: covered }),
+      noteFile()
+    )
+
+    // The quote is the reader's prose, never our syntax: with the marker left in it, nothing
+    // in the note would ever match it again and the passage would lose its underline.
+    expect(create).toHaveBeenCalledWith(expect.anything(), covered.length, SELECTION, 0)
+  })
+
+  it('starts a comment from a caret inside the marker rather than refusing it', async () => {
+    await commentHere(fakeEditor(MARKED, { ch: SELECTION.length + 4 }), noteFile())
+
+    expect(Notice.shown).toEqual([])
+    expect(create).toHaveBeenCalled()
+  })
+
+  it('quotes nothing when the selection was only a marker', async () => {
+    const marker = '%%c:k7d2ph%%'
+
+    await commentHere(
+      fakeEditor(MARKED, {
+        ch: SELECTION.length,
+        to: SELECTION.length + marker.length,
+        selection: marker,
+      }),
+      noteFile()
+    )
+
+    expect(create).toHaveBeenCalledWith(
+      expect.anything(),
+      SELECTION.length + marker.length,
+      undefined,
+      SELECTION.length
+    )
+  })
+})
+
+/**
+ * Selecting something that is not prose.
+ *
+ * The end of a selection is wherever a finger let go, and half of Markdown is a construct that
+ * `%%c:…%%` dropped into its middle destroys. `anchorFor` carries the marker out to the end of
+ * whatever it landed in; what is checked here is that the quote is carried with it, because a
+ * quote that stops halfway through a link is a quote the note no longer contains.
+ */
+describe('commenting on a selection that ended inside a construct', () => {
+  const LINKED = 'Go [[target|shown]] now.'
+
+  it('anchors past the closing brackets and quotes the whole link', async () => {
+    const cut = 'Go [[target|sho'
+
+    await commentHere(fakeEditor(LINKED, { ch: 0, to: cut.length, selection: cut }), noteFile())
+
+    expect(create).toHaveBeenCalledWith(
+      expect.anything(),
+      'Go [[target|shown]]'.length,
+      'Go [[target|shown]]',
+      0
+    )
+  })
+
+  it('leaves a selection that stopped cleanly where it stopped', async () => {
+    const whole = 'Go [[target|shown]]'
+
+    await commentHere(fakeEditor(LINKED, { ch: 0, to: whole.length, selection: whole }), noteFile())
+
+    expect(create).toHaveBeenCalledWith(expect.anything(), whole.length, whole, 0)
+  })
+
+  /** No selection, so no quote — but the caret is still carried out of the embed. */
+  it('carries a caret dropped inside an embed out of it', async () => {
+    const embed = 'See ![[pic.png]] here.'
+
+    await commentHere(fakeEditor(embed, { ch: 'See ![[pic.p'.length }), noteFile())
+
+    expect(create).toHaveBeenCalledWith(
+      expect.anything(),
+      'See ![[pic.png]]'.length,
+      undefined,
+      'See ![[pic.p'.length
+    )
   })
 })
 
@@ -96,15 +194,77 @@ describe('a place that cannot hold a marker', () => {
     await commentHere(fakeEditor(fenced, { ch: 8 }), noteFile())
 
     expect(create).not.toHaveBeenCalled()
-    expect(Notice.shown).toEqual(['A comment cannot be anchored inside code or frontmatter'])
+    expect(Notice.shown).toEqual([
+      'A comment cannot be anchored inside code, frontmatter, a table or a callout title',
+    ])
   })
 
-  it('refuses inside inline code', async () => {
+  /**
+   * The row of dashes is the whole of what makes those lines a table: a marker anywhere on it
+   * leaves the block rendering as raw pipes, and there is nothing on the line to move past.
+   */
+  it('refuses the row of dashes that shapes a table', async () => {
+    const table = '| a | b |\n| --- | --- |\n| one | two |'
+
+    await commentHere(fakeEditor(table, { ch: table.indexOf('| ---') + 5 }), noteFile())
+
+    expect(create).not.toHaveBeenCalled()
+    expect(Notice.shown).toEqual([
+      'A comment cannot be anchored inside code, frontmatter, a table or a callout title',
+    ])
+  })
+
+  /**
+   * Both of these are drawn by a widget of Obsidian's own — the cells of a table, and a
+   * callout's header — and a marker written into either is swallowed by it: the comment is
+   * made, and there is nothing on screen to open it with ever again.
+   */
+  it('refuses a cell of a table', async () => {
+    const table = '| a | b |\n| --- | --- |\n| one | two |'
+
+    await commentHere(fakeEditor(table, { ch: table.indexOf('one') + 3 }), noteFile())
+
+    expect(create).not.toHaveBeenCalled()
+    expect(Notice.shown).toEqual([
+      'A comment cannot be anchored inside code, frontmatter, a table or a callout title',
+    ])
+  })
+
+  it("refuses a callout's title line, and takes the body of it", async () => {
+    const callout = '> [!note] Titled\n> Body of it.'
+
+    await commentHere(fakeEditor(callout, { ch: callout.indexOf('Titled') + 6 }), noteFile())
+
+    expect(create).not.toHaveBeenCalled()
+    expect(Notice.shown).toEqual([
+      'A comment cannot be anchored inside code, frontmatter, a table or a callout title',
+    ])
+
+    Notice.shown.length = 0
+    await commentHere(fakeEditor(callout, { ch: callout.length }), noteFile())
+
+    expect(Notice.shown).toEqual([])
+    expect(create).toHaveBeenCalledWith(
+      expect.anything(),
+      callout.length,
+      undefined,
+      callout.length
+    )
+  })
+
+  /** Inline code is no longer one of them: there is a backtick to move past. */
+  it('carries a caret inside inline code out to the closing backtick', async () => {
     const inline = 'A value in `backticks` here.'
 
     await commentHere(fakeEditor(inline, { ch: 15 }), noteFile())
 
-    expect(create).not.toHaveBeenCalled()
+    expect(Notice.shown).toEqual([])
+    expect(create).toHaveBeenCalledWith(
+      expect.anything(),
+      'A value in `backticks`'.length,
+      undefined,
+      15
+    )
   })
 })
 

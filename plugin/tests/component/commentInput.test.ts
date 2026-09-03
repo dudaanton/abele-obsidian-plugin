@@ -11,11 +11,42 @@ import { mount } from '@vue/test-utils'
 import CommentInput from '@/components/CommentInput.vue'
 import Input from '@/components/obsidian/Input.vue'
 import Icon from '@/components/obsidian/Icon.vue'
+import VoiceRecorder from '@/components/VoiceRecorder.vue'
 
-const mountInput = (props: { busy?: boolean; disabled?: boolean; focus?: boolean } = {}) =>
-  mount(CommentInput, { props: { busy: false, ...props }, attachTo: document.body })
+const mountInput = (
+  props: {
+    busy?: boolean
+    pending?: boolean
+    disabled?: boolean
+    focus?: boolean
+    host?: 'margin' | 'sheet'
+  } = {}
+) => mount(CommentInput, { props: { busy: false, ...props }, attachTo: document.body })
+
+/** By what it is, not by where it sits: a second action must not renumber the first. */
+const button = (view: ReturnType<typeof mountInput>, icon: string) => {
+  const found = view.findAllComponents(Icon).find((i) => i.props('icon') === icon)
+  if (!found) throw new Error(`no button carrying the icon "${icon}"`)
+  return found
+}
 
 describe('the comment input', () => {
+  /**
+   * The margin's composer is small on purpose — a 300 px sidenote beside the text — and a
+   * phone got the same one: a field set below 16 px, which iOS answers by zooming the whole
+   * note the moment it is focused. The sheet host is what says "this is the screen, not a
+   * margin", and the stylesheet sizes the field and the send button from it.
+   */
+  it('is drawn at reading size when it is the whole screen', () => {
+    const view = mountInput({ host: 'sheet' })
+
+    expect(view.classes()).toContain('abele-comment-input_sheet')
+  })
+
+  it('keeps the compact composer the margin needs by default', () => {
+    expect(mountInput().classes()).not.toContain('abele-comment-input_sheet')
+  })
+
   it('invites a question', () => {
     const view = mountInput()
 
@@ -71,8 +102,7 @@ describe('the comment input', () => {
   it('becomes a stop button while the agent is working', async () => {
     const view = mountInput({ busy: true })
 
-    const send = view.findComponent(Icon)
-    expect(send.props('icon')).toBe('square')
+    const send = button(view, 'square')
 
     await send.trigger('click')
 
@@ -84,7 +114,7 @@ describe('the comment input', () => {
     const view = mountInput({ disabled: true })
 
     expect(view.findComponent(Input).props('disabled')).toBe(true)
-    expect(view.findComponent(Icon).props('disabled')).toBe(true)
+    expect(button(view, 'send-horizontal').props('disabled')).toBe(true)
 
     await view.find('textarea').setValue('Anything')
     await view.find('textarea').trigger('keydown', { key: 'Enter' })
@@ -127,5 +157,175 @@ describe('the comment input', () => {
     const view = mountInput()
 
     expect(document.activeElement).not.toBe(view.find('textarea').element)
+  })
+})
+
+/**
+ * Half of what people write into a comment is not a question.
+ *
+ * A comment is a place in a note as much as it is a chat — a reminder, a second thought,
+ * something to come back to — and running a model over that is a wait and a cost for an answer
+ * nobody wanted. The second button keeps the words in the conversation and starts nothing;
+ * whatever is asked afterwards carries them along, which is the whole reason to write them
+ * here rather than in the note.
+ */
+describe('keeping a note instead of asking', () => {
+  it('offers a second button that says what it does', () => {
+    const view = mountInput()
+
+    expect(button(view, 'sticky-note').props('tooltip')).toBe(
+      'Save as note, without asking the agent (Alt+Enter)'
+    )
+  })
+
+  it('hands the words over and empties itself', async () => {
+    const view = mountInput()
+    await view.find('textarea').setValue('Come back to this paragraph')
+
+    await button(view, 'sticky-note').trigger('click')
+
+    expect(view.emitted('note')).toEqual([['Come back to this paragraph']])
+    expect(view.emitted('send')).toBeUndefined()
+    expect(view.findComponent(Input).props('modelValue')).toBe('')
+  })
+
+  it('takes Alt+Enter, which is Enter without the model', async () => {
+    const view = mountInput()
+    await view.find('textarea').setValue('A thought, not a question')
+
+    await view.find('textarea').trigger('keydown', { key: 'Enter', altKey: true })
+
+    expect(view.emitted('note')).toEqual([['A thought, not a question']])
+    expect(view.emitted('send')).toBeUndefined()
+  })
+
+  it('keeps nothing when there is nothing but whitespace', async () => {
+    const view = mountInput()
+    await view.find('textarea').setValue('   ')
+
+    await view.find('textarea').trigger('keydown', { key: 'Enter', altKey: true })
+
+    expect(view.emitted('note')).toBeUndefined()
+  })
+
+  /** A note goes into the same history the running turn is being answered from. */
+  it('waits its turn while the agent is working', async () => {
+    const view = mountInput({ busy: true })
+    await view.find('textarea').setValue('A thought')
+
+    expect(button(view, 'sticky-note').props('disabled')).toBe(true)
+
+    await button(view, 'sticky-note').trigger('click')
+
+    expect(view.emitted('note')).toBeUndefined()
+  })
+})
+
+/**
+ * Dictation, which the sidebar has had all along.
+ *
+ * The same panel, mounted the same way `AiChatInput` mounts it: the microphone opens it, it
+ * starts listening on its own, and what comes back goes into the field, or straight out as a
+ * question, or straight out as a note. Nothing about recording or transcribing is reimplemented
+ * here, which is why none of it is tested here either.
+ */
+describe('dictating into a comment', () => {
+  const recorder = (view: ReturnType<typeof mountInput>) => view.findComponent(VoiceRecorder)
+
+  it('opens on the microphone and starts listening at once', async () => {
+    const view = mountInput()
+    expect(recorder(view).exists()).toBe(false)
+
+    await button(view, 'mic').trigger('click')
+
+    expect(recorder(view).props('autoStart')).toBe(true)
+    // A comment takes a question or a note, so the panel offers both endings.
+    expect(recorder(view).props('canSend')).toBe(true)
+    expect(recorder(view).props('canNote')).toBe(true)
+  })
+
+  it('puts the words in the field, to be read before they are sent', async () => {
+    const view = mountInput()
+    await button(view, 'mic').trigger('click')
+
+    await recorder(view).vm.$emit('text', 'что это значит')
+
+    expect(view.findComponent(Input).props('modelValue')).toBe('что это значит')
+    expect(view.emitted('send')).toBeUndefined()
+  })
+
+  it('sends what was dictated, when that is what was pressed', async () => {
+    const view = mountInput()
+    await button(view, 'mic').trigger('click')
+
+    await recorder(view).vm.$emit('send', 'что это значит')
+
+    expect(view.emitted('send')).toEqual([['что это значит']])
+  })
+
+  it('keeps what was dictated as a note, without asking anybody', async () => {
+    const view = mountInput()
+    await button(view, 'mic').trigger('click')
+
+    await recorder(view).vm.$emit('note', 'вернуться к этому абзацу')
+
+    expect(view.emitted('note')).toEqual([['вернуться к этому абзацу']])
+    expect(view.emitted('send')).toBeUndefined()
+  })
+
+  it('closes when the panel says it is done', async () => {
+    const view = mountInput()
+    await button(view, 'mic').trigger('click')
+
+    await recorder(view).vm.$emit('close')
+
+    expect(recorder(view).exists()).toBe(false)
+  })
+})
+
+/**
+ * A turn stopped for an approval is still a turn.
+ *
+ * `busy` says the agent is streaming or running something; `pending` says it has stopped to ask
+ * — for a tool call, or for an answer — and is holding half a turn open. A note put into the
+ * middle of that lands between a `tool_use` and its `tool_result`, and the next question is
+ * refused by the model over it. The card's state dot already tells the two apart; the composer
+ * has to as well, or the one button that can break a conversation is live exactly there.
+ */
+describe('a composer over a conversation waiting to be answered', () => {
+  it('will not keep a note while the agent is waiting on an approval', async () => {
+    const view = mountInput({ pending: true })
+    await view.find('textarea').setValue('A thought')
+
+    expect(button(view, 'sticky-note').props('disabled')).toBe(true)
+
+    await button(view, 'sticky-note').trigger('click')
+    await view.find('textarea').trigger('keydown', { key: 'Enter', altKey: true })
+
+    expect(view.emitted('note')).toBeUndefined()
+  })
+
+  it('says which of the two is in the way', () => {
+    expect(button(mountInput({ pending: true }), 'sticky-note').props('tooltip')).toBe(
+      'Answer the step the agent is waiting on before keeping a note'
+    )
+  })
+
+  it('offers no dictated note either, since it would go the same way', async () => {
+    const view = mountInput({ pending: true })
+    await button(view, 'mic').trigger('click')
+
+    expect(view.findComponent(VoiceRecorder).props('canNote')).toBe(false)
+    // Sending still works: a question typed now waits its turn instead of being lost.
+    expect(view.findComponent(VoiceRecorder).props('canSend')).toBe(true)
+  })
+
+  it('still sends and still dictates, which is what waiting its turn is for', async () => {
+    const view = mountInput({ pending: true })
+    await view.find('textarea').setValue('A question')
+
+    await view.find('textarea').trigger('keydown', { key: 'Enter' })
+
+    expect(view.emitted('send')).toEqual([['A question']])
   })
 })

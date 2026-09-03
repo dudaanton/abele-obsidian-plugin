@@ -74,7 +74,7 @@ export function createEditSelectionTool(session: ChatSession): AgentTool {
 
       return {
         content: [{ type: 'text', text: `Rewrote the commented passage in ${anchor.note}` }],
-        details: { diff: { old, new: text } },
+        details: { diff: { old, new: text }, path: anchor.note },
       }
     },
   }

@@ -32,8 +32,10 @@ const COVERED_FILES = [
   'AiRunView.vue',
   'CommentCard.vue',
   'CommentInput.vue',
+  'CommentPin.vue',
   'CommentSheet.vue',
   'CommentThread.vue',
+  'ChatsList.vue',
 ].map((name) => join(ROOT, name))
 
 /** The one component allowed to be a `<button>`: everything else goes through it. */
@@ -166,6 +168,125 @@ describe('the design standard', () => {
     expect(styleBlock(setting)).toMatch(/select\.dropdown\s*\{[^}]*width:\s*100%/)
   })
 
+  /**
+   * The other rule of Obsidian's that no test of ours can see, and the one a phone caught.
+   *
+   * Obsidian sizes `.modal` against the window (`85vh`, or `100vh` on a phone) and pads it
+   * only left and right under `.is-phone`. Neither accounts for the on-screen keyboard or for
+   * the notch, so a sheet grew behind the keyboard with its composer under it, and its header
+   * sat in the cut-out. The cap and the two insets are what fixed it; nothing else here would
+   * notice them going.
+   */
+  it('caps a sheet by what is visible and pads it clear of the notch', () => {
+    const modal = styleBlock(readFileSync(join(ROOT, 'obsidian', 'Modal.vue'), 'utf8'))
+
+    // `min()` with Obsidian's own cap, so the desktop dialog stays the size it was.
+    expect(modal).toMatch(
+      /max-height:\s*min\(var\(--dialog-max-height[^)]*\),\s*var\(--abele-sheet-height/
+    )
+    // `max()` against the padding a dialog has anyway, so nothing shrinks off the desktop.
+    expect(modal).toMatch(/padding-top:\s*max\(\s*var\(--size-4-4\),\s*var\(--safe-area-inset-top/)
+    expect(modal).toMatch(
+      /padding-bottom:\s*max\(\s*var\(--size-4-4\),\s*var\(--safe-area-inset-bottom/
+    )
+  })
+
+  /**
+   * Specificity, which is the half of this that a rule of ours cannot express on its own.
+   *
+   * `.is-phone .modal` sets `padding: 0 …` with two class names and outweighs `.abele-modal_sheet`,
+   * so the insets asked for above never reached the phone that reported the defect. The rule
+   * that wins is the one named here, and it is the only place the sheet is pinned to the band
+   * `visualViewport` reported rather than centred in a window the keyboard is covering.
+   */
+  it('wins against the phone rule that zeroes the vertical padding of a dialog', () => {
+    const modal = styleBlock(readFileSync(join(ROOT, 'obsidian', 'Modal.vue'), 'utf8'))
+    const phone = /body\.is-phone \.abele-modal_sheet\s*\{([^}]*)\}/.exec(modal)?.[1] ?? ''
+
+    expect(phone).toMatch(/padding-top:\s*max\(/)
+    expect(phone).toMatch(/padding-bottom:\s*max\(/)
+    expect(phone).toMatch(/margin-top:\s*var\(--abele-sheet-offset/)
+    expect(phone).toMatch(/height:\s*var\(--abele-sheet-height/)
+  })
+
+  /**
+   * The composer, at the two sizes it is drawn at.
+   *
+   * The margin's is small because a sidenote is 300 px wide; a phone got that same field and
+   * reported it as unreadable, and iOS answers a field set under 16 px by zooming the note
+   * into it. Neither the size nor the reason is visible to any component test — happy-dom
+   * computes no layout — so the rule is guarded by name, as the sheet's own insets are.
+   */
+  it('sizes the composer for a thumb in a sheet and on a phone', () => {
+    const input = styleBlock(readFileSync(join(ROOT, 'CommentInput.vue'), 'utf8'))
+
+    const field =
+      /\.abele-comment-input_sheet \.abele-comment-input__field,\s*body\.is-mobile \.abele-comment-input__field\s*\{([^}]*)\}/.exec(
+        input
+      )?.[1] ?? ''
+    // 16 px: below it, focusing the field zooms the whole note on iOS.
+    expect(field).toMatch(/font-size:\s*var\(--font-ui-medium\)/)
+    expect(field).toMatch(/min-height:\s*var\(--input-height\)/)
+
+    const send =
+      /\.abele-comment-input_sheet \.abele-comment-input__send,\s*body\.is-mobile \.abele-comment-input__send\s*\{([^}]*)\}/.exec(
+        input
+      )?.[1] ?? ''
+    // --size-4-9 is 36 px, the smallest square a thumb hits reliably.
+    expect(send).toMatch(/min-width:\s*var\(--size-4-9\)/)
+    expect(send).toMatch(/min-height:\s*var\(--size-4-9\)/)
+  })
+
+  /**
+   * The header's agent picker, which is a native `select` wearing a badge's clothes.
+   *
+   * Obsidian draws the chevron as a background image 12 px in from the right edge and reserves
+   * the room for it with `padding-right: 32px`. A compact padding shorthand takes that room
+   * away and the chevron lands on the last letter of the agent's name — which is what the
+   * first phone screenshot showed. The room is padding, not decoration, so it is guarded.
+   */
+  it('leaves the agent picker room for the chevron Obsidian draws in it', () => {
+    const card = styleBlock(readFileSync(join(ROOT, 'CommentCard.vue'), 'utf8'))
+
+    const picker =
+      /\.abele-comment-card__agent \.abele-obsidian-dropdown \.dropdown\s*\{([^}]*)\}/.exec(
+        card
+      )?.[1] ?? ''
+    // --size-4-6 is 24px: 12px to the chevron plus the glyph itself.
+    expect(picker).toMatch(/padding:[^;]*var\(--size-4-6\)/)
+  })
+
+  /**
+   * The button Obsidian appends to every code block, and the fourth of its rules that no test
+   * of ours can see.
+   *
+   * `MarkdownRenderer` puts a `button.copy-code-button` inside each `pre`, and Obsidian's own
+   * stylesheet only positions it under `.markdown-rendered` — a class the kit's `Markdown`
+   * adds only for a whole document, which a card in the margin is not. Unstyled the button
+   * keeps Obsidian's default `button` chrome and lands under the code as a grey slab, and
+   * `.is-mobile` shows it always rather than on hover, which is how a phone reported it.
+   */
+  it('tames the copy button Obsidian appends to a code block in a comment', () => {
+    const thread = styleBlock(readFileSync(join(ROOT, 'CommentThread.vue'), 'utf8'))
+
+    // Absolute against the block, which is what `position: relative` on the `pre` is for.
+    const pre = /\.abele-comment-thread__body pre\s*\{([^}]*)\}/.exec(thread)?.[1] ?? ''
+    expect(pre).toMatch(/position:\s*relative/)
+    // Room at the end of the first line, so the code does not run under the button.
+    expect(pre).toMatch(/padding-inline-end:\s*var\(--size-4-12\)/)
+
+    const button =
+      /\.abele-comment-thread__body \.copy-code-button\s*\{([^}]*)\}/.exec(thread)?.[1] ?? ''
+    expect(button).toMatch(/position:\s*absolute/)
+    expect(button).toMatch(/top:\s*var\(--size-4-1\)/)
+    expect(button).toMatch(/inset-inline-end:\s*var\(--size-4-1\)/)
+    expect(button).toMatch(/color:\s*var\(--text-muted\)/)
+    // Obsidian's default button is a raised slab; in a sidenote it has to be a glyph.
+    expect(button).toMatch(/box-shadow:\s*none/)
+    expect(button).toMatch(/font-size:\s*var\(--font-ui-smaller\)/)
+    expect(button).toMatch(/--icon-size:\s*var\(--icon-xs\)/)
+  })
+
   it('explains any element that scrolls sideways', () => {
     const offenders = FILES.filter((file) => {
       const source = readFileSync(file, 'utf8')
@@ -224,8 +345,61 @@ describe('the comment marker, which lives in the stylesheet', () => {
     expect(mobile).toMatch(/justify-content:\s*center/)
   })
 
+  /**
+   * The digit that says how many comments a marker carries — the one thing a phone reported
+   * missing. It was missing because the markers were not merging, but the size it is drawn at
+   * is what keeps it readable once they do: `--font-smallest` beside a 24 px target is a mark
+   * nobody makes out at arm's length.
+   */
+  it('draws the count at a size a phone can read', () => {
+    const mobile = rule('body.is-mobile .abele-comment-marker__count')
+
+    expect(mobile).toMatch(/font-size:\s*var\(--font-ui-smaller\)/)
+    // The marker's colour, not a muted grey: on a failed comment the digit turns red with it.
+    expect(mobile).toMatch(/color:\s*inherit/)
+  })
+
   it('centres the glyph inside it, on the line it interrupts', () => {
     expect(rule('.abele-comment-marker')).toMatch(/align-items:\s*center/)
+  })
+
+  /**
+   * The three states, as a phone sees them.
+   *
+   * All three were drawn for a mouse pointer a foot from the screen: the busy state faded the
+   * whole marker in and out by a fraction, and the "waiting on you" dot was `--size-2-1` — two
+   * pixels, which the phone reported as invisible. What is asserted here is what makes each
+   * one legible at arm's length: the glyph itself pulses, the dot is a dot rather than a
+   * speck and hangs off the corner instead of sitting inside the drawing, and both grow with
+   * the 24 px target on a phone.
+   */
+  it('pulses the glyph itself while an agent is working', () => {
+    expect(rule('.abele-comment-marker_busy')).toMatch(/color:\s*var\(--text-accent\)/)
+    // On the glyph, not on the marker: a box that also holds the count and the dot cannot
+    // fade without taking both of them with it.
+    expect(rule('.abele-comment-marker_busy .abele-comment-marker__icon')).toMatch(
+      /animation:\s*abele-comment-marker-pulse/
+    )
+  })
+
+  it('hangs the waiting dot off the glyph rather than inside it', () => {
+    const dot = rule('.abele-comment-marker_pending::after')
+
+    // Absolute against the marker, which is what `position: relative` there is for.
+    expect(rule('.abele-comment-marker')).toMatch(/position:\s*relative/)
+    expect(dot).toMatch(/position:\s*absolute/)
+    expect(dot).toMatch(/width:\s*var\(--size-2-3\)/)
+    expect(dot).toMatch(/height:\s*var\(--size-2-3\)/)
+    expect(dot).toMatch(/background-color:\s*var\(--text-warning\)/)
+
+    // A phone's target is half again as big, and so is the dot on it.
+    const mobile = rule('body.is-mobile .abele-comment-marker_pending::after')
+    expect(mobile).toMatch(/width:\s*var\(--size-4-2\)/)
+    expect(mobile).toMatch(/height:\s*var\(--size-4-2\)/)
+  })
+
+  it('says a comment failed in the theme own error colour', () => {
+    expect(rule('.abele-comment-marker_error')).toMatch(/color:\s*var\(--text-error\)/)
   })
 
   it('keeps the underline that says which words the comment is about', () => {

@@ -285,3 +285,46 @@ describe('copying the words out', () => {
     expect(wrapper.emitted('close')).toBeFalsy()
   })
 })
+
+/**
+ * A third thing to do with a transcript, for a panel opened over a comment.
+ *
+ * A comment keeps notes as well as questions, so dictation has to be able to end in either.
+ * The sidebar never asks for this — `canNote` is off by default — and its two buttons are
+ * unchanged, which is the whole point of the flag.
+ */
+describe('dictating a note rather than a message', () => {
+  beforeEach(() => {
+    recorder.state.value = 'recorded'
+    recorder.recording.value = new Blob(['audio'])
+  })
+
+  it('is offered only where there is something to keep it in', () => {
+    const texts = (props: Record<string, unknown>) =>
+      open(props)
+        .findAllComponents(Button)
+        .map((b) => b.props('text'))
+
+    expect(texts({ canSend: true, canNote: true })).toEqual(['Copy', 'Insert', 'Note', 'Send'])
+    expect(texts({ canSend: true })).not.toContain('Note')
+  })
+
+  it('says that keeping a note asks the agent nothing', () => {
+    const note = open({ canNote: true })
+      .findAllComponents(Button)
+      .find((b) => b.props('text') === 'Note')
+
+    expect(note?.props('tooltip')).toBe('Transcribe it and keep it, without asking the agent')
+  })
+
+  it('hands the words over as a note, and closes', async () => {
+    const wrapper = open({ canSend: true, canNote: true })
+
+    await clickButton(wrapper, 'Note')
+
+    expect(wrapper.emitted('note')?.[0]).toEqual(['привет как дела'])
+    expect(wrapper.emitted('send')).toBeFalsy()
+    expect(wrapper.emitted('text')).toBeFalsy()
+    expect(wrapper.emitted('close')).toBeTruthy()
+  })
+})

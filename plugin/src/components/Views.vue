@@ -44,6 +44,9 @@
   >
     <CommentCard :entry="comment as CommentEntry" />
   </Teleport>
+  <Teleport v-for="pin in pinsContainers" :key="pin.id" :to="`[data-comment-pin-id='${pin.id}']`">
+    <CommentPin :pin="pin as CommentPinEntity" />
+  </Teleport>
   <Teleport
     v-for="id in timelineSidebarIds"
     :key="id"
@@ -51,25 +54,13 @@
   >
     <TimelineSidebarView />
   </Teleport>
-  <Teleport
-    v-for="id in todoSidebarIds"
-    :key="id"
-    :to="`[${TODO_SIDEBAR_ID_ATTR}='${id}']`"
-  >
+  <Teleport v-for="id in todoSidebarIds" :key="id" :to="`[${TODO_SIDEBAR_ID_ATTR}='${id}']`">
     <TodoSidebarView />
   </Teleport>
-  <Teleport
-    v-for="id in aiSidebarIds"
-    :key="id"
-    :to="`[${AI_SIDEBAR_ID_ATTR}='${id}']`"
-  >
+  <Teleport v-for="id in aiSidebarIds" :key="id" :to="`[${AI_SIDEBAR_ID_ATTR}='${id}']`">
     <AiChatView />
   </Teleport>
-  <Teleport
-    v-for="id in financeSidebarIds"
-    :key="id"
-    :to="`[${FINANCE_SIDEBAR_ID_ATTR}='${id}']`"
-  >
+  <Teleport v-for="id in financeSidebarIds" :key="id" :to="`[${FINANCE_SIDEBAR_ID_ATTR}='${id}']`">
     <FinanceSidebarView />
   </Teleport>
   <Teleport
@@ -79,11 +70,7 @@
   >
     <TimeTrackingSidebarView />
   </Teleport>
-  <Teleport
-    v-for="id in scriptRunsIds"
-    :key="id"
-    :to="`[${SCRIPT_RUNS_ID_ATTR}='${id}']`"
-  >
+  <Teleport v-for="id in scriptRunsIds" :key="id" :to="`[${SCRIPT_RUNS_ID_ATTR}='${id}']`">
     <ScriptRunsView />
   </Teleport>
   <Teleport
@@ -150,6 +137,7 @@ import HeaderView from './Header.vue'
 import FooterView from './Footer.vue'
 import FootnoteView from './FootnoteView.vue'
 import CommentCard from './CommentCard.vue'
+import CommentPin from './CommentPin.vue'
 import CommentSheet from './CommentSheet.vue'
 import { Task } from '@/entities/Task'
 import { Gallery } from '@/entities/Gallery'
@@ -157,7 +145,7 @@ import { TaskHeader } from '@/entities/TaskHeader'
 import { Header } from '@/entities/Header'
 import { Footer } from '@/entities/Footer'
 import { Footnote } from '@/entities/Footnote'
-import { CommentEntry } from '@/entities/Comment'
+import { CommentEntry, CommentPin as CommentPinEntity } from '@/entities/Comment'
 import TimelineSidebarView from './TimelineSidebar.vue'
 import TodoSidebarView from './TodoSidebar.vue'
 import FindAndReplaceBases from './FindAndReplaceBases.vue'
@@ -193,6 +181,7 @@ const {
   footersContainers,
   footnotesContainers,
   commentsContainers,
+  pinsContainers,
   commentSheet,
   findAndReplaceModalOpened,
   migrateFromDataviewModalOpened,

@@ -22,3 +22,36 @@ export class CommentEntry {
 
   cleanup() {}
 }
+
+/**
+ * One pinned message, kept at the top of the note's margin until it is unpinned.
+ *
+ * `markerFrom` is mutable here and readonly on `CommentEntry`, and the difference is the
+ * point of the feature: a card sits beside its marker, so a stale offset is only ever a
+ * frame behind, while a pin is deliberately nowhere near the marker it leads back to. A
+ * press on it scrolls to `markerFrom`, so the provider that owns the entity refreshes it on
+ * the same pass that refreshes the entry's `anchorPos`.
+ */
+export class CommentPin {
+  public readonly id: string
+  public readonly commentId: string
+  public readonly messageId: string
+  public readonly notePath: string
+  public markerFrom: number
+
+  constructor(data: {
+    id: string
+    commentId: string
+    messageId: string
+    notePath: string
+    markerFrom: number
+  }) {
+    this.id = data.id
+    this.commentId = data.commentId
+    this.messageId = data.messageId
+    this.notePath = data.notePath
+    this.markerFrom = data.markerFrom
+  }
+
+  cleanup() {}
+}

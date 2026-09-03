@@ -5,12 +5,14 @@ import dayjs from 'dayjs'
 import { getAvailablePath } from '@/helpers/vaultUtils'
 import { renderTemplate } from '@/helpers/notesUtils'
 import { DATE_FORMAT } from '@/constants/dates'
-import { AiChatHistoryEntry } from './types'
+import { AiChatHistoryEntry, DEFAULT_AI_SETTINGS, type TouchedNote } from './types'
 import { RunStorage } from './RunStorage'
+import { ChatService } from './ChatService'
 import {
   parseChat,
   parseChatMetadata,
   serializeChat,
+  serializeMetadata,
   type ChatSnapshot,
   type ChatWritePlan,
   type ParsedChat,
@@ -133,6 +135,11 @@ export class ChatStorage {
           path: file.path,
           title: metadata.title || file.basename,
           created: metadata.created || '',
+          // The file is the source of truth for these three; this is where the index is
+          // rebuilt out of it, for a chat that arrived by sync or a restore.
+          notes: metadata.touched?.length ? metadata.touched : undefined,
+          recap: metadata.recap || undefined,
+          agentId: metadata.agentId || undefined,
         })
         added++
       } catch {
@@ -142,6 +149,9 @@ export class ChatStorage {
 
     if (added) {
       config.ai.chatHistory.sort((a, b) => (b.created || '').localeCompare(a.created || ''))
+      // Those entries were built out of the files' own `touched`, so they carry links nothing
+      // has drawn yet.
+      GlobalStore.getInstance().chatLinksVersion.value++
       config.saveSettings()
     }
 
@@ -168,6 +178,8 @@ export class ChatStorage {
     if (entry) {
       entry.path = availablePath
       entry.title = newTitle
+      // The card opens the chat by path, and the title is what it shows.
+      GlobalStore.getInstance().chatLinksVersion.value++
       await config.saveSettings()
     }
 
@@ -236,7 +248,109 @@ export class ChatStorage {
     // reopened from its file — so without this the same conversation is listed twice.
     if (config.ai.chatHistory.some((e) => e.path === entry.path)) return
     config.ai.chatHistory.unshift(entry)
+    // A chat arriving in the index may already name notes — an expanded comment does, and so
+    // does one that came in by sync. Without this its card never appears under them.
+    GlobalStore.getInstance().chatLinksVersion.value++
     config.saveSettings()
+  }
+
+  /**
+   * Mirrors a chat's note links into its history entry, so a footer never opens a chat file.
+   *
+   * A no-op when the path has no entry — which is how an unexpanded comment stays out of every
+   * footer without a rule of its own: a comment is not in the history until it is expanded.
+   */
+  linkNotes(chatPath: string, notes: TouchedNote[], recap?: string, agentId?: string): void {
+    const config = AbeleConfig.getInstance()
+    const entry = config.ai.chatHistory?.find((e) => e.path === chatPath)
+    if (!entry) return
+
+    const next = notes.length ? notes : undefined
+    const unchanged =
+      JSON.stringify(entry.notes) === JSON.stringify(next) &&
+      entry.recap === (recap || undefined) &&
+      entry.agentId === (agentId || undefined)
+    // Settings are one JSON file holding every chat's entry, so a save that changed nothing
+    // costs more than the chat write that prompted it. Same guard as `updateHistoryEntry`.
+    if (unchanged) return
+
+    entry.notes = next
+    entry.recap = recap || undefined
+    entry.agentId = agentId || undefined
+    GlobalStore.getInstance().chatLinksVersion.value++
+    config.saveSettings()
+  }
+
+  /**
+   * The folder comments live in.
+   *
+   * Here rather than on `CommentService`, which reads it through this: the two answers have to
+   * be the same one, and a blank setting meaning the built-in folder to one reader and nothing
+   * at all to the other is how the rename skip stopped holding.
+   */
+  static commentsFolder(): string {
+    return AbeleConfig.getInstance().ai.commentFolder || DEFAULT_AI_SETTINGS.commentFolder
+  }
+
+  /** Whether a chat file lives in the comments folder, and so is a comment's to rewrite. */
+  private isCommentPath(path: string): boolean {
+    return path.startsWith(`${ChatStorage.commentsFolder()}/`)
+  }
+
+  /**
+   * Rewrites one note path in a list of links, keeping when it was written.
+   *
+   * Static because `CommentService` needs the same rewrite over a comment's file, and a rename
+   * that produced two different answers in the two places is the bug this avoids.
+   */
+  static renamedNotes(notes: TouchedNote[], oldPath: string, newPath: string): TouchedNote[] {
+    return notes.map((note) => (note.path === oldPath ? { path: newPath, at: note.at } : note))
+  }
+
+  /**
+   * Follows a renamed note into every chat that wrote it — the index entry and the file both.
+   *
+   * Only the chats that name the old path are read: a rename of a note nothing worked on costs
+   * one walk of an in-memory array and no disk at all.
+   */
+  async handleNoteRename(oldPath: string, newPath: string): Promise<void> {
+    const { app } = GlobalStore.getInstance()
+    const config = AbeleConfig.getInstance()
+    const affected = this.getHistory().filter((entry) =>
+      entry.notes?.some((note) => note.path === oldPath)
+    )
+    if (!affected.length) return
+
+    for (const entry of affected) {
+      entry.notes = ChatStorage.renamedNotes(entry.notes ?? [], oldPath, newPath)
+
+      // Through the open session when there is one, so its log writer stays in step with the
+      // file it thinks it wrote; otherwise straight onto the end of the file, which is what a
+      // chat log is — the last meta record wins.
+      const session = ChatService.getInstance().getSessionByFile(entry.path)
+      if (session) {
+        session.touched.value = ChatStorage.renamedNotes(session.touched.value, oldPath, newPath)
+        await session.save()
+        continue
+      }
+
+      // A comment's file belongs to `CommentService.handleRename`, which rewrites `touched`
+      // there alongside the anchor. Both walks run on the same rename, and two of them reading
+      // this file and appending to it would leave whichever landed last overwriting the
+      // other's field — the anchor or the links, at random.
+      if (this.isCommentPath(entry.path)) continue
+
+      const file = app.vault.getAbstractFileByPath(entry.path)
+      if (!(file instanceof TFile)) continue
+      const metadata = parseChatMetadata(await app.vault.read(file))
+      if (!metadata?.touched?.length) continue
+      const touched = ChatStorage.renamedNotes(metadata.touched, oldPath, newPath)
+      if (JSON.stringify(touched) === JSON.stringify(metadata.touched)) continue
+      await app.vault.append(file, serializeMetadata({ ...metadata, touched }))
+    }
+
+    GlobalStore.getInstance().chatLinksVersion.value++
+    await config.saveSettings()
   }
 
   /**
@@ -252,10 +366,17 @@ export class ChatStorage {
     }
   }
 
-  private removeHistoryEntry(path: string): void {
+  /**
+   * Public for the other direction: a comment returned to its note is a margin note again,
+   * and a margin note has no business in the list of conversations somebody browses.
+   */
+  removeHistoryEntry(path: string): void {
     const config = AbeleConfig.getInstance()
     if (!config.ai.chatHistory) return
     config.ai.chatHistory = config.ai.chatHistory.filter((e) => e.path !== path)
+    // The entry carried the links, so its card has to go with it — a comment sent back to its
+    // note, or a chat deleted, must not leave a card behind pointing at nothing.
+    GlobalStore.getInstance().chatLinksVersion.value++
     config.saveSettings()
   }
 

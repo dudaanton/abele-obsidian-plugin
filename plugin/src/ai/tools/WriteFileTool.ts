@@ -32,7 +32,7 @@ export function createWriteFileTool(opts?: { skipScope?: boolean }): AgentTool {
       await app.vault.modify(file, content)
       return {
         content: [{ type: 'text', text: `Written: ${path}` }],
-        details: { diff: { old, new: content } },
+        details: { diff: { old, new: content }, path },
       }
     },
   }

@@ -1,4 +1,12 @@
-import { computed, effectScope, ref, shallowRef, watch, type EffectScope } from 'vue'
+import {
+  computed,
+  effectScope,
+  ref,
+  shallowRef,
+  watch,
+  type EffectScope,
+  type ShallowRef,
+} from 'vue'
 import { TFile } from 'obsidian'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
@@ -27,6 +35,8 @@ import {
   ChatMetadata,
   CORE_TOOLS,
   EDIT_SELECTION_TOOL,
+  TOUCHING_TOOLS,
+  type TouchedNote,
   WRITE_TOOLS,
   migrateOldPermissions,
 } from './types'
@@ -62,9 +72,11 @@ import type { ChatService } from './ChatService'
  */
 const PERSIST_INTERVAL_MS = 300
 
-/** Shape returned by tools that provide diff details */
-interface ToolDiffDetails {
+/** Shape returned by tools that say what they changed: the diff, and the file it landed in. */
+interface ToolWriteDetails {
   diff?: { old: string; new: string }
+  /** The file the call actually wrote. Absent from a tool that changed nothing. */
+  path?: string
 }
 
 /** The call at the head of the pending queue that the reader has just let through by hand. */
@@ -192,6 +204,95 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     return registry.get(this.agentId.value) ?? registry.defaultAgent()
   })
 
+  /**
+   * True while the conversation must not be touched from outside.
+   *
+   * A `tool_use` and its `tool_result` are one pair as far as every provider is concerned, so
+   * anything inserted between them is a history the next request is rejected for — and the
+   * agent binding, the scope and the kind are all read by a turn already in flight. A turn
+   * running, a turn paused on an approval, a turn waiting on an answer and a compaction
+   * rewriting the history are the four states that means, and everything that would edit the
+   * conversation under one of them asks here first.
+   */
+  get isMidTurn(): boolean {
+    if (this.isStreaming.value || this.isCompacting.value) return true
+    return this.pendingToolCalls.value.length > 0 || this.pendingQuestions.value !== null
+  }
+
+  /**
+   * True while `CommentService` is carrying this conversation between the margin and a tab.
+   *
+   * A move rewrites what the file says this is, waits on the write, and only then moves the
+   * maps that answer for the id — so a second press landing inside that gap works from a
+   * conversation half of which has already moved: two history entries, or a session dropped
+   * from `sessions` and never filed in `expanded`. Reactive, because both the card and the
+   * sidebar draw their button from it while the move is in flight.
+   */
+  public readonly moving = ref(false)
+
+  /**
+   * Drops pinned ids no message in this file carries. True when something went.
+   *
+   * Measured against the whole tree and not the visible path: a branch the chat is not on is
+   * one press away, and a pin waiting there is out of sight rather than gone. What this
+   * catches is an id nothing can ever render again — a file edited by hand, or a message some
+   * format change lost — which would otherwise sit in the metadata forever, drawing nothing
+   * and offering nobody a card to press pin-off on.
+   */
+  private prunePinned(): boolean {
+    if (this.pinned.value.length === 0) return false
+
+    const known = new Set(this.allChatMessages.map((msg) => msg.id))
+    const kept = this.pinned.value.filter((id) => known.has(id))
+    if (kept.length === this.pinned.value.length) return false
+
+    this.pinned.value = kept
+    return true
+  }
+
+  isPinned(messageId: string): boolean {
+    return this.pinned.value.includes(messageId)
+  }
+
+  /**
+   * Puts a message in the note's margin and writes the file.
+   *
+   * Both mutators replace the array rather than pushing into it: `pinned` is a `shallowRef`,
+   * and a push into the same array changes nothing anything is watching.
+   */
+  async pin(messageId: string): Promise<void> {
+    if (this.isPinned(messageId)) return
+    this.pinned.value = [...this.pinned.value, messageId]
+    await this.save()
+  }
+
+  async unpin(messageId: string): Promise<void> {
+    if (!this.isPinned(messageId)) return
+    this.pinned.value = this.pinned.value.filter((id) => id !== messageId)
+    await this.save()
+  }
+
+  /**
+   * Records that this chat wrote to `path`.
+   *
+   * Called by the tool wrapper on every successful write, and public so a live check can drive
+   * a link without a model behind it. Only `.md` paths are kept: a footer exists under a note,
+   * so a chat that wrote a `.canvas` or another chat file has nothing to appear under.
+   */
+  noteTouched(path: string): void {
+    const clean = path.trim().replace(/^\.?\//, '')
+    if (!clean.endsWith('.md')) return
+    if (clean === this.currentChatFile.value?.path) return
+
+    this.wroteThisTurn = true
+    const at = new Date().toISOString()
+    const existing = this.touched.value.find((note) => note.path === clean)
+    this.touched.value = existing
+      ? this.touched.value.map((note) => (note.path === clean ? { path: clean, at } : note))
+      : [...this.touched.value, { path: clean, at }]
+    this.markDirty()
+  }
+
   /** The comment's id, which is its file's basename. Null for anything not anchored. */
   get commentId(): string | null {
     if (!this.anchor.value) return null
@@ -248,11 +349,48 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   /**
    * A chat a person talks to, a run some agent was handed by another, or a comment anchored
-   * in a note. Not readonly: expanding a comment turns it into a chat in place.
+   * in a note. Not readonly: expanding a comment turns it into a chat in place, and returning
+   * it turns it back.
+   *
+   * Reactive behind an accessor rather than a bare field, so that every `session.kind` already
+   * written stays what it was while the views that switch on it follow the change. The card in
+   * the margin is the one that must: it reads this to choose between a live thread and the
+   * read-only summary of a conversation that has moved to the sidebar, and a plain field left
+   * it showing whichever of the two it was mounted with.
    */
-  public kind: SessionKind
+  private readonly kindRef: ShallowRef<SessionKind>
+
+  get kind(): SessionKind {
+    return this.kindRef.value
+  }
+
+  set kind(value: SessionKind) {
+    this.kindRef.value = value
+  }
   /** Where this session is anchored, for a comment and for a chat expanded from one. */
   public readonly anchor = shallowRef<CommentAnchor | null>(null)
+
+  /**
+   * The messages this comment keeps in the note's margin, oldest pin first.
+   *
+   * The one place a pin is recorded. The margin entry, the card and the action in the thread
+   * all read this ref, so there is never a second answer to whether a message is pinned.
+   */
+  public readonly pinned = shallowRef<string[]>([])
+
+  /**
+   * The notes this chat wrote to, oldest first write first.
+   *
+   * Replaced, never pushed into: a `shallowRef` does not see a push, and every view of this
+   * list is downstream of the ref.
+   */
+  public readonly touched = shallowRef<TouchedNote[]>([])
+
+  /** One sentence on what this chat did, for the card under a note it changed. */
+  public readonly recap = ref('')
+
+  /** Set by `noteTouched`, read at the end of a turn to decide whether to recap. */
+  private wroteThisTurn = false
 
   private destroyed = false
 
@@ -277,7 +415,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     options: SessionOptions = {}
   ) {
     this.id = id || nanoid()
-    this.kind = options.kind ?? 'chat'
+    this.kindRef = shallowRef(options.kind ?? 'chat')
     this.depth = options.depth ?? 0
     this.parent = options.parent ?? null
     this.onPersist = options.onPersist ?? null
@@ -318,31 +456,67 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   /**
-   * Points the chat at a different agent.
+   * Points the chat at a different agent and says nothing about it.
    *
    * Overrides are dropped: they were expressed against the previous agent, and carrying, say,
    * a narrowed tool set onto an agent that never had those tools is meaningless.
+   *
+   * The half of `switchAgent` that leaves no trace, for a caller that may have to put the
+   * binding back: the log only ever appends, so a divider written for a move that is then
+   * undone can be taken out of memory but never out of the file.
+   *
+   * Returns whether anything moved, which is what a caller writing the divider itself has to
+   * gate on: a chat already on that agent has not switched to it, and saying that it has puts
+   * a line into the conversation for a thing that did not happen.
    */
-  switchAgent(agentId: string): void {
-    if (agentId === this.agentId.value) return
+  bindAgent(agentId: string): boolean {
+    if (agentId === this.agentId.value) return false
 
-    const target = AgentRegistry.getInstance().get(agentId)
     this.agentId.value = agentId
     this.overrides.value = {}
     this.syncScopeFromAgent()
+    return true
+  }
 
-    // A divider, the way a mid-chat model switch already leaves one: the rest of the
-    // conversation was answered by something else, and that should be visible.
-    if (target && this.allChatMessages.length > 0) {
-      this.appendChatMessage({
-        id: nanoid(),
-        role: 'system',
-        content: `Agent: ${target.name}`,
-        timestamp: Date.now(),
-      })
-      this.updateVisibleMessages()
-      this.markDirty()
-    }
+  /**
+   * Puts back the per-chat values a binding dropped, the resolver with them.
+   *
+   * `bindAgent` clears the overrides because they were expressed against the agent being left
+   * — but a move that had to be undone was never a move, and the narrowed scope or tool set
+   * somebody set in this chat is theirs. The scope is re-read rather than only recorded: it
+   * was applied to the resolver from the agent when the overrides went.
+   */
+  restoreOverrides(overrides: SessionOverrides): void {
+    this.overrides.value = { ...overrides }
+    this.syncScopeFromAgent()
+  }
+
+  /**
+   * The record of a switch: a divider, the way a mid-chat model switch already leaves one —
+   * the rest of the conversation was answered by something else, and that should be visible.
+   *
+   * Separate from the binding so that a caller whose move has to be persisted before it counts
+   * can write it once the file has taken the change, and not at all if it has not.
+   */
+  noteAgentSwitch(agentId: string): void {
+    const target = AgentRegistry.getInstance().get(agentId)
+    if (!target || this.allChatMessages.length === 0) return
+
+    this.appendChatMessage({
+      id: nanoid(),
+      role: 'system',
+      content: `Agent: ${target.name}`,
+      timestamp: Date.now(),
+    })
+    this.updateVisibleMessages()
+    this.markDirty()
+  }
+
+  /** Points the chat at a different agent, and leaves the divider saying so. */
+  switchAgent(agentId: string): void {
+    if (!this.bindAgent(agentId)) return
+
+    this.noteAgentSwitch(agentId)
   }
 
   /**
@@ -643,7 +817,20 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         ScopeResolver.setActiveInstance(this.scopeResolver)
         ChatSession._activeSession = this
         try {
-          return await tool.execute(id, params, signal)
+          const result = await tool.execute(id, params, signal)
+          // The one place that sees a tool's name, its arguments and its result together, so
+          // the one place a successful write becomes a link. A run is skipped: it is never
+          // listed anywhere, and its writes belong to the chat that delegated them.
+          // A call that failed threw, and never reaches this line — which is the whole check
+          // that a write that did not happen links nothing.
+          if (this.kind !== 'run' && TOUCHING_TOOLS.includes(tool.name)) {
+            // The tool says what it wrote, and only when it wrote something. Falling back to
+            // the `path` argument instead would link a call that came to nothing — a `replace`
+            // whose actions all matched nothing asks about a file it then leaves alone.
+            const details = result.details as ToolWriteDetails | undefined
+            this.noteTouched(details?.path ?? '')
+          }
+          return result
         } finally {
           ScopeResolver.setActiveInstance(null)
           ChatSession._activeSession = null
@@ -826,7 +1013,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
             m.toolStatus === 'pending',
           (m) => {
             const resultText = event.result.content?.map((c) => c.text).join('') || ''
-            const diff = (event.result.details as ToolDiffDetails)?.diff
+            const diff = (event.result.details as ToolWriteDetails)?.diff
             return {
               ...m,
               toolResult: resultText,
@@ -1185,7 +1372,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       (m) => m.role === 'tool-call' && m.toolCallId === tc.id,
       (m) => {
         const resultText = toolResult.content.map((c) => c.text).join('')
-        const diff = (toolResult.details as ToolDiffDetails)?.diff
+        const diff = (toolResult.details as ToolWriteDetails)?.diff
         return {
           ...m,
           toolResult: resultText,
@@ -1217,6 +1404,32 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   // ── Public API ──────────────────────────────────────────────────
 
+  /**
+   * Words the person put into the conversation without asking the agent anything.
+   *
+   * This is the first half of `sendMessage` and nothing else: the bubble appears, the message
+   * joins the history the model is built from, the file is written. No loop, no title, no
+   * compaction — nothing that would make a request. Whatever is asked next carries the notes
+   * with it as ordinary user turns, which is the point of keeping them here rather than
+   * somewhere the agent will never see them.
+   *
+   * `sendMessage` cannot do this with a flag: everything after the push is what it is for.
+   *
+   * Returns whether the note was kept, so a caller can say why it was not.
+   */
+  async addUserNote(content: string): Promise<boolean> {
+    // Nothing may be pushed into the middle of a turn — see `isMidTurn`. `sendMessage` can
+    // queue instead; a note has nothing to be queued for, since nothing is going to run.
+    if (this.isMidTurn) return false
+
+    const text = content.trim()
+    if (!text) return false
+
+    this.allInternalMessages.push(await this.userMessage(text))
+    await this.save()
+    return true
+  }
+
   async sendMessage(content: string, attachments?: string[]): Promise<void> {
     // Busy is not a reason to lose what was typed: it waits its turn instead. `takeQueued`
     // hands it to the loop that is already running, at its next iteration.
@@ -1236,6 +1449,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const gen = this.generation
     this.error.value = null
     this.userMessageCount++
+    this.wroteThisTurn = false
 
     this.allInternalMessages.push(await this.userMessage(content, attachments))
 
@@ -1259,6 +1473,21 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           return
         })
       }
+    }
+
+    // A recap describes what the chat did to a note, so unlike a title it is regenerated on
+    // every turn that wrote, not once. The mirror follows it, since the sentence is part of
+    // what the card under the note shows.
+    if (this.wantsRecap()) {
+      if (sequential) await this.summarizer.generateRecap()
+      else {
+        this.summarizer.generateRecap().catch(() => {
+          return
+        })
+      }
+      // Ahead of the recap rather than after it: the links are already known, and the
+      // sentence, when it lands, mirrors itself through the save `generateRecap` makes.
+      this.mirrorNoteLinks()
     }
 
     if (sequential) {
@@ -1516,6 +1745,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.agentId.value = AgentRegistry.getInstance().defaultAgent()?.id ?? ''
     this.overrides.value = {}
     this.anchor.value = null
+    this.pinned.value = []
+    this.touched.value = []
+    this.recap.value = ''
+    this.wroteThisTurn = false
+    // The summarizer outlives the conversation — one per tab, not one per chat.
+    this.summarizer.forgetRecap()
     this.syncScopeFromAgent()
   }
 
@@ -1646,6 +1881,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       // note has to keep finding this file, and `kind` is how a reopened one knows what it is.
       kind: this.anchor.value ? (this.kind === 'comment' ? 'comment' : 'chat') : undefined,
       anchor: this.anchor.value ?? undefined,
+      // Absent rather than empty when nothing is pinned: an unpin should leave the file the
+      // way it was before the pin, not carrying a field that says nothing.
+      pinned: this.pinned.value.length ? [...this.pinned.value] : undefined,
+      // Absent rather than empty for the same reason as `pinned`: a chat that changed nothing
+      // says nothing about notes.
+      touched: this.touched.value.length ? [...this.touched.value] : undefined,
+      recap: this.recap.value || undefined,
       // Only what this chat actually changed. Writing the resolved values instead would freeze
       // the chat against today's agent and defeat the whole point of resolving on read.
       overrides: Object.keys(overrides).length ? { ...overrides } : undefined,
@@ -1697,9 +1939,57 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     this.log.commit(snapshot, plan)
     this.currentChatFile.value = file
+    // The first moment a new chat has a path to key its index entry on.
+    this.mirrorNoteLinks()
 
     // Update tab state so new chats get persisted
     this.chatService.saveTabs()
+  }
+
+  /** The notes this chat has written to, for the recap prompt. Part of `SummarizerHost`. */
+  touchedNotes(): string[] {
+    return this.touched.value.map((note) => note.path)
+  }
+
+  /**
+   * Whether the turn that just ended earns a recap.
+   *
+   * A run is never listed, and a comment lives on the margin where no card shows a sentence —
+   * it pays for one when somebody expands it, and not before. Same rule as the title, for the
+   * same reason: a background request nobody reads the answer to.
+   */
+  private wantsRecap(): boolean {
+    return this.kind === 'chat' && this.wroteThisTurn
+  }
+
+  /**
+   * Writes the one recap a chat expanded from a comment never had.
+   *
+   * Fire and forget, like every other background request: the expansion has already happened
+   * and must not wait on a model, nor fail because one was not reachable.
+   */
+  recapIfMissing(): void {
+    if (!this.touched.value.length || this.recap.value) return
+    this.summarizer.generateRecap().catch(() => {
+      return
+    })
+  }
+
+  /**
+   * Copies `touched` and `recap` into this chat's history entry.
+   *
+   * Not private: the rename walk and a live check both drive it. Does nothing for a chat that
+   * has written to nothing, and nothing for a comment, whose path has no entry to write into.
+   */
+  mirrorNoteLinks(): void {
+    const path = this.currentChatFile.value?.path
+    if (!path || !this.touched.value.length) return
+    ChatStorage.getInstance().linkNotes(
+      path,
+      this.touched.value,
+      this.recap.value,
+      this.agentId.value
+    )
   }
 
   async load(file: TFile): Promise<void> {
@@ -1719,6 +2009,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // by then or the note is left out until the next agent change.
     if (result.metadata?.kind) this.kind = result.metadata.kind
     this.anchor.value = result.metadata?.anchor ?? null
+    this.pinned.value = result.metadata?.pinned ?? []
+    this.touched.value = result.metadata?.touched ?? []
+    this.recap.value = result.metadata?.recap ?? ''
 
     // Migrate old flat format → tree format once
     const needsMigration =
@@ -1732,9 +2025,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       result.metadata?.activeLeafId || findDefaultLeaf(this.allChatMessages)?.id || null
     this.updateVisibleMessages()
 
-    if (needsMigration) {
-      await this.save()
-    }
+    const pruned = this.prunePinned()
 
     this.userMessageCount = this.messages.value.filter((m) => m.role === 'user').length
 
@@ -1756,6 +2047,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         name: tc.name,
         arguments: tc.arguments,
       }))
+    }
+
+    // Last, after everything the file said has been restored. This writes a fresh snapshot, so
+    // anything not yet put back is written out as absent: run earlier it filed the chat under
+    // the default agent, dropped the overrides it was saved with, and forgot the tool call it
+    // was waiting on approval for.
+    if (needsMigration || pruned) {
+      await this.save()
     }
   }
 
@@ -1828,6 +2127,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    *
    * Only a pointer: a few dozen bytes, so the parent chat's write cost is unchanged no matter
    * how much conversation the sub-agents produce.
+   *
+   * TODO: a run's writes link no note to anything. The run's own wrapper skips them, and the
+   * parent's wrapper never sees them — so a note changed only by a delegated run shows no card
+   * for the chat that asked for the change. Carrying the run's `touched` back through here, so
+   * the parent adopts them, is the follow-up.
    */
   attachSubAgentRun(toolCallId: string, run: SubAgentRunRef): void {
     this.updateChatMessage(
@@ -1906,6 +2210,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const gen = this.generation
     this.error.value = null
     this.userMessageCount++
+    this.wroteThisTurn = false
 
     if (draftMsg.attachments?.length) {
       const parts = await resolveAttachmentsForApi(draftMsg.attachments)
@@ -1944,6 +2249,21 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           return
         })
       }
+    }
+
+    // A recap describes what the chat did to a note, so unlike a title it is regenerated on
+    // every turn that wrote, not once. The mirror follows it, since the sentence is part of
+    // what the card under the note shows.
+    if (this.wantsRecap()) {
+      if (sequential) await this.summarizer.generateRecap()
+      else {
+        this.summarizer.generateRecap().catch(() => {
+          return
+        })
+      }
+      // Ahead of the recap rather than after it: the links are already known, and the
+      // sentence, when it lands, mirrors itself through the save `generateRecap` makes.
+      this.mirrorNoteLinks()
     }
 
     if (sequential) {

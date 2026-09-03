@@ -103,6 +103,18 @@ Notes with `type: abele-skill` or `type: abele-prompt`. A skill teaches an agent
 something and is loaded on demand with the `skill` tool; a prompt is a reusable piece of text
 for the person to insert into a chat. Both are ordinary notes and can be edited as such.
 
+## Chats
+
+Chats are `.abchat` files under the chat folder, one JSON record per line. Besides the
+conversation, a chat's metadata record remembers what it *did*: `touched` lists the notes it
+wrote to — created, edited, replaced, moved or copied into place, never merely read — each with
+the time it was last written, and `recap` is a one-sentence summary of the work, written by the
+background model after a turn that wrote something. Both are copied into the chat index in the
+plugin's settings, which is what draws the **Chats** list under a note: one card per chat that
+changed it, with its title, its recap and the date it was changed. A comment chat carries the
+same fields but is not in the index, so it appears in no footer until it is opened as a full chat.
+Renaming a note rewrites the path in both places. Do not edit these fields by hand.
+
 ## Comments
 
 A comment chat is a conversation anchored to one place in a note. The anchor is a marker
@@ -118,6 +130,15 @@ anything depends on how the comment was made, not on what precedes the marker: o
 selection quotes that passage, one made without quotes nothing and marks a position instead.
 Markers inside fenced code, inline code and frontmatter are not markers.
 
+A marker is never written into the middle of a construct that a dozen characters would break: a
+`[[link]]` or `![[embed]]`, a `[text](url)` link, inline code, a `==highlight==`, a `[^1]`
+footnote reference, a callout's `[!type]` or a task's `[ ]` box. A comment made on a selection
+that ended halfway through one of those is anchored after the end of it instead, and its quote
+reaches that far as well. A fence, frontmatter, any line of a table and a callout's title line
+have no such end, and a comment there is refused rather than written — the last two are drawn
+by widgets of Obsidian's own, which swallow a marker whole and leave a comment nothing can
+reach. The body lines of a callout take one normally.
+
 **Never write, move or edit a marker.** It is an index into a file the plugin owns: an id with
 no file behind it draws an icon that opens nothing, and a marker carried away from its passage
 silently reattaches somebody's conversation to different text. Editing the note *around* a
@@ -128,7 +149,15 @@ Each comment is a chat file of its own at `AI/Comments/<id>.abchat` — the fold
 `commentFolder` in the settings — in the same format as any other `.abchat`. The quoted
 passage lives there, as `anchor.quote` in the file's metadata, together with `anchor.note`,
 the note the marker sits in. The note carries the marker and nothing else. Comment files stay
-out of the chat history until somebody opens one as a full chat.
+out of the chat history until somebody opens one as a full chat. Not every user turn in one was
+a question: a comment may hold notes the person kept without asking anything, which no agent
+has answered and which are simply part of the conversation from then on.
+
+A single message in a comment can be *pinned*: its id is listed in `pinned` in the file's
+metadata, and the plugin keeps that message on a small card at the top of the note's margin
+until it is unpinned. Like the marker, `pinned` is not something to write by hand — an id with
+no message behind it is a card the plugin will not draw, and the reader has no way to see that
+anything was meant to be there.
 
 ## Transfer files
 

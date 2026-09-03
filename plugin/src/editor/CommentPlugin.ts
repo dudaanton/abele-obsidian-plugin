@@ -30,7 +30,7 @@ import {
 import { MarkdownView, editorInfoField, editorLivePreviewField } from 'obsidian'
 import { CommentMarkerWidget } from './CommentMarkerWidget'
 import { ParsedMarker, parseMarkers, resolveQuote } from './commentMarkers'
-import { CommentEntry } from '@/entities/Comment'
+import { CommentEntry, CommentPin } from '@/entities/Comment'
 import { MarginEntry, marginOverlayFor, marginOverlayIfAny } from './MarginOverlay'
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -41,6 +41,8 @@ export interface CommentInfo {
   quote?: string
   state: CommentState
   open: boolean
+  /** Message ids this comment keeps in the margin. Empty for anything not pinned. */
+  pinned: string[]
 }
 
 /**
@@ -311,6 +313,18 @@ interface HostedEntry {
 }
 
 /**
+ * A pinned message's host, keyed `commentId:messageId`.
+ *
+ * Keyed by the message and not by the marker's position, for the same reason a card is: a pin
+ * outlives an edit earlier in the note, and rebuilding it would blink the card away.
+ */
+interface HostedPin {
+  key: string
+  id: string
+  el: HTMLElement
+}
+
+/**
  * The second provider of the margin overlay, beside footnotes.
  *
  * A host is keyed by its marker's ids rather than by its position, so that typing earlier in
@@ -319,19 +333,66 @@ interface HostedEntry {
  */
 export class CommentEntries implements PluginValue {
   private hosted: HostedEntry[] = []
+  private hostedPins: HostedPin[] = []
   private destroyed = false
+  private frame: number | null = null
+
+  /**
+   * A pin card that changes height under the stack.
+   *
+   * Unfolding a clamped message, and the Markdown inside it finishing its render, both change
+   * how tall a pin is without CodeMirror raising anything — and every entry below the pinned
+   * block is placed from that height. The observer is built from the scroller's own window: a
+   * note can be open in a popout, and one made in the wrong window observes nothing.
+   */
+  private sizes: ResizeObserver | null = null
+
+  /**
+   * The window this editor is in, which is not the main one when the note is in a popout.
+   * The return type is inferred rather than written: spelling it out needs `globalThis`.
+   */
+  private viewWindow() {
+    return this.view.scrollDOM.ownerDocument.defaultView
+  }
+
+  /**
+   * A pin is parked at `scrollDOM.scrollTop`, and CodeMirror raises no update for a scroll
+   * inside the rendered viewport — so the scroller itself is the signal. Passive, and it
+   * returns at once when this note has no pins, which is nearly always.
+   */
+  private readonly onScroll = () => {
+    if (this.hostedPins.length === 0) return
+    this.positionSoon()
+  }
 
   constructor(private readonly view: EditorView) {
+    const win = this.viewWindow()
+    if (win?.ResizeObserver) this.sizes = new win.ResizeObserver(() => this.positionSoon())
+
     this.sync()
+    this.view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true })
   }
 
   /**
    * A frame that lands after the view is gone must not build a layer on a torn-down scroller:
    * `marginOverlayFor` would make a fresh overlay for a dead view. `FootnoteProvider` guards
    * its own frames the same way.
+   *
+   * Coalesced to one `position()` per frame: a scroll fires a burst of events, and each one
+   * would otherwise pay for a full measure of every entry in the margin.
+   *
+   * The frame is asked of the window this editor is in, like the observer above: a popout has
+   * a clock of its own, and a note open in one would otherwise re-measure on the beat of a
+   * window it is not drawn in — or not at all, once that window is closed.
    */
   private positionSoon() {
-    window.requestAnimationFrame(() => {
+    if (this.frame !== null) return
+
+    const win = this.viewWindow()
+    if (!win) return
+
+    this.frame = win.requestAnimationFrame(() => {
+      this.frame = null
       if (this.destroyed) return
       marginOverlayFor(this.view).position()
     })
@@ -358,12 +419,18 @@ export class CommentEntries implements PluginValue {
 
   destroy() {
     this.destroyed = true
+    this.view.scrollDOM.removeEventListener('scroll', this.onScroll)
+    this.sizes?.disconnect()
+    if (this.frame !== null) this.viewWindow()?.cancelAnimationFrame(this.frame)
+    this.frame = null
     const store = GlobalStore.getInstance()
     for (const hosted of [...this.hosted]) this.drop(hosted, store)
+    for (const hosted of [...this.hostedPins]) this.dropPin(hosted, store)
     // Not `destroy()`: the overlay is shared with footnotes, and `FootnotePlugin` owns that call.
     // `IfAny`, because footnotes are registered first and their destroy has already run — asking
     // to create here would put a new layer on a scroller that is on its way out.
     marginOverlayIfAny(this.view)?.setEntries('comment', [])
+    marginOverlayIfAny(this.view)?.setEntries('pin', [])
   }
 
   private sync() {
@@ -387,7 +454,87 @@ export class CommentEntries implements PluginValue {
     })
 
     marginOverlayFor(this.view).setEntries('comment', entries)
+    marginOverlayFor(this.view).setEntries('pin', this.syncPins(markers, notePath, store))
     this.positionSoon()
+  }
+
+  /**
+   * One entry per pinned message, from the same markers the cards came from.
+   *
+   * A pin is sticky, so its `anchorPos` decides nothing about where it is drawn — it decides
+   * the order pins stack in, and it is what a press on the card scrolls back to.
+   */
+  private syncPins(markers: ParsedMarker[], notePath: string, store: GlobalStore): MarginEntry[] {
+    const entries: MarginEntry[] = []
+    const live = new Set<string>()
+
+    for (const marker of markers) {
+      for (const commentId of marker.ids) {
+        for (const messageId of commentInfoSource.get(commentId)?.pinned ?? []) {
+          const key = `${commentId}:${messageId}`
+          if (live.has(key)) continue
+          live.add(key)
+
+          const hosted =
+            this.hostedPins.find((candidate) => candidate.key === key) ??
+            this.hostPin(key, commentId, messageId, marker, notePath, store)
+
+          // The pin leads back to a marker it is nowhere near, so the offset it scrolls to is
+          // refreshed here rather than frozen at the moment the entity was made.
+          const pin = store.pinsContainers.value.find((entry) => entry.id === hosted.id)
+          if (pin) pin.markerFrom = marker.from
+
+          entries.push({
+            id: hosted.id,
+            kind: 'pin' as const,
+            anchorPos: marker.from,
+            el: hosted.el,
+            sticky: true,
+          })
+        }
+      }
+    }
+
+    for (const hosted of [...this.hostedPins]) {
+      if (!live.has(hosted.key)) this.dropPin(hosted, store)
+    }
+
+    return entries
+  }
+
+  private hostPin(
+    key: string,
+    commentId: string,
+    messageId: string,
+    marker: ParsedMarker,
+    notePath: string,
+    store: GlobalStore
+  ): HostedPin {
+    const id = genid()
+    const el = createDiv({ cls: 'abele-comment-pin-container' })
+    el.id = id
+    el.createDiv({ attr: { 'data-comment-pin-id': id }, cls: 'abele-vue-mount' })
+
+    store.pinsContainers.value.push(
+      new CommentPin({ id, commentId, messageId, notePath, markerFrom: marker.from })
+    )
+
+    this.sizes?.observe(el)
+
+    const hosted: HostedPin = { key, id, el }
+    this.hostedPins.push(hosted)
+    return hosted
+  }
+
+  private dropPin(hosted: HostedPin, store: GlobalStore) {
+    this.sizes?.unobserve(hosted.el)
+    const index = store.pinsContainers.value.findIndex((pin) => pin.id === hosted.id)
+    if (index !== -1) {
+      store.pinsContainers.value[index].cleanup()
+      store.pinsContainers.value.splice(index, 1)
+    }
+    hosted.el.remove()
+    this.hostedPins = this.hostedPins.filter((candidate) => candidate !== hosted)
   }
 
   private host(

@@ -6,7 +6,7 @@
  * file only ever has one session writing it.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
-import { nextTick, toRaw } from 'vue'
+import { computed, nextTick, toRaw } from 'vue'
 import { TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
 import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
@@ -107,6 +107,26 @@ describe('creating a comment', () => {
     expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
   })
 
+  /**
+   * The phone's case, end to end.
+   *
+   * The marker is an atomic widget, so a second selection dragged as far as the icon ends on
+   * the marker's far side rather than at its start. That used to write a second marker beside
+   * the first — two icons, one comment each, and no count on either, which is what the phone
+   * reported.
+   */
+  it('appends its id when the second selection ended on the far side of the marker', async () => {
+    const service = CommentService.getInstance()
+    const first = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const markerEnd = SELECTION_END + `%%c:${first.commentId}%%`.length
+
+    const second = await service.create(noteFile(), markerEnd, 'The selected passage')
+
+    expect(await noteText()).toBe(
+      `Before. The selected passage%%c:${first.commentId},${second.commentId}%% After.\n`
+    )
+  })
+
   it('appends its id to the marker already there rather than writing a second one', async () => {
     const service = CommentService.getInstance()
     const first = await service.create(noteFile(), SELECTION_END, 'The selected passage')
@@ -129,6 +149,7 @@ describe('reporting to the editor', () => {
       quote: 'The selected passage',
       state: 'idle',
       open: false,
+      pinned: [],
     })
   })
 
@@ -298,6 +319,441 @@ describe('expanding a comment into a chat', () => {
     expect(service.sessions.has(id)).toBe(false)
     expect(service.get(id)?.state).toBe('idle')
     expect(await service.load(id)).toBe(session)
+  })
+})
+
+/**
+ * The way back, which is what an expanded comment had none of: everything `expand` did is
+ * undone, and the one thing that must not happen is the conversation ending. The session goes
+ * on writing the same file — it only stops being a tab and becomes a card again.
+ *
+ * Sessions are compared with `===` rather than handed to `toBe`: a `ChatSession` printed as a
+ * diff is pages of reactive internals, and identity is the whole question here.
+ */
+describe('returning an expanded comment to its note', () => {
+  it('puts the kind back, in memory and in the file', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+    await service.collapse(id)
+
+    expect(session.kind).toBe('comment')
+    const file = app.vault.getAbstractFileByPath(service.commentPath(id)) as TFile
+    expect(parseChatMetadata((await app.vault.read(file)) as string)?.kind).toBe('comment')
+  })
+
+  it('puts it back on the comment agent', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+
+    await service.expand(session.commentId!)
+    await service.collapse(session.commentId!)
+
+    expect(session.agentId.value).toBe(AbeleConfig.getInstance().ai.commentAgentId)
+  })
+
+  /** No `commentAgentId`, no agent to go back to — and a comment on no agent answers nothing. */
+  it('stays on the chat agent when no comment agent is configured', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    AbeleConfig.getInstance().ai.commentAgentId = ''
+
+    await service.expand(session.commentId!)
+    await service.collapse(session.commentId!)
+
+    expect(session.agentId.value).toBe(AgentRegistry.getInstance().defaultAgent()?.id)
+  })
+
+  it('takes it out of the chat history, since it is a margin note again', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+
+    await service.expand(session.commentId!)
+    await service.collapse(session.commentId!)
+
+    expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
+  })
+
+  it('closes the tab without ending the conversation in it', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const chatService = ChatService.getInstance()
+
+    await service.expand(id)
+    await service.collapse(id)
+
+    expect(chatService.getSessionByFile(service.commentPath(id))).toBeNull()
+    expect(chatService.tabOrder.value).not.toContain(session.id)
+    expect(session.isDestroyed).toBe(false)
+  })
+
+  /** The sidebar has to show something, and an empty tab bar is a sidebar that shows nothing. */
+  it('leaves a tab behind when the comment was the only one', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const chatService = ChatService.getInstance()
+
+    await service.expand(session.commentId!)
+    await service.collapse(session.commentId!)
+
+    expect(chatService.tabOrder.value).toHaveLength(1)
+    expect(chatService.tabOrder.value).not.toContain(session.id)
+  })
+
+  it('is the same session, answering for the same id, back in the margin', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+    await service.collapse(id)
+
+    expect(service.sessions.has(id)).toBe(true)
+    expect(service.sessionFor(id) === session).toBe(true)
+    expect((await service.load(id)) === session).toBe(true)
+  })
+
+  it('opens the card again and repaints the note it is anchored to', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+    vi.mocked(dispatchCommentsChanged).mockClear()
+    await service.collapse(id)
+
+    expect(service.open.value).toBe(id)
+    expect(vi.mocked(dispatchCommentsChanged).mock.calls.flat()).toContain('Notes/A.md')
+  })
+
+  /**
+   * The card decides between a thread and a read-only summary on `session.kind`, and it reads
+   * it inside a computed. A plain field would leave the card showing whatever it was showing
+   * when it was mounted: a live composer over a conversation that has moved to the sidebar,
+   * and — coming back — a read-only summary of a comment that is answering again.
+   */
+  it('is a change the card can see, both ways', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const promoted = computed(() => session.kind === 'chat')
+
+    expect(promoted.value).toBe(false)
+
+    await service.expand(id)
+    expect(promoted.value).toBe(true)
+
+    await service.collapse(id)
+    expect(promoted.value).toBe(false)
+  })
+
+  it('does nothing for a comment that was never expanded', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    expect(await service.collapse(id)).toBe(false)
+
+    expect(session.kind).toBe('comment')
+    expect(service.open.value).toBeNull()
+  })
+})
+
+/**
+ * Moving a comment while its agent is still working.
+ *
+ * Both moves rebind the agent, and rebinding appends a divider and re-syncs the scope — into
+ * a request that has already been built from both, and, when a tool call is waiting, between
+ * a `tool_use` and the `tool_result` that has to follow it. So both are refused for as long as
+ * `addUserNote` refuses a note, and for the same reason. The refusal is a `false`, not a
+ * throw: the card and the sidebar say why.
+ */
+describe('a comment whose agent is mid-turn', () => {
+  /** One waiting tool call, as far as anything reading `pendingToolCalls` can tell. */
+  const A_TOOL_CALL = [{ id: 'tc1', name: 'read_note', input: {} }] as never
+
+  it('is not promoted while the answer is still arriving', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    session.isStreaming.value = true
+
+    expect(await service.expand(id)).toBe(false)
+
+    expect(session.kind).toBe('comment')
+    expect(session.agentId.value).toBe(AbeleConfig.getInstance().ai.commentAgentId)
+    expect(service.sessions.get(id) === session).toBe(true)
+    expect(ChatService.getInstance().getSessionByFile(service.commentPath(id))).toBeNull()
+    expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
+  })
+
+  it('is not promoted while a tool call is waiting to be approved', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    session.pendingToolCalls.value = A_TOOL_CALL
+
+    expect(await service.expand(id)).toBe(false)
+
+    expect(session.kind).toBe('comment')
+    expect(service.sessions.get(id) === session).toBe(true)
+    expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
+  })
+
+  it('leaves the conversation untouched when a promotion is refused', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const before = session.allMessages.value.length
+    session.isStreaming.value = true
+
+    await service.expand(id)
+
+    expect(session.allMessages.value).toHaveLength(before)
+  })
+
+  it('is not sent back to the margin while the answer is still arriving', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const chatService = ChatService.getInstance()
+
+    await service.expand(id)
+    const messages = session.allMessages.value.length
+    session.isStreaming.value = true
+
+    expect(await service.collapse(id)).toBe(false)
+
+    expect(session.kind).toBe('chat')
+    expect(session.agentId.value).toBe(AgentRegistry.getInstance().defaultAgent()?.id)
+    expect(session.allMessages.value).toHaveLength(messages)
+    expect(service.sessions.has(id)).toBe(false)
+    expect(chatService.getSessionByFile(service.commentPath(id)) === session).toBe(true)
+    expect(AbeleConfig.getInstance().ai.chatHistory.map((e) => e.path)).toEqual([
+      service.commentPath(id),
+    ])
+  })
+
+  it('is not sent back to the margin while a tool call is waiting', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+    session.pendingToolCalls.value = A_TOOL_CALL
+
+    expect(await service.collapse(id)).toBe(false)
+
+    expect(session.kind).toBe('chat')
+    expect(ChatService.getInstance().getSessionByFile(service.commentPath(id)) === session).toBe(
+      true
+    )
+  })
+})
+
+/**
+ * A write that fails in the middle of a move.
+ *
+ * The file is the one thing both sides of a move have to agree with: a session filed as a
+ * comment over a file that still says "chat" is loaded twice on the next restart, once by the
+ * marker and once by the tab that was restored — two writers on one log. So the persisted
+ * change goes first and the moves wait on it, and a save that throws puts back everything it
+ * was given.
+ */
+describe('a move whose save fails', () => {
+  const refuseToSave = (session: ChatSession) =>
+    vi.spyOn(session, 'save').mockRejectedValue(new Error('disk full'))
+
+  it('leaves the comment a comment when promoting it cannot be written', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    refuseToSave(session)
+
+    await expect(service.expand(id)).rejects.toThrow('disk full')
+
+    expect(session.kind).toBe('comment')
+    expect(session.agentId.value).toBe(AbeleConfig.getInstance().ai.commentAgentId)
+    expect(service.sessions.get(id) === session).toBe(true)
+    expect(ChatService.getInstance().getSessionByFile(service.commentPath(id))).toBeNull()
+    expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
+  })
+
+  it('leaves the chat a chat when sending it back cannot be written', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const chatService = ChatService.getInstance()
+
+    await service.expand(id)
+    const tabs = [...chatService.tabOrder.value]
+    refuseToSave(session)
+
+    await expect(service.collapse(id)).rejects.toThrow('disk full')
+
+    expect(session.kind).toBe('chat')
+    expect(session.agentId.value).toBe(AgentRegistry.getInstance().defaultAgent()?.id)
+    expect(service.sessions.has(id)).toBe(false)
+    expect(service.sessionFor(id) === session).toBe(true)
+    expect(chatService.tabOrder.value).toEqual(tabs)
+    expect(chatService.getSessionByFile(service.commentPath(id)) === session).toBe(true)
+    expect(AbeleConfig.getInstance().ai.chatHistory.map((e) => e.path)).toEqual([
+      service.commentPath(id),
+    ])
+  })
+
+  /** Nothing about the failed move is said in the conversation: the log only ever appends. */
+  it('leaves no divider behind for a switch that was undone', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+    const messages = session.allMessages.value.length
+    refuseToSave(session)
+
+    await expect(service.collapse(id)).rejects.toThrow('disk full')
+
+    expect(session.allMessages.value).toHaveLength(messages)
+  })
+
+  /**
+   * The binding drops the per-chat overrides, because they were expressed against the agent
+   * being left. A move that was undone left no agent, so they are somebody's settings still.
+   */
+  it('gives back the per-chat overrides the binding dropped', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+    session.activeModelId.value = 'chosen-by-hand'
+    session.applyScope([{ type: 'file', path: 'Notes/A.md' }])
+    const overrides = { ...session.overrides.value }
+    refuseToSave(session)
+
+    await expect(service.collapse(id)).rejects.toThrow('disk full')
+
+    expect(session.overrides.value).toEqual(overrides)
+    expect(session.activeModelId.value).toBe('chosen-by-hand')
+    // The resolver, not only the record of it: the binding applied the agent's scope over this
+    // one on its way past, so putting the override back has to put the resolver back with it.
+    expect(session.scopeResolver.entries.value).toEqual([{ type: 'file', path: 'Notes/A.md' }])
+  })
+})
+
+/**
+ * A vault where the comment agent *is* the default agent.
+ *
+ * Both moves rebind the agent, and both used to write the divider that records a switch even
+ * when there was nothing to switch to — so a round trip left two "Agent: X" lines in a
+ * conversation nobody had moved between agents at all.
+ */
+describe('a comment on the same agent it would be moved to', () => {
+  beforeEach(() => {
+    AbeleConfig.getInstance().ai.commentAgentId = AgentRegistry.getInstance().defaultAgent()!.id
+  })
+
+  it('says nothing about an agent that did not change, either way', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const before = session.allMessages.value.length
+
+    await service.expand(id)
+    await service.collapse(id)
+
+    expect(session.allMessages.value).toHaveLength(before)
+    expect(session.allMessages.value.some((m) => m.role === 'system')).toBe(false)
+  })
+
+  /** The move itself is unaffected; only the note about it goes. */
+  it('still moves the comment there and back', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    expect(await service.expand(id)).toBe(true)
+    expect(session.kind).toBe('chat')
+
+    expect(await service.collapse(id)).toBe(true)
+    expect(session.kind).toBe('comment')
+    expect(service.sessions.get(id) === session).toBe(true)
+  })
+})
+
+/**
+ * Two presses on the same move.
+ *
+ * A move writes the file and only then moves the maps that answer for the id, so a second one
+ * starting inside that gap works from a conversation half of which has already moved: a second
+ * history entry, or a session dropped from `sessions` and never filed under `expanded`. The
+ * session says it is on its way, and the second press is refused with that.
+ */
+describe('a comment already being moved', () => {
+  /** A save that hangs until it is let go, which is what holds a move open. */
+  function hangingSave(session: ChatSession) {
+    let release = (): void => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.spyOn(session, 'save').mockImplementation(() => held)
+    return release
+  }
+
+  it('refuses a second promotion while the first is still writing', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const release = hangingSave(session)
+
+    const first = service.expand(id)
+    await nextTick()
+
+    expect(session.moving.value).toBe(true)
+    expect(await service.expand(id)).toBe(false)
+    expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
+
+    release()
+    expect(await first).toBe(true)
+    expect(session.moving.value).toBe(false)
+    expect(AbeleConfig.getInstance().ai.chatHistory).toHaveLength(1)
+  })
+
+  it('refuses a second return to the margin while the first is still writing', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+    const release = hangingSave(session)
+
+    const first = service.collapse(id)
+    await nextTick()
+
+    expect(session.moving.value).toBe(true)
+    expect(await service.collapse(id)).toBe(false)
+    expect(service.sessions.has(id)).toBe(false)
+
+    release()
+    expect(await first).toBe(true)
+    expect(session.moving.value).toBe(false)
+    expect(service.sessions.get(id) === session).toBe(true)
+  })
+
+  it('is on its way again once a failed move has let go', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    vi.spyOn(session, 'save').mockRejectedValueOnce(new Error('disk full'))
+
+    await expect(service.expand(id)).rejects.toThrow('disk full')
+
+    expect(session.moving.value).toBe(false)
+    expect(await service.expand(id)).toBe(true)
   })
 })
 

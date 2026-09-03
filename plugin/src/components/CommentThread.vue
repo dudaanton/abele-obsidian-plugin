@@ -36,6 +36,20 @@
           :text="msg.content"
           :file-path="notePath"
         />
+        <!-- Only in the margin: a sheet is what a phone opens instead of one, and there is
+             nowhere for a pinned message to go there. -->
+        <div v-if="host === 'margin'" class="abele-comment-thread__actions">
+          <Icon
+            class="abele-comment-thread__pin"
+            :icon="session.isPinned(msg.id) ? 'pin-off' : 'pin'"
+            :tooltip="
+              session.isPinned(msg.id)
+                ? 'Take this message out of the margin'
+                : 'Keep this message at the top of the margin'
+            "
+            @click="togglePin(msg)"
+          />
+        </div>
       </template>
     </div>
 
@@ -100,9 +114,17 @@ import type { ChatMessage } from '@/ai/types'
 /** How much of a tool's arguments fits on one line at sidenote width. */
 const ARG_SUMMARY_LIMIT = 48
 
-const props = defineProps<{
-  session: ChatSession
-}>()
+const props = withDefaults(
+  defineProps<{
+    session: ChatSession
+    /**
+     * Where the thread is being shown. A margin can hold a pinned message at its top; a sheet
+     * is the phone's stand-in for a margin and has nowhere to put one.
+     */
+    host?: 'margin' | 'sheet'
+  }>(),
+  { host: 'margin' }
+)
 
 const notePath = computed(() => props.session.anchor.value?.note ?? '')
 
@@ -236,6 +258,9 @@ onBeforeUnmount(() => {
   growth = null
 })
 
+const togglePin = (msg: ChatMessage): void =>
+  void (props.session.isPinned(msg.id) ? props.session.unpin(msg.id) : props.session.pin(msg.id))
+
 const approve = () => void props.session.approveToolCall()
 const deny = () => void props.session.rejectToolCall('Denied from the comment card')
 const answer = (option: string) => props.session.answerCurrentQuestion(option)
@@ -263,8 +288,51 @@ const retry = () => void props.session.retryRequest()
 }
 
 .abele-comment-thread__msg {
+  position: relative;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/**
+ * The row's own actions, out of the way until the row is reached for.
+ *
+ * Out of flow entirely, at the row's top corner. Reserving the room instead — a hidden box
+ * that still takes its line — puts an empty strip under every message in the thread, and at
+ * sidenote width that strip is most of a short answer. Out of flow, nothing reflows when the
+ * pointer arrives either, which is what reserving the room was for.
+ */
+.abele-comment-thread__actions {
+  display: none;
+  position: absolute;
+  top: 0;
+  inset-inline-end: 0;
+  /* Over the end of the first line rather than beside it: at 180 px there is no beside. */
+  border-radius: var(--radius-s);
+  background-color: var(--background-secondary);
+}
+
+.abele-comment-thread__msg:hover .abele-comment-thread__actions,
+.abele-comment-thread__msg:focus-within .abele-comment-thread__actions {
+  display: flex;
+}
+
+/** A per-message control at the size of the text it belongs to, like the tool-call bullet. */
+.abele-comment-thread__pin {
+  --icon-size: var(--icon-xs);
+  height: auto;
+  padding: var(--size-2-1);
+  color: var(--text-faint);
+}
+
+/**
+ * A phone, where there is no hover to reveal it and no margin to pin into. The `host` prop
+ * already takes it away wherever a sheet is what opened — this covers the tablet-sized case
+ * Obsidian still calls mobile, where a card can be in a margin and a pointer never arrives.
+ * Spelled deeply enough to outrank the two hover rules above, which a tablet with a mouse —
+ * or `emulateMobile` on a desktop — would otherwise still match.
+ */
+body.is-mobile .abele-comment-thread__msg .abele-comment-thread__actions {
+  display: none;
 }
 
 /**
@@ -307,6 +375,45 @@ const retry = () => void props.session.retryRequest()
     white-space: pre-wrap;
     word-break: break-word;
   }
+}
+
+/**
+ * Obsidian's own copy button, which it appends to every `pre` it renders.
+ *
+ * Its stylesheet positions the button only under `.markdown-rendered`, and the kit's
+ * `Markdown` adds that class for a whole document — which a card in the margin is not. So the
+ * button arrived here wearing Obsidian's default `button` chrome and sitting below the code as
+ * a grey slab, and `.is-mobile` shows it permanently rather than on hover: a phone screenshot
+ * of a comment thread was most of a code block and then a large grey square.
+ *
+ * The rules are `AiChatMessage`'s, at a sidenote's size. Flat selectors rather than nested
+ * ones, because the test that guards them reads this stylesheet as text.
+ */
+.abele-comment-thread__body pre {
+  position: relative;
+  /* Room for the button at the end of the first line, so the code does not run under it. */
+  padding-inline-end: var(--size-4-12);
+}
+
+.abele-comment-thread__body .copy-code-button {
+  position: absolute;
+  top: var(--size-4-1);
+  inset-inline-end: var(--size-4-1);
+  width: auto;
+  height: auto;
+  padding: var(--size-2-1) var(--size-2-2);
+  color: var(--text-muted);
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  font-size: var(--font-ui-smaller);
+  /* Obsidian draws the glyph at `--icon-size`; the card's default would be taller than the label. */
+  --icon-size: var(--icon-xs);
+}
+
+.abele-comment-thread__body .copy-code-button:hover {
+  color: var(--text-normal);
+  background-color: var(--background-modifier-hover);
 }
 
 .abele-comment-thread__thinking {

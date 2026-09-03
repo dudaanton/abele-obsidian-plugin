@@ -1,4 +1,4 @@
-import { CommentEntry } from '@/entities/Comment'
+import { CommentEntry, CommentPin } from '@/entities/Comment'
 import { Footer } from '@/entities/Footer'
 import { Footnote } from '@/entities/Footnote'
 import { Gallery } from '@/entities/Gallery'
@@ -43,6 +43,8 @@ export class GlobalStore {
   public readonly galleriesContainers = ref<Array<Gallery>>([])
   public readonly footnotesContainers = ref<Array<Footnote>>([])
   public readonly commentsContainers = ref<Array<CommentEntry>>([])
+  /** One per pinned message on screen; the overlay parks each at the top of the margin. */
+  public readonly pinsContainers = ref<Array<CommentPin>>([])
   /**
    * The comment whose card is in a sheet rather than in the margin, or nothing.
    *
@@ -94,6 +96,15 @@ export class GlobalStore {
 
   public readonly settingsContainer = shallowRef<HTMLElement | null>(null)
   public readonly themeVersion = ref(0)
+
+  /**
+   * Bumped whenever a chat's note links change in the index.
+   *
+   * The index lives in `AbeleConfig.ai.chatHistory`, a plain object Vue never made reactive, so
+   * the **Chats** list under a note has nothing to depend on. This counter is that dependency,
+   * and the only reason `useChatLinks` recomputes at all.
+   */
+  public readonly chatLinksVersion = ref(0)
 
   public readonly weekStartsOnMonday = ref(AbeleConfig.getInstance().weekStartsOnMonday)
 
@@ -321,6 +332,7 @@ export class GlobalStore {
     cleanupArray(this.galleriesContainers.value, 'data-gallery-id')
     cleanupArray(this.footnotesContainers.value, 'data-footnote-id')
     cleanupArray(this.commentsContainers.value, 'data-comment-id')
+    cleanupArray(this.pinsContainers.value, 'data-comment-pin-id')
   }
 
   public destroy(): void {
@@ -345,6 +357,8 @@ export class GlobalStore {
     this.footnotesContainers.value = []
     for (const comment of this.commentsContainers.value) comment.cleanup()
     this.commentsContainers.value = []
+    for (const pin of this.pinsContainers.value) pin.cleanup()
+    this.pinsContainers.value = []
     // The entry the sheet is showing has just been cleaned up; a dialog holding one is a
     // dialog drawing a card for a marker that no longer exists.
     this.commentSheet.value = null

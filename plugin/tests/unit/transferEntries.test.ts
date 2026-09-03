@@ -211,6 +211,24 @@ describe('settings that arrived later than the transfer did', () => {
     expect(next.ai?.commentFolder).toBe('Notes/Comments')
   })
 
+  /**
+   * The prompts block carries `['prompts']` wholesale, so a new prompt travels for free — but
+   * only for as long as nobody rebuilds that object key by key somewhere. This is that guard.
+   */
+  it('carries a prompt added after the block was written, and writes it where it lands', () => {
+    const source = settings({
+      ai: {
+        ...settings().ai!,
+        prompts: { recapPrompt: 'Say what was done to {{messages}}' },
+      } as unknown as AiSettings,
+    })
+
+    const arriving = collectEntries(source).filter((e) => e.section === 'ai-prompts')
+    const next = applyEntries(arriving, settings())
+
+    expect(next.ai?.prompts?.recapPrompt).toBe('Say what was done to {{messages}}')
+  })
+
   /** An agent id is not a key. Adding one must not add a slot to the keychain list. */
   it('asks the keychain for nothing extra on account of them', () => {
     const entries = collectEntries(

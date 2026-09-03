@@ -38,7 +38,14 @@
     <template v-else>
       <div class="abele-comment-card__head">
         <div class="abele-comment-card__agent">
-          <Badge :text="agentName" />
+          <!-- Open, the badge becomes the choice it was only reporting. -->
+          <Dropdown
+            v-if="session"
+            :model-value="agentId"
+            :options="agentOptions"
+            @update:model-value="chooseAgent"
+          />
+          <Badge v-else :text="agentName" />
         </div>
         <span
           v-if="state !== 'idle'"
@@ -49,7 +56,8 @@
           <Icon
             v-if="!promoted"
             icon="panel-right-open"
-            tooltip="Open this comment as a full chat in the sidebar"
+            :disabled="blocked"
+            :tooltip="blocked ? blockedTooltip : 'Open this comment as a full chat in the sidebar'"
             @click="openAsChat"
           />
           <Icon
@@ -90,15 +98,27 @@
             <Markdown :text="msg.content" :file-path="entry.notePath" />
           </div>
         </div>
-        <Button
-          text="Open in sidebar"
-          tooltip="Show this chat in the AI sidebar"
-          @click="openInSidebar"
-        />
+        <div class="abele-comment-card__promoted-actions">
+          <Button
+            text="Open in sidebar"
+            tooltip="Show this chat in the AI sidebar"
+            @click="openInSidebar"
+          />
+          <Button
+            text="Back to comment"
+            :disabled="blocked"
+            :tooltip="
+              blocked
+                ? blockedTooltip
+                : 'Close the sidebar tab and go on with this conversation here'
+            "
+            @click="demote"
+          />
+        </div>
       </template>
 
       <template v-else>
-        <CommentThread v-if="session" :session="session" />
+        <CommentThread v-if="session" :session="session" :host="host" />
         <EmptyState v-else-if="lost" text="This comment's file is missing." />
         <EmptyState v-else text="Reading this comment…" />
         <!-- Keyed by the comment: a half-typed question belongs to the tab it was typed in,
@@ -106,9 +126,12 @@
         <CommentInput
           :key="activeId"
           :busy="busy"
+          :pending="pending"
           :disabled="!session"
           :focus="fresh"
+          :host="host"
           @send="onSend"
+          @note="onNote"
           @abort="onAbort"
         />
       </template>
@@ -140,10 +163,11 @@
  * that question too, but it cannot tell the card, and the card cannot reach into the editor.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { TFile, type EventRef } from 'obsidian'
+import { Notice, TFile, type EventRef } from 'obsidian'
 import Badge from './obsidian/Badge.vue'
 import Button from './obsidian/Button.vue'
 import ConfirmModal from './obsidian/ConfirmModal.vue'
+import Dropdown from './obsidian/Dropdown.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
@@ -153,6 +177,8 @@ import CommentThread from './CommentThread.vue'
 import { CommentEntry } from '@/entities/Comment'
 import { CommentService } from '@/ai/CommentService'
 import { ChatService } from '@/ai/ChatService'
+import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import { parseMarkers, resolveQuote } from '@/editor/commentMarkers'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { ChatMessage } from '@/ai/types'
@@ -206,9 +232,71 @@ const session = computed(() => service.sessionFor(activeId.value))
  */
 const lost = computed(() => service.isMissing(activeId.value))
 const agentName = computed(() => session.value?.agent.value?.name ?? 'Comment')
+const agentId = computed(() => session.value?.agentId.value ?? '')
+
+/**
+ * Which agents this comment may be handed to.
+ *
+ * The agents a person configured, minus the utility ones — those exist for scripts and for
+ * delegation, and a list of them is a list of things nobody meant to talk to. Two are let
+ * back in because leaving them out would be worse: the agent `commentAgentId` names, which is
+ * a utility agent in every vault that took the default and is the one this card starts on,
+ * and whichever agent this conversation is already running on, so the picker can always show
+ * its own value rather than silently sitting on the first option.
+ */
+const agentOptions = computed(() => {
+  const registry = AgentRegistry.getInstance()
+  const listed = registry.list()
+
+  const named = registry.get(AbeleConfig.getInstance().ai.commentAgentId ?? '')
+  if (named && !listed.some((agent) => agent.id === named.id)) listed.unshift(named)
+
+  const options = listed.map((agent) => ({ value: agent.id, display: agent.name }))
+
+  // The agent this conversation is on, whatever has become of it. A `select` handed a value
+  // none of its options carry shows the first one instead, so a comment left on a deleted
+  // agent would sit there naming one it has nothing to do with; the id, marked, is at least
+  // true. `session.agent` has already fallen back to the default, so the chat still works.
+  const current = agentId.value
+  if (current && !options.some((option) => option.value === current)) {
+    const known = registry.get(current)
+    options.push({ value: current, display: known ? known.name : `${current} (deleted)` })
+  }
+
+  return options
+})
+
+const chooseAgent = (id: string) => {
+  if (!id || id === agentId.value) return
+  session.value?.switchAgent(id)
+}
 const state = computed(() => session.value?.commentState.value ?? 'idle')
 const busy = computed(() => state.value === 'busy')
+/**
+ * A turn that has stopped to ask something — an approval, or a question — rather than one that
+ * is running. The composer needs the two apart: a note kept now would land in the middle of
+ * that turn, while a question typed now simply waits for it.
+ */
+const pending = computed(() => state.value === 'pending')
 const promoted = computed(() => session.value?.kind === 'chat')
+
+/**
+ * A turn nothing may be moved out from under: see `ChatSession.isMidTurn`.
+ *
+ * Promoting and demoting both rebind the agent and rewrite what the file says this is, and
+ * neither can be done in the middle of a turn. The buttons go dark rather than refusing on
+ * the press, and say why they are dark.
+ */
+const midTurn = computed(() => !!session.value?.isMidTurn)
+/** A move already under way — the file is being written, and the maps have yet to follow. */
+const moving = computed(() => !!session.value?.moving.value)
+const blocked = computed(() => midTurn.value || moving.value)
+const BUSY_TOOLTIP = 'The agent is still working — finish or dismiss the pending step first'
+const MOVING_TOOLTIP = 'This comment is being moved'
+const blockedTooltip = computed(() => (moving.value ? MOVING_TOOLTIP : BUSY_TOOLTIP))
+/** The same words the composer answers a refused note with; it is the same refusal. */
+const BUSY_NOTICE = 'Finish or dismiss the pending step first'
+const MOVING_NOTICE = 'Already moving this comment'
 
 /**
  * A digit is all the label a 300 px strip has room for, so the glyph and the tooltip carry the
@@ -342,12 +430,40 @@ const fold = () => {
 const showComment = (id: string) => {
   service.open.value = id
 }
+/**
+ * The service refuses a move made in the middle of a turn, and one made while a move is
+ * already under way — the button above is already dark for both, so this is the race between
+ * the two, and a refusal that said nothing would look exactly like a promotion that happened
+ * somewhere out of sight.
+ *
+ * Which of the two it was is read here rather than after the call: by the time the service has
+ * answered, the move that was in flight may have finished and the reason be gone.
+ */
 async function promote(): Promise<void> {
-  await service.expand(activeId.value)
+  if (moving.value) {
+    new Notice(MOVING_NOTICE)
+    return
+  }
+  if (!(await service.expand(activeId.value))) {
+    new Notice(BUSY_NOTICE)
+    return
+  }
   emit('promoted')
 }
 
 const openAsChat = () => void promote()
+/**
+ * The way back. Nothing is emitted: the conversation is coming *out* of the sidebar, so the
+ * host has no reason to move — the card is where the reader is about to go on typing.
+ */
+const demote = (): void =>
+  void (async () => {
+    if (moving.value) {
+      new Notice(MOVING_NOTICE)
+      return
+    }
+    if (!(await service.collapse(activeId.value))) new Notice(BUSY_NOTICE)
+  })()
 const remove = () => {
   const id = activeId.value
   // `CommentService.remove` clears this too, but only after the marker and the file are gone;
@@ -369,6 +485,18 @@ async function reveal(): Promise<void> {
 const openInSidebar = () => void reveal()
 
 const onSend = (text: string) => void session.value?.sendMessage(text)
+/**
+ * Kept, not asked: the words go into the conversation and no agent is started.
+ *
+ * The session refuses one in the middle of a turn — the composer's button is already dark
+ * there, so this is the race between the two — and a refusal that said nothing would look
+ * exactly like a note that was saved.
+ */
+const onNote = (text: string) =>
+  void (async () => {
+    const kept = await session.value?.addUserNote(text)
+    if (kept === false) new Notice('Finish or dismiss the pending step first')
+  })()
 const onAbort = () => session.value?.abort()
 </script>
 
@@ -450,6 +578,31 @@ const onAbort = () => session.value?.abort()
   overflow: hidden;
 }
 
+/**
+ * The picker at the size of the badge it replaces. Obsidian's own dropdown is a form control
+ * built for a settings row, and at that height it is the tallest thing in a sidenote header.
+ *
+ * Only the vertical padding is taken back. The chevron is a background image drawn 12 px in
+ * from the right edge, and the 32 px of right padding is the room it stands in — a compact
+ * shorthand takes that room away and the glyph lands on the last letter of the agent's name,
+ * which is what the first phone screenshot showed.
+ */
+.abele-comment-card__agent .abele-obsidian-dropdown .dropdown {
+  max-width: 10em;
+  height: auto;
+  padding: var(--size-2-1) var(--size-4-6) var(--size-2-1) var(--size-4-2);
+  font-size: var(--font-ui-smaller);
+}
+
+/**
+ * A phone, where the picker is something to hit rather than something to read. The composer
+ * below it takes `--size-4-9` for the same reason; a 21 px control in a header is a miss.
+ */
+body.is-mobile .abele-comment-card__agent .abele-obsidian-dropdown .dropdown {
+  min-height: var(--size-4-9);
+  font-size: var(--font-ui-small);
+}
+
 .abele-comment-card__hint {
   flex: 0 0 auto;
   margin-inline-start: auto;
@@ -519,6 +672,16 @@ const onAbort = () => session.value?.abort()
 .abele-comment-card__quote {
   color: var(--text-faint);
   overflow-wrap: anywhere;
+}
+
+/**
+ * Both ways out of a promoted card. They wrap rather than shrink: a sidenote is 180 px at its
+ * narrowest and two buttons on one line there would be two truncated labels.
+ */
+.abele-comment-card__promoted-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
 }
 
 .abele-comment-card__readonly {

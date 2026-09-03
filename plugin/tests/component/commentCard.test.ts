@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick, ref, type Ref } from 'vue'
-import { TFile } from 'obsidian'
+import { Notice, TFile } from 'obsidian'
 import CommentCard from '@/components/CommentCard.vue'
 import CommentThread from '@/components/CommentThread.vue'
 import CommentInput from '@/components/CommentInput.vue'
@@ -18,9 +18,14 @@ import Button from '@/components/obsidian/Button.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import Tabs from '@/components/obsidian/Tabs.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
+import Dropdown from '@/components/obsidian/Dropdown.vue'
 import { CommentEntry } from '@/entities/Comment'
 import { CommentService } from '@/ai/CommentService'
 import { ChatService } from '@/ai/ChatService'
+import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { createAgent } from '@/ai/agents/types'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import type { ChatMessage } from '@/ai/types'
 import { fakeChatSession } from '../helpers/fakeChatSession'
 import { useVault } from '../helpers/testEnv'
@@ -37,6 +42,7 @@ const OTHER = 'Notes/Elsewhere.md'
 const open: Ref<string | null> = ref(null)
 const remove = vi.fn()
 const expand = vi.fn()
+const collapse = vi.fn()
 const load = vi.fn()
 /** Ids the service has written off, which is what the card says so instead of reading. */
 const missing = new Set<string>()
@@ -52,11 +58,18 @@ beforeEach(() => {
     { path: NOTE, content: BODY },
     { path: OTHER, content: 'Nothing to do with it.' },
   ])
+  // The header's agent picker reads the registry, which reads these: a card cannot be drawn
+  // in a vault with no AI settings at all.
+  AgentRegistry.destroy()
+  AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, agents: [] }
   open.value = null
   sessions = {}
   missing.clear()
   remove.mockReset()
-  expand.mockReset()
+  // Both answer whether the comment moved. True is the ordinary case; a test about a refusal
+  // says so for itself.
+  expand.mockReset().mockResolvedValue(true)
+  collapse.mockReset().mockResolvedValue(true)
   load.mockReset().mockResolvedValue(null)
 
   vi.spyOn(CommentService, 'getInstance').mockReturnValue({
@@ -64,6 +77,7 @@ beforeEach(() => {
     load,
     remove,
     expand,
+    collapse,
     isMissing: (id: string) => missing.has(id),
     sessionFor: (id: string) => sessions[id] ?? null,
   } as never)
@@ -104,7 +118,9 @@ async function mountCard(ids: string[], host?: 'margin' | 'sheet') {
   const view = mount(CommentCard, {
     props: { entry: entryFor(ids), ...(host ? { host } : {}) },
     attachTo: document.body,
-    global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+    global: {
+      stubs: { ObsidianModal: { template: '<div><slot /></div>' }, Dropdown: true },
+    },
   })
   await nextTick()
   await nextTick()
@@ -189,7 +205,15 @@ describe('an opened card', () => {
     open.value = 'k7d2ph'
   })
 
-  it('carries the thread, the composer and the three actions', async () => {
+  it('tells the composer which host it is in, so a sheet gets a field a thumb can hit', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'], 'sheet')
+
+    expect(view.findComponent(CommentInput).props('host')).toBe('sheet')
+  })
+
+  it('carries the thread, the composer and the actions of both', async () => {
     seed('k7d2ph')
 
     const view = await mountCard(['k7d2ph'])
@@ -200,9 +224,24 @@ describe('an opened card', () => {
       'panel-right-open',
       'trash-2',
       'chevron-up',
-      // The composer's own send button comes last.
+      // The composer's own buttons come last: dictate, keep a note, and send.
+      'mic',
+      'sticky-note',
       'send-horizontal',
     ])
+  })
+
+  /** A note is the composer's word for it; the session's is a user turn nobody answered. */
+  it('keeps a note in the conversation without starting the agent', async () => {
+    const addUserNote = vi.fn()
+    const sendMessage = vi.fn()
+    seed('k7d2ph', { addUserNote, sendMessage })
+
+    const view = await mountCard(['k7d2ph'])
+    await view.findComponent(CommentInput).vm.$emit('note', 'Come back to this')
+
+    expect(addUserNote).toHaveBeenCalledWith('Come back to this')
+    expect(sendMessage).not.toHaveBeenCalled()
   })
 
   it('drops the folded surface once it is open', async () => {
@@ -394,6 +433,25 @@ describe('a comment that was promoted into a chat', () => {
     expect(view.emitted('promoted')).toHaveLength(1)
   })
 
+  it('takes the conversation back to the margin it came from', async () => {
+    seed('k7d2ph', { kind: 'chat' }, [
+      message({ id: 'u1', role: 'user', content: 'What does this mean?' }),
+    ])
+
+    const view = await mountCard(['k7d2ph'])
+    const back = view
+      .findAllComponents(Button)
+      .find((button) => button.props('text') === 'Back to comment')
+    expect(back).toBeDefined()
+
+    await back!.vm.$emit('click')
+    await nextTick()
+
+    expect(collapse).toHaveBeenCalledWith('k7d2ph')
+    // Nothing has been handed to the sidebar, so a sheet has no reason to get out of the way.
+    expect(view.emitted('promoted')).toBeUndefined()
+  })
+
   it('offers no second promotion', async () => {
     seed('k7d2ph', { kind: 'chat' })
 
@@ -522,5 +580,305 @@ describe('the same card in a sheet', () => {
     const view = await mountCard(['k7d2ph'], 'sheet')
 
     expect(view.findAllComponents(Icon).map((i) => i.props('icon'))).not.toContain('chevron-up')
+  })
+})
+
+/**
+ * A comment is a chat, and a chat runs on an agent — so the card says which, and lets it be
+ * changed without opening the conversation as a full one.
+ *
+ * The list is the one a person would recognise: the agents they configured. Utility agents are
+ * kept out, because they exist for scripts and delegation rather than for being talked to —
+ * with one exception, the agent `commentAgentId` names, which is a utility agent in every
+ * vault that took the default and is the very agent this card is running on.
+ */
+describe('the agent a comment runs on', () => {
+  const AGENTS = [
+    createAgent({ id: 'comment-agent', name: 'Comment', utility: true }),
+    createAgent({ id: 'writer', name: 'Writer' }),
+    createAgent({ id: 'summariser', name: 'Summariser', utility: true }),
+  ]
+
+  beforeEach(() => {
+    open.value = 'k7d2ph'
+    AgentRegistry.destroy()
+    AbeleConfig.getInstance().ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: AGENTS.map((agent) => ({ ...agent })),
+      commentAgentId: 'comment-agent',
+    }
+  })
+
+  it('offers the configured agents and the comment agent, and no other utility one', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(Dropdown).props('options')).toEqual([
+      { value: 'comment-agent', display: 'Comment' },
+      { value: 'writer', display: 'Writer' },
+    ])
+  })
+
+  it('shows the one this conversation is already on', async () => {
+    seed('k7d2ph', { agentId: ref('writer') })
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(Dropdown).props('modelValue')).toBe('writer')
+  })
+
+  it('switches the session, which is what carries the choice into the file', async () => {
+    const switchAgent = vi.fn()
+    seed('k7d2ph', { switchAgent })
+
+    const view = await mountCard(['k7d2ph'])
+    await view.findComponent(Dropdown).vm.$emit('update:model-value', 'writer')
+
+    expect(switchAgent).toHaveBeenCalledWith('writer')
+  })
+
+  it('says nothing twice: the picker replaces the badge only once the card is open', async () => {
+    open.value = null
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(Dropdown).exists()).toBe(false)
+    expect(view.findComponent(Badge).props('text')).toBe('Comment')
+  })
+})
+
+/**
+ * A turn that has stopped to ask something is holding half of itself open.
+ *
+ * The card already tells `busy` from `pending` — the dot on its edge is drawn from the same
+ * distinction — and the composer needs to hear about it, because a note kept now lands between
+ * a `tool_use` and its `tool_result` and the next question is refused by the model over it.
+ * The session refuses it too; this is what stops the person finding that out by pressing.
+ */
+describe('a card over a conversation waiting to be answered', () => {
+  beforeEach(() => {
+    open.value = 'k7d2ph'
+    Notice.shown.length = 0
+  })
+
+  it('tells the composer, which is where the note button is', async () => {
+    seed('k7d2ph', { commentState: ref('pending') })
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(CommentInput).props('pending')).toBe(true)
+    // Streaming is the other thing, and it is reported separately: the send button stops it.
+    expect(view.findComponent(CommentInput).props('busy')).toBe(false)
+  })
+
+  it('leaves the composer alone when nothing is being waited on', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(CommentInput).props('pending')).toBe(false)
+  })
+
+  it('says why a note was refused rather than swallowing it', async () => {
+    seed('k7d2ph', { addUserNote: vi.fn().mockResolvedValue(false) })
+
+    const view = await mountCard(['k7d2ph'])
+    await view.findComponent(CommentInput).vm.$emit('note', 'Come back to this')
+    await nextTick()
+
+    expect(Notice.shown).toContain('Finish or dismiss the pending step first')
+  })
+
+  it('says nothing when the note was kept', async () => {
+    seed('k7d2ph', { addUserNote: vi.fn().mockResolvedValue(true) })
+
+    const view = await mountCard(['k7d2ph'])
+    await view.findComponent(CommentInput).vm.$emit('note', 'Come back to this')
+    await nextTick()
+
+    expect(Notice.shown).toEqual([])
+  })
+})
+
+/**
+ * Moving a conversation that is in the middle of a turn.
+ *
+ * Promoting a comment and sending a chat back to the margin both rebind the agent and rewrite
+ * what the file says the conversation is — neither of which may land between a `tool_use` and
+ * the `tool_result` that has to follow it. The service refuses both; the card is what stops
+ * the person finding that out by pressing, and says so if they press anyway.
+ */
+describe('a card over a conversation that is mid-turn', () => {
+  beforeEach(() => {
+    open.value = 'k7d2ph'
+    Notice.shown.length = 0
+  })
+
+  it('darkens the way into the sidebar, and says why', async () => {
+    const session = seed('k7d2ph')
+    // The state itself, not a flag standing in for it: the session derives `isMidTurn` from
+    // this exactly as the card reads it back.
+    session.pendingToolCalls.value = [{ id: 'tc1', name: 'read_note', input: {} }]
+
+    const view = await mountCard(['k7d2ph'])
+    const promote = action(view, 'panel-right-open')
+
+    expect(promote.props('disabled')).toBe(true)
+    expect(promote.props('tooltip')).toContain('still working')
+  })
+
+  it('leaves it alone when the conversation is idle', async () => {
+    seed('k7d2ph')
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(action(view, 'panel-right-open').props('disabled')).toBe(false)
+  })
+
+  it('darkens the way back to the margin, and says why', async () => {
+    const session = seed('k7d2ph', { kind: 'chat' }, [
+      message({ id: 'u1', role: 'user', content: 'What does this mean?' }),
+    ])
+    session.isStreaming.value = true
+
+    const view = await mountCard(['k7d2ph'])
+    const back = view
+      .findAllComponents(Button)
+      .find((button) => button.props('text') === 'Back to comment')
+
+    expect(back!.props('disabled')).toBe(true)
+    expect(back!.props('tooltip')).toContain('still working')
+  })
+
+  it('says why a promotion was refused rather than claiming it happened', async () => {
+    seed('k7d2ph')
+    expand.mockResolvedValue(false)
+
+    const view = await mountCard(['k7d2ph'])
+    await action(view, 'panel-right-open').vm.$emit('click')
+    await nextTick()
+
+    expect(Notice.shown).toContain('Finish or dismiss the pending step first')
+    // Nothing has been handed to the sidebar, so a sheet must not go anywhere.
+    expect(view.emitted('promoted')).toBeUndefined()
+  })
+
+  it('says why a return to the margin was refused', async () => {
+    seed('k7d2ph', { kind: 'chat' }, [message({ id: 'u1', role: 'user', content: 'Why?' })])
+    collapse.mockResolvedValue(false)
+
+    const view = await mountCard(['k7d2ph'])
+    const back = view
+      .findAllComponents(Button)
+      .find((button) => button.props('text') === 'Back to comment')
+    await back!.vm.$emit('click')
+    await nextTick()
+
+    expect(Notice.shown).toContain('Finish or dismiss the pending step first')
+  })
+})
+
+/**
+ * A move already on its way.
+ *
+ * The service writes the file and only then moves the maps that answer for the id; a second
+ * press landing inside that gap is refused, and it is a different refusal from a turn in
+ * flight — nothing is wrong, the thing asked for is already happening.
+ */
+describe('a card over a comment that is being moved', () => {
+  beforeEach(() => {
+    open.value = 'k7d2ph'
+    Notice.shown.length = 0
+  })
+
+  it('darkens the way into the sidebar while the move runs', async () => {
+    const session = seed('k7d2ph')
+    session.moving.value = true
+
+    const view = await mountCard(['k7d2ph'])
+    const promote = action(view, 'panel-right-open')
+
+    expect(promote.props('disabled')).toBe(true)
+    expect(promote.props('tooltip')).toBe('This comment is being moved')
+  })
+
+  it('darkens the way back to the margin while the move runs', async () => {
+    const session = seed('k7d2ph', { kind: 'chat' }, [
+      message({ id: 'u1', role: 'user', content: 'Why?' }),
+    ])
+    session.moving.value = true
+
+    const view = await mountCard(['k7d2ph'])
+    const back = view
+      .findAllComponents(Button)
+      .find((button) => button.props('text') === 'Back to comment')
+
+    expect(back!.props('disabled')).toBe(true)
+    expect(back!.props('tooltip')).toBe('This comment is being moved')
+  })
+
+  it('says the move is already happening rather than blaming the agent', async () => {
+    const session = seed('k7d2ph')
+    session.moving.value = true
+
+    const view = await mountCard(['k7d2ph'])
+    await action(view, 'panel-right-open').vm.$emit('click')
+    await nextTick()
+
+    expect(Notice.shown).toEqual(['Already moving this comment'])
+    // The service is not asked at all: it would refuse, and the card knows why already.
+    expect(expand).not.toHaveBeenCalled()
+    expect(view.emitted('promoted')).toBeUndefined()
+  })
+
+  it('says the same for a return to the margin', async () => {
+    const session = seed('k7d2ph', { kind: 'chat' }, [
+      message({ id: 'u1', role: 'user', content: 'Why?' }),
+    ])
+    session.moving.value = true
+
+    const view = await mountCard(['k7d2ph'])
+    const back = view
+      .findAllComponents(Button)
+      .find((button) => button.props('text') === 'Back to comment')
+    await back!.vm.$emit('click')
+    await nextTick()
+
+    expect(Notice.shown).toEqual(['Already moving this comment'])
+    expect(collapse).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * An agent can be deleted while a comment that ran on it is still in the vault.
+ *
+ * `session.agent` falls back to the default one so the conversation keeps working, but the
+ * picker's value is the raw `agentId`, and a `select` given a value none of its options carry
+ * shows the first option instead — the card would sit there naming an agent this comment has
+ * nothing to do with. The id is shown as itself, marked, which is at least true.
+ */
+describe('a comment whose agent has been deleted', () => {
+  beforeEach(() => {
+    open.value = 'k7d2ph'
+    AgentRegistry.destroy()
+    AbeleConfig.getInstance().ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: [createAgent({ id: 'writer', name: 'Writer' })],
+      commentAgentId: '',
+    }
+  })
+
+  it('keeps the missing agent in the list, and says that is what it is', async () => {
+    seed('k7d2ph', { agentId: ref('gone-agent') })
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.findComponent(Dropdown).props('options')).toEqual([
+      { value: 'writer', display: 'Writer' },
+      { value: 'gone-agent', display: 'gone-agent (deleted)' },
+    ])
+    expect(view.findComponent(Dropdown).props('modelValue')).toBe('gone-agent')
   })
 })
