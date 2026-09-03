@@ -220,7 +220,15 @@ onMounted(() => {
   growth = new view.MutationObserver(() => {
     if (stick) scrollToEnd()
   })
-  growth.observe(el, { childList: true, subtree: true, characterData: true })
+  // `attributes` is for the thinking block: unfolding a `<details>` changes no node and no
+  // text, only its own `open`, and the reasoning it reveals pushes the answer below the fold.
+  growth.observe(el, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: ['open'],
+  })
 })
 
 onBeforeUnmount(() => {

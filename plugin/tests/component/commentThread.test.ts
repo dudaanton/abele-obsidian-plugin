@@ -234,6 +234,33 @@ describe('following a reply that is still arriving', () => {
     view.unmount()
   })
 
+  it('keeps the end in view when the thinking block is opened', async () => {
+    // A `<details>` opening changes no node and no text: only its own `open` attribute. An
+    // observer watching `childList` alone sees nothing, so the block unfolds, the thread grows
+    // by however long the reasoning was, and the answer under it goes below the fold.
+    const messages = ref<ChatMessage[]>([
+      message({ id: 'a1', role: 'assistant', content: 'So.', thinking: 'Working it out' }),
+    ])
+    const session = fakeChatSession({ messages })
+    const view = mount(CommentThread, {
+      props: { session: session as unknown as ChatSession },
+      attachTo: document.body,
+    })
+    const root = view.element as HTMLElement
+    // The markdown lands first: its own arrival is a mutation, and this test is about the one
+    // that follows it.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    sized(root, 400)
+    root.scrollTop = 300
+
+    root.querySelector('.abele-comment-thread__thinking')?.setAttribute('open', '')
+    sized(root, 700)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(root.scrollTop).toBe(700)
+    view.unmount()
+  })
+
   it('keeps the end in view while the markdown of a reply is still landing', async () => {
     // `Markdown` renders through Obsidian, which answers whenever it answers: the thread is
     // nearly empty when it mounts and grows several times afterwards with nothing in the
