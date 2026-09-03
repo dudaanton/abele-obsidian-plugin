@@ -53,6 +53,26 @@ export class CommentService implements CommentInfoSource {
   /** Loads in flight: a field that repaints twice must not start two of them. */
   private readonly loading = new Map<string, Promise<ChatSession | null>>()
 
+  /**
+   * Ids with no file behind them.
+   *
+   * Without this a marker whose comment has been deleted by hand livelocks the editor: the
+   * load finds nothing, the answer repaints the field, the field touches the id again. They
+   * are forgotten whenever the folder's contents may have changed under us.
+   */
+  private readonly missing = new Set<string>()
+
+  /**
+   * Bumped when a comment is removed, so a load already reading that file does not adopt it
+   * afterwards and quietly resurrect a comment the person deleted.
+   */
+  private readonly generations = new Map<string, number>()
+
+  /** Loads started since the last repaint, and the notes waiting to hear about them. */
+  private readonly batch: Promise<ChatSession | null>[] = []
+  private readonly pendingNotes = new Set<string>()
+  private settling = false
+
   private folder(): string {
     return AbeleConfig.getInstance().ai.commentFolder || DEFAULT_AI_SETTINGS.commentFolder
   }
@@ -84,6 +104,9 @@ export class CommentService implements CommentInfoSource {
     const id = newCommentId()
 
     await app.vault.process(note, (text) => insertMarker(text, pos, id).text)
+
+    // The folder has a new file in it, so what was known to be absent may not be any more.
+    this.missing.clear()
 
     const config = AbeleConfig.getInstance().ai
     const registry = AgentRegistry.getInstance()
@@ -144,12 +167,46 @@ export class CommentService implements CommentInfoSource {
   }
 
   touch(notePath: string, ids: string[]): void {
-    const unseen = ids.filter((id) => !this.sessionFor(id) && !this.loading.has(id))
+    const unseen = ids.filter(
+      (id) => !this.sessionFor(id) && !this.loading.has(id) && !this.missing.has(id)
+    )
     if (!unseen.length) return
 
-    void Promise.all(unseen.map((id) => this.load(id))).then(() => {
-      // The field asked before the files were read; this is what tells it to ask again.
-      dispatchCommentsChanged(notePath)
+    for (const id of unseen) this.batch.push(this.load(id))
+    this.pendingNotes.add(notePath)
+    this.scheduleRepaint()
+  }
+
+  /**
+   * One repaint per batch of loads, once they have all settled.
+   *
+   * The field calls `touch` once per marker inside a single synchronous rebuild, so answering
+   * each one separately would repaint a note with five comments five times, and every repaint
+   * asks again. The microtask is what collects that whole rebuild into one answer; nothing is
+   * dispatched at all unless a load actually produced a session, which is what keeps a marker
+   * with no file from starting the cycle over.
+   */
+  private scheduleRepaint(): void {
+    if (this.settling) return
+    this.settling = true
+
+    void Promise.resolve().then(async () => {
+      let produced = false
+
+      // A load may adopt a session whose watcher starts another; draining rather than
+      // awaiting once keeps those in the same batch instead of giving them a repaint each.
+      while (this.batch.length) {
+        const wave = this.batch.splice(0)
+        const results = await Promise.allSettled(wave)
+        produced ||= results.some((r) => r.status === 'fulfilled' && r.value !== null)
+      }
+
+      const notes = [...this.pendingNotes]
+      this.pendingNotes.clear()
+      this.settling = false
+
+      if (!produced) return
+      for (const note of notes) dispatchCommentsChanged(note)
     })
   }
 
@@ -160,13 +217,25 @@ export class CommentService implements CommentInfoSource {
     const pending = this.loading.get(id)
     if (pending !== undefined) return pending
 
+    const generation = this.generations.get(id) ?? 0
+
     const task = (async (): Promise<ChatSession | null> => {
       const { app } = GlobalStore.getInstance()
       const file = app.vault.getAbstractFileByPath(this.commentPath(id))
-      if (!(file instanceof TFile)) return null
+      if (!(file instanceof TFile)) {
+        this.missing.add(id)
+        return null
+      }
 
       const session = new ChatSession(ChatService.getInstance(), undefined, { kind: 'comment' })
       await session.load(file)
+
+      if ((this.generations.get(id) ?? 0) !== generation) {
+        // Removed while this was reading it. Filing it now would put a deleted comment back.
+        session.destroy()
+        return null
+      }
+
       this.adopt(id, session)
       return session
     })()
@@ -253,6 +322,10 @@ export class CommentService implements CommentInfoSource {
    * cheaper to write and to trust than an index that has to be kept correct.
    */
   async handleRename(oldPath: string, newPath: string): Promise<void> {
+    // Every comment file is about to be read anyway; an id written off earlier deserves
+    // another look rather than staying blank for the rest of the session.
+    this.missing.clear()
+
     const { app } = GlobalStore.getInstance()
     const folder = app.vault.getAbstractFileByPath(this.folder())
     if (!(folder instanceof TFolder)) return
@@ -288,6 +361,11 @@ export class CommentService implements CommentInfoSource {
    * and the file. A marker deleted by hand leaves the file behind; orphans are not collected.
    */
   async remove(id: string): Promise<void> {
+    // Before the first await: a load already reading this file checks it after, and a marker
+    // the person left behind must not fetch the file back.
+    this.generations.set(id, (this.generations.get(id) ?? 0) + 1)
+    this.missing.add(id)
+
     const session = this.sessionFor(id)
     const notePath = session?.anchor.value?.note ?? (await this.anchorOnDisk(id))?.note ?? null
 
@@ -337,6 +415,11 @@ export class CommentService implements CommentInfoSource {
     // Expanded sessions belong to ChatService, which disposes of its own.
     this.expanded.clear()
     this.loading.clear()
+    this.missing.clear()
+    this.generations.clear()
+    this.batch.length = 0
+    this.pendingNotes.clear()
+    this.settling = false
     this.open.value = null
     CommentService.instance = null
   }

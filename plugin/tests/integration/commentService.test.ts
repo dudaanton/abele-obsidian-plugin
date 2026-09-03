@@ -159,6 +159,25 @@ describe('removing a comment', () => {
     expect(service.sessions.has(id)).toBe(false)
   })
 
+  /**
+   * The editor may have started reading the file the moment before the person hit delete.
+   * Adopting that read afterwards would put the comment back with no file behind it.
+   */
+  it('does not adopt a load that was already reading the file', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const id = session.commentId!
+    service.destroy()
+
+    const reloaded = CommentService.getInstance()
+    const inFlight = reloaded.load(id)
+    await reloaded.remove(id)
+
+    expect(await inFlight).toBeNull()
+    expect(reloaded.sessions.has(id)).toBe(false)
+    expect(reloaded.get(id)).toBeUndefined()
+  })
+
   it('leaves the marker in place while another comment still uses it', async () => {
     const service = CommentService.getInstance()
     const first = await service.create(noteFile(), SELECTION_END, 'The selected passage')
