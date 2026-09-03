@@ -15,8 +15,11 @@
 
     <template #actions>
       <!-- Three lines is what keeps a stack of pins short; the rest is one press away, and
-           this is that press. `Card` stops a click in here from opening the card. -->
+           this is that press. Drawn only when there is something behind the clamp: a control
+           that does nothing when pressed reads as a broken one. `Card` stops a click in here
+           from opening the card. -->
       <Icon
+        v-if="clamped || open"
         :icon="open ? 'chevron-up' : 'chevron-down'"
         :tooltip="open ? 'Clamp this message back to three lines' : 'Show this message in full'"
         @click="open = !open"
@@ -24,7 +27,12 @@
       <Icon icon="pin-off" tooltip="Take this message out of the margin" @click="unpin" />
     </template>
 
-    <Markdown class="abele-comment-pin__body" :text="message.content" :file-path="pin.notePath" />
+    <Markdown
+      ref="body"
+      class="abele-comment-pin__body"
+      :text="message.content"
+      :file-path="pin.notePath"
+    />
   </Card>
 </template>
 
@@ -37,7 +45,7 @@
  * `pinned` here, and the message it shows is looked up rather than passed in, so a retry that
  * takes the message away takes the card with it instead of leaving a card over nothing.
  */
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch, type ComponentPublicInstance } from 'vue'
 import Card from './obsidian/Card.vue'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
@@ -83,6 +91,47 @@ function reveal(): void {
 }
 
 const unpin = () => void session.value?.unpin(props.pin.messageId)
+
+/**
+ * Whether the clamp is actually holding anything back.
+ *
+ * `Markdown` renders through Obsidian and answers whenever it answers, so a body is empty at
+ * mount and grows several times afterwards — measuring once would say "it fits" about every
+ * message there is. The observer is built from the element's own window, not the ambient one:
+ * a note can be open in a popout, and `ResizeObserver` from the wrong window observes nothing.
+ */
+const body = ref<ComponentPublicInstance | null>(null)
+const clamped = ref(false)
+
+let growth: ResizeObserver | null = null
+
+const measure = (): void => {
+  const el = body.value?.$el as HTMLElement | undefined
+  // Only meaningful while the clamp is on; unfolded, the chevron stays so it can be folded back.
+  if (el && !open.value) clamped.value = el.scrollHeight - el.clientHeight > 1
+}
+
+watch(
+  body,
+  (instance) => {
+    growth?.disconnect()
+    growth = null
+
+    const el = instance?.$el as HTMLElement | undefined
+    const view = el?.ownerDocument.defaultView
+    if (!el || !view?.ResizeObserver) return
+
+    growth = new view.ResizeObserver(() => measure())
+    growth.observe(el)
+    measure()
+  },
+  { flush: 'post' }
+)
+
+onBeforeUnmount(() => {
+  growth?.disconnect()
+  growth = null
+})
 </script>
 
 <style lang="scss">

@@ -338,6 +338,24 @@ export class CommentEntries implements PluginValue {
   private frame: number | null = null
 
   /**
+   * A pin card that changes height under the stack.
+   *
+   * Unfolding a clamped message, and the Markdown inside it finishing its render, both change
+   * how tall a pin is without CodeMirror raising anything — and every entry below the pinned
+   * block is placed from that height. The observer is built from the scroller's own window: a
+   * note can be open in a popout, and one made in the wrong window observes nothing.
+   */
+  private sizes: ResizeObserver | null = null
+
+  /**
+   * The window this editor is in, which is not the main one when the note is in a popout.
+   * The return type is inferred rather than written: spelling it out needs `globalThis`.
+   */
+  private viewWindow() {
+    return this.view.scrollDOM.ownerDocument.defaultView
+  }
+
+  /**
    * A pin is parked at `scrollDOM.scrollTop`, and CodeMirror raises no update for a scroll
    * inside the rendered viewport — so the scroller itself is the signal. Passive, and it
    * returns at once when this note has no pins, which is nearly always.
@@ -348,6 +366,9 @@ export class CommentEntries implements PluginValue {
   }
 
   constructor(private readonly view: EditorView) {
+    const win = this.viewWindow()
+    if (win?.ResizeObserver) this.sizes = new win.ResizeObserver(() => this.positionSoon())
+
     this.sync()
     this.view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true })
   }
@@ -391,6 +412,7 @@ export class CommentEntries implements PluginValue {
   destroy() {
     this.destroyed = true
     this.view.scrollDOM.removeEventListener('scroll', this.onScroll)
+    this.sizes?.disconnect()
     if (this.frame !== null) window.cancelAnimationFrame(this.frame)
     this.frame = null
     const store = GlobalStore.getInstance()
@@ -489,12 +511,15 @@ export class CommentEntries implements PluginValue {
       new CommentPin({ id, commentId, messageId, notePath, markerFrom: marker.from })
     )
 
+    this.sizes?.observe(el)
+
     const hosted: HostedPin = { key, id, el }
     this.hostedPins.push(hosted)
     return hosted
   }
 
   private dropPin(hosted: HostedPin, store: GlobalStore) {
+    this.sizes?.unobserve(hosted.el)
     const index = store.pinsContainers.value.findIndex((pin) => pin.id === hosted.id)
     if (index !== -1) {
       store.pinsContainers.value[index].cleanup()

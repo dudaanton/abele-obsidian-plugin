@@ -118,6 +118,16 @@ describe('a pinned message in the margin', () => {
     expect(reliableScrollTo).toHaveBeenCalledWith(MARKER_FROM)
   })
 
+  it('offers no way to unfold a message that already fits', async () => {
+    // happy-dom lays nothing out, so every body measures as fitting — which is the case this
+    // asserts: a control that would do nothing when pressed is not drawn.
+    seed([message({ role: 'assistant', content: 'Short.' })])
+
+    const view = await mountPin()
+
+    expect(view.findAllComponents(Icon).map((i) => i.props('icon'))).toEqual(['pin', 'pin-off'])
+  })
+
   it('renders nothing at all when the message has left the conversation', async () => {
     // A retry or a branch takes a message away; a card for one nobody can render is a hole.
     seed([message({ id: 'm9', role: 'assistant', content: 'Another turn entirely.' })])

@@ -429,6 +429,41 @@ describe('the margin provider and pinned messages', () => {
     provider.destroy()
   })
 
+  it('re-stacks when a pin card changes height under it', async () => {
+    // Unfolding a clamped pin changes nothing CodeMirror raises an update for, and the pin
+    // below it would go on sitting where the shorter card left it — drawn over the taller one.
+    const frame = () => new Promise((resolve) => window.requestAnimationFrame(() => resolve(null)))
+    const observed: Element[] = []
+    let fire: (() => void) | null = null
+    const RealResizeObserver = window.ResizeObserver
+    window.ResizeObserver = class {
+      constructor(cb: () => void) {
+        fire = cb
+      }
+      observe(el: Element) {
+        observed.push(el)
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver
+
+    sourceWith(['m1'])
+    const view = fakeView(stateFor(DOC))
+    const provider = new CommentEntries(view)
+    await frame()
+    const spy = vi.spyOn(MarginOverlay.prototype, 'position')
+
+    expect(observed.some((el) => el.classList.contains('abele-comment-pin-container'))).toBe(true)
+    fire?.()
+    await frame()
+
+    expect(spy).toHaveBeenCalledTimes(1)
+
+    spy.mockRestore()
+    provider.destroy()
+    window.ResizeObserver = RealResizeObserver
+  })
+
   it('stops listening to the scroller once the view is gone', () => {
     sourceWith(['m1'])
     const view = fakeView(stateFor(DOC))
