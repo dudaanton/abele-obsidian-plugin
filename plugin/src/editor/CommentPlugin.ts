@@ -18,10 +18,20 @@ import {
   StateEffect,
   StateField,
 } from '@codemirror/state'
-import { Decoration, DecorationSet, EditorView } from '@codemirror/view'
+import {
+  Decoration,
+  DecorationSet,
+  EditorView,
+  PluginValue,
+  ViewPlugin,
+  ViewUpdate,
+} from '@codemirror/view'
 import { MarkdownView, editorInfoField, editorLivePreviewField } from 'obsidian'
 import { CommentMarkerWidget } from './CommentMarkerWidget'
-import { parseMarkers, resolveQuote } from './commentMarkers'
+import { ParsedMarker, parseMarkers, resolveQuote } from './commentMarkers'
+import { CommentEntry } from '@/entities/Comment'
+import { MarginEntry, marginOverlayFor } from './MarginOverlay'
+import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 
 export type CommentState = 'idle' | 'busy' | 'pending' | 'error'
@@ -74,7 +84,19 @@ function markerState(infos: (CommentInfo | undefined)[]): CommentState {
  * Until then the click is only recorded, so that a live check can show the widget is wired.
  */
 function handleMarkerClick(ids: string[]): void {
-  console.debug('abele: comment marker clicked', ids.join(','))
+  const view = activeEditorView()
+  const overlay = view ? marginOverlayFor(view) : null
+  // `hasRoom()` answers `false` until the first measurement, so ask for one before reading it.
+  overlay?.position()
+  const room = overlay?.hasRoom() ?? false
+
+  // Phase 4 opens the card here; phase 5 sends it to the sheet instead when there is no room.
+  console.debug('abele: comment marker clicked', ids.join(','), 'margin room:', room)
+}
+
+function activeEditorView(): EditorView | null {
+  const mdView = GlobalStore.getInstance().app.workspace.getActiveViewOfType(MarkdownView)
+  return (mdView as unknown as { editor?: { cm?: EditorView } })?.editor?.cm ?? null
 }
 
 function buildCommentDecorations(state: EditorState): DecorationSet {
@@ -216,8 +238,113 @@ export function dispatchCommentsChanged(notePath: string): void {
   })
 }
 
+/** A marker's host in the margin: the element Vue teleports a `CommentCard` into. */
+interface HostedEntry {
+  /** The marker's ids joined — the identity that survives an edit elsewhere in the note. */
+  key: string
+  /** The teleport id, written on the mount point as `data-comment-id`. */
+  id: string
+  el: HTMLElement
+}
+
+/**
+ * The second provider of the margin overlay, beside footnotes.
+ *
+ * A host is keyed by its marker's ids rather than by its position, so that typing earlier in
+ * the note does not tear the card down and take a half-written question with it. The live
+ * position travels to the overlay as `anchorPos`, which is rebuilt on every sync.
+ */
+class CommentEntries implements PluginValue {
+  private hosted: HostedEntry[] = []
+
+  constructor(private readonly view: EditorView) {
+    this.sync()
+  }
+
+  update(update: ViewUpdate) {
+    if (
+      update.docChanged ||
+      update.state.field(editorLivePreviewField, false) !==
+        update.startState.field(editorLivePreviewField, false) ||
+      update.transactions.some((tr) => tr.effects.some((effect) => effect.is(commentsChanged)))
+    ) {
+      this.sync()
+    }
+
+    // The same three signals the footnote provider re-measures on. A card's height is not
+    // known until it has been laid out, so the re-stack waits for the next frame.
+    if (update.geometryChanged || update.viewportChanged || update.docChanged) {
+      window.requestAnimationFrame(() => marginOverlayFor(this.view).position())
+    }
+  }
+
+  destroy() {
+    const store = GlobalStore.getInstance()
+    for (const hosted of [...this.hosted]) this.drop(hosted, store)
+    // Not `destroy()`: the overlay is shared with footnotes, and `FootnotePlugin` owns that call.
+    marginOverlayFor(this.view).setEntries('comment', [])
+  }
+
+  private sync() {
+    const store = GlobalStore.getInstance()
+    const state = this.view.state
+    const notePath = state.field(editorInfoField, false)?.file?.path ?? ''
+    const live = state.field(editorLivePreviewField, false)
+    const markers = notePath && live ? parseMarkers(state.doc.toString()) : []
+
+    for (const hosted of [...this.hosted]) {
+      if (!markers.some((marker) => marker.ids.join(',') === hosted.key)) this.drop(hosted, store)
+    }
+
+    const entries: MarginEntry[] = markers.map((marker) => {
+      const key = marker.ids.join(',')
+      const hosted =
+        this.hosted.find((candidate) => candidate.key === key) ??
+        this.host(key, marker, notePath, store)
+
+      return { id: hosted.id, kind: 'comment' as const, anchorPos: marker.from, el: hosted.el }
+    })
+
+    marginOverlayFor(this.view).setEntries('comment', entries)
+    window.requestAnimationFrame(() => marginOverlayFor(this.view).position())
+  }
+
+  private host(
+    key: string,
+    marker: ParsedMarker,
+    notePath: string,
+    store: GlobalStore
+  ): HostedEntry {
+    const id = genid()
+    const el = createDiv({ cls: 'abele-comment-widget-container' })
+    el.id = id
+    el.createDiv({ attr: { 'data-comment-id': id }, cls: 'abele-vue-mount' })
+
+    store.commentsContainers.value.push(
+      new CommentEntry({ id, ids: [...marker.ids], notePath, markerFrom: marker.from })
+    )
+
+    const hosted: HostedEntry = { key, id, el }
+    this.hosted.push(hosted)
+    return hosted
+  }
+
+  private drop(hosted: HostedEntry, store: GlobalStore) {
+    const index = store.commentsContainers.value.findIndex((entry) => entry.id === hosted.id)
+    if (index !== -1) {
+      store.commentsContainers.value[index].cleanup()
+      store.commentsContainers.value.splice(index, 1)
+    }
+    hosted.el.remove()
+    this.hosted = this.hosted.filter((candidate) => candidate !== hosted)
+  }
+}
+
+const commentEntries = ViewPlugin.fromClass(CommentEntries)
+
 export const commentExtensions: Extension = [
   commentStateField,
   commentAtomicRanges,
   commentCursorFilter,
+  commentEntries,
 ]
