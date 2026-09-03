@@ -202,6 +202,26 @@
             @click="migrateChats"
           />
         </Setting>
+
+        <Setting
+          name="Comment agent"
+          desc="Which agent answers comment chats. Utility agents are offered too — the one
+            seeded for comments is one."
+        >
+          <Dropdown
+            :model-value="commentAgentId"
+            :options="commentAgentOptions"
+            @update:model-value="updateField('commentAgentId', $event)"
+          />
+        </Setting>
+
+        <Setting name="Comment folder" desc="Where comment chats are stored">
+          <Input
+            :model-value="commentFolder"
+            placeholder="AI/Comments"
+            @update:model-value="updateField('commentFolder', $event)"
+          />
+        </Setting>
       </Section>
 
       <Section title="Integrations">
@@ -303,7 +323,10 @@
           />
         </Setting>
 
-        <Setting name="OpenRouter API key" desc="Stored in the keychain, shared with image generation.">
+        <Setting
+          name="OpenRouter API key"
+          desc="Stored in the keychain, shared with image generation."
+        >
           <div class="abele-ai-provider__secret">
             <span v-if="getSecretDisplay(voiceKeyName)" class="abele-ai-provider__secret-mask">
               {{ getSecretDisplay(voiceKeyName) }}
@@ -602,12 +625,10 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TRANSCRIPTION_MODELS } from '@/ai/transcription'
 import { DEFAULT_RETRY, type RetrySettings } from '@/ai/retry'
-import {
-  DEFAULT_VOICE_SETTINGS,
-  voiceKeyId,
-  type VoiceSettings,
-} from '@/ai/transcriptionSettings'
+import { DEFAULT_VOICE_SETTINGS, voiceKeyId, type VoiceSettings } from '@/ai/transcriptionSettings'
 import { ChatStorage } from '@/ai/ChatStorage'
+import { CommentService } from '@/ai/CommentService'
+import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { OpenAIClient } from '@/ai/client'
 import type { RemoteModel } from '@/ai/client'
 import type { AiProvider, AiModelConfig, AiPrompts } from '@/ai/types'
@@ -656,6 +677,20 @@ const migrateChats = async () => {
 const enabled = ref(config.ai.enabled)
 const providers = ref<AiProvider[]>(JSON.parse(JSON.stringify(config.ai.providers)))
 const chatFolder = ref(config.ai.chatFolder)
+const commentAgentId = ref(config.ai.commentAgentId ?? '')
+const commentFolder = ref(config.ai.commentFolder ?? DEFAULT_AI_SETTINGS.commentFolder)
+
+/**
+ * Utility agents are on this list on purpose, unlike the chat picker's: a comment agent is
+ * meant to be a utility one, and the agent seeded for comments is created that way. The empty
+ * value is the default agent, not "none" — a comment always runs on something.
+ */
+const commentAgentOptions = computed(() => [
+  { value: '', display: 'Default agent' },
+  ...AgentRegistry.getInstance()
+    .list({ includeUtility: true })
+    .map((agent) => ({ value: agent.id, display: agent.name })),
+])
 const braveSearchApiKey = ref(config.ai.braveSearchApiKey)
 const imageProviders = ref(JSON.parse(JSON.stringify(config.ai.imageProviders || [])))
 const defaultImageModel = ref(config.ai.defaultImageModel || '')
@@ -730,6 +765,8 @@ const save = debounce(async () => {
     auxiliaryModelId: auxiliaryModelId.value,
     sequentialAuxiliary: sequentialAuxiliary.value,
     chatFolder: chatFolder.value,
+    commentAgentId: commentAgentId.value,
+    commentFolder: commentFolder.value,
     braveSearchApiKey: braveSearchApiKey.value,
     imageProviders: JSON.parse(JSON.stringify(imageProviders.value)),
     defaultImageModel: defaultImageModel.value,
@@ -895,7 +932,7 @@ const askRemoveImageProvider = (idx: number) => {
 }
 
 const updateImageProvider = (idx: number, key: string, val: string) => {
-  ;(imageProviders.value[idx] as any)[key] = val
+  imageProviders.value[idx][key] = val
   save()
 }
 
@@ -1204,6 +1241,14 @@ const updateField = (field: string, value: string) => {
   switch (field) {
     case 'chatFolder':
       chatFolder.value = value
+      break
+    case 'commentAgentId':
+      commentAgentId.value = value
+      break
+    case 'commentFolder':
+      commentFolder.value = value
+      // Ids that failed to load under the old folder deserve another try under the new one.
+      CommentService.getInstance().resetMissing()
       break
   }
   save()

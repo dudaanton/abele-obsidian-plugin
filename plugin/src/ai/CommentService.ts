@@ -150,6 +150,16 @@ export class CommentService implements CommentInfoSource {
     return `${this.folder()}/${id}.abchat`
   }
 
+  /**
+   * Forgets every id that failed to load.
+   *
+   * Called when `commentFolder` changes in settings: an id written off under the old folder
+   * would otherwise never be asked for again, even though the new folder may hold its file.
+   */
+  resetMissing(): void {
+    this.missing.clear()
+  }
+
   /** True for a file this service owns. A path join, because the name *is* the id. */
   isCommentFile(file: TFile): boolean {
     return file.path === this.commentPath(file.basename)
