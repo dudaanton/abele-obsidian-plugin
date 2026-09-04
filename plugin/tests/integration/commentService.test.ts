@@ -6,7 +6,7 @@
  * file only ever has one session writing it.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
-import { computed, nextTick, toRaw } from 'vue'
+import { computed, nextTick } from 'vue'
 import { TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
 import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
@@ -1021,59 +1021,184 @@ describe('which card is open', () => {
   })
 })
 
-describe('choosing a host for the card', () => {
+describe('a comment where the margin has no room for it', () => {
   const hostFor = (ids: string[]) =>
     new CommentEntry({ id: 'vue-1', ids, notePath: 'Notes/A.md', markerFrom: SELECTION_END })
 
-  it('leaves the card in the margin when the pane has room for one', async () => {
+  const shown = async () => {
     const service = CommentService.getInstance()
     const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
     const id = session.commentId as string
+    return { service, session, id }
+  }
+
+  it('leaves the card in the margin when the pane has room for one', async () => {
+    const { service, id } = await shown()
     GlobalStore.getInstance().commentsContainers.value = [hostFor([id])]
 
     service.openFrom([id], true)
 
     expect(service.open.value).toBe(id)
-    expect(GlobalStore.getInstance().commentSheet.value).toBeNull()
+    expect(ChatService.getInstance().getAllSessions()).toEqual([])
   })
 
-  it('sends it to a sheet when there is no margin to put it in', async () => {
-    const service = CommentService.getInstance()
-    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
-    const id = session.commentId as string
-    const host = hostFor([id])
-    GlobalStore.getInstance().commentsContainers.value = [host]
+  /**
+   * A phone, and a split too narrow for a sidenote. There is no second implementation of a
+   * conversation to open here: the sidebar's own chat view is full-screen on a phone and has
+   * the composer, the dictation, the approvals and the message list already.
+   */
+  it('shows it in the sidebar when there is nowhere to hang a card', async () => {
+    const { service, session, id } = await shown()
+    const reveal = vi.spyOn(ChatService.getInstance(), 'revealSidebar')
 
     service.openFrom([id], false)
+    await flush()
 
-    // The sheet expands the card itself, on mount: one value says which card is open, and the
-    // sheet is the thing that knows it is showing one.
-    // `toRaw`: the store's list is a deep-reactive ref, so what came back is a proxy of the
-    // very entry the margin is hosting — which is the point of the assertion.
-    expect(toRaw(GlobalStore.getInstance().commentSheet.value)).toBe(host)
+    expect(ChatService.getInstance().getSession(session.id)).toBe(session)
+    expect(reveal).toHaveBeenCalled()
+    // The margin is left alone: the conversation is on screen somewhere else entirely.
     expect(service.open.value).toBeNull()
   })
 
-  it('still opens a sheet when the marker has no host in the margin', async () => {
-    // The hosts belong to live-preview views and are dropped when one closes. A press that
-    // lands between the drop and the rebuild must still open the conversation; the note comes
-    // from the comment's own anchor, which is what the sheet titles itself with.
-    const service = CommentService.getInstance()
-    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
-    const id = session.commentId as string
+  /**
+   * A tab, and nothing else about it changed. This is the whole point of the third bucket: a
+   * comment being read in the sidebar is still a comment — same agent, same file, same kind,
+   * and no entry in a history that lists the conversations somebody goes looking for.
+   */
+  it('keeps it a comment: the kind, the maps and the history are untouched', async () => {
+    const { service, session, id } = await shown()
+
+    await service.showInSidebar(id)
+
+    expect(session.kind).toBe('comment')
+    expect(service.sessionFor(id)).toBe(session)
+    expect(service.sessions.get(id)).toBe(session)
+    expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
+  })
+
+  it('repaints the marker, which is drawn from the note it is anchored in', async () => {
+    const { service, id } = await shown()
+    vi.mocked(dispatchCommentsChanged).mockClear()
+
+    await service.showInSidebar(id)
+
+    expect(vi.mocked(dispatchCommentsChanged).mock.calls.flat()).toContain('Notes/A.md')
+  })
+
+  it('does not open a second tab for a comment already in one', async () => {
+    const { service, id } = await shown()
+
+    await service.showInSidebar(id)
+    await service.showInSidebar(id)
+
+    expect(ChatService.getInstance().tabOrder.value).toHaveLength(1)
+  })
+
+  /**
+   * Closing the tab is not ending the conversation: the same session goes on writing the same
+   * file from the margin, which is what the reader comes back to on a wider screen.
+   */
+  it('hands the session back alive when its tab is closed', async () => {
+    const { service, session, id } = await shown()
+    await service.showInSidebar(id)
+
+    await ChatService.getInstance().closeTab(session.id)
+
+    expect(session.isDestroyed).toBe(false)
+    expect(service.sessionFor(id)).toBe(session)
+    expect(ChatService.getInstance().getSession(session.id)).toBeNull()
+  })
+
+  it('repaints the marker on the way back out of the sidebar', async () => {
+    const { service, session, id } = await shown()
+    await service.showInSidebar(id)
+    vi.mocked(dispatchCommentsChanged).mockClear()
+
+    await ChatService.getInstance().closeTab(session.id)
+
+    expect(vi.mocked(dispatchCommentsChanged).mock.calls.flat()).toContain('Notes/A.md')
+  })
+
+  it('deletes a shown comment, its tab and its file together', async () => {
+    const { service, session, id } = await shown()
+    await service.showInSidebar(id)
+
+    await service.remove(id)
+
+    expect(ChatService.getInstance().getSession(session.id)).toBeNull()
+    expect(app.vault.getAbstractFileByPath(service.commentPath(id))).toBeNull()
+    expect(await noteText()).toBe(NOTE)
+  })
+
+  /**
+   * "Open as chat" from the sidebar: the tab it is already in becomes the chat's tab. A second
+   * one would be the same file open twice, with two log writers on it.
+   */
+  it('expands in place, without a second tab', async () => {
+    const { service, session, id } = await shown()
+    await service.showInSidebar(id)
+
+    expect(await service.expand(id)).toBe(true)
+
+    expect(session.kind).toBe('chat')
+    expect(ChatService.getInstance().tabOrder.value).toEqual([session.id])
+    expect(service.sessions.has(id)).toBe(false)
+  })
+
+  /** And back again, which must not leave the id marked as shown in a tab it no longer has. */
+  it('collapses out of an expanded comment without leaving a tab behind', async () => {
+    const { service, session, id } = await shown()
+    await service.showInSidebar(id)
+    await service.expand(id)
+
+    expect(await service.collapse(id)).toBe(true)
+
+    expect(session.kind).toBe('comment')
+    expect(ChatService.getInstance().getSession(session.id)).toBeNull()
+    expect(service.sessions.get(id)).toBe(session)
+  })
+
+  /**
+   * The same two refusals `expand` and `collapse` make. A turn in flight reads the kind, the
+   * agent and the scope; a move already running is halfway through rewriting all three.
+   */
+  it('refuses while the agent is mid-turn', async () => {
+    const { service, session, id } = await shown()
+    session.pendingToolCalls.value = [{ id: 'tc1', name: 'read_note', input: {} }] as never
+
+    expect(await service.showInSidebar(id)).toBe(false)
+    expect(ChatService.getInstance().getSession(session.id)).toBeNull()
+  })
+
+  it('refuses while the comment is already being moved', async () => {
+    const { service, session, id } = await shown()
+    session.moving.value = true
+
+    expect(await service.showInSidebar(id)).toBe(false)
+    expect(ChatService.getInstance().getSession(session.id)).toBeNull()
+  })
+
+  /**
+   * The hosts belong to live-preview views and are dropped when one closes; the comment is
+   * still loadable from its file, which is all the sidebar needs.
+   */
+  it('opens a comment the margin has no host for', async () => {
+    const { service, session, id } = await shown()
+    GlobalStore.getInstance().commentsContainers.value = []
 
     service.openFrom([id], false)
+    await flush()
 
-    expect(GlobalStore.getInstance().commentSheet.value?.ids).toEqual([id])
-    expect(GlobalStore.getInstance().commentSheet.value?.notePath).toBe('Notes/A.md')
+    expect(ChatService.getInstance().getSession(session.id)).toBe(session)
   })
 
   it('does nothing at all for an id nothing knows about', async () => {
     const service = CommentService.getInstance()
 
     service.openFrom(['zzz999'], false)
+    await flush()
 
-    expect(GlobalStore.getInstance().commentSheet.value).toBeNull()
+    expect(ChatService.getInstance().getAllSessions()).toEqual([])
   })
 })
 

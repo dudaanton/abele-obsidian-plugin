@@ -236,23 +236,19 @@ export class ChatService {
     const session = this.sessions.get(tabId)
     if (!session) return
 
-    // Save before closing
-    await session.save()
-    session.destroy()
-    this.sessions.delete(tabId)
-    this.tabOrder.value = this.tabOrder.value.filter((id) => id !== tabId)
-
-    if (this.sessions.size === 0) {
-      // Always keep at least one tab
-      this.createTab()
+    // A comment being read here is not this tab's to end: it belongs to the margin of a note
+    // and goes on writing the same file from there. The × hands it back instead.
+    const comments = CommentService.getInstance()
+    const commentId = session.commentId
+    if (session.kind === 'comment' && commentId && comments.isShown(commentId)) {
+      await comments.hideFromSidebar(commentId)
       return
     }
 
-    // If we closed the active tab, switch to adjacent
-    if (this.activeTabId.value === tabId) {
-      this.activeTabId.value = this.tabOrder.value[this.tabOrder.value.length - 1]
-    }
-    this.saveTabs()
+    // Save before closing
+    await session.save()
+    session.destroy()
+    this.dropTab(tabId)
   }
 
   /**
@@ -268,11 +264,21 @@ export class ChatService {
     if (!session) return
 
     await session.save()
-    this.sessions.delete(tabId)
+    this.dropTab(tabId)
+  }
+
+  /**
+   * Takes a tab out of the bar, saving nothing and destroying nothing.
+   *
+   * The half of closing and releasing that is only about the bar itself. Its own method
+   * because a comment whose file has just been deleted needs exactly this and neither of the
+   * others: there is nothing left to save it into, and the session is destroyed elsewhere.
+   */
+  dropTab(tabId: string): void {
+    if (!this.sessions.delete(tabId)) return
     this.tabOrder.value = this.tabOrder.value.filter((id) => id !== tabId)
 
-    // Always keep at least one tab, as closing does: an empty tab bar is a sidebar showing
-    // nothing at all, and the person has just been sent back to the note.
+    // Always keep at least one tab: an empty tab bar is a sidebar showing nothing at all.
     if (this.sessions.size === 0) {
       this.createTab()
       return
