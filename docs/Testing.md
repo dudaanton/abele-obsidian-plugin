@@ -136,6 +136,15 @@ Three files, three concerns:
   and a second marker pressed replaces that tab rather than adding one. The same press is made
   again under `app.emulateMobile(true)` in a phone-sized window, where the sidebar is the whole
   screen. Cleans the note, the file and the window size up after itself.
+- `phoneLayout.e2e.test.ts` — **every chat dialog, on a phone**. Switches the app to
+  `emulateMobile`, sizes the window to an iPhone (390×844), opens the chat, the settings dialog
+  tab by tab and the history, and asks each screen the questions a phone-width layout fails:
+  nothing past the right edge, a tab strip on one row and not shrunk below its tabs, at most one
+  scroller inside the body and none capped at a desktop `max-height`, a sheet the height of the
+  screen. Seeds a dozen skills and prompts so the lists have something to fill with, and removes
+  them. Writes a PNG of every screen to `/tmp/abele-phone/` — **look at them before a release**;
+  the 1.18.0 dialog passed every measurement anyone had thought to make and was still wrong to
+  the eye. Restores desktop mode and the window size after itself.
 
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
 "mega group", where a single resolution currently takes about two minutes.
