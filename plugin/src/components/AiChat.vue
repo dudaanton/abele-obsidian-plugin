@@ -28,8 +28,8 @@
             v-if="commentSession || expandedComment"
             icon="panel-right-close"
             with-bg
-            :disabled="blocked"
-            :tooltip="blocked ? blockedTooltip : 'Back to the note, as a comment in the margin'"
+            :disabled="backBlocked"
+            :tooltip="backBlocked ? blockedTooltip : 'Back to the note, as a comment in the margin'"
             @click="backToNote"
           />
           <!-- Only for a comment still being a comment: the same promotion the card offers,
@@ -1087,6 +1087,16 @@ const commentSession = computed(() => session.value?.kind === 'comment')
 const midTurn = computed(() => !!session.value?.isMidTurn)
 const moving = computed(() => !!session.value?.moving.value)
 const blocked = computed(() => midTurn.value || moving.value)
+
+/**
+ * The way back is dark for less than the promotion is.
+ *
+ * A comment merely being read here leaves by giving the tab back: the kind, the agent and the
+ * file are untouched, so a turn in flight is no reason to refuse — and somebody watching an
+ * answer arrive on a phone is exactly who wants to step back to the note while it does. An
+ * expanded comment leaves by being demoted, which is `expand` in reverse and keeps the guard.
+ */
+const backBlocked = computed(() => (commentSession.value ? moving.value : blocked.value))
 const blockedTooltip = computed(() =>
   moving.value
     ? 'This comment is being moved'

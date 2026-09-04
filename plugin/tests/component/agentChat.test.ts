@@ -443,14 +443,43 @@ describe('a comment shown in the sidebar', () => {
     expect(Notice.shown).toContain('Finish or dismiss the pending step first')
   })
 
-  it('is dark while the agent is mid-turn, both ways', () => {
+  /**
+   * Only the promotion is dark mid-turn. It rewrites what the file says the conversation is and
+   * rebinds its agent, neither of which may happen between a `tool_use` and its result — while
+   * going back to the note only gives the tab back, and somebody watching an answer arrive on a
+   * phone is exactly who wants to step back to the passage while it does.
+   */
+  it('darkens the promotion mid-turn and leaves the way back lit', () => {
     asComment()
     session.pendingToolCalls.value = [{ id: 'tc1', name: 'read_note', input: {} }] as never
 
     const { icon } = header()
 
-    expect(icon('panel-right-close')!.props('disabled')).toBe(true)
     expect(icon('panel-right-open')!.props('disabled')).toBe(true)
+    expect(icon('panel-right-close')!.props('disabled')).toBe(false)
+  })
+
+  it('hands a mid-turn comment back rather than refusing it', async () => {
+    asComment()
+    session.isStreaming.value = true
+
+    const { icon } = header()
+    await icon('panel-right-close')!.vm.$emit('click')
+    await nextTick()
+
+    expect(showActions.hideFromSidebar).toHaveBeenCalledWith('k7d2ph')
+    expect(openLinkText).toHaveBeenCalledWith('Notes/A.md', '', false)
+  })
+
+  /** A move in flight still stops it: the maps it would read are halfway between two owners. */
+  it('is dark while the same move is already running', () => {
+    asComment()
+    session.moving.value = true
+
+    const { icon } = header()
+
+    expect(icon('panel-right-close')!.props('disabled')).toBe(true)
+    expect(icon('panel-right-close')!.props('tooltip')).toBe('This comment is being moved')
   })
 
   /** The composer is where a note is written, so the button belongs to it, not to the header. */

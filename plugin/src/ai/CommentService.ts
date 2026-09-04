@@ -215,9 +215,14 @@ export class CommentService implements CommentInfoSource {
    * phone gets a composer it can type into, a recorder, tool approvals and the whole thread,
    * none of which a 300 px sidenote had room for.
    *
-   * Refused in the middle of a turn and in the middle of a move, as `expand` is: the first
-   * reads the kind and the scope from under a request already in flight, and the second is
-   * halfway through moving the very maps this would write to.
+   * A turn in flight is *not* a reason to refuse, and this is where it differs from `expand`.
+   * That one rewrites what the file says the conversation is and rebinds its agent, neither of
+   * which may happen between a `tool_use` and its result; this one moves bookkeeping and
+   * nothing else. A marker tapped while the agent is working is somebody who wants to watch the
+   * answer arrive, and on a phone there is no margin to watch it in.
+   *
+   * A move already running is a reason: `expand` and `collapse` are halfway through the very
+   * maps this would write to, and a tab adopted inside that gap belongs to neither end of it.
    *
    * Returns whether the comment reached the sidebar, so a caller can say why it did not.
    */
@@ -225,7 +230,7 @@ export class CommentService implements CommentInfoSource {
     const session = await this.load(id)
     if (!session) return false
 
-    if (session.isMidTurn || session.moving.value) return false
+    if (session.moving.value) return false
 
     const chatService = ChatService.getInstance()
     chatService.adoptSession(session)

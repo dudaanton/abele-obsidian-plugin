@@ -1158,15 +1158,45 @@ describe('a comment where the margin has no room for it', () => {
   })
 
   /**
-   * The same two refusals `expand` and `collapse` make. A turn in flight reads the kind, the
-   * agent and the scope; a move already running is halfway through rewriting all three.
+   * Not the refusal `expand` and `collapse` make.
+   *
+   * Those rewrite what the file says the conversation is and rebind its agent, neither of which
+   * may happen between a `tool_use` and its result. Showing it in a tab rewrites nothing at all
+   * — and a marker tapped while the agent is working is a person who wants to watch the answer
+   * arrive, which on a phone this is the only way to do.
    */
-  it('refuses while the agent is mid-turn', async () => {
+  it('shows a comment whose agent is mid-turn, and lets the turn go on', async () => {
+    const { service, session, id } = await shown()
+    session.isStreaming.value = true
+
+    expect(await service.showInSidebar(id)).toBe(true)
+
+    expect(ChatService.getInstance().getSession(session.id)).toBe(session)
+    expect(session.isStreaming.value).toBe(true)
+    expect(session.commentState.value).toBe('busy')
+  })
+
+  it('shows one waiting on an approval too', async () => {
     const { service, session, id } = await shown()
     session.pendingToolCalls.value = [{ id: 'tc1', name: 'read_note', input: {} }] as never
 
-    expect(await service.showInSidebar(id)).toBe(false)
+    expect(await service.showInSidebar(id)).toBe(true)
+    expect(ChatService.getInstance().getSession(session.id)).toBe(session)
+  })
+
+  /** And out again: the tab goes, the turn does not. */
+  it('hands a streaming comment back alive when its tab is closed', async () => {
+    const { service, session, id } = await shown()
+    await service.showInSidebar(id)
+    session.isStreaming.value = true
+
+    await ChatService.getInstance().closeTab(session.id)
+
+    expect(session.isDestroyed).toBe(false)
+    expect(service.sessionFor(id)).toBe(session)
     expect(ChatService.getInstance().getSession(session.id)).toBeNull()
+    // The marker draws itself from this, and it must go on saying the agent is working.
+    expect(service.get(id)?.state).toBe('busy')
   })
 
   it('refuses while the comment is already being moved', async () => {
