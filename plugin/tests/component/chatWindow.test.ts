@@ -40,7 +40,7 @@ beforeEach(() => {
   const service = ChatService.getInstance()
   vi.spyOn(service, 'ensureInitialized').mockImplementation(() => {})
   vi.spyOn(service, 'activeSession', 'get').mockReturnValue({
-    value: fakeChatSession({ messages, overrides: { streamingContent: streaming } }),
+    value: fakeChatSession({ messages, kind: 'chat', overrides: { streamingContent: streaming } }),
   } as never)
 })
 

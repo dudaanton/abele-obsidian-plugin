@@ -13,12 +13,19 @@ import type { ChatMessage, CommentAnchor, QueuedMessage } from '@/ai/types'
 export interface FakeSessionOptions {
   messages?: Ref<ChatMessage[]>
   queuedMessages?: Ref<QueuedMessage[]>
+  /**
+   * What the session is. It defaults to a comment because most callers here are the margin's
+   * own components, but the sidebar reads it too — a comment shown in a tab is offered a note
+   * button and an agent picker an ordinary chat is not — so a chat test says so.
+   */
+  kind?: 'chat' | 'run' | 'comment'
   overrides?: Record<string, unknown>
 }
 
 export function fakeChatSession({
   messages = ref<ChatMessage[]>([]),
   queuedMessages = ref<QueuedMessage[]>([]),
+  kind = 'comment',
   overrides = {},
 }: FakeSessionOptions = {}) {
   const off = ref(false)
@@ -57,7 +64,7 @@ export function fakeChatSession({
     interceptor: { streaming: off, streamingContent: ref(''), error: ref(null) },
     // Comment sessions. A card reads the agent's name for its badge, the anchor for the quote
     // it is attached to, and `commentState` for the dot that has to agree with the marker.
-    kind: 'comment' as 'chat' | 'run' | 'comment',
+    kind,
     commentId: 'k7d2ph' as string | null,
     anchor: shallowRef<CommentAnchor | null>({ note: 'Notes/Anchor.md' }),
     agent: ref({ id: 'comment-agent', name: 'Comment' }),

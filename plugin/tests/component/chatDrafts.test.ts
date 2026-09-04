@@ -32,7 +32,7 @@ beforeEach(() => {
   service.activeTabId.value = 'tab-a'
   vi.spyOn(service, 'ensureInitialized').mockImplementation(() => {})
   vi.spyOn(service, 'activeSession', 'get').mockReturnValue({
-    value: fakeChatSession({ messages }),
+    value: fakeChatSession({ messages, kind: 'chat' }),
   } as never)
 })
 

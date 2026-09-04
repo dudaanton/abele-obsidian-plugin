@@ -36,9 +36,11 @@
       v-if="voiceOpen"
       can-send
       auto-start
+      :can-note="canNote && !noteBlocked"
       class="abele-chat-input__voice"
       @text="onVoiceText"
       @send="onVoiceSend"
+      @note="onVoiceNote"
       @close="voiceOpen = false"
     />
 
@@ -79,6 +81,16 @@
             :class="{ 'abele-chat-input__mic_open': voiceOpen }"
             @click="voiceOpen = !voiceOpen"
           />
+          <!-- Only over a comment, which is a place in a note as much as it is a chat: the
+               words are kept and nothing is asked of anybody. -->
+          <Icon
+            v-if="canNote"
+            icon="sticky-note"
+            with-bg
+            :disabled="noteDisabled"
+            :tooltip="noteTooltip"
+            @click="keepNote"
+          />
           <Icon
             v-if="canContinue && !text.trim() && !attachments.length"
             icon="play"
@@ -110,7 +122,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { Menu, TFile, Notice } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import VoiceRecorder from './VoiceRecorder.vue'
@@ -125,10 +137,27 @@ const props = defineProps<{
   canContinue: boolean
   tokenDisplay: string
   scopeLabel: string
+  /**
+   * This conversation has a place in a note to keep words against — it is a comment.
+   *
+   * Half of what people write into a comment is not a question: a reminder, a second thought,
+   * something to come back to. An ordinary chat has nowhere to put one, so the button and its
+   * shortcut exist only here.
+   */
+  canNote?: boolean
+  /**
+   * The agent is holding a turn open — streaming, running a tool, waiting on an approval or on
+   * an answer. A note put in now lands between a `tool_use` and its `tool_result`, and the next
+   * question is refused by the model over it. `ChatSession.addUserNote` says no as well; this
+   * is so the button says so first.
+   */
+  noteBlocked?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'send', message: string, attachments: string[]): void
+  /** Keep these words in the conversation, and start nothing. */
+  (e: 'note', text: string): void
   (e: 'command', command: string): void
   (e: 'abort'): void
   (e: 'continue'): void
@@ -193,6 +222,23 @@ const send = () => {
   nextTick(autoResize)
 }
 
+const noteDisabled = computed(() => !!props.noteBlocked || text.value.trim().length === 0)
+
+const noteTooltip = computed(() =>
+  props.noteBlocked
+    ? 'Finish or dismiss the pending step before keeping a note'
+    : 'Save as note, without asking the agent (Alt+Enter)'
+)
+
+/** Kept, not sent: the words go into the conversation and no agent is started. */
+const keepNote = () => {
+  if (noteDisabled.value) return
+
+  emit('note', text.value.trim())
+  text.value = ''
+  nextTick(autoResize)
+}
+
 /**
  * Voice sits under the field rather than replacing it: what was dictated is added to whatever
  * was already typed, and any attachments go along with it, because a recording is one more
@@ -216,6 +262,11 @@ const onVoiceText = (dictated: string) => {
 const onVoiceSend = (dictated: string) => {
   text.value = withDictated(dictated)
   nextTick(send)
+}
+
+const onVoiceNote = (dictated: string) => {
+  text.value = withDictated(dictated)
+  keepNote()
 }
 
 const showAttachMenu = (event: MouseEvent) => {
@@ -381,6 +432,13 @@ function focus() {
 defineExpose({ setText, addAttachment, focus, takeDraft, putDraft })
 
 const onKeydown = (e: KeyboardEvent) => {
+  // Alt+Enter is Enter without the model, and only where there is a note to keep: the margin's
+  // composer takes the same chord for the same act.
+  if (e.key === 'Enter' && e.altKey && props.canNote) {
+    e.preventDefault()
+    keepNote()
+    return
+  }
   if (e.key === 'Enter' && e.shiftKey) {
     e.preventDefault()
     send()
