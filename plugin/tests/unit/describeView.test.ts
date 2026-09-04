@@ -21,6 +21,7 @@ import {
   Table,
   Html,
   Image,
+  Stack,
 } from '@/scripting/view/components'
 
 const host: ViewHost = { async open() {}, close() {} }
@@ -92,7 +93,24 @@ Html <article class="post"><h3>T</h3></article>
     v.body = [new Markdown('x'.repeat(200)), new Html({ html: '<p>' + 'y'.repeat(400) + '</p>' })]
     const out = describeView(v)
     expect(out).toContain('Markdown "' + 'x'.repeat(120) + '…"')
+    // The markup keeps 300 characters of what the script wrote: the opening tag and 297 y's.
+    expect(out).toContain('Html <p>' + 'y'.repeat(297) + '…')
     expect(out).toContain('…')
     expect(out.length).toBeLessThan(700)
+  })
+
+  it('survives state it cannot serialise and a node that holds itself', () => {
+    const v = new View({ title: 'T' }, host, { script: 'S', params: {} })
+    const loop: Record<string, unknown> = {}
+    loop.self = loop
+    v.state.loop = loop
+    const s = new Stack({ id: 'outer' })
+    s.add(s)
+    v.body = [s]
+    const out = describeView(v)
+    expect(out).toContain('state <unserialisable>')
+    expect(out).toContain('Stack #outer (cycle)')
+    // The node itself is still printed once, above the line that stops the descent.
+    expect(out.split('\n')).toHaveLength(3)
   })
 })

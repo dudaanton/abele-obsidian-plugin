@@ -6,7 +6,7 @@ import { findLeafByFile } from './ScreenshotTool'
 
 const MAX_OUTPUT = 15_000
 
-export function cleanHtml(el: Element): string {
+function cleanHtml(el: Element): string {
   const tag = el.tagName.toLowerCase()
 
   // Skip SVG internals, scripts, styles
@@ -84,10 +84,10 @@ export function createInspectViewTool(): AgentTool {
       if (viewName) {
         const { ScriptViewService } = await import('@/scripting/view/ScriptViewService')
         const { describeView } = await import('@/scripting/view/describe')
-        const open = ScriptViewService.getInstance()
+        const models = ScriptViewService.getInstance()
           .leaves()
-          .map((l) => l.model.view)
-          .filter((v): v is NonNullable<typeof v> => Boolean(v))
+          .map((l) => l.model)
+        const open = models.map((m) => m.view).filter((v): v is NonNullable<typeof v> => Boolean(v))
         const wanted = viewName.toLowerCase()
         const hit =
           open.find(
@@ -99,11 +99,27 @@ export function createInspectViewTool(): AgentTool {
               v.origin.script.toLowerCase().includes(wanted)
           )
         if (!hit) {
-          // Naming what is open turns a miss into the answer to the next question anyway.
-          const names = open.map((v) => `"${v.title}" (${v.origin.script})`).join(', ') || 'none'
+          // Naming what is open turns a miss into the answer to the next question anyway. A
+          // tab whose script is still running, or whose script failed, has no view to describe
+          // but is very likely the one being asked about — say so rather than leave it out.
+          const names =
+            models
+              .map((m) => {
+                if (m.view) return `"${m.view.title}" (${m.view.origin.script})`
+                const script = m.saved?.script ?? (m.status.kind === 'live' ? '' : m.status.script)
+                if (m.status.kind === 'failed') return `"${script}" (failed: ${m.status.message})`
+                return `"${script}" (starting)`
+              })
+              .join(', ') || 'none'
           throw new Error(`No script view named "${viewName}". Open: ${names}`)
         }
-        return { content: [{ type: 'text', text: describeView(hit) }] }
+        let text = describeView(hit)
+        if (text.length > MAX_OUTPUT) {
+          text =
+            text.slice(0, MAX_OUTPUT) +
+            '\n\n[Output truncated. Inspect a smaller view, or reach one node through its id.]'
+        }
+        return { content: [{ type: 'text', text }] }
       }
 
       const path = params.path as string

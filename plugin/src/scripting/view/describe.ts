@@ -26,17 +26,42 @@ const cap = (s: string) => s[0].toUpperCase() + s.slice(1)
  */
 type Any = ViewNode & Record<string, any>
 
+/**
+ * Params and state are the script's own objects: it may have put a note, a component or a
+ * ring of references in there, and neither a throw from `JSON.stringify` nor a megabyte of
+ * cache belongs in a header line.
+ */
+const json = (value: unknown): string => {
+  try {
+    // `stringify` answers `undefined` for a value it has no representation for, never a string.
+    return short(JSON.stringify(value) ?? '<none>', MARKUP_CUT)
+  } catch {
+    return '<unserialisable>'
+  }
+}
+
 export function describeView(view: View): string {
-  const head = `View ${q(view.title)} — script ${q(view.origin.script)}, params ${JSON.stringify(view.origin.params)}, state ${JSON.stringify(view.state)}`
+  const head = `View ${q(view.title)} — script ${q(view.origin.script)}, params ${json(view.origin.params)}, state ${json(view.state)}`
   return [head, ...view.nodes.map((n) => describeNode(n))].join('\n')
 }
 
-export function describeNode(node: ViewNode, depth = 0): string {
+/**
+ * `seen` is the same guard `ViewNode.find` carries and is not part of the API: a script can
+ * add a node to itself or to one of its own ancestors, and without the set that is an
+ * infinite descent. A node reached twice prints its own line marked `(cycle)` and is not
+ * walked again.
+ */
+export function describeNode(node: ViewNode, depth = 0, seen: Set<ViewNode> = new Set()): string {
   const n = node as Any
   const pad = '  '.repeat(depth)
-  const tail = [n.id ? `#${n.id}` : '', n.hidden ? '(hidden)' : ''].filter(Boolean).join(' ')
+  const cycle = seen.has(node)
+  seen.add(node)
+  const tail = [n.id ? `#${n.id}` : '', n.hidden ? '(hidden)' : '', cycle ? '(cycle)' : '']
+    .filter(Boolean)
+    .join(' ')
   const line = (text: string) => pad + [text, tail].filter(Boolean).join(' ')
-  const kids = (list: ViewNode[], d = depth + 1) => list.map((c) => describeNode(c, d))
+  const kids = (list: ViewNode[], d = depth + 1) =>
+    cycle ? [] : list.map((c) => describeNode(c, d, seen))
 
   switch (n.type) {
     case 'stack':
@@ -52,11 +77,15 @@ export function describeNode(node: ViewNode, depth = 0): string {
       // Every tab's content, not just the active one's: a script builds all of them, and the
       // agent is usually asking why the tab it cannot see is empty. The id in front of each
       // says which tab a line came from; the active tab is named in the header.
-      const content = n.tabs.flatMap((t: { id: string }) =>
-        n
-          .contentOf(t.id)
-          .map((c: ViewNode) => describeNode(c, depth + 1).replace(/^(\s*)/, `$1[${t.id}] `))
-      )
+      const content = cycle
+        ? []
+        : n.tabs.flatMap((t: { id: string }) =>
+            n
+              .contentOf(t.id)
+              .map((c: ViewNode) =>
+                describeNode(c, depth + 1, seen).replace(/^(\s*)/, `$1[${t.id}] `)
+              )
+          )
       return [line(`Tabs active=${n.active} [${strip.join(', ')}]`), ...content].join('\n')
     }
     case 'markdown':
@@ -72,10 +101,12 @@ export function describeNode(node: ViewNode, depth = 0): string {
         n.columns
           .map((c: TableColumn) => {
             const v = r[c.key]
-            return isNode(v) ? describeNode(v).trim() : (v ?? '')
+            return isNode(v) ? describeNode(v, 0, seen).trim() : (v ?? '')
           })
           .join(' | ')
-      const rows = n.rows.slice(0, MAX_ROWS).map((r: TableRow) => pad + '  ' + cells(r))
+      const rows = cycle
+        ? []
+        : n.rows.slice(0, MAX_ROWS).map((r: TableRow) => pad + '  ' + cells(r))
       const keys = n.columns.map((c: { key: string }) => c.key).join(', ')
       return [line(`Table columns=[${keys}] rows=${n.rows.length}`), ...rows].join('\n')
     }
@@ -88,7 +119,9 @@ export function describeNode(node: ViewNode, depth = 0): string {
         `Button ${q(n.text)}${n.icon ? ` icon=${n.icon}` : ''}${n.accent ? ' accent' : ''}${n.warning ? ' warning' : ''}${n.disabled ? ' disabled' : ''}`
       )
     case 'icon':
-      return line(`Icon ${n.icon} ${q(n.tooltip)}${n.disabled ? ' disabled' : ''}`)
+      return line(
+        `Icon ${n.icon}${n.tooltip ? ' ' + q(n.tooltip) : ''}${n.disabled ? ' disabled' : ''}`
+      )
     case 'input':
       return line(
         `Input value=${q(n.value)}${n.placeholder ? ` placeholder=${q(n.placeholder)}` : ''}${n.textarea ? ' textarea' : ''}${n.disabled ? ' disabled' : ''}`
@@ -106,7 +139,7 @@ export function describeNode(node: ViewNode, depth = 0): string {
     case 'card':
       return [
         line(
-          `Card ${q(n.title)}${n.subtitle ? ` ${q(n.subtitle)}` : ''}${n.selected ? ' selected' : ''}`
+          `Card${n.title ? ' ' + q(n.title) : ''}${n.subtitle ? ` ${q(n.subtitle)}` : ''}${n.selected ? ' selected' : ''}`
         ),
         ...kids(n.badges),
         ...kids(n.actions),
@@ -114,9 +147,11 @@ export function describeNode(node: ViewNode, depth = 0): string {
       ].join('\n')
     case 'html': {
       // The raw markup, not the rendered DOM: what the script wrote is what it can change.
-      const slots = Object.entries(n.slots as Record<string, ViewNode>).map(
-        ([sel, child]) => pad + `  slot ${sel}: ` + describeNode(child).trim()
-      )
+      const slots = cycle
+        ? []
+        : Object.entries(n.slots as Record<string, ViewNode>).map(
+            ([sel, child]) => pad + `  slot ${sel}: ` + describeNode(child, 0, seen).trim()
+          )
       return [line(`Html ${short(n.html, MARKUP_CUT)}`), ...slots].join('\n')
     }
     default:
