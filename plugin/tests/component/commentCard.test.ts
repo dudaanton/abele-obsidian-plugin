@@ -42,7 +42,7 @@ const OTHER = 'Notes/Elsewhere.md'
 const open: Ref<string | null> = ref(null)
 const remove = vi.fn()
 const expand = vi.fn()
-const collapse = vi.fn()
+const revealChat = vi.fn()
 const load = vi.fn()
 /** Ids the service has written off, which is what the card says so instead of reading. */
 const missing = new Set<string>()
@@ -66,10 +66,10 @@ beforeEach(() => {
   sessions = {}
   missing.clear()
   remove.mockReset()
-  // Both answer whether the comment moved. True is the ordinary case; a test about a refusal
+  // Answers what became of the comment. Moving is the ordinary case; a test about a refusal
   // says so for itself.
-  expand.mockReset().mockResolvedValue(true)
-  collapse.mockReset().mockResolvedValue(true)
+  expand.mockReset().mockResolvedValue('moved')
+  revealChat.mockReset().mockResolvedValue(undefined)
   load.mockReset().mockResolvedValue(null)
 
   vi.spyOn(CommentService, 'getInstance').mockReturnValue({
@@ -77,7 +77,7 @@ beforeEach(() => {
     load,
     remove,
     expand,
-    collapse,
+    revealChat,
     isMissing: (id: string) => missing.has(id),
     sessionFor: (id: string) => sessions[id] ?? null,
   } as never)
@@ -140,6 +140,23 @@ describe('a folded card', () => {
     expect(view.find('.abele-comment-card__line_user').text()).toBe('What does this mean?')
     expect(view.find('.abele-comment-card__line_assistant').text()).toBe('It means this.')
     expect(view.findComponent(CommentThread).exists()).toBe(false)
+  })
+
+  /**
+   * Reported from the desktop: an answer that mentioned a note showed up here as
+   * `[[Some note]]`, brackets and all. The card cannot render Markdown into two clamped lines
+   * in a 300 px margin, so the syntax comes off and the words stay — see `previewText`.
+   */
+  it('reads what was said as prose, not as its Markdown', async () => {
+    seed('k7d2ph', {}, [
+      message({ role: 'user', content: 'What about [[Notes/Some note|the note]]?' }),
+      message({ role: 'assistant', content: '## It means\n\n- **this**, in `code`' }),
+    ])
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.find('.abele-comment-card__line_user').text()).toBe('What about the note?')
+    expect(view.find('.abele-comment-card__line_assistant').text()).toBe('It means this, in code')
   })
 
   it('is the way in, all of it', async () => {
@@ -392,68 +409,54 @@ describe('a marker carrying several comments', () => {
   })
 })
 
+/**
+ * A comment that has become a chat.
+ *
+ * There is no card to open for one: the conversation is in the sidebar, and a card drawn over
+ * it would be a second, read-only copy of something somebody can already answer in. 1.17.0
+ * drew that copy and hung two buttons under it — "Open in sidebar" and "Back to comment" —
+ * and the person it was built for asked what either was for. The marker, and the folded card
+ * the marker leaves in the margin, lead to the chat instead.
+ */
 describe('a comment that was promoted into a chat', () => {
-  beforeEach(() => {
-    open.value = 'k7d2ph'
-  })
-
-  it('reads back the first exchange and sends the reader to the sidebar', async () => {
-    // `adoptSession`, not `switchTab`: a chat the sidebar is not holding — a promotion whose
-    // tab was refused because the bar was full — has no tab to switch to, and `switchTab`
-    // does nothing at all for one. Adopting says "show this", which is what was pressed.
-    const adoptSession = vi.fn().mockReturnValue(true)
-    const revealSidebar = vi.fn().mockResolvedValue(undefined)
-    vi.spyOn(ChatService, 'getInstance').mockReturnValue({ adoptSession, revealSidebar } as never)
-
+  it('sends the reader to the sidebar rather than opening a card', async () => {
     seed('k7d2ph', { kind: 'chat' }, [
       message({ id: 'u1', role: 'user', content: 'What does this mean?' }),
       message({ id: 'a1', role: 'assistant', content: 'It means this.' }),
-      message({ id: 'a2', role: 'assistant', content: 'And also this.' }),
     ])
 
     const view = await mountCard(['k7d2ph'])
+    await view.find('.abele-comment-card__summary').trigger('click')
 
-    expect(view.findComponent(CommentInput).exists()).toBe(false)
-    expect(view.findAll('.abele-comment-card__readonly-msg')).toHaveLength(2)
-
-    const button = view.findComponent(Button)
-    expect(button.props('text')).toBe('Open in sidebar')
-
-    await button.vm.$emit('click')
-    await nextTick()
-    expect(adoptSession).toHaveBeenCalledWith(expect.objectContaining({ id: 'session-1' }))
-    expect(revealSidebar).toHaveBeenCalled()
-    // Same again: what was asked for is on the sidebar, behind whatever this card is in.
-    expect(view.emitted('promoted')).toHaveLength(1)
+    expect(revealChat).toHaveBeenCalledWith('k7d2ph')
+    expect(open.value).toBeNull()
   })
 
-  it('takes the conversation back to the margin it came from', async () => {
+  /** Folded, it is still the record of the conversation that was had here. */
+  it('still says what was asked and what came back', async () => {
     seed('k7d2ph', { kind: 'chat' }, [
-      message({ id: 'u1', role: 'user', content: 'What does this mean?' }),
+      message({ role: 'user', content: 'What does this mean?' }),
+      message({ role: 'assistant', content: 'It means this.' }),
     ])
 
     const view = await mountCard(['k7d2ph'])
-    const back = view
-      .findAllComponents(Button)
-      .find((button) => button.props('text') === 'Back to comment')
-    expect(back).toBeDefined()
 
-    await back!.vm.$emit('click')
-    await nextTick()
-
-    expect(collapse).toHaveBeenCalledWith('k7d2ph')
-    // Nothing has been handed to the sidebar, so nothing has to get out of its way.
-    expect(view.emitted('promoted')).toBeUndefined()
+    expect(view.find('.abele-comment-card__line_user').text()).toBe('What does this mean?')
+    expect(view.find('.abele-comment-card__line_assistant').text()).toBe('It means this.')
   })
 
-  it('offers no second promotion', async () => {
-    seed('k7d2ph', { kind: 'chat' })
+  /** The same rule from the strip, where a marker's other comments are picked from. */
+  it('is picked out of the strip into the sidebar too', async () => {
+    open.value = 'k7d2ph'
+    seed('k7d2ph')
+    seed('m3n4p5', { kind: 'chat' })
 
-    const view = await mountCard(['k7d2ph'])
+    const view = await mountCard(['k7d2ph', 'm3n4p5'])
+    await view.findComponent(Tabs).vm.$emit('update:modelValue', 'm3n4p5')
+    await nextTick()
 
-    expect(view.findAllComponents(Icon).map((i) => i.props('icon'))).not.toContain(
-      'panel-right-open'
-    )
+    expect(revealChat).toHaveBeenCalledWith('m3n4p5')
+    expect(open.value).toBe('k7d2ph')
   })
 })
 
@@ -719,25 +722,23 @@ describe('a card over a conversation that is mid-turn', () => {
 
     expect(action(view, 'panel-right-open').props('disabled')).toBe(false)
   })
-
-  it('darkens the way back to the margin, and says why', async () => {
-    const session = seed('k7d2ph', { kind: 'chat' }, [
-      message({ id: 'u1', role: 'user', content: 'What does this mean?' }),
-    ])
-    session.isStreaming.value = true
+  /** And the other refusal, which is the sidebar's and not the agent's. */
+  it('does not blame the agent for a tab bar that is full', async () => {
+    seed('k7d2ph')
+    expand.mockResolvedValue('no-room')
 
     const view = await mountCard(['k7d2ph'])
-    const back = view
-      .findAllComponents(Button)
-      .find((button) => button.props('text') === 'Back to comment')
+    await action(view, 'panel-right-open').vm.$emit('click')
+    await nextTick()
 
-    expect(back!.props('disabled')).toBe(true)
-    expect(back!.props('tooltip')).toContain('still working')
+    // `ChatService` says that one where it finds it, in its own words.
+    expect(Notice.shown).toEqual([])
+    expect(view.emitted('promoted')).toBeUndefined()
   })
 
   it('says why a promotion was refused rather than claiming it happened', async () => {
     seed('k7d2ph')
-    expand.mockResolvedValue(false)
+    expand.mockResolvedValue('busy')
 
     const view = await mountCard(['k7d2ph'])
     await action(view, 'panel-right-open').vm.$emit('click')
@@ -746,20 +747,6 @@ describe('a card over a conversation that is mid-turn', () => {
     expect(Notice.shown).toContain('Finish or dismiss the pending step first')
     // Nothing has been handed to the sidebar, so nothing has to get out of its way.
     expect(view.emitted('promoted')).toBeUndefined()
-  })
-
-  it('says why a return to the margin was refused', async () => {
-    seed('k7d2ph', { kind: 'chat' }, [message({ id: 'u1', role: 'user', content: 'Why?' })])
-    collapse.mockResolvedValue(false)
-
-    const view = await mountCard(['k7d2ph'])
-    const back = view
-      .findAllComponents(Button)
-      .find((button) => button.props('text') === 'Back to comment')
-    await back!.vm.$emit('click')
-    await nextTick()
-
-    expect(Notice.shown).toContain('Finish or dismiss the pending step first')
   })
 })
 
@@ -786,22 +773,6 @@ describe('a card over a comment that is being moved', () => {
     expect(promote.props('disabled')).toBe(true)
     expect(promote.props('tooltip')).toBe('This comment is being moved')
   })
-
-  it('darkens the way back to the margin while the move runs', async () => {
-    const session = seed('k7d2ph', { kind: 'chat' }, [
-      message({ id: 'u1', role: 'user', content: 'Why?' }),
-    ])
-    session.moving.value = true
-
-    const view = await mountCard(['k7d2ph'])
-    const back = view
-      .findAllComponents(Button)
-      .find((button) => button.props('text') === 'Back to comment')
-
-    expect(back!.props('disabled')).toBe(true)
-    expect(back!.props('tooltip')).toBe('This comment is being moved')
-  })
-
   it('says the move is already happening rather than blaming the agent', async () => {
     const session = seed('k7d2ph')
     session.moving.value = true
@@ -814,23 +785,6 @@ describe('a card over a comment that is being moved', () => {
     // The service is not asked at all: it would refuse, and the card knows why already.
     expect(expand).not.toHaveBeenCalled()
     expect(view.emitted('promoted')).toBeUndefined()
-  })
-
-  it('says the same for a return to the margin', async () => {
-    const session = seed('k7d2ph', { kind: 'chat' }, [
-      message({ id: 'u1', role: 'user', content: 'Why?' }),
-    ])
-    session.moving.value = true
-
-    const view = await mountCard(['k7d2ph'])
-    const back = view
-      .findAllComponents(Button)
-      .find((button) => button.props('text') === 'Back to comment')
-    await back!.vm.$emit('click')
-    await nextTick()
-
-    expect(Notice.shown).toEqual(['Already moving this comment'])
-    expect(collapse).not.toHaveBeenCalled()
   })
 })
 

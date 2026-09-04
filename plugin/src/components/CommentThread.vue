@@ -36,7 +36,9 @@
           :text="msg.content"
           :file-path="notePath"
         />
-        <div class="abele-comment-thread__actions">
+        <!-- Only in the margin: a modal is what a phone opens instead of one, and there is
+             nowhere for a pinned message to go there. -->
+        <div v-if="host === 'margin'" class="abele-comment-thread__actions">
           <Icon
             class="abele-comment-thread__pin"
             :icon="session.isPinned(msg.id) ? 'pin-off' : 'pin'"
@@ -70,7 +72,14 @@
     <div v-if="waiting" class="abele-comment-thread__waiting">Working…</div>
 
     <div v-if="question" class="abele-comment-thread__question">
-      <div class="abele-comment-thread__question-text">{{ question.question }}</div>
+      <!-- The agent asking something is the agent talking, and it writes the way it writes:
+           a note it means is a wikilink, and a wikilink shown as its own brackets is the
+           defect this renders instead. -->
+      <Markdown
+        class="abele-comment-thread__question-text"
+        :text="question.question"
+        :file-path="notePath"
+      />
       <div class="abele-comment-thread__question-options">
         <Button
           v-for="option in question.options"
@@ -112,9 +121,17 @@ import type { ChatMessage } from '@/ai/types'
 /** How much of a tool's arguments fits on one line at sidenote width. */
 const ARG_SUMMARY_LIMIT = 48
 
-const props = defineProps<{
-  session: ChatSession
-}>()
+const props = withDefaults(
+  defineProps<{
+    session: ChatSession
+    /**
+     * Where the thread is being shown. A margin can hold a pinned message at its top; a modal
+     * is the phone's stand-in for a margin and has nowhere to put one.
+     */
+    host?: 'margin' | 'modal'
+  }>(),
+  { host: 'margin' }
+)
 
 const notePath = computed(() => props.session.anchor.value?.note ?? '')
 
@@ -315,9 +332,11 @@ const retry = () => void props.session.retryRequest()
 }
 
 /**
- * A phone or a tablet, where there is no hover to reveal it. Spelled deeply enough to outrank
- * the two hover rules above, which a tablet with a mouse — or `emulateMobile` on a desktop —
- * would otherwise still match.
+ * A phone, where there is no hover to reveal it and no margin to pin into. The `host` prop
+ * already takes it away wherever a modal is what opened — this covers the tablet-sized case
+ * Obsidian still calls mobile, where a card can be in a margin and a pointer never arrives.
+ * Spelled deeply enough to outrank the two hover rules above, which a tablet with a mouse —
+ * or `emulateMobile` on a desktop — would otherwise still match.
  */
 body.is-mobile .abele-comment-thread__msg .abele-comment-thread__actions {
   display: none;

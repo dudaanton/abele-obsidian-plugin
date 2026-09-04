@@ -494,40 +494,28 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   height: var(--icon-s);
 }
 
+/* How many comments this marker carries.
+   `--font-smallest` in `--text-muted` is what it used to be: a grey speck beside a coloured
+   glyph, which the person it was built for never once noticed. It takes the marker's own
+   colour — so on a failed comment the digit turns with it rather than reading as a second,
+   unrelated mark — and the size a caption is set in, which is the smallest thing anybody is
+   expected to read. */
 .abele-comment-marker__count {
-  font-size: var(--font-smallest);
-  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  color: inherit;
 }
 
-/* Streaming or running a tool. Several comments can be working at once, so the marker itself
-   has to say which one is busy — and at a phone's reading distance a marker fading by a
-   fraction says nothing, so the glyph beats instead: accent, and both size and opacity. The
-   animation is on the glyph rather than on the marker, which also carries the count and the
-   dot; fading the box would take those with it. */
-.abele-comment-marker_busy {
-  color: var(--text-accent);
-}
+/* The two states that are about the agent, said with a dot hung off the corner of the glyph
+   rather than by doing anything to the glyph.
 
-.abele-comment-marker_busy .abele-comment-marker__icon {
-  animation: abele-comment-marker-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes abele-comment-marker-pulse {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.45;
-    transform: scale(0.8);
-  }
-}
-
-/* Waiting on the user: a tool approval or a question. A dot hung off the corner of the glyph
-   rather than set beside it — inside the drawing it was read as part of the drawing, and at
-   `--size-2-1` it was two pixels, which a phone reported as nothing at all. The ring is the
-   page's own colour, so the dot stays a dot over a descender or a mark of the text. */
+   The glyph used to pulse for "busy" — accent, fading and shrinking — which from a phone read
+   as the whole icon blinking, and blinking is what a marker does when something is wrong. A
+   dot is what the chat tabs use for the same fact, and it is the one asked for here. Set over
+   the drawing rather than beside it: at this size beside it is another glyph, and a marker
+   also carries a count. The ring is the page's own colour, so the dot stays a dot over a
+   descender or a mark of the text. */
+.abele-comment-marker_busy::after,
 .abele-comment-marker_pending::after {
   content: '';
   position: absolute;
@@ -536,9 +524,33 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   width: var(--size-2-3);
   height: var(--size-2-3);
   border-radius: var(--radius-l);
-  background-color: var(--text-warning);
   box-shadow: 0 0 0 1px var(--background-primary);
   transform: translate(30%, -30%);
+}
+
+/* Working: the sidebar's tab strip says this with an accent dot breathing at 1.5s, and two
+   places saying the same thing differently is two things to learn. The keyframes are spelled
+   again here rather than borrowed from that component's own style block — a rule in this file
+   that depends on one in an `.vue` file is a rule that stops working when that file changes. */
+.abele-comment-marker_busy::after {
+  background-color: var(--interactive-accent);
+  animation: abele-comment-marker-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes abele-comment-marker-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* Waiting on the reader: a tool approval, or a question. Held still, because nothing is
+   happening until somebody answers it. */
+.abele-comment-marker_pending::after {
+  background-color: var(--text-warning);
 }
 
 .abele-comment-marker_error {
@@ -557,19 +569,10 @@ body.is-mobile .abele-comment-marker {
 }
 
 /* The target is half again as big on a phone, and the dot that hangs on it grows with it. */
+body.is-mobile .abele-comment-marker_busy::after,
 body.is-mobile .abele-comment-marker_pending::after {
   width: var(--size-4-2);
   height: var(--size-4-2);
-}
-
-/* Read at arm's length: the smallest size in the theme is a size nobody reads on a phone, and
-   a muted digit beside an accent glyph reads as part of the glyph. */
-body.is-mobile .abele-comment-marker__count {
-  font-size: var(--font-ui-smaller);
-  font-weight: var(--font-semibold);
-  /* The marker's own colour, so the digit turns with the state: an accent glyph beside a red
-     one, on a marker whose comment failed, reads as two markers rather than one. */
-  color: inherit;
 }
 
 /* The passage a comment is anchored to */

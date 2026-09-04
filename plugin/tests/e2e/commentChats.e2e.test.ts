@@ -3,9 +3,11 @@
  *
  * Everything here is a question happy-dom cannot answer. Whether the raw `%%c:…%%` ever
  * reaches the screen is a question about CodeMirror's decorations. Whether the card is visible
- * is a question about a margin that has to be measured. And the phone's route into the chat
- * sidebar only shows itself under `app.emulateMobile(true)`, which is Obsidian switching its
- * own layout — there is no way to ask for it from a test that does not have Obsidian.
+ * is a question about a margin that has to be measured. And the phone's route into a dialog
+ * only shows itself under `app.emulateMobile(true)`, which is Obsidian switching its own
+ * layout — there is no way to ask for it from a test that does not have Obsidian. The dialog's
+ * geometry is Obsidian's own `mod-lg`, so what is worth asking here is whether their rules
+ * actually reached it: a sheet that sits inside the window with its close button on it.
  *
  * The probe drives the command, because that is what a person's hotkey does. If the command
  * cannot reach the editor it falls back to creating the comment through `CommentService`, so
@@ -45,6 +47,10 @@ interface DesktopReport {
   markerIds: string
   /** Whether the margin reported room — the card is only expected when it did. */
   hasRoom: boolean
+  /** What this vault had these set to, so the cleanup can put them back. */
+  readableLineLength: boolean
+  leftCollapsed: boolean
+  rightCollapsed: boolean
   cardVisible: boolean
   /** Where the comment's chat file was expected, and whether it is there. */
   commentPath: string
@@ -53,17 +59,23 @@ interface DesktopReport {
 }
 
 interface MobileReport {
-  /** Whether the sidebar's chat view is on screen at all after the tap. */
-  chatVisible: boolean
-  /** Whether what it is showing is this comment: the header's two comment-only actions. */
-  backToNoteVisible: boolean
-  openAsChatVisible: boolean
-  /** The sidebar's own composer, not a card's — and tall enough to type into. */
-  composerVisible: boolean
-  /** The note button, which only a comment gets. */
-  noteButtonVisible: boolean
-  /** No dialog was opened: the sheet is gone, and nothing stands over the note. */
+  /** Whether a dialog of ours is on screen at all after the tap. */
   modalOpen: boolean
+  /** The card itself, inside it, expanded rather than folded. */
+  cardVisible: boolean
+  threadVisible: boolean
+  /** The composer, tall enough to type into and set at a size iOS will not zoom into. */
+  composerVisible: boolean
+  composerFontPx: number
+  /** Obsidian's own × for the dialog, and whether it is inside the window it opened in. */
+  closeVisible: boolean
+  closeInsideWindow: boolean
+  /** The dialog's own box against the window: their sheet reaches the bottom and no further. */
+  modalTop: number
+  modalBottom: number
+  windowHeight: number
+  /** The sidebar was not borrowed for this: that is 1.17.1, and it is what came back wrong. */
+  chatVisible: boolean
   error: string
 }
 
@@ -81,8 +93,17 @@ const QUOTE = 'the passage the probe asks about'
 const BODY = `# Comment probe\n\nA paragraph holding ${QUOTE} and little else.\n`
 
 /** Deletes the probe note and whatever comment files its markers name, if either is there. */
-const cleanupScript = `(async () => {
+const cleanupScript = (
+  readable: boolean,
+  leftCollapsed: boolean,
+  rightCollapsed: boolean
+) => `(async () => {
   const path = ${JSON.stringify(NOTE)}
+  app.vault.setConfig('readableLineLength', ${readable})
+  if (${leftCollapsed}) app.workspace.leftSplit.collapse()
+  else app.workspace.leftSplit.expand()
+  if (${rightCollapsed}) app.workspace.rightSplit.collapse()
+  else app.workspace.rightSplit.expand()
   const service = window.__abeleTest.CommentService.getInstance()
   const report = { cleaned: false, error: '' }
   try {
@@ -111,6 +132,7 @@ const desktopScript = `(async () => {
   const service = window.__abeleTest.CommentService.getInstance()
   const report = {
     via: 'none', rawMarkerText: true, markerIds: '', hasRoom: false, cardVisible: false,
+    readableLineLength: false, leftCollapsed: false, rightCollapsed: false,
     commentPath: '', commentFileExists: false, error: '',
   }
 
@@ -118,6 +140,18 @@ const desktopScript = `(async () => {
     const stale = app.vault.getAbstractFileByPath(path)
     if (stale) await app.vault.delete(stale)
     const file = await app.vault.create(path, ${JSON.stringify(BODY)})
+
+    // The margin is measured, and this vault has both sidebars open over a readable line of
+    // 700 px: 127 px of right margin, which is under the 200 the overlay asks for. Without
+    // this the desktop half of the probe only ever exercises the branch with no card in it.
+    // Both are put back in the cleanup.
+    report.readableLineLength = !!app.vault.getConfig('readableLineLength')
+    report.leftCollapsed = !!app.workspace.leftSplit.collapsed
+    report.rightCollapsed = !!app.workspace.rightSplit.collapsed
+    app.vault.setConfig('readableLineLength', true)
+    app.workspace.leftSplit.collapse()
+    app.workspace.rightSplit.collapse()
+    await wait(500)
 
     const leaf = app.workspace.getLeaf(false)
     await leaf.openFile(file)
@@ -155,7 +189,10 @@ const desktopScript = `(async () => {
 
     const box = document.querySelector('.abele-comment-widget-container')
     report.hasRoom = !!box && !box.classList.contains('abele-comment-widget-container_hidden')
-    const card = document.querySelector('.abele-comment-card')
+    // Inside the host that was just asked about, not wherever the first card in the document
+    // happens to be: with no margin there is no host, and Vue leaves the card at its mount
+    // root — a card nobody can see, which is not the same as a card in the margin.
+    const card = box && box.querySelector('.abele-comment-card')
     report.cardVisible = !!card && card.getBoundingClientRect().width > 0
 
     const id = report.markerIds.split(',')[0]
@@ -180,8 +217,9 @@ const mobileScript = `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
   const shown = (el) => !!el && el.getBoundingClientRect().height > 0
   const report = {
-    chatVisible: false, backToNoteVisible: false, openAsChatVisible: false,
-    composerVisible: false, noteButtonVisible: false, modalOpen: false, error: '',
+    modalOpen: false, cardVisible: false, threadVisible: false, composerVisible: false,
+    composerFontPx: 0, closeVisible: false, closeInsideWindow: false,
+    modalTop: 0, modalBottom: 0, windowHeight: 0, chatVisible: false, error: '',
   }
 
   try {
@@ -195,20 +233,42 @@ const mobileScript = `(async () => {
     marker.click()
     await wait(2000)
 
-    const chat = document.querySelector('.abele-ai-chat')
-    report.chatVisible = shown(chat)
-    if (!chat) return report
+    report.windowHeight = window.innerHeight
 
-    // Obsidian's own \`setIcon\` is what draws these, and what it leaves behind is an
-    // \`svg.lucide-<name>\` — there is no attribute naming the icon in the running app.
-    const icon = (name) => !!chat.querySelector('.abele-ai-chat__header-actions .lucide-' + name)
-    report.backToNoteVisible = icon('corner-up-left')
-    report.openAsChatVisible = icon('panel-right-open')
+    const modal = document.querySelector('.modal.abele-modal_tall')
+    report.modalOpen = shown(modal)
+    if (!modal) return report
 
-    report.composerVisible = shown(chat.querySelector('.abele-chat-input__textarea'))
-    report.noteButtonVisible = !!chat.querySelector('.abele-chat-input .lucide-sticky-note')
+    // The window this runs in is usually behind the terminal that started the test, and a
+    // hidden page runs no animations: Obsidian slides its phone sheet up from the bottom, so
+    // the box measured there is the box the sheet started from. Cancelling the transition
+    // snaps it to where it was going.
+    modal.style.transition = 'none'
+    void modal.offsetHeight
+    const box = modal.getBoundingClientRect()
+    report.modalTop = Math.round(box.top)
+    report.modalBottom = Math.round(box.bottom)
 
-    report.modalOpen = !!document.querySelector('.modal')
+    const card = modal.querySelector('.abele-comment-card')
+    report.cardVisible = shown(card)
+    report.threadVisible = shown(modal.querySelector('.abele-comment-thread'))
+
+    const field = modal.querySelector('.abele-comment-input__field')
+    report.composerVisible = shown(field)
+    if (field) {
+      report.composerFontPx = Math.round(parseFloat(getComputedStyle(field).fontSize) || 0)
+    }
+
+    // Obsidian's own, drawn by the frame rather than by us — which is the point of asking for
+    // their mod-lg instead of writing the geometry again.
+    const close = modal.querySelector('.modal-close-button, .modal-header-button')
+    report.closeVisible = shown(close)
+    if (close) {
+      const c = close.getBoundingClientRect()
+      report.closeInsideWindow = c.top >= 0 && c.bottom <= window.innerHeight
+    }
+
+    report.chatVisible = shown(document.querySelector('.abele-ai-chat'))
   } catch (e) {
     report.error = String((e && e.message) || e)
   }
@@ -265,7 +325,7 @@ const available = isObsidianRunning() && hasTestApi()
 beforeAll(async () => {
   if (!available) return
 
-  evalAsync(cleanupScript, 30_000)
+  evalAsync(cleanupScript(false, false, false), 30_000)
 
   let desktop: DesktopReport = {
     via: 'none',
@@ -273,17 +333,25 @@ beforeAll(async () => {
     markerIds: '',
     hasRoom: false,
     cardVisible: false,
+    readableLineLength: false,
+    leftCollapsed: false,
+    rightCollapsed: false,
     commentPath: '',
     commentFileExists: false,
     error: '',
   }
   let mobile: MobileReport = {
-    chatVisible: false,
-    backToNoteVisible: false,
-    openAsChatVisible: false,
-    composerVisible: false,
-    noteButtonVisible: false,
     modalOpen: false,
+    cardVisible: false,
+    threadVisible: false,
+    composerVisible: false,
+    composerFontPx: 0,
+    closeVisible: false,
+    closeInsideWindow: false,
+    modalTop: 0,
+    modalBottom: 0,
+    windowHeight: 0,
+    chatVisible: false,
     error: '',
   }
   let cleanup: CleanupReport = { cleaned: false, error: '' }
@@ -331,7 +399,14 @@ beforeAll(async () => {
     }
 
     try {
-      cleanup = evalAsync<CleanupReport>(cleanupScript, 30_000)
+      cleanup = evalAsync<CleanupReport>(
+        cleanupScript(
+          desktop.readableLineLength,
+          desktop.leftCollapsed,
+          desktop.rightCollapsed
+        ),
+        30_000
+      )
     } catch (e) {
       cleanup = { cleaned: false, error: String((e as Error)?.message ?? e) }
     }
@@ -362,10 +437,10 @@ describe.runIf(available)('commenting on a passage', () => {
     expect(report.markerIds).toMatch(/^[a-z0-9]{6}$/)
   })
 
-  it('shows the card in the margin exactly when the margin has room', () => {
+  it('hangs the card in the margin the pane was given room for', () => {
     expect({ hasRoom: report.hasRoom, cardVisible: report.cardVisible }).toEqual({
-      hasRoom: report.hasRoom,
-      cardVisible: report.hasRoom,
+      hasRoom: true,
+      cardVisible: true,
     })
   })
 
@@ -376,27 +451,43 @@ describe.runIf(available)('commenting on a passage', () => {
 })
 
 describe.runIf(available)('the same comment on a phone', () => {
-  it('opens in the chat sidebar when the icon is tapped', () => {
-    expect(report.chatVisible).toBe(true)
-  })
-
-  it('opens no dialog over the note, which is what the sheet used to be', () => {
-    expect(report.modalOpen).toBe(false)
-  })
-
-  it('offers the way back to the note and the way up into a full chat', () => {
-    expect({ back: report.backToNoteVisible, up: report.openAsChatVisible }).toEqual({
-      back: true,
-      up: true,
+  it('opens the card in a dialog when the icon is tapped', () => {
+    expect({ modal: report.modalOpen, card: report.cardVisible }).toEqual({
+      modal: true,
+      card: true,
     })
   })
 
-  it('gives it the sidebar own composer, which a thumb can type into', () => {
-    expect(report.composerVisible).toBe(true)
+  it('does not borrow the chat sidebar, which is the agent own room', () => {
+    expect(report.chatVisible).toBe(false)
   })
 
-  it('and the note button, which only a comment gets', () => {
-    expect(report.noteButtonVisible).toBe(true)
+  it('shows the conversation and a composer a thumb can type into', () => {
+    expect({ thread: report.threadVisible, composer: report.composerVisible }).toEqual({
+      thread: true,
+      composer: true,
+    })
+  })
+
+  /** Below 16 px iOS zooms the note into the focused field, and it has to be pinched back. */
+  it('sets the field at a size iOS will not zoom into', () => {
+    expect(report.composerFontPx).toBeGreaterThanOrEqual(16)
+  })
+
+  /**
+   * The regression this release is about: 1.17.0 wrote the sheet's geometry itself and put
+   * Obsidian's own × behind the status bar. The dialog is theirs now, and the × comes with it.
+   */
+  it('keeps Obsidian own close button on screen', () => {
+    expect({ visible: report.closeVisible, inside: report.closeInsideWindow }).toEqual({
+      visible: true,
+      inside: true,
+    })
+  })
+
+  it('stands inside the window, top and bottom', () => {
+    expect(report.modalTop).toBeGreaterThanOrEqual(0)
+    expect(report.modalBottom).toBeLessThanOrEqual(report.windowHeight)
   })
 })
 

@@ -527,16 +527,16 @@ describe('where a press on a marker is sent', () => {
 
     widgetOf(state).toDOM(narrow).dispatchEvent(new MouseEvent('click'))
 
-    expect(handler).toHaveBeenLastCalledWith(['k7d2ph'], false)
+    expect(handler).toHaveBeenLastCalledWith(['k7d2ph'], false, NOTE)
 
     widgetOf(state).toDOM(wide).dispatchEvent(new MouseEvent('click'))
 
-    expect(handler).toHaveBeenLastCalledWith(['k7d2ph'], true)
+    expect(handler).toHaveBeenLastCalledWith(['k7d2ph'], true, NOTE)
   })
 
   it('measures before it reads, because an overlay reports no room until it has', () => {
     // `hasRoom()` answers `false` until the first `position()`, so a press that read the
-    // overlay without measuring it would send every first card to the sidebar, however wide the
+    // overlay without measuring it would send every first card into a dialog, however wide the
     // pane. This is that regression, written as a test: the view is fresh, and the answer is
     // still `true`.
     const handler = vi.fn()
@@ -545,6 +545,6 @@ describe('where a press on a marker is sent', () => {
 
     widgetOf(state).toDOM(fakeView(state)).dispatchEvent(new MouseEvent('click'))
 
-    expect(handler).toHaveBeenCalledWith(['k7d2ph'], true)
+    expect(handler).toHaveBeenCalledWith(['k7d2ph'], true, NOTE)
   })
 })

@@ -130,12 +130,13 @@ Three files, three concerns:
   proves each list renders a single page; only this tier can show that the page is cheap.
 - `commentChats.e2e.test.ts` — **comment chats end to end**. Runs the comment command on a
   selection in a scratch note and checks what the app shows: no raw `%%c:…%%` in the editor, an
-  icon carrying the comment id, the card in the margin when there is room, the chat file under
-  the comment folder, and — under `app.emulateMobile(true)` in a phone-sized window — the same
-  comment opening in the chat sidebar, with its two header actions, the sidebar's own composer
-  and the note button, and no dialog over the note. The window is resized as well as the layout
-  switched: the margin is *measured*, so a phone layout in a wide window still has room for a
-  card. Cleans the note, the file and the window size up after itself.
+  icon carrying the comment id, the card in the margin, the chat file under the comment folder,
+  and — under `app.emulateMobile(true)` in a phone-sized window — the same card in a dialog:
+  Obsidian's own bottom sheet, standing inside the window with their close button on it, the
+  thread and a composer set at a size iOS will not zoom into, and the chat sidebar not
+  borrowed for any of it. The window is resized and both sidebars are collapsed as well as the
+  layout switched: the margin is *measured*, and this vault reads edge to edge with both
+  sidebars open. Puts the note, the file, the window and the layout back after itself.
 
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
 "mega group", where a single resolution currently takes about two minutes.

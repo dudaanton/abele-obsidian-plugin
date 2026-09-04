@@ -77,13 +77,12 @@ scoped to the note it is anchored in on top of that agent's own scope, and is to
 of every turn where it is — the note, the quoted passage, the paragraph around it. Its file
 lives in the comments folder rather than the chat folder. Opening one as a full chat keeps the
 anchor and the file where it is, moves it into the chat history and the sidebar, and takes
-`edit_selection` away, because from then on it is an ordinary chat. That is reversible: an
-expanded comment can be sent back to its note, which closes the sidebar tab, drops it from the
-chat history and makes it a comment again — the same conversation, back on the margin.
+`edit_selection` away, because from then on it is an ordinary chat: the marker stays in the
+note and leads to that chat.
 
 Where there is no margin to answer in — a phone, or a split too narrow for a sidenote — tapping
-the marker shows the comment in the chat sidebar instead, still as a comment: the same file, the
-same agent, and nothing added to the chat history. Closing that tab sends it back to the margin.
+the marker opens the same card in a dialog. Nothing about the conversation changes with the
+host.
 
 Writing to a note links this chat to it: the note shows a card for every chat that changed it,
 so what you do here is visible from there afterwards. Reading a note links nothing.

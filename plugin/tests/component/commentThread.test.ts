@@ -144,7 +144,12 @@ describe('a question from the agent', () => {
       }),
     })
 
-    expect(view.find('.abele-comment-thread__question-text').text()).toBe('Which section?')
+    // Through `Markdown`, because the agent writes the way it writes: a note it means is a
+    // wikilink, and the question used to show the brackets.
+    const asked = view
+      .findAllComponents(Markdown)
+      .find((one) => one.classes().includes('abele-comment-thread__question-text'))
+    expect(asked?.props('text')).toBe('Which section?')
 
     const options = view.findAllComponents(Button)
     expect(options.map((b) => b.props('text'))).toEqual(['The first', 'The second'])
