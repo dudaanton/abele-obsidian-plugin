@@ -69,12 +69,18 @@ export abstract class ViewNode {
    * Takes a bare `object` rather than `Record<string, unknown>`: every props type here carries
    * `BaseProps`' `on${string}` index signature, and TypeScript will not widen a template-literal
    * index signature to a string one, so the narrower parameter would reject every caller.
+   *
+   * An `onX` key is an assignment like any other prop, so it replaces whatever was bound to that
+   * event: `update({ onClick: f })` twice leaves one handler, not two. Constructors are
+   * unaffected — there is nothing to replace yet.
    */
   protected assign(props: object): void {
     for (const [k, v] of Object.entries(props) as Array<[string, unknown]>) {
       if (v === undefined) continue
       if (/^on[A-Z]/.test(k) && typeof v === 'function') {
-        this.on(k[2].toLowerCase() + k.slice(3), v as Handler)
+        const event = k[2].toLowerCase() + k.slice(3)
+        this.off(event)
+        this.on(event, v as Handler)
       } else {
         ;(this as Record<string, unknown>)[k] = v
       }
@@ -116,7 +122,12 @@ export abstract class ViewNode {
     return this
   }
 
-  update(patch: Partial<this>): this {
+  /**
+   * Sets several props in one call. An `on*` key here *replaces* the handlers for that event —
+   * it reads as an assignment, and a script that patches in a loop would otherwise stack up a
+   * handler per pass. Use `.on()` when the intent is to add one alongside the others.
+   */
+  update(patch: Partial<this> & BaseProps): this {
     this.assign(patch)
     return this
   }
@@ -126,10 +137,17 @@ export abstract class ViewNode {
     return this.children
   }
 
-  find(id: string): ViewNode | undefined {
+  /**
+   * `seen` is a guard, not part of the API: a tree here is whatever the script assembled, and
+   * nothing stops it adding a node to itself or to one of its own ancestors. Without the set
+   * that is an infinite descent; with it a cycle is simply not walked twice.
+   */
+  find(id: string, seen: Set<ViewNode> = new Set()): ViewNode | undefined {
+    if (seen.has(this)) return undefined
+    seen.add(this)
     for (const child of this.nested()) {
       if (child.id === id) return child
-      const deep = child.find(id)
+      const deep = child.find(id, seen)
       if (deep) return deep
     }
     return undefined
@@ -519,6 +537,18 @@ export class Html extends ViewNode {
   on(event: string, fn: Handler, selector?: string): this {
     if (selector) this.delegates.push({ event, selector, fn })
     else super.on(event, fn)
+    return this
+  }
+  /** A delegated handler is bound too, so the root map alone would answer this wrongly. */
+  has(event: string): boolean {
+    return super.has(event) || this.delegates.some((d) => d.event === event)
+  }
+  /** Unbinding an event takes its delegates with it, whichever way the handler was attached. */
+  off(event: string, fn?: Handler): this {
+    super.off(event, fn)
+    this.delegates = this.delegates.filter(
+      (d) => d.event !== event || (fn !== undefined && d.fn !== fn)
+    )
     return this
   }
   nested(): ViewNode[] {

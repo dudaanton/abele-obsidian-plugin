@@ -92,6 +92,21 @@ describe('a node', () => {
     expect(b.disabled).toBe(true)
   })
 
+  it('update() replaces a handler instead of stacking another one up', async () => {
+    const f = vi.fn()
+    const b = new Button({ text: 'a' })
+    b.update({ onClick: f })
+    b.update({ onClick: f })
+    await b.click()
+    expect(f).toHaveBeenCalledTimes(1)
+  })
+
+  it('find() walks a cycle once instead of forever', () => {
+    const s = new Stack([])
+    s.add(s)
+    expect(s.find('nope')).toBeUndefined()
+  })
+
   it('has a stable key distinct from every other node', () => {
     const a = new Text('a')
     const b = new Text('b')
@@ -201,6 +216,16 @@ describe('constructors', () => {
     h.on('mount', mounted)
     await h.emit('mount', 'el')
     expect(mounted).toHaveBeenCalledWith('el')
+  })
+
+  it('Html counts a delegated handler as bound and unbinds it with the event', () => {
+    const fn = vi.fn()
+    const other = vi.fn()
+    const h = new Html({ html: '<div></div>', on: { 'click .b': fn, 'input .c': other } })
+    expect(h.has('click')).toBe(true)
+    h.off('click')
+    expect(h.has('click')).toBe(false)
+    expect(h.delegates).toEqual([{ event: 'input', selector: '.c', fn: other }])
   })
 
   it('exports every class as a script global', () => {
