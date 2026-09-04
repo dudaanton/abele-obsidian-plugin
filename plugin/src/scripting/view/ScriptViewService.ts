@@ -7,6 +7,7 @@
  */
 import type { EventRef, TAbstractFile, WorkspaceLeaf } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import { ScriptService } from '@/scripting/ScriptService'
 import { findScriptByName } from '@/scripting/runScript'
 import type { View, ViewHost, Placement, VaultChange } from './View'
@@ -144,6 +145,15 @@ export class ScriptViewService implements ViewHost {
       // the workspace, then for the index, before asking it for anything.
       const { app } = GlobalStore.getInstance()
       await new Promise<void>((resolve) => app.workspace.onLayoutReady(resolve))
+      // The view type is registered whether or not scripts are on, so a layout saved with
+      // script tabs still rebuilds them when the feature is off. Nothing will fill the index
+      // then, and a tab waiting on it would wait forever; say why, and let the tab be run
+      // again once scripts are turned on.
+      const { ai } = AbeleConfig.getInstance()
+      if (!ai.enabled || !ai.scriptsEnabled || !ai.scriptsFolder) {
+        leafView.fail('Scripts are turned off in the settings')
+        return
+      }
       await ScriptService.getInstance().ready
       const script = findScriptByName(saved.script)
       if (!script) {

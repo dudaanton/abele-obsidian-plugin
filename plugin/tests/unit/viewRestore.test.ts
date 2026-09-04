@@ -14,6 +14,8 @@ import { ScriptView, type SavedViewState } from '@/views/ScriptView'
 import { View } from '@/scripting/view/View'
 import { ScriptService } from '@/scripting/ScriptService'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 
 const { findScriptByName } = vi.hoisted(() => ({ findScriptByName: vi.fn() }))
@@ -78,8 +80,14 @@ beforeEach(() => {
   ScriptViewService.destroy()
   service = ScriptViewService.getInstance()
   findScriptByName.mockReset()
-  // The index is ready unless a test says otherwise: `init()` is what would settle this, and
-  // nothing here runs it.
+  // Scripts are on, and the index is ready unless a test says otherwise: `init()` is what
+  // would settle this, and nothing here runs it.
+  AbeleConfig.getInstance().ai = {
+    ...DEFAULT_AI_SETTINGS,
+    enabled: true,
+    scriptsEnabled: true,
+    scriptsFolder: 'Scripts',
+  }
   ScriptService.getInstance().ready = Promise.resolve()
 })
 
@@ -209,6 +217,36 @@ describe('restoring', () => {
     index.resolve()
     await vi.waitFor(() => expect(lv.model.status).toEqual({ kind: 'live' }))
     expect(execute).toHaveBeenCalledTimes(1)
+    execute.mockRestore()
+  })
+
+  it('says so when scripts are off, rather than waiting for an index that never comes', async () => {
+    AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, enabled: true, scriptsEnabled: false }
+    ScriptService.getInstance().ready = new Promise(() => {})
+    findScriptByName.mockReturnValue(demo)
+    const execute = vi.spyOn(ScriptService.getInstance(), 'execute')
+    const lv = attachView(leaves.tab)
+    // The answer comes before `setState` has returned, so the pass through `starting` is
+    // seen on the way rather than caught in a snapshot.
+    const starting = vi.spyOn(lv, 'starting')
+    await lv.setState(saved, { history: false })
+    await vi.waitFor(() =>
+      expect(lv.model.status).toEqual({
+        kind: 'failed',
+        script: 'Demo',
+        message: 'Scripts are turned off in the settings',
+      })
+    )
+    expect(starting).toHaveBeenCalledWith('Demo')
+    expect(execute).not.toHaveBeenCalled()
+
+    // Turned on since: the button runs it, through the same path.
+    AbeleConfig.getInstance().ai.scriptsEnabled = true
+    AbeleConfig.getInstance().ai.scriptsFolder = 'Scripts'
+    ScriptService.getInstance().ready = Promise.resolve()
+    execute.mockResolvedValueOnce('')
+    lv.model.runAgain()
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1))
     execute.mockRestore()
   })
 
