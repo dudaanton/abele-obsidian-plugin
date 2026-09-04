@@ -49,8 +49,12 @@ export class ScriptView extends ItemView {
       view: null,
       status: { kind: 'starting', script: '' },
       saved: null,
+      // Only a tab that failed has anything to run again: a live one already has its view,
+      // and a starting one is being run now.
       runAgain: () => {
-        if (this.model.saved) void ScriptViewService.getInstance().restore(this, this.model.saved)
+        const { saved, status } = this.model
+        if (saved && status.kind === 'failed')
+          void ScriptViewService.getInstance().restore(this, saved)
       },
     })
   }

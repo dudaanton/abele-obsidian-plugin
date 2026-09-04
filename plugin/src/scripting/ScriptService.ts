@@ -47,7 +47,25 @@ export class ScriptService {
   /** Reactive list for settings UI */
   public readonly scriptList = ref<ParsedScript[]>([])
 
-  private constructor() {}
+  /**
+   * Settles once the first `discover()` of this instance has finished, and so once a script
+   * can be found by name. Obsidian rebuilds the layout — and with it every saved script tab —
+   * before `onLayoutReady`, which is before `init()` has been called at all; a lookup made
+   * then would read an empty index and report the script missing. Anything that needs the
+   * index at startup waits here instead.
+   */
+  ready: Promise<void>
+  private markReady: () => void = () => {}
+
+  private constructor() {
+    this.ready = this.resetReady()
+  }
+
+  private resetReady(): Promise<void> {
+    return new Promise((resolve) => {
+      this.markReady = resolve
+    })
+  }
 
   static getInstance(): ScriptService {
     if (!this.instance) {
@@ -64,7 +82,9 @@ export class ScriptService {
   }
 
   init() {
-    this.discover()
+    // Settled either way: a saved tab waiting on the index must get an answer even when the
+    // first discovery threw.
+    void this.discover().finally(() => this.markReady())
     this.startWatching()
   }
 
@@ -142,6 +162,7 @@ export class ScriptService {
     this.unregisterAllCommands()
     this.scripts.clear()
     this.scriptList.value = []
+    this.ready = this.resetReady()
   }
 
   private startWatching() {

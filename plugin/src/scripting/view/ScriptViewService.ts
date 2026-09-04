@@ -7,6 +7,8 @@
  */
 import type { EventRef, TAbstractFile, WorkspaceLeaf } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { ScriptService } from '@/scripting/ScriptService'
+import { findScriptByName } from '@/scripting/runScript'
 import type { View, ViewHost, Placement, VaultChange } from './View'
 import { setDefaultViewHost } from './host'
 import { SCRIPT_VIEW_TYPE, type SavedViewState, type ScriptView } from '@/views/ScriptView'
@@ -17,14 +19,21 @@ interface Bound {
   unsubscribe: () => void
 }
 
+interface Opening {
+  view: View
+  resolve: (leafView: ScriptView) => void
+}
+
 export class ScriptViewService implements ViewHost {
   private static instance: ScriptViewService | null = null
 
   private bound = new Map<string, Bound>()
   /** Leaves that exist and have no view yet, by id: a fresh open or a restore in progress. */
   private waiting = new Map<string, ScriptView>()
+  /** Leaves whose script is being run again right now, so a second ask does not start another. */
+  private restoring = new Set<string>()
   /** Views whose `open()` is waiting for a leaf to appear, oldest first. */
-  private opening: Array<{ view: View; resolve: (leafView: ScriptView) => void }> = []
+  private opening: Opening[] = []
 
   private constructor() {
     setDefaultViewHost(this)
@@ -39,6 +48,7 @@ export class ScriptViewService implements ViewHost {
     if (!this.instance) return
     for (const id of [...this.instance.bound.keys()]) this.instance.detach(id)
     this.instance.waiting.clear()
+    this.instance.restoring.clear()
     this.instance.opening = []
     setDefaultViewHost(null)
     this.instance = null
@@ -55,9 +65,15 @@ export class ScriptViewService implements ViewHost {
   // ── ViewHost ──
 
   async open(view: View, opts: { where: Placement; active: boolean }): Promise<void> {
-    const restoring = view.restore && this.waiting.get(view.restore.leafId)
-    if (restoring) {
-      this.bind(view, restoring)
+    if (view.restore) {
+      const restoring = this.waiting.get(view.restore.leafId)
+      if (restoring) {
+        this.bind(view, restoring)
+        return
+      }
+      // The tab this view was rebuilding was closed while its script ran. Opening a new one
+      // would put a tab on screen nobody asked for; the view ends here instead.
+      await view.dispose()
       return
     }
     const { workspace } = GlobalStore.getInstance().app
@@ -67,8 +83,20 @@ export class ScriptViewService implements ViewHost {
     // Obsidian builds the ItemView inside setViewState and calls onOpen, which is where the
     // leaf reports itself through `attach`. No state is passed: a state naming a script would
     // read as a restore.
-    const arrived = new Promise<ScriptView>((resolve) => this.opening.push({ view, resolve }))
-    await leaf.setViewState({ type: SCRIPT_VIEW_TYPE, active: opts.active })
+    let resolveArrival: Opening['resolve'] = () => {}
+    const arrived = new Promise<ScriptView>((resolve) => {
+      resolveArrival = resolve
+    })
+    const entry: Opening = { view, resolve: resolveArrival }
+    this.opening.push(entry)
+    try {
+      await leaf.setViewState({ type: SCRIPT_VIEW_TYPE, active: opts.active })
+    } catch (err) {
+      // No leaf is coming. Left in the queue, the next leaf to open would be handed to this
+      // view instead of the one that asked for it.
+      this.opening = this.opening.filter((o) => o !== entry)
+      throw err
+    }
     const leafView = await arrived
     this.bind(view, leafView)
     await workspace.revealLeaf(leaf)
@@ -100,18 +128,28 @@ export class ScriptViewService implements ViewHost {
     void b.view.dispose()
   }
 
-  /** Runs the script a saved tab names, so the view it makes lands in that tab. */
+  /**
+   * Runs the script a saved tab names, so the view it makes lands in that tab.
+   *
+   * A leaf that already has its view, or whose script is running now, is left alone: binding
+   * twice would subscribe twice and lose the first view without disposing it.
+   */
   async restore(leafView: ScriptView, saved: SavedViewState): Promise<void> {
+    if (this.bound.has(leafView.id) || this.restoring.has(leafView.id)) return
+    this.restoring.add(leafView.id)
     this.waiting.set(leafView.id, leafView)
     leafView.starting(saved.script)
-    const { findScriptByName } = await import('@/scripting/runScript')
-    const script = findScriptByName(saved.script)
-    if (!script) {
-      leafView.fail(`Script "${saved.script}" not found`)
-      return
-    }
     try {
-      const { ScriptService } = await import('@/scripting/ScriptService')
+      // The layout is rebuilt before the plugin has looked at the scripts folder: wait for
+      // the workspace, then for the index, before asking it for anything.
+      const { app } = GlobalStore.getInstance()
+      await new Promise<void>((resolve) => app.workspace.onLayoutReady(resolve))
+      await ScriptService.getInstance().ready
+      const script = findScriptByName(saved.script)
+      if (!script) {
+        leafView.fail(`Script "${saved.script}" not found`)
+        return
+      }
       await ScriptService.getInstance().execute(script.path, saved.params, {
         source: 'view',
         restore: { leafId: leafView.id, state: saved.state },
@@ -119,6 +157,8 @@ export class ScriptViewService implements ViewHost {
       if (!this.bound.has(leafView.id)) leafView.fail('The script finished without opening a view')
     } catch (err) {
       leafView.fail(err instanceof Error ? err.message : String(err))
+    } finally {
+      this.restoring.delete(leafView.id)
     }
   }
 
@@ -146,7 +186,11 @@ export class ScriptViewService implements ViewHost {
     vaultRefs.push(app.vault.on('delete', change('delete')))
     vaultRefs.push(app.vault.on('rename', change('rename')))
 
-    let active = false
+    // A leaf opened with `active: true` is already the active one, and the change event for
+    // that has been and gone. `activeLeaf` is not in the public typings, hence the cast.
+    const workspace = app.workspace as unknown as { activeLeaf?: WorkspaceLeaf | null }
+    let active = workspace.activeLeaf === leafView.leaf
+    if (active) void view.emit('focus')
     workspaceRefs.push(
       app.workspace.on('active-leaf-change', (leaf: WorkspaceLeaf | null) => {
         const now = leaf === leafView.leaf
@@ -156,17 +200,21 @@ export class ScriptViewService implements ViewHost {
       })
     )
 
-    // Keys typed into a field are the field's; the rest reach the script's `key` hook.
+    // Keys go to the script only while its tab is the active one, and never those typed into
+    // a field. The listener is on the document because focus is rarely inside the pane: a
+    // key pressed with nothing focused lands on the body, which the pane would never see.
     const el = leafView.containerEl
+    const doc = el.ownerDocument
     const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null
-      if (t && t.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (!active) return
+      const t = e.target as Element | null
+      if (t?.closest?.('input, textarea, select, [contenteditable="true"]')) return
       void view.emit('key', e)
     }
-    el.addEventListener('keydown', onKey)
+    doc.addEventListener('keydown', onKey)
 
     // The leaf may live in a popout, so the observer comes from its own window.
-    const win = el.ownerDocument.defaultView
+    const win = doc.defaultView
     const observer =
       win && 'ResizeObserver' in win
         ? new win.ResizeObserver((entries) => {
@@ -179,7 +227,7 @@ export class ScriptViewService implements ViewHost {
     return () => {
       for (const ref of vaultRefs) app.vault.offref(ref)
       for (const ref of workspaceRefs) app.workspace.offref(ref)
-      el.removeEventListener('keydown', onKey)
+      doc.removeEventListener('keydown', onKey)
       observer?.disconnect()
     }
   }
