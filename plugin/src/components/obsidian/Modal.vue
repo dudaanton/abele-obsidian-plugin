@@ -6,6 +6,7 @@
 
 <script setup lang="ts">
 import { genid } from '@/helpers/vueUtils'
+import { dialogBand } from '@/helpers/dialogBand'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { App, Modal } from 'obsidian'
 import { onBeforeMount, onMounted, onUnmounted, ref, shallowRef } from 'vue'
@@ -20,6 +21,78 @@ const props = defineProps<{
 }>()
 
 const modal = ref<Modal | null>(null)
+
+/**
+ * The band a tall dialog may stand in, written onto the dialog as two lengths.
+ *
+ * Measured rather than assumed: see `dialogBand`. The container is asked how tall it is *now*
+ * and `visualViewport` which part of that can be seen *now*, so the answer holds whether the
+ * platform shrinks the page under the keyboard or leaves it alone. Written from here because
+ * CSS cannot ask either question — there is no unit for "the part of the window that is not
+ * behind the keyboard".
+ */
+let viewport: VisualViewport | null = null
+let readViewport: (() => void) | null = null
+
+function trackViewport(el: HTMLElement): void {
+  // From the element's own window, not the bare global: a modal opened from the settings
+  // window belongs to that window, and its viewport is not the main one's.
+  const view = el.ownerDocument.defaultView
+  const visible = view?.visualViewport
+  if (!visible) return
+
+  viewport = visible
+
+  /**
+   * The window as it stands with nothing over it.
+   *
+   * Remembered rather than read, because on a platform that shrinks the page for the keyboard
+   * `innerHeight` shrinks with it — and then "how much of the window is covered" answers zero
+   * and the keyboard is taken off a second time. The tallest this window has been at this
+   * width is the honest answer, and it cannot be poisoned by the order two events arrive in.
+   * The width is what resets it: a keyboard never changes that, and a rotation always does.
+   */
+  let full = view.innerHeight || visible.height
+  let width = view.innerWidth
+
+  readViewport = () => {
+    if (view.innerWidth !== width) {
+      width = view.innerWidth
+      full = view.innerHeight || full
+    } else {
+      full = Math.max(full, view.innerHeight || 0)
+    }
+
+    const styles = view.getComputedStyle(el)
+    // Obsidian's own, kept up to date by the app on mobile and `0px` everywhere else.
+    const keyboard = parseFloat(styles.getPropertyValue('--keyboard-height')) || 0
+
+    const band = dialogBand({
+      container: el.parentElement?.clientHeight || visible.height,
+      visible: visible.height,
+      visibleTop: visible.offsetTop,
+      keyboard,
+      window: full,
+    })
+    el.style.setProperty('--abele-dialog-height', `${band.height}px`)
+    el.style.setProperty('--abele-dialog-bottom', `${band.bottom}px`)
+  }
+  readViewport()
+
+  // `scroll` as well as `resize`: iOS moves the visible band without resizing it whenever it
+  // brings a focused field up, and a dialog that only heard `resize` would stay where it was.
+  visible.addEventListener('resize', readViewport)
+  visible.addEventListener('scroll', readViewport)
+}
+
+function untrackViewport(): void {
+  if (viewport && readViewport) {
+    viewport.removeEventListener('resize', readViewport)
+    viewport.removeEventListener('scroll', readViewport)
+  }
+  viewport = null
+  readViewport = null
+}
 
 const id = ref(genid())
 // Teleport by element, not by selector: a modal opened from the settings window
@@ -69,6 +142,9 @@ onBeforeMount(() => {
   }
 
   modal.value.open()
+
+  // After `open()`, which is when the dialog is in a document and has a container to measure.
+  if (props.size === 'tall') trackViewport(modal.value.modalEl)
 })
 
 onMounted(() => {
@@ -76,6 +152,9 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  // Before the dialog goes: a listener left on the viewport is a leak per dialog opened, and
+  // it would go on writing lengths onto an element nobody is looking at.
+  untrackViewport()
   modal.value?.close()
   modal.value = null
 })
@@ -122,18 +201,23 @@ const emit = defineEmits<{
 
 /**
  * The on-screen keyboard, which is the one thing Obsidian's own sizing does not take off a
- * dialog: `--dialog-max-height` is `calc(100vh - var(--safe-area-inset-top))` and the window
- * does not shrink when the keyboard comes up, so the last rows of a full-height sheet — the
- * composer, always — end up behind it. That was the 1.16.0 report from a phone.
+ * dialog: `--dialog-max-height` is the *window*, and the last rows of a full-height sheet —
+ * the composer, always — end up behind the keyboard. That was the 1.16.0 report from a phone.
  *
- * `--keyboard-height` is Obsidian's own variable, kept up to date by the app and `0px`
- * everywhere else; their mobile toolbar rides on it. Taking it *and* the notch off the height
- * and then pushing the sheet up by it leaves the dialog exactly the band that can be seen:
- * top edge under the notch, bottom edge on the keyboard.
+ * The two lengths are measured and written by the script above; see `dialogBand` for why they
+ * are not `--keyboard-height`. `100%` and `0px` are the fallback, which is every case with no
+ * keyboard to account for — a desktop, a tablet, a window with no `visualViewport` at all.
  */
 body.is-phone .modal.abele-modal_tall {
-  height: calc(100% - var(--keyboard-height) - var(--safe-area-inset-top));
-  margin-bottom: var(--keyboard-height);
+  height: calc(var(--abele-dialog-height, 100%) - var(--safe-area-inset-top));
+  margin-bottom: var(--abele-dialog-bottom, 0px);
+  /**
+   * A floor, and the reason for it: the height above is arithmetic over numbers a platform
+   * reports, and the way that goes wrong is a sheet too short to hold anything — which is
+   * exactly what a phone saw in 1.17.2, a white dialog with the header and nothing under it.
+   * Standing too tall is a thing a person can read and scroll; standing empty is not.
+   */
+  min-height: min(100%, 16em);
   /* Their sheet has no vertical padding at all; the home indicator needs the bottom of it. */
   padding-bottom: var(--safe-area-inset-bottom);
 }

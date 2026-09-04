@@ -133,8 +133,8 @@ Three files, three concerns:
   icon carrying the comment id, the card in the margin, the chat file under the comment folder,
   and — under `app.emulateMobile(true)` in a phone-sized window — the same card in a dialog:
   Obsidian's own bottom sheet, standing inside the window with their close button on it, the
-  thread and a composer set at a size iOS will not zoom into, and the chat sidebar not
-  borrowed for any of it. The window is resized and both sidebars are collapsed as well as the
+  thread and a composer set at a size iOS will not zoom into, the composer still above a
+  keyboard faked the way the app reports one, and the chat sidebar not borrowed for any of it. The window is resized and both sidebars are collapsed as well as the
   layout switched: the margin is *measured*, and this vault reads edge to edge with both
   sidebars open. Puts the note, the file, the window and the layout back after itself.
 

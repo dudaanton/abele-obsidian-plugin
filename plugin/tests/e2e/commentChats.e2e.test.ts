@@ -74,6 +74,15 @@ interface MobileReport {
   modalTop: number
   modalBottom: number
   windowHeight: number
+  /**
+   * The same, with a keyboard faked the way Obsidian reports one. The composer has to stay
+   * above it and the thread has to keep a height: 1.17.2 shrank the sheet twice over and left
+   * a white dialog with nothing under its header.
+   */
+  keyboardModalBottom: number
+  keyboardComposerBottom: number
+  keyboardThreadHeight: number
+  keyboardBandBottom: number
   /** The sidebar was not borrowed for this: that is 1.17.1, and it is what came back wrong. */
   chatVisible: boolean
   error: string
@@ -219,7 +228,10 @@ const mobileScript = `(async () => {
   const report = {
     modalOpen: false, cardVisible: false, threadVisible: false, composerVisible: false,
     composerFontPx: 0, closeVisible: false, closeInsideWindow: false,
-    modalTop: 0, modalBottom: 0, windowHeight: 0, chatVisible: false, error: '',
+    modalTop: 0, modalBottom: 0, windowHeight: 0,
+    keyboardModalBottom: 0, keyboardComposerBottom: 0, keyboardThreadHeight: 0,
+    keyboardBandBottom: 0,
+    chatVisible: false, error: '',
   }
 
   try {
@@ -269,6 +281,25 @@ const mobileScript = `(async () => {
     }
 
     report.chatVisible = shown(document.querySelector('.abele-ai-chat'))
+
+    // A keyboard, as the app reports one. There is no way to raise a real one here, and the
+    // variable is what the dialog reads — so this is the arithmetic under test, not the OS.
+    const keyboard = 336
+    report.keyboardBandBottom = window.innerHeight - keyboard
+    document.body.style.setProperty('--keyboard-height', keyboard + 'px')
+    window.visualViewport.dispatchEvent(new Event('resize'))
+    await wait(600)
+
+    report.keyboardModalBottom = Math.round(modal.getBoundingClientRect().bottom)
+    const composer = modal.querySelector('.abele-comment-input')
+    report.keyboardComposerBottom = composer
+      ? Math.round(composer.getBoundingClientRect().bottom)
+      : 0
+    const thread = modal.querySelector('.abele-comment-thread')
+    report.keyboardThreadHeight = thread ? Math.round(thread.getBoundingClientRect().height) : 0
+
+    document.body.style.removeProperty('--keyboard-height')
+    window.visualViewport.dispatchEvent(new Event('resize'))
   } catch (e) {
     report.error = String((e && e.message) || e)
   }
@@ -351,6 +382,10 @@ beforeAll(async () => {
     modalTop: 0,
     modalBottom: 0,
     windowHeight: 0,
+    keyboardModalBottom: 0,
+    keyboardComposerBottom: 0,
+    keyboardThreadHeight: 0,
+    keyboardBandBottom: 0,
     chatVisible: false,
     error: '',
   }
@@ -488,6 +523,20 @@ describe.runIf(available)('the same comment on a phone', () => {
   it('stands inside the window, top and bottom', () => {
     expect(report.modalTop).toBeGreaterThanOrEqual(0)
     expect(report.modalBottom).toBeLessThanOrEqual(report.windowHeight)
+  })
+
+  /**
+   * The regression 1.17.2 shipped: the sheet was shrunk by the keyboard twice over and came
+   * out one header tall, white, with the thread and the composer clipped away.
+   */
+  it('gives the keyboard its room and keeps the composer above it', () => {
+    expect(report.keyboardModalBottom).toBeLessThanOrEqual(report.keyboardBandBottom)
+    expect(report.keyboardComposerBottom).toBeLessThanOrEqual(report.keyboardBandBottom)
+    expect(report.keyboardComposerBottom).toBeGreaterThan(0)
+  })
+
+  it('leaves the conversation a place to be read while somebody types', () => {
+    expect(report.keyboardThreadHeight).toBeGreaterThan(100)
   })
 })
 
