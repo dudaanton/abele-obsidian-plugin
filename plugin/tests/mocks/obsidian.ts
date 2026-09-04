@@ -421,7 +421,24 @@ export class Vault {}
 export class MetadataCache {}
 export class Editor {}
 export class MarkdownView {}
-export class WorkspaceLeaf {}
+/**
+ * A leaf that remembers what it was asked to show. `setViewState` is what opens a view in
+ * Obsidian; the fake records the state and lets a test attach the view it would have made.
+ */
+export class WorkspaceLeaf {
+  view: unknown = null
+  state: unknown = null
+  detached = false
+  async setViewState(state: { type: string; state?: unknown; active?: boolean }): Promise<void> {
+    this.state = state
+  }
+  detach(): void {
+    this.detached = true
+  }
+  getViewState(): unknown {
+    return this.state
+  }
+}
 export class Plugin {}
 export class PluginSettingTab {}
 export class Setting {}
@@ -460,6 +477,15 @@ export class ItemView extends Component {
     this.containerEl = document.createElement('div')
     this.containerEl.appendChild(document.createElement('div'))
     this.containerEl.appendChild(document.createElement('div'))
+  }
+
+  /**
+   * The layout round-trip. Obsidian's base keeps nothing; a view that wants something saved
+   * overrides both and calls `super.setState` last, which is why the base has to exist.
+   */
+  async setState(_state: unknown, _result: unknown): Promise<void> {}
+  getState(): Record<string, unknown> {
+    return {}
   }
 }
 
