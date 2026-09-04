@@ -119,6 +119,16 @@ const cleanupScript = `(async () => {
 const desktopScript = `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
   const shown = (el) => !!el && el.getBoundingClientRect().height > 0
+  // Waits for a thing to appear rather than for a number of milliseconds: revealing the
+  // sidebar is asynchronous, and a fixed sleep is a test that fails on a slow morning.
+  const until = async (fn, ms) => {
+    const deadline = Date.now() + ms
+    while (Date.now() < deadline) {
+      if (fn()) return true
+      await wait(100)
+    }
+    return false
+  }
   const path = ${JSON.stringify(NOTE)}
   const quote = ${JSON.stringify(QUOTE)}
   const second = ${JSON.stringify(SECOND)}
@@ -179,7 +189,9 @@ const desktopScript = `(async () => {
 
     // The press, which is the whole of how a comment is opened now.
     marker.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await wait(2000)
+    await until(() => shown(document.querySelector('.abele-ai-chat')), 8000)
+    // The header and the composer are rendered by the same view, one tick behind it.
+    await wait(500)
 
     const chat = document.querySelector('.abele-ai-chat')
     report.chatVisible = shown(chat)
@@ -199,8 +211,10 @@ const desktopScript = `(async () => {
     await service.create(file, text.indexOf(second) + second.length, second)
     await wait(1500)
     const markers = document.querySelectorAll('.abele-comment-marker[data-comment-ids]')
-    markers[markers.length - 1].dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await wait(2000)
+    const last = markers[markers.length - 1]
+    const secondId = last.getAttribute('data-comment-ids').split(',')[0]
+    last.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await until(() => service.isShown(secondId), 8000)
     report.tabsAfterSecond = chats.getAllSessions().length
   } catch (e) {
     report.error = String((e && e.message) || e)
@@ -219,6 +233,14 @@ const desktopScript = `(async () => {
 const mobileScript = `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
   const shown = (el) => !!el && el.getBoundingClientRect().height > 0
+  const until = async (fn, ms) => {
+    const deadline = Date.now() + ms
+    while (Date.now() < deadline) {
+      if (fn()) return true
+      await wait(100)
+    }
+    return false
+  }
   const report = {
     chatVisible: false, composerVisible: false, noteButtonVisible: false, modalOpen: false,
     error: '',
@@ -233,7 +255,8 @@ const mobileScript = `(async () => {
     const marker = document.querySelector('.abele-comment-marker[data-comment-ids]')
     if (!marker) throw new Error('no marker visible after switching to mobile')
     marker.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await wait(2500)
+    await until(() => shown(document.querySelector('.abele-ai-chat')), 8000)
+    await wait(500)
 
     const chat = document.querySelector('.abele-ai-chat')
     report.chatVisible = shown(chat)
