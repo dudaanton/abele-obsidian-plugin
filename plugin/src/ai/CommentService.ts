@@ -80,9 +80,13 @@ export class CommentService implements CommentInfoSource {
     // card any more. Wherever the pane is wide or narrow, that way leads to the sidebar, which
     // is where the conversation went — and it leads there again after the tab has been closed,
     // which is the dead end the card's two buttons used to leave behind.
-    const expanded = ids.find((id) => this.expanded.has(id))
-    if (expanded) {
-      void this.revealChat(expanded)
+    //
+    // Only the first, because that is the one a press opens. A marker can carry a comment and
+    // a chat at once, and then the press is about the comment; the chat is one tab along in
+    // the card's own strip, which sends it here itself.
+    const first = ids[0]
+    if (first && this.expanded.has(first)) {
+      void this.revealChat(first)
       return
     }
 

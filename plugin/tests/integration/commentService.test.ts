@@ -430,6 +430,21 @@ describe('a press on the marker of an expanded comment', () => {
     expect(GlobalStore.getInstance().commentModal.value).toBeNull()
   })
 
+  /**
+   * A marker can carry both at once, and then the press is about the comment: the chat is one
+   * tab along in the card's own strip, which sends it to the sidebar itself.
+   */
+  it('opens the card when the marker carries a comment as well', async () => {
+    const { service, id } = await expanded()
+    const other = await CommentService.getInstance().create(noteFile(), 6, undefined)
+    const otherId = other.commentId!
+
+    service.openFrom([otherId, id], true, 'Notes/A.md')
+    await flush()
+
+    expect(service.open.value).toBe(otherId)
+  })
+
   /** The dead end: closing the tab used to leave the marker pointing at nothing reachable. */
   it('opens it again after its tab has been closed', async () => {
     const { service, session, id } = await expanded()
