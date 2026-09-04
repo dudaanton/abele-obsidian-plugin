@@ -320,6 +320,21 @@ describe('a chat file that changed behind the index', () => {
     expect(app.stats.read).toBe(before)
   })
 
+  /**
+   * The title is not one of them. A chat renamed here has its new name in the index before the
+   * file has been written again, and reading the file back would take that name away from the
+   * person who just gave it.
+   */
+  it('leaves the name the index holds alone', async () => {
+    const file = await synced()
+    ChatStorage.getInstance().getHistory()[0].title = 'What I called it here'
+
+    await ChatStorage.getInstance().refreshHistory()
+
+    expect(entry().title).toBe('What I called it here')
+    expect(entry().notes).toEqual([{ path: NOTE_A, at }])
+  })
+
   it('reads it again once the file has moved on', async () => {
     const file = await synced()
     await ChatStorage.getInstance().refreshHistory()

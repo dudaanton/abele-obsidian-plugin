@@ -218,21 +218,21 @@ export class ChatStorage {
     entry.mtime = file.stat.mtime
     if (metadata?.type !== 'abele-chat') return seen === undefined
 
+    // The three the type calls mirrored, and not the title: a chat renamed here has its new
+    // name in the index before the file has been written again, and reading the file back
+    // would take that name away from the person who just gave it.
     const notes = metadata.touched?.length ? metadata.touched : undefined
     const recap = metadata.recap || undefined
     const agentId = metadata.agentId || undefined
-    const title = metadata.title || entry.title
 
     const same =
       JSON.stringify(entry.notes) === JSON.stringify(notes) &&
       entry.recap === recap &&
-      entry.agentId === agentId &&
-      entry.title === title
+      entry.agentId === agentId
 
     entry.notes = notes
     entry.recap = recap
     entry.agentId = agentId
-    entry.title = title
 
     return !same || seen === undefined
   }
