@@ -31,6 +31,7 @@ import { createInspectViewTool } from './InspectViewTool'
 import { createChartDocsTool } from './ChartDocsTool'
 import { createTemplateDocsTool } from './TemplateDocsTool'
 import { createQueryDocsTool } from './QueryDocsTool'
+import { createReadSettingsTool, createWriteSettingsTool } from './SettingsTools'
 import {
   createReadLogsTool,
   createReadBacklinksTool,
@@ -50,7 +51,16 @@ export function getToolRegistry(): ToolInfo[] {
   const labels: Record<string, string> = {}
   for (const t of tools) labels[t.name] = t.label
 
-  const CATEGORY_ORDER = ['Files', 'Network', 'AI', 'Vault data', 'Docs', 'Templates', 'Scripts']
+  const CATEGORY_ORDER = [
+    'Files',
+    'Network',
+    'AI',
+    'Vault data',
+    'Docs',
+    'Templates',
+    'Scripts',
+    'Settings',
+  ]
 
   const TOOL_CATEGORIES: Record<string, { label: string; category: string }> = {
     read: { label: 'Read file', category: 'Files' },
@@ -88,6 +98,8 @@ export function getToolRegistry(): ToolInfo[] {
     skill: { label: 'Skill', category: 'Templates' },
     script_api_docs: { label: 'Script API docs', category: 'Docs' },
     query_docs: { label: 'Query docs', category: 'Docs' },
+    read_settings: { label: 'Read settings', category: 'Settings' },
+    write_settings: { label: 'Write settings', category: 'Settings' },
     create_script: { label: 'Create script', category: 'Scripts' },
   }
 
@@ -150,6 +162,8 @@ export function createAgentTools(): AgentTool[] {
     createQuestionsTool(),
     createChartDocsTool(),
     createQueryDocsTool(),
+    createReadSettingsTool(),
+    createWriteSettingsTool(),
     createTemplateDocsTool(),
     createReadLogsTool(),
     createReadBacklinksTool(),

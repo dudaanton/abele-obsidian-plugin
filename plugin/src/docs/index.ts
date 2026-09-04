@@ -5,6 +5,7 @@ import tools from './tools.md?raw'
 import scripts from './scripts.md?raw'
 import templates from './templates.md?raw'
 import commands from './commands.md?raw'
+import settings from './settings.md?raw'
 
 /**
  * The plugin's reference, written for agents rather than for people.
@@ -40,6 +41,7 @@ const FILES: [id: string, source: string][] = [
   ['scripts', scripts],
   ['templates', templates],
   ['commands', commands],
+  ['settings', settings],
 ]
 
 export function slug(heading: string): string {
