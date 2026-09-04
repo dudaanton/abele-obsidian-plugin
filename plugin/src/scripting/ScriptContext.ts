@@ -21,6 +21,10 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { createAgentTools } from '@/ai/tools'
 import { substituteSecrets } from '@/ai/tools/secretUtils'
 import type { FormField } from './types'
+import { View, type RestoreInfo, type ViewHost, type ViewOptions } from './view/View'
+import { VIEW_GLOBALS } from './view/components'
+import { defaultViewHost } from './view/host'
+import { showFormModal } from './formModal'
 
 /** Extract first text content from tool result */
 function text(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -68,6 +72,12 @@ export function buildScriptContext(opts: {
   onLog?: (text: string) => void
   /** Told what the script says it is doing, when there is a run to attribute it to. */
   onStatus?: (text: string) => void
+  /** Which script this is, by the name it declares. A view saves it to run the script again. */
+  scriptName?: string
+  /** Set when a saved tab is being rebuilt: the leaf that waits and the state it kept. */
+  restore?: RestoreInfo
+  /** Test seam; production resolves the service through `defaultViewHost()`. */
+  viewHost?: ViewHost
 }) {
   const s = opts.signal
 
@@ -87,6 +97,21 @@ export function buildScriptContext(opts: {
   const generateImageTool = createGenerateImageTool()
   const downloadImageTool = createDownloadImageTool()
   const downloadFileTool = createDownloadFileTool()
+
+  const views: View[] = []
+
+  /**
+   * A form needs someone to answer it. A script started by an agent has nobody — that is what
+   * the error below is for — but a view's handlers run because a person pressed something,
+   * so from the moment a view is open the ordinary modal is the right answer.
+   */
+  const formHandlerNow = ():
+    | ((fields: FormField[]) => Promise<Record<string, string> | null>)
+    | null => {
+    if (opts.formHandler) return opts.formHandler
+    if (views.some((v) => v.isOpen)) return showFormModal
+    return null
+  }
 
   return {
     params: opts.params,
@@ -423,6 +448,26 @@ export function buildScriptContext(opts: {
       return service.execute(script.path, scriptParams || {}, { signal: s, source: 'script' })
     },
 
+    // ── Views ──
+
+    /**
+     * A tab of the script's own. The first view made in a run is the one a restored tab
+     * rebuilds, so it alone receives the saved state.
+     */
+    view(viewOpts: ViewOptions): View {
+      const restore = views.length === 0 ? opts.restore : undefined
+      const v = new View(
+        viewOpts,
+        opts.viewHost ?? defaultViewHost(),
+        { script: opts.scriptName ?? '', params: opts.params },
+        restore
+      )
+      views.push(v)
+      return v
+    },
+
+    ...VIEW_GLOBALS,
+
     // ── UI ──
 
     notice(message: string, timeout?: number) {
@@ -439,12 +484,13 @@ export function buildScriptContext(opts: {
     },
 
     async form(fields: FormField[]): Promise<Record<string, string> | null> {
-      if (!opts.formHandler) {
+      const handler = formHandlerNow()
+      if (!handler) {
         throw new Error(
           'Form input is only available when the script is run from the command palette.'
         )
       }
-      return opts.formHandler(fields)
+      return handler(fields)
     },
 
     /**
@@ -456,12 +502,13 @@ export function buildScriptContext(opts: {
      * something worth reading rather than a fragment of it.
      */
     async show(text: string, title?: string): Promise<void> {
-      if (!opts.formHandler) {
+      const handler = formHandlerNow()
+      if (!handler) {
         throw new Error(
           'Showing text is only available when the script is run from the command palette.'
         )
       }
-      await opts.formHandler([{ name: 'text', label: title ?? '', type: 'markdown', text }])
+      await handler([{ name: 'text', label: title ?? '', type: 'markdown', text }])
     },
   }
 }

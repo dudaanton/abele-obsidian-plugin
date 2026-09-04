@@ -12,7 +12,7 @@ import { nanoid } from 'nanoid'
 export type RunStatus = 'running' | 'done' | 'failed' | 'stopped'
 
 /** Who asked for the run. A script failing on its own is not the same as one an agent called. */
-export type RunSource = 'command' | 'note' | 'link' | 'agent' | 'script'
+export type RunSource = 'command' | 'note' | 'link' | 'agent' | 'script' | 'view'
 
 export interface RunLogLine {
   at: number

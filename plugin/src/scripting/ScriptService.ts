@@ -16,6 +16,7 @@ import { buildScriptContext } from './ScriptContext'
 import { showFormModal } from './formModal'
 import { ScriptRuns, type RunSource } from './ScriptRuns'
 import type { ParsedScript, FormField } from './types'
+import type { RestoreInfo } from './view/View'
 import { ref } from 'vue'
 
 /**
@@ -30,6 +31,8 @@ export interface ExecuteOptions {
   /** Who asked for the run, for the list of runs. Assumed to be an agent when unsaid: that is
    * the one caller that cannot be given a better answer from inside. */
   source?: RunSource
+  /** A saved tab being rebuilt: the leaf waiting for the view and the state it kept. */
+  restore?: RestoreInfo
 }
 
 export class ScriptService {
@@ -351,6 +354,8 @@ export class ScriptService {
           runs.setNote(runId, text)
           this.renderStatusBar()
         },
+        scriptName: script.meta.name,
+        restore: opts.restore,
       })
 
       // Running the user's own script is the feature. The code comes from a `.js` file the
@@ -360,7 +365,7 @@ export class ScriptService {
         'ctx',
         `"use strict";
         return (async () => {
-          const { dayjs, read, edit, write, create, remove, move, copy, ls, find, replace, open, setCover, agent, form, log, params, signal, fetch, applyTemplate, listTemplates, createFromTemplate, generateImage, downloadImage, downloadFile, notice, show, runScript, setStatus, activeNotePath } = ctx;
+          const { dayjs, read, edit, write, create, remove, move, copy, ls, find, replace, open, setCover, agent, agents, form, log, params, signal, fetch, applyTemplate, listTemplates, createFromTemplate, generateImage, downloadImage, downloadFile, notice, show, runScript, setStatus, activeNotePath, unzip, view, Stack, Row, Grid, Section, Tabs, Setting, Markdown, Text, Image, Table, Badge, EmptyState, Button, Icon, Input, Select, Checkbox, Search, Card, Html } = ctx;
           ${script.code}
         })()`
       )
