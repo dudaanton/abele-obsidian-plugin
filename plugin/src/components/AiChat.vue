@@ -22,11 +22,22 @@
       <div class="abele-ai-chat__header">
         <AiAgentSelector />
         <div class="abele-ai-chat__header-actions">
-          <Icon icon="refresh-cw" with-bg title="Reload from disk" @click="reloadChat" />
-          <Icon icon="sliders-horizontal" with-bg @click="chatSettingsOpen = true" />
-          <Icon icon="plus" with-bg @click="handleNewChat" />
-          <Icon icon="history" with-bg @click="historyOpen = true" />
-          <Icon icon="bug" with-bg @click="showDebug" />
+          <!-- One button for everything this chat is set up with: scope, skills, prompts,
+               tool permissions, its own settings, and the two things that are neither —
+               reading the file again and copying what the chat is made of. -->
+          <Icon
+            icon="sliders-horizontal"
+            with-bg
+            tooltip="Scope, skills, prompts, permissions and settings"
+            @click="openSetup()"
+          />
+          <Icon icon="plus" with-bg tooltip="Start a new chat" @click="handleNewChat" />
+          <Icon
+            icon="history"
+            with-bg
+            tooltip="Open a chat you have had"
+            @click="historyOpen = true"
+          />
         </div>
       </div>
 
@@ -182,34 +193,27 @@
         @abort="onAbort"
         @continue="onContinue"
         @focus="onInputFocus"
-        @open-scope="scopeOpen = true"
-        @open-permissions="permissionsOpen = true"
-        @open-skill-prompt="skillPromptOpen = true"
+        @open-scope="openSetup('scope')"
         @attach-file="onAttachFile"
       />
     </template>
 
     <!-- Modals -->
     <AiChatHistory v-if="historyOpen" @close="historyOpen = false" @select="onLoadChat" />
-    <AiScopeManager v-if="scopeOpen" @close="scopeOpen = false" />
-    <AiPermissions v-if="permissionsOpen" @close="permissionsOpen = false" />
-    <AiPromptPicker
-      v-if="promptPickerOpen"
-      @close="promptPickerOpen = false"
-      @select="onPromptSelected"
+    <AiChatSetup
+      v-if="setupOpen"
+      :open="setupTab"
+      @close="setupOpen = false"
+      @skill="onPickerSkill"
+      @prompt="onPromptSelected"
+      @reload="reloadChat"
+      @debug="showDebug"
     />
     <TemplateVariablesModal
       v-if="variablesModalOpen"
       :variables="pendingPromptUserVars"
       @close="variablesModalOpen = false"
       @confirm="onPromptVariablesConfirm"
-    />
-    <AiChatSettings v-if="chatSettingsOpen" @close="chatSettingsOpen = false" />
-    <AiSkillPromptPicker
-      v-if="skillPromptOpen"
-      @close="skillPromptOpen = false"
-      @skill="onPickerSkill"
-      @prompt="onPromptSelected"
     />
   </div>
 </template>
@@ -227,11 +231,7 @@ import AiRunView from './AiRunView.vue'
 import AiToolApproval from './AiToolApproval.vue'
 import AiAgentSelector from './AiAgentSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
-import AiScopeManager from './AiScopeManager.vue'
-import AiPermissions from './AiPermissions.vue'
-import AiPromptPicker from './AiPromptPicker.vue'
-import AiChatSettings from './AiChatSettings.vue'
-import AiSkillPromptPicker from './AiSkillPromptPicker.vue'
+import AiChatSetup from './AiChatSetup.vue'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChatService } from '@/ai/ChatService'
@@ -478,11 +478,20 @@ const chatContainer = ref<HTMLElement | null>(null)
 const messagesContainer = ref<HTMLElement | null>(null)
 const chatInput = ref<InstanceType<typeof AiChatInput> | null>(null)
 const historyOpen = ref(false)
-const scopeOpen = ref(false)
-const permissionsOpen = ref(false)
-const promptPickerOpen = ref(false)
-const chatSettingsOpen = ref(false)
-const skillPromptOpen = ref(false)
+
+/**
+ * The one dialog everything about a chat lives in, and which tab it opens on.
+ *
+ * A way in that used to be its own dialog still lands on the thing it was about: the scope
+ * badge in the composer opens the scope, `/prompt` the prompts.
+ */
+const setupOpen = ref(false)
+const setupTab = ref('scope')
+
+const openSetup = (tab = 'scope') => {
+  setupTab.value = tab
+  setupOpen.value = true
+}
 const variablesModalOpen = ref(false)
 const pendingPromptContent = ref('')
 const pendingPromptAllVars = ref<TemplateVariable[]>([])
@@ -767,10 +776,10 @@ const onCommand = async (command: string) => {
       historyOpen.value = true
       break
     case '/scope':
-      scopeOpen.value = true
+      openSetup('scope')
       break
     case '/prompt':
-      promptPickerOpen.value = true
+      openSetup('prompts')
       break
     default:
       if (command.startsWith('/')) {
@@ -850,7 +859,7 @@ const onPickerSkill = async (name: string) => {
 }
 
 const onPromptSelected = async (file: TFile) => {
-  promptPickerOpen.value = false
+  setupOpen.value = false
   const { app } = GlobalStore.getInstance()
 
   const cache = app.metadataCache.getFileCache(file)

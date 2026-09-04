@@ -68,9 +68,6 @@
           <div v-if="scopeLabel" class="abele-chat-input__scope-badge" @click="emit('openScope')">
             {{ scopeLabel }}
           </div>
-          <Icon icon="folder-open" with-bg @click="emit('openScope')" />
-          <Icon icon="sparkles" with-bg @click="emit('openSkillPrompt')" />
-          <Icon icon="shield" with-bg @click="emit('openPermissions')" />
           <Icon icon="paperclip" with-bg @click="showAttachMenu" />
           <Icon
             icon="mic"
@@ -133,9 +130,8 @@ const emit = defineEmits<{
   (e: 'abort'): void
   (e: 'continue'): void
   (e: 'focus', focused: boolean): void
+  /** The scope badge: a way into the dialog that opens on what the badge is about. */
   (e: 'openScope'): void
-  (e: 'openPermissions'): void
-  (e: 'openSkillPrompt'): void
   (e: 'attachFile', path: string): void
 }>()
 

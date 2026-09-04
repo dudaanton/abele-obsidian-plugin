@@ -1,67 +1,45 @@
 <template>
-  <Modal title="Skills & Prompts" @close="emit('close')">
-    <div ref="rootEl" class="abele-sp-picker">
-      <div class="abele-sp-picker__tabs">
-        <button
-          class="abele-sp-picker__tab"
-          :class="{ 'abele-sp-picker__tab--active': tab === 'skills' }"
-          @click="tab = 'skills'"
-        >
-          Skills ({{ skills.length }})
-        </button>
-        <button
-          class="abele-sp-picker__tab"
-          :class="{ 'abele-sp-picker__tab--active': tab === 'prompts' }"
-          @click="tab = 'prompts'"
-        >
-          Prompts ({{ prompts.length }})
-        </button>
-      </div>
+  <div ref="rootEl" class="abele-sp-picker">
+    <Input v-model="search" placeholder="Search..." />
 
-      <Input v-model="search" placeholder="Search..." />
-
-      <div class="abele-sp-picker__list">
-        <template v-if="tab === 'skills'">
-          <div
-            v-for="skill in filteredSkills"
-            :key="skill.path"
-            class="abele-sp-picker__item"
-            @click="selectSkill(skill)"
-          >
-            <span class="abele-sp-picker__item-name">/{{ skill.name }}</span>
-            <span v-if="skill.description" class="abele-sp-picker__item-desc">{{
-              skill.description
-            }}</span>
-          </div>
-          <div v-if="filteredSkills.length === 0" class="abele-sp-picker__empty">
-            No skills found
-          </div>
-        </template>
-        <template v-else>
-          <div
-            v-for="prompt in filteredPrompts"
-            :key="prompt.path"
-            class="abele-sp-picker__item"
-            @click="selectPrompt(prompt)"
-          >
-            <span class="abele-sp-picker__item-name">{{ prompt.name }}</span>
-            <span v-if="prompt.description" class="abele-sp-picker__item-desc">{{
-              prompt.description
-            }}</span>
-          </div>
-          <div v-if="filteredPrompts.length === 0" class="abele-sp-picker__empty">
-            No prompts found
-          </div>
-        </template>
-      </div>
+    <div class="abele-sp-picker__list">
+      <template v-if="kind === 'skills'">
+        <div
+          v-for="skill in filteredSkills"
+          :key="skill.path"
+          class="abele-sp-picker__item"
+          @click="selectSkill(skill)"
+        >
+          <span class="abele-sp-picker__item-name">/{{ skill.name }}</span>
+          <span v-if="skill.description" class="abele-sp-picker__item-desc">{{
+            skill.description
+          }}</span>
+        </div>
+        <div v-if="filteredSkills.length === 0" class="abele-sp-picker__empty">No skills found</div>
+      </template>
+      <template v-else>
+        <div
+          v-for="prompt in filteredPrompts"
+          :key="prompt.path"
+          class="abele-sp-picker__item"
+          @click="selectPrompt(prompt)"
+        >
+          <span class="abele-sp-picker__item-name">{{ prompt.name }}</span>
+          <span v-if="prompt.description" class="abele-sp-picker__item-desc">{{
+            prompt.description
+          }}</span>
+        </div>
+        <div v-if="filteredPrompts.length === 0" class="abele-sp-picker__empty">
+          No prompts found
+        </div>
+      </template>
     </div>
-  </Modal>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, useTemplateRef } from 'vue'
 import { TFile } from 'obsidian'
-import Modal from './obsidian/Modal.vue'
 import Input from './obsidian/Input.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { discoverSkills, type SkillInfo } from '@/ai/tools/SkillTool'
@@ -72,6 +50,15 @@ interface PromptItem {
   description: string
 }
 
+defineProps<{
+  /**
+   * Which of the two lists this is. It used to be a strip of two buttons inside the picker;
+   * the dialog above it has a strip of its own now, and one screen with two of them is one
+   * strip too many.
+   */
+  kind: 'skills' | 'prompts'
+}>()
+
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'skill', name: string): void
@@ -79,7 +66,7 @@ const emit = defineEmits<{
 }>()
 
 const { app } = GlobalStore.getInstance()
-const tab = ref<'skills' | 'prompts'>('skills')
+
 const search = ref('')
 
 /**
@@ -150,36 +137,6 @@ const selectPrompt = (prompt: PromptItem) => {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-2);
-}
-
-.abele-sp-picker__tabs {
-  display: flex;
-  gap: var(--size-4-1);
-  border-bottom: 1px solid var(--background-modifier-border);
-  padding-bottom: var(--size-4-1);
-}
-
-.abele-sp-picker__tab {
-  padding: var(--size-2-2) var(--size-4-2);
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-radius: var(--radius-s);
-  font-size: var(--font-ui-small);
-
-  &:hover {
-    background: var(--background-modifier-hover);
-  }
-
-  &--active {
-    background: var(--interactive-accent);
-    color: var(--text-on-accent);
-
-    &:hover {
-      background: var(--interactive-accent-hover);
-    }
-  }
 }
 
 .abele-sp-picker__list {
