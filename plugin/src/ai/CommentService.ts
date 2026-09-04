@@ -506,7 +506,7 @@ export class CommentService implements CommentInfoSource {
 
     // Read before anything is touched: the name wanted here is the question that started the
     // comment, and `titleFor` reads the visible path a divider would recompute.
-    const title = session.chatTitle.value || this.titleFor(session) || id
+    const title = session.chatTitle.value || CommentService.titleFor(session) || id
 
     const previousKind = session.kind
     const previousAgentId = session.agentId.value
@@ -642,9 +642,11 @@ export class CommentService implements CommentInfoSource {
       this.expanded.delete(id)
       this.adopt(id, session)
 
-      // Opened rather than merely repainted: the person pressed "back to the note" and the card
-      // they were reading is what they are coming back to.
-      this.open.value = id
+      // Left folded rather than opened. The card's own "Back to comment" is only offered on a
+      // card that is already open, so nothing changes there; the sidebar's is offered in panes
+      // that may have no margin at all, and an `open` card nothing can draw leaves the marker
+      // painted open over a passage with nothing beside it. One tap opens it as whatever the
+      // pane can show — a card, or the sidebar again.
       const note = session.anchor.value?.note
       if (note) dispatchCommentsChanged(note)
       return true
@@ -654,13 +656,14 @@ export class CommentService implements CommentInfoSource {
   }
 
   /**
-   * What to call an expanded comment in the history list.
+   * What to call a comment where a chat would show its title: the history list it joins on
+   * promotion, and the tab strip while it is being read in the sidebar.
    *
-   * A comment has no title of its own — title generation is gated on `kind === 'chat'`, which
-   * it was not until a moment ago — and the file name is a random six characters, which tells
-   * a person browsing the list nothing. The question that was asked does.
+   * A comment has no title of its own — title generation is gated on `kind === 'chat'` — and
+   * the file name is a random six characters, which tells a person browsing nothing. The
+   * question that was asked does. Static because the tab strip has a session and no id.
    */
-  private titleFor(session: ChatSession): string {
+  static titleFor(session: ChatSession): string {
     const asked = session.messages.value.find((message) => message.role === 'user')
     if (!asked) return ''
 

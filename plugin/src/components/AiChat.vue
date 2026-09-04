@@ -202,6 +202,7 @@
         :scope-label="scopeCompact"
         :can-note="commentSession"
         :note-blocked="midTurn"
+        :commands="commands"
         @send="onSend"
         @note="onNote"
         @command="onCommand"
@@ -333,9 +334,16 @@ const tabInfos = computed(() =>
     }
 
     const s = chatService.getSession(id)
+    // A comment has no title of its own — title generation is gated on `kind === 'chat'` — so
+    // the strip would call every one of them "New chat". The question that started it says
+    // which comment this is, which is the same name the history entry takes on promotion.
+    const label =
+      s?.chatTitle.value ||
+      (s?.kind === 'comment' ? CommentService.titleFor(s) || 'Comment' : '') ||
+      'New chat'
     return {
       id,
-      label: s?.chatTitle.value || 'New chat',
+      label,
       isStreaming: s?.isStreaming.value ?? false,
       isActive: id === chatService.activeTabId.value,
     }
@@ -781,6 +789,15 @@ const onInputFocus = (focused: boolean) => {
 const onCommand = async (command: string) => {
   const s = session.value
   if (!s) return
+
+  // The two the header takes away for a comment are still typeable, and both detach the
+  // session from the file the marker points at: `/new` empties it, `/load` puts another chat
+  // in its place. A comment is left by going back to its note, not by replacing it.
+  if (commentSession.value && (command === '/new' || command === '/load')) {
+    new Notice(COMMENT_ONLY_LEAVES_BY_NOTE)
+    return
+  }
+
   switch (command) {
     case '/compact':
       s.compact().catch(() => {
@@ -1077,6 +1094,24 @@ const expandedComment = computed(
  * room to type in, dictation, tool approvals and the whole thread.
  */
 const commentSession = computed(() => session.value?.kind === 'comment')
+
+/** The words the two refusals share, so the composer and the chat say the same thing. */
+const COMMENT_ONLY_LEAVES_BY_NOTE = 'A comment leaves through its note'
+
+/** Every slash command the chat answers, and the two a comment does not. */
+const ALL_COMMANDS = ['/compact', '/new', '/load', '/scope', '/prompt']
+const DETACHING_COMMANDS = ['/new', '/load']
+
+/**
+ * What the composer should treat as a command of ours rather than as a skill.
+ *
+ * Taking the two away here is what keeps `/new` in a comment from being offered at all; the
+ * guard in `onCommand` is what answers one typed anyway, since the composer still forwards
+ * anything beginning with a slash.
+ */
+const commands = computed(() =>
+  commentSession.value ? ALL_COMMANDS.filter((c) => !DETACHING_COMMANDS.includes(c)) : ALL_COMMANDS
+)
 
 /**
  * A turn the conversation may not be moved out from under — see `ChatSession.isMidTurn` — and

@@ -415,7 +415,17 @@ describe('returning an expanded comment to its note', () => {
     expect((await service.load(id)) === session).toBe(true)
   })
 
-  it('opens the card again and repaints the note it is anchored to', async () => {
+  /**
+   * Folded, not expanded.
+   *
+   * It used to open the card, on the reasoning that the reader had pressed "back to the note"
+   * and the card was what they were coming back to. But the same button is in the sidebar,
+   * where the pane may have no margin at all — and an `open` card nothing can draw leaves the
+   * marker painted open over a passage with nothing beside it. Folded is honest at every width,
+   * and one tap opens it as whatever the pane can show. The card's own way back is unaffected:
+   * it is only offered on a card that is already open, so `open` is already this id.
+   */
+  it('leaves the card folded and repaints the note it is anchored to', async () => {
     const service = CommentService.getInstance()
     const session = await answeredComment()
     const id = session.commentId!
@@ -424,8 +434,20 @@ describe('returning an expanded comment to its note', () => {
     vi.mocked(dispatchCommentsChanged).mockClear()
     await service.collapse(id)
 
-    expect(service.open.value).toBe(id)
+    expect(service.open.value).toBeNull()
     expect(vi.mocked(dispatchCommentsChanged).mock.calls.flat()).toContain('Notes/A.md')
+  })
+
+  it('leaves a card that was already open exactly as it was', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+
+    await service.expand(id)
+    service.open.value = id
+    await service.collapse(id)
+
+    expect(service.open.value).toBe(id)
   })
 
   /**

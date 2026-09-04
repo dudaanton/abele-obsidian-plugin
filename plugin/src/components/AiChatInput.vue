@@ -152,6 +152,14 @@ const props = defineProps<{
    * is so the button says so first.
    */
   noteBlocked?: boolean
+  /**
+   * The slash commands the chat above answers itself. Anything else beginning with a slash is
+   * forwarded whole, to be looked up as a skill.
+   *
+   * A comment is handed a shorter list: `/new` and `/load` detach the session from the file its
+   * marker points at, and neither is a thing to offer beside a question about a paragraph.
+   */
+  commands?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -167,6 +175,9 @@ const emit = defineEmits<{
   (e: 'openSkillPrompt'): void
   (e: 'attachFile', path: string): void
 }>()
+
+/** What a chat answers when nobody has said otherwise. */
+const DEFAULT_COMMANDS = ['/compact', '/new', '/load', '/scope', '/prompt']
 
 const TEXTAREA_MIN_HEIGHT = 34
 /**
@@ -205,7 +216,7 @@ const send = () => {
 
   if (msg.startsWith('/')) {
     const cmd = msg.split(' ')[0].toLowerCase()
-    if (['/compact', '/new', '/load', '/scope', '/prompt'].includes(cmd)) {
+    if ((props.commands ?? DEFAULT_COMMANDS).includes(cmd)) {
       emit('command', cmd)
     } else {
       emit('command', msg)

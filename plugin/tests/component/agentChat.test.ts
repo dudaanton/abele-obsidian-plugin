@@ -343,6 +343,9 @@ describe('a comment shown in the sidebar', () => {
     session.currentChatFile.value = file
     session.anchor.value = { note: 'Notes/A.md' }
     session.kind = 'comment'
+    session.messages.value = [
+      { id: 'u1', role: 'user', content: 'Why is this paragraph here?', timestamp: 0 },
+    ] as never
   }
 
   beforeEach(() => {
@@ -480,6 +483,90 @@ describe('a comment shown in the sidebar', () => {
 
     expect(icon('panel-right-close')!.props('disabled')).toBe(true)
     expect(icon('panel-right-close')!.props('tooltip')).toBe('This comment is being moved')
+  })
+
+  /**
+   * The two commands the buttons above were taken away for are still typeable, and both detach
+   * the session from the file the marker points at: `/new` empties it, `/load` swaps it for
+   * another chat. The composer stops offering them and the chat refuses them, in that order.
+   */
+  it('refuses the two commands that would detach it from its note', async () => {
+    asComment()
+    const { view } = header()
+    const reset = vi.spyOn(session, 'reset').mockResolvedValue(undefined)
+
+    await view.findComponent(AiChatInput).vm.$emit('command', '/new')
+    await nextTick()
+
+    expect(reset).not.toHaveBeenCalled()
+    expect(Notice.shown).toContain('A comment leaves through its note')
+  })
+
+  it('refuses the history the same way, rather than loading over the comment', async () => {
+    asComment()
+    const { view } = header()
+
+    await view.findComponent(AiChatInput).vm.$emit('command', '/load')
+    await nextTick()
+
+    expect(view.find('.abele-chat-history').exists()).toBe(false)
+    expect(Notice.shown).toContain('A comment leaves through its note')
+  })
+
+  it('still takes the commands that mean something to a comment', async () => {
+    asComment()
+    const { view } = header()
+    const compact = vi.spyOn(session, 'compact').mockResolvedValue(undefined)
+
+    await view.findComponent(AiChatInput).vm.$emit('command', '/compact')
+    await nextTick()
+
+    expect(compact).toHaveBeenCalled()
+  })
+
+  it('keeps both for an ordinary chat', async () => {
+    const { view } = header()
+    const reset = vi.spyOn(session, 'reset').mockResolvedValue(undefined)
+
+    await view.findComponent(AiChatInput).vm.$emit('command', '/new')
+    await nextTick()
+
+    expect(reset).toHaveBeenCalled()
+    expect(Notice.shown).not.toContain('A comment leaves through its note')
+  })
+
+  it('tells the composer which commands it will answer', () => {
+    asComment()
+    const { view } = header()
+
+    const offered = view.findComponent(AiChatInput).props('commands') as string[]
+    expect(offered).not.toContain('/new')
+    expect(offered).not.toContain('/load')
+    expect(offered).toContain('/compact')
+  })
+
+  it('offers the composer all of them in an ordinary chat', () => {
+    const { view } = header()
+
+    const offered = view.findComponent(AiChatInput).props('commands') as string[]
+    expect(offered).toEqual(['/compact', '/new', '/load', '/scope', '/prompt'])
+  })
+
+  /**
+   * A comment has no title of its own — title generation is gated on `kind === 'chat'` — so the
+   * strip would call every one of them "New chat". The question that started it says which.
+   */
+  it('names its tab after the question that started it', () => {
+    asComment()
+    // The strip reads the service's own tabs, which is where a shown comment is registered.
+    ChatService.getInstance().tabOrder.value = [session.id]
+    vi.spyOn(ChatService.getInstance(), 'getSession').mockReturnValue(session)
+    const { view } = header()
+
+    const labels = (
+      view.findComponent({ name: 'AiChatTabs' }).props('tabs') as Array<{ label: string }>
+    ).map((tab) => tab.label)
+    expect(labels).toContain('Why is this paragraph here?')
   })
 
   /** The composer is where a note is written, so the button belongs to it, not to the header. */
