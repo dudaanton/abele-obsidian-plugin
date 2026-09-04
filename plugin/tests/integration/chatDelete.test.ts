@@ -135,6 +135,66 @@ describe('deleting the chat a tab is holding', () => {
 })
 
 /**
+ * "New chat" and "open a chat", pressed in a tab that is holding a comment.
+ *
+ * A comment has every action an ordinary chat has — that is the whole point of reading it in a
+ * tab — but two of them would eat it: its session writes the file a marker in a note points at,
+ * and both `reset` and `load` would leave that marker leading to nothing. The act is the same
+ * one; it happens in a tab of its own.
+ */
+describe('starting something new from a comment tab', () => {
+  const shownComment = async () => {
+    const comments = CommentService.getInstance()
+    const session = await comments.create(noteFile(), QUOTE.length, QUOTE)
+    // Kept, not sent: a real message on the visible list, which is what a reset would empty.
+    await session.addUserNote('what about this')
+    await comments.showInSidebar(session.commentId!)
+    return { comments, session, path: session.currentChatFile.value!.path }
+  }
+
+  it('opens a new tab rather than emptying the comment', async () => {
+    const chats = ChatService.getInstance()
+    const { session, path } = await shownComment()
+    const before = chats.getAllSessions().length
+
+    await chats.startNewChat(session.id)
+
+    expect(chats.getAllSessions().length).toBe(before + 1)
+    expect(session.currentChatFile.value?.path).toBe(path)
+    expect(session.messages.value).toHaveLength(1)
+  })
+
+  it('loads a chat into a tab of its own rather than over the comment', async () => {
+    const chats = ChatService.getInstance()
+    const { session } = await shownComment()
+    const other = chats.getSession(chats.createTab())!
+    ;(other as unknown as { allChatMessages: unknown[] }).allChatMessages = [
+      { id: 'm2', role: 'user', content: 'somewhere else', timestamp: 1 },
+    ]
+    await other.save()
+    const file = other.currentChatFile.value!
+    await chats.closeTab(other.id)
+
+    await chats.openChatInTab(session.id, file)
+
+    expect(session.kind).toBe('comment')
+    expect(session.currentChatFile.value?.basename).toBe(session.commentId)
+    expect(chats.getSessionByFile(file.path)).not.toBeNull()
+  })
+
+  /** An ordinary chat still starts again where it is: that is what the button has always done. */
+  it('starts an ordinary chat again in the tab it is in', async () => {
+    const { chats, id, session } = await savedChat()
+    const before = chats.getAllSessions().length
+
+    await chats.startNewChat(id)
+
+    expect(chats.getAllSessions().length).toBe(before)
+    expect(session.currentChatFile.value).toBeNull()
+  })
+})
+
+/**
  * A comment that was opened as a chat is still anchored in a note, and the note still holds its
  * marker. Deleting only the file would leave an icon in the text that opens nothing for ever.
  */

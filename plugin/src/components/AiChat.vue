@@ -1120,19 +1120,13 @@ const onContinue = async () => {
 }
 
 const handleNewChat = async () => {
-  await session.value?.reset()
+  const id = session.value?.id
+  if (id) await chatService.startNewChat(id)
 }
 
 const onLoadChat = async (file: TFile) => {
-  // If this chat is already open in another tab, switch to it
-  const existing = chatService.getSessionByFile(file.path)
-  if (existing) {
-    chatService.switchTab(existing.id)
-    return
-  }
-  // Load into the current tab
-  await session.value?.load(file)
-  chatService.saveTabs()
+  const id = session.value?.id
+  if (id) await chatService.openChatInTab(id, file)
 }
 
 const reloadChat = async () => {

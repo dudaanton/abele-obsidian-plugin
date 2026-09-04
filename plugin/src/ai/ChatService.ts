@@ -198,6 +198,50 @@ export class ChatService {
   }
 
   /**
+   * "New chat", from a tab.
+   *
+   * An ordinary chat starts again in place, which is what that button has always done. A
+   * comment cannot: its session writes the file a marker in a note points at, and `reset`
+   * would empty that file and leave the icon leading to nothing. So the same act — a new
+   * conversation — happens in a tab of its own, and the comment is left where it was.
+   */
+  async startNewChat(tabId: string): Promise<void> {
+    const session = this.sessions.get(tabId)
+    if (!session) return
+
+    if (session.kind === 'comment') {
+      this.createTab()
+      return
+    }
+
+    await session.reset()
+  }
+
+  /**
+   * "Open this chat", from a tab: into this one, or into a new one when this one is a comment.
+   *
+   * A chat already open somewhere is switched to rather than loaded twice — two sessions on
+   * one file are two writers on one log.
+   */
+  async openChatInTab(tabId: string, file: TFile): Promise<void> {
+    const already = this.getSessionByFile(file.path)
+    if (already) {
+      this.switchTab(already.id)
+      return
+    }
+
+    const holder = this.sessions.get(tabId)
+    // A comment's file belongs to a marker; loading another chat over it would repoint the
+    // session at a file the note knows nothing about.
+    const target =
+      holder && holder.kind !== 'comment' ? holder : this.sessions.get(this.createTab())
+    if (!target) return
+
+    await target.load(file)
+    this.saveTabs()
+  }
+
+  /**
    * Takes a session somebody else built and shows it as a tab.
    *
    * The limit is applied here as it is anywhere else. It used to be waived, on the reasoning
