@@ -72,7 +72,14 @@
     <div v-if="waiting" class="abele-comment-thread__waiting">Working…</div>
 
     <div v-if="question" class="abele-comment-thread__question">
-      <div class="abele-comment-thread__question-text">{{ question.question }}</div>
+      <!-- The agent asking something is the agent talking, and it writes the way it writes:
+           a note it means is a wikilink, and a wikilink shown as its own brackets is the
+           defect this renders instead. -->
+      <Markdown
+        class="abele-comment-thread__question-text"
+        :text="question.question"
+        :file-path="notePath"
+      />
       <div class="abele-comment-thread__question-options">
         <Button
           v-for="option in question.options"

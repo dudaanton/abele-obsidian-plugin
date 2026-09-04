@@ -142,6 +142,23 @@ describe('a folded card', () => {
     expect(view.findComponent(CommentThread).exists()).toBe(false)
   })
 
+  /**
+   * Reported from the desktop: an answer that mentioned a note showed up here as
+   * `[[Some note]]`, brackets and all. The card cannot render Markdown into two clamped lines
+   * in a 300 px margin, so the syntax comes off and the words stay — see `previewText`.
+   */
+  it('reads what was said as prose, not as its Markdown', async () => {
+    seed('k7d2ph', {}, [
+      message({ role: 'user', content: 'What about [[Notes/Some note|the note]]?' }),
+      message({ role: 'assistant', content: '## It means\n\n- **this**, in `code`' }),
+    ])
+
+    const view = await mountCard(['k7d2ph'])
+
+    expect(view.find('.abele-comment-card__line_user').text()).toBe('What about the note?')
+    expect(view.find('.abele-comment-card__line_assistant').text()).toBe('It means this, in code')
+  })
+
   it('is the way in, all of it', async () => {
     seed('k7d2ph')
 

@@ -147,6 +147,7 @@ import { CommentService } from '@/ai/CommentService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { parseMarkers, resolveQuote } from '@/editor/commentMarkers'
+import { previewText } from '@/helpers/markdownPreview'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { ChatMessage } from '@/ai/types'
 
@@ -279,9 +280,15 @@ const tabs = computed(() =>
 
 const messages = computed<ChatMessage[]>(() => session.value?.messages.value ?? [])
 
-/** What was asked first — the thing a reader scans the margin for. */
-const question = computed(
-  () => messages.value.find((msg) => msg.role === 'user' && !msg.draft)?.content ?? ''
+/**
+ * What was asked first — the thing a reader scans the margin for.
+ *
+ * Shown as prose rather than as Markdown: see `previewText`. Two clamped lines cannot hold a
+ * rendered heading or list, and a question that mentioned a note used to arrive here as
+ * `[[Some note]]`, brackets and all.
+ */
+const question = computed(() =>
+  previewText(messages.value.find((msg) => msg.role === 'user' && !msg.draft)?.content ?? '')
 )
 
 /**
@@ -292,11 +299,11 @@ const question = computed(
  */
 const answer = computed(() => {
   const arriving = session.value?.streamingContent.value ?? ''
-  if (arriving) return arriving
+  if (arriving) return previewText(arriving)
 
   for (let i = messages.value.length - 1; i >= 0; i--) {
     const msg = messages.value[i]
-    if (msg.role === 'assistant' && msg.content) return msg.content
+    if (msg.role === 'assistant' && msg.content) return previewText(msg.content)
   }
   return ''
 })
