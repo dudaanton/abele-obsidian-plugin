@@ -3,9 +3,9 @@
  *
  * Everything here is a question happy-dom cannot answer. Whether the raw `%%c:…%%` ever
  * reaches the screen is a question about CodeMirror's decorations. Whether the card is visible
- * is a question about a margin that has to be measured. And the phone sheet only exists under
- * `app.emulateMobile(true)`, which is Obsidian switching its own layout — there is no way to
- * ask for it from a test that does not have Obsidian.
+ * is a question about a margin that has to be measured. And the phone's route into the chat
+ * sidebar only shows itself under `app.emulateMobile(true)`, which is Obsidian switching its
+ * own layout — there is no way to ask for it from a test that does not have Obsidian.
  *
  * The probe drives the command, because that is what a person's hotkey does. If the command
  * cannot reach the editor it falls back to creating the comment through `CommentService`, so
@@ -53,8 +53,17 @@ interface DesktopReport {
 }
 
 interface MobileReport {
-  sheetOpen: boolean
-  sheetInputVisible: boolean
+  /** Whether the sidebar's chat view is on screen at all after the tap. */
+  chatVisible: boolean
+  /** Whether what it is showing is this comment: the header's two comment-only actions. */
+  backToNoteVisible: boolean
+  openAsChatVisible: boolean
+  /** The sidebar's own composer, not a card's — and tall enough to type into. */
+  composerVisible: boolean
+  /** The note button, which only a comment gets. */
+  noteButtonVisible: boolean
+  /** No dialog was opened: the sheet is gone, and nothing stands over the note. */
+  modalOpen: boolean
   error: string
 }
 
@@ -160,21 +169,34 @@ const desktopScript = `(async () => {
   return report
 })()`
 
-/** Taps the marker's icon and reports what the phone sheet showed. Run after the reload. */
+/** Taps the marker's icon and reports what the phone showed. Run after the reload. */
 const mobileScript = `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const report = { sheetOpen: false, sheetInputVisible: false, error: '' }
+  const shown = (el) => !!el && el.getBoundingClientRect().height > 0
+  const report = {
+    chatVisible: false, backToNoteVisible: false, openAsChatVisible: false,
+    composerVisible: false, noteButtonVisible: false, modalOpen: false, error: '',
+  }
 
   try {
     const marker = document.querySelector('.abele-comment-marker[data-comment-ids]')
     if (!marker) throw new Error('no marker visible after switching to mobile')
     marker.click()
-    await wait(1200)
+    await wait(2000)
 
-    const sheet = document.querySelector('.modal .abele-comment-card')
-    report.sheetOpen = !!sheet
-    const input = sheet && sheet.querySelector('textarea')
-    report.sheetInputVisible = !!input && input.getBoundingClientRect().height > 0
+    const chat = document.querySelector('.abele-ai-chat')
+    report.chatVisible = shown(chat)
+    if (!chat) return report
+
+    const icons = [...chat.querySelectorAll('.abele-ai-chat__header-actions [data-icon]')]
+      .map((el) => el.getAttribute('data-icon'))
+    report.backToNoteVisible = icons.indexOf('panel-right-close') !== -1
+    report.openAsChatVisible = icons.indexOf('panel-right-open') !== -1
+
+    report.composerVisible = shown(chat.querySelector('.abele-chat-input__textarea'))
+    report.noteButtonVisible = !!chat.querySelector('.abele-chat-input [data-icon="sticky-note"]')
+
+    report.modalOpen = !!document.querySelector('.modal')
   } catch (e) {
     report.error = String((e && e.message) || e)
   }
@@ -182,7 +204,7 @@ const mobileScript = `(async () => {
   return report
 })()`
 
-/** Closes whatever modal is open and switches emulation, waiting for the reload to settle. */
+/** Closes anything standing over the note and switches emulation, letting the reload settle. */
 const setMobile = async (on: boolean): Promise<void> => {
   // The return value is not parsed: a bare string like `ok` is not valid JSON, and this call
   // is only for the side effect anyway.
@@ -217,7 +239,15 @@ beforeAll(async () => {
     commentFileExists: false,
     error: '',
   }
-  let mobile: MobileReport = { sheetOpen: false, sheetInputVisible: false, error: '' }
+  let mobile: MobileReport = {
+    chatVisible: false,
+    backToNoteVisible: false,
+    openAsChatVisible: false,
+    composerVisible: false,
+    noteButtonVisible: false,
+    modalOpen: false,
+    error: '',
+  }
   let cleanup: CleanupReport = { cleaned: false, error: '' }
   let mobileOn = false
 
@@ -290,12 +320,27 @@ describe.runIf(available)('commenting on a passage', () => {
 })
 
 describe.runIf(available)('the same comment on a phone', () => {
-  it('opens as a sheet when the icon is tapped', () => {
-    expect(report.sheetOpen).toBe(true)
+  it('opens in the chat sidebar when the icon is tapped', () => {
+    expect(report.chatVisible).toBe(true)
   })
 
-  it('keeps the input where it can be typed into', () => {
-    expect(report.sheetInputVisible).toBe(true)
+  it('opens no dialog over the note, which is what the sheet used to be', () => {
+    expect(report.modalOpen).toBe(false)
+  })
+
+  it('offers the way back to the note and the way up into a full chat', () => {
+    expect({ back: report.backToNoteVisible, up: report.openAsChatVisible }).toEqual({
+      back: true,
+      up: true,
+    })
+  })
+
+  it('gives it the sidebar own composer, which a thumb can type into', () => {
+    expect(report.composerVisible).toBe(true)
+  })
+
+  it('and the note button, which only a comment gets', () => {
+    expect(report.noteButtonVisible).toBe(true)
   })
 })
 

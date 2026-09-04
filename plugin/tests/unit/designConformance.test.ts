@@ -33,7 +33,6 @@ const COVERED_FILES = [
   'CommentCard.vue',
   'CommentInput.vue',
   'CommentPin.vue',
-  'CommentSheet.vue',
   'CommentThread.vue',
   'ChatsList.vue',
 ].map((name) => join(ROOT, name))
@@ -169,69 +168,25 @@ describe('the design standard', () => {
   })
 
   /**
-   * The other rule of Obsidian's that no test of ours can see, and the one a phone caught.
+   * The margin's composer on a touch screen.
    *
-   * Obsidian sizes `.modal` against the window (`85vh`, or `100vh` on a phone) and pads it
-   * only left and right under `.is-phone`. Neither accounts for the on-screen keyboard or for
-   * the notch, so a sheet grew behind the keyboard with its composer under it, and its header
-   * sat in the cut-out. The cap and the two insets are what fixed it; nothing else here would
-   * notice them going.
+   * It is small on purpose — a sidenote is 300 px wide — and a phone reported that same field
+   * as unreadable, iOS answering anything set under 16 px by zooming the note into it. A phone
+   * has no margin at all now and opens the comment in the sidebar instead, but a tablet still
+   * shows the card and is still `body.is-mobile`. Neither the size nor the reason is visible to
+   * any component test — happy-dom computes no layout — so the rule is guarded by name.
    */
-  it('caps a sheet by what is visible and pads it clear of the notch', () => {
-    const modal = styleBlock(readFileSync(join(ROOT, 'obsidian', 'Modal.vue'), 'utf8'))
-
-    // `min()` with Obsidian's own cap, so the desktop dialog stays the size it was.
-    expect(modal).toMatch(
-      /max-height:\s*min\(var\(--dialog-max-height[^)]*\),\s*var\(--abele-sheet-height/
-    )
-    // `max()` against the padding a dialog has anyway, so nothing shrinks off the desktop.
-    expect(modal).toMatch(/padding-top:\s*max\(\s*var\(--size-4-4\),\s*var\(--safe-area-inset-top/)
-    expect(modal).toMatch(
-      /padding-bottom:\s*max\(\s*var\(--size-4-4\),\s*var\(--safe-area-inset-bottom/
-    )
-  })
-
-  /**
-   * Specificity, which is the half of this that a rule of ours cannot express on its own.
-   *
-   * `.is-phone .modal` sets `padding: 0 …` with two class names and outweighs `.abele-modal_sheet`,
-   * so the insets asked for above never reached the phone that reported the defect. The rule
-   * that wins is the one named here, and it is the only place the sheet is pinned to the band
-   * `visualViewport` reported rather than centred in a window the keyboard is covering.
-   */
-  it('wins against the phone rule that zeroes the vertical padding of a dialog', () => {
-    const modal = styleBlock(readFileSync(join(ROOT, 'obsidian', 'Modal.vue'), 'utf8'))
-    const phone = /body\.is-phone \.abele-modal_sheet\s*\{([^}]*)\}/.exec(modal)?.[1] ?? ''
-
-    expect(phone).toMatch(/padding-top:\s*max\(/)
-    expect(phone).toMatch(/padding-bottom:\s*max\(/)
-    expect(phone).toMatch(/margin-top:\s*var\(--abele-sheet-offset/)
-    expect(phone).toMatch(/height:\s*var\(--abele-sheet-height/)
-  })
-
-  /**
-   * The composer, at the two sizes it is drawn at.
-   *
-   * The margin's is small because a sidenote is 300 px wide; a phone got that same field and
-   * reported it as unreadable, and iOS answers a field set under 16 px by zooming the note
-   * into it. Neither the size nor the reason is visible to any component test — happy-dom
-   * computes no layout — so the rule is guarded by name, as the sheet's own insets are.
-   */
-  it('sizes the composer for a thumb in a sheet and on a phone', () => {
+  it('sizes the margin composer for a thumb where there is one', () => {
     const input = styleBlock(readFileSync(join(ROOT, 'CommentInput.vue'), 'utf8'))
 
     const field =
-      /\.abele-comment-input_sheet \.abele-comment-input__field,\s*body\.is-mobile \.abele-comment-input__field\s*\{([^}]*)\}/.exec(
-        input
-      )?.[1] ?? ''
+      /body\.is-mobile \.abele-comment-input__field\s*\{([^}]*)\}/.exec(input)?.[1] ?? ''
     // 16 px: below it, focusing the field zooms the whole note on iOS.
     expect(field).toMatch(/font-size:\s*var\(--font-ui-medium\)/)
     expect(field).toMatch(/min-height:\s*var\(--input-height\)/)
 
     const send =
-      /\.abele-comment-input_sheet \.abele-comment-input__send,\s*body\.is-mobile \.abele-comment-input__send\s*\{([^}]*)\}/.exec(
-        input
-      )?.[1] ?? ''
+      /body\.is-mobile \.abele-comment-input__send\s*\{([^}]*)\}/.exec(input)?.[1] ?? ''
     // --size-4-9 is 36 px, the smallest square a thumb hits reliably.
     expect(send).toMatch(/min-width:\s*var\(--size-4-9\)/)
     expect(send).toMatch(/min-height:\s*var\(--size-4-9\)/)

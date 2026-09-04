@@ -238,23 +238,9 @@ describe('Modal', () => {
   })
 
   /**
-   * A sheet is not a wider dialog: it is a dialog whose body fills the height Obsidian gave it.
-   * The class is what the stylesheet hangs the column on, all the way down to the mount point
-   * this component makes — which is why the flag lives here and not in the screen using it.
-   */
-  it('marks a sheet as a sheet, and only a sheet', () => {
-    const sheet = mount(ObsidianModal, { props: { size: 'sheet' as const } })
-    const plain = mount(ObsidianModal)
-
-    expect(classOf(sheet)).toContain('abele-modal_sheet')
-    expect(classOf(sheet)).not.toContain('abele-modal_wide')
-    expect(classOf(plain)).not.toContain('abele-modal_sheet')
-  })
-
-  /**
-   * The sheet's column runs through the element this component appends, so the stylesheet has
-   * to be able to name it. Reaching it as `.modal-content > div` would make every rule depend
-   * on the shape of the DOM the kit happens to build.
+   * A rule of ours has to be able to name the element this component appends. Reaching it as
+   * `.modal-content > div` would make every such rule depend on the shape of the DOM the kit
+   * happens to build.
    */
   it('names the element it mounts into', () => {
     const view = mount(ObsidianModal)

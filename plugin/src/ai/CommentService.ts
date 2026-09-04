@@ -325,8 +325,8 @@ export class CommentService implements CommentInfoSource {
    *
    * Streaming, running a tool, waiting on an approval, failed — all of it is `commentState`,
    * and the icon is redrawn by dispatching into every editor showing the note. It holds for
-   * both hosts, because both show the same session: a card in the margin, and the sheet a
-   * phone opens instead.
+   * both hosts, because both show the same session: a card in the margin, and the sidebar tab
+   * a phone opens instead.
    */
   private watchState(id: string, session: ChatSession): void {
     if (this.watchers.has(id)) return

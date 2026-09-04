@@ -63,7 +63,6 @@ beforeEach(() => {
   vi.spyOn(ChatService.getInstance(), 'saveTabs').mockImplementation(() => {})
   vi.spyOn(ChatService.getInstance(), 'revealSidebar').mockResolvedValue(undefined)
   GlobalStore.getInstance().commentsContainers.value = []
-  GlobalStore.getInstance().commentSheet.value = null
 })
 
 describe('creating a comment', () => {
