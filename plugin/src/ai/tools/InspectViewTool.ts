@@ -3,6 +3,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
 import { findLeafByFile } from './ScreenshotTool'
+import type { ScriptViewModel } from '@/views/ScriptView'
 
 const MAX_OUTPUT = 15_000
 
@@ -82,11 +83,12 @@ export function createInspectViewTool(): AgentTool {
       // Imported here rather than at the top so the tool does not pull the view runtime in.
       const viewName = params.view as string | undefined
       if (viewName) {
-        const { ScriptViewService } = await import('@/scripting/view/ScriptViewService')
         const { describeView } = await import('@/scripting/view/describe')
-        const models = ScriptViewService.getInstance()
-          .leaves()
-          .map((l) => l.model)
+        // Every open script tab, bound or not: the service knows only the leaves that have a
+        // view, and a tab whose script is still running or has failed is exactly the one an
+        // agent asks about after writing that script. The cast undoes `ref`'s deep unwrapping,
+        // which strips the private fields off the `View` class the models hold.
+        const models = GlobalStore.getInstance().scriptViews.value as ScriptViewModel[]
         const open = models.map((m) => m.view).filter((v): v is NonNullable<typeof v> => Boolean(v))
         const wanted = viewName.toLowerCase()
         const hit =
