@@ -12,7 +12,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
 import { parseScriptHeader, extractScriptBody } from './ScriptParser'
-import { buildScriptContext } from './ScriptContext'
+import { buildScriptContext, NO_FORM_HANDLER } from './ScriptContext'
 import { showFormModal } from './formModal'
 import { ScriptRuns, type RunSource } from './ScriptRuns'
 import type { ParsedScript, FormField } from './types'
@@ -26,16 +26,79 @@ import { ref } from 'vue'
  */
 export interface ExecuteOptions {
   signal?: AbortSignal
-  formHandler?: (fields: FormField[]) => Promise<Record<string, string> | null>
+  /**
+   * Shows the script's form and answers with what was filled in, or `null` if it was dismissed.
+   *
+   * The run's id travels with it, which is what lets a caller that cannot *show* a form —
+   * an agent — park the question against the run and answer it later.
+   */
+  formHandler?: (fields: FormField[], runId: string) => Promise<Record<string, string> | null>
   /** Who asked for the run, for the list of runs. Assumed to be an agent when unsaid: that is
    * the one caller that cannot be given a better answer from inside. */
   source?: RunSource
+}
+
+/** What came of asking an agent's script to run: it finished, or it stopped to ask something. */
+export type ScriptOutcome =
+  | { kind: 'done'; output: string }
+  | { kind: 'form'; runId: string; fields: FormField[] }
+
+/** A question a running script is holding open, and the way to answer it. */
+interface PendingForm {
+  runId: string
+  fields: FormField[]
+  answer: (values: Record<string, string> | null) => void
+}
+
+/**
+ * The questions of one run, handed over one at a time.
+ *
+ * A script may ask twice — a form, then another form once it knows the answers — and the two
+ * ends of this are never in step: the question can be asked before anybody is waiting for it,
+ * and waited for before it is asked. Both orders park.
+ */
+class FormChannel {
+  private asked: PendingForm | null = null
+  private waiting: ((form: PendingForm) => void) | null = null
+
+  ask(form: PendingForm): void {
+    const waiter = this.waiting
+    if (waiter) {
+      this.waiting = null
+      waiter(form)
+      return
+    }
+    this.asked = form
+  }
+
+  next(): Promise<PendingForm> {
+    const already = this.asked
+    if (already) {
+      this.asked = null
+      return Promise.resolve(already)
+    }
+    return new Promise((resolve) => {
+      this.waiting = resolve
+    })
+  }
 }
 
 export class ScriptService {
   private static instance: ScriptService | null = null
 
   private scripts = new Map<string, ParsedScript>()
+
+  /**
+   * Runs that stopped to ask something and are still holding the question open.
+   *
+   * Kept until the run answers or fails. A run nobody answers stays here and stays in the list
+   * of runs, where it can be stopped like any other — which is the same thing that happens to
+   * a form dialog left open on the screen.
+   */
+  private readonly suspended = new Map<
+    string,
+    { run: Promise<string>; channel: FormChannel; current: PendingForm | null }
+  >()
   private commandIds = new Set<string>()
   private watcherCallbackId: symbol | null = null
   private createEventRef: EventRef | null = null
@@ -311,6 +374,82 @@ export class ScriptService {
     if (leaf) void app.workspace.revealLeaf(leaf)
   }
 
+  /**
+   * Runs a script for an agent, and hands back either its output or the question it stopped on.
+   *
+   * A script that asks for parameters used to be unrunnable from a chat: `ctx.form` threw,
+   * every call failed, and nothing about the script said so in advance. Now the question comes
+   * back to the agent as a form to fill in, the run stays alive holding it open, and
+   * `answer_form` sends the answers into that same run — which may then ask again, or finish.
+   */
+  async executeForAgent(
+    path: string,
+    params: Record<string, unknown>,
+    signal?: AbortSignal
+  ): Promise<ScriptOutcome> {
+    const channel = new FormChannel()
+
+    const run = this.execute(path, params, {
+      signal,
+      source: 'agent',
+      formHandler: (fields, runId) =>
+        new Promise((answer) => channel.ask({ runId, fields, answer })),
+    })
+
+    return this.settle(run, channel)
+  }
+
+  /**
+   * Answers the question a run is holding open, and waits for whatever happens next.
+   *
+   * `null` is a dismissal, which is what `ctx.form` answers a cancelled dialog with — a script
+   * that handles being said no to gets the same treatment from an agent as from a person.
+   */
+  async answerForm(
+    runId: string,
+    values: Record<string, string> | null
+  ): Promise<ScriptOutcome | null> {
+    const held = this.suspended.get(runId)
+    if (!held?.current) return null
+
+    const { answer } = held.current
+    held.current = null
+    answer(values)
+
+    return this.settle(held.run, held.channel)
+  }
+
+  /** The fields a run is waiting on, for a caller that wants to say what it is waiting for. */
+  pendingForm(runId: string): FormField[] | null {
+    return this.suspended.get(runId)?.current?.fields ?? null
+  }
+
+  /**
+   * Whichever comes first: the script finishing, or it stopping to ask something.
+   *
+   * A run that stopped is kept here with its promise, because that promise is the only handle
+   * on what it eventually answers — and it is deliberately given a listener that swallows the
+   * failure, so a script that throws while nobody is waiting does not raise an unhandled
+   * rejection. The same promise is awaited again, with its error, when the form is answered.
+   */
+  private async settle(run: Promise<string>, channel: FormChannel): Promise<ScriptOutcome> {
+    const outcome = await Promise.race([
+      run.then((output) => ({ kind: 'done', output }) as const),
+      channel.next().then((form) => ({ kind: 'form', form }) as const),
+    ])
+
+    if (outcome.kind === 'done') {
+      for (const [id, held] of this.suspended) {
+        if (held.run === run) this.suspended.delete(id)
+      }
+      return outcome
+    }
+
+    run.catch(() => {})
+    this.suspended.set(outcome.form.runId, { run, channel, current: outcome.form })
+    return { kind: 'form', runId: outcome.form.runId, fields: outcome.form.fields }
+  }
+
   async execute(
     path: string,
     params: Record<string, unknown>,
@@ -345,7 +484,13 @@ export class ScriptService {
         params,
         signal: combinedController.signal,
         logs,
-        formHandler: opts.formHandler ?? formHandler,
+        // The run's id travels with the question: an agent cannot show a form, so it parks
+        // it against the run and answers later — see `executeForAgent`.
+        formHandler: (fields) => {
+          const handler = opts.formHandler ?? formHandler
+          if (!handler) throw new Error(NO_FORM_HANDLER)
+          return handler(fields, runId)
+        },
         onLog: (text) => runs.append(runId, text),
         onStatus: (text) => {
           runs.setNote(runId, text)

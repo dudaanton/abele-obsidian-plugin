@@ -20,7 +20,7 @@ import { createEvalJsTool } from './EvalJsTool'
 import { createListTemplatesTool, createApplyTemplateTool } from './TemplateTool'
 import { createDownloadImageTool, createDownloadFileTool } from './DownloadImageTool'
 import { createDelegateTool } from './DelegateTool'
-import { createScriptTools } from './ScriptTool'
+import { createScriptTools, createAnswerFormTool } from './ScriptTool'
 import { createCreateScriptTool, createScriptApiDocsTool } from './CreateScriptTool'
 import { createReplaceTool } from './ReplaceTool'
 import { createWriteFileTool } from './WriteFileTool'
@@ -101,6 +101,7 @@ export function getToolRegistry(): ToolInfo[] {
     read_settings: { label: 'Read settings', category: 'Settings' },
     write_settings: { label: 'Write settings', category: 'Settings' },
     create_script: { label: 'Create script', category: 'Scripts' },
+    answer_form: { label: 'Answer form', category: 'Scripts' },
   }
 
   const result: ToolInfo[] = []
@@ -176,6 +177,7 @@ export function createAgentTools(): AgentTool[] {
   const config = AbeleConfig.getInstance().ai
   if (config.scriptsEnabled) {
     tools.push(...createScriptTools())
+    tools.push(createAnswerFormTool())
     tools.push(createScriptApiDocsTool())
     tools.push(createCreateScriptTool())
   }

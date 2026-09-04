@@ -84,6 +84,15 @@ function withTimeout<T>(work: Promise<T>, ms: number | undefined, url: string): 
   return Promise.race([work, expiry]).finally(() => window.clearTimeout(timer))
 }
 
+/**
+ * What a script is told when nothing can answer its form.
+ *
+ * There is one caller left that cannot: a script run from a script. An agent parks the question
+ * against the run and answers it with `answer_form`, and the command palette shows a dialog.
+ */
+export const NO_FORM_HANDLER =
+  'This script asks for input, and whatever started it has no way to show a form.'
+
 export function buildScriptContext(opts: {
   params: Record<string, unknown>
   signal: AbortSignal
@@ -484,11 +493,7 @@ export function buildScriptContext(opts: {
     },
 
     async form(fields: FormField[]): Promise<Record<string, string> | null> {
-      if (!opts.formHandler) {
-        throw new Error(
-          'Form input is only available when the script is run from the command palette.'
-        )
-      }
+      if (!opts.formHandler) throw new Error(NO_FORM_HANDLER)
       return opts.formHandler(fields)
     },
 

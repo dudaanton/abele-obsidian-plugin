@@ -197,7 +197,7 @@ const each = await agent("Extract the date", { items: paths })
 |----------|---------|-------------|
 | \`notice(message, timeout?)\` | — | Show Obsidian notification |
 | \`setStatus(text)\` | — | Say what the script is doing now — shown in the status bar and against the run |
-| \`form(fields)\` | \`object \\| null\` | Show form modal (command palette only) |
+| \`form(fields)\` | \`object \\| null\` | Ask for values: a dialog from the command palette, a form handed to the agent from a chat |
 | \`show(markdown, title?)\` | — | Show rendered markdown to read (command palette only) |
 
 \`form\` fields: \`[{ name, label, type?, options?, default?, required?, text? }]\`
