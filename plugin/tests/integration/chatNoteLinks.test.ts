@@ -402,7 +402,7 @@ describe('a comment that wrote to a note', () => {
     })
     await session.save()
 
-    expect(await service.expand(session.commentId!)).toBe(true)
+    expect(await service.expand(session.commentId!)).toBe('moved')
 
     expect(entryOf(session)?.notes).toEqual(session.touched.value)
   })
@@ -572,7 +572,7 @@ describe('a rename reaching an expanded comment nobody has open', () => {
     const id = session.commentId!
     session.noteTouched(NOTE_A)
     await session.save()
-    expect(await service.expand(id)).toBe(true)
+    expect(await service.expand(id)).toBe('moved')
 
     // Neither walk finds a live session, so both would go to the file.
     service.destroy()
@@ -649,7 +649,7 @@ describe('a comment folder the settings no longer name', () => {
     const id = session.commentId!
     session.noteTouched(NOTE_A)
     await session.save()
-    expect(await service.expand(id)).toBe(true)
+    expect(await service.expand(id)).toBe('moved')
 
     service.destroy()
     ChatService.getInstance().destroy()

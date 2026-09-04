@@ -430,10 +430,12 @@ async function promote(): Promise<void> {
     new Notice(MOVING_NOTICE)
     return
   }
-  if (!(await service.expand(activeId.value))) {
-    new Notice(BUSY_NOTICE)
-    return
-  }
+  const moved = await service.expand(activeId.value)
+  // A full tab bar has already been said out loud by `ChatService`, and saying it again in
+  // the words of a different refusal would name the agent for something the sidebar did.
+  if (moved === 'busy') new Notice(BUSY_NOTICE)
+  if (moved !== 'moved') return
+
   emit('promoted')
 }
 

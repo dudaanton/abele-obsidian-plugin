@@ -205,6 +205,21 @@ export class ChatService {
    * loud instead: the caller has a card or a marker in front of the person, and a silent
    * no-op there looks exactly like something that opened out of sight.
    */
+  /** What a person is told when the bar will take no more; said by whoever asked first. */
+  static readonly TABS_FULL = `Close one of the ${MAX_TABS} open tabs first`
+
+  /**
+   * Whether this session could be shown as a tab right now — it already is one, or there is
+   * room for one more.
+   *
+   * Asked before a move that cannot be undone: `expand` rewrites the file and the history and
+   * only then hands the session over, so the refusal has to be available before any of that.
+   * Silent, unlike `adoptSession`: nothing has been attempted yet.
+   */
+  hasRoomFor(session: ChatSession): boolean {
+    return this.sessions.has(session.id) || this.sessions.size < MAX_TABS
+  }
+
   adoptSession(session: ChatSession): boolean {
     if (this.sessions.has(session.id)) {
       this.switchTab(session.id)
@@ -212,7 +227,7 @@ export class ChatService {
     }
 
     if (this.sessions.size >= MAX_TABS) {
-      new Notice(`Close one of the ${MAX_TABS} open tabs first`)
+      new Notice(ChatService.TABS_FULL)
       return false
     }
 

@@ -1,5 +1,5 @@
 import { ref, shallowReactive, watch, type Ref, type WatchStopHandle } from 'vue'
-import { TFile, TFolder } from 'obsidian'
+import { Notice, TFile, TFolder } from 'obsidian'
 import dayjs from 'dayjs'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { CommentEntry } from '@/entities/Comment'
@@ -17,6 +17,15 @@ import { ChatStorage } from './ChatStorage'
 import { AgentRegistry } from './agents/AgentRegistry'
 import { parseChatMetadata, serializeChat, serializeMetadata } from './ChatLog'
 import { type ChatMetadata, type CommentAnchor } from './types'
+
+/**
+ * What became of a comment somebody asked to open as a chat.
+ *
+ * `busy` is a turn it may not be taken out of, or a move already running; `no-room` is a tab
+ * bar that is full, which is said out loud where it is found. The two read differently to a
+ * person and neither of them is the other.
+ */
+export type CommentMoveResult = 'moved' | 'busy' | 'no-room'
 
 /** As long as a chat's own fallback title, which this stands in for. */
 const COMMENT_TITLE_LENGTH = 50
@@ -470,17 +479,26 @@ export class CommentService implements CommentInfoSource {
    * press on it opens the chat this became rather than a card. What changes is who the
    * conversation is for — the default agent, a tab, and a place in the history.
    *
-   * Returns whether the comment moved, so a caller can say why it did not.
+   * Answers with what happened, so a caller can say why it did not move: a turn it may not be
+   * taken out of, or a tab bar with no room in it.
    */
-  async expand(id: string): Promise<boolean> {
+  async expand(id: string): Promise<CommentMoveResult> {
     const session = this.sessions.get(id)
-    if (!session) return false
+    if (!session) return 'busy'
 
     // Not into the middle of a turn: the kind, the agent and the scope are all read by a
     // request already in flight, and the switch would append a divider between a `tool_use`
     // and its `tool_result`. The same refusal `addUserNote` makes, for the same reason.
     // And not twice at once — see `ChatSession.moving`.
-    if (session.isMidTurn || session.moving.value) return false
+    if (session.isMidTurn || session.moving.value) return 'busy'
+
+    // Before anything moves. The sidebar keeps a limit on its tabs, and it used to be asked
+    // last: the file already said "chat", the history already had an entry, and the answer was
+    // no — a conversation filed as a chat that nothing was holding, with no way back.
+    if (!ChatService.getInstance().hasRoomFor(session)) {
+      new Notice(ChatService.TABS_FULL)
+      return 'no-room'
+    }
 
     // Read before anything is touched: the name wanted here is the question that started the
     // comment, and `titleFor` reads the visible path a divider would recompute.
@@ -545,6 +563,7 @@ export class CommentService implements CommentInfoSource {
       this.expanded.set(id, session)
 
       const chatService = ChatService.getInstance()
+      // Room was asked for before any of this: nothing here can be refused any more.
       chatService.adoptSession(session)
       await chatService.revealSidebar()
 
@@ -554,7 +573,7 @@ export class CommentService implements CommentInfoSource {
 
       const note = session.anchor.value?.note
       if (note) dispatchCommentsChanged(note)
-      return true
+      return 'moved'
     } finally {
       session.moving.value = false
     }

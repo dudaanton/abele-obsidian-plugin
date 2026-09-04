@@ -349,6 +349,56 @@ describe('expanding a comment into a chat', () => {
  * нужны". The marker is the way in, and it has to work after the tab has been closed — which
  * is the dead end that came with them.
  */
+/**
+ * The tab bar is full, and "open as chat" was pressed anyway.
+ *
+ * `adoptSession` keeps the limit — a phone hides the strip, so tabs piled up past it are tabs
+ * nobody can reach — and `expand` used to find that out last: the file already said `chat`,
+ * the history already had an entry, and there was no tab. Nothing may move until the sidebar
+ * has said it will take it.
+ */
+describe('a comment promoted with no room left in the tab bar', () => {
+  const full = async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    const chats = ChatService.getInstance()
+    for (let i = 0; i < 8; i++) chats.createTab()
+    Notice.shown.length = 0
+    return { service, session, id }
+  }
+
+  it('says why, and does not say it is the agent fault', async () => {
+    const { service, id } = await full()
+
+    expect(await service.expand(id)).toBe('no-room')
+
+    expect(Notice.shown.join(' ')).toContain('8 open tabs')
+  })
+
+  it('leaves it a comment: the file, the maps and the history all untouched', async () => {
+    const { service, session, id } = await full()
+
+    await service.expand(id)
+
+    expect(session.kind).toBe('comment')
+    expect(service.sessions.get(id) === session).toBe(true)
+    const file = app.vault.getAbstractFileByPath(service.commentPath(id)) as TFile
+    expect(parseChatMetadata((await app.vault.read(file)) as string)?.kind).toBe('comment')
+    expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
+  })
+
+  /** And the marker still opens what it always opened, rather than a chat nothing is holding. */
+  it('leaves the marker opening a card', async () => {
+    const { service, id } = await full()
+    await service.expand(id)
+
+    service.openFrom([id], true, 'Notes/A.md')
+
+    expect(service.open.value).toBe(id)
+  })
+})
+
 describe('a press on the marker of an expanded comment', () => {
   const expanded = async () => {
     const service = CommentService.getInstance()
@@ -411,7 +461,7 @@ describe('a comment whose agent is mid-turn', () => {
     const id = session.commentId!
     session.isStreaming.value = true
 
-    expect(await service.expand(id)).toBe(false)
+    expect(await service.expand(id)).toBe('busy')
 
     expect(session.kind).toBe('comment')
     expect(session.agentId.value).toBe(AbeleConfig.getInstance().ai.commentAgentId)
@@ -426,7 +476,7 @@ describe('a comment whose agent is mid-turn', () => {
     const id = session.commentId!
     session.pendingToolCalls.value = A_TOOL_CALL
 
-    expect(await service.expand(id)).toBe(false)
+    expect(await service.expand(id)).toBe('busy')
 
     expect(session.kind).toBe('comment')
     expect(service.sessions.get(id) === session).toBe(true)
@@ -504,11 +554,11 @@ describe('a comment already being moved', () => {
     await nextTick()
 
     expect(session.moving.value).toBe(true)
-    expect(await service.expand(id)).toBe(false)
+    expect(await service.expand(id)).toBe('busy')
     expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
 
     release()
-    expect(await first).toBe(true)
+    expect(await first).toBe('moved')
     expect(session.moving.value).toBe(false)
     expect(AbeleConfig.getInstance().ai.chatHistory).toHaveLength(1)
   })
@@ -521,7 +571,7 @@ describe('a comment already being moved', () => {
     await expect(service.expand(id)).rejects.toThrow('disk full')
 
     expect(session.moving.value).toBe(false)
-    expect(await service.expand(id)).toBe(true)
+    expect(await service.expand(id)).toBe('moved')
   })
 })
 

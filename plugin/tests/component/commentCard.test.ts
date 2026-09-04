@@ -66,9 +66,9 @@ beforeEach(() => {
   sessions = {}
   missing.clear()
   remove.mockReset()
-  // Answers whether the comment moved. True is the ordinary case; a test about a refusal
+  // Answers what became of the comment. Moving is the ordinary case; a test about a refusal
   // says so for itself.
-  expand.mockReset().mockResolvedValue(true)
+  expand.mockReset().mockResolvedValue('moved')
   revealChat.mockReset().mockResolvedValue(undefined)
   load.mockReset().mockResolvedValue(null)
 
@@ -722,9 +722,23 @@ describe('a card over a conversation that is mid-turn', () => {
 
     expect(action(view, 'panel-right-open').props('disabled')).toBe(false)
   })
+  /** And the other refusal, which is the sidebar's and not the agent's. */
+  it('does not blame the agent for a tab bar that is full', async () => {
+    seed('k7d2ph')
+    expand.mockResolvedValue('no-room')
+
+    const view = await mountCard(['k7d2ph'])
+    await action(view, 'panel-right-open').vm.$emit('click')
+    await nextTick()
+
+    // `ChatService` says that one where it finds it, in its own words.
+    expect(Notice.shown).toEqual([])
+    expect(view.emitted('promoted')).toBeUndefined()
+  })
+
   it('says why a promotion was refused rather than claiming it happened', async () => {
     seed('k7d2ph')
-    expand.mockResolvedValue(false)
+    expand.mockResolvedValue('busy')
 
     const view = await mountCard(['k7d2ph'])
     await action(view, 'panel-right-open').vm.$emit('click')
