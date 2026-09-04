@@ -43,6 +43,9 @@ export interface OpenOptions {
   active?: boolean
 }
 
+/** How many messages the error strip keeps before the oldest fall off. */
+const MAX_ERRORS = 20
+
 export interface ViewHost {
   open(view: View, opts: Required<OpenOptions>): Promise<void>
   close(view: View): void
@@ -62,7 +65,9 @@ export class View {
   private readonly host: ViewHost
   private readonly controller = markRaw(new AbortController())
   private readonly hooks: Record<string, Handler[]> = {}
-  private timers: ReturnType<typeof window.setInterval>[] = []
+  // `number`, not `ReturnType<typeof window.setInterval>`: with @types/node in scope that alias
+  // resolves to Node's `Timeout`, while the DOM call this makes returns a plain handle.
+  private timers: number[] = []
   private opened = false
   private disposed = false
 
@@ -98,13 +103,27 @@ export class View {
     return this
   }
 
-  /** Calls the hooks for `event`, each through `run`, so one bad hook does not stop the rest. */
+  /**
+   * Calls the hooks for `event`, each through `run`, so one bad hook does not stop the rest.
+   *
+   * A closed view is deaf. The leaf is gone and its state is no longer saved, so a vault change
+   * or a stray keystroke arriving late must not reach a script that believes it has finished —
+   * only `dispose` gets its `close` through, by way of `fire`.
+   */
   async emit(event: ViewEvent, payload?: unknown): Promise<void> {
+    if (this.disposed) return
+    await this.fire(event, payload)
+  }
+
+  private async fire(event: ViewEvent, payload?: unknown): Promise<void> {
     for (const fn of this.hooks[event] ?? []) await this.run(() => fn(payload))
   }
 
   every(ms: number, fn: () => unknown): () => void {
-    const id = window.setInterval(() => void this.run(fn), ms)
+    // A view that has closed takes no new work; the canceller is still returned so that a
+    // script holding one does not have to know which side of `dispose` it is on.
+    if (this.disposed) return () => {}
+    const id = window.setInterval((): void => void this.run(fn), ms)
     this.timers.push(id)
     return () => {
       window.clearInterval(id)
@@ -138,13 +157,23 @@ export class View {
     for (const t of this.timers) window.clearInterval(t)
     this.timers = []
     this.controller.abort()
-    await this.emit('close')
+    await this.fire('close')
     this.leafId = null
   }
 
+  /**
+   * Shows an error in the view's strip and writes it to the console.
+   *
+   * A handler on a timer can throw every tick, so the strip keeps the last {@link MAX_ERRORS}
+   * and repeats of the message already at the bottom are folded away: thirty failures of one
+   * `every(10, …)` are one line, not a list nobody can read past. The console still gets each.
+   */
   report(err: unknown): void {
     const message = err instanceof Error ? err.message : String(err)
-    this.errors.push(message)
+    if (this.errors[this.errors.length - 1] !== message) {
+      this.errors.push(message)
+      if (this.errors.length > MAX_ERRORS) this.errors.splice(0, this.errors.length - MAX_ERRORS)
+    }
     console.error(`[Abele view ${this.title}]`, err)
   }
 

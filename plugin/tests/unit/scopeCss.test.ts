@@ -50,4 +50,24 @@ describe('scopeCss', () => {
   it('does not throw on unbalanced braces and keeps what parsed', () => {
     expect(squash(scopeCss('.a { b: 1 } .c { d: 2', P))).toBe(`${P} .a { b: 1 }`)
   })
+
+  it('recurses into a block at-rule it does not know to hold declarations', () => {
+    expect(squash(scopeCss('@starting-style { .a { x: 1 } }', P))).toBe(
+      `@starting-style { ${P} .a { x: 1 } }`
+    )
+    expect(squash(scopeCss('@scope (.card) { .a { x: 1 } }', P))).toContain(`${P} .a`)
+    const webkit = '@-webkit-keyframes spin { from { r: 0 } }'
+    expect(squash(scopeCss(webkit, P))).toBe(webkit)
+    expect(squash(scopeCss('@counter-style t { system: cyclic }', P))).toBe(
+      '@counter-style t { system: cyclic }'
+    )
+  })
+
+  it('prefixes a descendant of body or html instead of letting it out', () => {
+    expect(squash(scopeCss('body .post { m: 0 }', P))).toBe(`${P} body .post { m: 0 }`)
+    expect(squash(scopeCss('html.theme-dark .post { m: 0 }', P))).toBe(
+      `${P} html.theme-dark .post { m: 0 }`
+    )
+    expect(squash(scopeCss('body { m: 0 }', P))).toBe('body { m: 0 }')
+  })
 })

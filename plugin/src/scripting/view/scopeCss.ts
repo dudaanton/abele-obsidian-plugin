@@ -3,14 +3,26 @@
  *
  * Written over text, not CSSOM: Obsidian on an older iOS WebView reads nested CSS only in its
  * strict form, and happy-dom parses no stylesheet, so the browser's parser is the one thing
- * this cannot rely on. Braces are walked; a block whose head is an at-rule that holds rules
- * (`@media`, `@supports`, `@container`, `@layer`) is recursed into; one that holds
- * declarations (`@keyframes`, `@font-face`, `@page`, `@property`) is copied through; a
- * selector list is split on commas and each part prefixed, except `:root`, `html` and `body`,
- * which no prefix could make true.
+ * this cannot rely on. Braces are walked; a block at-rule is recursed into unless it is one of the
+ * few known to hold declarations rather than rules (`@keyframes`, `@font-face`, `@page`,
+ * `@property`, `@counter-style`, `@font-feature-values`, and their vendor spellings), which is
+ * copied through. The list is a deny-list on purpose: an at-rule nobody here has heard of yet —
+ * `@starting-style`, `@scope` — holds rules far more often than declarations, and guessing
+ * wrong the other way lets a script's selectors out of its tab.
+ *
+ * A selector list is split on commas and each part prefixed. Only a selector that is exactly
+ * `:root`, `html` or `body` is left alone, because no prefix could make it true. Anything longer
+ * is prefixed as written, so `body .post` becomes `<prefix> body .post` and matches nothing —
+ * a leak closed rather than a feature lost, since everything the script drew is inside the view
+ * and `.post` alone already reaches it.
+ *
+ * The walk is naive about strings: a brace or a comma inside a quoted value (`content: "a,b"`,
+ * `content: "}"`) is read as structure and will confuse it. Scripts that need such a value can
+ * write it escaped (`content: "\007D"`).
  */
-const RULE_HOLDERS = /^@(media|supports|container|layer)\b/
-const GLOBAL_SELECTOR = /^(:root|html|body)(\b|$)/
+const DECLARATION_HOLDERS =
+  /^@(-[a-z]+-)?(keyframes|font-face|page|property|counter-style|font-feature-values)\b/i
+const GLOBAL_SELECTOR = /^(:root|html|body)$/
 
 export function scopeCss(css: string, prefix: string): string {
   return scopeBlock(css.replace(/\/\*[\s\S]*?\*\//g, ''), prefix).trim()
@@ -43,9 +55,9 @@ function scopeBlock(text: string, prefix: string): string {
     if (head.startsWith('@')) {
       // A recursed body comes back with its own leading selector already trimmed, so the space
       // after the brace is put back here; a copied one still carries the author's spacing.
-      out += RULE_HOLDERS.test(head)
-        ? `${head} { ${scopeBlock(body, prefix)}} `
-        : `${head} {${body}} `
+      out += DECLARATION_HOLDERS.test(head)
+        ? `${head} {${body}} `
+        : `${head} { ${scopeBlock(body, prefix)}} `
       continue
     }
 
