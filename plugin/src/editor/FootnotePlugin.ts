@@ -330,11 +330,10 @@ export class FootnoteProvider {
   private syncOverlay() {
     const entries: MarginEntry[] = [...this.entries.values()].map((entry) => ({
       id: entry.id,
-      kind: 'footnote' as const,
       anchorPos: entry.footnote.refFrom,
       el: entry.el,
     }))
-    marginOverlayFor(this.view).setEntries('footnote', entries)
+    marginOverlayFor(this.view).setEntries(entries)
   }
 
   private createEntry(fn: ParsedFootnote, store: GlobalStore) {

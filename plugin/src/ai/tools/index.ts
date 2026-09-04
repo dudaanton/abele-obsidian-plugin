@@ -20,7 +20,7 @@ import { createEvalJsTool } from './EvalJsTool'
 import { createListTemplatesTool, createApplyTemplateTool } from './TemplateTool'
 import { createDownloadImageTool, createDownloadFileTool } from './DownloadImageTool'
 import { createDelegateTool } from './DelegateTool'
-import { createScriptTools } from './ScriptTool'
+import { createScriptTools, createAnswerFormTool } from './ScriptTool'
 import { createCreateScriptTool, createScriptApiDocsTool } from './CreateScriptTool'
 import { createReplaceTool } from './ReplaceTool'
 import { createWriteFileTool } from './WriteFileTool'
@@ -31,6 +31,7 @@ import { createInspectViewTool } from './InspectViewTool'
 import { createChartDocsTool } from './ChartDocsTool'
 import { createTemplateDocsTool } from './TemplateDocsTool'
 import { createQueryDocsTool } from './QueryDocsTool'
+import { createReadSettingsTool, createWriteSettingsTool } from './SettingsTools'
 import {
   createReadLogsTool,
   createReadBacklinksTool,
@@ -50,7 +51,16 @@ export function getToolRegistry(): ToolInfo[] {
   const labels: Record<string, string> = {}
   for (const t of tools) labels[t.name] = t.label
 
-  const CATEGORY_ORDER = ['Files', 'Network', 'AI', 'Vault data', 'Docs', 'Templates', 'Scripts']
+  const CATEGORY_ORDER = [
+    'Files',
+    'Network',
+    'AI',
+    'Vault data',
+    'Docs',
+    'Templates',
+    'Scripts',
+    'Settings',
+  ]
 
   const TOOL_CATEGORIES: Record<string, { label: string; category: string }> = {
     read: { label: 'Read file', category: 'Files' },
@@ -88,7 +98,10 @@ export function getToolRegistry(): ToolInfo[] {
     skill: { label: 'Skill', category: 'Templates' },
     script_api_docs: { label: 'Script API docs', category: 'Docs' },
     query_docs: { label: 'Query docs', category: 'Docs' },
+    read_settings: { label: 'Read settings', category: 'Settings' },
+    write_settings: { label: 'Write settings', category: 'Settings' },
     create_script: { label: 'Create script', category: 'Scripts' },
+    answer_form: { label: 'Answer form', category: 'Scripts' },
   }
 
   const result: ToolInfo[] = []
@@ -150,6 +163,8 @@ export function createAgentTools(): AgentTool[] {
     createQuestionsTool(),
     createChartDocsTool(),
     createQueryDocsTool(),
+    createReadSettingsTool(),
+    createWriteSettingsTool(),
     createTemplateDocsTool(),
     createReadLogsTool(),
     createReadBacklinksTool(),
@@ -162,6 +177,7 @@ export function createAgentTools(): AgentTool[] {
   const config = AbeleConfig.getInstance().ai
   if (config.scriptsEnabled) {
     tools.push(...createScriptTools())
+    tools.push(createAnswerFormTool())
     tools.push(createScriptApiDocsTool())
     tools.push(createCreateScriptTool())
   }

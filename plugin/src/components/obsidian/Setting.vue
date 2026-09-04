@@ -75,5 +75,19 @@ defineProps<{
   .setting-item-description {
     overflow-wrap: anywhere;
   }
+
+  /**
+   * A toggle stays on the row with its name, however narrow the row. Obsidian says the same
+   * of its own: on a phone every setting stacks except `.mod-toggle`, whose control is small
+   * enough to sit beside the text — and stacked, the toggle floats alone on a line under the
+   * description, which is what the chat dialog's phone rows looked like.
+   */
+  &:has(> .setting-item-control > .checkbox-container) {
+    grid-template-columns: minmax(0, 1fr) auto;
+
+    > .setting-item-control {
+      justify-content: flex-end;
+    }
+  }
 }
 </style>

@@ -57,10 +57,15 @@ const { visible, hasMore, sentinel } = usePagedList(() => sorted.value)
   height: 1px;
 }
 
+/**
+ * Flush with the note above it. The other footer lists are indented by a quarter of an icon
+ * because their rows *start* with one — a checkbox, a log's glyph — and the text after it
+ * needs the same margin the prose has. A chat card is a box with a border of its own, and a
+ * box set in from the text it belongs to reads as a box that missed.
+ */
 .abele-chats-list__chats {
   display: flex;
   flex-direction: column;
   gap: var(--p-spacing);
-  padding-left: calc(var(--icon-size) / 4);
 }
 </style>

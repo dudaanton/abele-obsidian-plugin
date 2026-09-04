@@ -22,11 +22,42 @@
       <div class="abele-ai-chat__header">
         <AiAgentSelector />
         <div class="abele-ai-chat__header-actions">
-          <Icon icon="refresh-cw" with-bg title="Reload from disk" @click="reloadChat" />
-          <Icon icon="sliders-horizontal" with-bg @click="chatSettingsOpen = true" />
-          <Icon icon="plus" with-bg @click="handleNewChat" />
-          <Icon icon="history" with-bg @click="historyOpen = true" />
-          <Icon icon="bug" with-bg @click="showDebug" />
+          <!-- Only over a comment: the way back to the passage it was written against. It
+               points back the way it came rather than being a panel glyph, because what it
+               does is scroll a note, not move a pane. -->
+          <Icon
+            v-if="commentSession"
+            icon="corner-up-left"
+            with-bg
+            tooltip="Back to the passage this is about"
+            @click="backToNote"
+          />
+          <!-- Only for a comment still being a comment: the promotion into an ordinary chat,
+               with the default agent, a place in the history and no anchor to answer to. -->
+          <Icon
+            v-if="commentSession"
+            icon="panel-right-open"
+            with-bg
+            :disabled="blocked"
+            :tooltip="blocked ? blockedTooltip : 'Open this comment as a full chat'"
+            @click="openAsChat"
+          />
+          <!-- One button for everything this chat is set up with: scope, skills, prompts,
+               tool permissions, its own settings, and the two things that are neither —
+               reading the file again and copying what the chat is made of. -->
+          <Icon
+            icon="sliders-horizontal"
+            with-bg
+            tooltip="Scope, skills, prompts, permissions and settings"
+            @click="openSetup()"
+          />
+          <Icon icon="plus" with-bg tooltip="Start a new chat" @click="handleNewChat" />
+          <Icon
+            icon="history"
+            with-bg
+            tooltip="Open a chat you have had"
+            @click="historyOpen = true"
+          />
         </div>
       </div>
 
@@ -177,39 +208,35 @@
         :can-continue="showContinue"
         :token-display="tokenDisplay"
         :scope-label="scopeCompact"
+        :can-note="commentSession"
+        :note-blocked="midTurn"
         @send="onSend"
+        @note="onNote"
         @command="onCommand"
         @abort="onAbort"
         @continue="onContinue"
         @focus="onInputFocus"
-        @open-scope="scopeOpen = true"
-        @open-permissions="permissionsOpen = true"
-        @open-skill-prompt="skillPromptOpen = true"
+        @open-scope="openSetup('scope')"
         @attach-file="onAttachFile"
       />
     </template>
 
     <!-- Modals -->
     <AiChatHistory v-if="historyOpen" @close="historyOpen = false" @select="onLoadChat" />
-    <AiScopeManager v-if="scopeOpen" @close="scopeOpen = false" />
-    <AiPermissions v-if="permissionsOpen" @close="permissionsOpen = false" />
-    <AiPromptPicker
-      v-if="promptPickerOpen"
-      @close="promptPickerOpen = false"
-      @select="onPromptSelected"
+    <AiChatSetup
+      v-if="setupOpen"
+      :open="setupTab"
+      @close="setupOpen = false"
+      @skill="onPickerSkill"
+      @prompt="onPromptSelected"
+      @reload="reloadChat"
+      @debug="showDebug"
     />
     <TemplateVariablesModal
       v-if="variablesModalOpen"
       :variables="pendingPromptUserVars"
       @close="variablesModalOpen = false"
       @confirm="onPromptVariablesConfirm"
-    />
-    <AiChatSettings v-if="chatSettingsOpen" @close="chatSettingsOpen = false" />
-    <AiSkillPromptPicker
-      v-if="skillPromptOpen"
-      @close="skillPromptOpen = false"
-      @skill="onPickerSkill"
-      @prompt="onPromptSelected"
     />
   </div>
 </template>
@@ -227,11 +254,10 @@ import AiRunView from './AiRunView.vue'
 import AiToolApproval from './AiToolApproval.vue'
 import AiAgentSelector from './AiAgentSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
-import AiScopeManager from './AiScopeManager.vue'
-import AiPermissions from './AiPermissions.vue'
-import AiPromptPicker from './AiPromptPicker.vue'
-import AiChatSettings from './AiChatSettings.vue'
-import AiSkillPromptPicker from './AiSkillPromptPicker.vue'
+import AiChatSetup from './AiChatSetup.vue'
+import { CommentService } from '@/ai/CommentService'
+import { parseMarkers } from '@/editor/commentMarkers'
+import { reliableScrollTo } from '@/helpers/scrollUtils'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChatService } from '@/ai/ChatService'
@@ -478,11 +504,99 @@ const chatContainer = ref<HTMLElement | null>(null)
 const messagesContainer = ref<HTMLElement | null>(null)
 const chatInput = ref<InstanceType<typeof AiChatInput> | null>(null)
 const historyOpen = ref(false)
-const scopeOpen = ref(false)
-const permissionsOpen = ref(false)
-const promptPickerOpen = ref(false)
-const chatSettingsOpen = ref(false)
-const skillPromptOpen = ref(false)
+
+/**
+ * A comment being read in this tab.
+ *
+ * The file, the kind and the agent are `CommentService`'s; what the tab lends it is this view.
+ * Everything an ordinary chat can do it can do — «оставить все те же действия» — and it has
+ * one thing of its own: half of what people write into a comment is a note rather than a
+ * question, and a model run over that is a wait and a cost for an answer nobody wanted.
+ */
+const commentSession = computed(() => session.value?.kind === 'comment')
+
+/**
+ * A turn the conversation may not be moved out from under — see `ChatSession.isMidTurn` — and
+ * a move already under way. Promotion rebinds the agent and rewrites what the file says this
+ * is, neither of which may happen between a `tool_use` and its result.
+ */
+const midTurn = computed(() => !!session.value?.isMidTurn)
+const moving = computed(() => !!session.value?.moving.value)
+const blocked = computed(() => midTurn.value || moving.value)
+const blockedTooltip = computed(() =>
+  moving.value
+    ? 'This comment is being moved'
+    : 'The agent is still working — finish or dismiss the pending step first'
+)
+
+/**
+ * Back to the passage: the note is opened and scrolled to the marker.
+ *
+ * The tab stays. Nothing is handed back and nothing is closed — this is navigation, and the
+ * conversation is where the person was just reading it.
+ */
+async function backToNote(): Promise<void> {
+  const current = session.value
+  const id = current?.commentId
+  const note = current?.anchor.value?.note
+  if (!id || !note) return
+
+  const { app } = GlobalStore.getInstance()
+  await app.workspace.openLinkText(note, '', false)
+
+  const file = app.vault.getAbstractFileByPath(note)
+  if (!(file instanceof TFile)) return
+
+  const marker = parseMarkers(await app.vault.cachedRead(file)).find((candidate) =>
+    candidate.ids.includes(id)
+  )
+  if (marker) reliableScrollTo(marker.from)
+}
+
+/**
+ * The promotion: a comment becomes an ordinary chat in the tab it is already in.
+ *
+ * What happens on screen is the header losing these two actions; what happens underneath is
+ * the default agent, an entry in the history and the anchor kept, so the marker still leads
+ * here. Refused mid-turn, and while the same move is already running.
+ */
+async function openAsChat(): Promise<void> {
+  const id = session.value?.commentId
+  if (!id) return
+
+  if (moving.value) {
+    new Notice('Already moving this comment')
+    return
+  }
+  const moved = await CommentService.getInstance().expand(id)
+  if (moved === 'busy') new Notice('Finish or dismiss the pending step first')
+}
+
+/**
+ * Kept, not asked: the words join the conversation and no agent is started.
+ *
+ * The session refuses one in the middle of a turn — the composer's button is already dark
+ * there, so this is the race between the two, and a refusal that said nothing would look
+ * exactly like a note that was saved.
+ */
+async function onNote(text: string): Promise<void> {
+  const kept = await session.value?.addUserNote(text)
+  if (kept === false) new Notice('Finish or dismiss the pending step first')
+}
+
+/**
+ * The one dialog everything about a chat lives in, and which tab it opens on.
+ *
+ * A way in that used to be its own dialog still lands on the thing it was about: the scope
+ * badge in the composer opens the scope, `/prompt` the prompts.
+ */
+const setupOpen = ref(false)
+const setupTab = ref('scope')
+
+const openSetup = (tab = 'scope') => {
+  setupTab.value = tab
+  setupOpen.value = true
+}
 const variablesModalOpen = ref(false)
 const pendingPromptContent = ref('')
 const pendingPromptAllVars = ref<TemplateVariable[]>([])
@@ -767,10 +881,10 @@ const onCommand = async (command: string) => {
       historyOpen.value = true
       break
     case '/scope':
-      scopeOpen.value = true
+      openSetup('scope')
       break
     case '/prompt':
-      promptPickerOpen.value = true
+      openSetup('prompts')
       break
     default:
       if (command.startsWith('/')) {
@@ -850,7 +964,7 @@ const onPickerSkill = async (name: string) => {
 }
 
 const onPromptSelected = async (file: TFile) => {
-  promptPickerOpen.value = false
+  setupOpen.value = false
   const { app } = GlobalStore.getInstance()
 
   const cache = app.metadataCache.getFileCache(file)
@@ -1006,19 +1120,13 @@ const onContinue = async () => {
 }
 
 const handleNewChat = async () => {
-  await session.value?.reset()
+  const id = session.value?.id
+  if (id) await chatService.startNewChat(id)
 }
 
 const onLoadChat = async (file: TFile) => {
-  // If this chat is already open in another tab, switch to it
-  const existing = chatService.getSessionByFile(file.path)
-  if (existing) {
-    chatService.switchTab(existing.id)
-    return
-  }
-  // Load into the current tab
-  await session.value?.load(file)
-  chatService.saveTabs()
+  const id = session.value?.id
+  if (id) await chatService.openChatInTab(id, file)
 }
 
 const reloadChat = async () => {

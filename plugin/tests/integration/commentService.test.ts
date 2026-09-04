@@ -18,7 +18,6 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { CommentEntry } from '@/entities/Comment'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 
@@ -62,8 +61,6 @@ beforeEach(() => {
   }).id
   vi.spyOn(ChatService.getInstance(), 'saveTabs').mockImplementation(() => {})
   vi.spyOn(ChatService.getInstance(), 'revealSidebar').mockResolvedValue(undefined)
-  GlobalStore.getInstance().commentsContainers.value = []
-  GlobalStore.getInstance().commentModal.value = null
 })
 
 describe('creating a comment', () => {
@@ -149,7 +146,6 @@ describe('reporting to the editor', () => {
       quote: 'The selected passage',
       state: 'idle',
       open: false,
-      pinned: [],
       messages: 0,
     })
   })
@@ -415,13 +411,16 @@ describe('a comment promoted with no room left in the tab bar', () => {
   })
 
   /** And the marker still opens what it always opened, rather than a chat nothing is holding. */
-  it('leaves the marker opening a card', async () => {
-    const { service, id } = await full()
+  it('leaves the marker opening the comment it still is', async () => {
+    const { service, session, id } = await full()
     await service.expand(id)
+    ChatService.getInstance().dropTab(ChatService.getInstance().getAllSessions()[0].id)
 
-    service.openFrom([id], true, 'Notes/A.md')
+    service.openFrom([id])
+    await flush()
 
-    expect(service.open.value).toBe(id)
+    expect(session.kind).toBe('comment')
+    expect(ChatService.getInstance().getSession(session.id) === session).toBe(true)
   })
 })
 
@@ -434,26 +433,15 @@ describe('a press on the marker of an expanded comment', () => {
     return { service, session, id }
   }
 
-  it('opens the chat it became, wherever the pane has room', async () => {
+  it('opens the chat it became', async () => {
     const { service, session, id } = await expanded()
     const reveal = vi.spyOn(ChatService.getInstance(), 'revealSidebar')
 
-    service.openFrom([id], true, 'Notes/A.md')
+    service.openFrom([id])
     await flush()
 
     expect(ChatService.getInstance().getSession(session.id) === session).toBe(true)
     expect(reveal).toHaveBeenCalled()
-    expect(service.open.value).toBeNull()
-  })
-
-  it('opens it in a dialog-less pane too, because a chat lives in the sidebar', async () => {
-    const { service, session, id } = await expanded()
-
-    service.openFrom([id], false, 'Notes/A.md')
-    await flush()
-
-    expect(ChatService.getInstance().getSession(session.id) === session).toBe(true)
-    expect(GlobalStore.getInstance().commentModal.value).toBeNull()
   })
 
   /**
@@ -465,10 +453,11 @@ describe('a press on the marker of an expanded comment', () => {
     const other = await CommentService.getInstance().create(noteFile(), 6, undefined)
     const otherId = other.commentId!
 
-    service.openFrom([otherId, id], true, 'Notes/A.md')
+    service.openFrom([otherId, id])
     await flush()
 
     expect(service.open.value).toBe(otherId)
+    expect(service.isShown(otherId)).toBe(true)
   })
 
   /** The dead end: closing the tab used to leave the marker pointing at nothing reachable. */
@@ -477,7 +466,7 @@ describe('a press on the marker of an expanded comment', () => {
     ChatService.getInstance().dropTab(session.id)
     expect(ChatService.getInstance().getSession(session.id)).toBeNull()
 
-    service.openFrom([id], true, 'Notes/A.md')
+    service.openFrom([id])
     await flush()
 
     expect(ChatService.getInstance().getSession(session.id) === session).toBe(true)
@@ -687,12 +676,11 @@ describe('an expanded comment after a restart', () => {
   })
 
   /**
-   * A tab saved over a comment that is still a comment, which 1.17.1 could leave behind when
-   * it lent the sidebar to comments. Restoring one now would put a card's session in a bar
-   * whose × means "close", over a file the margin is still writing — so the tab is dropped,
-   * and above all no second session is built on the file the margin already has open.
+   * And the other order, which is the one that actually happens: the note's editor is up
+   * before `onLayoutReady`, so the comment has a session before `restoreTabs` sees the saved
+   * layout. Building a second one there would put two log writers on one `.abchat`.
    */
-  it('leaves a saved tab over a plain comment unrestored', async () => {
+  it('restores a saved tab over a plain comment as the comment it is', async () => {
     const service = CommentService.getInstance()
     const created = await service.create(noteFile(), SELECTION_END, 'The selected passage')
     const id = created.commentId!
@@ -707,9 +695,9 @@ describe('an expanded comment after a restart', () => {
 
     await ChatService.getInstance().restoreTabs()
 
-    expect(ChatService.getInstance().getSessionByFile(path)).toBeNull()
+    expect(ChatService.getInstance().getSessionByFile(path) === loaded).toBe(true)
     expect(CommentService.getInstance().sessionFor(id) === loaded).toBe(true)
-    expect(loaded?.isDestroyed).toBe(false)
+    expect(CommentService.getInstance().isShown(id)).toBe(true)
   })
 })
 
@@ -846,138 +834,6 @@ describe('the note being renamed', () => {
     expect(session.anchor.value?.note).toBe('Notes/A.md')
   })
 })
-
-describe('which card is open', () => {
-  it('opens the first comment of a marker and closes it again', async () => {
-    const service = CommentService.getInstance()
-    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
-    const id = session.commentId as string
-
-    service.toggleOpen([id])
-    expect(service.open.value).toBe(id)
-
-    service.toggleOpen([id])
-    expect(service.open.value).toBeNull()
-  })
-
-  it('moves the open card rather than closing it when another marker is pressed', async () => {
-    const service = CommentService.getInstance()
-    const first = await service.create(noteFile(), SELECTION_END, 'The selected passage')
-    service.open.value = first.commentId
-
-    service.toggleOpen(['zzz999'])
-
-    expect(service.open.value).toBe('zzz999')
-  })
-
-  it('repaints the note that lost the open card and the note that gained one', async () => {
-    const service = CommentService.getInstance()
-    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
-    vi.mocked(dispatchCommentsChanged).mockClear()
-
-    service.open.value = session.commentId
-    await nextTick()
-
-    expect(vi.mocked(dispatchCommentsChanged).mock.calls.flat()).toContain('Notes/A.md')
-  })
-})
-
-describe('a comment where the margin has no room for it', () => {
-  const hostFor = (ids: string[]) =>
-    new CommentEntry({ id: 'vue-1', ids, notePath: 'Notes/A.md', markerFrom: SELECTION_END })
-
-  const made = async () => {
-    const service = CommentService.getInstance()
-    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
-    const id = session.commentId as string
-    return { service, session, id }
-  }
-
-  const dialog = () => GlobalStore.getInstance().commentModal.value
-
-  it('leaves the card in the margin when the pane has room for one', async () => {
-    const { service, id } = await made()
-    GlobalStore.getInstance().commentsContainers.value = [hostFor([id])]
-
-    service.openFrom([id], true, 'Notes/A.md')
-
-    expect(service.open.value).toBe(id)
-    expect(dialog()).toBeNull()
-  })
-
-  /**
-   * A phone, and a split too narrow for a sidenote. The card goes into a dialog of its own —
-   * not into the chat sidebar, which 1.17.1 tried: that view is the agent's, with its tabs and
-   * its history, and a comment borrowed into it is a comment in somebody else's room.
-   */
-  it('puts the card in a dialog when there is nowhere to hang one', async () => {
-    const { service, id } = await made()
-    GlobalStore.getInstance().commentsContainers.value = [hostFor([id])]
-
-    service.openFrom([id], false, 'Notes/A.md')
-
-    expect(dialog()?.ids).toEqual([id])
-    expect(ChatService.getInstance().getAllSessions()).toEqual([])
-  })
-
-  /** One card is one component: the dialog takes the host the margin already made, if any. */
-  it('reuses the margin host for the same marker', async () => {
-    const { service, id } = await made()
-    const host = hostFor([id])
-    GlobalStore.getInstance().commentsContainers.value = [host]
-
-    service.openFrom([id], false, 'Notes/A.md')
-
-    expect(dialog()?.id).toBe(host.id)
-  })
-
-  /**
-   * Hosts are only minted where there is a margin to hang them in, which is exactly what a
-   * phone has not. The note comes from the pane the icon was pressed in — a marker pressed
-   * before its comment has been read off disk still knows which note it is in.
-   */
-  it('mints a host for a marker the margin never drew', async () => {
-    const { service, id } = await made()
-    GlobalStore.getInstance().commentsContainers.value = []
-
-    service.openFrom([id], false, 'Notes/A.md')
-
-    expect(dialog()?.notePath).toBe('Notes/A.md')
-    expect(dialog()?.ids).toEqual([id])
-  })
-
-  it('opens one for a comment nothing has loaded yet', async () => {
-    const service = CommentService.getInstance()
-    GlobalStore.getInstance().commentsContainers.value = []
-
-    service.openFrom(['zzz999'], false, 'Notes/A.md')
-
-    expect(dialog()?.ids).toEqual(['zzz999'])
-  })
-
-  /** No note, no card: there would be nothing for the thread to render against. */
-  it('does nothing at all for a press that names no note', async () => {
-    const service = CommentService.getInstance()
-    GlobalStore.getInstance().commentsContainers.value = []
-
-    service.openFrom(['zzz999'], false, '')
-
-    expect(dialog()).toBeNull()
-  })
-
-  /**
-   * The margin is left alone: `open` is what the marker draws itself from, and the dialog
-   * expands the card on mount from that same value.
-   */
-  it('leaves the open card alone', async () => {
-    const { service, id } = await made()
-
-    service.openFrom([id], false, 'Notes/A.md')
-
-    expect(service.open.value).toBeNull()
-  })
-})
-
 /** Lets Promise chains and their `.then` continuations run to the end. */
 const flush = async () => {
   for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0))

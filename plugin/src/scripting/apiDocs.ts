@@ -144,8 +144,11 @@ List values can contain \`;\` separator to add/remove multiple items at once.
 | \`downloadImage(url, filename?)\` | \`string\` | Download image to vault, returns saved path |
 | \`downloadFile(url, opts?)\` | \`string\` | Download any file to vault, returns saved path |
 
-\`fetch\` options: \`{ method?, headers?, body? }\`
-\`downloadFile\` options: \`{ filename?, extension?, method?, headers?, body? }\` — supports POST for APIs that return binary (e.g. TTS).
+\`fetch\` options: \`{ method?, headers?, body?, timeout? }\`
+\`downloadFile\` options: \`{ filename?, extension?, method?, headers?, body?, timeout? }\` — supports POST for APIs that return binary (e.g. TTS).
+\`downloadImage\` options: \`{ filename?, headers?, timeout? }\`
+
+\`timeout\` is milliseconds and takes any value — two seconds for a search API, twenty minutes for an export. Without it the call waits as long as the platform waits, which is what these have always done. It ends the *waiting*, not the request: a download that timed out may still land in the vault a moment later.
 Secret substitution: use \`\${abele_key:name}\` in url, headers, or body to inject secrets configured in AI settings.
 
 ### Zip
@@ -194,7 +197,7 @@ const each = await agent("Extract the date", { items: paths })
 |----------|---------|-------------|
 | \`notice(message, timeout?)\` | — | Show Obsidian notification |
 | \`setStatus(text)\` | — | Say what the script is doing now — shown in the status bar and against the run |
-| \`form(fields)\` | \`object \\| null\` | Show form modal — only available when the script is run from the command palette or has a view open |
+| \`form(fields)\` | \`object \\| null\` | Ask for values: a dialog from the command palette or an open view, a form handed to the agent from a chat |
 | \`show(markdown, title?)\` | — | Show rendered markdown to read — only available when the script is run from the command palette or has a view open |
 
 \`form\` fields: \`[{ name, label, type?, options?, default?, required?, text? }]\`

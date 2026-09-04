@@ -7,6 +7,8 @@
  * lists: a note worked on by hundreds of chats must not mount a card for each.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import ChatsList from '@/components/ChatsList.vue'
@@ -74,6 +76,25 @@ beforeEach(() => {
 afterEach(() => {
   wrapper?.unmount()
   wrapper = null
+})
+
+/**
+ * The list is flush with the note above it. The other footer lists are indented by a quarter
+ * of an icon because their rows start with one; a chat card is a box with its own border, and
+ * an indented box reads as a box that missed. Asserted against the stylesheet because this
+ * tier lays nothing out — see `designConformance`.
+ */
+describe('where the list sits', () => {
+  it('is not indented away from the text it belongs to', () => {
+    const source = readFileSync(
+      join(__dirname, '..', '..', 'src', 'components', 'ChatsList.vue'),
+      'utf8'
+    )
+    const rule = /\.abele-chats-list__chats\s*\{([^}]*)\}/.exec(source)?.[1] ?? ''
+
+    expect(rule).not.toBe('')
+    expect(rule).not.toMatch(/padding-left|padding-inline-start|margin-left/)
+  })
 })
 
 describe('which chats a note lists', () => {

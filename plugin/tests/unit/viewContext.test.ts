@@ -5,13 +5,16 @@
  * (scriptShow.test.ts pins that), but once the script has opened a view its handlers run
  * because the user pressed something, and a modal is then theirs to see.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { buildScriptContext } from '@/scripting/ScriptContext'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 import type { View, ViewHost } from '@/scripting/view/View'
 import { Button } from '@/scripting/view/components'
+import { setDefaultViewHost } from '@/scripting/view/host'
+import { ScriptService } from '@/scripting/ScriptService'
+import { ScriptRuns } from '@/scripting/ScriptRuns'
 
 const { showFormModal } = vi.hoisted(() => ({ showFormModal: vi.fn(async () => ({ a: '1' })) }))
 vi.mock('@/scripting/formModal', () => ({ showFormModal }))
@@ -80,6 +83,54 @@ describe('view() in a script', () => {
     await v.open()
     await ctx.form([])
     expect(handler).toHaveBeenCalled()
+    expect(showFormModal).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * The same rule through the service, which is the road a real run takes. The service threads
+ * the run's id into whatever handler it was given; when it was given none it must hand the
+ * context nothing, not a handler that throws — or a view's button could never ask anything.
+ */
+describe('form() in a script the service ran', () => {
+  let service: ScriptService
+
+  /** Puts a script in the index without a vault folder to discover it from. */
+  function register(name: string, code: string): string {
+    const path = `Scripts/${name}.js`
+    const scripts = (service as unknown as { scripts: Map<string, unknown> }).scripts
+    scripts.set(path, { path, code, commandId: '', meta: { name, description: '', params: [] } })
+    return path
+  }
+
+  beforeEach(() => {
+    ScriptRuns.destroy()
+    ScriptService.destroy()
+    service = ScriptService.getInstance()
+    setDefaultViewHost(host())
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    setDefaultViewHost(null)
+  })
+
+  it('reaches the dialog once the script has a view open, as a restored tab does', async () => {
+    const path = register(
+      'Ask',
+      `const v = view({ title: 'T' })
+       await v.open()
+       return JSON.stringify(await form([{ name: 'a', label: 'A' }]))`
+    )
+    await expect(service.execute(path, {}, { source: 'view' })).resolves.toBe('{"a":"1"}')
+    expect(showFormModal).toHaveBeenCalledTimes(1)
+  })
+
+  it('is refused with the reason when nothing is open and nobody can answer', async () => {
+    const path = register('Ask', `await form([{ name: 'a', label: 'A' }])`)
+    await expect(service.execute(path, {}, { source: 'script' })).rejects.toThrow(
+      'command palette or has a view open'
+    )
     expect(showFormModal).not.toHaveBeenCalled()
   })
 })

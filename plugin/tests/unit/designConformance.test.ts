@@ -30,10 +30,7 @@ const COVERED_FILES = [
   'AiRunBranch.vue',
   'AiRunMessage.vue',
   'AiRunView.vue',
-  'CommentCard.vue',
-  'CommentInput.vue',
-  'CommentPin.vue',
-  'CommentThread.vue',
+  'AiChatSetup.vue',
   'ChatsList.vue',
   'ScriptView.vue',
   'ScriptNode.vue',
@@ -192,31 +189,20 @@ describe('the design standard', () => {
   })
 
   /**
-   * Every composer a thumb meets, at 16 px.
+   * The composer a thumb meets, at 16 px.
    *
    * Below that, focusing a field is answered by iOS zooming the whole page into it — the note
    * jumped and had to be pinched back every time somebody typed a question, which is what the
-   * first phone report was about. The sidebar's composer is the one a phone types a comment
-   * into now; the margin's is what a tablet still shows, and is still `body.is-mobile`.
-   * Neither the size nor the reason is visible to any component test — happy-dom computes no
-   * layout — so both rules are guarded by name.
+   * first phone report was about. There is one composer now — a comment is read in the sidebar
+   * like any other chat — and the size is invisible to any component test, since happy-dom
+   * computes no layout, so the rule is guarded by name.
    */
-  it('sizes every composer a thumb meets so iOS does not zoom into it', () => {
+  it('sizes the composer a thumb meets so iOS does not zoom into it', () => {
     const chat = styleBlock(readFileSync(join(ROOT, 'AiChatInput.vue'), 'utf8'))
     const sidebar =
       /body\.is-mobile \.abele-chat-input__textarea\s*\{([^}]*)\}/.exec(chat)?.[1] ?? ''
+
     expect(sidebar).toMatch(/font-size:\s*var\(--font-ui-medium\)/)
-
-    const input = styleBlock(readFileSync(join(ROOT, 'CommentInput.vue'), 'utf8'))
-    const field =
-      /body\.is-mobile \.abele-comment-input__field\s*\{([^}]*)\}/.exec(input)?.[1] ?? ''
-    expect(field).toMatch(/font-size:\s*var\(--font-ui-medium\)/)
-    expect(field).toMatch(/min-height:\s*var\(--input-height\)/)
-
-    const send = /body\.is-mobile \.abele-comment-input__send\s*\{([^}]*)\}/.exec(input)?.[1] ?? ''
-    // --size-4-9 is 36 px, the smallest square a thumb hits reliably.
-    expect(send).toMatch(/min-width:\s*var\(--size-4-9\)/)
-    expect(send).toMatch(/min-height:\s*var\(--size-4-9\)/)
   })
 
   /**
@@ -235,56 +221,6 @@ describe('the design standard', () => {
     const query = /@container\s*\(max-width:\s*420px\)\s*\{([\s\S]*?)\n\}/.exec(selector)?.[1] ?? ''
     expect(query).toContain('.abele-agent-selector__model')
     expect(query).toMatch(/display:\s*none/)
-  })
-
-  /**
-   * The header's agent picker, which is a native `select` wearing a badge's clothes.
-   *
-   * Obsidian draws the chevron as a background image 12 px in from the right edge and reserves
-   * the room for it with `padding-right: 32px`. A compact padding shorthand takes that room
-   * away and the chevron lands on the last letter of the agent's name — which is what the
-   * first phone screenshot showed. The room is padding, not decoration, so it is guarded.
-   */
-  it('leaves the agent picker room for the chevron Obsidian draws in it', () => {
-    const card = styleBlock(readFileSync(join(ROOT, 'CommentCard.vue'), 'utf8'))
-
-    const picker =
-      /\.abele-comment-card__agent \.abele-obsidian-dropdown \.dropdown\s*\{([^}]*)\}/.exec(
-        card
-      )?.[1] ?? ''
-    // --size-4-6 is 24px: 12px to the chevron plus the glyph itself.
-    expect(picker).toMatch(/padding:[^;]*var\(--size-4-6\)/)
-  })
-
-  /**
-   * The button Obsidian appends to every code block, and the fourth of its rules that no test
-   * of ours can see.
-   *
-   * `MarkdownRenderer` puts a `button.copy-code-button` inside each `pre`, and Obsidian's own
-   * stylesheet only positions it under `.markdown-rendered` — a class the kit's `Markdown`
-   * adds only for a whole document, which a card in the margin is not. Unstyled the button
-   * keeps Obsidian's default `button` chrome and lands under the code as a grey slab, and
-   * `.is-mobile` shows it always rather than on hover, which is how a phone reported it.
-   */
-  it('tames the copy button Obsidian appends to a code block in a comment', () => {
-    const thread = styleBlock(readFileSync(join(ROOT, 'CommentThread.vue'), 'utf8'))
-
-    // Absolute against the block, which is what `position: relative` on the `pre` is for.
-    const pre = /\.abele-comment-thread__body pre\s*\{([^}]*)\}/.exec(thread)?.[1] ?? ''
-    expect(pre).toMatch(/position:\s*relative/)
-    // Room at the end of the first line, so the code does not run under the button.
-    expect(pre).toMatch(/padding-inline-end:\s*var\(--size-4-12\)/)
-
-    const button =
-      /\.abele-comment-thread__body \.copy-code-button\s*\{([^}]*)\}/.exec(thread)?.[1] ?? ''
-    expect(button).toMatch(/position:\s*absolute/)
-    expect(button).toMatch(/top:\s*var\(--size-4-1\)/)
-    expect(button).toMatch(/inset-inline-end:\s*var\(--size-4-1\)/)
-    expect(button).toMatch(/color:\s*var\(--text-muted\)/)
-    // Obsidian's default button is a raised slab; in a sidenote it has to be a glyph.
-    expect(button).toMatch(/box-shadow:\s*none/)
-    expect(button).toMatch(/font-size:\s*var\(--font-ui-smaller\)/)
-    expect(button).toMatch(/--icon-size:\s*var\(--icon-xs\)/)
   })
 
   it('explains any element that scrolls sideways', () => {

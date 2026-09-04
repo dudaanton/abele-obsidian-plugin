@@ -231,48 +231,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   public readonly moving = ref(false)
 
   /**
-   * Drops pinned ids no message in this file carries. True when something went.
-   *
-   * Measured against the whole tree and not the visible path: a branch the chat is not on is
-   * one press away, and a pin waiting there is out of sight rather than gone. What this
-   * catches is an id nothing can ever render again — a file edited by hand, or a message some
-   * format change lost — which would otherwise sit in the metadata forever, drawing nothing
-   * and offering nobody a card to press pin-off on.
-   */
-  private prunePinned(): boolean {
-    if (this.pinned.value.length === 0) return false
-
-    const known = new Set(this.allChatMessages.map((msg) => msg.id))
-    const kept = this.pinned.value.filter((id) => known.has(id))
-    if (kept.length === this.pinned.value.length) return false
-
-    this.pinned.value = kept
-    return true
-  }
-
-  isPinned(messageId: string): boolean {
-    return this.pinned.value.includes(messageId)
-  }
-
-  /**
-   * Puts a message in the note's margin and writes the file.
-   *
-   * Both mutators replace the array rather than pushing into it: `pinned` is a `shallowRef`,
-   * and a push into the same array changes nothing anything is watching.
-   */
-  async pin(messageId: string): Promise<void> {
-    if (this.isPinned(messageId)) return
-    this.pinned.value = [...this.pinned.value, messageId]
-    await this.save()
-  }
-
-  async unpin(messageId: string): Promise<void> {
-    if (!this.isPinned(messageId)) return
-    this.pinned.value = this.pinned.value.filter((id) => id !== messageId)
-    await this.save()
-  }
-
-  /**
    * Records that this chat wrote to `path`.
    *
    * Called by the tool wrapper on every successful write, and public so a live check can drive
@@ -370,13 +328,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   /** Where this session is anchored, for a comment and for a chat expanded from one. */
   public readonly anchor = shallowRef<CommentAnchor | null>(null)
 
-  /**
-   * The messages this comment keeps in the note's margin, oldest pin first.
-   *
-   * The one place a pin is recorded. The margin entry, the card and the action in the thread
-   * all read this ref, so there is never a second answer to whether a message is pinned.
-   */
-  public readonly pinned = shallowRef<string[]>([])
 
   /**
    * The notes this chat wrote to, oldest first write first.
@@ -1745,7 +1696,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.agentId.value = AgentRegistry.getInstance().defaultAgent()?.id ?? ''
     this.overrides.value = {}
     this.anchor.value = null
-    this.pinned.value = []
     this.touched.value = []
     this.recap.value = ''
     this.wroteThisTurn = false
@@ -1881,11 +1831,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       // note has to keep finding this file, and `kind` is how a reopened one knows what it is.
       kind: this.anchor.value ? (this.kind === 'comment' ? 'comment' : 'chat') : undefined,
       anchor: this.anchor.value ?? undefined,
-      // Absent rather than empty when nothing is pinned: an unpin should leave the file the
-      // way it was before the pin, not carrying a field that says nothing.
-      pinned: this.pinned.value.length ? [...this.pinned.value] : undefined,
-      // Absent rather than empty for the same reason as `pinned`: a chat that changed nothing
-      // says nothing about notes.
+      // Absent rather than empty: a chat that changed nothing says nothing about notes.
       touched: this.touched.value.length ? [...this.touched.value] : undefined,
       recap: this.recap.value || undefined,
       // Only what this chat actually changed. Writing the resolved values instead would freeze
@@ -2009,7 +1955,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // by then or the note is left out until the next agent change.
     if (result.metadata?.kind) this.kind = result.metadata.kind
     this.anchor.value = result.metadata?.anchor ?? null
-    this.pinned.value = result.metadata?.pinned ?? []
     this.touched.value = result.metadata?.touched ?? []
     this.recap.value = result.metadata?.recap ?? ''
 
@@ -2024,8 +1969,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.activeLeafId =
       result.metadata?.activeLeafId || findDefaultLeaf(this.allChatMessages)?.id || null
     this.updateVisibleMessages()
-
-    const pruned = this.prunePinned()
 
     this.userMessageCount = this.messages.value.filter((m) => m.role === 'user').length
 
@@ -2053,7 +1996,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     // anything not yet put back is written out as absent: run earlier it filed the chat under
     // the default agent, dropped the overrides it was saved with, and forgot the tool call it
     // was waiting on approval for.
-    if (needsMigration || pruned) {
+    if (needsMigration) {
       await this.save()
     }
   }

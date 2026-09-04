@@ -9,6 +9,7 @@ import { AgentRegistry } from './agents/AgentRegistry'
 import { getNoteBody } from '@/helpers/notesUtils'
 import { ChatSession } from './ChatSession'
 import { CommentService } from './CommentService'
+import { ChatStorage } from './ChatStorage'
 import { RunStorage, type RunFile } from './RunStorage'
 import { AI_SIDEBAR_VIEW_TYPE } from '@/constants/views'
 import { buildCommentContext } from './commentContext'
@@ -197,6 +198,50 @@ export class ChatService {
   }
 
   /**
+   * "New chat", from a tab.
+   *
+   * An ordinary chat starts again in place, which is what that button has always done. A
+   * comment cannot: its session writes the file a marker in a note points at, and `reset`
+   * would empty that file and leave the icon leading to nothing. So the same act — a new
+   * conversation — happens in a tab of its own, and the comment is left where it was.
+   */
+  async startNewChat(tabId: string): Promise<void> {
+    const session = this.sessions.get(tabId)
+    if (!session) return
+
+    if (session.kind === 'comment') {
+      this.createTab()
+      return
+    }
+
+    await session.reset()
+  }
+
+  /**
+   * "Open this chat", from a tab: into this one, or into a new one when this one is a comment.
+   *
+   * A chat already open somewhere is switched to rather than loaded twice — two sessions on
+   * one file are two writers on one log.
+   */
+  async openChatInTab(tabId: string, file: TFile): Promise<void> {
+    const already = this.getSessionByFile(file.path)
+    if (already) {
+      this.switchTab(already.id)
+      return
+    }
+
+    const holder = this.sessions.get(tabId)
+    // A comment's file belongs to a marker; loading another chat over it would repoint the
+    // session at a file the note knows nothing about.
+    const target =
+      holder && holder.kind !== 'comment' ? holder : this.sessions.get(this.createTab())
+    if (!target) return
+
+    await target.load(file)
+    this.saveTabs()
+  }
+
+  /**
    * Takes a session somebody else built and shows it as a tab.
    *
    * The limit is applied here as it is anywhere else. It used to be waived, on the reasoning
@@ -259,10 +304,53 @@ export class ChatService {
     const session = this.sessions.get(tabId)
     if (!session) return
 
+    // A comment being read here is not this tab's to end: it belongs to a note, and its
+    // session goes on writing the same file and painting its marker. The × hands it back.
+    const comments = CommentService.getInstance()
+    const commentId = session.commentId
+    if (session.kind === 'comment' && commentId && comments.isShown(commentId)) {
+      await comments.hideFromSidebar(commentId)
+      return
+    }
+
     // Save before closing
     await session.save()
     session.destroy()
     this.dropTab(tabId)
+  }
+
+  /**
+   * Deletes the conversation a tab is holding: the file, its delegated runs, its entry in the
+   * index, and the tab itself.
+   *
+   * The order is the point. The session is destroyed *before* the file goes — it saves on a
+   * timer and at the end of every turn, so one left alive over a deleted path writes the whole
+   * conversation back a moment later. And nothing is saved on the way out, unlike `closeTab`:
+   * this is somebody throwing the chat away.
+   *
+   * An expanded comment leaves through `CommentService` instead. Its marker is still in a
+   * note, and an icon in the text that opens nothing is worse than the chat it points at.
+   *
+   * Answers whether anything was deleted: a tab nobody has written to has no file yet.
+   */
+  async deleteChat(tabId: string): Promise<boolean> {
+    const session = this.sessions.get(tabId)
+    if (!session) return false
+
+    const comments = CommentService.getInstance()
+    const commentId = session.commentId
+    if (commentId && comments.isExpanded(commentId)) {
+      await comments.remove(commentId)
+      return true
+    }
+
+    const path = session.currentChatFile.value?.path
+    if (!path) return false
+
+    this.dropTab(tabId)
+    session.destroy()
+    await ChatStorage.getInstance().deleteChat(path)
+    return true
   }
 
   /**

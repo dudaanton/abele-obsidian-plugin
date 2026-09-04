@@ -8,8 +8,6 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { CommentMarkerWidget } from '@/editor/CommentMarkerWidget'
-import type { EditorView } from '@codemirror/view'
-
 const noop = () => {}
 /** The four arguments before the handler, spelled once: ids, what was said, state, open. */
 const widget = (
@@ -19,19 +17,17 @@ const widget = (
   open = false,
   onClick = noop
 ) => new CommentMarkerWidget(ids, count, state, open, onClick)
-/** The widget only carries the view through to the handler, so an empty object is enough. */
-const VIEW = {} as EditorView
 
 describe('the comment marker widget', () => {
   it('carries its ids where the tests and the harness look for them', () => {
-    const el = widget(['k7d2ph', '3mq0xa']).toDOM(VIEW)
+    const el = widget(['k7d2ph', '3mq0xa']).toDOM()
 
     expect(el.getAttribute('data-comment-ids')).toBe('k7d2ph,3mq0xa')
     expect(el.classList.contains('abele-comment-marker')).toBe(true)
   })
 
   it('draws the comment glyph', () => {
-    const el = widget(['k7d2ph']).toDOM(VIEW)
+    const el = widget(['k7d2ph']).toDOM()
 
     expect(el.querySelector('[data-icon="message-circle"]')).not.toBeNull()
   })
@@ -42,17 +38,17 @@ describe('the comment marker widget', () => {
    * digit at all — a "0" beside an icon is not information.
    */
   it('counts what was said, and says nothing when nothing was', () => {
-    const fresh = widget(['k7d2ph'], 0).toDOM(VIEW)
-    const talked = widget(['k7d2ph'], 4).toDOM(VIEW)
+    const fresh = widget(['k7d2ph'], 0).toDOM()
+    const talked = widget(['k7d2ph'], 4).toDOM()
 
     expect(fresh.querySelector('.abele-comment-marker__count')).toBeNull()
     expect(talked.querySelector('.abele-comment-marker__count')?.textContent).toBe('4')
   })
 
   it('says what state the session is in', () => {
-    const busy = widget(['k7d2ph'], 0, 'busy').toDOM(VIEW)
-    const pending = widget(['k7d2ph'], 0, 'pending').toDOM(VIEW)
-    const failed = widget(['k7d2ph'], 0, 'error', true).toDOM(VIEW)
+    const busy = widget(['k7d2ph'], 0, 'busy').toDOM()
+    const pending = widget(['k7d2ph'], 0, 'pending').toDOM()
+    const failed = widget(['k7d2ph'], 0, 'error', true).toDOM()
 
     expect(busy.classList.contains('abele-comment-marker_busy')).toBe(true)
     expect(pending.classList.contains('abele-comment-marker_pending')).toBe(true)
@@ -61,20 +57,18 @@ describe('the comment marker widget', () => {
   })
 
   it('adds no state class when the comment is idle and closed', () => {
-    const el = widget(['k7d2ph']).toDOM(VIEW)
+    const el = widget(['k7d2ph']).toDOM()
 
     expect(el.className).toBe('abele-comment-marker')
   })
 
-  it('hands the press the ids and the view that drew it', () => {
+  it('hands the press the ids it carries', () => {
     const onClick = vi.fn()
-    const el = widget(['k7d2ph'], 0, 'idle', false, onClick).toDOM(VIEW)
+    const el = widget(['k7d2ph'], 0, 'idle', false, onClick).toDOM()
 
     el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 
-    // The view travels with the press because the margin that decides where the card goes is
-    // this pane's, not whichever pane Obsidian last called active.
-    expect(onClick).toHaveBeenCalledWith(['k7d2ph'], VIEW)
+    expect(onClick).toHaveBeenCalledWith(['k7d2ph'])
   })
 
   it('keeps its DOM while the ids, the count and the state hold', () => {

@@ -21,7 +21,6 @@ import {
   marginOverlayFor,
   marginOverlayIfAny,
   type MarginEntry,
-  type MarginEntryKind,
 } from '@/editor/MarginOverlay'
 
 describe('stacking margin entries', () => {
@@ -90,117 +89,6 @@ describe('stacking margin entries', () => {
 
     expect(items.map((i) => i.id)).toEqual(['b', 'a'])
   })
-
-  /**
-   * A pin is the first entry whose place is the top of the *view* rather than its anchor's
-   * line. `top` is not consulted for one: a pin whose anchor has scrolled away is exactly the
-   * pin with work to do.
-   */
-  it('parks a sticky entry at the top of the view however far its anchor is', () => {
-    expect(
-      stackEntries(
-        [
-          { id: 'pin', anchorPos: 10, top: 4000, height: 40, sticky: true },
-          { id: 'gone', anchorPos: 20, top: null, height: 40, sticky: true },
-        ],
-        { viewportTop: 500 }
-      )
-    ).toEqual([
-      { id: 'pin', top: 504 },
-      { id: 'gone', top: 548 },
-    ])
-  })
-
-  it('stacks two sticky entries in document order, one gap apart', () => {
-    const placements = stackEntries(
-      [
-        { id: 'second', anchorPos: 200, top: 10, height: 30, sticky: true },
-        { id: 'first', anchorPos: 100, top: 10, height: 20, sticky: true },
-      ],
-      { viewportTop: 0 }
-    )
-
-    expect(placements).toEqual([
-      { id: 'first', top: SIDENOTE_GAP },
-      { id: 'second', top: SIDENOTE_GAP + 20 + SIDENOTE_GAP },
-    ])
-  })
-
-  it('pushes an ordinary entry below the whole sticky block and leaves a distant one alone', () => {
-    const placements = stackEntries(
-      [
-        { id: 'pin', anchorPos: 10, top: 0, height: 60, sticky: true },
-        { id: 'under', anchorPos: 20, top: 10, height: 30 },
-        { id: 'far', anchorPos: 900, top: 900, height: 30 },
-      ],
-      { viewportTop: 0 }
-    )
-
-    expect(placements).toEqual([
-      { id: 'pin', top: 4 },
-      { id: 'under', top: 68 },
-      { id: 'far', top: 900 },
-    ])
-  })
-
-  /**
-   * The sticky block pushes down what it would otherwise be drawn over, and nothing else.
-   *
-   * A card whose anchor is above the visible area still has a measured `top` while its line is
-   * inside CodeMirror's rendered range. Clamping that one to the bottom of the pins drags it
-   * into the reader's view and stands it beside text it has nothing to do with.
-   */
-  it('leaves an ordinary entry anchored above the view where its anchor is', () => {
-    const placements = stackEntries(
-      [
-        { id: 'pin', anchorPos: 10, top: 0, height: 100, sticky: true },
-        { id: 'above', anchorPos: 20, top: 1500, height: 40 },
-        { id: 'inside', anchorPos: 30, top: 2050, height: 40 },
-      ],
-      { viewportTop: 2000 }
-    )
-
-    expect(placements).toEqual([
-      { id: 'pin', top: 2004 },
-      // 1500 + 40 is still above 2000, so the pins are nowhere near it.
-      { id: 'above', top: 1500 },
-      // The pins end at 2104; this one would have been drawn under them.
-      { id: 'inside', top: 2108 },
-    ])
-  })
-
-  it('clamps an entry the sticky block only just reaches, by its own height', () => {
-    // Anchored above the view, but tall enough to reach into it: this one is drawn over the
-    // pins unless it is pushed, which is why the test is on `top + height` and not on `top`.
-    const placements = stackEntries(
-      [
-        { id: 'pin', anchorPos: 10, top: 0, height: 100, sticky: true },
-        { id: 'tall', anchorPos: 20, top: 1900, height: 400 },
-      ],
-      { viewportTop: 2000 }
-    )
-
-    expect(placements).toEqual([
-      { id: 'pin', top: 2004 },
-      { id: 'tall', top: 2108 },
-    ])
-  })
-
-  it('places exactly as it always did when nothing is sticky and no options are given', () => {
-    const items = [
-      { id: 'a', anchorPos: 10, top: 0, height: 40 },
-      { id: 'b', anchorPos: 20, top: null, height: 40 },
-      { id: 'c', anchorPos: 30, top: 10, height: 40 },
-    ]
-
-    expect(stackEntries(items)).toEqual(stackEntries(items, {}))
-    expect(stackEntries(items, {})).toEqual([
-      { id: 'a', top: 0 },
-      { id: 'b', top: null },
-      { id: 'c', top: 44 },
-    ])
-  })
-
   it('states the width below which the margin is unusable', () => {
     expect(MARGIN_MIN_SPACE).toBe(200)
     expect(SIDENOTE_GAP).toBe(4)
@@ -243,29 +131,19 @@ function fakeView(opts: {
   } as unknown as EditorView
 }
 
-/** The overlay's own `HIDDEN_CLASS` map, which is private to it. A pin's box is not `pin`-named. */
-const HIDDEN: Record<MarginEntryKind, string> = {
-  footnote: 'abele-footnote-widget-container_hidden',
-  comment: 'abele-comment-widget-container_hidden',
-  pin: 'abele-comment-pin-container_hidden',
-}
+/** The overlay's own `HIDDEN_CLASS`, which is private to it. */
+const HIDDEN = 'abele-footnote-widget-container_hidden'
 
-function fakeEntry(
-  kind: MarginEntryKind,
-  id: string,
-  anchorPos: number,
-  height: number,
-  sticky?: boolean
-): MarginEntry {
+function fakeEntry(id: string, anchorPos: number, height: number): MarginEntry {
   const el = window.document.createElement('div')
-  el.classList.add(HIDDEN[kind].replace(/_hidden$/, ''))
+  el.classList.add(HIDDEN.replace(/_hidden$/, ''))
   // happy-dom reports 0 for every measured box; the height is what the stack is made of. A
   // hidden entry is `display: none` in the real thing, and a box that is not laid out measures
   // 0 — which is what makes the order of un-hiding and measuring matter.
   Object.defineProperty(el, 'offsetHeight', {
-    get: () => (el.classList.contains(HIDDEN[kind]) ? 0 : height),
+    get: () => (el.classList.contains(HIDDEN) ? 0 : height),
   })
-  return { id, kind, anchorPos, el, sticky }
+  return { id, anchorPos, el }
 }
 
 describe('the margin overlay', () => {
@@ -282,34 +160,34 @@ describe('the margin overlay', () => {
     expect(view.scrollDOM.querySelector('.abele-margin-overlay')).toBeNull()
   })
 
-  it('stacks footnotes and comments in one column', () => {
+  it('stacks the column in document order, one gap apart', () => {
     const view = fakeView({
       contentRight: 700,
       scrollerRight: 1000,
       tops: { 10: 0, 20: 10, 300: 90, 400: 400 },
     })
     const overlay = new MarginOverlay(view)
-    const f1 = fakeEntry('footnote', 'f1', 10, 40)
-    const f2 = fakeEntry('footnote', 'f2', 400, 10)
-    const c1 = fakeEntry('comment', 'c1', 20, 50)
-    const c2 = fakeEntry('comment', 'c2', 300, 30)
+    const first = fakeEntry('f1', 10, 40)
+    const second = fakeEntry('f2', 20, 50)
+    const third = fakeEntry('f3', 300, 30)
+    const distant = fakeEntry('f4', 400, 10)
 
-    overlay.setEntries('footnote', [f1, f2])
-    overlay.setEntries('comment', [c1, c2])
+    overlay.setEntries([first, second, third, distant])
     overlay.position()
 
-    expect(f1.el.style.top).toBe('0px')
-    expect(c1.el.style.top).toBe('44px')
-    expect(c2.el.style.top).toBe('98px')
-    expect(f2.el.style.top).toBe('400px')
+    expect(first.el.style.top).toBe('0px')
+    expect(second.el.style.top).toBe('44px')
+    expect(third.el.style.top).toBe('98px')
+    // Far enough down to sit at its own anchor.
+    expect(distant.el.style.top).toBe('400px')
   })
 
   it('gives every entry the same measured width and left edge', () => {
     const view = fakeView({ contentRight: 700, scrollerRight: 1000, tops: { 10: 0 } })
     const overlay = new MarginOverlay(view)
-    const entry = fakeEntry('footnote', 'f1', 10, 40)
+    const entry = fakeEntry('f1', 10, 40)
 
-    overlay.setEntries('footnote', [entry])
+    overlay.setEntries([entry])
     overlay.position()
 
     // 300 px of margin: min(300, max(180, 300 - 16)) wide, 8 px right of the text column.
@@ -317,64 +195,34 @@ describe('the margin overlay', () => {
     expect(entry.el.style.left).toBe('708px')
   })
 
-  it('hides an entry whose anchor scrolled out of view, by its own kind', () => {
+  it('hides an entry whose anchor scrolled out of view', () => {
     const view = fakeView({ contentRight: 700, scrollerRight: 1000, tops: { 10: 0 } })
     const overlay = new MarginOverlay(view)
-    const shown = fakeEntry('footnote', 'f1', 10, 40)
-    const gone = fakeEntry('comment', 'c1', 999, 40)
+    const shown = fakeEntry('f1', 10, 40)
+    const gone = fakeEntry('f2', 999, 40)
 
-    overlay.setEntries('footnote', [shown])
-    overlay.setEntries('comment', [gone])
+    overlay.setEntries([shown, gone])
     overlay.position()
 
-    expect(shown.el.classList.contains('abele-footnote-widget-container_hidden')).toBe(false)
-    expect(gone.el.classList.contains('abele-comment-widget-container_hidden')).toBe(true)
+    expect(shown.el.classList.contains(HIDDEN)).toBe(false)
+    expect(gone.el.classList.contains(HIDDEN)).toBe(true)
   })
 
-  it('leaves one provider alone when another replaces its entries', () => {
+  it('takes away the entries a later list left out, and keeps the rest', () => {
     const view = fakeView({ contentRight: 700, scrollerRight: 1000, tops: { 10: 0, 20: 10 } })
     const overlay = new MarginOverlay(view)
-    const footnote = fakeEntry('footnote', 'f1', 10, 40)
-    const comment = fakeEntry('comment', 'c1', 20, 50)
+    const dropped = fakeEntry('f1', 10, 40)
+    const kept = fakeEntry('f2', 20, 50)
 
-    overlay.setEntries('footnote', [footnote])
-    overlay.setEntries('comment', [comment])
+    overlay.setEntries([dropped, kept])
     overlay.position()
-    overlay.setEntries('footnote', [])
+    overlay.setEntries([kept])
     overlay.position()
 
-    expect(footnote.el.isConnected).toBe(false)
-    expect(comment.el.isConnected).toBe(true)
+    expect(dropped.el.isConnected).toBe(false)
+    expect(kept.el.isConnected).toBe(true)
     // Nothing above it any more, so it sits at its anchor.
-    expect(comment.el.style.top).toBe('10px')
-  })
-
-  it('parks a sticky entry at the scroller\u2019s own scrollTop, not at its anchor', () => {
-    const view = fakeView({
-      contentRight: 700,
-      scrollerRight: 1000,
-      tops: { 10: 0 },
-      scrollTop: 500,
-    })
-    const overlay = new MarginOverlay(view)
-    const pin = fakeEntry('pin', 'p1', 10, 40, true)
-
-    overlay.setEntries('pin', [pin])
-    overlay.position()
-
-    expect(pin.el.style.top).toBe(`${500 + SIDENOTE_GAP}px`)
-  })
-
-  it('hides a pin by its own container name when there is no room', () => {
-    const view = fakeView({ contentRight: 900, scrollerRight: 1000, tops: { 10: 0 } })
-    const overlay = new MarginOverlay(view)
-    const pin = fakeEntry('pin', 'p1', 10, 40, true)
-
-    overlay.setEntries('pin', [pin])
-    overlay.position()
-
-    expect(overlay.hasRoom()).toBe(false)
-    expect(pin.el.classList.contains('abele-comment-pin-container_hidden')).toBe(true)
+    expect(kept.el.style.top).toBe('10px')
   })
 
   it('keeps one overlay per view and forgets it when it is destroyed', () => {
@@ -420,11 +268,11 @@ describe('the margin overlay', () => {
   it('takes its entries out of the document when it is destroyed', () => {
     const view = fakeView({ contentRight: 700, scrollerRight: 1000, tops: { 10: 0, 20: 10 } })
     const overlay = new MarginOverlay(view)
-    const footnote = fakeEntry('footnote', 'f1', 10, 40)
-    const comment = fakeEntry('comment', 'c1', 20, 50)
+    const footnote = fakeEntry('f1', 10, 40)
+    const comment = fakeEntry('c1', 20, 50)
 
-    overlay.setEntries('footnote', [footnote])
-    overlay.setEntries('comment', [comment])
+    overlay.setEntries([footnote])
+    overlay.setEntries([comment])
     overlay.position()
     overlay.destroy()
 
@@ -437,8 +285,8 @@ describe('the margin overlay', () => {
     const overlay = new MarginOverlay(view)
 
     overlay.destroy()
-    const late = fakeEntry('comment', 'c1', 10, 40)
-    overlay.setEntries('comment', [late])
+    const late = fakeEntry('c1', 10, 40)
+    overlay.setEntries([late])
     overlay.position()
 
     expect(late.el.isConnected).toBe(false)
@@ -450,24 +298,23 @@ describe('whether the margin has room', () => {
   it('reports no room under 200px and hides everything', () => {
     const view = fakeView({ contentRight: 900, scrollerRight: 1000, tops: { 10: 0 } })
     const overlay = new MarginOverlay(view)
-    const footnote = fakeEntry('footnote', 'f1', 10, 40)
-    const comment = fakeEntry('comment', 'c1', 10, 40)
+    const first = fakeEntry('f1', 10, 40)
+    const second = fakeEntry('f2', 10, 40)
 
-    overlay.setEntries('footnote', [footnote])
-    overlay.setEntries('comment', [comment])
+    overlay.setEntries([first, second])
     overlay.position()
 
     expect(overlay.hasRoom()).toBe(false)
-    expect(footnote.el.classList.contains('abele-footnote-widget-container_hidden')).toBe(true)
-    expect(comment.el.classList.contains('abele-comment-widget-container_hidden')).toBe(true)
-    expect(footnote.el.style.top).toBe('')
+    expect(first.el.classList.contains(HIDDEN)).toBe(true)
+    expect(second.el.classList.contains(HIDDEN)).toBe(true)
+    expect(first.el.style.top).toBe('')
   })
 
   it('reports room at exactly 200px', () => {
     const view = fakeView({ contentRight: 800, scrollerRight: 1000, tops: { 10: 0 } })
     const overlay = new MarginOverlay(view)
 
-    overlay.setEntries('footnote', [fakeEntry('footnote', 'f1', 10, 40)])
+    overlay.setEntries([fakeEntry('f1', 10, 40)])
     overlay.position()
 
     expect(overlay.hasRoom()).toBe(true)
@@ -526,14 +373,13 @@ describe('whether the margin has room', () => {
       }) as DOMRect
 
     const overlay = new MarginOverlay(view)
-    const first = fakeEntry('footnote', 'f1', 10, 24)
-    const second = fakeEntry('comment', 'c1', 12, 24)
+    const first = fakeEntry('f1', 10, 24)
+    const second = fakeEntry('f2', 12, 24)
 
-    overlay.setEntries('footnote', [first])
-    overlay.setEntries('comment', [second])
+    overlay.setEntries([first, second])
     overlay.position()
     expect(overlay.hasRoom()).toBe(false)
-    expect(first.el.classList.contains('abele-footnote-widget-container_hidden')).toBe(true)
+    expect(first.el.classList.contains(HIDDEN)).toBe(true)
 
     scrollerRight = 1000
     overlay.position()

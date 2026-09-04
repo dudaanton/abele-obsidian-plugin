@@ -1,39 +1,36 @@
 <template>
-  <ObsidianModal title="Workspace Scope" @close="emit('close')">
-    <div class="abele-scope-mgr">
-      <AgentOverrideNotice
-        field="scope"
-        from-agent="Scope comes from this chat's agent."
-        overridden="Scope is overridden for this chat."
-      />
-      <AiScopeEditor
-        :entries="scopeEntries"
-        :full-vault-access="scope?.fullVaultAccess.value ?? false"
-        :show-current-file="true"
-        @update:entries="onEntriesUpdate"
-        @update:full-vault-access="scope?.setFullVaultAccess($event)"
-      />
+  <div class="abele-scope-mgr">
+    <AgentOverrideNotice
+      field="scope"
+      from-agent="Scope comes from this chat's agent."
+      overridden="Scope is overridden for this chat."
+    />
+    <AiScopeEditor
+      :entries="scopeEntries"
+      :full-vault-access="scope?.fullVaultAccess.value ?? false"
+      :show-current-file="true"
+      @update:entries="onEntriesUpdate"
+      @update:full-vault-access="scope?.setFullVaultAccess($event)"
+    />
 
-      <AgentOverrideNotice
-        field="permissionMode"
-        from-agent="Permission mode comes from this chat's agent."
-        overridden="Permission mode is overridden for this chat."
-      />
+    <AgentOverrideNotice
+      field="permissionMode"
+      from-agent="Permission mode comes from this chat's agent."
+      overridden="Permission mode is overridden for this chat."
+    />
 
-      <Setting name="Permission mode" desc="Controls which file operations require your approval.">
-        <Dropdown
-          :model-value="permissionMode"
-          :options="permissionOptions"
-          @update:model-value="onPermissionChange"
-        />
-      </Setting>
-    </div>
-  </ObsidianModal>
+    <Setting name="Permission mode" desc="Controls which file operations require your approval.">
+      <Dropdown
+        :model-value="permissionMode"
+        :options="permissionOptions"
+        @update:model-value="onPermissionChange"
+      />
+    </Setting>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import ObsidianModal from './obsidian/Modal.vue'
 import Setting from './obsidian/Setting.vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import AiScopeEditor from './AiScopeEditor.vue'
@@ -41,10 +38,6 @@ import AgentOverrideNotice from './AgentOverrideNotice.vue'
 import type { ScopeEntry } from '@/ai/ScopeResolver'
 import { ChatService } from '@/ai/ChatService'
 import type { PermissionMode } from '@/ai/types'
-
-const emit = defineEmits<{
-  (e: 'close'): void
-}>()
 
 const session = computed(() => ChatService.getInstance().activeSession.value)
 const scope = computed(() => session.value?.scopeResolver)
@@ -70,10 +63,6 @@ const onPermissionChange = (value: string) => {
 </script>
 
 <style lang="scss">
-.modal:has(.abele-scope-mgr) {
-  width: 500px;
-}
-
 .abele-scope-mgr {
   display: flex;
   flex-direction: column;

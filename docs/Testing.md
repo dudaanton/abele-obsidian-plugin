@@ -130,13 +130,21 @@ Three files, three concerns:
   proves each list renders a single page; only this tier can show that the page is cheap.
 - `commentChats.e2e.test.ts` — **comment chats end to end**. Runs the comment command on a
   selection in a scratch note and checks what the app shows: no raw `%%c:…%%` in the editor, an
-  icon carrying the comment id, the card in the margin, the chat file under the comment folder,
-  and — under `app.emulateMobile(true)` in a phone-sized window — the same card in a dialog:
-  Obsidian's own bottom sheet, standing inside the window with their close button on it, the
-  thread and a composer set at a size iOS will not zoom into, the composer still above a
-  keyboard faked the way the app reports one, and the chat sidebar not borrowed for any of it. The window is resized and both sidebars are collapsed as well as the
-  layout switched: the margin is *measured*, and this vault reads edge to edge with both
-  sidebars open. Puts the note, the file, the window and the layout back after itself.
+  icon carrying the comment id, the chat file under the comment folder, nothing drawn in the
+  margin and no dialog over the note. Then presses the icon: the comment opens as a tab in the
+  AI sidebar with the way back to the passage, the way up into a full chat and the note button,
+  and a second marker pressed replaces that tab rather than adding one. The same press is made
+  again under `app.emulateMobile(true)` in a phone-sized window, where the sidebar is the whole
+  screen. Cleans the note, the file and the window size up after itself.
+- `phoneLayout.e2e.test.ts` — **every chat dialog, on a phone**. Switches the app to
+  `emulateMobile`, sizes the window to an iPhone (390×844), opens the chat, the settings dialog
+  tab by tab and the history, and asks each screen the questions a phone-width layout fails:
+  nothing past the right edge, a tab strip on one row and not shrunk below its tabs, at most one
+  scroller inside the body and none capped at a desktop `max-height`, a sheet the height of the
+  screen. Seeds a dozen skills and prompts so the lists have something to fill with, and removes
+  them. Writes a PNG of every screen to `/tmp/abele-phone/` — **look at them before a release**;
+  the 1.18.0 dialog passed every measurement anyone had thought to make and was still wrong to
+  the eye. Restores desktop mode and the window size after itself.
 
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
 "mega group", where a single resolution currently takes about two minutes.

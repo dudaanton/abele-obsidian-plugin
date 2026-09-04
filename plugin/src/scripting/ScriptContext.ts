@@ -63,6 +63,42 @@ function stripPrefix(result: string): string {
   return result.replace(/^(?:Saved|Created):\s*/, '')
 }
 
+/**
+ * How long a script is willing to wait, in milliseconds.
+ *
+ * Any value: what is reasonable belongs to the script, not to this file — a search API that
+ * should answer in two seconds and a twenty-minute export are both ordinary. Without one the
+ * wait is what it always was, which is however long the platform waits.
+ *
+ * The request itself is not cancelled: `requestUrl` is Obsidian's and takes no signal, so what
+ * this ends is the waiting. The download it was doing may still land in the vault a moment
+ * later, which is worth knowing before setting a timeout on one.
+ */
+function withTimeout<T>(work: Promise<T>, ms: number | undefined, url: string): Promise<T> {
+  if (!ms || ms <= 0) return work
+
+  let timer = 0
+  const expiry = new Promise<never>((_, reject) => {
+    timer = window.setTimeout(
+      () => reject(new Error(`Request to ${url} timed out after ${Math.round(ms / 1000)}s`)),
+      ms
+    )
+  })
+
+  return Promise.race([work, expiry]).finally(() => window.clearTimeout(timer))
+}
+
+/**
+ * What a script is told when nothing can answer its form.
+ *
+ * Three callers can: the command palette shows a dialog, an agent parks the question against
+ * the run and answers it with `answer_form`, and once a view is open its handlers run because
+ * a person pressed something, so the ordinary dialog serves. The one left that cannot is a
+ * script run from a script with no view open — which is what the message tells its author.
+ */
+export const NO_FORM_HANDLER =
+  'Form input is only available when the script is run from the command palette or has a view open.'
+
 export function buildScriptContext(opts: {
   params: Record<string, unknown>
   signal: AbortSignal
@@ -270,7 +306,13 @@ export function buildScriptContext(opts: {
 
     async fetch(
       url: string,
-      fetchOpts?: { method?: string; headers?: Record<string, string>; body?: string }
+      fetchOpts?: {
+        method?: string
+        headers?: Record<string, string>
+        body?: string
+        /** Milliseconds to wait. Any value; without one, as long as the platform waits. */
+        timeout?: number
+      }
     ): Promise<{ status: number; headers: Record<string, string>; data: any; text: string }> {
       const headers: Record<string, string> = {}
       if (fetchOpts?.headers) {
@@ -278,13 +320,17 @@ export function buildScriptContext(opts: {
           headers[k] = substituteSecrets(v)
         }
       }
-      const response = await requestUrl({
-        url: substituteSecrets(url),
-        method: fetchOpts?.method || 'GET',
-        headers,
-        body: fetchOpts?.body ? substituteSecrets(fetchOpts.body) : undefined,
-        throw: false,
-      })
+      const response = await withTimeout(
+        requestUrl({
+          url: substituteSecrets(url),
+          method: fetchOpts?.method || 'GET',
+          headers,
+          body: fetchOpts?.body ? substituteSecrets(fetchOpts.body) : undefined,
+          throw: false,
+        }),
+        fetchOpts?.timeout,
+        url
+      )
       const contentType = response.headers['content-type'] || ''
       let data: any = response.text
       if (contentType.includes('application/json')) {
@@ -299,11 +345,16 @@ export function buildScriptContext(opts: {
 
     async downloadImage(
       url: string,
-      filenameOrOpts?: string | { filename?: string; headers?: Record<string, string> }
+      filenameOrOpts?:
+        | string
+        | { filename?: string; headers?: Record<string, string>; timeout?: number }
     ): Promise<string> {
       const opts =
         typeof filenameOrOpts === 'string' ? { filename: filenameOrOpts } : filenameOrOpts
-      return stripPrefix(await call(downloadImageTool, { url, ...opts }, s))
+      const { timeout, ...rest } = opts ?? {}
+      return stripPrefix(
+        await withTimeout(call(downloadImageTool, { url, ...rest }, s), timeout, url)
+      )
     },
 
     async downloadFile(
@@ -314,9 +365,14 @@ export function buildScriptContext(opts: {
         method?: string
         headers?: Record<string, string>
         body?: string
+        /** Milliseconds to wait. Any value; without one, as long as the platform waits. */
+        timeout?: number
       }
     ): Promise<string> {
-      return stripPrefix(await call(downloadFileTool, { url, ...opts }, s))
+      const { timeout, ...rest } = opts ?? {}
+      return stripPrefix(
+        await withTimeout(call(downloadFileTool, { url, ...rest }, s), timeout, url)
+      )
     },
 
     // ── AI ──
@@ -485,11 +541,7 @@ export function buildScriptContext(opts: {
 
     async form(fields: FormField[]): Promise<Record<string, string> | null> {
       const handler = formHandlerNow()
-      if (!handler) {
-        throw new Error(
-          'Form input is only available when the script is run from the command palette or has a view open.'
-        )
-      }
+      if (!handler) throw new Error(NO_FORM_HANDLER)
       return handler(fields)
     },
 

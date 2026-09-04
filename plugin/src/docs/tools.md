@@ -57,5 +57,26 @@ syntax both have details that cannot be guessed.
 
 ## Scripts
 
-`create_script`, plus one tool per script the vault has, named `script_<name>`. A script the
-person has written is a tool an agent can call by name, with its declared parameters.
+`create_script`, `answer_form`, plus one tool per script the vault has, named `script_<name>`.
+A script the person has written is a tool an agent can call by name, with its declared
+parameters.
+
+A script may stop partway and ask for more than its parameters — a form the person would fill
+in. Called from a chat there is nobody to show that form to, so it comes back instead: the
+script tool answers with the fields and a `run_id`, and the run stays alive holding the question
+open. Send the answers with `answer_form` — `values` is a JSON object keyed by field name — and
+the script goes on from where it stopped, and may finish or ask again. Anything in the form that
+is the person's to decide is worth asking them about first, with `questions`. `cancel` tells the
+script nobody is answering, which is what dismissing its dialog would have done.
+
+## Settings
+
+`read_settings`, `write_settings`.
+
+The plugin's own settings, read and changed one key at a time. `read_settings` with no
+arguments lists them all; with a `path` it returns one. `write_settings` changes exactly one,
+and the setting has to exist already and keep its type. Keys, keychain ids and the chat index
+are neither readable nor writable.
+
+Each carries its own mode, so reading the settings and changing them are two permissions. What
+each setting decides is the `settings` section of this reference.
