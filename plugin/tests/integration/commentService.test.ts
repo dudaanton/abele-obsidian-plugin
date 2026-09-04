@@ -320,170 +320,78 @@ describe('expanding a comment into a chat', () => {
     expect(service.get(id)?.state).toBe('idle')
     expect(await service.load(id)).toBe(session)
   })
+
+  /**
+   * The card folds when the conversation leaves it.
+   *
+   * "Open as chat" is pressed on a card that is open, and the conversation goes to the
+   * sidebar. A card left open over it is a second, read-only copy of a conversation somebody
+   * can already answer in — and the marker, which draws itself open from the same value,
+   * would go on saying there is something beside the text.
+   */
+  it('folds the card it was promoted from', async () => {
+    const service = CommentService.getInstance()
+    const session = await answeredComment()
+    const id = session.commentId!
+    service.open.value = id
+
+    await service.expand(id)
+
+    expect(service.open.value).toBeNull()
+  })
 })
 
 /**
- * The way back, which is what an expanded comment had none of: everything `expand` did is
- * undone, and the one thing that must not happen is the conversation ending. The session goes
- * on writing the same file — it only stops being a tab and becomes a card again.
+ * The marker of a comment that became a chat.
  *
- * Sessions are compared with `===` rather than handed to `toBe`: a `ChatSession` printed as a
- * diff is pages of reactive internals, and identity is the whole question here.
+ * There is no way back to a card any more, and no button on the card offering one: those two
+ * were what 1.17.0 left behind, and what the person asking for this called "не понятно зачем
+ * нужны". The marker is the way in, and it has to work after the tab has been closed — which
+ * is the dead end that came with them.
  */
-describe('returning an expanded comment to its note', () => {
-  it('puts the kind back, in memory and in the file', async () => {
+describe('a press on the marker of an expanded comment', () => {
+  const expanded = async () => {
     const service = CommentService.getInstance()
     const session = await answeredComment()
     const id = session.commentId!
-
     await service.expand(id)
-    await service.collapse(id)
+    return { service, session, id }
+  }
 
-    expect(session.kind).toBe('comment')
-    const file = app.vault.getAbstractFileByPath(service.commentPath(id)) as TFile
-    expect(parseChatMetadata((await app.vault.read(file)) as string)?.kind).toBe('comment')
-  })
+  it('opens the chat it became, wherever the pane has room', async () => {
+    const { service, session, id } = await expanded()
+    const reveal = vi.spyOn(ChatService.getInstance(), 'revealSidebar')
 
-  it('puts it back on the comment agent', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
+    service.openFrom([id], true, 'Notes/A.md')
+    await flush()
 
-    await service.expand(session.commentId!)
-    await service.collapse(session.commentId!)
-
-    expect(session.agentId.value).toBe(AbeleConfig.getInstance().ai.commentAgentId)
-  })
-
-  /** No `commentAgentId`, no agent to go back to — and a comment on no agent answers nothing. */
-  it('stays on the chat agent when no comment agent is configured', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    AbeleConfig.getInstance().ai.commentAgentId = ''
-
-    await service.expand(session.commentId!)
-    await service.collapse(session.commentId!)
-
-    expect(session.agentId.value).toBe(AgentRegistry.getInstance().defaultAgent()?.id)
-  })
-
-  it('takes it out of the chat history, since it is a margin note again', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-
-    await service.expand(session.commentId!)
-    await service.collapse(session.commentId!)
-
-    expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
-  })
-
-  it('closes the tab without ending the conversation in it', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    const id = session.commentId!
-    const chatService = ChatService.getInstance()
-
-    await service.expand(id)
-    await service.collapse(id)
-
-    expect(chatService.getSessionByFile(service.commentPath(id))).toBeNull()
-    expect(chatService.tabOrder.value).not.toContain(session.id)
-    expect(session.isDestroyed).toBe(false)
-  })
-
-  /** The sidebar has to show something, and an empty tab bar is a sidebar that shows nothing. */
-  it('leaves a tab behind when the comment was the only one', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    const chatService = ChatService.getInstance()
-
-    await service.expand(session.commentId!)
-    await service.collapse(session.commentId!)
-
-    expect(chatService.tabOrder.value).toHaveLength(1)
-    expect(chatService.tabOrder.value).not.toContain(session.id)
-  })
-
-  it('is the same session, answering for the same id, back in the margin', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    const id = session.commentId!
-
-    await service.expand(id)
-    await service.collapse(id)
-
-    expect(service.sessions.has(id)).toBe(true)
-    expect(service.sessionFor(id) === session).toBe(true)
-    expect((await service.load(id)) === session).toBe(true)
-  })
-
-  /**
-   * Folded, not expanded.
-   *
-   * It used to open the card, on the reasoning that the reader had pressed "back to the note"
-   * and the card was what they were coming back to. But the same button is in the sidebar,
-   * where the pane may have no margin at all — and an `open` card nothing can draw leaves the
-   * marker painted open over a passage with nothing beside it. Folded is honest at every width,
-   * and one tap opens it as whatever the pane can show. The card's own way back is unaffected:
-   * it is only offered on a card that is already open, so `open` is already this id.
-   */
-  it('leaves the card folded and repaints the note it is anchored to', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    const id = session.commentId!
-
-    await service.expand(id)
-    vi.mocked(dispatchCommentsChanged).mockClear()
-    await service.collapse(id)
-
+    expect(ChatService.getInstance().getSession(session.id) === session).toBe(true)
+    expect(reveal).toHaveBeenCalled()
     expect(service.open.value).toBeNull()
-    expect(vi.mocked(dispatchCommentsChanged).mock.calls.flat()).toContain('Notes/A.md')
   })
 
-  it('leaves a card that was already open exactly as it was', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    const id = session.commentId!
+  it('opens it in a dialog-less pane too, because a chat lives in the sidebar', async () => {
+    const { service, session, id } = await expanded()
 
-    await service.expand(id)
-    service.open.value = id
-    await service.collapse(id)
+    service.openFrom([id], false, 'Notes/A.md')
+    await flush()
 
-    expect(service.open.value).toBe(id)
+    expect(ChatService.getInstance().getSession(session.id) === session).toBe(true)
+    expect(GlobalStore.getInstance().commentModal.value).toBeNull()
   })
 
-  /**
-   * The card decides between a thread and a read-only summary on `session.kind`, and it reads
-   * it inside a computed. A plain field would leave the card showing whatever it was showing
-   * when it was mounted: a live composer over a conversation that has moved to the sidebar,
-   * and — coming back — a read-only summary of a comment that is answering again.
-   */
-  it('is a change the card can see, both ways', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    const id = session.commentId!
-    const promoted = computed(() => session.kind === 'chat')
+  /** The dead end: closing the tab used to leave the marker pointing at nothing reachable. */
+  it('opens it again after its tab has been closed', async () => {
+    const { service, session, id } = await expanded()
+    ChatService.getInstance().dropTab(session.id)
+    expect(ChatService.getInstance().getSession(session.id)).toBeNull()
 
-    expect(promoted.value).toBe(false)
+    service.openFrom([id], true, 'Notes/A.md')
+    await flush()
 
-    await service.expand(id)
-    expect(promoted.value).toBe(true)
-
-    await service.collapse(id)
-    expect(promoted.value).toBe(false)
-  })
-
-  it('does nothing for a comment that was never expanded', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    const id = session.commentId!
-
-    expect(await service.collapse(id)).toBe(false)
-
-    expect(session.kind).toBe('comment')
-    expect(service.open.value).toBeNull()
+    expect(ChatService.getInstance().getSession(session.id) === session).toBe(true)
   })
 })
-
 /**
  * Moving a comment while its agent is still working.
  *
@@ -536,44 +444,6 @@ describe('a comment whose agent is mid-turn', () => {
 
     expect(session.allMessages.value).toHaveLength(before)
   })
-
-  it('is not sent back to the margin while the answer is still arriving', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    const id = session.commentId!
-    const chatService = ChatService.getInstance()
-
-    await service.expand(id)
-    const messages = session.allMessages.value.length
-    session.isStreaming.value = true
-
-    expect(await service.collapse(id)).toBe(false)
-
-    expect(session.kind).toBe('chat')
-    expect(session.agentId.value).toBe(AgentRegistry.getInstance().defaultAgent()?.id)
-    expect(session.allMessages.value).toHaveLength(messages)
-    expect(service.sessions.has(id)).toBe(false)
-    expect(chatService.getSessionByFile(service.commentPath(id)) === session).toBe(true)
-    expect(AbeleConfig.getInstance().ai.chatHistory.map((e) => e.path)).toEqual([
-      service.commentPath(id),
-    ])
-  })
-
-  it('is not sent back to the margin while a tool call is waiting', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    const id = session.commentId!
-
-    await service.expand(id)
-    session.pendingToolCalls.value = A_TOOL_CALL
-
-    expect(await service.collapse(id)).toBe(false)
-
-    expect(session.kind).toBe('chat')
-    expect(ChatService.getInstance().getSessionByFile(service.commentPath(id)) === session).toBe(
-      true
-    )
-  })
 })
 
 /**
@@ -602,108 +472,6 @@ describe('a move whose save fails', () => {
     expect(service.sessions.get(id) === session).toBe(true)
     expect(ChatService.getInstance().getSessionByFile(service.commentPath(id))).toBeNull()
     expect(AbeleConfig.getInstance().ai.chatHistory).toEqual([])
-  })
-
-  it('leaves the chat a chat when sending it back cannot be written', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    const id = session.commentId!
-    const chatService = ChatService.getInstance()
-
-    await service.expand(id)
-    const tabs = [...chatService.tabOrder.value]
-    refuseToSave(session)
-
-    await expect(service.collapse(id)).rejects.toThrow('disk full')
-
-    expect(session.kind).toBe('chat')
-    expect(session.agentId.value).toBe(AgentRegistry.getInstance().defaultAgent()?.id)
-    expect(service.sessions.has(id)).toBe(false)
-    expect(service.sessionFor(id) === session).toBe(true)
-    expect(chatService.tabOrder.value).toEqual(tabs)
-    expect(chatService.getSessionByFile(service.commentPath(id)) === session).toBe(true)
-    expect(AbeleConfig.getInstance().ai.chatHistory.map((e) => e.path)).toEqual([
-      service.commentPath(id),
-    ])
-  })
-
-  /** Nothing about the failed move is said in the conversation: the log only ever appends. */
-  it('leaves no divider behind for a switch that was undone', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    const id = session.commentId!
-
-    await service.expand(id)
-    const messages = session.allMessages.value.length
-    refuseToSave(session)
-
-    await expect(service.collapse(id)).rejects.toThrow('disk full')
-
-    expect(session.allMessages.value).toHaveLength(messages)
-  })
-
-  /**
-   * The binding drops the per-chat overrides, because they were expressed against the agent
-   * being left. A move that was undone left no agent, so they are somebody's settings still.
-   */
-  it('gives back the per-chat overrides the binding dropped', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    const id = session.commentId!
-
-    await service.expand(id)
-    session.activeModelId.value = 'chosen-by-hand'
-    session.applyScope([{ type: 'file', path: 'Notes/A.md' }])
-    const overrides = { ...session.overrides.value }
-    refuseToSave(session)
-
-    await expect(service.collapse(id)).rejects.toThrow('disk full')
-
-    expect(session.overrides.value).toEqual(overrides)
-    expect(session.activeModelId.value).toBe('chosen-by-hand')
-    // The resolver, not only the record of it: the binding applied the agent's scope over this
-    // one on its way past, so putting the override back has to put the resolver back with it.
-    expect(session.scopeResolver.entries.value).toEqual([{ type: 'file', path: 'Notes/A.md' }])
-  })
-})
-
-/**
- * A vault where the comment agent *is* the default agent.
- *
- * Both moves rebind the agent, and both used to write the divider that records a switch even
- * when there was nothing to switch to — so a round trip left two "Agent: X" lines in a
- * conversation nobody had moved between agents at all.
- */
-describe('a comment on the same agent it would be moved to', () => {
-  beforeEach(() => {
-    AbeleConfig.getInstance().ai.commentAgentId = AgentRegistry.getInstance().defaultAgent()!.id
-  })
-
-  it('says nothing about an agent that did not change, either way', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    const id = session.commentId!
-    const before = session.allMessages.value.length
-
-    await service.expand(id)
-    await service.collapse(id)
-
-    expect(session.allMessages.value).toHaveLength(before)
-    expect(session.allMessages.value.some((m) => m.role === 'system')).toBe(false)
-  })
-
-  /** The move itself is unaffected; only the note about it goes. */
-  it('still moves the comment there and back', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    const id = session.commentId!
-
-    expect(await service.expand(id)).toBe(true)
-    expect(session.kind).toBe('chat')
-
-    expect(await service.collapse(id)).toBe(true)
-    expect(session.kind).toBe('comment')
-    expect(service.sessions.get(id) === session).toBe(true)
   })
 })
 
@@ -744,28 +512,6 @@ describe('a comment already being moved', () => {
     expect(session.moving.value).toBe(false)
     expect(AbeleConfig.getInstance().ai.chatHistory).toHaveLength(1)
   })
-
-  it('refuses a second return to the margin while the first is still writing', async () => {
-    const service = CommentService.getInstance()
-    const session = await answeredComment()
-    const id = session.commentId!
-
-    await service.expand(id)
-    const release = hangingSave(session)
-
-    const first = service.collapse(id)
-    await nextTick()
-
-    expect(session.moving.value).toBe(true)
-    expect(await service.collapse(id)).toBe(false)
-    expect(service.sessions.has(id)).toBe(false)
-
-    release()
-    expect(await first).toBe(true)
-    expect(session.moving.value).toBe(false)
-    expect(service.sessions.get(id) === session).toBe(true)
-  })
-
   it('is on its way again once a failed move has let go', async () => {
     const service = CommentService.getInstance()
     const session = await answeredComment()

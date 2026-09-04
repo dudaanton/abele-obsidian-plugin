@@ -67,6 +67,16 @@ export class CommentService implements CommentInfoSource {
    * comment in somebody else's room. The dialog is the comment's own.
    */
   openFrom(ids: string[], hasRoom: boolean, notePath: string): void {
+    // A comment that has become a chat is a chat: the marker is a way back into it and not a
+    // card any more. Wherever the pane is wide or narrow, that way leads to the sidebar, which
+    // is where the conversation went — and it leads there again after the tab has been closed,
+    // which is the dead end the card's two buttons used to leave behind.
+    const expanded = ids.find((id) => this.expanded.has(id))
+    if (expanded) {
+      void this.revealChat(expanded)
+      return
+    }
+
     if (hasRoom) {
       this.toggleOpen(ids)
       return
@@ -76,6 +86,22 @@ export class CommentService implements CommentInfoSource {
     if (!entry) return
 
     GlobalStore.getInstance().commentModal.value = entry
+  }
+
+  /**
+   * Puts the chat an expanded comment became in front of the person.
+   *
+   * `adoptSession` rather than `switchTab`: the tab may have been closed since, and a session
+   * `ChatService` is not holding is one `switchTab` does nothing for. It is held either way —
+   * `expand` moved it into `expanded`, and it is destroyed only with the comment itself.
+   */
+  async revealChat(id: string): Promise<void> {
+    const session = this.expanded.get(id)
+    if (!session) return
+
+    const chatService = ChatService.getInstance()
+    if (!chatService.adoptSession(session)) return
+    await chatService.revealSidebar()
   }
 
   /**
@@ -440,9 +466,9 @@ export class CommentService implements CommentInfoSource {
   /**
    * Promotes a comment into a full chat, spec §3.
    *
-   * The file does not move and the anchor is not dropped: the marker keeps resolving, and the
-   * card goes on showing the first exchange with a way back into the sidebar. What changes is
-   * who it is for — the default agent, a tab, and a place in the history.
+   * The file does not move and the anchor is not dropped: the marker keeps resolving, and a
+   * press on it opens the chat this became rather than a card. What changes is who the
+   * conversation is for — the default agent, a tab, and a place in the history.
    *
    * Returns whether the comment moved, so a caller can say why it did not.
    */
@@ -522,78 +548,10 @@ export class CommentService implements CommentInfoSource {
       chatService.adoptSession(session)
       await chatService.revealSidebar()
 
-      const note = session.anchor.value?.note
-      if (note) dispatchCommentsChanged(note)
-      return true
-    } finally {
-      session.moving.value = false
-    }
-  }
+      // Folded: what was in the card is in the sidebar now, and a card left open over a
+      // conversation that has moved is a card showing a copy of it.
+      if (this.open.value === id) this.open.value = null
 
-  /**
-   * The way back from a full chat to the card in the margin — `expand` undone, step for step.
-   *
-   * Everything that made it a chat goes: the kind, the agent, the entry in the history, the
-   * tab. The one thing that does not is the session — it is released rather than closed, so
-   * the same object goes on writing the same file and the conversation the person has just
-   * been having is the conversation the card opens with.
-   *
-   * Returns whether the chat moved, so a caller can say why it did not.
-   */
-  async collapse(id: string): Promise<boolean> {
-    const session = this.sessionFor(id)
-    if (!session || !this.expanded.has(id)) return false
-
-    // Not out of the middle of a turn, exactly as it may not be promoted into one, and not
-    // while it is already on its way: see `ChatSession.isMidTurn` and `moving`.
-    if (session.isMidTurn || session.moving.value) return false
-
-    // Back onto the agent comments are written by. When `commentAgentId` names nothing — or
-    // names an agent since deleted — the chat's own agent is kept: a comment answered by the
-    // wrong agent is odd, and a comment answered by no agent at all cannot answer anything.
-    const registry = AgentRegistry.getInstance()
-    const commentAgent = registry.get(AbeleConfig.getInstance().ai.commentAgentId ?? '')
-
-    const previousKind = session.kind
-    const previousAgentId = session.agentId.value
-    const previousOverrides = session.overrides.value
-
-    session.moving.value = true
-    try {
-      session.kind = 'comment'
-      // Bound rather than switched, so a write that fails leaves nothing behind to take back.
-      const switched = commentAgent ? session.bindAgent(commentAgent.id) : false
-
-      try {
-        // Released, not closed: `closeTab` destroys, and there would be nothing left to show.
-        // It saves first, and everything below waits on that — a file still saying "chat" under
-        // maps saying "comment" is a comment the next restart loads twice.
-        await ChatService.getInstance().releaseSession(session.id)
-      } catch (e) {
-        session.kind = previousKind
-        session.bindAgent(previousAgentId)
-        session.restoreOverrides(previousOverrides)
-        throw e
-      }
-
-      // Persisted, so it can be said out loud — and only if there was a switch to speak of. In
-      // a vault where the comment agent is the default agent there is none, and a divider for
-      // it would be a line about a thing that did not happen, once each way round the trip.
-      if (switched && commentAgent) session.noteAgentSwitch(commentAgent.id)
-
-      const file = session.currentChatFile.value
-      // Out of the history it was put into on the way up: this is a margin note again, and the
-      // list of chats is a list of conversations somebody goes looking for.
-      if (file) ChatStorage.getInstance().removeHistoryEntry(file.path)
-
-      this.expanded.delete(id)
-      this.adopt(id, session)
-
-      // Left folded rather than opened. The card's own "Back to comment" is only offered on a
-      // card that is already open, so nothing changes there; the sidebar's is offered in panes
-      // that may have no margin at all, and an `open` card nothing can draw leaves the marker
-      // painted open over a passage with nothing beside it. One tap opens it as whatever the
-      // pane can show — a card, or the sidebar again.
       const note = session.anchor.value?.note
       if (note) dispatchCommentsChanged(note)
       return true

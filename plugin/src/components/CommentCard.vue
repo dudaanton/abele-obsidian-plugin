@@ -54,7 +54,6 @@
         />
         <div class="abele-comment-card__actions">
           <Icon
-            v-if="!promoted"
             icon="panel-right-open"
             :disabled="blocked"
             :tooltip="blocked ? blockedTooltip : 'Open this comment as a full chat in the sidebar'"
@@ -90,51 +89,22 @@
         <q class="abele-comment-card__quote">{{ quote }}</q>
       </div>
 
-      <!-- Promoted into a chat: the conversation belongs to the sidebar now, and the margin
-           keeps only enough of it to say which one this marker leads to. -->
-      <template v-if="promoted">
-        <div class="abele-comment-card__readonly">
-          <div v-for="msg in firstExchange" :key="msg.id" class="abele-comment-card__readonly-msg">
-            <Markdown :text="msg.content" :file-path="entry.notePath" />
-          </div>
-        </div>
-        <div class="abele-comment-card__promoted-actions">
-          <Button
-            text="Open in sidebar"
-            tooltip="Show this chat in the AI sidebar"
-            @click="openInSidebar"
-          />
-          <Button
-            text="Back to comment"
-            :disabled="blocked"
-            :tooltip="
-              blocked
-                ? blockedTooltip
-                : 'Close the sidebar tab and go on with this conversation here'
-            "
-            @click="demote"
-          />
-        </div>
-      </template>
-
-      <template v-else>
-        <CommentThread v-if="session" :session="session" :host="host" />
-        <EmptyState v-else-if="lost" text="This comment's file is missing." />
-        <EmptyState v-else text="Reading this comment…" />
-        <!-- Keyed by the comment: a half-typed question belongs to the tab it was typed in,
-             and a shared composer would carry it over to the next one. -->
-        <CommentInput
-          :key="activeId"
-          :busy="busy"
-          :pending="pending"
-          :disabled="!session"
-          :focus="fresh"
-          :host="host"
-          @send="onSend"
-          @note="onNote"
-          @abort="onAbort"
-        />
-      </template>
+      <CommentThread v-if="session" :session="session" :host="host" />
+      <EmptyState v-else-if="lost" text="This comment's file is missing." />
+      <EmptyState v-else text="Reading this comment…" />
+      <!-- Keyed by the comment: a half-typed question belongs to the tab it was typed in,
+           and a shared composer would carry it over to the next one. -->
+      <CommentInput
+        :key="activeId"
+        :busy="busy"
+        :pending="pending"
+        :disabled="!session"
+        :focus="fresh"
+        :host="host"
+        @send="onSend"
+        @note="onNote"
+        @abort="onAbort"
+      />
     </template>
 
     <ConfirmModal
@@ -165,18 +135,15 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Notice, TFile, type EventRef } from 'obsidian'
 import Badge from './obsidian/Badge.vue'
-import Button from './obsidian/Button.vue'
 import ConfirmModal from './obsidian/ConfirmModal.vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import EmptyState from './obsidian/EmptyState.vue'
 import Icon from './obsidian/Icon.vue'
-import Markdown from './obsidian/Markdown.vue'
 import Tabs from './obsidian/Tabs.vue'
 import CommentInput from './CommentInput.vue'
 import CommentThread from './CommentThread.vue'
 import { CommentEntry } from '@/entities/Comment'
 import { CommentService } from '@/ai/CommentService'
-import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { parseMarkers, resolveQuote } from '@/editor/commentMarkers'
@@ -198,8 +165,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   /**
-   * The conversation has been handed to the sidebar — by "open as chat", or by "open in
-   * sidebar" on a card that was promoted already.
+   * The conversation has been handed to the sidebar by "open as chat".
    *
    * The margin ignores this: a sidenote sits beside the text and hides nothing. A modal does
    * not, and on a phone it is the whole screen, so it leaves on hearing it. `CommentService`
@@ -343,13 +309,6 @@ const answer = computed(() => {
  */
 const fresh = computed(() => !!session.value && messages.value.length === 0)
 
-/** Read-only after promotion: the question and the first answer, and nothing else. */
-const firstExchange = computed(() => {
-  const asked = messages.value.find((msg) => msg.role === 'user' && !msg.draft)
-  const answered = messages.value.find((msg) => msg.role === 'assistant' && msg.content)
-  return [asked, answered].filter((msg): msg is ChatMessage => !!msg)
-})
-
 const quote = computed(() => session.value?.anchor.value?.quote)
 
 /**
@@ -421,13 +380,33 @@ watch(
   }
 )
 
+/**
+ * A press on the folded card.
+ *
+ * Once the comment has become a chat the card is a record of it and not a way into it: the
+ * conversation is in the sidebar, so that is where the press goes. Expanding the card there
+ * would draw a second, read-only copy of a conversation somebody can already answer in.
+ */
 const openCard = () => {
+  if (promoted.value) {
+    void service.revealChat(activeId.value)
+    return
+  }
   service.open.value = activeId.value
 }
 const fold = () => {
   service.open.value = null
 }
+/**
+ * The strip: one marker can carry several comments, and any of them may have become a chat.
+ * That one is not a card to switch to — the same press that opens the folded card sends the
+ * reader to the sidebar, and for the same reason.
+ */
 const showComment = (id: string) => {
+  if (service.sessionFor(id)?.kind === 'chat') {
+    void service.revealChat(id)
+    return
+  }
   service.open.value = id
 }
 /**
@@ -452,18 +431,6 @@ async function promote(): Promise<void> {
 }
 
 const openAsChat = () => void promote()
-/**
- * The way back. Nothing is emitted: the conversation is coming *out* of the sidebar, so the
- * host has no reason to move — the card is where the reader is about to go on typing.
- */
-const demote = (): void =>
-  void (async () => {
-    if (moving.value) {
-      new Notice(MOVING_NOTICE)
-      return
-    }
-    if (!(await service.collapse(activeId.value))) new Notice(BUSY_NOTICE)
-  })()
 const remove = () => {
   const id = activeId.value
   // `CommentService.remove` clears this too, but only after the marker and the file are gone;
@@ -471,20 +438,6 @@ const remove = () => {
   if (service.open.value === id) service.open.value = null
   void service.remove(id)
 }
-
-async function reveal(): Promise<void> {
-  const current = session.value
-  if (!current) return
-
-  const chatService = ChatService.getInstance()
-  // Adopted rather than switched to: a promotion whose tab was refused because the bar was
-  // full leaves a chat the sidebar is not holding, and `switchTab` does nothing for one.
-  chatService.adoptSession(current)
-  await chatService.revealSidebar()
-  emit('promoted')
-}
-
-const openInSidebar = () => void reveal()
 
 const onSend = (text: string) => void session.value?.sendMessage(text)
 /**
@@ -674,22 +627,5 @@ body.is-mobile .abele-comment-card__agent .abele-obsidian-dropdown .dropdown {
 .abele-comment-card__quote {
   color: var(--text-faint);
   overflow-wrap: anywhere;
-}
-
-/**
- * Both ways out of a promoted card. They wrap rather than shrink: a sidenote is 180 px at its
- * narrowest and two buttons on one line there would be two truncated labels.
- */
-.abele-comment-card__promoted-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--size-2-2);
-}
-
-.abele-comment-card__readonly {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-2-2);
-  color: var(--text-muted);
 }
 </style>

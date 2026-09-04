@@ -137,5 +137,4 @@ body.is-phone .modal.abele-modal_tall {
   /* Their sheet has no vertical padding at all; the home indicator needs the bottom of it. */
   padding-bottom: var(--safe-area-inset-bottom);
 }
-
 </style>
