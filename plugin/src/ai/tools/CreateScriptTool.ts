@@ -4,16 +4,28 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { normalizePath } from 'obsidian'
 import { SCRIPT_API_DOCS } from '@/scripting/apiDocs'
+import { SCRIPT_VIEW_DOCS } from '@/scripting/view/viewDocs'
 
 export function createScriptApiDocsTool(): AgentTool {
   return {
     name: 'script_api_docs',
     label: 'Script API Docs',
     description:
-      'Get the full API reference for writing Abele scripts. Call this before create_script to see all available functions.',
-    parameters: { type: 'object', properties: {} },
-    execute: async () => ({
-      content: [{ type: 'text', text: SCRIPT_API_DOCS }],
+      'Get the API reference for writing Abele scripts. Call this before create_script to see all available functions. Pass section "views" for the reference on views — tabs a script opens and fills with components.',
+    parameters: {
+      type: 'object',
+      properties: {
+        section: {
+          type: 'string',
+          enum: ['views'],
+          description: 'Which part of the reference. Omit for the main reference.',
+        },
+      },
+    },
+    execute: async (_id, params) => ({
+      content: [
+        { type: 'text', text: params.section === 'views' ? SCRIPT_VIEW_DOCS : SCRIPT_API_DOCS },
+      ],
     }),
   }
 }

@@ -137,6 +137,7 @@ const SOURCE_WORD: Record<ScriptRun['source'], string> = {
   link: 'link',
   agent: 'agent',
   script: 'script',
+  view: 'view',
 }
 
 const store = ScriptRuns.getInstance()

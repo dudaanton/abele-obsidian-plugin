@@ -27,7 +27,8 @@ const initSearch = () => {
     search.value = undefined
   }
   search.value = new SearchComponent(el.value)
-  new props.suggester(GlobalStore.getInstance().app, search.value.inputEl)
+  // A field with nothing to suggest is still a field: a script's plain search box has none.
+  if (props.suggester) new props.suggester(GlobalStore.getInstance().app, search.value.inputEl)
   if (props.modelValue) {
     search.value.setValue(props.modelValue)
   }

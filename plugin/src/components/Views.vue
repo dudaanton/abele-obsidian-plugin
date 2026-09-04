@@ -63,6 +63,11 @@
   <Teleport v-for="id in scriptRunsIds" :key="id" :to="`[${SCRIPT_RUNS_ID_ATTR}='${id}']`">
     <ScriptRunsView />
   </Teleport>
+  <!-- By element, not selector: a selector is looked up in the main document, and a script
+       view opened with `where: 'window'` lives in a document of its own. -->
+  <Teleport v-for="model in scriptViews" :key="model.id" :to="model.el">
+    <ScriptView :model="model" />
+  </Teleport>
   <Teleport
     v-for="[id, instance] in findAndReplaceBasesInstances"
     :key="id"
@@ -156,6 +161,7 @@ import AiChatView from './AiChat.vue'
 import FinanceSidebarView from './FinanceSidebar.vue'
 import TimeTrackingSidebarView from './TimeTrackingSidebar.vue'
 import ScriptRunsView from './ScriptRuns.vue'
+import ScriptView from './ScriptView.vue'
 import SettingsView from './settings/Settings.vue'
 
 const {
@@ -184,6 +190,7 @@ const {
   financeSidebarIds,
   timeTrackingSidebarIds,
   scriptRunsIds,
+  scriptViews,
   findAndReplaceBasesInstances,
   settingsContainer,
 } = GlobalStore.getInstance()

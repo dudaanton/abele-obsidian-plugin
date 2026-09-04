@@ -12,10 +12,12 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
 import { parseScriptHeader, extractScriptBody } from './ScriptParser'
-import { buildScriptContext, NO_FORM_HANDLER } from './ScriptContext'
+import { buildScriptContext, type ScriptContext } from './ScriptContext'
+import { VIEW_GLOBALS } from './view/components'
 import { showFormModal } from './formModal'
 import { ScriptRuns, type RunSource } from './ScriptRuns'
 import type { ParsedScript, FormField } from './types'
+import type { RestoreInfo } from './view/View'
 import { ref } from 'vue'
 
 /**
@@ -36,6 +38,73 @@ export interface ExecuteOptions {
   /** Who asked for the run, for the list of runs. Assumed to be an agent when unsaid: that is
    * the one caller that cannot be given a better answer from inside. */
   source?: RunSource
+  /** A saved tab being rebuilt: the leaf waiting for the view and the state it kept. */
+  restore?: RestoreInfo
+}
+
+/**
+ * Every name the prelude puts in a script's scope. A script that declares one of these itself
+ * (`const view = …`, `function Table() {}`) cannot be compiled, and the engine's message for
+ * that names the identifier and nothing else; `compile` turns it into one that says whose
+ * name it is.
+ */
+const SCRIPT_GLOBALS = [
+  'dayjs',
+  'read',
+  'edit',
+  'write',
+  'create',
+  'remove',
+  'move',
+  'copy',
+  'ls',
+  'find',
+  'replace',
+  'open',
+  'setCover',
+  'agent',
+  'agents',
+  'form',
+  'log',
+  'params',
+  'signal',
+  'fetch',
+  'applyTemplate',
+  'listTemplates',
+  'createFromTemplate',
+  'generateImage',
+  'downloadImage',
+  'downloadFile',
+  'notice',
+  'show',
+  'runScript',
+  'setStatus',
+  'activeNotePath',
+  'unzip',
+  'view',
+  ...Object.keys(VIEW_GLOBALS),
+]
+
+const REDECLARED = /Identifier '(\w+)' has already been declared/
+
+/** The script as a function of its context. Throws what the engine threw, said better. */
+function compile(code: string): (ctx: ScriptContext) => Promise<unknown> {
+  try {
+    return new Function(
+      'ctx',
+      `"use strict";
+      return (async () => {
+        const { ${SCRIPT_GLOBALS.join(', ')} } = ctx;
+        ${code}
+      })()`
+    ) as (ctx: ScriptContext) => Promise<unknown>
+  } catch (err) {
+    const name = err instanceof SyntaxError ? REDECLARED.exec(err.message)?.[1] : undefined
+    if (name && SCRIPT_GLOBALS.includes(name)) {
+      throw new Error(`"${name}" is a name the script API reserves; rename it in this script`)
+    }
+    throw err
+  }
 }
 
 /** What came of asking an agent's script to run: it finished, or it stopped to ask something. */
@@ -107,7 +176,25 @@ export class ScriptService {
   /** Reactive list for settings UI */
   public readonly scriptList = ref<ParsedScript[]>([])
 
-  private constructor() {}
+  /**
+   * Settles once the first `discover()` of this instance has finished, and so once a script
+   * can be found by name. Obsidian rebuilds the layout — and with it every saved script tab —
+   * before `onLayoutReady`, which is before `init()` has been called at all; a lookup made
+   * then would read an empty index and report the script missing. Anything that needs the
+   * index at startup waits here instead.
+   */
+  ready: Promise<void>
+  private markReady: () => void = () => {}
+
+  private constructor() {
+    this.ready = this.resetReady()
+  }
+
+  private resetReady(): Promise<void> {
+    return new Promise((resolve) => {
+      this.markReady = resolve
+    })
+  }
 
   static getInstance(): ScriptService {
     if (!this.instance) {
@@ -124,7 +211,9 @@ export class ScriptService {
   }
 
   init() {
-    this.discover()
+    // Settled either way: a saved tab waiting on the index must get an answer even when the
+    // first discovery threw.
+    void this.discover().finally(() => this.markReady())
     this.startWatching()
   }
 
@@ -202,6 +291,7 @@ export class ScriptService {
     this.unregisterAllCommands()
     this.scripts.clear()
     this.scriptList.value = []
+    this.ready = this.resetReady()
   }
 
   private startWatching() {
@@ -480,35 +570,29 @@ export class ScriptService {
     const logs: string[] = []
 
     try {
+      const handler = opts.formHandler ?? formHandler
       const ctx = buildScriptContext({
         params,
         signal: combinedController.signal,
         logs,
         // The run's id travels with the question: an agent cannot show a form, so it parks
-        // it against the run and answers later — see `executeForAgent`.
-        formHandler: (fields) => {
-          const handler = opts.formHandler ?? formHandler
-          if (!handler) throw new Error(NO_FORM_HANDLER)
-          return handler(fields, runId)
-        },
+        // it against the run and answers later — see `executeForAgent`. Left unset when nobody
+        // can answer, so the context may still fall back to a dialog once a view is open, and
+        // say what is wrong when none is.
+        formHandler: handler ? (fields) => handler(fields, runId) : undefined,
         onLog: (text) => runs.append(runId, text),
         onStatus: (text) => {
           runs.setNote(runId, text)
           this.renderStatusBar()
         },
+        scriptName: script.meta.name,
+        restore: opts.restore,
       })
 
       // Running the user's own script is the feature. The code comes from a `.js` file the
       // user wrote in their own vault, and it is handed only the capabilities in `ctx`; there
       // is no way to execute it without a compiler.
-      const fn = new Function(
-        'ctx',
-        `"use strict";
-        return (async () => {
-          const { dayjs, read, edit, write, create, remove, move, copy, ls, find, replace, open, setCover, agent, form, log, params, signal, fetch, applyTemplate, listTemplates, createFromTemplate, generateImage, downloadImage, downloadFile, notice, show, runScript, setStatus, activeNotePath } = ctx;
-          ${script.code}
-        })()`
-      )
+      const fn = compile(script.code)
 
       const abortPromise = new Promise<never>((_, reject) => {
         combinedController.signal.addEventListener('abort', () =>

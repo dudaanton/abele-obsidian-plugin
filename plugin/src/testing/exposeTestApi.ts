@@ -17,6 +17,8 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { NoteRelations } from '@/entities/NoteRelations'
+import { ScriptService } from '@/scripting/ScriptService'
+import { ScriptViewService } from '@/scripting/view/ScriptViewService'
 import { TFile } from 'obsidian'
 import type { Plugin } from 'obsidian'
 
@@ -86,7 +88,15 @@ interface AbeleTestApi {
   CommentService: typeof CommentService
   AgentRegistry: typeof AgentRegistry
   GlobalStore: typeof GlobalStore
+  AbeleConfig: typeof AbeleConfig
+  ScriptService: typeof ScriptService
+  ScriptViewService: typeof ScriptViewService
   plugin: Plugin
+  /**
+   * Where an e2e probe parks its result. `obsidian eval` cannot await a promise, so a probe
+   * that needs to wait for a leaf or a render stores here and the test polls for it.
+   */
+  viewProbe: unknown
   measureGroupResolve(groupPath: string): GroupResolveMeasurement
   /** Sorted member paths of a group, via the same path the scope editor preview uses. */
   groupPreviewPaths(groupPath: string): string[]
@@ -459,7 +469,11 @@ export function exposeTestApi(plugin: Plugin): void {
     CommentService,
     AgentRegistry,
     GlobalStore,
+    AbeleConfig,
+    ScriptService,
+    ScriptViewService,
     plugin,
+    viewProbe: null,
     measureGroupResolve,
     measureNoteRelations,
     groupPreviewPaths,

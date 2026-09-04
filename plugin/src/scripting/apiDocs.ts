@@ -197,8 +197,8 @@ const each = await agent("Extract the date", { items: paths })
 |----------|---------|-------------|
 | \`notice(message, timeout?)\` | — | Show Obsidian notification |
 | \`setStatus(text)\` | — | Say what the script is doing now — shown in the status bar and against the run |
-| \`form(fields)\` | \`object \\| null\` | Ask for values: a dialog from the command palette, a form handed to the agent from a chat |
-| \`show(markdown, title?)\` | — | Show rendered markdown to read (command palette only) |
+| \`form(fields)\` | \`object \\| null\` | Ask for values: a dialog from the command palette or an open view, a form handed to the agent from a chat |
+| \`show(markdown, title?)\` | — | Show rendered markdown to read — only available when the script is run from the command palette or has a view open |
 
 \`form\` fields: \`[{ name, label, type?, options?, default?, required?, text? }]\`
 Types: \`"text"\` (default), \`"textarea"\`, \`"select"\`, \`"boolean"\`, \`"markdown"\`
@@ -207,6 +207,19 @@ A \`"markdown"\` field asks for nothing: it renders \`text\` as markdown for the
 and select, and returns no value. Use it to explain a form, or to put a result beside the
 questions. \`show(markdown, title?)\` is the same block on its own — prefer it over
 \`notice\` for anything long: a notice is truncated, disappears, and cannot be selected.
+
+### Views
+
+A script can open a tab of its own — cards, buttons, inputs, markdown, tables, its own HTML
+and CSS — and keep handling presses after the run has ended. Call \`script_api_docs\` with
+\`section: 'views'\` for that reference. In short:
+
+\`\`\`js
+const v = view({ title: 'Hello' })
+const b = new Button({ text: 'Press me', onClick: () => notice('Pressed') })
+v.body = [new Markdown('# Hello'), b]
+await v.open()
+\`\`\`
 
 ---
 
@@ -221,6 +234,10 @@ questions. \`show(markdown, title?)\` is the same block on its own — prefer it
 
 \`log()\` output is captured and returned as the script result.
 You can also \`return "result"\` directly.
+
+Every function and global in this reference, and \`view\` with the component classes of the
+view reference, is already declared in a script's scope: a script that declares one of those
+names itself (\`const open = …\`, \`function find() {}\`) fails to start with a message naming it.
 
 Every run is listed while Obsidian is open — its status, how long it took, each \`log()\` line
 with the time it was printed, and what it returned — under **Show script runs**, where it can

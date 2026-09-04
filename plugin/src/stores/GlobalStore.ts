@@ -27,6 +27,7 @@ import type { FormField } from '@/scripting/types'
 import { App, TFile } from 'obsidian'
 import { computed, ref, shallowRef, toRaw } from 'vue'
 import type { FindAndReplaceInstance } from '@/bases/FindAndReplaceView'
+import type { ScriptViewModel } from '@/views/ScriptView'
 
 export class GlobalStore {
   private static instance: GlobalStore
@@ -73,6 +74,8 @@ export class GlobalStore {
   public readonly financeSidebarIds = ref<string[]>([])
   public readonly timeTrackingSidebarIds = ref<string[]>([])
   public readonly scriptRunsIds = ref<string[]>([])
+  /** One per open script tab; the leaf puts it here and the Vue side renders from it. */
+  public readonly scriptViews = ref<ScriptViewModel[]>([])
   public readonly findAndReplaceBasesInstances = shallowRef<Map<string, FindAndReplaceInstance>>(
     new Map()
   )
@@ -359,6 +362,7 @@ export class GlobalStore {
     this.financeSidebarIds.value = []
     this.timeTrackingSidebarIds.value = []
     this.scriptRunsIds.value = []
+    this.scriptViews.value = []
     this._vaultWatcher.cleanup()
 
     console.debug('GlobalStore destroyed')

@@ -224,7 +224,7 @@ export default [
   },
 
   /**
-   * Two findings this plugin cannot clear, recorded here rather than silenced at the call site.
+   * Three findings this plugin cannot clear, recorded here rather than silenced at the call site.
    *
    * Obsidian's preset forbids `eslint-disable` comments for its own rules, and its review
    * reports any it finds as a **Risk** — which is what a first submission was rejected for. So
@@ -237,9 +237,13 @@ export default [
    *   - The settings tab is a Vue application. `getSettingDefinitions()` would make it
    *     searchable, but Obsidian renders declaratively from it and never calls `display()`, so
    *     adopting it means replacing the whole settings UI.
+   *   - A script's view carries CSS the script wrote at run time, for that one tab. It cannot
+   *     be in `styles.css`, which is written before any script is, and it must not reach the
+   *     rest of the app — so it goes into a `<style>` made in the tab's own document with every
+   *     selector prefixed by the tab's root.
    *
-   * Both are explained at their site and in docs/Obsidian compliance.md. Left as warnings so a
-   * *new* violation of either rule elsewhere still fails the build.
+   * All three are explained at their site and in docs/Obsidian compliance.md. Left as warnings
+   * so a *new* violation of any of these rules elsewhere still fails the build.
    */
   {
     files: ['plugin/src/scripting/ScriptService.ts'],
@@ -251,6 +255,10 @@ export default [
   {
     files: ['plugin/src/settings.ts'],
     rules: { 'obsidianmd/settings-tab/prefer-setting-definitions': 'warn' },
+  },
+  {
+    files: ['plugin/src/components/ScriptView.vue'],
+    rules: { 'obsidianmd/no-forbidden-elements': 'warn' },
   },
 
   /**

@@ -3,6 +3,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
 import { findLeafByFile } from './ScreenshotTool'
+import type { ScriptViewModel } from '@/views/ScriptView'
 
 const MAX_OUTPUT = 15_000
 
@@ -56,23 +57,75 @@ export function createInspectViewTool(): AgentTool {
     name: 'inspect_view',
     label: 'Inspect View',
     description:
-      "Inspect the HTML structure of a file's rendered view for debugging. Returns cleaned HTML (no inline styles, no data-attributes, collapsed SVGs). Use optional CSS selector to narrow down to a specific element. If output is truncated, use a more specific selector.",
+      "Inspect the HTML structure of a file's rendered view for debugging. Returns cleaned HTML (no inline styles, no data-attributes, collapsed SVGs). Use optional CSS selector to narrow down to a specific element. If output is truncated, use a more specific selector. Give either path (a note) or view (a script view).",
     parameters: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'File path relative to vault root' },
+        view: {
+          type: 'string',
+          description:
+            'A script view, by its tab title or script name. Use instead of path to inspect a view a script opened.',
+        },
         selector: {
           type: 'string',
           description:
             'Optional CSS selector to target a specific element within the view (e.g. ".cm-content", ".base-table")',
         },
       },
-      required: ['path'],
+      required: [],
     },
     execute: async (_id, params) => {
-      const path = params.path as string
       const selector = params.selector as string | undefined
-      if (!path) throw new Error('Missing required parameter: path')
+
+      // A script's view has no file behind it, so it is answered before the path checks: its
+      // nodes are the truth, and the rendered HTML would only show what the kit made of them.
+      // Imported here rather than at the top so the tool does not pull the view runtime in.
+      const viewName = params.view as string | undefined
+      if (viewName) {
+        const { describeView } = await import('@/scripting/view/describe')
+        // Every open script tab, bound or not: the service knows only the leaves that have a
+        // view, and a tab whose script is still running or has failed is exactly the one an
+        // agent asks about after writing that script. The cast undoes `ref`'s deep unwrapping,
+        // which strips the private fields off the `View` class the models hold.
+        const models = GlobalStore.getInstance().scriptViews.value as ScriptViewModel[]
+        const open = models.map((m) => m.view).filter((v): v is NonNullable<typeof v> => Boolean(v))
+        const wanted = viewName.toLowerCase()
+        const hit =
+          open.find(
+            (v) => v.title.toLowerCase() === wanted || v.origin.script.toLowerCase() === wanted
+          ) ??
+          open.find(
+            (v) =>
+              v.title.toLowerCase().includes(wanted) ||
+              v.origin.script.toLowerCase().includes(wanted)
+          )
+        if (!hit) {
+          // Naming what is open turns a miss into the answer to the next question anyway. A
+          // tab whose script is still running, or whose script failed, has no view to describe
+          // but is very likely the one being asked about — say so rather than leave it out.
+          const names =
+            models
+              .map((m) => {
+                if (m.view) return `"${m.view.title}" (${m.view.origin.script})`
+                const script = m.saved?.script ?? (m.status.kind === 'live' ? '' : m.status.script)
+                if (m.status.kind === 'failed') return `"${script}" (failed: ${m.status.message})`
+                return `"${script}" (starting)`
+              })
+              .join(', ') || 'none'
+          throw new Error(`No script view named "${viewName}". Open: ${names}`)
+        }
+        let text = describeView(hit)
+        if (text.length > MAX_OUTPUT) {
+          text =
+            text.slice(0, MAX_OUTPUT) +
+            '\n\n[Output truncated. Inspect a smaller view, or reach one node through its id.]'
+        }
+        return { content: [{ type: 'text', text }] }
+      }
+
+      const path = params.path as string
+      if (!path) throw new Error('Missing required parameter: path or view')
       if (!ScopeResolver.getInstance().isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }

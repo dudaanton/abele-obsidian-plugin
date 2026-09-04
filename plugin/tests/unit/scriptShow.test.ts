@@ -66,5 +66,8 @@ describe('showing markdown', () => {
     const ctx = context(false)
 
     await expect(ctx.show('Body.')).rejects.toThrow(/only available/)
+    // A handler in an open view can show text too, and the message says so.
+    await expect(ctx.show('Body.')).rejects.toThrow('command palette or has a view open')
+    await expect(ctx.form([])).rejects.toThrow('command palette or has a view open')
   })
 })

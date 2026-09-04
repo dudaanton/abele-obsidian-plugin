@@ -32,6 +32,9 @@ const COVERED_FILES = [
   'AiRunView.vue',
   'AiChatSetup.vue',
   'ChatsList.vue',
+  'ScriptView.vue',
+  'ScriptNode.vue',
+  'ScriptHtml.vue',
 ].map((name) => join(ROOT, name))
 
 /** The one component allowed to be a `<button>`: everything else goes through it. */

@@ -55,6 +55,7 @@ import {
   TimeTrackingSidebarView,
 } from './views/TimeTrackingSidebarView'
 import { SCRIPT_RUNS_VIEW_TYPE, ScriptRunsView } from './views/ScriptRunsView'
+import { SCRIPT_VIEW_TYPE, ScriptView } from './views/ScriptView'
 import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
 import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
@@ -62,8 +63,10 @@ import { ChatService } from './ai/ChatService'
 import { CommentService } from './ai/CommentService'
 import { useFilesInAgent } from './helpers/useFilesInAgent'
 import { ScriptService } from './scripting/ScriptService'
+import { ScriptViewService } from './scripting/view/ScriptViewService'
 import { showMarkdown } from './scripting/formModal'
 import { SCRIPT_API_DOCS } from './scripting/apiDocs'
+import { SCRIPT_VIEW_DOCS } from './scripting/view/viewDocs'
 import { ScopeResolver } from './ai/ScopeResolver'
 import { ChatStorage } from './ai/ChatStorage'
 import weekday from 'dayjs/plugin/weekday'
@@ -182,6 +185,7 @@ export default class AbelePlugin extends Plugin {
     this.registerView(TODO_SIDEBAR_VIEW_TYPE, (leaf) => new TodoSidebarView(leaf, this.app))
     this.registerView(FINANCE_SIDEBAR_VIEW_TYPE, (leaf) => new FinanceSidebarView(leaf, this.app))
     this.registerView(SCRIPT_RUNS_VIEW_TYPE, (leaf) => new ScriptRunsView(leaf, this.app))
+    this.registerView(SCRIPT_VIEW_TYPE, (leaf) => new ScriptView(leaf))
     this.registerView(
       TIME_TRACKING_SIDEBAR_VIEW_TYPE,
       (leaf) => new TimeTrackingSidebarView(leaf, this.app)
@@ -943,7 +947,11 @@ export default class AbelePlugin extends Plugin {
     // restart of its own.
     if (ai.scriptsEnabled && !this.scriptsStarted) {
       this.scriptsStarted = true
-      this.app.workspace.onLayoutReady(() => ScriptService.getInstance().init())
+      this.app.workspace.onLayoutReady(() => {
+        ScriptService.getInstance().init()
+        // The host a script's `view()` reaches for; registered before any script can run.
+        ScriptViewService.getInstance()
+      })
     }
   }
 
@@ -1078,8 +1086,9 @@ export default class AbelePlugin extends Plugin {
       icon: 'book-open',
       callback: () => {
         // No title: the reference opens with its own heading, which the modal lifts into the
-        // title bar rather than showing a second name above it.
-        void showMarkdown(SCRIPT_API_DOCS)
+        // title bar rather than showing a second name above it. The views reference follows
+        // the main one — a person asking for the API wants all of it, not a second command.
+        void showMarkdown(SCRIPT_API_DOCS + '\n\n---\n\n' + SCRIPT_VIEW_DOCS)
       },
     })
   }
@@ -1093,6 +1102,7 @@ export default class AbelePlugin extends Plugin {
     }
     SnippetService.destroy()
     ScriptService.destroy()
+    ScriptViewService.destroy()
     CommentService.getInstance().destroy()
     ChatService.getInstance().destroy()
     ScopeResolver.getInstance().destroy()
