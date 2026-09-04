@@ -9,6 +9,7 @@ import { AgentRegistry } from './agents/AgentRegistry'
 import { getNoteBody } from '@/helpers/notesUtils'
 import { ChatSession } from './ChatSession'
 import { CommentService } from './CommentService'
+import { ChatStorage } from './ChatStorage'
 import { RunStorage, type RunFile } from './RunStorage'
 import { AI_SIDEBAR_VIEW_TYPE } from '@/constants/views'
 import { buildCommentContext } from './commentContext'
@@ -263,6 +264,40 @@ export class ChatService {
     await session.save()
     session.destroy()
     this.dropTab(tabId)
+  }
+
+  /**
+   * Deletes the conversation a tab is holding: the file, its delegated runs, its entry in the
+   * index, and the tab itself.
+   *
+   * The order is the point. The session is destroyed *before* the file goes — it saves on a
+   * timer and at the end of every turn, so one left alive over a deleted path writes the whole
+   * conversation back a moment later. And nothing is saved on the way out, unlike `closeTab`:
+   * this is somebody throwing the chat away.
+   *
+   * An expanded comment leaves through `CommentService` instead. Its marker is still in a
+   * note, and an icon in the text that opens nothing is worse than the chat it points at.
+   *
+   * Answers whether anything was deleted: a tab nobody has written to has no file yet.
+   */
+  async deleteChat(tabId: string): Promise<boolean> {
+    const session = this.sessions.get(tabId)
+    if (!session) return false
+
+    const comments = CommentService.getInstance()
+    const commentId = session.commentId
+    if (commentId && comments.isExpanded(commentId)) {
+      await comments.remove(commentId)
+      return true
+    }
+
+    const path = session.currentChatFile.value?.path
+    if (!path) return false
+
+    this.dropTab(tabId)
+    session.destroy()
+    await ChatStorage.getInstance().deleteChat(path)
+    return true
   }
 
   /**

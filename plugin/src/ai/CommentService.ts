@@ -161,6 +161,11 @@ export class CommentService implements CommentInfoSource {
    */
   private readonly expanded = new Map<string, ChatSession>()
 
+  /** True for a comment that has been opened as a chat: `ChatService` owns it now. */
+  isExpanded(id: string): boolean {
+    return this.expanded.has(id)
+  }
+
   /** Stops the state watcher of each session, so a removed comment stops repainting. */
   private readonly watchers = new Map<string, WatchStopHandle>()
 

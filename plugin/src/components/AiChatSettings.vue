@@ -101,7 +101,37 @@
           />
         </div>
       </div>
+
+      <!-- Last, and on its own: everything above changes how this chat behaves and can be
+           changed back. This one ends it. -->
+      <Setting
+        name="Delete chat"
+        desc="Remove this conversation, its delegated runs and its place in the history."
+      >
+        <!-- "Delete", not "Delete chat": the row beside it already says what goes. -->
+        <Button
+          text="Delete"
+          warning
+          :disabled="!savedToFile"
+          :tooltip="
+            savedToFile
+              ? 'Delete this conversation for good'
+              : 'Nothing has been written to this chat yet'
+          "
+          @click="pendingRemoval = true"
+        />
+      </Setting>
     </div>
+
+    <ConfirmModal
+      v-if="pendingRemoval"
+      title="Delete chat"
+      message="Delete this chat? Its file, the runs it delegated and its entry in the history
+        all go. This cannot be undone."
+      confirm-tooltip="Delete this chat"
+      @confirm="remove"
+      @close="pendingRemoval = false"
+    />
   </ObsidianModal>
 </template>
 
@@ -109,6 +139,8 @@
 import { ref, computed } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import Setting from './obsidian/Setting.vue'
+import Button from './obsidian/Button.vue'
+import ConfirmModal from './obsidian/ConfirmModal.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Search from './obsidian/Search.vue'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
@@ -121,6 +153,26 @@ import Icon from './obsidian/Icon.vue'
 const emit = defineEmits<{ close: [] }>()
 
 const session = computed(() => ChatService.getInstance().activeSession.value)
+
+// ── Deleting this chat ──
+
+const pendingRemoval = ref(false)
+
+/** A tab nobody has written to has no file yet, and no file is nothing to throw away. */
+const savedToFile = computed(() => !!session.value?.currentChatFile.value)
+
+/**
+ * The dialog closes behind it either way: what it was showing the settings of is gone, and a
+ * refusal — a tab that turned out to have no file — has already been said by the dark button.
+ */
+const remove = () =>
+  void (async () => {
+    const current = session.value
+    if (!current) return
+
+    await ChatService.getInstance().deleteChat(current.id)
+    emit('close')
+  })()
 
 // ── Model override ──
 
