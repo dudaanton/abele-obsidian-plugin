@@ -591,27 +591,3 @@ body.is-mobile .abele-comment-marker_pending::after {
   border-bottom-style: dashed;
 }
 
-/* Margin host for a comment card. The overlay writes top, left and width; everything that
-   makes it a layer belongs here. */
-.abele-comment-widget-container {
-  pointer-events: auto;
-  position: absolute;
-}
-
-/* No room beside the text, or the marker scrolled out of view. The overlay toggles this
-   modifier by name — see HIDDEN_CLASS in MarginOverlay.ts — so it has to exist here. */
-.abele-comment-widget-container_hidden {
-  display: none;
-}
-
-/* Margin host for a pinned message. Named after the container above so HIDDEN_CLASS reads the
-   same way; the overlay parks it at the top of the view rather than beside its anchor. */
-.abele-comment-pin-container {
-  pointer-events: auto;
-  position: absolute;
-}
-
-/* Toggled by name from HIDDEN_CLASS in MarginOverlay.ts, like the one above. */
-.abele-comment-pin-container_hidden {
-  display: none;
-}

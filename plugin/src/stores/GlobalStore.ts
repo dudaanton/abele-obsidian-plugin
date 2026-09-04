@@ -1,4 +1,3 @@
-import { CommentEntry, CommentPin } from '@/entities/Comment'
 import { Footer } from '@/entities/Footer'
 import { Footnote } from '@/entities/Footnote'
 import { Gallery } from '@/entities/Gallery'
@@ -42,16 +41,6 @@ export class GlobalStore {
   public readonly headersContainers = ref<Array<Header>>([])
   public readonly galleriesContainers = ref<Array<Gallery>>([])
   public readonly footnotesContainers = ref<Array<Footnote>>([])
-  public readonly commentsContainers = ref<Array<CommentEntry>>([])
-  /** One per pinned message on screen; the overlay parks each at the top of the margin. */
-  public readonly pinsContainers = ref<Array<CommentPin>>([])
-  /**
-   * The comment whose card is in a dialog rather than in the margin, or nothing.
-   *
-   * A card has two hosts and one component: this is the second host. It is a single value and
-   * not a list, because a dialog is modal — nothing behind it can be pressed to open another.
-   */
-  public readonly commentModal = shallowRef<CommentEntry | null>(null)
   public readonly findAndReplaceModalOpened = ref(false)
   public readonly migrateFromDataviewModalOpened = ref(false)
   public readonly saveMediaModalOpened = ref(false)
@@ -331,8 +320,6 @@ export class GlobalStore {
     cleanupArray(this.tasksHeadersContainers.value, 'data-task-header-id')
     cleanupArray(this.galleriesContainers.value, 'data-gallery-id')
     cleanupArray(this.footnotesContainers.value, 'data-footnote-id')
-    cleanupArray(this.commentsContainers.value, 'data-comment-id')
-    cleanupArray(this.pinsContainers.value, 'data-comment-pin-id')
   }
 
   public destroy(): void {
@@ -355,13 +342,6 @@ export class GlobalStore {
     this.galleriesContainers.value = []
     for (const fn of this.footnotesContainers.value) fn.cleanup()
     this.footnotesContainers.value = []
-    for (const comment of this.commentsContainers.value) comment.cleanup()
-    this.commentsContainers.value = []
-    for (const pin of this.pinsContainers.value) pin.cleanup()
-    this.pinsContainers.value = []
-    // The entry the dialog is showing has just been cleaned up; a dialog holding one is a
-    // dialog drawing a card for a marker that no longer exists.
-    this.commentModal.value = null
 
     this.tasksList.value?.cleanup()
     this.tasksList.value = null

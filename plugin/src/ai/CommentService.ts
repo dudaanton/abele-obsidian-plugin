@@ -2,8 +2,6 @@ import { ref, shallowReactive, watch, type Ref, type WatchStopHandle } from 'vue
 import { Notice, TFile, TFolder } from 'obsidian'
 import dayjs from 'dayjs'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { CommentEntry } from '@/entities/Comment'
-import { genid } from '@/helpers/vueUtils'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { insertMarker, newCommentId, removeMarkerId } from '@/editor/commentMarkers'
 import {
@@ -49,18 +47,13 @@ export class CommentService implements CommentInfoSource {
   /** Live comments, by id. Reactive so a card re-renders when one arrives. */
   readonly sessions = shallowReactive(new Map<string, ChatSession>())
 
-  /** Which card is expanded. One at a time; the rest are icons. */
-  readonly open: Ref<string | null> = ref(null)
-
   /**
-   * A press on a marker: fold the card if one of its comments is the open one, otherwise show
-   * the first. A marker carrying several opens on the one it was left showing last only by
-   * accident — the card's own strip is where the rest are picked from.
+   * Which comment the sidebar is showing, if any. One at a time; the rest are icons.
+   *
+   * The marker in the text paints itself from this, so the icon over the passage a person is
+   * answering is the one that looks open.
    */
-  toggleOpen(ids: string[]): void {
-    const openHere = ids.some((id) => id === this.open.value)
-    this.open.value = openHere ? null : (ids[0] ?? null)
-  }
+  readonly open: Ref<string | null> = ref(null)
 
   /**
    * A press on a marker: the comment opens as a tab in the chat sidebar.
@@ -384,11 +377,9 @@ export class CommentService implements CommentInfoSource {
 
     this.watchers.set(
       id,
-      // `pinned` rides along with the state: pinning is done on one session, and every editor
-      // showing the note has to rebuild its margin from it. So does the visible conversation:
-      // a retry or a branch switch takes a pinned message off the path, and `get` stops
-      // reporting it — but nothing else would tell the margin to drop the card.
-      watch([session.commentState, session.pinned, session.messages], () => {
+      // The messages ride along with the state: the marker's digit counts them, so an answer
+      // arriving has to repaint every editor showing the note.
+      watch([session.commentState, session.messages], () => {
         const note = session.anchor.value?.note
         if (note) dispatchCommentsChanged(note)
       })
@@ -405,11 +396,6 @@ export class CommentService implements CommentInfoSource {
       quote: session.anchor.value?.quote,
       state: session.commentState.value,
       open: this.open.value === id,
-      // Only pins whose message is still in the conversation: a retry or a branch can take one
-      // away, and a host for a message nobody can render is a hole in the margin's stack.
-      pinned: session.pinned.value.filter((mid) =>
-        session.messages.value.some((message) => message.id === mid)
-      ),
       // What was said, which is what the marker's digit counts: the questions and the answers.
       // A tool call is the agent working rather than talking, a system line is scaffolding and
       // a draft belongs to the interceptor — none of the three is a message anybody counts.

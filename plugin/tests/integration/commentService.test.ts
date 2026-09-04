@@ -18,7 +18,6 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { CommentEntry } from '@/entities/Comment'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 
@@ -62,8 +61,6 @@ beforeEach(() => {
   }).id
   vi.spyOn(ChatService.getInstance(), 'saveTabs').mockImplementation(() => {})
   vi.spyOn(ChatService.getInstance(), 'revealSidebar').mockResolvedValue(undefined)
-  GlobalStore.getInstance().commentsContainers.value = []
-  GlobalStore.getInstance().commentModal.value = null
 })
 
 describe('creating a comment', () => {
@@ -149,7 +146,6 @@ describe('reporting to the editor', () => {
       quote: 'The selected passage',
       state: 'idle',
       open: false,
-      pinned: [],
       messages: 0,
     })
   })
@@ -836,41 +832,6 @@ describe('the note being renamed', () => {
     await service.handleRename('Notes/Elsewhere.md', 'Notes/Moved.md')
 
     expect(session.anchor.value?.note).toBe('Notes/A.md')
-  })
-})
-
-describe('which card is open', () => {
-  it('opens the first comment of a marker and closes it again', async () => {
-    const service = CommentService.getInstance()
-    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
-    const id = session.commentId as string
-
-    service.toggleOpen([id])
-    expect(service.open.value).toBe(id)
-
-    service.toggleOpen([id])
-    expect(service.open.value).toBeNull()
-  })
-
-  it('moves the open card rather than closing it when another marker is pressed', async () => {
-    const service = CommentService.getInstance()
-    const first = await service.create(noteFile(), SELECTION_END, 'The selected passage')
-    service.open.value = first.commentId
-
-    service.toggleOpen(['zzz999'])
-
-    expect(service.open.value).toBe('zzz999')
-  })
-
-  it('repaints the note that lost the open card and the note that gained one', async () => {
-    const service = CommentService.getInstance()
-    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
-    vi.mocked(dispatchCommentsChanged).mockClear()
-
-    service.open.value = session.commentId
-    await nextTick()
-
-    expect(vi.mocked(dispatchCommentsChanged).mock.calls.flat()).toContain('Notes/A.md')
   })
 })
 /** Lets Promise chains and their `.then` continuations run to the end. */

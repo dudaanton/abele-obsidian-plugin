@@ -1,13 +1,11 @@
 /**
- * A comment, from the command to the card, in the app people actually run.
+ * A comment, from the command to the tab, in the app people actually run.
  *
- * Everything here is a question happy-dom cannot answer. Whether the raw `%%c:…%%` ever
- * reaches the screen is a question about CodeMirror's decorations. Whether the card is visible
- * is a question about a margin that has to be measured. And the phone's route into a dialog
- * only shows itself under `app.emulateMobile(true)`, which is Obsidian switching its own
- * layout — there is no way to ask for it from a test that does not have Obsidian. The dialog's
- * geometry is Obsidian's own `mod-lg`, so what is worth asking here is whether their rules
- * actually reached it: a sheet that sits inside the window with its close button on it.
+ * Everything here is a question happy-dom cannot answer. Whether the raw `%%c:…%%` ever reaches
+ * the screen is a question about CodeMirror's decorations. Whether a press on the icon puts the
+ * conversation in front of the person is a question about the workspace. And the phone is a
+ * question about `app.emulateMobile(true)`, which is Obsidian switching its own layout — there
+ * is no way to ask for it from a test that does not have Obsidian.
  *
  * The probe drives the command, because that is what a person's hotkey does. If the command
  * cannot reach the editor it falls back to creating the comment through `CommentService`, so
@@ -45,46 +43,30 @@ interface DesktopReport {
   rawMarkerText: boolean
   /** The `data-comment-ids` the widget carries. */
   markerIds: string
-  /** Whether the margin reported room — the card is only expected when it did. */
-  hasRoom: boolean
-  /** What this vault had these set to, so the cleanup can put them back. */
-  readableLineLength: boolean
-  leftCollapsed: boolean
-  rightCollapsed: boolean
-  cardVisible: boolean
+  /** Nothing is drawn beside the text any more: the card in the margin is gone. */
+  cardInMargin: boolean
   /** Where the comment's chat file was expected, and whether it is there. */
   commentPath: string
   commentFileExists: boolean
+  /** After the press: the sidebar's chat, showing this comment. */
+  chatVisible: boolean
+  backToNoteVisible: boolean
+  openAsChatVisible: boolean
+  noteButtonVisible: boolean
+  /** No dialog stands over the note — the phone sheet is gone too. */
+  modalOpen: boolean
+  /** A second marker pressed replaces the tab rather than adding one. */
+  tabsAfterFirst: number
+  tabsAfterSecond: number
   error: string
 }
 
 interface MobileReport {
-  /** Whether a dialog of ours is on screen at all after the tap. */
-  modalOpen: boolean
-  /** The card itself, inside it, expanded rather than folded. */
-  cardVisible: boolean
-  threadVisible: boolean
-  /** The composer, tall enough to type into and set at a size iOS will not zoom into. */
-  composerVisible: boolean
-  composerFontPx: number
-  /** Obsidian's own × for the dialog, and whether it is inside the window it opened in. */
-  closeVisible: boolean
-  closeInsideWindow: boolean
-  /** The dialog's own box against the window: their sheet reaches the bottom and no further. */
-  modalTop: number
-  modalBottom: number
-  windowHeight: number
-  /**
-   * The same, with a keyboard faked the way Obsidian reports one. The composer has to stay
-   * above it and the thread has to keep a height: 1.17.2 shrank the sheet twice over and left
-   * a white dialog with nothing under its header.
-   */
-  keyboardModalBottom: number
-  keyboardComposerBottom: number
-  keyboardThreadHeight: number
-  keyboardBandBottom: number
-  /** The sidebar was not borrowed for this: that is 1.17.1, and it is what came back wrong. */
+  /** The same press, in the layout Obsidian gives a phone. */
   chatVisible: boolean
+  composerVisible: boolean
+  noteButtonVisible: boolean
+  modalOpen: boolean
   error: string
 }
 
@@ -93,26 +75,22 @@ interface CleanupReport {
   error: string
 }
 
-interface Report extends DesktopReport, MobileReport {
+interface Report extends DesktopReport {
   cleaned: boolean
+  mobileChatVisible: boolean
+  mobileComposerVisible: boolean
+  mobileNoteButtonVisible: boolean
+  mobileModalOpen: boolean
 }
 
 const NOTE = 'Abele comment probe.md'
 const QUOTE = 'the passage the probe asks about'
-const BODY = `# Comment probe\n\nA paragraph holding ${QUOTE} and little else.\n`
+const SECOND = 'another passage entirely'
+const BODY = `# Comment probe\n\nA paragraph holding ${QUOTE} and ${SECOND} after it.\n`
 
 /** Deletes the probe note and whatever comment files its markers name, if either is there. */
-const cleanupScript = (
-  readable: boolean,
-  leftCollapsed: boolean,
-  rightCollapsed: boolean
-) => `(async () => {
+const cleanupScript = `(async () => {
   const path = ${JSON.stringify(NOTE)}
-  app.vault.setConfig('readableLineLength', ${readable})
-  if (${leftCollapsed}) app.workspace.leftSplit.collapse()
-  else app.workspace.leftSplit.expand()
-  if (${rightCollapsed}) app.workspace.rightSplit.collapse()
-  else app.workspace.rightSplit.expand()
   const service = window.__abeleTest.CommentService.getInstance()
   const report = { cleaned: false, error: '' }
   try {
@@ -133,34 +111,31 @@ const cleanupScript = (
   return report
 })()`
 
-/** Creates the note, runs the comment command on a selection, and reports what landed. */
+/**
+ * Creates the note, runs the comment command on a selection, presses the icon, and reports what
+ * the app shows. The second comment is made through the service — one run of the command proves
+ * the command works, and what the second one is for is the tab it does *not* add.
+ */
 const desktopScript = `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+  const shown = (el) => !!el && el.getBoundingClientRect().height > 0
   const path = ${JSON.stringify(NOTE)}
   const quote = ${JSON.stringify(QUOTE)}
+  const second = ${JSON.stringify(SECOND)}
   const service = window.__abeleTest.CommentService.getInstance()
+  const chats = window.__abeleTest.ChatService.getInstance()
   const report = {
-    via: 'none', rawMarkerText: true, markerIds: '', hasRoom: false, cardVisible: false,
-    readableLineLength: false, leftCollapsed: false, rightCollapsed: false,
-    commentPath: '', commentFileExists: false, error: '',
+    via: 'none', rawMarkerText: true, markerIds: '', cardInMargin: false,
+    commentPath: '', commentFileExists: false,
+    chatVisible: false, backToNoteVisible: false, openAsChatVisible: false,
+    noteButtonVisible: false, modalOpen: false, tabsAfterFirst: 0, tabsAfterSecond: 0,
+    error: '',
   }
 
   try {
     const stale = app.vault.getAbstractFileByPath(path)
     if (stale) await app.vault.delete(stale)
     const file = await app.vault.create(path, ${JSON.stringify(BODY)})
-
-    // The margin is measured, and this vault has both sidebars open over a readable line of
-    // 700 px: 127 px of right margin, which is under the 200 the overlay asks for. Without
-    // this the desktop half of the probe only ever exercises the branch with no card in it.
-    // Both are put back in the cleanup.
-    report.readableLineLength = !!app.vault.getConfig('readableLineLength')
-    report.leftCollapsed = !!app.workspace.leftSplit.collapsed
-    report.rightCollapsed = !!app.workspace.rightSplit.collapsed
-    app.vault.setConfig('readableLineLength', true)
-    app.workspace.leftSplit.collapse()
-    app.workspace.rightSplit.collapse()
-    await wait(500)
 
     const leaf = app.workspace.getLeaf(false)
     await leaf.openFile(file)
@@ -195,19 +170,38 @@ const desktopScript = `(async () => {
 
     const marker = document.querySelector('.abele-comment-marker[data-comment-ids]')
     report.markerIds = marker ? marker.getAttribute('data-comment-ids') : ''
-
-    const box = document.querySelector('.abele-comment-widget-container')
-    report.hasRoom = !!box && !box.classList.contains('abele-comment-widget-container_hidden')
-    // Inside the host that was just asked about, not wherever the first card in the document
-    // happens to be: with no margin there is no host, and Vue leaves the card at its mount
-    // root — a card nobody can see, which is not the same as a card in the margin.
-    const card = box && box.querySelector('.abele-comment-card')
-    report.cardVisible = !!card && card.getBoundingClientRect().width > 0
+    report.cardInMargin = !!document.querySelector('.abele-comment-card')
 
     const id = report.markerIds.split(',')[0]
     report.commentPath = id ? service.commentPath(id) : ''
     report.commentFileExists =
       !!report.commentPath && !!app.vault.getAbstractFileByPath(report.commentPath)
+
+    // The press, which is the whole of how a comment is opened now.
+    marker.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await wait(2000)
+
+    const chat = document.querySelector('.abele-ai-chat')
+    report.chatVisible = shown(chat)
+    report.modalOpen = !!document.querySelector('.modal')
+    report.tabsAfterFirst = chats.getAllSessions().length
+    if (chat) {
+      // Obsidian's own \`setIcon\` is what draws these, and what it leaves behind is an
+      // \`svg.lucide-<name>\` — there is no attribute naming the icon in the running app.
+      const icon = (name) => !!chat.querySelector('.abele-ai-chat__header-actions .lucide-' + name)
+      report.backToNoteVisible = icon('corner-up-left')
+      report.openAsChatVisible = icon('panel-right-open')
+      report.noteButtonVisible = !!chat.querySelector('.abele-chat-input .lucide-sticky-note')
+    }
+
+    // A second comment, on another passage: its marker replaces the tab rather than adding one.
+    const text = await app.vault.read(file)
+    await service.create(file, text.indexOf(second) + second.length, second)
+    await wait(1500)
+    const markers = document.querySelectorAll('.abele-comment-marker[data-comment-ids]')
+    markers[markers.length - 1].dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await wait(2000)
+    report.tabsAfterSecond = chats.getAllSessions().length
   } catch (e) {
     report.error = String((e && e.message) || e)
   }
@@ -216,7 +210,7 @@ const desktopScript = `(async () => {
 })()`
 
 /**
- * Taps the marker's icon and reports what the phone showed. Run after the reload.
+ * The same press in the layout Obsidian gives a phone. Run after the reload.
  *
  * The note is opened again first: `emulateMobile` reloads the app and the active file does not
  * reliably come back with it, so a script that went straight for the marker would be asking
@@ -226,12 +220,8 @@ const mobileScript = `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
   const shown = (el) => !!el && el.getBoundingClientRect().height > 0
   const report = {
-    modalOpen: false, cardVisible: false, threadVisible: false, composerVisible: false,
-    composerFontPx: 0, closeVisible: false, closeInsideWindow: false,
-    modalTop: 0, modalBottom: 0, windowHeight: 0,
-    keyboardModalBottom: 0, keyboardComposerBottom: 0, keyboardThreadHeight: 0,
-    keyboardBandBottom: 0,
-    chatVisible: false, error: '',
+    chatVisible: false, composerVisible: false, noteButtonVisible: false, modalOpen: false,
+    error: '',
   }
 
   try {
@@ -242,64 +232,16 @@ const mobileScript = `(async () => {
 
     const marker = document.querySelector('.abele-comment-marker[data-comment-ids]')
     if (!marker) throw new Error('no marker visible after switching to mobile')
-    marker.click()
-    await wait(2000)
+    marker.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await wait(2500)
 
-    report.windowHeight = window.innerHeight
-
-    const modal = document.querySelector('.modal.abele-modal_tall')
-    report.modalOpen = shown(modal)
-    if (!modal) return report
-
-    // The window this runs in is usually behind the terminal that started the test, and a
-    // hidden page runs no animations: Obsidian slides its phone sheet up from the bottom, so
-    // the box measured there is the box the sheet started from. Cancelling the transition
-    // snaps it to where it was going.
-    modal.style.transition = 'none'
-    void modal.offsetHeight
-    const box = modal.getBoundingClientRect()
-    report.modalTop = Math.round(box.top)
-    report.modalBottom = Math.round(box.bottom)
-
-    const card = modal.querySelector('.abele-comment-card')
-    report.cardVisible = shown(card)
-    report.threadVisible = shown(modal.querySelector('.abele-comment-thread'))
-
-    const field = modal.querySelector('.abele-comment-input__field')
-    report.composerVisible = shown(field)
-    if (field) {
-      report.composerFontPx = Math.round(parseFloat(getComputedStyle(field).fontSize) || 0)
+    const chat = document.querySelector('.abele-ai-chat')
+    report.chatVisible = shown(chat)
+    report.modalOpen = !!document.querySelector('.modal')
+    if (chat) {
+      report.composerVisible = shown(chat.querySelector('.abele-chat-input__textarea'))
+      report.noteButtonVisible = !!chat.querySelector('.abele-chat-input .lucide-sticky-note')
     }
-
-    // Obsidian's own, drawn by the frame rather than by us — which is the point of asking for
-    // their mod-lg instead of writing the geometry again.
-    const close = modal.querySelector('.modal-close-button, .modal-header-button')
-    report.closeVisible = shown(close)
-    if (close) {
-      const c = close.getBoundingClientRect()
-      report.closeInsideWindow = c.top >= 0 && c.bottom <= window.innerHeight
-    }
-
-    report.chatVisible = shown(document.querySelector('.abele-ai-chat'))
-
-    // A keyboard, as the app reports one. There is no way to raise a real one here, and the
-    // variable is what the dialog reads — so this is the arithmetic under test, not the OS.
-    const keyboard = 336
-    report.keyboardBandBottom = window.innerHeight - keyboard
-    document.body.style.setProperty('--keyboard-height', keyboard + 'px')
-    window.visualViewport.dispatchEvent(new Event('resize'))
-    await wait(600)
-
-    report.keyboardModalBottom = Math.round(modal.getBoundingClientRect().bottom)
-    const composer = modal.querySelector('.abele-comment-input')
-    report.keyboardComposerBottom = composer
-      ? Math.round(composer.getBoundingClientRect().bottom)
-      : 0
-    const thread = modal.querySelector('.abele-comment-thread')
-    report.keyboardThreadHeight = thread ? Math.round(thread.getBoundingClientRect().height) : 0
-
-    document.body.style.removeProperty('--keyboard-height')
-    window.visualViewport.dispatchEvent(new Event('resize'))
   } catch (e) {
     report.error = String((e && e.message) || e)
   }
@@ -326,10 +268,9 @@ const setMobile = async (on: boolean): Promise<void> => {
 /**
  * The window's content size, and a way to set it.
  *
- * `emulateMobile` switches Obsidian's layout but not the width of the window, and width is the
- * whole question here: the margin is measured, so a phone-shaped layout in a 1400 px window
- * still has room for a card beside the text and the marker would open one. The size is carried
- * in the test process rather than on `window`, because the toggle reloads the page and takes
+ * `emulateMobile` switches Obsidian's layout but not the width of the window, and a phone-sized
+ * window is what makes the sidebar full screen the way a phone has it. The size is carried in
+ * the test process rather than on `window`, because the toggle reloads the page and takes
  * anything parked there with it.
  */
 const windowSize = (): [number, number] =>
@@ -356,37 +297,29 @@ const available = isObsidianRunning() && hasTestApi()
 beforeAll(async () => {
   if (!available) return
 
-  evalAsync(cleanupScript(false, false, false), 30_000)
+  evalAsync(cleanupScript, 30_000)
 
   let desktop: DesktopReport = {
     via: 'none',
     rawMarkerText: true,
     markerIds: '',
-    hasRoom: false,
-    cardVisible: false,
-    readableLineLength: false,
-    leftCollapsed: false,
-    rightCollapsed: false,
+    cardInMargin: false,
     commentPath: '',
     commentFileExists: false,
+    chatVisible: false,
+    backToNoteVisible: false,
+    openAsChatVisible: false,
+    noteButtonVisible: false,
+    modalOpen: false,
+    tabsAfterFirst: 0,
+    tabsAfterSecond: 0,
     error: '',
   }
   let mobile: MobileReport = {
-    modalOpen: false,
-    cardVisible: false,
-    threadVisible: false,
-    composerVisible: false,
-    composerFontPx: 0,
-    closeVisible: false,
-    closeInsideWindow: false,
-    modalTop: 0,
-    modalBottom: 0,
-    windowHeight: 0,
-    keyboardModalBottom: 0,
-    keyboardComposerBottom: 0,
-    keyboardThreadHeight: 0,
-    keyboardBandBottom: 0,
     chatVisible: false,
+    composerVisible: false,
+    noteButtonVisible: false,
+    modalOpen: false,
     error: '',
   }
   let cleanup: CleanupReport = { cleaned: false, error: '' }
@@ -402,8 +335,6 @@ beforeAll(async () => {
     desktop = evalAsync<DesktopReport>(desktopScript, 60_000)
 
     if (desktop.markerIds) {
-      // A phone's width as well as a phone's layout: the margin is measured, and a wide window
-      // has room for a card whatever Obsidian is calling itself.
       desktopSize = windowSize()
       await setWindowSize(414, 896)
       // Set before the await, not after: `setMobile` can throw partway — the reload is what it
@@ -434,14 +365,7 @@ beforeAll(async () => {
     }
 
     try {
-      cleanup = evalAsync<CleanupReport>(
-        cleanupScript(
-          desktop.readableLineLength,
-          desktop.leftCollapsed,
-          desktop.rightCollapsed
-        ),
-        30_000
-      )
+      cleanup = evalAsync<CleanupReport>(cleanupScript, 30_000)
     } catch (e) {
       cleanup = { cleaned: false, error: String((e as Error)?.message ?? e) }
     }
@@ -449,9 +373,12 @@ beforeAll(async () => {
 
   report = {
     ...desktop,
-    ...mobile,
     error: [desktop.error, mobile.error, cleanup.error].filter(Boolean).join('; '),
     cleaned: cleanup.cleaned,
+    mobileChatVisible: mobile.chatVisible,
+    mobileComposerVisible: mobile.composerVisible,
+    mobileNoteButtonVisible: mobile.noteButtonVisible,
+    mobileModalOpen: mobile.modalOpen,
   }
 }, 120_000)
 
@@ -472,71 +399,59 @@ describe.runIf(available)('commenting on a passage', () => {
     expect(report.markerIds).toMatch(/^[a-z0-9]{6}$/)
   })
 
-  it('hangs the card in the margin the pane was given room for', () => {
-    expect({ hasRoom: report.hasRoom, cardVisible: report.cardVisible }).toEqual({
-      hasRoom: true,
-      cardVisible: true,
-    })
-  })
-
   it('writes the conversation into the comment folder', () => {
     expect(report.commentPath).toMatch(/^AI\/Comments\/[a-z0-9]{6}\.abchat$/)
     expect(report.commentFileExists).toBe(true)
   })
+
+  /**
+   * Nothing is drawn beside the text. The card in the margin was three releases of trouble for
+   * something only a very wide screen ever showed — «контекстный сайдбар виден только на очень
+   * большом экране и только добавляет проблем».
+   */
+  it('draws nothing in the margin, and stands no dialog over the note', () => {
+    expect({ card: report.cardInMargin, modal: report.modalOpen }).toEqual({
+      card: false,
+      modal: false,
+    })
+  })
 })
 
-describe.runIf(available)('the same comment on a phone', () => {
-  it('opens the card in a dialog when the icon is tapped', () => {
-    expect({ modal: report.modalOpen, card: report.cardVisible }).toEqual({
-      modal: true,
-      card: true,
+describe.runIf(available)('pressing the icon', () => {
+  it('opens the comment in the chat sidebar', () => {
+    expect(report.chatVisible).toBe(true)
+  })
+
+  it('offers the way back to the passage and the way up into a full chat', () => {
+    expect({ back: report.backToNoteVisible, up: report.openAsChatVisible }).toEqual({
+      back: true,
+      up: true,
     })
   })
 
-  it('does not borrow the chat sidebar, which is the agent own room', () => {
-    expect(report.chatVisible).toBe(false)
+  it('gives it the note button, which only a comment gets', () => {
+    expect(report.noteButtonVisible).toBe(true)
   })
 
-  it('shows the conversation and a composer a thumb can type into', () => {
-    expect({ thread: report.threadVisible, composer: report.composerVisible }).toEqual({
-      thread: true,
+  /** «табы не плодить, а открывать на месте уже открытого КОНТЕКСТНОГО таба». */
+  it('replaces the comment tab rather than adding one', () => {
+    expect(report.tabsAfterSecond).toBe(report.tabsAfterFirst)
+  })
+})
+
+describe.runIf(available)('the same comment on a phone', () => {
+  it('opens in the chat, which is the whole screen there', () => {
+    expect({ chat: report.mobileChatVisible, composer: report.mobileComposerVisible }).toEqual({
+      chat: true,
       composer: true,
     })
   })
 
-  /** Below 16 px iOS zooms the note into the focused field, and it has to be pinched back. */
-  it('sets the field at a size iOS will not zoom into', () => {
-    expect(report.composerFontPx).toBeGreaterThanOrEqual(16)
-  })
-
-  /**
-   * The regression this release is about: 1.17.0 wrote the sheet's geometry itself and put
-   * Obsidian's own × behind the status bar. The dialog is theirs now, and the × comes with it.
-   */
-  it('keeps Obsidian own close button on screen', () => {
-    expect({ visible: report.closeVisible, inside: report.closeInsideWindow }).toEqual({
-      visible: true,
-      inside: true,
+  it('keeps the note button, and stands no dialog over anything', () => {
+    expect({ note: report.mobileNoteButtonVisible, modal: report.mobileModalOpen }).toEqual({
+      note: true,
+      modal: false,
     })
-  })
-
-  it('stands inside the window, top and bottom', () => {
-    expect(report.modalTop).toBeGreaterThanOrEqual(0)
-    expect(report.modalBottom).toBeLessThanOrEqual(report.windowHeight)
-  })
-
-  /**
-   * The regression 1.17.2 shipped: the sheet was shrunk by the keyboard twice over and came
-   * out one header tall, white, with the thread and the composer clipped away.
-   */
-  it('gives the keyboard its room and keeps the composer above it', () => {
-    expect(report.keyboardModalBottom).toBeLessThanOrEqual(report.keyboardBandBottom)
-    expect(report.keyboardComposerBottom).toBeLessThanOrEqual(report.keyboardBandBottom)
-    expect(report.keyboardComposerBottom).toBeGreaterThan(0)
-  })
-
-  it('leaves the conversation a place to be read while somebody types', () => {
-    expect(report.keyboardThreadHeight).toBeGreaterThan(100)
   })
 })
 

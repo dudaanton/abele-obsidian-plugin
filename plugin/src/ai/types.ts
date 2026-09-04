@@ -449,8 +449,6 @@ export interface ChatMetadata {
   kind?: 'chat' | 'comment'
   /** Set for a comment and for a chat expanded from one, so the marker still finds the file. */
   anchor?: CommentAnchor
-  /** Message ids kept in the note's margin, in the order they were pinned. */
-  pinned?: string[]
   /** Notes this chat wrote to, deduped by path, in the order they were first written. */
   touched?: TouchedNote[]
   /** One sentence on what this chat did, by the auxiliary model. Regenerated after a write. */

@@ -39,10 +39,6 @@ import type { ScopeEntry } from '@/ai/ScopeResolver'
 import { ChatService } from '@/ai/ChatService'
 import type { PermissionMode } from '@/ai/types'
 
-const emit = defineEmits<{
-  (e: 'close'): void
-}>()
-
 const session = computed(() => ChatService.getInstance().activeSession.value)
 const scope = computed(() => session.value?.scopeResolver)
 const permissionMode = computed(() => session.value?.permissionMode.value ?? 'confirm-all')
