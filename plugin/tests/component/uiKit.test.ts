@@ -18,6 +18,9 @@ import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import Button from '@/components/obsidian/Button.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import Input from '@/components/obsidian/Input.vue'
+import Table from '@/components/obsidian/Table.vue'
+import Image from '@/components/obsidian/Image.vue'
+import { useVault } from '../helpers/testEnv'
 
 const TABS = [
   { id: 'general', label: 'General' },
@@ -410,5 +413,83 @@ describe('Tabs whose labels cannot carry the meaning', () => {
 
     expect(view.findComponent(Icon).exists()).toBe(false)
     expect(view.find('.abele-tabs__tab').attributes('aria-label')).toBeUndefined()
+  })
+})
+
+describe('Table', () => {
+  const columns = [
+    { key: 'name', label: 'Name' },
+    { key: 'size', label: 'Size' },
+  ]
+  const rows = [
+    { name: 'a', size: 1 },
+    { name: 'b', size: 2 },
+  ]
+
+  it('renders a header from the columns and a cell per column per row', () => {
+    const view = mount(Table, { props: { columns, rows } })
+
+    expect(view.findAll('.abele-table__head').map((h) => h.text())).toEqual(['Name', 'Size'])
+    expect(view.findAll('.abele-table__cell').map((c) => c.text())).toEqual(['a', '1', 'b', '2'])
+  })
+
+  it('lets a cell be rendered by the caller', () => {
+    const view = mount(Table, {
+      props: { columns, rows },
+      slots: {
+        cell: ({ value, column }: { value: unknown; column: { key: string } }) =>
+          column.key === 'size' ? `${value} KB` : String(value),
+      },
+    })
+
+    expect(view.findAll('.abele-table__cell').map((c) => c.text())).toEqual([
+      'a',
+      '1 KB',
+      'b',
+      '2 KB',
+    ])
+  })
+
+  it('reports the row a person clicked when it is clickable', async () => {
+    const view = mount(Table, { props: { columns, rows, clickable: true } })
+
+    await view.findAll('.abele-table__row')[1].trigger('click')
+
+    expect(view.emitted('rowClick')?.[0]).toEqual([rows[1], 1])
+
+    const still = mount(Table, { props: { columns, rows } })
+
+    await still.findAll('.abele-table__row')[0].trigger('click')
+
+    expect(still.emitted('rowClick')).toBeUndefined()
+  })
+})
+
+describe('Image', () => {
+  it('passes a URL through and resolves a vault path', () => {
+    const app = useVault([{ path: 'Media/a.png', content: '' }])
+    ;(
+      app.vault as unknown as { getResourcePath: (f: { path: string }) => string }
+    ).getResourcePath = (f) => `app://vault/${f.path}`
+
+    const url = mount(Image, { props: { src: 'https://x/y.png', alt: 'y' } })
+    expect(url.find('img').attributes('src')).toBe('https://x/y.png')
+
+    const local = mount(Image, { props: { src: 'Media/a.png' } })
+    expect(local.find('img').attributes('src')).toBe('app://vault/Media/a.png')
+
+    const missing = mount(Image, { props: { src: 'Media/none.png', alt: 'gone' } })
+    expect(missing.classes()).toContain('abele-image_missing')
+    expect(missing.attributes('alt')).toBe('gone')
+  })
+
+  it('carries its fit as a modifier and emits click', async () => {
+    const view = mount(Image, { props: { src: 'https://x/y.png', fit: 'cover' } })
+
+    expect(view.classes()).toContain('abele-image_fit-cover')
+
+    await view.trigger('click')
+
+    expect(view.emitted('click')).toHaveLength(1)
   })
 })

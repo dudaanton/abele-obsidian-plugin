@@ -23,6 +23,8 @@ not invent its own.
 | `Modal` | A dialog. `size="wide"` when a form needs more than the default column. |
 | `QrCode` | A QR code, drawn as SVG from whatever text it is given. |
 | `ConfirmModal` | The question asked before something is destroyed. |
+| `Table` | Columns and rows, a cell slot for anything richer than text. The one element that scrolls sideways, within itself. |
+| `Image` | A picture by vault path or URL. |
 
 If a screen needs something the kit does not have, the change belongs in the kit — with a
 test — not in the screen.
