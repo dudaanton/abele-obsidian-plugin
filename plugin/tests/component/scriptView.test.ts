@@ -328,6 +328,54 @@ describe('nodes', () => {
     expect(w.find('.abele-script-view__errors').exists()).toBe(false)
     expect(w.findComponent(KitButton).exists()).toBe(true)
   })
+
+  it('shows a render error of a top-level node in the strip', async () => {
+    const v = make()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // `ScriptNode` catches for the nodes below it, not for its own template: a top-level
+    // node's throw goes up to the view, which is what this exercises.
+    const c = new Card({ title: 'c' })
+    ;(c as { badges: unknown }).badges = null
+    v.body = [c]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+    await flushPromises()
+    expect(w.find('.abele-script-view__error').text()).toContain('length')
+  })
+
+  it('a card whose title a script unset still satisfies the kit', () => {
+    const v = make()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const c = new Card({ title: 'c', description: 'd' })
+    ;(c as { title?: string }).title = undefined
+    v.body = [c]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+    expect(w.findComponent(KitCard).props('title')).toBe('')
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('keeps the latest read of a note when two modify events settle out of order', async () => {
+    const v = make()
+    v.body = [new Markdown({ file: 'Notes/a.md' })]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+    await flushPromises()
+    const file = app.vault.getAbstractFileByPath('Notes/a.md') as TFile
+    let releaseFirst!: (text: string) => void
+    const reads = [
+      new Promise<string>((resolve) => {
+        releaseFirst = resolve
+      }),
+      Promise.resolve('fresh'),
+    ]
+    vi.spyOn(app.vault, 'cachedRead').mockImplementation(() => reads.shift() ?? Promise.resolve(''))
+    app.emit('vault', 'modify', file)
+    app.emit('vault', 'modify', file)
+    await flushPromises()
+    expect(w.findComponent(KitMarkdown).props('text')).toBe('fresh')
+    releaseFirst('stale')
+    await flushPromises()
+    expect(w.findComponent(KitMarkdown).props('text')).toBe('fresh')
+  })
 })
 
 describe('the script own CSS', () => {

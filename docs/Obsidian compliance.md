@@ -97,7 +97,7 @@ not the underlying rules, but the act of silencing them.
 
 **So there are no `eslint-disable` comments for Obsidian's rules anywhere in `src/`.** Where an
 exception is genuinely needed it lives in `eslint.config.mjs`, which is this project's to set,
-with the reason recorded there. The review still sees and reports those two findings — as
+with the reason recorded there. The review still sees and reports those findings — as
 ordinary findings rather than as suppressions.
 
 ## Three findings that stand

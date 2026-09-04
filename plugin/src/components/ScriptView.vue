@@ -51,7 +51,7 @@
  * in a window of its own — and every selector in it is prefixed with this view's root, so
  * nothing the script writes reaches past its tab.
  */
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { onErrorCaptured, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { ScriptViewModel } from '@/views/ScriptView'
 import { scopeCss } from '@/scripting/view/scopeCss'
 import EmptyState from './obsidian/EmptyState.vue'
@@ -63,6 +63,12 @@ const props = defineProps<{ model: ScriptViewModel }>()
 
 const root = ref<HTMLElement>()
 let styleEl: HTMLStyleElement | null = null
+
+// A top-level node's own template can throw; `ScriptNode` only catches for its descendants.
+onErrorCaptured((err) => {
+  props.model.view?.report(err)
+  return false
+})
 
 onMounted(() => {
   const el = root.value

@@ -168,7 +168,7 @@
 
     <Card
       v-else-if="n.type === 'card'"
-      :title="n.title"
+      :title="n.title ?? ''"
       :subtitle="n.subtitle"
       :description="n.description"
       :meta="n.meta"
@@ -186,8 +186,7 @@
       <ScriptNode v-for="child in n.children" :key="child.key" :node="child" :view="view" />
     </Card>
 
-    <!-- Task 7 puts `ScriptHtml` here; until then raw markup is named and not drawn. -->
-    <EmptyState v-else-if="n.type === 'html'" text="Html" />
+    <ScriptHtml v-else-if="n.type === 'html'" :node="n" :view="view" />
   </template>
 </template>
 
@@ -223,6 +222,7 @@ import Dropdown from './obsidian/Dropdown.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Search from './obsidian/Search.vue'
 import Card from './obsidian/Card.vue'
+import ScriptHtml from './ScriptHtml.vue'
 
 const props = defineProps<{ node: ViewNode; view: View }>()
 
@@ -283,12 +283,15 @@ const toggle = () => {
 // ── markdown from a file ──
 const fileText = ref('')
 let modifyRef: EventRef | null = null
+let readGen = 0
 
+/** Two `modify` events close together can resolve out of order; only the latest read lands. */
 async function readNote(path: string) {
+  const gen = ++readGen
   const { app } = GlobalStore.getInstance()
   const file = app.vault.getAbstractFileByPath(path)
-  fileText.value =
-    file instanceof TFile ? await app.vault.cachedRead(file) : `File not found: ${path}`
+  const text = file instanceof TFile ? await app.vault.cachedRead(file) : `File not found: ${path}`
+  if (gen === readGen) fileText.value = text
 }
 
 if (n.type === 'markdown') {

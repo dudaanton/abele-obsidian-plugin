@@ -86,6 +86,17 @@ export function debounce<T extends (...args: never[]) => unknown>(fn: T): T {
   return fn
 }
 
+/**
+ * Obsidian sanitises with DOMPurify; the mock parses and trusts, which is what tests need.
+ * Parsed rather than assigned to `innerHTML`, which the lint forbids even here.
+ */
+export function sanitizeHTMLToDom(html: string): DocumentFragment {
+  const parsed = new DOMParser().parseFromString(html, 'text/html')
+  const fragment = document.createDocumentFragment()
+  fragment.append(...Array.from(parsed.body.childNodes))
+  return fragment
+}
+
 export function parseYaml(raw: string): unknown {
   return JSON.parse(raw)
 }
