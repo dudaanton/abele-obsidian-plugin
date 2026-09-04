@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-comment-input" :class="{ 'abele-comment-input_sheet': host === 'sheet' }">
+  <div class="abele-comment-input">
     <!-- Above the field, as in the sidebar: what was dictated lands in what was already typed. -->
     <VoiceRecorder
       v-if="voiceOpen"
@@ -74,40 +74,29 @@ import VoiceRecorder from './VoiceRecorder.vue'
 /** Past this the field scrolls; a card that grew with its thread would walk over its neighbour. */
 const MAX_ROWS = 5
 
-const props = withDefaults(
-  defineProps<{
-    /** The session is streaming or running a tool, so the button stops it instead of sending. */
-    busy: boolean
-    /**
-     * The turn has stopped to ask something — an approval, or a question — and is holding
-     * half of itself open.
-     *
-     * Not the same as `busy`, and the difference matters to one button: a note put in now
-     * lands between a `tool_use` and its `tool_result`, and the next question is refused by
-     * the model over it. Sending is unaffected — a question typed now waits its turn.
-     */
-    pending?: boolean
-    /** The comment file has not been read yet: there is nothing to send to. */
-    disabled?: boolean
-    /**
-     * Take the caret on mount.
-     *
-     * Only for a comment that was just made, which is the one case where the reader is already
-     * typing. Expanding a comment to read it must leave the caret in the note, or a press on a
-     * marker throws the person out of the passage they were reading.
-     */
-    focus?: boolean
-    /**
-     * Where the card holding this composer is being shown.
-     *
-     * A margin composer is a 300 px sidenote and is set small to fit one. A sheet is the whole
-     * screen of a phone, and a field set below 16 px there is a field iOS zooms the note into
-     * the moment it takes the caret — so the host, not a media query, is what sizes it.
-     */
-    host?: 'margin' | 'sheet'
-  }>(),
-  { host: 'margin' }
-)
+const props = defineProps<{
+  /** The session is streaming or running a tool, so the button stops it instead of sending. */
+  busy: boolean
+  /**
+   * The turn has stopped to ask something — an approval, or a question — and is holding
+   * half of itself open.
+   *
+   * Not the same as `busy`, and the difference matters to one button: a note put in now
+   * lands between a `tool_use` and its `tool_result`, and the next question is refused by
+   * the model over it. Sending is unaffected — a question typed now waits its turn.
+   */
+  pending?: boolean
+  /** The comment file has not been read yet: there is nothing to send to. */
+  disabled?: boolean
+  /**
+   * Take the caret on mount.
+   *
+   * Only for a comment that was just made, which is the one case where the reader is already
+   * typing. Expanding a comment to read it must leave the caret in the note, or a press on a
+   * marker throws the person out of the passage they were reading.
+   */
+  focus?: boolean
+}>()
 
 const emit = defineEmits<{
   (e: 'send', text: string): void
@@ -302,30 +291,27 @@ onMounted(() => {
 }
 
 /**
- * A phone, and the sheet that is a phone's only host for a card.
+ * A card in the margin of a tablet, which is where a thumb still meets this composer.
  *
  * Three sizes, and each of them was reported as wrong from an iPhone. `--font-ui-medium` is
  * 16 px, which is the size below which iOS zooms the page into a focused field — the note
  * jumped and had to be pinched back every time somebody typed a question. `--input-height` is
  * what a native Obsidian field stands at, so the composer is a field rather than a line. And
- * `--size-4-9` is 36 px, the smallest square a thumb hits reliably; the margin's button is a
+ * `--size-4-9` is 36 px, the smallest square a thumb hits reliably; the desktop's button is a
  * mouse target and stays the size it was.
  *
- * `body.is-mobile` as well as the host, because a phone in landscape can have room for a
- * margin card, and a field there is still being typed into with a thumb.
+ * A phone has no margin at all and opens the comment in the sidebar instead, so what this
+ * covers is the tablet-sized case Obsidian still calls mobile — and a phone in landscape,
+ * which can be wide enough for a sidenote.
  */
-.abele-comment-input_sheet .abele-comment-input__field,
 body.is-mobile .abele-comment-input__field {
   font-size: var(--font-ui-medium);
   min-height: var(--input-height);
   padding: var(--size-4-1) var(--size-4-2);
 }
 
-.abele-comment-input_sheet .abele-comment-input__mic,
 body.is-mobile .abele-comment-input__mic,
-.abele-comment-input_sheet .abele-comment-input__note,
 body.is-mobile .abele-comment-input__note,
-.abele-comment-input_sheet .abele-comment-input__send,
 body.is-mobile .abele-comment-input__send {
   min-width: var(--size-4-9);
   min-height: var(--size-4-9);

@@ -2320,6 +2320,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   destroy(): void {
+    // Twice is ordinary now: a comment being read in the sidebar is in `CommentService`'s map
+    // and in `ChatService`'s, and at unload both dispose of what they hold. Everything below
+    // is idempotent on its own, but `abort()` on a session already torn down is a second
+    // abort signal raised over listeners that have gone.
+    if (this.destroyed) return
     this.destroyed = true
     if (this.persistTimer !== null) {
       window.clearTimeout(this.persistTimer)

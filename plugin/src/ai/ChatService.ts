@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { App, TFile } from 'obsidian'
+import { App, Notice, TFile } from 'obsidian'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -199,20 +199,28 @@ export class ChatService {
   /**
    * Takes a session somebody else built and shows it as a tab.
    *
-   * The tab limit is not applied: this is only ever reached by an explicit act — expanding a
-   * comment — and refusing it would leave the person looking at a card that says it opened
-   * something and a sidebar that did not.
+   * The limit is applied here as it is anywhere else. It used to be waived, on the reasoning
+   * that this is only ever reached by an explicit act — but a phone hides the tab strip, so
+   * the tabs an explicit act piles up are tabs nobody can see, reach or close. Refused out
+   * loud instead: the caller has a card or a marker in front of the person, and a silent
+   * no-op there looks exactly like something that opened out of sight.
    */
-  adoptSession(session: ChatSession): void {
+  adoptSession(session: ChatSession): boolean {
     if (this.sessions.has(session.id)) {
       this.switchTab(session.id)
-      return
+      return true
+    }
+
+    if (this.sessions.size >= MAX_TABS) {
+      new Notice(`Close one of the ${MAX_TABS} open tabs first`)
+      return false
     }
 
     this.sessions.set(session.id, session)
     this.tabOrder.value = [...this.tabOrder.value, session.id]
     this.activeTabId.value = session.id
     this.saveTabs()
+    return true
   }
 
   /** Puts the chat sidebar in front of the person, opening it in the right split if needed. */
@@ -236,23 +244,19 @@ export class ChatService {
     const session = this.sessions.get(tabId)
     if (!session) return
 
-    // Save before closing
-    await session.save()
-    session.destroy()
-    this.sessions.delete(tabId)
-    this.tabOrder.value = this.tabOrder.value.filter((id) => id !== tabId)
-
-    if (this.sessions.size === 0) {
-      // Always keep at least one tab
-      this.createTab()
+    // A comment being read here is not this tab's to end: it belongs to the margin of a note
+    // and goes on writing the same file from there. The × hands it back instead.
+    const comments = CommentService.getInstance()
+    const commentId = session.commentId
+    if (session.kind === 'comment' && commentId && comments.isShown(commentId)) {
+      await comments.hideFromSidebar(commentId)
       return
     }
 
-    // If we closed the active tab, switch to adjacent
-    if (this.activeTabId.value === tabId) {
-      this.activeTabId.value = this.tabOrder.value[this.tabOrder.value.length - 1]
-    }
-    this.saveTabs()
+    // Save before closing
+    await session.save()
+    session.destroy()
+    this.dropTab(tabId)
   }
 
   /**
@@ -268,11 +272,21 @@ export class ChatService {
     if (!session) return
 
     await session.save()
-    this.sessions.delete(tabId)
+    this.dropTab(tabId)
+  }
+
+  /**
+   * Takes a tab out of the bar, saving nothing and destroying nothing.
+   *
+   * The half of closing and releasing that is only about the bar itself. Its own method
+   * because a comment whose file has just been deleted needs exactly this and neither of the
+   * others: there is nothing left to save it into, and the session is destroyed elsewhere.
+   */
+  dropTab(tabId: string): void {
+    if (!this.sessions.delete(tabId)) return
     this.tabOrder.value = this.tabOrder.value.filter((id) => id !== tabId)
 
-    // Always keep at least one tab, as closing does: an empty tab bar is a sidebar showing
-    // nothing at all, and the person has just been sent back to the note.
+    // Always keep at least one tab: an empty tab bar is a sidebar showing nothing at all.
     if (this.sessions.size === 0) {
       this.createTab()
       return

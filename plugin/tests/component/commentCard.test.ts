@@ -114,9 +114,9 @@ function seed(id: string, overrides: Record<string, unknown> = {}, messages: Cha
  * `ObsidianModal` is stubbed for the same reason `modelEditModal.test.ts` stubs it: the real
  * one opens an Obsidian modal and appends it to the document, which outlives the test.
  */
-async function mountCard(ids: string[], host?: 'margin' | 'sheet') {
+async function mountCard(ids: string[]) {
   const view = mount(CommentCard, {
-    props: { entry: entryFor(ids), ...(host ? { host } : {}) },
+    props: { entry: entryFor(ids) },
     attachTo: document.body,
     global: {
       stubs: { ObsidianModal: { template: '<div><slot /></div>' }, Dropdown: true },
@@ -205,14 +205,6 @@ describe('an opened card', () => {
     open.value = 'k7d2ph'
   })
 
-  it('tells the composer which host it is in, so a sheet gets a field a thumb can hit', async () => {
-    seed('k7d2ph')
-
-    const view = await mountCard(['k7d2ph'], 'sheet')
-
-    expect(view.findComponent(CommentInput).props('host')).toBe('sheet')
-  })
-
   it('carries the thread, the composer and the actions of both', async () => {
     seed('k7d2ph')
 
@@ -269,8 +261,7 @@ describe('an opened card', () => {
     await nextTick()
 
     expect(expand).toHaveBeenCalledWith('k7d2ph')
-    // The conversation is a sidebar tab now. A host that covers the sidebar — the sheet —
-    // has to get out of the way, and only the card knows the promotion happened.
+    // The conversation is a sidebar tab now, and only the card knows the promotion happened.
     expect(view.emitted('promoted')).toHaveLength(1)
   })
 
@@ -407,9 +398,12 @@ describe('a comment that was promoted into a chat', () => {
   })
 
   it('reads back the first exchange and sends the reader to the sidebar', async () => {
-    const switchTab = vi.fn()
+    // `adoptSession`, not `switchTab`: a chat the sidebar is not holding — a promotion whose
+    // tab was refused because the bar was full — has no tab to switch to, and `switchTab`
+    // does nothing at all for one. Adopting says "show this", which is what was pressed.
+    const adoptSession = vi.fn().mockReturnValue(true)
     const revealSidebar = vi.fn().mockResolvedValue(undefined)
-    vi.spyOn(ChatService, 'getInstance').mockReturnValue({ switchTab, revealSidebar } as never)
+    vi.spyOn(ChatService, 'getInstance').mockReturnValue({ adoptSession, revealSidebar } as never)
 
     seed('k7d2ph', { kind: 'chat' }, [
       message({ id: 'u1', role: 'user', content: 'What does this mean?' }),
@@ -427,7 +421,7 @@ describe('a comment that was promoted into a chat', () => {
 
     await button.vm.$emit('click')
     await nextTick()
-    expect(switchTab).toHaveBeenCalledWith('session-1')
+    expect(adoptSession).toHaveBeenCalledWith(expect.objectContaining({ id: 'session-1' }))
     expect(revealSidebar).toHaveBeenCalled()
     // Same again: what was asked for is on the sidebar, behind whatever this card is in.
     expect(view.emitted('promoted')).toHaveLength(1)
@@ -448,7 +442,7 @@ describe('a comment that was promoted into a chat', () => {
     await nextTick()
 
     expect(collapse).toHaveBeenCalledWith('k7d2ph')
-    // Nothing has been handed to the sidebar, so a sheet has no reason to get out of the way.
+    // Nothing has been handed to the sidebar, so nothing has to get out of its way.
     expect(view.emitted('promoted')).toBeUndefined()
   })
 
@@ -569,17 +563,6 @@ describe('a comment with no file behind it', () => {
 
     expect(view.text()).toContain("This comment's file is missing")
     expect(view.text()).not.toContain('Reading this comment')
-  })
-})
-
-describe('the same card in a sheet', () => {
-  it('leaves the closing to the dialog rather than offering a second way out', async () => {
-    open.value = 'k7d2ph'
-    seed('k7d2ph')
-
-    const view = await mountCard(['k7d2ph'], 'sheet')
-
-    expect(view.findAllComponents(Icon).map((i) => i.props('icon'))).not.toContain('chevron-up')
   })
 })
 
@@ -761,7 +744,7 @@ describe('a card over a conversation that is mid-turn', () => {
     await nextTick()
 
     expect(Notice.shown).toContain('Finish or dismiss the pending step first')
-    // Nothing has been handed to the sidebar, so a sheet must not go anywhere.
+    // Nothing has been handed to the sidebar, so nothing has to get out of its way.
     expect(view.emitted('promoted')).toBeUndefined()
   })
 

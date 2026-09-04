@@ -8,6 +8,7 @@ import { nextTick } from 'vue'
 import { Notice, TFile } from 'obsidian'
 import AiChat from '@/components/AiChat.vue'
 import AiAgentSelector from '@/components/AiAgentSelector.vue'
+import AiChatInput from '@/components/AiChatInput.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import AgentOverrideNotice from '@/components/AgentOverrideNotice.vue'
 import { ChatService } from '@/ai/ChatService'
@@ -247,17 +248,11 @@ describe('an expanded comment in the sidebar', () => {
     const view = mount(AiChat, { attachTo: document.body, global: { stubs: { Dropdown: true } } })
     const icon = view
       .findAllComponents(Icon)
-      .find((candidate) => candidate.props('icon') === 'panel-right-close')
+      .find((candidate) => candidate.props('icon') === 'corner-up-left')
     return { view, icon }
   }
 
   it('is not offered in a chat that was never a comment', () => {
-    expect(backToNote().icon).toBeUndefined()
-  })
-
-  it('is not offered in a comment still being read in the sidebar', () => {
-    anchor('comment')
-
     expect(backToNote().icon).toBeUndefined()
   })
 
@@ -326,5 +321,305 @@ describe('an expanded comment in the sidebar', () => {
     expect(Notice.shown).toEqual(['Already moving this comment'])
     expect(collapse).not.toHaveBeenCalled()
     expect(openLinkText).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * A comment being read in the sidebar, which is what a phone and a narrow split get instead of
+ * a card in the margin.
+ *
+ * It is still a comment — same file, same kind, same agent — so the header offers the two moves
+ * that belong to one and takes away the two that would quietly destroy it: "New chat" resets
+ * the session the marker points at, and "History" loads another chat file into it.
+ */
+describe('a comment shown in the sidebar', () => {
+  const showActions = { hideFromSidebar: vi.fn(), expand: vi.fn(), collapse: vi.fn() }
+  const openLinkText = vi.fn().mockResolvedValue(undefined)
+
+  function asComment(): void {
+    const file = new TFile()
+    file.path = 'AI/Comments/k7d2ph.abchat'
+    file.basename = 'k7d2ph'
+    session.currentChatFile.value = file
+    session.anchor.value = { note: 'Notes/A.md' }
+    session.kind = 'comment'
+    session.messages.value = [
+      { id: 'u1', role: 'user', content: 'Why is this paragraph here?', timestamp: 0 },
+    ] as never
+  }
+
+  beforeEach(() => {
+    showActions.hideFromSidebar.mockReset().mockResolvedValue(undefined)
+    showActions.expand.mockReset().mockResolvedValue(true)
+    showActions.collapse.mockReset().mockResolvedValue(true)
+    openLinkText.mockClear()
+    Notice.shown.length = 0
+    ;(GlobalStore.getInstance().app as unknown as { workspace: unknown }).workspace = {
+      openLinkText,
+    }
+    vi.spyOn(ChatService.getInstance(), 'ensureInitialized').mockImplementation(() => {})
+    vi.spyOn(CommentService, 'getInstance').mockReturnValue(showActions as never)
+  })
+
+  const header = () => {
+    const view = mount(AiChat, { attachTo: document.body, global: { stubs: { Dropdown: true } } })
+    return {
+      view,
+      // Scoped to the header: the tab strip carries a `plus` of its own, for a new tab.
+      icon: (name: string) =>
+        view
+          .findAllComponents(Icon)
+          .find(
+            (candidate) =>
+              candidate.props('icon') === name &&
+              !!candidate.element.closest('.abele-ai-chat__header-actions')
+          ),
+    }
+  }
+
+  it('offers the way back to the note and the way up into a full chat', () => {
+    asComment()
+
+    const { icon } = header()
+
+    expect(icon('corner-up-left')).toBeDefined()
+    expect(icon('panel-right-open')).toBeDefined()
+  })
+
+  it('offers neither in an ordinary chat', () => {
+    const { icon } = header()
+
+    expect(icon('corner-up-left')).toBeUndefined()
+    expect(icon('panel-right-open')).toBeUndefined()
+  })
+
+  it('takes away the two actions that would destroy the comment', () => {
+    asComment()
+
+    const { icon } = header()
+
+    expect(icon('plus')).toBeUndefined()
+    expect(icon('history')).toBeUndefined()
+  })
+
+  it('keeps them for an ordinary chat', () => {
+    const { icon } = header()
+
+    expect(icon('plus')).toBeDefined()
+    expect(icon('history')).toBeDefined()
+  })
+
+  /**
+   * Back to the note takes the tab down without ending the conversation: the session goes on
+   * writing the same file from the margin, which is where the reader has just been sent.
+   */
+  it('hands the session back and opens the note it is anchored in', async () => {
+    asComment()
+
+    const { icon } = header()
+    await icon('corner-up-left')!.vm.$emit('click')
+    await nextTick()
+
+    expect(showActions.hideFromSidebar).toHaveBeenCalledWith('k7d2ph')
+    expect(showActions.collapse).not.toHaveBeenCalled()
+    expect(openLinkText).toHaveBeenCalledWith('Notes/A.md', '', false)
+  })
+
+  it('promotes it into a full chat when that is what was pressed', async () => {
+    asComment()
+
+    const { icon } = header()
+    await icon('panel-right-open')!.vm.$emit('click')
+    await nextTick()
+
+    expect(showActions.expand).toHaveBeenCalledWith('k7d2ph')
+  })
+
+  it('says why a promotion was refused rather than failing silently', async () => {
+    asComment()
+    showActions.expand.mockResolvedValue(false)
+
+    const { icon } = header()
+    await icon('panel-right-open')!.vm.$emit('click')
+    await nextTick()
+
+    expect(Notice.shown).toContain('Finish or dismiss the pending step first')
+  })
+
+  /**
+   * Only the promotion is dark mid-turn. It rewrites what the file says the conversation is and
+   * rebinds its agent, neither of which may happen between a `tool_use` and its result — while
+   * going back to the note only gives the tab back, and somebody watching an answer arrive on a
+   * phone is exactly who wants to step back to the passage while it does.
+   */
+  it('darkens the promotion mid-turn and leaves the way back lit', () => {
+    asComment()
+    session.pendingToolCalls.value = [{ id: 'tc1', name: 'read_note', input: {} }] as never
+
+    const { icon } = header()
+
+    expect(icon('panel-right-open')!.props('disabled')).toBe(true)
+    expect(icon('corner-up-left')!.props('disabled')).toBe(false)
+  })
+
+  it('hands a mid-turn comment back rather than refusing it', async () => {
+    asComment()
+    session.isStreaming.value = true
+
+    const { icon } = header()
+    await icon('corner-up-left')!.vm.$emit('click')
+    await nextTick()
+
+    expect(showActions.hideFromSidebar).toHaveBeenCalledWith('k7d2ph')
+    expect(openLinkText).toHaveBeenCalledWith('Notes/A.md', '', false)
+  })
+
+  /** A move in flight still stops it: the maps it would read are halfway between two owners. */
+  it('is dark while the same move is already running', () => {
+    asComment()
+    session.moving.value = true
+
+    const { icon } = header()
+
+    expect(icon('corner-up-left')!.props('disabled')).toBe(true)
+    expect(icon('corner-up-left')!.props('tooltip')).toBe('This comment is being moved')
+  })
+
+  /**
+   * The two commands the buttons above were taken away for are still typeable, and both detach
+   * the session from the file the marker points at: `/new` empties it, `/load` swaps it for
+   * another chat. The composer stops offering them and the chat refuses them, in that order.
+   */
+  it('refuses the two commands that would detach it from its note', async () => {
+    asComment()
+    const { view } = header()
+    const reset = vi.spyOn(session, 'reset').mockResolvedValue(undefined)
+
+    await view.findComponent(AiChatInput).vm.$emit('command', '/new')
+    await nextTick()
+
+    expect(reset).not.toHaveBeenCalled()
+    expect(Notice.shown).toContain('A comment leaves through its note')
+  })
+
+  it('refuses the history the same way, rather than loading over the comment', async () => {
+    asComment()
+    const { view } = header()
+
+    await view.findComponent(AiChatInput).vm.$emit('command', '/load')
+    await nextTick()
+
+    expect(view.find('.abele-chat-history').exists()).toBe(false)
+    expect(Notice.shown).toContain('A comment leaves through its note')
+  })
+
+  it('still takes the commands that mean something to a comment', async () => {
+    asComment()
+    const { view } = header()
+    const compact = vi.spyOn(session, 'compact').mockResolvedValue(undefined)
+
+    await view.findComponent(AiChatInput).vm.$emit('command', '/compact')
+    await nextTick()
+
+    expect(compact).toHaveBeenCalled()
+  })
+
+  it('keeps both for an ordinary chat', async () => {
+    const { view } = header()
+    const reset = vi.spyOn(session, 'reset').mockResolvedValue(undefined)
+
+    await view.findComponent(AiChatInput).vm.$emit('command', '/new')
+    await nextTick()
+
+    expect(reset).toHaveBeenCalled()
+    expect(Notice.shown).not.toContain('A comment leaves through its note')
+  })
+
+  it('tells the composer which commands it will answer', () => {
+    asComment()
+    const { view } = header()
+
+    const offered = view.findComponent(AiChatInput).props('commands') as string[]
+    expect(offered).not.toContain('/new')
+    expect(offered).not.toContain('/load')
+    expect(offered).toContain('/compact')
+  })
+
+  it('offers the composer all of them in an ordinary chat', () => {
+    const { view } = header()
+
+    const offered = view.findComponent(AiChatInput).props('commands') as string[]
+    expect(offered).toEqual(['/compact', '/new', '/load', '/scope', '/prompt'])
+  })
+
+  /**
+   * A comment has no title of its own — title generation is gated on `kind === 'chat'` — so the
+   * strip would call every one of them "New chat". The question that started it says which.
+   */
+  it('names its tab after the question that started it', () => {
+    asComment()
+    // The strip reads the service's own tabs, which is where a shown comment is registered.
+    ChatService.getInstance().tabOrder.value = [session.id]
+    vi.spyOn(ChatService.getInstance(), 'getSession').mockReturnValue(session)
+    const { view } = header()
+
+    const labels = (
+      view.findComponent({ name: 'AiChatTabs' }).props('tabs') as Array<{ label: string }>
+    ).map((tab) => tab.label)
+    expect(labels).toContain('Why is this paragraph here?')
+  })
+
+  /** The composer is where a note is written, so the button belongs to it, not to the header. */
+  it('lets the composer keep a note, which an ordinary chat may not', () => {
+    asComment()
+    const { view } = header()
+
+    expect(view.findComponent(AiChatInput).props('canNote')).toBe(true)
+  })
+
+  it('keeps the note button out of an ordinary chat', () => {
+    const { view } = header()
+
+    expect(view.findComponent(AiChatInput).props('canNote')).toBe(false)
+  })
+
+  it('blocks the note button while a turn is open', () => {
+    asComment()
+    session.pendingToolCalls.value = [{ id: 'tc1', name: 'read_note', input: {} }] as never
+
+    const { view } = header()
+
+    expect(view.findComponent(AiChatInput).props('noteBlocked')).toBe(true)
+  })
+})
+
+/**
+ * The agent a comment runs on is usually a utility agent — `commentAgentId` names one in every
+ * vault that took the default — and utility agents are deliberately absent from this list. A
+ * `select` handed a value none of its options carry shows the first one instead, so the picker
+ * would sit there naming an agent this conversation has nothing to do with.
+ */
+describe('the agent picker over a chat on an agent it does not list', () => {
+  it('adds the session own agent rather than misreporting it', () => {
+    const titler = AgentRegistry.getInstance().getByName('Titler')!
+    session.kind = 'comment'
+    session.agentId.value = titler.id
+
+    const view = mount(AiAgentSelector, { shallow: true })
+
+    const options = view.findComponent({ name: 'Dropdown' }).props('options') as Array<{
+      value: string
+    }>
+    expect(options.map((o) => o.value)).toContain(titler.id)
+    expect(view.findComponent({ name: 'Dropdown' }).props('modelValue')).toBe(titler.id)
+  })
+
+  it('lists nothing twice for a chat on an agent it does list', () => {
+    const view = mount(AiAgentSelector, { shallow: true })
+
+    const options = view.findComponent({ name: 'Dropdown' }).props('options') as Array<{
+      display: string
+    }>
+    expect(options.map((o) => o.display)).toEqual(['Researcher', 'Writer'])
   })
 })

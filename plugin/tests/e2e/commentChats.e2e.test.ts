@@ -3,9 +3,9 @@
  *
  * Everything here is a question happy-dom cannot answer. Whether the raw `%%c:…%%` ever
  * reaches the screen is a question about CodeMirror's decorations. Whether the card is visible
- * is a question about a margin that has to be measured. And the phone sheet only exists under
- * `app.emulateMobile(true)`, which is Obsidian switching its own layout — there is no way to
- * ask for it from a test that does not have Obsidian.
+ * is a question about a margin that has to be measured. And the phone's route into the chat
+ * sidebar only shows itself under `app.emulateMobile(true)`, which is Obsidian switching its
+ * own layout — there is no way to ask for it from a test that does not have Obsidian.
  *
  * The probe drives the command, because that is what a person's hotkey does. If the command
  * cannot reach the editor it falls back to creating the comment through `CommentService`, so
@@ -30,7 +30,7 @@
  * Requires Obsidian running on the demo vault with the development build — see docs/Testing.md.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
-import { isObsidianRunning, hasTestApi, evalRaw } from './helpers/obsidianCli'
+import { isObsidianRunning, hasTestApi, evalRaw, evalJson } from './helpers/obsidianCli'
 
 /** `evalRaw` for a script that resolves to a JSON-serializable value, parsed directly. */
 const evalAsync = <T>(script: string, timeoutMs: number): T =>
@@ -53,8 +53,17 @@ interface DesktopReport {
 }
 
 interface MobileReport {
-  sheetOpen: boolean
-  sheetInputVisible: boolean
+  /** Whether the sidebar's chat view is on screen at all after the tap. */
+  chatVisible: boolean
+  /** Whether what it is showing is this comment: the header's two comment-only actions. */
+  backToNoteVisible: boolean
+  openAsChatVisible: boolean
+  /** The sidebar's own composer, not a card's — and tall enough to type into. */
+  composerVisible: boolean
+  /** The note button, which only a comment gets. */
+  noteButtonVisible: boolean
+  /** No dialog was opened: the sheet is gone, and nothing stands over the note. */
+  modalOpen: boolean
   error: string
 }
 
@@ -160,21 +169,46 @@ const desktopScript = `(async () => {
   return report
 })()`
 
-/** Taps the marker's icon and reports what the phone sheet showed. Run after the reload. */
+/**
+ * Taps the marker's icon and reports what the phone showed. Run after the reload.
+ *
+ * The note is opened again first: `emulateMobile` reloads the app and the active file does not
+ * reliably come back with it, so a script that went straight for the marker would be asking
+ * about whatever the workspace happened to restore.
+ */
 const mobileScript = `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-  const report = { sheetOpen: false, sheetInputVisible: false, error: '' }
+  const shown = (el) => !!el && el.getBoundingClientRect().height > 0
+  const report = {
+    chatVisible: false, backToNoteVisible: false, openAsChatVisible: false,
+    composerVisible: false, noteButtonVisible: false, modalOpen: false, error: '',
+  }
 
   try {
+    const note = app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)})
+    if (!note) throw new Error('the probe note is gone after switching to mobile')
+    await app.workspace.getLeaf(false).openFile(note)
+    await wait(2000)
+
     const marker = document.querySelector('.abele-comment-marker[data-comment-ids]')
     if (!marker) throw new Error('no marker visible after switching to mobile')
     marker.click()
-    await wait(1200)
+    await wait(2000)
 
-    const sheet = document.querySelector('.modal .abele-comment-card')
-    report.sheetOpen = !!sheet
-    const input = sheet && sheet.querySelector('textarea')
-    report.sheetInputVisible = !!input && input.getBoundingClientRect().height > 0
+    const chat = document.querySelector('.abele-ai-chat')
+    report.chatVisible = shown(chat)
+    if (!chat) return report
+
+    // Obsidian's own \`setIcon\` is what draws these, and what it leaves behind is an
+    // \`svg.lucide-<name>\` — there is no attribute naming the icon in the running app.
+    const icon = (name) => !!chat.querySelector('.abele-ai-chat__header-actions .lucide-' + name)
+    report.backToNoteVisible = icon('corner-up-left')
+    report.openAsChatVisible = icon('panel-right-open')
+
+    report.composerVisible = shown(chat.querySelector('.abele-chat-input__textarea'))
+    report.noteButtonVisible = !!chat.querySelector('.abele-chat-input .lucide-sticky-note')
+
+    report.modalOpen = !!document.querySelector('.modal')
   } catch (e) {
     report.error = String((e && e.message) || e)
   }
@@ -182,7 +216,7 @@ const mobileScript = `(async () => {
   return report
 })()`
 
-/** Closes whatever modal is open and switches emulation, waiting for the reload to settle. */
+/** Closes anything standing over the note and switches emulation, letting the reload settle. */
 const setMobile = async (on: boolean): Promise<void> => {
   // The return value is not parsed: a bare string like `ok` is not valid JSON, and this call
   // is only for the side effect anyway.
@@ -195,7 +229,33 @@ const setMobile = async (on: boolean): Promise<void> => {
     })()`,
     30_000
   )
-  await new Promise((resolve) => setTimeout(resolve, 2000))
+  await new Promise((resolve) => setTimeout(resolve, 3000))
+}
+
+/**
+ * The window's content size, and a way to set it.
+ *
+ * `emulateMobile` switches Obsidian's layout but not the width of the window, and width is the
+ * whole question here: the margin is measured, so a phone-shaped layout in a 1400 px window
+ * still has room for a card beside the text and the marker would open one. The size is carried
+ * in the test process rather than on `window`, because the toggle reloads the page and takes
+ * anything parked there with it.
+ */
+const windowSize = (): [number, number] =>
+  evalJson<[number, number]>(
+    `require('@electron/remote').getCurrentWindow().getContentSize()`,
+    30_000
+  )
+
+const setWindowSize = async (width: number, height: number): Promise<void> => {
+  evalRaw(
+    `(() => {
+      require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height})
+      return 'ok'
+    })()`,
+    30_000
+  )
+  await new Promise((resolve) => setTimeout(resolve, 1500))
 }
 
 let report: Report
@@ -217,9 +277,18 @@ beforeAll(async () => {
     commentFileExists: false,
     error: '',
   }
-  let mobile: MobileReport = { sheetOpen: false, sheetInputVisible: false, error: '' }
+  let mobile: MobileReport = {
+    chatVisible: false,
+    backToNoteVisible: false,
+    openAsChatVisible: false,
+    composerVisible: false,
+    noteButtonVisible: false,
+    modalOpen: false,
+    error: '',
+  }
   let cleanup: CleanupReport = { cleaned: false, error: '' }
   let mobileOn = false
+  let desktopSize: [number, number] | null = null
 
   // A CLI timeout or a non-zero exit throws out of `run()` (see obsidianCli.ts), and a plain
   // sequence of awaits would then skip straight past both the phone toggle and the cleanup
@@ -230,14 +299,31 @@ beforeAll(async () => {
     desktop = evalAsync<DesktopReport>(desktopScript, 60_000)
 
     if (desktop.markerIds) {
-      await setMobile(true)
+      // A phone's width as well as a phone's layout: the margin is measured, and a wide window
+      // has room for a card whatever Obsidian is calling itself.
+      desktopSize = windowSize()
+      await setWindowSize(414, 896)
+      // Set before the await, not after: `setMobile` can throw partway — the reload is what it
+      // is waiting on — and the app would be left emulating a phone with nothing to undo it.
       mobileOn = true
-      mobile = evalAsync<MobileReport>(mobileScript, 30_000)
+      await setMobile(true)
+      mobile = evalAsync<MobileReport>(mobileScript, 60_000)
     }
   } finally {
     if (mobileOn) {
       try {
         await setMobile(false)
+      } catch (e) {
+        mobile.error =
+          (mobile.error ? mobile.error + '; ' : '') + String((e as Error)?.message ?? e)
+      }
+    }
+
+    // Its own try, and not behind the mobile flag: the window is resized before the emulation
+    // is switched, so a throw in between leaves a phone-shaped window and no record of it.
+    if (desktopSize) {
+      try {
+        await setWindowSize(desktopSize[0], desktopSize[1])
       } catch (e) {
         mobile.error =
           (mobile.error ? mobile.error + '; ' : '') + String((e as Error)?.message ?? e)
@@ -290,12 +376,27 @@ describe.runIf(available)('commenting on a passage', () => {
 })
 
 describe.runIf(available)('the same comment on a phone', () => {
-  it('opens as a sheet when the icon is tapped', () => {
-    expect(report.sheetOpen).toBe(true)
+  it('opens in the chat sidebar when the icon is tapped', () => {
+    expect(report.chatVisible).toBe(true)
   })
 
-  it('keeps the input where it can be typed into', () => {
-    expect(report.sheetInputVisible).toBe(true)
+  it('opens no dialog over the note, which is what the sheet used to be', () => {
+    expect(report.modalOpen).toBe(false)
+  })
+
+  it('offers the way back to the note and the way up into a full chat', () => {
+    expect({ back: report.backToNoteVisible, up: report.openAsChatVisible }).toEqual({
+      back: true,
+      up: true,
+    })
+  })
+
+  it('gives it the sidebar own composer, which a thumb can type into', () => {
+    expect(report.composerVisible).toBe(true)
+  })
+
+  it('and the note button, which only a comment gets', () => {
+    expect(report.noteButtonVisible).toBe(true)
   })
 })
 

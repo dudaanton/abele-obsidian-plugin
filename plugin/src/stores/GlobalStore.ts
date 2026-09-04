@@ -45,13 +45,6 @@ export class GlobalStore {
   public readonly commentsContainers = ref<Array<CommentEntry>>([])
   /** One per pinned message on screen; the overlay parks each at the top of the margin. */
   public readonly pinsContainers = ref<Array<CommentPin>>([])
-  /**
-   * The comment whose card is in a sheet rather than in the margin, or nothing.
-   *
-   * A card has two hosts and one component: this is the second host. It is a single value and
-   * not a list, because a sheet is modal — nothing behind it can be pressed to open another.
-   */
-  public readonly commentSheet = shallowRef<CommentEntry | null>(null)
   public readonly findAndReplaceModalOpened = ref(false)
   public readonly migrateFromDataviewModalOpened = ref(false)
   public readonly saveMediaModalOpened = ref(false)
@@ -359,9 +352,6 @@ export class GlobalStore {
     this.commentsContainers.value = []
     for (const pin of this.pinsContainers.value) pin.cleanup()
     this.pinsContainers.value = []
-    // The entry the sheet is showing has just been cleaned up; a dialog holding one is a
-    // dialog drawing a card for a marker that no longer exists.
-    this.commentSheet.value = null
 
     this.tasksList.value?.cleanup()
     this.tasksList.value = null

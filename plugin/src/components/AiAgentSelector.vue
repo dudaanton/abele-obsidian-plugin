@@ -25,10 +25,25 @@ const chatService = ChatService.getInstance()
 const registry = AgentRegistry.getInstance()
 const session = computed(() => chatService.activeSession.value)
 
-/** Utility agents are deliberately absent: they exist for scripts and delegation, not chat. */
-const options = computed(() =>
-  registry.list().map((agent) => ({ value: agent.id, display: agent.name }))
-)
+/**
+ * Utility agents are deliberately absent: they exist for scripts and delegation, not chat.
+ *
+ * With one exception, and it is a comment. A comment starts on whatever `commentAgentId` names,
+ * which is a utility agent in every vault that took the default — and a `select` handed a value
+ * none of its options carry shows the first one instead, so the picker would sit there naming
+ * an agent this conversation has nothing to do with. The card in the margin lets the same one
+ * back in, for the same reason.
+ */
+const options = computed(() => {
+  const listed = registry.list().map((agent) => ({ value: agent.id, display: agent.name }))
+
+  const own = session.value?.kind === 'comment' ? session.value.agent.value : null
+  if (own && !listed.some((option) => option.value === own.id)) {
+    listed.unshift({ value: own.id, display: own.name })
+  }
+
+  return listed
+})
 
 const activeId = computed(() => session.value?.agent.value?.id ?? '')
 
@@ -86,6 +101,23 @@ const onSelect = (agentId: string) => {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+}
+
+/**
+ * A pane too narrow for both.
+ *
+ * Six things share the header's row — the agent, the model, and four actions — and a comment
+ * adds two more. At 414 px that clipped the agent to "Co…" and the model to "Claude O…", which
+ * is two truncations where one of them is the only thing on screen saying which agent is
+ * answering. The model goes: it is a fact about the agent, and the chat settings say it in full.
+ *
+ * A container query rather than a media query, because what is narrow is the pane: a phone and
+ * a narrow desktop split are one problem. `.abele-ai-chat` is the container it resolves against.
+ */
+@container (max-width: 420px) {
+  .abele-agent-selector__model {
+    display: none;
+  }
 }
 
 .abele-agent-selector__empty {

@@ -37,6 +37,7 @@ beforeEach(() => {
     value: fakeChatSession({
       messages,
       queuedMessages: queued,
+      kind: 'chat',
       overrides: {
         isStreaming: streaming,
         abort: () => {

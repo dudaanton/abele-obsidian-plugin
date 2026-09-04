@@ -120,7 +120,6 @@
     :resolve="scriptFormResolve"
     @close="scriptFormModalOpened = false"
   />
-  <CommentSheet v-if="commentSheet" :entry="commentSheet" @close="commentSheet = null" />
   <Teleport v-if="settingsContainer" :to="settingsContainer">
     <SettingsView />
   </Teleport>
@@ -138,7 +137,6 @@ import FooterView from './Footer.vue'
 import FootnoteView from './FootnoteView.vue'
 import CommentCard from './CommentCard.vue'
 import CommentPin from './CommentPin.vue'
-import CommentSheet from './CommentSheet.vue'
 import { Task } from '@/entities/Task'
 import { Gallery } from '@/entities/Gallery'
 import { TaskHeader } from '@/entities/TaskHeader'
@@ -182,7 +180,6 @@ const {
   footnotesContainers,
   commentsContainers,
   pinsContainers,
-  commentSheet,
   findAndReplaceModalOpened,
   migrateFromDataviewModalOpened,
   saveMediaModalOpened,

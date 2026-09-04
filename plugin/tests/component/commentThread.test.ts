@@ -27,14 +27,10 @@ function message(over: Partial<ChatMessage> & Pick<ChatMessage, 'role'>): ChatMe
   return { id: 'm1', content: '', timestamp: 1, ...over } as ChatMessage
 }
 
-function render(
-  overrides: Record<string, unknown> = {},
-  messages: ChatMessage[] = [],
-  host?: 'margin' | 'sheet'
-) {
+function render(overrides: Record<string, unknown> = {}, messages: ChatMessage[] = []) {
   const session = fakeChatSession({ messages: ref(messages), overrides })
   const view = mount(CommentThread, {
-    props: { session: session as unknown as ChatSession, ...(host ? { host } : {}) },
+    props: { session: session as unknown as ChatSession },
   })
   return { view, session }
 }
@@ -289,8 +285,8 @@ describe('following a reply that is still arriving', () => {
  * Pinning, which is the one per-message action a margin has room for.
  *
  * It is on the row rather than in the header because it is about *this* message, and there is
- * no per-message menu at this width to hide it in. A sheet has no margin behind it to pin to,
- * so the control is simply absent there.
+ * no per-message menu at this width to hide it in. A phone or a tablet loses it to a rule in
+ * the stylesheet instead: there is no hover there to reveal it with.
  */
 describe('pinning a message from its row', () => {
   it('offers the action on a message somebody said, and not on a tool call', () => {
@@ -331,18 +327,5 @@ describe('pinning a message from its row', () => {
       message({ id: 'a1', role: 'assistant', content: 'A' }),
     ])
     expect(kept.view.findComponent(Icon).props('icon')).toBe('pin-off')
-  })
-
-  it('offers nothing to pin in a sheet, where there is no margin to pin to', () => {
-    const { view } = render(
-      {},
-      [
-        message({ id: 'u1', role: 'user', content: 'A question.' }),
-        message({ id: 'a1', role: 'assistant', content: 'An answer.' }),
-      ],
-      'sheet'
-    )
-
-    expect(view.findAll('.abele-comment-thread__pin')).toHaveLength(0)
   })
 })

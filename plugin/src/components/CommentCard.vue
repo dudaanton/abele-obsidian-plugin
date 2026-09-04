@@ -65,10 +65,7 @@
             tooltip="Delete this comment, its marker and its chat file"
             @click="pendingRemoval = activeId"
           />
-          <!-- Not in a sheet: the dialog's own × is already the way out, and two controls for
-               one act on a phone header is one of them nobody presses. -->
           <Icon
-            v-if="host !== 'sheet'"
             icon="chevron-up"
             tooltip="Fold this comment back to a summary"
             @click="fold"
@@ -118,7 +115,7 @@
       </template>
 
       <template v-else>
-        <CommentThread v-if="session" :session="session" :host="host" />
+        <CommentThread v-if="session" :session="session" />
         <EmptyState v-else-if="lost" text="This comment's file is missing." />
         <EmptyState v-else text="Reading this comment…" />
         <!-- Keyed by the comment: a half-typed question belongs to the tab it was typed in,
@@ -129,7 +126,6 @@
           :pending="pending"
           :disabled="!session"
           :focus="fresh"
-          :host="host"
           @send="onSend"
           @note="onNote"
           @abort="onAbort"
@@ -183,27 +179,18 @@ import { parseMarkers, resolveQuote } from '@/editor/commentMarkers'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { ChatMessage } from '@/ai/types'
 
-const props = withDefaults(
-  defineProps<{
-    entry: CommentEntry
-    /**
-     * Where the card is being shown. The margin is a sidenote beside the text; a sheet is a
-     * dialog that has drawn its own frame and its own way out, so the card gives back the
-     * actions the frame already provides.
-     */
-    host?: 'margin' | 'sheet'
-  }>(),
-  { host: 'margin' }
-)
+const props = defineProps<{
+  entry: CommentEntry
+}>()
 
 const emit = defineEmits<{
   /**
    * The conversation has been handed to the sidebar — by "open as chat", or by "open in
    * sidebar" on a card that was promoted already.
    *
-   * The margin ignores this: a sidenote sits beside the text and hides nothing. A sheet does
-   * not, and on a phone it is the whole screen, so it leaves on hearing it. `CommentService`
-   * cannot say this itself — `expand` never touches `open`, and the reveal is the card's.
+   * The margin ignores this: a sidenote sits beside the text and hides nothing. It is kept
+   * because a host that does cover the sidebar has to hear about it, and `CommentService`
+   * cannot say so itself — `expand` never touches `open`, and the reveal is the card's.
    */
   (e: 'promoted'): void
 }>()
@@ -477,7 +464,9 @@ async function reveal(): Promise<void> {
   if (!current) return
 
   const chatService = ChatService.getInstance()
-  chatService.switchTab(current.id)
+  // Adopted rather than switched to: a promotion whose tab was refused because the bar was
+  // full leaves a chat the sidebar is not holding, and `switchTab` does nothing for one.
+  chatService.adoptSession(current)
   await chatService.revealSidebar()
   emit('promoted')
 }
@@ -595,7 +584,7 @@ const onAbort = () => session.value?.abort()
 }
 
 /**
- * A phone, where the picker is something to hit rather than something to read. The composer
+ * A tablet, where the picker is something to hit rather than something to read. The composer
  * below it takes `--size-4-9` for the same reason; a 21 px control in a header is a miss.
  */
 body.is-mobile .abele-comment-card__agent .abele-obsidian-dropdown .dropdown {

@@ -81,5 +81,9 @@ anchor and the file where it is, moves it into the chat history and the sidebar,
 expanded comment can be sent back to its note, which closes the sidebar tab, drops it from the
 chat history and makes it a comment again — the same conversation, back on the margin.
 
+Where there is no margin to answer in — a phone, or a split too narrow for a sidenote — tapping
+the marker shows the comment in the chat sidebar instead, still as a comment: the same file, the
+same agent, and nothing added to the chat history. Closing that tab sends it back to the margin.
+
 Writing to a note links this chat to it: the note shows a card for every chat that changed it,
 so what you do here is visible from there afterwards. Reading a note links nothing.

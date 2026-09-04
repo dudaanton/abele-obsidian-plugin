@@ -22,20 +22,38 @@
       <div class="abele-ai-chat__header">
         <AiAgentSelector />
         <div class="abele-ai-chat__header-actions">
-          <!-- Only for a comment that was expanded into this tab: the way back to the margin
-               it came from, which is where the conversation started. -->
+          <!-- Only for a comment: the way back to the passage it was written against, whether
+               this tab holds the comment itself or the chat it was expanded into.
+
+               Not a panel glyph. It used to be `panel-right-close`, which beside the
+               `panel-right-open` below it is the same drawing mirrored — two actions that do
+               opposite things and take a moment to tell apart, on the screen with the least
+               room to tell anything apart. This one points back the way it came. -->
           <Icon
-            v-if="expandedComment"
-            icon="panel-right-close"
+            v-if="commentSession || expandedComment"
+            icon="corner-up-left"
+            with-bg
+            :disabled="backBlocked"
+            :tooltip="backBlocked ? blockedTooltip : 'Back to the note, as a comment in the margin'"
+            @click="backToNote"
+          />
+          <!-- Only for a comment still being a comment: the same promotion the card offers,
+               for a pane too narrow to show that card. -->
+          <Icon
+            v-if="commentSession"
+            icon="panel-right-open"
             with-bg
             :disabled="blocked"
-            :tooltip="blocked ? blockedTooltip : 'Back to the note, as a comment in the margin'"
-            @click="backToNote"
+            :tooltip="blocked ? blockedTooltip : 'Open this comment as a full chat'"
+            @click="openAsChat"
           />
           <Icon icon="refresh-cw" with-bg title="Reload from disk" @click="reloadChat" />
           <Icon icon="sliders-horizontal" with-bg @click="chatSettingsOpen = true" />
-          <Icon icon="plus" with-bg @click="handleNewChat" />
-          <Icon icon="history" with-bg @click="historyOpen = true" />
+          <!-- Not over a comment: `reset` would empty the very file the marker points at, and
+               loading another chat into this session would repoint it at a file the note knows
+               nothing about. Both are ways out of a chat, and a comment leaves by the note. -->
+          <Icon v-if="!commentSession" icon="plus" with-bg @click="handleNewChat" />
+          <Icon v-if="!commentSession" icon="history" with-bg @click="historyOpen = true" />
           <Icon icon="bug" with-bg @click="showDebug" />
         </div>
       </div>
@@ -187,7 +205,11 @@
         :can-continue="showContinue"
         :token-display="tokenDisplay"
         :scope-label="scopeCompact"
+        :can-note="commentSession"
+        :note-blocked="midTurn"
+        :commands="commands"
         @send="onSend"
+        @note="onNote"
         @command="onCommand"
         @abort="onAbort"
         @continue="onContinue"
@@ -317,9 +339,16 @@ const tabInfos = computed(() =>
     }
 
     const s = chatService.getSession(id)
+    // A comment has no title of its own — title generation is gated on `kind === 'chat'` — so
+    // the strip would call every one of them "New chat". The question that started it says
+    // which comment this is, which is the same name the history entry takes on promotion.
+    const label =
+      s?.chatTitle.value ||
+      (s?.kind === 'comment' ? CommentService.titleFor(s) || 'Comment' : '') ||
+      'New chat'
     return {
       id,
-      label: s?.chatTitle.value || 'New chat',
+      label,
       isStreaming: s?.isStreaming.value ?? false,
       isActive: id === chatService.activeTabId.value,
     }
@@ -765,6 +794,15 @@ const onInputFocus = (focused: boolean) => {
 const onCommand = async (command: string) => {
   const s = session.value
   if (!s) return
+
+  // The two the header takes away for a comment are still typeable, and both detach the
+  // session from the file the marker points at: `/new` empties it, `/load` puts another chat
+  // in its place. A comment is left by going back to its note, not by replacing it.
+  if (commentSession.value && (command === '/new' || command === '/load')) {
+    new Notice(COMMENT_ONLY_LEAVES_BY_NOTE)
+    return
+  }
+
   switch (command) {
     case '/compact':
       s.compact().catch(() => {
@@ -1053,6 +1091,34 @@ const expandedComment = computed(
 )
 
 /**
+ * A comment being read in this tab while still being a comment — the host for a phone and for
+ * a split too narrow to hang a 300 px sidenote beside its text.
+ *
+ * Nothing was promoted to get here: the file, the kind and the agent are the card's, and the
+ * chat history has never heard of it. What the tab lends it is this view — a composer with
+ * room to type in, dictation, tool approvals and the whole thread.
+ */
+const commentSession = computed(() => session.value?.kind === 'comment')
+
+/** The words the two refusals share, so the composer and the chat say the same thing. */
+const COMMENT_ONLY_LEAVES_BY_NOTE = 'A comment leaves through its note'
+
+/** Every slash command the chat answers, and the two a comment does not. */
+const ALL_COMMANDS = ['/compact', '/new', '/load', '/scope', '/prompt']
+const DETACHING_COMMANDS = ['/new', '/load']
+
+/**
+ * What the composer should treat as a command of ours rather than as a skill.
+ *
+ * Taking the two away here is what keeps `/new` in a comment from being offered at all; the
+ * guard in `onCommand` is what answers one typed anyway, since the composer still forwards
+ * anything beginning with a slash.
+ */
+const commands = computed(() =>
+  commentSession.value ? ALL_COMMANDS.filter((c) => !DETACHING_COMMANDS.includes(c)) : ALL_COMMANDS
+)
+
+/**
  * A turn the conversation may not be moved out from under — see `ChatSession.isMidTurn` — and
  * a move already under way, which a second one must not overtake. The way back to the margin
  * rebinds the agent and rewrites what the file says this is, neither of which may happen
@@ -1061,6 +1127,16 @@ const expandedComment = computed(
 const midTurn = computed(() => !!session.value?.isMidTurn)
 const moving = computed(() => !!session.value?.moving.value)
 const blocked = computed(() => midTurn.value || moving.value)
+
+/**
+ * The way back is dark for less than the promotion is.
+ *
+ * A comment merely being read here leaves by giving the tab back: the kind, the agent and the
+ * file are untouched, so a turn in flight is no reason to refuse — and somebody watching an
+ * answer arrive on a phone is exactly who wants to step back to the note while it does. An
+ * expanded comment leaves by being demoted, which is `expand` in reverse and keeps the guard.
+ */
+const backBlocked = computed(() => (commentSession.value ? moving.value : blocked.value))
 const blockedTooltip = computed(() =>
   moving.value
     ? 'This comment is being moved'
@@ -1071,6 +1147,11 @@ const blockedTooltip = computed(() =>
  * Back to the margin: the conversation returns to its card, and the reader returns to the
  * passage it was written against.
  *
+ * Two ways in, because there are two things this tab can be holding. A chat that was a comment
+ * has to be demoted — the kind, the agent and the history entry all go back. A comment that was
+ * merely being read here has nothing to undo: the tab is handed back and the session, which
+ * never stopped being the card's, goes on writing the same file from the margin.
+ *
  * The note is opened before the marker is looked for, because the offset is only useful once
  * there is an editor showing that note to scroll.
  */
@@ -1078,7 +1159,7 @@ async function backToNote(): Promise<void> {
   const current = session.value
   const id = current?.commentId
   const note = current?.anchor.value?.note
-  if (!id || !note) return
+  if (!current || !id || !note) return
 
   // Refused in the middle of a turn, the way a note typed into a card is, and refused while
   // the same move is already running: the action above is already dark for both, so this is
@@ -1088,9 +1169,15 @@ async function backToNote(): Promise<void> {
     new Notice('Already moving this comment')
     return
   }
-  if (!(await CommentService.getInstance().collapse(id))) {
-    new Notice('Finish or dismiss the pending step first')
-    return
+
+  const comments = CommentService.getInstance()
+  if (current.kind === 'chat') {
+    if (!(await comments.collapse(id))) {
+      new Notice('Finish or dismiss the pending step first')
+      return
+    }
+  } else {
+    await comments.hideFromSidebar(id)
   }
 
   const { app } = GlobalStore.getInstance()
@@ -1103,6 +1190,38 @@ async function backToNote(): Promise<void> {
     candidate.ids.includes(id)
   )
   if (marker) reliableScrollTo(marker.from)
+}
+
+/**
+ * The promotion the card offers in its own header, for a pane with no room to draw that card.
+ *
+ * The tab does not change: `expand` hands the same session to `ChatService`, which is already
+ * holding it, so what happens on screen is the header losing these two actions and gaining the
+ * ones an ordinary chat has.
+ */
+async function openAsChat(): Promise<void> {
+  const id = session.value?.commentId
+  if (!id) return
+
+  if (moving.value) {
+    new Notice('Already moving this comment')
+    return
+  }
+  if (!(await CommentService.getInstance().expand(id))) {
+    new Notice('Finish or dismiss the pending step first')
+  }
+}
+
+/**
+ * Kept, not asked: the words join the conversation and no agent is started.
+ *
+ * The session refuses one in the middle of a turn — the composer's button is already dark
+ * there, so this is the race between the two, and a refusal that said nothing would look
+ * exactly like a note that was saved.
+ */
+async function onNote(text: string): Promise<void> {
+  const kept = await session.value?.addUserNote(text)
+  if (kept === false) new Notice('Finish or dismiss the pending step first')
 }
 
 const showDebug = () => {

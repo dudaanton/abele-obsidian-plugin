@@ -15,8 +15,6 @@ import { MarkdownView, TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
 import { ChatService } from '@/ai/ChatService'
 import { ChatSession } from '@/ai/ChatSession'
-import { CommentEntry } from '@/entities/Comment'
-import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { serializeChat } from '@/ai/ChatLog'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
@@ -174,23 +172,20 @@ describe('several markers on one note', () => {
  * A phone reported that a marker never says an agent is working, and the answer is one
  * dispatch: `commentState` is a computed on the session, and the service watches it so that
  * every editor showing the note repaints. It has to hold for both hosts — a card in the
- * margin and a sheet over the note, which on a phone is the only host there is — and for a
+ * margin and a tab in the sidebar, which on a phone is the only host there is — and for a
  * comment that came back as a tab after a restart, which is the one that had no watcher.
  */
 describe('a comment whose state changes', () => {
   const noteFile = () => app.vault.getAbstractFileByPath(NOTE_PATH) as TFile
 
-  it('repaints the marker while the sheet it is open in streams', async () => {
+  it('repaints the marker while the sidebar tab it is open in streams', async () => {
     const service = CommentService.getInstance()
     const session = await service.create(noteFile(), 8, 'The selected passage')
     // The phone's host. It is the same session the margin card would hold, which is the point:
     // the icon in the text follows the conversation wherever the conversation is being shown.
-    GlobalStore.getInstance().commentSheet.value = new CommentEntry({
-      id: 'vue-1',
-      ids: [session.commentId!],
-      notePath: NOTE_PATH,
-      markerFrom: 8,
-    })
+    // The fake workspace here holds one markdown leaf and no sidebar to reveal.
+    vi.spyOn(ChatService.getInstance(), 'revealSidebar').mockResolvedValue(undefined)
+    await service.showInSidebar(session.commentId!)
     await settle()
     dispatches = 0
 

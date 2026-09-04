@@ -131,8 +131,11 @@ Three files, three concerns:
 - `commentChats.e2e.test.ts` — **comment chats end to end**. Runs the comment command on a
   selection in a scratch note and checks what the app shows: no raw `%%c:…%%` in the editor, an
   icon carrying the comment id, the card in the margin when there is room, the chat file under
-  the comment folder, and — under `app.emulateMobile(true)` — the same card as a sheet with its
-  input in sight. Cleans the note and the file up after itself.
+  the comment folder, and — under `app.emulateMobile(true)` in a phone-sized window — the same
+  comment opening in the chat sidebar, with its two header actions, the sidebar's own composer
+  and the note button, and no dialog over the note. The window is resized as well as the layout
+  switched: the margin is *measured*, so a phone layout in a wide window still has room for a
+  card. Cleans the note, the file and the window size up after itself.
 
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
 "mega group", where a single resolution currently takes about two minutes.
