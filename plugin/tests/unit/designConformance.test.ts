@@ -35,6 +35,8 @@ const COVERED_FILES = [
   'CommentPin.vue',
   'CommentThread.vue',
   'ChatsList.vue',
+  'ScriptView.vue',
+  'ScriptNode.vue',
 ].map((name) => join(ROOT, name))
 
 /** The one component allowed to be a `<button>`: everything else goes through it. */

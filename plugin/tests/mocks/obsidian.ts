@@ -329,6 +329,88 @@ export abstract class AbstractInputSuggest<T> {
   abstract selectSuggestion(value: T, evt?: MouseEvent | KeyboardEvent): void
 }
 
+/**
+ * Obsidian's select and its search field. Each builds its element in the container it is
+ * given, as the real one does, and `onChange` listens to that element — a `change` on the
+ * select, an `input` on the field, which is what a suggester's pick fires — so a test can
+ * drive either through the DOM exactly as a person would.
+ */
+export class DropdownComponent {
+  selectEl: HTMLSelectElement
+
+  constructor(containerEl: HTMLElement) {
+    this.selectEl = containerEl.ownerDocument.createElement('select')
+    this.selectEl.classList.add('dropdown')
+    containerEl.appendChild(this.selectEl)
+  }
+
+  addOption(value: string, display: string): this {
+    const option = this.selectEl.ownerDocument.createElement('option')
+    option.value = value
+    option.textContent = display
+    this.selectEl.appendChild(option)
+    return this
+  }
+
+  addOptions(options: Record<string, string>): this {
+    for (const [value, display] of Object.entries(options)) this.addOption(value, display)
+    return this
+  }
+
+  getValue(): string {
+    return this.selectEl.value
+  }
+
+  setValue(value: string): this {
+    this.selectEl.value = value
+    return this
+  }
+
+  setDisabled(disabled: boolean): this {
+    this.selectEl.disabled = disabled
+    return this
+  }
+
+  onChange(callback: (value: string) => unknown): this {
+    this.selectEl.addEventListener('change', () => void callback(this.selectEl.value))
+    return this
+  }
+}
+
+export class SearchComponent {
+  inputEl: HTMLInputElement
+
+  constructor(containerEl: HTMLElement) {
+    this.inputEl = containerEl.ownerDocument.createElement('input')
+    this.inputEl.type = 'search'
+    containerEl.appendChild(this.inputEl)
+  }
+
+  getValue(): string {
+    return this.inputEl.value
+  }
+
+  setValue(value: string): this {
+    this.inputEl.value = value
+    return this
+  }
+
+  setPlaceholder(placeholder: string): this {
+    this.inputEl.placeholder = placeholder
+    return this
+  }
+
+  setDisabled(disabled: boolean): this {
+    this.inputEl.disabled = disabled
+    return this
+  }
+
+  onChange(callback: (value: string) => unknown): this {
+    this.inputEl.addEventListener('input', () => void callback(this.inputEl.value))
+    return this
+  }
+}
+
 /** Draws a Lucide glyph into an element. Recorded as an attribute so tests can assert it. */
 export function setIcon(el: HTMLElement, icon: string): void {
   el.setAttribute('data-icon', icon)

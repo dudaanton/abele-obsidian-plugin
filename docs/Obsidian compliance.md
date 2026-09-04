@@ -100,7 +100,7 @@ exception is genuinely needed it lives in `eslint.config.mjs`, which is this pro
 with the reason recorded there. The review still sees and reports those two findings — as
 ordinary findings rather than as suppressions.
 
-## Two findings that stand
+## Three findings that stand
 
 **Scripts are compiled with `new Function`** (`src/scripting/ScriptService.ts`). Running a
 script the user wrote in their own vault requires compiling it; there is no variant of the
@@ -113,6 +113,13 @@ object. Reported by `no-new-func` and `no-implied-eval`.
 Vue application with its own tabs, cards, agent editor and scope editor, so adopting the API
 means replacing the entire settings UI, not annotating it. The cost of standing still is that
 Abele's settings are found by opening the tab rather than by searching.
+
+**A script's view carries its own `<style>` element** (`src/components/ScriptView.vue`). A
+script can give the tab it opens some CSS of its own, and that CSS exists only once the script
+has run — `styles.css`, which is written before any script is, cannot hold it. The element is
+made in the tab's own document, so a view in a popout window is styled where it is drawn, and
+every selector in it is prefixed with the tab's root (`scopeCss`), so nothing the script writes
+reaches past its tab. Reported by `no-forbidden-elements`.
 
 ## Known gaps
 
