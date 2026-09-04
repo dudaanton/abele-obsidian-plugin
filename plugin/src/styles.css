@@ -494,7 +494,7 @@ body.is-mobile .modal:has(.abele-scope-mgr) {
   height: var(--icon-s);
 }
 
-/* How many comments this marker carries.
+/* How much has been said at this marker — the messages of the conversation behind it.
    `--font-smallest` in `--text-muted` is what it used to be: a grey speck beside a coloured
    glyph, which the person it was built for never once noticed. It takes the marker's own
    colour — so on a failed comment the digit turns with it rather than reading as a second,

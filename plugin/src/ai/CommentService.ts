@@ -356,6 +356,15 @@ export class CommentService implements CommentInfoSource {
       pinned: session.pinned.value.filter((mid) =>
         session.messages.value.some((message) => message.id === mid)
       ),
+      // What was said, which is what the marker's digit counts: the questions and the answers.
+      // A tool call is the agent working rather than talking, a system line is scaffolding and
+      // a draft belongs to the interceptor — none of the three is a message anybody counts.
+      messages: session.messages.value.filter(
+        (message) =>
+          !message.draft &&
+          (message.role === 'user' || message.role === 'assistant') &&
+          !!message.content
+      ).length,
     }
   }
 

@@ -6,7 +6,7 @@
  * file only ever has one session writing it.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
-import { computed, nextTick } from 'vue'
+import { nextTick } from 'vue'
 import { Notice, TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
 import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
@@ -150,7 +150,33 @@ describe('reporting to the editor', () => {
       state: 'idle',
       open: false,
       pinned: [],
+      messages: 0,
     })
+  })
+
+  /**
+   * The digit on the marker: what was said here, questions and answers.
+   *
+   * Not the tool calls the agent made on the way, not the system lines that record a change of
+   * agent, and not a draft — none of those is a message a person counts when they glance at a
+   * marker and ask how much is behind it.
+   */
+  it('counts the questions and the answers, and nothing else', async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const id = session.commentId!
+
+    await session.addUserNote('what about this')
+    // The visible list, which is what the card, the title and this all read.
+    session.messages.value = [
+      ...session.messages.value,
+      { id: 'a1', role: 'assistant', content: 'this is what', timestamp: 2 },
+      { id: 't1', role: 'tool-call', content: '', toolName: 'read_note', timestamp: 3 },
+      { id: 's1', role: 'system', content: 'Agent: Comment', timestamp: 4 },
+      { id: 'd1', role: 'user', content: 'a draft', draft: true, timestamp: 5 },
+    ] as ChatMessage[]
+
+    expect(service.get(id)?.messages).toBe(2)
   })
 
   it('knows nothing about an id it has never loaded', () => {

@@ -11,6 +11,8 @@ import type { CommentState } from './CommentPlugin'
 export class CommentMarkerWidget extends WidgetType {
   constructor(
     private readonly ids: string[],
+    /** How much has been said here: the messages of every comment on this marker. */
+    private readonly count: number,
     private readonly state: CommentState,
     private readonly open: boolean,
     private readonly onClick: (ids: string[], view: EditorView) => void
@@ -35,11 +37,12 @@ export class CommentMarkerWidget extends WidgetType {
     const icon = createSpan({ cls: 'abele-comment-marker__icon', parent: el })
     setIcon(icon, 'message-circle')
 
-    // A count only earns its space when there is something to count.
-    if (this.ids.length > 1) {
+    // A count only earns its space when there is something to count. A comment nobody has
+    // said anything in yet is a marker and no digit — a "0" beside an icon is not information.
+    if (this.count > 0) {
       createSpan({
         cls: 'abele-comment-marker__count',
-        text: String(this.ids.length),
+        text: String(this.count),
         parent: el,
       })
     }
@@ -56,6 +59,7 @@ export class CommentMarkerWidget extends WidgetType {
   eq(other: CommentMarkerWidget): boolean {
     return (
       this.ids.join(',') === other.ids.join(',') &&
+      this.count === other.count &&
       this.state === other.state &&
       this.open === other.open
     )

@@ -360,10 +360,9 @@ describe('the comment marker, which lives in the stylesheet', () => {
   })
 
   /**
-   * The digit that says how many comments a marker carries — the one thing reported missing
-   * twice, from a phone and then from a desktop. The markers were not merging the first time;
-   * the second time they were, and the digit was a `--font-smallest` grey speck beside a
-   * coloured glyph, which is a thing nobody reads at any distance.
+   * The digit that says how much has been said at a marker — reported missing three times.
+   * Twice it was the size: a `--font-smallest` grey speck beside a coloured glyph is a thing
+   * nobody reads at any distance. The third time it was what was being counted at all.
    */
   it('draws the count at a size anybody can read', () => {
     const count = rule('.abele-comment-marker__count')

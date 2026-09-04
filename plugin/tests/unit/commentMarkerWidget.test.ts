@@ -11,35 +11,48 @@ import { CommentMarkerWidget } from '@/editor/CommentMarkerWidget'
 import type { EditorView } from '@codemirror/view'
 
 const noop = () => {}
+/** The four arguments before the handler, spelled once: ids, what was said, state, open. */
+const widget = (
+  ids: string[],
+  count = 0,
+  state: 'idle' | 'busy' | 'pending' | 'error' = 'idle',
+  open = false,
+  onClick = noop
+) => new CommentMarkerWidget(ids, count, state, open, onClick)
 /** The widget only carries the view through to the handler, so an empty object is enough. */
 const VIEW = {} as EditorView
 
 describe('the comment marker widget', () => {
   it('carries its ids where the tests and the harness look for them', () => {
-    const el = new CommentMarkerWidget(['k7d2ph', '3mq0xa'], 'idle', false, noop).toDOM(VIEW)
+    const el = widget(['k7d2ph', '3mq0xa']).toDOM(VIEW)
 
     expect(el.getAttribute('data-comment-ids')).toBe('k7d2ph,3mq0xa')
     expect(el.classList.contains('abele-comment-marker')).toBe(true)
   })
 
   it('draws the comment glyph', () => {
-    const el = new CommentMarkerWidget(['k7d2ph'], 'idle', false, noop).toDOM(VIEW)
+    const el = widget(['k7d2ph']).toDOM(VIEW)
 
     expect(el.querySelector('[data-icon="message-circle"]')).not.toBeNull()
   })
 
-  it('counts the comments only when there is more than one', () => {
-    const one = new CommentMarkerWidget(['k7d2ph'], 'idle', false, noop).toDOM(VIEW)
-    const two = new CommentMarkerWidget(['k7d2ph', '3mq0xa'], 'idle', false, noop).toDOM(VIEW)
+  /**
+   * What the digit counts is what was *said* here, not how many comments the marker carries:
+   * «считаться должны сообщения в чате». A comment nobody has said anything in yet shows no
+   * digit at all — a "0" beside an icon is not information.
+   */
+  it('counts what was said, and says nothing when nothing was', () => {
+    const fresh = widget(['k7d2ph'], 0).toDOM(VIEW)
+    const talked = widget(['k7d2ph'], 4).toDOM(VIEW)
 
-    expect(one.querySelector('.abele-comment-marker__count')).toBeNull()
-    expect(two.querySelector('.abele-comment-marker__count')?.textContent).toBe('2')
+    expect(fresh.querySelector('.abele-comment-marker__count')).toBeNull()
+    expect(talked.querySelector('.abele-comment-marker__count')?.textContent).toBe('4')
   })
 
   it('says what state the session is in', () => {
-    const busy = new CommentMarkerWidget(['k7d2ph'], 'busy', false, noop).toDOM(VIEW)
-    const pending = new CommentMarkerWidget(['k7d2ph'], 'pending', false, noop).toDOM(VIEW)
-    const failed = new CommentMarkerWidget(['k7d2ph'], 'error', true, noop).toDOM(VIEW)
+    const busy = widget(['k7d2ph'], 0, 'busy').toDOM(VIEW)
+    const pending = widget(['k7d2ph'], 0, 'pending').toDOM(VIEW)
+    const failed = widget(['k7d2ph'], 0, 'error', true).toDOM(VIEW)
 
     expect(busy.classList.contains('abele-comment-marker_busy')).toBe(true)
     expect(pending.classList.contains('abele-comment-marker_pending')).toBe(true)
@@ -48,14 +61,14 @@ describe('the comment marker widget', () => {
   })
 
   it('adds no state class when the comment is idle and closed', () => {
-    const el = new CommentMarkerWidget(['k7d2ph'], 'idle', false, noop).toDOM(VIEW)
+    const el = widget(['k7d2ph']).toDOM(VIEW)
 
     expect(el.className).toBe('abele-comment-marker')
   })
 
   it('hands the press the ids and the view that drew it', () => {
     const onClick = vi.fn()
-    const el = new CommentMarkerWidget(['k7d2ph'], 'idle', false, onClick).toDOM(VIEW)
+    const el = widget(['k7d2ph'], 0, 'idle', false, onClick).toDOM(VIEW)
 
     el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 
@@ -64,12 +77,14 @@ describe('the comment marker widget', () => {
     expect(onClick).toHaveBeenCalledWith(['k7d2ph'], VIEW)
   })
 
-  it('keeps its DOM while the ids and the state hold', () => {
-    const first = new CommentMarkerWidget(['k7d2ph'], 'idle', false, noop)
+  it('keeps its DOM while the ids, the count and the state hold', () => {
+    const first = widget(['k7d2ph'], 2)
 
-    expect(first.eq(new CommentMarkerWidget(['k7d2ph'], 'idle', false, noop))).toBe(true)
-    expect(first.eq(new CommentMarkerWidget(['k7d2ph'], 'busy', false, noop))).toBe(false)
-    expect(first.eq(new CommentMarkerWidget(['k7d2ph'], 'idle', true, noop))).toBe(false)
-    expect(first.eq(new CommentMarkerWidget(['k7d2ph', '3mq0xa'], 'idle', false, noop))).toBe(false)
+    expect(first.eq(widget(['k7d2ph'], 2))).toBe(true)
+    // The digit is redrawn when an answer lands, which is the whole point of counting it.
+    expect(first.eq(widget(['k7d2ph'], 3))).toBe(false)
+    expect(first.eq(widget(['k7d2ph'], 2, 'busy'))).toBe(false)
+    expect(first.eq(widget(['k7d2ph'], 2, 'idle', true))).toBe(false)
+    expect(first.eq(widget(['k7d2ph', '3mq0xa'], 2))).toBe(false)
   })
 })

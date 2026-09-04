@@ -176,19 +176,41 @@ describe('the comment decorations', () => {
   })
 
   /**
-   * The count, from the note's text to the DOM the phone draws.
+   * The digit, from what the source says to the DOM the phone draws.
    *
-   * A phone reported "no number on the icon", and the cause was upstream of the widget: two
-   * comments on one passage were writing two markers, so each icon carried a single id and
-   * had nothing to count. This is the other half of that — one marker with two ids does put
-   * the digit on screen.
+   * It counts what was *said* — «считаться должны сообщения в чате» — and a marker is one icon
+   * however many comments hang on it, so what it shows is the sum. A marker nobody has said
+   * anything at shows nothing: a "0" beside an icon is not information.
    */
-  it('counts the comments of a marker that carries more than one', () => {
+  it('counts everything said at a marker, however many comments it carries', () => {
+    setCommentInfoSource({
+      get: (id): CommentInfo => ({
+        state: 'idle',
+        open: false,
+        pinned: [],
+        messages: id === 'k7d2ph' ? 4 : 3,
+      }),
+      touch: () => {},
+    })
+
     const state = stateFor('Passage%%c:k7d2ph,3mq0xa%%')
     const found = decorationsOf(state)
     const el = (found[0].value.spec.widget as CommentMarkerWidget).toDOM(fakeView(state))
 
-    expect(el.querySelector('.abele-comment-marker__count')?.textContent).toBe('2')
+    expect(el.querySelector('.abele-comment-marker__count')?.textContent).toBe('7')
+  })
+
+  it('draws no digit for a comment nobody has said anything in', () => {
+    setCommentInfoSource({
+      get: (): CommentInfo => ({ state: 'idle', open: false, pinned: [], messages: 0 }),
+      touch: () => {},
+    })
+
+    const state = stateFor('Passage%%c:k7d2ph%%')
+    const found = decorationsOf(state)
+    const el = (found[0].value.spec.widget as CommentMarkerWidget).toDOM(fakeView(state))
+
+    expect(el.querySelector('.abele-comment-marker__count')).toBeNull()
   })
 
   it('asks the source to load every id it can see', () => {

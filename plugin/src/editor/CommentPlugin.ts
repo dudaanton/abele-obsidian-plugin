@@ -43,6 +43,8 @@ export interface CommentInfo {
   open: boolean
   /** Message ids this comment keeps in the margin. Empty for anything not pinned. */
   pinned: string[]
+  /** How much has been said in this comment — what the marker's digit counts. */
+  messages: number
 }
 
 /**
@@ -172,6 +174,10 @@ function buildCommentDecorations(state: EditorState): DecorationSet {
     const infos = marker.ids.map((id) => commentInfoSource.get(id))
     const open = infos.some((info) => info?.open === true)
     const iconState = markerState(infos)
+    // Everything said at this marker. A marker can carry more than one comment and the icon is
+    // one icon, so the digit is the sum: it answers "how much is there", which is the question
+    // somebody scanning a page of markers is asking.
+    const said = infos.reduce((total, info) => total + (info?.messages ?? 0), 0)
     // Comments on one marker share a selection, so the first quote anyone knows is the quote.
     const quote = infos.find((info) => info?.quote)?.quote
 
@@ -189,7 +195,7 @@ function buildCommentDecorations(state: EditorState): DecorationSet {
 
     decorations.push(
       Decoration.replace({
-        widget: new CommentMarkerWidget(marker.ids, iconState, open, handleMarkerClick),
+        widget: new CommentMarkerWidget(marker.ids, said, iconState, open, handleMarkerClick),
       }).range(marker.from, marker.to)
     )
   }
