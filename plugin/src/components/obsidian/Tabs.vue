@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="rootEl"
     class="abele-tabs"
     :class="[`abele-tabs_${level}`, { 'abele-tabs_vertical': vertical }]"
     role="tablist"
@@ -25,7 +26,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ComponentPublicInstance } from 'vue'
+import { nextTick, onMounted, useTemplateRef, watch, type ComponentPublicInstance } from 'vue'
 import { setTooltip } from 'obsidian'
 import Icon from './Icon.vue'
 
@@ -49,7 +50,7 @@ function applyTooltip(
   if (el instanceof HTMLElement) setTooltip(el, tooltip ?? '')
 }
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     tabs: Tab[]
     modelValue: string
@@ -64,6 +65,28 @@ withDefaults(
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
 }>()
+
+/**
+ * The active tab is brought into view whenever it changes, and once on mount.
+ *
+ * On a phone the strip is one row that scrolls sideways, and a dialog opened on its last tab
+ * — the composer's `/prompt` lands on Prompts — would otherwise show the strip scrolled to the
+ * first tab with the active one out of sight. `nearest` on both axes: a strip that fits moves
+ * nothing, and a dialog that is scrolled itself is not scrolled by its tabs.
+ */
+const rootEl = useTemplateRef<HTMLElement>('rootEl')
+
+const revealActive = async () => {
+  await nextTick()
+  const active = rootEl.value?.querySelector<HTMLElement>('.abele-tabs__tab_active')
+  // happy-dom has no `scrollIntoView`; a strip that cannot scroll has nothing to reveal.
+  if (typeof active?.scrollIntoView === 'function') {
+    active.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }
+}
+
+onMounted(revealActive)
+watch(() => props.modelValue, revealActive)
 </script>
 
 <style lang="scss">
@@ -75,6 +98,32 @@ const emit = defineEmits<{
   display: flex;
   flex-wrap: wrap;
   gap: var(--size-4-1);
+}
+
+/**
+ * On a phone a strip is one row that scrolls sideways, never two: six words at a phone's
+ * width wrapped onto a second line in the chat dialog and read as a broken layout. The
+ * scrollbar is hidden because a last tab cut off at the edge is itself the sign of more.
+ */
+body.is-phone .abele-tabs:not(.abele-tabs_vertical) {
+  // A flex item that clips its overflow may be shrunk to nothing by the column it stands in:
+  // its automatic minimum height is zero once overflow is not `visible`. The strip keeps its
+  // height; the body under it is what gives way.
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  // Said outright: `overflow-x: auto` alone makes the other axis `auto` too, and a row that
+  // can scroll up and down by a few pixels is a row that sometimes does.
+  overflow-y: hidden;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  .abele-tabs__tab {
+    flex: 0 0 auto;
+  }
 }
 
 .abele-tabs__tab {

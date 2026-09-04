@@ -63,10 +63,6 @@ const onPermissionChange = (value: string) => {
 </script>
 
 <style lang="scss">
-.modal:has(.abele-scope-mgr) {
-  width: 500px;
-}
-
 .abele-scope-mgr {
   display: flex;
   flex-direction: column;

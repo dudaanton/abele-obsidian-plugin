@@ -240,8 +240,6 @@ const addPattern = () => {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-1);
-  max-height: 250px;
-  overflow-y: auto;
 }
 
 .abele-scope-mgr__entry {
@@ -273,8 +271,6 @@ const addPattern = () => {
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
   padding: var(--size-4-2);
-  max-height: 150px;
-  overflow-y: auto;
   font-size: var(--font-smaller);
 }
 

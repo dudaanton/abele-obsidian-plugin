@@ -133,14 +133,22 @@ const selectPrompt = (prompt: PromptItem) => {
 </script>
 
 <style lang="scss">
+/**
+ * The search field stays put and the list takes whatever is left under it. It used to be a
+ * box of 300px, sized for a dialog of its own on a desktop; inside a sheet the height of a
+ * phone that was a list in the top half and nothing in the bottom.
+ */
 .abele-sp-picker {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   gap: var(--size-4-2);
 }
 
 .abele-sp-picker__list {
-  max-height: 300px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);

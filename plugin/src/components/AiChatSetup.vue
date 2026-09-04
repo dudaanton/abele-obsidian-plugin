@@ -132,6 +132,8 @@ const debug = () => {
  * long list of tools or prompts moves inside it rather than growing it past the screen.
  */
 .abele-chat-setup__body {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
