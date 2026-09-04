@@ -463,6 +463,81 @@ describe('Table', () => {
 
     expect(still.emitted('rowClick')).toBeUndefined()
   })
+
+  it('is reachable from the keyboard with either key that presses a thing', async () => {
+    const view = mount(Table, { props: { columns, rows, clickable: true } })
+
+    await view.findAll('.abele-table__row')[1].trigger('keydown.space')
+
+    expect(view.emitted('rowClick')?.[0]).toEqual([rows[1], 1])
+
+    await view.findAll('.abele-table__row')[0].trigger('keydown.enter')
+
+    expect(view.emitted('rowClick')?.[1]).toEqual([rows[0], 0])
+  })
+
+  /**
+   * A row is a row, not a button: `role="button"` would take it out of the table for anyone
+   * reading the table with a screen reader, which is the one thing a table is for.
+   */
+  it('stays a row even when it is a target', () => {
+    const view = mount(Table, { props: { columns, rows, clickable: true } })
+
+    const row = view.findAll('.abele-table__row')[0]
+    expect(row.attributes('role')).toBeUndefined()
+    expect(row.attributes('tabindex')).toBe('0')
+    expect(view.findAll('.abele-table__row')[0].element.tagName).toBe('TR')
+  })
+
+  it('leaves a row that is not a target out of the tab order', () => {
+    const view = mount(Table, { props: { columns, rows } })
+
+    expect(view.findAll('.abele-table__row')[0].attributes('tabindex')).toBeUndefined()
+  })
+})
+
+/**
+ * The default cell, which is pointed at data whose shape nobody has checked. Every case here
+ * is something a script has actually handed a table — a vault file among them, which knows
+ * its folder and is known back by it.
+ */
+describe('a table cell nobody wrote a slot for', () => {
+  const one = (value: unknown) =>
+    mount(Table, {
+      props: { columns: [{ key: 'v', label: 'V' }], rows: [{ v: value }] },
+    }).find('.abele-table__cell')
+
+  it('writes a date as a date, not as a quoted ISO string', () => {
+    const date = new Date('2026-09-04T10:00:00Z')
+
+    const cell = one(date).text()
+
+    expect(cell).toBe(date.toLocaleString())
+    expect(cell).not.toContain('"')
+  })
+
+  it('writes a list as its items', () => {
+    expect(one(['a', 'b']).text()).toBe('a, b')
+  })
+
+  it('writes a map as JSON rather than as the default stringification', () => {
+    expect(one({ a: 1 }).text()).toBe('{"a":1}')
+  })
+
+  it('survives a value that refers back to itself', () => {
+    const folder: Record<string, unknown> = { name: 'Media' }
+    folder.children = [{ path: 'Media/a.png', parent: folder }]
+
+    expect(one(folder).text()).toBe('[object]')
+  })
+
+  it('leaves a cell empty when the row has nothing under that column', () => {
+    const view = mount(Table, {
+      props: { columns: [{ key: 'missing', label: 'M' }], rows: [{ other: 1 }] },
+    })
+
+    expect(view.find('.abele-table__cell').text()).toBe('')
+  })
 })
 
 describe('Image', () => {
@@ -481,6 +556,28 @@ describe('Image', () => {
     const missing = mount(Image, { props: { src: 'Media/none.png', alt: 'gone' } })
     expect(missing.classes()).toContain('abele-image_missing')
     expect(missing.attributes('alt')).toBe('gone')
+    // Not an empty `src`: that is a request for the page itself, which the browser answers by
+    // drawing the broken-image glyph instead of the alt text.
+    expect(missing.attributes('src')).toBeUndefined()
+  })
+
+  it('leaves a picture that carries its own bytes alone', () => {
+    useVault([])
+
+    const inline = mount(Image, {
+      props: { src: 'data:image/png;base64,iVBORw0KGgo=' },
+    })
+
+    expect(inline.attributes('src')).toBe('data:image/png;base64,iVBORw0KGgo=')
+    expect(inline.classes()).not.toContain('abele-image_missing')
+  })
+
+  it('says a picture is decoration when it was given no words', () => {
+    useVault([])
+
+    const view = mount(Image, { props: { src: 'https://x/y.png' } })
+
+    expect(view.attributes('alt')).toBe('')
   })
 
   it('carries its fit as a modifier and emits click', async () => {

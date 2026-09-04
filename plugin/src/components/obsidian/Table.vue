@@ -16,10 +16,10 @@
           :key="index"
           class="abele-table__row"
           :class="{ 'abele-table__row_clickable': clickable }"
-          :role="clickable ? 'button' : undefined"
           :tabindex="clickable ? 0 : undefined"
           @click="clickable && emit('rowClick', row, index)"
-          @keydown.enter.prevent="clickable && emit('rowClick', row, index)"
+          @keydown.enter="press($event, row, index)"
+          @keydown.space="press($event, row, index)"
         >
           <td v-for="column in columns" :key="column.key" class="abele-table__cell">
             <slot name="cell" :value="row[column.key]" :row="row" :column="column">{{
@@ -36,12 +36,11 @@
 /**
  * Columns and rows, with a `cell` slot for anything richer than text.
  *
- * A cell the caller does not fill is written out here, which is what makes the component safe
- * to point at data whose shape nobody has checked: a number and a boolean read as themselves,
- * an absent value leaves the cell empty rather than saying "undefined", and a list or a nested
- * map is written as JSON rather than as `[object Object]`.
+ * A row stays a row: it is reachable from the keyboard when it is clickable, but it is not
+ * given `role="button"` — that would take a row out of the table for anyone reading it with
+ * a screen reader, which is the one thing a table is for.
  */
-defineProps<{
+const props = defineProps<{
   columns: { key: string; label: string }[]
   rows: Record<string, unknown>[]
   /** Makes each row a target: hovered, reachable from the keyboard, and reported on click. */
@@ -52,12 +51,42 @@ const emit = defineEmits<{
   (e: 'rowClick', row: Record<string, unknown>, index: number): void
 }>()
 
+/**
+ * Enter and Space, the two keys that press a thing.
+ *
+ * The default is only prevented for a row that is a target — Space scrolls the page, and
+ * taking that away from a table nobody can click would be taking away the way through it.
+ */
+const press = (event: KeyboardEvent, row: Record<string, unknown>, index: number) => {
+  if (!props.clickable) return
+  event.preventDefault()
+  emit('rowClick', row, index)
+}
+
+/**
+ * A cell the caller does not fill, written out.
+ *
+ * This is what makes the component safe to point at data whose shape nobody has checked, and
+ * every branch of it is a thing a script has handed a table: a date reads as a date rather
+ * than as a quoted ISO string, a list reads as its items, and anything left is JSON — behind
+ * a `try`, because a vault file knows its folder and that folder knows the file back, and one
+ * circular row would otherwise take the whole view down.
+ */
 const text = (value: unknown): string => {
+  if (value === undefined || value === null) return ''
   if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  // Narrowed positively rather than by exclusion: `String` on an unknown is the call that
-  // produces `[object Object]`, and the type checker is what stops it being written by mistake.
-  if (value !== null && typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value)
+  }
+  if (value instanceof Date) return value.toLocaleString()
+  if (Array.isArray(value)) return (value as unknown[]).map(text).join(', ')
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value) ?? ''
+    } catch {
+      return '[object]'
+    }
+  }
   return ''
 }
 </script>
