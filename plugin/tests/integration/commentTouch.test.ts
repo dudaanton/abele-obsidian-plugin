@@ -171,19 +171,19 @@ describe('several markers on one note', () => {
  *
  * A phone reported that a marker never says an agent is working, and the answer is one
  * dispatch: `commentState` is a computed on the session, and the service watches it so that
- * every editor showing the note repaints. It has to hold for both hosts — a card in the
- * margin and the dialog a phone opens instead — and for a comment that came back as a tab
- * after a restart, which is the one that had no watcher.
+ * every editor showing the note repaints. It has to hold for a comment being read in a tab and
+ * for one that came back as a tab after a restart, which is the one that had no watcher.
  */
 describe('a comment whose state changes', () => {
   const noteFile = () => app.vault.getAbstractFileByPath(NOTE_PATH) as TFile
 
-  it('repaints the marker while the dialog it is open in streams', async () => {
+  it('repaints the marker while the tab it is open in streams', async () => {
     const service = CommentService.getInstance()
     const session = await service.create(noteFile(), 8, 'The selected passage')
-    // The phone's host. It is the same session the margin card would hold, which is the point:
-    // the icon in the text follows the conversation wherever the conversation is being shown.
-    service.openFrom([session.commentId!], false, NOTE_PATH)
+    // The one host there is. The icon in the text follows the conversation wherever it is
+    // being shown; the fake workspace here has no sidebar to reveal.
+    vi.spyOn(ChatService.getInstance(), 'revealSidebar').mockResolvedValue(undefined)
+    await service.showInSidebar(session.commentId!)
     await settle()
     dispatches = 0
 

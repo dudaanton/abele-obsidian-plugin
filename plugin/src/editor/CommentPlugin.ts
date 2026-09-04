@@ -121,41 +121,24 @@ function activeMarkers(state: EditorState): ParsedMarker[] {
  *
  * Injected rather than imported: `CommentService` already imports this module for
  * `dispatchCommentsChanged`, and importing it back would close a cycle for one call.
- * `main.ts` imports both and installs the handler there. `hasRoom` is the margin's answer,
- * which the service routes on when it puts the card in a dialog instead; the note is the one
- * the icon was pressed in, which is what a dialog needs and cannot ask the margin for.
+ * `main.ts` imports both and installs the handler there.
  */
-let commentClickHandler: (ids: string[], hasRoom: boolean, notePath: string) => void = () => {}
+let commentClickHandler: (ids: string[]) => void = () => {}
 
-export function setCommentClickHandler(
-  handler: (ids: string[], hasRoom: boolean, notePath: string) => void
-): void {
+export function setCommentClickHandler(handler: (ids: string[]) => void): void {
   commentClickHandler = handler
 }
 
 /**
- * Where a press on a marker goes: the margin when the pane holding this icon has room for a
- * card beside its text, a dialog when it has not.
+ * Where a press on a marker goes: the chat sidebar, always.
  *
- * The view is the one CodeMirror gave the widget, not `getActiveViewOfType`. A marker can be
- * pressed in a split that is not the focused pane, or in a popout window where there is no
- * active markdown view at all, and the margin measured then belongs to another note or to
- * nothing — a wide pane gets a dialog, a narrow one gets a card it cannot show.
- *
- * `hasRoom()` answers `false` until the first measurement, so ask for one before reading it.
- * The reading is deliberate rather than a subscription: `onRoomChange` never reports the state
- * it starts in, and a card that is already open when the margin goes stays as it is — see the
- * decision recorded in the phase 5 plan.
+ * There is nothing to measure any more. A card in the margin was tried for three releases and
+ * taken out again — it only appeared on a very wide screen, and everywhere else it was a
+ * second way of showing a conversation that had to be kept in step with the first.
  */
-function handleMarkerClick(ids: string[], view: EditorView): void {
-  const overlay = marginOverlayFor(view)
-  overlay.position()
-  const room = overlay.hasRoom()
-
-  const notePath = view.state.field(editorInfoField, false)?.file?.path ?? ''
-
-  console.debug('abele: comment marker clicked', ids.join(','), 'margin room:', room)
-  commentClickHandler(ids, room, notePath)
+function handleMarkerClick(ids: string[]): void {
+  console.debug('abele: comment marker clicked', ids.join(','))
+  commentClickHandler(ids)
 }
 
 function buildCommentDecorations(state: EditorState): DecorationSet {

@@ -4,7 +4,7 @@
  * `CommentState` is imported as a type only: the field constructs the widget, so a value
  * import would close a cycle between the two modules.
  */
-import { WidgetType, type EditorView } from '@codemirror/view'
+import { WidgetType } from '@codemirror/view'
 import { setIcon } from 'obsidian'
 import type { CommentState } from './CommentPlugin'
 
@@ -15,17 +15,12 @@ export class CommentMarkerWidget extends WidgetType {
     private readonly count: number,
     private readonly state: CommentState,
     private readonly open: boolean,
-    private readonly onClick: (ids: string[], view: EditorView) => void
+    private readonly onClick: (ids: string[]) => void
   ) {
     super()
   }
 
-  /**
-   * The view is CodeMirror's own argument, and it is the reason this signature exists: the
-   * press has to be answered with the margin of the pane the icon is in, which is this one —
-   * not the pane the workspace happens to call active.
-   */
-  toDOM(view: EditorView): HTMLElement {
+  toDOM(): HTMLElement {
     const el = createSpan({
       cls: 'abele-comment-marker',
       attr: { 'data-comment-ids': this.ids.join(',') },
@@ -50,7 +45,7 @@ export class CommentMarkerWidget extends WidgetType {
     el.addEventListener('click', (event) => {
       event.preventDefault()
       event.stopPropagation()
-      this.onClick(this.ids, view)
+      this.onClick(this.ids)
     })
 
     return el

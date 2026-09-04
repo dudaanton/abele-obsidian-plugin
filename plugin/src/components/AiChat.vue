@@ -22,6 +22,26 @@
       <div class="abele-ai-chat__header">
         <AiAgentSelector />
         <div class="abele-ai-chat__header-actions">
+          <!-- Only over a comment: the way back to the passage it was written against. It
+               points back the way it came rather than being a panel glyph, because what it
+               does is scroll a note, not move a pane. -->
+          <Icon
+            v-if="commentSession"
+            icon="corner-up-left"
+            with-bg
+            tooltip="Back to the passage this is about"
+            @click="backToNote"
+          />
+          <!-- Only for a comment still being a comment: the promotion into an ordinary chat,
+               with the default agent, a place in the history and no anchor to answer to. -->
+          <Icon
+            v-if="commentSession"
+            icon="panel-right-open"
+            with-bg
+            :disabled="blocked"
+            :tooltip="blocked ? blockedTooltip : 'Open this comment as a full chat'"
+            @click="openAsChat"
+          />
           <!-- One button for everything this chat is set up with: scope, skills, prompts,
                tool permissions, its own settings, and the two things that are neither —
                reading the file again and copying what the chat is made of. -->
@@ -188,7 +208,10 @@
         :can-continue="showContinue"
         :token-display="tokenDisplay"
         :scope-label="scopeCompact"
+        :can-note="commentSession"
+        :note-blocked="midTurn"
         @send="onSend"
+        @note="onNote"
         @command="onCommand"
         @abort="onAbort"
         @continue="onContinue"
@@ -232,6 +255,9 @@ import AiToolApproval from './AiToolApproval.vue'
 import AiAgentSelector from './AiAgentSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
 import AiChatSetup from './AiChatSetup.vue'
+import { CommentService } from '@/ai/CommentService'
+import { parseMarkers } from '@/editor/commentMarkers'
+import { reliableScrollTo } from '@/helpers/scrollUtils'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChatService } from '@/ai/ChatService'
@@ -478,6 +504,85 @@ const chatContainer = ref<HTMLElement | null>(null)
 const messagesContainer = ref<HTMLElement | null>(null)
 const chatInput = ref<InstanceType<typeof AiChatInput> | null>(null)
 const historyOpen = ref(false)
+
+/**
+ * A comment being read in this tab.
+ *
+ * The file, the kind and the agent are `CommentService`'s; what the tab lends it is this view.
+ * Everything an ordinary chat can do it can do — «оставить все те же действия» — and it has
+ * one thing of its own: half of what people write into a comment is a note rather than a
+ * question, and a model run over that is a wait and a cost for an answer nobody wanted.
+ */
+const commentSession = computed(() => session.value?.kind === 'comment')
+
+/**
+ * A turn the conversation may not be moved out from under — see `ChatSession.isMidTurn` — and
+ * a move already under way. Promotion rebinds the agent and rewrites what the file says this
+ * is, neither of which may happen between a `tool_use` and its result.
+ */
+const midTurn = computed(() => !!session.value?.isMidTurn)
+const moving = computed(() => !!session.value?.moving.value)
+const blocked = computed(() => midTurn.value || moving.value)
+const blockedTooltip = computed(() =>
+  moving.value
+    ? 'This comment is being moved'
+    : 'The agent is still working — finish or dismiss the pending step first'
+)
+
+/**
+ * Back to the passage: the note is opened and scrolled to the marker.
+ *
+ * The tab stays. Nothing is handed back and nothing is closed — this is navigation, and the
+ * conversation is where the person was just reading it.
+ */
+async function backToNote(): Promise<void> {
+  const current = session.value
+  const id = current?.commentId
+  const note = current?.anchor.value?.note
+  if (!id || !note) return
+
+  const { app } = GlobalStore.getInstance()
+  await app.workspace.openLinkText(note, '', false)
+
+  const file = app.vault.getAbstractFileByPath(note)
+  if (!(file instanceof TFile)) return
+
+  const marker = parseMarkers(await app.vault.cachedRead(file)).find((candidate) =>
+    candidate.ids.includes(id)
+  )
+  if (marker) reliableScrollTo(marker.from)
+}
+
+/**
+ * The promotion: a comment becomes an ordinary chat in the tab it is already in.
+ *
+ * What happens on screen is the header losing these two actions; what happens underneath is
+ * the default agent, an entry in the history and the anchor kept, so the marker still leads
+ * here. Refused mid-turn, and while the same move is already running.
+ */
+async function openAsChat(): Promise<void> {
+  const id = session.value?.commentId
+  if (!id) return
+
+  if (moving.value) {
+    new Notice('Already moving this comment')
+    return
+  }
+  const moved = await CommentService.getInstance().expand(id)
+  if (moved === 'busy') new Notice('Finish or dismiss the pending step first')
+}
+
+/**
+ * Kept, not asked: the words join the conversation and no agent is started.
+ *
+ * The session refuses one in the middle of a turn — the composer's button is already dark
+ * there, so this is the race between the two, and a refusal that said nothing would look
+ * exactly like a note that was saved.
+ */
+async function onNote(text: string): Promise<void> {
+  const kept = await session.value?.addUserNote(text)
+  if (kept === false) new Notice('Finish or dismiss the pending step first')
+}
 
 /**
  * The one dialog everything about a chat lives in, and which tab it opens on.

@@ -63,19 +63,14 @@ export class CommentService implements CommentInfoSource {
   }
 
   /**
-   * A press on a marker, answered with the host the pane can actually show.
+   * A press on a marker: the comment opens as a tab in the chat sidebar.
    *
-   * With room beside the text the card is a sidenote and the press is a toggle. Without —
-   * a narrow split, a phone — there is nowhere to hang a 300 px card, so the same card goes
-   * into a dialog and the dialog expands it on mount; `open` is left alone here so that one
-   * value goes on saying which card is open and the marker's icon keeps agreeing with what
-   * is on screen.
-   *
-   * Not the chat sidebar, which is what 1.17.1 tried: that view is the agent's own, with its
-   * tabs, its history and its own idea of what a chat is, and a comment borrowed into it is a
-   * comment in somebody else's room. The dialog is the comment's own.
+   * There is one host and it is that one. A card in the margin was tried for three releases
+   * and taken out again — «контекстный сайдбар виден только на очень большом экране и только
+   * добавляет проблем» — so what a marker leads to now is a chat like any other, with the
+   * whole composer, the approvals, the settings and one thing of its own: the note button.
    */
-  openFrom(ids: string[], hasRoom: boolean, notePath: string): void {
+  openFrom(ids: string[]): void {
     // A comment that has become a chat is a chat: the marker is a way back into it and not a
     // card any more. Wherever the pane is wide or narrow, that way leads to the sidebar, which
     // is where the conversation went — and it leads there again after the tab has been closed,
@@ -90,15 +85,8 @@ export class CommentService implements CommentInfoSource {
       return
     }
 
-    if (hasRoom) {
-      this.toggleOpen(ids)
-      return
-    }
-
-    const entry = this.hostFor(ids, notePath)
-    if (!entry) return
-
-    GlobalStore.getInstance().commentModal.value = entry
+    const id = ids[0]
+    if (id) void this.showInSidebar(id)
   }
 
   /**
@@ -115,27 +103,6 @@ export class CommentService implements CommentInfoSource {
     const chatService = ChatService.getInstance()
     if (!chatService.adoptSession(session)) return
     await chatService.revealSidebar()
-  }
-
-  /**
-   * The margin host these ids belong to, or one made for the occasion.
-   *
-   * Hosts belong to live-preview views and are only minted where there is a margin to hang
-   * them in — which is exactly what a phone has not — so the second half is the usual one.
-   * The note comes from the pane the icon was pressed in, not from a loaded session: a marker
-   * pressed before its comment has been read off disk still knows which note it is in.
-   */
-  private hostFor(ids: string[], notePath: string): CommentEntry | null {
-    const key = ids.join(',')
-    const known = GlobalStore.getInstance().commentsContainers.value.find(
-      (entry) => entry.ids.join(',') === key
-    )
-    if (known) return known
-
-    const note = notePath || ids.map((id) => this.sessionFor(id)?.anchor.value?.note).find(Boolean)
-    if (!note) return null
-
-    return new CommentEntry({ id: genid(), ids: [...ids], notePath: note, markerFrom: 0 })
   }
 
   /**
@@ -160,6 +127,87 @@ export class CommentService implements CommentInfoSource {
    * never loads the same file into a second session.
    */
   private readonly expanded = new Map<string, ChatSession>()
+
+  /**
+   * Comments being read in a sidebar tab while still being comments.
+   *
+   * Not a second map but a mark on the first: a comment in a tab has not become anything, and
+   * the session stays in `sessions` where `sessionFor`, `get`, `touch` and `remove` all go on
+   * finding it. What the mark records is that `ChatService` is also showing it — so closing
+   * that tab hands the session back rather than destroying it, and deleting the comment takes
+   * the tab down with it.
+   */
+  private readonly shown = shallowReactive(new Set<string>())
+
+  /** True for a comment `ChatService` is showing as a tab without owning it. */
+  isShown(id: string): boolean {
+    return this.shown.has(id)
+  }
+
+  /**
+   * Shows a comment in the chat sidebar, which is the only place a comment is read.
+   *
+   * Nothing about the conversation changes — not the kind, not the agent, not the file, and
+   * nothing joins the chat history; the session is only registered as a tab so the sidebar's
+   * own view can draw it.
+   *
+   * A turn in flight is *not* a reason to refuse, and this is where it differs from `expand`.
+   * That one rewrites what the file says the conversation is and rebinds its agent, neither of
+   * which may happen between a `tool_use` and its result; this one moves bookkeeping and
+   * nothing else. A marker pressed while the agent is working is somebody who wants to watch
+   * the answer arrive.
+   *
+   * A move already running is a reason: `expand` is halfway through the very maps this would
+   * write to, and a tab adopted inside that gap belongs to neither end of it.
+   *
+   * Returns whether the comment reached the sidebar, so a caller can say why it did not.
+   */
+  async showInSidebar(id: string): Promise<boolean> {
+    const session = await this.load(id)
+    if (!session) return false
+
+    if (session.moving.value) return false
+
+    // One at a time — «табы не плодить, а открывать на месте уже открытого КОНТЕКСТНОГО таба».
+    // The one before it is handed back exactly as closing its tab would hand it back: alive,
+    // still writing the same file, still painting its marker. An *expanded* comment is not
+    // touched — that one is a chat, and owns its tab like any other.
+    for (const other of [...this.shown]) {
+      if (other !== id) await this.hideFromSidebar(other)
+    }
+
+    const chatService = ChatService.getInstance()
+    // It can be refused: the tab bar has a limit and `adoptSession` keeps it. Nothing is
+    // marked and nothing is revealed then — the person has already been told why.
+    if (!chatService.adoptSession(session)) return false
+
+    this.shown.add(id)
+    this.open.value = id
+    await chatService.revealSidebar()
+
+    const note = session.anchor.value?.note
+    if (note) dispatchCommentsChanged(note)
+    return true
+  }
+
+  /**
+   * The way back out of the sidebar: the tab goes, the conversation stays.
+   *
+   * Released rather than closed — `closeTab` destroys, and a comment is not finished with when
+   * its tab is: the session goes on writing the same file and the marker goes on painting its
+   * state. Called by `ChatService.closeTab` for the tab's × as well, so both ends of the same
+   * act agree.
+   */
+  async hideFromSidebar(id: string): Promise<void> {
+    const session = this.sessions.get(id)
+    if (!this.shown.delete(id) || !session) return
+
+    if (this.open.value === id) this.open.value = null
+    await ChatService.getInstance().releaseSession(session.id)
+
+    const note = session.anchor.value?.note
+    if (note) dispatchCommentsChanged(note)
+  }
 
   /** True for a comment that has been opened as a chat: `ChatService` owns it now. */
   isExpanded(id: string): boolean {
@@ -254,6 +302,7 @@ export class CommentService implements CommentInfoSource {
     this.watchers.delete(id)
     this.sessions.delete(id)
     this.expanded.delete(id)
+    this.shown.delete(id)
   }
 
   // ── Making one ────────────────────────────────────────────────
@@ -468,12 +517,10 @@ export class CommentService implements CommentInfoSource {
   /**
    * The session for a comment file `ChatService` is restoring a tab for.
    *
-   * It is `load` plus the bookkeeping a restored tab needs. Only an expanded comment has one:
-   * it is a chat now, `ChatService` owns it, and it is moved out of `sessions` to say so.
-   *
-   * A comment that is still a comment gets no tab and is refused here. 1.17.1 lent the sidebar
-   * to comments and could save such a tab; restoring one now would put a card's session in a
-   * bar whose × means "close", over a file the margin is still writing.
+   * It is `load` plus the bookkeeping the two ways into a tab do. A comment that was expanded
+   * into a chat comes back as one — `expanded`, owned by `ChatService`. A comment that is
+   * still a comment comes back as what it is, marked `shown`: this service owns it, and
+   * closing the tab hands it back rather than ending it.
    *
    * Loading it and *then* letting `restoreTabs` build its own is what put two log writers on
    * one file — the editor is up before `onLayoutReady`, so the comment is usually read first.
@@ -482,7 +529,11 @@ export class CommentService implements CommentInfoSource {
     const session = await this.load(id)
     if (!session) return null
 
-    if (session.kind === 'comment') return null
+    if (session.kind === 'comment') {
+      this.shown.add(id)
+      this.open.value = id
+      return session
+    }
 
     if (this.sessions.delete(id)) this.expanded.set(id, session)
     return session
@@ -578,6 +629,9 @@ export class CommentService implements CommentInfoSource {
       }
 
       this.sessions.delete(id)
+      // It may already have been in a tab, read there rather than expanded; the mark goes now,
+      // because from here on the tab belongs to a chat and closing it is closing it.
+      this.shown.delete(id)
       this.expanded.set(id, session)
 
       const chatService = ChatService.getInstance()
@@ -721,6 +775,9 @@ export class CommentService implements CommentInfoSource {
     this.watchers.delete(id)
     this.sessions.delete(id)
     this.expanded.delete(id)
+    // Whatever was showing it is showing a session about to be destroyed; the tab is dropped
+    // rather than closed, since there is no longer a file to save it into.
+    if (this.shown.delete(id) && session) ChatService.getInstance().dropTab(session.id)
     this.missing.add(id)
     if (this.open.value === id) this.open.value = null
 
@@ -758,7 +815,12 @@ export class CommentService implements CommentInfoSource {
     this.watchers.get(id)?.()
     this.watchers.delete(id)
 
+    const wasShown = this.shown.delete(id)
+
     if (this.sessions.delete(id)) {
+      // Shown in the sidebar as well: the tab goes with it, and without a save — the file is
+      // about to be deleted, and writing it on the way out would put the comment back.
+      if (wasShown && session) ChatService.getInstance().dropTab(session.id)
       session?.destroy()
     } else if (this.expanded.delete(id) && session) {
       // Expanded: `ChatService` owns it, and closing the tab is what saves and disposes it.
@@ -795,6 +857,7 @@ export class CommentService implements CommentInfoSource {
     this.sessions.clear()
     // Expanded sessions belong to ChatService, which disposes of its own.
     this.expanded.clear()
+    this.shown.clear()
     this.loading.clear()
     this.missing.clear()
     this.generations.clear()

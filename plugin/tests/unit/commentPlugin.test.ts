@@ -539,34 +539,17 @@ function widgetOf(state: EditorState): CommentMarkerWidget {
 describe('where a press on a marker is sent', () => {
   afterEach(() => setCommentClickHandler(() => {}))
 
-  it('measures the pane the icon was drawn in, not the one Obsidian calls active', () => {
-    const handler = vi.fn()
-    setCommentClickHandler(handler)
-    const state = stateFor(DOC)
-    // 1000 - 700 = 300px of margin: room for a card. 1000 - 900 = 100px: none.
-    const wide = fakeView(state)
-    const narrow = fakeView(state, { contentRight: 900 })
-
-    widgetOf(state).toDOM(narrow).dispatchEvent(new MouseEvent('click'))
-
-    expect(handler).toHaveBeenLastCalledWith(['k7d2ph'], false, NOTE)
-
-    widgetOf(state).toDOM(wide).dispatchEvent(new MouseEvent('click'))
-
-    expect(handler).toHaveBeenLastCalledWith(['k7d2ph'], true, NOTE)
-  })
-
-  it('measures before it reads, because an overlay reports no room until it has', () => {
-    // `hasRoom()` answers `false` until the first `position()`, so a press that read the
-    // overlay without measuring it would send every first card into a dialog, however wide the
-    // pane. This is that regression, written as a test: the view is fresh, and the answer is
-    // still `true`.
+  /**
+   * Nothing is measured any more: a marker leads to the sidebar wherever it is pressed. The
+   * card in the margin it used to lead to on a wide screen is gone.
+   */
+  it('hands the press the ids it carries, and nothing else', () => {
     const handler = vi.fn()
     setCommentClickHandler(handler)
     const state = stateFor(DOC)
 
-    widgetOf(state).toDOM(fakeView(state)).dispatchEvent(new MouseEvent('click'))
+    widgetOf(state).toDOM().dispatchEvent(new MouseEvent('click'))
 
-    expect(handler).toHaveBeenCalledWith(['k7d2ph'], true, NOTE)
+    expect(handler).toHaveBeenCalledWith(['k7d2ph'])
   })
 })
