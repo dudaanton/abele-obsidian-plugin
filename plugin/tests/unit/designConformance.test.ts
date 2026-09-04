@@ -326,6 +326,23 @@ describe('the comment marker, which lives in the stylesheet', () => {
   }
   const rule = (selector: string): string => ruleIn(css, selector)
 
+  /**
+   * Every rule this selector appears in, joined — including the ones where it shares its
+   * declarations with another selector. A state drawn by two rules, one of them a group, is
+   * still one thing to assert about, and the anchored reader above cannot see the group at
+   * all: there the selector is followed by a comma rather than by a brace.
+   */
+  const rules = (selector: string): string =>
+    [...withoutComments(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter((match) =>
+        match[1]
+          .split(',')
+          .map((one) => one.trim())
+          .includes(selector)
+      )
+      .map((match) => match[2])
+      .join('\n')
+
   it('reads the rule it was asked for, not one whose selector ends with it', () => {
     const sample = 'body.is-mobile .abele-x {\n  min-width: 1px;\n}\n.abele-x {\n  color: red;\n}\n'
 
@@ -343,17 +360,19 @@ describe('the comment marker, which lives in the stylesheet', () => {
   })
 
   /**
-   * The digit that says how many comments a marker carries — the one thing a phone reported
-   * missing. It was missing because the markers were not merging, but the size it is drawn at
-   * is what keeps it readable once they do: `--font-smallest` beside a 24 px target is a mark
-   * nobody makes out at arm's length.
+   * The digit that says how many comments a marker carries — the one thing reported missing
+   * twice, from a phone and then from a desktop. The markers were not merging the first time;
+   * the second time they were, and the digit was a `--font-smallest` grey speck beside a
+   * coloured glyph, which is a thing nobody reads at any distance.
    */
-  it('draws the count at a size a phone can read', () => {
-    const mobile = rule('body.is-mobile .abele-comment-marker__count')
+  it('draws the count at a size anybody can read', () => {
+    const count = rule('.abele-comment-marker__count')
 
-    expect(mobile).toMatch(/font-size:\s*var\(--font-ui-smaller\)/)
+    expect(count).toMatch(/font-size:\s*var\(--font-ui-smaller\)/)
     // The marker's colour, not a muted grey: on a failed comment the digit turns red with it.
-    expect(mobile).toMatch(/color:\s*inherit/)
+    expect(count).toMatch(/color:\s*inherit/)
+    // And no phone-only rule saying it again: one size, read at any distance.
+    expect(rule('body.is-mobile .abele-comment-marker__count')).toBe('')
   })
 
   it('centres the glyph inside it, on the line it interrupts', () => {
@@ -361,38 +380,46 @@ describe('the comment marker, which lives in the stylesheet', () => {
   })
 
   /**
-   * The three states, as a phone sees them.
+   * The two states an agent puts a marker in, as a phone sees them.
    *
-   * All three were drawn for a mouse pointer a foot from the screen: the busy state faded the
-   * whole marker in and out by a fraction, and the "waiting on you" dot was `--size-2-1` — two
-   * pixels, which the phone reported as invisible. What is asserted here is what makes each
-   * one legible at arm's length: the glyph itself pulses, the dot is a dot rather than a
-   * speck and hangs off the corner instead of sitting inside the drawing, and both grow with
-   * the 24 px target on a phone.
+   * Both were drawn for a mouse pointer a foot from the screen: "busy" faded and shrank the
+   * glyph itself, and the "waiting on you" dot was `--size-2-1` — two pixels, which the phone
+   * reported as invisible. Then the glyph pulsing was reported too, as the whole icon
+   * blinking. So both are dots now, the size of the one the chat tabs use, hung off the corner
+   * rather than drawn inside the glyph, and both grow with the 24 px target on a phone.
    */
-  it('pulses the glyph itself while an agent is working', () => {
-    expect(rule('.abele-comment-marker_busy')).toMatch(/color:\s*var\(--text-accent\)/)
-    // On the glyph, not on the marker: a box that also holds the count and the dot cannot
-    // fade without taking both of them with it.
-    expect(rule('.abele-comment-marker_busy .abele-comment-marker__icon')).toMatch(
-      /animation:\s*abele-comment-marker-pulse/
-    )
+  it('says an agent is working with a dot, not by moving the glyph', () => {
+    const dot = rules('.abele-comment-marker_busy::after')
+
+    expect(dot).toMatch(/position:\s*absolute/)
+    expect(dot).toMatch(/background-color:\s*var\(--interactive-accent\)/)
+    expect(dot).toMatch(/animation:\s*abele-comment-marker-pulse/)
+    // Nothing is done to the drawing itself, which is what read as blinking.
+    expect(rule('.abele-comment-marker_busy .abele-comment-marker__icon')).toBe('')
   })
 
-  it('hangs the waiting dot off the glyph rather than inside it', () => {
-    const dot = rule('.abele-comment-marker_pending::after')
+  it('hangs both dots off the glyph rather than inside it', () => {
+    const busy = rules('.abele-comment-marker_busy::after')
+    const pending = rules('.abele-comment-marker_pending::after')
 
     // Absolute against the marker, which is what `position: relative` there is for.
     expect(rule('.abele-comment-marker')).toMatch(/position:\s*relative/)
-    expect(dot).toMatch(/position:\s*absolute/)
-    expect(dot).toMatch(/width:\s*var\(--size-2-3\)/)
-    expect(dot).toMatch(/height:\s*var\(--size-2-3\)/)
-    expect(dot).toMatch(/background-color:\s*var\(--text-warning\)/)
+    for (const dot of [busy, pending]) {
+      expect(dot).toMatch(/position:\s*absolute/)
+      expect(dot).toMatch(/width:\s*var\(--size-2-3\)/)
+      expect(dot).toMatch(/height:\s*var\(--size-2-3\)/)
+    }
+    // Waiting on the reader is the theme's warning colour, and it is held still: nothing is
+    // happening until somebody answers it.
+    expect(pending).toMatch(/background-color:\s*var\(--text-warning\)/)
+    expect(pending).not.toMatch(/animation:/)
 
-    // A phone's target is half again as big, and so is the dot on it.
-    const mobile = rule('body.is-mobile .abele-comment-marker_pending::after')
-    expect(mobile).toMatch(/width:\s*var\(--size-4-2\)/)
-    expect(mobile).toMatch(/height:\s*var\(--size-4-2\)/)
+    // A phone's target is half again as big, and so are the dots on it.
+    for (const state of ['busy', 'pending']) {
+      const mobile = rules(`body.is-mobile .abele-comment-marker_${state}::after`)
+      expect(mobile).toMatch(/width:\s*var\(--size-4-2\)/)
+      expect(mobile).toMatch(/height:\s*var\(--size-4-2\)/)
+    }
   })
 
   it('says a comment failed in the theme own error colour', () => {
