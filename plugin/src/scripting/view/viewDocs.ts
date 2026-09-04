@@ -40,22 +40,22 @@ const flip = new Button({ text: 'Flip', accent: true })
 const next = new Button({ text: 'Next', icon: 'arrow-right' })
 
 let back = false
-async function show() {
+async function draw() {
   const [front, rear] = (await read(paths[v.state.index])).split('\\n---\\n')
   card.text = back ? rear : front
   progress.text = \`\${v.state.index + 1} / \${paths.length}\`
 }
-flip.on('click', () => { back = !back; show() })
-next.on('click', () => { v.state.index = (v.state.index + 1) % paths.length; back = false; show() })
+flip.on('click', () => { back = !back; draw() })
+next.on('click', () => { v.state.index = (v.state.index + 1) % paths.length; back = false; draw() })
 v.on('key', (e) => { if (e.key === ' ') flip.click(); if (e.key === 'ArrowRight') next.click() })
 
 v.body = [new Row([progress]), new Card({ children: [card] }), new Row([flip, next])]
-await show()
+await draw()
 await v.open()
 \`\`\`
 
 Nothing is rendered until \`open()\`. After it, the run ends and the closure above — \`paths\`,
-\`back\`, \`show\` — stays alive for as long as the tab does.
+\`back\`, \`draw\` — stays alive for as long as the tab does.
 
 ---
 
@@ -215,8 +215,9 @@ v.style(\`.post { border-left: 3px solid var(--interactive-accent); padding-left
 - A selector that is exactly \`:root\`, \`html\` or \`body\` is left alone — no prefix could make it
   true. Anything longer is prefixed as written, so \`body .post\` becomes \`<view> body .post\` and
   matches nothing. Put a class on your own markup and target that.
-- \`@media\`, \`@supports\` and \`@container\` are recursed into; \`@keyframes\` and \`@font-face\` are
-  copied through untouched.
+- \`@media\`, \`@supports\` and \`@container\` are recursed into. The at-rules that hold
+  declarations rather than rules — \`@keyframes\`, \`@font-face\`, \`@page\`, \`@property\`,
+  \`@counter-style\`, \`@font-feature-values\` — are copied through untouched.
 - The parser walks braces and commas as structure and does not read quoted strings, so a brace
   or comma inside a value (\`content: "}"\`) confuses it. Write those escaped: \`content: "\\007D"\`.
 - Obsidian's variables reach in. Use them — \`var(--text-muted)\`, \`var(--size-4-2)\`,
@@ -235,8 +236,8 @@ v.style(\`.post { border-left: 3px solid var(--interactive-accent); padding-left
 - \`form()\` and \`show()\` work once the view is open — they open the usual modal over it, because
   a handler runs when the user presses something. Before that, a run that was not started from
   the command palette still cannot use them.
-- \`log()\` after the run has finished goes to the console under the view's name; the run in
-  **Show script runs** is closed by then.
+- \`log()\` from a handler is appended to the run that opened the view, under **Show script
+  runs**, even though that run has finished. For the console use \`console.log\`.
 - \`signal\` in the script closure is the *run's* signal, and nobody aborts it once the run ends.
   \`v.signal\` is the one a handler checks — it aborts when the tab closes.
 - \`v.every(ms, fn)\` is the timer to use. It is cleared with the view, so nothing keeps ticking
@@ -261,9 +262,11 @@ Row
 \`\`\`
 
 A name that matches nothing lists the views that are open, including ones still starting or
-failed. Hidden nodes print \`(hidden)\`, ids print as \`#id\`, and \`Html\` prints its cleaned markup.
+failed. Hidden nodes print \`(hidden)\`, ids print as \`#id\`, and \`Html\` prints its raw markup.
 Output is cut at 15 000 characters — inspect a smaller view, or reach one node by its \`id\`.
-\`screenshot\` works on a view as it does anywhere else.
+
+\`inspect_view\` with \`view: '<title or script>'\` is how to look at what you built.
+\`screenshot\` takes a note path and cannot capture a script view yet.
 
 ---
 

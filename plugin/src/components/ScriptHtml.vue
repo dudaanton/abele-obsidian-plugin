@@ -13,8 +13,11 @@
  *
  * Events are delegated: one listener per event name on the root, matched with `closest`
  * against each selector the script registered. That survives the markup being replaced,
- * which a listener on the element itself would not. `sanitizeHTMLToDom` drops `<script>` and
- * inline `on*` attributes; the docs say so and point at `on:` instead.
+ * which a listener on the element itself would not. A handler bound with no selector is the
+ * same listener with nothing to match: it fires for anything inside the root. `mount` is the
+ * one root handler that is not a DOM event — `render()` emits it with the element — so it is
+ * never listened for. `sanitizeHTMLToDom` drops `<script>` and inline `on*` attributes; the
+ * docs say so and point at `on:` instead.
  */
 import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { sanitizeHTMLToDom } from 'obsidian'
@@ -62,10 +65,25 @@ function render() {
 const listening = new Set<string>()
 const listeners: Array<[string, (e: Event) => void]> = []
 
+/** Emitted by `render()` with the root element, so there is no DOM event of that name. */
+const NOT_A_DOM_EVENT = new Set(['mount'])
+
+/** The events the script bound to the node itself rather than to a selector inside it. */
+function rootEvents(): string[] {
+  return Object.keys(props.node.handlers).filter(
+    (event) => !NOT_A_DOM_EVENT.has(event) && (props.node.handlers[event]?.length ?? 0) > 0
+  )
+}
+
+/** What the delegates watch compares: the event names, so a late `.on()` is picked up. */
+function rootEventKey(): string {
+  return rootEvents().join(',')
+}
+
 function listen() {
   const el = root.value
   if (!el) return
-  for (const { event } of props.node.delegates) {
+  for (const event of [...props.node.delegates.map((d) => d.event), ...rootEvents()]) {
     if (listening.has(event)) continue
     listening.add(event)
     const handler = (e: Event) => {
@@ -75,6 +93,10 @@ function listen() {
         if (d.event !== event) continue
         const hit = target.closest(d.selector)
         if (hit && el.contains(hit)) void props.view.run(() => d.fn(e, hit))
+      }
+      // The selectorless handlers, read at call time: one may have been added since.
+      if (el.contains(target) && (props.node.handlers[event]?.length ?? 0) > 0) {
+        void props.view.run(() => props.node.emit(event, e))
       }
     }
     el.addEventListener(event, handler)
@@ -89,6 +111,7 @@ onMounted(() => {
 
 watch(() => props.node.html, render)
 watch(() => props.node.delegates.length, listen)
+watch(rootEventKey, listen)
 watch(() => Object.keys(props.node.slots).join('\n'), render)
 
 onUnmounted(() => {

@@ -96,6 +96,31 @@ describe('Html', () => {
     expect(v.errors).toEqual(['Html: nothing matches ".missing"'])
   })
 
+  it('fires a handler bound to the root, with no selector, for a click inside', async () => {
+    const v = make()
+    const pressed = vi.fn()
+    const h = new Html({ html: '<p class="x">x</p>' })
+    h.on('click', pressed)
+    v.body = [h]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+    await flushPromises()
+    await w.find('.x').trigger('click')
+    await flushPromises()
+    expect(pressed).toHaveBeenCalledTimes(1)
+    expect(pressed.mock.calls[0][0]).toBeInstanceOf(Event)
+  })
+
+  it('takes the same root handler from the constructor, where the spec names no selector', async () => {
+    const v = make()
+    const pressed = vi.fn()
+    v.body = [new Html({ html: '<p class="x">x</p>', on: { click: pressed } })]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+    await flushPromises()
+    await w.find('.x').trigger('click')
+    await flushPromises()
+    expect(pressed).toHaveBeenCalledTimes(1)
+  })
+
   it('a handler added after mount still fires', async () => {
     const v = make()
     const h = new Html({ html: '<button class="x">x</button>' })

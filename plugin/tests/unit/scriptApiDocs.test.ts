@@ -36,6 +36,14 @@ describe('the view reference', () => {
     expect(SCRIPT_API_DOCS).toContain("section: 'views'")
   })
 
+  it('claims only what the code does', () => {
+    // Each of these was written from the design spec and was not true of the plugin.
+    expect(SCRIPT_VIEW_DOCS).toContain('cannot capture a script view')
+    expect(SCRIPT_VIEW_DOCS).not.toMatch(/`screenshot` works on a view/)
+    expect(SCRIPT_VIEW_DOCS).toContain('For the console use `console.log`')
+    expect(SCRIPT_VIEW_DOCS).not.toMatch(/`log\(\)` after the run has finished goes to the console/)
+  })
+
   it('documents every class the prelude hands a script', () => {
     for (const name of Object.keys(VIEW_GLOBALS)) {
       expect(SCRIPT_VIEW_DOCS, name).toMatch(new RegExp('`' + name + '\\('))
