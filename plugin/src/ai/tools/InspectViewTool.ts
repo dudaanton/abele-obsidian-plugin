@@ -6,7 +6,7 @@ import { findLeafByFile } from './ScreenshotTool'
 
 const MAX_OUTPUT = 15_000
 
-function cleanHtml(el: Element): string {
+export function cleanHtml(el: Element): string {
   const tag = el.tagName.toLowerCase()
 
   // Skip SVG internals, scripts, styles
@@ -56,23 +56,58 @@ export function createInspectViewTool(): AgentTool {
     name: 'inspect_view',
     label: 'Inspect View',
     description:
-      "Inspect the HTML structure of a file's rendered view for debugging. Returns cleaned HTML (no inline styles, no data-attributes, collapsed SVGs). Use optional CSS selector to narrow down to a specific element. If output is truncated, use a more specific selector.",
+      "Inspect the HTML structure of a file's rendered view for debugging. Returns cleaned HTML (no inline styles, no data-attributes, collapsed SVGs). Use optional CSS selector to narrow down to a specific element. If output is truncated, use a more specific selector. Give either path (a note) or view (a script view).",
     parameters: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'File path relative to vault root' },
+        view: {
+          type: 'string',
+          description:
+            'A script view, by its tab title or script name. Use instead of path to inspect a view a script opened.',
+        },
         selector: {
           type: 'string',
           description:
             'Optional CSS selector to target a specific element within the view (e.g. ".cm-content", ".base-table")',
         },
       },
-      required: ['path'],
+      required: [],
     },
     execute: async (_id, params) => {
-      const path = params.path as string
       const selector = params.selector as string | undefined
-      if (!path) throw new Error('Missing required parameter: path')
+
+      // A script's view has no file behind it, so it is answered before the path checks: its
+      // nodes are the truth, and the rendered HTML would only show what the kit made of them.
+      // Imported here rather than at the top so the tool does not pull the view runtime in.
+      const viewName = params.view as string | undefined
+      if (viewName) {
+        const { ScriptViewService } = await import('@/scripting/view/ScriptViewService')
+        const { describeView } = await import('@/scripting/view/describe')
+        const open = ScriptViewService.getInstance()
+          .leaves()
+          .map((l) => l.model.view)
+          .filter((v): v is NonNullable<typeof v> => Boolean(v))
+        const wanted = viewName.toLowerCase()
+        const hit =
+          open.find(
+            (v) => v.title.toLowerCase() === wanted || v.origin.script.toLowerCase() === wanted
+          ) ??
+          open.find(
+            (v) =>
+              v.title.toLowerCase().includes(wanted) ||
+              v.origin.script.toLowerCase().includes(wanted)
+          )
+        if (!hit) {
+          // Naming what is open turns a miss into the answer to the next question anyway.
+          const names = open.map((v) => `"${v.title}" (${v.origin.script})`).join(', ') || 'none'
+          throw new Error(`No script view named "${viewName}". Open: ${names}`)
+        }
+        return { content: [{ type: 'text', text: describeView(hit) }] }
+      }
+
+      const path = params.path as string
+      if (!path) throw new Error('Missing required parameter: path or view')
       if (!ScopeResolver.getInstance().isInScope(path)) {
         throw new Error(`Access denied: ${path} is not in workspace scope`)
       }
