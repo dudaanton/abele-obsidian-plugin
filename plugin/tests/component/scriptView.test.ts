@@ -49,7 +49,7 @@ const host: ViewHost = {
 }
 
 function live(view: View): ScriptViewModel {
-  return { id: 'leaf-1', view, status: { kind: 'live' }, saved: null, runAgain: vi.fn() }
+  return { id: 'leaf-1', el: null, view, status: { kind: 'live' }, saved: null, runAgain: vi.fn() }
 }
 
 const make = (title = 'T') => new View({ title }, host, { script: 'Demo', params: {} })
@@ -66,6 +66,7 @@ describe('states', () => {
       props: {
         model: {
           id: 'x',
+          el: null,
           view: null,
           status: { kind: 'starting', script: 'Flashcards' },
           saved: null,
@@ -82,6 +83,7 @@ describe('states', () => {
       props: {
         model: {
           id: 'x',
+          el: null,
           view: null,
           status: { kind: 'failed', script: 'F', message: 'Script "F" not found' },
           saved: null,
@@ -101,6 +103,7 @@ describe('states', () => {
     v.body = [new Text('ready', { cls: 'mine' })]
     const model: ScriptViewModel = shallowReactive({
       id: 'leaf-1',
+      el: null,
       view: null,
       status: { kind: 'starting', script: 'Demo' },
       saved: null,
@@ -216,6 +219,61 @@ describe('nodes', () => {
     expect(t.active).toBe('b')
     expect(changed).toHaveBeenCalledWith('b')
     expect(w.text()).toContain('in b')
+  })
+
+  it('shows the first tab and says so once when active names no tab', async () => {
+    const v = make()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const t = new Tabs({
+      tabs: [
+        { id: 'a', label: 'A', content: new Text('in a') },
+        { id: 'b', label: 'B', content: new Text('in b') },
+      ],
+      active: 'zzz',
+    })
+    v.body = [t]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+    await flushPromises()
+    expect(w.text()).toContain('in a')
+    expect(w.findComponent(KitTabs).props('modelValue')).toBe('a')
+    expect(v.errors).toEqual(['Tabs: no tab has id "zzz"; showing "a"'])
+    t.active = 'yyy'
+    await flushPromises()
+    expect(v.errors).toHaveLength(1)
+    t.active = 'b'
+    await flushPromises()
+    expect(w.text()).toContain('in b')
+  })
+
+  it('shows the first option and says so once when value is not among the options', async () => {
+    const v = make()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const s = new Select({ options: ['a', 'b'], value: 'nope' })
+    v.body = [s]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+    await flushPromises()
+    expect((w.find('select').element as HTMLSelectElement).value).toBe('a')
+    expect(v.errors).toEqual(['Select: no option has value "nope"; showing "a"'])
+    s.value = 'still not'
+    await flushPromises()
+    expect(v.errors).toHaveLength(1)
+  })
+
+  it('reads a row assigned as an array after construction by column order', async () => {
+    const v = make()
+    const clicked = vi.fn()
+    const t = new Table({ columns: ['k', 'v'], rows: [], onRowClick: clicked })
+    v.body = [t]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+    const row = ['x', new Badge('y')] as unknown as Record<string, string>
+    t.rows = [row]
+    await flushPromises()
+    const cells = w.findComponent(KitTable).findAll('.abele-table__cell')
+    expect(cells.map((c) => c.text())).toEqual(['x', 'y'])
+    // The script gets back the row it put in, not the copy the table was shown.
+    await w.findComponent(KitTable).find('.abele-table__row').trigger('click')
+    await flushPromises()
+    expect(clicked).toHaveBeenCalledWith(row, 0)
   })
 
   it('writes typing back into Input and fires input, change and enter', async () => {

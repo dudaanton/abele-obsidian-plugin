@@ -4,7 +4,7 @@
  * HTML would show classes and divs; this shows the tree the script wrote, with the values a
  * script would ask about — a button's text and state, an input's value, which tab is up.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { describeView } from '@/scripting/view/describe'
 import { View, type ViewHost } from '@/scripting/view/View'
 import {
@@ -25,6 +25,7 @@ import {
 } from '@/scripting/view/components'
 
 const host: ViewHost = { async open() {}, close() {} }
+vi.spyOn(console, 'error').mockImplementation(() => {})
 
 describe('describeView', () => {
   it('prints the tree with the values that matter', () => {
@@ -86,6 +87,25 @@ Image src=Media/a.png alt="A"
 Html <article class="post"><h3>T</h3></article>
   slot .post: Text "slot"`
     )
+  })
+
+  it('prints the strip under the header when the view has errors, and nothing when not', () => {
+    const v = new View({ title: 'T' }, host, { script: 'S', params: {} })
+    v.body = [new Text('x')]
+    expect(describeView(v).split('\n')[1]).toBe('Text "x"')
+    v.report(new Error('bad press'))
+    v.report('worse')
+    const lines = describeView(v).split('\n')
+    expect(lines[1]).toBe('errors: ["bad press", "worse"]')
+    expect(lines[2]).toBe('Text "x"')
+  })
+
+  it('reads a row assigned as an array by column order, as the screen does', () => {
+    const v = new View({ title: 'T' }, host, { script: 'S', params: {} })
+    const t = new Table({ columns: ['k', 'v'], rows: [] })
+    t.rows = [['a', '1'] as unknown as Record<string, string>]
+    v.body = [t]
+    expect(describeView(v)).toContain('Table columns=[k, v] rows=1\n  a | 1')
   })
 
   it('cuts long markdown and markup', () => {

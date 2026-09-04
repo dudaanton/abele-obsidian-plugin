@@ -25,6 +25,12 @@ interface Opening {
   resolve: (leafView: ScriptView) => void
 }
 
+/**
+ * Where a key is being typed rather than pressed. `contenteditable` with no value and
+ * `plaintext-only` are editable too; only `"false"` says an element is not.
+ */
+const EDITABLE = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
+
 export class ScriptViewService implements ViewHost {
   private static instance: ScriptViewService | null = null
 
@@ -218,7 +224,7 @@ export class ScriptViewService implements ViewHost {
     const onKey = (e: KeyboardEvent) => {
       if (!active) return
       const t = e.target as Element | null
-      if (t?.closest?.('input, textarea, select, [contenteditable="true"]')) return
+      if (t?.closest?.(EDITABLE)) return
       void view.emit('key', e)
     }
     doc.addEventListener('keydown', onKey)

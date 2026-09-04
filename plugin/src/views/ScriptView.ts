@@ -23,6 +23,12 @@ export type ViewStatus =
 /** What the Vue side renders from. One per leaf, reactive, handed over through the store. */
 export interface ScriptViewModel {
   id: string
+  /**
+   * The element the Vue side teleports into, made in `onOpen`. Handed over as an element
+   * rather than a selector: a string target is resolved with the main document's
+   * `querySelector`, which never sees a leaf in a popout window.
+   */
+  el: HTMLElement | null
   view: View | null
   status: ViewStatus
   saved: SavedViewState | null
@@ -41,11 +47,20 @@ export class ScriptView extends ItemView {
   readonly id = nanoid()
   readonly model: ScriptViewModel
   private stopWatching: WatchStopHandle | null = null
+  /**
+   * The last `view.state` that survived a JSON round-trip. Obsidian calls `getState` from its
+   * layout save, and a throw there — a cycle, a BigInt — would stop `workspace.json` being
+   * written for as long as the tab is open. This is what is saved instead, and the script is
+   * told once.
+   */
+  private lastState: Record<string, unknown> = {}
+  private reportedBadState = false
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
     this.model = shallowReactive({
       id: this.id,
+      el: null,
       view: null,
       status: { kind: 'starting', script: '' },
       saved: null,
@@ -74,13 +89,32 @@ export class ScriptView extends ItemView {
   getState(): Record<string, unknown> {
     const { view, saved } = this.model
     if (view) {
-      return {
-        script: view.origin.script,
-        params: view.origin.params,
-        state: JSON.parse(JSON.stringify(view.state)) as Record<string, unknown>,
-      }
+      return { script: view.origin.script, params: view.origin.params, state: this.snapshot(view) }
     }
     return saved ? { ...saved } : {}
+  }
+
+  /** `view.state` as JSON text, or null when it has no JSON form. Never throws. */
+  private stateText(view: View): string | null {
+    try {
+      return JSON.stringify(view.state) ?? '{}'
+    } catch {
+      return null
+    }
+  }
+
+  /** A plain copy of `view.state`, or the last one that could be made. Never throws. */
+  private snapshot(view: View): Record<string, unknown> {
+    const text = this.stateText(view)
+    if (text === null) {
+      if (!this.reportedBadState) {
+        this.reportedBadState = true
+        view.report(new Error('view.state must be JSON; keeping the last saved state'))
+      }
+      return this.lastState
+    }
+    this.lastState = JSON.parse(text) as Record<string, unknown>
+    return this.lastState
   }
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
@@ -92,14 +126,16 @@ export class ScriptView extends ItemView {
         state: saved.state ?? {},
       }
       this.model.saved = full
+      this.lastState = full.state
       void ScriptViewService.getInstance().restore(this, full)
     }
     await super.setState(state, result)
   }
 
   async onOpen() {
-    const container = this.containerEl.children[1]
-    container.appendChild(createDiv({ attr: { [SCRIPT_VIEW_ID_ATTR]: this.id } }))
+    // Built by the container, so it is in the leaf's own document from the start.
+    const container = this.containerEl.children[1] as HTMLElement
+    this.model.el = container.createDiv({ attr: { [SCRIPT_VIEW_ID_ATTR]: this.id } })
     const open = GlobalStore.getInstance().scriptViews
     open.value = [...open.value, this.model]
     ScriptViewService.getInstance().attach(this)
@@ -135,6 +171,7 @@ export class ScriptView extends ItemView {
     this.model.view = view
     this.model.saved = { script: view.origin.script, params: view.origin.params, state: view.state }
     this.model.status = { kind: 'live' }
+    this.snapshot(view)
     // The headers read title and icon when the leaf opened, which on a fresh open was before
     // any view existed — they still say "Script view" with the generic icon. Tell them now,
     // tell them again when the script changes them, and ask for the layout to be written
@@ -145,7 +182,7 @@ export class ScriptView extends ItemView {
     // Node's `Timeout`, while the DOM call this makes returns a plain handle.
     let timer: number | null = null
     const stop = watch(
-      () => [view.title, view.icon, JSON.stringify(view.state)],
+      () => [view.title, view.icon, this.stateText(view)],
       ([, , state], [, , before]) => {
         this.refreshHeader()
         if (state !== before) {

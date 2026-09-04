@@ -2,8 +2,9 @@
  * A script's CSS must not reach past its own view.
  *
  * Text in, text out: the scoper walks braces and prefixes each selector, recursing into the
- * at-rules that hold rules and leaving alone the ones that hold declarations. No CSSOM: the
- * browsers this runs in disagree about nesting and happy-dom parses no stylesheet at all.
+ * at-rules that hold rules and leaving alone the ones that hold declarations. A selector that
+ * names the document itself becomes the view's root. No CSSOM: the browsers this runs in
+ * disagree about nesting and happy-dom parses no stylesheet at all.
  */
 import { describe, it, expect } from 'vitest'
 import { scopeCss } from '@/scripting/view/scopeCss'
@@ -30,15 +31,22 @@ describe('scopeCss', () => {
     )
   })
 
-  it('leaves keyframes, font-face and root selectors alone', () => {
+  it('leaves keyframes and font-face alone', () => {
     const kf = '@keyframes spin { from { r: 0 } to { r: 1 } }'
     expect(squash(scopeCss(kf, P))).toBe(kf)
     expect(squash(scopeCss('@font-face { font-family: x }', P))).toBe(
       '@font-face { font-family: x }'
     )
+  })
+
+  it('makes :root, html and body the view root rather than letting them out', () => {
+    // `body { display: none }` emitted as written would blank Obsidian; a custom property on
+    // `:root` becomes one on the view, which is what the script meant by it.
     expect(squash(scopeCss(':root { --c: red } body { m: 0 } html { p: 0 }', P))).toBe(
-      ':root { --c: red } body { m: 0 } html { p: 0 }'
+      `${P} { --c: red } ${P} { m: 0 } ${P} { p: 0 }`
     )
+    expect(squash(scopeCss('html, .a { m: 0 }', P))).toBe(`${P}, ${P} .a { m: 0 }`)
+    expect(squash(scopeCss('@media (x) { body { m: 0 } }', P))).toBe(`@media (x) { ${P} { m: 0 } }`)
   })
 
   it('strips comments and passes statements through', () => {
@@ -68,6 +76,6 @@ describe('scopeCss', () => {
     expect(squash(scopeCss('html.theme-dark .post { m: 0 }', P))).toBe(
       `${P} html.theme-dark .post { m: 0 }`
     )
-    expect(squash(scopeCss('body { m: 0 }', P))).toBe('body { m: 0 }')
+    expect(squash(scopeCss('body { m: 0 }', P))).toBe(`${P} { m: 0 }`)
   })
 })

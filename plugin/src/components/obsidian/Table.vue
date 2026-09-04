@@ -17,7 +17,7 @@
           class="abele-table__row"
           :class="{ 'abele-table__row_clickable': clickable }"
           :tabindex="clickable ? 0 : undefined"
-          @click="clickable && emit('rowClick', row, index)"
+          @click="click($event, row, index)"
           @keydown.enter="press($event, row, index)"
           @keydown.space="press($event, row, index)"
         >
@@ -52,13 +52,35 @@ const emit = defineEmits<{
 }>()
 
 /**
+ * What a cell may hold that is pressed in its own right. A key or a click that started in
+ * one of these is that control's — Space in a field is a space — and not the row being
+ * chosen as well. The walk stops at the row, so a button the whole table sits inside does
+ * not count.
+ */
+const INTERACTIVE = 'button, a, input, select, textarea, [role="button"], [contenteditable]'
+
+const fromControl = (event: Event): boolean => {
+  let el = event.target as Element | null
+  while (el && el !== event.currentTarget) {
+    if (el.matches?.(INTERACTIVE)) return true
+    el = el.parentElement
+  }
+  return false
+}
+
+const click = (event: MouseEvent, row: Record<string, unknown>, index: number) => {
+  if (!props.clickable || fromControl(event)) return
+  emit('rowClick', row, index)
+}
+
+/**
  * Enter and Space, the two keys that press a thing.
  *
  * The default is only prevented for a row that is a target — Space scrolls the page, and
  * taking that away from a table nobody can click would be taking away the way through it.
  */
 const press = (event: KeyboardEvent, row: Record<string, unknown>, index: number) => {
-  if (!props.clickable) return
+  if (!props.clickable || fromControl(event)) return
   event.preventDefault()
   emit('rowClick', row, index)
 }

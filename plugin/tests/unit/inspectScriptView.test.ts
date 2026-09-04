@@ -19,6 +19,7 @@ view.body = [new Button({ text: 'Refresh' })]
 const tab = (over: Partial<ScriptViewModel>): ScriptViewModel =>
   ({
     id: 'leaf',
+    el: null,
     view: null,
     status: { kind: 'live' },
     saved: null,

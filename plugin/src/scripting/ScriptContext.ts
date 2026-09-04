@@ -487,7 +487,7 @@ export function buildScriptContext(opts: {
       const handler = formHandlerNow()
       if (!handler) {
         throw new Error(
-          'Form input is only available when the script is run from the command palette.'
+          'Form input is only available when the script is run from the command palette or has a view open.'
         )
       }
       return handler(fields)
@@ -505,7 +505,7 @@ export function buildScriptContext(opts: {
       const handler = formHandlerNow()
       if (!handler) {
         throw new Error(
-          'Showing text is only available when the script is run from the command palette.'
+          'Showing text is only available when the script is run from the command palette or has a view open.'
         )
       }
       await handler([{ name: 'text', label: title ?? '', type: 'markdown', text }])

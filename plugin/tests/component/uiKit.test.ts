@@ -7,6 +7,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { h } from 'vue'
 import Tabs from '@/components/obsidian/Tabs.vue'
 import Badge from '@/components/obsidian/Badge.vue'
 import Card from '@/components/obsidian/Card.vue'
@@ -493,6 +494,47 @@ describe('Table', () => {
     const view = mount(Table, { props: { columns, rows } })
 
     expect(view.findAll('.abele-table__row')[0].attributes('tabindex')).toBeUndefined()
+  })
+
+  /**
+   * A control inside a clickable row keeps its keys and its clicks: Space in a field is a
+   * space, a press on a button is that button's, and neither is also the row being chosen.
+   */
+  describe('with a control in a cell', () => {
+    const withInput = () =>
+      mount(Table, {
+        props: { columns, rows, clickable: true },
+        slots: {
+          cell: ({ value, column }: { value: unknown; column: { key: string } }) =>
+            column.key === 'name' ? h('input', { class: 'field', value }) : String(value),
+        },
+      })
+
+    it('lets Space through to a field without choosing the row', () => {
+      const view = withInput()
+      const event = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true })
+
+      view.find('input.field').element.dispatchEvent(event)
+
+      expect(view.emitted('rowClick')).toBeUndefined()
+      expect(event.defaultPrevented).toBe(false)
+    })
+
+    it('does not take a click on the field as a click on the row', async () => {
+      const view = withInput()
+
+      await view.find('input.field').trigger('click')
+
+      expect(view.emitted('rowClick')).toBeUndefined()
+    })
+
+    it('still reports a click on a plain cell of the same row', async () => {
+      const view = withInput()
+
+      await view.findAll('.abele-table__cell')[1].trigger('click')
+
+      expect(view.emitted('rowClick')?.[0]).toEqual([rows[0], 0])
+    })
   })
 })
 

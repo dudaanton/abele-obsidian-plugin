@@ -8,7 +8,13 @@
  * active id, and nothing prints a wrapper.
  */
 import type { View } from './View'
-import { isNode, type TableColumn, type TableRow, type ViewNode } from './components'
+import {
+  isNode,
+  type TableCell,
+  type TableColumn,
+  type TableRow,
+  type ViewNode,
+} from './components'
 
 /** Where a text value is cut. Markup gets more room because a tag eats most of a short line. */
 const CUT = 120
@@ -42,7 +48,10 @@ const json = (value: unknown): string => {
 
 export function describeView(view: View): string {
   const head = `View ${q(view.title)} — script ${q(view.origin.script)}, params ${json(view.origin.params)}, state ${json(view.state)}`
-  return [head, ...view.nodes.map((n) => describeNode(n))].join('\n')
+  // The strip, when there is one: an agent asking why a button does nothing wants the throw
+  // that button produced, and it is already folded and capped the way the strip shows it.
+  const errors = view.errors.length ? [`errors: [${view.errors.map(q).join(', ')}]`] : []
+  return [head, ...errors, ...view.nodes.map((n) => describeNode(n))].join('\n')
 }
 
 /**
@@ -97,10 +106,12 @@ export function describeNode(node: ViewNode, depth = 0, seen: Set<ViewNode> = ne
     case 'table': {
       // A cell is text or a node of its own; the node prints as its own one-line description,
       // undented, so the row still reads as a row.
-      const cells = (r: TableRow) =>
+      // A row assigned as an array after construction is read by column order, as the
+      // renderer reads it.
+      const cells = (r: TableRow | TableCell[]) =>
         n.columns
-          .map((c: TableColumn) => {
-            const v = r[c.key]
+          .map((c: TableColumn, i: number) => {
+            const v = Array.isArray(r) ? r[i] : r[c.key]
             return isNode(v) ? describeNode(v, 0, seen).trim() : (v ?? '')
           })
           .join(' | ')

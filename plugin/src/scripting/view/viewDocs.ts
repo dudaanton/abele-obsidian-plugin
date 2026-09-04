@@ -154,14 +154,19 @@ const table = new Table({ columns: ['Note', 'Words'], rows: [['Inbox.md', '412']
 v.body = [new Markdown({ file: 'Notes/Today.md' }), table, new Text('Counted just now', { muted: true })]
 \`\`\`
 
-A \`Table\` row given as an array is matched to the columns in order **at construction**. Rows
-assigned afterwards are taken as they are, so use objects keyed by column: \`table.rows =
+A \`Table\` row given as an array is matched to the columns in order, whether it was passed to
+the constructor or assigned later. An object row is keyed by column: \`table.rows =
 [{ Note: 'Inbox.md', Words: '412' }]\`. A row may carry keys no column shows — \`onRowClick\`
-receives the whole row, which is the tidy way to keep a path beside what is on screen. A cell
-may also be a node rather than a string.
+receives the whole row as the script wrote it, which is the tidy way to keep a path beside what
+is on screen. A cell may also be a node rather than a string.
 
 Inside a script, \`Text\` and \`Image\` are these classes: they shadow the browser globals of the
 same name.
+
+Reserved names: \`view\`, \`Stack\`, \`Row\`, \`Grid\`, \`Section\`, \`Tabs\`, \`Setting\`, \`Markdown\`,
+\`Text\`, \`Image\`, \`Table\`, \`Badge\`, \`EmptyState\`, \`Button\`, \`Icon\`, \`Input\`, \`Select\`,
+\`Checkbox\`, \`Search\`, \`Card\` and \`Html\` are already declared in every script — a script that
+declares one of them itself (\`const view = …\`) fails to start with a message naming it.
 
 ### Controls
 
@@ -212,8 +217,9 @@ nothing leaks out to the rest of Obsidian:
 v.style(\`.post { border-left: 3px solid var(--interactive-accent); padding-left: var(--size-4-3); }\`)
 \`\`\`
 
-- A selector that is exactly \`:root\`, \`html\` or \`body\` is left alone — no prefix could make it
-  true. Anything longer is prefixed as written, so \`body .post\` becomes \`<view> body .post\` and
+- A selector that is exactly \`:root\`, \`html\` or \`body\` becomes the view's root, so custom
+  properties declared there (\`:root { --accent: … }\`) apply inside the view and nowhere else.
+  Anything longer is prefixed as written, so \`body .post\` becomes \`<view> body .post\` and
   matches nothing. Put a class on your own markup and target that.
 - \`@media\`, \`@supports\` and \`@container\` are recursed into. The at-rules that hold
   declarations rather than rules — \`@keyframes\`, \`@font-face\`, \`@page\`, \`@property\`,

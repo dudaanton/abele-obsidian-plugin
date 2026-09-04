@@ -30,10 +30,10 @@
     </Section>
 
     <div v-else-if="n.type === 'tabs'" class="abele-script-node__tabs" :class="n.cls">
-      <Tabs :tabs="tabStrip" :model-value="n.active" @update:model-value="pickTab" />
+      <Tabs :tabs="tabStrip" :model-value="activeTab" @update:model-value="pickTab" />
       <div class="abele-script-node__tab-content">
         <ScriptNode
-          v-for="child in n.contentOf(n.active)"
+          v-for="child in n.contentOf(activeTab)"
           :key="child.key"
           :node="child"
           :view="view"
@@ -78,10 +78,10 @@
     <Table
       v-else-if="n.type === 'table'"
       :columns="n.columns"
-      :rows="n.rows"
+      :rows="tableRows"
       :clickable="n.has('rowClick')"
       :class="n.cls"
-      @row-click="(row, i) => fire('rowClick', row, i)"
+      @row-click="(_row, i) => fire('rowClick', n.rows[i], i)"
     >
       <template #cell="{ value }">
         <ScriptNode v-if="isNode(value)" :key="value.key" :node="value" :view="view" />
@@ -135,7 +135,7 @@
     <Dropdown
       v-else-if="n.type === 'select'"
       :options="options"
-      :model-value="n.value"
+      :model-value="selectValue"
       :class="n.cls"
       @update:model-value="
         (v: string) => {
@@ -263,6 +263,68 @@ const pickTab = (id: string) => {
   n.active = id
   fire('change', id)
 }
+
+/**
+ * An `active` that names no tab, or a `value` that is not among the options, is a script's
+ * mistake rather than a reason to draw nothing: the first one is shown, and the strip says so
+ * once for this instance. A watch rather than a report inside the computed, so the strip is
+ * written from a side effect and not from a render.
+ */
+const activeTab = computed<string>(() => {
+  if (n.type !== 'tabs') return ''
+  const ids = n.tabs.map((t: { id: string }) => t.id)
+  return ids.includes(n.active) ? n.active : (ids[0] ?? '')
+})
+const selectValue = computed<string>(() => {
+  if (n.type !== 'select') return ''
+  const values = n.options.map((o: { value: string }) => o.value)
+  return values.includes(n.value) ? n.value : (values[0] ?? '')
+})
+function reportOnce(what: string, asked: () => string, shown: () => string) {
+  let reported = false
+  watch(
+    () => asked() !== shown(),
+    (bad) => {
+      if (!bad || reported) return
+      reported = true
+      props.view.report(new Error(`${what} "${asked()}"; showing "${shown()}"`))
+    },
+    { immediate: true }
+  )
+}
+if (n.type === 'tabs') {
+  reportOnce(
+    'Tabs: no tab has id',
+    () => n.active,
+    () => activeTab.value
+  )
+}
+if (n.type === 'select') {
+  reportOnce(
+    'Select: no option has value',
+    () => n.value,
+    () => selectValue.value
+  )
+}
+
+// ── table ──
+/**
+ * A row given as an array is matched to the columns in order. The constructor does this for
+ * the rows it is given; rows assigned afterwards arrive here as they are, so the same is done
+ * on the way to the kit. The kit's row-click hands back the copy, which is why the handler
+ * above looks the script's own row up by index.
+ */
+const tableRows = computed<Record<string, unknown>[]>(() =>
+  n.type === 'table'
+    ? n.rows.map((r: unknown) =>
+        Array.isArray(r)
+          ? Object.fromEntries(
+              n.columns.map((c: { key: string }, i: number) => [c.key, (r as unknown[])[i] ?? ''])
+            )
+          : r
+      )
+    : []
+)
 
 // ── select / search ──
 const options = computed(() =>

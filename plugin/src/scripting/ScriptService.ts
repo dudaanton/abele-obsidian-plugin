@@ -12,7 +12,8 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
 import { parseScriptHeader, extractScriptBody } from './ScriptParser'
-import { buildScriptContext } from './ScriptContext'
+import { buildScriptContext, type ScriptContext } from './ScriptContext'
+import { VIEW_GLOBALS } from './view/components'
 import { showFormModal } from './formModal'
 import { ScriptRuns, type RunSource } from './ScriptRuns'
 import type { ParsedScript, FormField } from './types'
@@ -33,6 +34,71 @@ export interface ExecuteOptions {
   source?: RunSource
   /** A saved tab being rebuilt: the leaf waiting for the view and the state it kept. */
   restore?: RestoreInfo
+}
+
+/**
+ * Every name the prelude puts in a script's scope. A script that declares one of these itself
+ * (`const view = …`, `function Table() {}`) cannot be compiled, and the engine's message for
+ * that names the identifier and nothing else; `compile` turns it into one that says whose
+ * name it is.
+ */
+const SCRIPT_GLOBALS = [
+  'dayjs',
+  'read',
+  'edit',
+  'write',
+  'create',
+  'remove',
+  'move',
+  'copy',
+  'ls',
+  'find',
+  'replace',
+  'open',
+  'setCover',
+  'agent',
+  'agents',
+  'form',
+  'log',
+  'params',
+  'signal',
+  'fetch',
+  'applyTemplate',
+  'listTemplates',
+  'createFromTemplate',
+  'generateImage',
+  'downloadImage',
+  'downloadFile',
+  'notice',
+  'show',
+  'runScript',
+  'setStatus',
+  'activeNotePath',
+  'unzip',
+  'view',
+  ...Object.keys(VIEW_GLOBALS),
+]
+
+const REDECLARED = /Identifier '(\w+)' has already been declared/
+
+/** The script as a function of its context. Throws what the engine threw, said better. */
+function compile(code: string): (ctx: ScriptContext) => Promise<unknown> {
+  try {
+    return new Function(
+      'ctx',
+      `"use strict";
+      return (async () => {
+        const { ${SCRIPT_GLOBALS.join(', ')} } = ctx;
+        ${code}
+      })()`
+    ) as (ctx: ScriptContext) => Promise<unknown>
+  } catch (err) {
+    const name = err instanceof SyntaxError ? REDECLARED.exec(err.message)?.[1] : undefined
+    if (name && SCRIPT_GLOBALS.includes(name)) {
+      throw new Error(`"${name}" is a name the script API reserves; rename it in this script`)
+    }
+    throw err
+  }
 }
 
 export class ScriptService {
@@ -382,14 +448,7 @@ export class ScriptService {
       // Running the user's own script is the feature. The code comes from a `.js` file the
       // user wrote in their own vault, and it is handed only the capabilities in `ctx`; there
       // is no way to execute it without a compiler.
-      const fn = new Function(
-        'ctx',
-        `"use strict";
-        return (async () => {
-          const { dayjs, read, edit, write, create, remove, move, copy, ls, find, replace, open, setCover, agent, agents, form, log, params, signal, fetch, applyTemplate, listTemplates, createFromTemplate, generateImage, downloadImage, downloadFile, notice, show, runScript, setStatus, activeNotePath, unzip, view, Stack, Row, Grid, Section, Tabs, Setting, Markdown, Text, Image, Table, Badge, EmptyState, Button, Icon, Input, Select, Checkbox, Search, Card, Html } = ctx;
-          ${script.code}
-        })()`
-      )
+      const fn = compile(script.code)
 
       const abortPromise = new Promise<never>((_, reject) => {
         combinedController.signal.addEventListener('abort', () =>

@@ -152,6 +152,41 @@ describe('opening', () => {
     expect(lv.getState()).toEqual({ script: 'Demo', params: { a: 1 }, state: { index: 4 } })
   })
 
+  it('hands the Vue side the element it made, so a popout leaf is found by reference', () => {
+    // A selector string is resolved with the main document's `querySelector`, which never
+    // sees a window of its own; the element itself is the same in any window.
+    const lv = attachView(leaves.tab)
+    const el = lv.model.el
+    expect(el).not.toBeNull()
+    expect(el?.getAttribute('abele-script-view-id')).toBe(lv.id)
+    expect(lv.containerEl.children[1].contains(el)).toBe(true)
+  })
+
+  it('keeps the last state that was JSON when the script puts a cycle in it, and says so once', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const v = new View({ title: 'T' }, service, origin)
+    const opening = v.open()
+    await Promise.resolve()
+    const lv = attachView(leaves.tab)
+    await opening
+    v.state.index = 4
+    expect(lv.getState()).toMatchObject({ state: { index: 4 } })
+
+    // Obsidian calls `getState` from its layout save; a throw there stops workspace.json
+    // being written for as long as the tab is open.
+    v.state.self = v.state
+    await nextTick()
+    expect(lv.getState()).toEqual({ script: 'Demo', params: { a: 1 }, state: { index: 4 } })
+    expect(lv.getState()).toEqual({ script: 'Demo', params: { a: 1 }, state: { index: 4 } })
+    expect(v.errors).toEqual(['view.state must be JSON; keeping the last saved state'])
+
+    v.state.big = BigInt(1)
+    delete v.state.self
+    await nextTick()
+    expect(lv.getState()).toMatchObject({ state: { index: 4 } })
+    expect(v.errors).toHaveLength(1)
+  })
+
   it('closing the leaf disposes the view; closing the view detaches the leaf', async () => {
     const v = new View({ title: 'T' }, service, origin)
     const closed = vi.fn()
@@ -418,6 +453,39 @@ describe('hooks', () => {
       await lv.onClose()
       expect(removed).toHaveBeenCalledWith('keydown', expect.any(Function))
       removed.mockRestore()
+    } finally {
+      lv.containerEl.remove()
+    }
+  })
+
+  it('treats any editable element as a field, however it says it is editable', async () => {
+    const v = new View({ title: 'T' }, service, origin)
+    const key = vi.fn()
+    v.on('key', key)
+    app.workspace.activeLeaf = leaves.tab
+    const opening = v.open()
+    await Promise.resolve()
+    const lv = attachView(leaves.tab)
+    await opening
+    document.body.appendChild(lv.containerEl)
+    try {
+      const press = (el: Element) =>
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true }))
+      // `contenteditable=""` and `plaintext-only` are editable; only `"false"` is not.
+      for (const value of ['', 'plaintext-only', 'true']) {
+        const editable = document.createElement('div')
+        editable.setAttribute('contenteditable', value)
+        lv.containerEl.appendChild(editable)
+        press(editable)
+      }
+      await new Promise((r) => setTimeout(r, 10))
+      expect(key).not.toHaveBeenCalled()
+
+      const inert = document.createElement('div')
+      inert.setAttribute('contenteditable', 'false')
+      lv.containerEl.appendChild(inert)
+      press(inert)
+      await vi.waitFor(() => expect(key).toHaveBeenCalledTimes(1))
     } finally {
       lv.containerEl.remove()
     }

@@ -10,8 +10,10 @@
  * `@starting-style`, `@scope` — holds rules far more often than declarations, and guessing
  * wrong the other way lets a script's selectors out of its tab.
  *
- * A selector list is split on commas and each part prefixed. Only a selector that is exactly
- * `:root`, `html` or `body` is left alone, because no prefix could make it true. Anything longer
+ * A selector list is split on commas and each part prefixed. A selector that is exactly
+ * `:root`, `html` or `body` is *replaced* by the prefix rather than prefixed: emitted as written
+ * it would reach the whole app — `body { display: none }` blanks Obsidian — and a custom
+ * property declared on `:root` is what the script meant to put on its own root. Anything longer
  * is prefixed as written, so `body .post` becomes `<prefix> body .post` and matches nothing —
  * a leak closed rather than a feature lost, since everything the script drew is inside the view
  * and `.post` alone already reaches it.
@@ -65,7 +67,7 @@ function scopeBlock(text: string, prefix: string): string {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
-      .map((s) => (GLOBAL_SELECTOR.test(s) ? s : `${prefix} ${s}`))
+      .map((s) => (GLOBAL_SELECTOR.test(s) ? prefix : `${prefix} ${s}`))
     out += `${selectors.join(', ')} {${body}} `
   }
 }

@@ -73,11 +73,9 @@
   <Teleport v-for="id in scriptRunsIds" :key="id" :to="`[${SCRIPT_RUNS_ID_ATTR}='${id}']`">
     <ScriptRunsView />
   </Teleport>
-  <Teleport
-    v-for="model in scriptViews"
-    :key="model.id"
-    :to="`[${SCRIPT_VIEW_ID_ATTR}='${model.id}']`"
-  >
+  <!-- By element, not selector: a selector is looked up in the main document, and a script
+       view opened with `where: 'window'` lives in a document of its own. -->
+  <Teleport v-for="model in scriptViews" :key="model.id" :to="model.el">
     <ScriptView :model="model" />
   </Teleport>
   <Teleport
@@ -174,7 +172,6 @@ import { FIND_AND_REPLACE_ID_ATTR } from '@/bases/FindAndReplaceView'
 import { FINANCE_SIDEBAR_ID_ATTR } from '@/views/FinanceSidebarView'
 import { TIME_TRACKING_SIDEBAR_ID_ATTR } from '@/views/TimeTrackingSidebarView'
 import { SCRIPT_RUNS_ID_ATTR } from '@/views/ScriptRunsView'
-import { SCRIPT_VIEW_ID_ATTR } from '@/views/ScriptView'
 import AiChatView from './AiChat.vue'
 import FinanceSidebarView from './FinanceSidebar.vue'
 import TimeTrackingSidebarView from './TimeTrackingSidebar.vue'

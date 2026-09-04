@@ -194,8 +194,8 @@ const each = await agent("Extract the date", { items: paths })
 |----------|---------|-------------|
 | \`notice(message, timeout?)\` | — | Show Obsidian notification |
 | \`setStatus(text)\` | — | Say what the script is doing now — shown in the status bar and against the run |
-| \`form(fields)\` | \`object \\| null\` | Show form modal (command palette only) |
-| \`show(markdown, title?)\` | — | Show rendered markdown to read (command palette only) |
+| \`form(fields)\` | \`object \\| null\` | Show form modal — only available when the script is run from the command palette or has a view open |
+| \`show(markdown, title?)\` | — | Show rendered markdown to read — only available when the script is run from the command palette or has a view open |
 
 \`form\` fields: \`[{ name, label, type?, options?, default?, required?, text? }]\`
 Types: \`"text"\` (default), \`"textarea"\`, \`"select"\`, \`"boolean"\`, \`"markdown"\`
@@ -231,6 +231,10 @@ await v.open()
 
 \`log()\` output is captured and returned as the script result.
 You can also \`return "result"\` directly.
+
+Every function and global in this reference, and \`view\` with the component classes of the
+view reference, is already declared in a script's scope: a script that declares one of those
+names itself (\`const open = …\`, \`function find() {}\`) fails to start with a message naming it.
 
 Every run is listed while Obsidian is open — its status, how long it took, each \`log()\` line
 with the time it was printed, and what it returned — under **Show script runs**, where it can

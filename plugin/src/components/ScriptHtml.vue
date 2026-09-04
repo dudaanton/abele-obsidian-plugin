@@ -87,13 +87,21 @@ function listen() {
     if (listening.has(event)) continue
     listening.add(event)
     const handler = (e: Event) => {
-      const target = e.target as Element | null
+      // A text node can be the target of a click in some browsers; the element around it is
+      // what the selectors are matched from.
+      const raw = e.target as Node | null
+      const target =
+        raw && raw.nodeType === Node.ELEMENT_NODE ? (raw as Element) : raw?.parentElement
       if (!target) return
-      for (const d of props.node.delegates) {
-        if (d.event !== event) continue
-        const hit = target.closest(d.selector)
-        if (hit && el.contains(hit)) void props.view.run(() => d.fn(e, hit))
-      }
+      // The matching itself is inside `run`: a selector the browser cannot parse throws from
+      // `closest`, and that belongs in the strip with the script's other mistakes.
+      void props.view.run(() => {
+        for (const d of props.node.delegates) {
+          if (d.event !== event) continue
+          const hit = target.closest(d.selector)
+          if (hit && el.contains(hit)) void props.view.run(() => d.fn(e, hit))
+        }
+      })
       // The selectorless handlers, read at call time: one may have been added since.
       if (el.contains(target) && (props.node.handlers[event]?.length ?? 0) > 0) {
         void props.view.run(() => props.node.emit(event, e))

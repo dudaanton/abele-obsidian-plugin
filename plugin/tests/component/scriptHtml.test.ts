@@ -22,6 +22,7 @@ const host: ViewHost = {
 }
 const live = (view: View): ScriptViewModel => ({
   id: 'leaf-1',
+  el: null,
   view,
   status: { kind: 'live' },
   saved: null,
@@ -94,6 +95,40 @@ describe('Html', () => {
     mount(ScriptViewComponent, { props: { model: live(v) } })
     await flushPromises()
     expect(v.errors).toEqual(['Html: nothing matches ".missing"'])
+  })
+
+  it('puts a selector that cannot be matched in the strip instead of the console', async () => {
+    const v = make()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const pressed = vi.fn()
+    v.body = [
+      new Html({
+        html: '<div><button data-open>Open</button></div>',
+        on: { 'click [[': pressed },
+      }),
+    ]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+    await w.find('[data-open]').trigger('click')
+    await flushPromises()
+    expect(pressed).not.toHaveBeenCalled()
+    expect(v.errors).toHaveLength(1)
+    expect(v.errors[0]).toMatch(/\[\[/)
+    // The view is still there and still listening.
+    expect(w.find('[data-open]').exists()).toBe(true)
+  })
+
+  it('matches from the element around a text node the event started in', async () => {
+    const v = make()
+    const pressed = vi.fn()
+    v.body = [new Html({ html: '<p class="x">text</p>', on: { 'click .x': pressed } })]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+    await flushPromises()
+    const text = w.find('.x').element.firstChild
+    expect(text?.nodeType).toBe(Node.TEXT_NODE)
+    text?.dispatchEvent(new Event('click', { bubbles: true }))
+    await flushPromises()
+    expect(pressed).toHaveBeenCalledTimes(1)
+    expect(pressed.mock.calls[0][1]).toBe(w.find('.x').element)
   })
 
   it('fires a handler bound to the root, with no selector, for a click inside', async () => {
