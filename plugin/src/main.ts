@@ -66,6 +66,7 @@ import { ScriptService } from './scripting/ScriptService'
 import { ScriptViewService } from './scripting/view/ScriptViewService'
 import { showMarkdown } from './scripting/formModal'
 import { SCRIPT_API_DOCS } from './scripting/apiDocs'
+import { SCRIPT_VIEW_DOCS } from './scripting/view/viewDocs'
 import { ScopeResolver } from './ai/ScopeResolver'
 import { ChatStorage } from './ai/ChatStorage'
 import weekday from 'dayjs/plugin/weekday'
@@ -1086,8 +1087,9 @@ export default class AbelePlugin extends Plugin {
       icon: 'book-open',
       callback: () => {
         // No title: the reference opens with its own heading, which the modal lifts into the
-        // title bar rather than showing a second name above it.
-        void showMarkdown(SCRIPT_API_DOCS)
+        // title bar rather than showing a second name above it. The views reference follows
+        // the main one — a person asking for the API wants all of it, not a second command.
+        void showMarkdown(SCRIPT_API_DOCS + '\n\n---\n\n' + SCRIPT_VIEW_DOCS)
       },
     })
   }

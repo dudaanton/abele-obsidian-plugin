@@ -205,6 +205,19 @@ and select, and returns no value. Use it to explain a form, or to put a result b
 questions. \`show(markdown, title?)\` is the same block on its own — prefer it over
 \`notice\` for anything long: a notice is truncated, disappears, and cannot be selected.
 
+### Views
+
+A script can open a tab of its own — cards, buttons, inputs, markdown, tables, its own HTML
+and CSS — and keep handling presses after the run has ended. Call \`script_api_docs\` with
+\`section: 'views'\` for that reference. In short:
+
+\`\`\`js
+const v = view({ title: 'Hello' })
+const b = new Button({ text: 'Press me', onClick: () => notice('Pressed') })
+v.body = [new Markdown('# Hello'), b]
+await v.open()
+\`\`\`
+
 ---
 
 ## Globals

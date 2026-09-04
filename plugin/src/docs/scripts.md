@@ -40,3 +40,17 @@ the values open to change. Nothing about a run is written to the vault, and the 
 when Obsidian closes.
 
 While a script is running the status bar says so; clicking it opens the list.
+
+## Views
+
+A script can open a tab of its own and fill it with components — cards, buttons, inputs,
+markdown, tables, its own HTML and CSS — and its handlers keep running after the script has
+returned. This is the shape for anything a person will look at and press, rather than read
+once: a feed of notes, flashcards, a dashboard that refreshes as the vault changes. `show()`
+is for a result; a view is for an interface. The reference is `script_api_docs` with
+`section: 'views'`. `inspect_view` with `view: '<title>'` reads the view back as the tree the
+script built, and `screenshot` shows it.
+
+A view's tab is saved with the workspace: after a restart the plugin runs the script again
+with the same parameters and the state the view had, so a script that keeps its place keeps
+it across a restart too.

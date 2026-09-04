@@ -146,6 +146,7 @@ Notes for anyone working on the plugin live in [`docs/`](docs):
 - [Testing](docs/Testing.md) — the three test tiers, and how to assert against a running Obsidian.
 - [AI Agent](docs/AI%20Agent.md) — agents, delegation and the scripting API.
 - [Agent reference](docs/Agent%20reference.md) — the docs the agent itself reads, and the rules for keeping them true.
+- [Script views](docs/Script%20views.md) — the tab a script can open and fill with an interface.
 - [Templates](docs/Templates.md) and [URL Protocol](docs/URL%20Protocol.md).
 
 ## Installation
