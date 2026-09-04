@@ -1015,6 +1015,25 @@ export default class AbelePlugin extends Plugin {
       })
     )
 
+    // A chat file changing without this device changing it — sync landing while the app is
+    // open. What it may have brought is the record of a note that chat wrote to, and that
+    // record is what a footer under the note draws its card from. A file a session here has
+    // open is skipped: that one writes its own entry as it goes, and re-reading it would be a
+    // read of the whole conversation on every save.
+    this.registerEvent(
+      this.app.vault.on('modify', (file) => {
+        if (!(file instanceof TFile) || file.extension !== 'abchat') return
+        if (ChatService.getInstance().getSessionByFile(file.path)) return
+        void ChatStorage.getInstance().refreshEntry(file)
+      })
+    )
+
+    // The same question at startup, which is where most of it is answered: the index is
+    // `data.json` and does not merge, so every chat this machine did not write is behind.
+    this.app.workspace.onLayoutReady(() => {
+      void ChatStorage.getInstance().refreshHistory()
+    })
+
     this.addCommand({
       id: 'show-ai-sidebar',
       name: 'Show AI chat sidebar',

@@ -75,6 +75,15 @@ export interface AiChatHistoryEntry {
   recap?: string
   /** Mirrored from the chat file's `agentId`, for the badge on the card. */
   agentId?: string
+  /**
+   * The file's `mtime` when the three fields above were last read out of it.
+   *
+   * The index is `data.json`, which does not merge across devices: a chat answered on a phone
+   * arrives here as a file whose entry on this machine names no notes at all. So the file is
+   * read back whenever it has moved on — and only then, because a chat folder is every
+   * conversation ever had and each file is the whole of one.
+   */
+  mtime?: number
 }
 
 export interface AiSecret {

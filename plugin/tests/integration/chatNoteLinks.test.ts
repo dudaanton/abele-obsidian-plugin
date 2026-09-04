@@ -244,6 +244,135 @@ describe('the chat index, which is what a footer actually reads', () => {
   })
 })
 
+/**
+ * A chat that was written on another device.
+ *
+ * The links live in the chat's own file, which syncs, and in the index, which is
+ * `data.json` and does not merge: a chat answered on a phone arrives here as a file whose
+ * entry — written on this machine, at whatever it knew then — names no notes at all. That is
+ * the whole of «связанные чаты я вижу только на телефоне, на десктопе не вижу»: the file said
+ * so all along and nothing here ever read it again.
+ *
+ * `refreshHistory` only ever looked at files it had *no* entry for. Now it looks at the rest
+ * too, and reads back the one that changed under it — which `mtime` is for: a chat folder is
+ * hundreds of files and each of them is the whole conversation.
+ */
+describe('a chat file that changed behind the index', () => {
+  const at = '2026-09-04T10:00:00.000Z'
+
+  /** A chat in the folder, its entry in the index, and the two disagreeing about its links. */
+  async function synced(): Promise<TFile> {
+    const file = await app.vault.create(
+      'AI/Chats/Elsewhere.abchat',
+      serializeChat({
+        metadata: {
+          type: 'abele-chat',
+          agentId: 'agent-7',
+          providerId: 'p',
+          modelId: 'm',
+          created: '2026-09-04',
+          title: 'Elsewhere',
+          touched: [{ path: NOTE_A, at }],
+          recap: 'Tidied A on the phone.',
+        },
+        messages: [],
+        internalMessages: [],
+      })
+    )
+    ChatStorage.getInstance().addHistoryEntry({
+      path: file.path,
+      title: 'Elsewhere',
+      created: '2026-09-04',
+    })
+    file.stat.mtime = 1000
+    return file
+  }
+
+  const entry = () => ChatStorage.getInstance().getHistory()[0]
+
+  it('reads the links back out of the file it already knew about', async () => {
+    await synced()
+
+    await ChatStorage.getInstance().refreshHistory()
+
+    expect(entry().notes).toEqual([{ path: NOTE_A, at }])
+    expect(entry().recap).toBe('Tidied A on the phone.')
+    expect(entry().agentId).toBe('agent-7')
+  })
+
+  it('says the index changed, so a footer already on screen draws the card', async () => {
+    await synced()
+    GlobalStore.getInstance().chatLinksVersion.value = 0
+
+    await ChatStorage.getInstance().refreshHistory()
+
+    expect(GlobalStore.getInstance().chatLinksVersion.value).toBeGreaterThan(0)
+  })
+
+  /** A chat folder is every conversation ever had; reading all of them twice is the cost. */
+  it('does not read a file whose mtime it has already seen', async () => {
+    await synced()
+    await ChatStorage.getInstance().refreshHistory()
+    const before = app.stats.read
+
+    await ChatStorage.getInstance().refreshHistory()
+
+    expect(app.stats.read).toBe(before)
+  })
+
+  it('reads it again once the file has moved on', async () => {
+    const file = await synced()
+    await ChatStorage.getInstance().refreshHistory()
+    await app.vault.modify(
+      file,
+      serializeChat({
+        metadata: {
+          type: 'abele-chat',
+          created: '2026-09-04',
+          title: 'Elsewhere',
+          touched: [{ path: NOTE_B, at }],
+        },
+        messages: [],
+        internalMessages: [],
+      })
+    )
+    file.stat.mtime = 2000
+
+    await ChatStorage.getInstance().refreshHistory()
+
+    expect(entry().notes).toEqual([{ path: NOTE_B, at }])
+  })
+
+  /**
+   * The same question while the app is running, which is when sync actually lands: the file
+   * changes under a footer that is already on screen.
+   */
+  it('reads one back the moment the vault says it changed', async () => {
+    const file = await synced()
+
+    await ChatStorage.getInstance().refreshEntry(file)
+
+    expect(entry().notes).toEqual([{ path: NOTE_A, at }])
+  })
+
+  it('has nothing to say about a file it has no entry for', async () => {
+    const file = await app.vault.create(
+      'AI/Chats/Unknown.abchat',
+      serializeChat({
+        metadata: { type: 'abele-chat', created: '2026-09-04', touched: [{ path: NOTE_A, at }] },
+        messages: [],
+        internalMessages: [],
+      })
+    )
+    const before = app.stats.read
+
+    await ChatStorage.getInstance().refreshEntry(file)
+
+    expect(ChatStorage.getInstance().getHistory()).toEqual([])
+    expect(app.stats.read).toBe(before)
+  })
+})
+
 describe('a comment that wrote to a note', () => {
   /** The margin is where a comment lives until somebody promotes it. */
   it('records the link in its own file but appears in no footer', async () => {

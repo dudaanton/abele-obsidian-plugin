@@ -97,13 +97,25 @@ export class ChatStorage {
     return AbeleConfig.getInstance().ai.chatHistory || []
   }
 
-  /** Scan chat folder for files not yet in history and add them */
+  /**
+   * Walks the chat folder: adds what is not in the index, and re-reads what has changed.
+   *
+   * Both halves exist for the same reason. The file is the source of truth for a chat's links,
+   * its recap and its agent; the index is a copy in `data.json`, and `data.json` does not merge
+   * across devices. A chat answered on a phone arrives here as a file this machine has either
+   * never seen — the first half — or has an entry for that was written before any of that
+   * happened, and names no notes at all. That second one is what a person saw as "I only see
+   * the linked chats on the phone".
+   *
+   * `mtime` is what keeps it cheap: a chat folder is every conversation ever had, and each
+   * file is the whole of one. Only a file that has moved on since it was last read is read.
+   */
   async refreshHistory(): Promise<AiChatHistoryEntry[]> {
     const config = AbeleConfig.getInstance()
     const { app } = GlobalStore.getInstance()
 
     if (!config.ai.chatHistory) config.ai.chatHistory = []
-    const known = new Set(config.ai.chatHistory.map((e) => e.path))
+    const known = new Map(config.ai.chatHistory.map((e) => [e.path, e]))
 
     // Derive base folder from chatFolder template (strip {{...}} parts)
     const baseFolder = config.ai.chatFolder.replace(/\/?\{\{.*$/, '').replace(/\/$/, '')
@@ -114,11 +126,7 @@ export class ChatStorage {
 
     const files: TFile[] = []
     const collect = (f: any) => {
-      if (
-        f instanceof TFile &&
-        (f.extension === 'abchat' || f.extension === 'json') &&
-        !known.has(f.path)
-      ) {
+      if (f instanceof TFile && (f.extension === 'abchat' || f.extension === 'json')) {
         files.push(f)
       }
       if (f.children) f.children.forEach(collect)
@@ -126,7 +134,17 @@ export class ChatStorage {
     collect(folder)
 
     let added = 0
+    let changed = false
     for (const file of files) {
+      const entry = known.get(file.path)
+      if (entry) {
+        // Ours and open in a tab writes through `linkNotes` as it goes, so the index is
+        // already ahead of anything read here; everything else is judged by the clock.
+        if (entry.mtime === file.stat.mtime) continue
+        changed = (await this.syncEntry(entry, file)) || changed
+        continue
+      }
+
       try {
         // Only the metadata is needed here, and in a log that is one line out of thousands.
         const metadata = parseChatMetadata(await app.vault.read(file))
@@ -140,6 +158,7 @@ export class ChatStorage {
           notes: metadata.touched?.length ? metadata.touched : undefined,
           recap: metadata.recap || undefined,
           agentId: metadata.agentId || undefined,
+          mtime: file.stat.mtime,
         })
         added++
       } catch {
@@ -149,6 +168,8 @@ export class ChatStorage {
 
     if (added) {
       config.ai.chatHistory.sort((a, b) => (b.created || '').localeCompare(a.created || ''))
+    }
+    if (added || changed) {
       // Those entries were built out of the files' own `touched`, so they carry links nothing
       // has drawn yet.
       GlobalStore.getInstance().chatLinksVersion.value++
@@ -156,6 +177,64 @@ export class ChatStorage {
     }
 
     return config.ai.chatHistory
+  }
+
+  /**
+   * One chat file, read back into its entry — for the vault saying it has changed.
+   *
+   * Sync lands while the app is running, under a footer that is already on screen. Nothing is
+   * done for a file with no entry: an unknown chat joins the index through `refreshHistory`,
+   * which is where the folder is walked and the file is judged to be a chat at all.
+   */
+  async refreshEntry(file: TFile): Promise<void> {
+    const config = AbeleConfig.getInstance()
+    const entry = config.ai.chatHistory?.find((e) => e.path === file.path)
+    if (!entry || entry.mtime === file.stat.mtime) return
+
+    if (await this.syncEntry(entry, file)) {
+      GlobalStore.getInstance().chatLinksVersion.value++
+      config.saveSettings()
+    }
+  }
+
+  /**
+   * Copies what a chat file says about itself into its index entry.
+   *
+   * Answers whether anything a reader would notice moved, so the caller can decide whether to
+   * pay for a settings write: the index is one JSON file holding every chat's entry.
+   */
+  private async syncEntry(entry: AiChatHistoryEntry, file: TFile): Promise<boolean> {
+    const { app } = GlobalStore.getInstance()
+
+    let metadata
+    try {
+      metadata = parseChatMetadata(await app.vault.read(file))
+    } catch {
+      return false
+    }
+    // The clock is recorded either way: a file that cannot be parsed as a chat is not a file
+    // to try again on every refresh.
+    const seen = entry.mtime
+    entry.mtime = file.stat.mtime
+    if (metadata?.type !== 'abele-chat') return seen === undefined
+
+    const notes = metadata.touched?.length ? metadata.touched : undefined
+    const recap = metadata.recap || undefined
+    const agentId = metadata.agentId || undefined
+    const title = metadata.title || entry.title
+
+    const same =
+      JSON.stringify(entry.notes) === JSON.stringify(notes) &&
+      entry.recap === recap &&
+      entry.agentId === agentId &&
+      entry.title === title
+
+    entry.notes = notes
+    entry.recap = recap
+    entry.agentId = agentId
+    entry.title = title
+
+    return !same || seen === undefined
   }
 
   async renameChat(file: TFile, newTitle: string): Promise<TFile | null> {
