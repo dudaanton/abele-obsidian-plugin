@@ -954,8 +954,8 @@ export default class AbelePlugin extends Plugin {
     // The editor owns the press and measures its own margin; the service owns where the card
     // goes with it. Injected rather than imported, so `CommentPlugin` and `CommentService` do
     // not import each other.
-    setCommentClickHandler((ids, hasRoom) => {
-      CommentService.getInstance().openFrom(ids, hasRoom)
+    setCommentClickHandler((ids, hasRoom, notePath) => {
+      CommentService.getInstance().openFrom(ids, hasRoom, notePath)
     })
 
     this.addCommand({

@@ -120,22 +120,25 @@ function activeMarkers(state: EditorState): ParsedMarker[] {
  * Injected rather than imported: `CommentService` already imports this module for
  * `dispatchCommentsChanged`, and importing it back would close a cycle for one call.
  * `main.ts` imports both and installs the handler there. `hasRoom` is the margin's answer,
- * which the service routes on when it sends the conversation to the sidebar instead.
+ * which the service routes on when it puts the card in a dialog instead; the note is the one
+ * the icon was pressed in, which is what a dialog needs and cannot ask the margin for.
  */
-let commentClickHandler: (ids: string[], hasRoom: boolean) => void = () => {}
+let commentClickHandler: (ids: string[], hasRoom: boolean, notePath: string) => void = () => {}
 
-export function setCommentClickHandler(handler: (ids: string[], hasRoom: boolean) => void): void {
+export function setCommentClickHandler(
+  handler: (ids: string[], hasRoom: boolean, notePath: string) => void
+): void {
   commentClickHandler = handler
 }
 
 /**
  * Where a press on a marker goes: the margin when the pane holding this icon has room for a
- * card beside its text, the chat sidebar when it has not.
+ * card beside its text, a dialog when it has not.
  *
  * The view is the one CodeMirror gave the widget, not `getActiveViewOfType`. A marker can be
  * pressed in a split that is not the focused pane, or in a popout window where there is no
  * active markdown view at all, and the margin measured then belongs to another note or to
- * nothing — a wide pane is sent to the sidebar, a narrow one gets a card it cannot show.
+ * nothing — a wide pane gets a dialog, a narrow one gets a card it cannot show.
  *
  * `hasRoom()` answers `false` until the first measurement, so ask for one before reading it.
  * The reading is deliberate rather than a subscription: `onRoomChange` never reports the state
@@ -147,8 +150,10 @@ function handleMarkerClick(ids: string[], view: EditorView): void {
   overlay.position()
   const room = overlay.hasRoom()
 
+  const notePath = view.state.field(editorInfoField, false)?.file?.path ?? ''
+
   console.debug('abele: comment marker clicked', ids.join(','), 'margin room:', room)
-  commentClickHandler(ids, room)
+  commentClickHandler(ids, room, notePath)
 }
 
 function buildCommentDecorations(state: EditorState): DecorationSet {

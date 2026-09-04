@@ -238,6 +238,23 @@ describe('Modal', () => {
   })
 
   /**
+   * A tall dialog is not a wider one: it is a dialog that fills the height Obsidian allows it
+   * and scrolls inside, and on a phone it is the sheet Obsidian draws for its own big dialogs.
+   * `mod-lg` is theirs — asking for it is how the geometry stays theirs, which is the whole
+   * lesson of the sheet that put its close button under the notch.
+   */
+  it('marks a tall dialog as one, and asks Obsidian for its own sheet', () => {
+    const tall = mount(ObsidianModal, { props: { size: 'tall' as const } })
+    const plain = mount(ObsidianModal)
+
+    expect(classOf(tall)).toContain('abele-modal_tall')
+    expect(classOf(tall)).toContain('mod-lg')
+    expect(classOf(tall)).not.toContain('abele-modal_wide')
+    expect(classOf(plain)).not.toContain('abele-modal_tall')
+    expect(classOf(plain)).not.toContain('mod-lg')
+  })
+
+  /**
    * A rule of ours has to be able to name the element this component appends. Reaching it as
    * `.modal-content > div` would make every such rule depend on the shape of the DOM the kit
    * happens to build.

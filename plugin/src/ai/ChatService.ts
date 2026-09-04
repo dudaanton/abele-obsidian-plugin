@@ -244,15 +244,6 @@ export class ChatService {
     const session = this.sessions.get(tabId)
     if (!session) return
 
-    // A comment being read here is not this tab's to end: it belongs to the margin of a note
-    // and goes on writing the same file from there. The × hands it back instead.
-    const comments = CommentService.getInstance()
-    const commentId = session.commentId
-    if (session.kind === 'comment' && commentId && comments.isShown(commentId)) {
-      await comments.hideFromSidebar(commentId)
-      return
-    }
-
     // Save before closing
     await session.save()
     session.destroy()
