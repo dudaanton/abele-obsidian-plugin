@@ -117,6 +117,16 @@ export class ScriptView extends ItemView {
     this.model.status = { kind: 'starting', script }
   }
 
+  /**
+   * Redraws the two places the title shows. `leaf.updateHeader()` redoes the tab; the title
+   * bar above the content is written once by `ItemView.load()` and never again by Obsidian,
+   * so a view that renames itself writes it too. Neither is in the typings.
+   */
+  private refreshHeader() {
+    ;(this.leaf as unknown as { updateHeader?: () => void }).updateHeader?.()
+    ;(this as unknown as { titleEl?: HTMLElement }).titleEl?.setText(this.getDisplayText())
+  }
+
   fail(message: string) {
     this.model.status = { kind: 'failed', script: this.model.saved?.script ?? '', message }
   }
@@ -125,16 +135,19 @@ export class ScriptView extends ItemView {
     this.model.view = view
     this.model.saved = { script: view.origin.script, params: view.origin.params, state: view.state }
     this.model.status = { kind: 'live' }
-    // The tab header reads title and icon once; tell it again when the script changes them,
-    // and ask for the layout to be written when the state does, so a crash loses nothing.
+    // The headers read title and icon when the leaf opened, which on a fresh open was before
+    // any view existed — they still say "Script view" with the generic icon. Tell them now,
+    // tell them again when the script changes them, and ask for the layout to be written
+    // when the state does, so a crash loses nothing.
     const { app } = GlobalStore.getInstance()
+    this.refreshHeader()
     // `number`, not `ReturnType<typeof setTimeout>`: with @types/node in scope that alias is
     // Node's `Timeout`, while the DOM call this makes returns a plain handle.
     let timer: number | null = null
     const stop = watch(
       () => [view.title, view.icon, JSON.stringify(view.state)],
       ([, , state], [, , before]) => {
-        ;(this.leaf as unknown as { updateHeader?: () => void }).updateHeader?.()
+        this.refreshHeader()
         if (state !== before) {
           if (timer !== null) window.clearTimeout(timer)
           timer = window.setTimeout(() => app.workspace.requestSaveLayout(), 500)

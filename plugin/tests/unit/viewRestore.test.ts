@@ -113,6 +113,26 @@ describe('opening', () => {
     expect(leaves.split.state).toMatchObject({ type: 'abele-script-view', active: true })
   })
 
+  it('tells both headers the title and icon as soon as the view is bound', async () => {
+    // Obsidian draws the tab and the title bar when the leaf opens, before any view exists.
+    // Headers told only when the title later changes keep saying "Script view" for a script
+    // that never renames its tab.
+    const updateHeader = vi.fn()
+    Object.assign(leaves.tab, { updateHeader })
+    const v = new View({ title: 'T', icon: 'hash' }, service, origin)
+    const opening = v.open()
+    await Promise.resolve()
+    const lv = attachView(leaves.tab)
+    await opening
+    expect(updateHeader).toHaveBeenCalledTimes(1)
+    expect(lv.titleEl.textContent).toBe('T')
+
+    v.title = 'U'
+    await nextTick()
+    expect(updateHeader).toHaveBeenCalledTimes(2)
+    expect(lv.titleEl.textContent).toBe('U')
+  })
+
   it('sidebar means the right leaf', async () => {
     const v = new View({ title: 'T' }, service, origin)
     const opening = v.open({ where: 'sidebar' })

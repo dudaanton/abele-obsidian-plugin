@@ -563,12 +563,16 @@ export class Component {
  */
 export class ItemView extends Component {
   containerEl: HTMLElement
+  /** The title bar above the content. Obsidian writes it once on load and never again. */
+  titleEl: HTMLElement
   app: unknown
 
   constructor(public leaf: WorkspaceLeaf) {
     super()
     this.containerEl = document.createElement('div')
-    this.containerEl.appendChild(document.createElement('div'))
+    const header = this.containerEl.appendChild(document.createElement('div'))
+    this.titleEl = header.appendChild(document.createElement('div'))
+    this.titleEl.className = 'view-header-title'
     this.containerEl.appendChild(document.createElement('div'))
   }
 
