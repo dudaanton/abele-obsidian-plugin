@@ -398,9 +398,12 @@ describe('a comment that was promoted into a chat', () => {
   })
 
   it('reads back the first exchange and sends the reader to the sidebar', async () => {
-    const switchTab = vi.fn()
+    // `adoptSession`, not `switchTab`: a chat the sidebar is not holding — a promotion whose
+    // tab was refused because the bar was full — has no tab to switch to, and `switchTab`
+    // does nothing at all for one. Adopting says "show this", which is what was pressed.
+    const adoptSession = vi.fn().mockReturnValue(true)
     const revealSidebar = vi.fn().mockResolvedValue(undefined)
-    vi.spyOn(ChatService, 'getInstance').mockReturnValue({ switchTab, revealSidebar } as never)
+    vi.spyOn(ChatService, 'getInstance').mockReturnValue({ adoptSession, revealSidebar } as never)
 
     seed('k7d2ph', { kind: 'chat' }, [
       message({ id: 'u1', role: 'user', content: 'What does this mean?' }),
@@ -418,7 +421,7 @@ describe('a comment that was promoted into a chat', () => {
 
     await button.vm.$emit('click')
     await nextTick()
-    expect(switchTab).toHaveBeenCalledWith('session-1')
+    expect(adoptSession).toHaveBeenCalledWith(expect.objectContaining({ id: 'session-1' }))
     expect(revealSidebar).toHaveBeenCalled()
     // Same again: what was asked for is on the sidebar, behind whatever this card is in.
     expect(view.emitted('promoted')).toHaveLength(1)

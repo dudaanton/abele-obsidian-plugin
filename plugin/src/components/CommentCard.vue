@@ -464,7 +464,9 @@ async function reveal(): Promise<void> {
   if (!current) return
 
   const chatService = ChatService.getInstance()
-  chatService.switchTab(current.id)
+  // Adopted rather than switched to: a promotion whose tab was refused because the bar was
+  // full leaves a chat the sidebar is not holding, and `switchTab` does nothing for one.
+  chatService.adoptSession(current)
   await chatService.revealSidebar()
   emit('promoted')
 }

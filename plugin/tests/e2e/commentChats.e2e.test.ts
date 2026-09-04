@@ -303,15 +303,27 @@ beforeAll(async () => {
       // has room for a card whatever Obsidian is calling itself.
       desktopSize = windowSize()
       await setWindowSize(414, 896)
-      await setMobile(true)
+      // Set before the await, not after: `setMobile` can throw partway — the reload is what it
+      // is waiting on — and the app would be left emulating a phone with nothing to undo it.
       mobileOn = true
+      await setMobile(true)
       mobile = evalAsync<MobileReport>(mobileScript, 60_000)
     }
   } finally {
     if (mobileOn) {
       try {
         await setMobile(false)
-        if (desktopSize) await setWindowSize(desktopSize[0], desktopSize[1])
+      } catch (e) {
+        mobile.error =
+          (mobile.error ? mobile.error + '; ' : '') + String((e as Error)?.message ?? e)
+      }
+    }
+
+    // Its own try, and not behind the mobile flag: the window is resized before the emulation
+    // is switched, so a throw in between leaves a phone-shaped window and no record of it.
+    if (desktopSize) {
+      try {
+        await setWindowSize(desktopSize[0], desktopSize[1])
       } catch (e) {
         mobile.error =
           (mobile.error ? mobile.error + '; ' : '') + String((e as Error)?.message ?? e)

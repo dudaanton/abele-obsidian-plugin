@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { computed, nextTick } from 'vue'
-import { TFile } from 'obsidian'
+import { Notice, TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
 import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
 import { ChatService } from '@/ai/ChatService'
@@ -1113,6 +1113,75 @@ describe('a comment where the margin has no room for it', () => {
     await service.showInSidebar(id)
 
     expect(ChatService.getInstance().tabOrder.value).toHaveLength(1)
+  })
+
+  /**
+   * One comment in the sidebar at a time.
+   *
+   * The tab strip is hidden on a phone, so a second marker tapped there would stack a tab
+   * nobody can see or reach — and go on stacking, past the limit `adoptSession` does not
+   * apply. The one before it is handed back the way closing its tab would: alive, on the
+   * margin, still writing the same file.
+   */
+  it('hands the comment it was showing back before it shows another', async () => {
+    const service = CommentService.getInstance()
+    const first = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const second = await service.create(noteFile(), 6, undefined)
+    const chats = ChatService.getInstance()
+
+    await service.showInSidebar(first.commentId as string)
+    await service.showInSidebar(second.commentId as string)
+
+    expect(chats.getSession(second.id)).toBe(second)
+    expect(chats.getSession(first.id)).toBeNull()
+    expect(first.isDestroyed).toBe(false)
+    expect(service.sessionFor(first.commentId as string)).toBe(first)
+    expect(service.isShown(first.commentId as string)).toBe(false)
+  })
+
+  it('leaves one comment tab behind after two taps, not two', async () => {
+    const service = CommentService.getInstance()
+    const first = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const second = await service.create(noteFile(), 6, undefined)
+
+    service.openFrom([first.commentId as string], false)
+    await flush()
+    service.openFrom([second.commentId as string], false)
+    await flush()
+
+    const commentTabs = ChatService.getInstance()
+      .getAllSessions()
+      .filter((session) => session.kind === 'comment')
+    expect(commentTabs).toEqual([second])
+  })
+
+  /**
+   * The limit applies here too. It used to be waived for an adopted session, which on a phone
+   * — where the strip is hidden — meant piling up tabs nobody could see or close.
+   */
+  it('refuses a tab when the bar is already full, and says so', async () => {
+    const { service, session, id } = await shown()
+    const chats = ChatService.getInstance()
+    for (let i = 0; i < 8; i++) chats.createTab()
+    Notice.shown.length = 0
+
+    expect(await service.showInSidebar(id)).toBe(false)
+
+    expect(chats.getSession(session.id)).toBeNull()
+    expect(service.isShown(id)).toBe(false)
+    expect(Notice.shown.join(' ')).toContain('8 open tabs')
+  })
+
+  /** An expanded comment is a chat and is not handed back: it owns its tab like any other. */
+  it('leaves an expanded comment where it is when another is shown', async () => {
+    const service = CommentService.getInstance()
+    const first = await answeredComment()
+    const second = await service.create(noteFile(), 6, undefined)
+
+    await service.expand(first.commentId as string)
+    await service.showInSidebar(second.commentId as string)
+
+    expect(ChatService.getInstance().getSession(first.id)).toBe(first)
   })
 
   /**

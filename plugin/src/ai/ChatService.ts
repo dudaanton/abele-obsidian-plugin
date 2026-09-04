@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { App, TFile } from 'obsidian'
+import { App, Notice, TFile } from 'obsidian'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -199,20 +199,28 @@ export class ChatService {
   /**
    * Takes a session somebody else built and shows it as a tab.
    *
-   * The tab limit is not applied: this is only ever reached by an explicit act — expanding a
-   * comment — and refusing it would leave the person looking at a card that says it opened
-   * something and a sidebar that did not.
+   * The limit is applied here as it is anywhere else. It used to be waived, on the reasoning
+   * that this is only ever reached by an explicit act — but a phone hides the tab strip, so
+   * the tabs an explicit act piles up are tabs nobody can see, reach or close. Refused out
+   * loud instead: the caller has a card or a marker in front of the person, and a silent
+   * no-op there looks exactly like something that opened out of sight.
    */
-  adoptSession(session: ChatSession): void {
+  adoptSession(session: ChatSession): boolean {
     if (this.sessions.has(session.id)) {
       this.switchTab(session.id)
-      return
+      return true
+    }
+
+    if (this.sessions.size >= MAX_TABS) {
+      new Notice(`Close one of the ${MAX_TABS} open tabs first`)
+      return false
     }
 
     this.sessions.set(session.id, session)
     this.tabOrder.value = [...this.tabOrder.value, session.id]
     this.activeTabId.value = session.id
     this.saveTabs()
+    return true
   }
 
   /** Puts the chat sidebar in front of the person, opening it in the right split if needed. */

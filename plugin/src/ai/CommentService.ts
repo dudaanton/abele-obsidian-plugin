@@ -232,8 +232,20 @@ export class CommentService implements CommentInfoSource {
 
     if (session.moving.value) return false
 
+    // One at a time. The tab strip is hidden on a phone, so a second marker tapped there
+    // would stack a tab nobody can see or reach, and go on stacking. The one before it is
+    // handed back exactly as closing its tab would hand it back: alive, on the margin, still
+    // writing the same file. An *expanded* comment is not touched — that one is a chat, and
+    // owns its tab like any other.
+    for (const other of [...this.shown]) {
+      if (other !== id) await this.hideFromSidebar(other)
+    }
+
     const chatService = ChatService.getInstance()
-    chatService.adoptSession(session)
+    // It can be refused: the tab bar has a limit and `adoptSession` now keeps it. Nothing is
+    // marked and nothing is revealed then — the person has already been told why.
+    if (!chatService.adoptSession(session)) return false
+
     this.shown.add(id)
     await chatService.revealSidebar()
 
