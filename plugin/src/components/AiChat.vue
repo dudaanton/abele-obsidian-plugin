@@ -23,10 +23,15 @@
         <AiAgentSelector />
         <div class="abele-ai-chat__header-actions">
           <!-- Only for a comment: the way back to the passage it was written against, whether
-               this tab holds the comment itself or the chat it was expanded into. -->
+               this tab holds the comment itself or the chat it was expanded into.
+
+               Not a panel glyph. It used to be `panel-right-close`, which beside the
+               `panel-right-open` below it is the same drawing mirrored — two actions that do
+               opposite things and take a moment to tell apart, on the screen with the least
+               room to tell anything apart. This one points back the way it came. -->
           <Icon
             v-if="commentSession || expandedComment"
-            icon="panel-right-close"
+            icon="corner-up-left"
             with-bg
             :disabled="backBlocked"
             :tooltip="backBlocked ? blockedTooltip : 'Back to the note, as a comment in the margin'"

@@ -248,7 +248,7 @@ describe('an expanded comment in the sidebar', () => {
     const view = mount(AiChat, { attachTo: document.body, global: { stubs: { Dropdown: true } } })
     const icon = view
       .findAllComponents(Icon)
-      .find((candidate) => candidate.props('icon') === 'panel-right-close')
+      .find((candidate) => candidate.props('icon') === 'corner-up-left')
     return { view, icon }
   }
 
@@ -382,14 +382,14 @@ describe('a comment shown in the sidebar', () => {
 
     const { icon } = header()
 
-    expect(icon('panel-right-close')).toBeDefined()
+    expect(icon('corner-up-left')).toBeDefined()
     expect(icon('panel-right-open')).toBeDefined()
   })
 
   it('offers neither in an ordinary chat', () => {
     const { icon } = header()
 
-    expect(icon('panel-right-close')).toBeUndefined()
+    expect(icon('corner-up-left')).toBeUndefined()
     expect(icon('panel-right-open')).toBeUndefined()
   })
 
@@ -417,7 +417,7 @@ describe('a comment shown in the sidebar', () => {
     asComment()
 
     const { icon } = header()
-    await icon('panel-right-close')!.vm.$emit('click')
+    await icon('corner-up-left')!.vm.$emit('click')
     await nextTick()
 
     expect(showActions.hideFromSidebar).toHaveBeenCalledWith('k7d2ph')
@@ -459,7 +459,7 @@ describe('a comment shown in the sidebar', () => {
     const { icon } = header()
 
     expect(icon('panel-right-open')!.props('disabled')).toBe(true)
-    expect(icon('panel-right-close')!.props('disabled')).toBe(false)
+    expect(icon('corner-up-left')!.props('disabled')).toBe(false)
   })
 
   it('hands a mid-turn comment back rather than refusing it', async () => {
@@ -467,7 +467,7 @@ describe('a comment shown in the sidebar', () => {
     session.isStreaming.value = true
 
     const { icon } = header()
-    await icon('panel-right-close')!.vm.$emit('click')
+    await icon('corner-up-left')!.vm.$emit('click')
     await nextTick()
 
     expect(showActions.hideFromSidebar).toHaveBeenCalledWith('k7d2ph')
@@ -481,8 +481,8 @@ describe('a comment shown in the sidebar', () => {
 
     const { icon } = header()
 
-    expect(icon('panel-right-close')!.props('disabled')).toBe(true)
-    expect(icon('panel-right-close')!.props('tooltip')).toBe('This comment is being moved')
+    expect(icon('corner-up-left')!.props('disabled')).toBe(true)
+    expect(icon('corner-up-left')!.props('tooltip')).toBe('This comment is being moved')
   })
 
   /**

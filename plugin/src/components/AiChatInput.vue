@@ -546,6 +546,18 @@ onUnmounted(() => {
   }
 }
 
+/**
+ * A phone, where this is the field a comment is typed into.
+ *
+ * The composer inherits its size from the pane, which on a phone can put it under 16 px — and
+ * below 16 px iOS answers a focus by zooming the whole view into the field, so the note behind
+ * jumps and has to be pinched back. `--font-ui-medium` is exactly that floor. Nothing else is
+ * touched: the height is set by the script as the field is typed into.
+ */
+body.is-mobile .abele-chat-input__textarea {
+  font-size: var(--font-ui-medium);
+}
+
 .abele-chat-input__voice {
   margin: var(--size-4-2) 0;
 }

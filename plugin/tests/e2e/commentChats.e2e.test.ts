@@ -202,7 +202,7 @@ const mobileScript = `(async () => {
     // Obsidian's own \`setIcon\` is what draws these, and what it leaves behind is an
     // \`svg.lucide-<name>\` — there is no attribute naming the icon in the running app.
     const icon = (name) => !!chat.querySelector('.abele-ai-chat__header-actions .lucide-' + name)
-    report.backToNoteVisible = icon('panel-right-close')
+    report.backToNoteVisible = icon('corner-up-left')
     report.openAsChatVisible = icon('panel-right-open')
 
     report.composerVisible = shown(chat.querySelector('.abele-chat-input__textarea'))

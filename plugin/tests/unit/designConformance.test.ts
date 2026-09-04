@@ -60,6 +60,17 @@ function withoutComments(source: string): string {
     .replace(/(^|\s)\/\/.*$/gm, '$1')
 }
 
+/**
+ * Drops the conditions of `@container` and `@media` queries.
+ *
+ * A breakpoint is not a size: it is the width at which a rule starts applying, and the only
+ * honest unit for one is the pixel the layout is actually measured in. What the rule then
+ * *sets* is still held to the theme's steps, which is why only the parenthesis goes.
+ */
+function withoutBreakpoints(css: string): string {
+  return css.replace(/@(?:container|media)[^{]*/g, '@query ')
+}
+
 function styleBlock(source: string): string {
   const match = source.match(/<style[^>]*>([\s\S]*)<\/style>/)
   return match ? withoutComments(match[1]) : ''
@@ -121,10 +132,20 @@ describe('the design standard', () => {
   it('sizes in relative units, not pixels', () => {
     // A hairline is the exception: `1px` is what a border is, at any zoom.
     const offenders = FILES.filter((file) =>
-      /(?<![\d.])(?!0px|1px)\d+(\.\d+)?px/.test(styleBlock(readFileSync(file, 'utf8')))
+      /(?<![\d.])(?!0px|1px)\d+(\.\d+)?px/.test(
+        withoutBreakpoints(styleBlock(readFileSync(file, 'utf8')))
+      )
     )
 
     expect(offenders.map(name)).toEqual([])
+  })
+
+  it('does not read a breakpoint as a size', () => {
+    const source = '@container (max-width: 420px) {\n  .a { width: 420px; }\n}'
+
+    expect(withoutBreakpoints(source)).not.toContain('(max-width: 420px)')
+    // Only the condition goes: what is inside the query is still markup being sized.
+    expect(withoutBreakpoints(source)).toContain('width: 420px')
   })
 
   it('says what every action does', () => {
@@ -168,28 +189,49 @@ describe('the design standard', () => {
   })
 
   /**
-   * The margin's composer on a touch screen.
+   * Every composer a thumb meets, at 16 px.
    *
-   * It is small on purpose — a sidenote is 300 px wide — and a phone reported that same field
-   * as unreadable, iOS answering anything set under 16 px by zooming the note into it. A phone
-   * has no margin at all now and opens the comment in the sidebar instead, but a tablet still
-   * shows the card and is still `body.is-mobile`. Neither the size nor the reason is visible to
-   * any component test — happy-dom computes no layout — so the rule is guarded by name.
+   * Below that, focusing a field is answered by iOS zooming the whole page into it — the note
+   * jumped and had to be pinched back every time somebody typed a question, which is what the
+   * first phone report was about. The sidebar's composer is the one a phone types a comment
+   * into now; the margin's is what a tablet still shows, and is still `body.is-mobile`.
+   * Neither the size nor the reason is visible to any component test — happy-dom computes no
+   * layout — so both rules are guarded by name.
    */
-  it('sizes the margin composer for a thumb where there is one', () => {
-    const input = styleBlock(readFileSync(join(ROOT, 'CommentInput.vue'), 'utf8'))
+  it('sizes every composer a thumb meets so iOS does not zoom into it', () => {
+    const chat = styleBlock(readFileSync(join(ROOT, 'AiChatInput.vue'), 'utf8'))
+    const sidebar =
+      /body\.is-mobile \.abele-chat-input__textarea\s*\{([^}]*)\}/.exec(chat)?.[1] ?? ''
+    expect(sidebar).toMatch(/font-size:\s*var\(--font-ui-medium\)/)
 
+    const input = styleBlock(readFileSync(join(ROOT, 'CommentInput.vue'), 'utf8'))
     const field =
       /body\.is-mobile \.abele-comment-input__field\s*\{([^}]*)\}/.exec(input)?.[1] ?? ''
-    // 16 px: below it, focusing the field zooms the whole note on iOS.
     expect(field).toMatch(/font-size:\s*var\(--font-ui-medium\)/)
     expect(field).toMatch(/min-height:\s*var\(--input-height\)/)
 
-    const send =
-      /body\.is-mobile \.abele-comment-input__send\s*\{([^}]*)\}/.exec(input)?.[1] ?? ''
+    const send = /body\.is-mobile \.abele-comment-input__send\s*\{([^}]*)\}/.exec(input)?.[1] ?? ''
     // --size-4-9 is 36 px, the smallest square a thumb hits reliably.
     expect(send).toMatch(/min-width:\s*var\(--size-4-9\)/)
     expect(send).toMatch(/min-height:\s*var\(--size-4-9\)/)
+  })
+
+  /**
+   * The chat header at the width a phone gives it.
+   *
+   * Six things share one row: the agent, the model it resolves to, and four actions — and a
+   * comment adds two more. At 414 px the agent's name was clipped to "Co…" and the model to
+   * "Claude O…", which is two truncations where one of them is the only thing that says which
+   * agent is answering. The model is the one that goes: it is a fact about the agent, and the
+   * chat settings say it in full. A container query, because the pane is what is narrow, not
+   * the window — a phone and a narrow desktop split are the same problem.
+   */
+  it('drops the model label where the pane is too narrow for both', () => {
+    const selector = styleBlock(readFileSync(join(ROOT, 'AiAgentSelector.vue'), 'utf8'))
+
+    const query = /@container\s*\(max-width:\s*420px\)\s*\{([\s\S]*?)\n\}/.exec(selector)?.[1] ?? ''
+    expect(query).toContain('.abele-agent-selector__model')
+    expect(query).toMatch(/display:\s*none/)
   })
 
   /**

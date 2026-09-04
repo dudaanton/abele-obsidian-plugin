@@ -103,6 +103,23 @@ const onSelect = (agentId: string) => {
   min-width: 0;
 }
 
+/**
+ * A pane too narrow for both.
+ *
+ * Six things share the header's row — the agent, the model, and four actions — and a comment
+ * adds two more. At 414 px that clipped the agent to "Co…" and the model to "Claude O…", which
+ * is two truncations where one of them is the only thing on screen saying which agent is
+ * answering. The model goes: it is a fact about the agent, and the chat settings say it in full.
+ *
+ * A container query rather than a media query, because what is narrow is the pane: a phone and
+ * a narrow desktop split are one problem. `.abele-ai-chat` is the container it resolves against.
+ */
+@container (max-width: 420px) {
+  .abele-agent-selector__model {
+    display: none;
+  }
+}
+
 .abele-agent-selector__empty {
   font-size: var(--font-small);
   color: var(--text-muted);
