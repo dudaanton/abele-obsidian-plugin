@@ -21,8 +21,14 @@ const JOURNAL_KEY = 'journal'
 /** A plugin key, kept clear of the engine's two: `plugin:<key>`, as the daemon writes `daemon:`. */
 const own = (key: string): string => `plugin:${key}`
 
-/** The database one vault's state lives in. One vault, one database, one name. */
-export const stateDatabaseName = (vaultId: string): string => `abele-sync-${vaultId}`
+/**
+ * The database one device's ledger lives in. One local vault, one database, one name.
+ *
+ * Named after the `stateId` the plugin mints when it enrols, not after the server's vault id:
+ * Obsidian's IndexedDB belongs to the app rather than to the vault, so two local vaults syncing
+ * the same server vault would otherwise share one ledger.
+ */
+export const stateDatabaseName = (stateId: string): string => `abele-sync-${stateId}`
 
 /** A row of `meta`: whatever was written under that key, structured-cloned in and out. */
 interface MetaRow {

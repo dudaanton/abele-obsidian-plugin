@@ -487,6 +487,14 @@ export class AbeleConfig {
 
   private static instance: AbeleConfig
 
+  /**
+   * Called after every settings save.
+   *
+   * A listener set rather than an import: the sync service reads and writes these settings, and
+   * a call the other way would make the two modules import each other.
+   */
+  private readonly savedListeners = new Set<() => void>()
+
   private constructor() {}
 
   public static getInstance(): AbeleConfig {
@@ -518,6 +526,14 @@ export class AbeleConfig {
   public destroy(): void {
     this.pendingEdits = new SettingsEdits()
     this.plugin = null
+  }
+
+  /** Told whenever the settings have been written. The returned function unsubscribes. */
+  public onSaved(cb: () => void): () => void {
+    this.savedListeners.add(cb)
+    return () => {
+      this.savedListeners.delete(cb)
+    }
   }
 
   async loadSettings() {
@@ -582,6 +598,15 @@ export class AbeleConfig {
     if (this.plugin === plugin) {
       GlobalStore.getInstance().applySettings()
       plugin.syncAiFeatures()
+    }
+
+
+    for (const cb of [...this.savedListeners]) {
+      try {
+        cb()
+      } catch (error) {
+        console.debug('[AbeleConfig] a settings listener threw', error)
+      }
     }
   }
 

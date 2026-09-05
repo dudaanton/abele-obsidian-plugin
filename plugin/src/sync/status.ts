@@ -69,7 +69,7 @@ export const statusOf = (engine: EngineStatus): SyncStatus => ({ ...engine })
 /** What the status bar says: the label, and how much is still to go while it goes. */
 export function statusText(status: SyncStatus): string {
   if (status.state === 'syncing' && status.pending > 0) {
-    return `${STATUS_LABEL.syncing} ${status.pending}`
+    return `${STATUS_LABEL.syncing} (${status.pending})`
   }
   return STATUS_LABEL[status.state]
 }

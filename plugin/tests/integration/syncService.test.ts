@@ -1,10 +1,13 @@
 // @vitest-environment node
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { createHash } from 'node:crypto'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { Platform, type App } from 'obsidian'
-import type { VaultClient } from '@abele/sync-core'
+import type { SelectiveSettings, VaultClient } from '@abele/sync-core'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { SyncService } from '@/sync/SyncService'
+import { SyncService, type SyncServiceDeps } from '@/sync/SyncService'
+import { IndexedDbStateStore, stateDatabaseName } from '@/sync/IndexedDbStateStore'
+import { runAfterSync } from '@/helpers/runAfterSync'
 import type AbelePlugin from '@/main'
 import { buildFakeVault, type FakeApp } from '../helpers/fakeVault'
 import { syncServer, type SyncServer } from '../helpers/syncServer'
@@ -98,7 +101,7 @@ function countedSocket(): typeof WebSocket {
   })
 }
 
-function start(): void {
+function start(extra: Partial<SyncServiceDeps> = {}): void {
   service.init(app as unknown as App, plugin, {
     fetch: transport,
     WebSocket: countedSocket(),
@@ -106,7 +109,28 @@ function start(): void {
     // Long enough that nothing in a test is prompted by a clock it did not ask for.
     fallbackMs: 60_000,
     pollMs: 60_000,
+    ...extra,
   })
+}
+
+/**
+ * The daemon's scope key, spelled the daemon's way — Node's SHA-256 over the same JSON. The
+ * plugin computes it through WebCrypto, and the two have to agree or a device that moved
+ * between the daemon and the plugin would rescan for ever.
+ */
+const daemonScopeKey = (selective: SelectiveSettings, ignoreText: string | null): string =>
+  createHash('sha256')
+    .update(JSON.stringify({ selective, ignore: ignoreText }))
+    .digest('hex')
+
+/** What the service filed in its own ledger, read through a second connection. */
+async function meta(key: string): Promise<string | null> {
+  const store = await IndexedDbStateStore.open(indexedDB, stateDatabaseName(settings().stateId))
+  try {
+    return await store.getMeta(key)
+  } finally {
+    store.close()
+  }
 }
 
 /* -- Reading and writing the vault --------------------------------------- */
@@ -156,13 +180,16 @@ interface Connected {
  * The whole connect flow, as the settings tab will drive it: sign in, list the vaults, enrol
  * on one. The extra device is the scenario's, not the one under test.
  */
-async function connect(vaultName = 'Home'): Promise<Connected> {
+async function connect(
+  extra: Partial<SyncServiceDeps> = {},
+  vaultName = 'Home'
+): Promise<Connected> {
   const { accountToken } = await server.account(EMAIL)
   const { vaultId } = await server.vault(accountToken, vaultName)
   const { deviceToken } = await server.device(accountToken, vaultId, 'scenario')
   const other = server.clientFor(deviceToken, vaultId)
 
-  start()
+  start(extra)
   const vaults = await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
   expect(vaults.map((vault) => vault.name)).toEqual([vaultName])
   await service.chooseVault(vaultId, 'Laptop')
@@ -279,6 +306,8 @@ describe('SyncService — syncing', () => {
     await server.clientOn(accountToken).revokeDevice(settings().deviceId)
     await service.syncNow()
     expect(service.status.value.state).toBe('error')
+    // Not the client's "the request was refused", which says nothing a person can act on.
+    expect(service.status.value.lastError).toContain('connect again from the Sync settings')
 
     // What the settings tab does about it: sign in and enrol again.
     await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
@@ -352,7 +381,9 @@ describe('SyncService — disconnecting', () => {
     expect(app.secretStorage.getSecret(tokenId)).toBe('')
     expect(settings().serverUrl).toBe('')
     expect(settings().vaultId).toBe('')
-    expect(settings().deviceTokenId).toBe('')
+    // The id is a keychain name, not a credential: keeping it is what stops a reconnect
+    // leaving an entry behind every time.
+    expect(settings().deviceTokenId).toBe(tokenId)
     expect(service.isConnected()).toBe(false)
     expect(service.status.value.state).toBe('disconnected')
     expect(service.client()).toBeNull()
@@ -366,6 +397,43 @@ describe('SyncService — disconnecting', () => {
     await service.disconnect()
 
     expect(settings().selective.video).toBe(false)
+  })
+
+  it('reuses the one keychain entry when the same device connects again', async () => {
+    const { vaultId } = await connect()
+    await synced()
+    const tokenId = settings().deviceTokenId
+    const stateId = settings().stateId
+
+    await service.disconnect()
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+    await service.chooseVault(vaultId, 'Laptop')
+    await synced()
+
+    expect(settings().deviceTokenId).toBe(tokenId)
+    expect(app.secretStorage.getSecret(tokenId)).toMatch(/^absd_/)
+    // The same vault, so the same ledger: reconnecting costs a scan, not a download.
+    expect(settings().stateId).toBe(stateId)
+  })
+
+  it('forget drops the ledger and the keychain name as well', async () => {
+    await connect()
+    await synced()
+    const tokenId = settings().deviceTokenId
+    const stateId = settings().stateId
+
+    await service.forget()
+
+    expect(settings().stateId).toBe('')
+    expect(settings().deviceTokenId).toBe('')
+    expect(app.secretStorage.getSecret(tokenId)).toBe('')
+    // The database is gone: a fresh one opens with nothing filed in it.
+    const store = await IndexedDbStateStore.open(indexedDB, stateDatabaseName(stateId))
+    try {
+      expect(await store.getMeta('scope')).toBeNull()
+    } finally {
+      store.close()
+    }
   })
 })
 
@@ -381,6 +449,200 @@ describe('SyncService — the log', () => {
   it('says why nothing happened when there is nothing to sync with', async () => {
     await service.syncNow()
     expect(service.log.value.join('\n')).toContain('not connected to a server')
+  })
+})
+
+describe('SyncService — one ledger per local vault', () => {
+  it("does not let a second local vault read the first one's ledger", async () => {
+    const { vaultId, other } = await connect()
+    await synced()
+    const first = settings().stateId
+    expect(first).not.toBe('')
+    expect(await serverPaths(other)).toContain('Existing.md')
+
+    // The same machine, the same server vault, a different local vault: Obsidian's IndexedDB
+    // is one namespace per app, so a ledger keyed by the *server* vault id would be shared.
+    // This vault holds none of those files, and the scanner would call every one of them
+    // deleted and push a delete for each.
+    await service.destroy()
+    AbeleConfig.getInstance().applySettings(undefined)
+    app = buildFakeVault([])
+    service = SyncService.getInstance()
+    start()
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+    await service.chooseVault(vaultId, 'Desktop')
+    await synced()
+
+    expect(settings().stateId).not.toBe(first)
+    expect(await serverPaths(other)).toContain('Existing.md')
+    expect(await read('Existing.md')).toBe('already here')
+  })
+
+  it('starts a fresh ledger when the device is pointed at another vault', async () => {
+    const { accountToken } = await connect()
+    await synced()
+    const first = settings().stateId
+
+    const { vaultId: second } = await server.vault(accountToken, 'Work')
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+    await service.chooseVault(second, 'Laptop')
+    await synced()
+
+    expect(settings().stateId).not.toBe(first)
+  })
+})
+
+describe('SyncService — a plugin reload', () => {
+  it('hands the next instance a clean slate, in order', async () => {
+    await connect()
+    await synced()
+    const old = service
+
+    // Captured before the spies replace them, so both still do the real thing.
+    const order: string[] = []
+    const realOpen = IndexedDbStateStore.open.bind(IndexedDbStateStore)
+    const realClose = IndexedDbStateStore.prototype.close
+    const opened = vi
+      .spyOn(IndexedDbStateStore, 'open')
+      .mockImplementation(async (factory, name) => {
+        const store = await realOpen(factory, name)
+        order.push('open')
+        return store
+      })
+    const closed = vi.spyOn(IndexedDbStateStore.prototype, 'close').mockImplementation(function (
+      this: IndexedDbStateStore
+    ) {
+      order.push('close')
+      realClose.call(this)
+    })
+
+    // What `onunload` does: it cannot await, so the reload starts while this is still running.
+    void old.syncNow()
+    const stopping = old.destroy()
+
+    const next = SyncService.getInstance()
+    // Detached the moment `destroy` was called, so the reload cannot be handed the old one.
+    expect(next).not.toBe(old)
+    service = next
+    next.init(app as unknown as App, plugin, {
+      fetch: transport,
+      WebSocket: countedSocket(),
+      indexedDB,
+      fallbackMs: 60_000,
+      pollMs: 60_000,
+    })
+
+    await stopping
+    await waitFor('the new instance to take over', () => next.isConnected())
+    await synced()
+
+    expect(old.isConnected()).toBe(false)
+    // The old ledger was closed before the new one was opened, so no two engines ever held it.
+    expect(order.lastIndexOf('close')).toBeLessThan(order.lastIndexOf('open'))
+
+    opened.mockRestore()
+    closed.mockRestore()
+  })
+})
+
+describe('SyncService — when it cannot start at all', () => {
+  it('says so instead of looking like a device nobody set up', async () => {
+    const { accountToken } = await server.account(EMAIL)
+    const { vaultId } = await server.vault(accountToken, 'Home')
+
+    const broken = {
+      open: () => {
+        throw new Error('this browser will not open a database')
+      },
+    } as unknown as IDBFactory
+    start({ indexedDB: broken })
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+    await service.chooseVault(vaultId, 'Laptop')
+
+    expect(service.status.value.state).toBe('error')
+    expect(service.status.value.lastError).toContain('state database')
+    expect(service.isConnected()).toBe(false)
+    expect(service.log.value.join('\n')).toContain('sync could not start')
+  })
+})
+
+describe('SyncService — what this device syncs, driven from the settings', () => {
+  it('rescans and fetches what the old scope skipped when a settings save widens it', async () => {
+    const { accountToken } = await server.account(EMAIL)
+    const { vaultId } = await server.vault(accountToken, 'Home')
+    const { deviceToken } = await server.device(accountToken, vaultId, 'scenario')
+    const other = server.clientFor(deviceToken, vaultId)
+    await seed(other, [await create(other, 'Archive/old.md', 'kept out at first')])
+
+    // Narrow before the first sync, so the pull passes the folder over.
+    settings().selective.excludedFolders = ['Archive']
+    start()
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+    await service.chooseVault(vaultId, 'Laptop')
+    await synced()
+    expect(await app.vault.adapter.exists('Archive/old.md')).toBe(false)
+
+    // Widened through the one road every screen takes: a settings save.
+    settings().selective.excludedFolders = []
+    await AbeleConfig.getInstance().saveSettings()
+
+    await waitFor('the file the old scope skipped', () =>
+      app.vault.adapter.exists('Archive/old.md')
+    )
+    expect(await read('Archive/old.md')).toBe('kept out at first')
+    expect(
+      service.log.value.some((line) =>
+        line.includes('rescan: what this device syncs changed since the last sync')
+      )
+    ).toBe(true)
+  })
+
+  it('files the scope under the key the daemon would have computed', async () => {
+    await connect()
+    await synced()
+
+    expect(await meta('scope')).toBe(daemonScopeKey(settings().selective, null))
+  })
+
+  it('reads the ignore file again when it is edited in the vault', async () => {
+    const { other } = await connect({ pollMs: 20 })
+    await synced()
+
+    await write(IGNORE_FILE, 'Drafts/\n')
+    // The line is written after the engine has been rebuilt on the new rules, so waiting for
+    // it is waiting for the rules to be the ones the next sync runs on.
+    await waitFor('the new rules to be in force', () =>
+      service.log.value.some((line) => line.includes(`${IGNORE_FILE}: 1 rule(s) in force`))
+    )
+    expect(service.log.value.some((line) => line.includes('the vault ignore file changed'))).toBe(
+      true
+    )
+
+    await write('Drafts/note.md', 'not for the server')
+    await service.syncNow()
+    expect(await serverPaths(other)).not.toContain('Drafts/note.md')
+  })
+})
+
+describe('SyncService — runAfterSync at startup', () => {
+  it('holds a callback queued before the first sync of a launch', async () => {
+    await connect()
+    await synced()
+
+    // The next launch: the settings already name a vault, so this device is about to pull.
+    await service.destroy()
+    service = SyncService.getInstance()
+    start()
+
+    const ran = vi.fn()
+    runAfterSync(app as unknown as App, ran)
+    // `disconnected` here would have read as "nothing in flight" and let the callback run over
+    // a vault the first pull is about to rewrite.
+    expect(service.status.value.state).toBe('syncing')
+    expect(ran).not.toHaveBeenCalled()
+
+    await synced()
+    expect(ran).toHaveBeenCalledOnce()
   })
 })
 

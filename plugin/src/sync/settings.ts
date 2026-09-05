@@ -13,6 +13,16 @@ export interface SyncSettings {
   serverUrl: string
   vaultId: string
   deviceId: string
+  /**
+   * What this device's own ledger is filed under, minted here and never sent anywhere.
+   *
+   * Not the vault id, though the two look alike. Obsidian's IndexedDB belongs to the app and
+   * not to the vault, so two local vaults on one machine share a database namespace — and two
+   * of them connected to the same server vault would open one ledger, each find every entry
+   * missing from its own disk, and push a delete for every file in the vault. The id is minted
+   * when this device enrols, so no two local vaults can collide; `forget` is what drops it.
+   */
+  stateId: string
   /** The key the device token is stored under, not the token. */
   deviceTokenId: string
   /** What this device calls itself in the vault's device list. */
@@ -48,6 +58,7 @@ export function defaultSyncSettings(isMobile = false): SyncSettings {
     serverUrl: '',
     vaultId: '',
     deviceId: '',
+    stateId: '',
     deviceTokenId: '',
     deviceName: '',
     selective,
@@ -79,6 +90,9 @@ export function migrateSyncSettings(raw: unknown, isMobile = false): SyncSetting
     serverUrl: stringOr(o.serverUrl, defaults.serverUrl),
     vaultId: stringOr(o.vaultId, defaults.vaultId),
     deviceId: stringOr(o.deviceId, defaults.deviceId),
+    // Empty for a settings file written before this field existed: the next enrolment mints
+    // one. Reusing the vault id here instead would recreate the collision it exists to stop.
+    stateId: stringOr(o.stateId, defaults.stateId),
     deviceTokenId: stringOr(o.deviceTokenId, defaults.deviceTokenId),
     deviceName: stringOr(o.deviceName, defaults.deviceName),
     selective: migrateSelective(o.selective, defaults.selective),

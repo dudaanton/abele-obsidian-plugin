@@ -89,9 +89,24 @@ describe('migrateSyncSettings', () => {
       'paused',
       'selective',
       'serverUrl',
+      'stateId',
       'vaultId',
     ])
     expect((settings as Record<string, unknown>).deviceToken).toBeUndefined()
+  })
+
+  it('leaves the state id empty for a settings file written before it existed', () => {
+    // Empty rather than the vault id: reusing that would put two local vaults syncing one
+    // server vault back on a single ledger, which is the collision the field exists to stop.
+    // The next enrolment mints one.
+    const settings = migrateSyncSettings({ serverUrl: 'https://sync.example', vaultId: 'v1' })
+
+    expect(settings.stateId).toBe('')
+  })
+
+  it('keeps a state id it was given', () => {
+    expect(migrateSyncSettings({ stateId: 'abc123' }).stateId).toBe('abc123')
+    expect(migrateSyncSettings({ stateId: 7 }).stateId).toBe('')
   })
 
   it('falls back to the default for a field of the wrong type', () => {

@@ -51,7 +51,7 @@ describe('the status vocabulary', () => {
   })
 
   it('counts what is left only while a sync is going', () => {
-    expect(statusText(status({ state: 'syncing', pending: 4 }))).toBe('Syncing 4')
+    expect(statusText(status({ state: 'syncing', pending: 4 }))).toBe('Syncing (4)')
     expect(statusText(status({ state: 'syncing', pending: 0 }))).toBe('Syncing')
     // Pending outside a sync is what the last push kept back, not a number to put in the bar.
     expect(statusText(status({ state: 'idle', pending: 4 }))).toBe('Fully synced')
@@ -75,7 +75,7 @@ describe('renderStatus', () => {
     renderStatus(el, status({ state: 'syncing', pending: 2 }))
 
     expect(el.querySelector('[data-icon]')?.getAttribute('data-icon')).toBe(STATUS_ICON.syncing)
-    expect(el.textContent).toContain('Syncing 2')
+    expect(el.textContent).toContain('Syncing (2)')
     expect(el.getAttribute('aria-label')).toContain('Syncing')
     expect(el.classList.contains('abele-sync-status')).toBe(true)
   })

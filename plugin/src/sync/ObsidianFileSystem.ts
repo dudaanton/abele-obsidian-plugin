@@ -16,11 +16,24 @@ const DEFAULT_POLL_MS = 30000
  */
 const CONFIG_WALK_DEPTH = 32
 
+/**
+ * The vault's ignore file. It lives at the root rather than under the config folder, and a
+ * leading dot keeps it out of Obsidian's file index, so nothing but this poll would ever
+ * notice it being edited.
+ */
+const IGNORE_FILE = '.abele-sync-ignore'
+
 export interface ObsidianFileSystemOptions {
   /** How often the config folder is polled; 30 s by default. */
   pollMs?: number
   /** The clock the watcher's ceiling reads; `Date.now` by default. */
   now?: () => number
+  /**
+   * Handed every batch the engine is handed, for a host that watches for reasons of its own —
+   * the service reconsiders what it syncs when `.abele-sync-ignore` changes. A throw here is
+   * logged and swallowed: the engine's own batch must still go out.
+   */
+  onWatch?: (paths: string[]) => void
 }
 
 /**
@@ -55,6 +68,7 @@ export interface ObsidianFileSystemOptions {
 export class ObsidianFileSystem implements FileSystem {
   private readonly pollMs: number
   private readonly now: () => number
+  private readonly onWatch: ((paths: string[]) => void) | null
   /** Set while `watch` is running: what `kick` reaches for, and nothing when nobody watches. */
   private pollNow: (() => void) | null = null
 
@@ -64,6 +78,7 @@ export class ObsidianFileSystem implements FileSystem {
   ) {
     this.pollMs = options.pollMs ?? DEFAULT_POLL_MS
     this.now = options.now ?? ((): number => Date.now())
+    this.onWatch = options.onWatch ?? null
   }
 
   private get adapter(): DataAdapter {
@@ -185,6 +200,11 @@ export class ObsidianFileSystem implements FileSystem {
       const paths = [...pending]
       pending.clear()
       console.debug(`[abele-sync] the vault changed at ${paths.length} path(s)`)
+      try {
+        this.onWatch?.(paths)
+      } catch (error) {
+        console.debug('[abele-sync] the host threw at a batch of changes', error)
+      }
       try {
         cb(paths)
       } catch (error) {
@@ -340,12 +360,20 @@ export class ObsidianFileSystem implements FileSystem {
     }
   }
 
-  /** path → `size:mtime` for the whole config folder, which is what a poll compares. */
+  /**
+   * path → `size:mtime` for the whole config folder and the vault's ignore file, which is what
+   * a poll compares.
+   *
+   * The ignore file costs one `stat` a tick and is the only way an edit to it is ever reported:
+   * it is neither in the file index nor under the config folder.
+   */
   private async configSnapshot(): Promise<Map<string, string>> {
     const taken = new Map<string, string>()
     for await (const info of this.walkConfig(this.configDir)) {
       taken.set(info.path, `${info.size}:${info.mtime}`)
     }
+    const ignore = await this.stat(IGNORE_FILE)
+    if (ignore !== null) taken.set(ignore.path, `${ignore.size}:${ignore.mtime}`)
     return taken
   }
 
