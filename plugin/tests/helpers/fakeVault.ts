@@ -15,6 +15,14 @@
  * of work an algorithm does rather than on wall-clock time. That distinction matters for
  * the group-resolution performance tests: operation counts are identical across machines
  * and CI runners, whereas milliseconds are not.
+ *
+ * Under the index there is a disk, reached through `vault.adapter`: `list`, `stat`,
+ * `readBinary`, `writeBinary`, `rename`, `remove`, `mkdir` and `exists`. It holds the hidden
+ * files the index never shows — a spec whose path has a dot-segment, `.obsidian/app.json`
+ * among them — and it answers a name that is spelled differently in the same letters, which
+ * is what makes it a stand-in for macOS rather than for ext4. `vault.on`, `workspace.on` and
+ * `emit` together let a test fire the events a watcher listens for, and `offref` really does
+ * unregister.
  */
 import { TFile, TFolder, TAbstractFile } from 'obsidian'
 import { dump as dumpYaml, load as loadYaml } from 'js-yaml'
@@ -35,6 +43,21 @@ export interface FakeFileSpec {
    * than frontmatter re-serialised from `frontmatter`, which would not match byte for byte.
    */
   raw?: string
+  /** What `TFile.stat.mtime` and the adapter report for this file; 0 when unsaid. */
+  mtime?: number
+  /** What `TFile.stat.ctime` and the adapter report for this file; 0 when unsaid. */
+  ctime?: number
+}
+
+/**
+ * A file as the *adapter* sees it, which is not the same set as the file index: a spec whose
+ * path has a dot-segment (`.obsidian/app.json`) exists on this disk and nowhere in
+ * `getFiles()`, exactly as Obsidian hides its own configuration from the vault.
+ */
+export interface FakeDiskEntry {
+  bytes: Uint8Array
+  ctime: number
+  mtime: number
 }
 
 export interface FakeVaultStats {
@@ -64,6 +87,24 @@ export interface FakeFileCache {
   frontmatterLinks: FakeLinkCache[]
 }
 
+/** The slice of Obsidian's `DataAdapter` the fake models — the raw disk under the index. */
+export interface FakeAdapter {
+  exists(path: string, sensitive?: boolean): Promise<boolean>
+  stat(
+    path: string
+  ): Promise<{ type: 'file' | 'folder'; ctime: number; mtime: number; size: number } | null>
+  list(path: string): Promise<{ files: string[]; folders: string[] }>
+  readBinary(path: string): Promise<ArrayBuffer>
+  writeBinary(
+    path: string,
+    data: ArrayBuffer,
+    options?: { mtime?: number; ctime?: number }
+  ): Promise<void>
+  rename(path: string, newPath: string): Promise<void>
+  remove(path: string): Promise<void>
+  mkdir(path: string): Promise<void>
+}
+
 export interface FakeApp {
   delays: OperationDelays<'frontmatter' | 'metadata'>
   fileManager: {
@@ -71,6 +112,9 @@ export interface FakeApp {
   }
   vault: {
     getResourcePath(file: TFile): string
+    /** Obsidian's configuration folder, hidden from the file index and open to the adapter. */
+    configDir: string
+    adapter: FakeAdapter
     getFiles(): TFile[]
     getMarkdownFiles(): TFile[]
     getAbstractFileByPath(path: string): TAbstractFile | null
@@ -104,8 +148,13 @@ export interface FakeApp {
    * the vault was built needs before anything reading the cache can see it.
    */
   setFrontmatter(path: string, frontmatter: Record<string, unknown>): void
+  /** Obsidian's workspace, for the events that live there — `css-change` among them. */
+  workspace: {
+    on(name: string, callback: (...args: unknown[]) => void): { id: string }
+    offref(ref: { id: string }): void
+  }
   /** Invokes the handlers registered for an event, so tests can drive incremental updates. */
-  emit(scope: 'vault' | 'metadataCache', name: string, ...args: unknown[]): void
+  emit(scope: 'vault' | 'metadataCache' | 'workspace', name: string, ...args: unknown[]): void
   stats: FakeVaultStats
   resetStats(): void
 }
@@ -189,7 +238,96 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
 
   ensureFolder('')
 
+  /**
+   * The raw disk, as `vault.adapter` sees it.
+   *
+   * It holds two kinds of file. A hidden one — any path with a dot-segment, which is where
+   * Obsidian keeps its configuration — lives *only* here, invisible to `getFiles()` exactly
+   * as it is in a real vault. A visible one lives in the file index too, and its bytes are
+   * kept here as well so that a binary write survives being read back byte for byte; a text
+   * write through `vault.modify` drops the copy, which hands authority back to `rawByPath`.
+   */
+  const disk = new Map<string, FakeDiskEntry>()
+  const diskFolders = new Set<string>([''])
+  const encoder = new TextEncoder()
+  const decoder = new TextDecoder()
+  /** A clock for writes that name no mtime, so two of them are never the same instant. */
+  let diskClock = 1_700_000_000_000
+
+  /** Obsidian hides every dot-segment from the file index; the adapter still sees it. */
+  const isHidden = (path: string): boolean =>
+    path.split('/').some((segment) => segment.startsWith('.'))
+
+  /** The folder and every folder above it, on the disk. */
+  const ensureDiskFolder = (path: string): void => {
+    let folder = ''
+    for (const segment of path.split('/')) {
+      if (segment === '') continue
+      folder = folder === '' ? segment : `${folder}/${segment}`
+      diskFolders.add(folder)
+    }
+  }
+
+  /** The folders a file at this path sits in. */
+  const ensureDiskFolders = (path: string): void => {
+    const cut = path.lastIndexOf('/')
+    if (cut !== -1) ensureDiskFolder(path.slice(0, cut))
+  }
+
+  /**
+   * The spelling this disk actually holds for a name, or null when it holds none.
+   *
+   * The fallback is case-insensitive, which is what makes this a stand-in for macOS and
+   * Windows rather than for ext4: `note.md` finds `Note.md`, and code that means to tell a
+   * case-only rename from a collision cannot lean on a lookup to do it.
+   */
+  const actualPath = (path: string): string | null => {
+    if (disk.has(path) || byPath.has(path)) return path
+    const key = path.toLowerCase()
+    for (const held of disk.keys()) if (held.toLowerCase() === key) return held
+    for (const held of byPath.keys()) if (held.toLowerCase() === key) return held
+    return null
+  }
+
+  const actualFolder = (path: string): string | null => {
+    const folder = path === '/' ? '' : path
+    if (diskFolders.has(folder) || folders.has(folder)) return folder
+    const key = folder.toLowerCase()
+    for (const held of diskFolders) if (held.toLowerCase() === key) return held
+    for (const held of folders.keys()) if (held.toLowerCase() === key) return held
+    return null
+  }
+
+  /** The bytes at a path: the disk's own copy, or the text store rendered as UTF-8. */
+  const entryAt = (path: string): FakeDiskEntry | null => {
+    const own = disk.get(path)
+    if (own) return own
+    const file = byPath.get(path)
+    if (!file) return null
+    return {
+      bytes: encoder.encode(rawByPath.get(path) ?? ''),
+      ctime: file.stat.ctime,
+      mtime: file.stat.mtime,
+    }
+  }
+
+  /** Puts bytes at a path, in the index too when the path is one the index would show. */
+  const placeFile = (path: string, entry: FakeDiskEntry): void => {
+    ensureDiskFolders(path)
+    disk.set(path, entry)
+    if (isHidden(path)) return
+    const file = addFile(path)
+    file.stat = { ctime: entry.ctime, mtime: entry.mtime, size: entry.bytes.byteLength }
+    rawByPath.set(path, decoder.decode(entry.bytes))
+  }
+
   for (const spec of specs) {
+    // A hidden spec is a file on the disk and nothing in the index, so no `TFile` is built
+    // for it and no folder of the index's is created above it.
+    if (isHidden(spec.path)) {
+      specByPath.set(spec.path, spec)
+      continue
+    }
     const file = new TFile()
     file.path = spec.path
     file.name = spec.path.split('/').pop() ?? spec.path
@@ -252,6 +390,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
   }
 
   const removeFile = (path: string): void => {
+    disk.delete(path)
     const folder = folders.get(path)
     if (folder && path !== '') {
       for (const child of [...folder.children]) removeFile(child.path)
@@ -338,7 +477,22 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     })
 
     const yaml = spec.frontmatter ? `---\n${toYaml(spec.frontmatter)}\n---\n` : ''
-    rawByPath.set(spec.path, spec.raw ?? `${yaml}${spec.content ?? ''}`)
+    const raw = spec.raw ?? `${yaml}${spec.content ?? ''}`
+    const entry = {
+      bytes: encoder.encode(raw),
+      ctime: spec.ctime ?? 0,
+      mtime: spec.mtime ?? 0,
+    }
+    ensureDiskFolders(spec.path)
+    if (isHidden(spec.path)) {
+      disk.set(spec.path, entry)
+    } else {
+      // A visible file keeps its bytes in the text store alone, so a `vault.modify` in a test
+      // is seen by the adapter too; `entryAt` renders them when the adapter asks.
+      rawByPath.set(spec.path, raw)
+      const file = byPath.get(spec.path)
+      if (file) file.stat = { ctime: entry.ctime, mtime: entry.mtime, size: entry.bytes.byteLength }
+    }
 
     const targets: Record<string, number> = {}
     for (const { link } of [...links, ...frontmatterLinks]) {
@@ -352,6 +506,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
   // some behaviour is only reachable by firing those events, so handlers are kept and can
   // be invoked from a test through `emit`.
   const handlers = new Map<string, ((...args: unknown[]) => void)[]>()
+  const byRef = new Map<string, { key: string; callback: (...args: unknown[]) => void }>()
   let handlerId = 0
 
   const register =
@@ -361,11 +516,24 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       const bucket = handlers.get(key)
       if (bucket) bucket.push(callback)
       else handlers.set(key, [callback])
-      return { id: `${key}#${handlerId++}` }
+      const id = `${key}#${handlerId++}`
+      byRef.set(id, { key, callback })
+      return { id }
     }
 
-  const noopOffref = (): void => {
-    // Tests build a fresh app per case, so unregistering is unnecessary.
+  /**
+   * Unregistering for real. Most tests build a fresh app per case and never need it, but code
+   * that stops watching — the sync filesystem adapter does — is only honest about having
+   * stopped if the handler is actually gone.
+   */
+  const offref = (ref: { id: string }): void => {
+    const held = byRef.get(ref?.id)
+    if (!held) return
+    byRef.delete(ref.id)
+    const bucket = handlers.get(held.key)
+    if (!bucket) return
+    const at = bucket.indexOf(held.callback)
+    if (at !== -1) bucket.splice(at, 1)
   }
 
   const localStore = new Map<string, unknown>()
@@ -461,12 +629,12 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       if (cached) cached.frontmatter = frontmatter
       else cacheByPath.set(path, { frontmatter, links: [], frontmatterLinks: [] })
     },
-    emit(scope: 'vault' | 'metadataCache', name: string, ...args: unknown[]) {
-      for (const callback of handlers.get(`${scope}:${name}`) ?? []) callback(...args)
+    emit(scope: 'vault' | 'metadataCache' | 'workspace', name: string, ...args: unknown[]) {
+      for (const callback of [...(handlers.get(`${scope}:${name}`) ?? [])]) callback(...args)
     },
     vault: {
       on: register('vault'),
-      offref: noopOffref,
+      offref,
       getResourcePath(file: TFile) { return `app://sample/${file.path}` },
       getFiles() {
         stats.getFiles++
@@ -505,6 +673,8 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         stats.create++
         stats.written += content.length
         const file = addFile(path)
+        ensureDiskFolders(path)
+        disk.delete(path)
         rawByPath.set(path, content)
         return file
       },
@@ -530,6 +700,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       async modify(file: TFile, content: string) {
         stats.modify++
         stats.written += content.length
+        disk.delete(file.path)
         rawByPath.set(file.path, content)
       },
       /**
@@ -540,79 +711,128 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         stats.modify++
         const next = fn(rawByPath.get(file.path) ?? '')
         stats.written += next.length
+        disk.delete(file.path)
         rawByPath.set(file.path, next)
         return next
       },
       async append(file: TFile, data: string) {
         stats.append++
         stats.written += data.length
-        rawByPath.set(file.path, (rawByPath.get(file.path) ?? '') + data)
+        const held =
+          rawByPath.get(file.path) ?? decoder.decode(disk.get(file.path)?.bytes ?? new Uint8Array())
+        disk.delete(file.path)
+        rawByPath.set(file.path, held + data)
       },
       async createFolder(path: string) {
+        ensureDiskFolder(path)
         return ensureFolder(path)
       },
 
       configDir: '.obsidian',
-      // Obsidian's raw filesystem view. Existence is what code picking a free path asks; the
-      // rest is for files kept out of the vault's index, in the plugin's folder.
+
+      /**
+       * Obsidian's raw filesystem view: the whole disk, hidden folders included, and the only
+       * way to reach a file the index does not show. Lookups fall back to a case-insensitive
+       * match, the way a macOS or Windows volume does.
+       */
       adapter: {
-        async exists(path: string) {
-          return byPath.has(path) || folders.has(path) || hidden.has(path)
+        async exists(path: string, sensitive = false) {
+          if (sensitive)
+            return disk.has(path) || byPath.has(path) || diskFolders.has(path) || folders.has(path)
+          return actualPath(path) !== null || actualFolder(path) !== null
         },
-        async read(path: string) {
-          const content = hidden.get(path) ?? rawByPath.get(path)
-          if (content === undefined) throw new Error(`ENOENT: ${path}`)
-          return content
-        },
-        async write(path: string, data: string) {
-          stats.written += data.length
-          hidden.set(path, data)
-        },
-        async remove(path: string) {
-          hidden.delete(path)
-        },
-        async mkdir(path: string) {
-          hidden.set(path, '')
-        },
-        async readBinary(path: string) {
-          return bytesOf(path)
-        },
-        async writeBinary(path: string, data: ArrayBuffer) {
-          stats.written += data.byteLength
-          hidden.set(path, '')
-          binByPath.set(path, data.slice(0))
-        },
+
         async stat(path: string) {
-          if (folders.has(path)) return { type: 'folder', size: 0, mtime: 0, ctime: 0 }
-          if (!byPath.has(path) && !hidden.has(path)) return null
-          const size =
-            binByPath.get(path)?.byteLength ??
-            (hidden.get(path) ?? rawByPath.get(path) ?? '').length
-          return { type: 'file', size, mtime: 0, ctime: 0 }
-        },
-        /** Children of a folder among the files kept out of the index. */
-        async list(path: string) {
-          const prefix = `${path}/`
-          const files: string[] = []
-          const subfolders = new Set<string>()
-          for (const key of hidden.keys()) {
-            if (!key.startsWith(prefix)) continue
-            const rest = key.slice(prefix.length)
-            const cut = rest.indexOf('/')
-            if (cut === -1) {
-              if (hidden.get(key) !== '' || binByPath.has(key) || key.includes('.')) files.push(key)
-              else subfolders.add(key)
-            } else subfolders.add(prefix + rest.slice(0, cut))
-          }
-          return { files, folders: [...subfolders] }
-        },
-        async rmdir(path: string) {
-          for (const key of [...hidden.keys()]) {
-            if (key === path || key.startsWith(`${path}/`)) {
-              hidden.delete(key)
-              binByPath.delete(key)
+          const file = actualPath(path)
+          if (file !== null) {
+            const entry = entryAt(file)
+            if (entry) {
+              return {
+                type: 'file' as const,
+                ctime: entry.ctime,
+                mtime: entry.mtime,
+                size: entry.bytes.byteLength,
+              }
             }
           }
+          if (actualFolder(path) === null) return null
+          return { type: 'folder' as const, ctime: 0, mtime: 0, size: 0 }
+        },
+
+        async list(path: string) {
+          const folder = actualFolder(path)
+          if (folder === null) throw new Error(`ENOENT: no such folder: ${path}`)
+          const prefix = folder === '' ? '' : `${folder}/`
+          const listedFiles = new Set<string>()
+          const listedFolders = new Set<string>()
+          const consider = (held: string, isFolder: boolean): void => {
+            if (held === folder || !held.startsWith(prefix)) return
+            const rest = held.slice(prefix.length)
+            const cut = rest.indexOf('/')
+            if (cut === -1) (isFolder ? listedFolders : listedFiles).add(held)
+            else listedFolders.add(prefix + rest.slice(0, cut))
+          }
+          for (const held of disk.keys()) consider(held, false)
+          for (const held of byPath.keys()) consider(held, false)
+          for (const held of diskFolders) consider(held, true)
+          for (const held of folders.keys()) consider(held, true)
+          return { files: [...listedFiles], folders: [...listedFolders] }
+        },
+
+        async readBinary(path: string) {
+          const file = actualPath(path)
+          const entry = file === null ? null : entryAt(file)
+          if (!entry) throw new Error(`ENOENT: no such file: ${path}`)
+          // A copy, so no caller can reach into the store through the array it was handed.
+          const out = new ArrayBuffer(entry.bytes.byteLength)
+          new Uint8Array(out).set(entry.bytes)
+          return out
+        },
+
+        async writeBinary(
+          path: string,
+          data: ArrayBuffer,
+          options?: { mtime?: number; ctime?: number }
+        ) {
+          if (actualFolder(path) !== null) throw new Error(`EISDIR: a folder is at ${path}`)
+          const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+          if (actualFolder(parent) === null) throw new Error(`ENOENT: no such folder: ${parent}`)
+          const standing = actualPath(path)
+          const before = standing === null ? null : entryAt(standing)
+          const stamp = diskClock++
+          placeFile(standing ?? path, {
+            bytes: new Uint8Array(data.slice(0)),
+            ctime: options?.ctime ?? before?.ctime ?? stamp,
+            mtime: options?.mtime ?? stamp,
+          })
+        },
+
+        async rename(path: string, newPath: string) {
+          const from = actualPath(path)
+          if (from === null) throw new Error(`ENOENT: no such file: ${path}`)
+          const entry = entryAt(from)
+          if (!entry) throw new Error(`ENOENT: no such file: ${path}`)
+          const parent = newPath.includes('/') ? newPath.slice(0, newPath.lastIndexOf('/')) : ''
+          if (actualFolder(parent) === null) throw new Error(`ENOENT: no such folder: ${parent}`)
+          // A rename onto another spelling of the same file takes the new spelling, which is
+          // what APFS and NTFS do and what a case-only rename depends on.
+          const onto = actualPath(newPath)
+          if (onto !== null && onto !== from) throw new Error(`EEXIST: ${newPath} is taken`)
+          removeFile(from)
+          placeFile(newPath, entry)
+        },
+
+        async remove(path: string) {
+          const file = actualPath(path)
+          if (file === null) throw new Error(`ENOENT: no such file: ${path}`)
+          removeFile(file)
+        },
+
+        async mkdir(path: string) {
+          if (actualPath(path) !== null) throw new Error(`EEXIST: a file is at ${path}`)
+          ensureDiskFolder(path)
+          // A folder the index would show gets a `TFolder` too, the way Obsidian notices one.
+          if (!isHidden(path)) ensureFolder(path)
         },
       },
       async delete(file: TAbstractFile) {
@@ -622,9 +842,13 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         removeFile(file.path)
       },
     },
+    workspace: {
+      on: register('workspace'),
+      offref,
+    },
     metadataCache: {
       on: register('metadataCache'),
-      offref: noopOffref,
+      offref,
       getFileCache(file: TFile) {
         stats.getFileCache++
         return cacheByPath.get(file.path) ?? null
