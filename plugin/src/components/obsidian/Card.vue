@@ -89,6 +89,8 @@ const emit = defineEmits<{
   flex-direction: column;
   gap: var(--size-2-1);
   min-width: 0;
+  /** So the cover can be capped against the card's own width, whatever the screen. */
+  container-type: inline-size;
   padding: var(--size-4-3);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
@@ -122,8 +124,13 @@ const emit = defineEmits<{
   border-radius: var(--radius-m) var(--radius-m) 0 0;
 }
 
+/**
+ * No taller than it is wide. A portrait photo or a phone-shaped poster would otherwise fill
+ * the screen and read as a picture with a caption rather than a post with a picture; the
+ * viewport is the wrong measure, because on a phone the card *is* the viewport.
+ */
 .abele-card__cover-image {
-  max-height: 60vh;
+  max-height: 100cqw;
   border-radius: 0;
 }
 
@@ -135,6 +142,12 @@ const emit = defineEmits<{
 .abele-card_large .abele-card__description {
   font-size: var(--font-ui-medium);
   color: var(--text-normal);
+}
+
+/** A date or a byline under a heading, not an identifier: the ordinary face, muted. */
+.abele-card_large .abele-card__subtitle {
+  font-family: inherit;
+  font-size: var(--font-ui-small);
 }
 
 /** Wraps rather than pushing the actions off the edge when the card is phone-width. */
@@ -176,10 +189,12 @@ const emit = defineEmits<{
   overflow-wrap: anywhere;
 }
 
+/** Line breaks stay: an excerpt of a note reads as its paragraphs, not as one run-on line. */
 .abele-card__description {
   font-size: var(--font-small);
   color: var(--text-muted);
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 
 /** Two lines, then an ellipsis: a card in a list is a summary, not the thing itself. */

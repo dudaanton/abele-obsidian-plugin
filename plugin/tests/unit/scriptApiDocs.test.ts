@@ -39,8 +39,12 @@ describe('the view reference', () => {
 
   it('claims only what the code does', () => {
     // Each of these was written from the design spec and was not true of the plugin.
-    expect(SCRIPT_VIEW_DOCS).toContain('cannot capture a script view')
-    expect(SCRIPT_VIEW_DOCS).not.toMatch(/`screenshot` works on a view/)
+    // `screenshot` takes a view now, and the reference says what the person decided: only
+    // what is on screen, at their scroll position, and never a tab that is not showing.
+    expect(SCRIPT_VIEW_DOCS).not.toContain('cannot capture a script view')
+    expect(SCRIPT_VIEW_DOCS).toContain('the visible part of the tab')
+    expect(SCRIPT_VIEW_DOCS).toContain('A toolbar is one row')
+    expect(SCRIPT_VIEW_DOCS).toContain('A card has at most three buttons')
     expect(SCRIPT_VIEW_DOCS).toContain('For the console use `console.log`')
     expect(SCRIPT_VIEW_DOCS).not.toMatch(/`log\(\)` after the run has finished goes to the console/)
   })
