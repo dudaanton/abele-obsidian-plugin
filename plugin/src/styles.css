@@ -762,3 +762,17 @@ body.is-mobile .abele-comment-marker_pending::after {
   outline: 2px solid var(--interactive-accent);
   outline-offset: -2px;
 }
+
+/* The sync indicator in the status bar: a glyph and a word, side by side. No colour of its
+   own — the state is said in the icon and the label, and the theme decides what a status-bar
+   item looks like. */
+.abele-sync-status {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--size-4-1);
+}
+
+/* The glyph `setIcon` draws sits on the text baseline rather than above it. */
+.abele-sync-status-icon {
+  display: inline-flex;
+}

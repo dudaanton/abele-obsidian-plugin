@@ -136,6 +136,8 @@ import { openQuickMenu } from '@/quickButton/open'
 import { HeaderCommands } from '@/headerButtons/viewActions'
 import { moveFooterFolds } from '@/composables/useFooterFold'
 import { moveFooterView } from '@/composables/useFooterView'
+import { SyncService } from './sync/SyncService'
+import { renderStatus, type SyncStatus } from './sync/status'
 
 // Every module imported above has run its top-level code by now. See `helpers/loadMarks.ts`.
 markLoad('evalEnd')
@@ -188,6 +190,36 @@ export default class AbelePlugin extends Plugin {
     return this.vueApp
   }
 
+  /**
+   * Device sync, and the one line of it a user sees.
+   *
+   * Started on `onLayoutReady` beside the other services: the engine's first act is to list
+   * the vault, and Obsidian's file index is not complete before then. The service decides for
+   * itself whether there is anything to sync — a vault that was never connected to a server
+   * builds no engine, and the status bar item stays out of sight.
+   */
+  private initSync(): void {
+    const sync = SyncService.getInstance()
+    sync.init(this.app, this)
+
+    const statusEl = this.addStatusBarItem()
+    statusEl.addClass('mod-clickable')
+    // Task 6 re-points this at the log modal; until it exists, the useful thing a click can do
+    // is what a person clicking a sync indicator usually wants.
+    this.registerDomEvent(statusEl, 'click', () => {
+      void sync.syncNow()
+    })
+
+    // A vault that syncs with nothing shows nothing: most people never connect one, and a
+    // status bar reading "Not connected" for ever is a line of chrome doing no work.
+    const paint = (status: SyncStatus): void => {
+      statusEl.toggle(status.state !== 'disconnected')
+      renderStatus(statusEl, status)
+    }
+    paint(sync.status.value)
+    this.register(sync.onStatusChange(paint))
+  }
+
   async onload() {
     markLoad('onloadStart')
     try {
@@ -229,6 +261,7 @@ export default class AbelePlugin extends Plugin {
         document.body.classList.add('abele-half-width-sidebars')
       }
       setKeyboardDiagnostics(AbeleConfig.getInstance().keyboardDiagnostics)
+      this.initSync()
 
       // The store takes the week start and the rest of what it draws from out of the settings.
       startupStep('store', () => GlobalStore.getInstance().init(this.app))
@@ -1392,6 +1425,26 @@ export default class AbelePlugin extends Plugin {
     }
 
     this.addCommand({
+      id: 'sync-now',
+      name: 'Sync now',
+      icon: 'refresh-cw',
+      callback: () => {
+        void SyncService.getInstance().syncNow()
+      },
+    })
+
+    this.addCommand({
+      id: 'sync-pause-resume',
+      name: 'Pause or resume sync',
+      icon: 'pause-circle',
+      callback: () => {
+        const sync = SyncService.getInstance()
+        if (sync.status.value.state === 'paused') sync.resume()
+        else sync.pause()
+      },
+    })
+
+    this.addCommand({
       id: 'show-script-api',
       name: 'Show script API reference',
       icon: 'book-open',
@@ -1418,6 +1471,9 @@ export default class AbelePlugin extends Plugin {
       this.vueApp.unmount()
       document.getElementById('abele-vue-root')?.remove()
     }
+    // The engine has a socket, a watcher and timers of its own, and a state database that must
+    // be closed; the sync in flight is waited for rather than cut off.
+    void SyncService.getInstance().destroy()
     SnippetService.destroy()
     AutomationService.destroy()
     ScriptService.destroy()

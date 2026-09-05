@@ -1,0 +1,704 @@
+import { Platform, requestUrl, type App } from 'obsidian'
+import { ref, type Ref } from 'vue'
+import {
+  IgnoreRules,
+  SyncClient,
+  SyncEngine,
+  encodeText,
+  sha256,
+  type PathMatcher,
+  type SelectiveSettings,
+  type SyncFailure,
+  type SyncReport,
+  type VaultClient,
+} from '@abele/sync-core'
+import { caseKey, type VaultInfo } from '@abele/sync-protocol'
+import type AbelePlugin from '@/main'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
+import { ObsidianFileSystem } from './ObsidianFileSystem'
+import type { SyncSettings } from './settings'
+import { DISCONNECTED_STATUS, statusOf, type SyncStatus } from './status'
+import { fetchViaRequestUrl, wsFor } from './transport'
+
+/**
+ * One engine per plugin, and everything Obsidian has to know about it.
+ *
+ * The engine itself is the sibling repo's, unchanged and unaware of Obsidian: it is handed a
+ * filesystem, a state store, a client and a set of selective settings, and it syncs. What is
+ * here is the half a host owes it — reading the settings, opening the state database, minting
+ * and keeping the device token, deciding what a phone does differently from a laptop, and
+ * turning the engine's status into the one word the status bar shows.
+ *
+ * ## The state machine
+ *
+ * The engine has five states (`idle`, `syncing`, `offline`, `paused`, `error`) and the plugin
+ * adds `disconnected` above them for a vault nobody has set up. There is an engine exactly
+ * when the settings name a server, a vault and a device token the keychain really holds; with
+ * no engine the status is `disconnected` and every verb is a no-op that says so in the log.
+ * `connect` and `chooseVault` build one, `disconnect` takes it away, and `onSettingsSaved`
+ * builds another when what the running one was built on has changed.
+ *
+ * ## The scope rule
+ *
+ * What this device syncs — the selective settings and the vault's `.abele-sync-ignore` — is
+ * hashed into a *scope key* and filed in the state under `scope`, exactly as the daemon files
+ * it. When the stored key is not the current one, the feed has moved past files this device
+ * passed over and now wants, so the first run is a `rescan()`, which walks the manifest again,
+ * rather than a `sync()`, which only follows the feed. The key is recorded once the run got
+ * through, so a rescan that failed is done again next time.
+ *
+ * ## The phone
+ *
+ * On mobile there is no socket, no file watcher and no background timer: the operating system
+ * suspends the app the moment it leaves the screen, and a socket it will not let live is a
+ * socket that only reconnects. A phone syncs once when the plugin starts and again every time
+ * the app comes back to the front, which is exactly when its user is about to read something.
+ *
+ * ## Secrets
+ *
+ * The device token is in Obsidian's keychain under a generated id, and only that id is in
+ * `data.json` — which is itself kept out of the sync, since a vault is precisely what gets
+ * copied to another machine. The account password is used for one login and never stored; the
+ * account token it returns lives in memory for the length of the connect flow. Nothing here
+ * writes a token or a password to the log.
+ */
+
+/** How many lines the log keeps. Older ones fall off the front. */
+const LOG_LINES = 500
+
+/** The meta key the scope is filed under, the same one the daemon uses. */
+const SCOPE_KEY = 'scope'
+
+/** The vault's ignore file, read from its root. */
+const IGNORE_FILE = '.abele-sync-ignore'
+
+/** Every secret this plugin mints for a device token is named this way. */
+const SECRET_PREFIX = 'abele-sync-device-'
+
+/** What this plugin calls itself to a sync server. */
+const USER_AGENT = 'abele-obsidian-plugin'
+
+const noop = (): void => undefined
+
+const messageOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
+
+/**
+ * What a test replaces to run the service against a server in its own process.
+ *
+ * Production passes none of it: the transport is Obsidian's `requestUrl`, the socket is the
+ * WebView's own, and the database is the window's IndexedDB. A test hands over a `fetch` into
+ * the running server, a `WebSocket` bound to its port, and an `IDBFactory` of its own so that
+ * no two tests share a database.
+ */
+export interface SyncServiceDeps {
+  fetch?: typeof fetch
+  WebSocket?: typeof WebSocket
+  indexedDB?: IDBFactory
+  /** How often the engine syncs with nothing prompting it. */
+  fallbackMs?: number
+  /** How often the configuration folder is walked. */
+  pollMs?: number
+}
+
+/** Which vault `chooseVault` was asked for: one that exists, or one to make. */
+export type VaultChoice = string | { create: string }
+
+export class SyncService {
+  private static instance: SyncService | null = null
+
+  static getInstance(): SyncService {
+    SyncService.instance ??= new SyncService()
+    return SyncService.instance
+  }
+
+  /** The status, for the status bar and the settings screens. */
+  readonly status: Ref<SyncStatus> = ref({ ...DISCONNECTED_STATUS })
+
+  /** The last {@link LOG_LINES} lines, oldest first. Every one of them is a `console.debug` too. */
+  readonly log: Ref<string[]> = ref([])
+
+  private app: App | null = null
+  private plugin: AbelePlugin | null = null
+  private deps: SyncServiceDeps = {}
+
+  private engine: SyncEngine | null = null
+  private store: IndexedDbStateStore | null = null
+  private fs: ObsidianFileSystem | null = null
+  private vault: VaultClient | null = null
+  private unwatchStatus: (() => void) | null = null
+
+  /** The account client of a connect flow, on a token that is never written down. */
+  private account: SyncClient | null = null
+  /** The server that account signed in to, so `chooseVault` files the one it enrolled against. */
+  private accountUrl = ''
+
+  /** What the running engine was built on; a change to any of it means building another. */
+  private built = ''
+  /** The scope key the running engine's settings and ignore file hash to. */
+  private scope = ''
+
+  private readonly listeners = new Set<(status: SyncStatus) => void>()
+  /** Whether the phone's visibility listener has been registered; it is registered once. */
+  private watchingVisibility = false
+
+  /**
+   * Everything that touches the engine goes through here, in the order it was asked for.
+   *
+   * `init`, a settings save, `chooseVault` and `disconnect` can all arrive while the previous
+   * one is still opening a database or stopping an engine, and two of them interleaved would
+   * leave a store closed under a running engine.
+   */
+  private queue: Promise<unknown> = Promise.resolve()
+
+  private constructor() {}
+
+  /* -- Starting and stopping -------------------------------------------- */
+
+  /**
+   * Read the settings and, if this device is set up, start syncing.
+   *
+   * Called from `onLayoutReady` rather than `onload`: the first thing the engine does is list
+   * the vault, and Obsidian's file index is not complete until the layout is.
+   */
+  init(app: App, plugin: AbelePlugin, deps: SyncServiceDeps = {}): void {
+    this.app = app
+    this.plugin = plugin
+    this.deps = deps
+    this.hookVisibility()
+    void this.serialise(() => this.reconcile())
+  }
+
+  /** Stop everything and let the singleton go; the next `getInstance` builds a fresh one. */
+  async destroy(): Promise<void> {
+    await this.serialise(() => this.teardown())
+    this.listeners.clear()
+    this.app = null
+    this.plugin = null
+    this.account = null
+    this.accountUrl = ''
+    if (SyncService.instance === this) SyncService.instance = null
+  }
+
+  /* -- What the screens and the status bar read ------------------------- */
+
+  /** Whether an engine is running at all — that is, whether this device is set up. */
+  isConnected(): boolean {
+    return this.engine !== null
+  }
+
+  /**
+   * Whether there is nothing left to wait for.
+   *
+   * Not quite the same as *fully synced*: a device that is offline, paused or in error is not
+   * going to settle by being waited on, and `runAfterSync` would hold a script for ever. Only
+   * a sync actually in flight is worth waiting for.
+   */
+  isFullySynced(): boolean {
+    return this.status.value.state !== 'syncing'
+  }
+
+  /** Called with the status whenever it changes. The returned function unsubscribes. */
+  onStatusChange(cb: (status: SyncStatus) => void): () => void {
+    this.listeners.add(cb)
+    return () => {
+      this.listeners.delete(cb)
+    }
+  }
+
+  /** The vault client the history, trash, usage and settings screens ask through. */
+  client(): VaultClient | null {
+    return this.vault
+  }
+
+  /**
+   * Adds a line to the log the way the engine's own lines are added.
+   *
+   * The service writes what happens around the engine through it — connecting, enrolling,
+   * disconnecting — and so may a screen that does something worth recording.
+   */
+  note(text: string): void {
+    console.debug(`[abele-sync] ${text}`)
+    const lines = this.log.value
+    lines.push(`${new Date().toISOString()} ${text}`)
+    // In place rather than as a new array: a sync writes dozens of lines, and copying five
+    // hundred of them each time is work for nothing. Vue tracks the mutation either way.
+    if (lines.length > LOG_LINES) lines.splice(0, lines.length - LOG_LINES)
+  }
+
+  /* -- The verbs -------------------------------------------------------- */
+
+  /** Sync now, whatever the triggers are doing. A failure is already in the status and the log. */
+  async syncNow(): Promise<void> {
+    const engine = this.engine
+    if (engine === null) {
+      this.note('nothing to sync: this device is not connected to a server')
+      return
+    }
+    try {
+      await engine.sync()
+    } catch {
+      // `onFail` has set the status and the engine has written the reason to the log.
+    }
+  }
+
+  /** Walk the whole manifest again and then sync: for when this device widened what it takes. */
+  async rescan(): Promise<void> {
+    const engine = this.engine
+    const store = this.store
+    if (engine === null || store === null) {
+      this.note('nothing to rescan: this device is not connected to a server')
+      return
+    }
+    try {
+      await engine.rescan()
+      await store.setMeta(SCOPE_KEY, this.scope)
+    } catch {
+      // The scope stays as it was, so the next start walks the manifest again.
+    }
+  }
+
+  /** Stop syncing until `resume`. Remembered in the settings, so it survives a restart. */
+  pause(): void {
+    this.settings.paused = true
+    void this.saveSettings()
+    this.engine?.pause()
+    this.note('paused')
+  }
+
+  /** Sync again, and forget a token failure so the triggers are taken back. */
+  resume(): void {
+    this.settings.paused = false
+    void this.saveSettings()
+    this.engine?.resume()
+    this.note('resumed')
+  }
+
+  /* -- Setting the device up -------------------------------------------- */
+
+  /**
+   * Sign in and list the vaults this account can enrol a device on.
+   *
+   * The password is used for this one request and kept nowhere; the account token it answers
+   * with is held in memory until `chooseVault` has enrolled. Neither is ever written to the
+   * log or to `data.json`.
+   */
+  async connect(serverUrl: string, email: string, password: string): Promise<VaultInfo[]> {
+    const baseUrl = serverUrl.trim().replace(/\/+$/, '')
+    if (baseUrl === '') throw new Error('a server address is needed to connect')
+    this.note(`connecting to ${baseUrl}`)
+    const { account_token } = await SyncClient.login(baseUrl, this.transport(), email, password)
+    const account = new SyncClient({
+      baseUrl,
+      fetch: this.transport(),
+      token: account_token,
+      userAgent: USER_AGENT,
+    })
+    const vaults = await account.listVaults()
+    this.account = account
+    this.accountUrl = baseUrl
+    this.note(`signed in; the account has ${vaults.length} vault(s)`)
+    return vaults
+  }
+
+  /**
+   * Enrol this device on a vault — an existing one, or one made for it — and start syncing.
+   *
+   * The device token the server answers with goes straight into Obsidian's keychain; only the
+   * id it is filed under is saved with the settings. Enrolling again over an existing setup
+   * reuses that id, so the keychain never fills with tokens no device holds any more.
+   */
+  async chooseVault(choice: VaultChoice, deviceName: string): Promise<void> {
+    const account = this.account
+    const app = this.app
+    if (account === null) throw new Error('sign in to the server before choosing a vault')
+    if (app === null) throw new Error('the sync service has not been started yet')
+    const name = deviceName.trim()
+    if (name === '') throw new Error('this device needs a name to enrol under')
+
+    const vaultId =
+      typeof choice === 'string' ? choice : (await account.createVault(choice.create)).id
+    const enrolled = await account.enrolDevice(
+      vaultId,
+      name,
+      Platform.isMobile ? 'mobile' : 'desktop'
+    )
+
+    const settings = this.settings
+    const tokenId = settings.deviceTokenId.startsWith(SECRET_PREFIX)
+      ? settings.deviceTokenId
+      : newSecretId()
+    app.secretStorage.setSecret(tokenId, enrolled.device_token)
+    settings.serverUrl = this.accountUrl
+    settings.vaultId = vaultId
+    settings.deviceId = enrolled.device_id
+    settings.deviceTokenId = tokenId
+    settings.deviceName = name
+    settings.paused = false
+    await this.saveSettings()
+    this.note(`enrolled as ${name} on vault ${vaultId}`)
+
+    // A token behind an id that has not changed is a new token all the same, so the engine is
+    // torn down rather than left running on the client it was built with.
+    await this.serialise(async () => {
+      await this.teardown()
+      await this.reconcile()
+    })
+  }
+
+  /**
+   * Stop syncing and forget how to reach the server.
+   *
+   * The device token is cleared from the keychain and the identity fields from the settings.
+   * What the user chose to sync — the selective settings and the key signature — is left
+   * alone: it is a preference rather than a credential, and connecting again should not have
+   * to ask for it twice. The state database is kept too, so reconnecting the same vault costs
+   * a scan rather than a download of everything; `forget` is what throws that away.
+   */
+  async disconnect(): Promise<void> {
+    await this.serialise(async () => {
+      await this.teardown()
+      const settings = this.settings
+      // Obsidian's keychain has no delete in its public API, so the secret is emptied.
+      const tokenId = settings.deviceTokenId
+      if (tokenId !== '') this.app?.secretStorage.setSecret(tokenId, '')
+      settings.serverUrl = ''
+      settings.vaultId = ''
+      settings.deviceId = ''
+      settings.deviceTokenId = ''
+      settings.deviceName = ''
+      settings.paused = false
+      await this.saveSettings()
+      this.account = null
+      this.accountUrl = ''
+      this.note('disconnected; the device token is forgotten')
+    })
+  }
+
+  /** Disconnect and throw away what this device remembered of the vault. */
+  async forget(): Promise<void> {
+    const vaultId = this.settings.vaultId
+    await this.disconnect()
+    if (vaultId === '') return
+    await IndexedDbStateStore.delete(this.factory(), stateDatabaseName(vaultId))
+    this.note(`forgot what this device knew of vault ${vaultId}`)
+  }
+
+  /**
+   * The settings were saved: look at the configuration folder now rather than on the next
+   * tick, and put the engine back in step with what was saved.
+   *
+   * Obsidian writes `data.json` itself and tells no plugin about it, so without the kick a
+   * setting changed here would be noticed up to a poll later.
+   */
+  onSettingsSaved(): void {
+    this.fs?.kick()
+    void this.serialise(() => this.reconcile())
+  }
+
+  /* -- Building the engine ---------------------------------------------- */
+
+  /** The settings as they stand. Mutated in place, the way the rest of the plugin does. */
+  private get settings(): SyncSettings {
+    return AbeleConfig.getInstance().sync
+  }
+
+  private async saveSettings(): Promise<void> {
+    await AbeleConfig.getInstance().saveSettings()
+  }
+
+  /** The device token, or null when the settings name one the keychain does not hold. */
+  private token(): string | null {
+    const id = this.settings.deviceTokenId
+    if (id === '') return null
+    const secret = this.app?.secretStorage.getSecret(id) ?? null
+    return secret === null || secret === '' ? null : secret
+  }
+
+  /**
+   * Bring the engine in line with the settings.
+   *
+   * Everything the engine was built on is in one string: change any of it and another engine
+   * is built, because the selective settings and the ignore rules are read once, when the scan
+   * filter is made. A settings save that moved neither only flips the pause switch.
+   */
+  private async reconcile(): Promise<void> {
+    const app = this.app
+    if (app === null) return
+    const settings = this.settings
+    const token = this.token()
+    if (settings.serverUrl === '' || settings.vaultId === '' || token === null) {
+      if (this.engine !== null) this.note('not connected: the settings name no vault to sync with')
+      await this.teardown()
+      return
+    }
+
+    const ignoreText = await readIgnore(app)
+    const scope = await scopeKey(settings.selective, ignoreText)
+    const built = [settings.serverUrl, settings.vaultId, settings.deviceTokenId, scope].join(' ')
+    if (this.engine !== null && built === this.built) {
+      this.applyPause(settings.paused)
+      return
+    }
+
+    await this.teardown()
+    this.built = built
+    this.scope = scope
+    await this.build(settings, token, ignoreText)
+  }
+
+  /** Pause or resume an engine already running, to match what the settings now say. */
+  private applyPause(paused: boolean): void {
+    const engine = this.engine
+    if (engine === null) return
+    const running = engine.status.state !== 'paused'
+    if (paused && running) engine.pause()
+    if (!paused && !running) engine.resume()
+  }
+
+  private async build(
+    settings: SyncSettings,
+    token: string,
+    ignoreText: string | null
+  ): Promise<void> {
+    const app = this.app
+    if (app === null) return
+    const fs = new ObsidianFileSystem(
+      app,
+      this.deps.pollMs === undefined ? {} : { pollMs: this.deps.pollMs }
+    )
+    const store = await IndexedDbStateStore.open(
+      this.factory(),
+      stateDatabaseName(settings.vaultId)
+    )
+    let engine: SyncEngine
+    let vault: VaultClient
+    try {
+      vault = new SyncClient({
+        baseUrl: settings.serverUrl,
+        fetch: this.transport(),
+        WebSocket: this.socket(),
+        token,
+        userAgent: USER_AGENT,
+      }).forVault(settings.vaultId)
+      const scriptsFolder = AbeleConfig.getInstance().ai.scriptsFolder
+      engine = new SyncEngine({
+        client: vault,
+        fs,
+        state: store,
+        selective: settings.selective,
+        ignore: this.ignore(app, ignoreText),
+        ...(scriptsFolder === '' ? {} : { scriptsFolder }),
+        ...(this.deps.fallbackMs === undefined ? {} : { fallbackMs: this.deps.fallbackMs }),
+        onSync: (report) => this.note(summarise(report)),
+        onFail: (error, kind) => this.failed(error, kind),
+        log: (line) => this.note(line),
+      })
+    } catch (error) {
+      // Nothing may be left holding the database when no engine got built to close it.
+      store.close()
+      throw error
+    }
+
+    this.fs = fs
+    this.store = store
+    this.vault = vault
+    this.engine = engine
+    this.unwatchStatus = engine.onStatus((engineStatus) => this.publish(statusOf(engineStatus)))
+    this.publish(statusOf(engine.status))
+    this.note(`syncing vault ${settings.vaultId} with ${settings.serverUrl}`)
+    await this.first(engine, store, settings)
+  }
+
+  /**
+   * The first run, and what keeps the engine going after it.
+   *
+   * The rescan is asked for *before* `start`, so it is the first run and the one `start`
+   * prompts queues behind it; the scope is filed only once the run got through, so a rescan
+   * that failed is done again on the next start. A phone gets no `start` at all — no watcher,
+   * no socket, no clock — just this one sync, and another whenever the app comes back.
+   */
+  private async first(
+    engine: SyncEngine,
+    store: IndexedDbStateStore,
+    settings: SyncSettings
+  ): Promise<void> {
+    const stored = await store.getMeta(SCOPE_KEY)
+    // A state that never recorded a key has never finished a sync, and its first one walks the
+    // manifest anyway.
+    const due = stored !== null && stored !== this.scope
+    if (settings.paused) engine.pause()
+
+    if (settings.paused) {
+      this.note('sync is paused; nothing will move until it is resumed')
+    } else if (due) {
+      this.note('rescan: what this device syncs changed since the last sync')
+      void engine
+        .rescan()
+        .then(() => store.setMeta(SCOPE_KEY, this.scope))
+        .catch(noop)
+    } else {
+      await store.setMeta(SCOPE_KEY, this.scope)
+    }
+
+    if (Platform.isMobile) {
+      this.note('mobile: no socket and no background timers; syncing when the app is in front')
+      if (!settings.paused && !due) void engine.sync().catch(noop)
+      return
+    }
+    engine.start()
+  }
+
+  /** Stop the engine, close the state database, and go back to saying nothing is connected. */
+  private async teardown(): Promise<void> {
+    const engine = this.engine
+    const store = this.store
+    this.unwatchStatus?.()
+    this.unwatchStatus = null
+    this.engine = null
+    this.store = null
+    this.fs = null
+    this.vault = null
+    this.built = ''
+    this.scope = ''
+    await engine?.stop()
+    store?.close()
+    this.publish({ ...DISCONNECTED_STATUS })
+  }
+
+  /* -- The pieces the engine is given ----------------------------------- */
+
+  /**
+   * What this device will not sync whatever the selective settings say.
+   *
+   * The vault's `.abele-sync-ignore` is one half, parsed by the core's own gitignore reader so
+   * that the plugin and the daemon read one file the same way. The other half is this plugin's
+   * own `data.json`, which holds the vault id, the device id and the id of the keychain entry
+   * the device token sits in: a vault is what a sync copies to another machine, and that file
+   * describes *this* machine. Selective sync cannot say it — its exclusions are folders and
+   * categories, and the category here (`pluginSettings`) covers every plugin at once — so it
+   * is ignored by name. Case-folded, because a case-insensitive disk hands the same file back
+   * under any spelling.
+   */
+  private ignore(app: App, ignoreText: string | null): PathMatcher {
+    const rules = ignoreText === null ? null : IgnoreRules.parse(ignoreText)
+    const id = this.plugin?.manifest.id ?? 'abele'
+    const own = caseKey(`${app.vault.configDir}/plugins/${id}/data.json`)
+    return {
+      ignores: (wirePath) => caseKey(wirePath) === own || (rules?.ignores(wirePath) ?? false),
+    }
+  }
+
+  /** The engine's `fetch`: Obsidian's `requestUrl`, which no CORS rule and no phone refuses. */
+  private transport(): typeof fetch {
+    return this.deps.fetch ?? fetchViaRequestUrl(requestUrl)
+  }
+
+  private socket(): typeof WebSocket {
+    return this.deps.WebSocket ?? wsFor()
+  }
+
+  private factory(): IDBFactory {
+    return this.deps.indexedDB ?? window.indexedDB
+  }
+
+  /* -- Wiring ----------------------------------------------------------- */
+
+  /**
+   * A phone syncs when its user looks at it.
+   *
+   * Registered through the plugin so Obsidian takes the listener away when the plugin unloads,
+   * and registered once — `init` may run again in a session whose settings were replaced.
+   */
+  private hookVisibility(): void {
+    const plugin = this.plugin
+    if (!Platform.isMobile || plugin === null || this.watchingVisibility) return
+    this.watchingVisibility = true
+    plugin.registerDomEvent(document, 'visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return
+      if (this.engine === null || this.settings.paused) return
+      this.note('the app came back to the front')
+      void this.syncNow()
+    })
+  }
+
+  private publish(status: SyncStatus): void {
+    // A settings save that changed nothing about sync still reaches here, and a status that has
+    // not moved must not repaint the status bar or wake `runAfterSync`.
+    const held = this.status.value
+    const same = (Object.keys(status) as Array<keyof SyncStatus>).every(
+      (key) => held[key] === status[key]
+    )
+    if (same) return
+    this.status.value = status
+    for (const listener of [...this.listeners]) {
+      try {
+        listener(status)
+      } catch (error) {
+        console.debug('[abele-sync] a status listener threw', error)
+      }
+    }
+  }
+
+  /**
+   * A failure the engine has already logged and turned into a status. Only a refused token
+   * needs anything more said: no retry will change it, and the user has to enrol again.
+   */
+  private failed(error: unknown, kind: SyncFailure): void {
+    if (kind !== 'unauthorized') return
+    this.note(
+      `this device was revoked or its token is no longer taken (${messageOf(error)}); ` +
+        'connect again from the Sync settings'
+    )
+  }
+
+  /** Runs the work after everything asked for before it, whether that succeeded or not. */
+  private serialise<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.queue.then(fn, fn)
+    this.queue = next.then(noop, noop)
+    return next
+  }
+}
+
+/** A keychain id: lowercase letters, digits and dashes, which is all Obsidian accepts. */
+function newSecretId(): string {
+  return `${SECRET_PREFIX}${Math.random().toString(36).slice(2, 10).padEnd(8, '0')}`
+}
+
+/**
+ * What this device syncs, as one short string: the selective settings and the ignore file
+ * together, since a pattern dropped from `.abele-sync-ignore` widens the scope exactly as a
+ * type switched on does. The daemon's key, computed the same way — through WebCrypto rather
+ * than Node's, because this runs in a WebView.
+ */
+async function scopeKey(selective: SelectiveSettings, ignoreText: string | null): Promise<string> {
+  return sha256(encodeText(JSON.stringify({ selective, ignore: ignoreText })))
+}
+
+/**
+ * The vault's `.abele-sync-ignore` as it reads, or null when it has none.
+ *
+ * Through the adapter and as bytes: the file is at the vault root, but Obsidian's file index
+ * hides a leading dot, so `vault.read` would never find it.
+ */
+async function readIgnore(app: App): Promise<string | null> {
+  try {
+    if (!(await app.vault.adapter.exists(IGNORE_FILE))) return null
+    return new TextDecoder().decode(await app.vault.adapter.readBinary(IGNORE_FILE))
+  } catch (error) {
+    console.debug('[abele-sync] cannot read the ignore file', error)
+    return null
+  }
+}
+
+/** What one sync did, in the line the log keeps — the same one the daemon writes. */
+function summarise(report: SyncReport): string {
+  const pulled = report.pull.applied + (report.secondPull?.applied ?? 0)
+  const held = (report.secondPull ?? report.pull).held.length
+  return (
+    `sync: done (pulled ${pulled}, pushed ${report.push.applied}, ` +
+    `merged ${report.push.merged}, conflicts ${report.push.conflicts}, ` +
+    `rejected ${report.push.rejected.length}, held ${held})`
+  )
+}
