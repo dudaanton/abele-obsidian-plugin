@@ -962,6 +962,18 @@ export default class AbelePlugin extends Plugin {
     // The editor's comment field reads this synchronously to draw each marker's icon.
     setCommentInfoSource(CommentService.getInstance())
 
+    // The passage a comment is about is painted open only while the comment is on screen.
+    // A sidebar collapsing is a resize and a tab coming forward is a leaf change; neither is
+    // anything the editor would hear about on its own.
+    this.registerEvent(
+      this.app.workspace.on('resize', () => CommentService.getInstance().reconsiderOpen())
+    )
+    this.registerEvent(
+      this.app.workspace.on('active-leaf-change', () =>
+        CommentService.getInstance().reconsiderOpen()
+      )
+    )
+
     // The editor owns the press; the service owns what it opens. Injected rather than
     // imported, so `CommentPlugin` and `CommentService` do not import each other.
     setCommentClickHandler((ids) => {
