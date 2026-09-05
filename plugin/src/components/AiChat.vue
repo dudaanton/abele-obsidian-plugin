@@ -33,13 +33,15 @@
             @click="backToNote"
           />
           <!-- Only for a comment still being a comment: the promotion into an ordinary chat,
-               with the default agent, a place in the history and no anchor to answer to. -->
+               with the default agent, a place in the history and no anchor to answer to. Not a
+               panel glyph: on a phone the comment is already in the sidebar, and a panel icon
+               there read as "open in the sidebar" and made no sense (2026-09-05). -->
           <Icon
             v-if="commentSession"
-            icon="panel-right-open"
+            icon="messages-square"
             with-bg
             :disabled="blocked"
-            :tooltip="blocked ? blockedTooltip : 'Open this comment as a full chat'"
+            :tooltip="blocked ? blockedTooltip : 'Turn this comment into an ordinary chat'"
             @click="openAsChat"
           />
           <!-- One button for everything this chat is set up with: scope, skills, prompts,
