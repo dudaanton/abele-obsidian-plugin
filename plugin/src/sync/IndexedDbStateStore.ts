@@ -373,7 +373,14 @@ export class IndexedDbStateStore implements StateStore {
     }
     // Cleared before the flush so its own writes go to the database rather than back into it.
     this.overlay = null
-    await this.flush(overlay)
+    try {
+      await this.flush(overlay)
+    } catch (error) {
+      // A flush that fails is a rollback like any other — it lands whole or not at all — so a
+      // joined call still running hears about it exactly as it would a body that threw.
+      overlay.discard(error)
+      throw error
+    }
     return result
   }
 

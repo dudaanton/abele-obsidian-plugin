@@ -489,6 +489,33 @@ describe('IndexedDbStateStore', () => {
       expect(await store.getCursor()).toBe(0)
     })
 
+    it('tells a joined call that is still running that the flush failed', async () => {
+      // A flush that cannot be written rolls the whole transaction back, so a call that joined
+      // it is owed the same news as when the body itself throws.
+      let releaseJoined = (): void => undefined
+      const joinedHeld = new Promise<void>((resolve) => (releaseJoined = resolve))
+      let joined: Promise<void> = Promise.resolve()
+      const poison = {
+        ...entry({ path: 'notes/b.md', wirePath: 'notes/b.md', fileId: 'file-2' }),
+        unclonable: () => undefined,
+      } as unknown as StateEntry
+
+      const outer = store.transaction(async () => {
+        joined = store.transaction(async () => {
+          await store.setCursor(5)
+          await joinedHeld
+        })
+        // Handled here so the rejection is never an unhandled one; asserted below all the same.
+        void joined.catch((): void => undefined)
+        await store.put(poison)
+      })
+
+      await expect(outer).rejects.toMatchObject({ code: 'io' })
+      releaseJoined()
+      await expect(joined).rejects.toMatchObject({ code: 'io' })
+      expect(await store.getCursor()).toBe(0)
+    })
+
     it('holds the clash rule for a row only the database knows about', async () => {
       await store.put(entry())
       await store.transaction(async () => {
