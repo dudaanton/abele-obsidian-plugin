@@ -121,7 +121,9 @@ describe('constructors', () => {
     expect(a.gap).toBe('medium')
     expect(b.gap).toBe('small')
     expect(new Row([]).wrap).toBe(true)
-    expect(new Row({ align: 'between' }).align).toBe('between')
+    expect(new Row({ justify: 'between' }).justify).toBe('between')
+    // The old name still lands, so a script written against it keeps its layout.
+    expect(new Row({ align: 'end' }).justify).toBe('end')
     expect(new Grid({ wide: true }).wide).toBe(true)
     expect(new Section({ title: 'T', children: [] }).title).toBe('T')
     expect(new Setting({ name: 'N', children: [] }).name).toBe('N')

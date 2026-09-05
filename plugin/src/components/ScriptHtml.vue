@@ -22,6 +22,7 @@
 import { onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { sanitizeHTMLToDom } from 'obsidian'
 import type { View } from '@/scripting/view/View'
+import { resolveMediaSources } from '@/helpers/resourceUrl'
 import type { Html, ViewNode } from '@/scripting/view/components'
 import ScriptNode from './ScriptNode.vue'
 
@@ -44,6 +45,9 @@ function render() {
   slots.value = []
   for (const node of placed) node.remove()
   const fragment = sanitizeHTMLToDom(props.node.html)
+  // `<img src="Attachments/a.jpg">` is how a script names a picture; the browser cannot load
+  // that as written, so vault paths become resource URLs before the markup goes in.
+  resolveMediaSources(fragment)
   placed = Array.from(fragment.childNodes)
   el.appendChild(fragment)
   generation++

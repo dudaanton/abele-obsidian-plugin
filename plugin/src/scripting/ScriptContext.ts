@@ -25,6 +25,7 @@ import { View, type RestoreInfo, type ViewHost, type ViewOptions } from './view/
 import { VIEW_GLOBALS } from './view/components'
 import { defaultViewHost } from './view/host'
 import { showFormModal } from './formModal'
+import { noteInfo as readNoteInfo, type NoteInfo } from './noteInfo'
 
 /** Extract first text content from tool result */
 function text(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -475,6 +476,14 @@ export function buildScriptContext(opts: {
     },
 
     // ── Vault helpers ──
+
+    /**
+     * A note as a card wants it: title, dates, tags, cover, the body without frontmatter and
+     * an excerpt of its prose. What every feed script derived by hand, and got wrong.
+     */
+    async noteInfo(path: string): Promise<NoteInfo> {
+      return readNoteInfo(path)
+    },
 
     async setCover(notePath: string, mediaPath?: string) {
       const { setCoverFromMedia, findFirstMedia } = await import('@/commands/setCover')

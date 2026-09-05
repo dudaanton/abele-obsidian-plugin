@@ -12,15 +12,15 @@
 /**
  * A picture from the vault or from the web.
  *
- * A vault path is not a URL the renderer can load; `getResourcePath` turns it into one. A
+ * A vault path is not a URL the renderer can load; `resourceUrl` turns it into one, and finds
+ * a file by the name a note would link it by when no file sits at the path as written. A
  * path that resolves to nothing keeps its `alt` and a class, so a script can style the gap.
  */
 import { computed } from 'vue'
-import { TFile } from 'obsidian'
-import { GlobalStore } from '@/stores/GlobalStore'
+import { isExternalSource, resourceUrl } from '@/helpers/resourceUrl'
 
 const props = defineProps<{
-  /** A vault path, or a URL — anything with a scheme, or a leading slash, is left alone. */
+  /** A vault path, a link name (`poster.jpg`), or a URL — anything with a scheme, or a leading slash, is left alone. */
   src: string
   alt?: string
   fit?: 'contain' | 'cover' | 'natural'
@@ -28,20 +28,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{ (e: 'click'): void }>()
 
-const isUrl = (s: string) => /^[a-z][a-z0-9+.-]*:/i.test(s) || s.startsWith('/')
+const resolved = computed(() => resourceUrl(props.src))
 
-const file = computed(() => {
-  if (isUrl(props.src)) return null
-  const found = GlobalStore.getInstance().app.vault.getAbstractFileByPath(props.src)
-  return found instanceof TFile ? found : null
-})
-
-const missing = computed(() => !isUrl(props.src) && !file.value)
-
-const resolved = computed(() => {
-  if (isUrl(props.src)) return props.src
-  return file.value ? GlobalStore.getInstance().app.vault.getResourcePath(file.value) : undefined
-})
+const missing = computed(() => !isExternalSource(props.src) && resolved.value === undefined)
 </script>
 
 <style lang="scss">

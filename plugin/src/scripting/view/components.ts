@@ -181,7 +181,11 @@ export class Stack extends ViewNode {
 export class Row extends ViewNode {
   readonly type = 'row' as const
   gap: Gap = 'medium'
-  align: 'start' | 'center' | 'end' | 'between' = 'start'
+  /**
+   * Where the children sit along the row. Items are always centred on the row's own axis;
+   * `justify: 'center'` puts them in the middle of it, which is not what a toolbar wants.
+   */
+  justify: 'start' | 'center' | 'end' | 'between' = 'start'
   wrap = true
   constructor(
     arg:
@@ -189,12 +193,15 @@ export class Row extends ViewNode {
       | (BaseProps & {
           children?: ViewNode[]
           gap?: Gap
-          align?: Row['align']
+          justify?: Row['justify']
+          /** The old name of `justify`. It read as vertical alignment, and centred toolbars. */
+          align?: Row['justify']
           wrap?: boolean
         }) = []
   ) {
     super()
-    this.assign(unpack(arg))
+    const { align, ...rest } = unpack(arg)
+    this.assign(align && !rest.justify ? { ...rest, justify: align } : rest)
   }
 }
 
@@ -474,6 +481,10 @@ export class Search extends ViewNode {
 export class Card extends ViewNode {
   readonly type = 'card' as const
   title = ''
+  /** A picture across the top: a vault path, a link name (`poster.jpg`) or a URL. */
+  cover?: string
+  /** The title as a heading and the description in the normal face — a post, not a tile. */
+  large = false
   subtitle?: string
   description?: string
   meta?: string[]
@@ -483,6 +494,8 @@ export class Card extends ViewNode {
   constructor(
     props: BaseProps & {
       title?: string
+      cover?: string
+      large?: boolean
       subtitle?: string
       description?: string
       meta?: string[]

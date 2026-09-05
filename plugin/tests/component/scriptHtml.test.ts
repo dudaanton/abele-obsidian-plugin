@@ -13,6 +13,7 @@ import KitButton from '@/components/obsidian/Button.vue'
 import { View, type ViewHost } from '@/scripting/view/View'
 import { Html, Button, Text } from '@/scripting/view/components'
 import type { ScriptViewModel } from '@/views/ScriptView'
+import { useVault } from '../helpers/testEnv'
 
 const host: ViewHost = {
   async open(v) {
@@ -167,5 +168,29 @@ describe('Html', () => {
     await w.find('.x').trigger('click')
     await flushPromises()
     expect(late).toHaveBeenCalled()
+  })
+})
+
+describe('pictures in a script’s own markup', () => {
+  it('turns a vault path or link name in src into a URL the browser can load', async () => {
+    const app = useVault([{ path: 'Attachments/poster.jpg', content: '' }])
+    ;(
+      app.vault as unknown as { getResourcePath: (f: { path: string }) => string }
+    ).getResourcePath = (f) => `app://vault/${f.path}`
+    const v = make()
+    v.body = [
+      new Html({
+        html:
+          '<img class="a" src="Attachments/poster.jpg"><img class="b" src="poster.jpg">' +
+          '<img class="c" src="https://x/y.png"><img class="d" src="nowhere.jpg">',
+      }),
+    ]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+    await flushPromises()
+
+    expect(w.find('img.a').attributes('src')).toBe('app://vault/Attachments/poster.jpg')
+    expect(w.find('img.b').attributes('src')).toBe('app://vault/Attachments/poster.jpg')
+    expect(w.find('img.c').attributes('src')).toBe('https://x/y.png')
+    expect(w.find('img.d').attributes('src')).toBe('nowhere.jpg')
   })
 })

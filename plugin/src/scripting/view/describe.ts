@@ -150,7 +150,7 @@ export function describeNode(node: ViewNode, depth = 0, seen: Set<ViewNode> = ne
     case 'card':
       return [
         line(
-          `Card${n.title ? ' ' + q(n.title) : ''}${n.subtitle ? ` ${q(n.subtitle)}` : ''}${n.selected ? ' selected' : ''}`
+          `Card${n.title ? ' ' + q(n.title) : ''}${n.subtitle ? ` ${q(n.subtitle)}` : ''}${n.cover ? ` cover=${n.cover}` : ''}${n.large ? ' large' : ''}${n.selected ? ' selected' : ''}`
         ),
         ...kids(n.badges),
         ...kids(n.actions),

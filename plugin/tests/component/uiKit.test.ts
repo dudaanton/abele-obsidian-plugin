@@ -661,3 +661,45 @@ describe('Image', () => {
     expect(view.emitted('click')).toHaveLength(1)
   })
 })
+
+describe('Image given the name a note links a picture by', () => {
+  it('finds the file the way a link does when no file sits at the path as written', () => {
+    const app = useVault([{ path: 'Attachments/poster.jpg', content: '' }])
+    ;(
+      app.vault as unknown as { getResourcePath: (f: { path: string }) => string }
+    ).getResourcePath = (f) => `app://vault/${f.path}`
+
+    const byName = mount(Image, { props: { src: 'poster.jpg' } })
+
+    expect(byName.attributes('src')).toBe('app://vault/Attachments/poster.jpg')
+    expect(byName.classes()).not.toContain('abele-image_missing')
+  })
+})
+
+describe('Card as a post', () => {
+  it('puts the cover across the top and the title as a heading', () => {
+    const app = useVault([{ path: 'Attachments/poster.jpg', content: '' }])
+    ;(
+      app.vault as unknown as { getResourcePath: (f: { path: string }) => string }
+    ).getResourcePath = (f) => `app://vault/${f.path}`
+
+    const post = mount(Card, {
+      props: { title: 'Aftersun', cover: 'poster.jpg', large: true, description: 'A film.' },
+    })
+
+    expect(post.classes()).toContain('abele-card_large')
+    const cover = post.find('.abele-card__cover img')
+    expect(cover.attributes('src')).toBe('app://vault/Attachments/poster.jpg')
+    expect(cover.attributes('alt')).toBe('Aftersun')
+    // The picture comes before the words, the way a post reads.
+    expect(post.element.firstElementChild?.classList.contains('abele-card__cover')).toBe(true)
+  })
+
+  it('is the tile it always was without them', () => {
+    useVault([])
+    const tile = mount(Card, { props: { title: 'Bare' } })
+
+    expect(tile.find('.abele-card__cover').exists()).toBe(false)
+    expect(tile.classes()).not.toContain('abele-card_large')
+  })
+})
