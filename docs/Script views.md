@@ -41,6 +41,29 @@ await v.open()
 The script runs from the command palette like any other, and instead of returning a string it
 leaves a tab behind.
 
+## A feed of notes
+
+The other shape these take is a list of notes as cards: a timeline to scroll through, a
+reading queue, a shelf. `noteInfo(path)` gives a script what a card needs — the title, the
+dates, the tags, the cover as a real path, the prose without frontmatter or markup — and
+`Card` draws it with `cover` and `large`:
+
+```js
+const notes = await Promise.all(paths.map((p) => noteInfo(p)))
+v.body = new Stack({ gap: 'large', children: notes.map((n) => new Card({
+  title: n.title,
+  large: true,
+  cover: n.cover ?? undefined,
+  subtitle: dayjs(n.created).format('D MMM YYYY'),
+  badges: n.tags.map((t) => new Badge(t)),
+  description: n.excerpt,
+  children: [new Row([new Button({ text: 'Open', accent: true, onClick: () => open(n.path) })])],
+})) })
+```
+
+Markdown rendered in a view — a `Markdown` node, or a note embedded in one — shows
+`::abele-gallery::` blocks as galleries, the same as reading mode does.
+
 ## After a restart
 
 Obsidian saves the tab with the workspace. When it opens again the tab says *Starting
