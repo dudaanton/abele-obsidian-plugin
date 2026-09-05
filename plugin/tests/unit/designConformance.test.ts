@@ -18,8 +18,8 @@ const ROOT = join(__dirname, '..', '..', 'src', 'components')
 const STYLES = join(__dirname, '..', '..', 'src', 'styles.css')
 
 /**
- * What the standard covers today: the shared kit, every settings screen, and the chat
- * surfaces the agent work introduced. The older chat components are listed as debt in
+ * What the standard covers today: the shared kit, every settings screen, the sync dialogs, and
+ * the chat surfaces the agent work introduced. The older chat components are listed as debt in
  * `docs/Design.md` and join this list as they are migrated.
  */
 const COVERED_DIRS = [
@@ -34,6 +34,7 @@ const COVERED_DIRS = [
   join(ROOT, 'quick'),
   join(ROOT, 'calendarBase'),
   join(ROOT, 'linter'),
+  join(ROOT, 'sync'),
 ]
 const COVERED_FILES = [
   'AiAgentSelector.vue',

@@ -204,10 +204,11 @@ export default class AbelePlugin extends Plugin {
 
     const statusEl = this.addStatusBarItem()
     statusEl.addClass('mod-clickable')
-    // Task 6 re-points this at the log modal; until it exists, the useful thing a click can do
-    // is what a person clicking a sync indicator usually wants.
+    // The log rather than a sync: the indicator already says what sync is doing, so the
+    // question a click carries is *why* — which is what the log answers. Syncing on demand is
+    // a command and a button in the settings, neither of which is one stray click away.
     this.registerDomEvent(statusEl, 'click', () => {
-      void sync.syncNow()
+      GlobalStore.getInstance().syncLogModalOpened.value = true
     })
 
     // A vault that syncs with nothing shows nothing: most people never connect one, and a
@@ -615,6 +616,19 @@ export default class AbelePlugin extends Plugin {
         }
 
         if (!(file instanceof TFile)) return
+
+        // "Open version history" for a file the server holds versions of. Shown only on a
+        // device that is connected: on every other one the dialog could only say so.
+        if (SyncService.getInstance().isConnected()) {
+          menu.addItem((item) => {
+            item
+              .setTitle('Open version history')
+              .setIcon('history')
+              .onClick(() => {
+                GlobalStore.getInstance().versionHistoryPath.value = file.path
+              })
+          })
+        }
 
         // "Preview" for images
         const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']
@@ -1441,6 +1455,24 @@ export default class AbelePlugin extends Plugin {
         const sync = SyncService.getInstance()
         if (sync.status.value.state === 'paused') sync.resume()
         else sync.pause()
+      },
+    })
+
+    this.addCommand({
+      id: 'sync-log',
+      name: 'Open sync log',
+      icon: 'scroll-text',
+      callback: () => {
+        GlobalStore.getInstance().syncLogModalOpened.value = true
+      },
+    })
+
+    this.addCommand({
+      id: 'sync-deleted-files',
+      name: 'Open deleted files',
+      icon: 'trash-2',
+      callback: () => {
+        GlobalStore.getInstance().deletedFilesModalOpened.value = true
       },
     })
 

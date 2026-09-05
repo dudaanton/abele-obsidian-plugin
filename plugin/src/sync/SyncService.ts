@@ -8,6 +8,7 @@ import {
   sha256,
   type PathMatcher,
   type SelectiveSettings,
+  type StateEntry,
   type SyncFailure,
   type SyncReport,
   type VaultClient,
@@ -262,6 +263,23 @@ export class SyncService {
   /** The vault client the history, trash, usage and settings screens ask through. */
   client(): VaultClient | null {
     return this.vault
+  }
+
+  /**
+   * What this device remembers about one path: its file id on the server, the version it last
+   * agreed with, and the sha of those bytes. Null when this device is not connected, and null
+   * for a file the engine has not synced yet.
+   *
+   * The version history and the trash are addressed by file id rather than by path — a file
+   * that was moved kept its id and changed its name — and this ledger is the only place a host
+   * holds the two together. Read from the store rather than cached: a path's id changes when a
+   * file is deleted and a new one is made at the same name, and a screen holding the old one
+   * would offer somebody another file's history.
+   */
+  async entryFor(path: string): Promise<StateEntry | null> {
+    const store = this.store
+    if (store === null || this.engine === null) return null
+    return store.get(path)
   }
 
   /**

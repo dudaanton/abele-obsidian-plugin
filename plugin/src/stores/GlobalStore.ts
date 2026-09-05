@@ -60,6 +60,16 @@ export class GlobalStore {
   )
 
   /**
+   * The three sync dialogs, opened from the file menu, the status bar and the command palette.
+   *
+   * The history is a path rather than a flag: it is one file's history, and the file it is
+   * about is the whole of what the dialog needs to be told.
+   */
+  public readonly versionHistoryPath = ref<string | null>(null)
+  public readonly deletedFilesModalOpened = ref(false)
+  public readonly syncLogModalOpened = ref(false)
+
+  /**
    * The panels of each kind that are open, by the id written on the container each one put in
    * its own pane. The Vue app teleports a component into every id on the list.
    *
@@ -392,6 +402,11 @@ export class GlobalStore {
     this.galleriesContainers.value = []
     for (const fn of this.footnotesContainers.value) fn.cleanup()
     this.footnotesContainers.value = []
+    // The sync dialogs close with the vault: a history is one file's, and the file it names
+    // belongs to the vault that has just gone.
+    this.versionHistoryPath.value = null
+    this.deletedFilesModalOpened.value = false
+    this.syncLogModalOpened.value = false
 
     this.tasksList.value?.cleanup()
     this.tasksList.value = null

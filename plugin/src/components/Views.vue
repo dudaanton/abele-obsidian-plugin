@@ -104,6 +104,13 @@
     :fields="scriptFormFields"
     :resolve="scriptFormResolve"
   />
+  <VersionHistoryModal
+    v-if="versionHistoryPath"
+    :path="versionHistoryPath"
+    @close="versionHistoryPath = null"
+  />
+  <DeletedFilesModal v-if="deletedFilesModalOpened" @close="deletedFilesModalOpened = false" />
+  <SyncLogModal v-if="syncLogModalOpened" @close="syncLogModalOpened = false" />
   <Teleport v-if="settingsContainer" :to="settingsContainer">
     <SettingsView />
   </Teleport>
@@ -130,6 +137,9 @@ import MigrateFromFireflyModal from './MigrateFromFireflyModal.vue'
 import MigrateDataviewFieldsModal from './MigrateDataviewFieldsModal.vue'
 import MigrateFromTogglModal from './MigrateFromTogglModal.vue'
 import ScriptFormModal from './ScriptFormModal.vue'
+import VersionHistoryModal from './sync/VersionHistoryModal.vue'
+import DeletedFilesModal from './sync/DeletedFilesModal.vue'
+import SyncLogModal from './sync/SyncLogModal.vue'
 import { TIMELINE_SIDEBAR_ID_ATTR } from '@/views/TimelineSidebarView'
 import { TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'
 import { AI_SIDEBAR_ID_ATTR } from '@/views/AiSidebarView'
@@ -161,6 +171,9 @@ const {
   scriptFormId,
   scriptFormFields,
   scriptFormResolve,
+  versionHistoryPath,
+  deletedFilesModalOpened,
+  syncLogModalOpened,
   timelineSidebarIds,
   todoSidebarIds,
   aiSidebarIds,

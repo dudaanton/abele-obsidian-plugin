@@ -455,6 +455,45 @@ describe('SyncService — the log', () => {
   })
 })
 
+/**
+ * `entryFor` is the one thing the version history and the trash need from this service that no
+ * screen can work out for itself: a path is not an identity on the server — a file that was
+ * moved kept its id and changed its name — and the ledger is the only place a host holds the
+ * two together.
+ */
+describe('SyncService — the ledger a screen reads', () => {
+  it('says which file on the server a path is', async () => {
+    const { other } = await connect()
+    await synced()
+    await write('Local.md', 'made here')
+    await service.syncNow()
+
+    const entry = await service.entryFor('Local.md')
+
+    expect(entry).not.toBeNull()
+    expect(entry?.fileId).not.toBe('')
+    // The same file the server knows under that name, and the version this device agrees with.
+    const versions = await other.versions(entry!.fileId)
+    expect(versions[0].path).toBe('Local.md')
+    expect(versions[0].version_id).toBe(entry?.versionId)
+  })
+
+  it('says nothing about a path the engine has never synced', async () => {
+    await connect()
+    await synced()
+
+    expect(await service.entryFor('Nowhere.md')).toBeNull()
+  })
+
+  it('says nothing at all on a device nobody has set up', async () => {
+    start()
+    await tick()
+
+    expect(service.isConnected()).toBe(false)
+    expect(await service.entryFor('Existing.md')).toBeNull()
+  })
+})
+
 describe('SyncService — one ledger per local vault', () => {
   it("does not let a second local vault read the first one's ledger", async () => {
     const { vaultId, other } = await connect()
