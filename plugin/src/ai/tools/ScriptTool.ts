@@ -1,4 +1,5 @@
 import type { AgentTool } from '../client'
+import { scriptSlug } from '@/scripting/scriptSlug'
 import { ScriptService, type ScriptOutcome } from '@/scripting/ScriptService'
 import type { FormField, ScriptParam } from '@/scripting/types'
 
@@ -7,7 +8,7 @@ export function createScriptTools(): AgentTool[] {
   const scripts = service.getEnabledToolScripts()
 
   return scripts.map((script) => ({
-    name: `script_${sanitize(script.meta.name)}`,
+    name: `script_${scriptSlug(script.meta.name)}`,
     label: script.meta.name,
     description: script.meta.description || `Run the "${script.meta.name}" script.`,
     parameters: buildJsonSchema(script.meta.params),
@@ -155,11 +156,4 @@ function buildJsonSchema(params: ScriptParam[]): Record<string, unknown> {
     properties,
     ...(required.length ? { required } : {}),
   }
-}
-
-function sanitize(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
 }

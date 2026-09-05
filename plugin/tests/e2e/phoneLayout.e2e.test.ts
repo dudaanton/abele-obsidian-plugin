@@ -130,7 +130,8 @@ const probeScript = `(async () => {
       const b = el.getBoundingClientRect()
       const left = b.left + el.clientLeft, top = b.top + el.clientTop
       const box = { left, top, right: left + el.clientWidth, bottom: top + el.clientHeight }
-      const by = Math.max(box.left - ring.left, ring.right - box.right, box.top - ring.top, ring.bottom - box.bottom)
+      // The sides only: a scrolling body may legitimately have a field below its fold.
+      const by = Math.max(box.left - ring.left, ring.right - box.right)
       if (by > 0.5) cut.push(name(el) + ' ' + Math.round(by) + 'px')
     }
     return cut
@@ -231,13 +232,24 @@ const probeScript = `(async () => {
         const label = tab.textContent.trim().toLowerCase()
         // The picker takes focus itself; the picture is of the ring that comes with it, which
         // a scrolling box clips unless it is given room. Blurred before measuring.
+        // Every focusable thing on the tab is focused and its ring measured, not only the
+        // search field: a dropdown's wrapper and the dialog's content element each cut one.
+        const clipped = []
+        if (modal) {
+          for (const f of modal.querySelectorAll('input, textarea, select, button, [tabindex="0"]')) {
+            const s = getComputedStyle(f)
+            if (s.display === 'none' || s.visibility === 'hidden') continue
+            if (f.getBoundingClientRect().width === 0) continue
+            f.focus()
+            for (const cut of ringClipped(f)) clipped.push(name(f) + ': ' + cut)
+            f.blur()
+          }
+        }
         const field = modal && modal.querySelector('.abele-sp-picker input')
-        let clipped = []
         if (field) {
           field.focus()
           await wait(200)
           await shoot('setup ' + label + ' focused')
-          clipped = ringClipped(field)
           field.blur()
         }
         await screen('setup ' + label, modal, modal && modal.querySelector('.abele-modal__body'))
@@ -352,8 +364,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       expect(s.spare, `${s.name} leaves ${s.spare}px blank under it`).toBeLessThanOrEqual(24)
   })
 
-  it.each(['setup skills', 'setup prompts'])(
-    '%s: nothing cuts the focus ring of the search field',
+  it.each(screens.filter((s) => s.startsWith('setup')))(
+    '%s: nothing cuts the focus ring off any field',
     (label) => {
       expect(report[label]?.clipped ?? ['no report']).toEqual([])
     }

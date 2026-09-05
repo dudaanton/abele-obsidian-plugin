@@ -26,11 +26,14 @@ export function createWebSearchTool(): AgentTool {
       if (!apiKey) throw new Error('Brave Search API key not found in keychain')
 
       const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}`
+      // No `Accept-Encoding` of our own. Each platform negotiates compression itself and
+      // undoes it itself; a header set by hand made Android's native HTTP hand the body over
+      // still gzipped, and `response.json` failed on it with «Unexpected token» while iOS and
+      // the desktop, which always decompress, were fine (2026-09-05).
       const response = await requestUrl({
         url,
         headers: {
           Accept: 'application/json',
-          'Accept-Encoding': 'gzip',
           'X-Subscription-Token': apiKey,
         },
       })

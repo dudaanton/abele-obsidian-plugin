@@ -136,6 +136,10 @@ Three files, three concerns:
   and a second marker pressed replaces that tab rather than adding one. The same press is made
   again under `app.emulateMobile(true)` in a phone-sized window, where the sidebar is the whole
   screen. Cleans the note, the file and the window size up after itself.
+- `dialogRings.e2e.test.ts` — **focus rings in the chat dialogs, on the desktop**. Focuses every
+  focusable thing in every tab of the setup dialog and in the history, and measures its ring
+  against every ancestor that clips: a box standing flush with the content cuts the ring a field
+  draws outside its box, which happened twice in one day.
 - `phoneLayout.e2e.test.ts` — **every chat dialog, on a phone**. Switches the app to
   `emulateMobile`, sizes the window to an iPhone (390×844), opens the chat, the settings dialog
   tab by tab and the history, and asks each screen the questions a phone-width layout fails:
