@@ -121,16 +121,20 @@ const emit = defineEmits<{
 }
 
 /**
- * On a phone the sheet stands at Obsidian's own cap, whatever the tab holds: a dialog whose
- * height followed its content would jump between tabs, and one that followed the keyboard
- * did worse. `--keyboard-height` changes with no event to hear it by, so a height computed
- * from it once — when a search field took focus — stayed computed after the keyboard had
- * gone, and every tab showed a sheet cut off at the height of a keyboard that was not there
- * (1.19.1, from the phone). This dialog has no composer to keep above the keyboard; a list
- * whose bottom the keyboard covers scrolls, which is what every list on the platform does.
+ * The dialog stands at Obsidian's own cap, whatever the tab holds. A height that followed the
+ * content jumped from tab to tab — a short Tools tab under a tall Skills one — and on a phone
+ * one that followed the keyboard did worse: `--keyboard-height` changes with no event to hear
+ * it by, so a height computed from it once, when a search field took focus, stayed computed
+ * after the keyboard had gone, and every tab showed a sheet cut off at the height of a
+ * keyboard that was not there (1.19.1, from the phone). This dialog has no composer to keep
+ * above the keyboard; a list whose bottom the keyboard covers scrolls, which is what every
+ * list on the platform does. The cap is theirs, so it is never taller than the screen.
  */
-body.is-phone .modal.abele-modal_tall {
+.modal.abele-modal_tall {
   height: var(--dialog-max-height);
+}
+
+body.is-phone .modal.abele-modal_tall {
   /* Their sheet has no vertical padding at all; the home indicator needs the bottom of it. */
   padding-bottom: var(--safe-area-inset-bottom);
 }
