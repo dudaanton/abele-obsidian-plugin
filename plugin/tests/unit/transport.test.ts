@@ -176,6 +176,36 @@ describe('fetchViaRequestUrl', () => {
 
     expect(seen[0].url).toBe('https://sync.example/v1/vaults?limit=2')
   })
+
+  it('refuses a Request, whose method and body it would silently drop', async () => {
+    const { fetch, seen } = fake(() => answer())
+
+    await expect(
+      fetch(new Request('https://sync.example/a', { method: 'POST', body: 'x' }))
+    ).rejects.toThrow(/a url, not a Request/)
+    expect(seen).toHaveLength(0)
+  })
+
+  it('carries a status no Response can hold as a 502 that says what it was', async () => {
+    // A captive portal, a proxy, or Obsidian reporting a request that went nowhere. Building
+    // a `Response` with one throws, and a throw here would be read as being offline — which
+    // is the one thing this is not: something answered.
+    for (const status of [0, 999]) {
+      const { fetch } = fake(() => answer({ status, arrayBuffer: bufferOf('<html>nope</html>') }))
+
+      const response = await fetch('https://sync.example/v1/vaults')
+
+      expect(response.status).toBe(502)
+      // The protocol's own envelope, so the engine prints it rather than guessing at it.
+      expect(await response.json()).toEqual({
+        error: {
+          code: 'internal',
+          message: `something between this device and the server answered ${status}`,
+          details: { status },
+        },
+      })
+    }
+  })
 })
 
 describe('wsFor', () => {

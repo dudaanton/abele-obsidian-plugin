@@ -148,6 +148,25 @@ describe('migrateSyncSettings', () => {
     expect(migrateSyncSettings({ keySignature: 'secret' }).keySignature).toBeNull()
   })
 
+  it('caps file size on a phone that has no sync settings yet', () => {
+    expect(migrateSyncSettings(undefined, true).selective.maxFileBytes).toBe(MOBILE_MAX_FILE_BYTES)
+    expect(
+      migrateSyncSettings({ serverUrl: 'https://sync.example' }, true).selective.maxFileBytes
+    ).toBe(MOBILE_MAX_FILE_BYTES)
+    expect(migrateSyncSettings(undefined).selective.maxFileBytes).toBeNull()
+  })
+
+  it('leaves a phone that already chose a cap with the one it chose', () => {
+    // Including the choice to have none: a person who turned the cap off on their phone is
+    // not given it back on the next launch.
+    expect(
+      migrateSyncSettings({ selective: { maxFileBytes: 1024 } }, true).selective.maxFileBytes
+    ).toBe(1024)
+    expect(
+      migrateSyncSettings({ selective: { maxFileBytes: null } }, true).selective.maxFileBytes
+    ).toBeNull()
+  })
+
   it('hands back settings of its own, sharing nothing with what it read', () => {
     const raw = { selective: { excludedFolders: ['Archive'] } }
     const settings = migrateSyncSettings(raw)

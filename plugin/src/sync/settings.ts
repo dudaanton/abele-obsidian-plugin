@@ -67,9 +67,12 @@ export const DEFAULT_SYNC_SETTINGS: SyncSettings = deepFreeze(defaultSyncSetting
  * a person edits, that an older version of this plugin wrote, and that another device's sync
  * may have brought in — so a missing field takes its default, a field of the wrong type takes
  * its default too, and anything not named here is dropped rather than carried along.
+ *
+ * `isMobile` decides only the defaults, so a phone opening a vault for the first time gets
+ * the size cap while a phone whose settings already name one keeps what it was told.
  */
-export function migrateSyncSettings(raw: unknown): SyncSettings {
-  const defaults = defaultSyncSettings()
+export function migrateSyncSettings(raw: unknown, isMobile = false): SyncSettings {
+  const defaults = defaultSyncSettings(isMobile)
   const o = objectOf(raw)
   if (o === null) return defaults
   return {

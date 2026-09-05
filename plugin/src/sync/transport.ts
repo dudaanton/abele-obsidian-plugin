@@ -1,3 +1,4 @@
+import type { ErrorBody } from '@abele/sync-protocol'
 import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
 
 /**
@@ -19,7 +20,11 @@ import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
 export type RequestUrlFn = (request: RequestUrlParam) => Promise<RequestUrlResponse>
 
 /** Statuses the fetch spec says carry no body; `Response` refuses to be built with one. */
-const BODILESS_STATUS = new Set([101, 204, 205, 304])
+const BODILESS_STATUS = new Set([204, 205, 304])
+
+/** What `Response` will be built with at all: anything else it answers with a `RangeError`. */
+const LOWEST_STATUS = 200
+const HIGHEST_STATUS = 599
 
 /**
  * A `fetch` over `requestUrl`.
@@ -51,10 +56,14 @@ export function fetchViaRequestUrl(requestUrl: RequestUrlFn): typeof fetch {
       ...(contentType === undefined ? {} : { contentType }),
     })
 
+    if (answer.status < LOWEST_STATUS || answer.status > HIGHEST_STATUS) {
+      return outOfRange(answer.status)
+    }
+
     // A HEAD answers with headers and nothing else — `hasBlob` asks with one — and the
     // bodiless statuses are refused by the `Response` constructor if handed any bytes.
     const bodiless = method === 'HEAD' || BODILESS_STATUS.has(answer.status)
-    return new Response(bodiless ? null : bytesOf(answer), {
+    return new Response(bodiless ? null : answer.arrayBuffer, {
       status: answer.status,
       headers: answerHeaders(answer.headers),
     })
@@ -75,11 +84,36 @@ export function wsFor(): typeof WebSocket {
   return socket
 }
 
+/**
+ * An answer no `Response` can carry, as one that can.
+ *
+ * A status outside 200–599 is not a server's: it is a captive portal, a proxy, or Obsidian
+ * itself reporting a request that went nowhere. Letting the `Response` constructor throw
+ * would make the engine call that offline, which is the one thing it is not — so it becomes
+ * a 502 whose body is the protocol's own error envelope, and the engine prints what really
+ * came back.
+ */
+function outOfRange(status: number): Response {
+  const body: ErrorBody = {
+    error: {
+      code: 'internal',
+      message: `something between this device and the server answered ${status}`,
+      details: { status },
+    },
+  }
+  return new Response(JSON.stringify(body), {
+    status: 502,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
 /** What was asked for, however the caller named it. */
 function urlOf(input: RequestInfo | URL): string {
   if (typeof input === 'string') return input
   if (input instanceof URL) return input.href
-  return input.url
+  // A `Request` carries its own method, headers and body, and none of them are read here:
+  // sending only its url would put a different request on the wire than the one asked for.
+  throw new TypeError('the Obsidian transport takes a url, not a Request')
 }
 
 /** The headers as `requestUrl` takes them, from any of the three shapes `fetch` accepts. */
@@ -122,15 +156,6 @@ function bodyOf(body: BodyInit | null | undefined): string | ArrayBuffer | undef
   // A stream, a Blob or a form: the engine sends none of them, and guessing at bytes for one
   // would put the wrong thing on the wire rather than say so.
   throw new TypeError('the Obsidian transport sends only text and bytes')
-}
-
-/** The answer's bytes. A body that cannot be read is an empty one, not a failed request. */
-function bytesOf(answer: RequestUrlResponse): ArrayBuffer {
-  try {
-    return answer.arrayBuffer ?? new ArrayBuffer(0)
-  } catch {
-    return new ArrayBuffer(0)
-  }
 }
 
 /** The answer's headers, as a `Headers` — which is what makes `get` case-insensitive. */

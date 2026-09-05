@@ -15,7 +15,8 @@ import {
   normalizeAccountsList,
   type AccountsListSettings,
 } from '@/helpers/accountRows'
-import { DEFAULT_SYNC_SETTINGS, migrateSyncSettings, type SyncSettings } from '@/sync/settings'
+import { defaultSyncSettings, migrateSyncSettings, type SyncSettings } from '@/sync/settings'
+import { Platform } from 'obsidian'
 import AbelePlugin from '@/main'
 import { isKitColor } from '@/constants/colors'
 import { DEFAULT_LABEL_PROPERTY, type LabelColor } from '@/helpers/taskMeta'
@@ -306,7 +307,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   busyDayThreshold: 3,
   excludedPathsForDefaultTemplate: ['attachments/', 'templates/'],
   ai: { ...DEFAULT_AI_SETTINGS },
-  sync: DEFAULT_SYNC_SETTINGS,
+  sync: defaultSyncSettings(),
   transactionPathTemplate: 'Finance/Transactions/{{date:YYYY/MM}}/{{title}}',
   transactionTemplatePath: '',
   accountsFolder: 'Finance/Accounts',
@@ -738,7 +739,9 @@ export class AbeleConfig {
     }
     // Every field is checked on the way in, so a settings file written by an older plugin —
     // or by another device's sync — cannot put something the engine cannot run on into memory.
-    this.sync = migrateSyncSettings(settings?.sync)
+    // The platform is read here and nowhere else: it decides only what a vault with no sync
+    // settings yet starts with, which on a phone is a cap on how large a file it takes.
+    this.sync = migrateSyncSettings(settings?.sync, Platform.isMobile)
     this.transactionPathTemplate =
       settings?.transactionPathTemplate ?? DEFAULT_SETTINGS.transactionPathTemplate
     this.transactionTemplatePath =
