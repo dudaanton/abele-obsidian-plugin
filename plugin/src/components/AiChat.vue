@@ -618,10 +618,14 @@ let shouldAutoScroll = true
  */
 let codeScrollTop: number | null = null
 
+/** How far above the end of the conversation the reader is; kept across a change of box. */
+let bottomGap = 0
+
 /** Scrolls the container, remembering where the browser actually settled. */
 const scrollContainerTo = (el: HTMLElement, top: number) => {
   el.scrollTop = top
   codeScrollTop = el.scrollTop
+  bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
 }
 
 /**
@@ -720,12 +724,18 @@ const loadOlder = () => {
 const onMessagesScroll = () => {
   const el = messagesContainer.value
   if (!el) return
+  // The box has changed height and its observer has not run yet: this is the browser clamping
+  // the position to the new box, not the reader, and the observer is about to put the reader
+  // back where they were. The browser reports the clamp before it reports the resize.
+  if (boxHeight === null) boxHeight = el.clientHeight
+  if (el.clientHeight !== boxHeight) return
   // The container is exactly where it was put, so nobody has moved it since.
   if (codeScrollTop !== null && Math.abs(el.scrollTop - codeScrollTop) < 1) return
   codeScrollTop = null
   // The reader has taken over; whatever was being held is where they left it.
   anchor = null
-  shouldAutoScroll = el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD_PX
+  bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
+  shouldAutoScroll = bottomGap < AUTO_SCROLL_THRESHOLD_PX
   if (el.scrollTop < LOAD_OLDER_THRESHOLD_PX) loadOlder()
 }
 
@@ -733,7 +743,8 @@ const doScroll = () => {
   if (!shouldAutoScroll) return
   nextTick(() => {
     const el = messagesContainer.value
-    if (!el) return
+    // Asked again: the reader may have scrolled away in the tick between.
+    if (!el || !shouldAutoScroll) return
     scrollContainerTo(el, el.scrollHeight)
   })
 }
@@ -803,26 +814,77 @@ onMounted(() => {
   }
 })
 
+/**
+ * Following the conversation as it grows, and the box it is read in as that changes.
+ *
+ * Attached to the container element, not once on mount: the container is unmounted while a
+ * delegated run holds the tab and mounted afresh when the chat is back, and an observer left
+ * on the first element watched nothing at all — a chat that had been away on a run's tab no
+ * longer followed its own replies once their markdown rendered.
+ */
 let mutObserver: MutationObserver | null = null
-onMounted(() => {
-  nextTick(() => {
-    if (messagesContainer.value) {
-      mutObserver = new MutationObserver(() => {
-        // A message that has just rendered its markdown changes the subtree and the layout
-        // with it — which is exactly when the anchor needs putting back.
-        holdAnchor()
-        doScroll()
-      })
-      mutObserver.observe(messagesContainer.value, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['open'],
-      })
-    }
+let sizeObserver: ResizeObserver | null = null
+/**
+ * The container's height as last reported, for telling a change of box from a scroll. Null
+ * until the observer has reported once: the first scroll to arrive before then measures it.
+ */
+let boxHeight: number | null = null
+
+/**
+ * Keeps the reader's place when the box around the conversation changes height.
+ *
+ * A phone's keyboard takes the lower half of the screen and the chat shrinks to sit above it,
+ * and nothing scrolls on its own when a box shrinks: what was at the bottom — the message
+ * being answered — went under the keyboard, and the reader found themselves at a line read a
+ * minute before (2026-09-05, from the phone). At the end of the conversation they stay at the
+ * end; anywhere above it they keep their distance from it, which is what the messages above
+ * a composer do in every chat app, and the same in reverse when the keyboard goes.
+ */
+const onBoxResized = () => {
+  const el = messagesContainer.value
+  if (!el) return
+  if (el.clientHeight !== boxHeight) {
+    boxHeight = el.clientHeight
+    if (!shouldAutoScroll) scrollContainerTo(el, el.scrollHeight - el.clientHeight - bottomGap)
+  }
+  // A narrower box wraps the text longer; a reader at the end stays at the end.
+  doScroll()
+}
+
+const observe = (el: HTMLElement) => {
+  mutObserver = new MutationObserver(() => {
+    // A message that has just rendered its markdown changes the subtree and the layout
+    // with it — which is exactly when the anchor needs putting back.
+    holdAnchor()
+    doScroll()
   })
-})
-onUnmounted(() => mutObserver?.disconnect())
+  mutObserver.observe(el, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['open'],
+  })
+  boxHeight = null
+  sizeObserver = new ResizeObserver(onBoxResized)
+  sizeObserver.observe(el)
+}
+
+const unobserve = () => {
+  mutObserver?.disconnect()
+  mutObserver = null
+  sizeObserver?.disconnect()
+  sizeObserver = null
+}
+
+watch(
+  messagesContainer,
+  (el) => {
+    unobserve()
+    if (el) observe(el)
+  },
+  { immediate: true, flush: 'post' }
+)
+onUnmounted(unobserve)
 
 onMounted(() => {
   window.setTimeout(() => chatInput.value?.focus(), 150)

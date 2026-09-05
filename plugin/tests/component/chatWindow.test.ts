@@ -367,3 +367,152 @@ describe('the view while a reply is streaming', () => {
     expect(model.container.scrollTop).toBe(3000)
   })
 })
+
+/**
+ * A box that changes height while it is being read — a phone's keyboard opening under it.
+ *
+ * Modelled with a scroll position that the browser would clamp: a box shorter than its
+ * content cannot be scrolled past the end, which is the whole of what makes a shrink move the
+ * reader. `ResizeObserver` is stubbed, and the test says when it fires.
+ */
+function resizableModel(wrapper: ReturnType<typeof mount>, contentHeight: number) {
+  const container = wrapper.find('.abele-ai-chat__messages').element as HTMLElement
+  let clientHeight = 800
+  let scrollTop = 0
+  const clamp = (v: number) => Math.max(0, Math.min(v, contentHeight - clientHeight))
+
+  Object.defineProperty(container, 'scrollTop', {
+    configurable: true,
+    get: () => scrollTop,
+    set: (v: number) => {
+      scrollTop = clamp(v)
+    },
+  })
+  Object.defineProperty(container, 'scrollHeight', { configurable: true, get: () => contentHeight })
+  Object.defineProperty(container, 'clientHeight', { configurable: true, get: () => clientHeight })
+
+  return {
+    container,
+    scrollTo: (v: number) => (scrollTop = clamp(v)),
+    resize: (height: number) => {
+      clientHeight = height
+      scrollTop = clamp(scrollTop)
+    },
+  }
+}
+
+describe('the box shrinking under the reader, as it does when a keyboard opens', () => {
+  const observers: Array<{ target: Element | null; fire: () => void }> = []
+
+  beforeEach(() => {
+    observers.length = 0
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        private entry = { target: null as Element | null, fire: () => this.cb([]) }
+        constructor(private cb: (entries: ResizeObserverEntry[]) => void) {
+          observers.push(this.entry)
+        }
+        observe(target: Element) {
+          this.entry.target = target
+        }
+        disconnect() {
+          this.entry.target = null
+        }
+      }
+    )
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  const boxObserver = (container: Element) => observers.find((o) => o.target === container) ?? null
+
+  const settle = async () => {
+    await nextTick()
+    await nextTick()
+  }
+
+  it('watches the box it is reading in', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE)
+    const wrapper = mountAttached()
+    const model = resizableModel(wrapper, 2000)
+    await nextTick()
+
+    expect(boxObserver(model.container)).not.toBeNull()
+  })
+
+  it('keeps the end of the conversation in view when the reader was at it', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE)
+    const wrapper = mountAttached()
+    const model = resizableModel(wrapper, 2000)
+    const container = wrapper.find('.abele-ai-chat__messages')
+    await settle()
+    model.scrollTo(1200)
+    await container.trigger('scroll')
+
+    model.resize(400)
+    boxObserver(model.container)?.fire()
+    await settle()
+
+    expect(model.container.scrollTop).toBe(1600)
+  })
+
+  it('keeps the distance to the end when the reader was somewhere above it', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE)
+    const wrapper = mountAttached()
+    const model = resizableModel(wrapper, 2000)
+    const container = wrapper.find('.abele-ai-chat__messages')
+    await settle()
+    model.scrollTo(1000)
+    await container.trigger('scroll')
+
+    // The browser clamps the position to the new box and says so before it reports the
+    // resize; the clamp is not the reader moving.
+    model.resize(400)
+    await container.trigger('scroll')
+    boxObserver(model.container)?.fire()
+    await settle()
+    expect(model.container.scrollTop).toBe(1400)
+
+    // And back, when the keyboard goes: 1400 is past the end of an 800px box, so the browser
+    // clamps it to 1200 first, and the reader is still put back 200 above the end.
+    model.resize(800)
+    await container.trigger('scroll')
+    boxObserver(model.container)?.fire()
+    await settle()
+    expect(model.container.scrollTop).toBe(1000)
+  })
+})
+
+describe('coming back from a tab a delegated run was holding', () => {
+  it('follows a message that grows after it is mounted, as it did before leaving', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE)
+    const service = ChatService.getInstance()
+    const run = ref<unknown>(null)
+    vi.spyOn(service, 'activeRun', 'get').mockImplementation(() => run.value as never)
+    const wrapper = mount(AiChat, {
+      attachTo: document.body,
+      global: { stubs: { AiRunView: true } },
+    })
+    attached = wrapper
+    await nextTick()
+
+    run.value = { id: 'r1' }
+    await nextTick()
+    expect(wrapper.find('.abele-ai-chat__messages').exists()).toBe(false)
+    run.value = null
+    await nextTick()
+
+    // The container is a new element. A message rendering its markdown late changes the
+    // subtree and grows the conversation, and the chat should still be at its end after.
+    const model = layoutModel(wrapper)
+    model.setHeights(100)
+    model.scrollTo(0)
+    const last = model.container.querySelector('.abele-chat-msg:last-of-type')!
+    last.appendChild(document.createElement('p'))
+    await new Promise((r) => setTimeout(r, 0))
+    await nextTick()
+
+    expect(model.container.scrollTop).toBe(DEFAULT_TAIL_PAGE_SIZE * 100)
+  })
+})

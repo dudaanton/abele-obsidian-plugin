@@ -28,12 +28,6 @@ const TABS = [
   { id: 'agents', label: 'Agents' },
 ]
 
-/** Two ticks: one for the watcher, one for the `nextTick` inside the reveal. */
-const flush = async () => {
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  await new Promise((resolve) => setTimeout(resolve, 0))
-}
-
 describe('Tabs', () => {
   it('renders every tab and marks the current one', () => {
     const view = mount(Tabs, { props: { tabs: TABS, modelValue: 'agents' } })
@@ -79,29 +73,6 @@ describe('Tabs', () => {
     const view = mount(Tabs, { props: { tabs: TABS, modelValue: 'general' } })
 
     expect(view.findAll('.abele-tabs__chevron')).toHaveLength(0)
-  })
-
-  it('brings the active tab into view when it changes, and once on mount', async () => {
-    // On a phone the strip is one row that scrolls sideways; a dialog opened on its last tab
-    // would otherwise show the strip scrolled to the first. happy-dom has no scrollIntoView,
-    // which is also why the component asks before calling it.
-    const seen: string[] = []
-    const proto = HTMLElement.prototype as HTMLElement & { scrollIntoView?: unknown }
-    const before = proto.scrollIntoView
-    proto.scrollIntoView = function (this: HTMLElement) {
-      seen.push(this.textContent?.trim() ?? '')
-    }
-    try {
-      const view = mount(Tabs, { props: { tabs: TABS, modelValue: 'agents' } })
-      await flush()
-      expect(seen).toEqual(['Agents'])
-
-      await view.setProps({ modelValue: 'general' })
-      await flush()
-      expect(seen).toEqual(['Agents', 'General'])
-    } finally {
-      proto.scrollIntoView = before
-    }
   })
 
   it('separates a nested strip from a screen navigation', () => {

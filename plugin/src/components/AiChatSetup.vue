@@ -130,6 +130,10 @@ const debug = () => {
 /**
  * The one thing that scrolls. The dialog is a column capped at the height it is allowed, so a
  * long list of tools or prompts moves inside it rather than growing it past the screen.
+ *
+ * The padding is room for a focus ring: a scrolling box clips whatever reaches past its edge,
+ * and a field's ring reaches past the field on every side. Pulled back by the same margin so
+ * the content stands where it did.
  */
 .abele-chat-setup__body {
   display: flex;
@@ -137,6 +141,8 @@ const debug = () => {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  padding: var(--size-2-2);
+  margin: calc(-1 * var(--size-2-2));
 }
 
 .abele-chat-setup__tools {

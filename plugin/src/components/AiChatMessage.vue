@@ -673,6 +673,32 @@ const truncate = (s: string, max: number) => (s.length > max ? s.slice(0, max) +
   }
 }
 
+/**
+ * On a phone Obsidian shows a code block's copy button all the time, where a desktop shows it
+ * on hover, and it sat on the end of the first line of code (2026-09-05, from the phone). A
+ * float the size of the button keeps the first lines clear of it; the lines below it take the
+ * full width, which a padding on the block would not have let them. The sizes are the
+ * button's as Obsidian draws it, measured from the block's corner less the code's own padding:
+ * a tablet pads it wider (4px 20px) and a phone taller (6px 8px, under `is-phone`).
+ */
+body.is-mobile
+  :is(.abele-chat-msg__body, .abele-chat-msg__thinking, .abele-ai-chat__streaming-thinking)
+  pre
+  > code::before {
+  content: '';
+  float: right;
+  width: 60px;
+  height: 34px;
+}
+
+body.is-phone
+  :is(.abele-chat-msg__body, .abele-chat-msg__thinking, .abele-ai-chat__streaming-thinking)
+  pre
+  > code::before {
+  width: 36px;
+  height: 38px;
+}
+
 .abele-chat-msg__thinking {
   margin-top: 0;
   margin-bottom: var(--size-4-2);

@@ -1,6 +1,6 @@
 <template>
   <div v-if="tabs.length > 1 || canCreate" class="abele-chat-tabs">
-    <div class="abele-chat-tabs__list">
+    <div ref="strip" class="abele-chat-tabs__list">
       <div
         v-for="tab in tabs"
         :key="tab.id"
@@ -26,6 +26,7 @@
 </template>
 
 <script setup lang="ts">
+import { nextTick, onMounted, ref, watch } from 'vue'
 import Icon from './obsidian/Icon.vue'
 
 export interface TabInfo {
@@ -35,10 +36,43 @@ export interface TabInfo {
   isActive: boolean
 }
 
-defineProps<{
+const props = defineProps<{
   tabs: TabInfo[]
   canCreate: boolean
 }>()
+
+const strip = ref<HTMLElement | null>(null)
+
+/** The width of the fade the add button paints over the right end of the strip. */
+const FADE_PX = 12
+
+/**
+ * Brings the active chip into the visible part of the strip.
+ *
+ * By the strip's own `scrollLeft`, not `scrollIntoView`: that scrolls every ancestor that can
+ * move as well, and a sidebar is one of them. A new chat opens as the last chip, which on a
+ * full strip is past its right edge, and it stayed there until scrolled to by hand.
+ */
+const revealActive = () => {
+  const el = strip.value
+  const chip = el?.querySelector<HTMLElement>('.abele-chat-tabs__chip--active')
+  if (!el || !chip) return
+  const pad = parseFloat(getComputedStyle(el).paddingLeft) || 0
+  const bounds = el.getBoundingClientRect()
+  // Not laid out — a hidden sidebar, or a phone, where the strip is not shown at all.
+  if (bounds.width === 0) return
+  const rect = chip.getBoundingClientRect()
+  const left = bounds.left + pad
+  const right = bounds.right - pad - FADE_PX
+  if (rect.left < left) el.scrollLeft += rect.left - left
+  else if (rect.right > right) el.scrollLeft += rect.right - right
+}
+
+watch(
+  () => props.tabs.find((tab) => tab.isActive)?.id,
+  () => void nextTick(revealActive)
+)
+onMounted(revealActive)
 
 const emit = defineEmits<{
   (e: 'select', tabId: string): void
@@ -64,9 +98,18 @@ const emit = defineEmits<{
   align-items: center;
   gap: var(--size-2-1);
   padding: var(--size-2-2) var(--size-4-2);
+  // As wide as the fade the add button paints over this end, so the last chip, scrolled to,
+  // stands clear of it rather than 4px under it.
+  padding-right: var(--size-4-3);
   overflow-x: auto;
   flex: 1;
   min-width: 0;
+
+  // Both spellings, and the standard one is the one that counts: Obsidian 1.12 sets
+  // `scrollbar-width` on every element, and once that property is set Chromium ignores the
+  // `::-webkit-scrollbar` pseudo-elements altogether — which is how a strip that had hidden
+  // its scrollbar for a year grew one under the chips.
+  scrollbar-width: none;
 
   &::-webkit-scrollbar {
     display: none;

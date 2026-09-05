@@ -54,25 +54,66 @@ export function releasesFocus(target: Element | null, active: Element | null): b
   return true
 }
 
+/** How far a finger may travel between touching and lifting and still have tapped. */
+export const TAP_SLOP_PX = 10
+
 /**
- * Releases the focus of one of the plugin's fields when a touch starts outside it.
+ * Releases the focus of one of the plugin's fields when a tap lands outside it.
  *
- * `touchstart` rather than a pointer event on purpose: it is raised only by a touchscreen, so
- * a desktop never reaches this code and its selection behaviour is untouched. The listener is
- * passive — nothing here cancels anything — and capturing, so it runs before a handler that
- * stops the event from propagating can hide the tap.
+ * A tap, decided when the finger lifts, not a touch, decided when it lands: a scroll starts
+ * with the same `touchstart`, and releasing on that closed the keyboard the moment a reader
+ * tried to scroll the conversation up to see what they were answering (2026-09-05, from the
+ * phone). So the touch is remembered where it landed, and the focus goes on `touchend` only if
+ * the finger has stayed within a tap of that point. A `touchcancel` — the system taking the
+ * gesture — forgets it.
+ *
+ * Touch events rather than pointer events on purpose: they are raised only by a touchscreen,
+ * so a desktop never reaches this code and its selection behaviour is untouched. The listeners
+ * are passive — nothing here cancels anything — and capturing, so they run before a handler
+ * that stops the event from propagating can hide the tap.
  */
 export function registerFocusRelease(plugin: Plugin): void {
+  let began: { x: number; y: number; active: HTMLElement } | null = null
+  const options = { capture: true, passive: true }
+
   plugin.registerDomEvent(
     document,
     'touchstart',
     (event) => {
+      began = null
       const target = event.target
       const active = document.activeElement
       if (!(target instanceof Element)) return
       if (!releasesFocus(target, active)) return
-      ;(active as HTMLElement).blur()
+      const touch = event.touches?.[0]
+      began = { x: touch?.clientX ?? 0, y: touch?.clientY ?? 0, active: active as HTMLElement }
     },
-    { capture: true, passive: true }
+    options
+  )
+
+  plugin.registerDomEvent(
+    document,
+    'touchend',
+    (event) => {
+      const tap = began
+      began = null
+      if (!tap) return
+      const touch = event.changedTouches?.[0]
+      if (touch && Math.hypot(touch.clientX - tap.x, touch.clientY - tap.y) > TAP_SLOP_PX) return
+      // Still the field that was focused when the finger landed — a press on another field
+      // in between has already moved the focus itself.
+      if (document.activeElement !== tap.active) return
+      tap.active.blur()
+    },
+    options
+  )
+
+  plugin.registerDomEvent(
+    document,
+    'touchcancel',
+    () => {
+      began = null
+    },
+    options
   )
 }
