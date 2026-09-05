@@ -160,3 +160,13 @@ another device: one line beginning `ABL1:`, holding the settings the person tick
 Transfer tab, compressed and — if a key went with them — encrypted. They are not notes, they
 are not content, and nothing reads them except the Transfer tab on the receiving device. Leave
 them alone; the person deletes them when the transfer has landed.
+
+## Screenshots
+
+Every picture the `screenshot` tool takes — of a note, or of the visible part of a script view —
+is written to the attachments folder as `Screenshot <what> <YYYY-MM-DD HH-mm-ss>.png`, the
+same folder generated images go to. That is what lets the chat show the picture under the tool
+call, so the person sees what the agent saw. They are ordinary image files: nothing reads them
+back except the chat that made them, and nothing deletes them — one more each time the tool is
+called. A person who does not want them keeping is the one who removes them, like any other
+attachment.
