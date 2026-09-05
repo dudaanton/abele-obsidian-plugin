@@ -27,7 +27,8 @@ function stripOf(view: ReturnType<typeof mount>) {
   strip.getBoundingClientRect = () => rect(0, 300)
   const chips = view.findAll('.abele-chat-tabs__chip').map((c) => c.element as HTMLElement)
   chips.forEach((chip, i) => {
-    chip.getBoundingClientRect = () => rect(i * 100 - strip.scrollLeft, (i + 1) * 100 - strip.scrollLeft)
+    chip.getBoundingClientRect = () =>
+      rect(i * 100 - strip.scrollLeft, (i + 1) * 100 - strip.scrollLeft)
   })
   return strip
 }
