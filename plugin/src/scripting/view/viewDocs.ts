@@ -127,7 +127,7 @@ one handler, not one per pass.
 | Class | Props |
 |---|---|
 | \`Stack(children \\| { children, gap? })\` | \`gap\`: \`none\` \`small\` \`medium\` (default) \`large\`. A column. |
-| \`Row(children \\| { children, gap?, align?, wrap? })\` | \`align\`: \`start\` (default) \`center\` \`end\` \`between\`; \`wrap\` default true. |
+| \`Row(children \\| { children, gap?, justify?, wrap? })\` | \`justify\`: where the children sit along the row — \`start\` (default) \`center\` \`end\` \`between\`. Items are already centred vertically; \`justify: 'center'\` puts a toolbar in the middle of the screen, which is rarely wanted. \`wrap\` default true. |
 | \`Grid(children \\| { children, wide?, stack? })\` | Cards in a responsive grid. \`wide\` for fewer, wider columns; \`stack\` for one column. |
 | \`Section({ title?, desc?, children })\` | A titled block. |
 | \`Tabs({ tabs, active?, onChange? })\` | \`tabs: [{ id, label, icon?, tooltip?, content }]\`, \`content\` a node or an array. \`active\` is reactive and defaults to the first tab. |
@@ -142,9 +142,9 @@ v.body = new Stack([new Section({ title: 'Today', desc: 'What is due', children:
 
 | Class | Props |
 |---|---|
-| \`Markdown(text \\| { text?, file?, filePath?, onClick? })\` | Obsidian's own renderer: links, images and \`![[embeds]]\` all work. \`file\` renders that note and re-renders when it changes; \`filePath\` is what relative links in \`text\` resolve against. |
+| \`Markdown(text \\| { text?, file?, filePath?, onClick? })\` | Obsidian's own renderer: links, images, \`![[embeds]]\` and \`::abele-gallery::\` blocks all work. \`file\` renders that note and re-renders when it changes; \`filePath\` is what relative links in \`text\` resolve against — give it the note's path when \`text\` came out of a note. |
 | \`Text(text \\| { text, muted?, small? })\` | A paragraph. |
-| \`Image({ src, alt?, fit?, onClick? })\` | \`src\` is a vault path or a URL; \`fit\`: \`contain\` (default) \`cover\` \`natural\`. |
+| \`Image({ src, alt?, fit?, onClick? })\` | \`src\` is a vault path, the name a note links a file by (\`poster.jpg\`, as in \`![[poster.jpg]]\`) or a URL; \`fit\`: \`contain\` (default) \`cover\` \`natural\`. |
 | \`Table({ columns, rows, onRowClick? })\` | \`columns: string[] \\| { key, label }[]\`; \`rows: (string \\| node)[][] \\| Record<string, string \\| node>[]\`. |
 | \`Badge(text \\| { text, accent? })\` | A small label. |
 | \`EmptyState(text)\` | What to say when there is nothing to show. |
@@ -178,7 +178,7 @@ declares one of them itself (\`const view = …\`) fails to start with a message
 | \`Select({ options, value?, onChange? })\` | \`options: string[] \\| { value, label }[]\`; \`value\` defaults to the first. | \`change\` |
 | \`Checkbox({ checked?, label?, onChange? })\` | | \`change\` |
 | \`Search({ value?, placeholder?, suggest?, onChange? })\` | \`suggest\`: \`file\` \`folder\` — Obsidian's own suggester. | \`change\` |
-| \`Card({ title?, subtitle?, description?, meta?, badges?, actions?, children?, selected?, onClick? })\` | Clickable when it has a click handler. \`badges\` are \`Badge\` nodes, \`actions\` are nodes. | \`click\` |
+| \`Card({ title?, cover?, large?, subtitle?, description?, meta?, badges?, actions?, children?, selected?, onClick? })\` | Clickable when it has a click handler. \`cover\` is a picture across the top (path, link name or URL); \`large\` makes the title a heading and the description body text — a post in a feed rather than a tile in a grid. \`badges\` are \`Badge\` nodes next to the title, \`actions\` are nodes in the top-right corner, \`children\` come after the description. | \`click\` |
 
 \`\`\`js
 const query = new Input({ placeholder: 'Search', onEnter: () => search(query.value) })
@@ -200,6 +200,8 @@ catalogue does not cover.
   element. The script's markup and the kit compose.
 - \`onMount(el)\` — the root element after insertion, for anything else. \`el\` is real DOM, in the
   leaf's own window.
+- \`<img src="Attachments/a.jpg">\` and the other media elements: a \`src\` that is a vault path or
+  a link name is turned into a URL the browser can load. A URL is left alone.
 
 ---
 
@@ -229,6 +231,41 @@ v.style(\`.post { border-left: 3px solid var(--interactive-accent); padding-left
 - Obsidian's variables reach in. Use them — \`var(--text-muted)\`, \`var(--size-4-2)\`,
   \`var(--interactive-accent)\`, \`var(--background-modifier-border)\` — rather than colours and
   pixels of your own, so the view follows the user's theme.
+
+---
+
+## Making it look right
+
+The kit is what makes a view look like the rest of Obsidian. Every time a script draws its own
+version of something the kit has, the result is a different size, a different colour and a
+different shape from the button beside it. The rules the plugin holds itself to:
+
+- **A node from the catalogue before your own markup.** \`Html\` is for a layout the catalogue
+  lacks — a timeline, a grid of tiles, a two-column spread — and for nothing else. Inside it,
+  put the kit's nodes into slots with \`children\`: \`children: { '.actions': new Row([open, later]) }\`.
+- **Never a bare \`<button>\`.** Obsidian styles every \`<button>\` itself, and its rule beats
+  yours, so a hand-drawn button comes out a different size from a \`Button\`. The same goes for
+  \`<input>\` and \`<select>\`: use \`Input\`, \`Select\`, \`Search\`.
+- **One accent per group of buttons.** \`accent: true\` marks the one action the person came
+  for; the others stay plain. \`warning\` is for an action that destroys something.
+- **A feed or a list of notes is \`Card\`s in a \`Stack\`.** \`cover\` for the picture, \`large\` for
+  a post, \`badges\` for tags, \`description\` for an excerpt or a \`Markdown\` child for the
+  rendered text, a \`Row\` of \`Button\`s among the \`children\` for what can be done with it.
+  \`Grid\` is for tiles that sit side by side.
+- **Ask \`noteInfo(path)\` for what a note is.** It returns the title, the dates, the tags, the
+  cover as a real vault path, the body without frontmatter, the prose without markup and an
+  excerpt of it. Cutting frontmatter and pictures out of \`read()\` by hand is how a card ends
+  up showing \`::abele-gallery::\` as text and a broken image where the poster should be.
+- **No sizes or colours of your own.** Obsidian's variables — \`var(--size-4-2)\`,
+  \`var(--text-muted)\`, \`var(--radius-m)\`, \`var(--font-ui-small)\` — follow the theme; a
+  \`18px\` radius and a \`#333\` do not. A picture's height is the picture's own: \`Image\`
+  and \`Card\`'s \`cover\` size themselves, and a box with \`height: 42vh\` around one is a
+  grey wall when the picture is missing.
+- **A toolbar starts at the left.** \`Row\` already lines its children up; \`justify: 'center'\`
+  moves the whole toolbar to the middle of the screen. Group the controls that belong
+  together in one \`Row\`, with \`gap: 'small'\`, and let it wrap.
+- **Look at it.** \`inspect_view\` shows the tree you built; the person sees the screen. When
+  something has to be exact, ask them for a screenshot.
 
 ---
 
@@ -278,22 +315,44 @@ Output is cut at 15 000 characters — inspect a smaller view, or reach one node
 
 ## Examples
 
-### A feed with the script's own markup
+### A feed of notes
 
 \`\`\`js
 // @name Feed
-// @description Posts as a timeline
-const paths = await find({ property: 'type', value: 'post' })
-const v = view({ title: 'Feed' })
-v.style(\`.post { border-left: 3px solid var(--interactive-accent); padding-left: var(--size-4-3); }\`)
-v.body = new Stack(paths.map((p) => new Html({
-  html: \`<article class="post"><h3>\${p}</h3><div class="body"></div><button data-open>Open</button></article>\`,
-  children: { '.body': new Markdown({ file: p }) },
-  on: { 'click [data-open]': () => open(p) },
-})))
+// @description Posts as a timeline, newest first
+const paths = await find({ property: 'type', value: 'post', limit: 200 })
+const notes = await Promise.all(paths.map((p) => noteInfo(p)))
+notes.sort((a, b) => b.created.localeCompare(a.created))
+
+const v = view({ title: 'Feed', icon: 'newspaper' })
+const post = (n) =>
+  new Card({
+    title: n.title,
+    large: true,
+    cover: n.cover ?? undefined,
+    subtitle: dayjs(n.created).format('D MMM YYYY'),
+    badges: n.tags.slice(0, 3).map((t) => new Badge(t)),
+    description: n.excerpt,
+    meta: [n.folder, \`\${n.words} words\`],
+    children: [
+      new Row({
+        gap: 'small',
+        children: [
+          new Button({ text: 'Open', icon: 'file-text', accent: true, onClick: () => open(n.path) }),
+          new Button({ text: 'Later', icon: 'clock', onClick: () => (v.state.later = [...(v.state.later ?? []), n.path]) }),
+        ],
+      }),
+    ],
+  })
+v.body = new Stack({ gap: 'large', children: notes.map(post) })
 v.on('vault', (e) => { if (e.path.endsWith('.md')) notice('Feed is stale: ' + e.path) })
-await v.open({ where: 'split' })
+await v.open()
 \`\`\`
+
+Everything on the card is the kit's: the buttons are the same buttons as the rest of the
+plugin, the cover is a real vault path, and the excerpt has no frontmatter or gallery marker
+in it, because \`noteInfo\` took those off. For the whole note rendered — links, pictures,
+galleries — put \`new Markdown({ text: n.body, filePath: n.path })\` among the children.
 
 ### A dashboard that refreshes as the vault changes
 

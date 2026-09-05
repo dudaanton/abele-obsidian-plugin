@@ -62,6 +62,7 @@ const SCRIPT_GLOBALS = [
   'replace',
   'open',
   'setCover',
+  'noteInfo',
   'agent',
   'agents',
   'form',

@@ -5,7 +5,7 @@
   <Teleport
     v-for="gallery in galleriesContainers"
     :key="gallery.id"
-    :to="`[data-gallery-id='${gallery.id}']`"
+    :to="gallery.mountEl ?? `[data-gallery-id='${gallery.id}']`"
   >
     <GalleryView :gallery="gallery as Gallery" />
   </Teleport>

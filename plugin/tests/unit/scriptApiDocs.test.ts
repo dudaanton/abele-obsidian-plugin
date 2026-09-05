@@ -25,6 +25,7 @@ describe('the script API reference', () => {
     expect(SCRIPT_API_DOCS).toContain('// @name My Script Name')
     expect(SCRIPT_API_DOCS).toContain('`read(path)`')
     expect(SCRIPT_API_DOCS).toContain('`show(markdown, title?)`')
+    expect(SCRIPT_API_DOCS).toContain('`noteInfo(path)`')
   })
 })
 
@@ -57,6 +58,12 @@ describe('the view reference', () => {
       'every(',
       'open(',
       'sanitizeHTMLToDom',
+      // What the first feed a script drew got wrong, each now said in so many words.
+      'cover?',
+      'large?',
+      'justify?',
+      'Never a bare `<button>`',
+      'noteInfo(path)',
     ]) {
       expect(SCRIPT_VIEW_DOCS).toContain(member)
     }

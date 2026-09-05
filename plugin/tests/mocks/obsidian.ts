@@ -48,6 +48,56 @@ export const editorInfoField = StateField.define<{ file: TFile | null }>({
   update: (value) => value,
 })
 
+/**
+ * A context menu that is built and never shown: what `useMenu` needs to exist for a component
+ * with a menu button to mount. The choices are kept so a test can read what would be offered.
+ */
+export class MenuItem {
+  title = ''
+  icon = ''
+  handler: (() => void) | null = null
+  setTitle(title: string): this {
+    this.title = title
+    return this
+  }
+  setIcon(icon: string): this {
+    this.icon = icon
+    return this
+  }
+  setDisabled(): this {
+    return this
+  }
+  onClick(handler: () => void): this {
+    this.handler = handler
+    return this
+  }
+}
+
+export class Menu {
+  items: MenuItem[] = []
+  setUseNativeMenu(): this {
+    return this
+  }
+  addItem(build: (item: MenuItem) => void): this {
+    const item = new MenuItem()
+    build(item)
+    this.items.push(item)
+    return this
+  }
+  addSeparator(): this {
+    return this
+  }
+  showAtPosition(): this {
+    return this
+  }
+  showAtMouseEvent(): this {
+    return this
+  }
+  hide(): this {
+    return this
+  }
+}
+
 export class Notice {
   /**
    * Every notice raised, in order. A notice is often the whole of what a code path does for
@@ -554,6 +604,13 @@ export class Component {
   }
   register(): void {}
   registerEvent(): void {}
+}
+
+/** A component that owns an element; a post-processor hands one to `ctx.addChild`. */
+export class MarkdownRenderChild extends Component {
+  constructor(public containerEl: HTMLElement) {
+    super()
+  }
 }
 
 /**

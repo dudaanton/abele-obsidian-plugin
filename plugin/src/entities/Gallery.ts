@@ -11,26 +11,47 @@ import { TFile } from 'obsidian'
 
 export class Gallery {
   public readonly id: string
-  public readonly file: TFile
+  /** The note this gallery is in, when it is a file; a rendered string of markdown has none. */
+  public readonly file: TFile | null
+  /** What image links resolve against when there is no file — the renderer's source path. */
+  private readonly sourcePath: string
+  /**
+   * Where the component mounts, when the caller has the element in hand. The editor widget
+   * is found by its id in the document instead; a renderer working in a detached element
+   * would not be, so it hands the element over.
+   */
+  public readonly mountEl: HTMLElement | null
   public readonly images: GalleryImageEntry[]
   public readonly layout: string
   public readonly height: number
   public readonly bg: boolean
+  /**
+   * Drawn where there is no editor to write back to — reading mode, an embed, a script view.
+   * The pictures and the viewer work; the header's add, edit, settings and delete do not exist,
+   * rather than sitting there and doing nothing.
+   */
+  public readonly readonly: boolean
 
   /** Current file path (follows renames via TFile reference) */
   get filePath(): string {
-    return this.file.path
+    return this.file?.path ?? this.sourcePath
   }
 
   constructor(data: {
     id?: string
-    file: TFile
+    file: TFile | null
+    sourcePath?: string
     images: GalleryImageEntry[]
     layout: string
     height: number
     bg: boolean
+    readonly?: boolean
+    mountEl?: HTMLElement | null
   }) {
     this.id = data.id || genid()
+    this.readonly = data.readonly ?? false
+    this.sourcePath = data.sourcePath ?? data.file?.path ?? ''
+    this.mountEl = data.mountEl ?? null
     this.file = data.file
     this.images = data.images
     this.height = data.height

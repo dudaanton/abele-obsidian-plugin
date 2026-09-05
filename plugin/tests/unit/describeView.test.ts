@@ -36,7 +36,12 @@ describe('describeView', () => {
     v.state.index = 3
     v.body = [
       new Row([new Badge('4 / 20')]),
-      new Card({ title: 'Word', children: [new Markdown('der Hund — the dog')] }),
+      new Card({
+        title: 'Word',
+        cover: 'poster.jpg',
+        large: true,
+        children: [new Markdown('der Hund — the dog')],
+      }),
       new Row([
         new Button({ text: 'Flip', accent: true, id: 'flip' }),
         new Button({ text: 'Next', icon: 'arrow-right', disabled: true }),
@@ -69,7 +74,7 @@ describe('describeView', () => {
       `View "Flashcards · German" — script "Flashcards", params {"deck":"German"}, state {"index":3}
 Row
   Badge "4 / 20"
-Card "Word"
+Card "Word" cover=poster.jpg large
   Markdown "der Hund — the dog"
 Row
   Button "Flip" accent #flip

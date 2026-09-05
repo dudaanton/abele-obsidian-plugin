@@ -260,6 +260,11 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     const candidates = byBasename.get(bare)
     if (candidates && candidates.length === 1) return candidates[0]
 
+    // `![[poster.jpg]]` names an attachment by its file name, extension and all, and
+    // Obsidian finds it in whichever folder it sits in. Same shortest-path rule as above.
+    const named = files.filter((f) => f.name === linkpath || f.path.endsWith('/' + linkpath))
+    if (named.length === 1) return named[0]
+
     return null
   }
 

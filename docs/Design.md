@@ -14,7 +14,7 @@ not invent its own.
 | `Setting` | One labelled row: name, description, control. The backbone of every settings screen. |
 | `Section` | A heading with an optional description, wrapping a group of rows. |
 | `Tabs` | Any tab strip — top-level settings navigation, a sub-navigation, a chart switcher. |
-| `Card` / `CardGrid` | A repeated item you can click into: a model, an agent, a stored secret. |
+| `Card` / `CardGrid` | A repeated item you can click into: a model, an agent, a stored secret. `cover` puts a picture across the top and `large` makes the title a heading, for a post in a feed. |
 | `Badge` | A short status word attached to a card or a title. |
 | `EmptyState` | What a list says when it has nothing in it. |
 | `Button` | Anything the user presses that carries a word. |

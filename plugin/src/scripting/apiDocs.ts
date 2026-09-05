@@ -71,6 +71,27 @@ use what comes back, not the string you passed.
 | \`replace(path, actions)\` | \`string\` | Apply replacement actions to a file (see below) |
 | \`open(path)\` | — | Open a file in the Obsidian editor |
 | \`setCover(notePath, mediaPath?)\` | — | Set cover image for a note. If mediaPath omitted, uses first media embed in note. Handles video thumbnails automatically |
+| \`noteInfo(path)\` | \`object\` | What a note is, ready for a card (see below) |
+
+### noteInfo(path)
+
+Everything a script wants to know about a note before it shows it, without parsing the file:
+
+\`\`\`js
+const n = await noteInfo('Notes/Aftersun.md')
+// n.path, n.name, n.folder            — where it is
+// n.title                             — frontmatter \`title\`, else the file name
+// n.frontmatter, n.tags               — properties as objects; tags without \`#\`, frontmatter and body together
+// n.created, n.modified               — ISO timestamps
+// n.cover                             — frontmatter \`cover\`, else the first image embed, as a vault path — or null
+// n.body                              — the markdown without frontmatter, for \`Markdown({ text: n.body, filePath: n.path })\`
+// n.text                              — the prose: no markup, embeds or \`::abele-gallery::\` markers, lines kept
+// n.excerpt                           — the first ~280 characters of \`text\`, cut at a word
+// n.words
+\`\`\`
+
+Use it for a feed, a deck, a list: \`read()\` gives the file as written, and a card built from
+that shows the frontmatter, the gallery marker and a link name where the picture should be.
 
 ### find(opts)
 

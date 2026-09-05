@@ -30,6 +30,7 @@ import {
 import { TemplateService } from './templates/TemplateService'
 import { taskStateField } from './editor/TaskPlugin'
 import { galleryExtensions } from './editor/GalleryPlugin'
+import { galleryPostProcessor } from './editor/galleryPostProcessor'
 import { footnoteExtensions } from './editor/FootnotePlugin'
 import { highlightStateField } from './editor/HighlightPlugin'
 import {
@@ -279,6 +280,8 @@ export default class AbelePlugin extends Plugin {
     this.registerEditorExtension(footnoteExtensions)
     this.registerEditorExtension(highlightStateField)
     this.registerEditorExtension(commentExtensions)
+    // The gallery outside the editor: reading mode, embeds, chat, script views.
+    this.registerMarkdownPostProcessor(galleryPostProcessor)
 
     // this.registerPriorityCodeblockPostProcessor(
     //   TASK_CODEBLOCK_KEYWORD,

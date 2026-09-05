@@ -1,13 +1,20 @@
 <template>
   <div
     class="abele-card"
-    :class="{ 'abele-card_clickable': clickable, 'abele-card_selected': selected }"
+    :class="{
+      'abele-card_clickable': clickable,
+      'abele-card_selected': selected,
+      'abele-card_large': large,
+    }"
     :aria-pressed="selected === undefined ? undefined : selected"
     :role="clickable ? 'button' : undefined"
     :tabindex="clickable ? 0 : undefined"
     @click="clickable && emit('click')"
     @keydown.enter.prevent="clickable && emit('click')"
   >
+    <div v-if="cover" class="abele-card__cover">
+      <Image :src="cover" :alt="title" fit="cover" class="abele-card__cover-image" />
+    </div>
     <div class="abele-card__head">
       <div class="abele-card__title">
         <span class="abele-card__name">{{ title }}</span>
@@ -42,9 +49,15 @@
  * prop to `false`, and a card nobody is choosing between would then announce itself as an
  * unpressed button to anyone using a screen reader.
  */
+import Image from './Image.vue'
+
 withDefaults(
   defineProps<{
     title: string
+    /** A picture across the top, edge to edge: a note's cover, a poster, a photo in a feed. Vault path, link name or URL. */
+    cover?: string
+    /** For a card that is the thing itself rather than one of a grid — a post in a feed. The title is a heading. */
+    large?: boolean
     /** A secondary identifier — a model id, a path. Rendered in the monospace face. */
     subtitle?: string
     description?: string
@@ -56,7 +69,13 @@ withDefaults(
     /** For a card that is one of several being picked from. */
     selected?: boolean
   }>(),
-  { subtitle: undefined, description: undefined, meta: undefined, selected: undefined }
+  {
+    cover: undefined,
+    subtitle: undefined,
+    description: undefined,
+    meta: undefined,
+    selected: undefined,
+  }
 )
 
 const emit = defineEmits<{
@@ -91,6 +110,31 @@ const emit = defineEmits<{
 .abele-card_selected {
   border-color: var(--interactive-accent);
   background-color: var(--background-modifier-hover);
+}
+
+/**
+ * Edge to edge, above the padded content: the negative margins undo the card's padding, and
+ * the top corners follow the card's own radius so the picture does not poke out of it.
+ */
+.abele-card__cover {
+  margin: calc(-1 * var(--size-4-3)) calc(-1 * var(--size-4-3)) var(--size-4-2);
+  overflow: hidden;
+  border-radius: var(--radius-m) var(--radius-m) 0 0;
+}
+
+.abele-card__cover-image {
+  max-height: 60vh;
+  border-radius: 0;
+}
+
+.abele-card_large .abele-card__name {
+  font-size: var(--font-ui-large);
+  line-height: var(--line-height-tight);
+}
+
+.abele-card_large .abele-card__description {
+  font-size: var(--font-ui-medium);
+  color: var(--text-normal);
 }
 
 /** Wraps rather than pushing the actions off the edge when the card is phone-width. */

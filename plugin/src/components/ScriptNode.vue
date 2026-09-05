@@ -13,7 +13,7 @@
       class="abele-script-node__row"
       :class="[
         `abele-script-node__row_gap-${n.gap}`,
-        `abele-script-node__row_align-${n.align}`,
+        `abele-script-node__row_justify-${n.justify}`,
         { 'abele-script-node__row_nowrap': !n.wrap },
         n.cls,
       ]"
@@ -169,6 +169,8 @@
     <Card
       v-else-if="n.type === 'card'"
       :title="n.title ?? ''"
+      :cover="n.cover"
+      :large="n.large"
       :subtitle="n.subtitle"
       :description="n.description"
       :meta="n.meta"
@@ -414,15 +416,15 @@ if (n.type === 'markdown') {
   gap: var(--size-4-4);
 }
 
-.abele-script-node__row_align-center {
+.abele-script-node__row_justify-center {
   justify-content: center;
 }
 
-.abele-script-node__row_align-end {
+.abele-script-node__row_justify-end {
   justify-content: flex-end;
 }
 
-.abele-script-node__row_align-between {
+.abele-script-node__row_justify-between {
   justify-content: space-between;
 }
 

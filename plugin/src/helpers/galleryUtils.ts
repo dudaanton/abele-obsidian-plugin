@@ -116,3 +116,45 @@ export function buildImageLine(entry: GalleryImageEntry): string {
   }
   return `![${entry.description || ''}](${entry.path})`
 }
+
+/** One gallery in a note: the header line, the image lines under it, and what the header asked for. */
+export interface GalleryTextBlock extends GalleryOptions {
+  /** Zero-based line of the `::abele-gallery::` header. */
+  headerLine: number
+  /** Zero-based line of the last image, or the header's own line when it has none. */
+  lastLine: number
+  images: GalleryImageEntry[]
+}
+
+/**
+ * Every gallery block in a note's lines.
+ *
+ * A block is the header and the image lines that follow it; blank lines between images are
+ * part of the block, anything else ends it. The editor extension and the reading-mode
+ * post-processor both work from this, so a gallery is the same set of lines wherever it is
+ * drawn.
+ */
+export function findGalleryBlocks(lines: string[]): GalleryTextBlock[] {
+  const blocks: GalleryTextBlock[] = []
+  let i = 0
+  while (i < lines.length) {
+    const header = parseGalleryHeader(lines[i])
+    if (!header) {
+      i++
+      continue
+    }
+    const images: GalleryImageEntry[] = []
+    let lastLine = i
+    for (let j = i + 1; j < lines.length; j++) {
+      const trimmed = lines[j].trim()
+      if (trimmed === '') continue
+      const image = parseImageLine(trimmed)
+      if (!image) break
+      images.push(image)
+      lastLine = j
+    }
+    blocks.push({ ...header, headerLine: i, lastLine, images })
+    i = lastLine + 1
+  }
+  return blocks
+}

@@ -2,7 +2,7 @@ import { EditorSelection, Prec, StateField, RangeSetBuilder, EditorState } from 
 import { Decoration, DecorationSet, EditorView, keymap } from '@codemirror/view'
 import { editorLivePreviewField, editorInfoField } from 'obsidian'
 import { GalleryWidget } from './GalleryWidget'
-import { parseGalleryHeader, parseImageLine, GalleryImageEntry } from '@/helpers/galleryUtils'
+import { findGalleryBlocks as findGalleryTextBlocks, GalleryImageEntry } from '@/helpers/galleryUtils'
 import { rangesOverlap } from '@/helpers/editorHelpers'
 
 interface GalleryBlock {
@@ -16,55 +16,21 @@ interface GalleryBlock {
 }
 
 function findGalleryBlocks(state: EditorState): GalleryBlock[] {
-  const blocks: GalleryBlock[] = []
+  const lines: string[] = []
+  for (let i = 1; i <= state.doc.lines; i++) lines.push(state.doc.line(i).text)
 
-  let i = 1
-  while (i <= state.doc.lines) {
-    const line = state.doc.line(i)
-    const header = parseGalleryHeader(line.text)
-
-    if (!header) {
-      i++
-      continue
+  return findGalleryTextBlocks(lines).map((block) => {
+    const header = state.doc.line(block.headerLine + 1)
+    return {
+      headerFrom: header.from,
+      headerTo: header.to,
+      blockTo: state.doc.line(block.lastLine + 1).to,
+      images: block.images,
+      layout: block.layout,
+      height: block.height,
+      bg: block.bg,
     }
-
-    const images: GalleryImageEntry[] = []
-    let endLine = i
-    let j = i + 1
-
-    while (j <= state.doc.lines) {
-      const nextLine = state.doc.line(j)
-      const trimmed = nextLine.text.trim()
-
-      if (trimmed === '') {
-        j++
-        continue
-      }
-
-      const image = parseImageLine(trimmed)
-      if (image) {
-        images.push(image)
-        endLine = j
-        j++
-      } else {
-        break
-      }
-    }
-
-    blocks.push({
-      headerFrom: line.from,
-      headerTo: line.to,
-      blockTo: state.doc.line(endLine).to,
-      images,
-      layout: header.layout,
-      height: header.height,
-      bg: header.bg,
-    })
-
-    i = endLine + 1
-  }
-
-  return blocks
+  })
 }
 
 function buildGalleryDecorations(state: EditorState): DecorationSet {
