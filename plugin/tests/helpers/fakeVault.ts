@@ -275,26 +275,28 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
   }
 
   /**
-   * The spelling this disk actually holds for a name, or null when it holds none.
-   *
-   * The fallback is case-insensitive, which is what makes this a stand-in for macOS and
-   * Windows rather than for ext4: `note.md` finds `Note.md`, and code that means to tell a
-   * case-only rename from a collision cannot lean on a lookup to do it.
+   * How this disk compares two names when it has no exact match: case-insensitively and
+   * whichever way they are composed. That is macOS and Windows, not ext4 — and it is what
+   * stops code that means to tell a case-only rename from a collision leaning on a lookup,
+   * and what lets a decomposed name on disk answer to the composed one Obsidian lists.
    */
+  const fold = (path: string): string => path.normalize('NFC').toLowerCase()
+
+  /** The spelling this disk actually holds for a name, or null when it holds none. */
   const actualPath = (path: string): string | null => {
     if (disk.has(path) || byPath.has(path)) return path
-    const key = path.toLowerCase()
-    for (const held of disk.keys()) if (held.toLowerCase() === key) return held
-    for (const held of byPath.keys()) if (held.toLowerCase() === key) return held
+    const key = fold(path)
+    for (const held of disk.keys()) if (fold(held) === key) return held
+    for (const held of byPath.keys()) if (fold(held) === key) return held
     return null
   }
 
   const actualFolder = (path: string): string | null => {
     const folder = path === '/' ? '' : path
     if (diskFolders.has(folder) || folders.has(folder)) return folder
-    const key = folder.toLowerCase()
-    for (const held of diskFolders) if (held.toLowerCase() === key) return held
-    for (const held of folders.keys()) if (held.toLowerCase() === key) return held
+    const key = fold(folder)
+    for (const held of diskFolders) if (fold(held) === key) return held
+    for (const held of folders.keys()) if (fold(held) === key) return held
     return null
   }
 
@@ -776,7 +778,13 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
           for (const held of byPath.keys()) consider(held, false)
           for (const held of diskFolders) consider(held, true)
           for (const held of folders.keys()) consider(held, true)
-          return { files: [...listedFiles], folders: [...listedFolders] }
+          // Obsidian composes every name it lists, whatever the volume keeps underneath, so
+          // a decomposed name on disk is listed composed and found again by `stat`.
+          const composed = (held: string): string => held.normalize('NFC')
+          return {
+            files: [...listedFiles].map(composed),
+            folders: [...listedFolders].map(composed),
+          }
         },
 
         async readBinary(path: string) {

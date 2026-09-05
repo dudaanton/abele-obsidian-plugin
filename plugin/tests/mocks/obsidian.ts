@@ -163,7 +163,6 @@ export class Notice {
 
 export type EventRef = { id: string }
 
-/** Mirrors Obsidian's own `normalizePath` closely enough for path handling tests. */
 /** The app's language; the tests run in English. */
 export function getLanguage(): string {
   return 'en'
@@ -180,11 +179,22 @@ export function getAllTags(cache: {
   return [...own, ...(cache.tags ?? []).map((t) => t.tag)]
 }
 
+/**
+ * Mirrors Obsidian's own `normalizePath`: backslashes become slashes, runs of slashes
+ * collapse into one, the outer ones go, a non-breaking or narrow no-break space becomes an
+ * ordinary space, and the result is composed.
+ *
+ * The last two matter. They are why nothing in `ObsidianFileSystem` calls this function on a
+ * path the engine handed it — a name would come back spelled differently from the one the
+ * ledger holds — and a mock that only collapsed slashes could not tell anyone who put it back.
+ */
 export function normalizePath(path: string): string {
   return path
+    .replace(/[\u00a0\u202f]/g, ' ')
     .replace(/\\/g, '/')
     .replace(/\/{2,}/g, '/')
     .replace(/^\/|\/$/g, '')
+    .normalize('NFC')
 }
 
 export function stringifyYaml(value: unknown): string {

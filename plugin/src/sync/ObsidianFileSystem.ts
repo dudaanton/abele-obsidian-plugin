@@ -1,4 +1,4 @@
-import { normalizePath, TFolder } from 'obsidian'
+import { TFolder } from 'obsidian'
 import type { App, DataAdapter, EventRef, ListedFiles, Stat, TAbstractFile } from 'obsidian'
 import { EngineError, type FileInfo, type FileSystem } from '@abele/sync-core'
 
@@ -8,6 +8,12 @@ const WATCH_DEBOUNCE_MS = 300
 const WATCH_MAX_WAIT_MS = 2000
 /** How often the config folder is looked at, since no vault event describes it. */
 const DEFAULT_POLL_MS = 30000
+/**
+ * How deep the config walk goes. `.obsidian/plugins/<id>/…` is four; a plugin developer's
+ * symlink into `node_modules`, or one pointing at an ancestor, has no bottom at all, and
+ * `adapter.list` follows a link without saying it did.
+ */
+const CONFIG_WALK_DEPTH = 32
 
 export interface ObsidianFileSystemOptions {
   /** How often the config folder is polled; 30 s by default. */
@@ -37,6 +43,13 @@ export interface ObsidianFileSystemOptions {
  * Names are passed through exactly as Obsidian reports them, because that spelling is what
  * `move` and `remove` have to name later; the engine folds a path to NFC itself when it puts
  * it on the wire.
+ *
+ * Which is why `normalizePath` is nowhere in this file, though every `DataAdapter` method
+ * asks for a normalized path. It folds a name to NFC and turns a non-breaking space into an
+ * ordinary one — so a pulled `Trip A<nbsp>B.md` would be written under a name the ledger does
+ * not hold and `list` would report the other one for ever, and on a filesystem that keeps
+ * what it is given, a decomposed name would simply not be found. The engine validates the
+ * paths it hands over; they go to the adapter exactly as they came.
  */
 export class ObsidianFileSystem implements FileSystem {
   private readonly pollMs: number
@@ -77,72 +90,70 @@ export class ObsidianFileSystem implements FileSystem {
 
   async read(path: string): Promise<Uint8Array> {
     try {
-      return new Uint8Array(await this.adapter.readBinary(normalizePath(path)))
+      return new Uint8Array(await this.adapter.readBinary(path))
     } catch (cause) {
       throw new EngineError('io', `cannot read ${path}`, cause)
     }
   }
 
   async writeAtomic(path: string, bytes: Uint8Array, mtime: number): Promise<void> {
-    const target = normalizePath(path)
-    await this.onlyFileOrNothing(target, path)
-    await this.makeParents(target)
+    await this.onlyFileOrNothing(path)
+    await this.makeParents(path)
     try {
-      await this.adapter.writeBinary(target, bytesOf(bytes), { mtime })
+      await this.adapter.writeBinary(path, bytesOf(bytes), { mtime })
     } catch (cause) {
       throw new EngineError('io', `cannot write ${path}`, cause)
     }
   }
 
   async move(from: string, to: string): Promise<void> {
-    const source = normalizePath(from)
-    const target = normalizePath(to)
-    if (source === target) {
+    if (from === to) {
       if ((await this.stat(from)) === null) throw new EngineError('io', `no such file: ${from}`)
       return
     }
     // Neither end may be a folder: the engine believes it is moving a file onto a free name,
     // and a rename would happily carry a folder across or land inside one.
-    await this.onlyFileOrNothing(source, from)
-    await this.onlyFileOrNothing(target, to)
+    await this.onlyFileOrNothing(from)
+    await this.onlyFileOrNothing(to)
 
-    const standing = await this.rawStat(target)
+    const standing = await this.rawStat(to)
     if (standing !== null) {
       // A case-only rename on a case-folding disk finds the source under the target's own
       // spelling, and it must be renamed rather than refused (ruled 2026-09-05). The two are
       // told apart by their stats: one file answering to two names answers with itself.
-      if (!caseOnly(source, target) || !(await this.sameFile(source, standing))) {
-        throw new EngineError('io', `already exists: ${to}`)
+      if (!caseOnly(from, to) || !(await this.sameFile(from, standing))) {
+        // Somebody else's file holds the name. `conflict`, not `io`: the puller holds such a
+        // change and writes the reason in the log, where an `io` fails the whole sync and
+        // fails it again on every run until a human moves the file.
+        throw new EngineError('conflict', `${to} is held by another file`)
       }
-      await this.rename(source, target, from, to)
-      // POSIX lets a rename between two names of one file do nothing at all, and some mounts
-      // take it literally. Saying so beats reporting a spelling the disk never took.
-      if (!(await this.spelledExactly(target))) {
-        throw new EngineError('io', `this disk keeps ${from} spelled as it was`)
-      }
+      await this.rename(from, to)
+      if (await this.spelledExactly(to)) return
+      await this.respell(from, to)
       return
     }
-    await this.makeParents(target)
-    await this.rename(source, target, from, to)
+    await this.makeParents(to)
+    await this.rename(from, to)
   }
 
   async remove(path: string): Promise<void> {
-    const target = normalizePath(path)
-    const standing = await this.rawStat(target)
+    const standing = await this.rawStat(path)
     if (standing === null) return
     if (standing.type !== 'file') throw conflictAt(path, standing)
     try {
-      await this.adapter.remove(target)
+      await this.adapter.remove(path)
     } catch (cause) {
       // Two removes of one file race, or the user deleted it while this one was asked for.
-      if ((await this.rawStat(target)) === null) return
+      if ((await this.rawStat(path)) === null) return
       throw new EngineError('io', `cannot remove ${path}`, cause)
     }
   }
 
   async stat(path: string): Promise<FileInfo | null> {
-    const standing = await this.rawStat(normalizePath(path))
+    const standing = await this.rawStat(path)
     if (standing === null || standing.type !== 'file') return null
+    // The path that was statted, spelled as it was asked for: the engine matches what comes
+    // back against what it holds, and a name it did not ask about would be a different file.
     return { path, size: standing.size, mtime: stamp(standing.mtime) }
   }
 
@@ -171,7 +182,13 @@ export class ObsidianFileSystem implements FileSystem {
       const paths = [...pending]
       pending.clear()
       console.debug(`[abele-sync] the vault changed at ${paths.length} path(s)`)
-      cb(paths)
+      try {
+        cb(paths)
+      } catch (error) {
+        // Whoever is listening threw. The batch is spent either way — holding it back would
+        // report the same paths on every tick from here on.
+        console.debug('[abele-sync] a listener threw at a batch of changes', error)
+      }
     }
 
     const add = (paths: string[]): void => {
@@ -203,21 +220,32 @@ export class ObsidianFileSystem implements FileSystem {
       try {
         do {
           again = false
-          const taken = await this.configSnapshot()
-          if (stopped) return
-          if (seen !== null) {
-            const changed = changedBetween(seen, taken)
-            if (changed.length > 0) {
-              add(changed)
-              fire()
-            }
+          let taken: Map<string, string>
+          try {
+            taken = await this.configSnapshot()
+          } catch (error) {
+            // A folder that would not be listed is not a reason to say its files are gone.
+            console.debug('[abele-sync] cannot read the settings folder', error)
+            continue
           }
+          if (stopped) return
+          const before = seen
+          // Written down before anything is reported: a listener that throws must not leave
+          // the watcher holding the old snapshot and reporting the same batch for ever.
           seen = taken
+          if (before === null) continue
+          const changed = changedBetween(before, taken)
+          if (changed.length > 0) {
+            add(changed)
+            fire()
+          }
         } while (again)
       } finally {
         walking = false
       }
     }
+
+    const kick = (): void => void poll()
 
     const refs: EventRef[] = [
       this.app.vault.on('create', (file) => add(pathsOf(file))),
@@ -226,10 +254,10 @@ export class ObsidianFileSystem implements FileSystem {
       this.app.vault.on('rename', (file, oldPath) => add(pathsOf(file, oldPath))),
     ]
     // Obsidian rewrites its appearance settings and then says the CSS changed; that is the
-    // one moment it tells a plugin anything at all about the config folder.
-    const cssRef = this.app.workspace.on('css-change', () => this.kick())
+    // one moment it tells a plugin anything at all about the config folder. This watcher's
+    // own poll, not `this.kick()`, which is whichever watcher started last.
+    const cssRef = this.app.workspace.on('css-change', kick)
 
-    const kick = (): void => void poll()
     this.pollNow = kick
     const ticker = window.setInterval(kick, this.pollMs)
     // The baseline, so the first tick reports what changed since watching began rather than
@@ -262,20 +290,51 @@ export class ObsidianFileSystem implements FileSystem {
 
   /* ── The disk underneath ─────────────────────────────────────────────── */
 
-  /** Every file under `folder`, depth first, ignoring what is not there to be listed. */
-  private async *walkConfig(folder: string): AsyncIterable<FileInfo> {
+  /**
+   * Every file under `folder`, depth first.
+   *
+   * A folder that is not there yields nothing — a fresh vault has no `plugins`, and one can
+   * go while it is being read. A folder that is there and would not be listed **throws**: a
+   * scan that took a failed listing for an empty folder would tell the server every settings
+   * file had been deleted, and the server would believe it.
+   *
+   * `adapter.list` follows a symbolic link without saying it did, so the walk carries a depth
+   * and the folders it has already been through: a plugin developer's link into
+   * `node_modules`, or one pointing at an ancestor, would otherwise never end.
+   */
+  private async *walkConfig(
+    folder: string,
+    depth = 0,
+    walked: Set<string> = new Set()
+  ): AsyncIterable<FileInfo> {
+    if (depth > CONFIG_WALK_DEPTH || walked.has(folder)) {
+      console.debug(`[abele-sync] not following ${folder} any further`)
+      return
+    }
+    walked.add(folder)
+
     let listed: ListedFiles
     try {
-      listed = await this.adapter.list(normalizePath(folder))
-    } catch {
-      // A vault whose config folder has been renamed, or a folder removed while it was read.
-      return
+      listed = await this.adapter.list(folder)
+    } catch (cause) {
+      // Asked only when the listing failed, which is the one moment the answer matters.
+      if (!(await this.there(folder))) return
+      throw new EngineError('io', `cannot list ${folder}`, cause)
     }
     for (const path of listed.files) {
       const info = await this.stat(path)
       if (info !== null) yield info
     }
-    for (const child of listed.folders) yield* this.walkConfig(child)
+    for (const child of listed.folders) yield* this.walkConfig(child, depth + 1, walked)
+  }
+
+  /** Whether the path is there; a question that cannot be answered is answered with yes. */
+  private async there(path: string): Promise<boolean> {
+    try {
+      return await this.adapter.exists(path)
+    } catch {
+      return true
+    }
   }
 
   /** path → `size:mtime` for the whole config folder, which is what a poll compares. */
@@ -301,13 +360,20 @@ export class ObsidianFileSystem implements FileSystem {
    * directory. Obsidian's adapter reports what a link points at rather than the link, so a
    * symlink to a folder arrives here as the folder — which is the answer that matters.
    */
-  private async onlyFileOrNothing(target: string, path: string): Promise<void> {
-    const standing = await this.rawStat(target)
+  private async onlyFileOrNothing(path: string): Promise<void> {
+    const standing = await this.rawStat(path)
     if (standing === null || standing.type === 'file') return
     throw conflictAt(path, standing)
   }
 
-  /** Whether two names are one file, as far as a stat can tell — see `move`. */
+  /**
+   * Whether two names are one file, as far as a stat can tell — see `move`.
+   *
+   * Obsidian's own rename refuses an existing destination except for a case-only rename on a
+   * case-insensitive volume, so the worst a stat collision can cost is a spurious error: two
+   * distinct files agreeing on type, size, mtime and ctime would be let through here and
+   * refused by the disk, never renamed one over the other.
+   */
   private async sameFile(source: string, standing: Stat): Promise<boolean> {
     const origin = await this.rawStat(source)
     return (
@@ -319,40 +385,105 @@ export class ObsidianFileSystem implements FileSystem {
     )
   }
 
-  /** Whether the folder holds this exact name, which is how a rename is known to have taken. */
+  /**
+   * Whether the folder holds this exact name, which is how a rename is known to have taken.
+   *
+   * Case matters, since case is the whole question; the decomposition does not, because
+   * Obsidian composes what it lists whatever the disk keeps underneath.
+   */
   private async spelledExactly(target: string): Promise<boolean> {
+    const wanted = target.normalize('NFC')
     try {
-      return (await this.adapter.list(folderOf(target))).files.includes(target)
+      const listed = await this.adapter.list(folderOf(target))
+      return listed.files.some((held) => held.normalize('NFC') === wanted)
     } catch {
       return false
     }
   }
 
-  /** Every folder above `target`, created top down. Obsidian's `mkdir` is not recursive. */
+  /**
+   * The folder a file goes in, made if it is not there.
+   *
+   * One `exists` and one `mkdir`: on the desktop `mkdir` is `fs.mkdir` with `recursive`, so
+   * it makes the whole chain, and walking the segments would cost a round trip each for a
+   * depth every write reaches. The chain is only walked when the one call did not do it,
+   * which is what a host whose `mkdir` makes one folder at a time would look like.
+   */
   private async makeParents(target: string): Promise<void> {
-    const segments = target.split('/')
-    segments.pop()
-    let folder = ''
-    for (const segment of segments) {
-      folder = folder === '' ? segment : `${folder}/${segment}`
-      if (await this.adapter.exists(folder)) continue
-      try {
-        await this.adapter.mkdir(folder)
-      } catch (cause) {
-        // Two writes into one new folder race; the loser is told it exists, which is what it
-        // asked for. Anything else is a folder that will not be made, and the write cannot go.
-        if (!(await this.adapter.exists(folder))) {
-          throw new EngineError('io', `cannot create the folder ${folder}`, cause)
-        }
-      }
+    const cut = target.lastIndexOf('/')
+    if (cut <= 0) return
+    const folder = target.slice(0, cut)
+    if (await this.adapter.exists(folder)) return
+    const failed = await this.tryMkdir(folder)
+    if (failed === null) return
+
+    let walked = ''
+    for (const segment of folder.split('/')) {
+      walked = walked === '' ? segment : `${walked}/${segment}`
+      await this.tryMkdir(walked)
+    }
+    if (!(await this.adapter.exists(folder))) {
+      throw new EngineError('io', `cannot create the folder ${folder}`, failed)
     }
   }
 
-  private async rename(source: string, target: string, from: string, to: string): Promise<void> {
+  /** Makes a folder; answers what went wrong, or null when the folder is there afterwards. */
+  private async tryMkdir(folder: string): Promise<unknown> {
     try {
-      await this.adapter.rename(source, target)
+      await this.adapter.mkdir(folder)
+      return null
     } catch (cause) {
+      // Two writes into one new folder race; the loser is told it exists, which is what it
+      // asked for.
+      return (await this.adapter.exists(folder)) ? null : cause
+    }
+  }
+
+  private async rename(from: string, to: string): Promise<void> {
+    try {
+      await this.adapter.rename(from, to)
+    } catch (cause) {
+      // A name taken between the look and the rename — by the user, or by Obsidian itself —
+      // is the puller's to hold rather than the sync's to fail on. Anything else is a disk
+      // that would not do it, which the engine should hear about as a failure.
+      if ((await this.rawStat(to)) !== null) {
+        throw new EngineError('conflict', `${to} is held by another file`, cause)
+      }
       throw new EngineError('io', `cannot move ${from} to ${to}`, cause)
+    }
+  }
+
+  /**
+   * The new spelling of a name the disk would not respell in one go.
+   *
+   * POSIX lets `rename` between two names of one file do nothing at all, and some mounts take
+   * it literally, so the file goes out to a name nothing holds and comes back under the
+   * spelling that was asked for. There is no half-written file to leave behind — a rename
+   * carries the whole thing or none of it — and a crash between the two steps leaves the
+   * bytes under the temp name, which the next scan reports as a file the server has not seen.
+   */
+  private async respell(from: string, to: string): Promise<void> {
+    const temp = `${to}.abele-sync-${Math.random().toString(36).slice(2, 10)}`
+    try {
+      await this.adapter.rename(from, temp)
+    } catch (cause) {
+      throw new EngineError('conflict', `cannot spell ${from} as ${to}`, cause)
+    }
+    try {
+      await this.adapter.rename(temp, to)
+    } catch (cause) {
+      // Back under the name it had, rather than leaving the vault holding a temp name. A
+      // disk that will not do that either leaves the bytes under the temp name, which the
+      // next scan reports as a file the server has not seen — nothing is lost.
+      try {
+        await this.adapter.rename(temp, from)
+      } catch {
+        console.debug(`[abele-sync] ${from} is left at ${temp}`)
+      }
+      throw new EngineError('conflict', `cannot spell ${from} as ${to}`, cause)
+    }
+    if (!(await this.spelledExactly(to))) {
+      throw new EngineError('conflict', `this disk keeps ${from} spelled as it was`)
     }
   }
 }
