@@ -9,15 +9,29 @@ import path from 'path'
 export default defineConfig({
   plugins: [vue()],
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, 'src'),
+    // An array rather than a map because one entry is a regular expression; the order is the
+    // order they are tried in, so the specific names come before the one-character `@`.
+    alias: [
+      // `tests/helpers/syncServer.ts` runs the real sync server from the sibling repo's
+      // sources rather than its build, so the two aliases the core's own vitest config
+      // declares have to hold here too: the protocol package, and whatever of the server a
+      // test helper imports (written with `.js`, as its ESM sources spell it).
+      {
+        find: '@abele/sync-protocol',
+        replacement: path.resolve(__dirname, '../../abele-sync/packages/protocol/src/index.ts'),
+      },
+      {
+        find: /^@abele\/sync-server\/(.*)\.js$/,
+        replacement: `${path.resolve(__dirname, '../../abele-sync/packages/server')}/$1.ts`,
+      },
+      { find: '@', replacement: path.resolve(__dirname, 'src') },
       // Production code imports the real plugin API; tests get the stand-in so that
       // `instanceof TFile` works against fixtures built by tests/helpers/fakeVault.ts.
-      obsidian: path.resolve(__dirname, 'tests/mocks/obsidian.ts'),
+      { find: 'obsidian', replacement: path.resolve(__dirname, 'tests/mocks/obsidian.ts') },
       // Production embeds these ESM assets. Unit tests inject module/URL hosts instead of WebGL.
-      'virtual:maplibre-assets': path.resolve(__dirname, 'tests/mocks/maplibreAssets.ts'),
-      'virtual:abele-changelog': path.resolve(__dirname, 'tests/mocks/changelog.ts'),
-    },
+      { find: 'virtual:maplibre-assets', replacement: path.resolve(__dirname, 'tests/mocks/maplibreAssets.ts') },
+      { find: 'virtual:abele-changelog', replacement: path.resolve(__dirname, 'tests/mocks/changelog.ts') },
+    ],
   },
   test: {
     globals: true,
