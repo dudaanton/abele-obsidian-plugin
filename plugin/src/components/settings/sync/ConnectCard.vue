@@ -173,15 +173,22 @@ const vaultMeta = (vault: VaultInfo): string[] => [
   vault.usage.quota_bytes === null ? 'No quota' : `${formatBytes(vault.usage.quota_bytes)} allowed`,
 ]
 
-/** Everything the two verbs share: one at a time, and a failure that says what it was. */
-async function attempt(what: () => Promise<void>): Promise<void> {
-  if (busy.value) return
+/**
+ * Everything the two verbs share: one at a time, and a failure that says what it was.
+ *
+ * Answers whether it got through, so a caller that marked something as chosen before asking
+ * can unmark it — a card left looking selected after a refusal says the device enrolled.
+ */
+async function attempt(what: () => Promise<void>): Promise<boolean> {
+  if (busy.value) return false
   busy.value = true
   error.value = null
   try {
     await what()
+    return true
   } catch (failure) {
     error.value = reasonOf(failure)
+    return false
   } finally {
     busy.value = false
   }
@@ -204,8 +211,14 @@ function suggest(vaultName: string): void {
 }
 
 async function signIn(): Promise<void> {
+  // Trimmed once, here, and written back: the field, the request and what a reconnect
+  // remembers are then all the same string, rather than three that differ by a space.
+  const baseUrl = serverUrl.value.trim()
+  const account = email.value.trim()
+  serverUrl.value = baseUrl
+  email.value = account
   await attempt(async () => {
-    const listed = await sync().connect(serverUrl.value, email.value, password.value)
+    const listed = await sync().connect(baseUrl, account, password.value)
     // The moment the token is in the service's hands, the password has no further use here.
     password.value = ''
     vaults.value = listed
@@ -216,10 +229,12 @@ async function signIn(): Promise<void> {
 async function choose(vault: VaultInfo): Promise<void> {
   chosen.value = vault.id
   suggest(vault.name)
-  await attempt(async () => {
+  const enrolled = await attempt(async () => {
     await sync().chooseVault(vault.id, deviceName.value)
     emit('connected')
   })
+  // A card still marked as chosen after a refusal would say the device is on that vault.
+  if (!enrolled) chosen.value = null
 }
 
 async function createVault(): Promise<void> {

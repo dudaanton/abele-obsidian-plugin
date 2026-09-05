@@ -95,7 +95,7 @@
  * and stored in bytes because that is what the engine compares a file against. An empty field
  * is `null` — no cap — which is a different thing from a cap of zero.
  */
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { SelectiveSettings } from '@abele/sync-core'
 import Section from '../../obsidian/Section.vue'
 import Setting from '../../obsidian/Setting.vue'
@@ -108,43 +108,77 @@ import EmptyState from '../../obsidian/EmptyState.vue'
 import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
 import { AbeleConfig } from '@/services/AbeleConfig'
 
-/** One switch per attachment type, in the order a vault fills up with them. */
-type KindKey = 'images' | 'audio' | 'video' | 'pdf' | 'other'
+/** What one switch says on the screen. */
+interface Described {
+  name: string
+  desc: string
+}
 
-const KINDS: { key: KindKey; name: string; desc: string }[] = [
-  { key: 'images', name: 'Images', desc: 'Screenshots, photos, drawings and diagrams.' },
-  { key: 'audio', name: 'Audio', desc: 'Recordings and voice notes.' },
-  { key: 'video', name: 'Video', desc: 'The heaviest thing a vault usually holds.' },
-  { key: 'pdf', name: 'PDFs', desc: 'Papers, manuals and scans.' },
-  {
-    key: 'other',
+/**
+ * The attachment switches, taken from the settings themselves rather than restated: every
+ * boolean directly on `SelectiveSettings` is one, and a `Record` over them is exhaustive — so
+ * a kind added to or renamed in the core fails to compile here until this screen offers it.
+ */
+type KindKey = {
+  [K in keyof SelectiveSettings]: SelectiveSettings[K] extends boolean ? K : never
+}[keyof SelectiveSettings]
+
+const KIND_TEXT: Record<KindKey, Described> = {
+  images: { name: 'Images', desc: 'Screenshots, photos, drawings and diagrams.' },
+  audio: { name: 'Audio', desc: 'Recordings and voice notes.' },
+  video: { name: 'Video', desc: 'The heaviest thing a vault usually holds.' },
+  pdf: { name: 'PDFs', desc: 'Papers, manuals and scans.' },
+  other: {
     name: 'Everything else',
     desc: 'Attachments of no listed type, and the scripts folder.',
   },
-]
+}
+
+/** The order a vault fills up in, which is the order worth reading them in. */
+const KINDS = (['images', 'audio', 'video', 'pdf', 'other'] as const).map((key) => ({
+  key,
+  ...KIND_TEXT[key],
+}))
 
 type SettingsKey = keyof SelectiveSettings['settings']
 
-const SETTINGS_KINDS: { key: SettingsKey; name: string; desc: string }[] = [
-  { key: 'main', name: 'App settings', desc: 'Editor and file behaviour, from app.json.' },
-  { key: 'appearance', name: 'Appearance', desc: 'The theme, its snippets and the font choices.' },
-  { key: 'hotkeys', name: 'Hotkeys', desc: 'The shortcuts you have bound.' },
-  { key: 'corePlugins', name: 'Core plugins', desc: "Which of Obsidian's own plugins are on." },
-  {
-    key: 'communityPlugins',
+/** The same exhaustiveness, one level down: a new settings category has to be named here. */
+const SETTINGS_TEXT: Record<SettingsKey, Described> = {
+  main: { name: 'App settings', desc: 'Editor and file behaviour, from app.json.' },
+  appearance: { name: 'Appearance', desc: 'The theme, its snippets and the font choices.' },
+  hotkeys: { name: 'Hotkeys', desc: 'The shortcuts you have bound.' },
+  corePlugins: { name: 'Core plugins', desc: "Which of Obsidian's own plugins are on." },
+  communityPlugins: {
     name: 'Community plugins',
     desc: 'The plugins themselves, so a new device installs what this one runs.',
   },
-  {
-    key: 'pluginSettings',
+  pluginSettings: {
     name: 'Plugin settings',
     desc: 'What each community plugin holds in its own data.json.',
   },
-]
+}
 
-const config = () => AbeleConfig.getInstance()
+const SETTINGS_KINDS = (
+  ['main', 'appearance', 'hotkeys', 'corePlugins', 'communityPlugins', 'pluginSettings'] as const
+).map((key) => ({ key, ...SETTINGS_TEXT[key] }))
 
-const selective = computed<SelectiveSettings>(() => config().sync.selective)
+const config = AbeleConfig.getInstance()
+
+/**
+ * A copy of the settings, edited here and written back on every change.
+ *
+ * Not a `computed` over `config.sync.selective`: `AbeleConfig` is a plain class, not reactive
+ * state, so Vue has nothing to track and a ticked checkbox would sit there unmoved. Nor a
+ * reference into that object, which `applySettings` replaces wholesale when a transfer lands —
+ * edits would then be written into an object nothing reads any more.
+ *
+ * Through JSON rather than `structuredClone`: the live settings may already be reactive
+ * proxies, and cloning one of those throws `DataCloneError`. They are JSON on disk anyway.
+ */
+const copyOf = (settings: SelectiveSettings): SelectiveSettings =>
+  JSON.parse(JSON.stringify(settings)) as SelectiveSettings
+
+const selective = ref<SelectiveSettings>(copyOf(config.sync.selective))
 
 const folderToAdd = ref('')
 
@@ -163,8 +197,30 @@ const canAddFolder = computed(
  * and once for a save this screen did not make.
  */
 const save = (): void => {
-  void config().saveSettings()
+  config.sync.selective = copyOf(selective.value)
+  void config.saveSettings()
 }
+
+/**
+ * Somebody else saved: take what they wrote.
+ *
+ * A transfer landing is the case that matters — it replaces the whole settings object, and a
+ * screen still showing the old one would write the old one back over it on the next click. The
+ * comparison is what keeps this screen's own saves from re-seeding it mid-edit.
+ */
+let unhook: (() => void) | null = null
+
+onMounted(() => {
+  unhook = config.onSaved(() => {
+    const held = config.sync.selective
+    if (JSON.stringify(held) !== JSON.stringify(selective.value)) selective.value = copyOf(held)
+  })
+})
+
+onUnmounted(() => {
+  unhook?.()
+  unhook = null
+})
 
 /** Megabytes as the field shows them: empty when there is no cap at all. */
 const maxMegabytes = computed(() => {

@@ -181,10 +181,24 @@ describe('a device that is set up', () => {
     const screen = open(SyncSettings)
     await flushPromises()
 
+    const values = screen.findAll('.abele-sync-settings__value').map((v) => v.text())
+    expect(values).toEqual(['https://sync.example.com', 'v1', 'Desktop — Notes'])
+  })
+
+  /**
+   * A badge never wraps and never shrinks, so a server address in one pushes a phone-width
+   * pane sideways. Only the status word is short enough to be one.
+   */
+  it('keeps the badge for the status word and lets the long values wrap', async () => {
+    connect()
+    const screen = open(SyncSettings)
+    await flushPromises()
+
     const badges = badgeTexts(screen)
-    expect(badges).toContain('https://sync.example.com')
-    expect(badges).toContain('v1')
-    expect(badges).toContain('Desktop — Notes')
+    expect(badges).toContain('Fully synced')
+    expect(badges).not.toContain('https://sync.example.com')
+    expect(badges).not.toContain('v1')
+    expect(badges).not.toContain('Desktop — Notes')
   })
 
   it('shows what it syncs, the vault policy and what the vault holds', async () => {
@@ -264,6 +278,25 @@ describe('a device that is set up', () => {
     await buttonNamed(screen, 'Resume')?.trigger('click')
     expect(service.resume).toHaveBeenCalled()
   })
+
+  /**
+   * The engine does not publish `paused` until a run in flight has finished, so a screen that
+   * waited for the status would go on offering Pause for as long as the sync takes. What the
+   * person pressed is true the moment they press it.
+   */
+  it('says it is paused the moment Pause is pressed, mid-sync or not', async () => {
+    connect()
+    service.status.value = { ...service.status.value, state: 'syncing', pending: 3 }
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    await buttonNamed(screen, 'Pause')?.trigger('click')
+    await flushPromises()
+
+    expect(service.pause).toHaveBeenCalled()
+    expect(buttonNamed(screen, 'Resume')).toBeDefined()
+    expect(buttonNamed(screen, 'Pause')).toBeUndefined()
+  })
 })
 
 describe('what this device takes', () => {
@@ -276,6 +309,56 @@ describe('what this device takes', () => {
     expect(AbeleConfig.getInstance().sync.selective.video).toBe(false)
     // The save is what reaches the engine; nothing here calls the service itself.
     expect(service.onSettingsSaved).toHaveBeenCalled()
+  })
+
+  /**
+   * `AbeleConfig` is a plain class, so a screen reading through it redraws from nothing. The
+   * switch that was clicked has to move, which is the whole of what a person sees.
+   */
+  it('moves the switch that was clicked', async () => {
+    const screen = open(SelectiveSync)
+    expect(switchFor(screen, 'video').props('isEnabled')).toBe(true)
+
+    await switchFor(screen, 'video').trigger('click')
+    await flushPromises()
+
+    expect(switchFor(screen, 'video').props('isEnabled')).toBe(false)
+  })
+
+  it('takes a folder off the list the moment it is removed', async () => {
+    AbeleConfig.getInstance().sync.selective.excludedFolders = ['Archive/Video']
+    const screen = open(SelectiveSync)
+    expect(screen.text()).toContain('Archive/Video')
+
+    await screen
+      .findAll('.abele-obsidian-icon')
+      .find((icon) => icon.attributes('aria-label')?.startsWith('Sync this folder'))
+      ?.trigger('click')
+    await flushPromises()
+
+    expect(screen.text()).not.toContain('Archive/Video')
+    expect(AbeleConfig.getInstance().sync.selective.excludedFolders).toEqual([])
+  })
+
+  /**
+   * A transfer landing replaces the whole settings object. A screen still holding the old one
+   * would write it back over what arrived on the very next click.
+   */
+  it('takes up what a transfer wrote rather than writing over it', async () => {
+    const config = AbeleConfig.getInstance()
+    const screen = open(SelectiveSync)
+
+    config.sync = { ...config.sync, selective: { ...config.sync.selective, images: false } }
+    await config.saveSettings()
+    await flushPromises()
+
+    expect(switchFor(screen, 'images').props('isEnabled')).toBe(false)
+
+    await switchFor(screen, 'video').trigger('click')
+    await flushPromises()
+
+    expect(config.sync.selective.images).toBe(false)
+    expect(config.sync.selective.video).toBe(false)
   })
 
   it('does the same for a settings category', async () => {

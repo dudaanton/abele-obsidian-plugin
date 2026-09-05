@@ -10,7 +10,7 @@ import {
   type SyncState,
   type SyncStatus,
 } from '@/sync/status'
-import { formatWhen } from '@/sync/format'
+import { formatWhen, reasonOf } from '@/sync/format'
 
 /**
  * The words and the one line of DOM the status bar is made of. Everything a person reads about
@@ -100,5 +100,30 @@ describe('formatWhen', () => {
   it('says how long ago it was', () => {
     const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString()
     expect(formatWhen(twoMinutesAgo)).toBe('2 minutes ago')
+  })
+})
+
+/**
+ * What a screen puts in front of a person when something failed.
+ *
+ * `String(value)` is the obvious thing and the wrong one: on anything that is not an `Error`
+ * or a string it reads `[object Object]`, which looks like a bug in this plugin rather than
+ * like a server refusing something.
+ */
+describe('reasonOf', () => {
+  it("says what an error's message says", () => {
+    expect(reasonOf(new Error('the token is no good'))).toBe('the token is no good')
+  })
+
+  it('takes a thrown string at its word', () => {
+    expect(reasonOf('the vault is full')).toBe('the vault is full')
+  })
+
+  it('says a reason was not given rather than stringifying an object at somebody', () => {
+    expect(reasonOf({ code: 'quota' })).toBe('no reason was given')
+    expect(reasonOf(null)).toBe('no reason was given')
+    expect(reasonOf(undefined)).toBe('no reason was given')
+    // An empty string is a message that says nothing, which is the same as none.
+    expect(reasonOf('')).toBe('no reason was given')
   })
 })

@@ -15,8 +15,8 @@ import {
   planEntries,
   applyEntries,
   removedByReplace,
+  SECTIONS,
 } from '@/transfer/entries'
-import { SECTIONS } from '@/transfer/entries'
 import type { AbeleSettings } from '@/services/AbeleConfig'
 import { DEFAULT_READER_SETTINGS } from '@/reader/settings'
 import type { AiSettings } from '@/ai/types'

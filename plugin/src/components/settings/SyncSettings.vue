@@ -1,6 +1,6 @@
 <template>
   <div class="abele-sync-settings">
-    <ConnectCard v-if="!connected" :server-url="settings.serverUrl" @connected="onConnected" />
+    <ConnectCard v-if="!connected" :server-url="device.serverUrl" @connected="onConnected" />
 
     <template v-else>
       <Section
@@ -11,16 +11,21 @@
           <Badge :text="statusLabel" :accent="status.state === 'syncing'" />
         </Setting>
 
+        <!--
+          Plain text rather than a `Badge`: a badge never wraps and never shrinks, and a server
+          address, a vault id and a device name are all long enough to push a phone-width pane
+          sideways. The badge is kept for the one thing it is for — a short status word.
+        -->
         <Setting name="Server" desc="The address this device enrolled against.">
-          <Badge :text="settings.serverUrl" />
+          <span class="abele-sync-settings__value">{{ device.serverUrl }}</span>
         </Setting>
 
         <Setting name="Vault" desc="The vault on that server this device belongs to.">
-          <Badge :text="settings.vaultId" />
+          <span class="abele-sync-settings__value">{{ device.vaultId }}</span>
         </Setting>
 
         <Setting name="This device" desc="What the vault's device list calls it.">
-          <Badge :text="settings.deviceName" />
+          <span class="abele-sync-settings__value">{{ device.deviceName }}</span>
         </Setting>
 
         <Setting v-if="status.lastError" name="Last failure" :desc="status.lastError">
@@ -35,7 +40,7 @@
             @click="syncNow"
           />
           <Button
-            v-if="settings.paused"
+            v-if="device.paused"
             text="Resume"
             tooltip="Start syncing this device again"
             @click="resume"
@@ -117,7 +122,7 @@
  * a method on a service, not reactive state, so it is read when the screen opens and again
  * whenever something here changes it.
  */
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
 import Badge from '../obsidian/Badge.vue'
@@ -133,11 +138,52 @@ import { STATUS_LABEL } from '@/sync/status'
 import { formatWhen } from '@/sync/format'
 
 const sync = SyncService.getInstance()
+const config = AbeleConfig.getInstance()
 
-const settings = computed(() => AbeleConfig.getInstance().sync)
+/**
+ * What this screen says about the device, copied out of the settings rather than read through
+ * them.
+ *
+ * `AbeleConfig` is a plain class, so a `computed` over it tracks nothing and these rows would
+ * only ever redraw by accident. `paused` is the one that shows: the engine does not publish the
+ * `paused` state until a run in flight has finished, so a Pause pressed mid-sync would leave
+ * the button saying "Pause" for as long as the run takes. What the person pressed is true the
+ * moment they press it, so that is what the button is driven from — and `onSaved` puts it back
+ * in step with the settings for every other way it can change.
+ */
+const snapshot = (): {
+  serverUrl: string
+  vaultId: string
+  deviceName: string
+  paused: boolean
+} => {
+  const held = config.sync
+  return {
+    serverUrl: held.serverUrl,
+    vaultId: held.vaultId,
+    deviceName: held.deviceName,
+    paused: held.paused,
+  }
+}
+
 const status = sync.status
+const device = ref(snapshot())
 const connected = ref(sync.isConnected())
 const confirming = ref<'disconnect' | 'forget' | null>(null)
+
+let unhook: (() => void) | null = null
+
+onMounted(() => {
+  unhook = config.onSaved(() => {
+    device.value = snapshot()
+    connected.value = sync.isConnected()
+  })
+})
+
+onUnmounted(() => {
+  unhook?.()
+  unhook = null
+})
 
 const statusLabel = computed(() => STATUS_LABEL[status.value.state])
 
@@ -161,9 +207,15 @@ const rescan = (): void => {
   void sync.rescan()
 }
 
-const pause = (): void => sync.pause()
+function pause(): void {
+  sync.pause()
+  device.value.paused = true
+}
 
-const resume = (): void => sync.resume()
+function resume(): void {
+  sync.resume()
+  device.value.paused = false
+}
 
 async function disconnect(): Promise<void> {
   await sync.disconnect()
@@ -175,3 +227,19 @@ async function forget(): Promise<void> {
   connected.value = sync.isConnected()
 }
 </script>
+
+<style lang="scss">
+/**
+ * A server address, a vault id and a device name are each long enough to outgrow a settings
+ * pane on a phone, and none of them has a space to break at. Breaking anywhere is what keeps
+ * the tab from scrolling sideways; the monospace face is because two of the three are ids, and
+ * an id is read character by character.
+ */
+.abele-sync-settings__value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+</style>
