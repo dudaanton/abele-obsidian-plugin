@@ -63,6 +63,12 @@ const emit = defineEmits<{
 .abele-obsidian-dropdown {
   position: relative;
   overflow: hidden;
+  // Room for the select's focus ring, which Obsidian draws 3px outside it and the clip above
+  // would otherwise cut off (2026-09-05). Content-box, so a `width: 100%` from a settings
+  // row still means the select's own width and the padding and margin cancel outside it.
+  box-sizing: content-box;
+  padding: var(--size-4-1);
+  margin: calc(-1 * var(--size-4-1));
 
   .dropdown {
     width: 100%;
