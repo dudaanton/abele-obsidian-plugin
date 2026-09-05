@@ -15,6 +15,7 @@ import {
   normalizeAccountsList,
   type AccountsListSettings,
 } from '@/helpers/accountRows'
+import { DEFAULT_SYNC_SETTINGS, migrateSyncSettings, type SyncSettings } from '@/sync/settings'
 import AbelePlugin from '@/main'
 import { isKitColor } from '@/constants/colors'
 import { DEFAULT_LABEL_PROPERTY, type LabelColor } from '@/helpers/taskMeta'
@@ -62,6 +63,9 @@ export interface AbeleSettings {
   excludedPathsForDefaultTemplate?: string[] // Paths where default template should not apply
   // AI Agent settings
   ai?: AiSettings
+  // Device sync: where the server is and what this device takes. The device token is not
+  // here — only the id it is filed under in Obsidian's secret storage.
+  sync?: SyncSettings
   // Finance settings
   transactionPathTemplate?: string // Path template for new transactions
   transactionTemplatePath?: string // Path to the template note for new transactions
@@ -302,6 +306,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   busyDayThreshold: 3,
   excludedPathsForDefaultTemplate: ['attachments/', 'templates/'],
   ai: { ...DEFAULT_AI_SETTINGS },
+  sync: DEFAULT_SYNC_SETTINGS,
   transactionPathTemplate: 'Finance/Transactions/{{date:YYYY/MM}}/{{title}}',
   transactionTemplatePath: '',
   accountsFolder: 'Finance/Accounts',
@@ -362,6 +367,7 @@ export class AbeleConfig {
 
   public journals: Journal[]
   public ai: AiSettings
+  public sync: SyncSettings
   public transactionPathTemplate: string
   public transactionTemplatePath: string
   public accountsFolder: string
@@ -730,6 +736,9 @@ export class AbeleConfig {
         this.ai.defaultImageModel = `${provider.id}::${modelId}`
       }
     }
+    // Every field is checked on the way in, so a settings file written by an older plugin —
+    // or by another device's sync — cannot put something the engine cannot run on into memory.
+    this.sync = migrateSyncSettings(settings?.sync)
     this.transactionPathTemplate =
       settings?.transactionPathTemplate ?? DEFAULT_SETTINGS.transactionPathTemplate
     this.transactionTemplatePath =
@@ -825,6 +834,9 @@ export class AbeleConfig {
       busyDayThreshold: this.busyDayThreshold,
       excludedPathsForDefaultTemplate: [...this.excludedPathsForDefaultTemplate],
       ai: { ...this.ai },
+      // A copy all the way down rather than a spread: `selective` is a nested object, and
+      // the migration is what already knows how to build one field by field.
+      sync: migrateSyncSettings(this.sync),
       transactionPathTemplate: this.transactionPathTemplate,
       transactionTemplatePath: this.transactionTemplatePath,
       accountsFolder: this.accountsFolder,

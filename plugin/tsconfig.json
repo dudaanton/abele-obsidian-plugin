@@ -6,7 +6,7 @@
     "module": "ESNext",
     "target": "ESNext",
     "noImplicitAny": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "lib": ["DOM", "ESNext"],

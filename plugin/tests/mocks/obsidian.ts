@@ -633,6 +633,52 @@ export class SearchComponent {
   }
 }
 
+/**
+ * Obsidian's own HTTP, which goes out through the app rather than the WebView. There is no
+ * network in a unit test, so this refuses every call until a test says what the server
+ * answers — a code path that reaches for the network unexpectedly then fails loudly instead
+ * of hanging or, worse, really calling out.
+ */
+export interface RequestUrlParam {
+  url: string
+  method?: string
+  contentType?: string
+  body?: string | ArrayBuffer
+  headers?: Record<string, string>
+  throw?: boolean
+}
+
+export interface RequestUrlResponse {
+  status: number
+  headers: Record<string, string>
+  arrayBuffer: ArrayBuffer
+  json: unknown
+  text: string
+}
+
+type RequestUrlFn = (request: RequestUrlParam) => Promise<RequestUrlResponse>
+
+let requestUrlStub: RequestUrlFn | null = null
+
+/**
+ * Not part of the plugin API: how a test says what `requestUrl` answers. Returns the undo,
+ * so a test that stubs it can put the refusal back.
+ */
+export function stubRequestUrl(fn: RequestUrlFn | null): () => void {
+  const previous = requestUrlStub
+  requestUrlStub = fn
+  return () => {
+    requestUrlStub = previous
+  }
+}
+
+export function requestUrl(request: RequestUrlParam): Promise<RequestUrlResponse> {
+  if (!requestUrlStub) {
+    return Promise.reject(new Error(`requestUrl is not stubbed: ${request.url}`))
+  }
+  return requestUrlStub(request)
+}
+
 /** Draws a Lucide glyph into an element. Recorded as an attribute so tests can assert it. */
 export function setIcon(el: HTMLElement, icon: string): void {
   el.setAttribute('data-icon', icon)
