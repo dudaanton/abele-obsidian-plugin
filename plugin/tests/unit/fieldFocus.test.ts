@@ -13,8 +13,9 @@
  * the toolbar above the phone's keyboard.
  *
  * The listener itself is registered here too. The decision being right is worth nothing if
- * it is never consulted, and `touchstart` is the part that keeps a desktop out of this
- * entirely — a mouse never raises it.
+ * it is never consulted; touch events are the part that keeps a desktop out of this entirely —
+ * a mouse never raises them — and deciding on the lift rather than the landing is what keeps
+ * a scroll from being taken for a tap.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { Plugin } from 'obsidian'
@@ -125,39 +126,53 @@ describe('deciding whether a tap takes the focus away', () => {
 
 describe('the listener', () => {
   function pluginSpy() {
-    const registered: Array<{
-      type: string
-      handler: (event: Event) => void
-      options: unknown
-    }> = []
+    const registered = new Map<string, { handler: (event: Event) => void; options: unknown }>()
     const plugin = {
       registerDomEvent: (_el: unknown, type: string, handler: never, options: unknown) => {
-        registered.push({ type, handler, options })
+        registered.set(type, { handler, options })
       },
     } as unknown as Plugin
     return { plugin, registered }
   }
 
-  it('listens for a touch, so a desktop never reaches it', () => {
+  /** A finger landing on `target` at a point, and lifting at another. */
+  const touch = (
+    registered: ReturnType<typeof pluginSpy>['registered'],
+    target: Element | null,
+    from: [number, number],
+    to: [number, number] = from
+  ) => {
+    registered.get('touchstart')!.handler({
+      target,
+      touches: [{ clientX: from[0], clientY: from[1] }],
+    } as unknown as Event)
+    registered.get('touchend')!.handler({
+      target,
+      changedTouches: [{ clientX: to[0], clientY: to[1] }],
+    } as unknown as Event)
+  }
+
+  it('listens for touches, so a desktop never reaches it', () => {
     const { plugin, registered } = pluginSpy()
 
     registerFocusRelease(plugin)
 
-    expect(registered).toHaveLength(1)
-    expect(registered[0].type).toBe('touchstart')
+    expect([...registered.keys()].sort()).toEqual(['touchcancel', 'touchend', 'touchstart'])
     // Capturing, so a handler that stops propagation cannot hide the tap; passive, because
     // nothing here cancels the touch.
-    expect(registered[0].options).toEqual({ capture: true, passive: true })
+    for (const { options } of registered.values()) {
+      expect(options).toEqual({ capture: true, passive: true })
+    }
   })
 
-  it('takes the focus off the field when the touch lands on empty space', () => {
+  it('takes the focus off the field when a tap lands on empty space', () => {
     const { field, blank } = screen()
     const { plugin, registered } = pluginSpy()
     registerFocusRelease(plugin)
     field.focus()
     expect(document.activeElement).toBe(field)
 
-    registered[0].handler({ target: blank } as unknown as Event)
+    touch(registered, blank, [100, 100])
 
     expect(document.activeElement).not.toBe(field)
   })
@@ -168,9 +183,62 @@ describe('the listener', () => {
     registerFocusRelease(plugin)
     field.focus()
 
-    registered[0].handler({ target: suggestion } as unknown as Event)
+    touch(registered, suggestion, [100, 100])
 
     expect(document.activeElement).toBe(field)
+  })
+
+  it('leaves the field focused when the finger scrolls rather than taps', () => {
+    const { field, blank } = screen()
+    const { plugin, registered } = pluginSpy()
+    registerFocusRelease(plugin)
+    field.focus()
+
+    touch(registered, blank, [100, 300], [100, 120])
+
+    expect(document.activeElement).toBe(field)
+  })
+
+  it('still counts a finger that wobbled within a tap as a tap', () => {
+    const { field, blank } = screen()
+    const { plugin, registered } = pluginSpy()
+    registerFocusRelease(plugin)
+    field.focus()
+
+    touch(registered, blank, [100, 100], [104, 96])
+
+    expect(document.activeElement).not.toBe(field)
+  })
+
+  it('does not act on the lift of a touch the system has cancelled', () => {
+    const { field, blank } = screen()
+    const { plugin, registered } = pluginSpy()
+    registerFocusRelease(plugin)
+    field.focus()
+
+    registered.get('touchstart')!.handler({
+      target: blank,
+      touches: [{ clientX: 100, clientY: 100 }],
+    } as unknown as Event)
+    registered.get('touchcancel')!.handler({} as Event)
+    registered.get('touchend')!.handler({
+      target: blank,
+      changedTouches: [{ clientX: 100, clientY: 100 }],
+    } as unknown as Event)
+
+    expect(document.activeElement).toBe(field)
+  })
+
+  it('does nothing on a lift that no touch of its own began', () => {
+    const { field } = screen()
+    const { plugin, registered } = pluginSpy()
+    registerFocusRelease(plugin)
+    field.focus()
+    const blur = vi.spyOn(field, 'blur')
+
+    registered.get('touchend')!.handler({ target: null } as unknown as Event)
+
+    expect(blur).not.toHaveBeenCalled()
   })
 
   it('ignores a touch that carries no element', () => {
@@ -180,7 +248,7 @@ describe('the listener', () => {
     field.focus()
     const blur = vi.spyOn(field, 'blur')
 
-    registered[0].handler({ target: null } as unknown as Event)
+    touch(registered, null, [100, 100])
 
     expect(blur).not.toHaveBeenCalled()
   })
