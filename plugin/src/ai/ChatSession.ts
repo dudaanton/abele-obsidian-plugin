@@ -7,7 +7,7 @@ import {
   type EffectScope,
   type ShallowRef,
 } from 'vue'
-import { TFile } from 'obsidian'
+import { TFile, Notice } from 'obsidian'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -327,7 +327,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
   /** Where this session is anchored, for a comment and for a chat expanded from one. */
   public readonly anchor = shallowRef<CommentAnchor | null>(null)
-
 
   /**
    * The notes this chat wrote to, oldest first write first.
@@ -2003,14 +2002,27 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   // ── Branching ──────────────────────────────────────────────────
 
+  /**
+   * Says why a branch, repeat or retry did nothing, rather than doing nothing quietly.
+   *
+   * A press that changes nothing and says nothing reads as broken; while the agent is
+   * answering, running a tool or waiting on an approval, the tree is not to be moved under it.
+   */
+  private busyFor(action: string): boolean {
+    const busy =
+      this.isStreaming.value || this.isExecutingTool.value || this.pendingToolCalls.value.length > 0
+    if (busy) new Notice(`The chat is busy — stop it or wait for the turn to finish to ${action}`)
+    return busy
+  }
+
   createBranch(messageId: string): void {
-    if (this.isStreaming.value || this.pendingToolCalls.value.length > 0) return
+    if (this.busyFor('branch')) return
     this.activeLeafId = messageId
     this.updateVisibleMessages()
   }
 
   repeatMessage(messageId: string): void {
-    if (this.isStreaming.value || this.isExecutingTool.value) return
+    if (this.busyFor('repeat')) return
 
     const msg = this.allChatMessages.find((m) => m.id === messageId)
     if (!msg || msg.role !== 'user') return
@@ -2025,7 +2037,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   async retryFromMessage(messageId: string): Promise<void> {
-    if (this.isStreaming.value || this.isExecutingTool.value) return
+    if (this.busyFor('retry')) return
 
     const msg = this.allChatMessages.find((m) => m.id === messageId)
     if (!msg) return
