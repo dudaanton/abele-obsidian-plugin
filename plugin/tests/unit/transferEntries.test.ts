@@ -16,12 +16,14 @@ import {
   applyEntries,
   removedByReplace,
 } from '@/transfer/entries'
+import { SECTIONS } from '@/transfer/entries'
 import type { AbeleSettings } from '@/services/AbeleConfig'
 import { DEFAULT_READER_SETTINGS } from '@/reader/settings'
 import type { AiSettings } from '@/ai/types'
 import { createAgent } from '@/ai/agents/types'
-import type { TransferEntry } from '@/transfer/types'
+import { TRANSFER_SECTIONS, isFileSection, type TransferEntry } from '@/transfer/types'
 import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
+import { defaultSyncSettings } from '@/sync/settings'
 
 const provider = (id: string, name: string, apiKeyId = `key-${id}`) => ({
   id,
@@ -51,6 +53,14 @@ const settings = (over: Partial<AbeleSettings> = {}): AbeleSettings =>
     } as unknown as AiSettings,
     links: [{ id: 'l1', name: 'Open', type: 'script', scriptName: 'open', commandId: '' }],
     fireflyToken: 'firefly-secret-token',
+    sync: {
+      ...defaultSyncSettings(),
+      serverUrl: 'https://sync.example.com',
+      vaultId: 'v1',
+      deviceId: 'd1',
+      deviceName: 'Desktop',
+      deviceTokenId: 'abele-sync-device-1',
+    },
     ...over,
   }) as AbeleSettings
 
@@ -141,6 +151,74 @@ describe('what the sending side offers', () => {
     )
     expect(withKeys.secrets).toEqual({ [FIREFLY_TOKEN_KEY_ID]: 'from-keychain' })
     expect(needsCode(buildPayload([finance!], null))).toBe(false)
+  })
+
+  /**
+   * A guard on the list itself. Every section the screen offers has to be described here, so a
+   * new one added to `TRANSFER_SECTIONS` without a section to read it is a failure rather than
+   * a group that quietly never appears. File sections are the exception: their entries are
+   * built by `files.ts` from the vault, not from the settings.
+   */
+  it('describes every section the screen offers', () => {
+    const described = new Set(SECTIONS.map((section) => section.id))
+    const missing = TRANSFER_SECTIONS.filter((id) => !isFileSection(id) && !described.has(id))
+
+    expect(missing).toEqual([])
+  })
+})
+
+/**
+ * Sync, which is the one block whose whole point is to arrive already enrolled.
+ *
+ * It carries the device token — deliberately, so a phone does not have to be handed the
+ * account password to join a vault — which is what makes the block sensitive whether or not
+ * keys were asked for. Until the receiving device connects again, both devices answer to the
+ * one entry in the vault's device list.
+ */
+describe('the sync settings', () => {
+  it('travels whole, so what a device syncs arrives with where it syncs', () => {
+    const entries = collectEntries(settings())
+
+    expect(find(entries, 'sync', 'sync')?.data).toMatchObject({
+      sync: expect.objectContaining({ serverUrl: 'https://sync.example.com', vaultId: 'v1' }),
+    })
+  })
+
+  it('takes the device token, which is the whole point of sending it', () => {
+    const entries = collectEntries(settings())
+
+    expect(find(entries, 'sync', 'sync')?.secretIds).toEqual(['abele-sync-device-1'])
+  })
+
+  it('cannot travel in the open, keys asked for or not', () => {
+    const entries = collectEntries(settings())
+    const chosen = [find(entries, 'sync', 'sync')!]
+
+    expect(find(entries, 'sync', 'sync')?.sensitive).toBe(true)
+    expect(needsCode(buildPayload(chosen, null))).toBe(true)
+  })
+
+  it('asks the keychain for nothing when no device was ever enrolled', () => {
+    const entries = collectEntries(settings({ sync: defaultSyncSettings() }))
+
+    expect(find(entries, 'sync', 'sync')?.secretIds).toEqual([])
+  })
+
+  it('writes where to sync into the vault it lands in', () => {
+    const arriving = collectEntries(settings()).filter((e) => e.section === 'sync')
+
+    const next = applyEntries(arriving, settings({ sync: defaultSyncSettings() }))
+
+    expect(next.sync?.serverUrl).toBe('https://sync.example.com')
+    expect(next.sync?.deviceTokenId).toBe('abele-sync-device-1')
+  })
+
+  it('leaves the rest of the settings where they were', () => {
+    const arriving = collectEntries(settings()).filter((e) => e.section === 'sync')
+
+    const next = applyEntries(arriving, settings({ tasksFolder: 'Дела' }))
+
+    expect(next.tasksFolder).toBe('Дела')
   })
 })
 

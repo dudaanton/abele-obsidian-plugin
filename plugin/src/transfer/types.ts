@@ -29,6 +29,7 @@ export const TRANSFER_SECTIONS = [
   'reader',
   'quick-button',
   'linter',
+  'sync',
   'other',
 ] as const
 

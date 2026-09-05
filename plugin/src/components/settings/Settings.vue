@@ -58,6 +58,7 @@ import QuickButtonSettings from './QuickButtonSettings.vue'
 import HeaderButtonsEditor from './scripts/HeaderButtonsEditor.vue'
 import LinterSettings from './LinterSettings.vue'
 import { takePendingTab } from './settingsTab'
+import SyncSettings from './SyncSettings.vue'
 
 interface SettingsTab {
   id: string
@@ -84,6 +85,7 @@ const tabs: SettingsTab[] = [
   { id: 'header-buttons', label: 'Header buttons', component: markRaw(HeaderButtonsEditor) },
   { id: 'linter', label: 'Linter', component: markRaw(LinterSettings) },
   { id: 'transfer', label: 'Transfer', component: markRaw(TransferSettings) },
+  { id: 'sync', label: 'Sync', component: markRaw(SyncSettings) },
   { id: 'other', label: 'Other', component: markRaw(OtherSettings) },
 ]
 

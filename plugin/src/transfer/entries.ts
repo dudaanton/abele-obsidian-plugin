@@ -381,6 +381,28 @@ export const SECTIONS: Section[] = [
   rootBlock('quick-button', 'Quick button', ['quickButton']),
   // Whole: the folders it skips and every rule's setup, script rules included by their names.
   rootBlock('linter', 'Linter', ['linter']),
+  /**
+   * Sync, whole and with the device token behind it.
+   *
+   * The token is a credential, so the block is `sensitive` and the transfer is locked behind a
+   * one-time code either way. It travels on purpose: the point of sending it is that the other
+   * device is already enrolled when it arrives, rather than asking for the account password
+   * again on a phone. The two devices then share one identity in the vault's device list until
+   * either of them connects again — `chooseVault` enrols afresh and mints a token of its own,
+   * which is what separates them.
+   *
+   * `stateId` and `stateVaultId` ride along inside the block and are meaningless on the other
+   * device; they name a ledger in *this* device's IndexedDB, which is the app's and not the
+   * vault's. The receiving device finds no such database, opens an empty one under that name,
+   * and its first run is a scan of the manifest — the same thing a fresh enrolment does.
+   */
+  rootBlock('sync', 'Sync', ['sync'], {
+    secretsOf: (settings) => {
+      const id = settings.sync?.deviceTokenId
+      return id ? [id] : []
+    },
+    sensitive: true,
+  }),
   rootBlock('other', 'Other', [
     'refreshDelay',
     'logsNotesTypes',

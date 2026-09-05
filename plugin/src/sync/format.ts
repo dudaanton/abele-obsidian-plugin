@@ -2,8 +2,8 @@ import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 
 /**
- * The two things the sync screens have to spell out for a person: when something happened, and
- * how large a file is.
+ * The three things the sync screens have to spell out for a person: when something happened,
+ * how large a file is, and what went wrong.
  *
  * Only the first is here. Sizes are humanised by `formatBytes` in `@/helpers/reduceImage`,
  * which the gallery and the media commands already use — a second one under this folder would
@@ -22,4 +22,18 @@ export function formatWhen(iso: string | null): string {
   if (iso === null || iso === '') return 'never'
   const at = dayjs(iso)
   return at.isValid() ? at.fromNow() : 'never'
+}
+
+/**
+ * What a failure says, for a screen to show.
+ *
+ * Only an `Error` and a plain string are trusted to say anything: `String(value)` on anything
+ * else is `[object Object]`, which reads as a bug in this plugin rather than as the server
+ * refusing something. A thrown object that is neither is reported as a failure with no reason,
+ * which is at least true.
+ */
+export function reasonOf(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string' && error !== '') return error
+  return 'no reason was given'
 }
