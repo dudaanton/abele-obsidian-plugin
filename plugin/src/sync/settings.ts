@@ -23,6 +23,15 @@ export interface SyncSettings {
    * when this device enrols, so no two local vaults can collide; `forget` is what drops it.
    */
   stateId: string
+  /**
+   * Which server vault the ledger under `stateId` describes.
+   *
+   * Not the same field as `vaultId`, which is emptied by a disconnect: without this, a device
+   * that disconnected from one vault and connected to another would open the first vault's
+   * ledger, find every entry accounted for, and send deletes carrying the *other* vault's file
+   * ids. A chosen vault that is not this one mints a new `stateId`.
+   */
+  stateVaultId: string
   /** The key the device token is stored under, not the token. */
   deviceTokenId: string
   /** What this device calls itself in the vault's device list. */
@@ -59,6 +68,7 @@ export function defaultSyncSettings(isMobile = false): SyncSettings {
     vaultId: '',
     deviceId: '',
     stateId: '',
+    stateVaultId: '',
     deviceTokenId: '',
     deviceName: '',
     selective,
@@ -93,6 +103,7 @@ export function migrateSyncSettings(raw: unknown, isMobile = false): SyncSetting
     // Empty for a settings file written before this field existed: the next enrolment mints
     // one. Reusing the vault id here instead would recreate the collision it exists to stop.
     stateId: stringOr(o.stateId, defaults.stateId),
+    stateVaultId: stringOr(o.stateVaultId, defaults.stateVaultId),
     deviceTokenId: stringOr(o.deviceTokenId, defaults.deviceTokenId),
     deviceName: stringOr(o.deviceName, defaults.deviceName),
     selective: migrateSelective(o.selective, defaults.selective),

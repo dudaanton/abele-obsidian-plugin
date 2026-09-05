@@ -160,6 +160,9 @@ async function waitFor(what: string, check: () => boolean | Promise<boolean>): P
   throw new Error(`gave up waiting for ${what}; the status was ${service.status.value.state}`)
 }
 
+/** Long enough for anything already queued to have run. */
+const tick = (ms = 50): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
 /** A sync that got through: the state is settled and something was actually synced. */
 const synced = (): Promise<void> =>
   waitFor(
@@ -489,6 +492,140 @@ describe('SyncService — one ledger per local vault', () => {
     await synced()
 
     expect(settings().stateId).not.toBe(first)
+    expect(settings().stateVaultId).toBe(second)
+    // And the one it replaced is gone rather than left behind for the life of the vault.
+    expect(service.log.value.join('\n')).toContain('dropped the ledger')
+    const store = await IndexedDbStateStore.open(indexedDB, stateDatabaseName(first))
+    try {
+      expect(await store.getMeta('scope')).toBeNull()
+    } finally {
+      store.close()
+    }
+  })
+
+  it('starts a fresh ledger when a disconnected device joins another vault', async () => {
+    const { accountToken, vaultId: first } = await connect()
+    await synced()
+    const firstState = settings().stateId
+    expect(settings().stateVaultId).toBe(first)
+
+    // A disconnect empties `vaultId`, so only `stateVaultId` still knows which vault the
+    // ledger describes. Without it this device would open the first vault's ledger against the
+    // second, find every entry accounted for, and send nothing — or deletes carrying the wrong
+    // file ids.
+    await service.disconnect()
+
+    const { vaultId: second } = await server.vault(accountToken, 'Work')
+    const { deviceToken } = await server.device(accountToken, second, 'scenario-b')
+    const otherB = server.clientFor(deviceToken, second)
+
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+    await service.chooseVault(second, 'Laptop')
+    await synced()
+
+    expect(settings().stateId).not.toBe(firstState)
+    expect(settings().stateVaultId).toBe(second)
+    expect(await serverPaths(otherB)).toContain('Existing.md')
+  })
+})
+
+describe('SyncService — when it cannot start at all', () => {
+  it('says so instead of looking like a device nobody set up', async () => {
+    const { accountToken } = await server.account(EMAIL)
+    const { vaultId } = await server.vault(accountToken, 'Home')
+
+    const broken = {
+      open: () => {
+        throw new Error('this browser will not open a database')
+      },
+    } as unknown as IDBFactory
+    start({ indexedDB: broken })
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+    await service.chooseVault(vaultId, 'Laptop')
+
+    expect(service.status.value.state).toBe('error')
+    expect(service.status.value.lastError).toContain('state database')
+    expect(service.isConnected()).toBe(false)
+    expect(service.log.value.join('\n')).toContain('sync could not start')
+  })
+
+  it('lets go of the ledger when the build fails half way through', async () => {
+    const { accountToken } = await server.account(EMAIL)
+    const { vaultId } = await server.vault(accountToken, 'Home')
+
+    // Open succeeds and the first read of the ledger does not: everything is assigned by then.
+    const reading = vi
+      .spyOn(IndexedDbStateStore.prototype, 'getMeta')
+      .mockRejectedValue(new Error('the ledger would not be read'))
+    start()
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+    await service.chooseVault(vaultId, 'Laptop')
+    reading.mockRestore()
+
+    expect(service.status.value.state).toBe('error')
+    expect(service.status.value.lastError).toContain('would not be read')
+    expect(service.isConnected()).toBe(false)
+    expect(service.client()).toBeNull()
+    // The store was let go too, so deleting the database is not blocked by a live connection.
+    await service.forget()
+    expect(settings().stateId).toBe('')
+  })
+
+  it('reports a failure that happens before the engine is even built', async () => {
+    await connect()
+    await synced()
+
+    // A locked keychain: read while working out what the engine should be built on, which is
+    // outside the build itself.
+    app.secretStorage.getSecret = () => {
+      throw new Error('the keychain is locked')
+    }
+    settings().selective.images = false
+    await AbeleConfig.getInstance().saveSettings()
+
+    await waitFor('the failure to be reported', () => service.status.value.state === 'error')
+    expect(service.status.value.lastError).toContain('keychain is locked')
+  })
+})
+
+describe('SyncService — a settings save', () => {
+  it('builds another engine only when the save moved what sync runs on', async () => {
+    await connect()
+    await synced()
+    const builds = (): number =>
+      service.log.value.filter((line) => line.includes('syncing vault')).length
+    const before = builds()
+
+    // Nothing about sync moved, so this must not stop and restart the engine.
+    await AbeleConfig.getInstance().saveSettings()
+    // And this must, which is also what makes the assertion below deterministic.
+    settings().selective.pdf = false
+    await AbeleConfig.getInstance().saveSettings()
+
+    await waitFor('the engine to be rebuilt once', () => builds() === before + 1)
+    await tick()
+    expect(builds()).toBe(before + 1)
+  })
+
+  it('honours a save that lands while the service is saving one of its own', async () => {
+    await connect()
+    await synced()
+    const builds = (): number =>
+      service.log.value.filter((line) => line.includes('syncing vault')).length
+    const before = builds()
+
+    // A screen widening the scope while the service is writing down a pause of its own. There
+    // is no filter on whose save this was — whether it lands inside the service's own save or
+    // after it, `reconcile` compares what the engine was built on and rebuilds because the
+    // scope moved.
+    const off = AbeleConfig.getInstance().onSaved(() => {
+      off()
+      settings().selective.pdf = false
+      void AbeleConfig.getInstance().saveSettings()
+    })
+    service.pause()
+
+    await waitFor('the widened scope to reach the engine', () => builds() === before + 1)
   })
 })
 
@@ -543,26 +680,21 @@ describe('SyncService — a plugin reload', () => {
     opened.mockRestore()
     closed.mockRestore()
   })
-})
 
-describe('SyncService — when it cannot start at all', () => {
-  it('says so instead of looking like a device nobody set up', async () => {
-    const { accountToken } = await server.account(EMAIL)
-    const { vaultId } = await server.vault(accountToken, 'Home')
+  it('does not deadlock when a launch and an unload land in the same tick', async () => {
+    await connect()
+    await synced()
+    await service.destroy()
 
-    const broken = {
-      open: () => {
-        throw new Error('this browser will not open a database')
-      },
-    } as unknown as IDBFactory
-    start({ indexedDB: broken })
-    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
-    await service.chooseVault(vaultId, 'Laptop')
+    const next = SyncService.getInstance()
+    service = next
+    // No await between the two: an `onLayoutReady` and an `onunload` in one turn. The teardown
+    // is queued behind the init, so an init that read `lastTeardown` from inside its own queued
+    // work would be waiting for something that cannot start until it lets go.
+    start()
+    await next.destroy()
 
-    expect(service.status.value.state).toBe('error')
-    expect(service.status.value.lastError).toContain('state database')
-    expect(service.isConnected()).toBe(false)
-    expect(service.log.value.join('\n')).toContain('sync could not start')
+    expect(next.isConnected()).toBe(false)
   })
 })
 

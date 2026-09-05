@@ -152,6 +152,12 @@ export class SyncService {
 
   /** What the running engine was built on; a change to any of it means building another. */
   private built = ''
+  /**
+   * The device token the running engine's client holds. Kept apart from `built` rather than
+   * joined into it, so no field that reads like an identity ever carries a secret — and kept at
+   * all because re-enrolling puts a *new* token behind the same keychain id.
+   */
+  private builtToken = ''
   /** The scope key the running engine's settings and ignore file hash to. */
   private scope = ''
 
@@ -160,8 +166,6 @@ export class SyncService {
   private watchingVisibility = false
   /** Drops the settings-saved subscription. */
   private unhookSettings: (() => void) | null = null
-  /** True while this service is the one saving, so its own writes do not queue a reconcile. */
-  private saving = false
   /** What the last failure was, which is how `publish` knows to say what to do about it. */
   private lastFailure: SyncFailure | null = null
 
@@ -199,9 +203,13 @@ export class SyncService {
     if (settings.serverUrl !== '' && settings.vaultId !== '' && this.token() !== null) {
       this.publish({ ...DISCONNECTED_STATUS, state: settings.paused ? 'paused' : 'syncing' })
     }
+    // Read here and not inside the queued work: a `destroy()` in this same tick would file its
+    // own teardown as `lastTeardown`, and waiting for that from behind it in the queue is a
+    // deadlock — the teardown cannot start until this item lets go.
+    const pending = SyncService.lastTeardown
     void this.serialise(async () => {
       // Whatever instance a plugin reload left stopping goes first.
-      await SyncService.lastTeardown
+      await pending
       await this.reconcile()
     })
   }
@@ -356,10 +364,12 @@ export class SyncService {
    * id it is filed under is saved with the settings. Enrolling again over an existing setup
    * reuses that id, so the keychain never fills with tokens no device holds any more.
    *
-   * The `stateId` is minted here, once, and again if this device is pointed at a *different*
-   * vault — a ledger describing one vault would tell the scanner every file of the other had
-   * been deleted. The account client is dropped on the way out either way: it is on a token
-   * this flow has no further use for.
+   * The `stateId` is minted here, once, and again whenever the chosen vault is not the one the
+   * ledger describes — which is why `stateVaultId` is asked and not `vaultId`: a disconnect
+   * empties the latter, so a device that left vault A and joined vault B would otherwise open
+   * A's ledger, find every entry accounted for, and send deletes carrying A's file ids. The
+   * ledger left behind is deleted once the old engine has let go of it. The account client is
+   * dropped on the way out either way: it is on a token this flow has no further use for.
    */
   async chooseVault(choice: VaultChoice, deviceName: string): Promise<void> {
     const account = this.account
@@ -369,6 +379,8 @@ export class SyncService {
     const name = deviceName.trim()
     if (name === '') throw new Error('this device needs a name to enrol under')
 
+    /** The ledger this enrolment replaces, to be deleted once nothing is holding it. */
+    let dropped: string | null = null
     try {
       const vaultId =
         typeof choice === 'string' ? choice : (await account.createVault(choice.create)).id
@@ -383,8 +395,10 @@ export class SyncService {
         ? settings.deviceTokenId
         : newSecretId()
       app.secretStorage.setSecret(tokenId, enrolled.device_token)
-      if (settings.stateId === '' || (settings.vaultId !== '' && settings.vaultId !== vaultId)) {
+      if (settings.stateId === '' || settings.stateVaultId !== vaultId) {
+        dropped = settings.stateId === '' ? null : settings.stateId
         settings.stateId = newStateId()
+        settings.stateVaultId = vaultId
       }
       settings.serverUrl = this.accountUrl
       settings.vaultId = vaultId
@@ -398,12 +412,27 @@ export class SyncService {
       this.account = null
     }
 
-    // A token behind an id that has not changed is a new token all the same, so the engine is
-    // torn down rather than left running on the client it was built with.
-    await this.serialise(async () => {
-      await this.teardown()
-      await this.reconcile()
-    })
+    // `reconcile` sees the new token even behind an unchanged keychain id, so it builds another
+    // engine of its own accord; the save above has already queued one, and this is what waits
+    // for it. Only once that has stopped the old engine is the ledger it held free to delete.
+    await this.serialise(() => this.reconcile())
+    if (dropped !== null) await this.dropLedger(dropped)
+  }
+
+  /**
+   * Deletes a ledger this device has no further use for.
+   *
+   * Never fatal. A ledger is a cache of what the server already holds, so the worst a database
+   * that will not go is a little storage left behind — and refusing a connect over it would be
+   * far worse than saying so in the log.
+   */
+  private async dropLedger(stateId: string): Promise<void> {
+    try {
+      await IndexedDbStateStore.delete(this.factory(), stateDatabaseName(stateId))
+      this.note('dropped the ledger of the vault this device used to sync')
+    } catch (error) {
+      this.note(`the ledger of the previous vault could not be dropped: ${messageOf(error)}`)
+    }
   }
 
   /**
@@ -446,6 +475,7 @@ export class SyncService {
       settings.deviceTokenId = ''
     }
     settings.stateId = ''
+    settings.stateVaultId = ''
     await this.saveSettings()
     if (stateId === '') return
     await IndexedDbStateStore.delete(this.factory(), stateDatabaseName(stateId))
@@ -459,11 +489,13 @@ export class SyncService {
    * Obsidian writes `data.json` itself and tells no plugin about it, so without the kick a
    * setting changed here would be noticed up to a poll later.
    *
-   * Subscribed to `AbeleConfig` at `init`, so every screen that saves reaches it; a save this
-   * service made itself is skipped, since it is already on its way to reconciling.
+   * Subscribed to `AbeleConfig` at `init`, so every screen that saves reaches it — this
+   * service's own saves included. Nothing filters them: `reconcile` compares what the engine
+   * was built on against what the settings now say and does nothing when they agree, which
+   * costs one file `stat` and one hash. A filter would have to guess which save was whose, and
+   * would drop somebody else's save that happened to land inside the window.
    */
   onSettingsSaved(): void {
-    if (this.saving) return
     this.fs?.kick()
     void this.serialise(() => this.reconcile())
   }
@@ -476,12 +508,7 @@ export class SyncService {
   }
 
   private async saveSettings(): Promise<void> {
-    this.saving = true
-    try {
-      await AbeleConfig.getInstance().saveSettings()
-    } finally {
-      this.saving = false
-    }
+    await AbeleConfig.getInstance().saveSettings()
   }
 
   /** The device token, or null when the settings name one the keychain does not hold. */
@@ -495,41 +522,54 @@ export class SyncService {
   /**
    * Bring the engine in line with the settings.
    *
-   * Everything the engine was built on is in one string: change any of it and another engine
-   * is built, because the selective settings and the ignore rules are read once, when the scan
-   * filter is made. A settings save that moved neither only flips the pause switch.
+   * Everything the engine was built on is in one string, beside the token: change any of it and
+   * another engine is built, because the selective settings and the ignore rules are read once,
+   * when the scan filter is made. A settings save that moved neither only flips the pause
+   * switch — which is what makes it safe for every save in the plugin to come through here.
+   *
+   * The whole body is guarded, not only the build: reading the ignore file, hashing the scope
+   * and stopping the previous engine can all throw, and `init` has already published `syncing`
+   * — a throw that escaped would pin the status there with nothing running behind it.
    */
   private async reconcile(): Promise<void> {
     const app = this.app
     if (app === null) return
-    const settings = this.settings
-    const token = this.token()
-    if (settings.serverUrl === '' || settings.vaultId === '' || token === null) {
-      if (this.engine !== null) this.note('not connected: the settings name no vault to sync with')
-      await this.teardown()
-      return
-    }
-
-    const ignoreText = await readIgnore(app)
-    const scope = await scopeKey(settings.selective, ignoreText)
-    const built = [settings.serverUrl, settings.vaultId, settings.deviceTokenId, scope].join(' ')
-    if (this.engine !== null && built === this.built) {
-      this.applyPause(settings.paused)
-      return
-    }
-
-    await this.teardown()
-    this.built = built
-    this.scope = scope
     try {
+      const settings = this.settings
+      const token = this.token()
+      if (settings.serverUrl === '' || settings.vaultId === '' || token === null) {
+        if (this.engine !== null) {
+          this.note('not connected: the settings name no vault to sync with')
+        }
+        await this.teardown()
+        return
+      }
+
+      const ignoreText = await readIgnore(app)
+      const scope = await scopeKey(settings.selective, ignoreText)
+      const built = [settings.serverUrl, settings.vaultId, settings.deviceTokenId, scope].join(' ')
+      if (this.engine !== null && built === this.built && token === this.builtToken) {
+        this.applyPause(settings.paused)
+        return
+      }
+
+      await this.teardown()
+      this.built = built
+      this.builtToken = token
+      this.scope = scope
       await this.build(settings, token, ignoreText)
     } catch (error) {
-      // A state database that would not open, or a client the settings will not build. Nothing
-      // is running and nothing will retry, so it has to be said out loud: `disconnected` would
-      // hide the status bar and read as a device nobody ever set up.
+      // A state database that would not open, a ledger that would not be read, a client the
+      // settings will not build. Nothing is running and nothing will retry, so it has to be
+      // said out loud: `disconnected` would hide the status bar and read as a device nobody
+      // ever set up.
+      //
+      // The teardown goes first even though it publishes `disconnected` of its own — a build
+      // that failed half way leaves an engine, a store and a client assigned, and `forget`
+      // cannot delete a database something still holds. The error is published after it, so
+      // that is the status that stands.
       const message = messageOf(error)
-      this.built = ''
-      this.scope = ''
+      await this.teardown()
       this.note(`sync could not start: ${message}`)
       this.publish({ ...DISCONNECTED_STATUS, state: 'error', lastError: message })
     }
@@ -654,11 +694,18 @@ export class SyncService {
     this.fs = null
     this.vault = null
     this.built = ''
+    this.builtToken = ''
     this.scope = ''
     // The engine that failed is gone; its failure must not colour the next one's message.
     this.lastFailure = null
     await engine?.stop()
-    store?.close()
+    try {
+      store?.close()
+    } catch (error) {
+      // The fields are already let go, so the caller is in a good state whatever the database
+      // says; a throw from here would escape into whichever verb asked for the teardown.
+      console.debug('[abele-sync] the state database would not close', error)
+    }
     this.publish({ ...DISCONNECTED_STATUS })
   }
 
@@ -724,6 +771,9 @@ export class SyncService {
    * `.abele-sync-ignore` is part of the scope key, so an edit to it means the engine has to be
    * built again on the new rules and the manifest walked. Nothing else in a batch is the
    * service's business — the engine has already taken it in.
+   *
+   * A phone never gets here: it runs no watcher at all, so an edit to the ignore file is picked
+   * up at the next launch or the next settings save, both of which reconcile anyway.
    */
   private noticed(paths: string[]): void {
     if (!paths.some((path) => caseKey(path) === caseKey(IGNORE_FILE))) return

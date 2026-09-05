@@ -90,6 +90,7 @@ describe('migrateSyncSettings', () => {
       'selective',
       'serverUrl',
       'stateId',
+      'stateVaultId',
       'vaultId',
     ])
     expect((settings as Record<string, unknown>).deviceToken).toBeUndefined()
@@ -104,9 +105,13 @@ describe('migrateSyncSettings', () => {
     expect(settings.stateId).toBe('')
   })
 
-  it('keeps a state id it was given', () => {
-    expect(migrateSyncSettings({ stateId: 'abc123' }).stateId).toBe('abc123')
-    expect(migrateSyncSettings({ stateId: 7 }).stateId).toBe('')
+  it('keeps a state id it was given, and the vault that ledger describes', () => {
+    const settings = migrateSyncSettings({ stateId: 'abc123', stateVaultId: 'v1' })
+
+    expect(settings.stateId).toBe('abc123')
+    expect(settings.stateVaultId).toBe('v1')
+    expect(migrateSyncSettings({ stateId: 7, stateVaultId: 7 }).stateId).toBe('')
+    expect(migrateSyncSettings({ stateId: 7, stateVaultId: 7 }).stateVaultId).toBe('')
   })
 
   it('falls back to the default for a field of the wrong type', () => {
