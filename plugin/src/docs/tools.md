@@ -19,7 +19,8 @@ easy to get wrong. Which of these an agent actually has depends on its own tool 
 - `screenshot` and `inspect_view` take either a `path` (a note) or a `view` (a script view, by
   its tab title or script name). A view is photographed as it is on screen: the visible part
   only, at the person's scroll position, and never a tab that is not showing — the person
-  decides what the agent gets to see.
+  decides what the agent gets to see. Every screenshot is saved to the attachments folder and
+  shown in the chat under the tool call, so the person sees the same picture the agent did.
 - `rm` moves to trash rather than destroying.
 
 Every one of these is bounded by the agent's scope.

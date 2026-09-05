@@ -5,6 +5,8 @@ import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
 import domtoimage from 'dom-to-image-more'
 import { findScriptView } from './scriptViewLookup'
+import { saveImageToVault } from './imageUtils'
+import dayjs from 'dayjs'
 
 export function findLeafByFile(path: string): WorkspaceLeaf | null {
   const { app } = GlobalStore.getInstance()
@@ -85,12 +87,42 @@ function electronRemote(): RemoteLike | null {
   }
 }
 
+/**
+ * The picture, kept and shown.
+ *
+ * What the agent sees, the person should see too: the screenshot goes into the attachments
+ * folder like a generated image does, the chat shows it under the tool call, and the path in
+ * the result is what the chat reads it back from. The model gets the same picture in the
+ * conversation.
+ */
+async function picture(label: string, nameHint: string, dataUrl: string) {
+  const path = await saveImageToVault(dataUrl, nameHint)
+  ScopeResolver.getInstance().addFile(path)
+  return {
+    content: [{ type: 'text' as const, text: `Screenshot saved: ${path}` }],
+    injectMessages: [
+      {
+        role: 'user' as const,
+        content: [
+          { type: 'text', text: label },
+          { type: 'image_url', image_url: { url: dataUrl } },
+        ] as UserContentPart[],
+        timestamp: Date.now(),
+      },
+    ],
+  }
+}
+
+/** A file name a person can read in the attachments folder: what was shot, and when. */
+const shotName = (what: string) =>
+  `Screenshot ${what.replace(/[\\/:*?"<>|#^[\]]/g, ' ').trim()} ${dayjs().format('YYYY-MM-DD HH-mm-ss')}`
+
 export function createScreenshotTool(capture: Capturer = captureVisible): AgentTool {
   return {
     name: 'screenshot',
     label: 'Screenshot',
     description:
-      'Take a screenshot of a file open in Obsidian, or of a script view. With path: if the file is already open, captures its current view without reloading; if not, opens it in a new tab first. With view (a tab title or script name): captures the part of that view that is on screen right now, as the person sees it — the visible area only, at their scroll position; a tab that is not showing cannot be captured. Use this to visually inspect layout, content, or rendering.',
+      'Take a screenshot of a file open in Obsidian, or of a script view. With path: if the file is already open, captures its current view without reloading; if not, opens it in a new tab first. With view (a tab title or script name): captures the part of that view that is on screen right now, as the person sees it — the visible area only, at their scroll position; a tab that is not showing cannot be captured. The picture is saved to the attachments folder and shown in the chat, so the person sees what you saw. Use this to visually inspect layout, content, or rendering.',
     parameters: {
       type: 'object',
       properties: {
@@ -125,20 +157,11 @@ export function createScreenshotTool(capture: Capturer = captureVisible): AgentT
           )
         }
         const dataUrl = await capture(el, rect)
-        const label = `[Screenshot: view "${view.title}" — the visible part of the tab, ${rect.width}×${rect.height}]`
-        return {
-          content: [{ type: 'text', text: `Screenshot captured: view "${view.title}"` }],
-          injectMessages: [
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: label },
-                { type: 'image_url', image_url: { url: dataUrl } },
-              ] as UserContentPart[],
-              timestamp: Date.now(),
-            },
-          ],
-        }
+        return picture(
+          `[Screenshot: view "${view.title}" — the visible part of the tab, ${rect.width}×${rect.height}]`,
+          shotName(view.title),
+          dataUrl
+        )
       }
 
       const path = params.path as string
@@ -171,15 +194,7 @@ export function createScreenshotTool(capture: Capturer = captureVisible): AgentT
         },
       })
 
-      const imageContent: UserContentPart[] = [
-        { type: 'text', text: `[Screenshot: ${path}]` },
-        { type: 'image_url', image_url: { url: dataUrl } },
-      ]
-
-      return {
-        content: [{ type: 'text', text: `Screenshot captured: ${path}` }],
-        injectMessages: [{ role: 'user', content: imageContent, timestamp: Date.now() }],
-      }
+      return picture(`[Screenshot: ${path}]`, shotName(file.basename), dataUrl)
     },
   }
 }

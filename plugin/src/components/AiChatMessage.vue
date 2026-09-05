@@ -407,7 +407,7 @@ const openToolFile = () => {
   }
 }
 
-const IMAGE_TOOLS = ['read_image', 'generate_image', 'edit_image']
+const IMAGE_TOOLS = ['read_image', 'generate_image', 'edit_image', 'screenshot']
 
 const imagePath = computed(() => {
   const name = props.message.toolName
@@ -415,7 +415,7 @@ const imagePath = computed(() => {
   if (name === 'read_image') return (props.message.toolParams?.path as string) || ''
   const result = props.message.toolResult
   if (!result) return ''
-  const match = result.match(/(?:Image saved|Edited image saved): (.+)/)
+  const match = result.match(/(?:Image saved|Edited image saved|Screenshot saved): (.+)/)
   return match ? match[1].trim() : ''
 })
 
@@ -489,7 +489,7 @@ const imageUrl = computed(() => {
   // generate_image / edit_image: extract saved path from toolResult
   const result = props.message.toolResult
   if (!result) return ''
-  const match = result.match(/(?:Image saved|Edited image saved): (.+)/)
+  const match = result.match(/(?:Image saved|Edited image saved|Screenshot saved): (.+)/)
   if (!match) return ''
   const path = match[1].trim()
   const { app } = GlobalStore.getInstance()

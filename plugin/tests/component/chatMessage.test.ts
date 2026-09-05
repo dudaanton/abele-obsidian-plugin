@@ -65,3 +65,23 @@ describe('the icon beside a message', () => {
     expect(icon?.parentElement).toBe(row)
   })
 })
+
+describe('a screenshot the agent took', () => {
+  it('is shown under the tool call, so the person sees what the agent saw', () => {
+    const app = useVault([{ path: 'Attachments/Screenshot Feed 2026-09-05 12-00-00.png', content: '' }])
+    ;(
+      app.vault as unknown as { getResourcePath: (f: { path: string }) => string }
+    ).getResourcePath = (f) => `app://vault/${f.path}`
+
+    const wrapper = render({
+      role: 'tool-call',
+      toolName: 'screenshot',
+      toolStatus: 'approved',
+      toolResult: 'Screenshot saved: Attachments/Screenshot Feed 2026-09-05 12-00-00.png',
+    })
+
+    expect(wrapper.find('.abele-chat-msg__image-preview').attributes('src')).toBe(
+      'app://vault/Attachments/Screenshot Feed 2026-09-05 12-00-00.png'
+    )
+  })
+})
