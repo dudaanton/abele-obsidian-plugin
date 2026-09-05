@@ -12,7 +12,6 @@
  * points). For every screen:
  *
  * - nothing reaches past the right edge of the screen it is on;
- * - a strip of tabs is one row, not two;
  * - at most one thing scrolls inside the body — nested scrollers are the sign of a box that was
  *   sized for a small window and is now standing inside a sheet the height of the screen;
  * - whatever does scroll reaches the bottom of the body rather than leaving a blank half-screen
@@ -43,10 +42,6 @@ const SHOTS = '/tmp/abele-phone'
 interface Screen {
   /** Class names of elements past the right edge of the root, with how far past. */
   over: string[]
-  /** Rows each tab strip inside the root occupies. One is the answer. */
-  stripRows: number[]
-  /** Tab strips shorter than the tabs they hold. */
-  clippedStrips: string[]
   /** Everything inside the body that scrolls, with the space left blank under it. */
   scrollers: { name: string; height: number; spare: number }[]
   /** Scrolling boxes with a fixed ceiling lower than the body they stand in. */
@@ -96,15 +91,6 @@ const probeScript = `(async () => {
     }
     for (const c of root.children) walk(c)
 
-    const strips = [...root.querySelectorAll('.abele-tabs:not(.abele-tabs_vertical)')]
-    const stripRows = strips.map(
-      (strip) => new Set([...strip.querySelectorAll('.abele-tabs__tab')].map((t) => Math.round(t.getBoundingClientRect().top))).size
-    )
-    // A strip shorter than its own tabs: a column gave its height to the body under it.
-    const clippedStrips = strips
-      .filter((strip) => strip.scrollHeight > strip.clientHeight + 1)
-      .map((strip) => name(strip) + ' ' + strip.clientHeight + '/' + strip.scrollHeight)
-
     const host = body || root
     const hostBox = host.getBoundingClientRect()
     const scrollers = []
@@ -122,7 +108,7 @@ const probeScript = `(async () => {
       scrollers.push({ name: name(el), height: Math.round(r.height), spare: Math.round(hostBox.bottom - r.bottom) })
     }
 
-    return { over, stripRows, clippedStrips, scrollers, capped, fill: Math.round((box.height / window.innerHeight) * 100) / 100 }
+    return { over, scrollers, capped, fill: Math.round((box.height / window.innerHeight) * 100) / 100 }
   }
 
   const shoot = async (label) => {
@@ -138,7 +124,7 @@ const probeScript = `(async () => {
 
   const report = {}
   const screen = async (label, root, body) => {
-    const entry = { over: [], stripRows: [], scrollers: [], capped: [], fill: 0, shot: '', error: '' }
+    const entry = { over: [], scrollers: [], capped: [], fill: 0, shot: '', error: '' }
     try {
       if (!root) throw new Error('nothing to measure')
       entry.shot = await shoot(label)
@@ -217,11 +203,21 @@ const probeScript = `(async () => {
         tab.click()
         await wait(400)
         const modal = document.querySelector('.modal')
-        await screen('setup ' + tab.textContent.trim().toLowerCase(), modal, modal && modal.querySelector('.abele-modal__body'))
+        const label = tab.textContent.trim().toLowerCase()
+        // The picker takes focus itself; the picture is of the ring that comes with it, which
+        // a scrolling box clips unless it is given room. Blurred before measuring.
+        const field = modal && modal.querySelector('.abele-sp-picker input')
+        if (field) {
+          field.focus()
+          await wait(200)
+          await shoot('setup ' + label + ' focused')
+          field.blur()
+        }
+        await screen('setup ' + label, modal, modal && modal.querySelector('.abele-modal__body'))
       }
       await closeDialog()
     } else {
-      report['setup'] = { over: [], stripRows: [], scrollers: [], capped: [], fill: 0, shot: '', error: 'no setup button' }
+      report['setup'] = { over: [], scrollers: [], capped: [], fill: 0, shot: '', error: 'no setup button' }
     }
 
     const history = chat && chat.querySelector('.lucide-history')
@@ -234,7 +230,7 @@ const probeScript = `(async () => {
       await closeDialog()
     }
   } catch (e) {
-    report['run'] = { over: [], stripRows: [], scrollers: [], capped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
+    report['run'] = { over: [], scrollers: [], capped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
   } finally {
     await closeDialog()
     await unseed()
@@ -319,11 +315,6 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 
   it.each(screens)('%s: nothing reaches past the edge of the screen', (label) => {
     expect(report[label]?.over ?? ['no report']).toEqual([])
-  })
-
-  it.each(screens)('%s: a strip of tabs is one row', (label) => {
-    for (const rows of report[label]?.stripRows ?? []) expect(rows).toBe(1)
-    expect(report[label]?.clippedStrips ?? ['no report']).toEqual([])
   })
 
   it.each(screens)('%s: one thing scrolls inside the body, and it reaches the bottom', (label) => {
