@@ -108,3 +108,30 @@ describe('rebuilding the index', () => {
     expect(service.scriptList.value).toEqual(service.getAll())
   })
 })
+
+describe('scripts named in Cyrillic', () => {
+  it('each get a command and a tool of their own', async () => {
+    useVault([
+      { path: 'Scripts/sort.js', content: SCRIPT('Сортировать задачи под курсором') },
+      { path: 'Scripts/close.js', content: SCRIPT('Закрыть задачи') },
+    ])
+    ScriptService.destroy()
+    AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, scriptsFolder: 'Scripts' }
+    commands.clear()
+    ;(AbeleConfig.getInstance() as unknown as { plugin: unknown }).plugin = fakePlugin()
+    const service = ScriptService.getInstance()
+
+    await service.discover()
+
+    expect([...commands.keys()].sort()).toEqual([
+      'abele:script-sortirovat-zadachi-pod-kursorom',
+      'abele:script-zakryt-zadachi',
+    ])
+    const { createScriptTools } = await import('@/ai/tools/ScriptTool')
+    expect(
+      createScriptTools()
+        .map((t) => t.name)
+        .sort()
+    ).toEqual(['script_sortirovat-zadachi-pod-kursorom', 'script_zakryt-zadachi'])
+  })
+})

@@ -9,6 +9,7 @@ import {
   normalizePath,
 } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { scriptSlug } from './scriptSlug'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { VaultWatcherWrapper } from '@/helpers/VaultWatcherWrapper'
 import { parseScriptHeader, extractScriptBody } from './ScriptParser'
@@ -371,7 +372,7 @@ export class ScriptService {
         }
 
         const code = extractScriptBody(source)
-        const commandId = `abele:script-${sanitize(meta.name)}`
+        const commandId = `abele:script-${scriptSlug(meta.name)}`
         next.set(file.path, { path: file.path, meta, code, commandId })
       } catch (err) {
         console.error(`[ScriptService] Error parsing ${file.path}:`, err)
@@ -403,7 +404,7 @@ export class ScriptService {
   /** Remove stale script entries from toolModes */
   private cleanupStaleEntries() {
     const validToolNames = new Set(
-      Array.from(this.scripts.values()).map((s) => `script_${sanitize(s.meta.name)}`)
+      Array.from(this.scripts.values()).map((s) => `script_${scriptSlug(s.meta.name)}`)
     )
 
     const config = AbeleConfig.getInstance()
@@ -717,11 +718,4 @@ export class ScriptService {
     }
     return typed
   }
-}
-
-function sanitize(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
 }
