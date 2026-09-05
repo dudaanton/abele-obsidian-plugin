@@ -83,6 +83,7 @@ import { singleHopRequest } from '@/github/transport'
 import { connectionApproval } from '@/github/approveConnection'
 import { endpoints } from '@/github/urls'
 import { newDrawing, openImageInk } from '@/drawing/files'
+import { SyncService } from '@/sync/SyncService'
 import * as bookSafety from '@/reader/bookSafety'
 import { BOOK_VIEW_TYPE, bookViews, readerTestHooks } from '@/reader/BookView'
 import { openEpub } from '@/reader/openBook'
@@ -162,6 +163,15 @@ interface AbeleTestApi {
     placeDiagram: typeof placeDiagram
   }
   ScopeResolver: typeof ScopeResolver
+  /**
+   * The sync service, for the end-to-end suite to drive a real device.
+   *
+   * Connecting, enrolling and syncing all live on the singleton inside the bundle, and the
+   * suite pairs the running app with a daemon folder by calling them — there is no other way
+   * in from `obsidian eval`, and going round the service through the client would test the
+   * server rather than the plugin.
+   */
+  SyncService: typeof SyncService
   ChatService: typeof ChatService
   NodeService: typeof NodeService
   ChatStorage: typeof ChatStorage
@@ -708,6 +718,7 @@ export function exposeTestApi(plugin: Plugin): void {
     canvasProbe: createCanvasProbe(plugin),
     setKeyboardDiagnostics,
     ScopeResolver,
+    SyncService,
     ChatService,
     NodeService,
     ChatStorage,
