@@ -230,8 +230,10 @@ describe('ObsidianFileSystem — moving and removing', () => {
     const fs = useVault(VAULT)
     // A mount that reads rename(2) between two names of one file as doing nothing at all.
     const renamed = app.vault.adapter.rename.bind(app.vault.adapter)
+    const asked: [string, string][] = []
     let refusals = 0
     app.vault.adapter.rename = async (from: string, to: string) => {
+      asked.push([from, to])
       if (from !== to && from.toLowerCase() === to.toLowerCase()) {
         refusals++
         return
@@ -244,9 +246,61 @@ describe('ObsidianFileSystem — moving and removing', () => {
     expect(refusals).toBe(1)
     expect(read(await fs.read('note.md'))).toBe('first')
     expect(await app.vault.adapter.exists('note.md', true)).toBe(true)
+    // Out from the name that is there either way, and back. The name it goes through is
+    // beside the file rather than built on it — a segment may already be at the 255 bytes a
+    // filesystem allows — and hidden, so Obsidian's index never sees it.
+    const [temp] = asked[1]!.slice(1)
+    expect(asked).toEqual([
+      ['Note.md', 'note.md'],
+      ['note.md', temp],
+      [temp, 'note.md'],
+    ])
+    expect(temp).toMatch(/^\.abele-sync-[a-z0-9]{8}\.tmp$/)
     // Nothing of the adapter's own is left behind in the vault.
     const paths = (await listed(fs)).map((info) => info.path)
     expect(paths.filter((path) => path.includes('abele-sync'))).toEqual([])
+  })
+
+  it('leaves a rename that took alone when the listing after it hiccups', async () => {
+    const fs = useVault(VAULT)
+    const real = app.vault.adapter.list.bind(app.vault.adapter)
+    let hiccuped = false
+    // The rename works; the one listing that would confirm it does not. Reading that as "the
+    // old spelling is still there" would send the rename round again, and the second one has
+    // nothing left to move — a conflict held on every sync from then on.
+    app.vault.adapter.list = async (path: string) => {
+      if (!hiccuped) {
+        hiccuped = true
+        throw new Error(`EIO: ${path}`)
+      }
+      return real(path)
+    }
+    const renamed = app.vault.adapter.rename.bind(app.vault.adapter)
+    let renames = 0
+    app.vault.adapter.rename = async (from: string, to: string) => {
+      renames++
+      await renamed(from, to)
+    }
+
+    await expect(fs.move('Note.md', 'note.md')).resolves.toBeUndefined()
+    expect(hiccuped).toBe(true)
+    // One rename, not three: the file was not sent round the temp name after the fact.
+    expect(renames).toBe(1)
+    expect(await app.vault.adapter.exists('note.md', true)).toBe(true)
+    expect(read(await fs.read('note.md'))).toBe('first')
+  })
+
+  it('renames a decomposed name into the composed one the server sends back', async () => {
+    // What macOS keeps on disk, and what the wire carries: the same name, spelled two ways.
+    const decomposed = 'Cafe\u0301.md'
+    const composed = 'caf\u00e9.md'
+    const fs = useVault([{ path: decomposed, content: 'beans', mtime: 5 }])
+
+    await expect(fs.move(decomposed, composed)).resolves.toBeUndefined()
+
+    expect(await app.vault.adapter.exists(composed, true)).toBe(true)
+    expect((await fs.stat(composed))?.path).toBe(composed)
+    expect(read(await fs.read(composed))).toBe('beans')
   })
 
   it('holds a rename the disk will not make at all', async () => {

@@ -1,6 +1,7 @@
 import { TFolder } from 'obsidian'
 import type { App, DataAdapter, EventRef, ListedFiles, Stat, TAbstractFile } from 'obsidian'
 import { EngineError, type FileInfo, type FileSystem } from '@abele/sync-core'
+import { caseKey } from '@abele/sync-protocol'
 
 /** How long the watcher waits for a burst to end before it reports a batch. */
 const WATCH_DEBOUNCE_MS = 300
@@ -128,7 +129,9 @@ export class ObsidianFileSystem implements FileSystem {
         throw new EngineError('conflict', `${to} is held by another file`)
       }
       await this.rename(from, to)
-      if (await this.spelledExactly(to)) return
+      // Only a listing that says outright that the old spelling is still there sends this
+      // round again; a listing that would not answer leaves the rename as done.
+      if ((await this.spelledExactly(to)) !== false) return
       await this.respell(from, to)
       return
     }
@@ -387,17 +390,20 @@ export class ObsidianFileSystem implements FileSystem {
 
   /**
    * Whether the folder holds this exact name, which is how a rename is known to have taken.
+   * Null when the listing could not say.
    *
    * Case matters, since case is the whole question; the decomposition does not, because
-   * Obsidian composes what it lists whatever the disk keeps underneath.
+   * Obsidian composes what it lists whatever the disk keeps underneath. A listing that failed
+   * is *not* a no: read as one, a rename that has already happened would be sent round again
+   * and reported as a conflict the vault would hold for ever.
    */
-  private async spelledExactly(target: string): Promise<boolean> {
+  private async spelledExactly(target: string): Promise<boolean | null> {
     const wanted = target.normalize('NFC')
     try {
       const listed = await this.adapter.list(folderOf(target))
       return listed.files.some((held) => held.normalize('NFC') === wanted)
     } catch {
-      return false
+      return null
     }
   }
 
@@ -463,9 +469,11 @@ export class ObsidianFileSystem implements FileSystem {
    * bytes under the temp name, which the next scan reports as a file the server has not seen.
    */
   private async respell(from: string, to: string): Promise<void> {
-    const temp = `${to}.abele-sync-${Math.random().toString(36).slice(2, 10)}`
+    const temp = await this.tempBeside(to)
+    // Out from `to`, not from `from`: on the disk this is for, both names answer to the one
+    // file, and `to` is the one that is there whether the rename before this took or not.
     try {
-      await this.adapter.rename(from, temp)
+      await this.adapter.rename(to, temp)
     } catch (cause) {
       throw new EngineError('conflict', `cannot spell ${from} as ${to}`, cause)
     }
@@ -482,9 +490,28 @@ export class ObsidianFileSystem implements FileSystem {
       }
       throw new EngineError('conflict', `cannot spell ${from} as ${to}`, cause)
     }
-    if (!(await this.spelledExactly(to))) {
+    if ((await this.spelledExactly(to)) === false) {
       throw new EngineError('conflict', `this disk keeps ${from} spelled as it was`)
     }
+  }
+
+  /**
+   * A free name in the same folder to rename through.
+   *
+   * Short, and beside the file rather than built on its name: a segment may already be at the
+   * 255 bytes a filesystem allows, and twenty more would make the rename fail with a name too
+   * long — a hold the vault would never get out of. The leading dot keeps it out of Obsidian's
+   * file index for the moment it exists.
+   */
+  private async tempBeside(to: string): Promise<string> {
+    const cut = to.lastIndexOf('/')
+    const folder = cut === -1 ? '' : to.slice(0, cut)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const stem = Math.random().toString(36).slice(2, 10).padEnd(8, '0')
+      const path = folder === '' ? `.abele-sync-${stem}.tmp` : `${folder}/.abele-sync-${stem}.tmp`
+      if ((await this.rawStat(path)) === null) return path
+    }
+    throw new EngineError('conflict', `no free name beside ${to} to rename ${to} through`)
   }
 }
 
@@ -533,9 +560,16 @@ function folderOf(target: string): string {
   return cut === -1 ? '/' : target.slice(0, cut)
 }
 
-/** Whether two paths are one name under two spellings. */
+/**
+ * Whether two paths are one name under two spellings.
+ *
+ * `caseKey` is the protocol's own fold — NFC, then lower case — and it has to be both:
+ * a vault on macOS keeps `Café.md` decomposed, the server sends it back composed, and a
+ * comparison that only folded case would call the two different files and hold the rename
+ * for ever.
+ */
 function caseOnly(source: string, target: string): boolean {
-  return source.toLowerCase() === target.toLowerCase()
+  return caseKey(source) === caseKey(target)
 }
 
 /** The wire has no time before 1970; a file that claims one is dated at the epoch. */
