@@ -1,6 +1,6 @@
 <template>
-  <div class="abele-gallery">
-    <div class="abele-gallery__header">
+  <div class="abele-gallery" :class="{ 'abele-gallery_readonly': gallery.readonly }">
+    <div v-if="!gallery.readonly" class="abele-gallery__header">
       <div class="abele-gallery__header-right">
         <ObsidianIcon ref="addBtnRef" icon="image-plus" @click="addMenu.open" />
         <ObsidianIcon :icon="editMode ? 'check' : 'pencil'" @click="editMode = !editMode" />
@@ -9,12 +9,16 @@
       </div>
     </div>
 
-    <div v-if="gallery.images.length === 0" class="abele-gallery__empty" @click="addFromVault">
+    <div
+      v-if="gallery.images.length === 0"
+      class="abele-gallery__empty"
+      @click="!gallery.readonly && addFromVault()"
+    >
       <ObsidianIcon icon="image" />
       <span>No images</span>
     </div>
 
-    <div v-else-if="editMode" class="abele-gallery__edit-list">
+    <div v-else-if="editMode && !gallery.readonly" class="abele-gallery__edit-list">
       <div v-for="(image, index) in resolvedImages" :key="index" class="abele-gallery__edit-item">
         <video
           v-if="image.url && image.mediaType === 'video'"
