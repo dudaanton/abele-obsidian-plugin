@@ -64,9 +64,18 @@ const emit = defineEmits<{
   align-items: center;
   gap: var(--size-2-1);
   padding: var(--size-2-2) var(--size-4-2);
+  // As wide as the fade the add button paints over this end, so the last chip, scrolled to,
+  // stands clear of it rather than 4px under it.
+  padding-right: var(--size-4-3);
   overflow-x: auto;
   flex: 1;
   min-width: 0;
+
+  // Both spellings, and the standard one is the one that counts: Obsidian 1.12 sets
+  // `scrollbar-width` on every element, and once that property is set Chromium ignores the
+  // `::-webkit-scrollbar` pseudo-elements altogether — which is how a strip that had hidden
+  // its scrollbar for a year grew one under the chips.
+  scrollbar-width: none;
 
   &::-webkit-scrollbar {
     display: none;
