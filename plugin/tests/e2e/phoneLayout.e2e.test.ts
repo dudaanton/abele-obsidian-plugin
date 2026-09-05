@@ -46,6 +46,8 @@ interface Screen {
   scrollers: { name: string; height: number; spare: number }[]
   /** Scrolling boxes with a fixed ceiling lower than the body they stand in. */
   capped: string[]
+  /** Ancestors that cut the focus ring of the field the screen focused, with how much of it. */
+  clipped: string[]
   /** The root's height as a share of the window's. */
   fill: number
   /** Where the picture went. */
@@ -111,6 +113,29 @@ const probeScript = `(async () => {
     return { over, scrollers, capped, fill: Math.round((box.height / window.innerHeight) * 100) / 100 }
   }
 
+  /**
+   * The ancestors that cut a focused field's ring. The ring is a box-shadow drawn outside the
+   * field's box, so every ancestor that clips has to leave room for its blur and spread; the
+   * dialog's mount point did not, and the search field lost 2px off each side on a phone.
+   */
+  const ringClipped = (field) => {
+    const nums = (getComputedStyle(field).boxShadow.match(/-?\\d+(\\.\\d+)?px/g) || []).map(parseFloat)
+    const reach = nums.length >= 4 ? Math.max(0, nums[2]) + Math.max(0, nums[3]) : 0
+    const r = field.getBoundingClientRect()
+    const ring = { left: r.left - reach, right: r.right + reach, top: r.top - reach, bottom: r.bottom + reach }
+    const cut = []
+    for (let el = field.parentElement; el && el !== document.documentElement; el = el.parentElement) {
+      const cs = getComputedStyle(el)
+      if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue
+      const b = el.getBoundingClientRect()
+      const left = b.left + el.clientLeft, top = b.top + el.clientTop
+      const box = { left, top, right: left + el.clientWidth, bottom: top + el.clientHeight }
+      const by = Math.max(box.left - ring.left, ring.right - box.right, box.top - ring.top, ring.bottom - box.bottom)
+      if (by > 0.5) cut.push(name(el) + ' ' + Math.round(by) + 'px')
+    }
+    return cut
+  }
+
   const shoot = async (label) => {
     // A hidden or backgrounded window runs no animations: a dialog measured mid-slide-in reads
     // where it started from. Nothing here waits on one.
@@ -124,7 +149,7 @@ const probeScript = `(async () => {
 
   const report = {}
   const screen = async (label, root, body) => {
-    const entry = { over: [], scrollers: [], capped: [], fill: 0, shot: '', error: '' }
+    const entry = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: '' }
     try {
       if (!root) throw new Error('nothing to measure')
       entry.shot = await shoot(label)
@@ -207,17 +232,20 @@ const probeScript = `(async () => {
         // The picker takes focus itself; the picture is of the ring that comes with it, which
         // a scrolling box clips unless it is given room. Blurred before measuring.
         const field = modal && modal.querySelector('.abele-sp-picker input')
+        let clipped = []
         if (field) {
           field.focus()
           await wait(200)
           await shoot('setup ' + label + ' focused')
+          clipped = ringClipped(field)
           field.blur()
         }
         await screen('setup ' + label, modal, modal && modal.querySelector('.abele-modal__body'))
+        report['setup ' + label].clipped = clipped
       }
       await closeDialog()
     } else {
-      report['setup'] = { over: [], scrollers: [], capped: [], fill: 0, shot: '', error: 'no setup button' }
+      report['setup'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'no setup button' }
     }
 
     const history = chat && chat.querySelector('.lucide-history')
@@ -230,7 +258,7 @@ const probeScript = `(async () => {
       await closeDialog()
     }
   } catch (e) {
-    report['run'] = { over: [], scrollers: [], capped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
+    report['run'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
   } finally {
     await closeDialog()
     await unseed()
@@ -323,6 +351,13 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     for (const s of scrollers)
       expect(s.spare, `${s.name} leaves ${s.spare}px blank under it`).toBeLessThanOrEqual(24)
   })
+
+  it.each(['setup skills', 'setup prompts'])(
+    '%s: nothing cuts the focus ring of the search field',
+    (label) => {
+      expect(report[label]?.clipped ?? ['no report']).toEqual([])
+    }
+  )
 
   it.each(screens)('%s: no box is capped below the height of the sheet', (label) => {
     expect(report[label]?.capped ?? ['no report']).toEqual([])
