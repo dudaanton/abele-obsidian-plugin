@@ -78,6 +78,27 @@
           <span class="abele-ai-chat__empty-text">What's on your mind?</span>
         </div>
 
+        <!-- The conversation's beginnings, when there is more than one. A repeat of the first
+             message starts a second one, and with no parent to hang the usual switcher on the
+             first looked deleted rather than put aside (2026-09-05, on both phone and desktop). -->
+        <div v-if="rootBranches" class="abele-ai-chat__roots abele-chat-msg__branch-nav">
+          <Icon
+            icon="chevron-left"
+            :class="{ 'abele-chat-msg__branch-disabled': rootBranches.index <= 0 }"
+            @click="switchRoot(-1)"
+          />
+          <span class="abele-chat-msg__branch-label"
+            >{{ rootBranches.index + 1 }}/{{ rootBranches.ids.length }}</span
+          >
+          <Icon
+            icon="chevron-right"
+            :class="{
+              'abele-chat-msg__branch-disabled': rootBranches.index >= rootBranches.ids.length - 1,
+            }"
+            @click="switchRoot(1)"
+          />
+        </div>
+
         <div v-if="olderCount" class="abele-ai-chat__older">
           <Icon icon="chevron-up" no-hover />
           <span>{{ olderCount }} earlier messages</span>
@@ -379,6 +400,25 @@ const branchInfoMap = computed(() => {
 
   return map
 })
+
+/**
+ * The beginnings of this conversation, when there are several: every message without a
+ * parent, and which of them the visible path starts from. The switcher under a message
+ * covers that message's children; a root has no message above it to carry one.
+ */
+const rootBranches = computed(() => {
+  const roots = allMessages.value.filter((m) => !m.parentId)
+  const first = messages.value[0]
+  if (roots.length < 2 || !first) return null
+  return { ids: roots.map((m) => m.id), index: roots.findIndex((m) => m.id === first.id) }
+})
+
+const switchRoot = (step: number) => {
+  const roots = rootBranches.value
+  if (!roots) return
+  const id = roots.ids[roots.index + step]
+  if (id) onSwitchBranch(id)
+}
 
 const onCreateBranch = (messageId: string) => {
   shouldAutoScroll = false
@@ -1262,6 +1302,11 @@ const showDebug = () => {
 
 .abele-ai-chat__header-active {
   color: var(--interactive-accent) !important;
+}
+
+/** Between beginnings: the same strip a message carries under it, at the top of the list. */
+.abele-ai-chat__roots {
+  margin-bottom: var(--size-4-2);
 }
 
 /** The marker above the oldest rendered message, saying what scrolling further would show. */
