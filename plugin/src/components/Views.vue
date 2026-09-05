@@ -104,8 +104,11 @@
     :fields="scriptFormFields"
     :resolve="scriptFormResolve"
   />
+  <!-- Keyed by the path: opening the history of a second file must rebuild the dialog, not
+       hand a new prop to one still holding the first file's versions. -->
   <VersionHistoryModal
     v-if="versionHistoryPath"
+    :key="versionHistoryPath"
     :path="versionHistoryPath"
     @close="versionHistoryPath = null"
   />

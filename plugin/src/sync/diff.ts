@@ -11,6 +11,12 @@
  * The daemon's `history --diff` prints the same diff from the same algorithm, and this is that
  * file copied rather than imported: `@abele/sync-core` is the engine two hosts share, and how
  * a host draws a change for a person to read is not part of it. A fix to one belongs in both.
+ *
+ * Which is also why the fourteen `!` assertions below are still here. The daemon compiles under
+ * `strict`, where indexing a `string[]` or an `Int32Array` yields `T | undefined` and every one
+ * of them is load-bearing; this plugin does not, so ESLint reports each as unnecessary. They are
+ * kept for parity: the two files are meant to diff cleanly against each other, and fourteen
+ * cosmetic deletions would bury the next real change to the algorithm in noise.
  */
 
 /** One line's fate: kept, taken away, or brought in. */

@@ -1,54 +1,63 @@
 <template>
   <ObsidianModal title="Version history" size="tall" @close="emit('close')">
-    <div class="abele-version-history">
-      <p class="abele-version-history__path">{{ path }}</p>
+    <div ref="root" class="abele-version-history">
+      <div class="abele-version-history__head">
+        <p class="abele-version-history__path">{{ path }}</p>
+        <!--
+          A failure is a line above the list, not a replacement for it: a restore the server
+          refused leaves every other version still worth reading and still restorable.
+        -->
+        <p v-if="error !== null" class="abele-version-history__error">{{ error }}</p>
+      </div>
 
-      <EmptyState v-if="notice !== null" :text="notice" />
+      <div class="abele-version-history__list">
+        <EmptyState v-if="notice !== null" :text="notice" />
 
-      <CardGrid v-else stack>
-        <Card
-          v-for="version in versions"
-          :key="version.version_id"
-          :title="`#${version.no}`"
-          :meta="metaOf(version)"
-          :clickable="isText"
-          :selected="isText ? selected === version.version_id : undefined"
-          @click="select(version)"
-        >
-          <template #badges>
-            <Badge :text="OP_LABEL[version.op]" />
-          </template>
+        <CardGrid v-else stack>
+          <Card
+            v-for="version in versions"
+            :key="version.version_id"
+            :title="`#${version.no}`"
+            :meta="metaOf(version)"
+            :clickable="isText"
+            :selected="isText ? selected === version.version_id : undefined"
+            @click="select(version)"
+          >
+            <template #badges>
+              <Badge :text="OP_LABEL[version.op]" />
+            </template>
 
-          <template #actions>
-            <Button
-              text="Restore"
-              :disabled="busy"
-              tooltip="Make this version the current one again, on every device"
-              @click="confirming = version"
-            />
-          </template>
+            <template #actions>
+              <Button
+                text="Restore"
+                :disabled="busy || refusalFor(version) !== null"
+                :tooltip="refusalFor(version) ?? 'Make this version the current one again'"
+                @click="confirming = version"
+              />
+            </template>
 
-          <!--
-            The preview sits inside a card that opens and closes on a click, so its own clicks
-            are stopped: selecting a line of the diff to copy it must not fold the diff away.
-          -->
-          <div v-if="selected === version.version_id" @click.stop @keydown.enter.stop>
-            <p v-if="previewNote !== null" class="abele-version-history__note">
-              {{ previewNote }}
-            </p>
-            <div v-else class="abele-version-history__diff">
-              <div
-                v-for="(line, index) in diff"
-                :key="index"
-                class="abele-version-history__diff-line"
-                :class="lineClass(line)"
-              >
-                {{ line }}
+            <!--
+              The preview sits inside a card that opens and closes on a click, so its own clicks
+              are stopped: selecting a line of the diff to copy it must not fold the diff away.
+            -->
+            <div v-if="selected === version.version_id" @click.stop @keydown.enter.stop>
+              <p v-if="previewNote !== null" class="abele-version-history__note">
+                {{ previewNote }}
+              </p>
+              <div v-else class="abele-version-history__diff">
+                <div
+                  v-for="(line, index) in diff"
+                  :key="index"
+                  class="abele-version-history__diff-line"
+                  :class="lineClass(line)"
+                >
+                  {{ line }}
+                </div>
               </div>
             </div>
-          </div>
-        </Card>
-      </CardGrid>
+          </Card>
+        </CardGrid>
+      </div>
     </div>
 
     <ConfirmModal
@@ -81,9 +90,11 @@
  * Restoring goes through the server rather than by writing the bytes here. A restore is a
  * commit like any other: the server makes it the head, and the engine pulls it onto disk on
  * the next sync — which is what `syncNow` is for, and why the editor shows the restored text
- * without this dialog touching the vault at all.
+ * without this dialog touching the vault at all. And like any other commit it can be *refused*
+ * without failing — a 200 carrying `rejected` — which is why the answer is read rather than
+ * discarded.
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, useTemplateRef } from 'vue'
 import { Notice } from 'obsidian'
 import type { VaultClient } from '@abele/sync-core'
 import type { VersionInfo, VersionOp } from '@abele/sync-protocol'
@@ -150,14 +161,21 @@ const TEXT_EXTENSIONS = [
 const sync = SyncService.getInstance()
 
 const versions = ref<VersionInfo[]>([])
+/** What the list says when there is no list: reading, unreachable, unsynced, or empty. */
 const notice = ref<string | null>('Reading this file’s history…')
+/** What went wrong, said above the list without taking it away. */
+const error = ref<string | null>(null)
 const selected = ref<string | null>(null)
 const diff = ref<string[]>([])
 const previewNote = ref<string | null>(null)
 const confirming = ref<VersionInfo | null>(null)
 const busy = ref(false)
 
+const root = useTemplateRef<HTMLElement>('root')
+
 let fileId = ''
+/** The version this device currently agrees with — the one there is nothing to restore to. */
+let currentVersionId = ''
 let client: VaultClient | null = null
 
 /**
@@ -173,11 +191,31 @@ const isText = computed(() => {
   return dot < 0 ? false : TEXT_EXTENSIONS.includes(name.slice(dot + 1).toLowerCase())
 })
 
-const confirmMessage = computed(() =>
-  confirming.value === null
-    ? ''
-    : `Version #${confirming.value.no} of ${props.path} becomes the current one, on this device and every other. Nothing is lost: what the file holds now stays in the history as a version of its own.`
-)
+/**
+ * Why this version cannot be restored, or null when it can — and the tooltip either way.
+ *
+ * Two versions have nothing to put back. The current one is already the head, and the server
+ * would answer a restore of it with `rejected`; a deletion holds no bytes at all, which the
+ * server answers the same way. Both are better said on a disabled button than found out by
+ * pressing it.
+ */
+function refusalFor(version: VersionInfo): string | null {
+  if (version.version_id === currentVersionId) return 'This is already the current version'
+  if (version.op === 'delete') return 'A deletion holds no content to put back'
+  return null
+}
+
+const confirmMessage = computed(() => {
+  const version = confirming.value
+  if (version === null) return ''
+  const head = `Version #${version.no} of ${props.path} becomes the current one, on this device and every other. Nothing is lost: what the file holds now stays in the history as a version of its own.`
+  // A restore is about content, never about where the file lives. Saying so matters most for a
+  // version that moved the file: restoring it does not put the file back at the old name.
+  const moved = version.op === 'move' || version.path !== props.path
+  return moved
+    ? `${head} That version had the file at ${version.path}; restoring puts its content back at ${props.path}, where the file is now — the move itself is not undone.`
+    : head
+})
 
 /** The three facts about a version that fit on one faint row: who, when, and how big. */
 const metaOf = (version: VersionInfo): string[] => [
@@ -259,21 +297,37 @@ async function select(version: VersionInfo): Promise<void> {
   }
 }
 
+/**
+ * A key for the one commit this dialog can send.
+ *
+ * Minted from the element's own window: settings can open in a window of their own, and the
+ * `crypto` a dialog there should use is that window's. A restore retried under the key it was
+ * first sent with is the first answer again rather than a second version of the same bytes.
+ */
+const idempotencyKey = (): string => (root.value?.win ?? window).crypto.randomUUID()
+
 /** Make the version the head again, then pull it onto disk. */
 async function restore(): Promise<void> {
   const version = confirming.value
   if (version === null || client === null || busy.value) return
   busy.value = true
+  error.value = null
   try {
-    await client.restore(fileId, version.version_id)
+    const result = await client.restore(fileId, version.version_id, idempotencyKey())
+    // A refusal is a 200, not a throw: the server answers "no, and here is why" in the same
+    // shape it answers "yes". Announcing that as a restore is how a dialog lies.
+    if (result.status === 'rejected') {
+      error.value = `Version #${version.no} was not restored: ${result.message}`
+      return
+    }
     sync.note(`restored ${props.path} to version #${version.no}`)
     // The commit is on the server; the file on disk is still the old one until the engine
     // fetches it, and there is no reason to make somebody wait for the next trigger.
     await sync.syncNow()
-    new Notice(`${props.path} restored to version #${version.no}.`)
+    new Notice(`${result.path} restored to version #${version.no}.`)
     emit('close')
   } catch (failure) {
-    notice.value = `Version #${version.no} could not be restored: ${reasonOf(failure)}`
+    error.value = `Version #${version.no} could not be restored: ${reasonOf(failure)}`
   } finally {
     busy.value = false
   }
@@ -286,32 +340,71 @@ onMounted(async () => {
       'A file’s history is kept on the server, and this device is not connected to one.'
     return
   }
-  const entry = await sync.entryFor(props.path)
-  if (entry === null) {
-    notice.value = 'This file has not been synced yet, so the server holds no history of it.'
-    return
-  }
-  fileId = entry.fileId
   try {
+    // Inside the try with the request: the ledger is a database, and a database that will not
+    // open would otherwise leave this dialog reading for ever.
+    const entry = await sync.entryFor(props.path)
+    if (entry === null) {
+      notice.value = 'This file has not been synced yet, so the server holds no history of it.'
+      return
+    }
+    fileId = entry.fileId
+    currentVersionId = entry.versionId
     versions.value = await client.versions(fileId, { limit: PAGE })
     notice.value =
       versions.value.length === 0 ? 'The server holds no versions of this file yet.' : null
   } catch (failure) {
-    notice.value = `This file’s history could not be read: ${reasonOf(failure)}`
+    notice.value = null
+    error.value = `This file’s history could not be read: ${reasonOf(failure)}`
   }
 })
 </script>
 
 <style lang="scss">
 /**
+ * A column, because the dialog is one: `.abele-modal_tall` is a flex column with
+ * `overflow: hidden`, so whatever it holds has to take the scrolling on itself. A body that
+ * grew instead would push fifty version cards — and an expanded diff — past the bottom of the
+ * sheet, where nothing can reach them.
+ */
+.abele-version-history {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.abele-version-history__head {
+  flex: 0 0 auto;
+  margin-bottom: var(--size-4-3);
+}
+
+/**
+ * The list is the one scroller here, and it scrolls one way only: a card wraps and a diff line
+ * wraps, so there is never anything to reach sideways for.
+ */
+.abele-version-history__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/**
  * A path has no space to break at and is long enough to outgrow a dialog on a phone, so it
  * breaks anywhere. Monospace because it is read a segment at a time.
  */
 .abele-version-history__path {
-  margin: 0 0 var(--size-4-3);
+  margin: 0;
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.abele-version-history__error {
+  margin: var(--size-4-2) 0 0;
+  color: var(--text-error);
+  font-size: var(--font-ui-small);
   overflow-wrap: anywhere;
 }
 

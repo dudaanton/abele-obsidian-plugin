@@ -242,6 +242,38 @@ describe('the design standard', () => {
     expect(query).toMatch(/display:\s*none/)
   })
 
+  /**
+   * The three sync dialogs, whose scrolling no component test can see.
+   *
+   * `.abele-modal_tall` is a flex column with `overflow: hidden` — Obsidian's own sheet on a
+   * phone — so a body that grows instead of scrolling pushes its last rows past the bottom of
+   * the dialog, where nothing can reach them. That was fifty version cards and an expanded
+   * diff with no way down. The fix is structural and lives entirely in CSS, so it is guarded
+   * by name: a root that is a column, and one region inside it that takes the scrolling.
+   */
+  it('gives every tall sync dialog a list that scrolls inside it', () => {
+    const dialogs = [
+      ['sync/VersionHistoryModal.vue', '.abele-version-history', '.abele-version-history__list'],
+      ['sync/DeletedFilesModal.vue', '.abele-deleted-files', '.abele-deleted-files__list'],
+      ['sync/SyncLogModal.vue', '.abele-sync-log', '.abele-sync-log__feed'],
+    ]
+
+    for (const [file, rootClass, listClass] of dialogs) {
+      const css = styleBlock(readFileSync(join(ROOT, file), 'utf8'))
+      const ruleFor = (selector: string): string =>
+        new RegExp(`(?:^|[,}])\\s*\\${selector}\\s*\\{([^}]*)\\}`, 'm').exec(css)?.[1] ?? ''
+
+      const root = ruleFor(rootClass)
+      expect(root, `${file} ${rootClass}`).toMatch(/flex-direction:\s*column/)
+      expect(root, `${file} ${rootClass}`).toMatch(/min-height:\s*0/)
+
+      const list = ruleFor(listClass)
+      expect(list, `${file} ${listClass}`).toMatch(/flex:\s*1 1 auto/)
+      expect(list, `${file} ${listClass}`).toMatch(/min-height:\s*0/)
+      expect(list, `${file} ${listClass}`).toMatch(/overflow-y:\s*auto/)
+    }
+  })
+
   it('explains any element that scrolls sideways', () => {
     const offenders = FILES.filter((file) => {
       const source = readFileSync(file, 'utf8')

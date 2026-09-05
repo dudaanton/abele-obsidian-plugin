@@ -9,7 +9,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ref } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
-import type { TrashItem } from '@abele/sync-protocol'
+import { Notice } from 'obsidian'
+import type { CommitOpResult, TrashItem } from '@abele/sync-protocol'
 import DeletedFilesModal from '@/components/sync/DeletedFilesModal.vue'
 import Card from '@/components/obsidian/Card.vue'
 import Badge from '@/components/obsidian/Badge.vue'
@@ -44,6 +45,25 @@ const TRASH: TrashItem[] = [
   },
 ]
 
+/** What the server answers a restore it accepted with. */
+const applied = (path: string): CommitOpResult => ({
+  status: 'applied',
+  file_id: 'f-old',
+  version_id: 'v10',
+  seq: 10,
+  path,
+  sha: 'sha-10',
+  size: 2048,
+  mtime: 0,
+})
+
+/** And what it answers one it refused with — a 200, not a throw. */
+const rejected = (message: string): CommitOpResult => ({
+  status: 'rejected',
+  code: 'conflict',
+  message,
+})
+
 const client = {
   trash: vi.fn(),
   restoreDeleted: vi.fn(),
@@ -71,11 +91,17 @@ const restoreFor = (screen: Screen, path: string) =>
     .find((card) => card.props('title') === path)
     ?.findComponent(Button)
 
+const errorLine = (screen: Screen): string =>
+  screen.find('.abele-deleted-files__error').exists()
+    ? screen.find('.abele-deleted-files__error').text()
+    : ''
+
 beforeEach(() => {
   useVault([])
+  Notice.shown.length = 0
   service.connected = true
   client.trash.mockResolvedValue(TRASH)
-  client.restoreDeleted.mockResolvedValue({ status: 'applied' })
+  client.restoreDeleted.mockResolvedValue(applied('Notes/older.md'))
   vi.spyOn(SyncService, 'getInstance').mockReturnValue(service as never)
 })
 
@@ -130,7 +156,9 @@ describe('what has been deleted', () => {
     const screen = open()
     await flushPromises()
 
-    expect(screen.findComponent(EmptyState).props('text')).toContain('the server never answered')
+    expect(errorLine(screen)).toContain('the server never answered')
+    // Not the empty state: nothing is known to be empty, only unreadable.
+    expect(screen.findComponent(EmptyState).exists()).toBe(false)
   })
 })
 
@@ -142,9 +170,35 @@ describe('bringing a file back', () => {
     await restoreFor(screen, 'Notes/older.md')?.trigger('click')
     await flushPromises()
 
-    expect(client.restoreDeleted).toHaveBeenCalledWith('f-old')
+    expect(client.restoreDeleted).toHaveBeenCalledWith('f-old', expect.any(String))
     // The commit is on the server; the engine is what puts the file back in the vault.
     expect(service.syncNow).toHaveBeenCalled()
+  })
+
+  /** A restore retried under the key it was first sent with is the first answer again. */
+  it('sends a key of its own so a retried restore is not a second copy', async () => {
+    const screen = open()
+    await flushPromises()
+
+    await restoreFor(screen, 'Notes/older.md')?.trigger('click')
+    await flushPromises()
+
+    expect(client.restoreDeleted.mock.calls[0][1]).toMatch(/[0-9a-f-]{8,}/)
+  })
+
+  /**
+   * The path the file went to, not the one it came from: the old name may have been taken
+   * since it was deleted, and then the server brings it back beside it under the next free one.
+   */
+  it('names the path the server actually brought the file back at', async () => {
+    client.restoreDeleted.mockResolvedValue(applied('Notes/older 1.md'))
+    const screen = open()
+    await flushPromises()
+
+    await restoreFor(screen, 'Notes/older.md')?.trigger('click')
+    await flushPromises()
+
+    expect(Notice.shown).toEqual(['Notes/older 1.md restored.'])
   })
 
   /** Restoring puts a file back; it destroys nothing, so nothing is asked before it. */
@@ -178,8 +232,13 @@ describe('bringing a file back', () => {
     expect(screen.findComponent(EmptyState).props('text')).toContain('Nothing has been deleted')
   })
 
-  it('leaves the file on the list and says why when the server refuses', async () => {
-    client.restoreDeleted.mockRejectedValue(new Error('that path is taken'))
+  /**
+   * The one that matters most: the server says no by answering, not by failing. A dialog that
+   * read only the exceptions would announce a refusal as a restore and take the file off the
+   * list it is still sitting in.
+   */
+  it('keeps the file on the list and says why when the server refuses', async () => {
+    client.restoreDeleted.mockResolvedValue(rejected('that path is taken'))
     const screen = open()
     await flushPromises()
 
@@ -187,6 +246,21 @@ describe('bringing a file back', () => {
     await flushPromises()
 
     expect(service.syncNow).not.toHaveBeenCalled()
-    expect(screen.findComponent(EmptyState).props('text')).toContain('that path is taken')
+    expect(Notice.shown).toEqual([])
+    expect(titles(screen)).toContain('Notes/older.md')
+    expect(errorLine(screen)).toContain('that path is taken')
+  })
+
+  it('keeps the file on the list and says why when the request itself fails', async () => {
+    client.restoreDeleted.mockRejectedValue(new Error('the server never answered'))
+    const screen = open()
+    await flushPromises()
+
+    await restoreFor(screen, 'Notes/older.md')?.trigger('click')
+    await flushPromises()
+
+    expect(service.syncNow).not.toHaveBeenCalled()
+    expect(titles(screen)).toContain('Notes/older.md')
+    expect(errorLine(screen)).toContain('the server never answered')
   })
 })
