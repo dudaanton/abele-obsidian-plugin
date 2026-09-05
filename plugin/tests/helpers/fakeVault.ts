@@ -378,6 +378,14 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         rawByPath.set(path, content)
         return file
       },
+      /** A picture written whole: only that it exists and where matters to a test. */
+      async createBinary(path: string, data: ArrayBuffer) {
+        stats.create++
+        stats.written += data.byteLength
+        const file = addFile(path)
+        rawByPath.set(path, '')
+        return file
+      },
       async modify(file: TFile, content: string) {
         stats.modify++
         stats.written += content.length

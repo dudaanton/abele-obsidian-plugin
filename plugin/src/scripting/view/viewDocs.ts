@@ -322,7 +322,8 @@ Output is cut at 15 000 characters — inspect a smaller view, or reach one node
 this moment: the visible part of the tab, at the scroll position the person left it at. What
 is scrolled out of sight is not in the picture, and a tab that is not showing — behind another
 tab, or in a collapsed sidebar — cannot be captured at all; the tool says so, and the person
-decides what to bring on screen.
+decides what to bring on screen. The picture is saved to the attachments folder and shown in the chat,
+so the person sees what you saw.
 
 ---
 

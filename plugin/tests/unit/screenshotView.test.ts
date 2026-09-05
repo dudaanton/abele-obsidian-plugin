@@ -78,7 +78,11 @@ describe('screenshot of a script view', () => {
     expect(shots).toHaveLength(1)
     expect(shots[0].el).toBe(content)
     expect(shots[0].rect).toEqual({ x: 300, y: 40, width: 500, height: 560 })
-    expect(result.content[0].text).toBe('Screenshot captured: view "Feed"')
+    // Kept in the vault and named in the result, which is where the chat reads it back from
+    // to show the person the same picture.
+    expect(result.content[0].text).toMatch(/^Screenshot saved: Attachments\/Screenshot Feed \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\.png$/)
+    const saved = result.content[0].text.replace('Screenshot saved: ', '')
+    expect(GlobalStore.getInstance().app.vault.getAbstractFileByPath(saved)).not.toBeNull()
     const injected = result.injectMessages?.[0].content as Array<Record<string, unknown>>
     expect(injected[0].text).toContain('the visible part of the tab, 500×560')
     expect(injected[1]).toEqual({ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } })
