@@ -33,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+import { fromControl } from '@/helpers/interactive'
 /**
  * Columns and rows, with a `cell` slot for anything richer than text.
  *
@@ -51,22 +52,8 @@ const emit = defineEmits<{
   (e: 'rowClick', row: Record<string, unknown>, index: number): void
 }>()
 
-/**
- * What a cell may hold that is pressed in its own right. A key or a click that started in
- * one of these is that control's — Space in a field is a space — and not the row being
- * chosen as well. The walk stops at the row, so a button the whole table sits inside does
- * not count.
- */
-const INTERACTIVE = 'button, a, input, select, textarea, [role="button"], [contenteditable]'
-
-const fromControl = (event: Event): boolean => {
-  let el = event.target as Element | null
-  while (el && el !== event.currentTarget) {
-    if (el.matches?.(INTERACTIVE)) return true
-    el = el.parentElement
-  }
-  return false
-}
+// A key or a click that started in a control inside the cell is that control's — Space in a
+// field is a space — and not the row being chosen as well.
 
 const click = (event: MouseEvent, row: Record<string, unknown>, index: number) => {
   if (!props.clickable || fromControl(event)) return

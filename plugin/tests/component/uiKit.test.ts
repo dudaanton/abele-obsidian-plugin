@@ -145,6 +145,22 @@ describe('Card', () => {
     ).toContain('abele-card__description_clamped')
   })
 
+  it('does not open when a button among its children is pressed, by mouse or by Enter', async () => {
+    // A feed card opens the note; the Open, Later and Hide buttons under its text are the
+    // script's own. One press, one thing.
+    const view = mount(Card, {
+      props: { ...props, clickable: true },
+      slots: { default: '<p class="prose">text</p><button class="inner">Later</button>' },
+    })
+
+    await view.find('.inner').trigger('click')
+    await view.find('.inner').trigger('keydown.enter')
+    expect(view.emitted('click')).toBeUndefined()
+
+    await view.find('.prose').trigger('click')
+    expect(view.emitted('click')).toEqual([[]])
+  })
+
   it('does not open when an action inside it is pressed', async () => {
     // The delete icon sits inside the card that opens the editor; pressing it must not do both.
     const view = mount(Card, {

@@ -9,8 +9,8 @@
     :aria-pressed="selected === undefined ? undefined : selected"
     :role="clickable ? 'button' : undefined"
     :tabindex="clickable ? 0 : undefined"
-    @click="clickable && emit('click')"
-    @keydown.enter.prevent="clickable && emit('click')"
+    @click="open"
+    @keydown.enter="open"
   >
     <div v-if="cover" class="abele-card__cover">
       <Image :src="cover" :alt="title" fit="cover" class="abele-card__cover-image" />
@@ -50,8 +50,9 @@
  * unpressed button to anyone using a screen reader.
  */
 import Image from './Image.vue'
+import { fromControl } from '@/helpers/interactive'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     title: string
     /** A picture across the top, edge to edge: a note's cover, a poster, a photo in a feed. Vault path, link name or URL. */
@@ -81,6 +82,18 @@ withDefaults(
 const emit = defineEmits<{
   (e: 'click'): void
 }>()
+
+/**
+ * Opens the card — unless the press started on a control inside it. A feed card opens the
+ * note, and the Open, Later and Hide buttons under its text are the script's; pressing one
+ * must not also open the note. Enter is only claimed for the card itself, so Enter on an
+ * inner button stays that button's press.
+ */
+const open = (event: Event) => {
+  if (!props.clickable || fromControl(event)) return
+  if (event instanceof KeyboardEvent) event.preventDefault()
+  emit('click')
+}
 </script>
 
 <style lang="scss">
