@@ -19,6 +19,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { NoteRelations } from '@/entities/NoteRelations'
 import { ScriptService } from '@/scripting/ScriptService'
 import { ScriptViewService } from '@/scripting/view/ScriptViewService'
+import { createScreenshotTool } from '@/ai/tools/ScreenshotTool'
 import { TFile } from 'obsidian'
 import type { Plugin } from 'obsidian'
 
@@ -91,6 +92,8 @@ interface AbeleTestApi {
   AbeleConfig: typeof AbeleConfig
   ScriptService: typeof ScriptService
   ScriptViewService: typeof ScriptViewService
+  /** The agent's `screenshot` tool, so a test can take the picture it would take. */
+  createScreenshotTool: typeof createScreenshotTool
   plugin: Plugin
   /**
    * Where an e2e probe parks its result. `obsidian eval` cannot await a promise, so a probe
@@ -472,6 +475,7 @@ export function exposeTestApi(plugin: Plugin): void {
     AbeleConfig,
     ScriptService,
     ScriptViewService,
+    createScreenshotTool,
     plugin,
     viewProbe: null,
     measureGroupResolve,

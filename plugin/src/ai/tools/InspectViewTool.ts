@@ -3,7 +3,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
 import { findLeafByFile } from './ScreenshotTool'
-import type { ScriptViewModel } from '@/views/ScriptView'
+import { findScriptView } from './scriptViewLookup'
 
 const MAX_OUTPUT = 15_000
 
@@ -84,37 +84,7 @@ export function createInspectViewTool(): AgentTool {
       const viewName = params.view as string | undefined
       if (viewName) {
         const { describeView } = await import('@/scripting/view/describe')
-        // Every open script tab, bound or not: the service knows only the leaves that have a
-        // view, and a tab whose script is still running or has failed is exactly the one an
-        // agent asks about after writing that script. The cast undoes `ref`'s deep unwrapping,
-        // which strips the private fields off the `View` class the models hold.
-        const models = GlobalStore.getInstance().scriptViews.value as ScriptViewModel[]
-        const open = models.map((m) => m.view).filter((v): v is NonNullable<typeof v> => Boolean(v))
-        const wanted = viewName.toLowerCase()
-        const hit =
-          open.find(
-            (v) => v.title.toLowerCase() === wanted || v.origin.script.toLowerCase() === wanted
-          ) ??
-          open.find(
-            (v) =>
-              v.title.toLowerCase().includes(wanted) ||
-              v.origin.script.toLowerCase().includes(wanted)
-          )
-        if (!hit) {
-          // Naming what is open turns a miss into the answer to the next question anyway. A
-          // tab whose script is still running, or whose script failed, has no view to describe
-          // but is very likely the one being asked about — say so rather than leave it out.
-          const names =
-            models
-              .map((m) => {
-                if (m.view) return `"${m.view.title}" (${m.view.origin.script})`
-                const script = m.saved?.script ?? (m.status.kind === 'live' ? '' : m.status.script)
-                if (m.status.kind === 'failed') return `"${script}" (failed: ${m.status.message})`
-                return `"${script}" (starting)`
-              })
-              .join(', ') || 'none'
-          throw new Error(`No script view named "${viewName}". Open: ${names}`)
-        }
+        const { view: hit } = findScriptView(viewName)
         let text = describeView(hit)
         if (text.length > MAX_OUTPUT) {
           text =
