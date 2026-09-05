@@ -38,9 +38,10 @@ describe('the view reference', () => {
   })
 
   it('claims only what the code does', () => {
-    // Each of these was written from the design spec and was not true of the plugin.
-    expect(SCRIPT_VIEW_DOCS).toContain('cannot capture a script view')
-    expect(SCRIPT_VIEW_DOCS).not.toMatch(/`screenshot` works on a view/)
+    // Each of these was written from the design spec and was not true of the plugin. The
+    // screenshot line was the other way round until `screenshot` learnt `view`.
+    expect(SCRIPT_VIEW_DOCS).not.toContain('cannot capture a script view')
+    expect(SCRIPT_VIEW_DOCS).toMatch(/`screenshot` with the same `view`/)
     expect(SCRIPT_VIEW_DOCS).toContain('For the console use `console.log`')
     expect(SCRIPT_VIEW_DOCS).not.toMatch(/`log\(\)` after the run has finished goes to the console/)
   })

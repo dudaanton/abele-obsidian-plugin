@@ -308,8 +308,8 @@ A name that matches nothing lists the views that are open, including ones still 
 failed. Hidden nodes print \`(hidden)\`, ids print as \`#id\`, and \`Html\` prints its raw markup.
 Output is cut at 15 000 characters — inspect a smaller view, or reach one node by its \`id\`.
 
-\`inspect_view\` with \`view: '<title or script>'\` is how to look at what you built.
-\`screenshot\` takes a note path and cannot capture a script view yet.
+\`inspect_view\` with \`view: '<title or script>'\` is how to look at what you built as a tree;
+\`screenshot\` with the same \`view\` shows it as the person sees it.
 
 ---
 
