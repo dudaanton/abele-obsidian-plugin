@@ -368,6 +368,26 @@ describe('nodes', () => {
     expect(clicked).toHaveBeenCalled()
   })
 
+  it('a button inside a clickable card presses only itself', async () => {
+    const v = make()
+    const opened = vi.fn()
+    const later = vi.fn()
+    v.body = [
+      new Card({
+        title: 'post',
+        onClick: opened,
+        children: [new Row([new Button({ text: 'Later', onClick: later })])],
+      }),
+    ]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+
+    await w.findComponent(KitButton).trigger('click')
+    await flushPromises()
+
+    expect(later).toHaveBeenCalledTimes(1)
+    expect(opened).not.toHaveBeenCalled()
+  })
+
   it('shows a handler error in the strip and stays alive', async () => {
     const v = make()
     vi.spyOn(console, 'error').mockImplementation(() => {})
