@@ -131,27 +131,44 @@ describe('IndexedDbStateStore', () => {
     expect(await store.getMeta('selective')).toBeNull()
   })
 
-  it('hands out copies of entries, so mutating a read does not reach the store', async () => {
+  /**
+   * Copying is asserted **inside a transaction**. Outside one every value crosses IndexedDB's
+   * structured clone, which would hide a store that handed out its own objects; the overlay
+   * holds the very objects the caller passed and read, so this is where copying is real work.
+   */
+  it('hands out copies of entries, and keeps a copy of the one it was given', async () => {
     await store.put(entry())
+    await store.transaction(async () => {
+      const given = entry({ versionId: 'ver-2' })
+      await store.put(given)
+      given.sha = 'f'.repeat(64)
+      const byPath = await store.get('notes/a.md')
+      byPath!.sha = 'c'.repeat(64)
+      const byId = await store.byFileId('file-1')
+      byId!.sha = 'd'.repeat(64)
+      for await (const each of store.all()) each.sha = 'e'.repeat(64)
+      expect(await store.get('notes/a.md')).toEqual(entry({ versionId: 'ver-2' }))
+      expect(await store.byFileId('file-1')).toEqual(entry({ versionId: 'ver-2' }))
+    })
+    expect(await store.get('notes/a.md')).toEqual(entry({ versionId: 'ver-2' }))
+    // And the same outside one, where the clone does the work rather than the store.
     const byPath = await store.get('notes/a.md')
     byPath!.sha = 'c'.repeat(64)
-    const byId = await store.byFileId('file-1')
-    byId!.sha = 'd'.repeat(64)
-    for await (const each of store.all()) each.sha = 'e'.repeat(64)
-    expect(await store.get('notes/a.md')).toEqual(entry())
-    expect(await store.byFileId('file-1')).toEqual(entry())
-    expect(await collect(store)).toEqual([entry()])
+    expect(await store.get('notes/a.md')).toEqual(entry({ versionId: 'ver-2' }))
   })
 
   it('copies the journal out, ops and all, and copies the one it was given in', async () => {
-    const given = journal()
-    await store.setJournal(given)
-    given.ops.push({ op: 'delete', file_id: 'file-9', base_version_id: 'ver-9' })
-    given.batchId = 'batch-9'
-    const fetched = await store.getJournal()
-    expect(fetched).toEqual(journal())
-    fetched!.ops.push({ op: 'delete', file_id: 'file-2', base_version_id: 'ver-2' })
-    fetched!.batchId = 'batch-2'
+    await store.transaction(async () => {
+      const given = journal()
+      await store.setJournal(given)
+      given.ops.push({ op: 'delete', file_id: 'file-9', base_version_id: 'ver-9' })
+      given.batchId = 'batch-9'
+      const fetched = await store.getJournal()
+      expect(fetched).toEqual(journal())
+      fetched!.ops.push({ op: 'delete', file_id: 'file-2', base_version_id: 'ver-2' })
+      fetched!.batchId = 'batch-2'
+      expect(await store.getJournal()).toEqual(journal())
+    })
     expect(await store.getJournal()).toEqual(journal())
   })
 
@@ -194,6 +211,23 @@ describe('IndexedDbStateStore', () => {
     store = await IndexedDbStateStore.open(indexedDB, NAME)
     expect(await collect(store)).toEqual([])
     expect(await store.getCursor()).toBe(0)
+  })
+
+  it('gives up on a delete a connection will not let through', async () => {
+    // A raw connection that ignores `versionchange` is what another window running an older
+    // build looks like; the store's own connections close themselves and never block.
+    const holder = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(NAME)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    })
+    try {
+      await expect(IndexedDbStateStore.delete(indexedDB, NAME, 10)).rejects.toMatchObject({
+        code: 'io',
+      })
+    } finally {
+      holder.close()
+    }
   })
 
   it('reports a closed database as an io error rather than a driver one', async () => {
@@ -340,6 +374,119 @@ describe('IndexedDbStateStore', () => {
         }
       })
       expect(await store.getCursor()).toBe(5)
+    })
+
+    it('lets a batch swap two names over, keeping both files', async () => {
+      // The pusher writes a rename as `delete` the old path, `put` the new one, in one
+      // transaction. Two files exchanging names is the case where the database's own answer
+      // to "who holds file-1?" is stale, and believing it used to lose one of the two rows.
+      await store.put(entry({ path: 'A.md', wirePath: 'A.md', fileId: 'file-1' }))
+      await store.put(entry({ path: 'B.md', wirePath: 'B.md', fileId: 'file-2' }))
+      await store.transaction(async () => {
+        await store.delete('A.md')
+        await store.put(entry({ path: 'B.md', wirePath: 'B.md', fileId: 'file-1' }))
+        await store.put(entry({ path: 'A.md', wirePath: 'A.md', fileId: 'file-2' }))
+      })
+      expect(await collect(store)).toEqual([
+        entry({ path: 'A.md', wirePath: 'A.md', fileId: 'file-2' }),
+        entry({ path: 'B.md', wirePath: 'B.md', fileId: 'file-1' }),
+      ])
+      expect(await store.byFileId('file-1')).toMatchObject({ path: 'B.md' })
+      expect(await store.byFileId('file-2')).toMatchObject({ path: 'A.md' })
+    })
+
+    it('lets three files rotate their names in one transaction', async () => {
+      for (const [path, fileId] of [
+        ['A.md', 'file-1'],
+        ['B.md', 'file-2'],
+        ['C.md', 'file-3'],
+      ]) {
+        await store.put(entry({ path, wirePath: path, fileId }))
+      }
+      await store.transaction(async () => {
+        await store.put(entry({ path: 'B.md', wirePath: 'B.md', fileId: 'file-1' }))
+        await store.put(entry({ path: 'C.md', wirePath: 'C.md', fileId: 'file-2' }))
+        await store.put(entry({ path: 'A.md', wirePath: 'A.md', fileId: 'file-3' }))
+      })
+      expect((await collect(store)).map((e) => [e.path, e.fileId])).toEqual([
+        ['A.md', 'file-3'],
+        ['B.md', 'file-1'],
+        ['C.md', 'file-2'],
+      ])
+    })
+
+    it('serialises two transactions started at once and commits both, in order', async () => {
+      let release = (): void => undefined
+      const held = new Promise<void>((resolve) => (release = resolve))
+      const first = store.transaction(async () => {
+        await store.put(entry())
+        await held
+        // The second one is queued, not merged into this overlay.
+        expect(await store.get('notes/b.md')).toBeNull()
+        await store.setCursor(1)
+      })
+      const second = store.transaction(async () => {
+        // It starts after the first has committed, so it reads what the first wrote.
+        expect(await store.get('notes/a.md')).toEqual(entry())
+        expect(await store.getCursor()).toBe(1)
+        await store.put(entry({ path: 'notes/b.md', wirePath: 'notes/b.md', fileId: 'file-2' }))
+        await store.setCursor(2)
+      })
+      release()
+      await Promise.all([first, second])
+
+      expect((await collect(store)).map((e) => e.path)).toEqual(['notes/a.md', 'notes/b.md'])
+      expect(await store.getCursor()).toBe(2)
+    })
+
+    it('fails a call that joined a running transaction when that transaction rolls back', async () => {
+      // A call made while a body is running cannot be told from a nested one, so it joins —
+      // and if the transaction it joined is rolled back, it is told so rather than reporting
+      // success for writes that were dropped.
+      let start = (): void => undefined
+      const running = new Promise<void>((resolve) => (start = resolve))
+      let release = (): void => undefined
+      const held = new Promise<void>((resolve) => (release = resolve))
+      let releaseJoined = (): void => undefined
+      const joinedHeld = new Promise<void>((resolve) => (releaseJoined = resolve))
+
+      const boom = new Error('boom')
+      const outer = store.transaction(async () => {
+        start()
+        await held
+        throw boom
+      })
+      await running
+      const joined = store.transaction(async () => {
+        await store.setCursor(5)
+        await joinedHeld
+      })
+
+      release()
+      await expect(outer).rejects.toBe(boom)
+      await expect(joined).rejects.toBe(boom)
+      releaseJoined()
+      expect(await store.getCursor()).toBe(0)
+    })
+
+    it('reports a flush that cannot be written as io and leaves the database as it was', async () => {
+      await store.put(entry())
+      // A value structured clone refuses: the flush fails at the request, not before it.
+      const poison = {
+        ...entry({ path: 'notes/b.md', wirePath: 'notes/b.md', fileId: 'file-2' }),
+        unclonable: () => undefined,
+      } as unknown as StateEntry
+
+      await expect(
+        store.transaction(async () => {
+          await store.setCursor(9)
+          await store.delete('notes/a.md')
+          await store.put(poison)
+        })
+      ).rejects.toMatchObject({ code: 'io', message: 'cannot commit the state transaction' })
+
+      expect(await collect(store)).toEqual([entry()])
+      expect(await store.getCursor()).toBe(0)
     })
 
     it('holds the clash rule for a row only the database knows about', async () => {
