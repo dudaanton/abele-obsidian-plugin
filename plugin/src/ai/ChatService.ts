@@ -283,6 +283,20 @@ export class ChatService {
     return true
   }
 
+  /**
+   * Whether the chat sidebar is on screen: its leaf exists, its tab is the one in front of its
+   * pane, and the pane is not collapsed. `isShown` answers all three at once — a collapsed
+   * split hides the leaf's element like a tab behind another does — and it is what a marker in
+   * a note asks before painting itself open over the passage its comment is about.
+   */
+  sidebarShowing(): boolean {
+    // Optional on purpose: nothing to see is the answer where there is no workspace to ask,
+    // which is the case in tests that stand the app up without one.
+    const { workspace } = GlobalStore.getInstance().app
+    const leaf = workspace?.getLeavesOfType?.(AI_SIDEBAR_VIEW_TYPE)[0]
+    return !!leaf && leaf.view.containerEl.isShown()
+  }
+
   /** Puts the chat sidebar in front of the person, opening it in the right split if needed. */
   async revealSidebar(): Promise<void> {
     const { workspace } = GlobalStore.getInstance().app

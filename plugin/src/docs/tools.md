@@ -16,6 +16,10 @@ easy to get wrong. Which of these an agent actually has depends on its own tool 
   anchored to and nothing else in the note; there is no path to give it.
 - `find` searches by name, property or content and takes structured criteria, not just a word.
 - `workspace` says what is open right now; `open` puts a file in front of the person.
+- `screenshot` and `inspect_view` take either a `path` (a note) or a `view` (a script view, by
+  its tab title or script name). A view is photographed as it is on screen: the visible part
+  only, at the person's scroll position, and never a tab that is not showing — the person
+  decides what the agent gets to see.
 - `rm` moves to trash rather than destroying.
 
 Every one of these is bounded by the agent's scope.

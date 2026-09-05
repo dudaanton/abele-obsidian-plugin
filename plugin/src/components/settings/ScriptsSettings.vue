@@ -117,11 +117,12 @@ const config = AbeleConfig.getInstance()
 const scriptsEnabled = ref(config.ai.scriptsEnabled ?? false)
 const scriptsFolder = ref(config.ai.scriptsFolder ?? '')
 
+// From the reactive list, not from `getAll()`: a computed over a plain map settles once, at
+// the first render, and this screen used to show whatever the index held at that moment —
+// nothing, when it was opened before the folder had been read — and never catch up.
 const discoveredScripts = computed(() => {
   if (!scriptsEnabled.value) return []
-  return ScriptService.getInstance()
-    .getAll()
-    .filter((s) => s.meta.enabled !== false)
+  return ScriptService.getInstance().scriptList.value.filter((s) => s.meta.enabled !== false)
 })
 
 const save = debounce(async () => {

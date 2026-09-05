@@ -104,6 +104,7 @@ export class CommentService implements CommentInfoSource {
    * same note, which is what the set is for.
    */
   private readonly openWatcher = watch(this.open, (id, previous) => {
+    this.lastOnScreen = this.onScreen(id)
     const notes = new Set<string>()
     for (const which of [previous, id]) {
       const note = which ? this.sessionFor(which)?.anchor.value?.note : null
@@ -111,6 +112,47 @@ export class CommentService implements CommentInfoSource {
     }
     for (const note of notes) dispatchCommentsChanged(note)
   })
+
+  /**
+   * Whether the open comment is actually in front of the person: its tab is the active one and
+   * the sidebar is on screen. `open` says which comment the sidebar holds; this says whether
+   * anyone can see it, which is what the passage in the note should be painted from — a
+   * comment behind another tab, or in a sidebar swiped away on a phone, is not being read,
+   * and its passage stayed highlighted as if it were (2026-09-05, from the phone).
+   */
+  private onScreen(id: string | null): boolean {
+    if (!id || this.open.value !== id) return false
+    const session = this.sessionFor(id)
+    const chatService = ChatService.getInstance()
+    return !!session && chatService.activeTabId.value === session.id && chatService.sidebarShowing()
+  }
+
+  /** What `onScreen` last said, so a change of it — and only a change — reaches the note. */
+  private lastOnScreen = false
+
+  /**
+   * Repaints the open comment's marker if it has come on screen or gone off it.
+   *
+   * Called when the workspace resizes — which is what a sidebar collapsing is — when the active
+   * leaf changes, and when another chat tab comes forward. None of those is a change the
+   * editor hears about by itself.
+   */
+  reconsiderOpen(): void {
+    const id = this.open.value
+    const now = this.onScreen(id)
+    if (now === this.lastOnScreen) return
+    this.lastOnScreen = now
+    const note = id ? this.sessionFor(id)?.anchor.value?.note : null
+    if (note) dispatchCommentsChanged(note)
+  }
+
+  // Synchronous: the marker is repainted in the same tick the tab changes, and nothing is
+  // left pending for after the service is gone.
+  private readonly tabWatcher = watch(
+    ChatService.getInstance().activeTabId,
+    () => this.reconsiderOpen(),
+    { flush: 'sync' }
+  )
 
   /**
    * Comments promoted into full chats.
@@ -178,6 +220,8 @@ export class CommentService implements CommentInfoSource {
     this.open.value = id
     await chatService.revealSidebar()
 
+    // Measured once the sidebar is there to be seen, and the note repainted either way.
+    this.lastOnScreen = this.onScreen(id)
     const note = session.anchor.value?.note
     if (note) dispatchCommentsChanged(note)
     return true
@@ -395,7 +439,7 @@ export class CommentService implements CommentInfoSource {
     return {
       quote: session.anchor.value?.quote,
       state: session.commentState.value,
-      open: this.open.value === id,
+      open: this.onScreen(id),
       // What was said, which is what the marker's digit counts: the questions and the answers.
       // A tool call is the agent working rather than talking, a system line is scaffolding and
       // a draft belongs to the interceptor — none of the three is a message anybody counts.
@@ -831,6 +875,8 @@ export class CommentService implements CommentInfoSource {
   destroy(): void {
     // Stopped first: it must not fire on the `open.value = null` further down.
     this.openWatcher()
+    this.tabWatcher()
+    this.lastOnScreen = false
 
     for (const stop of this.watchers.values()) stop()
     this.watchers.clear()

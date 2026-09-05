@@ -49,7 +49,8 @@ returned. This is the shape for anything a person will look at and press, rather
 once: a feed of notes, flashcards, a dashboard that refreshes as the vault changes. `show()`
 is for a result; a view is for an interface. The reference is `script_api_docs` with
 `section: 'views'`. `inspect_view` with `view: '<title>'` reads the view back as the tree the
-script built; `screenshot` takes a note path and cannot capture a script view yet.
+script built; `screenshot` with the same `view` takes a picture of the part of it that is on
+screen right now — only that part, and only while the tab is showing.
 
 A view's tab is saved with the workspace: after a restart the plugin runs the script again
 with the same parameters and the state the view had, so a script that keeps its place keeps

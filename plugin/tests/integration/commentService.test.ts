@@ -61,6 +61,8 @@ beforeEach(() => {
   }).id
   vi.spyOn(ChatService.getInstance(), 'saveTabs').mockImplementation(() => {})
   vi.spyOn(ChatService.getInstance(), 'revealSidebar').mockResolvedValue(undefined)
+  // And, once revealed, it is on screen: there is no workspace here to ask.
+  vi.spyOn(ChatService.getInstance(), 'sidebarShowing').mockReturnValue(true)
 })
 
 describe('creating a comment', () => {
@@ -926,6 +928,78 @@ describe('a comment file disappearing from under the folder', () => {
     vi.mocked(dispatchCommentsChanged).mockClear()
 
     service.handleFileDeleted('zzz999')
+
+    expect(vi.mocked(dispatchCommentsChanged)).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * The passage in the note is painted open only while its comment is actually in front of the
+ * person. «Свернул сайдбар, но текст всё также подсвечивается» (2026-09-05, from the phone):
+ * the comment was still the sidebar's, but nobody could see it.
+ */
+describe('the marker over a comment being read in the sidebar', () => {
+  const showing = () => vi.spyOn(ChatService.getInstance(), 'sidebarShowing')
+
+  const shown = async () => {
+    const service = CommentService.getInstance()
+    const session = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const id = session.commentId!
+    await service.showInSidebar(id)
+    await nextTick()
+    vi.mocked(dispatchCommentsChanged).mockClear()
+    return { service, session, id }
+  }
+
+  it('is painted open while its tab is in front and the sidebar is on screen', async () => {
+    showing().mockReturnValue(true)
+    const { service, id } = await shown()
+
+    expect(service.get(id)?.open).toBe(true)
+  })
+
+  it('is painted closed once the sidebar is collapsed, and the note is told', async () => {
+    const sidebar = showing().mockReturnValue(true)
+    const { service, id } = await shown()
+
+    sidebar.mockReturnValue(false)
+    service.reconsiderOpen()
+
+    expect(service.get(id)?.open).toBe(false)
+    expect(vi.mocked(dispatchCommentsChanged)).toHaveBeenCalledWith('Notes/A.md')
+  })
+
+  it('is painted open again when the sidebar comes back', async () => {
+    const sidebar = showing().mockReturnValue(true)
+    const { service, id } = await shown()
+    sidebar.mockReturnValue(false)
+    service.reconsiderOpen()
+    vi.mocked(dispatchCommentsChanged).mockClear()
+
+    sidebar.mockReturnValue(true)
+    service.reconsiderOpen()
+
+    expect(service.get(id)?.open).toBe(true)
+    expect(vi.mocked(dispatchCommentsChanged)).toHaveBeenCalledWith('Notes/A.md')
+  })
+
+  it('is painted closed while another tab is in front', async () => {
+    showing().mockReturnValue(true)
+    const { service, id } = await shown()
+
+    ChatService.getInstance().activeTabId.value = 'another-tab'
+    await nextTick()
+
+    expect(service.get(id)?.open).toBe(false)
+    expect(vi.mocked(dispatchCommentsChanged)).toHaveBeenCalledWith('Notes/A.md')
+  })
+
+  it('says nothing to the note while nothing about it has changed', async () => {
+    showing().mockReturnValue(true)
+    const { service } = await shown()
+
+    service.reconsiderOpen()
+    service.reconsiderOpen()
 
     expect(vi.mocked(dispatchCommentsChanged)).not.toHaveBeenCalled()
   })

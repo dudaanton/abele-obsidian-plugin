@@ -174,7 +174,7 @@ export class ScriptService {
   private createEventRef: EventRef | null = null
   private statusBarEl: HTMLElement | null = null
 
-  /** Reactive list for settings UI */
+  /** The index as a reactive list, for anything on screen that shows it. */
   public readonly scriptList = ref<ParsedScript[]>([])
 
   /**
@@ -317,7 +317,37 @@ export class ScriptService {
     })
   }
 
-  async discover() {
+  /** The rebuild in flight, and whether another was asked for while it ran. */
+  private discovering: Promise<void> | null = null
+  private discoverAgain = false
+
+  /**
+   * Reads the folder again and puts the new index in place of the old one.
+   *
+   * One rebuild at a time, and the old index stays until the new one is whole. It used to be
+   * emptied first and filled back file by file, so every save of a script opened a moment in
+   * which the agent's tools, the command palette and every picker saw no scripts at all — and
+   * two rebuilds set off together, by the watcher and by a `create` event for the same file,
+   * each cleared what the other had gathered and then pruned the tool modes against a
+   * half-built index. A rebuild asked for during a rebuild runs once more after it, which
+   * covers whatever changed in between.
+   */
+  discover(): Promise<void> {
+    if (this.discovering) {
+      this.discoverAgain = true
+      return this.discovering
+    }
+    this.discovering = this.rebuild().finally(() => {
+      this.discovering = null
+      if (this.discoverAgain) {
+        this.discoverAgain = false
+        void this.discover()
+      }
+    })
+    return this.discovering
+  }
+
+  private async rebuild(): Promise<void> {
     const config = AbeleConfig.getInstance()
     const folder = config.ai.scriptsFolder
     if (!folder) return
@@ -325,15 +355,12 @@ export class ScriptService {
     const { app } = GlobalStore.getInstance()
     const plugin = config.plugin
 
-    // Remove old commands
-    this.unregisterAllCommands()
-    this.scripts.clear()
-
     // Find all .js files in the folder
     const files = app.vault
       .getFiles()
       .filter((f) => f.path.startsWith(folder) && f.extension === 'js')
 
+    const next = new Map<string, ParsedScript>()
     for (const file of files) {
       try {
         const source = await app.vault.read(file)
@@ -345,21 +372,27 @@ export class ScriptService {
 
         const code = extractScriptBody(source)
         const commandId = `abele:script-${sanitize(meta.name)}`
-
-        const parsed: ParsedScript = { path: file.path, meta, code, commandId }
-        this.scripts.set(file.path, parsed)
-
-        plugin.addCommand({
-          id: commandId,
-          name: `Script: ${meta.name}`,
-          icon: meta.icon || 'scroll-text',
-          callback: () => this.executeFromCommand(file.path),
-        })
-        this.commandIds.add(commandId)
-
-        console.debug(`[ScriptService] Registered: ${meta.name} (${file.path})`)
+        next.set(file.path, { path: file.path, meta, code, commandId })
       } catch (err) {
         console.error(`[ScriptService] Error parsing ${file.path}:`, err)
+      }
+    }
+
+    // Everything read: the swap itself is synchronous, so nothing observes the gap.
+    this.unregisterAllCommands()
+    this.scripts = next
+    for (const parsed of next.values()) {
+      try {
+        plugin.addCommand({
+          id: parsed.commandId,
+          name: `Script: ${parsed.meta.name}`,
+          icon: parsed.meta.icon || 'scroll-text',
+          callback: () => this.executeFromCommand(parsed.path),
+        })
+        this.commandIds.add(parsed.commandId)
+        console.debug(`[ScriptService] Registered: ${parsed.meta.name} (${parsed.path})`)
+      } catch (err) {
+        console.error(`[ScriptService] Error registering ${parsed.path}:`, err)
       }
     }
 

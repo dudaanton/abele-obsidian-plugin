@@ -117,7 +117,21 @@ const emit = defineEmits<{
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.abele-modal_tall .modal-content {
   overflow: hidden;
+}
+
+/**
+ * The mount point clips nothing. It stands exactly where the content does, so anything that
+ * reaches past the content by design — the focus ring a field draws outside its own box —
+ * was cut at its edge, 2px off each side of the search field on a phone (2026-09-05, from
+ * the phone). `min-height: 0` is what keeps a scrolling child from growing the dialog; the
+ * content element above still clips, at the dialog's own padding, which is room enough.
+ */
+.abele-modal_tall .abele-modal__body {
+  overflow: visible;
 }
 
 /**

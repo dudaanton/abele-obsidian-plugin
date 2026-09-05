@@ -202,7 +202,7 @@ const desktopScript = `(async () => {
       // \`svg.lucide-<name>\` — there is no attribute naming the icon in the running app.
       const icon = (name) => !!chat.querySelector('.abele-ai-chat__header-actions .lucide-' + name)
       report.backToNoteVisible = icon('corner-up-left')
-      report.openAsChatVisible = icon('panel-right-open')
+      report.openAsChatVisible = icon('messages-square')
       report.noteButtonVisible = !!chat.querySelector('.abele-chat-input .lucide-sticky-note')
     }
 
