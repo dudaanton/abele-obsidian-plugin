@@ -3,7 +3,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
 import { findLeafByFile } from './ScreenshotTool'
-import { findScriptViewTab } from './scriptViewLookup'
+import { findScriptView } from './scriptViewLookup'
 
 const MAX_OUTPUT = 15_000
 
@@ -84,7 +84,7 @@ export function createInspectViewTool(): AgentTool {
       const viewName = params.view as string | undefined
       if (viewName) {
         const { describeView } = await import('@/scripting/view/describe')
-        const hit = findScriptViewTab(viewName).view
+        const { view: hit } = findScriptView(viewName)
         let text = describeView(hit)
         if (text.length > MAX_OUTPUT) {
           text =

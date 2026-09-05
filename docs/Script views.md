@@ -82,4 +82,6 @@ The full reference — every component, every event, how CSS is scoped to the vi
 
 The agent writes these. "Make me a view that lists my open tasks and refreshes when I edit a
 note" is enough of a brief; it will write the script, and it can look at what it built and fix
-it before handing it over.
+it before handing it over: `inspect_view` gives it the tree, and `screenshot` gives it a picture
+of the part of the view that is on your screen at that moment — only that part, at your scroll
+position, so what you have not brought into view stays out of the picture.

@@ -247,7 +247,14 @@ different shape from the button beside it. The rules the plugin holds itself to:
   yours, so a hand-drawn button comes out a different size from a \`Button\`. The same goes for
   \`<input>\` and \`<select>\`: use \`Input\`, \`Select\`, \`Search\`.
 - **One accent per group of buttons.** \`accent: true\` marks the one action the person came
-  for; the others stay plain. \`warning\` is for an action that destroys something.
+  for; the others stay plain. \`warning\` is for an action that destroys something — deleting
+  a note, not hiding or snoozing a card.
+- **A toolbar is one row.** The one primary action as a \`Button\`, the secondary ones —
+  back, refresh, rescan, settings — as \`Icon\`s with tooltips, a \`Select\` for the mode, a
+  \`Badge\` for the count. A search box searches on \`onEnter\`; it does not need a Find
+  button beside it, nor a Reset one. Three rows of wrapped buttons is not a toolbar.
+- **A card has at most three buttons.** Open, and two more; anything else is an \`Icon\` or
+  goes in a menu. Four buttons wrap into two rows on a phone.
 - **A feed or a list of notes is \`Card\`s in a \`Stack\`.** \`cover\` for the picture, \`large\` for
   a post, \`badges\` for tags, \`description\` for an excerpt or a \`Markdown\` child for the
   rendered text, a \`Row\` of \`Button\`s among the \`children\` for what can be done with it.
@@ -264,8 +271,10 @@ different shape from the button beside it. The rules the plugin holds itself to:
 - **A toolbar starts at the left.** \`Row\` already lines its children up; \`justify: 'center'\`
   moves the whole toolbar to the middle of the screen. Group the controls that belong
   together in one \`Row\`, with \`gap: 'small'\`, and let it wrap.
-- **Look at it.** \`inspect_view\` shows the tree you built; the person sees the screen. When
-  something has to be exact, ask them for a screenshot.
+- **Look at it.** \`inspect_view\` shows the tree you built; \`screenshot\` with \`view\` shows
+  what is on screen right now, the way the person sees it. Take one after the first build and
+  after every change to the layout — a view that reads well as a tree can still wrap its
+  toolbar into three rows.
 
 ---
 
@@ -308,8 +317,12 @@ A name that matches nothing lists the views that are open, including ones still 
 failed. Hidden nodes print \`(hidden)\`, ids print as \`#id\`, and \`Html\` prints its raw markup.
 Output is cut at 15 000 characters — inspect a smaller view, or reach one node by its \`id\`.
 
-\`inspect_view\` with \`view: '<title or script>'\` is how to look at what you built as a tree;
-\`screenshot\` with the same \`view\` shows it as the person sees it.
+\`inspect_view\` with \`view: '<title or script>'\` is how to look at what you built as a tree.
+\`screenshot\` with \`view: '<title or script>'\` is a picture of the view as it is on screen at
+this moment: the visible part of the tab, at the scroll position the person left it at. What
+is scrolled out of sight is not in the picture, and a tab that is not showing — behind another
+tab, or in a collapsed sidebar — cannot be captured at all; the tool says so, and the person
+decides what to bring on screen.
 
 ---
 
