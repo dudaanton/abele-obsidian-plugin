@@ -66,6 +66,7 @@ beforeEach(() => {
   config.headerButtons = []
   config.links = []
   vi.spyOn(config, 'saveSettings').mockResolvedValue(undefined)
+  ScriptService.getInstance().scriptList.value = [fetchDetails, rename, legacy]
   vi.spyOn(ScriptService.getInstance(), 'getAll').mockReturnValue([fetchDetails, rename, legacy])
   pickScript.mockReset()
   pickCommand.mockReset()
@@ -191,5 +192,18 @@ describe('what a link runs', () => {
     const wrapper = mount(LinksSettings, { global: { stubs: STUBS } })
 
     expect(buttonWith(wrapper, 'removed-plugin:do-thing').exists()).toBe(true)
+  })
+})
+
+describe('the scripts screen while the folder is being read', () => {
+  it('shows the scripts once the index has them, however late that is', async () => {
+    ScriptService.getInstance().scriptList.value = []
+    const wrapper = mount(ScriptsSettings, { global: { stubs: STUBS } })
+    expect(wrapper.text()).not.toContain('scripts discovered')
+
+    ScriptService.getInstance().scriptList.value = [fetchDetails, rename]
+    await nextTick()
+
+    expect(wrapper.text()).toContain('2 scripts discovered')
   })
 })
