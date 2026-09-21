@@ -1,5 +1,19 @@
 <template>
-  <div class="abele-gallery" :class="{ 'abele-gallery_readonly': gallery.readonly }">
+  <div
+    class="abele-gallery"
+    :class="{
+      'abele-gallery_readonly': gallery.readonly,
+      'abele-gallery_dragging': draggingFiles,
+    }"
+    @dragenter="onDragEnter"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
+  >
+    <div v-if="draggingFiles" class="abele-gallery__drop-zone">
+      <ObsidianIcon icon="images" />
+      <span>Drop images and videos here</span>
+    </div>
     <div v-if="!gallery.readonly" class="abele-gallery__header">
       <div class="abele-gallery__header-right">
         <ObsidianIcon ref="addBtnRef" icon="image-plus" @click="addMenu.open" />
@@ -190,6 +204,7 @@ import { pickImageFile } from '@/helpers/suggesters/ImagePicker'
 import { setCoverFromMedia } from '@/commands/setCover'
 import { Choice, useMenu } from '@/composables/useMenu'
 import { reduceImageFile, formatBytes } from '@/helpers/reduceImage'
+import { isMediaPath } from '@/helpers/galleryUtils'
 
 const props = defineProps<{
   gallery: Gallery
@@ -202,6 +217,8 @@ const gridEl = ref<HTMLElement | null>(null)
 const addBtnRef = ref<InstanceType<typeof ObsidianIcon> | null>(null)
 const layoutBtnRef = ref<InstanceType<typeof ObsidianIcon> | null>(null)
 const deleteBtnRef = ref<InstanceType<typeof ObsidianIcon> | null>(null)
+const draggingFiles = ref(false)
+let dragDepth = 0
 
 watch(editMode, (val) => {
   if (val) editModeFiles.add(props.gallery.filePath)
@@ -449,30 +466,75 @@ async function addFromClipboard() {
   }
 }
 
+function carriesSystemFiles(event: DragEvent): boolean {
+  const transfer = event.dataTransfer
+  return !!transfer && (Array.from(transfer.types).includes('Files') || transfer.files.length > 0)
+}
+
+function onDragEnter(event: DragEvent) {
+  if (props.gallery.readonly || !carriesSystemFiles(event)) return
+  event.preventDefault()
+  event.stopPropagation()
+  dragDepth++
+  draggingFiles.value = true
+}
+
+function onDragOver(event: DragEvent) {
+  if (props.gallery.readonly || !carriesSystemFiles(event)) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+}
+
+function onDragLeave(event: DragEvent) {
+  if (props.gallery.readonly || !draggingFiles.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  dragDepth = Math.max(0, dragDepth - 1)
+  if (dragDepth === 0) draggingFiles.value = false
+}
+
+async function onDrop(event: DragEvent) {
+  if (props.gallery.readonly || !carriesSystemFiles(event)) return
+  event.preventDefault()
+  event.stopPropagation()
+  dragDepth = 0
+  draggingFiles.value = false
+  await addExternalFiles(Array.from(event.dataTransfer?.files ?? []))
+}
+
 async function onFilesSelected(e: Event) {
   const input = e.target as HTMLInputElement
-  const files = input.files
-  if (!files || files.length === 0) return
+  const files = Array.from(input.files ?? [])
+  if (files.length > 0) await addExternalFiles(files)
+  input.value = ''
+}
+
+async function addExternalFiles(files: File[]) {
+  const media = files.filter((file) => isMediaPath(file.name))
+  const skipped = files.length - media.length
+  if (media.length === 0) {
+    if (skipped > 0) new Notice('Abele gallery accepts images and videos')
+    return
+  }
 
   const { app } = GlobalStore.getInstance()
   const attachmentFolder = getAttachmentFolder(app, props.gallery.filePath)
 
-  // Ensure folder exists
   if (attachmentFolder && !(await app.vault.adapter.exists(attachmentFolder))) {
     await app.vault.createFolder(attachmentFolder)
   }
 
   const paths: string[] = []
-  for (const file of Array.from(files)) {
+  for (const file of media) {
     const buffer = await file.arrayBuffer()
     const basePath = attachmentFolder ? `${attachmentFolder}/${file.name}` : file.name
     let finalPath = basePath
     let counter = 1
     while (await app.vault.adapter.exists(finalPath)) {
-      const ext = file.name.includes('.') ? '.' + file.name.split('.').pop() : ''
-      const base = file.name.includes('.')
-        ? file.name.slice(0, file.name.lastIndexOf('.'))
-        : file.name
+      const dot = file.name.lastIndexOf('.')
+      const base = dot > 0 ? file.name.slice(0, dot) : file.name
+      const ext = dot > 0 ? file.name.slice(dot) : ''
       finalPath = attachmentFolder
         ? `${attachmentFolder}/${base} ${counter}${ext}`
         : `${base} ${counter}${ext}`
@@ -482,12 +544,10 @@ async function onFilesSelected(e: Event) {
     paths.push(created.path)
   }
 
-  if (paths.length > 0) {
-    props.gallery.addImages(paths)
-    new Notice(`Added ${paths.length} image${paths.length > 1 ? 's' : ''}`)
-  }
-
-  input.value = ''
+  props.gallery.addImages(paths)
+  const noun = paths.length === 1 ? 'file' : 'files'
+  const skippedText = skipped > 0 ? `; skipped ${skipped} unsupported` : ''
+  new Notice(`Added ${paths.length} ${noun} to gallery${skippedText}`)
 }
 
 function getAttachmentFolder(app: any, noteFilePath: string): string {
@@ -558,8 +618,27 @@ const deleteMenu = useMenu(deleteBtnRef, deleteChoices, handleDeleteMenu)
 
 <style lang="scss">
 .abele-gallery {
+  position: relative;
   margin: 0.5em 0;
   border-radius: var(--radius-m);
+}
+
+.abele-gallery__drop-zone {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  min-height: 120px;
+  color: var(--text-accent);
+  font-weight: var(--font-semibold);
+  background: color-mix(in srgb, var(--background-primary) 88%, var(--interactive-accent));
+  border: 2px dashed var(--interactive-accent);
+  border-radius: var(--radius-m);
+  pointer-events: none;
 }
 
 .abele-gallery__header {

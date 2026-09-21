@@ -94,20 +94,28 @@ export function getMediaType(path: string): MediaType {
   return VIDEO_EXTENSIONS.includes(ext) ? 'video' : 'image'
 }
 
+export function isMediaPath(path: string): boolean {
+  let pathname = path
+  try {
+    pathname = new URL(path).pathname
+  } catch {
+    // A vault path is not a URL and needs no further unwrapping.
+  }
+  const ext = pathname.split('.').pop()?.toLowerCase() || ''
+  return MEDIA_EXTENSIONS.includes(ext)
+}
+
 export function isImageEmbed(line: string): boolean {
   const entry = parseImageLine(line.trim())
   if (!entry) return false
   if (entry.type === 'remote') {
     try {
-      const pathname = new URL(entry.path).pathname
-      const ext = pathname.split('.').pop()?.toLowerCase() || ''
-      return MEDIA_EXTENSIONS.includes(ext)
+      return isMediaPath(new URL(entry.path).pathname)
     } catch {
       return true
     }
   }
-  const ext = entry.path.split('.').pop()?.toLowerCase() || ''
-  return MEDIA_EXTENSIONS.includes(ext)
+  return isMediaPath(entry.path)
 }
 
 export function buildImageLine(entry: GalleryImageEntry): string {
