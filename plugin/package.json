@@ -74,6 +74,7 @@
     "js-yaml": "^4.3.1",
     "jsqr": "^1.4.0",
     "lucide-vue-next": "^0.284.0",
+    "maplibre-gl": "6.10.0",
     "nanoid": "^5.1.6",
     "pinia": "^3.0.2",
     "qrcode-generator": "^2.0.4",

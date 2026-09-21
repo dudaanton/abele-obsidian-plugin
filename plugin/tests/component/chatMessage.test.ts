@@ -7,14 +7,21 @@
  * renamed class or a re-nested icon would leave it measuring a shape the app no longer emits
  * and reporting a pass. These assert the shape the rules are written against.
  */
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import AiChatMessage from '@/components/AiChatMessage.vue'
 import type { ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 
+// The map draws itself with WebGL, which there is none of here. What is asserted below is
+// that the chat asks for one at all, and with what.
+const renderMap = vi.hoisted(() => vi.fn(async () => ({ destroy: vi.fn() })))
+vi.mock('@/helpers/mapRender', () => ({ renderMap }))
+
 beforeEach(() => {
   useVault([])
+  renderMap.mockReset()
+  renderMap.mockResolvedValue({ destroy: vi.fn() })
 })
 
 function render(message: Partial<ChatMessage> & Pick<ChatMessage, 'role'>) {
@@ -83,5 +90,47 @@ describe('a screenshot the agent took', () => {
     expect(wrapper.find('.abele-chat-msg__image-preview').attributes('src')).toBe(
       'app://vault/Attachments/Screenshot Feed 2026-09-05 12-00-00.png'
     )
+  })
+})
+
+describe('a map tool that answered', () => {
+  it('draws the map under the call, from what the tool handed back', async () => {
+    const wrapper = render({
+      role: 'tool-call',
+      toolName: 'route',
+      toolStatus: 'approved',
+      toolResult: '**Drive** — 8.3 km',
+      toolMap: { points: [{ lat: 56.9496, lon: 24.1052, label: 'Rīgas Doms' }] },
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(wrapper.find('.abele-chat-msg__map').exists()).toBe(true)
+    expect(wrapper.find('.abele-map').exists()).toBe(true)
+    const config = renderMap.mock.calls[0]?.[1] as unknown as {
+      points: Array<{ label?: string }>
+      interactive: boolean
+    }
+    expect(config.points[0].label).toBe('Rīgas Doms')
+    // A record of an answer, not something to drag around inside a chat bubble.
+    expect(config.interactive).toBe(false)
+  })
+
+  it('shows a useful error instead of leaving an unhandled blank map', async () => {
+    renderMap.mockRejectedValueOnce(new Error('WebGL is unavailable'))
+    const wrapper = render({
+      role: 'tool-call',
+      toolName: 'route',
+      toolStatus: 'approved',
+      toolMap: { points: [{ lat: 56.9496, lon: 24.1052 }] },
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(wrapper.find('.abele-map-error').text()).toContain('WebGL is unavailable')
+  })
+
+  it('draws nothing for a call that carried no map', () => {
+    const wrapper = render({ role: 'tool-call', toolName: 'read', toolStatus: 'approved' })
+
+    expect(wrapper.find('.abele-map').exists()).toBe(false)
   })
 })

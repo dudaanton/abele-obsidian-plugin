@@ -142,7 +142,16 @@ const probeScript = `(async () => {
     // where it started from. Nothing here waits on one.
     for (const el of document.querySelectorAll('.modal, .modal-container')) el.style.transition = 'none'
     await wait(400)
-    const img = await win.webContents.capturePage()
+    let img
+    try {
+      img = await win.webContents.capturePage()
+    } catch (error) {
+      // Electron occasionally answers the first capture after a resize with UnknownVizError;
+      // every later dialog capture succeeds. Retry the same screen rather than losing it.
+      if (!String(error && error.message).includes('UnknownVizError')) throw error
+      await wait(300)
+      img = await win.webContents.capturePage()
+    }
     const path = ${JSON.stringify(SHOTS)} + '/' + label.replace(/[^a-z0-9]+/gi, '-') + '.png'
     fs.writeFileSync(path, img.toPNG())
     return path
@@ -330,8 +339,11 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 
   afterAll(async () => {
     if (!available) return
-    await setMobile(false)
+    // Restore the window before leaving emulation: `emulateMobile(false)` reloads the app and
+    // takes the viewport size from the window at that moment. The opposite order left every
+    // later desktop e2e test running in a phone-sized viewport.
     if (size[0]) await setWindowSize(size[0], size[1])
+    await setMobile(false)
   }, 120_000)
 
   const screens = [

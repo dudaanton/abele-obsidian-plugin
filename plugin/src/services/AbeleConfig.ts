@@ -38,6 +38,11 @@ export interface AbeleSettings {
   links?: LinkDefinition[]
   // Buttons added to the header of notes of a given type
   headerButtons?: HeaderButtonDefinition[]
+  // Maps
+  /** Note property holding a place's `lat, lon`. What the agent is told to write into. */
+  mapCoordinatesProperty?: string
+  /** A MapLibre style URL of one's own, instead of the free tiles the plugin ships with. */
+  mapStyleUrl?: string
   // Other
   snippetsFolder?: string
   fullWidthSidebars?: boolean
@@ -97,6 +102,8 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   timeTrackAllNotes: false,
   links: [],
   headerButtons: [],
+  mapCoordinatesProperty: 'coordinates',
+  mapStyleUrl: '',
   snippetsFolder: '',
   fullWidthSidebars: false,
 }
@@ -130,6 +137,8 @@ export class AbeleConfig {
   public timeTrackAllNotes: boolean
   public links: LinkDefinition[]
   public headerButtons: HeaderButtonDefinition[]
+  public mapCoordinatesProperty: string
+  public mapStyleUrl: string
   public snippetsFolder: string
   public fullWidthSidebars: boolean
 
@@ -349,6 +358,9 @@ export class AbeleConfig {
       noteTypes: b.noteTypes || [],
       params: b.params || {},
     }))
+    this.mapCoordinatesProperty =
+      settings?.mapCoordinatesProperty ?? DEFAULT_SETTINGS.mapCoordinatesProperty
+    this.mapStyleUrl = settings?.mapStyleUrl ?? DEFAULT_SETTINGS.mapStyleUrl
     this.snippetsFolder = settings?.snippetsFolder ?? DEFAULT_SETTINGS.snippetsFolder
     this.fullWidthSidebars = settings?.fullWidthSidebars ?? DEFAULT_SETTINGS.fullWidthSidebars
 
@@ -381,6 +393,8 @@ export class AbeleConfig {
       timeTrackAllNotes: this.timeTrackAllNotes,
       links: [...this.links],
       headerButtons: [...this.headerButtons],
+      mapCoordinatesProperty: this.mapCoordinatesProperty,
+      mapStyleUrl: this.mapStyleUrl,
       snippetsFolder: this.snippetsFolder,
       fullWidthSidebars: this.fullWidthSidebars,
     }

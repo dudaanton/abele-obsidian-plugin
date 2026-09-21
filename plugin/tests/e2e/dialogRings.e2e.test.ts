@@ -77,10 +77,16 @@ const script = `(async () => {
 
   await closeDialog()
   app.commands.executeCommandById('abele:show-ai-sidebar')
-  await until(() => document.querySelector('.abele-ai-chat'), 5000)
+  await until(
+    () => [...document.querySelectorAll('.abele-ai-chat')].some((el) => el.getBoundingClientRect().height > 0),
+    5000
+  )
   await wait(400)
 
-  press(document.querySelector('.abele-ai-chat .lucide-sliders-horizontal'))
+  const chat = [...document.querySelectorAll('.abele-ai-chat')].find(
+    (el) => el.getBoundingClientRect().height > 0
+  )
+  press(chat && chat.querySelector('.lucide-sliders-horizontal'))
   if (!(await until(() => document.querySelector('.modal .abele-chat-setup'), 5000))) {
     return JSON.stringify([{ screen: 'setup', field: '-', by: ['dialog did not open'] }])
   }
@@ -92,7 +98,7 @@ const script = `(async () => {
   }
   await closeDialog()
 
-  press(document.querySelector('.abele-ai-chat .lucide-history'))
+  press(chat && chat.querySelector('.lucide-history'))
   if (await until(() => document.querySelector('.modal'), 5000)) {
     await wait(400)
     measureAll('history', document.querySelector('.modal'))

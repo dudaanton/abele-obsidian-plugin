@@ -59,6 +59,13 @@ the last thing to change quietly.
 about itself. `ai.scriptsEnabled` and `ai.scriptsFolder` are the script feature; `ai.voice` is
 dictation — which model transcribes and where its key lives.
 
+## Maps
+
+`mapCoordinatesProperty` is the note property a place is stored in — `coordinates` unless the
+person changed it, and the map tools tell the person to write into whichever it names.
+`mapStyleUrl` replaces the free OpenFreeMap tiles with a MapLibre style of one's own; empty
+means the plugin's own, which needs no key and no account.
+
 ## Everything else
 
 `snippetsFolder` is where CSS snippets are written, `links` and `headerButtons` are the buttons

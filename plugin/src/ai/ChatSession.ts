@@ -11,6 +11,7 @@ import { TFile, Notice } from 'obsidian'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import type { MapBlock } from '@/helpers/mapConfig'
 import { DEFAULT_RETRY, backoffDelay, isTransient } from './retry'
 import { AgentLoop } from './client/AgentLoop'
 import type {
@@ -71,6 +72,11 @@ import type { ChatService } from './ChatService'
  * most a fraction of a turn, long enough that a burst of updates in one tick makes one write.
  */
 const PERSIST_INTERVAL_MS = 300
+
+/** What a map tool hands back beside its text, for the chat to draw. */
+interface ToolMapDetails {
+  map?: MapBlock
+}
 
 /** Shape returned by tools that say what they changed: the diff, and the file it landed in. */
 interface ToolWriteDetails {
@@ -982,6 +988,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
               ...m,
               toolResult: resultText,
               toolDiff: diff ? { old: diff.old, new: diff.new } : undefined,
+              toolMap: (event.result.details as ToolMapDetails)?.map,
               toolStatus: event.isError ? 'rejected' : 'approved',
             }
           }
@@ -1341,6 +1348,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           ...m,
           toolResult: resultText,
           toolDiff: diff ? { old: diff.old, new: diff.new } : undefined,
+          toolMap: (toolResult.details as ToolMapDetails)?.map,
           toolStatus: isError ? ('rejected' as const) : ('approved' as const),
         }
       }

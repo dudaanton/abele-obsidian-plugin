@@ -60,9 +60,30 @@ asking where something is.
 - `route` takes `from`, `to`, any number of `via` points, and a `mode` of `car`, `bike` or
   `walk`. It answers with the distance, the time and the turn-by-turn directions.
 
-Coordinates are written as `lat, lon` rounded to five decimals, which is what a note stores and
-what a map layout reads: `location: "56.9496, 24.1052"`. Write a place into frontmatter that way
-and it needs nothing else to appear on a map.
+Coordinates come back as `lat, lon`, rounded to five decimals. Which property they go in is the
+person's: `mapCoordinatesProperty` in the settings says which one this vault uses, the answers
+name it, and `read_settings` reads it. The format is the same either way, and it is what both
+the `abele-map` block and Obsidian's own map layout read.
+
+Every one of the three also draws its answer: the chat shows the places, or the line of the
+route, on a map under the tool call. The same map goes into a note as a block:
+
+```abele-map
+height: 320
+points:
+  - 56.9496, 24.1052
+  - coordinates: 56.951, 24.194
+    label: Station
+  - location: 56.946, 24.111
+    label: Hotel
+    color: "#e5484d"
+```
+
+`center` and `zoom` fix the view instead of fitting it to what is on the map, `style` takes a
+MapLibre style URL, and `interactive: false` makes a picture rather than something to drag.
+A route is drawn by handing over the encoded line the routing service returned — `route`, with
+`routePrecision: 6` for Valhalla and `5` for OSRM — which is what the chat does for `route`.
+Nothing about the block needs the network except the tiles.
 
 These are public services run on donations. They are asked one request at a time, about a second
 apart, and repeat answers come from memory rather than the network — so a long batch of lookups

@@ -73,6 +73,11 @@
             @close="viewerOpen = false"
           />
         </div>
+        <AbeleMap
+          v-if="message.toolStatus === 'approved' && mapConfig"
+          :config="mapConfig"
+          class="abele-chat-msg__map"
+        />
         <pre
           v-if="message.toolDiff && !message.toolDiff.old"
           class="abele-chat-msg__new-file"
@@ -281,6 +286,8 @@ import dayjs from 'dayjs'
 import { Menu, Notice, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
+import AbeleMap from './AbeleMap.vue'
+import { normalizeMapBlock, type MapConfig } from '@/helpers/mapConfig'
 import Diff from './Diff.vue'
 import AiSubAgentRun from './AiSubAgentRun.vue'
 import GalleryViewer from './GalleryViewer.vue'
@@ -370,6 +377,21 @@ function extractResultPath(result?: string): string {
   const match = result.match(/^(?:Created|Saved|Edited):\s*(.+)$/m)
   return match?.[1]?.trim() || ''
 }
+
+/**
+ * The map a map tool drew, ready to render — or nothing, for every other tool.
+ *
+ * A chat is not as tall as a note, so the map is shorter here and is not something to drag
+ * around: a tool call is a record of what was answered, and a reader who wants to explore has
+ * the block to paste into a note.
+ */
+const mapConfig = computed<MapConfig | null>(() => {
+  const block = props.message.toolMap
+  if (!block) return null
+
+  const parsed = normalizeMapBlock({ height: 220, interactive: false, ...block })
+  return 'error' in parsed ? null : parsed
+})
 
 const toolSummary = computed(() => {
   const name = props.message.toolName

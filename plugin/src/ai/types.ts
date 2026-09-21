@@ -1,5 +1,6 @@
 import type { TFile } from 'obsidian'
 import type { AgentDefinition, SessionOverrides } from './agents/types'
+import type { MapBlock } from '@/helpers/mapConfig'
 
 /**
  * What is typed into the chat but not sent yet.
@@ -441,6 +442,8 @@ export interface ChatMessage {
   toolStatus?: 'pending' | 'approved' | 'rejected' | 'modified'
   toolResult?: string
   toolDiff?: ChatMessageDiff
+  /** A map a tool drew — shown under the call, the way a diff or a screenshot is. */
+  toolMap?: MapBlock
   usage?: ChatMessageUsage
   attachments?: string[]
   timestamp: number

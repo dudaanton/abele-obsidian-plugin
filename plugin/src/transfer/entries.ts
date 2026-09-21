@@ -222,6 +222,7 @@ export const SECTIONS: Section[] = [
     'timeTrackableNoteTypes',
     'timeTrackAllNotes',
   ]),
+  rootBlock('maps', 'Maps', ['mapCoordinatesProperty', 'mapStyleUrl']),
   rootBlock('other', 'Other', [
     'refreshDelay',
     'logsNotesTypes',

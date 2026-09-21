@@ -40,11 +40,16 @@ const photonAnswer = (features: unknown[]) => ({
   json: { type: 'FeatureCollection', features },
 })
 
+const execute = (
+  tool: { execute: (id: string, p: Record<string, unknown>) => Promise<any> },
+  params: Record<string, unknown>
+) => tool.execute('call-1', params)
+
 const run = async (
   tool: { execute: (id: string, p: Record<string, unknown>) => Promise<any> },
   params: Record<string, unknown>
 ) => {
-  const result = await tool.execute('call-1', params)
+  const result = await execute(tool, params)
   return result.content[0].text as string
 }
 
@@ -87,6 +92,7 @@ describe('geocode', () => {
     expect(text).toContain('Rīgas Doms')
     expect(text).toContain('56.9496, 24.1052')
     expect(text).toContain('Brīvības iela 1')
+    expect(text).toContain('coordinates: "56.9496, 24.1052"')
   })
 
   it('turns coordinates back into an address when given them instead', async () => {
@@ -98,6 +104,24 @@ describe('geocode', () => {
     expect(urlOf(0)).toContain('lat=56.9475')
     expect(urlOf(0)).toContain('lon=24.1062')
     expect(text).toContain('Rātslaukums')
+  })
+
+  /** `lang: ru` used to come back as «Photon answered 400» and nothing else. */
+  it('drops a language the host does not speak instead of failing the call', async () => {
+    requestUrl.mockResolvedValue(photonAnswer([feature('Rīgas Doms', 56.9496, 24.1052)]))
+
+    const text = await run(createGeocodeTool(), { query: 'Rīgas Doms', lang: 'ru' })
+
+    expect(urlOf(0)).not.toContain('lang=')
+    expect(text).toContain('Rīgas Doms')
+  })
+
+  it('passes on a language it does speak', async () => {
+    requestUrl.mockResolvedValue(photonAnswer([feature('Riga Cathedral', 56.9496, 24.1052)]))
+
+    await run(createGeocodeTool(), { query: 'Rīgas Doms', lang: 'en' })
+
+    expect(urlOf(0)).toContain('lang=en')
   })
 
   it('says plainly when nothing was found rather than returning an empty list', async () => {
@@ -345,6 +369,77 @@ describe('route', () => {
 
     expect(urlOf(0)).toContain('photon.komoot.io')
     expect(text).toContain('Rīgas Doms')
+  })
+
+  /**
+   * A point passed through used to be announced as «your destination is on the left», with
+   * the numbering carrying straight on into the next stretch.
+   */
+  it('hands the chat the route line and its pins to draw', async () => {
+    requestUrl.mockResolvedValue({
+      status: 200,
+      json: {
+        trip: {
+          summary: { length: 10, time: 1200 },
+          legs: [
+            {
+              shape: '_p~iF~ps|U_ulLnnqC',
+              summary: { length: 10, time: 1200 },
+              maneuvers: [],
+            },
+          ],
+        },
+      },
+    })
+
+    const result = await execute(createRouteTool(), {
+      from: '56.9496, 24.1052',
+      to: '56.9510, 24.1940',
+    })
+
+    expect(result.details.map).toMatchObject({
+      route: '_p~iF~ps|U_ulLnnqC',
+      routePrecision: 6,
+      points: [
+        { lat: 56.9496, lon: 24.1052 },
+        { lat: 56.951, lon: 24.194 },
+      ],
+    })
+  })
+
+  it('names each point it passes through and counts the steps to it separately', async () => {
+    requestUrl.mockResolvedValue({
+      status: 200,
+      json: {
+        trip: {
+          summary: { length: 10, time: 1200 },
+          legs: [
+            {
+              shape: 'aaa',
+              summary: { length: 4, time: 600 },
+              maneuvers: [{ instruction: 'Drive north.', length: 4, time: 600 }],
+            },
+            {
+              shape: 'bbb',
+              summary: { length: 6, time: 600 },
+              maneuvers: [{ instruction: 'Drive east.', length: 6, time: 600 }],
+            },
+          ],
+        },
+      },
+    })
+
+    const text = await run(createRouteTool(), {
+      from: '56.9496, 24.1052',
+      via: ['56.9600, 24.1052'],
+      to: '56.9510, 24.1940',
+    })
+
+    expect(text).toContain('Via 1: 56.96, 24.1052')
+    expect(text).toContain('To via 1')
+    expect(text).toContain('To the destination')
+    // Each stretch is counted from one, so «1.» appears in both.
+    expect(text.match(/^1\. /gm)?.length).toBe(2)
   })
 
   it('falls back to OSRM when the Valhalla host is having a bad day', async () => {

@@ -153,6 +153,15 @@ out of the chat history until somebody opens one as a full chat. Not every user 
 a question: a comment may hold notes the person kept without asking anything, which no agent
 has answered and which are simply part of the conversation from then on.
 
+## Places
+
+A place is a note with its coordinates in one property, written `lat, lon` — `coordinates:
+"56.9496, 24.1052"` by default, or whatever `mapCoordinatesProperty` names in this vault. The
+map block accepts both `coordinates` and `location`. Five decimals is about a metre, which is
+as precise as anything here needs. Obsidian's map view reads the property; an `abele-map` block
+written into the note carries its own points and routes. Both are read when shown rather than
+cached anywhere.
+
 ## Transfer files
 
 Files in the vault root named `Abele transfer <date> <time>.txt` are settings on their way to

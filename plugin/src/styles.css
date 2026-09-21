@@ -586,3 +586,52 @@ body.is-mobile .abele-comment-marker_pending::after {
   border-bottom-style: dashed;
 }
 
+
+/* Maps
+   MapLibre's own stylesheet is imported by the renderer; these are the parts that are ours:
+   the frame the map sits in, the pin, and what a broken block says. */
+.abele-map {
+  width: 100%;
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+}
+
+.abele-map__pin {
+  width: 14px;
+  height: 14px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  border: 2px solid var(--background-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+
+.abele-map-error {
+  padding: var(--size-4-2);
+  color: var(--text-error);
+  font-size: var(--font-ui-small);
+}
+
+/* Their popup, in this theme's colours rather than the library's white. */
+.abele-map .maplibregl-popup-content {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-smaller);
+  padding: var(--size-4-1) var(--size-4-2);
+}
+
+.abele-map .maplibregl-popup-tip {
+  border-top-color: var(--background-primary);
+  border-bottom-color: var(--background-primary);
+}
+
+.abele-map .maplibregl-ctrl-attrib {
+  font-size: 10px;
+}
+
+.abele-chat-msg__map {
+  margin-top: var(--size-4-2);
+}

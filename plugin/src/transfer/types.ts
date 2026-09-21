@@ -20,6 +20,7 @@ export const TRANSFER_SECTIONS = [
   'tasks',
   'finance',
   'time-tracking',
+  'maps',
   'other',
 ] as const
 

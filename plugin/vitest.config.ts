@@ -14,6 +14,9 @@ export default defineConfig({
       // Production code imports the real plugin API; tests get the stand-in so that
       // `instanceof TFile` works against fixtures built by tests/helpers/fakeVault.ts.
       obsidian: path.resolve(__dirname, 'tests/mocks/obsidian.ts'),
+      // The production build generates this module from MapLibre's worker entry. Tests do not
+      // start WebGL, but Vite still has to resolve the dynamic import while collecting files.
+      'virtual:maplibre-worker': path.resolve(__dirname, 'tests/mocks/maplibreWorker.ts'),
     },
   },
   test: {

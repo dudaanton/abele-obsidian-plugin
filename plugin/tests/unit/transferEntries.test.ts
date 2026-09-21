@@ -88,6 +88,20 @@ describe('what the sending side offers', () => {
 })
 
 describe('settings that arrived later than the transfer did', () => {
+  it('carries both map settings', () => {
+    const entries = collectEntries(
+      settings({
+        mapCoordinatesProperty: 'coordinates',
+        mapStyleUrl: 'https://maps.example/style.json',
+      })
+    )
+
+    expect(find(entries, 'maps', 'maps')?.data).toMatchObject({
+      mapCoordinatesProperty: 'coordinates',
+      mapStyleUrl: 'https://maps.example/style.json',
+    })
+  })
+
   /**
    * The section lists the keys it carries by name, so anything added to the settings after it
    * was written is silently left behind. Voice input was exactly that.

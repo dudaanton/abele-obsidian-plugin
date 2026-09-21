@@ -186,7 +186,9 @@ The agent has access to these tools:
 | `route` | Distance, time and turn-by-turn directions between places, by car, bike or on foot |
 
 These run on OpenStreetMap data through Photon, Overpass and the FOSSGIS routing servers — no API
-key and no account, so they work on a fresh install. Coordinates come back as `lat, lon`, the form a note
+key and no account, so they work on a fresh install. Each of them draws what it answered: the
+chat shows a map under the tool call, and the same map can be written into a note as an
+`abele-map` block. Coordinates come back as `lat, lon`, the form a note
 property stores and a map layout reads.
 
 ### AI Tools

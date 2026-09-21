@@ -85,6 +85,7 @@ import { runAfterSync } from './helpers/runAfterSync'
 import { handleProtocolAction } from './helpers/protocolHandler'
 import { handleLinkAction } from './helpers/linkHandler'
 import { registerChartCodeblock } from './editor/ChartCodeblock'
+import { registerMapCodeblock } from './editor/MapCodeblock'
 import { SnippetService } from './services/SnippetService'
 import { dictate } from '@/audio/voiceModal'
 
@@ -292,6 +293,8 @@ export default class AbelePlugin extends Plugin {
     registerChartCodeblock((lang, handler) =>
       this.registerMarkdownCodeBlockProcessor(lang, handler)
     )
+
+    registerMapCodeblock((lang, handler) => this.registerMarkdownCodeBlockProcessor(lang, handler))
 
     this.registerEvent(
       this.app.workspace.on('css-change', () => {

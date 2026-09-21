@@ -13,6 +13,26 @@
     <Setting name="Full-width sidebars" desc="Make sidebars take the full screen width on mobile.">
       <Checkbox :is-enabled="fullWidthSidebars" @toggle="toggleFullWidthSidebars" />
     </Setting>
+    <Setting
+      name="Coordinates property"
+      desc="Note property holding a place as 'lat, lon'. The agent is told to write into this one."
+    >
+      <Input
+        :model-value="mapCoordinatesProperty"
+        placeholder="coordinates"
+        @update:model-value="updateMapProperty"
+      />
+    </Setting>
+    <Setting
+      name="Map style URL"
+      desc="MapLibre style for maps in notes and chats. Empty uses the free OpenFreeMap tiles."
+    >
+      <Input
+        :model-value="mapStyleUrl"
+        placeholder="https://tiles.openfreemap.org/styles/bright"
+        @update:model-value="updateMapStyle"
+      />
+    </Setting>
   </div>
 </template>
 
@@ -28,6 +48,8 @@ import { SnippetService } from '@/services/SnippetService'
 const config = AbeleConfig.getInstance()
 const snippetsFolder = ref(config.snippetsFolder)
 const fullWidthSidebars = ref(config.fullWidthSidebars)
+const mapCoordinatesProperty = ref(config.mapCoordinatesProperty)
+const mapStyleUrl = ref(config.mapStyleUrl)
 
 const applyClass = (enabled: boolean) => {
   document.body.classList.toggle('abele-full-width-sidebars', enabled)
@@ -45,6 +67,26 @@ const saveSnippetsFolder = debounce(async (value: string) => {
 const updateSnippetsFolder = (value: string) => {
   snippetsFolder.value = value
   saveSnippetsFolder(value)
+}
+
+const saveMapProperty = debounce(async (value: string) => {
+  config.mapCoordinatesProperty = value.trim()
+  await config.saveSettings()
+}, 500)
+
+const updateMapProperty = (value: string) => {
+  mapCoordinatesProperty.value = value
+  saveMapProperty(value)
+}
+
+const saveMapStyle = debounce(async (value: string) => {
+  config.mapStyleUrl = value.trim()
+  await config.saveSettings()
+}, 500)
+
+const updateMapStyle = (value: string) => {
+  mapStyleUrl.value = value
+  saveMapStyle(value)
 }
 
 const toggleFullWidthSidebars = async () => {

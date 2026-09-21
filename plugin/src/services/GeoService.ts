@@ -45,6 +45,15 @@ export interface RouteStep {
   distanceKm: number
 }
 
+/** One stretch between two of the points asked for — the whole route when there are only two. */
+export interface RouteLeg {
+  steps: RouteStep[]
+  distanceKm: number
+  durationMin: number
+  /** Where this stretch ends. */
+  to: GeoPlace
+}
+
 export interface GeoRoute {
   mode: TravelMode
   provider: 'Valhalla' | 'OSRM'
@@ -52,12 +61,27 @@ export interface GeoRoute {
   durationMin: number
   from: GeoPlace
   to: GeoPlace
-  steps: RouteStep[]
-  /** Encoded polyline, kept for whatever draws the line later. */
+  /** Kept apart rather than run together, so a point passed through is not read as arrival. */
+  legs: RouteLeg[]
+  /** The line itself, encoded, for whatever draws it. */
   shape?: string
+  /** Precision of `shape`: Valhalla encodes at 6 decimals, OSRM at 5. */
+  shapePrecision?: number
 }
 
 export type TravelMode = 'car' | 'bike' | 'walk'
+
+/**
+ * The languages Photon answers in. Anything else is a `400`, so an unsupported one is dropped
+ * rather than passed on: with no language it answers in the local one, which for «где это»
+ * about a street in Riga is the more useful answer anyway.
+ */
+const PHOTON_LANGUAGES = new Set(['de', 'en', 'fr', 'it'])
+
+export function photonLanguage(lang?: string): string | undefined {
+  const code = (lang || '').trim().toLowerCase().slice(0, 2)
+  return PHOTON_LANGUAGES.has(code) ? code : undefined
+}
 
 // ── Politeness ───────────────────────────────────────────────
 
@@ -338,7 +362,8 @@ export async function searchPlaces(options: SearchOptions): Promise<GeoPlace[]> 
     params.set('lon', String(options.near.lon))
   }
   if (options.tag) params.set('osm_tag', options.tag)
-  if (options.lang) params.set('lang', options.lang)
+  const lang = photonLanguage(options.lang)
+  if (lang) params.set('lang', lang)
 
   const answer = await ask<{ features?: PhotonFeature[] }>(
     `${PHOTON}/api?${params.toString()}`,
@@ -411,7 +436,8 @@ export async function placesAround(
 
 export async function reverseGeocode(point: GeoPoint, lang?: string): Promise<GeoPlace | null> {
   const params = new URLSearchParams({ lat: String(point.lat), lon: String(point.lon) })
-  if (lang) params.set('lang', lang)
+  const code = photonLanguage(lang)
+  if (code) params.set('lang', code)
 
   const answer = await ask<{ features?: PhotonFeature[] }>(
     `${PHOTON}/reverse?${params.toString()}`,
@@ -461,6 +487,7 @@ interface ValhallaAnswer {
     summary?: { length?: number; time?: number }
     legs?: Array<{
       shape?: string
+      summary?: { length?: number; time?: number }
       maneuvers?: Array<{ instruction?: string; length?: number; time?: number }>
     }>
   }
@@ -471,7 +498,10 @@ interface OsrmAnswer {
   routes?: Array<{
     distance?: number
     duration?: number
+    geometry?: string
     legs?: Array<{
+      distance?: number
+      duration?: number
       steps?: Array<{
         name?: string
         distance?: number
@@ -495,13 +525,17 @@ async function valhallaRoute(points: GeoPlace[], mode: TravelMode): Promise<GeoR
   const trip = answer.trip
   if (!trip?.legs?.length) throw new Error('Valhalla returned no route')
 
-  const steps: RouteStep[] = []
-  for (const leg of trip.legs) {
-    for (const maneuver of leg.maneuvers || []) {
-      if (!maneuver.instruction) continue
-      steps.push({ text: maneuver.instruction, distanceKm: maneuver.length || 0 })
-    }
-  }
+  const legs: RouteLeg[] = trip.legs.map((leg, index) => ({
+    steps: (leg.maneuvers || [])
+      .filter((maneuver) => maneuver.instruction)
+      .map((maneuver) => ({
+        text: maneuver.instruction,
+        distanceKm: maneuver.length || 0,
+      })),
+    distanceKm: leg.summary?.length || 0,
+    durationMin: Math.round((leg.summary?.time || 0) / 60),
+    to: points[index + 1] ?? points[points.length - 1],
+  }))
 
   return {
     mode,
@@ -510,8 +544,11 @@ async function valhallaRoute(points: GeoPlace[], mode: TravelMode): Promise<GeoR
     durationMin: Math.round((trip.summary?.time || 0) / 60),
     from: points[0],
     to: points[points.length - 1],
-    steps,
-    shape: trip.legs[0]?.shape,
+    legs,
+    // Every leg's shape, one string. `;` is below the range polyline encoding uses, so it
+    // cannot appear inside a leg — and unlike a NUL it survives being written into YAML.
+    shape: trip.legs.map((leg) => leg.shape || '').join(';'),
+    shapePrecision: 6,
   }
 }
 
@@ -534,19 +571,22 @@ function osrmInstruction(step: {
 async function osrmRoute(points: GeoPlace[], mode: TravelMode): Promise<GeoRoute> {
   const coords = points.map((p) => `${p.lon},${p.lat}`).join(';')
   const answer = await ask<OsrmAnswer>(
-    `${OSRM}/${OSRM_PROFILE[mode]}/route/v1/driving/${coords}?overview=false&steps=true`,
+    `${OSRM}/${OSRM_PROFILE[mode]}/route/v1/driving/${coords}?overview=full&steps=true`,
     'OSRM'
   )
 
   const route = answer.routes?.[0]
   if (!route) throw new Error('OSRM returned no route')
 
-  const steps: RouteStep[] = []
-  for (const leg of route.legs || []) {
-    for (const step of leg.steps || []) {
-      steps.push({ text: osrmInstruction(step), distanceKm: (step.distance || 0) / 1000 })
-    }
-  }
+  const legs: RouteLeg[] = (route.legs || []).map((leg, index) => ({
+    steps: (leg.steps || []).map((step) => ({
+      text: osrmInstruction(step),
+      distanceKm: (step.distance || 0) / 1000,
+    })),
+    distanceKm: (leg.distance || 0) / 1000,
+    durationMin: Math.round((leg.duration || 0) / 60),
+    to: points[index + 1] ?? points[points.length - 1],
+  }))
 
   return {
     mode,
@@ -555,7 +595,9 @@ async function osrmRoute(points: GeoPlace[], mode: TravelMode): Promise<GeoRoute
     durationMin: Math.round((route.duration || 0) / 60),
     from: points[0],
     to: points[points.length - 1],
-    steps,
+    legs,
+    shape: route.geometry,
+    shapePrecision: 5,
   }
 }
 

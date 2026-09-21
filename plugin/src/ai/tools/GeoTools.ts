@@ -1,4 +1,6 @@
 import type { AgentTool } from '../client'
+import type { MapBlock } from '@/helpers/mapConfig'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   categoryTag,
   findRoute,
@@ -27,8 +29,17 @@ const DEFAULT_RADIUS_KM = 2
 /** And what it means where the first circle came back empty. */
 const WIDER_RADIUS_KM = 15
 
-const LOCATION_HINT =
-  'Store a place in a note as `location: "56.9496, 24.1052"` — that is the form Obsidian map views read.'
+/**
+ * Where a place goes in a note.
+ *
+ * The property name is the person's, not ours: a vault that has always written `coordinates`
+ * should not be told by every answer to start writing something else. The format is the part
+ * that matters, and it is the one the map block and Obsidian's own map layout both read.
+ */
+function locationHint(): string {
+  const property = AbeleConfig.getInstance().mapCoordinatesProperty || 'coordinates'
+  return `Store a place in a note as \`${property}: "56.9496, 24.1052"\` — the format map views read.`
+}
 
 function formatDuration(minutes: number): string {
   if (minutes < 60) return `${minutes} min`
@@ -55,8 +66,13 @@ function formatPlaces(places: GeoPlace[]): string {
   return places.map((place, i) => formatPlace(place, i + 1)).join('\n')
 }
 
-function text(body: string) {
-  return { content: [{ type: 'text' as const, text: body }] }
+function text(body: string, map?: MapBlock) {
+  return { content: [{ type: 'text' as const, text: body }], details: map ? { map } : undefined }
+}
+
+/** The pins for a list of places, in the order they were answered in. */
+function pinsFor(places: GeoPlace[]): MapBlock {
+  return { points: places.map((p) => ({ lat: p.lat, lon: p.lon, label: p.name })) }
 }
 
 export function createGeocodeTool(): AgentTool {
@@ -95,7 +111,7 @@ export function createGeocodeTool(): AgentTool {
 
         const place = await reverseGeocode({ lat, lon }, lang)
         if (!place) return text(`Nothing found at ${formatLatLon(lat, lon)}.`)
-        return text(`${formatPlace(place, 1)}\n\n${LOCATION_HINT}`)
+        return text(`${formatPlace(place, 1)}\n\n${locationHint()}`, pinsFor([place]))
       }
 
       const near = params.near ? await resolvePoint(params.near as string, lang) : undefined
@@ -107,7 +123,7 @@ export function createGeocodeTool(): AgentTool {
       })
 
       if (!places.length) return text(`Nothing found for "${query}".`)
-      return text(`${formatPlaces(places)}\n\n${LOCATION_HINT}`)
+      return text(`${formatPlaces(places)}\n\n${locationHint()}`, pinsFor(places))
     },
   }
 }
@@ -198,41 +214,67 @@ export function createPlacesTool(): AgentTool {
 
       const where = centre.address || centre.name
       return text(
-        `Near ${where} (${formatLatLon(centre.lat, centre.lon)}):\n\n${formatPlaces(places)}`
+        `Near ${where} (${formatLatLon(centre.lat, centre.lon)}):\n\n${formatPlaces(places)}`,
+        pinsFor(places)
       )
     },
   }
 }
 
+function endpointLabel(place: GeoPlace): string {
+  const coords = formatLatLon(place.lat, place.lon)
+  // A point given as coordinates has the coordinates for a name, and printing them twice
+  // reads like two different places.
+  if (place.name === coords && !place.address) return coords
+
+  const label =
+    place.address && !place.address.startsWith(place.name)
+      ? `${place.name}, ${place.address}`
+      : place.address || place.name
+  return `${label} (${coords})`
+}
+
+/** A long route can run to a hundred maneuvers, and that is a page of context. */
+const MAX_STEPS = 30
+
 function formatRoute(route: GeoRoute, withSteps: boolean): string {
   const label = { car: 'Drive', bike: 'Cycle', walk: 'Walk' }[route.mode]
-  const head = `**${label}** — ${route.distanceKm.toFixed(1)} km, ${formatDuration(route.durationMin)}`
+  const lines = [
+    `**${label}** — ${route.distanceKm.toFixed(1)} km, ${formatDuration(route.durationMin)}`,
+    '',
+    `From: ${endpointLabel(route.from)}`,
+  ]
 
-  const endpoint = (place: GeoPlace) => {
-    const coords = formatLatLon(place.lat, place.lon)
-    // A point given as coordinates has the coordinates for a name, and printing them twice
-    // reads like two different places.
-    if (place.name === coords && !place.address) return coords
-
-    const label =
-      place.address && !place.address.startsWith(place.name)
-        ? `${place.name}, ${place.address}`
-        : place.address || place.name
-    return `${label} (${coords})`
+  // Every point passed through, named. Without this a route through somewhere reads as one
+  // long list in which the middle stop is announced as «your destination» and the numbering
+  // carries on regardless.
+  const vias = route.legs.slice(0, -1)
+  for (const [index, leg] of vias.entries()) {
+    lines.push(`Via ${index + 1}: ${endpointLabel(leg.to)}`)
   }
+  lines.push(`To: ${endpointLabel(route.to)}`)
 
-  const lines = [head, '', `From: ${endpoint(route.from)}`, `To: ${endpoint(route.to)}`]
+  if (!withSteps) return lines.join('\n')
 
-  if (withSteps && route.steps.length) {
-    // A long route can run to a hundred maneuvers, and a hundred maneuvers is a page of
-    // context spent on the middle of a motorway.
-    const shown = route.steps.slice(0, 30)
+  let budget = MAX_STEPS
+  for (const [index, leg] of route.legs.entries()) {
+    if (!leg.steps.length) continue
+
     lines.push('')
+    if (route.legs.length > 1) {
+      const heading = index === route.legs.length - 1 ? 'To the destination' : `To via ${index + 1}`
+      lines.push(
+        `**${heading}** — ${leg.distanceKm.toFixed(1)} km, ${formatDuration(leg.durationMin)}`
+      )
+    }
+
+    const shown = leg.steps.slice(0, Math.max(budget, 0))
     lines.push(
       ...shown.map((step, i) => `${i + 1}. ${step.text} (${formatDistance(step.distanceKm)})`)
     )
-    if (route.steps.length > shown.length) {
-      lines.push(`… and ${route.steps.length - shown.length} more steps`)
+    budget -= shown.length
+    if (shown.length < leg.steps.length) {
+      lines.push(`… and ${leg.steps.length - shown.length} more steps`)
     }
   }
 
@@ -288,7 +330,11 @@ export function createRouteTool(): AgentTool {
       }
 
       const route = await findRoute(points, mode)
-      return text(formatRoute(route, params.steps !== false))
+      return text(formatRoute(route, params.steps !== false), {
+        points: points.map((p) => ({ lat: p.lat, lon: p.lon, label: p.name })),
+        route: route.shape,
+        routePrecision: route.shapePrecision,
+      })
     },
   }
 }

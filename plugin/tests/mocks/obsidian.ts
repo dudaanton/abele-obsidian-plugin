@@ -1,3 +1,4 @@
+import { load as yamlLoad } from 'js-yaml'
 import { StateField } from '@codemirror/state'
 
 /**
@@ -147,8 +148,14 @@ export function sanitizeHTMLToDom(html: string): DocumentFragment {
   return fragment
 }
 
+/**
+ * The real thing, as far as a test is concerned.
+ *
+ * It used to be `JSON.parse`, which passes for the frontmatter fixtures written as JSON and
+ * fails for everything that is actually YAML — a codeblock a person would type, for one.
+ */
 export function parseYaml(raw: string): unknown {
-  return JSON.parse(raw)
+  return yamlLoad(raw)
 }
 
 /**
