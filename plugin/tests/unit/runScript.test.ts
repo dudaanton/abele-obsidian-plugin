@@ -11,6 +11,7 @@ import { Notice } from 'obsidian'
 import { ScriptService } from '@/scripting/ScriptService'
 import type { ParsedScript, ScriptParam } from '@/scripting/types'
 import { scriptParams, findScriptByName, runScriptByName } from '@/scripting/runScript'
+import { showFormModal } from '@/scripting/formModal'
 
 function param(name: string, rest: Partial<ScriptParam> = {}): ScriptParam {
   return { name, type: 'string', required: false, description: '', ...rest }
@@ -85,13 +86,24 @@ describe('running one', () => {
   it('executes it at its own path, with the parameters decided above', async () => {
     await runScriptByName('Fetch', { query: 'The Third Man' })
 
-    expect(execute).toHaveBeenCalledWith('Scripts/Fetch.js', {
-      query: 'The Third Man',
-      mode: 'full',
-      depth: '2',
-    },
-      { source: 'note' }
+    expect(execute).toHaveBeenCalledWith(
+      'Scripts/Fetch.js',
+      {
+        query: 'The Third Man',
+        mode: 'full',
+        depth: '2',
+      },
+      { source: 'note', formHandler: showFormModal }
     )
+  })
+
+  it('gives a form inside the script a modal to open', async () => {
+    await runScriptByName('Fetch', {})
+
+    expect(execute.mock.calls[0][2]).toEqual({
+      source: 'note',
+      formHandler: showFormModal,
+    })
   })
 
   it('says so rather than executing anything when the name matches no script', async () => {

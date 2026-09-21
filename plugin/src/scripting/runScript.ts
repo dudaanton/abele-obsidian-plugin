@@ -1,5 +1,6 @@
 import { Notice } from 'obsidian'
 import { ScriptService } from './ScriptService'
+import { showFormModal } from './formModal'
 import type { RunSource } from './ScriptRuns'
 import type { ParsedScript } from './types'
 
@@ -65,7 +66,7 @@ export async function runScriptByName(
     const result = await ScriptService.getInstance().execute(
       script.path,
       scriptParams(script, supplied),
-      { source }
+      { source, formHandler: showFormModal }
     )
     if (result?.trim()) {
       new Notice(result.length > 500 ? result.slice(0, 500) + '...' : result, 10000)

@@ -98,7 +98,7 @@ function withTimeout<T>(work: Promise<T>, ms: number | undefined, url: string): 
  * script run from a script with no view open — which is what the message tells its author.
  */
 export const NO_FORM_HANDLER =
-  'Form input is only available when the script is run from the command palette or has a view open.'
+  'Form input is not available when one script runs another unless a view is open.'
 
 export function buildScriptContext(opts: {
   params: Record<string, unknown>
@@ -566,7 +566,7 @@ export function buildScriptContext(opts: {
       const handler = formHandlerNow()
       if (!handler) {
         throw new Error(
-          'Showing text is only available when the script is run from the command palette or has a view open.'
+          'Showing text is not available when one script runs another unless a view is open.'
         )
       }
       await handler([{ name: 'text', label: title ?? '', type: 'markdown', text }])

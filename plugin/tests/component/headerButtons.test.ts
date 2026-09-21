@@ -13,6 +13,7 @@ import Icon from '@/components/obsidian/Icon.vue'
 import { Header } from '@/entities/Header'
 import { AbeleConfig, type HeaderButtonDefinition } from '@/services/AbeleConfig'
 import { ScriptService } from '@/scripting/ScriptService'
+import { showFormModal } from '@/scripting/formModal'
 import type { ParsedScript } from '@/scripting/types'
 import { useVault, configureAbele } from '../helpers/testEnv'
 
@@ -106,11 +107,13 @@ describe('a note of a configured type', () => {
       .find((icon) => icon.props('textRight') === 'Fetch details')!
       .trigger('click')
 
-    expect(execute).toHaveBeenCalledWith('Scripts/Fetch.js', {
-      query: 'The Third Man',
-      mode: 'full',
-    },
-      { source: 'note' }
+    expect(execute).toHaveBeenCalledWith(
+      'Scripts/Fetch.js',
+      {
+        query: 'The Third Man',
+        mode: 'full',
+      },
+      { source: 'note', formHandler: showFormModal }
     )
   })
 

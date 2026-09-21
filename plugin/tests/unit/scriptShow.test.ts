@@ -5,7 +5,7 @@
  * an answer: cut off at 500 characters, gone in ten seconds, and its text cannot be selected.
  * `show` is the form modal asking nothing — one markdown block and a way to close it.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { buildScriptContext } from '@/scripting/ScriptContext'
 import type { FormField } from '@/scripting/types'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -62,12 +62,12 @@ describe('showing markdown', () => {
   })
 
   it('says why it cannot, where no modal can be shown at all', async () => {
-    // A script run from a deeplink or as an agent tool has no one in front of it.
+    // A script called by another script has no interface of its own.
     const ctx = context(false)
 
-    await expect(ctx.show('Body.')).rejects.toThrow(/only available/)
+    await expect(ctx.show('Body.')).rejects.toThrow(/not available/)
     // A handler in an open view can show text too, and the message says so.
-    await expect(ctx.show('Body.')).rejects.toThrow('command palette or has a view open')
-    await expect(ctx.form([])).rejects.toThrow('command palette or has a view open')
+    await expect(ctx.show('Body.')).rejects.toThrow('unless a view is open')
+    await expect(ctx.form([])).rejects.toThrow('unless a view is open')
   })
 })

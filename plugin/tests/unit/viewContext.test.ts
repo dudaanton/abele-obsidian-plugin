@@ -68,7 +68,7 @@ describe('view() in a script', () => {
 
   it('refuses a form before a view is open and allows one after', async () => {
     const ctx = context()
-    await expect(ctx.form([{ name: 'a', label: 'A' }])).rejects.toThrow(/only available/)
+    await expect(ctx.form([{ name: 'a', label: 'A' }])).rejects.toThrow(/not available/)
     const v = ctx.view({ title: 'T' })
     await v.open()
     expect(await ctx.form([{ name: 'a', label: 'A' }])).toEqual({ a: '1' })
@@ -129,7 +129,7 @@ describe('form() in a script the service ran', () => {
   it('is refused with the reason when nothing is open and nobody can answer', async () => {
     const path = register('Ask', `await form([{ name: 'a', label: 'A' }])`)
     await expect(service.execute(path, {}, { source: 'script' })).rejects.toThrow(
-      'command palette or has a view open'
+      'unless a view is open'
     )
     expect(showFormModal).not.toHaveBeenCalled()
   })
