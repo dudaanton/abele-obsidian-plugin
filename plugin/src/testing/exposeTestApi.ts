@@ -20,6 +20,7 @@ import { NoteRelations } from '@/entities/NoteRelations'
 import { ScriptService } from '@/scripting/ScriptService'
 import { ScriptViewService } from '@/scripting/view/ScriptViewService'
 import { createScreenshotTool } from '@/ai/tools/ScreenshotTool'
+import { createGeocodeTool, createPlacesTool, createRouteTool } from '@/ai/tools/GeoTools'
 import { TFile } from 'obsidian'
 import type { Plugin } from 'obsidian'
 
@@ -94,6 +95,10 @@ interface AbeleTestApi {
   ScriptViewService: typeof ScriptViewService
   /** The agent's `screenshot` tool, so a test can take the picture it would take. */
   createScreenshotTool: typeof createScreenshotTool
+  /** The map tools, so a check can run the real request the agent would send. */
+  createGeocodeTool: typeof createGeocodeTool
+  createPlacesTool: typeof createPlacesTool
+  createRouteTool: typeof createRouteTool
   plugin: Plugin
   /**
    * Where an e2e probe parks its result. `obsidian eval` cannot await a promise, so a probe
@@ -476,6 +481,9 @@ export function exposeTestApi(plugin: Plugin): void {
     ScriptService,
     ScriptViewService,
     createScreenshotTool,
+    createGeocodeTool,
+    createPlacesTool,
+    createRouteTool,
     plugin,
     viewProbe: null,
     measureGroupResolve,

@@ -29,6 +29,7 @@ import { createQuestionsTool } from './QuestionsTool'
 import { createScreenshotTool } from './ScreenshotTool'
 import { createInspectViewTool } from './InspectViewTool'
 import { createChartDocsTool } from './ChartDocsTool'
+import { createGeocodeTool, createPlacesTool, createRouteTool } from './GeoTools'
 import { createTemplateDocsTool } from './TemplateDocsTool'
 import { createQueryDocsTool } from './QueryDocsTool'
 import { createReadSettingsTool, createWriteSettingsTool } from './SettingsTools'
@@ -56,6 +57,7 @@ export function getToolRegistry(): ToolInfo[] {
     'Network',
     'AI',
     'Vault data',
+    'Maps',
     'Docs',
     'Templates',
     'Scripts',
@@ -82,6 +84,9 @@ export function getToolRegistry(): ToolInfo[] {
     fetch: { label: 'Fetch URL', category: 'Network' },
     download_image: { label: 'Download image', category: 'Network' },
     download_file: { label: 'Download file', category: 'Network' },
+    geocode: { label: 'Geocode', category: 'Maps' },
+    places: { label: 'Find places', category: 'Maps' },
+    route: { label: 'Build route', category: 'Maps' },
     generate_image: { label: 'Generate image', category: 'AI' },
     edit_image: { label: 'Edit image', category: 'AI' },
     eval_js: { label: 'Eval JS', category: 'AI' },
@@ -172,6 +177,9 @@ export function createAgentTools(): AgentTool[] {
     createReadTasksTool(),
     createScreenshotTool(),
     createInspectViewTool(),
+    createGeocodeTool(),
+    createPlacesTool(),
+    createRouteTool(),
   ]
 
   const config = AbeleConfig.getInstance().ai

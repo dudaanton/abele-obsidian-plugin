@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { migrateAgents } from '@/ai/agents/migration'
 import { createAgent } from '@/ai/agents/types'
-import { DEFAULT_AI_SETTINGS, EDIT_SELECTION_TOOL, type AiSettings } from '@/ai/types'
+import {
+  DEFAULT_AI_SETTINGS,
+  EDIT_SELECTION_TOOL,
+  MAP_TOOL_MODES,
+  type AiSettings,
+} from '@/ai/types'
 
 /** A settings object shaped like one saved by the pre-agent plugin. */
 function legacySettings(overrides: Partial<AiSettings> = {}): AiSettings {
@@ -39,7 +44,8 @@ describe('migrateAgents', () => {
     expect(agent.providerId).toBe('openai')
     expect(agent.modelId).toBe('gpt-4o')
     expect(agent.permissionMode).toBe('allow-edit')
-    expect(agent.toolModes).toEqual({ web_search: 'auto', fetch: 'ask' })
+    // Plus the map tools, which every agent is handed — see the block at the bottom.
+    expect(agent.toolModes).toMatchObject({ web_search: 'auto', fetch: 'ask' })
     expect(agent.scope).toEqual([{ type: 'folder', path: 'Notes' }])
     expect(agent.prompts).toEqual([{ type: 'text', value: 'You are helpful.' }])
     expect(ai.defaultAgentId).toBe(agent.id)
@@ -195,10 +201,13 @@ describe('the Comment agent', () => {
   })
 
   it('leaves settings that already name a comment agent alone', () => {
-    const existing = createAgent({ id: 'comment-1', name: 'My commenter' })
+    // Both carry the map tools already, so the only thing that could report a change here
+    // is the comment agent being seeded again — which is what the test is about.
+    const modes = { ...MAP_TOOL_MODES }
+    const existing = createAgent({ id: 'comment-1', name: 'My commenter', toolModes: modes })
     const ai = {
       ...DEFAULT_AI_SETTINGS,
-      agents: [createAgent({ id: 'existing', name: 'Default' }), existing],
+      agents: [createAgent({ id: 'existing', name: 'Default', toolModes: { ...modes } }), existing],
       defaultAgentId: 'existing',
       commentAgentId: 'comment-1',
     } as AiSettings
@@ -233,5 +242,53 @@ describe('the Comment agent', () => {
 
     expect(ai.commentAgentId).toBeTruthy()
     expect(ai.agents).toHaveLength(2)
+  })
+})
+
+/**
+ * The map tools arrived in 1.25 and need no key, so an agent made before them should not
+ * have to be edited before it can answer «where is this».
+ */
+describe('the map tools', () => {
+  it('are handed to agents that existed before them', () => {
+    const ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: [createAgent({ id: 'existing', name: 'Default', toolModes: { fetch: 'ask' } })],
+      defaultAgentId: 'existing',
+    } as AiSettings
+
+    const changed = migrateAgents(ai)
+
+    expect(changed).toBe(true)
+    expect(ai.agents[0].toolModes).toMatchObject({
+      fetch: 'ask',
+      geocode: 'auto',
+      places: 'auto',
+      route: 'auto',
+    })
+  })
+
+  it('stay off where someone turned them off', () => {
+    const ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: [createAgent({ id: 'existing', name: 'Default', toolModes: { geocode: 'off' } })],
+      defaultAgentId: 'existing',
+    } as AiSettings
+
+    migrateAgents(ai)
+
+    expect(ai.agents[0].toolModes.geocode).toBe('off')
+    expect(ai.agents[0].toolModes.route).toBe('auto')
+  })
+
+  it('leaves nothing to change on the second run', () => {
+    const ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: [createAgent({ id: 'existing', name: 'Default' })],
+      defaultAgentId: 'existing',
+    } as AiSettings
+    migrateAgents(ai)
+
+    expect(migrateAgents(ai)).toBe(false)
   })
 })

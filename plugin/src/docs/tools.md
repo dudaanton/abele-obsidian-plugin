@@ -41,6 +41,33 @@ which a hand-rolled search will not.
 `fetch` brings back a page; the vault may hold a skill that teaches a better way of turning one
 into markdown. Downloads land in the vault, so they are subject to scope.
 
+## Maps
+
+`geocode`, `places`, `route`.
+
+Addresses, places and journeys, from OpenStreetMap through services that need no key and no
+account: Photon for search, Overpass for what stands around a point, Valhalla for routes with
+OSRM behind it. They are on unless someone turned them off, so there is nothing to set up before
+asking where something is.
+
+- `geocode` goes both ways: `query` for an address or a place name, `lat` and `lon` for the
+  address at a position. `near` biases an ambiguous name towards a city or a point.
+- `places` finds what is around a point — `near` takes an address, a place name or `lat, lon`,
+  `query` takes a category (`cafe`, `pharmacy`, `museum`, or a raw OSM tag like `amenity:cafe`)
+  or free text. A category asks the map what is really there, within `radius_km` (2 km by
+  default, widened once when that circle is empty); free text searches names instead, which is
+  the weaker answer — prefer a category where there is one. Results are sorted by distance.
+- `route` takes `from`, `to`, any number of `via` points, and a `mode` of `car`, `bike` or
+  `walk`. It answers with the distance, the time and the turn-by-turn directions.
+
+Coordinates are written as `lat, lon` rounded to five decimals, which is what a note stores and
+what a map layout reads: `location: "56.9496, 24.1052"`. Write a place into frontmatter that way
+and it needs nothing else to appear on a map.
+
+These are public services run on donations. They are asked one request at a time, about a second
+apart, and repeat answers come from memory rather than the network — so a long batch of lookups
+takes as long as it takes rather than getting the person's address blocked.
+
 ## AI
 
 `generate_image`, `edit_image`, `eval_js`, `questions`, `delegate`.

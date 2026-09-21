@@ -230,6 +230,20 @@ export const WRITE_TOOLS = ['edit', 'create', 'replace', 'write', EDIT_SELECTION
  */
 export const TOUCHING_TOOLS = [...WRITE_TOOLS, 'mv', 'cp']
 
+/**
+ * The tools that read the map — free, keyless, and on unless someone turns them off.
+ *
+ * Not core: they are the only tools that reach a third party without being asked to be
+ * configured first, so a person who wants a vault that talks to nobody must be able to say no.
+ */
+export const MAP_TOOLS = ['geocode', 'places', 'route']
+
+export const MAP_TOOL_MODES: Record<string, ToolMode> = {
+  geocode: 'auto',
+  places: 'auto',
+  route: 'auto',
+}
+
 /** Tools always sent to agent, governed by permissionMode */
 export const CORE_TOOLS = new Set([
   'read',
@@ -264,6 +278,9 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
     web_search: 'auto',
     chart_docs: 'auto',
     script_api_docs: 'auto',
+    // The map tools need no key and no account, so there is nothing for a person to set up
+    // before asking where something is. See `enableMapTools` for the agents that already exist.
+    ...MAP_TOOL_MODES,
   },
   scriptsEnabled: false,
   scriptsFolder: '',

@@ -177,6 +177,18 @@ The agent has access to these tools:
 | `fetch` | Send HTTP requests to any URL |
 | `read_image` | Load an image for visual analysis |
 
+### Maps
+
+| Tool | Description |
+|------|-------------|
+| `geocode` | Address or place name to coordinates, and coordinates back to an address |
+| `places` | Find places around a point by category or free text, sorted by distance |
+| `route` | Distance, time and turn-by-turn directions between places, by car, bike or on foot |
+
+These run on OpenStreetMap data through Photon, Overpass and the FOSSGIS routing servers — no API
+key and no account, so they work on a fresh install. Coordinates come back as `lat, lon`, the form a note
+property stores and a map layout reads.
+
 ### AI Tools
 
 | Tool | Description |

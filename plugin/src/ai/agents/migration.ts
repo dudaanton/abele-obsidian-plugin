@@ -1,5 +1,10 @@
 import { createAgent, type AgentDefinition } from './types'
-import { DEFAULT_AI_SETTINGS, EDIT_SELECTION_TOOL, type AiSettings } from '@/ai/types'
+import {
+  DEFAULT_AI_SETTINGS,
+  EDIT_SELECTION_TOOL,
+  MAP_TOOLS,
+  type AiSettings,
+} from '@/ai/types'
 
 /**
  * Folds the pre-agent global configuration into agent entities.
@@ -127,11 +132,33 @@ export function ensureCommentAgent(ai: AiSettings): boolean {
  * fresh Comment agent on every single launch — a new id each time, leaving every comment file
  * written before the next save pointing at an agent that no longer exists.
  */
+/**
+ * Hands the map tools to agents that existed before there were any.
+ *
+ * They need no key and no account, so a switch nobody knew to flick is the only thing that
+ * would stand between a person and asking where something is. Only agents with no opinion on
+ * the tool are touched — an `off` written by hand is an opinion and stays.
+ */
+function enableMapTools(ai: AiSettings): boolean {
+  let changed = false
+
+  for (const agent of ai.agents || []) {
+    for (const tool of MAP_TOOLS) {
+      if (agent.toolModes[tool] !== undefined) continue
+      agent.toolModes[tool] = 'auto'
+      changed = true
+    }
+  }
+
+  return changed
+}
+
 export function migrateAgents(ai: AiSettings): boolean {
   const legacy = migrateLegacyAgents(ai)
   // Outside the legacy migration on purpose: that one is a no-op the moment any agent exists,
   // and a vault that has had agents since before comments still needs this one.
   const comment = ensureCommentAgent(ai)
+  const maps = enableMapTools(ai)
 
-  return legacy || comment
+  return legacy || comment || maps
 }
