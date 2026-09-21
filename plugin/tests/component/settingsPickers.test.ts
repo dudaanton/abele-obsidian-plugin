@@ -138,6 +138,20 @@ describe('the script a header button runs', () => {
 
     expect(config.headerButtons[0].scriptName).toBe('Fetch details')
   })
+
+  it('writes an edit that is still waiting when the settings screen closes', async () => {
+    vi.mocked(config.saveSettings).mockClear()
+    const wrapper = open()
+
+    await press(buttonWith(wrapper, 'Add button'))
+
+    expect(config.headerButtons).toHaveLength(2)
+    expect(config.saveSettings).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+
+    expect(config.saveSettings).toHaveBeenCalledOnce()
+  })
 })
 
 describe('what a link runs', () => {

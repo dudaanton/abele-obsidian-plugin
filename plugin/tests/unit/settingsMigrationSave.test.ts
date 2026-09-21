@@ -57,6 +57,25 @@ describe('loading settings that still need migrating', () => {
     expect(AbeleConfig.getInstance().ai.agents.filter((a) => a.name === 'Comment')).toHaveLength(1)
   })
 
+  it('carries header buttons through a migration save', async () => {
+    const button = {
+      id: 'make-task',
+      name: 'Create task',
+      icon: 'list-plus',
+      noteTypes: ['project'],
+      scriptName: 'Create task for note',
+      params: { source: '{{path}}' },
+    }
+    install({
+      headerButtons: [button],
+      ai: { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' },
+    })
+
+    await AbeleConfig.getInstance().loadSettings()
+
+    expect(saved[0].headerButtons).toEqual([button])
+  })
+
   /** A save during load must not register the AI features early; `onload` does that itself. */
   it('does not sync the AI features from inside the load', async () => {
     const plugin = install({ ai: { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' } })

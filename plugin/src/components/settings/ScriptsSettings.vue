@@ -94,7 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onBeforeUnmount } from 'vue'
 import { debounce } from 'obsidian'
 import { nanoid } from 'nanoid'
 import Setting from '../obsidian/Setting.vue'
@@ -174,10 +174,27 @@ const paramDescription = (param: ScriptParam): string => {
   return param.default ? `${described} Defaults to "${param.default}".` : described
 }
 
-const saveButtons = debounce(async () => {
+let buttonSaveTimer: number | null = null
+
+const saveButtons = () => {
+  // Keep the shared configuration current immediately. Waiting to update it inside the
+  // debounce meant a plugin reload or a settings tab closing in the next 500 ms could put
+  // the old (often empty) array back on disk.
   config.headerButtons = JSON.parse(JSON.stringify(buttons.value))
-  await config.saveSettings()
-}, 500)
+
+  if (buttonSaveTimer !== null) window.clearTimeout(buttonSaveTimer)
+  buttonSaveTimer = window.setTimeout(() => {
+    buttonSaveTimer = null
+    void config.saveSettings()
+  }, 500)
+}
+
+onBeforeUnmount(() => {
+  if (buttonSaveTimer === null) return
+  window.clearTimeout(buttonSaveTimer)
+  buttonSaveTimer = null
+  void config.saveSettings()
+})
 
 const addButton = () => {
   buttons.value.push({
