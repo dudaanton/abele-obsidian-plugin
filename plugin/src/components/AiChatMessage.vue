@@ -381,15 +381,14 @@ function extractResultPath(result?: string): string {
 /**
  * The map a map tool drew, ready to render — or nothing, for every other tool.
  *
- * A chat is not as tall as a note, so the map is shorter here and is not something to drag
- * around: a tool call is a record of what was answered, and a reader who wants to explore has
- * the block to paste into a note.
+ * A chat is not as tall as a note, so the map is shorter here. It remains interactive: the
+ * answer is often where a person first wants to zoom in or press a nearby building or place.
  */
 const mapConfig = computed<MapConfig | null>(() => {
   const block = props.message.toolMap
   if (!block) return null
 
-  const parsed = normalizeMapBlock({ height: 220, interactive: false, ...block })
+  const parsed = normalizeMapBlock({ height: 220, interactive: true, ...block })
   return 'error' in parsed ? null : parsed
 })
 

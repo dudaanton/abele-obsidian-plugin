@@ -75,7 +75,9 @@ describe('the icon beside a message', () => {
 
 describe('a screenshot the agent took', () => {
   it('is shown under the tool call, so the person sees what the agent saw', () => {
-    const app = useVault([{ path: 'Attachments/Screenshot Feed 2026-09-05 12-00-00.png', content: '' }])
+    const app = useVault([
+      { path: 'Attachments/Screenshot Feed 2026-09-05 12-00-00.png', content: '' },
+    ])
     ;(
       app.vault as unknown as { getResourcePath: (f: { path: string }) => string }
     ).getResourcePath = (f) => `app://vault/${f.path}`
@@ -111,8 +113,8 @@ describe('a map tool that answered', () => {
       interactive: boolean
     }
     expect(config.points[0].label).toBe('Rīgas Doms')
-    // A record of an answer, not something to drag around inside a chat bubble.
-    expect(config.interactive).toBe(false)
+    // The answer can be explored in place: nearby houses and establishments are clickable.
+    expect(config.interactive).toBe(true)
   })
 
   it('shows a useful error instead of leaving an unhandled blank map', async () => {

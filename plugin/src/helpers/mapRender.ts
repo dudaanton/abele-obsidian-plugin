@@ -1,5 +1,6 @@
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { formatLatLon, reverseGeocode } from '@/services/GeoService'
 import { mapBounds, type MapConfig, type MapPoint } from './mapConfig'
 
 /**
@@ -19,6 +20,72 @@ const DARK_STYLE = 'https://tiles.openfreemap.org/styles/dark'
 
 export interface MapHandle {
   destroy(): void
+}
+
+interface MapFeature {
+  sourceLayer?: string
+  properties?: Record<string, unknown> | null
+}
+
+export interface MapFeatureInfo {
+  title: string
+  details: string[]
+}
+
+const textProperty = (properties: Record<string, unknown>, ...names: string[]): string => {
+  for (const name of names) {
+    const value = properties[name]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+    if (typeof value === 'number') return String(value)
+  }
+  return ''
+}
+
+/** The useful part of an OpenMapTiles feature, without exposing its tile metadata to a person. */
+export function mapFeatureInfo(feature: MapFeature): MapFeatureInfo | null {
+  const properties = feature.properties || {}
+  const name = textProperty(properties, 'name', 'name_en', 'name:latin', 'name:nonlatin')
+  const street = textProperty(properties, 'addr:street', 'street')
+  const number = textProperty(properties, 'addr:housenumber', 'housenumber', 'house_number')
+  const address =
+    textProperty(properties, 'address', 'addr:full') || [street, number].filter(Boolean).join(' ')
+  const kind = textProperty(properties, 'subclass', 'class', 'type')
+  const title = name || address
+  if (!title) return null
+
+  const details = [address && address !== title ? address : '', kind]
+    .filter(Boolean)
+    .filter((value, index, all) => all.indexOf(value) === index)
+  return { title, details }
+}
+
+function featurePriority(feature: MapFeature): number {
+  return (
+    {
+      poi: 50,
+      housenumber: 40,
+      building: 30,
+      place: 20,
+      aerodrome_label: 20,
+      transportation_name: 10,
+    }[feature.sourceLayer || ''] || 0
+  )
+}
+
+function popupContent(
+  el: HTMLElement,
+  title: string,
+  details: string[],
+  coordinates: string
+): HTMLElement {
+  const doc = el.ownerDocument || document
+  const content = doc.win.createDiv({ cls: 'abele-map__place' })
+  content.appendChild(doc.win.createEl('strong', { text: title }))
+  for (const detail of details) {
+    content.appendChild(doc.win.createDiv({ text: detail }))
+  }
+  content.appendChild(doc.win.createDiv({ cls: 'abele-map__coordinates', text: coordinates }))
+  return content
 }
 
 function isDark(el: HTMLElement): boolean {
@@ -80,19 +147,87 @@ export async function renderMap(el: HTMLElement, config: MapConfig): Promise<Map
     center: config.center ? [config.center.lon, config.center.lat] : [0, 0],
     zoom: config.zoom ?? 12,
     interactive: config.interactive,
+    // A map inside a scrolling chat or note should not trap a one-finger phone gesture.
+    cooperativeGestures: config.interactive,
     attributionControl: { compact: true },
   })
 
   const colour = accent(el)
 
+  if (config.interactive) {
+    map.addControl(new maplibre.NavigationControl({ visualizePitch: true }), 'top-right')
+    map.addControl(new maplibre.FullscreenControl({ container: el }), 'top-right')
+    map.addControl(new maplibre.ScaleControl({ maxWidth: 100, unit: 'metric' }), 'bottom-left')
+  }
+
   for (const point of config.points) {
-    const marker = new maplibre.Marker({ element: markerElement(el, point.color || colour) })
+    const pin = markerElement(el, point.color || colour)
+    // A pin has its own popup. Do not also treat the same press as a request for the base map.
+    pin.addEventListener('click', (event) => event.stopPropagation())
+    const marker = new maplibre.Marker({ element: pin })
       .setLngLat([point.lon, point.lat])
       .addTo(map)
 
     if (point.label) {
       marker.setPopup(new maplibre.Popup({ offset: 12 }).setText(point.label))
     }
+  }
+
+  let lookup = 0
+  let placePopup: InstanceType<typeof maplibre.Popup> | null = null
+
+  if (config.interactive) {
+    map.on('click', (event) => {
+      void (async () => {
+        const mine = ++lookup
+        const coordinates = formatLatLon(event.lngLat.lat, event.lngLat.lng)
+        const features = map
+          .queryRenderedFeatures(event.point)
+          .filter((feature) => !String(feature.layer?.id || '').startsWith('abele-line-'))
+          .sort((a, b) => featurePriority(b) - featurePriority(a))
+
+        const first = features[0]
+        const fromTile = features.map(mapFeatureInfo).find((info) => info !== null) ?? null
+        // POIs carry their names in the vector tile. Bare building polygons generally do not;
+        // reverse lookup turns the clicked shape into the house address a person expected.
+        const needsLookup =
+          !fromTile || ['building', 'housenumber'].includes(first?.sourceLayer || '')
+
+        placePopup?.remove()
+        placePopup = new maplibre.Popup({ closeButton: true, offset: 8 })
+          .setLngLat(event.lngLat)
+          .setDOMContent(
+            popupContent(
+              el,
+              needsLookup ? 'Looking up this place…' : fromTile.title,
+              needsLookup ? [] : fromTile.details,
+              coordinates
+            )
+          )
+          .addTo(map)
+
+        if (!needsLookup) return
+
+        try {
+          const place = await reverseGeocode({ lat: event.lngLat.lat, lon: event.lngLat.lng })
+          if (disposed || mine !== lookup || !placePopup) return
+          const details = [place?.address || '', place?.kind || ''].filter(Boolean)
+          placePopup.setDOMContent(
+            popupContent(el, place?.name || 'Selected place', details, coordinates)
+          )
+        } catch {
+          if (disposed || mine !== lookup || !placePopup) return
+          placePopup.setDOMContent(popupContent(el, 'Place details unavailable', [], coordinates))
+        }
+      })()
+    })
+
+    map.on('mousemove', (event) => {
+      const feature = map
+        .queryRenderedFeatures(event.point)
+        .find((candidate) => featurePriority(candidate) > 0)
+      map.getCanvas().style.cursor = feature ? 'pointer' : ''
+    })
   }
 
   map.on('load', () => {
@@ -146,6 +281,8 @@ export async function renderMap(el: HTMLElement, config: MapConfig): Promise<Map
   return {
     destroy() {
       disposed = true
+      lookup++
+      placePopup?.remove()
       map.remove()
     },
   }

@@ -628,6 +628,18 @@ body.is-mobile .abele-comment-marker_pending::after {
   border-bottom-color: var(--background-primary);
 }
 
+.abele-map__place > strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.abele-map__coordinates {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smallest);
+}
+
 .abele-map .maplibregl-ctrl-attrib {
   font-size: 10px;
 }

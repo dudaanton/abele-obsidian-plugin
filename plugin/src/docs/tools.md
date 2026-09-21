@@ -80,8 +80,10 @@ points:
 ```
 
 `center` and `zoom` fix the view instead of fitting it to what is on the map, `style` takes a
-MapLibre style URL, and `interactive: false` makes a picture rather than something to drag.
-A route is drawn by handing over the encoded line the routing service returned — `route`, with
+MapLibre style URL, and `interactive: false` makes a picture rather than something to explore.
+Interactive maps have zoom, compass, fullscreen and scale controls. Pressing a place already
+labelled by the base map shows its details; pressing a building or an unlabelled point resolves
+the nearest address and coordinates. A route is drawn by handing over the encoded line the routing service returned — `route`, with
 `routePrecision: 6` for Valhalla and `5` for OSRM — which is what the chat does for `route`.
 Nothing about the block needs the network except the tiles.
 
