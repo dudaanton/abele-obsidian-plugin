@@ -119,7 +119,21 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   private static readonly TITLE_GENERATION_TRIGGERS = [1]
   private static readonly FALLBACK_TITLE_LENGTH = 50
 
-  private static readonly READ_TOOLS = ['read', 'ls', 'find', 'workspace', 'skill']
+  /**
+   * Reads that never stop the chat. `query_docs` and `list_templates` are here because they
+   * are core — handed to every agent — while approval is decided by the tool modes further
+   * down, where a tool nobody configured reads as `off`. Left out, the reference an agent is
+   * told to consult before touching anything asked permission on every call.
+   */
+  private static readonly READ_TOOLS = [
+    'read',
+    'ls',
+    'find',
+    'workspace',
+    'skill',
+    'query_docs',
+    'list_templates',
+  ]
   private static readonly EDIT_TOOLS = WRITE_TOOLS
   private static readonly SCOPED_TOOLS = [
     'read',
