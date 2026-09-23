@@ -9,6 +9,7 @@
  * link, an embed or anything else a marker written into the middle of would break.
  */
 import { Editor, MarkdownView, Notice, TFile } from 'obsidian'
+import { ChatService } from '@/ai/ChatService'
 import { CommentService } from '@/ai/CommentService'
 import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
 import { anchorFor, stripMarkers } from '@/editor/commentMarkers'
@@ -50,8 +51,13 @@ export async function commentHere(editor: Editor, file: TFile): Promise<void> {
   const service = CommentService.getInstance()
   const session = await service.create(file, anchor.pos, quoted.trim() ? quoted : undefined, from)
 
-  // Expanded and focused: someone who just asked for a comment is about to type a question.
-  if (session.commentId) service.open.value = session.commentId
+  // Open and focused: someone who just asked for a comment is about to type a question. Its
+  // tab is brought forward in the sidebar at once — setting `open` alone was what the margin
+  // card listened to, and once the margin went it left the chat waiting for a second press on
+  // the marker («при нажатии ask here сразу открывать окно чата»).
+  if (session.commentId && (await service.showInSidebar(session.commentId))) {
+    ChatService.getInstance().focusRequest.value++
+  }
   dispatchCommentsChanged(file.path)
 }
 

@@ -1073,6 +1073,12 @@ onMounted(() => {
   window.setTimeout(() => chatInput.value?.focus(), 150)
 })
 
+// Someone asked for a new comment and is about to type into it. After the tab has rendered.
+watch(
+  () => chatService.focusRequest.value,
+  () => void nextTick(() => chatInput.value?.focus())
+)
+
 const onSend = async (content: string, attachments: string[] = []) => {
   const s = session.value
   if (!s) return

@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Editor, MarkdownView, Notice, TFile } from 'obsidian'
 import { commentHere, commentHereInView } from '@/commands/commentCommands'
+import { ChatService } from '@/ai/ChatService'
 import { CommentService } from '@/ai/CommentService'
 import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
 import { useVault } from '../helpers/testEnv'
@@ -25,6 +26,7 @@ const SELECTION = 'The selected passage'
 
 const create = vi.fn()
 const open = { value: null as string | null }
+const showInSidebar = vi.fn()
 
 /**
  * A one-line document, so a character offset and a `ch` are the same number and the fake can
@@ -53,7 +55,8 @@ beforeEach(() => {
   open.value = null
   create.mockReset().mockResolvedValue({ commentId: 'k7d2ph' })
 
-  vi.spyOn(CommentService, 'getInstance').mockReturnValue({ create, open } as never)
+  showInSidebar.mockReset().mockResolvedValue(true)
+  vi.spyOn(CommentService, 'getInstance').mockReturnValue({ create, open, showInSidebar } as never)
 })
 
 afterEach(() => {
@@ -72,13 +75,18 @@ describe('commenting on a selection', () => {
     expect(create).toHaveBeenCalledWith(expect.anything(), SELECTION.length, SELECTION, 0)
   })
 
-  it('leaves the new card open, with the marker repainted', async () => {
+  it('opens the new chat at once, with the marker repainted', async () => {
+    const before = ChatService.getInstance().focusRequest.value
     await commentHere(
       fakeEditor(PROSE, { ch: 0, to: SELECTION.length, selection: SELECTION }),
       noteFile()
     )
 
-    expect(open.value).toBe('k7d2ph')
+    // «при нажатии ask here сразу открывать окно чата» — setting `open` alone was what the
+    // margin card listened to, and since the margin went it opened nothing: the chat waited
+    // for a second press on the marker.
+    expect(showInSidebar).toHaveBeenCalledWith('k7d2ph')
+    expect(ChatService.getInstance().focusRequest.value).toBeGreaterThan(before)
     expect(vi.mocked(dispatchCommentsChanged)).toHaveBeenCalledWith(NOTE)
   })
 })

@@ -50,6 +50,9 @@ export class ChatService {
    */
   public readonly pendingReveal = ref<string | null>(null)
 
+  /** Bumped to put the cursor in the composer of whatever chat is in front — a new comment. */
+  public readonly focusRequest = ref(0)
+
   static getInstance(): ChatService {
     if (!ChatService.instance) {
       ChatService.instance = new ChatService()
