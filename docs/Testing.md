@@ -149,6 +149,10 @@ Three files, three concerns:
   them. Writes a PNG of every screen to `/tmp/abele-phone/` — **look at them before a release**;
   the 1.18.0 dialog passed every measurement anyone had thought to make and was still wrong to
   the eye. Restores desktop mode and the window size after itself.
+- `drawerPanels.e2e.test.ts` — **every sidebar opened into a closed phone drawer**. Opens each
+  panel into the folded right drawer under `emulateMobile`, slides the drawer open and checks the
+  pane holds something. A panel teleported by selector mounted nowhere there. Pictures go to
+  `/tmp/abele-drawer/`.
 - `tabletLayout.e2e.test.ts` — **the settings and the sidebars, on a tablet**. A tablet is
   mobile but not a phone: under `emulateMobile` Obsidian decides which by a 600×600 media query,
   so a 1180×820 window gets its tablet layout for real. Checks that the plugin's settings keep
@@ -255,6 +259,25 @@ require('fs').writeFileSync('/tmp/settings.png', img.toPNG())
 ```
 
 Screenshots are for the person doing the work. They are never committed.
+
+### What the harness does around every file
+
+`tests/e2e/helpers/liveWindow.ts` runs before and after each file, and
+`tests/e2e/helpers/globalSetup.ts` once at the end of the run:
+
+- **Background throttling is switched off** for the driven window, and back on when the run is
+  over. The window sits behind whatever else is open, and Chromium throttles a background
+  window: timers slowed from 100 ms to seconds, frames stopped, and a probe waiting on either
+  timed out or read a stale layout.
+- **Stray settings windows are closed** — the popouts titled after the driven vault only. A
+  probe that failed half way left one behind, and the next probe measured it.
+- **The link index is waited for.** `emulateMobile` reloads the app, and after a reload
+  Obsidian fills `resolvedLinks` in over several seconds; a file running straight after one
+  saw a group of 442 notes as 6.
+
+The CLI calls themselves are killed with `SIGKILL` at their timeout — a CLI call that never
+gets its answer ignores `SIGTERM` — and a call answered with `Error: Command "…" not found`
+(the app is there but still loading) is retried rather than parsed as a result.
 
 ### Known rough edge
 
