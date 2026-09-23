@@ -125,6 +125,34 @@ const probeFor = (phone: boolean) =>
       report[label] = measure('.abele-settings__content')
     }
 
+    // The scripts page is three pages under one tab. The header buttons one is measured with a
+    // button in it — an empty list says nothing about the rows a real one holds — and the
+    // button is deleted again through the page's own confirmation afterwards.
+    topTabs().find((t) => t.textContent.trim() === 'Scripts').click()
+    await wait(300)
+    const scriptTabs = () => qa('.abele-settings__scripts-tabs .abele-tabs__tab')
+    for (const tab of scriptTabs()) {
+      const label = tab.textContent.trim()
+      tab.click()
+      await wait(300)
+      const add = label === 'Header buttons'
+        ? qa('.abele-settings__scripts button').find((b) => b.textContent.trim() === 'Add button')
+        : null
+      if (add) {
+        add.click()
+        await wait(300)
+      }
+      report['Scripts → ' + label] = measure('.abele-settings__content')
+      if (add) {
+        const cards = qa('.abele-settings__scripts .abele-card')
+        const trash = cards[cards.length - 1]?.querySelector('.abele-card__actions > :last-child')
+        trash?.click()
+        await wait(300)
+        qa('.modal button').find((b) => b.textContent.trim() === 'Delete')?.click()
+        await wait(300)
+      }
+    }
+
     topTabs().find((t) => t.textContent.includes('AI Agent')).click()
     await wait(300)
     qa('.abele-ai-settings__tabs .abele-tabs__tab')
@@ -230,6 +258,13 @@ describe.skipIf(!available)('the settings pane', () => {
         const report = reportFor(pass.label)
 
         expect(Object.keys(report)).toContain('AI → Agents')
+        expect(Object.keys(report)).toEqual(
+          expect.arrayContaining([
+            'Scripts → Library',
+            'Scripts → Header buttons',
+            'Scripts → General',
+          ])
+        )
         expect(Object.keys(report).filter((k) => k.startsWith('agent editor'))).toHaveLength(5)
       })
     })
