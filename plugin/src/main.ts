@@ -6,7 +6,6 @@ import {
   Plugin,
   TFile,
   TFolder,
-  WorkspaceLeaf,
 } from 'obsidian'
 import './styles.css'
 import { GlobalStore } from './stores/GlobalStore'
@@ -51,6 +50,8 @@ import { TIMELINE_SIDEBAR_VIEW_TYPE, TimelineSidebarView } from './views/Timelin
 import { TODO_SIDEBAR_VIEW_TYPE, TodoSidebarView } from './views/TodoSidebarView'
 import { AI_SIDEBAR_VIEW_TYPE, AiSidebarView } from './views/AiSidebarView'
 import { FINANCE_SIDEBAR_VIEW_TYPE, FinanceSidebarView } from './views/FinanceSidebarView'
+import { ACCOUNTS_SIDEBAR_VIEW_TYPE, AccountsSidebarView } from './views/AccountsSidebarView'
+import { revealSidebarView } from './views/revealSidebarView'
 import {
   TIME_TRACKING_SIDEBAR_VIEW_TYPE,
   TimeTrackingSidebarView,
@@ -183,6 +184,7 @@ export default class AbelePlugin extends Plugin {
     this.registerView(TIMELINE_SIDEBAR_VIEW_TYPE, (leaf) => new TimelineSidebarView(leaf, this.app))
     this.registerView(TODO_SIDEBAR_VIEW_TYPE, (leaf) => new TodoSidebarView(leaf, this.app))
     this.registerView(FINANCE_SIDEBAR_VIEW_TYPE, (leaf) => new FinanceSidebarView(leaf, this.app))
+    this.registerView(ACCOUNTS_SIDEBAR_VIEW_TYPE, (leaf) => new AccountsSidebarView(leaf, this.app))
     this.registerView(SCRIPT_RUNS_VIEW_TYPE, (leaf) => new ScriptRunsView(leaf, this.app))
     this.registerView(SCRIPT_VIEW_TYPE, (leaf) => new ScriptView(leaf))
     this.registerView(
@@ -664,6 +666,15 @@ export default class AbelePlugin extends Plugin {
       icon: 'wallet',
       callback: () => {
         void this.activateView(FINANCE_SIDEBAR_VIEW_TYPE)
+      },
+    })
+
+    this.addCommand({
+      id: 'show-accounts-sidebar',
+      name: 'Show accounts sidebar',
+      icon: AccountsSidebarView.getIcon(),
+      callback: () => {
+        void this.activateView(ACCOUNTS_SIDEBAR_VIEW_TYPE)
       },
     })
 
@@ -1167,19 +1178,7 @@ export default class AbelePlugin extends Plugin {
   }
 
   async activateView(viewType: string) {
-    const { workspace } = this.app
-
-    let leaf: WorkspaceLeaf | null = null
-    const leaves = workspace.getLeavesOfType(viewType)
-
-    if (leaves.length > 0) {
-      leaf = leaves[0]
-    } else {
-      leaf = workspace.getRightLeaf(false)
-      await leaf.setViewState({ type: viewType, active: true })
-    }
-
-    void workspace.revealLeaf(leaf)
+    await revealSidebarView(this.app, viewType)
   }
 
   /**

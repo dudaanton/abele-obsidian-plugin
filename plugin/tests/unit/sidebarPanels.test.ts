@@ -18,6 +18,7 @@ import { TimelineSidebarView, TIMELINE_SIDEBAR_ID_ATTR } from '@/views/TimelineS
 import { TodoSidebarView, TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'
 import { AiSidebarView, AI_SIDEBAR_ID_ATTR } from '@/views/AiSidebarView'
 import { FinanceSidebarView, FINANCE_SIDEBAR_ID_ATTR } from '@/views/FinanceSidebarView'
+import { AccountsSidebarView, ACCOUNTS_SIDEBAR_ID_ATTR } from '@/views/AccountsSidebarView'
 import {
   TimeTrackingSidebarView,
   TIME_TRACKING_SIDEBAR_ID_ATTR,
@@ -58,6 +59,12 @@ const PANELS: Panel[] = [
     attribute: FINANCE_SIDEBAR_ID_ATTR,
     make: () => new FinanceSidebarView({} as never, {} as never),
     ids: () => store().financeSidebarIds,
+  },
+  {
+    name: 'accounts',
+    attribute: ACCOUNTS_SIDEBAR_ID_ATTR,
+    make: () => new AccountsSidebarView({} as never, {} as never),
+    ids: () => store().accountsSidebarIds,
   },
   {
     name: 'time tracking',

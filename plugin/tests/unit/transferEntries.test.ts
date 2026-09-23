@@ -117,6 +117,19 @@ describe('settings that arrived later than the transfer did', () => {
    * The section lists the keys it carries by name, so anything added to the settings after it
    * was written is silently left behind. Voice input was exactly that.
    */
+  it('carries what the accounts panel shows', () => {
+    const accountsList = {
+      sort: 'name' as const,
+      groupByType: false,
+      types: ['asset' as const],
+      hideZero: false,
+      showExcluded: false,
+      currency: 'USD',
+    }
+    const finance = find(collectEntries(settings({ accountsList })), 'finance', 'finance')
+    expect((finance?.data as Record<string, unknown>)?.accountsList).toEqual(accountsList)
+  })
+
   it('carries the voice settings', () => {
     const entries = collectEntries(
       settings({

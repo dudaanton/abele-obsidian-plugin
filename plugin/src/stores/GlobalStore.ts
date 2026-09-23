@@ -68,6 +68,7 @@ export class GlobalStore {
   public readonly todoSidebarIds = ref<string[]>([])
   public readonly aiSidebarIds = ref<string[]>([])
   public readonly financeSidebarIds = ref<string[]>([])
+  public readonly accountsSidebarIds = ref<string[]>([])
   public readonly timeTrackingSidebarIds = ref<string[]>([])
   public readonly scriptRunsIds = ref<string[]>([])
   /**
@@ -345,6 +346,7 @@ export class GlobalStore {
     this.todoSidebarIds.value = []
     this.aiSidebarIds.value = []
     this.financeSidebarIds.value = []
+    this.accountsSidebarIds.value = []
     this.hiddenPanelIds.value = []
     this.timeTrackingSidebarIds.value = []
     this.scriptRunsIds.value = []

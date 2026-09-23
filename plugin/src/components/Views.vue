@@ -54,6 +54,13 @@
     <FinanceSidebarView :active="!hiddenPanelIds.includes(id)" />
   </Teleport>
   <Teleport
+    v-for="id in accountsSidebarIds"
+    :key="id"
+    :to="`[${ACCOUNTS_SIDEBAR_ID_ATTR}='${id}']`"
+  >
+    <AccountsSidebar :active="!hiddenPanelIds.includes(id)" />
+  </Teleport>
+  <Teleport
     v-for="id in timeTrackingSidebarIds"
     :key="id"
     :to="`[${TIME_TRACKING_SIDEBAR_ID_ATTR}='${id}']`"
@@ -155,10 +162,12 @@ import { TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'
 import { AI_SIDEBAR_ID_ATTR } from '@/views/AiSidebarView'
 import { FIND_AND_REPLACE_ID_ATTR } from '@/bases/FindAndReplaceView'
 import { FINANCE_SIDEBAR_ID_ATTR } from '@/views/FinanceSidebarView'
+import { ACCOUNTS_SIDEBAR_ID_ATTR } from '@/views/AccountsSidebarView'
 import { TIME_TRACKING_SIDEBAR_ID_ATTR } from '@/views/TimeTrackingSidebarView'
 import { SCRIPT_RUNS_ID_ATTR } from '@/views/ScriptRunsView'
 import AiChatView from './AiChat.vue'
 import FinanceSidebarView from './FinanceSidebar.vue'
+import AccountsSidebar from './AccountsSidebar.vue'
 import TimeTrackingSidebarView from './TimeTrackingSidebar.vue'
 import ScriptRunsView from './ScriptRuns.vue'
 import ScriptView from './ScriptView.vue'
@@ -188,6 +197,7 @@ const {
   todoSidebarIds,
   aiSidebarIds,
   financeSidebarIds,
+  accountsSidebarIds,
   hiddenPanelIds,
   timeTrackingSidebarIds,
   scriptRunsIds,

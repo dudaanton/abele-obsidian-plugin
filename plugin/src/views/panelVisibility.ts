@@ -9,9 +9,13 @@ export function isPanelShown(view: ItemView): boolean {
   const el = view.containerEl
   if (!el.isConnected) return false
 
-  const { workspace } = view.app
-  const root = view.leaf.getRoot?.() as (WorkspaceItem & { collapsed?: boolean }) | undefined
-  if ((root === workspace.leftSplit || root === workspace.rightSplit) && root?.collapsed) {
+  const workspace = view.app?.workspace
+  const root = view.leaf?.getRoot?.() as (WorkspaceItem & { collapsed?: boolean }) | undefined
+  if (
+    workspace &&
+    (root === workspace.leftSplit || root === workspace.rightSplit) &&
+    root?.collapsed
+  ) {
     return false
   }
 

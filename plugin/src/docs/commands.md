@@ -18,7 +18,7 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 - Create new transaction — and *…and insert into current note*
 - Start timer for current note · Stop active timer
-- Show finance sidebar · Show time tracking sidebar
+- Show finance sidebar · Show accounts sidebar · Show time tracking sidebar
 
 ## Views
 

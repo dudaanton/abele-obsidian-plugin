@@ -4,6 +4,11 @@
       <div class="abele-finance-sidebar__header-left">
         <div class="abele-finance-sidebar__header-text">Transactions</div>
         <ObsidianIcon icon="banknote-arrow-down" @click="createTransaction()" />
+        <ObsidianIcon
+          icon="landmark"
+          tooltip="Show every account and its balance"
+          @click="showAccounts"
+        />
       </div>
     </div>
 
@@ -161,6 +166,8 @@ import { formatAmount } from '@/helpers/moneyFormat'
 import { currencyCard, type CurrencyCard } from '@/helpers/financeTotals'
 import { useFinanceLedger, type LedgerEntry } from '@/composables/useFinanceLedger'
 import { pausedWhileHidden } from '@/helpers/pausedWhileHidden'
+import { revealSidebarView } from '@/views/revealSidebarView'
+import { ACCOUNTS_SIDEBAR_VIEW_TYPE } from '@/views/AccountsSidebarView'
 
 const props = withDefaults(
   defineProps<{
@@ -183,6 +190,8 @@ const active = toRef(props, 'active')
 const accountsList = computed(() => unref(store.accountsList) as AccountsList | null)
 const balanceIndex = computed(() => unref(store.balanceIndex) as BalanceIndex | null)
 const { entries: ledger } = useFinanceLedger(active)
+
+const showAccounts = () => void revealSidebarView(store.app, ACCOUNTS_SIDEBAR_VIEW_TYPE)
 
 // --- Currency Balance Cards ---
 

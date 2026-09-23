@@ -3,6 +3,11 @@ import { Notice } from 'obsidian'
 import { Journal, JournalDTO } from '@/entities/Journal'
 import { AiSettings, DEFAULT_AI_SETTINGS, ImageProvider, migrateOldPermissions } from '@/ai/types'
 import { migrateAgents } from '@/ai/agents/migration'
+import {
+  DEFAULT_ACCOUNTS_LIST,
+  normalizeAccountsList,
+  type AccountsListSettings,
+} from '@/helpers/accountRows'
 import AbelePlugin from '@/main'
 import { isKitColor } from '@/constants/colors'
 import { DEFAULT_LABEL_PROPERTY, type LabelColor } from '@/helpers/taskMeta'
@@ -33,6 +38,8 @@ export interface AbeleSettings {
   pinnedCurrencies?: string // Comma-separated currencies to show in sidebar
   fireflyBaseUrl?: string // Firefly III instance base URL for migration
   fireflyToken?: string // Firefly III Personal Access Token for migration
+  /** What the accounts panel lists and how it orders them. */
+  accountsList?: AccountsListSettings
   // Time tracking settings
   timeEntryPathTemplate?: string // Path template for new time entries
   timeTrackableNoteTypes?: string[] // Note types that show timer button in header
@@ -112,6 +119,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   pinnedCurrencies: 'EUR',
   fireflyBaseUrl: '',
   fireflyToken: '',
+  accountsList: DEFAULT_ACCOUNTS_LIST,
   timeEntryPathTemplate: 'Time/{{date:YYYY/MM}}/{{groups}} {{start}}',
   timeTrackableNoteTypes: ['task'],
   timeTrackAllNotes: false,
@@ -150,6 +158,7 @@ export class AbeleConfig {
   public pinnedCurrencies: string
   public fireflyBaseUrl: string
   public fireflyToken: string
+  public accountsList: AccountsListSettings
   public timeEntryPathTemplate: string
   public timeTrackableNoteTypes: string[]
   public timeTrackAllNotes: boolean
@@ -409,6 +418,7 @@ export class AbeleConfig {
     this.pinnedCurrencies = settings?.pinnedCurrencies ?? DEFAULT_SETTINGS.pinnedCurrencies
     this.fireflyBaseUrl = settings?.fireflyBaseUrl ?? DEFAULT_SETTINGS.fireflyBaseUrl
     this.fireflyToken = settings?.fireflyToken ?? DEFAULT_SETTINGS.fireflyToken
+    this.accountsList = normalizeAccountsList(settings?.accountsList)
     this.timeEntryPathTemplate =
       settings?.timeEntryPathTemplate ?? DEFAULT_SETTINGS.timeEntryPathTemplate
     this.timeTrackableNoteTypes = settings?.timeTrackableNoteTypes || [
@@ -467,6 +477,7 @@ export class AbeleConfig {
       pinnedCurrencies: this.pinnedCurrencies,
       fireflyBaseUrl: this.fireflyBaseUrl,
       fireflyToken: this.fireflyToken,
+      accountsList: { ...this.accountsList, types: [...this.accountsList.types] },
       timeEntryPathTemplate: this.timeEntryPathTemplate,
       timeTrackableNoteTypes: [...this.timeTrackableNoteTypes],
       timeTrackAllNotes: this.timeTrackAllNotes,

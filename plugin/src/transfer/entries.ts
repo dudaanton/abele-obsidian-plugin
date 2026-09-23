@@ -214,6 +214,7 @@ export const SECTIONS: Section[] = [
       'pinnedCurrencies',
       'fireflyBaseUrl',
       'fireflyToken',
+      'accountsList',
     ],
     // The Firefly token is kept in the settings themselves rather than the keychain, so this
     // block is a credential whether or not keys were asked for.
