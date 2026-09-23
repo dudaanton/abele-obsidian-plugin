@@ -10,7 +10,7 @@
  * The picker itself is faked: what it offers and what it hands back is settled in
  * `tests/unit/runnablePicker.test.ts`, and a modal cannot be opened for real here anyway.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import HeaderButtonsEditor from '@/components/settings/scripts/HeaderButtonsEditor.vue'
@@ -73,7 +73,25 @@ beforeEach(() => {
   pickCommand.mockReset()
 })
 
+/**
+ * Every screen mounted here, unmounted before the spies come off. A screen holds its disk
+ * write back for half a second; left mounted, that write fired after the test had ended,
+ * reached the real `saveSettings` with no plugin behind it and failed a later test at random.
+ * Unmounting flushes it while `saveSettings` is still the spy.
+ */
+const mounted = new Set<ReturnType<typeof mount>>()
+function mountScreen(...args: Parameters<typeof mount>): ReturnType<typeof mount> {
+  const wrapper = mount(...args)
+  mounted.add(wrapper)
+  const unmount = wrapper.unmount.bind(wrapper)
+  wrapper.unmount = () => {
+    if (mounted.delete(wrapper)) unmount()
+  }
+  return wrapper
+}
+
 afterEach(() => {
+  for (const wrapper of [...mounted]) wrapper.unmount()
   vi.restoreAllMocks()
 })
 
@@ -108,7 +126,7 @@ describe('the script a header button runs', () => {
     ]
   })
 
-  const open = () => mount(HeaderButtonsEditor, { global: { stubs: STUBS } })
+  const open = () => mountScreen(HeaderButtonsEditor, { global: { stubs: STUBS } })
 
   it('is asked for rather than listed, so a folder of scripts is searchable', async () => {
     pickScript.mockResolvedValue(rename)
@@ -208,7 +226,7 @@ describe('the script a header button runs', () => {
 describe('the scripts folder', () => {
   it('is saved when the settings screen closes before the save came round', async () => {
     vi.mocked(config.saveSettings).mockClear()
-    const wrapper = mount(ScriptsGeneral, { global: { stubs: STUBS } })
+    const wrapper = mountScreen(ScriptsGeneral, { global: { stubs: STUBS } })
 
     wrapper.findComponent({ name: 'Search' }).vm.$emit('update:model-value', 'System/Scripts')
     expect(config.saveSettings).not.toHaveBeenCalled()
@@ -220,7 +238,7 @@ describe('the scripts folder', () => {
 })
 
 describe('what a link runs', () => {
-  const open = () => mount(LinksSettings, { global: { stubs: STUBS } })
+  const open = () => mountScreen(LinksSettings, { global: { stubs: STUBS } })
 
   it('offers the scripts to search, and saves the one taken', async () => {
     config.links = [
@@ -268,7 +286,7 @@ describe('what a link runs', () => {
       },
     ]
 
-    const wrapper = mount(LinksSettings, { global: { stubs: STUBS } })
+    const wrapper = mountScreen(LinksSettings, { global: { stubs: STUBS } })
 
     expect(buttonWith(wrapper, 'removed-plugin:do-thing').exists()).toBe(true)
   })
@@ -277,7 +295,7 @@ describe('what a link runs', () => {
 describe('the scripts screen while the folder is being read', () => {
   it('shows the scripts once the index has them, however late that is', async () => {
     ScriptService.getInstance().scriptList.value = []
-    const wrapper = mount(ScriptsGeneral, { global: { stubs: STUBS } })
+    const wrapper = mountScreen(ScriptsGeneral, { global: { stubs: STUBS } })
     expect(wrapper.text()).not.toContain('scripts discovered')
 
     ScriptService.getInstance().scriptList.value = [fetchDetails, rename]
@@ -285,4 +303,10 @@ describe('the scripts screen while the folder is being read', () => {
 
     expect(wrapper.text()).toContain('2 scripts discovered')
   })
+})
+
+// Outlives the last half-second write: anything a screen left waiting would surface here as
+// an unhandled rejection rather than in whichever file happens to run next.
+afterAll(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 700))
 })
