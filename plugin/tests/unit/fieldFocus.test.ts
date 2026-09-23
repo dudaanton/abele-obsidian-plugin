@@ -296,3 +296,19 @@ describe("the plugin's own field, with that same class on the body", () => {
     expect(releasesFocus(toolbarButton, field)).toBe(false)
   })
 })
+
+describe('a control marked to keep the focus', () => {
+  // The Send button beside a chat's field: letting go of the field there moved the composer
+  // out from under the finger before the click could land on it.
+  it('does not take it away from the field', () => {
+    const { field } = screen()
+    const send = document.createElement('div')
+    send.setAttribute('data-keeps-focus', '')
+    const glyph = document.createElement('svg')
+    send.appendChild(glyph)
+    field.parentElement!.appendChild(send)
+
+    expect(releasesFocus(send, field)).toBe(false)
+    expect(releasesFocus(glyph, field)).toBe(false)
+  })
+})

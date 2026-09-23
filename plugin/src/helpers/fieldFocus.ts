@@ -24,8 +24,13 @@ const FIELD = 'input, textarea, select, [contenteditable="true"]'
  * the input's `blur`, so releasing focus when a suggestion is pressed would take the list
  * away before the press could choose from it. Obsidian defends the same boundary from its
  * side, by cancelling the default action of a press on a suggestion.
+ *
+ * `[data-keeps-focus]` is the plugin's own way of saying the same about a control that acts on
+ * what is being typed — a chat's Send. Letting go of the field there dropped the chat's
+ * keyboard layout on the finger's lift, the composer moved, and the click that follows a touch
+ * no longer landed on the button: the tap closed the keyboard and sent nothing.
  */
-const KEEPS_FOCUS = '.suggestion-container, .menu, .prompt, .mobile-toolbar'
+const KEEPS_FOCUS = '.suggestion-container, .menu, .prompt, .mobile-toolbar, [data-keeps-focus]'
 
 /**
  * Everything this plugin renders is under a class of its own — but so, on a phone, is the

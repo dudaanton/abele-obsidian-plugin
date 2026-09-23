@@ -48,6 +48,9 @@
       <div class="abele-chat-input__toolbar-left">
         <span v-if="tokenDisplay" class="abele-chat-input__tokens">{{ tokenDisplay }}</span>
       </div>
+      <!-- `data-keeps-focus` on the buttons that act on what is typed: on a phone the field
+           keeps its focus through the tap, so the keyboard stays up and the composer does not
+           move out from under the finger before the click lands (see fieldFocus.ts). -->
       <div class="abele-chat-input__toolbar-right" @mousedown.prevent>
         <template v-if="isStreaming">
           <Icon
@@ -55,6 +58,7 @@
             icon="send-horizontal"
             with-bg
             tooltip="Send when the agent gets there"
+            data-keeps-focus
             @click="send"
           />
           <Icon
@@ -86,6 +90,7 @@
             with-bg
             :disabled="noteDisabled"
             :tooltip="noteTooltip"
+            data-keeps-focus
             @click="keepNote"
           />
           <Icon
@@ -100,6 +105,7 @@
             icon="send-horizontal"
             with-bg
             :class="{ 'abele-chat-input__disabled': !text.trim() && !attachments.length }"
+            data-keeps-focus
             @click="send"
           />
         </template>
