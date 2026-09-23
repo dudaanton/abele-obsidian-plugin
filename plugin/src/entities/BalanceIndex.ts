@@ -52,27 +52,51 @@ export class BalanceIndex {
     return resolved
   }
 
+  /**
+   * The currency an account holds money in, or null when it holds none of its own.
+   * Only asset and liability accounts have one: expense and revenue accounts are categories,
+   * which is why they are keyed per currency instead.
+   */
+  private walletCurrency(accountPath: string | null): string | null {
+    if (!accountPath) return null
+    const account = this.accountsList.accounts.get(accountPath)
+    if (!account?.currency) return null
+    return account.accountType === 'asset' || account.accountType === 'liability'
+      ? account.currency
+      : null
+  }
+
   private getAmountForAccount(
     transaction: Transaction,
     accountPath: string,
+    otherPath: string | null,
     role: 'from' | 'to'
   ): number {
-    // Multi-currency logic only applies to asset/liability accounts (they have a fixed currency).
-    // Expense/revenue accounts are categories — they don't have a currency,
-    // so they always use the transaction's primary amount.
-    if (transaction.foreignAmount != null && transaction.foreignCurrency) {
-      const account = this.accountsList.accounts.get(accountPath)
-      const accountType = account?.accountType
-      if (
-        account?.currency &&
-        (accountType === 'asset' || accountType === 'liability') &&
-        account.currency === transaction.foreignCurrency
-      ) {
-        return role === 'from' ? -transaction.foreignAmount : transaction.foreignAmount
-      }
+    const sign = role === 'from' ? -1 : 1
+    const currency = this.walletCurrency(accountPath)
+    if (!currency) return sign * transaction.amount
+
+    if (transaction.foreignAmount != null && transaction.foreignCurrency === currency) {
+      return sign * transaction.foreignAmount
     }
 
-    return role === 'from' ? -transaction.amount : transaction.amount
+    // A move between two wallets in different currencies: the amount is in one of them, and
+    // the other side is only known through foreignAmount. Without it that side has received
+    // (or sent) nothing we can count — reusing the sum in the other currency would credit
+    // dollars as if they were euros.
+    const otherCurrency = this.walletCurrency(otherPath)
+    if (otherCurrency && otherCurrency !== currency) {
+      const holdsAmount = transaction.currency
+        ? transaction.currency === currency
+        : role === 'from'
+      if (holdsAmount) return sign * transaction.amount
+      if (transaction.foreignAmount != null && !transaction.foreignCurrency) {
+        return sign * transaction.foreignAmount
+      }
+      return 0
+    }
+
+    return sign * transaction.amount
   }
 
   rebuild(): void {
@@ -110,16 +134,17 @@ export class BalanceIndex {
   private addTransactionEntries(transaction: Transaction): void {
     const dateStr = transaction.date.format(DATE_FORMAT)
     const currency = transaction.currency || ''
+    const fromPath = transaction.from ? this.resolveAccountPath(transaction.from) : null
+    const toPath = transaction.to ? this.resolveAccountPath(transaction.to) : null
 
     if (transaction.from) {
-      const fromPath = this.resolveAccountPath(transaction.from)
       if (fromPath) {
         const startDate = this.getStartingBalanceDate(fromPath)
         if (!startDate || dateStr >= startDate) {
           const key = this.getEntryKey(fromPath, currency)
           this.addEntry(key, {
             date: dateStr,
-            amount: this.getAmountForAccount(transaction, fromPath, 'from'),
+            amount: this.getAmountForAccount(transaction, fromPath, toPath, 'from'),
             transactionPath: transaction.transactionPath,
           })
         }
@@ -127,14 +152,13 @@ export class BalanceIndex {
     }
 
     if (transaction.to) {
-      const toPath = this.resolveAccountPath(transaction.to)
       if (toPath) {
         const startDate = this.getStartingBalanceDate(toPath)
         if (!startDate || dateStr >= startDate) {
           const key = this.getEntryKey(toPath, currency)
           this.addEntry(key, {
             date: dateStr,
-            amount: this.getAmountForAccount(transaction, toPath, 'to'),
+            amount: this.getAmountForAccount(transaction, toPath, fromPath, 'to'),
             transactionPath: transaction.transactionPath,
           })
         }
