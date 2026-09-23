@@ -38,7 +38,12 @@ export async function parseNoteContent(
     }
   }
 
-  return { ...parsedData, content: parsed.body }
+  // `front-matter` swallows the blank lines after the closing `---`, and a body read here is
+  // written back under rewritten frontmatter — so the text is taken as it stands in the note.
+  const match = parsed.frontmatter !== undefined ? content.match(frontMatterRegex) : null
+  const body = match ? content.slice(match[0].length) : parsed.body
+
+  return { ...parsedData, content: body }
 
   // await app.fileManager.processFrontMatter(file, (f) => {
   //   frontmatter = { ...f }
