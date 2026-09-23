@@ -31,6 +31,11 @@ goes and those lines are its output.
 Four ways in: the command palette, a button in a note's header, an `abele://` link, or an
 agent calling the `script_<name>` tool. A script can call another with `runScript`.
 
+The **Scripts** page of the plugin's settings lists every script as a card — its `@icon`,
+`@name`, `@description` and parameters, straight from the header above — and runs one or
+makes a header button for it from there. That header is therefore also how a script presents
+itself to the person: a script without `@description` shows up saying it has none.
+
 ## Watching one
 
 Every run of this session is listed under **Show script runs**: its status, when it started,

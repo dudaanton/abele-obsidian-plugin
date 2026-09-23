@@ -13,7 +13,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
-import ScriptsSettings from '@/components/settings/ScriptsSettings.vue'
+import HeaderButtonsEditor from '@/components/settings/scripts/HeaderButtonsEditor.vue'
+import ScriptsGeneral from '@/components/settings/scripts/ScriptsGeneral.vue'
 import LinksSettings from '@/components/settings/LinksSettings.vue'
 import Button from '@/components/obsidian/Button.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -107,7 +108,7 @@ describe('the script a header button runs', () => {
     ]
   })
 
-  const open = () => mount(ScriptsSettings, { global: { stubs: STUBS } })
+  const open = () => mount(HeaderButtonsEditor, { global: { stubs: STUBS } })
 
   it('is asked for rather than listed, so a folder of scripts is searchable', async () => {
     pickScript.mockResolvedValue(rename)
@@ -207,7 +208,7 @@ describe('the script a header button runs', () => {
 describe('the scripts folder', () => {
   it('is saved when the settings screen closes before the save came round', async () => {
     vi.mocked(config.saveSettings).mockClear()
-    const wrapper = mount(ScriptsSettings, { global: { stubs: STUBS } })
+    const wrapper = mount(ScriptsGeneral, { global: { stubs: STUBS } })
 
     wrapper.findComponent({ name: 'Search' }).vm.$emit('update:model-value', 'System/Scripts')
     expect(config.saveSettings).not.toHaveBeenCalled()
@@ -276,7 +277,7 @@ describe('what a link runs', () => {
 describe('the scripts screen while the folder is being read', () => {
   it('shows the scripts once the index has them, however late that is', async () => {
     ScriptService.getInstance().scriptList.value = []
-    const wrapper = mount(ScriptsSettings, { global: { stubs: STUBS } })
+    const wrapper = mount(ScriptsGeneral, { global: { stubs: STUBS } })
     expect(wrapper.text()).not.toContain('scripts discovered')
 
     ScriptService.getInstance().scriptList.value = [fetchDetails, rename]

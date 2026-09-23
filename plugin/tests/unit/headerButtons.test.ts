@@ -61,8 +61,9 @@ describe('choosing the buttons for a note by where it is, too', () => {
   it('offers a button set for a folder on the notes inside it, at any depth', () => {
     const configured = button({ noteTypes: [], folders: ['Films'] })
 
-    expect(buttonsForNote([configured], { type: null, path: 'Films/Noir/The Third Man.md' }))
-      .toEqual([configured])
+    expect(
+      buttonsForNote([configured], { type: null, path: 'Films/Noir/The Third Man.md' })
+    ).toEqual([configured])
     expect(buttonsForNote([configured], { type: null, path: 'Filmsy/Other.md' })).toEqual([])
   })
 
@@ -76,7 +77,9 @@ describe('choosing the buttons for a note by where it is, too', () => {
     const configured = button({ noteTypes: ['book'], folders: ['Films'] })
 
     expect(buttonsForNote([configured], { type: 'book', path: 'Books/A.md' })).toEqual([configured])
-    expect(buttonsForNote([configured], { type: 'movie', path: 'Films/A.md' })).toEqual([configured])
+    expect(buttonsForNote([configured], { type: 'movie', path: 'Films/A.md' })).toEqual([
+      configured,
+    ])
     expect(buttonsForNote([configured], { type: 'movie', path: 'Else/A.md' })).toEqual([])
   })
 

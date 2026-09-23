@@ -657,7 +657,11 @@ export class ScriptService {
     }
   }
 
-  private async executeFromCommand(path: string) {
+  /**
+   * Runs a script the way the command palette does — asking for its parameters first. The
+   * settings library's run button goes through here too, so both behave the same.
+   */
+  async executeFromCommand(path: string) {
     const script = this.scripts.get(path)
     if (!script) return
 

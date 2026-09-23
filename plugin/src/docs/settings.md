@@ -71,3 +71,8 @@ means the plugin's own, which needs no key and no account.
 `snippetsFolder` is where CSS snippets are written, `links` and `headerButtons` are the buttons
 and links added to note headers, `fullWidthSidebars` widens the sidebars, and `refreshDelay` is
 how long the plugin waits before rebuilding what a note shows.
+
+A header button runs `scriptName` with `params`, and shows on notes whose `type` is in
+`noteTypes`, on notes anywhere under one of `folders`, or on every note when `allNotes` is on —
+task notes included. `enabled: false` keeps it configured but hidden, `iconOnly` leaves its
+`name` off the header, and the order of the list is the order in the header.

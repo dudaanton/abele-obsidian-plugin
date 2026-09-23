@@ -253,6 +253,32 @@ describe('settings that arrived later than the transfer did', () => {
   })
 })
 
+describe('header buttons', () => {
+  // Placement, the switch and the icon-only look were added to buttons after this list; they
+  // are fields of the button rather than settings of their own, and must travel with it.
+  it('arrive with where they show, whether they are on, and how they look', () => {
+    const button = {
+      id: 'b1',
+      name: 'Tidy',
+      icon: 'sparkles',
+      noteTypes: ['note'],
+      scriptName: 'Tidy note',
+      params: { depth: '2' },
+      enabled: false,
+      iconOnly: true,
+      allNotes: false,
+      folders: ['Inbox', 'Notes/Daily'],
+    }
+    const arriving = collectEntries(settings({ headerButtons: [button] })).filter(
+      (e) => e.section === 'header-buttons'
+    )
+
+    const next = applyEntries(arriving, settings())
+
+    expect(next.headerButtons).toEqual([button])
+  })
+})
+
 describe('packing what was ticked', () => {
   const keys: Record<string, string> = { 'key-p1': 'sk-provider', 'abele-brave-search': 'sk-brave' }
   const read = (id: string) => keys[id] ?? ''

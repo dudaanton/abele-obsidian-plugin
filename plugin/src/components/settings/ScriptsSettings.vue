@@ -1,283 +1,42 @@
 <template>
   <div class="abele-settings__scripts">
-    <Setting
-      name="Enable scripts"
-      desc="Allow JavaScript scripts stored in a vault folder to be registered as commands and AI tools."
-    >
-      <Checkbox :is-enabled="scriptsEnabled" @toggle="toggleScriptsEnabled" />
-    </Setting>
+    <Tabs v-model="active" :tabs="TABS" level="secondary" class="abele-settings__scripts-tabs" />
 
-    <template v-if="scriptsEnabled">
-      <Setting name="Scripts folder" desc="Vault folder containing .js script files.">
-        <Search
-          :model-value="scriptsFolder"
-          :suggester="FolderSuggest"
-          placeholder="e.g. System/Scripts"
-          @update:model-value="updateScriptsFolder"
-        />
-      </Setting>
-
-      <p v-if="discoveredScripts.length" class="setting-item-description">
-        {{ discoveredScripts.length }} scripts discovered. Configure tool modes in
-        <strong>AI Agent → Default Tool Modes</strong> or per-chat in the permissions modal.
-      </p>
-
-      <Section title="Header buttons">
-        <template #desc>
-          Put a button in the header of every note of a given type, running a script. Parameters
-          accept <code>{{ variableExamples }}</code> and any frontmatter field of the note, such as
-          <code>{{ frontmatterExample }}</code
-          >.
-        </template>
-
-        <div v-if="buttons.length" class="abele-header-buttons__list">
-          <div v-for="(button, idx) in buttons" :key="button.id" class="abele-header-buttons__item">
-            <div class="abele-header-buttons__fields">
-              <Setting name="Name" desc="Shown on the button.">
-                <Input
-                  :model-value="button.name"
-                  placeholder="e.g. Fetch details"
-                  @update:model-value="updateField(idx, 'name', $event)"
-                />
-              </Setting>
-              <Setting name="Icon" desc="A lucide icon name, as used elsewhere in the header.">
-                <Input
-                  :model-value="button.icon"
-                  placeholder="play"
-                  @update:model-value="updateField(idx, 'icon', $event)"
-                />
-              </Setting>
-              <Setting
-                name="Note types"
-                desc="Comma-separated. The button appears on notes whose type frontmatter is one of these."
-              >
-                <Input
-                  :model-value="button.noteTypes.join(', ')"
-                  placeholder="e.g. movie, book"
-                  @update:model-value="updateTypes(idx, $event)"
-                />
-              </Setting>
-              <Setting name="Script" desc="Script the button runs.">
-                <Button
-                  :text="button.scriptName || 'Choose script...'"
-                  tooltip="Search the scripts for the one this button runs"
-                  @click="chooseScript(idx)"
-                />
-              </Setting>
-
-              <template v-for="param in paramsOf(button)" :key="param.name">
-                <Setting :name="param.name" :desc="paramDescription(param)">
-                  <Input
-                    :model-value="button.params[param.name] || ''"
-                    :placeholder="param.default || ''"
-                    @update:model-value="updateParam(idx, param.name, $event)"
-                  />
-                </Setting>
-              </template>
-              <p
-                v-if="button.scriptName && !paramsOf(button).length"
-                class="setting-item-description"
-              >
-                This script takes no parameters.
-              </p>
-            </div>
-            <Icon icon="trash" tooltip="Remove this button" @click="removeButton(idx)" />
-          </div>
-        </div>
-
-        <div v-else class="abele-header-buttons__empty">No header buttons configured.</div>
-
-        <Button text="Add button" tooltip="Add another header button" @click="addButton" />
-      </Section>
-    </template>
+    <ScriptLibrary v-if="active === 'library'" @added="showButtons" />
+    <HeaderButtonsEditor v-else-if="active === 'buttons'" />
+    <ScriptsGeneral v-else />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { nanoid } from 'nanoid'
-import Setting from '../obsidian/Setting.vue'
-import Section from '../obsidian/Section.vue'
-import Checkbox from '../obsidian/Checkbox.vue'
-import Search from '../obsidian/Search.vue'
-import Input from '../obsidian/Input.vue'
-import Button from '../obsidian/Button.vue'
-import Icon from '../obsidian/Icon.vue'
-import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
-import { AbeleConfig, type HeaderButtonDefinition } from '@/services/AbeleConfig'
-import { ScriptService } from '@/scripting/ScriptService'
-import { findScriptByName } from '@/scripting/runScript'
-import { pickScript } from '@/helpers/suggesters/RunnablePicker'
-import { GlobalStore } from '@/stores/GlobalStore'
-import type { ScriptParam } from '@/scripting/types'
-
-const config = AbeleConfig.getInstance()
-
-const scriptsEnabled = ref(config.ai.scriptsEnabled ?? false)
-const scriptsFolder = ref(config.ai.scriptsFolder ?? '')
-
-// From the reactive list, not from `getAll()`: a computed over a plain map settles once, at
-// the first render, and this screen used to show whatever the index held at that moment —
-// nothing, when it was opened before the folder had been read — and never catch up.
-const discoveredScripts = computed(() => {
-  if (!scriptsEnabled.value) return []
-  return ScriptService.getInstance().scriptList.value.filter((s) => s.meta.enabled !== false)
-})
+import { ref } from 'vue'
+import Tabs from '../obsidian/Tabs.vue'
+import ScriptLibrary from './scripts/ScriptLibrary.vue'
+import HeaderButtonsEditor from './scripts/HeaderButtonsEditor.vue'
+import ScriptsGeneral from './scripts/ScriptsGeneral.vue'
+import { AbeleConfig } from '@/services/AbeleConfig'
 
 /**
- * One pending write for everything on this screen.
- *
- * Each edit reaches the shared configuration at once and only the disk write waits, so a
- * plugin reload or another save in the meantime already carries it; closing the screen
- * writes whatever is still waiting rather than dropping it.
+ * Three pages under one tab, the way the AI settings are laid out: what scripts there are, the
+ * buttons that run them from a note's header, and the switch and folder behind both.
  */
-let saveTimer: number | null = null
+const TABS = [
+  { id: 'library', label: 'Library', tooltip: 'Every script in the folder, and what it does' },
+  { id: 'buttons', label: 'Header buttons', tooltip: 'Buttons in note headers that run a script' },
+  { id: 'general', label: 'General', tooltip: 'Turn scripts on and choose their folder' },
+]
 
-const save = () => {
-  config.ai.scriptsEnabled = scriptsEnabled.value
-  config.ai.scriptsFolder = scriptsFolder.value
-  config.headerButtons = JSON.parse(JSON.stringify(buttons.value))
+// With scripts off the library has nothing to show, and what the person needs is the switch.
+const active = ref(AbeleConfig.getInstance().ai.scriptsEnabled ? 'library' : 'general')
 
-  if (saveTimer !== null) window.clearTimeout(saveTimer)
-  saveTimer = window.setTimeout(() => {
-    saveTimer = null
-    void config.saveSettings()
-  }, 500)
-}
-
-onBeforeUnmount(() => {
-  if (saveTimer === null) return
-  window.clearTimeout(saveTimer)
-  saveTimer = null
-  void config.saveSettings()
-})
-
-const toggleScriptsEnabled = () => {
-  scriptsEnabled.value = !scriptsEnabled.value
-  // First, so the index that starts below reads the setting it was started for.
-  save()
-  if (scriptsEnabled.value && scriptsFolder.value) {
-    ScriptService.getInstance().init()
-  } else if (!scriptsEnabled.value) {
-    ScriptService.destroy()
-  }
-}
-
-const updateScriptsFolder = (value: string) => {
-  scriptsFolder.value = value
-  save()
-}
-
-// ── Header buttons ──
-
-/**
- * Written here rather than in the template above: a `{{ ... }}` inside a template is an
- * interpolation, so the braces these are made of cannot be typed there directly.
- */
-const variableExamples = ['title', 'path', 'folder', 'date:YYYY-MM-DD']
-  .map((name) => `{{${name}}}`)
-  .join(', ')
-const frontmatterExample = '{{status}}'
-
-const buttons = ref<HeaderButtonDefinition[]>(
-  JSON.parse(JSON.stringify(config.headerButtons || []))
-)
-
-/**
- * The parameters the chosen script declares. The form is built from these rather than from
- * free-form key/value rows, so a button cannot be configured with a parameter its script has
- * never heard of.
- */
-const paramsOf = (button: HeaderButtonDefinition): ScriptParam[] =>
-  button.scriptName ? (findScriptByName(button.scriptName)?.meta.params ?? []) : []
-
-const paramDescription = (param: ScriptParam): string => {
-  const described = param.description || 'No description.'
-  return param.default ? `${described} Defaults to "${param.default}".` : described
-}
-
-/**
- * Settings saved or reloaded from disk while this screen is open — sync bringing another
- * device's copy, most often. What was copied at mount is then stale, and the next edit here
- * would write it back over what arrived. An edit of this screen's own still waiting to be
- * written is newer than anything that could have arrived, so it is left as it is.
- */
-watch(config.version, () => {
-  if (saveTimer !== null) return
-  scriptsEnabled.value = config.ai.scriptsEnabled ?? false
-  scriptsFolder.value = config.ai.scriptsFolder ?? ''
-  buttons.value = JSON.parse(JSON.stringify(config.headerButtons || []))
-})
-
-const addButton = () => {
-  buttons.value.push({
-    id: nanoid(8),
-    name: '',
-    icon: 'play',
-    noteTypes: [],
-    scriptName: '',
-    params: {},
-  })
-  save()
-}
-
-const removeButton = (idx: number) => {
-  buttons.value.splice(idx, 1)
-  save()
-}
-
-const chooseScript = async (idx: number) => {
-  const script = await pickScript(GlobalStore.getInstance().app, discoveredScripts.value)
-  if (script) updateField(idx, 'scriptName', script.meta.name)
-}
-
-const updateField = (idx: number, field: 'name' | 'icon' | 'scriptName', value: string) => {
-  const changedScript = field === 'scriptName' && buttons.value[idx].scriptName !== value
-  buttons.value[idx][field] = value
-  // A button's parameters belong to the script it runs; carrying them to another script would
-  // leave values under names the new one does not declare. Choosing the same one again is
-  // not a change, and must not cost the parameters.
-  if (changedScript) buttons.value[idx].params = {}
-  save()
-}
-
-const updateTypes = (idx: number, value: string) => {
-  buttons.value[idx].noteTypes = value
-    .split(',')
-    .map((type) => type.trim())
-    .filter(Boolean)
-  save()
-}
-
-const updateParam = (idx: number, name: string, value: string) => {
-  buttons.value[idx].params = { ...buttons.value[idx].params, [name]: value }
-  save()
+/** A button made from a script's card is opened where it is set up, so it can be finished. */
+const showButtons = () => {
+  active.value = 'buttons'
 }
 </script>
 
 <style lang="scss">
-.abele-header-buttons__list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-4);
-  margin-bottom: var(--size-4-3);
-}
-
-.abele-header-buttons__item {
-  display: flex;
-  gap: var(--size-4-2);
-  padding: var(--size-4-3);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-
-  > .abele-header-buttons__fields {
-    flex: 1;
-    min-width: 0;
-  }
-}
-
-.abele-header-buttons__empty {
-  color: var(--text-muted);
-  margin-bottom: var(--size-4-3);
+.abele-settings__scripts-tabs {
+  margin-bottom: var(--size-4-4);
 }
 </style>
