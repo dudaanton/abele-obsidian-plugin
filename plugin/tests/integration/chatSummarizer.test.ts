@@ -42,6 +42,7 @@ const MODEL: ModelConfig = {
 function buildHost(overrides: Partial<SummarizerHost> = {}) {
   const applied: string[] = []
   let saves = 0
+  let dirties = 0
 
   const host: SummarizerHost = {
     messages: ref<ChatMessage[]>([]),
@@ -53,6 +54,7 @@ function buildHost(overrides: Partial<SummarizerHost> = {}) {
     error: ref<string | null>(null),
     pendingToolCalls: ref<ToolCallContent[]>([]),
     recap: ref(''),
+    summary: ref(''),
     touchedNotes: () => ['Notes/A.md'],
     messagesForModel: () => [
       { role: 'user', content: 'question', timestamp: 1 },
@@ -64,12 +66,13 @@ function buildHost(overrides: Partial<SummarizerHost> = {}) {
     applyCompactSummary: (summary: string) => void applied.push(summary),
     backgroundSignal: () => new AbortController().signal,
     save: async () => void saves++,
+    markDirty: () => void dirties++,
     auxiliaryModel: () => MODEL,
     activeModel: () => MODEL,
     ...overrides,
   }
 
-  return { host, applied, saveCount: () => saves }
+  return { host, applied, saveCount: () => saves, dirtyCount: () => dirties }
 }
 
 function assistantMessage(total: number): ChatMessage {
@@ -427,5 +430,75 @@ describe('ChatSummarizer.generateRecap', () => {
 
     expect(host.recap.value.startsWith('"')).toBe(false)
     expect(host.recap.value.length).toBeLessThanOrEqual(200)
+  })
+})
+
+describe('ChatSummarizer.generateSummary', () => {
+  const SECRET = 'SECRET-FROM-A-TOOL'
+
+  function conversation(): ChatMessage[] {
+    return [
+      { id: 'u', role: 'user', content: 'Plan my trip to Rome', timestamp: 1 },
+      {
+        id: 't',
+        role: 'tool-call',
+        content: 'Calling read',
+        toolName: 'read',
+        toolParams: { path: SECRET },
+        toolResult: SECRET,
+        timestamp: 2,
+      },
+      {
+        id: 'a',
+        role: 'assistant',
+        content: 'Here is a three-day plan.',
+        thinking: SECRET,
+        timestamp: 3,
+      },
+    ]
+  }
+
+  it('writes the summary and asks for it to be saved with the next write', async () => {
+    nextResponse = '"Planning a three-day trip to Rome."'
+    const { host, saveCount, dirtyCount } = buildHost({ messages: ref(conversation()) })
+
+    await new ChatSummarizer(host).generateSummary()
+
+    expect(host.summary.value).toBe('Planning a three-day trip to Rome.')
+    expect(dirtyCount()).toBe(1)
+    expect(saveCount()).toBe(0)
+  })
+
+  it('asks from the conversation text alone, never from tools or reasoning', async () => {
+    nextResponse = 'A trip'
+    const { host } = buildHost({ messages: ref(conversation()) })
+
+    await new ChatSummarizer(host).generateSummary()
+
+    const sent = JSON.stringify(calls[0].messages)
+    expect(sent).toContain('Plan my trip to Rome')
+    expect(sent).toContain('Here is a three-day plan.')
+    expect(sent).not.toContain(SECRET)
+  })
+
+  it('asks for nothing before the agent has answered', async () => {
+    const { host } = buildHost({
+      messages: ref<ChatMessage[]>([{ id: 'u', role: 'user', content: 'hi', timestamp: 1 }]),
+    })
+
+    await new ChatSummarizer(host).generateSummary()
+
+    expect(calls).toHaveLength(0)
+    expect(host.summary.value).toBe('')
+  })
+
+  it('keeps the summary it had when the request fails', async () => {
+    nextError = new Error('offline')
+    const { host } = buildHost({ messages: ref(conversation()), summary: ref('Old one') })
+
+    await new ChatSummarizer(host).generateSummary()
+
+    expect(host.summary.value).toBe('Old one')
+    expect(host.error.value).toBeNull()
   })
 })

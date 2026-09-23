@@ -580,6 +580,18 @@
           />
         </Setting>
 
+        <Setting
+          name="Chat Summary Prompt"
+          :desc="`Prompt for the short summary under a chat's title in the history. Use ${MESSAGES_TOKEN} as placeholder.`"
+        >
+          <Input
+            :model-value="prompts.summaryPrompt || ''"
+            as-text-area
+            :placeholder="defaultPrompts.summaryPrompt"
+            @update:model-value="updatePrompt('summaryPrompt', $event)"
+          />
+        </Setting>
+
         <Setting name="Title System Prompt" desc="System prompt for the title generation model.">
           <Input
             :model-value="prompts.titleSystem || ''"

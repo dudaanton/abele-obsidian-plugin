@@ -4,6 +4,8 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { OpenAIClient } from './client/OpenAIClient'
 import type { Message, ModelConfig, TextContent, ToolCallContent, ToolDefinition } from './client'
 import { ChatStorage } from './ChatStorage'
+import { requestSummary } from './ChatDigest'
+import { conversationLines } from './chatText'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from './types'
 
 /**
@@ -24,6 +26,8 @@ export interface SummarizerHost {
   pendingToolCalls: Ref<ToolCallContent[]>
   /** One sentence on what the chat did, shown on the card under a note it changed. */
   recap: Ref<string>
+  /** A sentence or two on what the chat is about, shown under its title in the history. */
+  summary: Ref<string>
   /** The notes the chat has written to, so the recap can name them. */
   touchedNotes(): string[]
   /** Messages as the model sees them on the active branch. */
@@ -36,6 +40,8 @@ export interface SummarizerHost {
   applyCompactSummary(summary: string): void
   backgroundSignal(): AbortSignal
   save(): Promise<void>
+  /** Asks for a write soon, riding along with whatever the chat writes next. */
+  markDirty(): void
   /** The model used for background work — cheap, no tools of its own. */
   auxiliaryModel(): ModelConfig
   /** The chat's own model, consulted only for its context window. */
@@ -209,6 +215,32 @@ export class ChatSummarizer {
       await this.host.save()
     } catch {
       // Silently fail — a recap is best-effort, and never the chat's problem to report.
+    }
+  }
+
+  /**
+   * Says what the chat is about, for its card in the history.
+   *
+   * Read from the visible conversation's text alone — what the person and the agent said — so
+   * nothing a tool returned reaches a list anybody can scroll. Best-effort like the title: a
+   * failed request leaves whatever summary was there.
+   */
+  async generateSummary(): Promise<void> {
+    try {
+      const summary = await requestSummary(
+        conversationLines(this.host.messages.value),
+        this.host.auxiliaryModel(),
+        this.host.backgroundSignal(),
+        this.host.toolDefs()
+      )
+      if (!summary || summary === this.host.summary.value) return
+      this.host.summary.value = summary
+      // Not a write of its own: a summary is a line in the metadata record, and the chat is
+      // about to write one anyway — the next turn, or the timer that batches a quiet chat's
+      // changes. A write now would be an extra record per summary for nothing.
+      this.host.markDirty()
+    } catch {
+      // Silently fail — a summary is best-effort, like a title.
     }
   }
 

@@ -58,7 +58,11 @@ export class ChatStorage {
     if (existingFile) {
       if (plan.kind === 'append') await app.vault.append(existingFile, plan.data)
       else await app.vault.modify(existingFile, plan.content)
-      this.updateHistoryEntry(existingFile.path, metadata.title || existingFile.basename)
+      this.updateHistoryEntry(
+        existingFile.path,
+        metadata.title || existingFile.basename,
+        metadata.summary
+      )
       return existingFile
     }
 
@@ -77,6 +81,7 @@ export class ChatStorage {
       path: file.path,
       title: metadata.title || title,
       created: metadata.created || dayjs().format('YYYY-MM-DD'),
+      summary: metadata.summary || undefined,
     })
 
     return file
@@ -157,6 +162,7 @@ export class ChatStorage {
           // rebuilt out of it, for a chat that arrived by sync or a restore.
           notes: metadata.touched?.length ? metadata.touched : undefined,
           recap: metadata.recap || undefined,
+          summary: metadata.summary || undefined,
           agentId: metadata.agentId || undefined,
           mtime: file.stat.mtime,
         })
@@ -224,14 +230,19 @@ export class ChatStorage {
     const notes = metadata.touched?.length ? metadata.touched : undefined
     const recap = metadata.recap || undefined
     const agentId = metadata.agentId || undefined
+    // A summary is only ever added, never taken away: an entry that has one keeps it against a
+    // file written by an older build that did not know the field.
+    const summary = metadata.summary || entry.summary
 
     const same =
       JSON.stringify(entry.notes) === JSON.stringify(notes) &&
       entry.recap === recap &&
+      entry.summary === summary &&
       entry.agentId === agentId
 
     entry.notes = notes
     entry.recap = recap
+    entry.summary = summary
     entry.agentId = agentId
 
     return !same || seen === undefined
@@ -436,13 +447,24 @@ export class ChatStorage {
    * Settings are a single JSON file holding every setting and every chat's history entry, so
    * writing them on a save that changed no title would cost more than the chat write itself.
    */
-  private updateHistoryEntry(path: string, title: string): void {
+  private updateHistoryEntry(path: string, title: string, summary?: string): void {
     const config = AbeleConfig.getInstance()
     const entry = config.ai.chatHistory?.find((e) => e.path === path)
-    if (entry && entry.title !== title) {
-      entry.title = title
-      config.saveSettings()
-    }
+    if (!entry) return
+    const nextSummary = summary || entry.summary
+    if (entry.title === title && entry.summary === nextSummary) return
+    entry.title = title
+    entry.summary = nextSummary
+    config.saveSettings()
+  }
+
+  /** Records a summary written for a chat that is not open, into its index entry. */
+  setSummary(path: string, summary: string): void {
+    const config = AbeleConfig.getInstance()
+    const entry = config.ai.chatHistory?.find((e) => e.path === path)
+    if (!entry || entry.summary === summary) return
+    entry.summary = summary
+    config.saveSettings()
   }
 
   /**

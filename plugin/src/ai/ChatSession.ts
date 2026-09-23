@@ -123,6 +123,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   private static readonly TITLE_GENERATION_TRIGGERS = [1]
+  /**
+   * The turns after which the history summary is written again.
+   *
+   * Early, so a new chat's card says something at once; then twice more as the conversation
+   * becomes what it is about. Never per turn: each one is a background request, and a chat
+   * that is still going on is the one somebody needs a summary of least.
+   */
+  private static readonly SUMMARY_TRIGGERS = [1, 4, 12]
   private static readonly FALLBACK_TITLE_LENGTH = 50
 
   /**
@@ -358,6 +366,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   /** One sentence on what this chat did, for the card under a note it changed. */
   public readonly recap = ref('')
+
+  /** What the chat is about, for its card in the history. */
+  public readonly summary = ref('')
 
   /** Set by `noteTouched`, read at the end of a turn to decide whether to recap. */
   private wroteThisTurn = false
@@ -1447,6 +1458,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       }
     }
 
+    if (this.kind === 'chat' && ChatSession.SUMMARY_TRIGGERS.includes(this.userMessageCount)) {
+      if (sequential) await this.summarizer.generateSummary()
+      else {
+        this.summarizer.generateSummary().catch(() => {
+          return
+        })
+      }
+    }
+
     // A recap describes what the chat did to a note, so unlike a title it is regenerated on
     // every turn that wrote, not once. The mirror follows it, since the sentence is part of
     // what the card under the note shows.
@@ -1719,6 +1739,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.anchor.value = null
     this.touched.value = []
     this.recap.value = ''
+    this.summary.value = ''
     this.wroteThisTurn = false
     // The summarizer outlives the conversation — one per tab, not one per chat.
     this.summarizer.forgetRecap()
@@ -1855,6 +1876,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       // Absent rather than empty: a chat that changed nothing says nothing about notes.
       touched: this.touched.value.length ? [...this.touched.value] : undefined,
       recap: this.recap.value || undefined,
+      summary: this.summary.value || undefined,
       // Only what this chat actually changed. Writing the resolved values instead would freeze
       // the chat against today's agent and defeat the whole point of resolving on read.
       overrides: Object.keys(overrides).length ? { ...overrides } : undefined,
@@ -1929,6 +1951,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     return this.kind === 'chat' && this.wroteThisTurn
   }
 
+  /** Writes the history summary now — for a chat listed without one. */
+  generateSummary(): Promise<void> {
+    return this.summarizer.generateSummary()
+  }
+
   /**
    * Writes the one recap a chat expanded from a comment never had.
    *
@@ -1978,6 +2005,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.anchor.value = result.metadata?.anchor ?? null
     this.touched.value = result.metadata?.touched ?? []
     this.recap.value = result.metadata?.recap ?? ''
+    this.summary.value = result.metadata?.summary ?? ''
 
     // Migrate old flat format → tree format once
     const needsMigration =
@@ -2223,6 +2251,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         await this.summarizer.generateTitle()
       } else {
         this.summarizer.generateTitle().catch(() => {
+          return
+        })
+      }
+    }
+
+    if (this.kind === 'chat' && ChatSession.SUMMARY_TRIGGERS.includes(this.userMessageCount)) {
+      if (sequential) await this.summarizer.generateSummary()
+      else {
+        this.summarizer.generateSummary().catch(() => {
           return
         })
       }

@@ -111,7 +111,11 @@ wrote to — created, edited, replaced, moved or copied into place, never merely
 the time it was last written, and `recap` is a one-sentence summary of the work, written by the
 background model after a turn that wrote something. Both are copied into the chat index in the
 plugin's settings, which is what draws the **Chats** list under a note: one card per chat that
-changed it, with its title, its recap and the date it was changed. A comment chat carries the
+changed it, with its title, its recap and the date it was changed. `summary` is a sentence or two on
+what the chat is about, shown under its title in the chat history; the background model writes
+it from the text the person and the agent exchanged — never from what a tool returned — after
+the first turn and again as the chat grows, and for an older chat when its card first comes on
+screen in the history. It is copied into the index the same way. A comment chat carries the
 same fields but is not in the index, so it appears in no footer until it is opened as a full chat.
 Renaming a note rewrites the path in both places. Do not edit these fields by hand.
 

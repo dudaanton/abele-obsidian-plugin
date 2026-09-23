@@ -42,8 +42,8 @@ made from. `defaultCurrency` and `pinnedCurrencies` are what the finance sidebar
 
 Everything under `ai.`. `ai.enabled` is the whole feature. `ai.providers` are the model
 providers with their models; `ai.activeProviderId` and `ai.activeModelId` are the ones a new
-chat starts on, and `ai.auxiliaryModelId` is the background model that writes titles, recaps
-and compactions. `ai.agents` are the agents themselves — each with its own prompt, scope, tools
+chat starts on, and `ai.auxiliaryModelId` is the background model that writes titles, recaps,
+summaries and compactions. `ai.agents` are the agents themselves — each with its own prompt, scope, tools
 and model — and `ai.defaultAgentId` is the one a new chat opens with. `ai.commentAgentId` is
 the agent a comment starts on, and `ai.commentFolder` and `ai.chatFolder` are where comments
 and chats are written.
@@ -55,7 +55,7 @@ any of these changes what an agent — including the one being asked — is allo
 the last thing to change quietly.
 
 `ai.prompts` holds the built-in prompts: `system`, `titleGeneration`, `recapPrompt`,
-`compactPrompt` and `toolDescriptions`, the last of which overrides what a tool tells the model
+`summaryPrompt`, `compactPrompt` and `toolDescriptions`, the last of which overrides what a tool tells the model
 about itself. `ai.scriptsEnabled` and `ai.scriptsFolder` are the script feature; `ai.voice` is
 dictation — which model transcribes and where its key lives.
 

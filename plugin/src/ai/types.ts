@@ -43,6 +43,8 @@ export interface AiPrompts {
   titleSystem: string
   /** Asks the auxiliary model for the sentence shown on the card under a note this chat changed. */
   recapPrompt: string
+  /** Asks the auxiliary model for the short summary shown under a chat's title in the history. */
+  summaryPrompt: string
   compactPrompt: string
   toolDescriptions: Record<string, string>
 }
@@ -74,6 +76,8 @@ export interface AiChatHistoryEntry {
   notes?: TouchedNote[]
   /** Mirrored from the chat file's `recap`. */
   recap?: string
+  /** Mirrored from the chat file's `summary`, for the card in the history. */
+  summary?: string
   /** Mirrored from the chat file's `agentId`, for the badge on the card. */
   agentId?: string
   /**
@@ -307,6 +311,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
     titleSystem: 'You generate concise chat titles. Reply with ONLY the title, nothing else.',
     recapPrompt:
       'In one sentence (max 20 words, no quotes), say what was done in this conversation and to which notes:\n\n{{messages}}',
+    summaryPrompt:
+      'In one or two sentences (max 35 words, no quotes), say what this conversation is about and what came out of it. Write in the language of the conversation:\n\n{{messages}}',
     compactPrompt:
       'Summarize the conversation below into a concise context summary. Preserve key decisions, file paths, code changes, and any pending tasks. The summary will replace the conversation history, so include everything needed to continue the work.\n\n{{messages}}',
     toolDescriptions: {
@@ -473,6 +479,11 @@ export interface ChatMetadata {
   touched?: TouchedNote[]
   /** One sentence on what this chat did, by the auxiliary model. Regenerated after a write. */
   recap?: string
+  /**
+   * A sentence or two on what the chat is about, by the auxiliary model, for the history list.
+   * Written from the conversation's text alone — never from what its tools returned.
+   */
+  summary?: string
   /** Only what this chat changed relative to its agent. */
   overrides?: SessionOverrides
   providerId: string
