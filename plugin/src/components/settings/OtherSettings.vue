@@ -10,8 +10,14 @@
         @update:model-value="updateSnippetsFolder"
       />
     </Setting>
-    <Setting name="Full-width sidebars" desc="Make sidebars take the full screen width on mobile.">
+    <Setting name="Full-width sidebars" desc="Make sidebars take the full screen width on a phone.">
       <Checkbox :is-enabled="fullWidthSidebars" @toggle="toggleFullWidthSidebars" />
+    </Setting>
+    <Setting
+      name="Half-width sidebars on tablet"
+      desc="Make sidebars take half the screen width on a tablet."
+    >
+      <Checkbox :is-enabled="halfWidthSidebars" @toggle="toggleHalfWidthSidebars" />
     </Setting>
     <Setting
       name="Coordinates property"
@@ -48,6 +54,7 @@ import { SnippetService } from '@/services/SnippetService'
 const config = AbeleConfig.getInstance()
 const snippetsFolder = ref(config.snippetsFolder)
 const fullWidthSidebars = ref(config.fullWidthSidebars)
+const halfWidthSidebars = ref(config.halfWidthSidebarsOnTablet)
 const mapCoordinatesProperty = ref(config.mapCoordinatesProperty)
 const mapStyleUrl = ref(config.mapStyleUrl)
 
@@ -55,8 +62,13 @@ const applyClass = (enabled: boolean) => {
   document.body.classList.toggle('abele-full-width-sidebars', enabled)
 }
 
+const applyHalfClass = (enabled: boolean) => {
+  document.body.classList.toggle('abele-half-width-sidebars', enabled)
+}
+
 // Apply on mount
 applyClass(fullWidthSidebars.value)
+applyHalfClass(halfWidthSidebars.value)
 
 const saveSnippetsFolder = debounce(async (value: string) => {
   config.snippetsFolder = value
@@ -93,6 +105,13 @@ const toggleFullWidthSidebars = async () => {
   fullWidthSidebars.value = !fullWidthSidebars.value
   config.fullWidthSidebars = fullWidthSidebars.value
   applyClass(fullWidthSidebars.value)
+  await config.saveSettings()
+}
+
+const toggleHalfWidthSidebars = async () => {
+  halfWidthSidebars.value = !halfWidthSidebars.value
+  config.halfWidthSidebarsOnTablet = halfWidthSidebars.value
+  applyHalfClass(halfWidthSidebars.value)
   await config.saveSettings()
 }
 </script>

@@ -229,6 +229,7 @@ export const SECTIONS: Section[] = [
     'excludedPathsForDefaultTemplate',
     'snippetsFolder',
     'fullWidthSidebars',
+    'halfWidthSidebarsOnTablet',
   ]),
 ]
 

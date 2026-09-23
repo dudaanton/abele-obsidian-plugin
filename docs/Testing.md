@@ -149,6 +149,13 @@ Three files, three concerns:
   them. Writes a PNG of every screen to `/tmp/abele-phone/` — **look at them before a release**;
   the 1.18.0 dialog passed every measurement anyone had thought to make and was still wrong to
   the eye. Restores desktop mode and the window size after itself.
+- `tabletLayout.e2e.test.ts` — **the settings and the sidebars, on a tablet**. A tablet is
+  mobile but not a phone: under `emulateMobile` Obsidian decides which by a 600×600 media query,
+  so a 1180×820 window gets its tablet layout for real. Checks that the plugin's settings keep
+  their tab strip beside the page there (a phone's list of pages has no way back on a tablet),
+  that the half-width sidebar setting opens the drawer across half the screen, and that a
+  phone-sized window still gets the list. Pictures go to `/tmp/abele-tablet/`. A window behind
+  others keeps its old viewport until it is reloaded, so every resize here is followed by one.
 
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
 "mega group", where a single resolution currently takes about two minutes.

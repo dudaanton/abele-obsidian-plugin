@@ -1,5 +1,16 @@
-body.abele-full-width-sidebars {
+/*
+ * Sidebar widths, one setting per kind of device. Obsidian caps a drawer at
+ * `--mobile-sidebar-max-width` (450px), which a phone never reaches but half a tablet does, so
+ * the tablet rule lifts the cap. A pinned drawer is part of the layout rather than a panel over
+ * it and keeps its own width.
+ */
+body.is-phone.abele-full-width-sidebars {
   --mobile-sidebar-width: 100vw;
+}
+
+body.is-tablet.abele-half-width-sidebars {
+  --mobile-sidebar-width: 50vw;
+  --mobile-sidebar-max-width: 50vw;
 }
 
 /* Colored highlight variables */

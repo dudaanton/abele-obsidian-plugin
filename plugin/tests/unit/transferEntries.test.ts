@@ -102,6 +102,17 @@ describe('settings that arrived later than the transfer did', () => {
     })
   })
 
+  it('carries the sidebar width of a tablet beside the one of a phone', () => {
+    const entries = collectEntries(
+      settings({ fullWidthSidebars: true, halfWidthSidebarsOnTablet: true })
+    )
+
+    expect(find(entries, 'other', 'other')?.data).toMatchObject({
+      fullWidthSidebars: true,
+      halfWidthSidebarsOnTablet: true,
+    })
+  })
+
   /**
    * The section lists the keys it carries by name, so anything added to the settings after it
    * was written is silently left behind. Voice input was exactly that.

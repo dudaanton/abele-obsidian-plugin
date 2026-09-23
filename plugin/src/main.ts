@@ -141,6 +141,9 @@ export default class AbelePlugin extends Plugin {
     if (AbeleConfig.getInstance().fullWidthSidebars) {
       document.body.classList.add('abele-full-width-sidebars')
     }
+    if (AbeleConfig.getInstance().halfWidthSidebarsOnTablet) {
+      document.body.classList.add('abele-half-width-sidebars')
+    }
 
     dayjs.updateLocale('en', {
       weekStart: AbeleConfig.getInstance().weekStartsOnMonday ? 1 : 0,
@@ -1110,7 +1113,7 @@ export default class AbelePlugin extends Plugin {
   }
 
   onunload() {
-    document.body.classList.remove('abele-full-width-sidebars')
+    document.body.classList.remove('abele-full-width-sidebars', 'abele-half-width-sidebars')
     // Unmount Vue BEFORE store cleanup so Teleport components unmount cleanly
     if (this.vueApp) {
       this.vueApp.unmount()

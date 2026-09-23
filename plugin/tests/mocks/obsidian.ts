@@ -166,6 +166,8 @@ export function parseYaml(raw: string): unknown {
 export const Platform = {
   isMobile: false,
   isDesktop: true,
+  isPhone: false,
+  isTablet: false,
 }
 
 /**

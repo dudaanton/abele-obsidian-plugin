@@ -48,6 +48,8 @@ export interface AbeleSettings {
   // Other
   snippetsFolder?: string
   fullWidthSidebars?: boolean
+  /** On a tablet, sidebars take half the screen. The phone has its own, `fullWidthSidebars`. */
+  halfWidthSidebarsOnTablet?: boolean
 }
 
 export interface LinkDefinition {
@@ -116,6 +118,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   mapStyleUrl: '',
   snippetsFolder: '',
   fullWidthSidebars: false,
+  halfWidthSidebarsOnTablet: false,
 }
 
 export class AbeleConfig {
@@ -151,6 +154,7 @@ export class AbeleConfig {
   public mapStyleUrl: string
   public snippetsFolder: string
   public fullWidthSidebars: boolean
+  public halfWidthSidebarsOnTablet: boolean
 
   /**
    * Moves on every save and every reload from disk. The fields above are plain, so anything
@@ -421,6 +425,8 @@ export class AbeleConfig {
     this.mapStyleUrl = settings?.mapStyleUrl ?? DEFAULT_SETTINGS.mapStyleUrl
     this.snippetsFolder = settings?.snippetsFolder ?? DEFAULT_SETTINGS.snippetsFolder
     this.fullWidthSidebars = settings?.fullWidthSidebars ?? DEFAULT_SETTINGS.fullWidthSidebars
+    this.halfWidthSidebarsOnTablet =
+      settings?.halfWidthSidebarsOnTablet ?? DEFAULT_SETTINGS.halfWidthSidebarsOnTablet
 
     return migrated
   }
@@ -455,6 +461,7 @@ export class AbeleConfig {
       mapStyleUrl: this.mapStyleUrl,
       snippetsFolder: this.snippetsFolder,
       fullWidthSidebars: this.fullWidthSidebars,
+      halfWidthSidebarsOnTablet: this.halfWidthSidebarsOnTablet,
     }
   }
 }

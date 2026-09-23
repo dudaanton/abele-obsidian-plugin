@@ -1,22 +1,22 @@
 <template>
   <div class="abele-settings">
-    <!-- Desktop: Title -->
-    <div v-if="!isMobile" class="abele-settings__title">
+    <!-- Desktop and tablet: Title -->
+    <div v-if="!isPhone" class="abele-settings__title">
       <h1>Abele</h1>
     </div>
 
     <!-- Tab navigation -->
     <nav
-      v-if="!isMobile || isMenuOpen"
+      v-if="!isPhone || isMenuOpen"
       class="abele-settings__nav"
-      :class="{ 'abele-settings__nav_mobile': isMobile }"
+      :class="{ 'abele-settings__nav_phone': isPhone }"
     >
-      <Tabs v-model="activeTab" :tabs="tabs" :vertical="isMobile" @update:model-value="onSelect" />
+      <Tabs v-model="activeTab" :tabs="tabs" :vertical="isPhone" @update:model-value="onSelect" />
     </nav>
 
     <!-- Tab content -->
-    <div class="abele-settings__content" :class="{ 'abele-settings__content_mobile': isMobile }">
-      <template v-if="!isMobile || !isMenuOpen">
+    <div class="abele-settings__content" :class="{ 'abele-settings__content_phone': isPhone }">
+      <template v-if="!isPhone || !isMenuOpen">
         <component :is="activeComponent" />
       </template>
     </div>
@@ -60,7 +60,13 @@ const tabs: SettingsTab[] = [
 
 const activeTab = ref(tabs[0].id)
 const isMenuOpen = ref(true)
-const isMobile = ref(Platform.isMobile)
+/**
+ * A phone, not merely a mobile device. Obsidian lays its settings out like the desktop on a
+ * tablet — the list of pages beside the page, no back button — so a tablet gets the desktop
+ * strip here too. Keyed on `isMobile`, a tablet was shown the phone's list of pages, and once
+ * one was picked there was no back button to bring the list back.
+ */
+const isPhone = ref(Platform.isPhone)
 
 const { app, settingsContainer } = GlobalStore.getInstance()
 
@@ -74,14 +80,14 @@ const activeComponent = computed(
 const activeLabel = computed(() => (tabs.find((t) => t.id === activeTab.value) ?? tabs[0]).label)
 
 const onSelect = () => {
-  if (isMobile.value) {
+  if (isPhone.value) {
     isMenuOpen.value = false
   }
 }
 
-// Mobile back button handling
+// Phone back button handling
 onMounted(() => {
-  if (Platform.isMobile) {
+  if (Platform.isPhone) {
     const backBtn = settingsDoc().querySelector('.modal-setting-back-button') as HTMLElement
     if (backBtn) {
       const newBackBtn = backBtn.cloneNode(true) as HTMLElement
@@ -91,11 +97,11 @@ onMounted(() => {
   }
 })
 
-// Update mobile back button behavior
+// Update phone back button behavior
 watch(
   [isMenuOpen, activeTab],
   () => {
-    if (!Platform.isMobile) return
+    if (!Platform.isPhone) return
 
     const backBtn = settingsDoc().querySelector('.modal-setting-back-button') as HTMLElement
     if (!backBtn) return
@@ -140,7 +146,7 @@ watch(
   padding: var(--size-4-2) var(--size-4-4);
   border-bottom: 1px solid var(--background-modifier-border);
 
-  &_mobile {
+  &_phone {
     border-bottom: none;
     padding: 0;
   }
@@ -151,7 +157,7 @@ watch(
   overflow-y: auto;
   padding: var(--size-4-4);
 
-  &_mobile {
+  &_phone {
     padding: var(--size-4-2);
   }
 }
