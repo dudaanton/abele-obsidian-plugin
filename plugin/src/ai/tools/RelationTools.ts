@@ -5,6 +5,13 @@ import { DATE_FORMAT } from '@/constants/dates'
 import { parseDateOrNull } from '@/helpers/datesHelper'
 import { normalizePath, TFile } from 'obsidian'
 import dayjs from 'dayjs'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import {
+  DEFAULT_LABEL_PROPERTY,
+  parseLabels,
+  parsePriority,
+  PRIORITY_PROPERTY,
+} from '@/helpers/taskMeta'
 
 // ── Helpers ──
 
@@ -282,7 +289,11 @@ export function createReadTasksTool(): AgentTool {
         due: string
         completed: string
         recurrence: string
+        priority: string
+        labels: string[]
       }
+
+      const labelProperty = AbeleConfig.getInstance().taskLabelProperty || DEFAULT_LABEL_PROPERTY
 
       let rows: TaskRow[]
 
@@ -298,6 +309,8 @@ export function createReadTasksTool(): AgentTool {
             due: formatDate(t.due),
             completed: formatDate(t.completedAt),
             recurrence: t.recurrence || '',
+            priority: t.priority || '',
+            labels: t.labels,
           }))
         )
       } else {
@@ -312,6 +325,8 @@ export function createReadTasksTool(): AgentTool {
             due: fm.due || '',
             completed: fm.completed || '',
             recurrence: fm.recurrence || '',
+            priority: parsePriority(fm[PRIORITY_PROPERTY]) || '',
+            labels: parseLabels(fm[labelProperty]),
           })
         }
       }
@@ -340,6 +355,8 @@ export function createReadTasksTool(): AgentTool {
         if (r.due) parts.push(`due:${r.due}`)
         if (r.date) parts.push(`date:${r.date}`)
         if (r.recurrence) parts.push(`recur:${r.recurrence}`)
+        if (r.priority) parts.push(`priority:${r.priority}`)
+        if (r.labels.length) parts.push(`labels:${r.labels.join(', ')}`)
         parts.push(r.path)
         return parts.join(' | ')
       })

@@ -42,7 +42,7 @@ Logs cross-link through `groups` too. `[[Interstellar]]` has a `groups` link to 
 
 ### Tasks
 
-In Ābele, tasks are notes. Deadlines, completion status, creation date — all of it lives in their properties. Tasks appear in the general timeline, in related notes, in daily notes, and as a general list. I deliberately left out priorities, nesting and tags, since I find them distracting. I have over 1000 tasks in Obsidian now, open and closed, and I no longer keep a personal task list anywhere else.
+In Ābele, tasks are notes. Deadlines, completion status, creation date — all of it lives in their properties. Tasks appear in the general timeline, in related notes, in daily notes, and as a general list. A task can carry a priority, which puts it higher in the list of undated tasks, and labels of any kind, each with a colour of its own, to filter any task list by. I deliberately left out nesting, since I find it distracting. I have over 1000 tasks in Obsidian now, open and closed, and I no longer keep a personal task list anywhere else.
 
 Tasks being notes means a task can carry a long description and everything attached to it. Automatic title setting lets titles hold links to other notes, so a task appears in every relevant context.
 

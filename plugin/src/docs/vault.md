@@ -33,9 +33,12 @@ Apostrophes, commas, ampersands and percent signs are all fine and are left alon
 | `completed` | Date it was finished. Its presence is what "done" means |
 | `recurrence` | Repeat rule, when it repeats |
 | `groups` | What the task belongs to — the project, the person, the note it came out of |
+| `priority` | `low`, `medium` or `high`. Anything else, or nothing, is no priority |
+| `labels` | Labels, one value or a list — `labels: [work, errands]`. The property's name is a setting (`taskLabelProperty`); read it before writing labels, it may not be `labels` |
 
-A task has no priority, no tags and no nesting: that is a deliberate omission, not a gap to
-fill with new properties. The task's own body is its description.
+Priority orders the task list of tasks without a date, highest first; dated tasks stay in date
+order. Labels are free text: write them plainly, without a `#`. Colours for labels live in the
+settings, never on the task. There is no nesting: the task's own body is its description.
 
 Completion is `completed` being set. Do not add a `done` or `status` property.
 
