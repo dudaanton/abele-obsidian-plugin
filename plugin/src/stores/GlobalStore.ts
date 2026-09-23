@@ -11,16 +11,12 @@ import { AccountsList } from '@/entities/AccountsList'
 import { BalanceIndex } from '@/entities/BalanceIndex'
 import { extractAliasOrNameFromWikilink } from '@/helpers/pathsHelpers'
 import { parseNoteContent, renderTemplate } from '@/helpers/notesUtils'
-import {
-  getFolderFromPath,
-  normalizePath,
-  resolvePath,
-  wikilinkToPath,
-} from '@/helpers/pathsHelpers'
+import { normalizePath, wikilinkToPath } from '@/helpers/pathsHelpers'
 import { DATE_FORMAT } from '@/constants/dates'
 import dayjs from 'dayjs'
 import { cleanTaskName } from '@/helpers/tasksUtils'
 import { getAvailablePath, readFileContent } from '@/helpers/vaultUtils'
+import { syncTaskFileName } from '@/helpers/taskFileName'
 import { VaultWatcher } from '@/helpers/VaultWatcher'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import type { FormField } from '@/scripting/types'
@@ -145,23 +141,7 @@ export class GlobalStore {
         const taskDate = fm?.due ?? fm?.date
 
         if (isTask) {
-          const fileContent = await readFileContent(event.file)
-          const parsedContent = await parseNoteContent(event.file, fileContent)
-          const lines = parsedContent.content
-            .split('\n')
-            .filter((line: string) => line.trim() !== '')
-          const rawTitle = isRecurringTask && taskDate ? `${lines[0]} ${taskDate}` : lines[0]
-          const newTaskTitle = lines.length > 0 ? cleanTaskName(rawTitle) || 'New Task' : 'New Task'
-
-          const taskFolder = getFolderFromPath(event.file.path)
-          const newPath = await getAvailablePath(
-            resolvePath(taskFolder, newTaskTitle),
-            event.file.path
-          )
-
-          if (newPath !== event.file.path) {
-            await this.app.fileManager.renameFile(event.file, newPath)
-          }
+          await syncTaskFileName(this.app, event.file, isRecurringTask ? taskDate : null)
         }
 
         const isTransaction = fm?.type === 'transaction'
