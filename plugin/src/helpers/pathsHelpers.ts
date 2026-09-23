@@ -187,17 +187,28 @@ export function describeRename(from: string, to: string): string | null {
 }
 
 /**
- * Strips wikilinks (replacing with alias or name) and cleans invalid filename chars.
- * Generic version of cleanTaskName — works for any note type.
+ * Replaces every link in a line of text with the words it shows.
+ *
+ * `[text](address)` and `![text](address)` become `text`; `[[target|alias]]` becomes `alias`,
+ * and `[[folder/Note#Heading]]` the note's own name. What is left is what a reader sees of the
+ * line in reading view, which is what a name made from it should say.
+ */
+export function linksToText(text: string): string {
+  return text
+    .replace(/!?\[\[([^\]]+)\]\]/g, (_, content: string) => {
+      const [target, alias] = content.split('|')
+      if (alias?.trim()) return alias.trim()
+      return (target.split('#')[0].split('/').pop() ?? '').trim()
+    })
+    .replace(/!?\[([^\]]*)\]\((?:[^()]|\([^()]*\))*\)/g, (_, label: string) => label.trim())
+}
+
+/**
+ * Strips links (keeping the words they show) and cleans invalid filename chars. Used for any
+ * note named after its first line — tasks, transactions.
  */
 export function cleanNoteName(fileName: string): string {
-  const wikilinkRegex = /\[\[([^\]]+)\]\]/g
-  fileName = fileName.replace(wikilinkRegex, (_, linkContent) => {
-    const parts = linkContent.split('|')
-    return parts.length > 1 ? parts[1].trim() : parts[0].trim()
-  })
-
-  return cleanFileName(fileName)
+  return cleanFileName(linksToText(fileName))
 }
 
 export function resolvePath(folder: string, name: string): string {

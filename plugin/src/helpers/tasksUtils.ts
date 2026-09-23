@@ -1,6 +1,11 @@
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { cleanFileName, escapeRegExp, pathToWikilink, resolvePath } from './pathsHelpers'
+import {
+  cleanNoteName,
+  escapeRegExp,
+  pathToWikilink,
+  resolvePath,
+} from './pathsHelpers'
 import { DATE_FORMAT } from '@/constants/dates'
 
 export const taskLineRegex = /^-\s\[\s\]\s(\[\[.*?\]\])$/
@@ -38,7 +43,7 @@ export function taskLinkFromName(name: string): string {
 }
 
 export function getNewTaskPathFromString(str: string): string {
-  const cleaned = cleanFileName(str)
+  const cleaned = cleanNoteName(str)
 
   return resolvePath(AbeleConfig.getInstance().tasksFolder, `${cleaned}.md`)
 }
@@ -54,15 +59,7 @@ export function createTaskLinkRegex(...filePaths: string[]): RegExp {
 }
 
 export function cleanTaskName(fileName: string): string {
-  // replace wikilinks with their alias or name
-  const wikilinkRegex = /\[\[([^\]]+)\]\]/g
-  fileName = fileName.replace(wikilinkRegex, (_, linkContent) => {
-    const parts = linkContent.split('|')
-    return parts.length > 1 ? parts[1].trim() : parts[0].trim()
-  })
-
-  // Remove invalid characters for file names
-  return cleanFileName(fileName)
+  return cleanNoteName(fileName)
 }
 
 export function getRecurrentTaskTitle(content: string, date?: dayjs.Dayjs) {

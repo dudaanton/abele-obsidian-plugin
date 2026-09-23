@@ -1,5 +1,5 @@
 import { Task, TaskCreateDTO } from '@/entities/Task'
-import { cleanFileName, pathToWikilink } from '@/helpers/pathsHelpers'
+import { cleanNoteName, pathToWikilink } from '@/helpers/pathsHelpers'
 import dayjs from 'dayjs'
 import { createTaskEmbedded, getNewTaskPathFromString } from '@/helpers/tasksUtils'
 import { getAvailablePath } from '@/helpers/vaultUtils'
@@ -46,7 +46,7 @@ export const createTaskAndInsert = async (editor: Editor) => {
   const selection = editor.getSelection()
 
   const availablePath = await getAvailablePath(
-    getNewTaskPathFromString(cleanFileName(selection) || DEFAULT_TASK_NAME)
+    getNewTaskPathFromString(cleanNoteName(selection) || DEFAULT_TASK_NAME)
   )
   if (!availablePath) {
     new Notice('Failed to determine available path for the new task.', 3000)

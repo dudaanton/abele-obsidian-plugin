@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { cleanTaskName, getNewTaskPathFromString } from '@/helpers/tasksUtils'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   normalizePath,
   getFileNameFromPath,
@@ -190,6 +192,49 @@ describe('cleanNoteName', () => {
 
   it('replaces an alias-free wikilink with its target text', () => {
     expect(cleanNoteName('Meeting with [[Ann]]')).toBe('Meeting with Ann')
+  })
+
+  // A title is often pasted with a link in it. Only the words shown for the link belong in a
+  // name: the address used to be squashed into it, `Read docs(httpsexample.comguide)`.
+  it('keeps only the text of a markdown link', () => {
+    expect(cleanNoteName('Read [the guide](https://example.com/guide) today')).toBe(
+      'Read the guide today'
+    )
+  })
+
+  it('keeps only the text of a markdown link to a note', () => {
+    expect(cleanNoteName('See [notes](Projects/Plan%20B.md)')).toBe('See notes')
+  })
+
+  it('drops an embedded image to its description', () => {
+    expect(cleanNoteName('Fix ![logo](assets/logo.png) colours')).toBe('Fix logo colours')
+  })
+
+  it('names an alias-free wikilink by the note, not its folder or heading', () => {
+    expect(cleanNoteName('Call [[People/Ann#Phone]]')).toBe('Call Ann')
+  })
+
+  it('handles several links in one title', () => {
+    expect(cleanNoteName('[a](http://x.io) and [[B|bee]] and [c](y)')).toBe('a and bee and c')
+  })
+})
+
+describe('getNewTaskPathFromString', () => {
+  it('names a new task file by the words of a link, not its address', () => {
+    AbeleConfig.getInstance().tasksFolder = 'Tasks'
+    expect(getNewTaskPathFromString('Read [the guide](https://example.com/guide)')).toBe(
+      'Tasks/Read the guide.md'
+    )
+  })
+})
+
+describe('cleanTaskName', () => {
+  it('keeps only the text of a markdown link in a task title', () => {
+    expect(cleanTaskName('Buy [milk](https://shop.example/milk?id=1)')).toBe('Buy milk')
+  })
+
+  it('keeps the alias of a wikilink in a task title', () => {
+    expect(cleanTaskName('Call [[People/Ann|Ann]]')).toBe('Call Ann')
   })
 })
 
