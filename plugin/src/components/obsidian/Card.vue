@@ -17,6 +17,7 @@
     </div>
     <div class="abele-card__head">
       <div class="abele-card__title">
+        <Icon v-if="icon" :icon="icon" no-hover class="abele-card__icon" />
         <span class="abele-card__name">{{ title }}</span>
         <slot name="badges" />
       </div>
@@ -50,11 +51,14 @@
  * unpressed button to anyone using a screen reader.
  */
 import Image from './Image.vue'
+import Icon from './Icon.vue'
 import { fromControl } from '@/helpers/interactive'
 
 const props = withDefaults(
   defineProps<{
     title: string
+    /** A lucide icon before the title — what the item is, at a glance. Decoration, not a control. */
+    icon?: string
     /** A picture across the top, edge to edge: a note's cover, a poster, a photo in a feed. Vault path, link name or URL. */
     cover?: string
     /** For a card that is the thing itself rather than one of a grid — a post in a feed. The title is a heading. */
@@ -71,6 +75,7 @@ const props = withDefaults(
     selected?: boolean
   }>(),
   {
+    icon: undefined,
     cover: undefined,
     subtitle: undefined,
     description: undefined,
@@ -147,7 +152,13 @@ const open = (event: Event) => {
   border-radius: 0;
 }
 
-.abele-card_large .abele-card__name {
+.abele-card_large /** Muted, so the name stays what the eye lands on; the glyph only says what kind of thing it is. */
+.abele-card__icon {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.abele-card__name {
   font-size: var(--font-ui-large);
   line-height: var(--line-height-tight);
 }

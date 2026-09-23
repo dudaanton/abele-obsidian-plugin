@@ -115,6 +115,13 @@ describe('Card', () => {
     expect(view.find('.abele-card__meta').text()).toContain('1 prompt')
   })
 
+  it('puts an icon before its title when given one, and none otherwise', () => {
+    const withIcon = mount(Card, { props: { ...props, icon: 'bot' } })
+    expect(withIcon.find('.abele-card__title .abele-card__icon').exists()).toBe(true)
+
+    expect(mount(Card, { props }).find('.abele-card__icon').exists()).toBe(false)
+  })
+
   it('leaves out what it was not given', () => {
     const view = mount(Card, { props: { title: 'Bare' } })
 
