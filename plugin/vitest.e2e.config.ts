@@ -19,6 +19,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/e2e/**/*.test.ts'],
+    setupFiles: ['tests/e2e/helpers/liveWindow.ts'],
+    globalSetup: ['tests/e2e/helpers/globalSetup.ts'],
     testTimeout: 180_000,
     hookTimeout: 180_000,
     pool: 'forks',

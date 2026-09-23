@@ -18,21 +18,53 @@ const TARGET_VAULT = process.env.OBSIDIAN_TEST_VAULT ?? ''
 
 export class ObsidianUnavailableError extends Error {}
 
+/**
+ * What the CLI prints, with exit code 0, when the window is there but the app inside it is
+ * still loading — right after `emulateMobile` or a plugin reload, its commands are not yet
+ * registered. Parsed as a result, it failed whichever probe came next with "not valid JSON".
+ */
+const NOT_READY = /^Error: Command "[^"]+" not found/
+
+const sleepSync = (ms: number): void => {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
 function run(args: string[], timeoutMs = 240_000): string {
+  const deadline = Date.now() + Math.min(timeoutMs, 60_000)
+  for (;;) {
+    const output = runOnce(args, timeoutMs)
+    if (!NOT_READY.test(output)) return output
+    if (Date.now() > deadline)
+      throw new Error(`obsidian ${args[0]}: the app never got ready: ${output}`)
+    sleepSync(500)
+  }
+}
+
+function runOnce(args: string[], timeoutMs: number): string {
   // `vault=` MUST precede the command. Passed after it the CLI ignores it without an error
   // and runs against whichever window is frontmost, so the tests would silently measure
   // whatever vault the user happened to be looking at.
   const fullArgs = TARGET_VAULT ? [`vault=${TARGET_VAULT}`, ...args] : args
   try {
+    // SIGKILL, not the default SIGTERM: a CLI call that never gets its answer from the app
+    // ignores SIGTERM, and the timeout then stopped nothing — the whole run hung on it.
     return execFileSync(CLI, fullArgs, {
       encoding: 'utf8',
       timeout: timeoutMs,
+      killSignal: 'SIGKILL',
       maxBuffer: 64 * 1024 * 1024,
     }).trim()
   } catch (error) {
-    const err = error as NodeJS.ErrnoException & { stderr?: string; stdout?: string }
+    const err = error as NodeJS.ErrnoException & {
+      stderr?: string
+      stdout?: string
+      signal?: string | null
+    }
     if (err.code === 'ENOENT') {
       throw new ObsidianUnavailableError(`Obsidian CLI not found at ${CLI}`)
+    }
+    if (err.signal === 'SIGKILL') {
+      throw new Error(`obsidian ${args[0]} gave no answer in ${timeoutMs} ms and was killed`)
     }
     const detail = (err.stderr || err.stdout || err.message || '').toString().trim()
     throw new Error(`obsidian ${fullArgs.join(' ')} failed: ${detail}`)
@@ -114,4 +146,46 @@ export function consoleMessages(limit = 50): string {
 
 export function capturedErrors(): string {
   return run(['dev:errors'], 30_000)
+}
+
+/**
+ * The window the tier drives sits behind whatever the person is working in, and Chromium
+ * throttles a background window: ten 100 ms timeouts took two minutes, a probe waiting on
+ * them timed out, and a layout read after a resize was a frame stale. Switched off for the
+ * run and back on after it — left off, a window nobody looks at keeps burning a core.
+ */
+export function setBackgroundThrottling(on: boolean): void {
+  evalRaw(
+    `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(${on}); return 'ok' })()`,
+    30_000
+  )
+}
+
+/**
+ * Closes settings windows this vault's window left open. A probe that failed half way, or an
+ * app reload under `emulateMobile`, leaves one behind; the next probe then finds two windows
+ * called "Settings" and measures whichever comes first. Only popouts of the driven window are
+ * touched, told by the vault name in the title — another vault's window, and whatever its owner
+ * has open, is not ours.
+ */
+export function closeStrayWindows(): number {
+  return evalJson<number>(
+    `(() => {
+      const remote = require('@electron/remote')
+      const main = remote.getCurrentWindow()
+      try { app.setting.close() } catch {}
+      let closed = 0
+      for (const w of remote.BrowserWindow.getAllWindows()) {
+        if (w.id === main.id || w.isDestroyed()) continue
+        // Obsidian titles a popout after its vault: "Settings - <vault> - Obsidian 1.x".
+        const title = w.getTitle()
+        if (title.startsWith('Settings') && title.includes(' - ' + app.vault.getName() + ' - ')) {
+          w.destroy()
+          closed++
+        }
+      }
+      return closed
+    })()`,
+    30_000
+  )
 }
