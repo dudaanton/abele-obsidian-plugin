@@ -157,11 +157,13 @@ describe('a pull request diff link', () => {
   it('opens on the files, draws only the file it names, and marks the line', async () => {
     const { hash, routes: r } = await routes()
     const { wrapper } = open(`https://github.com/o/r/pull/7/files#diff-${hash}R3`, r)
-    await flushPromises()
-    await flushPromises()
+    // Loading runs through a hash digest, so a fixed number of ticks is not enough under load.
+    await vi.waitFor(() => {
+      expect(wrapper.findAll('.abele-github-file')).toHaveLength(6)
+      expect(wrapper.findAll('.abele-github-code__line_target')).toHaveLength(1)
+    })
 
     const files = wrapper.findAll('.abele-github-file')
-    expect(files).toHaveLength(6)
     // Six files is a long list: only the one the link names is drawn.
     const drawn = files.filter((f) => f.find('.cm-editor').exists())
     expect(drawn).toHaveLength(1)
@@ -174,8 +176,7 @@ describe('a pull request diff link', () => {
   it('draws a closed file when it is opened', async () => {
     const { hash, routes: r } = await routes()
     const { wrapper } = open(`https://github.com/o/r/pull/7/files#diff-${hash}`, r)
-    await flushPromises()
-    await flushPromises()
+    await vi.waitFor(() => expect(wrapper.findAll('.abele-github-file')).toHaveLength(6))
 
     const first = wrapper.findAll('.abele-github-file')[0]
     expect(first.find('.cm-editor').exists()).toBe(false)
