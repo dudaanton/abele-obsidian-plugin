@@ -1,6 +1,7 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App } from 'obsidian'
+import { forgetPanel, registerPanelElement } from './panelVisibility'
 
 export const TIME_TRACKING_SIDEBAR_VIEW_TYPE = 'abele-time-tracking-sidebar-view'
 export const TIME_TRACKING_SIDEBAR_ID_ATTR = 'abele-time-tracking-sidebar-id'
@@ -36,6 +37,7 @@ export class TimeTrackingSidebarView extends ItemView {
     const widgetContainer = createDiv({ attr: { [TIME_TRACKING_SIDEBAR_ID_ATTR]: this.id } })
     container.appendChild(widgetContainer)
 
+    registerPanelElement(this.id, widgetContainer)
     const open = GlobalStore.getInstance().timeTrackingSidebarIds
     open.value = [...open.value, this.id]
   }
@@ -45,5 +47,6 @@ export class TimeTrackingSidebarView extends ItemView {
     // clearing the whole slot is what left the one still on screen blank.
     const open = GlobalStore.getInstance().timeTrackingSidebarIds
     open.value = open.value.filter((id) => id !== this.id)
+    forgetPanel(this.id)
   }
 }

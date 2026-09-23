@@ -1,6 +1,7 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App } from 'obsidian'
+import { forgetPanel, registerPanelElement } from './panelVisibility'
 import { AI_SIDEBAR_VIEW_TYPE, AI_SIDEBAR_ID_ATTR } from '@/constants/views'
 
 export { AI_SIDEBAR_VIEW_TYPE, AI_SIDEBAR_ID_ATTR }
@@ -36,6 +37,7 @@ export class AiSidebarView extends ItemView {
     const widgetContainer = createDiv({ attr: { [AI_SIDEBAR_ID_ATTR]: this.id } })
     container.appendChild(widgetContainer)
 
+    registerPanelElement(this.id, widgetContainer)
     const open = GlobalStore.getInstance().aiSidebarIds
     open.value = [...open.value, this.id]
   }
@@ -45,5 +47,6 @@ export class AiSidebarView extends ItemView {
     // clearing the whole slot is what left the one still on screen blank.
     const open = GlobalStore.getInstance().aiSidebarIds
     open.value = open.value.filter((id) => id !== this.id)
+    forgetPanel(this.id)
   }
 }

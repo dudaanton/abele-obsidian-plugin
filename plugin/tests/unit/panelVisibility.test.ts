@@ -6,6 +6,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { FinanceSidebarView } from '@/views/FinanceSidebarView'
+import { AccountsSidebarView } from '@/views/AccountsSidebarView'
+import { TimelineSidebarView } from '@/views/TimelineSidebarView'
+import { TodoSidebarView } from '@/views/TodoSidebarView'
+import { AiSidebarView } from '@/views/AiSidebarView'
+import { TimeTrackingSidebarView } from '@/views/TimeTrackingSidebarView'
+import { ScriptRunsView } from '@/views/ScriptRunsView'
 import { isPanelShown, trackPanelVisibility } from '@/views/panelVisibility'
 import { useVault } from '../helpers/testEnv'
 
@@ -68,6 +74,31 @@ describe('panel visibility', () => {
 
     await view.onClose()
     expect(GlobalStore.getInstance().panelElements.value.has(id)).toBe(false)
+  })
+
+  // Every sidebar is teleported into, so every one of them has to hand over its element: the
+  // first two were fixed alone and the rest still opened blank into a phone's closed drawer.
+  it.each([
+    ['finance', FinanceSidebarView, 'financeSidebarIds'],
+    ['accounts', AccountsSidebarView, 'accountsSidebarIds'],
+    ['timeline', TimelineSidebarView, 'timelineSidebarIds'],
+    ['todo', TodoSidebarView, 'todoSidebarIds'],
+    ['AI chat', AiSidebarView, 'aiSidebarIds'],
+    ['time tracking', TimeTrackingSidebarView, 'timeTrackingSidebarIds'],
+    ['script runs', ScriptRunsView, 'scriptRunsIds'],
+  ] as const)('the %s sidebar hands over its element and takes it back', async (_, View, slot) => {
+    const store = GlobalStore.getInstance()
+    store[slot].value = []
+    const view = new View({} as never, {} as never)
+    await view.onOpen()
+    const [id] = store[slot].value
+    const el = store.panelElements.value.get(id)
+    expect(el).toBeDefined()
+    expect(el?.isConnected).toBe(false)
+    expect(view.containerEl.contains(el ?? null)).toBe(true)
+
+    await view.onClose()
+    expect(store.panelElements.value.has(id)).toBe(false)
   })
 
   it('forgets a closed panel', async () => {

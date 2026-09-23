@@ -1,6 +1,7 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App } from 'obsidian'
+import { forgetPanel, registerPanelElement } from './panelVisibility'
 
 export const TIMELINE_SIDEBAR_VIEW_TYPE = 'abele-timeline-sidebar-view'
 export const TIMELINE_SIDEBAR_ID_ATTR = 'abele-timeline-sidebar-id'
@@ -36,6 +37,7 @@ export class TimelineSidebarView extends ItemView {
     const widgetContainer = createDiv({ attr: { [TIMELINE_SIDEBAR_ID_ATTR]: this.id } })
     container.appendChild(widgetContainer)
 
+    registerPanelElement(this.id, widgetContainer)
     const open = GlobalStore.getInstance().timelineSidebarIds
     open.value = [...open.value, this.id]
   }
@@ -45,5 +47,6 @@ export class TimelineSidebarView extends ItemView {
     // clearing the whole slot is what left the one still on screen blank.
     const open = GlobalStore.getInstance().timelineSidebarIds
     open.value = open.value.filter((id) => id !== this.id)
+    forgetPanel(this.id)
   }
 }

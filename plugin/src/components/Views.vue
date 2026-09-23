@@ -40,14 +40,22 @@
   <Teleport
     v-for="id in timelineSidebarIds"
     :key="id"
-    :to="`[${TIMELINE_SIDEBAR_ID_ATTR}='${id}']`"
+    :to="panelElements.get(id) ?? `[${TIMELINE_SIDEBAR_ID_ATTR}='${id}']`"
   >
     <TimelineSidebarView />
   </Teleport>
-  <Teleport v-for="id in todoSidebarIds" :key="id" :to="`[${TODO_SIDEBAR_ID_ATTR}='${id}']`">
+  <Teleport
+    v-for="id in todoSidebarIds"
+    :key="id"
+    :to="panelElements.get(id) ?? `[${TODO_SIDEBAR_ID_ATTR}='${id}']`"
+  >
     <TodoSidebarView />
   </Teleport>
-  <Teleport v-for="id in aiSidebarIds" :key="id" :to="`[${AI_SIDEBAR_ID_ATTR}='${id}']`">
+  <Teleport
+    v-for="id in aiSidebarIds"
+    :key="id"
+    :to="panelElements.get(id) ?? `[${AI_SIDEBAR_ID_ATTR}='${id}']`"
+  >
     <AiChatView />
   </Teleport>
   <Teleport
@@ -67,11 +75,15 @@
   <Teleport
     v-for="id in timeTrackingSidebarIds"
     :key="id"
-    :to="`[${TIME_TRACKING_SIDEBAR_ID_ATTR}='${id}']`"
+    :to="panelElements.get(id) ?? `[${TIME_TRACKING_SIDEBAR_ID_ATTR}='${id}']`"
   >
     <TimeTrackingSidebarView />
   </Teleport>
-  <Teleport v-for="id in scriptRunsIds" :key="id" :to="`[${SCRIPT_RUNS_ID_ATTR}='${id}']`">
+  <Teleport
+    v-for="id in scriptRunsIds"
+    :key="id"
+    :to="panelElements.get(id) ?? `[${SCRIPT_RUNS_ID_ATTR}='${id}']`"
+  >
     <ScriptRunsView />
   </Teleport>
   <!-- By element, not selector: a selector is looked up in the main document, and a script
@@ -79,11 +91,7 @@
   <Teleport v-for="model in scriptViews" :key="model.id" :to="model.el">
     <ScriptView :model="model" />
   </Teleport>
-  <Teleport
-    v-for="[id, instance] in findAndReplaceBasesInstances"
-    :key="id"
-    :to="`[${FIND_AND_REPLACE_ID_ATTR}='${id}']`"
-  >
+  <Teleport v-for="[id, instance] in findAndReplaceBasesInstances" :key="id" :to="instance.el">
     <FindAndReplaceBases :files="instance.files" />
   </Teleport>
   <FindAndReplaceModal
@@ -164,7 +172,6 @@ import ScriptFormModal from './ScriptFormModal.vue'
 import { TIMELINE_SIDEBAR_ID_ATTR } from '@/views/TimelineSidebarView'
 import { TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'
 import { AI_SIDEBAR_ID_ATTR } from '@/views/AiSidebarView'
-import { FIND_AND_REPLACE_ID_ATTR } from '@/bases/FindAndReplaceView'
 import { FINANCE_SIDEBAR_ID_ATTR } from '@/views/FinanceSidebarView'
 import { ACCOUNTS_SIDEBAR_ID_ATTR } from '@/views/AccountsSidebarView'
 import { TIME_TRACKING_SIDEBAR_ID_ATTR } from '@/views/TimeTrackingSidebarView'

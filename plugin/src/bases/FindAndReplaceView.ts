@@ -10,6 +10,8 @@ export const FIND_AND_REPLACE_ID_ATTR = 'abele-find-and-replace-id'
 export interface FindAndReplaceInstance {
   id: string
   files: Ref<TFile[]>
+  /** Teleported into by element — a base opened in a phone's closed drawer is not in the page. */
+  el: HTMLElement
 }
 
 export class FindAndReplaceView extends BasesView {
@@ -31,7 +33,7 @@ export class FindAndReplaceView extends BasesView {
 
     const store = GlobalStore.getInstance()
     const map = new Map(store.findAndReplaceBasesInstances.value)
-    map.set(this.instanceId, { id: this.instanceId, files: this.filesRef })
+    map.set(this.instanceId, { id: this.instanceId, files: this.filesRef, el: widgetContainer })
     store.findAndReplaceBasesInstances.value = map
   }
 
