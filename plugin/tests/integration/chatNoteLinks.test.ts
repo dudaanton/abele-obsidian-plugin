@@ -242,6 +242,22 @@ describe('the chat index, which is what a footer actually reads', () => {
     expect(entry?.recap).toBe('Tidied A.')
     expect(entry?.agentId).toBe('agent-7')
   })
+
+  // Deleted in the file explorer, or by sync from another device: the history kept listing it,
+  // with its creation date in raw ISO where the file's time used to be, and opening it found
+  // nothing.
+  it('forgets a chat whose file is gone', async () => {
+    ChatStorage.getInstance().addHistoryEntry({
+      path: 'AI/Chats/Gone.abchat',
+      title: 'Gone',
+      created: '2026-09-20T10:00:00Z',
+    })
+
+    const history = await ChatStorage.getInstance().refreshHistory()
+
+    expect(history.map((e) => e.title)).not.toContain('Gone')
+    expect(ChatStorage.getInstance().getHistory().map((e) => e.title)).not.toContain('Gone')
+  })
 })
 
 /**

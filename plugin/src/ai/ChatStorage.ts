@@ -120,14 +120,30 @@ export class ChatStorage {
     const { app } = GlobalStore.getInstance()
 
     if (!config.ai.chatHistory) config.ai.chatHistory = []
+
+    // A chat deleted in the file explorer, or by sync from another device, left its entry
+    // behind: the history went on listing it and opening it found nothing.
+    const present = config.ai.chatHistory.filter(
+      (e) => app.vault.getAbstractFileByPath(e.path) instanceof TFile
+    )
+    const pruned = present.length !== config.ai.chatHistory.length
+    if (pruned) config.ai.chatHistory = present
+    const settle = (): AiChatHistoryEntry[] => {
+      if (pruned) {
+        GlobalStore.getInstance().chatLinksVersion.value++
+        void config.saveSettings()
+      }
+      return config.ai.chatHistory
+    }
+
     const known = new Map(config.ai.chatHistory.map((e) => [e.path, e]))
 
     // Derive base folder from chatFolder template (strip {{...}} parts)
     const baseFolder = config.ai.chatFolder.replace(/\/?\{\{.*$/, '').replace(/\/$/, '')
-    if (!baseFolder) return config.ai.chatHistory
+    if (!baseFolder) return settle()
 
     const folder = app.vault.getAbstractFileByPath(baseFolder)
-    if (!folder) return config.ai.chatHistory
+    if (!folder) return settle()
 
     const files: TFile[] = []
     const collect = (f: any) => {
@@ -139,7 +155,7 @@ export class ChatStorage {
     collect(folder)
 
     let added = 0
-    let changed = false
+    let changed = pruned
     for (const file of files) {
       const entry = known.get(file.path)
       if (entry) {
