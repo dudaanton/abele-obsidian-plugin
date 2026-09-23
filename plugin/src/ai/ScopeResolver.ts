@@ -2,6 +2,7 @@ import { ref, computed } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TFile, TFolder } from 'obsidian'
 import { isWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
+import { isChatLog } from './chatText'
 
 export interface ScopeEntry {
   type: 'file' | 'folder' | 'pattern' | 'group'
@@ -157,6 +158,14 @@ export class ScopeResolver {
           break
         }
       }
+    }
+
+    // Chat logs are never reachable through a scope, whatever entry would take them in. A log
+    // holds everything its own agent was shown — the notes it read, what its tools returned —
+    // and a scope over the chat folder is not a scope over those notes. A chat reaches another
+    // agent only by being attached, as the words exchanged in it (`chatForAgent`).
+    for (const path of result) {
+      if (isChatLog(path)) result.delete(path)
     }
 
     this._cache = result

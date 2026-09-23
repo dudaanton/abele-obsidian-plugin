@@ -5,6 +5,7 @@ import { Criterion } from '@/entities/Criterion'
 import { getNoteBody } from '@/helpers/notesUtils'
 import { TFile } from 'obsidian'
 import { stringifyYaml } from 'obsidian'
+import { chatForAgent, isChatLog } from '../chatText'
 
 interface CriterionParam {
   type: 'path' | 'name' | 'property' | 'content'
@@ -164,7 +165,10 @@ export function createFindTool(opts?: { skipScope?: boolean }): AgentTool {
         for (const p of paths) {
           const file = app.vault.getAbstractFileByPath(p)
           if (!file) continue
-          const text = await app.vault.cachedRead(file as any)
+          const raw = await app.vault.cachedRead(file as any)
+          // Matched against what `read` would show, so a search cannot probe a chat log for
+          // what its tools returned one guess at a time.
+          const text = isChatLog(p) ? chatForAgent(raw, p) : raw
           const body = getNoteBody(text)
           if (contentCriteria.every((c) => c.checkContentCriterion(body))) {
             matched.push(p)

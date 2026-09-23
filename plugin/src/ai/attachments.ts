@@ -2,6 +2,7 @@ import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { UserContentPart } from './client'
 import { isImagePath, VAULT_IMAGE_PREFIX } from './tools/ReadImageTool'
+import { chatForAgent, isChatLog } from './chatText'
 
 const MAX_TEXT_FILE_SIZE = 100 * 1024 // 100 KB
 
@@ -62,6 +63,7 @@ export const ALLOWED_ACCEPT = ALLOWED_EXTENSIONS.map((e) => `.${e}`).join(',')
  * Resolve attachment vault paths into UserContentPart[] for the API.
  * Images → image_url with vault: reference (resolved to base64 at send time).
  * Text files → inline text content.
+ * Another chat → only what was said in it, never the file: see `chatForAgent`.
  */
 export async function resolveAttachmentsForApi(paths: string[]): Promise<UserContentPart[]> {
   const { app } = GlobalStore.getInstance()
@@ -76,6 +78,14 @@ export async function resolveAttachmentsForApi(paths: string[]): Promise<UserCon
 
     if (isImagePath(path)) {
       parts.push({ type: 'image_url', image_url: { url: `${VAULT_IMAGE_PREFIX}${path}` } })
+    } else if (isChatLog(path)) {
+      // Checked before the text branch below, which would hand over the raw log — and the log
+      // is every note the other chat's agent read and every result its tools returned.
+      try {
+        parts.push({ type: 'text', text: chatForAgent(await app.vault.read(file), file.basename) })
+      } catch {
+        parts.push({ type: 'text', text: `[Cannot read: ${path}]` })
+      }
     } else {
       try {
         let content = await app.vault.read(file)
@@ -146,6 +156,7 @@ export async function importClipboardImage(): Promise<string | null> {
 
 export function getAttachmentIcon(path: string): string {
   if (isImagePath(path)) return 'image'
+  if (isChatLog(path)) return 'messages-square'
   const ext = path.split('.').pop()?.toLowerCase() || ''
   if (['md', 'txt', 'json', 'csv', 'xml', 'yaml', 'yml', 'toml'].includes(ext)) {
     return 'file-text'
@@ -153,6 +164,8 @@ export function getAttachmentIcon(path: string): string {
   return 'file'
 }
 
+/** What an attachment is called on its chip. A chat by its title, which is its file's name. */
 export function fileName(path: string): string {
-  return path.split('/').pop() || path
+  const name = path.split('/').pop() || path
+  return isChatLog(name) ? name.slice(0, -'.abchat'.length) : name
 }

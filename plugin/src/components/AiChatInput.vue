@@ -10,7 +10,7 @@
     <div v-if="attachments.length" class="abele-chat-input__attachments">
       <div v-for="(a, i) in attachments" :key="a.path" class="abele-chat-input__attachment">
         <Icon :icon="getAttachmentIcon(a.path)" />
-        <span class="abele-chat-input__attachment-name">{{ a.name }}</span>
+        <span class="abele-chat-input__attachment-name">{{ attachmentName(a.path) }}</span>
         <Icon
           icon="x"
           class="abele-chat-input__attachment-remove"
@@ -125,7 +125,14 @@ import Icon from './obsidian/Icon.vue'
 import VoiceRecorder from './VoiceRecorder.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { pickVaultFile } from '@/helpers/suggesters/VaultFilePicker'
-import { importExternalFile, getAttachmentIcon, ALLOWED_ACCEPT } from '@/ai/attachments'
+import { pickChat } from '@/helpers/suggesters/ChatPicker'
+import { ChatService } from '@/ai/ChatService'
+import {
+  importExternalFile,
+  getAttachmentIcon,
+  fileName as attachmentName,
+  ALLOWED_ACCEPT,
+} from '@/ai/attachments'
 import type { ChatDraft } from '@/ai/types'
 
 const props = defineProps<{
@@ -276,7 +283,24 @@ const showAttachMenu = (event: MouseEvent) => {
   menu.addItem((item) => {
     item.setTitle('From disk').setIcon('hard-drive').onClick(pickFromDisk)
   })
+  menu.addItem((item) => {
+    item.setTitle('Agent chat').setIcon('messages-square').onClick(pickFromChats)
+  })
   menu.showAtMouseEvent(event)
+}
+
+/**
+ * Another chat, for the agent to read what was said in it. Not announced as `attachFile`: that
+ * puts the file into the chat's scope, and a chat log in scope would be the whole log — every
+ * note the other agent read — where an attachment is only the conversation.
+ */
+const pickFromChats = async () => {
+  const { app } = GlobalStore.getInstance()
+  const current = ChatService.getInstance().activeSession.value?.currentChatFile.value?.path
+  const file = await pickChat(app, current)
+  if (file && !attachments.value.some((a) => a.path === file.path)) {
+    attachments.value = [...attachments.value, file]
+  }
 }
 
 const pickFromVault = async () => {

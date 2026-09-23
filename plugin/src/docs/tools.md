@@ -15,6 +15,8 @@ easy to get wrong. Which of these an agent actually has depends on its own tool 
 - `edit_selection` exists only inside a comment chat. It rewrites the passage that comment is
   anchored to and nothing else in the note; there is no path to give it.
 - `find` searches by name, property or content and takes structured criteria, not just a word.
+- A chat file (`.abchat`) is never in a scope. With the whole vault open, `read` on one returns
+  only what was said in it, and `find` matches content against that — never against the log.
 - `workspace` says what is open right now; `open` puts a file in front of the person.
 - `screenshot` and `inspect_view` take either a `path` (a note) or a `view` (a script view, by
   its tab title or script name). A view is photographed as it is on screen: the visible part

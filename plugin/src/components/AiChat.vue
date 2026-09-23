@@ -291,6 +291,7 @@ import { importExternalFile } from '@/ai/attachments'
 import type { ChatDraft } from '@/ai/types'
 import { discoverSkills } from '@/ai/tools/SkillTool'
 import { getChildren } from '@/ai/chatTree'
+import { isChatLog } from '@/ai/chatText'
 
 const chatService = ChatService.getInstance()
 chatService.ensureInitialized()
@@ -1100,6 +1101,9 @@ const onPromptVariablesConfirm = async (values: Map<string, string>) => {
 }
 
 const onAttachFile = (path: string) => {
+  // A chat dropped here goes to the agent as what was said in it, never as a file in scope:
+  // the log holds everything its own agent was shown. The scope would refuse it anyway.
+  if (isChatLog(path)) return
   session.value?.scopeResolver.addFile(path)
 }
 

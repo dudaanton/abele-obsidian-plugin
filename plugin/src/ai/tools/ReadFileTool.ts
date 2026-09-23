@@ -2,6 +2,7 @@ import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
+import { chatForAgent, isChatLog } from '../chatText'
 
 export function createReadFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
@@ -26,6 +27,12 @@ export function createReadFileTool(opts?: { skipScope?: boolean }): AgentTool {
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
       const content = await app.vault.read(file)
+      // A chat log is every note its own agent read and every result its tools returned. An
+      // agent that can reach one — only with the whole vault open, since no scope takes a chat
+      // log in — reads what was said in it and nothing more, as if it had been attached.
+      if (isChatLog(file.path)) {
+        return { content: [{ type: 'text', text: chatForAgent(content, file.basename) }] }
+      }
       return { content: [{ type: 'text', text: content }] }
     },
   }

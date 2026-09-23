@@ -49,6 +49,10 @@ project and all its notes" without a folder for it.
 `fullVaultAccess` turns the scope off entirely. If a path is outside the scope, the tools will
 refuse it — that is the plugin working, not a bug to report.
 
+Chat files (`.abchat`) are never in a scope, whatever the entries say: a chat file holds every
+note its own agent read and everything its tools returned. With the whole vault open, `read` on
+one gives only what was said in it, the same as an attached chat.
+
 ## Skills
 
 Skills are notes with `type: abele-skill` describing how to do something. An agent can be
@@ -69,6 +73,12 @@ different permissions. Do not delegate what is one tool call away.
 Chats live in the vault as `.abchat` files, so they survive a restart and can be searched. A
 long chat can be compacted: the older turns are replaced by a summary and the conversation
 carries on. Compaction uses the background model.
+
+The person can attach another agent chat to a message, the way a note or an image is attached.
+What arrives is the conversation only: what the person and that chat's agent wrote to each
+other, under a line naming the chat. Its tool calls, what they returned and its reasoning are
+left out, so a note the other agent read is not shown to this one. What that agent quoted in
+its own replies is part of what it wrote, and does come through.
 
 A chat can also be a **comment chat**: one anchored to a passage in a note. It starts on the
 agent named by `commentAgentId` and the person can point it at another from the chat's own
