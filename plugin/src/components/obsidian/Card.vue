@@ -220,12 +220,18 @@ const open = (event: Event) => {
   min-width: 0;
 }
 
+/**
+ * A basis of its own rather than its text's width: a long title then wraps inside its half and
+ * leaves the actions on its row. Sized by its text it took the whole row, and a chat's delete
+ * icon stood on a line of its own between the title and the summary. A card narrower than the
+ * basis and the actions together still wraps them under it.
+ */
 .abele-card__title {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--size-2-2);
-  flex: 1 1 auto;
+  flex: 1 1 12em;
   min-width: 0;
 }
 

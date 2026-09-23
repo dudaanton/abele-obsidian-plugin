@@ -46,6 +46,8 @@ interface Screen {
   scrollers: { name: string; height: number; spare: number }[]
   /** Scrolling boxes with a fixed ceiling lower than the body they stand in. */
   capped: string[]
+  /** Cards whose actions were pushed onto a row of their own, below the title. */
+  stranded: string[]
   /** Ancestors that cut the focus ring of the field the screen focused, with how much of it. */
   clipped: string[]
   /** The root's height as a share of the window's. */
@@ -110,7 +112,18 @@ const probeScript = `(async () => {
       scrollers.push({ name: name(el), height: Math.round(r.height), spare: Math.round(hostBox.bottom - r.bottom) })
     }
 
-    return { over, scrollers, capped, fill: Math.round((box.height / window.innerHeight) * 100) / 100 }
+    // A card's actions belong on the row of its title. A title long enough to wrap took the
+    // whole row and pushed the delete icon onto a line of its own, between title and summary.
+    const stranded = []
+    for (const actions of root.querySelectorAll('.abele-card__actions')) {
+      const title = actions.parentElement && actions.parentElement.querySelector('.abele-card__title')
+      if (!title) continue
+      if (actions.getBoundingClientRect().top >= title.getBoundingClientRect().bottom - 1) {
+        stranded.push(title.textContent.trim().slice(0, 40))
+      }
+    }
+
+    return { over, scrollers, capped, stranded, fill: Math.round((box.height / window.innerHeight) * 100) / 100 }
   }
 
   /**
@@ -159,7 +172,7 @@ const probeScript = `(async () => {
 
   const report = {}
   const screen = async (label, root, body) => {
-    const entry = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: '' }
+    const entry = { over: [], scrollers: [], capped: [], stranded: [], clipped: [], fill: 0, shot: '', error: '' }
     try {
       if (!root) throw new Error('nothing to measure')
       entry.shot = await shoot(label)
@@ -182,6 +195,7 @@ const probeScript = `(async () => {
   // Lists worth measuring: a vault with two skills shows nothing about how a list of twenty
   // stands in a sheet. These are written for the run and removed after it.
   const SEEDED = []
+  const SEEDED_DIRS = []
   const seed = async () => {
     const folder = 'Phone probe'
     if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder)
@@ -199,9 +213,23 @@ const probeScript = `(async () => {
       await app.vault.create(path, body)
       SEEDED.push(path)
     }
+    // A chat whose title wraps on a phone, for the history's cards.
+    for (const dir of ['AI', 'AI/Chats']) {
+      if (!app.vault.getAbstractFileByPath(dir)) {
+        await app.vault.createFolder(dir)
+        SEEDED_DIRS.unshift(dir)
+      }
+    }
+    const title = 'Phone probe chat with a title long enough to wrap onto a second and third line'
+    const chatPath = 'AI/Chats/' + title + '.abchat'
+    const meta = { v: 2, k: 'meta', type: 'abele-chat', created: '2026-09-20T10:00:00Z', title,
+      summary: 'A summary under the title, as the history shows it.' }
+    const msg = { k: 'msg', id: 'p0', role: 'user', content: 'Hello', timestamp: 1790000000000 }
+    await app.vault.create(chatPath, JSON.stringify(meta) + '\\n' + JSON.stringify(msg) + '\\n')
+    SEEDED.push(chatPath)
     // Until the metadata cache has read the last of them, or the picker lists nothing new.
     await until(() => {
-      const last = app.vault.getAbstractFileByPath(SEEDED[SEEDED.length - 1])
+      const last = app.vault.getAbstractFileByPath(SEEDED[SEEDED.length - 2])
       return !!(last && app.metadataCache.getFileCache(last)?.frontmatter)
     }, 10000)
   }
@@ -212,6 +240,10 @@ const probeScript = `(async () => {
     }
     const folder = app.vault.getAbstractFileByPath('Phone probe')
     if (folder) await app.vault.delete(folder, true)
+    for (const dir of SEEDED_DIRS) {
+      const made = app.vault.getAbstractFileByPath(dir)
+      if (made && made.children && !made.children.length) await app.vault.delete(made, true)
+    }
   }
 
   try {
@@ -382,6 +414,10 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       expect(report[label]?.clipped ?? ['no report']).toEqual([])
     }
   )
+
+  it('history: every card keeps its delete icon on the row of its title', () => {
+    expect(report['history']?.stranded ?? ['no report']).toEqual([])
+  })
 
   it.each(screens)('%s: no box is capped below the height of the sheet', (label) => {
     expect(report[label]?.capped ?? ['no report']).toEqual([])

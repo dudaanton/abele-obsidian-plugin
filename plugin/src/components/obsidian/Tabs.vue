@@ -131,6 +131,28 @@ const emit = defineEmits<{
   }
 }
 
+/**
+ * On a phone a row of secondary tabs stays one row and scrolls sideways, the way a phone's own
+ * tab strips do. Wrapped, the agent editor's six sections stood on two rows and pushed the page
+ * down under them.
+ */
+.is-phone .abele-tabs_secondary:not(.abele-tabs_vertical) {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  // Room for a focused tab's ring, which a scrolling box would otherwise cut. Not pulled back
+  // with a negative margin: the strip then stood past its dialog's edge and scrolled it.
+  padding: var(--size-2-2);
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  .abele-tabs__tab {
+    flex: 0 0 auto;
+  }
+}
+
 .abele-tabs_vertical {
   flex-direction: column;
   flex-wrap: nowrap;
