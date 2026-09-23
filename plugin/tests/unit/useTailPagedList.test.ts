@@ -139,3 +139,21 @@ describe('a list that changes while it is open', () => {
     expect(visible.value).toEqual(['m8', 'm9', 'm10'])
   })
 })
+
+describe('going back to where a list was left', () => {
+  it('reveals everything from the given start', () => {
+    const { visible, showFrom } = useTailPagedList(() => upTo(10), 3)
+
+    showFrom(2)
+
+    expect(visible.value[0]).toBe('m3')
+  })
+
+  it('never hides what is already shown', () => {
+    const { visible, showFrom } = useTailPagedList(() => upTo(10), 3)
+
+    showFrom(9)
+
+    expect(visible.value).toEqual(['m8', 'm9', 'm10'])
+  })
+})

@@ -107,6 +107,7 @@
         <AiChatMessage
           v-for="msg in visibleMessages"
           :key="msg.id"
+          :data-message-id="msg.id"
           :message="msg"
           :branch-info="branchInfoMap.get(msg.id)"
           :interceptor-streaming="msg.draft ? interceptorStreaming : false"
@@ -683,6 +684,7 @@ const {
   hidden: olderCount,
   showMore: showOlder,
   reset: resetWindow,
+  showFrom: showMessagesFrom,
 } = useTailPagedList(() => messages.value)
 
 /**
@@ -751,7 +753,11 @@ const loadOlder = () => {
 
   captureAnchor()
   showOlder()
+  void nextTick(() => holdAnchorAWhile(el))
+}
 
+/** Keeps the anchor where it is for as long as the messages around it take to render. */
+const holdAnchorAWhile = (el: HTMLElement) => {
   // The chat can be in a popped-out window, whose frames and clock are not the main one's.
   const win = el.win
   const until = win.performance.now() + ANCHOR_HOLD_MS
@@ -761,7 +767,70 @@ const loadOlder = () => {
     if (win.performance.now() < until) win.requestAnimationFrame(hold)
     else anchor = null
   }
-  void nextTick(() => win.requestAnimationFrame(hold))
+  win.requestAnimationFrame(hold)
+}
+
+/**
+ * Where the reader was in each tab they have left, so going back puts them there again.
+ *
+ * Every tab is read in the same container, and switching used to send each one to its end —
+ * reading back through one conversation, looking at another and coming back lost the place.
+ * Kept as the message at the top of the box and its distance from the top, plus how far back
+ * the window had been opened, rather than as a pixel offset: the messages mount afresh on the
+ * way back and render their markdown late, and a pixel offset would land on whatever was there
+ * before they had grown. A reader who was at the end has no entry: they go back to the end,
+ * including whatever arrived while they were away, as a messenger does. Memory only — a
+ * restart opens every chat at its end, as before.
+ */
+interface ReadingPlace {
+  messageId: string
+  offset: number
+  hidden: number
+}
+const places = new Map<string, ReadingPlace>()
+
+/** Notes where the reader is in the tab being left. The DOM still shows that tab. */
+const rememberPlace = (tabId: string) => {
+  places.delete(tabId)
+  const el = messagesContainer.value
+  // A tab a delegated run holds has no conversation on screen, and so no place in it.
+  if (!el) return
+  if (el.scrollHeight - el.scrollTop - el.clientHeight < AUTO_SCROLL_THRESHOLD_PX) return
+  const top = el.getBoundingClientRect().top
+  const first = [...el.querySelectorAll<HTMLElement>('[data-message-id]')].find(
+    (m) => m.getBoundingClientRect().bottom > top
+  )
+  const messageId = first?.dataset.messageId
+  if (!first || !messageId) return
+  places.set(tabId, { messageId, offset: offsetOf(first, el), hidden: olderCount.value })
+}
+
+/**
+ * Takes the reader back to a remembered place, once the tab's messages are on the page.
+ *
+ * A message that is no longer there — a branch switched, the history compacted — leaves
+ * nothing to go back to, and the chat opens at its end as any other would.
+ */
+const returnTo = async (place: ReadingPlace) => {
+  const index = messages.value.findIndex((m) => m.id === place.messageId)
+  if (index >= 0) {
+    showMessagesFrom(Math.min(place.hidden, index))
+    await nextTick()
+    const el = messagesContainer.value
+    const target = el?.querySelector<HTMLElement>(
+      `[data-message-id="${CSS.escape(place.messageId)}"]`
+    )
+    if (el && target) {
+      anchor = { el: target, offset: place.offset }
+      holdAnchor()
+      // Measured here too: a place already in position is not scrolled to, and a keyboard
+      // opening next would otherwise keep the distance to the end of the tab just left.
+      bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
+      holdAnchorAWhile(el)
+      return
+    }
+  }
+  scrollOnUserSend()
 }
 
 const onMessagesScroll = () => {
@@ -809,19 +878,28 @@ watch([messages, streamingContent, streamingThinking], doScroll)
 const drafts = new Map<string, ChatDraft>()
 const NO_DRAFT: ChatDraft = { text: '', attachments: [] }
 
-// Reset scroll when switching tabs
+// Switching tabs: the one being left keeps its place, the one being opened goes back to its own
 watch(
   () => chatService.activeTabId.value,
   (tabId, previousTabId) => {
-    shouldAutoScroll = true
-    // Another conversation entirely: it starts at its end, like this one did.
+    // The DOM still shows the tab being left, so this is the moment to read its place.
+    if (previousTabId) rememberPlace(previousTabId)
+    anchor = null
     resetWindow()
-    void nextTick(doScroll)
+    const place = tabId ? places.get(tabId) : undefined
+    // Not following the end while the messages mount, or they would be scrolled past the place.
+    shouldAutoScroll = !place
+    // A tick later, once the window has settled on the new tab's messages and they are mounted.
+    if (place) void nextTick(() => returnTo(place))
+    else void nextTick(doScroll)
 
     // The input still holds the tab being left — the DOM has not been updated yet.
     if (previousTabId) drafts.set(previousTabId, chatInput.value?.takeDraft() ?? NO_DRAFT)
     for (const id of drafts.keys()) {
       if (!chatService.tabOrder.value.includes(id)) drafts.delete(id)
+    }
+    for (const id of places.keys()) {
+      if (!chatService.tabOrder.value.includes(id)) places.delete(id)
     }
 
     // On a tab held by a delegated run the input is not mounted at all, so the one being

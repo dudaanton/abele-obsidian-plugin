@@ -34,6 +34,8 @@ export interface TailPagedList<T> {
   showMore: () => void
   /** Collapses back to a single page — for when the source is replaced wholesale. */
   reset: () => void
+  /** Shows everything from `start` on, if that is more than is shown — going back to a place. */
+  showFrom: (start: number) => void
 }
 
 /**
@@ -75,6 +77,10 @@ export function useTailPagedList<T>(
     held.value = null
   }
 
+  const showFrom = (start: number): void => {
+    held.value = Math.max(0, Math.min(start, hidden.value))
+  }
+
   watch(
     total,
     (now, before = 0) => {
@@ -92,5 +98,5 @@ export function useTailPagedList<T>(
     { immediate: true }
   )
 
-  return { visible, hasMore, hidden, total, showMore, reset }
+  return { visible, hasMore, hidden, total, showMore, reset, showFrom }
 }

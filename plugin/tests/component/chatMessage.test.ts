@@ -166,7 +166,7 @@ describe('the actions a message opens from its icon', () => {
 
     const details = wrapper.find('.abele-chat-msg__details').element
     const retry = [...details.querySelectorAll('.abele-chat-msg__branch-action')].find(
-      (el) => el.textContent?.trim() === 'Retry',
+      (el) => el.textContent?.trim() === 'Retry'
     )
     const params = details.querySelector('pre')
     expect(retry).toBeTruthy()
