@@ -1,14 +1,12 @@
 /**
- * Syntax highlighting for a file shown from GitHub, chosen by its name.
+ * Syntax highlighting for a file shown from GitHub, chosen by its name: the languages the plugin
+ * already bundles for its own code view. Anything else is shown as plain text.
  *
- * The languages the plugin already bundles for its code view come first. Anything else — Python,
- * Go, Rust, shell — is borrowed from the CodeMirror 5 modes Obsidian still ships on
- * `window.CodeMirror` for its own code blocks, wrapped as a CodeMirror 6 stream language. That
- * global is not part of Obsidian's API, so every step of it is optional: without it the file is
- * shown as plain text, never not at all.
+ * Borrowing the CodeMirror 5 modes Obsidian still ships on `window.CodeMirror` was tried: wrapped
+ * as a CodeMirror 6 stream language they parse, but Obsidian's highlighter draws none of their
+ * tokens, so every line came out plain anyway — at the cost of a parse.
  */
 import type { Extension } from '@codemirror/state'
-import { StreamLanguage, type StreamParser } from '@codemirror/language'
 import { json } from '@codemirror/lang-json'
 import { javascript } from '@codemirror/lang-javascript'
 import { css } from '@codemirror/lang-css'
@@ -36,46 +34,9 @@ const BUNDLED: Record<string, () => Extension> = {
   yml: yaml,
 }
 
-interface LegacyModeInfo {
-  mode: string
-  mime?: string
-}
-
-interface LegacyCodeMirror {
-  findModeByFileName?: (name: string) => LegacyModeInfo | undefined
-  getMode?: (config: object, spec: string) => StreamParser<unknown> & { name?: string }
-}
-
-const legacy = new Map<string, Extension | null>()
-
-function fromLegacy(fileName: string): Extension | null {
-  const cm = (window as unknown as { CodeMirror?: LegacyCodeMirror }).CodeMirror
-  if (!cm?.findModeByFileName || !cm.getMode) return null
-
-  const info = cm.findModeByFileName(fileName)
-  if (!info?.mode || info.mode === 'null') return null
-  const spec = info.mime ?? info.mode
-  if (legacy.has(spec)) return legacy.get(spec) ?? null
-
-  let extension: Extension | null = null
-  try {
-    const mode = cm.getMode({ indentUnit: 2, tabSize: 4 }, spec)
-    // `getMode` answers an unknown language with the plain-text mode rather than failing.
-    if (mode && mode.name !== 'null' && typeof mode.token === 'function') {
-      extension = StreamLanguage.define(mode)
-    }
-  } catch (e) {
-    console.debug('[Abele] GitHub: no highlighting for', fileName, e)
-  }
-  legacy.set(spec, extension)
-  return extension
-}
-
 export function languageFor(path: string): Extension[] {
   const name = path.split('/').pop() ?? path
-  const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : ''
+  const ext = name.includes('.') ? (name.split('.').pop() ?? '').toLowerCase() : ''
   const bundled = BUNDLED[ext]
-  if (bundled) return [bundled()]
-  const borrowed = fromLegacy(name)
-  return borrowed ? [borrowed] : []
+  return bundled ? [bundled()] : []
 }
