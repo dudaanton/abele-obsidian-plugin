@@ -14,6 +14,24 @@ export function isExternalSource(src: string): boolean {
   return /^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith('/')
 }
 
+/**
+ * What a `cover` property names, as a path, a link name or a URL — or null.
+ *
+ * Written by hand it is `[[poster.jpg]]`, `![[poster.jpg|300]]`, `Media/poster.jpg` or a web
+ * address; a list is read by its first entry. The brackets and the display text go, because
+ * the renderer resolves the name, not the link.
+ */
+export function coverLink(value: unknown): string | null {
+  const first = Array.isArray(value) ? value[0] : value
+  if (typeof first !== 'string' || !first.trim()) return null
+  return (
+    first
+      .trim()
+      .replace(/^!?\[\[([^\]|]+)(?:\|[^\]]*)?\]\]$/, '$1')
+      .trim() || null
+  )
+}
+
 /** The file a path or a link name points at, resolved from `from` the way a link is. */
 export function resolveVaultFile(src: string, from = ''): TFile | null {
   if (!src || isExternalSource(src)) return null

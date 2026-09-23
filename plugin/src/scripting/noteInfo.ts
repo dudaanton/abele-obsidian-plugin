@@ -11,7 +11,7 @@
 import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { parseGalleryHeader } from '@/helpers/galleryUtils'
-import { resolveVaultFile } from '@/helpers/resourceUrl'
+import { coverLink, resolveVaultFile } from '@/helpers/resourceUrl'
 
 export interface NoteInfo {
   path: string
@@ -128,11 +128,9 @@ function tagsOf(
 
 /** A `cover` written as `[[x]]`, `![[x]]` or a path, as the file it names. */
 function coverOf(frontmatter: Record<string, unknown>, body: string, path: string): string | null {
-  const declared = frontmatter.cover
   const candidates: string[] = []
-  if (typeof declared === 'string' && declared.trim()) {
-    candidates.push(declared.trim().replace(/^!?\[\[([^\]|]+)(?:\|[^\]]*)?\]\]$/, '$1'))
-  }
+  const declared = coverLink(frontmatter.cover)
+  if (declared) candidates.push(declared)
   const embedded = firstImageLink(body)
   if (embedded) candidates.push(embedded)
   for (const candidate of candidates) {

@@ -23,6 +23,7 @@ import TodoList from '@/components/TodoList.vue'
 import Timeline from '@/components/Timeline.vue'
 import TaskCard from '@/components/Task.vue'
 import ObsidianIcon from '@/components/obsidian/Icon.vue'
+import Card from '@/components/obsidian/Card.vue'
 import {
   installFakeIntersectionObserver,
   resetFakeIntersectionObservers,
@@ -109,7 +110,7 @@ describe('footer lists — paging', () => {
         .slice(0, NOTES_PAGE_SIZE)
         .map((note) => note.name)
 
-      const rendered = view.findAll('.abele-notes-list__item a').map((el) => el.text())
+      const rendered = view.findAllComponents(Card).map((card) => card.props('title') as string)
       expect(rendered).toEqual(expected)
     })
 

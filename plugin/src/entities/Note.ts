@@ -2,6 +2,7 @@ import { extractDateFromFilename, parseDateOrNull } from '@/helpers/datesHelper'
 import { FileWatcher } from '@/helpers/FileWatcher'
 import { getFrontmatterFromCache } from '@/helpers/notesUtils'
 import { getNameFromPath, normalizePath } from '@/helpers/pathsHelpers'
+import { coverLink } from '@/helpers/resourceUrl'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import dayjs from 'dayjs'
@@ -13,6 +14,10 @@ export class Note {
   public createdAt: dayjs.Dayjs | null = null
   public updatedAt: dayjs.Dayjs | null = null
   public type: string | null = null
+  /** The frontmatter `description`, for the line under the title on a backlink card. */
+  public description: string | null = null
+  /** What the frontmatter `cover` names — a path, a link name or a URL — unresolved. */
+  public cover: string | null = null
 
   public loaded = false
   public noteNotFound = false
@@ -51,6 +56,8 @@ export class Note {
         parseDateOrNull(frontmatter.updated) ??
         (file instanceof TFile ? dayjs(file.stat.mtime) : null)
       this.type = frontmatter.type || null
+      this.description = descriptionOf(frontmatter.description)
+      this.cover = coverLink(frontmatter.cover)
     } else {
       this.noteNotFound = true
     }
@@ -86,6 +93,8 @@ export class Note {
     this.createdAt = null
     this.updatedAt = null
     this.type = null
+    this.description = null
+    this.cover = null
     this.loaded = false
   }
 
@@ -96,4 +105,14 @@ export class Note {
     this.watcherInitialized = false
     this.cleanData()
   }
+}
+
+/** A `description` as one piece of text: a list is joined, anything else that is not text is none. */
+function descriptionOf(value: unknown): string | null {
+  const text = Array.isArray(value)
+    ? value.filter((v) => typeof v === 'string').join(', ')
+    : typeof value === 'string' || typeof value === 'number'
+      ? String(value)
+      : ''
+  return text.trim() || null
 }

@@ -100,6 +100,19 @@ So a line in a daily note mentioning `[[John]]` and `[[Coffee House]]` appears, 
 of those notes. That is the plugin's central idea: write once, in the place you are writing,
 and read it from every relevant context.
 
+## Any note: description and cover
+
+Two optional properties on any note. The backlinks at the foot of a note are cards, and a
+note that has these shows them on its card; a script's `noteInfo` returns the cover too.
+
+| Property | Meaning |
+|---|---|
+| `description` | One or two sentences on what the note is; a card shows the first two lines |
+| `cover` | A picture: `"[[poster.jpg]]"`, a vault path, or a web address. Shown as a thumbnail |
+
+Worth filling on notes that are linked from many places — a person, a place, a film — so the
+list of backlinks says what each one is without opening it.
+
 ## Skills and prompts
 
 Notes with `type: abele-skill` or `type: abele-prompt`. A skill teaches an agent how to do

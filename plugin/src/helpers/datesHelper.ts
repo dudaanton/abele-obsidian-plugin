@@ -49,3 +49,11 @@ export function applyTimeToDate(date: dayjs.Dayjs, time: dayjs.Dayjs): dayjs.Day
   }
   return date.hour(time.hour()).minute(time.minute())
 }
+
+/**
+ * A date for a row that has little room: the display format without this year's year, since
+ * a list of recent notes would otherwise repeat it on every line. Another year keeps it.
+ */
+export function compactDate(date: dayjs.Dayjs, now: dayjs.Dayjs = dayjs()): string {
+  return date.isSame(now, 'year') ? date.format('DD.MM') : date.format(DISPLAY_DATE_FORMAT)
+}

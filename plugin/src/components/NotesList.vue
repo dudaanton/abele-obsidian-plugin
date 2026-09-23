@@ -7,17 +7,18 @@
       </button>
     </div>
     <div class="abele-notes-list__notes">
-      <div v-for="note in visible" :key="note.filePath" class="abele-notes-list__item">
-        <a class="internal-link" @click.prevent="openNote(note)">{{ note.name }}</a>
-        <div class="abele-notes-list__meta">
-          <span v-if="note.createdAt"
-            >created {{ note.createdAt.format(DISPLAY_DATE_FORMAT) }}</span
-          >
-          <span v-if="note.updatedAt">
-            · updated {{ note.updatedAt.format(DISPLAY_DATE_FORMAT) }}</span
-          >
-        </div>
-      </div>
+      <Card
+        v-for="note in visible"
+        :key="note.filePath"
+        class="abele-notes-list__item"
+        :title="note.name"
+        :description="note.description ?? undefined"
+        :thumbnail="thumbnailOf(note)"
+        :meta="metaOf(note)"
+        clamp-description
+        clickable
+        @click="openNote(note)"
+      />
       <div v-if="hasMore" ref="sentinel" class="abele-notes-list__sentinel" />
     </div>
     <div v-if="!props.notes.length" class="abele-notes-list__no-notes">No notes to show.</div>
@@ -28,12 +29,15 @@
 import { computed, ref } from 'vue'
 import { Note } from '@/entities/Note'
 import { openFile } from '@/helpers/vaultUtils'
-import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
+import { compactDate } from '@/helpers/datesHelper'
+import { resourceUrl } from '@/helpers/resourceUrl'
+import Card from './obsidian/Card.vue'
 import { usePagedList } from '@/composables/usePagedList'
 
 /**
- * Larger than the other footer lists: a row here is a link and two dates, no child
- * component and no markdown rendering, so it costs a fraction of a log or a task.
+ * Larger than the other footer lists: a row here is a card of plain text — a title, a
+ * clamped description, two dates and at most one lazily loaded picture — with no markdown
+ * rendering, so it costs a fraction of a log or a task.
  */
 const PAGE_SIZE = 50
 
@@ -64,8 +68,30 @@ function toggleSort() {
   reset()
 }
 
+/**
+ * The cover as a URL the card can load, looked up only for the cards on screen and resolved
+ * from the note itself, the way its own link would be. One that names nothing in the vault
+ * gets no picture rather than a broken one.
+ */
+function thumbnailOf(note: Note): string | undefined {
+  return note.cover ? resourceUrl(note.cover, note.filePath) : undefined
+}
+
+/**
+ * The created date, and the updated one when it is a different day — the day a note was
+ * written is what orders the list, and an edit the same day says nothing new.
+ */
+function metaOf(note: Note): string[] {
+  const meta: string[] = []
+  if (note.createdAt) meta.push(compactDate(note.createdAt))
+  if (note.updatedAt && !note.updatedAt.isSame(note.createdAt, 'day')) {
+    meta.push(`updated ${compactDate(note.updatedAt)}`)
+  }
+  return meta
+}
+
 function openNote(note: Note) {
-  openFile(note.filePath)
+  void openFile(note.filePath)
 }
 </script>
 
@@ -90,16 +116,14 @@ function openNote(note: Note) {
   height: 1px;
 }
 
+/**
+ * Flush with the note, like the chat cards: a card has a border of its own. Half the chats'
+ * gap, because a backlink list runs long and every row of it is a card.
+ */
 .abele-notes-list__notes {
   display: flex;
   flex-direction: column;
   gap: calc(var(--p-spacing) / 2);
-  padding-left: 0;
-}
-
-.abele-notes-list__meta {
-  font-size: var(--font-smallest);
-  color: var(--text-faint);
 }
 
 .abele-notes-list__no-notes {

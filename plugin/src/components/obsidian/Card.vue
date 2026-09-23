@@ -5,6 +5,7 @@
       'abele-card_clickable': clickable,
       'abele-card_selected': selected,
       'abele-card_large': large,
+      'abele-card_thumbed': !!thumbnail,
     }"
     :aria-pressed="selected === undefined ? undefined : selected"
     :role="clickable ? 'button' : undefined"
@@ -15,6 +16,13 @@
     <div v-if="cover" class="abele-card__cover">
       <Image :src="cover" :alt="title" fit="cover" class="abele-card__cover-image" />
     </div>
+    <Image
+      v-if="thumbnail"
+      :src="thumbnail"
+      fit="cover"
+      loading="lazy"
+      class="abele-card__thumbnail"
+    />
     <div class="abele-card__head">
       <div class="abele-card__title">
         <Icon v-if="icon" :icon="icon" no-hover class="abele-card__icon" />
@@ -61,6 +69,8 @@ const props = withDefaults(
     icon?: string
     /** A picture across the top, edge to edge: a note's cover, a poster, a photo in a feed. Vault path, link name or URL. */
     cover?: string
+    /** A small picture on the right, beside the words: a note's cover in a list. Vault path, link name or URL. */
+    thumbnail?: string
     /** For a card that is the thing itself rather than one of a grid — a post in a feed. The title is a heading. */
     large?: boolean
     /** A secondary identifier — a model id, a path. Rendered in the monospace face. */
@@ -77,6 +87,7 @@ const props = withDefaults(
   {
     icon: undefined,
     cover: undefined,
+    thumbnail: undefined,
     subtitle: undefined,
     description: undefined,
     meta: undefined,
@@ -130,6 +141,30 @@ const open = (event: Event) => {
 .abele-card_selected {
   border-color: var(--interactive-accent);
   background-color: var(--background-modifier-hover);
+}
+
+/**
+ * The thumbnail takes a strip down the right edge, as tall as the card, and the words keep
+ * out of it through the padding. Positioned rather than laid out in a column so every other
+ * part of the card stays where it is; the minimum height keeps the picture from being a sliver
+ * beside a card of one line.
+ */
+.abele-card_thumbed {
+  position: relative;
+  padding-inline-end: calc(var(--size-4-16) + var(--size-4-3) * 2);
+  min-height: calc(var(--size-4-12) + var(--size-4-3) * 2);
+}
+
+/**
+ * Qualified by the card so it outweighs the image's own full width. Decoration beside the
+ * title that already names the note, so it carries no `alt` of its own.
+ */
+.abele-card .abele-card__thumbnail {
+  position: absolute;
+  top: var(--size-4-3);
+  inset-inline-end: var(--size-4-3);
+  width: var(--size-4-16);
+  height: calc(100% - var(--size-4-3) * 2);
 }
 
 /**
