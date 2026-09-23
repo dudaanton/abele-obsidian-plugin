@@ -136,3 +136,51 @@ describe('a map tool that answered', () => {
     expect(wrapper.find('.abele-map').exists()).toBe(false)
   })
 })
+
+describe('the actions a message opens from its icon', () => {
+  // The icon sits beside the first line of a message. Its actions used to open below the whole
+  // message, so on a long answer the icon was tapped at the top and Retry appeared a screen
+  // further down. They open at the top of the body now, beside the icon that opened them.
+  it('open at the top of the message, before its text', async () => {
+    const long = Array.from({ length: 40 }, (_, i) => `Paragraph ${i}`).join('\n\n')
+    const wrapper = render({ role: 'assistant', content: long, thinking: 'hmm' })
+
+    await wrapper.find('.abele-chat-msg__icon').trigger('click')
+
+    const body = wrapper.find('.abele-chat-msg__body').element
+    const details = body.querySelector('.abele-chat-msg__details')
+    expect(details).not.toBeNull()
+    expect(body.firstElementChild).toBe(details)
+  })
+
+  it('put the buttons first, above the params and the result, which can be long', async () => {
+    const wrapper = render({
+      role: 'tool-call',
+      toolName: 'read',
+      toolParams: { path: 'a.md' },
+      toolResult: 'x'.repeat(2000),
+      toolStatus: 'approved',
+    })
+
+    await wrapper.find('.abele-chat-msg__icon').trigger('click')
+
+    const details = wrapper.find('.abele-chat-msg__details').element
+    const retry = [...details.querySelectorAll('.abele-chat-msg__branch-action')].find(
+      (el) => el.textContent?.trim() === 'Retry',
+    )
+    const params = details.querySelector('pre')
+    expect(retry).toBeTruthy()
+    expect(params).not.toBeNull()
+    expect(retry!.compareDocumentPosition(params!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('still emit retry', async () => {
+    const wrapper = render({ role: 'assistant', content: 'answer' })
+    await wrapper.find('.abele-chat-msg__icon').trigger('click')
+    const retry = wrapper
+      .findAll('.abele-chat-msg__branch-action')
+      .find((w) => w.text() === 'Retry')
+    await retry!.trigger('click')
+    expect(wrapper.emitted('retry-message')?.[0]).toEqual(['m1'])
+  })
+})

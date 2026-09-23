@@ -13,6 +13,50 @@
     </div>
 
     <div class="abele-chat-msg__body">
+      <!-- Actions and debug info — toggled by the icon, so they open beside it at the top of the
+           message rather than under a long answer. The buttons come first: the params and the
+           result below them can be tall. -->
+      <div v-if="expanded" class="abele-chat-msg__details">
+        <div class="abele-chat-msg__detail-row">
+          <span class="abele-chat-msg__branch-action" @click="emit('create-branch', message.id)"
+            >Branch from here</span
+          >
+        </div>
+        <div v-if="message.role === 'user'" class="abele-chat-msg__detail-row">
+          <span class="abele-chat-msg__branch-action" @click="emit('repeat-message', message.id)"
+            >Repeat</span
+          >
+          <span class="abele-chat-msg__branch-action" @click="emit('edit-message', message.id)"
+            >Edit</span
+          >
+        </div>
+        <div
+          v-if="message.role === 'assistant' || message.role === 'tool-call'"
+          class="abele-chat-msg__detail-row"
+        >
+          <span class="abele-chat-msg__branch-action" @click="emit('retry-message', message.id)"
+            >Retry</span
+          >
+        </div>
+        <div class="abele-chat-msg__detail-time">{{ formatTime(message.timestamp) }}</div>
+        <div v-if="message.usage" class="abele-chat-msg__detail-row">
+          <span class="abele-chat-msg__detail-label">Tokens</span>
+          <span
+            >in: {{ message.usage.input }} / out: {{ message.usage.output }} / total:
+            {{ message.usage.total
+            }}<template v-if="message.usage.speed"> · {{ message.usage.speed }} t/s</template></span
+          >
+        </div>
+        <div v-if="message.toolParams" class="abele-chat-msg__detail-row">
+          <span class="abele-chat-msg__detail-label">Params</span>
+          <pre>{{ JSON.stringify(message.toolParams, null, 2) }}</pre>
+        </div>
+        <div v-if="message.toolResult" class="abele-chat-msg__detail-row">
+          <span class="abele-chat-msg__detail-label">Result</span>
+          <pre>{{ truncate(message.toolResult, TOOL_RESULT_MAX_LENGTH) }}</pre>
+        </div>
+      </div>
+
       <!-- Thinking (collapsible) -->
       <details v-if="message.thinking" class="abele-chat-msg__thinking">
         <summary>Thinking</summary>
@@ -124,47 +168,6 @@
         </span>
       </div>
 
-      <!-- Expanded debug info — toggled by icon click -->
-      <div v-if="expanded" class="abele-chat-msg__details">
-        <div class="abele-chat-msg__detail-time">{{ formatTime(message.timestamp) }}</div>
-        <div v-if="message.usage" class="abele-chat-msg__detail-row">
-          <span class="abele-chat-msg__detail-label">Tokens</span>
-          <span
-            >in: {{ message.usage.input }} / out: {{ message.usage.output }} / total:
-            {{ message.usage.total
-            }}<template v-if="message.usage.speed"> · {{ message.usage.speed }} t/s</template></span
-          >
-        </div>
-        <div v-if="message.toolParams" class="abele-chat-msg__detail-row">
-          <span class="abele-chat-msg__detail-label">Params</span>
-          <pre>{{ JSON.stringify(message.toolParams, null, 2) }}</pre>
-        </div>
-        <div v-if="message.toolResult" class="abele-chat-msg__detail-row">
-          <span class="abele-chat-msg__detail-label">Result</span>
-          <pre>{{ truncate(message.toolResult, TOOL_RESULT_MAX_LENGTH) }}</pre>
-        </div>
-        <div class="abele-chat-msg__detail-row">
-          <span class="abele-chat-msg__branch-action" @click="emit('create-branch', message.id)"
-            >Branch from here</span
-          >
-        </div>
-        <div v-if="message.role === 'user'" class="abele-chat-msg__detail-row">
-          <span class="abele-chat-msg__branch-action" @click="emit('repeat-message', message.id)"
-            >Repeat</span
-          >
-          <span class="abele-chat-msg__branch-action" @click="emit('edit-message', message.id)"
-            >Edit</span
-          >
-        </div>
-        <div
-          v-if="message.role === 'assistant' || message.role === 'tool-call'"
-          class="abele-chat-msg__detail-row"
-        >
-          <span class="abele-chat-msg__branch-action" @click="emit('retry-message', message.id)"
-            >Retry</span
-          >
-        </div>
-      </div>
     </div>
 
     <!-- Timestamp — always visible, right-aligned -->
@@ -945,11 +948,11 @@ body.is-phone
 }
 
 .abele-chat-msg__details {
-  margin-top: var(--size-4-1);
+  margin-bottom: var(--size-4-1);
   font-size: var(--font-smaller);
   color: var(--text-muted);
-  border-top: 1px solid var(--background-modifier-border);
-  padding-top: var(--size-4-1);
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: var(--size-2-1);
 
   pre {
     background-color: var(--background-secondary);
