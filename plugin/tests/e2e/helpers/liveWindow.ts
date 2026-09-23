@@ -6,7 +6,12 @@
  * crashes half way is exactly the one that leaves a settings window behind.
  */
 import { beforeAll, afterAll } from 'vitest'
-import { closeStrayWindows, isObsidianRunning, setBackgroundThrottling } from './obsidianCli'
+import {
+  closeStrayWindows,
+  isObsidianRunning,
+  setBackgroundThrottling,
+  waitForLinkIndex,
+} from './obsidianCli'
 
 const available = isObsidianRunning()
 
@@ -14,7 +19,9 @@ beforeAll(() => {
   if (!available) return
   closeStrayWindows()
   setBackgroundThrottling(false)
-})
+  // The file before may have ended with an app reload; its link index is still filling in.
+  waitForLinkIndex()
+}, 150_000)
 
 afterAll(() => {
   if (!available) return

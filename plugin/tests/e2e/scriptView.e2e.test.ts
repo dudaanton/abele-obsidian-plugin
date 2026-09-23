@@ -147,6 +147,9 @@ const cleanup = `
   const folder = window.__abeleTest.AbeleConfig.getInstance().ai.scriptsFolder
   const f = app.vault.getAbstractFileByPath(folder + '/E2E Counter.js')
   if (f) await app.vault.delete(f)
+  // The folder too, when this made it: the fixture vault holds ScaleTest/ and nothing else.
+  const dir = app.vault.getAbstractFileByPath(folder)
+  if (dir && dir.children && dir.children.length === 0) await app.vault.delete(dir, true)
   window.__abeleTest.viewProbe = null
   return true
 `

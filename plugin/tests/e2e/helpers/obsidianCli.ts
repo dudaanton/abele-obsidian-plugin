@@ -189,3 +189,28 @@ export function closeStrayWindows(): number {
     30_000
   )
 }
+
+/**
+ * Waits until Obsidian has resolved every note's links. After an app reload — which every
+ * `emulateMobile` switch is — the link index fills in over several seconds while the
+ * metadata is already there, so a file running right after one saw a group of 442 notes as 6.
+ */
+export function waitForLinkIndex(timeoutMs = 120_000): void {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    const settled = evalJson<boolean>(
+      `(() => {
+        const m = app.metadataCache
+        const q = m.linkResolverQueue
+        const pending = q ? (q.items?.size ?? q.items?.length ?? 0) : 0
+        const running = !!q?.runnable?.running
+        return m.initialized && !pending && !running &&
+          Object.keys(m.resolvedLinks).length >= app.vault.getMarkdownFiles().length
+      })()`,
+      30_000
+    )
+    if (settled) return
+    if (Date.now() > deadline) throw new Error('Obsidian did not finish resolving links in time')
+    sleepSync(1000)
+  }
+}

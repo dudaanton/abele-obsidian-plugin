@@ -181,6 +181,9 @@ const reload = async (): Promise<void> => {
   }
 }
 
+/** One per page in `Settings.vue`. GitHub made it eleven. */
+const SETTINGS_TABS = 11
+
 const available = isObsidianRunning() && hasTestApi()
 
 describe.skipIf(!available)('settings and sidebars on a tablet', () => {
@@ -215,13 +218,13 @@ describe.skipIf(!available)('settings and sidebars on a tablet', () => {
 
   it('shows every settings tab as a strip beside the page, as the desktop does', () => {
     expect(report.vertical).toBe(false)
-    expect(report.tabs).toBe(10)
-    expect(report.tabsOnScreen).toBe(10)
+    expect(report.tabs).toBe(SETTINGS_TABS)
+    expect(report.tabsOnScreen).toBe(SETTINGS_TABS)
     expect(report.pageShown).toBe(true)
   })
 
   it('keeps the strip after a tab is picked', () => {
-    expect(report.tabsAfterPick).toBe(10)
+    expect(report.tabsAfterPick).toBe(SETTINGS_TABS)
     expect(report.activeAfterPick).toBe('Journals')
     expect(report.pageAfterPick).toBe(true)
   })

@@ -104,6 +104,15 @@ const cleanupScript = `(async () => {
       }
       await app.vault.delete(note)
     }
+    // The comments folder and its parent, when the probe's comments were all they held: the
+    // fixture vault holds ScaleTest/ and nothing else.
+    const folder = service.commentPath('x').split('/').slice(0, -1)
+    while (folder.length) {
+      const dir = app.vault.getAbstractFileByPath(folder.join('/'))
+      if (!dir || !dir.children || dir.children.length) break
+      await app.vault.delete(dir, true)
+      folder.pop()
+    }
     report.cleaned = !app.vault.getAbstractFileByPath(path)
   } catch (e) {
     report.error = String((e && e.message) || e)
