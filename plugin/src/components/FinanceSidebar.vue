@@ -20,12 +20,14 @@
           {{ formatAmount(card.assets) }}
           <span class="abele-finance-sidebar__card-currency">{{ card.currency }}</span>
         </div>
-        <div class="abele-finance-sidebar__card-details">
-          <span v-if="card.liabilities > 0" class="abele-finance-sidebar__card-debt">
-            Debt {{ formatAmount(card.liabilities) }}
+        <div v-if="card.debt > 0 || card.owed > 0" class="abele-finance-sidebar__card-details">
+          <span v-if="card.debt > 0" class="abele-finance-sidebar__card-debt">
+            Debt {{ formatAmount(card.debt) }}
+          </span>
+          <span v-if="card.owed > 0" class="abele-finance-sidebar__card-owed">
+            Owed to me {{ formatAmount(card.owed) }}
           </span>
           <span
-            v-if="card.liabilities > 0"
             class="abele-finance-sidebar__card-net"
             :class="{
               'abele-finance-sidebar__summary-value--income': card.net >= 0,
@@ -155,6 +157,7 @@ import TransactionItem from './TransactionItem.vue'
 import dayjs from 'dayjs'
 import { toRaw } from 'vue'
 import { formatAmount } from '@/helpers/moneyFormat'
+import { currencyCard, type CurrencyCard } from '@/helpers/financeTotals'
 
 const PAGE_SIZE = 20
 const visibleCount = ref(PAGE_SIZE)
@@ -166,13 +169,6 @@ const transactionsList = computed(() => unref(store.transactionsList) as Transac
 const balanceIndex = computed(() => unref(store.balanceIndex) as BalanceIndex | null)
 
 // --- Currency Balance Cards ---
-
-interface CurrencyCard {
-  currency: string
-  assets: number
-  liabilities: number
-  net: number
-}
 
 const pinnedCurrenciesList = computed(() =>
   AbeleConfig.getInstance()
@@ -188,30 +184,9 @@ const currencyCards = computed<CurrencyCard[]>(() => {
   bi.version.value // track reactivity
 
   const asOfDate = periodEnd.value
-  const cards: CurrencyCard[] = []
-
-  for (const currency of pinnedCurrenciesList.value) {
-    let assets = 0
-    let liabilities = 0
-
-    for (const [path, account] of al.accounts) {
-      if (account.currency !== currency) continue
-      if (account.excludeFromTotal) continue
-
-      const balance = bi.getBalanceAtDate(path, asOfDate)
-      if (account.accountType === 'asset') assets += balance
-      else if (account.accountType === 'liability' && balance < 0) liabilities += -balance
-    }
-
-    cards.push({
-      currency,
-      assets,
-      liabilities,
-      net: assets - liabilities,
-    })
-  }
-
-  return cards
+  return pinnedCurrenciesList.value.map((currency) =>
+    currencyCard(currency, al.accounts, (path) => bi.getBalanceAtDate(path, asOfDate))
+  )
 })
 
 onUnmounted(() => {
@@ -973,7 +948,8 @@ const dayTxTotals = (date: string): string[] => {
 
 .abele-finance-sidebar__card-details {
   display: flex;
-  gap: var(--size-4-2);
+  flex-wrap: wrap;
+  column-gap: var(--size-4-2);
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
@@ -982,6 +958,10 @@ const dayTxTotals = (date: string): string[] => {
 
 .abele-finance-sidebar__card-debt {
   color: var(--text-error);
+}
+
+.abele-finance-sidebar__card-owed {
+  color: var(--text-success);
 }
 
 .abele-finance-sidebar__card-net {

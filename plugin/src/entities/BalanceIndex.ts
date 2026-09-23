@@ -86,9 +86,7 @@ export class BalanceIndex {
     // dollars as if they were euros.
     const otherCurrency = this.walletCurrency(otherPath)
     if (otherCurrency && otherCurrency !== currency) {
-      const holdsAmount = transaction.currency
-        ? transaction.currency === currency
-        : role === 'from'
+      const holdsAmount = transaction.currency ? transaction.currency === currency : role === 'from'
       if (holdsAmount) return sign * transaction.amount
       if (transaction.foreignAmount != null && !transaction.foreignCurrency) {
         return sign * transaction.foreignAmount
