@@ -328,8 +328,11 @@ describe('footer lists — priority and labels', () => {
         'No label (1)',
       ])
 
+      expect(items.find((i) => i.title === 'All labels')?.checked).toBe(true)
+
       pick(items, 'Work (2)')
       await view.vm.$nextTick()
+      expect((await openLabelMenu(view)).find((i) => i.title === 'Work (2)')?.checked).toBe(true)
       expect(titles()).toEqual(['work-1', 'work-2'])
       expect(
         view

@@ -71,14 +71,19 @@ export function useLabelFilter<T extends { labels: string[] }>(source: () => rea
     selected.value = selection
   }
 
-  /** Obsidian's own menu, with a tick on whatever is chosen now. */
+  /**
+   * Obsidian's own menu, with a tick on whatever is chosen now — native or not, as the person
+   * has Obsidian set up, which is why the tick is `setChecked` rather than an icon.
+   */
   const openMenu = (event: MouseEvent): Menu => {
     const menu = new Menu()
     const add = (title: string, selection: LabelSelection) =>
-      menu.addItem((item) => {
-        item.setTitle(title).onClick(() => select(selection))
-        if (isSelected(selection)) item.setIcon('check')
-      })
+      menu.addItem((item) =>
+        item
+          .setTitle(title)
+          .setChecked(isSelected(selection))
+          .onClick(() => select(selection))
+      )
 
     add('All labels', { kind: 'all' })
     menu.addSeparator()

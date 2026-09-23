@@ -56,7 +56,12 @@ export const editorInfoField = StateField.define<{ file: TFile | null }>({
 export class MenuItem {
   title = ''
   icon = ''
+  checked: boolean | null = null
   handler: (() => void) | null = null
+  setChecked(checked: boolean | null): this {
+    this.checked = checked
+    return this
+  }
   setTitle(title: string): this {
     this.title = title
     return this
