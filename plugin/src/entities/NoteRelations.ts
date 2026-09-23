@@ -269,15 +269,7 @@ export class NoteRelations {
         if (note.path === this.filePath) continue
 
         const cache = app.metadataCache.getFileCache(note)?.frontmatter
-        // TODO: consider refactor - this logic should be in Task class or at least in helpers
-        const date = cache?.due ?? cache?.date ?? cache?.created
-
-        if (!date) continue
-
-        const parsedDate = dayjs(date, DATE_FORMAT)
-        if (!parsedDate.isValid()) continue
-
-        if (!parsedDate.isSame(this.journalDate, 'date')) continue
+        if (!this.belongsToJournalDay(note.path, cache)) continue
 
         if (cache.type === 'task') {
           this.addTask(note.path)
@@ -286,18 +278,39 @@ export class NoteRelations {
         } else if (cache.type === 'time-entry') {
           this.addTimeEntry(note.path)
         } else if (AbeleConfig.getInstance().isLogType(cache.type, note.path)) {
-          // Skip logs that are also journal notes (avoid showing one journal as log in another)
-          const isDefaultJournal = AbeleConfig.getInstance().journals.some((j) =>
-            j.checkIfNotePathIsJournal(note.path)
-          )
-          if (!isDefaultJournal) {
-            this.addLog(note.path)
-          }
+          this.addLog(note.path)
         } else {
           this.addNote(note.path)
         }
       }
     }
+  }
+
+  /**
+   * Whether a note belongs to this journal's day — the one rule for it, used both when the
+   * journal is opened and when a note changes while it is open.
+   *
+   * A note belongs to the day of its `due`, else its `date`, else its `created`. The two used to
+   * be written separately and disagreed: a note changing later was taken in if *any* of those
+   * fell on the day. A task made today for next week therefore appeared in today's daily note
+   * the moment it was created and was gone the next time the note was opened.
+   *
+   * Another journal is never a log of this one, even when it is dated to the same day.
+   */
+  private belongsToJournalDay(path: string, frontmatter: Record<string, any> | undefined): boolean {
+    if (!this.journalDate || !frontmatter) return false
+
+    const date = frontmatter.due ?? frontmatter.date ?? frontmatter.created
+    if (!date) return false
+
+    const parsedDate = dayjs(date, DATE_FORMAT)
+    if (!parsedDate.isValid() || !parsedDate.isSame(this.journalDate, 'date')) return false
+
+    const config = AbeleConfig.getInstance()
+    if (config.isLogType(frontmatter.type, path)) {
+      return !config.journals.some((j) => j.checkIfNotePathIsJournal(path))
+    }
+    return true
   }
 
   /**
@@ -351,30 +364,10 @@ export class NoteRelations {
 
     const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter
 
-    if (this.journalDate) {
-      const createdDate = frontmatter?.created
-
-      if (createdDate) {
-        const parsedDate = dayjs(createdDate)
-        if (parsedDate.isValid()) {
-          if (parsedDate.isSame(this.journalDate, 'date')) return true
-        }
-      }
-
-      if (frontmatter?.type === 'task') {
-        const taskDate = Task.resolveDate(frontmatter)
-        if (taskDate?.isSame(this.journalDate, 'date')) return true
-      }
-
-      if (frontmatter?.type === 'transaction' && frontmatter?.date) {
-        const txDate = dayjs(frontmatter.date, DATE_FORMAT)
-        if (txDate.isValid() && txDate.isSame(this.journalDate, 'date')) return true
-      }
-
-      if (frontmatter?.type === 'time-entry' && frontmatter?.start) {
-        const teDate = dayjs(frontmatter.start)
-        if (teDate.isValid() && teDate.isSame(this.journalDate, 'date')) return true
-      }
+    // Only for the journal's own note: further down this recursion walks into other notes'
+    // links, and a note being dated to the day says nothing about what it links to.
+    if (processedTreePaths.length === 0 && path !== this.filePath) {
+      if (this.belongsToJournalDay(path, frontmatter)) return true
     }
 
     const type = frontmatter?.type

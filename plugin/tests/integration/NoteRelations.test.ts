@@ -280,3 +280,81 @@ describe('NoteRelations — journal notes sweep by date', () => {
     expect([...relations.tasks.keys()]).toEqual([])
   })
 })
+
+/**
+ * A note arriving while a journal is open is judged by the same rule the journal used when it
+ * was opened. They used to differ: on opening, a task belonged to the day of its `due`, else its
+ * `date`, else its `created`; a task arriving later belonged if *any* of those matched. So a task
+ * made today for next week showed up in today's daily note the moment it was created, and was
+ * gone the next time the note was opened.
+ */
+describe('NoteRelations — a journal judges new notes by the rule it opened with', () => {
+  let relations: NoteRelations | null = null
+
+  const VAULT_WITH_NEW: FakeFileSpec[] = [
+    { path: 'Journals/2026/2026-08-22.md', frontmatter: { type: 'journal' }, content: 'Today\n' },
+    {
+      path: 'Tasks/For next week.md',
+      frontmatter: { type: 'task', created: '2026-08-22', due: '2026-08-29' },
+      content: 'For next week\n',
+    },
+    {
+      path: 'Tasks/Planned later.md',
+      frontmatter: { type: 'task', created: '2026-08-22', date: '2026-08-30' },
+      content: 'Planned later\n',
+    },
+    {
+      path: 'Tasks/Undated.md',
+      frontmatter: { type: 'task', created: '2026-08-22' },
+      content: 'Undated\n',
+    },
+    {
+      path: 'Tasks/Starts today.md',
+      frontmatter: { type: 'task', created: '2026-08-01', date: '2026-08-22', due: '2026-08-25' },
+      content: 'Starts today\n',
+    },
+  ]
+
+  let app: ReturnType<typeof useVault>
+
+  beforeEach(() => {
+    app = useVault(VAULT_WITH_NEW)
+    configureAbele({ journals: [dailyJournal()] })
+  })
+
+  afterEach(() => {
+    relations?.cleanup()
+    relations = null
+    VaultWatcherWrapper.destroy()
+  })
+
+  /** What Obsidian does when a file is written: a `changed` for it, then `resolved`. */
+  const arrive = (path: string) => {
+    const file = app.vault.getAbstractFileByPath(path)
+    app.emit('metadataCache', 'changed', file)
+    app.emit('metadataCache', 'resolved')
+  }
+
+  it.each(['Tasks/For next week.md', 'Tasks/Planned later.md', 'Tasks/Starts today.md'])(
+    'keeps %s out, as reopening the journal would',
+    (path) => {
+      relations = relationsFor('Journals/2026/2026-08-22.md')
+      const opened = [...relations.tasks.keys()]
+
+      arrive(path)
+
+      expect([...relations.tasks.keys()]).toEqual(opened)
+      expect(opened).not.toContain(path)
+    }
+  )
+
+  it('still takes in a task made that day with no date of its own', () => {
+    relations = relationsFor('Journals/2026/2026-08-22.md')
+    // Pretend it was not there when the journal opened, as with a task created just now.
+    ;(relations as unknown as { removeTask(p: string): void }).removeTask('Tasks/Undated.md')
+
+    arrive('Tasks/Undated.md')
+
+    expect([...relations.tasks.keys()]).toContain('Tasks/Undated.md')
+  })
+})
