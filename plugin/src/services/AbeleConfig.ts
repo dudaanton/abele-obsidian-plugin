@@ -77,6 +77,14 @@ export interface HeaderButtonDefinition {
   scriptName: string
   /** Parameter values, by parameter name. Empty means the script's own default. */
   params: Record<string, string>
+  /** Off keeps the button configured without showing it anywhere. Absent means on. */
+  enabled?: boolean
+  /** Only the icon in the header, with the name as its tooltip, for a header already full. */
+  iconOnly?: boolean
+  /** On every note, whatever its type or folder. */
+  allNotes?: boolean
+  /** Folders whose notes, at any depth, show the button — besides the notes of `noteTypes`. */
+  folders?: string[]
 }
 
 export const DEFAULT_SETTINGS: AbeleSettings = {
@@ -403,6 +411,10 @@ export class AbeleConfig {
       icon: b.icon || 'play',
       noteTypes: b.noteTypes || [],
       params: b.params || {},
+      enabled: b.enabled ?? true,
+      iconOnly: b.iconOnly ?? false,
+      allNotes: b.allNotes ?? false,
+      folders: b.folders || [],
     }))
     this.mapCoordinatesProperty =
       settings?.mapCoordinatesProperty ?? DEFAULT_SETTINGS.mapCoordinatesProperty

@@ -29,6 +29,15 @@
     <Icon text-right="Recurrence" icon="repeat" with-bg @click="recurrencePickerOpen = true" />
     <Icon text-right="Clear" with-bg @click="clear" />
     <Icon
+      v-for="button in scriptButtons"
+      :key="button.id"
+      :icon="button.icon || 'play'"
+      :text-right="button.iconOnly ? undefined : button.name"
+      :tooltip="button.iconOnly ? button.name : `Run ${button.scriptName}`"
+      with-bg
+      @click="runButton(button)"
+    />
+    <Icon
       v-if="showTimerButton"
       :icon="isTimerActiveForNote ? 'timer-off' : 'timer'"
       :text-right="isTimerActiveForNote ? timerElapsedText : 'Start timer'"
@@ -68,6 +77,7 @@ import Icon from './obsidian/Icon.vue'
 import DateTimePickerModal from './DateTimePickerModal.vue'
 import RecurrencePickerModal from './RecurrencePickerModal.vue'
 import { useTimerButton } from '@/composables/useTimerButton'
+import { useScriptButtons } from '@/composables/useScriptButtons'
 
 const props = defineProps<{ task: TaskHeader }>()
 
@@ -78,6 +88,9 @@ const { showTimerButton, isTimerActiveForNote, timerElapsedText, toggleTimer } =
   taskFilePath,
   taskType
 )
+
+// Script buttons configured for tasks — or for every note, or for the task's folder.
+const { scriptButtons, runButton } = useScriptButtons(taskFilePath, taskType)
 
 const addDateButton = ref<InstanceType<typeof Icon> | null>(null)
 

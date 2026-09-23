@@ -7,7 +7,12 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import type { HeaderButtonDefinition } from '@/services/AbeleConfig'
-import { buttonsForType, noteVariables, buttonParams } from '@/helpers/headerButtons'
+import {
+  buttonsForType,
+  buttonsForNote,
+  noteVariables,
+  buttonParams,
+} from '@/helpers/headerButtons'
 import { useVault } from '../helpers/testEnv'
 
 function button(overrides: Partial<HeaderButtonDefinition> = {}): HeaderButtonDefinition {
@@ -49,6 +54,52 @@ describe('choosing the buttons for a note', () => {
 
   it('hides a button that names no script, which would do nothing if pressed', () => {
     expect(buttonsForType([button({ scriptName: '' })], 'movie')).toEqual([])
+  })
+})
+
+describe('choosing the buttons for a note by where it is, too', () => {
+  it('offers a button set for a folder on the notes inside it, at any depth', () => {
+    const configured = button({ noteTypes: [], folders: ['Films'] })
+
+    expect(buttonsForNote([configured], { type: null, path: 'Films/Noir/The Third Man.md' }))
+      .toEqual([configured])
+    expect(buttonsForNote([configured], { type: null, path: 'Filmsy/Other.md' })).toEqual([])
+  })
+
+  it('does not care about a trailing slash on the folder', () => {
+    const configured = button({ noteTypes: [], folders: ['Films/'] })
+
+    expect(buttonsForNote([configured], { type: null, path: 'Films/A.md' })).toEqual([configured])
+  })
+
+  it('offers a button on either its types or its folders', () => {
+    const configured = button({ noteTypes: ['book'], folders: ['Films'] })
+
+    expect(buttonsForNote([configured], { type: 'book', path: 'Books/A.md' })).toEqual([configured])
+    expect(buttonsForNote([configured], { type: 'movie', path: 'Films/A.md' })).toEqual([configured])
+    expect(buttonsForNote([configured], { type: 'movie', path: 'Else/A.md' })).toEqual([])
+  })
+
+  it('offers a button set for every note on every note, typed or not', () => {
+    const configured = button({ noteTypes: [], allNotes: true })
+
+    expect(buttonsForNote([configured], { type: null, path: 'A.md' })).toEqual([configured])
+  })
+
+  it('hides a button that is switched off, wherever it would have shown', () => {
+    const configured = button({ enabled: false, allNotes: true })
+
+    expect(buttonsForNote([configured], { type: 'movie', path: 'A.md' })).toEqual([])
+  })
+
+  it('keeps the order they were configured in', () => {
+    const first = button({ id: 'b1', name: 'Second added, placed first' })
+    const second = button({ id: 'b2', name: 'Placed second' })
+
+    expect(buttonsForNote([first, second], { type: 'movie', path: 'A.md' })).toEqual([
+      first,
+      second,
+    ])
   })
 })
 

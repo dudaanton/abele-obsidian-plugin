@@ -47,8 +47,8 @@
       v-for="button in scriptButtons"
       :key="button.id"
       :icon="button.icon || 'play'"
-      :text-right="button.name"
-      :tooltip="`Run ${button.scriptName}`"
+      :text-right="button.iconOnly ? undefined : button.name"
+      :tooltip="button.iconOnly ? button.name : `Run ${button.scriptName}`"
       @click="runButton(button)"
     />
   </div>
@@ -71,9 +71,7 @@ import { Choice, useMenu } from '@/composables/useMenu'
 import { useTimerButton } from '@/composables/useTimerButton'
 import { createTransaction } from '@/commands/createTransaction'
 import { getFrontmatterFromCache } from '@/helpers/notesUtils'
-import { buttonParams, buttonsForType, noteVariables } from '@/helpers/headerButtons'
-import { runScriptByName } from '@/scripting/runScript'
-import type { HeaderButtonDefinition } from '@/services/AbeleConfig'
+import { useScriptButtons } from '@/composables/useScriptButtons'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { BalanceIndex } from '@/entities/BalanceIndex'
 import { AccountsList } from '@/entities/AccountsList'
@@ -135,25 +133,15 @@ const accountBalances = computed(() => {
 })
 
 /**
- * Buttons configured for this note's type.
+ * Buttons configured for this note — by its type, its folder, or for every note.
  *
  * `header.type` is read from frontmatter when the header loads, and the header reloads when
  * the file changes — so a note that gains or loses its `type` gains or loses these with it.
  */
-const scriptButtons = computed(() => {
-  const config = AbeleConfig.getInstance()
-  // The settings object is not reactive; its version moves on every save and every reload
-  // from disk, which is what redraws the buttons when they are configured or synced.
-  void config.version.value
-  return buttonsForType(config.headerButtons, props.header.type)
-})
-
-const runButton = async (button: HeaderButtonDefinition) => {
-  // The note is read at the moment the button is pressed rather than when it was drawn: what
-  // the parameters describe is the note as it stands now.
-  const params = buttonParams(button, noteVariables(props.header.filePath))
-  await runScriptByName(button.scriptName, params)
-}
+const { scriptButtons, runButton } = useScriptButtons(
+  computed(() => props.header.filePath),
+  computed(() => props.header.type)
+)
 
 const addNextTransaction = async () => {
   const fm = getFrontmatterFromCache(props.header.filePath)

@@ -16,14 +16,34 @@ export function buttonsForType(
   buttons: HeaderButtonDefinition[],
   type: string | null
 ): HeaderButtonDefinition[] {
-  if (!type) return []
-  const noteType = type.trim().toLowerCase()
+  return buttonsForNote(buttons, { type, path: '' })
+}
 
-  return buttons.filter(
-    (button) =>
-      button.scriptName &&
-      button.noteTypes.some((configured) => configured.trim().toLowerCase() === noteType)
-  )
+/**
+ * The buttons a note shows, in the order they were configured.
+ *
+ * A button shows where any of its conditions holds: every note, a note of one of its types, or
+ * a note anywhere under one of its folders. One that is switched off, or names no script and
+ * so would do nothing if pressed, shows nowhere.
+ */
+export function buttonsForNote(
+  buttons: HeaderButtonDefinition[],
+  note: { type: string | null; path: string }
+): HeaderButtonDefinition[] {
+  const noteType = note.type?.trim().toLowerCase() ?? ''
+
+  return buttons.filter((button) => {
+    if (!button.scriptName || button.enabled === false) return false
+    if (button.allNotes) return true
+    if (noteType && button.noteTypes.some((t) => t.trim().toLowerCase() === noteType)) return true
+    return (button.folders ?? []).some((folder) => isInside(note.path, folder))
+  })
+}
+
+/** Whether a vault path sits under a folder, at any depth. `Films` does not contain `Filmsy/`. */
+function isInside(path: string, folder: string): boolean {
+  const prefix = folder.trim().replace(/^\/+|\/+$/g, '')
+  return prefix !== '' && path.startsWith(prefix + '/')
 }
 
 /**

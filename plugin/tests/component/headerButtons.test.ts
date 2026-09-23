@@ -10,6 +10,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import HeaderView from '@/components/Header.vue'
+import TaskHeaderView from '@/components/TaskHeader.vue'
+import { TaskHeader } from '@/entities/TaskHeader'
 import Icon from '@/components/obsidian/Icon.vue'
 import { Header } from '@/entities/Header'
 import { AbeleConfig, type HeaderButtonDefinition } from '@/services/AbeleConfig'
@@ -63,6 +65,7 @@ beforeEach(() => {
       content: 'Body.',
     },
     { path: 'Notes/Plain.md', content: 'No type here.' },
+    { path: 'Tasks/Water plants.md', frontmatter: { type: 'task', status: 'todo' }, content: '' },
   ])
   // `Header.load` walks the configured journals before it looks at frontmatter, and the
   // header's timer button asks which types are time-trackable — neither is what these are
@@ -182,5 +185,61 @@ describe('a note of another type', () => {
     const wrapper = mount(HeaderView, { props: { header: await headerFor('Notes/Plain.md') } })
 
     expect(buttonLabels(wrapper)).not.toContain('Fetch details')
+  })
+})
+
+describe('a button set up beyond its note types', () => {
+  it('shows on a note in its folder, typed or not', async () => {
+    configureButtons([{ name: 'Tidy', noteTypes: [], folders: ['Notes'] }])
+
+    const wrapper = mount(HeaderView, { props: { header: await headerFor('Notes/Plain.md') } })
+
+    expect(buttonLabels(wrapper)).toContain('Tidy')
+  })
+
+  it('shows on every note when set to', async () => {
+    configureButtons([{ name: 'Tidy', noteTypes: [], allNotes: true }])
+
+    const wrapper = mount(HeaderView, { props: { header: await headerFor('Notes/Plain.md') } })
+
+    expect(buttonLabels(wrapper)).toContain('Tidy')
+  })
+
+  it('shows nowhere while switched off', async () => {
+    configureButtons([{ name: 'Fetch details', enabled: false }])
+
+    const wrapper = mount(HeaderView, { props: { header: await headerFor(FILM) } })
+
+    expect(buttonLabels(wrapper)).not.toContain('Fetch details')
+  })
+
+  it('shows only its icon when asked to, and says its name on hover', async () => {
+    configureButtons([{ name: 'Fetch details', icon: 'download', iconOnly: true }])
+
+    const wrapper = mount(HeaderView, { props: { header: await headerFor(FILM) } })
+
+    expect(buttonLabels(wrapper)).not.toContain('Fetch details')
+    const icon = wrapper.findAllComponents(Icon).find((i) => i.props('icon') === 'download')!
+    expect(icon.props('tooltip')).toBe('Fetch details')
+  })
+})
+
+describe('a task note', () => {
+  // A task has a header of its own — done, dates, recurrence — and it used to draw no script
+  // buttons at all, so a button configured for `task` never appeared anywhere.
+  it('shows the buttons configured for tasks, and runs them', async () => {
+    configureButtons([{ name: 'Postpone', noteTypes: ['task'], params: { query: '{{title}}' } }])
+    // Loading a task reads it out of an open editor, which there is none of here; what the
+    // buttons need is only the path, so the task is marked loaded as the editor would leave it.
+    const task = new TaskHeader({ id: 't1', filePath: 'Tasks/Water plants.md' })
+    task.loaded = true
+
+    const wrapper = mount(TaskHeaderView, { props: { task } })
+    await wrapper
+      .findAllComponents(Icon)
+      .find((icon) => icon.props('textRight') === 'Postpone')!
+      .trigger('click')
+
+    expect(execute.mock.calls[0][1].query).toBe('Water plants')
   })
 })

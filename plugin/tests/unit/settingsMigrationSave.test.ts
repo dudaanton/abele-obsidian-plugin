@@ -73,7 +73,7 @@ describe('loading settings that still need migrating', () => {
 
     await AbeleConfig.getInstance().loadSettings()
 
-    expect(saved[0].headerButtons).toEqual([button])
+    expect(saved[0].headerButtons).toMatchObject([button])
   })
 
   /** A save during load must not register the AI features early; `onload` does that itself. */

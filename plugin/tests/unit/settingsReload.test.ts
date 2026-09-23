@@ -78,8 +78,8 @@ describe('a settings file changed from outside', () => {
     await config.reloadSettings()
     await config.saveSettings()
 
-    expect(config.headerButtons).toEqual([button])
-    expect(saved.at(-1)?.headerButtons).toEqual([button])
+    expect(config.headerButtons).toMatchObject([button])
+    expect(saved.at(-1)?.headerButtons).toMatchObject([button])
   })
 
   it('tells whatever shows settings that they changed', async () => {
@@ -157,7 +157,7 @@ describe('a settings file that cannot be read', () => {
     await config.reloadSettings()
     await config.saveSettings()
 
-    expect(saved.at(-1)?.headerButtons).toEqual([button])
+    expect(saved.at(-1)?.headerButtons).toMatchObject([button])
   })
 })
 
@@ -169,5 +169,26 @@ describe('no settings file at all', () => {
     await AbeleConfig.getInstance().loadSettings()
 
     expect(saved).toHaveLength(1)
+  })
+})
+
+describe('header buttons saved before they could be switched off, placed or shown everywhere', () => {
+  it('load as they behaved: on, labelled, shown by type only', async () => {
+    const old = { id: 'b1', name: 'Fetch', icon: 'play', noteTypes: ['movie'], scriptName: 'Fetch' }
+    stored = settingsWith([old as HeaderButtonDefinition])
+    install()
+
+    await AbeleConfig.getInstance().loadSettings()
+
+    expect(AbeleConfig.getInstance().headerButtons).toEqual([
+      {
+        ...old,
+        params: {},
+        enabled: true,
+        iconOnly: false,
+        allNotes: false,
+        folders: [],
+      },
+    ])
   })
 })
