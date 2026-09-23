@@ -211,6 +211,7 @@ describe('the agent editor', () => {
     expect(view.findAll('.abele-tabs__tab').map((t) => t.text())).toEqual([
       'Basic',
       'Prompts',
+      'Memory',
       'Access',
       'Skills',
       'Delegation',
@@ -272,5 +273,95 @@ describe('the agent editor', () => {
     await secondCardActions.findAll('.abele-obsidian-icon')[0].trigger('click')
 
     expect(registry.get(agent.id)?.prompts.map((p) => p.value)).toEqual(['second', 'first'])
+  })
+})
+
+describe('the memory tab', () => {
+  const openMemory = async (agentId: string) => {
+    const view = mountEditor(agentId)
+    const tab = view.findAll('.abele-tabs__tab').find((t) => t.text() === 'Memory')!
+    await tab.trigger('click')
+    return view
+  }
+
+  const seeded = () =>
+    AgentRegistry.getInstance().create({
+      name: 'Writer',
+      memory: [
+        { id: 'm1', text: 'Answer in Russian', created: '2026-09-20' },
+        { id: 'm2', text: 'The cat is Bruno', created: '2026-09-21' },
+      ],
+    })
+
+  it('shows what this agent remembers, and not what another does', async () => {
+    const agent = seeded()
+    AgentRegistry.getInstance().create({
+      name: 'Other',
+      memory: [{ id: 'x', text: 'Not mine', created: '2026-09-21' }],
+    })
+
+    const view = await openMemory(agent.id)
+
+    const values = view
+      .findAll('.abele-card input')
+      .map((i) => (i.element as HTMLInputElement).value)
+    expect(values).toEqual(['Answer in Russian', 'The cat is Bruno'])
+    expect(view.findAll('.abele-card__name').map((n) => n.text())).toEqual([
+      'Added 2026-09-20',
+      'Added 2026-09-21',
+    ])
+  })
+
+  it('says so when there is nothing remembered', async () => {
+    const bare = AgentRegistry.getInstance().create({ name: 'Bare' })
+
+    const view = await openMemory(bare.id)
+
+    expect(view.find('.abele-empty-state').text()).toContain('Nothing remembered yet')
+  })
+
+  it('forgets an item and saves', async () => {
+    const agent = seeded()
+    const view = await openMemory(agent.id)
+
+    await view.findAll('.abele-card__actions .abele-obsidian-icon')[0].trigger('click')
+
+    expect(
+      AgentRegistry.getInstance()
+        .get(agent.id)
+        ?.memory?.map((m) => m.text)
+    ).toEqual(['The cat is Bruno'])
+    expect(AbeleConfig.getInstance().saveSettings).toHaveBeenCalled()
+  })
+
+  it('edits an item in place', async () => {
+    const agent = seeded()
+    const view = await openMemory(agent.id)
+
+    const field = view.findAllComponents(Input)[0]
+    await field.vm.$emit('update:model-value', 'Answer in English')
+
+    expect(AgentRegistry.getInstance().get(agent.id)?.memory?.[0]).toMatchObject({
+      id: 'm1',
+      text: 'Answer in English',
+    })
+  })
+
+  it('adds an item typed by hand', async () => {
+    const bare = AgentRegistry.getInstance().create({ name: 'Bare' })
+    const view = await openMemory(bare.id)
+
+    const inputs = view.findAllComponents(Input)
+    await inputs[inputs.length - 1].vm.$emit('update:model-value', 'Weeks start on Monday')
+    await view
+      .findAll('button')
+      .find((b) => b.text() === 'Add')!
+      .trigger('click')
+
+    expect(
+      AgentRegistry.getInstance()
+        .get(bare.id)
+        ?.memory?.map((m) => m.text)
+    ).toEqual(['Weeks start on Monday'])
   })
 })

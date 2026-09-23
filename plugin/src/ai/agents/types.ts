@@ -8,6 +8,14 @@ export interface AgentPrompt {
   value: string
 }
 
+/** One thing the person asked this agent to remember. Short by rule — see `agents/memory.ts`. */
+export interface AgentMemoryItem {
+  id: string
+  text: string
+  /** YYYY-MM-DD, shown in the agent's settings beside the item. */
+  created: string
+}
+
 export interface ScopeEntry {
   type: 'file' | 'folder' | 'pattern' | 'group'
   path: string
@@ -47,6 +55,12 @@ export interface AgentDefinition {
 
   /** How deep this agent may delegate. 0 forbids delegation entirely. */
   maxDelegateDepth: number
+
+  /**
+   * What this agent was asked to remember. Its own: only this agent's prompt shows it and only
+   * its `remember` calls add to it. Optional because agents saved before memory lack it.
+   */
+  memory?: AgentMemoryItem[]
 }
 
 /**
@@ -64,12 +78,15 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
     modelId: '',
     prompts: [],
     permissionMode: 'confirm-all',
-    toolModes: {},
+    // Memory is on for every agent unless someone turns it off — `enableMemoryTool` in the
+    // migration does the same for agents saved before it existed.
+    toolModes: { remember: 'auto' },
     scope: [],
     fullVaultAccess: false,
     skillsMode: 'all',
     skills: [],
     maxDelegateDepth: 2,
+    memory: [],
   }
 
   // Duplication spreads a source agent in and clears `id` to ask for a fresh one. Spreading an

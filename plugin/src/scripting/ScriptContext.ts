@@ -409,7 +409,7 @@ export function buildScriptContext(opts: {
       if (!model) throw new Error(`Agent "${target.name}" has no usable model configured`)
 
       const systemPrompt = await registry.buildSystemPrompt(target)
-      const tools = registry.filterTools(target, createAgentTools())
+      const tools = registry.filterTools(target, createAgentTools({ agentId: target.id }))
       const items = agentOpts?.items ?? []
 
       const runOne = (message: string) =>

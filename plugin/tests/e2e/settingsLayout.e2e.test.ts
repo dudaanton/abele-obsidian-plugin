@@ -265,7 +265,7 @@ describe.skipIf(!available)('the settings pane', () => {
             'Scripts → General',
           ])
         )
-        expect(Object.keys(report).filter((k) => k.startsWith('agent editor'))).toHaveLength(5)
+        expect(Object.keys(report).filter((k) => k.startsWith('agent editor'))).toHaveLength(6)
       })
     })
   }

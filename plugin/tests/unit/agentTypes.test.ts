@@ -14,7 +14,9 @@ describe('createAgent', () => {
     expect(agent.fallbackProviderId).toBeUndefined()
     expect(agent.prompts).toEqual([])
     expect(agent.permissionMode).toBe('confirm-all')
-    expect(agent.toolModes).toEqual({})
+    // Memory is on by default, so a new agent can be asked to remember something at once.
+    expect(agent.toolModes).toEqual({ remember: 'auto' })
+    expect(agent.memory).toEqual([])
     expect(agent.scope).toEqual([])
     expect(agent.fullVaultAccess).toBe(false)
     expect(agent.skillsMode).toBe('all')

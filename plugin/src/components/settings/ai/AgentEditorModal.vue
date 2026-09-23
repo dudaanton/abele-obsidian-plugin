@@ -127,6 +127,13 @@
           </div>
         </Section>
 
+        <!-- Memory -->
+        <AgentMemoryEditor
+          v-else-if="section === 'memory'"
+          :agent-id="agentId"
+          @changed="persist()"
+        />
+
         <!-- Access -->
         <template v-else-if="section === 'access'">
           <Setting name="Permission mode" desc="What this agent may do without asking.">
@@ -223,6 +230,7 @@ import CardGrid from '../../obsidian/CardGrid.vue'
 import EmptyState from '../../obsidian/EmptyState.vue'
 import AiScopeEditor from '../../AiScopeEditor.vue'
 import ToolModesEditor from '../../ToolModesEditor.vue'
+import AgentMemoryEditor from './AgentMemoryEditor.vue'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -238,6 +246,7 @@ const emit = defineEmits<{ close: []; changed: [] }>()
 const SECTIONS = [
   { id: 'basic', label: 'Basic' },
   { id: 'prompts', label: 'Prompts' },
+  { id: 'memory', label: 'Memory' },
   { id: 'access', label: 'Access' },
   { id: 'skills', label: 'Skills' },
   { id: 'delegation', label: 'Delegation' },

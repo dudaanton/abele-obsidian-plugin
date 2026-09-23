@@ -33,6 +33,9 @@ import { createGeocodeTool, createPlacesTool, createRouteTool } from './GeoTools
 import { createTemplateDocsTool } from './TemplateDocsTool'
 import { createQueryDocsTool } from './QueryDocsTool'
 import { createReadSettingsTool, createWriteSettingsTool } from './SettingsTools'
+import { createRememberTool } from './RememberTool'
+import { AgentRegistry } from '../agents/AgentRegistry'
+import { ChatSession } from '../ChatSession'
 import {
   createReadLogsTool,
   createReadBacklinksTool,
@@ -92,6 +95,7 @@ export function getToolRegistry(): ToolInfo[] {
     eval_js: { label: 'Eval JS', category: 'AI' },
     questions: { label: 'Questions', category: 'AI' },
     delegate: { label: 'Delegate', category: 'AI' },
+    remember: { label: 'Remember', category: 'AI' },
     chart_docs: { label: 'Chart docs', category: 'Docs' },
     template_docs: { label: 'Template docs', category: 'Docs' },
     read_logs: { label: 'Read logs', category: 'Vault data' },
@@ -139,7 +143,21 @@ export function getToolRegistry(): ToolInfo[] {
   return result
 }
 
-export function createAgentTools(): AgentTool[] {
+export interface AgentToolsOptions {
+  /**
+   * The agent the tools act for — what `remember` writes into. A chat passes its own, a script
+   * the agent it runs. Without one, the session executing the call is asked; never the chat
+   * that happens to be open, which may be on a different agent entirely.
+   */
+  agentId?: string
+}
+
+export function createAgentTools(options: AgentToolsOptions = {}): AgentTool[] {
+  const resolveAgent = () =>
+    options.agentId
+      ? AgentRegistry.getInstance().get(options.agentId)
+      : (ChatSession.getActiveSession()?.agent.value ?? null)
+
   const tools = [
     createReadFileTool(),
     createLsTool(),
@@ -180,6 +198,7 @@ export function createAgentTools(): AgentTool[] {
     createGeocodeTool(),
     createPlacesTool(),
     createRouteTool(),
+    createRememberTool(resolveAgent),
   ]
 
   const config = AbeleConfig.getInstance().ai

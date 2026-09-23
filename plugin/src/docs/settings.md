@@ -55,8 +55,12 @@ any of these changes what an agent — including the one being asked — is allo
 the last thing to change quietly.
 
 `ai.prompts` holds the built-in prompts: `system`, `titleGeneration`, `recapPrompt`,
-`summaryPrompt`, `compactPrompt` and `toolDescriptions`, the last of which overrides what a tool tells the model
-about itself. `ai.scriptsEnabled` and `ai.scriptsFolder` are the script feature; `ai.voice` is
+`summaryPrompt`, `compactPrompt`, `memoryTemplate` and `toolDescriptions`, the last of which
+overrides what a tool tells the model about itself. `memoryTemplate` lays an agent's memory into
+its system prompt, with `{{memory}}` standing for the list of items; an agent with no memory gets
+nothing. The memory itself is `ai.agents.N.memory` — a list of `{ id, text, created }`, one
+agent's own, added to by `remember` and edited in that agent's settings. `ai.scriptsEnabled` and
+`ai.scriptsFolder` are the script feature; `ai.voice` is
 dictation — which model transcribes and where its key lives.
 
 ## Maps

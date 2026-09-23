@@ -254,6 +254,26 @@ describe('settings that arrived later than the transfer did', () => {
     expect(next.ai?.prompts?.recapPrompt).toBe('Say what was done to {{messages}}')
   })
 
+  /** Memory lives on the agent, so it travels with it and lands with it. */
+  it('carries what an agent was asked to remember, and the template that shows it', () => {
+    const memory = [{ id: 'm1', text: 'Answer in Russian', created: '2026-09-23' }]
+    const source = settings({
+      ai: {
+        ...settings().ai!,
+        agents: [{ id: 'a1', name: 'Writer', description: '', utility: false, memory }],
+        prompts: { memoryTemplate: 'Known:\n{{memory}}' },
+      } as unknown as AiSettings,
+    })
+
+    const arriving = collectEntries(source).filter(
+      (e) => e.section === 'ai-agents' || e.section === 'ai-prompts'
+    )
+    const next = applyEntries(arriving, settings())
+
+    expect((next.ai?.agents[0] as { memory?: unknown }).memory).toEqual(memory)
+    expect(next.ai?.prompts?.memoryTemplate).toBe('Known:\n{{memory}}')
+  })
+
   /** An agent id is not a key. Adding one must not add a slot to the keychain list. */
   it('asks the keychain for nothing extra on account of them', () => {
     const entries = collectEntries(

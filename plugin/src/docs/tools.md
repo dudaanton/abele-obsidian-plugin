@@ -95,11 +95,18 @@ takes as long as it takes rather than getting the person's address blocked.
 
 ## AI
 
-`generate_image`, `edit_image`, `eval_js`, `questions`, `delegate`.
+`generate_image`, `edit_image`, `eval_js`, `questions`, `delegate`, `remember`.
 
 `questions` is how to ask the person something and get a structured answer back rather than
 guessing. `eval_js` runs JavaScript inside Obsidian — powerful and easy to misuse; for anything
 meant to be repeated, write a script instead (see the `scripts` section).
+
+`remember` saves one short line to your own memory — yours, not other agents' — which is shown
+to you in every later conversation. Use it only when the person asks you to remember something,
+and write the gist in one line, at most 200 characters: a fact or a preference, not a note. A
+longer one is refused; shorten it and call again. Memory is not a place for work in progress —
+that belongs in the vault. There is no tool to forget: the person removes items in the agent's
+settings, under Memory, so when they ask you to forget something, tell them where.
 
 ## Templates
 

@@ -90,7 +90,7 @@ describe('loading settings with nothing to migrate', () => {
   it('writes nothing', async () => {
     // Including the map tools: an agent without them is an agent the migration has something
     // to say about, which would make this a test of that instead.
-    const toolModes = { ...MAP_TOOL_MODES }
+    const toolModes = { ...MAP_TOOL_MODES, remember: 'auto' as const }
     install({
       ai: {
         ...DEFAULT_AI_SETTINGS,

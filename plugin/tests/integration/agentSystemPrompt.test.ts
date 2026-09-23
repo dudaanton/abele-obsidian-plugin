@@ -126,3 +126,66 @@ describe('ChatService.getSystemPrompt', () => {
     expect(prompt).toBe(DEFAULT_AI_SETTINGS.prompts.system)
   })
 })
+
+/**
+ * What an agent was asked to remember reaches its own prompt and nobody else's, through the
+ * template in the prompt settings.
+ */
+describe('agent memory in the system prompt', () => {
+  const memory = (text: string) => [{ id: text, text, created: '2026-09-23' }]
+
+  it('adds the memory of the chat agent after its prompt blocks', async () => {
+    const registry = AgentRegistry.getInstance()
+    const agent = registry.create({
+      name: 'Writer',
+      prompts: [{ type: 'text', value: 'Agent.' }],
+      memory: memory('Answer in Russian'),
+    })
+    AbeleConfig.getInstance().ai.prompts = {
+      ...DEFAULT_AI_SETTINGS.prompts,
+      memoryTemplate: 'Remember:\n{{memory}}',
+    }
+
+    const prompt = await ChatService.getInstance().getSystemPrompt(
+      fakeSession({ agentId: agent.id })
+    )
+
+    expect(prompt).toBe('Agent.\n\nRemember:\n- Answer in Russian')
+  })
+
+  it('never shows one agent what another was asked to remember', async () => {
+    const registry = AgentRegistry.getInstance()
+    registry.create({ name: 'Writer', memory: memory('Secret of the writer') })
+    const coder = registry.create({ name: 'Coder', prompts: [{ type: 'text', value: 'Code.' }] })
+
+    const prompt = await ChatService.getInstance().getSystemPrompt(
+      fakeSession({ agentId: coder.id })
+    )
+
+    expect(prompt).toBe('Code.')
+  })
+
+  it('keeps the memory when the chat overrides the prompt', async () => {
+    const registry = AgentRegistry.getInstance()
+    const agent = registry.create({ name: 'Writer', memory: memory('Answer in Russian') })
+
+    const prompt = await ChatService.getInstance().getSystemPrompt(
+      fakeSession({ agentId: agent.id, customSystemPrompt: 'Chat override.' })
+    )
+
+    expect(prompt.startsWith('Chat override.\n\n')).toBe(true)
+    expect(prompt).toContain('- Answer in Russian')
+  })
+
+  it('uses the default template when the setting predates it', async () => {
+    const registry = AgentRegistry.getInstance()
+    const agent = registry.create({ name: 'Writer', memory: memory('Answer in Russian') })
+    // A settings file from before memory has a prompts object with no template in it.
+    const { memoryTemplate: _dropped, ...older } = DEFAULT_AI_SETTINGS.prompts
+    AbeleConfig.getInstance().ai.prompts = older as typeof DEFAULT_AI_SETTINGS.prompts
+
+    const prompt = await registry.buildSystemPrompt(agent)
+
+    expect(prompt).toContain('- Answer in Russian')
+  })
+})

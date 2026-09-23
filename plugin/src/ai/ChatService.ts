@@ -614,21 +614,29 @@ export class ChatService {
   private async basePrompt(session: ChatSession): Promise<string> {
     const date = dayjs().format('YYYY-MM-DD')
 
-    // Per-chat override: note path
-    if (session.customSystemPromptNotePath.value) {
-      const body = await this.readNoteBody(session.customSystemPromptNotePath.value)
-      if (body) return body.replace(/\{\{date\}\}/g, date)
-    }
-
-    // Per-chat override: inline text
-    if (session.customSystemPrompt.value) {
-      return session.customSystemPrompt.value.replace(/\{\{date\}\}/g, date)
-    }
-
     // The session's own agent — not the default one. Resolved on every call rather than
     // cached, so editing the agent in settings reaches a chat already in progress.
     const registry = AgentRegistry.getInstance()
     const agent = session.agent.value ?? registry.defaultAgent()
+
+    // An overridden prompt replaces the agent's instructions, not what it was asked to
+    // remember: the chat still runs on that agent, and the person asked *it*.
+    const withMemory = (prompt: string): string => {
+      const memory = agent ? registry.memoryPrompt(agent) : ''
+      return memory ? `${prompt}\n\n${memory}` : prompt
+    }
+
+    // Per-chat override: note path
+    if (session.customSystemPromptNotePath.value) {
+      const body = await this.readNoteBody(session.customSystemPromptNotePath.value)
+      if (body) return withMemory(body.replace(/\{\{date\}\}/g, date))
+    }
+
+    // Per-chat override: inline text
+    if (session.customSystemPrompt.value) {
+      return withMemory(session.customSystemPrompt.value.replace(/\{\{date\}\}/g, date))
+    }
+
     if (agent) {
       const composed = await registry.buildSystemPrompt(agent)
       if (composed) return composed

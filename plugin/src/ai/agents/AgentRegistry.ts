@@ -5,6 +5,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { getNoteBody } from '@/helpers/notesUtils'
 import { createAgent, type AgentDefinition, type AgentPrompt } from './types'
+import { renderMemory } from './memory'
 import { CORE_TOOLS } from '@/ai/types'
 import type { ModelConfig } from '@/ai/client'
 import type { AiModelConfig, AiProvider } from '@/ai/types'
@@ -122,6 +123,7 @@ export class AgentRegistry {
       toolModes: { ...source.toolModes },
       scope: source.scope.map((s) => ({ ...s })),
       skills: [...source.skills],
+      memory: (source.memory ?? []).map((m) => ({ ...m })),
     })
   }
 
@@ -218,7 +220,22 @@ export class AgentRegistry {
       if (text) blocks.push(text.replace(/\{\{date\}\}/g, date))
     }
 
+    const memory = this.memoryPrompt(agent)
+    if (memory) blocks.push(memory)
+
     return blocks.join('\n\n')
+  }
+
+  /**
+   * What this agent was asked to remember, laid out by the memory template. Empty when it
+   * remembers nothing, so an agent with no memory sends exactly the prompt it did before.
+   *
+   * Public for the one caller that does not go through `buildSystemPrompt`: a chat whose
+   * prompt was overridden still runs on this agent, and still remembers.
+   */
+  memoryPrompt(agent: AgentDefinition): string {
+    const template = AbeleConfig.getInstance().ai.prompts?.memoryTemplate ?? ''
+    return renderMemory(agent.memory, template)
   }
 
   private async readPromptBlock(prompt: AgentPrompt): Promise<string> {

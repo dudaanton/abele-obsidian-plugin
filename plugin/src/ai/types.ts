@@ -1,3 +1,4 @@
+import { DEFAULT_MEMORY_TEMPLATE } from './agents/memory'
 import type { TFile } from 'obsidian'
 import type { AgentDefinition, SessionOverrides } from './agents/types'
 import type { MapBlock } from '@/helpers/mapConfig'
@@ -46,6 +47,11 @@ export interface AiPrompts {
   /** Asks the auxiliary model for the short summary shown under a chat's title in the history. */
   summaryPrompt: string
   compactPrompt: string
+  /**
+   * How an agent's memory is laid into its system prompt. `{{memory}}` stands for the list.
+   * Optional because a prompts object saved before memory has none; blank means the default.
+   */
+  memoryTemplate?: string
   toolDescriptions: Record<string, string>
 }
 
@@ -313,6 +319,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
       'In one sentence (max 20 words, no quotes), say what was done in this conversation and to which notes:\n\n{{messages}}',
     summaryPrompt:
       'In one or two sentences (max 35 words, no quotes), say what this conversation is about and what came out of it. Write in the language of the conversation:\n\n{{messages}}',
+    memoryTemplate: DEFAULT_MEMORY_TEMPLATE,
     compactPrompt:
       'Summarize the conversation below into a concise context summary. Preserve key decisions, file paths, code changes, and any pending tasks. The summary will replace the conversation history, so include everything needed to continue the work.\n\n{{messages}}',
     toolDescriptions: {

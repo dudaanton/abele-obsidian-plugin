@@ -555,6 +555,25 @@
         />
       </Section>
 
+      <Section
+        title="Agent Memory"
+        desc="How what an agent was asked to remember is added to its system prompt. Shared by
+          every agent; each agent's own items are on its Memory tab. An agent that remembers
+          nothing gets nothing added."
+      >
+        <Setting
+          name="Memory Template"
+          :desc="`Use ${MEMORY_TOKEN} where the list of items goes. Empty uses the default.`"
+        >
+          <Input
+            :model-value="prompts.memoryTemplate || ''"
+            as-text-area
+            :placeholder="defaultPrompts.memoryTemplate"
+            @update:model-value="updatePrompt('memoryTemplate', $event)"
+          />
+        </Setting>
+      </Section>
+
       <Section title="Background Prompts">
         <Setting
           name="Title Generation Prompt"
@@ -627,6 +646,7 @@
 </template>
 
 <script setup lang="ts">
+import { MEMORY_PLACEHOLDER } from '@/ai/agents/memory'
 import { ref, computed, reactive } from 'vue'
 import { Notice, debounce } from 'obsidian'
 import { nanoid } from 'nanoid'
@@ -662,6 +682,7 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 const NAME_TOKEN = '{{name}}'
 const DATE_TOKEN = '{{date:YYYY-MM-DD}}'
 const MESSAGES_TOKEN = '{{messages}}'
+const MEMORY_TOKEN = MEMORY_PLACEHOLDER
 
 const IMAGE_API_TYPES = [
   { value: 'openai', display: 'OpenAI' },

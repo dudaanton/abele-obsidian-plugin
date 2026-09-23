@@ -1,10 +1,6 @@
 import { createAgent, type AgentDefinition } from './types'
-import {
-  DEFAULT_AI_SETTINGS,
-  EDIT_SELECTION_TOOL,
-  MAP_TOOLS,
-  type AiSettings,
-} from '@/ai/types'
+import { REMEMBER_TOOL } from './memory'
+import { DEFAULT_AI_SETTINGS, EDIT_SELECTION_TOOL, MAP_TOOLS, type AiSettings } from '@/ai/types'
 
 /**
  * Folds the pre-agent global configuration into agent entities.
@@ -153,12 +149,29 @@ function enableMapTools(ai: AiSettings): boolean {
   return changed
 }
 
+/**
+ * Switches memory on for agents saved before it existed. Same rule as the map tools: only an
+ * agent with no opinion is touched, and an `off` written by hand stays off.
+ */
+function enableMemoryTool(ai: AiSettings): boolean {
+  let changed = false
+
+  for (const agent of ai.agents || []) {
+    if (agent.toolModes[REMEMBER_TOOL] !== undefined) continue
+    agent.toolModes[REMEMBER_TOOL] = 'auto'
+    changed = true
+  }
+
+  return changed
+}
+
 export function migrateAgents(ai: AiSettings): boolean {
   const legacy = migrateLegacyAgents(ai)
   // Outside the legacy migration on purpose: that one is a no-op the moment any agent exists,
   // and a vault that has had agents since before comments still needs this one.
   const comment = ensureCommentAgent(ai)
   const maps = enableMapTools(ai)
+  const memory = enableMemoryTool(ai)
 
-  return legacy || comment || maps
+  return legacy || comment || maps || memory
 }

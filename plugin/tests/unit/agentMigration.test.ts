@@ -203,7 +203,7 @@ describe('the Comment agent', () => {
   it('leaves settings that already name a comment agent alone', () => {
     // Both carry the map tools already, so the only thing that could report a change here
     // is the comment agent being seeded again — which is what the test is about.
-    const modes = { ...MAP_TOOL_MODES }
+    const modes = { ...MAP_TOOL_MODES, remember: 'auto' as const }
     const existing = createAgent({ id: 'comment-1', name: 'My commenter', toolModes: modes })
     const ai = {
       ...DEFAULT_AI_SETTINGS,
@@ -290,5 +290,42 @@ describe('the map tools', () => {
     migrateAgents(ai)
 
     expect(migrateAgents(ai)).toBe(false)
+  })
+})
+
+/**
+ * Memory arrived after the agents did, and the owner wants it on by default — so an agent
+ * saved before it gets `remember` switched on, unless somebody already said otherwise.
+ */
+describe('the remember tool', () => {
+  it('is switched on for agents that existed before it', () => {
+    const ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: [createAgent({ id: 'existing', name: 'Default', toolModes: { fetch: 'ask' } })],
+      defaultAgentId: 'existing',
+    } as AiSettings
+
+    expect(migrateAgents(ai)).toBe(true)
+    expect(ai.agents[0].toolModes.remember).toBe('auto')
+  })
+
+  it('stays off where someone turned it off', () => {
+    const ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: [createAgent({ id: 'existing', name: 'Default', toolModes: { remember: 'off' } })],
+      defaultAgentId: 'existing',
+    } as AiSettings
+
+    migrateAgents(ai)
+
+    expect(ai.agents[0].toolModes.remember).toBe('off')
+  })
+
+  it('is on for the agents a fresh vault starts with', () => {
+    const ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' } as AiSettings
+
+    migrateAgents(ai)
+
+    for (const agent of ai.agents) expect(agent.toolModes.remember).toBe('auto')
   })
 })

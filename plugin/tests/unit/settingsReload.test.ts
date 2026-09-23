@@ -38,7 +38,7 @@ function install(): FakePlugin {
 
 /** Settings with nothing left to migrate, so a load writes nothing of its own. */
 function settingsWith(headerButtons: HeaderButtonDefinition[]) {
-  const toolModes = { ...MAP_TOOL_MODES }
+  const toolModes = { ...MAP_TOOL_MODES, remember: 'auto' as const }
   return {
     headerButtons,
     ai: {

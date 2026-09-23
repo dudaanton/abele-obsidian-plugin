@@ -116,6 +116,20 @@ describe('AgentRegistry mutation', () => {
     expect(source.skills).toEqual([])
   })
 
+  it('gives a copy its own memory, so remembering in one never reaches the other', () => {
+    const registry = AgentRegistry.getInstance()
+    const source = registry.create({
+      name: 'Janitor',
+      memory: [{ id: 'm1', text: 'Tidy on Fridays', created: '2026-09-23' }],
+    })
+
+    const copy = registry.duplicate(source.id)!
+    copy.memory!.push({ id: 'm2', text: 'Only in the copy', created: '2026-09-23' })
+    copy.memory![0].text = 'Changed in the copy'
+
+    expect(source.memory).toEqual([{ id: 'm1', text: 'Tidy on Fridays', created: '2026-09-23' }])
+  })
+
   it('removes an agent and hands the default over when the default was removed', () => {
     const registry = AgentRegistry.getInstance()
     const first = AbeleConfig.getInstance().ai.agents[0]
