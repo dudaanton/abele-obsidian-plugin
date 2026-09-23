@@ -5,17 +5,27 @@
         <div class="abele-todo-list__header-text">Tasks</div>
         <ObsidianIcon v-if="showAddButton" icon="square-plus" @click="createTask()" />
       </div>
-      <ObsidianIcon
-        class="abele-todo-list__completed-toggle"
-        :text-right="hideCompleted ? 'Show completed' : 'Hide completed'"
-        @click="hideCompleted = !hideCompleted"
-      />
+      <div class="abele-todo-list__header-right">
+        <ObsidianIcon
+          v-if="labelOptions.length"
+          class="abele-task-label-filter"
+          icon="tag"
+          :text-right="labelText || undefined"
+          tooltip="Filter by label"
+          @click="openLabelMenu"
+        />
+        <ObsidianIcon
+          class="abele-todo-list__completed-toggle"
+          :text-right="hideCompleted ? 'Show completed' : 'Hide completed'"
+          @click="hideCompleted = !hideCompleted"
+        />
+      </div>
     </div>
     <div class="abele-todo-list__tasks">
       <TaskView v-for="task in visible" :key="task.id" :task="task" class="abele-todo-list__task" />
       <div v-if="hasMore" ref="sentinel" class="abele-todo-list__sentinel" />
     </div>
-    <div v-if="!tasksWithoutDates.length" class="abele-todo-list__no-tasks">No tasks to show.</div>
+    <div v-if="!shown.length" class="abele-todo-list__no-tasks">No tasks to show.</div>
   </div>
 </template>
 
@@ -26,6 +36,8 @@ import ObsidianIcon from './obsidian/Icon.vue'
 import { computed, ref, watch } from 'vue'
 import { createTask } from '@/commands/createTask'
 import { usePagedList } from '@/composables/usePagedList'
+import { useLabelFilter } from '@/composables/useLabelFilter'
+import { sortByPriority } from '@/helpers/taskMeta'
 
 const props = defineProps<{
   showAddButton?: boolean
@@ -38,11 +50,25 @@ const tasksWithoutDates = computed(() => {
   return hideCompleted.value ? props.tasks.filter((t) => !t.completedAt) : props.tasks
 })
 
-const { visible, hasMore, sentinel, reset } = usePagedList(() => tasksWithoutDates.value)
+const {
+  options: labelOptions,
+  filtered,
+  selectedText: labelText,
+  selected: labelSelection,
+  openMenu: openLabelMenu,
+} = useLabelFilter(() => tasksWithoutDates.value)
+
+// Priority first, then whatever order the list was handed — the sort is stable, so the date
+// order underneath survives within each priority.
+const shown = computed(() => sortByPriority(filtered.value))
+
+const { visible, hasMore, sentinel, reset } = usePagedList(() => shown.value)
 
 // Revealing completed tasks interleaves them into the list rather than appending, so the
-// expanded window would no longer correspond to anything the reader scrolled past.
+// expanded window would no longer correspond to anything the reader scrolled past. A new label
+// filter is a different list altogether.
 watch(hideCompleted, reset)
+watch(labelSelection, reset)
 </script>
 
 <style lang="scss">
@@ -55,6 +81,19 @@ watch(hideCompleted, reset)
   .abele-todo-list__header-text {
     font-weight: bold;
   }
+}
+
+.abele-todo-list__header-right {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: calc(var(--p-spacing) / 2);
+  min-width: 0;
+}
+
+.abele-task-label-filter {
+  font-size: var(--font-small);
 }
 
 .abele-todo-list__header-left {

@@ -5,11 +5,21 @@
         <div class="abele-timeline__header-text">{{ title ?? 'Timeline' }}</div>
         <ObsidianIcon v-if="showAddButton" icon="calendar-plus" @click="createTask()" />
       </div>
-      <ObsidianIcon
-        class="abele-timeline__completed-toggle"
-        :text-right="hideCompleted ? 'Show completed' : 'Hide completed'"
-        @click="hideCompleted = !hideCompleted"
-      />
+      <div class="abele-timeline__header-right">
+        <ObsidianIcon
+          v-if="labelOptions.length"
+          class="abele-task-label-filter"
+          icon="tag"
+          :text-right="labelText || undefined"
+          tooltip="Filter by label"
+          @click="openLabelMenu"
+        />
+        <ObsidianIcon
+          class="abele-timeline__completed-toggle"
+          :text-right="hideCompleted ? 'Show completed' : 'Hide completed'"
+          @click="hideCompleted = !hideCompleted"
+        />
+      </div>
     </div>
     <div v-for="[date, dateTasks] in visible" :key="date" class="abele-timeline__date-block">
       <div
@@ -53,6 +63,7 @@ import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { useDate } from '@/composables/useDate'
 import { usePagedList } from '@/composables/usePagedList'
 import { createTask } from '@/commands/createTask'
+import { useLabelFilter } from '@/composables/useLabelFilter'
 
 /**
  * Pages by date block rather than by task: a task that spans several days is deliberately
@@ -70,14 +81,24 @@ const { now } = useDate()
 
 const hideCompleted = ref(true)
 
+const shownTasks = computed(() =>
+  hideCompleted.value
+    ? props.tasks.filter((t) => !t.completedAt && !t.taskNotFound)
+    : props.tasks.filter((t) => !t.taskNotFound)
+)
+
+const {
+  options: labelOptions,
+  filtered,
+  selectedText: labelText,
+  selected: labelSelection,
+  openMenu: openLabelMenu,
+} = useLabelFilter(() => shownTasks.value)
+
 const dates = computed(() => {
   const datesSet = new Map<string, Task[]>()
 
-  const tasks = hideCompleted.value
-    ? props.tasks.filter((t) => !t.completedAt && !t.taskNotFound)
-    : props.tasks.filter((t) => !t.taskNotFound)
-
-  for (const task of tasks) {
+  for (const task of filtered.value) {
     for (const date of task.dates) {
       if (!datesSet.has(date)) {
         datesSet.set(date, [])
@@ -98,6 +119,7 @@ const { visible, hasMore, sentinel, reset } = usePagedList(() => dates.value, PA
 // Completed tasks reappear throughout the timeline, not at its end, so the previously
 // expanded window no longer matches what the reader has actually scrolled through.
 watch(hideCompleted, reset)
+watch(labelSelection, reset)
 
 const getDateWikilink = (dateStr: string) => {
   const date = dayjs(dateStr, DATE_FORMAT)
@@ -119,6 +141,15 @@ const getDateWikilink = (dateStr: string) => {
 <style lang="scss">
 .abele-timeline__sentinel {
   height: 1px;
+}
+
+.abele-timeline__header-right {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: calc(var(--p-spacing) / 2);
+  min-width: 0;
 }
 
 .abele-timeline__header {

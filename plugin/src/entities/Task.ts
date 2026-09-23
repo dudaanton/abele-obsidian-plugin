@@ -12,6 +12,13 @@ import {
 import { RecurrenceParser } from '@/helpers/RecurrenceParser'
 import { createTaskLinkRegex, getRecurrentTaskTitle } from '@/helpers/tasksUtils'
 import {
+  DEFAULT_LABEL_PROPERTY,
+  parseLabels,
+  parsePriority,
+  PRIORITY_PROPERTY,
+  type TaskPriority,
+} from '@/helpers/taskMeta'
+import {
   getBacklinksByPath,
   getEditorForFile,
   getFileByPath,
@@ -53,6 +60,7 @@ export class Task {
   public due: dayjs.Dayjs | null = null
   public dueTime: dayjs.Dayjs | null = null
   public recurrence: string | null = null
+  public priority: TaskPriority | null = null
   public content: string
 
   public oldProps: Record<string, any> = {}
@@ -149,6 +157,7 @@ export class Task {
       this.due = parseDateOrNull(frontmatter.due)
       this.dueTime = parseDateTimeOrNull(frontmatter.due, frontmatter.dueTime)
       this.due = applyTimeToDate(this.due, this.dueTime)
+      this.priority = parsePriority(frontmatter[PRIORITY_PROPERTY])
 
       this.oldProps = { ...frontmatter, content: undefined }
     } else {
@@ -156,6 +165,17 @@ export class Task {
     }
 
     this.initWatcher()
+  }
+
+  /**
+   * Labels from whichever property the settings name. A getter rather than a field set in
+   * `load`, so changing that property in the settings relabels every task on screen at once:
+   * the config's version is read to make it redraw.
+   */
+  get labels(): string[] {
+    const config = AbeleConfig.getInstance()
+    void config.version.value
+    return parseLabels(this.oldProps?.[config.taskLabelProperty || DEFAULT_LABEL_PROPERTY])
   }
 
   /** Path to the task file with extension */
@@ -372,6 +392,7 @@ export class Task {
     this.due = null
     this.dueTime = null
     this.recurrence = null
+    this.priority = null
     this.content = ''
     this.loaded = false
     this.taskNotFound = false

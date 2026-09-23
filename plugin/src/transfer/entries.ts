@@ -199,6 +199,8 @@ export const SECTIONS: Section[] = [
     'tasksRecurrenceChoices',
     'weekStartsOnMonday',
     'busyDayThreshold',
+    'taskLabelProperty',
+    'taskLabelColors',
   ]),
   rootBlock(
     'finance',

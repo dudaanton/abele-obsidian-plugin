@@ -58,6 +58,7 @@
     >
       <Checkbox :is-enabled="weekStartsOnMonday" @toggle="weekStartsOnMondayChanged" />
     </Setting>
+    <TaskLabelsSettings />
   </div>
 </template>
 
@@ -67,6 +68,7 @@ import Setting from '../obsidian/Setting.vue'
 import Search from '../obsidian/Search.vue'
 import Input from '../obsidian/Input.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
+import TaskLabelsSettings from './TaskLabelsSettings.vue'
 import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { debounce } from 'obsidian'

@@ -28,7 +28,10 @@ the note types that count as logs — a note whose `type` is one of these is a l
 found, which is what the **Logs** list under a note is built from. `journals` are the journals
 themselves, each with its own folder and note template. `weekStartsOnMonday` and
 `busyDayThreshold` are the calendar's; `excludedPathsForDefaultTemplate` is where the default
-template is deliberately not applied.
+template is deliberately not applied. `taskLabelProperty` is the task property labels are read
+from (`labels` unless changed), and `taskLabelColors` gives a label a colour — a list of
+`{ value, color }`, `color` one of `red`, `orange`, `yellow`, `green`, `cyan`, `blue`,
+`purple`, `pink`. A label with no entry is grey.
 
 ## Finance and time
 

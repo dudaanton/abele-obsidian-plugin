@@ -494,6 +494,20 @@ describe('applying what was accepted', () => {
     expect(next.refreshDelay).toBe(500)
   })
 
+  it('carries the task label property and label colours with the tasks block', () => {
+    const arriving = collectEntries(
+      settings({
+        taskLabelProperty: 'tags',
+        taskLabelColors: [{ value: 'work', color: 'red' }],
+      })
+    ).filter((e) => e.section === 'tasks')
+
+    const next = applyEntries(arriving, settings())
+
+    expect(next.taskLabelProperty).toBe('tags')
+    expect(next.taskLabelColors).toEqual([{ value: 'work', color: 'red' }])
+  })
+
   /**
    * The settings the app actually holds are watched by Vue, which means their arrays are
    * proxies — and `structuredClone` refuses a proxy outright. Applying a transfer threw

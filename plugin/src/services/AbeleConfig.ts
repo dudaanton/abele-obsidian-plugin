@@ -1,14 +1,11 @@
 import { ref } from 'vue'
 import { Notice } from 'obsidian'
 import { Journal, JournalDTO } from '@/entities/Journal'
-import {
-  AiSettings,
-  DEFAULT_AI_SETTINGS,
-  ImageProvider,
-  migrateOldPermissions,
-} from '@/ai/types'
+import { AiSettings, DEFAULT_AI_SETTINGS, ImageProvider, migrateOldPermissions } from '@/ai/types'
 import { migrateAgents } from '@/ai/agents/migration'
 import AbelePlugin from '@/main'
+import { isKitColor } from '@/constants/colors'
+import { DEFAULT_LABEL_PROPERTY, type LabelColor } from '@/helpers/taskMeta'
 
 export interface AbeleSettings {
   refreshDelay: number // in milliseconds
@@ -18,6 +15,10 @@ export interface AbeleSettings {
   tasksDateChoices?: string[] // Optional array of date choices for tasks
   tasksRecurrenceChoices?: string[] // Optional array of recurrence choices for tasks
   weekStartsOnMonday?: boolean // Optional setting for week start day
+  /** Frontmatter property a task's labels are read from. */
+  taskLabelProperty?: string
+  /** A colour per label value. A label with no entry here is grey. */
+  taskLabelColors?: LabelColor[]
   journals?: JournalDTO[]
   busyDayThreshold?: number // Optional threshold for busy day
   excludedPathsForDefaultTemplate?: string[] // Paths where default template should not apply
@@ -97,6 +98,8 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   tasksDateChoices: ['Today', 'Tomorrow', 'Next Week', 'Next Month'],
   tasksRecurrenceChoices: ['Daily', 'Weekly', 'Monthly', 'Yearly'],
   weekStartsOnMonday: true,
+  taskLabelProperty: DEFAULT_LABEL_PROPERTY,
+  taskLabelColors: [],
   journals: [],
   busyDayThreshold: 3,
   excludedPathsForDefaultTemplate: ['attachments/', 'templates/'],
@@ -132,6 +135,8 @@ export class AbeleConfig {
   public tasksDateChoices: string[]
   public tasksRecurrenceChoices: string[]
   public weekStartsOnMonday: boolean
+  public taskLabelProperty: string
+  public taskLabelColors: LabelColor[]
   public busyDayThreshold: number
   public excludedPathsForDefaultTemplate: string[]
 
@@ -314,6 +319,14 @@ export class AbeleConfig {
       ...DEFAULT_SETTINGS.tasksRecurrenceChoices,
     ]
     this.weekStartsOnMonday = settings?.weekStartsOnMonday ?? DEFAULT_SETTINGS.weekStartsOnMonday
+    this.taskLabelProperty =
+      settings?.taskLabelProperty?.trim() || DEFAULT_SETTINGS.taskLabelProperty
+    // Cleaned on the way in: the file can be edited by hand, and a colour the kit has no class
+    // for would render as nothing. Grey is the absence of a colour, so it is not stored.
+    this.taskLabelColors = (settings?.taskLabelColors ?? [])
+      .filter((c) => typeof c?.value === 'string' && c.value.trim() && isKitColor(c.color))
+      .filter((c) => c.color !== 'grey')
+      .map((c) => ({ value: c.value.trim(), color: c.color }))
     this.journals = (settings?.journals || [...DEFAULT_SETTINGS.journals]).map(
       (j) => new Journal(j)
     )
@@ -440,6 +453,8 @@ export class AbeleConfig {
       tasksDateChoices: [...this.tasksDateChoices],
       tasksRecurrenceChoices: [...this.tasksRecurrenceChoices],
       weekStartsOnMonday: this.weekStartsOnMonday,
+      taskLabelProperty: this.taskLabelProperty,
+      taskLabelColors: this.taskLabelColors.map((c) => ({ ...c })),
       journals: this.journals.map((j) => j.toDTO()),
       busyDayThreshold: this.busyDayThreshold,
       excludedPathsForDefaultTemplate: [...this.excludedPathsForDefaultTemplate],

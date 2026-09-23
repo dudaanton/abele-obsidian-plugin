@@ -18,8 +18,19 @@
         :checked="!!checked"
         @click.stop="task.toggle"
     /></label>
+    <ObsidianIcon
+      v-if="priorityMark"
+      class="abele-task-view__priority"
+      :icon="priorityMark.icon"
+      :color="priorityMark.color"
+      :tooltip="priorityMark.label"
+      no-hover
+    />
     <div class="abele-task-view__content">
       <ObsidianMarkdown v-if="contentLoaded" :text="task.title ?? ''" :file-path="task.filePath" />
+      <div v-if="labels.length" class="abele-task-view__labels">
+        <Badge v-for="label in labels" :key="label.text" :text="label.text" :color="label.color" />
+      </div>
       <ObsidianMarkdown
         v-if="task.description && showDescription && contentLoaded"
         :text="task.description"
@@ -64,6 +75,10 @@ import dayjs from 'dayjs'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
+import Badge from './obsidian/Badge.vue'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { labelColor, type TaskPriority } from '@/helpers/taskMeta'
+import type { KitColor } from '@/constants/colors'
 import { openFile } from '@/helpers/vaultUtils'
 import { useElementVisibility, useIntervalFn } from '@vueuse/core'
 import { Menu } from 'obsidian'
@@ -89,6 +104,27 @@ watch(
     immediate: true,
   }
 )
+
+const PRIORITY_MARKS: Record<TaskPriority, { icon: string; color: KitColor; label: string }> = {
+  high: { icon: 'chevron-up', color: 'red', label: 'High priority' },
+  medium: { icon: 'equal', color: 'orange', label: 'Medium priority' },
+  low: { icon: 'chevron-down', color: 'blue', label: 'Low priority' },
+}
+
+// Only on tasks without a date: the calendar orders by when, and a priority there would be a
+// second order the list does not follow.
+const priorityMark = computed(() =>
+  props.task.priority && !props.task.dates.length ? PRIORITY_MARKS[props.task.priority] : null
+)
+
+const labels = computed(() => {
+  const config = AbeleConfig.getInstance()
+  void config.version.value
+  return props.task.labels.map((text) => ({
+    text,
+    color: labelColor(text, config.taskLabelColors),
+  }))
+})
 
 const checked = ref(props.task.completedAt)
 watch(
@@ -261,6 +297,17 @@ onMounted(() => {
   flex: 1;
   overflow-wrap: break-word;
   padding-top: 1px;
+}
+
+.abele-task-view__priority {
+  flex: 0 0 auto;
+}
+
+.abele-task-view__labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
+  margin-top: var(--size-2-1);
 }
 
 .abele-task-view__indicator {

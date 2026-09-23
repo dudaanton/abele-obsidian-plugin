@@ -10,7 +10,8 @@
  * components are stubbed: what is under test is each list's own windowing, not what a task
  * or a log looks like.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { Menu, type MenuItem } from 'obsidian'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import dayjs from 'dayjs'
 import { Note } from '@/entities/Note'
@@ -20,6 +21,8 @@ import NotesList from '@/components/NotesList.vue'
 import LogsList from '@/components/LogsList.vue'
 import TodoList from '@/components/TodoList.vue'
 import Timeline from '@/components/Timeline.vue'
+import TaskCard from '@/components/Task.vue'
+import ObsidianIcon from '@/components/obsidian/Icon.vue'
 import {
   installFakeIntersectionObserver,
   resetFakeIntersectionObservers,
@@ -242,6 +245,149 @@ describe('footer lists — paging', () => {
 
       expect(view.findAll('.abele-timeline__date-block')).toHaveLength(5)
       expect(view.find('.abele-timeline__sentinel').exists()).toBe(false)
+    })
+  })
+})
+
+/** A task with a priority and labels, as `load()` would leave it after reading frontmatter. */
+function taskWith(name: string, props: Record<string, unknown>): Task {
+  const task = new Task({ wikilink: `[[Tasks/${name}]]` })
+  task.loaded = true
+  task.title = name
+  task.oldProps = props
+  task.priority = (props.priority as Task['priority']) ?? null
+  return task
+}
+
+/** Opens the label filter's menu and returns its items, as Obsidian would show them. */
+async function openLabelMenu(view: VueWrapper): Promise<MenuItem[]> {
+  const spy = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+  await view.find('.abele-task-label-filter').trigger('click')
+  const shown = spy.mock.contexts[0] as unknown as { items: MenuItem[] } | undefined
+  spy.mockRestore()
+  return shown?.items ?? []
+}
+
+const pick = (items: MenuItem[], title: string) => {
+  const item = items.find((i) => i.title === title)
+  if (!item) throw new Error(`no menu item "${title}" in ${items.map((i) => i.title).join(', ')}`)
+  item.handler?.()
+}
+
+describe('footer lists — priority and labels', () => {
+  beforeEach(() => {
+    resetFakeIntersectionObservers()
+    installFakeIntersectionObserver()
+    useVault([])
+    configureAbele()
+  })
+
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = null
+  })
+
+  describe('TodoList', () => {
+    it('puts higher priority first and keeps the given order within a priority', () => {
+      const tasks = [
+        taskWith('none-1', {}),
+        taskWith('low', { priority: 'low' }),
+        taskWith('high-1', { priority: 'high' }),
+        taskWith('none-2', {}),
+        taskWith('high-2', { priority: 'high' }),
+        taskWith('medium', { priority: 'medium' }),
+      ]
+      const view = render(TodoList, { tasks })
+
+      const titles = view.findAllComponents(TaskCard).map((c) => (c.props('task') as Task).title)
+      expect(titles).toEqual(['high-1', 'high-2', 'medium', 'low', 'none-1', 'none-2'])
+    })
+
+    it('shows no label filter when no task has a label', () => {
+      const view = render(TodoList, { tasks: [taskWith('a', {}), taskWith('b', {})] })
+
+      expect(view.find('.abele-task-label-filter').exists()).toBe(false)
+    })
+
+    it('narrows the list to one label, and back', async () => {
+      const tasks = [
+        taskWith('work-1', { labels: ['Work'] }),
+        taskWith('home', { labels: 'home' }),
+        taskWith('work-2', { labels: ['work', 'home'] }),
+        taskWith('bare', {}),
+      ]
+      const view = render(TodoList, { tasks })
+      const titles = () =>
+        view.findAllComponents(TaskCard).map((c) => (c.props('task') as Task).title)
+
+      const items = await openLabelMenu(view)
+      expect(items.map((i) => i.title)).toEqual([
+        'All labels',
+        'home (2)',
+        'Work (2)',
+        'No label (1)',
+      ])
+
+      pick(items, 'Work (2)')
+      await view.vm.$nextTick()
+      expect(titles()).toEqual(['work-1', 'work-2'])
+      expect(
+        view
+          .findAllComponents(ObsidianIcon)
+          .find((c) => c.classes().includes('abele-task-label-filter'))
+          ?.props('textRight')
+      ).toBe('Work')
+
+      pick(await openLabelMenu(view), 'No label (1)')
+      await view.vm.$nextTick()
+      expect(titles()).toEqual(['bare'])
+
+      pick(await openLabelMenu(view), 'All labels')
+      await view.vm.$nextTick()
+      expect(titles()).toHaveLength(4)
+    })
+
+    it('reads labels from the property the settings name', async () => {
+      const config = configureAbele()
+      config.taskLabelProperty = 'tags'
+      const tasks = [taskWith('a', { tags: ['x'], labels: ['y'] })]
+      const view = render(TodoList, { tasks })
+
+      const items = await openLabelMenu(view)
+      expect(items.map((i) => i.title)).toContain('x (1)')
+      expect(items.map((i) => i.title)).not.toContain('y (1)')
+      config.taskLabelProperty = 'labels'
+    })
+  })
+
+  describe('Timeline', () => {
+    it('narrows the date blocks to one label', async () => {
+      const a = taskWith('a', { labels: ['work'] })
+      a.date = dayjs('2026-05-01')
+      const b = taskWith('b', { labels: ['home'] })
+      b.date = dayjs('2026-05-02')
+      const view = render(Timeline, { tasks: [a, b] })
+
+      pick(await openLabelMenu(view), 'work (1)')
+      await view.vm.$nextTick()
+
+      expect(view.findAll('.abele-timeline__date-block')).toHaveLength(1)
+      expect(view.findAllComponents(TaskCard).map((c) => (c.props('task') as Task).title)).toEqual([
+        'a',
+      ])
+    })
+
+    it('keeps its date order, not priority order', () => {
+      const early = taskWith('early', {})
+      early.date = dayjs('2026-05-01')
+      const late = taskWith('late', { priority: 'high' })
+      late.date = dayjs('2026-05-02')
+      const view = render(Timeline, { tasks: [late, early] })
+
+      expect(view.findAllComponents(TaskCard).map((c) => (c.props('task') as Task).title)).toEqual([
+        'early',
+        'late',
+      ])
     })
   })
 })
