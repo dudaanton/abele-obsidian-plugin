@@ -144,15 +144,15 @@ const open = (event: Event) => {
 }
 
 /**
- * The thumbnail takes a strip down the right edge, as tall as the card, and the words keep
- * out of it through the padding. Positioned rather than laid out in a column so every other
- * part of the card stays where it is; the minimum height keeps the picture from being a sliver
- * beside a card of one line.
+ * The thumbnail is a strip down the right edge, edge to edge like the cover, and the words
+ * keep out of it through the padding. Positioned rather than laid out in a column so every
+ * other part of the card stays where it is, and so the strip is as tall as whatever the card
+ * holds; the minimum height keeps it from being a sliver beside a card of one line.
  */
 .abele-card_thumbed {
   position: relative;
-  padding-inline-end: calc(var(--size-4-16) + var(--size-4-3) * 2);
-  min-height: calc(var(--size-4-12) + var(--size-4-3) * 2);
+  padding-inline-end: calc(var(--size-4-16) + var(--size-4-3));
+  min-height: var(--size-4-12);
 }
 
 /**
@@ -161,10 +161,11 @@ const open = (event: Event) => {
  */
 .abele-card .abele-card__thumbnail {
   position: absolute;
-  top: var(--size-4-3);
-  inset-inline-end: var(--size-4-3);
+  inset-block: 0;
+  inset-inline-end: 0;
   width: var(--size-4-16);
-  height: calc(100% - var(--size-4-3) * 2);
+  height: 100%;
+  border-radius: 0 var(--radius-m) var(--radius-m) 0;
 }
 
 /**

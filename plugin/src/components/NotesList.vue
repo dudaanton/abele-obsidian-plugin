@@ -126,6 +126,11 @@ function openNote(note: Note) {
   gap: calc(var(--p-spacing) / 2);
 }
 
+/** Tighter than the kit's card: this list is scanned rather than read, and runs long. */
+.abele-notes-list__item.abele-card {
+  padding-block: var(--size-4-2);
+}
+
 .abele-notes-list__no-notes {
   font-style: italic;
   color: var(--text-muted);
