@@ -24,6 +24,8 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 - Show timeline sidebar · Show todo sidebar · Show AI chat sidebar
 - Show script runs · Show script API reference
+- Open GitHub link — the GitHub link under the cursor, or one pasted in, in a tab of its own
+  (only while the GitHub integration is on)
 
 ## Media
 

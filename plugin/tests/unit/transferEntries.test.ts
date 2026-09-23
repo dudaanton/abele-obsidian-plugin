@@ -113,6 +113,21 @@ describe('settings that arrived later than the transfer did', () => {
     })
   })
 
+  it('carries the GitHub settings and the token they point at', () => {
+    const github = {
+      enabled: true,
+      keyId: 'abele-github-token',
+      server: 'https://git.example',
+      openLinks: false,
+    }
+    const entries = collectEntries(settings({ github }))
+    const entry = find(entries, 'github', 'github')
+
+    expect(entry?.data).toEqual({ github })
+    expect(entry?.secretIds).toEqual(['abele-github-token'])
+    expect(applyEntries([entry!], settings()).github).toEqual(github)
+  })
+
   /**
    * The section lists the keys it carries by name, so anything added to the settings after it
    * was written is silently left behind. Voice input was exactly that.

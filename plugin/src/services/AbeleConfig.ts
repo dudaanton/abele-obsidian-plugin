@@ -11,6 +11,7 @@ import {
 import AbelePlugin from '@/main'
 import { isKitColor } from '@/constants/colors'
 import { DEFAULT_LABEL_PROPERTY, type LabelColor } from '@/helpers/taskMeta'
+import { DEFAULT_GITHUB_SETTINGS, githubSettingsFrom, type GithubSettings } from '@/github/settings'
 
 export interface AbeleSettings {
   refreshDelay: number // in milliseconds
@@ -58,6 +59,8 @@ export interface AbeleSettings {
   fullWidthSidebars?: boolean
   /** On a tablet, sidebars take half the screen. The phone has its own, `fullWidthSidebars`. */
   halfWidthSidebarsOnTablet?: boolean
+  // GitHub links opened inside Obsidian
+  github?: GithubSettings
 }
 
 export interface LinkDefinition {
@@ -130,6 +133,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   snippetsFolder: '',
   fullWidthSidebars: false,
   halfWidthSidebarsOnTablet: false,
+  github: { ...DEFAULT_GITHUB_SETTINGS },
 }
 
 export class AbeleConfig {
@@ -169,6 +173,7 @@ export class AbeleConfig {
   public snippetsFolder: string
   public fullWidthSidebars: boolean
   public halfWidthSidebarsOnTablet: boolean
+  public github: GithubSettings
 
   /**
    * Moves on every save and every reload from disk. The fields above are plain, so anything
@@ -450,6 +455,7 @@ export class AbeleConfig {
     this.fullWidthSidebars = settings?.fullWidthSidebars ?? DEFAULT_SETTINGS.fullWidthSidebars
     this.halfWidthSidebarsOnTablet =
       settings?.halfWidthSidebarsOnTablet ?? DEFAULT_SETTINGS.halfWidthSidebarsOnTablet
+    this.github = githubSettingsFrom(settings?.github)
 
     return migrated
   }
@@ -488,6 +494,7 @@ export class AbeleConfig {
       snippetsFolder: this.snippetsFolder,
       fullWidthSidebars: this.fullWidthSidebars,
       halfWidthSidebarsOnTablet: this.halfWidthSidebarsOnTablet,
+      github: { ...this.github },
     }
   }
 }

@@ -76,6 +76,16 @@ person changed it, and the map tools tell the person to write into whichever it 
 `mapStyleUrl` replaces the free OpenFreeMap tiles with a MapLibre style of one's own; empty
 means the plugin's own, which needs no key and no account.
 
+## GitHub
+
+`github.enabled` is the whole integration, off unless the person turned it on: GitHub issues,
+pull requests, discussions, commits and files at a ref open in tabs of their own, read only.
+`github.openLinks` decides whether a click on such a link in a note opens that tab instead of
+the browser. `github.server` is a GitHub Enterprise address, empty for github.com.
+`github.keyId` names the keychain slot holding the person's fine-grained token and, like every
+key, is out of reach of these tools. The token needs read access to Contents, Issues, Pull
+requests and Discussions; without one only public repositories open, and discussions not at all.
+
 ## Everything else
 
 `snippetsFolder` is where CSS snippets are written, `links` and `headerButtons` are the buttons

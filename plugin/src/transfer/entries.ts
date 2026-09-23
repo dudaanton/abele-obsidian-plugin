@@ -226,6 +226,10 @@ export const SECTIONS: Section[] = [
     'timeTrackAllNotes',
   ]),
   rootBlock('maps', 'Maps', ['mapCoordinatesProperty', 'mapStyleUrl']),
+  rootBlock('github', 'GitHub', ['github'], {
+    // The token itself is in the keychain; the setting holds only its id.
+    secretsOf: (settings) => (settings.github?.keyId ? [settings.github.keyId] : []),
+  }),
   rootBlock('other', 'Other', [
     'refreshDelay',
     'logsNotesTypes',

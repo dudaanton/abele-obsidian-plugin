@@ -22,7 +22,7 @@ const STYLES = join(__dirname, '..', '..', 'src', 'styles.css')
  * surfaces the agent work introduced. The older chat components are listed as debt in
  * `docs/Design.md` and join this list as they are migrated.
  */
-const COVERED_DIRS = [join(ROOT, 'obsidian'), join(ROOT, 'settings')]
+const COVERED_DIRS = [join(ROOT, 'obsidian'), join(ROOT, 'settings'), join(ROOT, 'github')]
 const COVERED_FILES = [
   'AiAgentSelector.vue',
   'AgentOverrideNotice.vue',
