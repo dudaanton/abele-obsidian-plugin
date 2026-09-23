@@ -6,6 +6,7 @@
       'abele-obsidian-icon_with-bg': withBg,
       'abele-obsidian-icon_no-hover': noHover,
       'abele-obsidian-icon_disabled': disabled,
+      [`abele-obsidian-icon_color-${color}`]: color && color !== 'grey',
     }"
     @click="!disabled && emit('click', $event)"
   >
@@ -18,6 +19,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { setIcon, setTooltip } from 'obsidian'
+import type { KitColor } from '@/constants/colors'
 
 const props = defineProps<{
   icon?: string
@@ -27,6 +29,8 @@ const props = defineProps<{
   withBg?: boolean
   noHover?: boolean
   disabled?: boolean
+  /** Tints the glyph with a theme colour by name, for an icon that carries meaning in colour. */
+  color?: KitColor
 }>()
 
 const emit = defineEmits<{
@@ -81,6 +85,12 @@ watch(() => props.tooltip, updateTooltip)
     cursor: var(--cursor-link);
     color: var(--text-normal);
     background-color: var(--background-modifier-hover);
+  }
+}
+
+@each $name in red, orange, yellow, green, cyan, blue, purple, pink {
+  .abele-obsidian-icon.abele-obsidian-icon_color-#{$name} {
+    color: var(--color-#{$name});
   }
 }
 

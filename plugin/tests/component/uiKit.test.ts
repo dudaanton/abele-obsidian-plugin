@@ -96,6 +96,18 @@ describe('Badge', () => {
 
     expect(view.classes()).toContain('abele-badge_accent')
   })
+
+  it('takes a theme colour by name', () => {
+    const view = mount(Badge, { props: { text: 'work', color: 'red' as const } })
+
+    expect(view.classes()).toContain('abele-badge_color-red')
+  })
+
+  it('stays the default muted badge when grey', () => {
+    const view = mount(Badge, { props: { text: 'work', color: 'grey' as const } })
+
+    expect(view.classes().some((c) => c.startsWith('abele-badge_color-'))).toBe(false)
+  })
 })
 
 describe('Card', () => {
@@ -358,6 +370,12 @@ describe('tooltips', () => {
     await view.setProps({ tooltip: 'Already the default' })
 
     expect(view.attributes('aria-label')).toBe('Already the default')
+  })
+
+  it('an icon can take a theme colour by name', () => {
+    const view = mount(Icon, { props: { icon: 'chevron-up', color: 'red' as const } })
+
+    expect(view.classes()).toContain('abele-obsidian-icon_color-red')
   })
 
   it('a decorative glyph is left unlabelled', () => {

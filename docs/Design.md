@@ -15,10 +15,10 @@ not invent its own.
 | `Section` | A heading with an optional description, wrapping a group of rows. |
 | `Tabs` | Any tab strip — top-level settings navigation, a sub-navigation, a chart switcher. |
 | `Card` / `CardGrid` | A repeated item you can click into: a model, an agent, a stored secret. `icon` puts a glyph before the title, `cover` puts a picture across the top and `large` makes the title a heading, for a post in a feed. |
-| `Badge` | A short status word attached to a card or a title. |
+| `Badge` | A short status word attached to a card or a title. `color` tints it with one of Obsidian's named theme colours (`red` … `pink`); `grey` is the plain badge. |
 | `EmptyState` | What a list says when it has nothing in it. |
 | `Button` | Anything the user presses that carries a word. |
-| `Icon` | Anything the user presses that carries only a glyph. Has `disabled` and `tooltip`. |
+| `Icon` | Anything the user presses that carries only a glyph. Has `disabled` and `tooltip`, and `color` for a glyph whose colour carries meaning, from the same named palette as `Badge`. |
 | `Input`, `Dropdown`, `Checkbox`, `Search`, `ColorPicker` | Form controls. |
 | `Modal` | A dialog. `size="wide"` when a form needs more than the default column. |
 | `QrCode` | A QR code, drawn as SVG from whatever text it is given. |

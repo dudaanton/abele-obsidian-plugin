@@ -1,11 +1,6 @@
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import {
-  cleanNoteName,
-  escapeRegExp,
-  pathToWikilink,
-  resolvePath,
-} from './pathsHelpers'
+import { cleanNoteName, escapeRegExp, pathToWikilink, resolvePath } from './pathsHelpers'
 import { DATE_FORMAT } from '@/constants/dates'
 
 export const taskLineRegex = /^-\s\[\s\]\s(\[\[.*?\]\])$/
