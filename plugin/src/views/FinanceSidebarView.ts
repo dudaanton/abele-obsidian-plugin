@@ -1,12 +1,14 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App } from 'obsidian'
+import { forgetPanel, trackPanelVisibility } from './panelVisibility'
 
 export const FINANCE_SIDEBAR_VIEW_TYPE = 'abele-finance-sidebar-view'
 export const FINANCE_SIDEBAR_ID_ATTR = 'abele-finance-sidebar-id'
 
 export class FinanceSidebarView extends ItemView {
   private id: string
+  private updateVisibility: (() => void) | null = null
 
   constructor(leaf: WorkspaceLeaf, app: App) {
     super(leaf)
@@ -38,6 +40,13 @@ export class FinanceSidebarView extends ItemView {
 
     const open = GlobalStore.getInstance().financeSidebarIds
     open.value = [...open.value, this.id]
+
+    this.updateVisibility = trackPanelVisibility(this, this.id)
+    this.updateVisibility()
+  }
+
+  onResize() {
+    this.updateVisibility?.()
   }
 
   async onClose() {
@@ -45,5 +54,6 @@ export class FinanceSidebarView extends ItemView {
     // clearing the whole slot is what left the one still on screen blank.
     const open = GlobalStore.getInstance().financeSidebarIds
     open.value = open.value.filter((id) => id !== this.id)
+    forgetPanel(this.id)
   }
 }

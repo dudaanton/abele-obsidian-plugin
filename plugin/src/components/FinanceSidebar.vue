@@ -121,13 +121,16 @@
     <section class="abele-finance-sidebar__section">
       <h3 class="abele-finance-sidebar__section-title">Recent Transactions</h3>
       <div v-if="visibleTransactions.length" class="abele-finance-sidebar__transactions">
-        <template v-for="(tx, idx) in visibleTransactions" :key="tx.id">
-          <DateDivider v-if="showTxDateBefore(idx)" :date="txDateStr(tx)">
-            <span v-for="s in dayTxTotals(txDateStr(tx))" :key="s" style="margin-left: 0.5em">{{
-              s
-            }}</span>
+        <template v-for="(entry, idx) in visibleTransactions" :key="entry.id">
+          <DateDivider v-if="showTxDateBefore(idx)" :date="entry.date">
+            <span
+              v-for="s in dayTotals.get(entry.date) ?? []"
+              :key="s"
+              style="margin-left: 0.5em"
+              >{{ s }}</span
+            >
           </DateDivider>
-          <TransactionItem :transaction="tx" :tx-type="transactionTypes.get(tx.id) || 'transfer'" />
+          <TransactionItem :transaction="entry.tx" :tx-type="transactionType(entry)" />
         </template>
         <div ref="scrollSentinel" class="abele-finance-sidebar__sentinel" />
       </div>
@@ -137,15 +140,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, unref, watch, nextTick, onUnmounted } from 'vue'
+import { computed, ref, unref, watch, nextTick, onUnmounted, toRef } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AccountsList } from '@/entities/AccountsList'
-import { TransactionsList } from '@/entities/TransactionsList'
 import { BalanceIndex } from '@/entities/BalanceIndex'
 import { createTransaction } from '@/commands/createTransaction'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { wikilinkToPath } from '@/helpers/pathsHelpers'
 import { DATE_FORMAT } from '@/constants/dates'
 import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
 import { openFile } from '@/helpers/vaultUtils'
@@ -158,15 +159,30 @@ import dayjs from 'dayjs'
 import { toRaw } from 'vue'
 import { formatAmount } from '@/helpers/moneyFormat'
 import { currencyCard, type CurrencyCard } from '@/helpers/financeTotals'
+import { useFinanceLedger, type LedgerEntry } from '@/composables/useFinanceLedger'
+import { pausedWhileHidden } from '@/helpers/pausedWhileHidden'
+
+const props = withDefaults(
+  defineProps<{
+    /**
+     * Whether the panel can be seen. A sidebar tab behind another one, or a sidebar folded
+     * away, keeps its component alive; while it is hidden nothing here recalculates, and it
+     * catches up once when it is shown again.
+     */
+    active?: boolean
+  }>(),
+  { active: true }
+)
 
 const PAGE_SIZE = 20
 const visibleCount = ref(PAGE_SIZE)
 
 const store = GlobalStore.getInstance()
+const active = toRef(props, 'active')
 
 const accountsList = computed(() => unref(store.accountsList) as AccountsList | null)
-const transactionsList = computed(() => unref(store.transactionsList) as TransactionsList | null)
 const balanceIndex = computed(() => unref(store.balanceIndex) as BalanceIndex | null)
+const { entries: ledger } = useFinanceLedger(active)
 
 // --- Currency Balance Cards ---
 
@@ -177,7 +193,7 @@ const pinnedCurrenciesList = computed(() =>
     .filter(Boolean)
 )
 
-const currencyCards = computed<CurrencyCard[]>(() => {
+const currencyCards = pausedWhileHidden(active, (): CurrencyCard[] => {
   const al = accountsList.value
   const bi = toRaw(balanceIndex.value) as BalanceIndex | null
   if (!al || !bi) return []
@@ -248,24 +264,12 @@ interface CurrencyPeriodData {
 }
 
 const periodByCurrency = computed(() => {
-  const tl = toRaw(transactionsList.value) as TransactionsList | null
   const al = accountsList.value
   const result = new Map<string, CurrencyPeriodData>()
-  if (!tl || !al) return result
+  if (!al) return result
 
   const startStr = periodStart.value.format(DATE_FORMAT)
   const endStr = periodEnd.value.format(DATE_FORMAT)
-
-  const { app } = store
-  const resolveCache = new Map<string, string | null>()
-  const resolve = (wikilink: string): string | null => {
-    if (resolveCache.has(wikilink)) return resolveCache.get(wikilink)!
-    const linkPath = wikilinkToPath(wikilink)
-    const file = linkPath ? app.metadataCache.getFirstLinkpathDest(linkPath, '') : null
-    const resolved = file ? file.path : null
-    resolveCache.set(wikilink, resolved)
-    return resolved
-  }
 
   const expensePaths = new Set<string>()
   const revenuePaths = new Set<string>()
@@ -296,31 +300,27 @@ const periodByCurrency = computed(() => {
     return result.get(cur)!
   }
 
-  for (const tx of tl.transactions.values()) {
-    const raw = toRaw(tx)
-    if (!raw.loaded || !raw.date || raw.amount == null || !raw.currency) continue
+  for (const entry of ledger.value) {
+    if (entry.amount == null || !entry.currency) continue
+    if (entry.date < startStr || entry.date > endStr) continue
 
-    const dateStr = raw.date.format(DATE_FORMAT)
-    if (dateStr < startStr || dateStr > endStr) continue
+    const cur = entry.currency
+    const { from: fromPath, to: toPath, amount } = entry
 
-    const cur = raw.currency
-
-    const toPath = raw.to ? resolve(raw.to) : null
     if (toPath && expensePaths.has(toPath)) {
       const key = `${cur}|${toPath}`
-      expenseMap.set(key, (expenseMap.get(key) || 0) + raw.amount)
+      expenseMap.set(key, (expenseMap.get(key) || 0) + amount)
     }
     if (toPath && liabilityPaths.has(toPath)) {
-      getOrCreate(cur).lent += raw.amount
+      getOrCreate(cur).lent += amount
     }
 
-    const fromPath = raw.from ? resolve(raw.from) : null
     if (fromPath && revenuePaths.has(fromPath)) {
       const key = `${cur}|${fromPath}`
-      incomeMap.set(key, (incomeMap.get(key) || 0) + raw.amount)
+      incomeMap.set(key, (incomeMap.get(key) || 0) + amount)
     }
     if (fromPath && liabilityPaths.has(fromPath)) {
-      getOrCreate(cur).returned += raw.amount
+      getOrCreate(cur).returned += amount
     }
   }
 
@@ -420,13 +420,6 @@ const accountTypeSets = computed(() => {
   return { asset, expense, revenue }
 })
 
-function resolveWikilink(wikilink: string): string | null {
-  const linkPath = wikilinkToPath(wikilink)
-  if (!linkPath) return null
-  const file = store.app.metadataCache.getFirstLinkpathDest(linkPath, '')
-  return file ? file.path : null
-}
-
 // --- Charts ---
 
 type ChartTab = 'expenses' | 'income' | 'calendar' | 'networth'
@@ -493,8 +486,7 @@ function renderPieChart() {
         trigger: 'item',
         enterable: false,
         confine: true,
-        formatter: (p: any) =>
-          `${p.marker} ${p.name}: ${formatAmount(p.value)} (${p.percent}%)`,
+        formatter: (p: any) => `${p.marker} ${p.name}: ${formatAmount(p.value)} (${p.percent}%)`,
       },
       series: [
         {
@@ -529,41 +521,20 @@ let calendarChart: EChartsType | null = null
 let calendarObserver: ResizeObserver | null = null
 
 const calendarData = computed(() => {
-  const tl = toRaw(transactionsList.value) as TransactionsList | null
-  if (!tl) return new Map<string, { expense: number; income: number }>()
-
   const { expense: expPaths, revenue: revPaths } = accountTypeSets.value
-  const { app } = store
-  const resolveCache = new Map<string, string | null>()
-  const resolve = (wikilink: string): string | null => {
-    if (resolveCache.has(wikilink)) return resolveCache.get(wikilink)!
-    const linkPath = wikilinkToPath(wikilink)
-    const file = linkPath ? app.metadataCache.getFirstLinkpathDest(linkPath, '') : null
-    const result = file ? file.path : null
-    resolveCache.set(wikilink, result)
-    return result
-  }
-
   const startStr = periodStart.value.format(DATE_FORMAT)
   const endStr = periodEnd.value.format(DATE_FORMAT)
   const dayMap = new Map<string, { expense: number; income: number }>()
 
-  for (const tx of tl.transactions.values()) {
-    const raw = toRaw(tx)
-    if (!raw.loaded || !raw.date || raw.amount == null || !raw.currency) continue
-    if (raw.currency !== selectedPeriodCurrency.value) continue
+  for (const entry of ledger.value) {
+    if (entry.amount == null || entry.currency !== selectedPeriodCurrency.value) continue
+    if (entry.date < startStr || entry.date > endStr) continue
 
-    const dateStr = raw.date.format(DATE_FORMAT)
-    if (dateStr < startStr || dateStr > endStr) continue
+    if (!dayMap.has(entry.date)) dayMap.set(entry.date, { expense: 0, income: 0 })
+    const day = dayMap.get(entry.date)!
 
-    if (!dayMap.has(dateStr)) dayMap.set(dateStr, { expense: 0, income: 0 })
-    const day = dayMap.get(dateStr)!
-
-    const toPath = raw.to ? resolve(raw.to) : null
-    const fromPath = raw.from ? resolve(raw.from) : null
-
-    if (toPath && expPaths.has(toPath)) day.expense += raw.amount
-    if (fromPath && revPaths.has(fromPath)) day.income += raw.amount
+    if (entry.to && expPaths.has(entry.to)) day.expense += entry.amount
+    if (entry.from && revPaths.has(entry.from)) day.income += entry.amount
   }
 
   return dayMap
@@ -690,7 +661,7 @@ interface NetworthSeries {
   data: number[]
 }
 
-const networthData = computed(() => {
+const networthData = pausedWhileHidden(active, () => {
   const bi = toRaw(balanceIndex.value) as BalanceIndex | null
   if (!bi) return { dates: [] as string[], series: [] as NetworthSeries[] }
   bi.version.value // track reactivity
@@ -789,50 +760,21 @@ watch([networthData, networthChartEl], () => nextTick(renderNetworthChart), { im
 
 // --- Recent Transactions ---
 
+// The ledger is already newest first.
 const sortedTransactions = computed(() => {
-  const tl = transactionsList.value
-  if (!tl) return []
-
-  const { app } = store
-  const endStr = periodEnd.value.format('YYYY-MM-DD')
-  const txs = [...tl.transactions.values()].filter(
-    (tx) => tx.loaded && tx.date && tx.date.format('YYYY-MM-DD') <= endStr
-  )
-  txs.sort((a, b) => {
-    const da = a.date!.format('YYYY-MM-DD')
-    const db = b.date!.format('YYYY-MM-DD')
-    const dateCmp = db.localeCompare(da)
-    if (dateCmp !== 0) return dateCmp
-
-    const fa = app.vault.getAbstractFileByPath(a.transactionPath)
-    const fb = app.vault.getAbstractFileByPath(b.transactionPath)
-    const ca = (fa as any)?.stat?.ctime ?? 0
-    const cb = (fb as any)?.stat?.ctime ?? 0
-    return cb - ca
-  })
-
-  return txs
+  const endStr = periodEnd.value.format(DATE_FORMAT)
+  const entries = ledger.value
+  let first = 0
+  while (first < entries.length && entries[first].date > endStr) first++
+  return first === 0 ? entries : entries.slice(first)
 })
 
-const transactionTypes = computed(() => {
+function transactionType(entry: LedgerEntry): 'income' | 'expense' | 'transfer' {
   const { expense, revenue } = accountTypeSets.value
-  const types = new Map<string, 'income' | 'expense' | 'transfer'>()
-
-  for (const tx of sortedTransactions.value) {
-    const toPath = tx.to ? resolveWikilink(tx.to) : null
-    const fromPath = tx.from ? resolveWikilink(tx.from) : null
-
-    if (toPath && expense.has(toPath)) {
-      types.set(tx.id, 'expense')
-    } else if (fromPath && revenue.has(fromPath)) {
-      types.set(tx.id, 'income')
-    } else {
-      types.set(tx.id, 'transfer')
-    }
-  }
-
-  return types
-})
+  if (entry.to && expense.has(entry.to)) return 'expense'
+  if (entry.from && revenue.has(entry.from)) return 'income'
+  return 'transfer'
+}
 
 watch(periodEnd, () => {
   visibleCount.value = PAGE_SIZE
@@ -847,37 +789,48 @@ useIntersectionObserver(scrollSentinel, ([entry]) => {
   }
 })
 
-const txDateStr = (tx: any): string => {
-  return tx.date?.format(DATE_FORMAT) ?? ''
-}
-
 const showTxDateBefore = (idx: number): boolean => {
   if (idx === 0) return true
-  return txDateStr(visibleTransactions.value[idx]) !== txDateStr(visibleTransactions.value[idx - 1])
+  return visibleTransactions.value[idx].date !== visibleTransactions.value[idx - 1].date
 }
 
-const isAssetToAsset = (tx: Transaction): boolean => {
+const isAssetToAsset = (entry: LedgerEntry): boolean => {
   const { asset } = accountTypeSets.value
-  const toPath = tx.to ? resolveWikilink(tx.to) : null
-  const fromPath = tx.from ? resolveWikilink(tx.from) : null
-  return !!(toPath && asset.has(toPath) && fromPath && asset.has(fromPath))
+  return !!(entry.to && asset.has(entry.to) && entry.from && asset.has(entry.from))
 }
 
-const dayTxTotals = (date: string): string[] => {
-  const byCurrency = new Map<string, number>()
-  for (const tx of sortedTransactions.value) {
-    if (txDateStr(tx) !== date) continue
-    if (isAssetToAsset(tx)) continue
-    const cur = tx.currency || '?'
-    const type = transactionTypes.value.get(tx.id) || 'transfer'
-    const sign = type === 'income' ? 1 : -1
-    byCurrency.set(cur, (byCurrency.get(cur) || 0) + sign * (tx.amount || 0))
+/**
+ * The per-currency sum beside each date heading, for the days on screen. One pass over the
+ * days shown — the entries of a day sit next to each other — instead of a pass over every
+ * transaction per heading.
+ */
+const dayTotals = computed(() => {
+  const shown = visibleTransactions.value
+  const totals = new Map<string, string[]>()
+  if (!shown.length) return totals
+
+  const lastDay = shown[shown.length - 1].date
+  const byDay = new Map<string, Map<string, number>>()
+  for (const entry of sortedTransactions.value) {
+    if (entry.date < lastDay) break
+    if (isAssetToAsset(entry)) continue
+    let byCurrency = byDay.get(entry.date)
+    if (!byCurrency) byDay.set(entry.date, (byCurrency = new Map()))
+    const cur = entry.currency || '?'
+    const sign = transactionType(entry) === 'income' ? 1 : -1
+    byCurrency.set(cur, (byCurrency.get(cur) || 0) + sign * (entry.amount || 0))
   }
-  return Array.from(byCurrency.entries()).map(
-    ([cur, amount]) => `${amount >= 0 ? '+' : ''}${formatAmount(amount)} ${cur}`
-  )
-}
 
+  for (const [day, byCurrency] of byDay) {
+    totals.set(
+      day,
+      Array.from(byCurrency.entries()).map(
+        ([cur, amount]) => `${amount >= 0 ? '+' : ''}${formatAmount(amount)} ${cur}`
+      )
+    )
+  }
+  return totals
+})
 </script>
 
 <style lang="scss">

@@ -87,6 +87,11 @@ export interface FakeApp {
    */
   loadLocalStorage(key: string): unknown
   saveLocalStorage(key: string, value: unknown): void
+  /**
+   * Gives a file the metadata Obsidian would have parsed for it — what a note written after
+   * the vault was built needs before anything reading the cache can see it.
+   */
+  setFrontmatter(path: string, frontmatter: Record<string, unknown>): void
   /** Invokes the handlers registered for an event, so tests can drive incremental updates. */
   emit(scope: 'vault' | 'metadataCache', name: string, ...args: unknown[]): void
   stats: FakeVaultStats
@@ -331,6 +336,11 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     },
     saveLocalStorage(key: string, value: unknown) {
       localStore.set(key, value)
+    },
+    setFrontmatter(path: string, frontmatter: Record<string, unknown>) {
+      const cached = cacheByPath.get(path)
+      if (cached) cached.frontmatter = frontmatter
+      else cacheByPath.set(path, { frontmatter, links: [], frontmatterLinks: [] })
     },
     emit(scope: 'vault' | 'metadataCache', name: string, ...args: unknown[]) {
       for (const callback of handlers.get(`${scope}:${name}`) ?? []) callback(...args)

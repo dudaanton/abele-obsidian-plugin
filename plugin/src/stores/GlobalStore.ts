@@ -70,6 +70,11 @@ export class GlobalStore {
   public readonly financeSidebarIds = ref<string[]>([])
   public readonly timeTrackingSidebarIds = ref<string[]>([])
   public readonly scriptRunsIds = ref<string[]>([])
+  /**
+   * Panels that are open but cannot be seen — a tab behind another, a folded sidebar. Their
+   * components stay mounted and use this to stop recalculating until they are shown.
+   */
+  public readonly hiddenPanelIds = ref<string[]>([])
   /** One per open script tab; the leaf puts it here and the Vue side renders from it. */
   public readonly scriptViews = ref<ScriptViewModel[]>([])
   public readonly findAndReplaceBasesInstances = shallowRef<Map<string, FindAndReplaceInstance>>(
@@ -340,6 +345,7 @@ export class GlobalStore {
     this.todoSidebarIds.value = []
     this.aiSidebarIds.value = []
     this.financeSidebarIds.value = []
+    this.hiddenPanelIds.value = []
     this.timeTrackingSidebarIds.value = []
     this.scriptRunsIds.value = []
     this.scriptViews.value = []

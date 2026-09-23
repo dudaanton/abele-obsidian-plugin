@@ -51,7 +51,7 @@
     <AiChatView />
   </Teleport>
   <Teleport v-for="id in financeSidebarIds" :key="id" :to="`[${FINANCE_SIDEBAR_ID_ATTR}='${id}']`">
-    <FinanceSidebarView />
+    <FinanceSidebarView :active="!hiddenPanelIds.includes(id)" />
   </Teleport>
   <Teleport
     v-for="id in timeTrackingSidebarIds"
@@ -188,6 +188,7 @@ const {
   todoSidebarIds,
   aiSidebarIds,
   financeSidebarIds,
+  hiddenPanelIds,
   timeTrackingSidebarIds,
   scriptRunsIds,
   scriptViews,

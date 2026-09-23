@@ -134,6 +134,8 @@ export class BalanceIndex {
     const currency = transaction.currency || ''
     const fromPath = transaction.from ? this.resolveAccountPath(transaction.from) : null
     const toPath = transaction.to ? this.resolveAccountPath(transaction.to) : null
+    // A getter that looks the file up in the vault; once per transaction is enough.
+    const transactionPath = transaction.transactionPath
 
     if (transaction.from) {
       if (fromPath) {
@@ -143,7 +145,7 @@ export class BalanceIndex {
           this.addEntry(key, {
             date: dateStr,
             amount: this.getAmountForAccount(transaction, fromPath, toPath, 'from'),
-            transactionPath: transaction.transactionPath,
+            transactionPath,
           })
         }
       }
@@ -157,7 +159,7 @@ export class BalanceIndex {
           this.addEntry(key, {
             date: dateStr,
             amount: this.getAmountForAccount(transaction, toPath, fromPath, 'to'),
-            transactionPath: transaction.transactionPath,
+            transactionPath,
           })
         }
       }
