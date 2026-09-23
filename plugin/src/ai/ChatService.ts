@@ -44,6 +44,12 @@ export class ChatService {
   /** Text to pre-fill in chat input (consumed by AiChat component) */
   public readonly pendingInput = ref<string | null>(null)
 
+  /**
+   * A message to bring into view in the active chat, by id — a card in a note was pressed.
+   * The chat component consumes it, as it does `pendingInput`.
+   */
+  public readonly pendingReveal = ref<string | null>(null)
+
   static getInstance(): ChatService {
     if (!ChatService.instance) {
       ChatService.instance = new ChatService()

@@ -21,6 +21,12 @@
           <span class="abele-chat-msg__branch-action" @click="emit('create-branch', message.id)"
             >Branch from here</span
           >
+          <span
+            v-if="message.role === 'user' || message.role === 'assistant'"
+            class="abele-chat-msg__branch-action"
+            @click="emit('insert-into-note', message.id)"
+            >Insert into note</span
+          >
         </div>
         <div v-if="message.role === 'user'" class="abele-chat-msg__detail-row">
           <span class="abele-chat-msg__branch-action" @click="emit('repeat-message', message.id)"
@@ -313,6 +319,8 @@ const emit = defineEmits<{
   (e: 'switch-branch', messageId: string): void
   (e: 'repeat-message', messageId: string): void
   (e: 'retry-message', messageId: string): void
+  /** Put this message into the note being worked in, as a card that leads back here. */
+  (e: 'insert-into-note', messageId: string): void
   (e: 'edit-message', messageId: string): void
   (e: 'confirm-draft', messageId: string): void
   (e: 'edit-draft', messageId: string): void

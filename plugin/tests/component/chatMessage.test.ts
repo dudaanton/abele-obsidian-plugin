@@ -184,3 +184,27 @@ describe('the actions a message opens from its icon', () => {
     expect(wrapper.emitted('retry-message')?.[0]).toEqual(['m1'])
   })
 })
+
+describe('putting a message into a note', () => {
+  it.each(['user', 'assistant'] as const)(
+    'is offered on a %s message, beside Retry',
+    async (role) => {
+      const wrapper = render({ role, content: 'text' })
+      await wrapper.find('.abele-chat-msg__icon').trigger('click')
+
+      const action = wrapper
+        .findAll('.abele-chat-msg__branch-action')
+        .find((w) => w.text() === 'Insert into note')
+      expect(action).toBeTruthy()
+      await action!.trigger('click')
+      expect(wrapper.emitted('insert-into-note')?.[0]).toEqual(['m1'])
+    }
+  )
+
+  it('is not offered on a tool call', async () => {
+    const wrapper = render({ role: 'tool-call', toolName: 'read' })
+    await wrapper.find('.abele-chat-msg__icon').trigger('click')
+
+    expect(wrapper.text()).not.toContain('Insert into note')
+  })
+})

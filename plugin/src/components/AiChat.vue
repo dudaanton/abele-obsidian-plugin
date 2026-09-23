@@ -117,6 +117,7 @@
           @switch-branch="onSwitchBranch"
           @repeat-message="onRepeatMessage"
           @retry-message="onRetryMessage"
+          @insert-into-note="onInsertIntoNote"
           @edit-message="onEditMessage"
           @confirm-draft="onConfirmDraft"
           @edit-draft="onEditDraft"
@@ -293,6 +294,7 @@ import type { ChatDraft } from '@/ai/types'
 import { discoverSkills } from '@/ai/tools/SkillTool'
 import { getChildren } from '@/ai/chatTree'
 import { isChatLog } from '@/ai/chatText'
+import { insertMessageCard } from '@/ai/messageCards'
 
 const chatService = ChatService.getInstance()
 chatService.ensureInitialized()
@@ -440,6 +442,11 @@ const onRepeatMessage = (messageId: string) => {
 const onRetryMessage = (messageId: string) => {
   shouldAutoScroll = true
   session.value?.retryFromMessage(messageId)
+}
+
+const onInsertIntoNote = (messageId: string) => {
+  const s = session.value
+  if (s) void insertMessageCard(s, messageId)
 }
 
 const onEditMessage = (messageId: string) => {
@@ -877,6 +884,61 @@ watch([messages, streamingContent, streamingThinking], doScroll)
  */
 const drafts = new Map<string, ChatDraft>()
 const NO_DRAFT: ChatDraft = { text: '', attachments: [] }
+
+/** How far below the top of the box a message brought into view sits: clear of the edge. */
+const REVEAL_OFFSET_PX = 16
+const REVEAL_CONTEXT = 3
+
+/**
+ * Brings one message into view — a card for it in a note was pressed.
+ *
+ * A message on another branch has its branch switched to first, the way the branch arrows
+ * would. It is then held in place while the messages around it render, as a remembered place
+ * is, and flashed so the eye finds it.
+ */
+const revealMessage = async (messageId: string) => {
+  const s = session.value
+  if (!s) return
+  if (!s.messages.value.some((m) => m.id === messageId)) {
+    if (!s.allMessages.value.some((m) => m.id === messageId)) {
+      new Notice('That message is no longer in this chat')
+      return
+    }
+    s.switchBranch(messageId)
+  }
+  // Once whatever the tab switch did to the scroll has run.
+  await nextTick()
+  const box = messagesContainer.value
+  if (box) await new Promise((resolve) => box.win.requestAnimationFrame(resolve))
+
+  const index = messages.value.findIndex((m) => m.id === messageId)
+  if (index < 0) return
+  // A few before it too, so it does not sit flush against the top with nothing to scroll to.
+  showMessagesFrom(Math.max(0, index - REVEAL_CONTEXT))
+  await nextTick()
+  const el = messagesContainer.value
+  const target = el?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`)
+  if (!el || !target) return
+  shouldAutoScroll = false
+  anchor = { el: target, offset: REVEAL_OFFSET_PX }
+  holdAnchor()
+  bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
+  holdAnchorAWhile(el)
+  target.classList.remove('abele-footnote-flash')
+  void target.offsetWidth
+  target.classList.add('abele-footnote-flash')
+  window.setTimeout(() => target.classList.remove('abele-footnote-flash'), 2500)
+}
+
+watch(
+  () => [chatService.pendingReveal.value, session.value, messagesContainer.value] as const,
+  ([messageId, s, el]) => {
+    if (!messageId || !s || !el) return
+    chatService.pendingReveal.value = null
+    void revealMessage(messageId)
+  },
+  { immediate: true, flush: 'post' }
+)
 
 // Switching tabs: the one being left keeps its place, the one being opened goes back to its own
 watch(

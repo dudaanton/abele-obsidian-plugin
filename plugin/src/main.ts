@@ -86,6 +86,7 @@ import { handleProtocolAction } from './helpers/protocolHandler'
 import { handleLinkAction } from './helpers/linkHandler'
 import { registerChartCodeblock } from './editor/ChartCodeblock'
 import { registerMapCodeblock } from './editor/MapCodeblock'
+import { registerMessageCardBlock } from './ai/messageCards'
 import { SnippetService } from './services/SnippetService'
 import { dictate } from '@/audio/voiceModal'
 
@@ -288,6 +289,10 @@ export default class AbelePlugin extends Plugin {
     )
 
     registerMapCodeblock((lang, handler) => this.registerMarkdownCodeBlockProcessor(lang, handler))
+    // A chat message kept in a note, as a card that opens the chat at it.
+    registerMessageCardBlock((lang, handler) =>
+      this.registerMarkdownCodeBlockProcessor(lang, handler)
+    )
 
     this.registerEvent(
       this.app.workspace.on('css-change', () => {

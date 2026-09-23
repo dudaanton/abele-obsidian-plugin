@@ -222,3 +222,22 @@ describe('a chat opened for the first time', () => {
     expect(model.scrollTop).toBe(20 * HEIGHT - BOX)
   })
 })
+
+describe('a card in a note asking for one of its messages', () => {
+  it('brings that message to the top, however far back it is, and flashes it', async () => {
+    const { model } = await open()
+
+    ChatService.getInstance().pendingReveal.value = 'a5'
+    for (let i = 0; i < 6; i++) {
+      await nextTick()
+      model.relayout()
+      await new Promise((r) => setTimeout(r, 20))
+    }
+
+    // The message 16px below the top, with the one before it showing in that gap.
+    expect(model.topMessage()).toEqual({ id: 'a4', offset: -84 })
+    const el = document.querySelector('[data-message-id="a5"]')
+    expect(el?.classList.contains('abele-footnote-flash')).toBe(true)
+    expect(ChatService.getInstance().pendingReveal.value).toBeNull()
+  })
+})

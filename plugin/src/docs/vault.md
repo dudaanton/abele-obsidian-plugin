@@ -157,6 +157,25 @@ out of the chat history until somebody opens one as a full chat. Not every user 
 a question: a comment may hold notes the person kept without asking anything, which no agent
 has answered and which are simply part of the conversation from then on.
 
+## Message cards
+
+A message from a chat can be kept in a note: "Insert into note" in a message's actions writes a
+fenced block at the cursor, which the plugin draws as a card with the message's text. Pressing
+the card opens the chat — a comment as a comment — and scrolls to that message.
+
+    ```abele-message
+    chat: AI/Chats/Planning the trip.abchat
+    message: V1StGXR8_Z5jdHi6B-myT
+    ---
+    The message's text, as it was when the card was made.
+    ```
+
+`chat` is the chat file's path and `message` the message's id in it; everything after `---` is
+the text shown. The fence is longer than three backticks when the text holds a fence of its
+own. The text is a copy: editing it changes what the card shows, not the chat. A chat renamed
+since is found again by the message id and the `chat` line is corrected when the card is next
+pressed. Do not invent these blocks — a `message` id that is in no chat opens nothing.
+
 ## Places
 
 A place is a note with its coordinates in one property, written `lat, lon` — `coordinates:
