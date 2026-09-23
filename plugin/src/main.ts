@@ -89,12 +89,7 @@ import { registerMapCodeblock } from './editor/MapCodeblock'
 import { SnippetService } from './services/SnippetService'
 import { dictate } from '@/audio/voiceModal'
 
-/** Plugin-level data in `data.json` that is not part of the settings object. */
-type PluginData = Record<string, unknown>
-
 export default class AbelePlugin extends Plugin {
-  private data: PluginData = {}
-
   private vueApp: VueApp | null = null
 
   initializeVue() {
@@ -133,8 +128,6 @@ export default class AbelePlugin extends Plugin {
     dayjs.extend(dayOfYear)
 
     AbeleConfig.getInstance().init(this)
-
-    await this.loadPluginData()
     ;(window as any).process = (window as any).process || {
       env: { NODE_ENV: 'production' },
     } // Ensure process is defined for Node.js compatibility
@@ -1181,11 +1174,14 @@ export default class AbelePlugin extends Plugin {
     void workspace.revealLeaf(leaf)
   }
 
-  async loadPluginData() {
-    this.data = (await this.loadData()) || {}
-  }
-
-  async savePluginData() {
-    await this.saveData(this.data)
+  /**
+   * `data.json` changed on disk without this plugin writing it — Obsidian Sync or another sync
+   * tool bringing another device's copy. Without this the settings loaded at startup stay in
+   * memory and the next save, from anywhere, writes them back over what arrived.
+   */
+  async onExternalSettingsChange() {
+    await AbeleConfig.getInstance().reloadSettings()
+    AgentRegistry.getInstance().notifyConfigReloaded()
+    this.syncAiFeatures()
   }
 }

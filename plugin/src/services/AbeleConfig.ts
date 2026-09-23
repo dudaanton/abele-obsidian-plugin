@@ -1,3 +1,5 @@
+import { ref } from 'vue'
+import { Notice } from 'obsidian'
 import { Journal, JournalDTO } from '@/entities/Journal'
 import {
   AiSettings,
@@ -142,6 +144,22 @@ export class AbeleConfig {
   public snippetsFolder: string
   public fullWidthSidebars: boolean
 
+  /**
+   * Moves on every save and every reload from disk. The fields above are plain, so anything
+   * on screen that shows one of them reads this too — that is what redraws it when the
+   * settings change underneath it.
+   */
+  public readonly version = ref(0)
+
+  /**
+   * Set when `data.json` exists but could not be read. Nothing is written until it reads
+   * again: what is in memory then is defaults, and saving them would replace every setting
+   * the file still holds with nothing.
+   */
+  private unreadable = false
+  /** Said once per failed load: saves come from chats as well, and each would repeat it. */
+  private unreadableTold = false
+
   public get logsNotesTypes(): string[] {
     return this._logsNotesTypes
   }
@@ -213,7 +231,14 @@ export class AbeleConfig {
       throw new Error('AbeleConfig not initialized with plugin instance.')
     }
 
-    const migrated = this.applySettings(await this.plugin.loadData())
+    // `null` is no file at all — a fresh install. `undefined` is a file Obsidian could not
+    // parse, and that is still somebody's settings.
+    const stored = await this.plugin.loadData()
+    this.unreadable = stored === undefined
+    this.unreadableTold = false
+    if (this.unreadable) console.error('[Abele] data.json could not be read; not writing to it')
+
+    const migrated = this.applySettings(stored ?? undefined)
 
     // Migration only rewrites the settings held in memory. Persisting it here is what stops
     // the same migration running again on the next launch — and, for the Comment agent,
@@ -221,17 +246,29 @@ export class AbeleConfig {
     if (migrated) await this.writeSettings()
   }
 
+  /**
+   * `data.json` changed on disk without this copy of the plugin writing it — sync from another
+   * device, most often. Keeping the settings loaded at startup would write them back over it
+   * at the next save, whatever that save was about.
+   */
+  async reloadSettings() {
+    await this.loadSettings()
+    this.version.value++
+  }
+
   async saveSettings() {
     if (!this.plugin) {
       throw new Error('AbeleConfig not initialized with plugin instance.')
     }
 
+    const plugin = this.plugin
     await this.writeSettings()
+    this.version.value++
 
     // The agent's commands and ribbon icon are registered from a setting, and this is the one
     // road every settings change takes — so switching it on takes effect here rather than at
-    // the next restart.
-    this.plugin.syncAiFeatures()
+    // the next restart. Read from the local: the plugin may have unloaded during the write.
+    if (this.plugin === plugin) plugin.syncAiFeatures()
   }
 
   /**
@@ -242,6 +279,15 @@ export class AbeleConfig {
    */
   private async writeSettings(): Promise<void> {
     if (!this.plugin) return
+    if (this.unreadable) {
+      if (this.unreadableTold) return
+      this.unreadableTold = true
+      new Notice(
+        'Abele could not read its settings file, so changes to settings are not being saved. ' +
+          'Restore the file, or delete it to start from defaults, and reload the plugin.'
+      )
+      return
+    }
     await this.plugin.saveData(this.exportSettings())
   }
 
