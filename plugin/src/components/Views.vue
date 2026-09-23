@@ -50,13 +50,17 @@
   <Teleport v-for="id in aiSidebarIds" :key="id" :to="`[${AI_SIDEBAR_ID_ATTR}='${id}']`">
     <AiChatView />
   </Teleport>
-  <Teleport v-for="id in financeSidebarIds" :key="id" :to="`[${FINANCE_SIDEBAR_ID_ATTR}='${id}']`">
+  <Teleport
+    v-for="id in financeSidebarIds"
+    :key="id"
+    :to="panelElements.get(id) ?? `[${FINANCE_SIDEBAR_ID_ATTR}='${id}']`"
+  >
     <FinanceSidebarView :active="!hiddenPanelIds.includes(id)" />
   </Teleport>
   <Teleport
     v-for="id in accountsSidebarIds"
     :key="id"
-    :to="`[${ACCOUNTS_SIDEBAR_ID_ATTR}='${id}']`"
+    :to="panelElements.get(id) ?? `[${ACCOUNTS_SIDEBAR_ID_ATTR}='${id}']`"
   >
     <AccountsSidebar :active="!hiddenPanelIds.includes(id)" />
   </Teleport>
@@ -199,6 +203,7 @@ const {
   financeSidebarIds,
   accountsSidebarIds,
   hiddenPanelIds,
+  panelElements,
   timeTrackingSidebarIds,
   scriptRunsIds,
   scriptViews,

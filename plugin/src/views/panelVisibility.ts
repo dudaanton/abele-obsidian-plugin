@@ -47,7 +47,19 @@ export function trackPanelVisibility(view: ItemView, id: string): () => void {
   return update
 }
 
+/** Records the element a panel's component is teleported into — see `panelElements`. */
+export function registerPanelElement(id: string, el: HTMLElement): void {
+  const elements = GlobalStore.getInstance().panelElements
+  elements.value = new Map(elements.value).set(id, el)
+}
+
 export function forgetPanel(id: string): void {
+  const elements = GlobalStore.getInstance().panelElements
+  if (elements.value.has(id)) {
+    const next = new Map(elements.value)
+    next.delete(id)
+    elements.value = next
+  }
   const hidden = GlobalStore.getInstance().hiddenPanelIds
   if (hidden.value.includes(id)) hidden.value = hidden.value.filter((x) => x !== id)
 }

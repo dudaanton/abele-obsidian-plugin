@@ -1,7 +1,7 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App } from 'obsidian'
-import { forgetPanel, trackPanelVisibility } from './panelVisibility'
+import { forgetPanel, registerPanelElement, trackPanelVisibility } from './panelVisibility'
 
 export const FINANCE_SIDEBAR_VIEW_TYPE = 'abele-finance-sidebar-view'
 export const FINANCE_SIDEBAR_ID_ATTR = 'abele-finance-sidebar-id'
@@ -38,6 +38,7 @@ export class FinanceSidebarView extends ItemView {
     const widgetContainer = createDiv({ attr: { [FINANCE_SIDEBAR_ID_ATTR]: this.id } })
     container.appendChild(widgetContainer)
 
+    registerPanelElement(this.id, widgetContainer)
     const open = GlobalStore.getInstance().financeSidebarIds
     open.value = [...open.value, this.id]
 

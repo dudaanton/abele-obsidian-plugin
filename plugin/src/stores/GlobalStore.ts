@@ -69,6 +69,13 @@ export class GlobalStore {
   public readonly aiSidebarIds = ref<string[]>([])
   public readonly financeSidebarIds = ref<string[]>([])
   public readonly accountsSidebarIds = ref<string[]>([])
+  /**
+   * The container each panel put in its own pane, by id. A teleport aimed at a selector looks
+   * the target up in the document, and a pane opened into a phone's closed drawer is not in the
+   * document yet — the panel then mounted nowhere and stayed blank. Aimed at the element, it
+   * renders into it wherever the pane happens to be.
+   */
+  public readonly panelElements = shallowRef<Map<string, HTMLElement>>(new Map())
   public readonly timeTrackingSidebarIds = ref<string[]>([])
   public readonly scriptRunsIds = ref<string[]>([])
   /**
@@ -347,6 +354,7 @@ export class GlobalStore {
     this.aiSidebarIds.value = []
     this.financeSidebarIds.value = []
     this.accountsSidebarIds.value = []
+    this.panelElements.value = new Map()
     this.hiddenPanelIds.value = []
     this.timeTrackingSidebarIds.value = []
     this.scriptRunsIds.value = []

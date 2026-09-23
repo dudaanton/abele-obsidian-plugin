@@ -1,7 +1,7 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
 import { ItemView, WorkspaceLeaf, App } from 'obsidian'
-import { forgetPanel, trackPanelVisibility } from './panelVisibility'
+import { forgetPanel, registerPanelElement, trackPanelVisibility } from './panelVisibility'
 
 export const ACCOUNTS_SIDEBAR_VIEW_TYPE = 'abele-accounts-sidebar-view'
 export const ACCOUNTS_SIDEBAR_ID_ATTR = 'abele-accounts-sidebar-id'
@@ -39,6 +39,7 @@ export class AccountsSidebarView extends ItemView {
     const widgetContainer = createDiv({ attr: { [ACCOUNTS_SIDEBAR_ID_ATTR]: this.id } })
     container.appendChild(widgetContainer)
 
+    registerPanelElement(this.id, widgetContainer)
     const open = GlobalStore.getInstance().accountsSidebarIds
     open.value = [...open.value, this.id]
 

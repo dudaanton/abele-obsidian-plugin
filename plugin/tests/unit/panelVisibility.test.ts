@@ -38,6 +38,7 @@ describe('panel visibility', () => {
   beforeEach(() => {
     useVault([])
     GlobalStore.getInstance().hiddenPanelIds.value = []
+    GlobalStore.getInstance().financeSidebarIds.value = []
   })
 
   it('counts a panel in a folded sidebar as hidden, and shown again when unfolded', () => {
@@ -55,6 +56,18 @@ describe('panel visibility', () => {
     Object.defineProperty(view.containerEl, 'offsetParent', { value: document.body })
     workspace.fire('layout-change')
     expect(hidden.value).toEqual([])
+  })
+
+  it('keeps the element the panel renders into, even when the pane is not in the page yet', async () => {
+    const view = new FinanceSidebarView({} as never, {} as never)
+    await view.onOpen()
+    const [id] = GlobalStore.getInstance().financeSidebarIds.value
+    const el = GlobalStore.getInstance().panelElements.value.get(id)
+    expect(el?.getAttribute('abele-finance-sidebar-id')).toBe(id)
+    expect(el?.isConnected).toBe(false)
+
+    await view.onClose()
+    expect(GlobalStore.getInstance().panelElements.value.has(id)).toBe(false)
   })
 
   it('forgets a closed panel', async () => {
