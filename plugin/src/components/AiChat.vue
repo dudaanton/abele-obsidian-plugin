@@ -763,6 +763,21 @@ const loadOlder = () => {
   void nextTick(() => holdAnchorAWhile(el))
 }
 
+/**
+ * The next frame, or a moment later when no frame comes. A window behind others draws none, and
+ * whatever waited for one there — a reveal, a hold — waited until Obsidian was brought forward.
+ */
+const nextFrame = (win: Window, run: () => void) => {
+  let done = false
+  const once = () => {
+    if (done) return
+    done = true
+    run()
+  }
+  win.requestAnimationFrame(once)
+  win.setTimeout(once, 50)
+}
+
 /** Keeps the anchor where it is for as long as the messages around it take to render. */
 const holdAnchorAWhile = (el: HTMLElement) => {
   // The chat can be in a popped-out window, whose frames and clock are not the main one's.
@@ -771,10 +786,10 @@ const holdAnchorAWhile = (el: HTMLElement) => {
   const hold = () => {
     if (!anchor) return
     holdAnchor()
-    if (win.performance.now() < until) win.requestAnimationFrame(hold)
+    if (win.performance.now() < until) nextFrame(win, hold)
     else anchor = null
   }
-  win.requestAnimationFrame(hold)
+  nextFrame(win, hold)
 }
 
 /**
@@ -909,7 +924,7 @@ const revealMessage = async (messageId: string) => {
   // Once whatever the tab switch did to the scroll has run.
   await nextTick()
   const box = messagesContainer.value
-  if (box) await new Promise((resolve) => box.win.requestAnimationFrame(resolve))
+  if (box) await new Promise<void>((resolve) => nextFrame(box.win, resolve))
 
   const index = messages.value.findIndex((m) => m.id === messageId)
   if (index < 0) return

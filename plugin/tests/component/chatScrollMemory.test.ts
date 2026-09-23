@@ -240,4 +240,23 @@ describe('a card in a note asking for one of its messages', () => {
     expect(el?.classList.contains('abele-footnote-flash')).toBe(true)
     expect(ChatService.getInstance().pendingReveal.value).toBeNull()
   })
+  // A window behind others gets no frames. The chat waited for one before it moved, so a card
+  // pressed from a script or a link while Obsidian was not in front revealed nothing and
+  // flashed nothing — seen in the running app as the message 3878px above the top.
+  it('still does so when the window is drawing no frames', async () => {
+    const { model } = await open()
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 0)
+
+    ChatService.getInstance().pendingReveal.value = 'a5'
+    for (let i = 0; i < 12; i++) {
+      await nextTick()
+      model.relayout()
+      await new Promise((r) => setTimeout(r, 20))
+    }
+
+    expect(model.topMessage()).toEqual({ id: 'a4', offset: -84 })
+    const el = document.querySelector('[data-message-id="a5"]')
+    expect(el?.classList.contains('abele-footnote-flash')).toBe(true)
+    raf.mockRestore()
+  })
 })
