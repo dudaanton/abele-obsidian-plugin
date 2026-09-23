@@ -94,8 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount } from 'vue'
-import { debounce } from 'obsidian'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { nanoid } from 'nanoid'
 import Setting from '../obsidian/Setting.vue'
 import Section from '../obsidian/Section.vue'
@@ -125,20 +124,43 @@ const discoveredScripts = computed(() => {
   return ScriptService.getInstance().scriptList.value.filter((s) => s.meta.enabled !== false)
 })
 
-const save = debounce(async () => {
+/**
+ * One pending write for everything on this screen.
+ *
+ * Each edit reaches the shared configuration at once and only the disk write waits, so a
+ * plugin reload or another save in the meantime already carries it; closing the screen
+ * writes whatever is still waiting rather than dropping it.
+ */
+let saveTimer: number | null = null
+
+const save = () => {
   config.ai.scriptsEnabled = scriptsEnabled.value
   config.ai.scriptsFolder = scriptsFolder.value
-  await config.saveSettings()
-}, 500)
+  config.headerButtons = JSON.parse(JSON.stringify(buttons.value))
+
+  if (saveTimer !== null) window.clearTimeout(saveTimer)
+  saveTimer = window.setTimeout(() => {
+    saveTimer = null
+    void config.saveSettings()
+  }, 500)
+}
+
+onBeforeUnmount(() => {
+  if (saveTimer === null) return
+  window.clearTimeout(saveTimer)
+  saveTimer = null
+  void config.saveSettings()
+})
 
 const toggleScriptsEnabled = () => {
   scriptsEnabled.value = !scriptsEnabled.value
+  // First, so the index that starts below reads the setting it was started for.
+  save()
   if (scriptsEnabled.value && scriptsFolder.value) {
     ScriptService.getInstance().init()
   } else if (!scriptsEnabled.value) {
     ScriptService.destroy()
   }
-  save()
 }
 
 const updateScriptsFolder = (value: string) => {
@@ -174,26 +196,17 @@ const paramDescription = (param: ScriptParam): string => {
   return param.default ? `${described} Defaults to "${param.default}".` : described
 }
 
-let buttonSaveTimer: number | null = null
-
-const saveButtons = () => {
-  // Keep the shared configuration current immediately. Waiting to update it inside the
-  // debounce meant a plugin reload or a settings tab closing in the next 500 ms could put
-  // the old (often empty) array back on disk.
-  config.headerButtons = JSON.parse(JSON.stringify(buttons.value))
-
-  if (buttonSaveTimer !== null) window.clearTimeout(buttonSaveTimer)
-  buttonSaveTimer = window.setTimeout(() => {
-    buttonSaveTimer = null
-    void config.saveSettings()
-  }, 500)
-}
-
-onBeforeUnmount(() => {
-  if (buttonSaveTimer === null) return
-  window.clearTimeout(buttonSaveTimer)
-  buttonSaveTimer = null
-  void config.saveSettings()
+/**
+ * Settings saved or reloaded from disk while this screen is open — sync bringing another
+ * device's copy, most often. What was copied at mount is then stale, and the next edit here
+ * would write it back over what arrived. An edit of this screen's own still waiting to be
+ * written is newer than anything that could have arrived, so it is left as it is.
+ */
+watch(config.version, () => {
+  if (saveTimer !== null) return
+  scriptsEnabled.value = config.ai.scriptsEnabled ?? false
+  scriptsFolder.value = config.ai.scriptsFolder ?? ''
+  buttons.value = JSON.parse(JSON.stringify(config.headerButtons || []))
 })
 
 const addButton = () => {
@@ -205,12 +218,12 @@ const addButton = () => {
     scriptName: '',
     params: {},
   })
-  saveButtons()
+  save()
 }
 
 const removeButton = (idx: number) => {
   buttons.value.splice(idx, 1)
-  saveButtons()
+  save()
 }
 
 const chooseScript = async (idx: number) => {
@@ -219,11 +232,13 @@ const chooseScript = async (idx: number) => {
 }
 
 const updateField = (idx: number, field: 'name' | 'icon' | 'scriptName', value: string) => {
+  const changedScript = field === 'scriptName' && buttons.value[idx].scriptName !== value
   buttons.value[idx][field] = value
   // A button's parameters belong to the script it runs; carrying them to another script would
-  // leave values under names the new one does not declare.
-  if (field === 'scriptName') buttons.value[idx].params = {}
-  saveButtons()
+  // leave values under names the new one does not declare. Choosing the same one again is
+  // not a change, and must not cost the parameters.
+  if (changedScript) buttons.value[idx].params = {}
+  save()
 }
 
 const updateTypes = (idx: number, value: string) => {
@@ -231,12 +246,12 @@ const updateTypes = (idx: number, value: string) => {
     .split(',')
     .map((type) => type.trim())
     .filter(Boolean)
-  saveButtons()
+  save()
 }
 
 const updateParam = (idx: number, name: string, value: string) => {
   buttons.value[idx].params = { ...buttons.value[idx].params, [name]: value }
-  saveButtons()
+  save()
 }
 </script>
 

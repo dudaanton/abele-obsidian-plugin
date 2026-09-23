@@ -140,9 +140,13 @@ const accountBalances = computed(() => {
  * `header.type` is read from frontmatter when the header loads, and the header reloads when
  * the file changes — so a note that gains or loses its `type` gains or loses these with it.
  */
-const scriptButtons = computed(() =>
-  buttonsForType(AbeleConfig.getInstance().headerButtons, props.header.type)
-)
+const scriptButtons = computed(() => {
+  const config = AbeleConfig.getInstance()
+  // The settings object is not reactive; its version moves on every save and every reload
+  // from disk, which is what redraws the buttons when they are configured or synced.
+  void config.version.value
+  return buttonsForType(config.headerButtons, props.header.type)
+})
 
 const runButton = async (button: HeaderButtonDefinition) => {
   // The note is read at the moment the button is pressed rather than when it was drawn: what

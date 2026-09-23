@@ -152,6 +152,70 @@ describe('the script a header button runs', () => {
 
     expect(config.saveSettings).toHaveBeenCalledOnce()
   })
+
+  it('keeps its parameters when the same script is chosen again', async () => {
+    config.headerButtons[0].scriptName = 'Fetch details'
+    config.headerButtons[0].params = { query: '{{title}}' }
+    pickScript.mockResolvedValue(fetchDetails)
+    const wrapper = open()
+
+    await press(buttonWith(wrapper, 'Fetch details'))
+
+    expect(config.headerButtons[0].params).toEqual({ query: '{{title}}' })
+  })
+
+  it('drops its parameters when a different script is chosen', async () => {
+    config.headerButtons[0].scriptName = 'Fetch details'
+    config.headerButtons[0].params = { query: '{{title}}' }
+    pickScript.mockResolvedValue(rename)
+    const wrapper = open()
+
+    await press(buttonWith(wrapper, 'Fetch details'))
+
+    expect(config.headerButtons[0].params).toEqual({})
+  })
+
+  // Settings reloaded from disk — sync from another device — while this screen is open. The
+  // list it copied when it opened is the old one, and the next edit would save it back.
+  it('follows settings that changed while it was open', async () => {
+    const wrapper = open()
+    expect(buttonWith(wrapper, 'Choose script...').exists()).toBe(true)
+
+    config.headerButtons = [{ ...config.headerButtons[0], scriptName: 'Rename' }]
+    config.version.value++
+    await nextTick()
+
+    expect(buttonWith(wrapper, 'Rename').exists()).toBe(true)
+    await press(buttonWith(wrapper, 'Add button'))
+    expect(config.headerButtons.map((b) => b.scriptName)).toEqual(['Rename', ''])
+  })
+
+  it('keeps an edit of its own that is still waiting to be saved', async () => {
+    const wrapper = open()
+    await press(buttonWith(wrapper, 'Add button'))
+
+    config.version.value++
+    await nextTick()
+
+    expect(config.headerButtons).toHaveLength(2)
+    expect(
+      wrapper.findAllComponents(Button).filter((b) => b.props('text') === 'Choose script...')
+    ).toHaveLength(2)
+  })
+})
+
+describe('the scripts folder', () => {
+  it('is saved when the settings screen closes before the save came round', async () => {
+    vi.mocked(config.saveSettings).mockClear()
+    const wrapper = mount(ScriptsSettings, { global: { stubs: STUBS } })
+
+    wrapper.findComponent({ name: 'Search' }).vm.$emit('update:model-value', 'System/Scripts')
+    expect(config.saveSettings).not.toHaveBeenCalled()
+    wrapper.unmount()
+
+    expect(config.ai.scriptsFolder).toBe('System/Scripts')
+    expect(config.saveSettings).toHaveBeenCalledOnce()
+  })
 })
 
 describe('what a link runs', () => {

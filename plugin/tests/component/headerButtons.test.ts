@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import HeaderView from '@/components/Header.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import { Header } from '@/entities/Header'
@@ -90,6 +91,19 @@ function buttonLabels(wrapper: ReturnType<typeof mount>): string[] {
 }
 
 describe('a note of a configured type', () => {
+  // The settings object is not reactive; the header follows its `version`, which every save
+  // and every reload from disk moves.
+  it('shows a button configured while the header is already on screen', async () => {
+    const wrapper = mount(HeaderView, { props: { header: await headerFor(FILM) } })
+    expect(buttonLabels(wrapper)).not.toContain('Fetch details')
+
+    configureButtons([{ name: 'Fetch details' }])
+    AbeleConfig.getInstance().version.value++
+    await nextTick()
+
+    expect(buttonLabels(wrapper)).toContain('Fetch details')
+  })
+
   it('shows the button in its header', async () => {
     configureButtons([{ name: 'Fetch details' }])
 
