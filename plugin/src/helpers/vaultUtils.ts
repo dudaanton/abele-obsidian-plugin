@@ -216,6 +216,18 @@ export async function getAvailablePath(
     return initialPath
   }
 
+  // A case-insensitive file system (macOS, Windows) reports the suitable file itself as
+  // taking a name that differs from its own only in letter case. Unless the vault really
+  // holds a different file under exactly that name, the name is the suitable file's.
+  if (
+    suitablePath &&
+    suitablePath.toLowerCase() === initialPath.toLowerCase() &&
+    cleanedFileName.length <= MAX_FILENAME_LENGTH
+  ) {
+    const holder = vault.getAbstractFileByPath(initialPath)
+    if (!holder || holder.path === suitablePath) return initialPath
+  }
+
   // 4. If the path is taken or the name is too long, we need to generate a new one.
   // Parse the cleaned name to separate the base and extension.
   const extensionIndex = cleanedFileName.lastIndexOf('.')
