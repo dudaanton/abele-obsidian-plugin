@@ -44,8 +44,21 @@ export const editorLivePreviewField = StateField.define<boolean>({
   update: (value) => value,
 })
 
-export const editorInfoField = StateField.define<{ file: TFile | null }>({
+export const editorInfoField = StateField.define<{
+  file: TFile | null
+  editor?: { cm?: unknown }
+}>({
   create: () => ({ file: null }),
+  update: (value) => value,
+})
+
+/**
+ * The editor a state belongs to. Obsidian installs it on every editor it makes, the note's own
+ * and the small ones it opens inside a table cell — which share the note's `editorInfoField`,
+ * so this is what tells them apart.
+ */
+export const editorEditorField = StateField.define<unknown>({
+  create: () => null,
   update: (value) => value,
 })
 

@@ -2,7 +2,7 @@ import { StateField, RangeSetBuilder, EditorState } from '@codemirror/state'
 import { Decoration, DecorationSet, EditorView } from '@codemirror/view'
 import { editorLivePreviewField, editorInfoField } from 'obsidian'
 import { TaskWidget } from './TaskWidget'
-import { rangesOverlap } from '@/helpers/editorHelpers'
+import { isNestedEditor, rangesOverlap } from '@/helpers/editorHelpers'
 import { parseTaskLine } from '@/helpers/tasksUtils'
 // import { TaskHeaderWidget } from './TaskHeaderWidget'
 import { FooterWidget } from './FooterWidget'
@@ -74,6 +74,11 @@ function buildTaskDecorations(state: EditorState): DecorationSet {
         )
       }
     }
+  }
+
+  // A table cell's editor carries the note's file too; the footer belongs to the note alone.
+  if (isNestedEditor(state)) {
+    return builder.finish()
   }
 
   const lastLine = state.doc.line(state.doc.lines)

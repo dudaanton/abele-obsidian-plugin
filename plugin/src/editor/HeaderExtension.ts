@@ -4,6 +4,7 @@ import { editorInfoField, TFile } from 'obsidian'
 import { HeaderWidget } from './HeaderWidget'
 import { TaskHeaderWidget } from './TaskHeaderWidget'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { isNestedEditor } from '@/helpers/editorHelpers'
 
 export function createHeaderExtension(): Extension {
   return ViewPlugin.fromClass(
@@ -15,9 +16,12 @@ export function createHeaderExtension(): Extension {
       private wiget?: HeaderWidget | TaskHeaderWidget
 
       private destroyed = false
+      /** A table cell's editor: it carries the note's file, but the header is the note's alone. */
+      private readonly nested: boolean
 
       constructor(view: EditorView) {
-        this.file = view.state.field(editorInfoField)?.file ?? null
+        this.nested = isNestedEditor(view.state)
+        this.file = this.nested ? null : (view.state.field(editorInfoField)?.file ?? null)
         if (!this.file) return
 
         this.view = view
@@ -59,6 +63,7 @@ export function createHeaderExtension(): Extension {
 
       update() {
         // metadata cache is not updated immediately
+        if (this.nested) return
         window.setTimeout(() => {
           if (this.destroyed) return
 
