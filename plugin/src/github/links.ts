@@ -2,7 +2,9 @@
  * Finding which URL a click in a note landed on.
  *
  * Reading view and rendered markdown elsewhere (chats, the GitHub views themselves) put a real
- * `<a href>` on screen, so the address is on the element. Live Preview does not: a markdown link
+ * `<a href>` on screen, so the address is on the element. A note's properties — in the note, in
+ * Reading view, in the Properties panel — draw a URL value as a `div.external-link` carrying it in
+ * `data-href`, which Obsidian opens from its own click handler. Live Preview does not: a markdown link
  * is drawn as styled text with its URL hidden, and a bare URL is a styled span. There the
  * position under the pointer is mapped back into the editor's text, and the URL is read out of
  * that line.
@@ -32,6 +34,11 @@ export function urlInLine(text: string, offset: number): string | null {
   return null
 }
 
+/** How the editor styles a link's text. */
+const LINK_STYLES = '.cm-url, .cm-link, .cm-hmd-barelink'
+/** Front matter drawn as text: source mode, or Live Preview with properties shown as source. */
+const FRONTMATTER = '.cm-hmd-frontmatter'
+
 const isWebUrl = (href: string | null): href is string => !!href && /^https?:\/\//i.test(href)
 
 /** The EditorView a DOM node belongs to, if it is inside one. */
@@ -55,16 +62,18 @@ export interface ClickedLink {
 export function linkAtClick(target: EventTarget | null): ClickedLink | null {
   if (!(target instanceof Element)) return null
 
-  const anchor = target.closest('a[href]')
+  const anchor = target.closest('a[href], .external-link[data-href]')
   if (anchor) {
-    const href = anchor.getAttribute('href')
+    const href = anchor.getAttribute('href') ?? anchor.getAttribute('data-href')
     return isWebUrl(href) ? { url: href, sourceMode: false } : null
   }
 
   // Only the link's own styling counts: a click elsewhere on a line that happens to hold a URL
-  // is someone placing the cursor.
-  const styled = target.closest('.cm-url, .cm-link, .cm-hmd-barelink')
+  // is someone placing the cursor. Front matter shown as YAML is the exception — Obsidian styles
+  // no link there and opens none, so an address in it is taken as a source-mode link: Mod-click.
+  const styled = target.closest(`${LINK_STYLES}, ${FRONTMATTER}`)
   if (!styled) return null
+  const frontmatter = !styled.matches(LINK_STYLES)
   const view = editorOf(styled)
   if (!view) return null
 
@@ -79,6 +88,7 @@ export function linkAtClick(target: EventTarget | null): ClickedLink | null {
   if (!isWebUrl(url)) return null
 
   const livePreview = !!view.dom.closest('.is-live-preview')
+  if (frontmatter) return { url, sourceMode: true }
   // Live Preview opens a link only from its underlined text, as Obsidian itself decides; the
   // brackets and the revealed URL around it are for editing.
   if (livePreview && !target.closest('.cm-underline')) return null

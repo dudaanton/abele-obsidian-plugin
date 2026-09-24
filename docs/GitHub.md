@@ -59,6 +59,11 @@ To open a new tab regardless, hold the modifier key, as for any link in Obsidian
 In source mode a plain click only places the cursor and Cmd-click is how any link opens there,
 so Cmd alone follows the rule and Cmd+Shift asks for the new tab.
 
+A link in a note's **properties** opens the same way — a text property holding an address or a
+markdown link, and each address in a list property, in the note, in Reading view and in the
+Properties side panel. With the properties shown as source, or in source mode, the front matter is
+plain text where Obsidian opens nothing, and an address in it opens as in source mode: Cmd-click.
+
 A right click on a GitHub link offers **Open in Obsidian** (the rule above) and **Open in
 Obsidian in a new tab**, whatever the setting. The command **Open GitHub link** opens the link
 under the cursor, or asks for one, by the same rule. A link clicked inside a GitHub tab — a commit
@@ -102,7 +107,7 @@ request's head commit, or the commit itself), and a file the change deleted as i
 (the base commit, or the commit's parent). It opens at the first selected line of the diff; with
 nothing selected, at the line at the top of the tab when the tab is scrolled into that diff;
 otherwise at the top of the file — where a markdown file opens rendered, and at a line as code,
-by the rule below. The clicks are those of any link here: plain follows the tab rule, Mod opens a
+by the rule above. The clicks are those of any link here: plain follows the tab rule, Mod opens a
 new tab, Alt the browser.
 
 ## GitHub text is someone else's

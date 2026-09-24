@@ -34,7 +34,11 @@ const OPENING_EVENT: 'click' | 'mousedown' = Platform.isAndroidApp ? 'mousedown'
 /** Kept here too: this is where it was first exported from. */
 export { paneForClick }
 
-function interceptor(app: App) {
+/**
+ * The click listener that takes a GitHub link from Obsidian: in a note, its properties, a chat,
+ * a GitHub tab. Registered in the capture phase on every window's document.
+ */
+export function linkClickHandler(app: App) {
   return (evt: MouseEvent) => {
     const settings = githubSettings()
     if (!settings.enabled || !settings.openLinks) return
@@ -114,7 +118,7 @@ export function registerGithub(plugin: Plugin): void {
   registerSnippetBlock((lang, handler) => plugin.registerMarkdownCodeBlockProcessor(lang, handler))
 
   // Capture phase, so this runs before Obsidian's own handler on the link and can stop it.
-  const onClick = interceptor(app)
+  const onClick = linkClickHandler(app)
   plugin.registerDomEvent(document, OPENING_EVENT, onClick, { capture: true })
   plugin.registerEvent(
     app.workspace.on('window-open', (_win, win) => {
