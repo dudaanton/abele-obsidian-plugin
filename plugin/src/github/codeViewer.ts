@@ -169,7 +169,10 @@ export function mountSnippet(
 ): Viewer {
   const language = snippet.lang ? languageFor(`snippet.${snippet.lang}`) : []
   if (snippet.kind === 'diff') {
-    const diff = diffParts(parsePatch(snippet.text))
+    // The leading `@@` line is kept in the note for its numbers, which the gutters show: not
+    // drawn. A header further down marks a gap between hunks and stays, as a separator.
+    const lines = parsePatch(snippet.text)
+    const diff = diffParts(lines[0]?.type === 'hunk' ? lines.slice(1) : lines)
     return mount(parent, diff.doc, [...diff.extensions, ...language], null, false)
   }
   const offset = (snippet.start ?? 1) - 1

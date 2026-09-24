@@ -82,6 +82,9 @@ describe('the card in a note', () => {
     )
     await flushPromises()
 
+    // The leading `@@` line only carries the numbers, which the gutters show: it is not drawn.
+    expect(texts(el, '.cm-line')).toEqual(['old', 'new', 'same'])
+    expect(el.querySelector('.abele-github-code__line_hunk')).toBeNull()
     expect(texts(el, '.abele-github-code__line_del')).toEqual(['old'])
     expect(texts(el, '.abele-github-code__line_add')).toEqual(['new'])
     expect(texts(el, '.abele-github-code__gutter_old .cm-gutterElement')).toEqual(
@@ -90,6 +93,20 @@ describe('the card in a note', () => {
     expect(texts(el, '.abele-github-code__gutter_new .cm-gutterElement')).toEqual(
       expect.arrayContaining(['11', '12'])
     )
+  })
+
+  it('a diff across two hunks keeps the header between them, as a separator', async () => {
+    const { el } = render(
+      inner({
+        url: `https://${HOST}/acme/widgets/pull/42/files#diff-${'a'.repeat(64)}R11`,
+        label: 'x',
+        kind: 'diff',
+        text: '@@ -11 +11 @@\n a\n@@ -40,2 +41,2 @@\n-y',
+      })
+    )
+    await flushPromises()
+    expect(texts(el, '.cm-line')).toEqual(['a', '@@ -40,2 +41,2 @@', 'y'])
+    expect(texts(el, '.abele-github-code__line_hunk')).toEqual(['@@ -40,2 +41,2 @@'])
   })
 
   it('a comment: its text as markdown, no code view', async () => {
