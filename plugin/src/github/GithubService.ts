@@ -7,7 +7,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { GithubClient } from './client'
 import { checkAccess, parseRepoInput, type AccessReport } from './accessCheck'
-import { endpoints, parseGithubUrl, targetKey, type GithubTarget } from './urls'
+import { endpoints, normaliseHost, parseGithubUrl, targetKey, type GithubTarget } from './urls'
 import { DEFAULT_GITHUB_SETTINGS, type GithubSettings } from './settings'
 
 export const GITHUB_VIEW_TYPE = 'abele-github'
@@ -34,17 +34,23 @@ const clients = new Map<string, GithubClient>()
 export function githubClient(host?: string): GithubClient {
   const settings = githubSettings()
   const configured = endpoints(settings.server)
-  const useConfigured = !host || host === configured.webHost
+  const useConfigured = !host || normaliseHost(host) === configured.webHost
   const ends = useConfigured ? configured : endpoints('')
 
   const { app } = GlobalStore.getInstance()
-  const token =
-    useConfigured && settings.keyId ? (app.secretStorage.getSecret(settings.keyId) ?? '') : ''
+  const stored = settings.keyId ? (app.secretStorage.getSecret(settings.keyId) ?? '').trim() : ''
+  const token = useConfigured ? stored : ''
+  const noTokenReason =
+    stored && !useConfigured
+      ? `the token is set for ${configured.webHost} (the Server setting), and this is on ${normaliseHost(host ?? '')}.`
+      : !stored && settings.keyId
+        ? 'a token is set, but the keychain on this device has nothing under it. Paste the token again in Abele settings → GitHub.'
+        : undefined
 
-  const key = `${ends.api}\n${token}`
+  const key = `${ends.api}\n${token}\n${noTokenReason ?? ''}`
   let client = clients.get(key)
   if (!client) {
-    client = new GithubClient(ends, token)
+    client = new GithubClient(ends, token, undefined, noTokenReason)
     clients.set(key, client)
   }
   return client
@@ -64,7 +70,7 @@ export function checkGithubAccess(repoInput: string): Promise<AccessReport> {
       new Error(`"${text}" is not a repository. Give owner/name, or any link into the repository.`)
     )
   }
-  if (repo && !githubHosts().includes(repo.host)) {
+  if (repo && !githubHosts().includes(normaliseHost(repo.host))) {
     return Promise.reject(
       new Error(
         `${repo.host} is neither github.com nor the server set above, so nothing here reads it.`

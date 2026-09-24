@@ -110,15 +110,20 @@ export interface RefusalInput {
   hasToken: boolean
   /** The request, named: "the pull request's reviews". */
   what: string
+  /** Why no token went with the request although one is set. */
+  noTokenReason?: string
 }
 
-export function explainRefusal({
-  status,
-  headers,
-  message,
-  hasToken,
-  what,
-}: RefusalInput): Refusal {
+export function explainRefusal(input: RefusalInput): Refusal {
+  const refusal = explainAsSent(input)
+  // A token that was set but not sent is the cause of any refusal of a request without one;
+  // "add a token" would send the person to set what is already set.
+  if (input.hasToken || !input.noTokenReason) return refusal
+  if (refusal.kind === 'rate-limit' || refusal.kind === 'empty') return refusal
+  return { ...refusal, fix: `No token was sent: ${input.noTokenReason}` }
+}
+
+function explainAsSent({ status, headers, message, hasToken, what }: RefusalInput): Refusal {
   const githubSaid = message || undefined
   const needed = neededPermissions(header(headers, 'x-accepted-github-permissions'))
   const base = { githubSaid, needed }

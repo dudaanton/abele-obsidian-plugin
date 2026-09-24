@@ -55,11 +55,12 @@ export function errorFor(
   headers: Record<string, string> | undefined,
   body: unknown,
   hasToken: boolean,
-  what = 'this item'
+  what = 'this item',
+  noTokenReason?: string
 ): GithubError {
   const raw = typeof body === 'object' && body ? (body as { message?: unknown }).message : ''
   const message = typeof raw === 'string' ? raw : ''
-  const refusal = explainRefusal({ status, headers, message, hasToken, what })
+  const refusal = explainRefusal({ status, headers, message, hasToken, what, noTokenReason })
   return new GithubError(refusal.kind, refusal.reason, status, refusal)
 }
 
@@ -105,7 +106,13 @@ export class GithubClient {
   constructor(
     readonly endpoints: Endpoints,
     token: string,
-    private readonly request: Requester = (r) => requestUrl(r)
+    private readonly request: Requester = (r) => requestUrl(r),
+    /**
+     * Why no token goes with these requests although one is set — a link on github.com while
+     * the token belongs to an Enterprise server. Said in every refusal, so the token is not
+     * blamed for a request it never went with.
+     */
+    readonly noTokenReason?: string
   ) {
     // A token pasted with a trailing newline or space is still the token; sent as it is, it is
     // not, and GitHub answers 401 for what looks like a perfectly good token.
@@ -116,15 +123,24 @@ export class GithubClient {
     return !!this.token
   }
 
+  private refusal(
+    status: number,
+    headers: Record<string, string> | undefined,
+    body: unknown,
+    what?: string
+  ): GithubError {
+    return errorFor(status, headers, body, this.hasToken, what, this.noTokenReason)
+  }
+
   get tokenInfo(): TokenInfo {
     return { attached: this.hasToken, length: this.token.length, kind: tokenKind(this.token) }
   }
 
   private headers(accept: string): Record<string, string> {
-    const headers: Record<string, string> = {
-      Accept: accept,
-      'X-GitHub-Api-Version': '2022-11-28',
-    }
+    const headers: Record<string, string> = { Accept: accept }
+    // Enterprise Server before 3.9 answers 400 to an API version it does not know, and every
+    // version that knows the header takes this one as its default anyway.
+    if (!this.endpoints.server) headers['X-GitHub-Api-Version'] = '2022-11-28'
     if (this.token) headers.Authorization = `Bearer ${this.token}`
     return headers
   }
@@ -161,7 +177,7 @@ export class GithubClient {
       } catch {
         // An error page rather than JSON; the status says enough.
       }
-      throw errorFor(response.status, response.headers, body, this.hasToken, options.what)
+      throw this.refusal(response.status, response.headers, body, options.what)
     }
 
     const body = (options.text ? response.text : response.json) as unknown
@@ -190,7 +206,7 @@ export class GithubClient {
       status: response.status,
       headers,
       body,
-      error: ok ? undefined : errorFor(response.status, headers, body, this.hasToken, options.what),
+      error: ok ? undefined : this.refusal(response.status, headers, body, options.what),
     }
   }
 

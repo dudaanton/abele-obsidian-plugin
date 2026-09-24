@@ -80,7 +80,18 @@ function lineAnchor(hash: string): LineRange | undefined {
   return { start: Math.min(start, end), end: Math.max(start, end) }
 }
 
-const normaliseHost = (host: string) => host.toLowerCase().replace(/^www\./, '')
+/**
+ * A host as it is compared: letter case, a leading `www.` and the trailing dot of a fully
+ * qualified name are all ways of writing the same server. The link's host and the configured
+ * server's pass through this one function, so the two can never be compared in different shapes —
+ * a mismatch would send the request to github.com without the Enterprise token.
+ */
+export const normaliseHost = (host: string) =>
+  host
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, '')
+    .replace(/^www\./, '')
 
 /**
  * @param hosts the web hosts treated as GitHub: `github.com`, plus an Enterprise host when one is
@@ -175,6 +186,8 @@ export interface Endpoints {
   /** REST base, without a trailing slash. */
   api: string
   graphql: string
+  /** A GitHub Enterprise Server, whose REST API lives under `/api/v3` on its own host. */
+  server?: boolean
 }
 
 /**
@@ -202,15 +215,22 @@ export function endpoints(server: string): Endpoints {
   }
 
   let host = normaliseHost(url.hostname)
-  if (host === 'github.com' || host === 'api.github.com') return endpoints('')
+  // Every github.com subdomain is GitHub's own; none of them is an Enterprise Server.
+  if (host === 'github.com' || host.endsWith('.github.com')) return endpoints('')
 
   if (host.endsWith('.ghe.com')) {
     if (host.startsWith('api.')) host = host.slice(4)
     return { webHost: host, api: `https://api.${host}`, graphql: `https://api.${host}/graphql` }
   }
 
-  const origin = `${url.protocol}//${url.host}`
-  return { webHost: host, api: `${origin}/api/v3`, graphql: `${origin}/api/graphql` }
+  const port = url.port ? `:${url.port}` : ''
+  const origin = `${url.protocol}//${url.hostname.toLowerCase().replace(/\.$/, '')}${port}`
+  return {
+    webHost: host,
+    api: `${origin}/api/v3`,
+    graphql: `${origin}/api/graphql`,
+    server: true,
+  }
 }
 
 /** The hex SHA-256 of a file path: the part of `#diff-…` that says which file. */

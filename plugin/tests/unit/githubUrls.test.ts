@@ -167,6 +167,7 @@ describe('endpoints', () => {
       webHost: 'git.corp.example',
       api: 'https://git.corp.example/api/v3',
       graphql: 'https://git.corp.example/api/graphql',
+      server: true,
     })
   })
 
