@@ -277,6 +277,19 @@ as precise as anything here needs. Obsidian's map view reads the property; an `a
 written into the note carries its own points and routes. Both are read when shown rather than
 cached anywhere.
 
+## Diagrams
+
+A fenced ```` ```mermaid ```` block is drawn as a diagram — in notes, in the chat and in GitHub
+tabs — so a flowchart, a sequence, a class, state, ER or Gantt diagram, a timeline, a pie or a
+mind map is written as Mermaid source in the note rather than as a picture. The person sees it
+at the width of the note and zooms, drags or opens it full screen themselves, so a large diagram
+is fine: do not split one up to make it fit, and do not add `%%{init}%%` sizing for it. Leave the
+theme alone too — it follows Obsidian's light or dark theme unless the source picks one. A node
+given the class `internal-link` links to the note its label names. The source must parse: a
+block with a syntax error shows Mermaid's error in place of the diagram. Nothing is drawn until
+the person has allowed diagrams in the vault (Obsidian asks once); the block is still the right
+thing to write.
+
 ## Transfer files
 
 Files in the vault root named `Abele transfer <date> <time>.txt` are settings on their way to

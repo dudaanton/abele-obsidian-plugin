@@ -20,6 +20,12 @@
       <Checkbox :is-enabled="halfWidthSidebars" @toggle="toggleHalfWidthSidebars" />
     </Setting>
     <Setting
+      name="Mermaid viewer"
+      desc="Draw mermaid diagrams at the width of the note, with zoom, drag and a full-screen view, instead of Obsidian's own drawing."
+    >
+      <Checkbox :is-enabled="mermaidViewer" @toggle="toggleMermaidViewer" />
+    </Setting>
+    <Setting
       name="Coordinates property"
       desc="Note property holding a place as 'lat, lon'. The agent is told to write into this one."
     >
@@ -50,6 +56,7 @@ import Input from '../obsidian/Input.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { SnippetService } from '@/services/SnippetService'
+import { GlobalStore } from '@/stores/GlobalStore'
 
 const config = AbeleConfig.getInstance()
 const snippetsFolder = ref(config.snippetsFolder)
@@ -57,6 +64,7 @@ const fullWidthSidebars = ref(config.fullWidthSidebars)
 const halfWidthSidebars = ref(config.halfWidthSidebarsOnTablet)
 const mapCoordinatesProperty = ref(config.mapCoordinatesProperty)
 const mapStyleUrl = ref(config.mapStyleUrl)
+const mermaidViewer = ref(config.mermaidViewer)
 
 const applyClass = (enabled: boolean) => {
   document.body.classList.toggle('abele-full-width-sidebars', enabled)
@@ -113,5 +121,13 @@ const toggleHalfWidthSidebars = async () => {
   config.halfWidthSidebarsOnTablet = halfWidthSidebars.value
   applyHalfClass(halfWidthSidebars.value)
   await config.saveSettings()
+}
+
+// Obsidian's own signal to redraw rendered markdown; the plugin passes it on to the editors.
+const toggleMermaidViewer = async () => {
+  mermaidViewer.value = !mermaidViewer.value
+  config.mermaidViewer = mermaidViewer.value
+  await config.saveSettings()
+  GlobalStore.getInstance().app.workspace.trigger('post-processor-change')
 }
 </script>

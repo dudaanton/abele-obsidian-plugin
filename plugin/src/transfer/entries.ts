@@ -256,6 +256,7 @@ export const SECTIONS: Section[] = [
     'snippetsFolder',
     'fullWidthSidebars',
     'halfWidthSidebarsOnTablet',
+    'mermaidViewer',
   ]),
 ]
 

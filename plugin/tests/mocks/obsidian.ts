@@ -237,6 +237,17 @@ if (typeof HTMLElement !== 'undefined' && !('empty' in HTMLElement.prototype)) {
         return buildEl(this.ownerDocument, 'div', { ...normalizeElInfo(info), parent: this })
       },
     },
+    /** Obsidian's inline style helpers: plain properties, and custom properties by name. */
+    setCssStyles: {
+      value(this: HTMLElement, styles: Record<string, string>) {
+        Object.assign(this.style, styles)
+      },
+    },
+    setCssProps: {
+      value(this: HTMLElement, props: Record<string, string>) {
+        for (const [name, value] of Object.entries(props)) this.style.setProperty(name, value)
+      },
+    },
     detach: {
       value(this: HTMLElement) {
         this.parentElement?.removeChild(this)
@@ -722,4 +733,29 @@ export const MarkdownRenderer = {
   ): Promise<void> => {
     el.setText(markdown)
   },
+}
+
+/**
+ * Obsidian's bundled Mermaid, as `loadMermaid()` hands it over. Nothing is drawn: `render`
+ * returns whatever a test puts in `mermaidStub.render`, which by default is a box of the size
+ * the text names — `size 300x120` — so layout arithmetic has numbers to work with.
+ */
+export const mermaidStub = {
+  calls: [] as string[],
+  render: async (id: string, text: string): Promise<{ svg: string }> => {
+    const size = /size (\d+)x(\d+)/.exec(text)
+    const [w, h] = size ? [size[1], size[2]] : ['200', '100']
+    return {
+      svg: `<svg id="${id}" width="100%" viewBox="0 0 ${w} ${h}" style="max-width: ${w}px;"><defs><marker id="${id}_arrow"></marker></defs><g><path marker-end="url(#${id}_arrow)"></path></g></svg>`,
+    }
+  },
+}
+
+export async function loadMermaid(): Promise<unknown> {
+  return {
+    render: (id: string, text: string) => {
+      mermaidStub.calls.push(text)
+      return mermaidStub.render(id, text)
+    },
+  }
 }

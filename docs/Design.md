@@ -20,7 +20,7 @@ not invent its own.
 | `Button` | Anything the user presses that carries a word. |
 | `Icon` | Anything the user presses that carries only a glyph. Has `disabled` and `tooltip`, and `color` for a glyph whose colour carries meaning, from the same named palette as `Badge`. |
 | `Input`, `Dropdown`, `Checkbox`, `Search`, `ColorPicker` | Form controls. |
-| `Modal` | A dialog. `size="wide"` when a form needs more than the default column. |
+| `Modal` | A dialog. `size="wide"` when a form needs more than the default column; `size="full"` for something that wants all the room a dialog may have, a diagram viewed full screen. |
 | `QrCode` | A QR code, drawn as SVG from whatever text it is given. |
 | `ConfirmModal` | The question asked before something is destroyed. |
 | `Table` | Columns and rows, a cell slot for anything richer than text. The one element that scrolls sideways, within itself. |

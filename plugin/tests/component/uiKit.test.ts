@@ -363,6 +363,19 @@ describe('Modal', () => {
   })
 
   /**
+   * A full dialog is for something that wants all the room there is, a diagram opened full
+   * screen. It is still Obsidian's big dialog underneath, so on a phone it is their sheet, and
+   * on a desktop it stops at the size Obsidian lets any dialog be.
+   */
+  it('marks a full dialog as one, on top of Obsidian big dialog', () => {
+    const full = mount(ObsidianModal, { props: { size: 'full' as const } })
+
+    expect(classOf(full)).toContain('abele-modal_full')
+    expect(classOf(full)).toContain('mod-lg')
+    expect(classOf(full)).not.toContain('abele-modal_tall')
+  })
+
+  /**
    * A rule of ours has to be able to name the element this component appends. Reaching it as
    * `.modal-content > div` would make every such rule depend on the shape of the DOM the kit
    * happens to build.

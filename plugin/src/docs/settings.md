@@ -100,8 +100,9 @@ default branch only.
 
 `snippetsFolder` is where CSS snippets are written, `links` and `headerButtons` are the buttons
 and links added to note headers, `fullWidthSidebars` widens the sidebars to the whole screen on
-a phone and `halfWidthSidebarsOnTablet` to half of it on a tablet, and `refreshDelay` is how
-long the plugin waits before rebuilding what a note shows.
+a phone and `halfWidthSidebarsOnTablet` to half of it on a tablet, `mermaidViewer` (on by
+default) draws mermaid blocks with the plugin's zoomable viewer instead of Obsidian's own, and
+`refreshDelay` is how long the plugin waits before rebuilding what a note shows.
 
 A header button runs `scriptName` with `params`, and shows on notes whose `type` is in
 `noteTypes`, on notes anywhere under one of `folders`, or on every note when `allNotes` is on —

@@ -113,6 +113,12 @@ describe('settings that arrived later than the transfer did', () => {
     })
   })
 
+  it('carries whether mermaid diagrams are drawn by the plugin', () => {
+    const entries = collectEntries(settings({ mermaidViewer: false }))
+
+    expect(find(entries, 'other', 'other')?.data).toMatchObject({ mermaidViewer: false })
+  })
+
   it('carries the GitHub settings and the token they point at', () => {
     const github = {
       enabled: true,

@@ -14,9 +14,11 @@ const props = defineProps<{
   title?: string
   /**
    * `wide` for a form that needs more than Obsidian's default column; `tall` for a body that
-   * fills the height the dialog is allowed and scrolls inside it rather than growing it.
+   * fills the height the dialog is allowed and scrolls inside it rather than growing it;
+   * `full` for something that wants every bit of room a dialog may have, a diagram viewed
+   * full screen.
    */
-  size?: 'default' | 'wide' | 'tall'
+  size?: 'default' | 'wide' | 'tall' | 'full'
 }>()
 
 const modal = ref<Modal | null>(null)
@@ -51,6 +53,12 @@ onBeforeMount(() => {
     // of the screen, its top edge below the notch and its close button with it. A geometry of
     // our own put that button under the status bar once already.
     modal.value.modalEl.addClass('abele-modal_tall')
+    modal.value.modalEl.addClass('mod-lg')
+  }
+  if (props.size === 'full') {
+    // Their big dialog as well, for the same reason as `tall`: on a phone that is the sheet
+    // with its top edge and close button placed by their rules.
+    modal.value.modalEl.addClass('abele-modal_full')
     modal.value.modalEl.addClass('mod-lg')
   }
 
@@ -147,6 +155,25 @@ const emit = defineEmits<{
   height: var(--dialog-max-height);
 }
 
+/**
+ * A full dialog is as large as Obsidian lets any dialog be, in both directions, and its body is
+ * a column whose one child takes whatever height is left under the title.
+ */
+.modal.abele-modal_full {
+  width: var(--dialog-max-width);
+  height: var(--dialog-max-height);
+  overflow: hidden;
+}
+
+.abele-modal_full .modal-content,
+.abele-modal_full .abele-modal__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+body.is-phone .modal.abele-modal_full,
 body.is-phone .modal.abele-modal_tall {
   /* Their sheet has no vertical padding at all; the home indicator needs the bottom of it. */
   padding-bottom: var(--safe-area-inset-bottom);

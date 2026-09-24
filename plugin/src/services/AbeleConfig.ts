@@ -63,6 +63,8 @@ export interface AbeleSettings {
   fullWidthSidebars?: boolean
   /** On a tablet, sidebars take half the screen. The phone has its own, `fullWidthSidebars`. */
   halfWidthSidebarsOnTablet?: boolean
+  /** ```mermaid blocks drawn by the plugin's viewer, with zoom and full screen, not Obsidian's. */
+  mermaidViewer?: boolean
   // GitHub links opened inside Obsidian
   github?: GithubSettings
 }
@@ -138,6 +140,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   snippetsFolder: '',
   fullWidthSidebars: false,
   halfWidthSidebarsOnTablet: false,
+  mermaidViewer: true,
   github: { ...DEFAULT_GITHUB_SETTINGS },
 }
 
@@ -179,6 +182,7 @@ export class AbeleConfig {
   public snippetsFolder: string
   public fullWidthSidebars: boolean
   public halfWidthSidebarsOnTablet: boolean
+  public mermaidViewer: boolean
   public github: GithubSettings
 
   /**
@@ -488,6 +492,7 @@ export class AbeleConfig {
     this.fullWidthSidebars = settings?.fullWidthSidebars ?? DEFAULT_SETTINGS.fullWidthSidebars
     this.halfWidthSidebarsOnTablet =
       settings?.halfWidthSidebarsOnTablet ?? DEFAULT_SETTINGS.halfWidthSidebarsOnTablet
+    this.mermaidViewer = settings?.mermaidViewer ?? DEFAULT_SETTINGS.mermaidViewer ?? true
     this.github = githubSettingsFrom(settings?.github)
 
     return migrated
@@ -533,6 +538,7 @@ export class AbeleConfig {
       snippetsFolder: this.snippetsFolder,
       fullWidthSidebars: this.fullWidthSidebars,
       halfWidthSidebarsOnTablet: this.halfWidthSidebarsOnTablet,
+      mermaidViewer: this.mermaidViewer,
       github: { ...this.github },
     }
   }

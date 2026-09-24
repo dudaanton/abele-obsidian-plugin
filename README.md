@@ -124,6 +124,7 @@ A find-and-replace tool for note contents, which I built for vault migration. Mo
 - Deep links (`abele://`) that open a note, run a command, or run a script with parameters
 - Footnote sidenotes, and colored highlights with `=={color} text==`
 - Comment chats anchored to a passage of a note, or of an agent's answer inside a chat
+- Mermaid diagrams drawn the way GitHub draws them — the width of the note, with zoom, drag, full screen and copy as source, SVG or picture ([how](docs/Mermaid.md))
 - CSS snippets loaded and hot-reloaded from a folder in the vault
 - Settings transfer to another device — QR codes, a line of text, or a file — scripts, skills and prompts included
 - GitHub issues, pull requests with their diffs, discussions and files opened from links in notes, in tabs of their own — read only, off by default ([how](docs/GitHub.md))
@@ -149,6 +150,7 @@ Notes for anyone working on the plugin live in [`docs/`](docs):
 - [Agent reference](docs/Agent%20reference.md) — the docs the agent itself reads, and the rules for keeping them true.
 - [Script views](docs/Script%20views.md) — the tab a script can open and fill with an interface.
 - [GitHub](docs/GitHub.md) — the links that open in tabs, and the token they need.
+- [Mermaid](docs/Mermaid.md) — the diagram viewer that replaces Obsidian's own.
 - [Templates](docs/Templates.md) and [URL Protocol](docs/URL%20Protocol.md).
 
 ## Installation

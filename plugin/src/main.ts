@@ -1,5 +1,6 @@
 import {
   Editor,
+  EventRef,
   MarkdownPostProcessorContext,
   MarkdownView,
   Notice,
@@ -32,6 +33,8 @@ import { TemplateService } from './templates/TemplateService'
 import { taskStateField } from './editor/TaskPlugin'
 import { galleryExtensions } from './editor/GalleryPlugin'
 import { galleryPostProcessor } from './editor/galleryPostProcessor'
+import { mermaidExtensions, refreshMermaidEditors } from './editor/MermaidPlugin'
+import { mermaidPostProcessor, MERMAID_PROCESSOR_ORDER } from './mermaid/mermaidBlocks'
 import { footnoteExtensions } from './editor/FootnotePlugin'
 import { highlightStateField } from './editor/HighlightPlugin'
 import {
@@ -293,6 +296,20 @@ export default class AbelePlugin extends Plugin {
     this.registerEditorExtension(commentExtensions)
     // The gallery outside the editor: reading mode, embeds, chat, script views.
     this.registerMarkdownPostProcessor(galleryPostProcessor)
+    // Mermaid diagrams drawn by the plugin's viewer rather than Obsidian's: in rendered
+    // markdown ahead of Obsidian's own processor, and in Live Preview as the block's widget.
+    this.registerMarkdownPostProcessor(mermaidPostProcessor, MERMAID_PROCESSOR_ORDER)
+    this.registerEditorExtension(mermaidExtensions())
+    // Obsidian fires this when the vault is allowed to show diagrams (and when the viewer's
+    // setting changes, which fires it too): rendered markdown is redrawn by Obsidian, the
+    // editors are told here.
+    this.registerEvent(
+      (
+        this.app.workspace as unknown as {
+          on(name: 'post-processor-change', callback: () => void): EventRef
+        }
+      ).on('post-processor-change', () => refreshMermaidEditors(this.app))
+    )
 
     // this.registerPriorityCodeblockPostProcessor(
     //   TASK_CODEBLOCK_KEYWORD,
