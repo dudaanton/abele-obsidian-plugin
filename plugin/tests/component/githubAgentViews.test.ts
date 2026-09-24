@@ -15,7 +15,7 @@ import { createGithubOpenTool, createGithubViewsTool } from '@/ai/tools/github/V
 import type { GithubViewModel } from '@/github/model'
 import { PULL, file, openTab } from '../helpers/githubTab'
 import { useVault } from '../helpers/testEnv'
-import { Menu, WorkspaceLeaf } from 'obsidian'
+import { Menu, Platform, WorkspaceLeaf } from 'obsidian'
 import { GithubView } from '@/github/GithubView'
 
 const { askAboutGithub } = vi.hoisted(() => ({ askAboutGithub: vi.fn(async () => {}) }))
@@ -184,6 +184,51 @@ describe('into a chat', () => {
     expect(
       wrapper.find('.abele-github-header__actions [aria-label^="Chat about this"]').exists()
     ).toBe(false)
+  })
+})
+
+describe('the bar under selected lines on a phone', () => {
+  const platform = Platform as unknown as Record<string, boolean>
+
+  it('is one row of named icons, and each still does its job', async () => {
+    platform.isPhone = true
+    try {
+      const hash = await diffAnchorHash('src/app.ts')
+      const { wrapper } = openTab('https://github.com/o/r/pull/7/files', PULL_ROUTES)
+      await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
+      await clickLineNumber(wrapper, '.abele-github-code__gutter_new', 4)
+
+      const bar = wrapper.find('.abele-github-selection')
+      expect(bar.findAll('button')).toHaveLength(0)
+      const icons = bar.findAll('.abele-obsidian-icon')
+      expect(icons.map((i) => i.attributes('aria-label'))).toEqual([
+        'Copy link',
+        'Insert into note',
+        'Insert with code',
+        'Ask here',
+      ])
+
+      await icons[3].trigger('click')
+      await flushPromises()
+      expect(askAboutGithub.mock.calls[0][0]).toEqual({
+        label: 'o/r#7 · src/app.ts:2',
+        url: `https://github.com/o/r/pull/7/files#diff-${hash}R2`,
+      })
+    } finally {
+      platform.isPhone = false
+    }
+  })
+
+  it('keeps its labelled buttons on a desktop', async () => {
+    const { wrapper } = openTab('https://github.com/o/r/pull/7/files', PULL_ROUTES)
+    await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
+    await clickLineNumber(wrapper, '.abele-github-code__gutter_new', 4)
+    expect(wrapper.findAll('.abele-github-selection button').map((b) => b.text())).toEqual([
+      'Copy link',
+      'Insert into note',
+      'Insert with code',
+      'Ask here',
+    ])
   })
 })
 
