@@ -1,9 +1,5 @@
 <template>
   <div class="abele-book-contents" role="tree" aria-label="Contents">
-    <div class="abele-book-contents__head">
-      <span class="abele-book-contents__title">Contents</span>
-      <Icon icon="x" tooltip="Close the contents" @click="emit('close')" />
-    </div>
     <div ref="list" class="abele-book-contents__list">
       <EmptyState v-if="!toc.length" text="There is no table of contents in this file." />
       <BookContentsNode
@@ -24,7 +20,6 @@
  * marked, the way to it opened, and scrolled into view when the panel opens.
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import Icon from '../obsidian/Icon.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import BookContentsNode from './BookContentsNode.vue'
 import { pathTo, type TocEntry } from '@/reader/model'
@@ -58,21 +53,6 @@ watch(activeKey, reveal)
   flex-direction: column;
   height: 100%;
   min-height: 0;
-
-  &__head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--size-4-2);
-    padding: var(--size-4-2) var(--size-4-2) var(--size-4-2) var(--size-4-3);
-    border-bottom: 1px solid var(--background-modifier-border);
-  }
-
-  &__title {
-    font-weight: var(--font-semibold);
-    font-size: var(--font-ui-small);
-    color: var(--text-muted);
-  }
 
   &__list {
     flex: 1 1 auto;

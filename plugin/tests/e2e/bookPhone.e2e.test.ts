@@ -154,6 +154,8 @@ describe.skipIf(!available)('a book on a phone', () => {
     drawer?: { left: number; right: number; rows: number } | null
     afterPick?: { panel: boolean; chapter: string }
     dialog?: { left: number; right: number; width: number } | null
+    search?: { hits: number; over: number }
+    bar?: { over: number; height: number } | null
   } = {}
 
   beforeAll(async () => {
@@ -215,6 +217,38 @@ describe.skipIf(!available)('a book on a phone', () => {
       await shoot('rich-settings')
       document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       await wait(400)
+
+      // The search in the drawer, with what it found.
+      view.model.panelTab = 'search'
+      view.model.panel = true
+      await wait(400)
+      await view.reading.search('plain text')
+      await wait(400)
+      const edge = (sel) => {
+        let over = 0
+        for (const el of view.contentEl.querySelectorAll(sel + ', ' + sel + ' *')) {
+          const r = el.getBoundingClientRect()
+          if (r.width) over = Math.max(over, Math.round(r.right - window.innerWidth))
+        }
+        return over
+      }
+      report.search = { hits: view.contentEl.querySelectorAll('.abele-book-search__hit').length, over: edge('.abele-book-reader__panel') }
+      await shoot('rich-search')
+      view.model.panel = false
+      view.reading.stopSearch()
+      await wait(300)
+
+      // Words selected: the bar of what can be done to them fits the screen, on one or two rows.
+      const doc = view.engine.renderer.getContents()[0].doc
+      const p = doc.querySelector('p')
+      const range = doc.createRange(); range.setStart(p.firstChild, 0); range.setEnd(p.firstChild, 5)
+      doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
+      for (let i = 0; i < 30 && !view.model.selection; i++) await wait(100)
+      await wait(300)
+      const bar = view.contentEl.querySelector('.abele-book-selection')?.getBoundingClientRect()
+      report.bar = bar ? { over: edge('.abele-book-selection'), height: Math.round(bar.height) } : null
+      await shoot('rich-selection')
+      view.reading.clearSelection()
       return report
     })()`)
     console.info(`\n  ${JSON.stringify(overlays)}\n`)
@@ -271,5 +305,14 @@ describe.skipIf(!available)('a book on a phone', () => {
     expect(overlays.dialog).toBeTruthy()
     expect(overlays.dialog!.left).toBeGreaterThanOrEqual(0)
     expect(overlays.dialog!.right).toBeLessThanOrEqual(overlays.dialog!.width)
+  })
+
+  it('the search in the drawer and the bar for selected words fit the screen', () => {
+    expect(overlays.search?.hits).toBeGreaterThan(0)
+    expect(overlays.search?.over).toBeLessThanOrEqual(0)
+    expect(overlays.bar).toBeTruthy()
+    expect(overlays.bar!.over).toBeLessThanOrEqual(0)
+    // Two rows at most: the colours, and what can be done.
+    expect(overlays.bar!.height).toBeLessThan(110)
   })
 })

@@ -3,6 +3,49 @@
  * open — as one reactive object the tab writes and its Vue side reads.
  */
 import type { FoliateTocItem } from '@/vendor/foliate-js/view.js'
+import type { SearchExcerpt } from '@/vendor/foliate-js/search.js'
+import type { Highlight } from './highlights'
+
+/** Words selected on the page. */
+export interface BookSelection {
+  cfi: string
+  text: string
+  /** The chapter or page it is in. */
+  label: string
+}
+
+/** One thing a search found: where, and the words around it. */
+export interface SearchHit {
+  /** A CFI in a book; a page's own CFI in a PDF, with which match on the page it is. */
+  cfi: string
+  occurrence?: number
+  index?: number
+  excerpt: SearchExcerpt
+}
+
+export interface SearchGroup {
+  label: string
+  hits: SearchHit[]
+}
+
+export interface BookSearch {
+  query: string
+  running: boolean
+  /** 0 to 1, how much of the book has been searched. */
+  progress: number
+  groups: SearchGroup[]
+  count: number
+}
+
+export type PanelTab = 'contents' | 'search' | 'highlights'
+
+export const emptySearch = (): BookSearch => ({
+  query: '',
+  running: false,
+  progress: 0,
+  groups: [],
+  count: 0,
+})
 
 export interface TocEntry {
   label: string
@@ -39,6 +82,17 @@ export interface BookModel {
   canGoBack: boolean
   footnote: Footnote | null
   settingsOpen: boolean
+  /** Which list the side panel shows. */
+  panelTab: PanelTab
+  /** The book's highlights, as its highlights note has them. */
+  highlights: Highlight[]
+  /** Words selected on the page, with what can be done to them. */
+  selection: BookSelection | null
+  /** A highlight that was tapped, with what can be done to it. */
+  active: Highlight | null
+  /** A highlight whose comment is being written. */
+  commenting: Highlight | null
+  search: BookSearch
 }
 
 export const emptyBookModel = (): BookModel => ({
@@ -54,6 +108,12 @@ export const emptyBookModel = (): BookModel => ({
   canGoBack: false,
   footnote: null,
   settingsOpen: false,
+  panelTab: 'contents',
+  highlights: [],
+  selection: null,
+  active: null,
+  commenting: null,
+  search: emptySearch(),
 })
 
 /** The engine's contents as the tree the panel draws. */
@@ -84,4 +144,10 @@ export function pathTo(entries: TocEntry[], href: string | null): string[] {
 export function percent(fraction: number): string {
   const f = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0
   return `${Math.floor(f * 100)}%`
+}
+
+/** A highlight's words, shortened for a list. */
+export function shortText(text: string, max = 160): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat
 }

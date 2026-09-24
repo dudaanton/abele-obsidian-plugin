@@ -4,11 +4,33 @@
       <!-- Over the page, on a narrow screen: a tap beside the drawer closes it. -->
       <div class="abele-book-reader__backdrop" @click="emit('panel', false)" />
       <div class="abele-book-reader__panel">
+        <div class="abele-book-reader__panel-head">
+          <Tabs
+            :tabs="panelTabs"
+            :model-value="model.panelTab"
+            level="secondary"
+            @update:model-value="emit('panel-tab', $event as PanelTab)"
+          />
+          <Icon icon="x" tooltip="Close the panel" @click="emit('panel', false)" />
+        </div>
         <BookContents
+          v-if="model.panelTab === 'contents'"
           :toc="model.toc"
           :current-href="model.currentHref"
           @pick="onPick"
           @close="emit('panel', false)"
+        />
+        <BookSearch
+          v-else-if="model.panelTab === 'search'"
+          :search="model.search"
+          @search="emit('search', $event)"
+          @go="emit('search-hit', $event, narrow())"
+        />
+        <BookHighlights
+          v-else
+          :highlights="model.highlights"
+          @go="emit('go-highlight', $event, narrow())"
+          @open-note="emit('open-note')"
         />
       </div>
     </template>
@@ -18,6 +40,17 @@
       <div v-if="model.status !== 'ready'" class="abele-book-reader__message">
         {{ model.message }}
       </div>
+      <BookSelectionBar
+        v-if="model.status === 'ready' && (model.selection || model.active)"
+        :highlight="model.active"
+        @color="onColor"
+        @comment="onComment"
+        @copy-link="emit('copy-link', target())"
+        @quote="emit('quote', quoteTarget())"
+        @open-note="emit('open-note', model.active ?? undefined)"
+        @delete="model.active && emit('delete-highlight', model.active)"
+        @close="model.active ? emit('close-active') : emit('clear-selection')"
+      />
       <div v-if="model.status === 'ready'" class="abele-book-reader__footer">
         <Icon
           v-if="model.canGoBack"
@@ -50,6 +83,13 @@
       <ReaderSettingsForm :kind="model.kind" />
     </ObsidianModal>
 
+    <BookComment
+      v-if="model.commenting"
+      :highlight="model.commenting"
+      @save="emit('save-comment', model.commenting!, $event)"
+      @cancel="emit('cancel-comment')"
+    />
+
     <ObsidianModal v-if="model.footnote" :title="noteTitle" @close="emit('footnote-close')">
       <div class="abele-book-reader__note">
         <div ref="noteStage" class="abele-book-reader__note-stage" />
@@ -79,8 +119,20 @@ import Button from '../obsidian/Button.vue'
 import Slider from '../obsidian/Slider.vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import BookContents from './BookContents.vue'
+import BookSearch from './BookSearch.vue'
+import BookHighlights from './BookHighlights.vue'
+import BookSelectionBar from './BookSelectionBar.vue'
+import BookComment from './BookComment.vue'
+import Tabs from '../obsidian/Tabs.vue'
+import type { Highlight, HighlightColor } from '@/reader/highlights'
 import ReaderSettingsForm from './ReaderSettingsForm.vue'
-import { percent, type BookModel, type TocEntry } from '@/reader/model'
+import {
+  percent,
+  type BookModel,
+  type PanelTab,
+  type SearchHit,
+  type TocEntry,
+} from '@/reader/model'
 
 const props = defineProps<{
   model: BookModel
@@ -95,7 +147,46 @@ const emit = defineEmits<{
   (e: 'settings', open: boolean): void
   (e: 'footnote-close'): void
   (e: 'footnote-go'): void
+  (e: 'panel-tab', tab: PanelTab): void
+  (e: 'search', query: string): void
+  (e: 'search-hit', hit: SearchHit, fromPanel: boolean): void
+  (e: 'go-highlight', h: Highlight, fromPanel: boolean): void
+  (e: 'highlight', color: HighlightColor): void
+  (e: 'comment'): void
+  (e: 'copy-link', target?: { cfi: string; label: string }): void
+  (e: 'quote', target: { cfi: string; label: string; text: string }): void
+  (e: 'clear-selection'): void
+  (e: 'recolor', h: Highlight, color: HighlightColor): void
+  (e: 'edit-comment', h: Highlight): void
+  (e: 'save-comment', h: Highlight, comment: string): void
+  (e: 'cancel-comment'): void
+  (e: 'delete-highlight', h: Highlight): void
+  (e: 'open-note', h?: Highlight): void
+  (e: 'close-active'): void
 }>()
+
+const panelTabs = [
+  { id: 'contents', label: 'Contents' },
+  { id: 'search', label: 'Search' },
+  { id: 'highlights', label: 'Highlights' },
+]
+
+/** The words or highlight the bar is about, for a link. */
+const target = () => props.model.active ?? props.model.selection ?? undefined
+const quoteTarget = () => {
+  const t = props.model.active ?? props.model.selection
+  return { cfi: t.cfi, label: t.label, text: t.text }
+}
+
+const onColor = (color: HighlightColor) => {
+  if (props.model.active) emit('recolor', props.model.active, color)
+  else emit('highlight', color)
+}
+
+const onComment = () => {
+  if (props.model.active) emit('edit-comment', props.model.active)
+  else emit('comment')
+}
 
 const stage = ref<HTMLElement>()
 const noteStage = ref<HTMLElement>()
@@ -112,10 +203,8 @@ const seek = (value: number) => {
 }
 
 /** A narrow tab shows the panel over the page; picking a chapter there gets it out of the way. */
-const onPick = (entry: TocEntry) => {
-  const narrow = (stage.value?.closest('.abele-book-reader')?.clientWidth ?? 0) <= 640
-  emit('go', entry.href, narrow)
-}
+const narrow = () => (stage.value?.closest('.abele-book-reader')?.clientWidth ?? 0) <= 640
+const onPick = (entry: TocEntry) => emit('go', entry.href, narrow())
 
 const noteTitle = computed(() => {
   switch (props.model.footnote?.type) {
@@ -223,14 +312,23 @@ watch(
     display: flex;
     flex-direction: column;
     flex: 0 0 auto;
-    width: 18em;
-    max-width: 40%;
+    width: 21em;
+    max-width: 45%;
     border-inline-end: 1px solid var(--background-modifier-border);
     background-color: var(--background-primary);
   }
 
   &__backdrop {
     display: none;
+  }
+
+  &__panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--size-4-2);
+    padding: var(--size-4-1) var(--size-4-2);
+    border-bottom: 1px solid var(--background-modifier-border);
   }
 
   &__note {

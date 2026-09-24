@@ -212,6 +212,16 @@ Three files, three concerns:
   tree, a `javascript:` and a `file:` address, a launch action — is opened with both sandboxes and
   every link on it clicked: nothing may run, open, alert or ask for `child_process`. The phone file
   opens a PDF too, and checks the page fits the screen and turns by a tap and a swipe.
+- `bookHighlights.e2e.test.ts` — **highlights, links and search**, with the rich book and the plain
+  PDF in a folder of their own: words selected on the page are highlighted into
+  `<book> highlights.md` (its exact callout checked) and drawn; a tap on the highlight opens its bar;
+  recolouring, a comment and removing each change the note; a callout written into the note by hand
+  is drawn at once; a link to selected words has the expected shape, a quote of them goes into the
+  note last open, and following such a link opens the book there with the words selected; a search
+  lists finds by chapter and goes to one. The same for the PDF: highlight boxes over its text
+  layer, a search page by page that selects the find, and a `#cfi=` link in the highlights note,
+  clicked in reading view while PDFs open in Obsidian's viewer, opening in the reader with the words
+  selected. The phone file adds the search in the drawer and the bar for selected words at 390×844.
 - `bookReading.e2e.test.ts` — **reading**, on the desktop, with the book of
   `tests/fixtures/books/richBook.ts`: a note marked as one and a note marked only by a superscript
   open in the dialog; a link to another chapter is followed and the way back works; the contents

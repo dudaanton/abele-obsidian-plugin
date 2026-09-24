@@ -32,6 +32,64 @@ and front matter are skipped when the book says where the text starts).
 - **Where it was left** is kept for each book under its identifier, so renaming or moving the file
   keeps it. It reaches another device where the plugin's own folder is synced.
 
+## Highlights, links and search
+
+**Selecting words** on the page — with the mouse, or a long press on a phone — brings up a bar
+under the page:
+
+- a colour highlights them (yellow, green, blue, pink, purple, orange);
+- the speech bubble highlights them and opens a box for a comment;
+- the link copies a link to the words;
+- the quote writes the words, with a link to them, into the note last worked in.
+
+A **tap on a highlight** brings up the same bar for it: another colour, the comment, a link, the
+quote, the highlights note, or remove it. A tap beside the bar closes it.
+
+**Highlights live in a note beside the book**, `<book> highlights.md`, made with the first one:
+
+```markdown
+---
+type: book-highlights
+book: "[[Books/Dune.epub]]"
+---
+
+# Dune
+
+> [!quote|green] [[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]]
+> Fear is the mind-killer.
+>
+> My comment on it.
+```
+
+One quote callout per highlight, in the order of the book: its title is a link to the place, named
+after the chapter (a PDF: the page); its first paragraph the highlighted words; what follows a blank
+line inside it the comment; its colour the callout's metadata, which Obsidian draws as an ordinary
+quote. The note is ordinary — searchable, on the graph, readable on a phone without the plugin — and
+it can be edited by hand: a callout changed, added or deleted there changes what the open book draws
+at once. The reader finds the note by its `book` property, which Obsidian updates when the book is
+renamed or moved, so the two stay together. Anything else written in the note is left alone.
+
+**Links to places** work the way links to lines of a note do: the place rides where a heading would.
+
+```
+[[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]]   words in a book (EPUB CFI)
+[[Papers/Paper.pdf#cfi=/6/2!/4/4/10,/1:4,/1:15|Page 1]]  words in a PDF
+[[Papers/Paper.pdf#page=4]]                              a page of a PDF
+```
+
+A click opens the book there with the words selected. Brackets and other characters a link cannot
+carry are percent-encoded. `#page=N` is what Obsidian's own PDF viewer reads too, so such a link
+opens a PDF on its page wherever PDFs open; a link to words in a PDF always opens in the reader,
+which is the only one that knows the place. Without the plugin every one of these links still opens
+the file. **Copy link to this place** (or **to this page** in a PDF) is in the tab's ⋯ menu.
+
+**Search** — the magnifier in the header, Mod+F, or the ⋯ menu — opens a search in the side panel.
+It goes through the whole book or PDF a moment after typing stops, listing what it finds chapter by
+chapter (page by page in a PDF) as it goes, with the words around each find; in a book the finds on
+the page on screen are outlined. A find goes to its place and selects the words. The side panel
+switches between **Contents**, **Search** and **Highlights**, the list of the book's highlights with
+their comments, each going to its place.
+
 ## Text and layout
 
 The **Aa** button in a book's header opens the text and layout settings over the page; the same

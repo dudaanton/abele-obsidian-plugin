@@ -6,16 +6,24 @@
  * page is audited as it arrives, and one that fails is emptied before it is shown. Around the
  * page, a Vue side (`BookReader.vue`) shows the contents, the progress and the dialogs.
  */
-import { FileView, Platform, loadPdfJs, type Menu, type TFile, type WorkspaceLeaf } from 'obsidian'
+import {
+  FileView,
+  Platform,
+  Scope,
+  TFile,
+  loadPdfJs,
+  type Menu,
+  type WorkspaceLeaf,
+} from 'obsidian'
 import { createApp, reactive, watch, type App as VueApp, type WatchStopHandle } from 'vue'
 import { frameOptions } from '@/vendor/foliate-js/frame-options.js'
 import type { FoliateLocation, View as FoliateView } from '@/vendor/foliate-js/view.js'
 import { FootnoteHandler } from '@/vendor/foliate-js/footnotes.js'
 import BookReader from '@/components/reader/BookReader.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { auditDocument, blankDocument, frameSandbox, isOpenableExternal } from './bookSafety'
+import { auditDocument, blankDocument, frameSandbox } from './bookSafety'
 import { openEpub, type OpenedBook } from './openBook'
-import { emptyBookModel, tocEntries, type BookModel } from './model'
+import { emptyBookModel, tocEntries, type BookModel, type PanelTab } from './model'
 import {
   darkPdfPages,
   layoutAttributes,
@@ -23,8 +31,11 @@ import {
   readerSettingsFrom,
   themeValues,
 } from './settings'
-import { openPdf } from './pdfBook'
-import { swipeDirection } from './swipe'
+import { openPdf, type PdfBookExtras } from './pdfBook'
+import { BookReading } from './BookReading'
+import { parsePlaceSubpath, type BookPlace } from './bookLinks'
+import { onExternalLink, onKey, watchPage, type PageHost } from './pageInput'
+import { bookCallbacks, type BookActions } from './bookCallbacks'
 import { bookKey } from './positions'
 import { bookPlaces } from './places'
 
@@ -64,6 +75,10 @@ export class BookView extends FileView {
   private footnotes = new FootnoteHandler()
   private footnoteHref = ''
   private openedTwoPages = false
+  /** Selections, highlights, links and search, once a book is showing. */
+  reading: BookReading | null = null
+  /** A place a link asked for, gone to once the book is open. */
+  private pendingPlace: BookPlace | null = null
   /** Every page loaded so far in this tab, newest last. */
   readonly pages: PageReport[] = []
 
@@ -117,35 +132,34 @@ export class BookView extends FileView {
     this.contentEl.addClass('abele-book')
     const mount = this.contentEl.createDiv({ cls: 'abele-book__mount' })
     this.model.panel = !Platform.isPhone && this.app.loadLocalStorage(PANEL_KEY) === '1'
-    this.vue = createApp(BookReader, {
-      model: this.model,
-      onStage: (el: HTMLElement) => {
-        this.stage = el
-        this.resolveStage(el)
-      },
-      onGo: (href: string, fromPanel: boolean) => {
-        if (fromPanel) this.model.panel = false
-        void this.reader?.goTo(href)
-      },
-      onSeek: (fraction: number): void => void this.reader?.goToFraction(fraction),
-      onBack: (): void => this.reader?.history.back(),
-      onPanel: (open: boolean) => this.setPanel(open),
-      onSettings: (open: boolean) => (this.model.settingsOpen = open),
-      onFootnoteClose: () => this.closeFootnote(),
-      onFootnoteGo: () => {
-        const href = this.footnoteHref
-        this.closeFootnote()
-        if (href) void this.reader?.goTo(href)
-      },
-    })
+    this.vue = createApp(BookReader, { model: this.model, ...bookCallbacks(this.actions()) })
     this.vue.mount(mount)
 
-    this.addAction('list', 'Contents', () => this.setPanel(!this.model.panel))
+    this.addAction('search', 'Search in the book', () => this.openSearch())
+    this.addAction('list', 'Contents', () => this.showPanel('contents'))
     this.addAction('a-large-small', 'Text and layout', () => (this.model.settingsOpen = true))
 
     const config = AbeleConfig.getInstance()
     this.stopWatch = watch(config.version, () => this.applySettings())
-    this.registerEvent(this.app.workspace.on('css-change', () => this.applySettings()))
+    this.registerEvent(
+      this.app.workspace.on('css-change', () => {
+        this.applySettings()
+        this.reading?.marks.redraw()
+      })
+    )
+    // The highlights note, changed by hand, on another device, or by the reader itself.
+    const noteChanged = (file: unknown) => {
+      if (file instanceof TFile && file.extension === 'md') this.reading?.noteChanged(file.path)
+    }
+    // Read once its properties are parsed: they are what say whose note it is.
+    this.registerEvent(this.app.metadataCache.on('changed', noteChanged))
+    this.registerEvent(this.app.vault.on('delete', noteChanged))
+    // Mod+F searches the book, as it searches a note.
+    this.scope = new Scope(this.app.scope)
+    this.scope.register(['Mod'], 'f', () => {
+      this.openSearch()
+      return false
+    })
   }
 
   async onClose(): Promise<void> {
@@ -180,6 +194,28 @@ export class BookView extends FileView {
         .setSection('view')
         .onClick(() => void this.setFlow(flow === 'paginated' ? 'scrolled' : 'paginated'))
     )
+    if (this.reading && this.model.status === 'ready')
+      menu.addItem((item) =>
+        item
+          .setTitle(this.isPdf ? 'Copy link to this page' : 'Copy link to this place')
+          .setIcon('link')
+          .setSection('action')
+          .onClick(() => void this.reading?.copyLink())
+      )
+    menu.addItem((item) =>
+      item
+        .setTitle('Search in the book')
+        .setIcon('search')
+        .setSection('view')
+        .onClick(() => this.openSearch())
+    )
+    menu.addItem((item) =>
+      item
+        .setTitle('Highlights')
+        .setIcon('highlighter')
+        .setSection('view')
+        .onClick(() => this.showPanel('highlights'))
+    )
     menu.addItem((item) =>
       item
         .setTitle('Text and layout…')
@@ -193,6 +229,53 @@ export class BookView extends FileView {
     const config = AbeleConfig.getInstance()
     config.reader = readerSettingsFrom({ ...config.reader, flow })
     await config.saveSettings()
+  }
+
+  /** What the tab's Vue side can ask of it. */
+  private actions(): BookActions {
+    return {
+      model: this.model,
+      reader: () => this.reader,
+      reading: () => this.reading,
+      setStage: (el) => {
+        this.stage = el
+        this.resolveStage(el)
+      },
+      setPanel: (open) => this.setPanel(open),
+      closeFootnote: () => this.closeFootnote(),
+      footnoteHref: () => this.footnoteHref,
+      commentOnSelection: () => this.commentOnSelection(),
+    }
+  }
+
+  /** Opens the side panel on a list, or closes it when that list is already showing. */
+  private showPanel(tab: PanelTab): void {
+    if (this.model.panel && this.model.panelTab === tab) {
+      this.setPanel(false)
+      return
+    }
+    this.model.panelTab = tab
+    this.setPanel(true)
+  }
+
+  openSearch(): void {
+    this.model.panelTab = 'search'
+    this.setPanel(true)
+  }
+
+  /** The selected words highlighted, and the dialog for a comment on them opened. */
+  private async commentOnSelection(): Promise<void> {
+    const h = await this.reading?.highlight('yellow')
+    if (h) this.model.commenting = { ...h }
+  }
+
+  /** A link to a place in this book was followed: `#cfi=…` or `#page=N`. */
+  setEphemeralState(state: unknown): void {
+    super.setEphemeralState(state)
+    const place = parsePlaceSubpath((state as { subpath?: string } | null)?.subpath)
+    if (!place) return
+    if (this.reading && this.model.status === 'ready') void this.reading.goToPlace(place)
+    else this.pendingPlace = place
   }
 
   private setPanel(open: boolean): void {
@@ -211,6 +294,8 @@ export class BookView extends FileView {
   private teardown(): void {
     this.loadToken++
     this.closeFootnote()
+    this.reading?.stopSearch()
+    this.reading = null
     void bookPlaces()?.flush()
     this.reader?.close()
     this.reader?.remove()
@@ -304,7 +389,7 @@ export class BookView extends FileView {
         return
       }
       reader.addEventListener('load', (e) => this.onPage((e as CustomEvent).detail))
-      reader.addEventListener('external-link', (e) => this.onExternalLink(e as CustomEvent))
+      reader.addEventListener('external-link', (e) => onExternalLink(e as CustomEvent))
       reader.addEventListener('link', (e) => this.onLink(e))
       reader.addEventListener('relocate', (e) =>
         this.onRelocate((e as CustomEvent<FoliateLocation>).detail)
@@ -317,12 +402,24 @@ export class BookView extends FileView {
       await reader.open(opened.book)
       if (token !== this.loadToken) return
       this.applyTo(reader)
+      this.reading = new BookReading(
+        this.app,
+        file,
+        reader as unknown as ConstructorParameters<typeof BookReading>[2],
+        this.model,
+        this.contentEl,
+        this.isPdf ? (opened.book as unknown as PdfBookExtras) : null
+      )
+      void this.reading.loadHighlights()
       this.model.toc = tocEntries(opened.book.toc)
       this.key = bookKey(opened.book.metadata?.identifier, file.path)
       const place = await bookPlaces()?.get(this.key)
       if (token !== this.loadToken) return
       await reader.init({ lastLocation: place?.cfi ?? null, showTextStart: true })
       if (token !== this.loadToken) return
+      const asked = this.pendingPlace
+      this.pendingPlace = null
+      if (asked) await this.reading.goToPlace(asked)
       // The first page of a book is not a place to go back to.
       this.model.canGoBack = false
       this.model.status = 'ready'
@@ -335,6 +432,8 @@ export class BookView extends FileView {
   }
 
   private onRelocate(detail: FoliateLocation): void {
+    const index = (detail as { index?: number }).index ?? detail.section?.current
+    if (typeof index === 'number') this.reading?.relocated(index)
     this.model.fraction = detail.fraction ?? 0
     const label = detail.tocItem?.label?.trim() ?? ''
     // A PDF's pages are its own measure: the page number first, the outline entry after it.
@@ -384,69 +483,25 @@ export class BookView extends FileView {
       if (link && !(link.localName === 'a' && link.hasAttribute('href'))) e.preventDefault()
     })
     if (!main) return
-    doc.addEventListener('keydown', (e) => this.onKey(e))
-    doc.addEventListener('click', (e) => this.onTap(e, doc))
-    // The engine turns a reflowing book's pages under a finger itself; a PDF's it does not.
-    if (this.reader?.isFixedLayout) this.watchSwipes(doc)
+    this.reading?.watchSelection(doc, index)
+    watchPage(this.pageHost(), doc)
   }
 
-  private watchSwipes(doc: Document): void {
-    let start: { x: number; y: number; t: number } | null = null
-    doc.addEventListener(
-      'touchstart',
-      (e) => {
-        const t = e.touches[0]
-        start = e.touches.length === 1 && t ? { x: t.screenX, y: t.screenY, t: e.timeStamp } : null
-      },
-      { passive: true }
-    )
-    doc.addEventListener('touchend', (e) => {
-      const t = e.changedTouches[0]
-      if (!start || !t || !this.reader) return
-      const way = swipeDirection(start, { x: t.screenX, y: t.screenY, t: e.timeStamp })
-      start = null
-      if (way === 'left') void this.reader.goRight()
-      else if (way === 'right') void this.reader.goLeft()
-    })
-  }
-
-  private onExternalLink(e: CustomEvent<{ href_?: string }>): void {
-    e.preventDefault()
-    const href = e.detail?.href_ ?? ''
-    if (isOpenableExternal(href)) window.open(href, '_blank')
-  }
-
-  private onKey(e: KeyboardEvent): void {
-    if (!this.reader) return
-    if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
-      e.preventDefault()
-      void this.reader.goLeft()
-    } else if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
-      e.preventDefault()
-      void this.reader.goRight()
+  private pageHost(): PageHost {
+    return {
+      reader: () => this.reader,
+      stage: () => this.stage,
+      reading: () => this.reading,
+      model: this.model,
+      pdf: this.isPdf,
     }
-  }
-
-  /** A tap near the left or right edge turns the page; anywhere else it is left to the page. */
-  private onTap(e: MouseEvent, doc: Document): void {
-    if (!this.reader || e.defaultPrevented) return
-    if ((e.target as Element | null)?.closest?.('a, area')) return
-    if (!doc.getSelection()?.isCollapsed) return
-    const stage = this.stage
-    const width = stage?.clientWidth ?? 0
-    if (!stage || !width) return
-    const frame = doc.defaultView?.frameElement
-    const x =
-      e.clientX + (frame?.getBoundingClientRect().left ?? 0) - stage.getBoundingClientRect().left
-    if (x < width * 0.25) void this.reader.goLeft()
-    else if (x > width * 0.75) void this.reader.goRight()
   }
 
   onload(): void {
     super.onload()
     this.registerDomEvent(this.contentEl, 'keydown', (e) => {
       if ((e.target as Element | null)?.closest?.('input, select, textarea')) return
-      this.onKey(e)
+      onKey(this.reader, e)
     })
   }
 }

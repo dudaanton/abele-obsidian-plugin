@@ -10,7 +10,7 @@ import BookReader from '@/components/reader/BookReader.vue'
 import ReaderSettingsForm from '@/components/reader/ReaderSettingsForm.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_READER_SETTINGS } from '@/reader/settings'
-import { emptyBookModel, tocEntries, type BookModel } from '@/reader/model'
+import { emptyBookModel, emptySearch, tocEntries, type BookModel } from '@/reader/model'
 import { useVault } from '../helpers/testEnv'
 
 const readyModel = (over: Partial<BookModel> = {}): BookModel =>
@@ -92,7 +92,7 @@ describe('the contents panel', () => {
     const chapter2 = view.findAll('.tree-item-self').find((r) => r.text() === 'Chapter 2')!
     await chapter2.trigger('click')
     expect(view.emitted('go')?.[0]?.[0]).toBe('c2')
-    await view.find('.abele-book-contents__head .abele-obsidian-icon').trigger('click')
+    await view.find('.abele-book-reader__panel-head > .abele-obsidian-icon').trigger('click')
     expect(view.emitted('panel')).toEqual([[false]])
   })
 
@@ -152,5 +152,137 @@ describe('the PDF settings', () => {
     await toggle('Two pages side by side').trigger('click')
     await toggle('Dark pages in a dark theme').trigger('click')
     expect(config.reader).toMatchObject({ openPdf: true, pdfTwoPages: true, pdfDarkPages: false })
+  })
+})
+
+describe('the panel', () => {
+  it('switches between the contents, the search and the highlights', async () => {
+    const model = readyModel({ panel: true })
+    const view = mount(BookReader, { props: { model } })
+    await flushPromises()
+    const tabs = view.findAll('.abele-book-reader__panel-head .abele-tabs__tab')
+    expect(tabs.map((t) => t.text())).toEqual(['Contents', 'Search', 'Highlights'])
+    await tabs[1].trigger('click')
+    expect(view.emitted('panel-tab')).toEqual([['search']])
+  })
+})
+
+describe('the search', () => {
+  const searching = (over: Partial<BookModel['search']>) =>
+    readyModel({ panel: true, panelTab: 'search', search: { ...emptySearch(), ...over } })
+
+  it('says how far it has got and lists what it found under each chapter', async () => {
+    const view = mount(BookReader, {
+      props: {
+        model: searching({
+          query: 'fox',
+          running: true,
+          progress: 0.5,
+          count: 2,
+          groups: [
+            {
+              label: 'Chapter 1',
+              hits: [
+                { cfi: 'a', excerpt: { pre: 'the quick brown ', match: 'fox', post: ' jumps' } },
+                { cfi: 'b', excerpt: { pre: 'a ', match: 'Fox', post: '' } },
+              ],
+            },
+          ],
+        }),
+      },
+    })
+    await flushPromises()
+    expect(view.find('.abele-book-search__status').text()).toBe('2 results so far · 50%')
+    expect(view.find('.abele-book-search__label').text()).toBe('Chapter 1')
+    const hits = view.findAll('.abele-book-search__hit')
+    expect(hits[0].find('mark').text()).toBe('fox')
+    await hits[1].trigger('click')
+    expect(view.emitted('search-hit')?.[0]?.[0]).toMatchObject({ cfi: 'b' })
+  })
+
+  it('says when nothing was found, and asks for two letters first', async () => {
+    const done = mount(BookReader, { props: { model: searching({ query: 'zzz' }) } })
+    await flushPromises()
+    expect(done.find('.abele-book-search__status').text()).toBe('Nothing found.')
+    const short = mount(BookReader, { props: { model: searching({ query: 'z' }) } })
+    await flushPromises()
+    expect(short.find('.abele-book-search__status').text()).toBe('Type at least two letters.')
+  })
+
+  it('searches a moment after typing stops', async () => {
+    vi.useFakeTimers()
+    try {
+      const view = mount(BookReader, { props: { model: searching({}) } })
+      await flushPromises()
+      const input = view.find('.abele-book-search__field input')
+      await input.setValue('fo')
+      await input.setValue('fox')
+      expect(view.emitted('search')).toBeUndefined()
+      vi.advanceTimersByTime(450)
+      expect(view.emitted('search')).toEqual([['fox']])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('highlights', () => {
+  const h = {
+    cfi: 'epubcfi(/6/4!/4/2,/1:0,/1:5)',
+    color: 'green' as const,
+    text: 'Fear is the mind-killer.',
+    comment: 'A good line',
+    label: 'Chapter 3',
+  }
+
+  it('are listed with their colour, words, comment and chapter, and go to their place', async () => {
+    const view = mount(BookReader, {
+      props: { model: readyModel({ panel: true, panelTab: 'highlights', highlights: [h] }) },
+    })
+    await flushPromises()
+    const item = view.find('.abele-book-highlights__item')
+    expect(item.classes()).toContain('abele-book-highlights__item_green')
+    expect(item.text()).toContain('Fear is the mind-killer.')
+    expect(item.text()).toContain('A good line')
+    await item.trigger('click')
+    expect(view.emitted('go-highlight')?.[0]?.[0]).toEqual(h)
+  })
+
+  it('say how to make one when there are none', async () => {
+    const view = mount(BookReader, {
+      props: { model: readyModel({ panel: true, panelTab: 'highlights' }) },
+    })
+    await flushPromises()
+    expect(view.text()).toContain('No highlights yet')
+  })
+
+  it('are made from a selection by a colour, and the selection offers a link and a quote', async () => {
+    const selection = { cfi: 'c', text: 'Words', label: 'Chapter 1' }
+    const view = mount(BookReader, { props: { model: readyModel({ selection }) } })
+    const bar = view.find('.abele-book-selection')
+    const icons = bar.findAll('.abele-obsidian-icon')
+    await icons[2].trigger('click') // the third colour, blue
+    expect(view.emitted('highlight')).toEqual([['blue']])
+    const actions = bar.findAll('.abele-book-selection__actions .abele-obsidian-icon')
+    await actions[1].trigger('click')
+    expect(view.emitted('copy-link')).toEqual([[selection]])
+    await actions[2].trigger('click')
+    expect(view.emitted('quote')).toEqual([[{ cfi: 'c', label: 'Chapter 1', text: 'Words' }]])
+    expect(bar.findAll('.abele-book-selection__actions .abele-obsidian-icon')).toHaveLength(4)
+  })
+
+  it('once tapped, can be recoloured, commented, removed and closed', async () => {
+    const view = mount(BookReader, { props: { model: readyModel({ active: h }) } })
+    const bar = view.find('.abele-book-selection')
+    await bar.findAll('.abele-book-selection__colors .abele-obsidian-icon')[0].trigger('click')
+    expect(view.emitted('recolor')).toEqual([[h, 'yellow']])
+    const actions = bar.findAll('.abele-book-selection__actions .abele-obsidian-icon')
+    expect(actions).toHaveLength(6)
+    await actions[0].trigger('click')
+    expect(view.emitted('edit-comment')).toEqual([[h]])
+    await actions[4].trigger('click')
+    expect(view.emitted('delete-highlight')).toEqual([[h]])
+    await actions[5].trigger('click')
+    expect(view.emitted('close-active')).toHaveLength(1)
   })
 })

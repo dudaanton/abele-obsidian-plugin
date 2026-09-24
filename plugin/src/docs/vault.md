@@ -325,5 +325,35 @@ attachment.
 open there too when the person has chosen so, and otherwise in Obsidian's own viewer. The plugin
 never changes a book or PDF file. Where each book was left is kept outside the notes, in
 `book-places.json` in the plugin's own folder: under the book's `dc:identifier`, so renaming or
-moving the file keeps its place, or under its path for a book without one. Nothing is written
-beside a book.
+moving the file keeps its place, or under its path for a book without one. The only note written
+beside a book is its highlights note.
+
+`.epub` and `.pdf` files can be linked at a place, like notes at lines. The place goes where a
+heading would: `[[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]]` (an EPUB CFI without its
+`epubcfi(…)` wrapper, with `[`, `]`, `(`, `)`, `|`, `#`, `%`, `^` and spaces percent-encoded) or
+`[[Papers/Paper.pdf#page=4]]` (a PDF page, from 1). A click opens the file there. Give the link a
+label saying what is there, usually the chapter.
+
+### Book highlights
+
+A book's highlights are kept in `<book name> highlights.md` beside it, with `type: book-highlights`
+and `book: "[[<the book file>]]"` (a wikilink, extension included). It is found by that property,
+not its name. Each highlight is one callout, in the order of the book:
+
+```markdown
+> [!quote|green] [[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]]
+> Fear is the mind-killer.
+>
+> The person's comment, after a blank quoted line.
+```
+
+- The type is always `quote`; the colour after `|` is one of `yellow`, `green`, `blue`, `pink`,
+  `purple`, `orange` (none means yellow).
+- The title is a link to the place (`#cfi=…`), labelled with the chapter or `Page N`.
+- The first paragraph is the highlighted words as they were; after a blank `>` line, the comment.
+- A highlight is told apart by its place: two callouts linking to the same CFI are one highlight.
+- Other callouts, headings and paragraphs in the note are the person's and are left as they are.
+
+The open book redraws whatever the note holds as soon as it changes, so adding, recolouring or
+removing a highlight by editing the note is fine; keep the shape above or the reader will not see
+it.

@@ -19,6 +19,28 @@ import type { FoliateBook, FoliateSection, FoliateTocItem } from '@/vendor/folia
 import textLayerCss from '@/vendor/pdfjs-css/text_layer_builder.css?raw'
 import annotationLayerCss from '@/vendor/pdfjs-css/annotation_layer_builder.css?raw'
 import type { OpenedBook } from './openBook'
+import { search, type SearchExcerpt } from '@/vendor/foliate-js/search.js'
+
+/** A page of a PDF that has been drawn, or drawn again at a new size: its text layer is fresh. */
+export interface PdfPageDrawn {
+  doc: Document
+  index: number
+}
+
+/** What a search of a PDF finds on one page: the page, and each match's place among the page's. */
+export interface PdfSearchPage {
+  index: number
+  items: { occurrence: number; excerpt: SearchExcerpt }[]
+}
+
+/** The extra a PDF book carries: its pages' drawing events, and a search through its text. */
+export interface PdfBookExtras {
+  pageEvents: EventTarget
+  searchPages(
+    query: string,
+    isCancelled: () => boolean
+  ): AsyncGenerator<PdfSearchPage | { progress: number }>
+}
 
 /* The parts of PDF.js this uses, typed loosely: it is Obsidian's copy, of Obsidian's version. */
 type PdfLib = any
@@ -60,6 +82,8 @@ html, body { margin: 0; padding: 0; }
   --scale-round-x: 1px; --scale-round-y: 1px; }
 ${textLayerCss}
 ${annotationLayerCss}
+.abele-marks { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; }
+.abele-marks__box { position: absolute; opacity: 0.35; mix-blend-mode: multiply; border-radius: 2px; }
 </style></head>
 <body><div id="canvas"></div><div class="textLayer"></div><div class="annotationLayer"></div></body>
 </html>`
@@ -175,6 +199,7 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
     .getOutline()
     .catch((): null => null)
 
+  const pageEvents = new EventTarget()
   const urls = new Map<number, string>()
   const pages = new Map<
     number,
@@ -182,6 +207,8 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
   >()
   /** The drawing a page frame last asked for; an older one still finishing is dropped. */
   const drawing = new WeakMap<Document, number>()
+  /** The size each page frame was last drawn at. */
+  const drawnAt = new WeakMap<Document, number>()
   const sections: FoliateSection[] = Array.from({ length: pdf.numPages as number }, (_, i) => ({
     id: i,
     size: 1000,
@@ -193,11 +220,20 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
       const url = URL.createObjectURL(new Blob([pdfPageHtml(width, height)], { type: 'text/html' }))
       urls.set(i, url)
       const onZoom = ({ doc, scale }: { doc: Document; scale: number }): void => {
+        // Asked again at the size it already has — the engine lays out more often than sizes
+        // change — it is left alone: drawing it again would replace its text, and lose a selection.
+        if (drawnAt.get(doc) === scale) return
+        drawnAt.set(doc, scale)
         const turn = (drawing.get(doc) ?? 0) + 1
         drawing.set(doc, turn)
-        void drawPage(lib, page, doc, scale, () => drawing.get(doc) === turn).catch((e) =>
-          console.warn('[Abele] a PDF page could not be drawn', e)
-        )
+        void drawPage(lib, page, doc, scale, () => drawing.get(doc) === turn)
+          .then(() => {
+            if (drawing.get(doc) === turn)
+              pageEvents.dispatchEvent(
+                new CustomEvent<PdfPageDrawn>('drawn', { detail: { doc, index: i } })
+              )
+          })
+          .catch((e) => console.warn('[Abele] a PDF page could not be drawn', e))
       }
       const entry = { src: url, onZoom }
       pages.set(i, entry)
@@ -214,7 +250,28 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
     return typeof ref === 'number' ? ref : ((await pdf.getPageIndex(ref)) as number)
   }
 
-  const book: FoliateBook = {
+  async function* searchPages(
+    query: string,
+    isCancelled: () => boolean
+  ): AsyncGenerator<PdfSearchPage | { progress: number }> {
+    const total = pdf.numPages as number
+    for (let i = 0; i < total; i++) {
+      if (isCancelled()) return
+      const page: PdfPage = await pdf.getPage(i + 1)
+      const content = await page.getTextContent()
+      const strs: string[] = (content.items as { str?: string }[]).map((item) => item.str ?? '')
+      const items = Array.from(
+        search(strs, query, { locales: 'en', granularity: 'grapheme', sensitivity: 'base' }),
+        (found, occurrence) => ({ occurrence, excerpt: found.excerpt })
+      )
+      if (items.length) yield { index: i, items }
+      yield { progress: (i + 1) / total }
+    }
+  }
+
+  const book: FoliateBook & PdfBookExtras = {
+    pageEvents,
+    searchPages,
     rendition: { layout: 'pre-paginated' },
     metadata: {
       title: get('dc:title') ?? meta.info?.Title,

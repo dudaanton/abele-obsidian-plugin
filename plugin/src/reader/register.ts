@@ -12,6 +12,7 @@ import { BOOK_EXTENSIONS, BOOK_VIEW_TYPE, BookView, READER_EXTENSIONS } from './
 import { initBookPlaces } from './places'
 import { readerSettingsFrom } from './settings'
 import { setPdfTakeover } from './pdfTakeover'
+import { registerPlaceLinks } from './placeLinks'
 
 export function registerReader(plugin: Plugin): void {
   const { app } = plugin
@@ -55,6 +56,9 @@ export function registerReader(plugin: Plugin): void {
       )
     })
   )
+
+  // A link to a place in a PDF's text opens here, where the place is understood.
+  registerPlaceLinks(plugin, BOOK_VIEW_TYPE)
 
   // PDFs open in the reader while the setting says so.
   const config = AbeleConfig.getInstance()
