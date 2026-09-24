@@ -36,9 +36,10 @@ const handleClick = (event: MouseEvent) => {
   if (el) {
     event.preventDefault()
     const href = el.getAttribute('data-href')
-    if (href) {
-      GlobalStore.getInstance().app.workspace.openLinkText(href, props.filePath || '')
-    }
+    // Through `openLink`, which sends a chat to the sidebar: `openLinkText` would put it in the
+    // leaf being read and the note there would be closed. Loaded on click, so the kit does not
+    // pull the chat services in with it.
+    if (href) void import('@/ai/openChat').then((m) => m.openLink(href, props.filePath || ''))
     return
   }
   emit('click')

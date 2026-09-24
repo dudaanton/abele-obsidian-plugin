@@ -6,7 +6,7 @@ import Markdown from '@/components/obsidian/Markdown.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { insertOnOwnLine } from '@/helpers/editorHelpers'
 import { ChatService } from './ChatService'
-import { CommentService } from './CommentService'
+import { openChat } from './openChat'
 import type { ChatSession } from './ChatSession'
 import type { ChatMessage } from './types'
 
@@ -133,20 +133,6 @@ async function findChatByMessage(messageId: string): Promise<TFile | null> {
     if ((await vault.cachedRead(file)).includes(needle)) return file
   }
   return null
-}
-
-/** Opens a chat file the way opening it anywhere else does: a comment as a comment. */
-export async function openChat(file: TFile): Promise<void> {
-  const comments = CommentService.getInstance()
-  if (comments.isCommentFile(file)) {
-    // In the sidebar, as its marker would open it — not turned into a full chat.
-    if (await comments.showInSidebar(file.basename)) return
-    await comments.openFile(file)
-    return
-  }
-  const chatService = ChatService.getInstance()
-  await chatService.openChatFile(file)
-  await chatService.revealSidebar()
 }
 
 /**

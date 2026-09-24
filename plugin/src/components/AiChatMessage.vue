@@ -303,6 +303,7 @@ import GalleryViewer from './GalleryViewer.vue'
 import type { ViewerImage } from './GalleryViewer.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { getAttachmentIcon, fileName as attachmentName } from '@/ai/attachments'
+import { openVaultFile } from '@/ai/openChat'
 import type { ChatMessage } from '@/ai/types'
 import type { BranchInfo } from './AiChat.vue'
 
@@ -432,11 +433,7 @@ const toolFilePath = computed(() => {
 
 const openToolFile = () => {
   if (!toolFilePath.value) return
-  const { app } = GlobalStore.getInstance()
-  const file = app.vault.getAbstractFileByPath(toolFilePath.value)
-  if (file instanceof TFile) {
-    app.workspace.getLeaf(false).openFile(file)
-  }
+  void openVaultFile(toolFilePath.value)
 }
 
 const IMAGE_TOOLS = ['read_image', 'generate_image', 'edit_image', 'screenshot']
@@ -484,10 +481,7 @@ const onImageContextMenu = (e: MouseEvent) => {
       .setTitle('Open file')
       .setIcon('file')
       .onClick(() => {
-        if (!imagePath.value) return
-        const { app } = GlobalStore.getInstance()
-        const file = app.vault.getAbstractFileByPath(imagePath.value)
-        if (file instanceof TFile) app.workspace.getLeaf(false).openFile(file)
+        if (imagePath.value) void openVaultFile(imagePath.value)
       })
   })
   menu.addItem((item) => {
@@ -530,13 +524,8 @@ const imageUrl = computed(() => {
   return app.vault.getResourcePath(file)
 })
 
-const openAttachment = (path: string) => {
-  const { app } = GlobalStore.getInstance()
-  const file = app.vault.getAbstractFileByPath(path)
-  if (file instanceof TFile) {
-    app.workspace.getLeaf(false).openFile(file)
-  }
-}
+// A chat attached here goes to the sidebar; opened in the editor it would close the note.
+const openAttachment = (path: string) => void openVaultFile(path)
 
 const TOOL_RESULT_MAX_LENGTH = 1000
 

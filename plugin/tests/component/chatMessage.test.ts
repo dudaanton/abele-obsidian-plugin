@@ -208,3 +208,43 @@ describe('putting a message into a note', () => {
     expect(wrapper.text()).not.toContain('Insert into note')
   })
 })
+
+describe('a chat attached to a message', () => {
+  // A chat file opened in a leaf is taken out of it again and moved to the sidebar
+  // (`main.ts`, active-leaf-change). Opened in the leaf that held the note, that leaf is the
+  // one detached, and the note goes with it — which is what the person saw.
+  it('opens in the sidebar and leaves the note where it was', async () => {
+    const app = useVault([{ path: 'AI/Chats/Trip.abchat', content: '{}' }])
+    const getLeaf = vi.fn(() => ({ openFile: vi.fn() }))
+    ;(app as unknown as { workspace: unknown }).workspace = { getLeaf }
+    const { ChatService } = await import('@/ai/ChatService')
+    const { CommentService } = await import('@/ai/CommentService')
+    const service = ChatService.getInstance()
+    const opened = vi.spyOn(service, 'openChatFile').mockResolvedValue()
+    vi.spyOn(service, 'revealSidebar').mockResolvedValue()
+    vi.spyOn(CommentService.getInstance(), 'isCommentFile').mockReturnValue(false)
+
+    const wrapper = render({
+      role: 'user',
+      content: 'what did we settle on?',
+      attachments: ['AI/Chats/Trip.abchat'],
+    })
+    await wrapper.find('.abele-chat-msg__attachment-chip').trigger('click')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(opened).toHaveBeenCalledWith(app.vault.getAbstractFileByPath('AI/Chats/Trip.abchat'))
+    expect(getLeaf).not.toHaveBeenCalled()
+  })
+
+  it('a note attached the same way still opens in the editor', async () => {
+    const app = useVault([{ path: 'Plans.md', content: '' }])
+    const openFile = vi.fn()
+    ;(app as unknown as { workspace: unknown }).workspace = { getLeaf: () => ({ openFile }) }
+
+    const wrapper = render({ role: 'user', content: 'see', attachments: ['Plans.md'] })
+    await wrapper.find('.abele-chat-msg__attachment-chip').trigger('click')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(openFile).toHaveBeenCalledWith(app.vault.getAbstractFileByPath('Plans.md'))
+  })
+})

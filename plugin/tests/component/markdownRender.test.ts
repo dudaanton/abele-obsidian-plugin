@@ -105,3 +105,50 @@ describe('the component going away mid-render', () => {
     await expect(settle(RENDER_MS * 3)).resolves.toBeUndefined()
   })
 })
+
+describe('a link to a chat in rendered text', () => {
+  // `openLinkText` opens it in the leaf the person is reading; the chat file is then taken out
+  // of that leaf for the sidebar, and the note that was in it is gone with it.
+  it('opens the chat in the sidebar and never in the note’s leaf', async () => {
+    const app = useVault([{ path: 'AI/Chats/Trip.abchat', content: '{}' }])
+    const openLinkText = vi.fn()
+    ;(app as unknown as { workspace: unknown }).workspace = { openLinkText }
+    const { ChatService } = await import('@/ai/ChatService')
+    const { CommentService } = await import('@/ai/CommentService')
+    const service = ChatService.getInstance()
+    const opened = vi.spyOn(service, 'openChatFile').mockResolvedValue()
+    vi.spyOn(service, 'revealSidebar').mockResolvedValue()
+    vi.spyOn(CommentService.getInstance(), 'isCommentFile').mockReturnValue(false)
+    vi.spyOn(MarkdownRenderer, 'render').mockImplementation(
+      async (_app: unknown, _md: string, el: HTMLElement) => {
+        el.innerHTML = '<a class="internal-link" data-href="AI/Chats/Trip.abchat">Trip</a>'
+      }
+    )
+
+    const wrapper = open('[[AI/Chats/Trip.abchat|Trip]]')
+    await settle(5)
+    await wrapper.find('a.internal-link').trigger('click')
+    await settle(5)
+
+    expect(opened).toHaveBeenCalledWith(app.vault.getAbstractFileByPath('AI/Chats/Trip.abchat'))
+    expect(openLinkText).not.toHaveBeenCalled()
+  })
+
+  it('a link to a note still goes through Obsidian', async () => {
+    const app = useVault([{ path: 'Plans.md', content: '' }])
+    const openLinkText = vi.fn()
+    ;(app as unknown as { workspace: unknown }).workspace = { openLinkText }
+    vi.spyOn(MarkdownRenderer, 'render').mockImplementation(
+      async (_app: unknown, _md: string, el: HTMLElement) => {
+        el.innerHTML = '<a class="internal-link" data-href="Plans">Plans</a>'
+      }
+    )
+
+    const wrapper = open('[[Plans]]')
+    await settle(5)
+    await wrapper.find('a.internal-link').trigger('click')
+    await settle(5)
+
+    expect(openLinkText).toHaveBeenCalledWith('Plans', '')
+  })
+})

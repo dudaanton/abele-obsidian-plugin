@@ -20,7 +20,9 @@ export function createOpenFileTool(): AgentTool {
       const { app } = GlobalStore.getInstance()
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
-      await app.workspace.getLeaf(false).openFile(file)
+      // A chat goes to the sidebar: opened in the editor it would take the note's leaf with it.
+      const { openVaultFile } = await import('../openChat')
+      await openVaultFile(file.path)
       return { content: [{ type: 'text', text: `Opened: ${path}` }] }
     },
   }
