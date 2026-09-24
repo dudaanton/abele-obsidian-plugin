@@ -432,7 +432,7 @@ export function createGithubCommitsTool(): AgentTool {
         const first = (page - 1) * 100
         const shown = all.slice(first, first + 100)
         const out = [
-          `Pull request ${repoName(repo)}#${w.pull} — ${all.length} commits${shown.length ? ` (${first + 1}–${first + shown.length})` : ''}`,
+          `Pull request ${repoName(repo)}#${w.pull} — ${all.length} commit${all.length === 1 ? '' : 's'}${shown.length ? ` (${first + 1}–${first + shown.length})` : ''}`,
           ...shown.map(commitRow),
         ]
         if (first + shown.length < all.length) out.push(`[More: page=${page + 1}.]`)

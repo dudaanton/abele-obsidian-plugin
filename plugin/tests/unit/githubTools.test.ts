@@ -206,6 +206,50 @@ describe('github_read', () => {
     )
   })
 
+  it('reads owner/repo#n that is neither an issue nor a pull request as a discussion', async () => {
+    configure({ token: 'ghp_x' })
+    serve({
+      '/graphql': {
+        json: {
+          data: {
+            repository: {
+              discussion: {
+                title: 'How to configure?',
+                number: 3,
+                url: 'https://github.com/acme/widgets/discussions/3',
+                body: 'Asking.',
+                createdAt: '2026-01-01T00:00:00Z',
+                closed: false,
+                isAnswered: true,
+                author: { login: 'kim' },
+                category: { name: 'Q&A' },
+                labels: { nodes: [] },
+                comments: {
+                  totalCount: 1,
+                  nodes: [
+                    {
+                      id: 'c1',
+                      databaseId: 1,
+                      body: 'Like this.',
+                      createdAt: '2026-01-02T00:00:00Z',
+                      isAnswer: true,
+                      url: 'https://github.com/acme/widgets/discussions/3#discussioncomment-1',
+                      author: { login: 'ann' },
+                      replies: { totalCount: 0, nodes: [] },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    })
+    const out = await run('github_read', { item: 'acme/widgets#3' })
+    expect(out).toContain('Discussion acme/widgets#3 — How to configure?')
+    expect(out).toContain('Answer · ann')
+  })
+
   it('sends a file link to the tool that reads files', async () => {
     await expect(
       run('github_read', { item: 'https://github.com/acme/widgets/blob/main/a.ts' })
@@ -430,7 +474,7 @@ describe('github_commits', () => {
   it("lists a pull request's commits", async () => {
     serve({ '/repos/acme/widgets/pulls/7/commits': { json: [commit([])] } })
     const out = await run('github_commits', { repo: 'acme/widgets#7' })
-    expect(out).toContain('Pull request acme/widgets#7 — 1 commits')
+    expect(out).toContain('Pull request acme/widgets#7 — 1 commit (1–1)')
     expect(out).toContain('abcdef1  2026-01-02  ann  Fix the crash')
   })
 

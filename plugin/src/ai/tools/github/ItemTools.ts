@@ -97,7 +97,7 @@ export function formatItem(repo: RepoRef, read: Read, page: number): string {
       `${p.head} → ${p.base}`,
       `+${p.additions} −${p.deletions}`,
       `${p.changedFiles} files`,
-      `${p.commitsCount} commits`
+      `${p.commitsCount} commit${p.commitsCount === 1 ? '' : 's'}`
     )
   }
   if (read.kind === 'discussion') facts.push(`category ${(d as DiscussionData).category}`)
