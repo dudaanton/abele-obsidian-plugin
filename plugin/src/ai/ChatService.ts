@@ -17,6 +17,12 @@ import { buildCommentContext } from './commentContext'
 const MAX_TABS = 8
 const STORAGE_KEY = 'abele-agent-tabs'
 
+export interface PendingInput {
+  text: string
+  tabId?: string
+  focus?: boolean
+}
+
 interface TabsState {
   tabs: Array<{ chatFilePath: string | null }>
   activeIndex: number
@@ -41,8 +47,15 @@ export class ChatService {
     this.activeTabId.value ? (this.sessions.get(this.activeTabId.value) ?? null) : null
   )
 
-  /** Text to pre-fill in chat input (consumed by AiChat component) */
-  public readonly pendingInput = ref<string | null>(null)
+  /**
+   * Text to pre-fill in the chat input, consumed by the chat component.
+   *
+   * `tabId` names the tab it was meant for — a tab switch that arrives with it puts that tab's
+   * own draft back, and without knowing the text belongs there it would put back an empty one
+   * over it. Without a `tabId` it goes to whatever tab is in front. `focus` also puts the
+   * cursor after it.
+   */
+  public readonly pendingInput = ref<PendingInput | null>(null)
 
   /**
    * A message to bring into view in the active chat, by id — a card in a note was pressed.
@@ -506,6 +519,43 @@ export class ChatService {
       await session.load(file)
       this.saveTabs()
     }
+  }
+
+  /**
+   * A fresh chat on the default agent, in front: a blank tab already open is used rather than
+   * another one added — the active one first — and a new tab is made only when there is none.
+   *
+   * Blank means nothing would be lost: an ordinary chat, never saved, with no messages. It is
+   * reset all the same, so it starts on the default agent with none of the changes somebody
+   * made to it. `null` when every tab holds a conversation and the bar will take no more; the
+   * person is told why.
+   */
+  async openBlankChat(): Promise<ChatSession | null> {
+    const isBlank = (s: ChatSession | null | undefined): s is ChatSession =>
+      !!s &&
+      s.kind === 'chat' &&
+      !s.currentChatFile.value &&
+      s.allMessages.value.length === 0 &&
+      !s.isStreaming.value
+
+    const active = this.activeSession.value
+    let session: ChatSession | null = isBlank(active)
+      ? active
+      : (this.tabOrder.value.map((id) => this.sessions.get(id)).find(isBlank) ?? null)
+
+    if (session) {
+      await session.reset()
+    } else {
+      if (!this.canCreateTab) {
+        new Notice(ChatService.TABS_FULL)
+        return null
+      }
+      session = this.sessions.get(this.createTab()) ?? null
+      if (!session) return null
+    }
+
+    this.switchTab(session.id)
+    return session
   }
 
   getAllSessions(): ChatSession[] {

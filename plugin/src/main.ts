@@ -21,6 +21,7 @@ import { createTransaction, createTransactionAndInsert } from './commands/create
 import { createTimeEntry, stopActiveTimeEntry } from './commands/createTimeEntry'
 import { createNoteInGroup } from './commands/createNoteInGroup'
 import { commentHereInView } from './commands/commentCommands'
+import { registerChatAbout } from './commands/chatAboutNote'
 import {
   createNoteFromTemplate,
   replaceNoteWithTemplate,
@@ -441,6 +442,8 @@ export default class AbelePlugin extends Plugin {
       })
     )
 
+    registerChatAbout(this)
+
     // "Use selection in AI Agent" on right-click in editor
     if (AbeleConfig.getInstance().ai.enabled) {
       this.registerEvent(
@@ -457,7 +460,7 @@ export default class AbelePlugin extends Plugin {
                   ? `> From [[${file.basename}]]:\n> ${selection.replace(/\n/g, '\n> ')}\n\n`
                   : `> ${selection.replace(/\n/g, '\n> ')}\n\n`
                 const chatService = ChatService.getInstance()
-                chatService.pendingInput.value = ref
+                chatService.pendingInput.value = { text: ref }
 
                 // Add file to scope
                 if (file) {

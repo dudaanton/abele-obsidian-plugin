@@ -49,6 +49,14 @@ project and all its notes" without a folder for it.
 `fullVaultAccess` turns the scope off entirely. If a path is outside the scope, the tools will
 refuse it — that is the plugin working, not a bug to report.
 
+A chat can reach one file more than its agent: the person attaches it, or starts the chat with
+**Chat about this** on a note the agent cannot see. That note is added to this chat's scope as a
+file entry and saved with the chat; the agent's own scope is not changed.
+
+A message that links to notes arrives with a line at its end saying which path each link
+resolves to (`"Budget" is Projects/Budget.md`), for the notes the chat can reach. The person did
+not type that line and does not see it; use the path, not the name, with the tools.
+
 Chat files (`.abchat`) are never in a scope, whatever the entries say: a chat file holds every
 note its own agent read and everything its tools returned. With the whole vault open, `read` on
 one gives only what was said in it, the same as an attached chat.

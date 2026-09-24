@@ -285,7 +285,7 @@ import { parseMarkers } from '@/editor/commentMarkers'
 import { reliableScrollTo } from '@/helpers/scrollUtils'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { ChatService } from '@/ai/ChatService'
+import { ChatService, type PendingInput } from '@/ai/ChatService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
 import type { TemplateVariable } from '@/templates/TemplateParser'
@@ -980,24 +980,51 @@ watch(
     }
 
     // On a tab held by a delegated run the input is not mounted at all, so the one being
-    // returned to is put back a tick later, once there is an input to put it in.
-    const draft = tabId ? drafts.get(tabId) : undefined
-    void nextTick(() => chatInput.value?.putDraft(draft ?? NO_DRAFT))
+    // returned to is put back a tick later, once there is an input to put it in. Text sent to
+    // this tab from outside comes with the switch, and is what goes back instead.
+    const pending = pendingFor(tabId)
+    const draft = pending
+      ? { text: pending.text, attachments: [] }
+      : tabId
+        ? drafts.get(tabId)
+        : undefined
+    void nextTick(() => {
+      chatInput.value?.putDraft(draft ?? NO_DRAFT)
+      if (pending) takePending(pending)
+    })
   }
 )
 
-// Consume pending input from external sources (e.g. editor context menu)
-watch(
-  () => chatService.pendingInput.value,
-  (text) => {
-    if (text) {
-      chatInput.value?.setText(text)
-      chatService.pendingInput.value = null
-    }
-  }
-)
+/** The text waiting to go into this tab's input, if any. */
+function pendingFor(tabId: string | null | undefined): PendingInput | null {
+  const pending = chatService.pendingInput.value
+  if (!pending || !tabId) return null
+  return !pending.tabId || pending.tabId === tabId ? pending : null
+}
+
+/** Marks it taken, and puts the cursor after it when that was asked for. */
+function takePending(pending: PendingInput) {
+  if (chatService.pendingInput.value === pending) chatService.pendingInput.value = null
+  if (pending.focus) void nextTick(() => chatInput.value?.focus({ atEnd: true }))
+}
+
+// Text from outside — a context menu, "Chat about this" — for the tab in front. One arriving
+// with a tab switch is put in by the switch above, so this waits a tick and takes only what
+// is still left, rather than racing it.
+function consumePendingInput() {
+  void nextTick(() => {
+    const pending = pendingFor(chatService.activeTabId.value)
+    if (!pending || !chatInput.value) return
+    chatInput.value.setText(pending.text)
+    takePending(pending)
+  })
+}
+
+watch(() => chatService.pendingInput.value, consumePendingInput)
 
 onMounted(() => {
+  // The sidebar may have been opened for this very text.
+  consumePendingInput()
   if (Platform.isMobile && chatContainer.value) {
     nextTick(() => {
       const el = chatContainer.value

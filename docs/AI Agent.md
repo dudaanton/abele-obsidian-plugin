@@ -122,6 +122,18 @@ Type these in the chat input:
 | `/prompt` | Browse and apply a saved prompt |
 | `/skill-name` | Invoke a skill by name (see [Skills](#skills)) |
 
+### Chat about a note
+
+Right-click a note — in the file explorer, on its tab, in its "more options" menu or in the
+editor — and choose **Chat about this**, or run **Chat about current note** from the command
+palette. A new chat opens on the default agent with a link to the note already in the input and
+the cursor after it; nothing is sent until you have written your question. Any vault file can be
+chosen this way, except a chat file.
+
+If the agent cannot see that note, this chat is given access to it — to that one file and
+nothing else, the same as attaching it would. The access is saved with the chat, so it is still
+there when the chat is reopened. The agent's own scope is not changed.
+
 ### Attachments
 
 Click the paperclip icon to attach files:
@@ -224,6 +236,10 @@ Toggle "Full vault access" to give the agent unrestricted access to all files. W
 ### File References
 
 When you mention a file with `@filename.md` in a message, it's automatically added to the scope.
+
+When a message links to a note with `[[Note]]` or `[text](Note.md)`, the agent is also told the
+path each link leads to, for the notes it can reach — so a link by name alone is never mistaken
+for another note with the same name.
 
 ## Permissions
 

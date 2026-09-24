@@ -454,8 +454,12 @@ const addAttachment = (file: TFile) => {
   }
 }
 
-function focus() {
-  inputEl.value?.focus()
+/** `atEnd` puts the cursor after what is already typed — text somebody else put there. */
+function focus(options: { atEnd?: boolean } = {}) {
+  const el = inputEl.value
+  if (!el) return
+  el.focus()
+  if (options.atEnd) el.setSelectionRange(el.value.length, el.value.length)
 }
 
 defineExpose({ setText, addAttachment, focus, takeDraft, putDraft })

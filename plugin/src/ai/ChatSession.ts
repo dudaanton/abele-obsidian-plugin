@@ -11,6 +11,7 @@ import { TFile, Notice } from 'obsidian'
 import { nanoid } from 'nanoid'
 import dayjs from 'dayjs'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { GlobalStore } from '@/stores/GlobalStore'
 import type { MapBlock } from '@/helpers/mapConfig'
 import { DEFAULT_RETRY, backoffDelay, isTransient } from './retry'
 import { AgentLoop } from './client/AgentLoop'
@@ -56,6 +57,7 @@ import { createEditSelectionTool } from './tools/EditSelectionTool'
 import { loadSkillContent } from './tools/SkillTool'
 import { ScopeResolver } from './ScopeResolver'
 import { resolveAttachmentsForApi } from './attachments'
+import { linkedNotesNote } from './linkedNotes'
 import {
   getPathToLeaf,
   findDeepestLeaf,
@@ -1532,9 +1534,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.appendChatMessage(userMsg)
     this.updateVisibleMessages()
 
+    // The model is told where each link points; the bubble keeps what was typed.
+    const text =
+      content + linkedNotesNote(content, GlobalStore.getInstance().app, this.scopeResolver)
+
     if (attachments?.length) {
       const parts = await resolveAttachmentsForApi(attachments)
-      const allParts: UserContentPart[] = [{ type: 'text', text: content }, ...parts]
+      const allParts: UserContentPart[] = [{ type: 'text', text }, ...parts]
       return {
         role: 'user',
         content: allParts,
@@ -1542,7 +1548,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         chatMessageId: userMsg.id,
       }
     }
-    return { role: 'user', content, timestamp: Date.now(), chatMessageId: userMsg.id }
+    return { role: 'user', content: text, timestamp: Date.now(), chatMessageId: userMsg.id }
   }
 
   /**
