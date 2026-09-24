@@ -22,6 +22,7 @@ import Input from '@/components/obsidian/Input.vue'
 import Table from '@/components/obsidian/Table.vue'
 import Image from '@/components/obsidian/Image.vue'
 import TreeItem from '@/components/obsidian/TreeItem.vue'
+import Slider from '@/components/obsidian/Slider.vue'
 import { useVault } from '../helpers/testEnv'
 
 const TABS = [
@@ -809,5 +810,34 @@ describe('Card as a post', () => {
 
     expect(tile.find('.abele-card__cover').exists()).toBe(false)
     expect(tile.classes()).not.toContain('abele-card_large')
+  })
+})
+
+describe('Slider', () => {
+  it("is Obsidian's own slider, following the thumb while dragged and settling when let go", async () => {
+    const slider = mount(Slider, {
+      props: { modelValue: 20, min: 0, max: 1000, step: 1, label: 'Go to a place in the book' },
+    })
+    const input = slider.find('input')
+    expect(input.classes()).toContain('slider')
+    expect(input.attributes('type')).toBe('range')
+    expect(input.attributes('aria-label')).toBe('Go to a place in the book')
+
+    ;(input.element as HTMLInputElement).value = '500'
+    await input.trigger('input')
+    expect(slider.emitted('input')).toEqual([[500]])
+    expect(slider.emitted('update:model-value')).toBeUndefined()
+
+    expect((input.element as HTMLInputElement).style.getPropertyValue('--slider-fill-ratio')).toBe(
+      '0.5'
+    )
+
+    await input.trigger('change')
+    expect(slider.emitted('update:model-value')).toEqual([[500]])
+
+    await slider.setProps({ modelValue: 250 })
+    expect((input.element as HTMLInputElement).style.getPropertyValue('--slider-fill-ratio')).toBe(
+      '0.25'
+    )
   })
 })
