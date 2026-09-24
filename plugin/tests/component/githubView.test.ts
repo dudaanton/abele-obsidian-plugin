@@ -132,7 +132,7 @@ describe('an issue', () => {
     const { wrapper } = open('https://github.com/o/r/issues/404', {})
     await flushPromises()
 
-    expect(wrapper.text()).toMatch(/only sees the repositories it was given/)
+    expect(wrapper.text()).toMatch(/selected in the token/)
     expect(wrapper.findAll('button').some((b) => b.text().includes('Try again'))).toBe(true)
   })
 })

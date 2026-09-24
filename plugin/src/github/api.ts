@@ -145,8 +145,8 @@ const REVIEW_STATES: Record<string, string> = {
 export async function loadIssue(client: GithubClient, t: Of<'issue'>): Promise<IssueData> {
   const base = `${repoPath(t)}/issues/${t.number}`
   const [issue, comments] = await Promise.all([
-    client.get<any>(base, { what: 'issues in this repository' }),
-    client.list<any>(`${base}/comments`, { what: 'issue comments' }),
+    client.get<any>(base, { what: 'the issue' }),
+    client.list<any>(`${base}/comments`, { what: "the issue's comments" }),
   ])
   return {
     title: issue.title,
@@ -166,9 +166,11 @@ export async function loadIssue(client: GithubClient, t: Of<'issue'>): Promise<I
 export async function loadPull(client: GithubClient, t: Of<'pull'>): Promise<PullData> {
   const base = `${repoPath(t)}/pulls/${t.number}`
   const [pull, comments, reviews] = await Promise.all([
-    client.get<any>(base, { what: 'pull requests in this repository' }),
-    client.list<any>(`${repoPath(t)}/issues/${t.number}/comments`, { what: 'comments' }),
-    client.list<any>(`${base}/reviews`, { what: 'pull request reviews' }),
+    client.get<any>(base, { what: 'the pull request' }),
+    client.list<any>(`${repoPath(t)}/issues/${t.number}/comments`, {
+      what: "the pull request's comments",
+    }),
+    client.list<any>(`${base}/reviews`, { what: "the pull request's reviews" }),
   ])
 
   // A review with nothing to say and no verdict is the wrapper of inline comments, which show
@@ -241,8 +243,8 @@ async function diffFiles(raw: any[], reviewComments: any[] = []): Promise<DiffFi
 export async function loadPullFiles(client: GithubClient, t: Of<'pull'>): Promise<FilesData> {
   const base = `${repoPath(t)}/pulls/${t.number}`
   const [files, reviewComments] = await Promise.all([
-    client.list<any>(`${base}/files`, { what: 'the changed files' }),
-    client.list<any>(`${base}/comments`, { what: 'review comments' }),
+    client.list<any>(`${base}/files`, { what: "the pull request's changed files" }),
+    client.list<any>(`${base}/comments`, { what: "the pull request's review comments" }),
   ])
   return {
     files: await diffFiles(files.items, reviewComments.items),
@@ -255,7 +257,7 @@ export async function loadPullCommits(
   t: Of<'pull'>
 ): Promise<CommitSummary[]> {
   const { items } = await client.list<any>(`${repoPath(t)}/pulls/${t.number}/commits`, {
-    what: 'the commits',
+    what: "the pull request's commits",
   })
   return items.map((c: any) => ({
     sha: c.sha,
@@ -267,7 +269,7 @@ export async function loadPullCommits(
 
 export async function loadCommit(client: GithubClient, t: Of<'commit'>): Promise<CommitData> {
   const c = await client.get<any>(`${repoPath(t)}/commits/${encodeURIComponent(t.sha)}`, {
-    what: 'the contents of this repository',
+    what: 'the commit',
   })
   return {
     sha: c.sha,
@@ -309,7 +311,7 @@ export async function loadDiscussion(
   const data = await client.graphql<any>(
     DISCUSSION_QUERY,
     { owner: t.owner, repo: t.repo, number: t.number },
-    'discussions in this repository'
+    'the discussion'
   )
   const d = data.repository?.discussion
   if (!d) throw new GithubError('not-found', 'GitHub has no such discussion in this repository.')
@@ -358,7 +360,7 @@ export async function loadBlob(client: GithubClient, t: Of<'blob'>): Promise<Blo
     try {
       const text = await client.get<string>(
         `${repoPath(t)}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
-        { accept: 'application/vnd.github.raw+json', text: true, what: 'the contents' }
+        { accept: 'application/vnd.github.raw+json', text: true, what: 'the file' }
       )
       return {
         ref,

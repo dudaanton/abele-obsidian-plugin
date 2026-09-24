@@ -373,6 +373,12 @@ watch(
     gap: var(--size-4-2);
   }
 
+  // A refusal is several lines — the cause, the permission, GitHub's own words — and reads as them.
+  &__error {
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+  }
+
   &__commits {
     display: flex;
     flex-direction: column;

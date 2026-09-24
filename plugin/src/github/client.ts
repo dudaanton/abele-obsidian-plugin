@@ -10,111 +10,73 @@
  */
 import { requestUrl, type RequestUrlParam, type RequestUrlResponse } from 'obsidian'
 import type { Endpoints } from './urls'
+import {
+  explainRefusal,
+  header,
+  refusalText,
+  tokenKind,
+  type Refusal,
+  type RefusalKind,
+  type TokenKind,
+} from './refusal'
 
 export type Requester = (request: RequestUrlParam) => Promise<RequestUrlResponse>
 
-export type GithubErrorKind =
-  | 'auth'
-  | 'sso'
-  | 'forbidden'
-  | 'not-found'
-  | 'rate-limit'
-  | 'network'
-  | 'other'
+export type GithubErrorKind = RefusalKind
 
 export class GithubError extends Error {
+  /** The cause alone, without the fix or GitHub's words — for a row that shows them apart. */
+  readonly reason: string
+  readonly fix?: string
+  readonly needed?: string
+  readonly githubSaid?: string
+
   constructor(
     readonly kind: GithubErrorKind,
     message: string,
-    readonly status = 0
+    readonly status = 0,
+    refusal?: Refusal
   ) {
-    super(message)
+    super(refusal ? refusalText(refusal) : message)
     this.name = 'GithubError'
+    this.reason = refusal?.reason ?? message
+    this.fix = refusal?.fix
+    this.needed = refusal?.needed
+    this.githubSaid = refusal?.githubSaid
   }
 }
 
-const header = (headers: Record<string, string> | undefined, name: string): string | undefined => {
-  if (!headers) return undefined
-  const key = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase())
-  return key ? headers[key] : undefined
-}
-
 /**
- * What to tell a person about a refused request.
- *
- * A fine-grained token is refused in ways that look alike from outside and need different fixes,
- * so each one says which: a 404 from a private repository is how GitHub says "this token cannot
- * see it", and a 403 carrying `X-GitHub-SSO` is an organisation waiting for the token to be
- * authorised for single sign-on.
+ * What to tell a person about a refused request: the cause first, naming the request, then what
+ * to do, the permission it needed and GitHub's own words. See `refusal.ts` for the causes.
  */
 export function errorFor(
   status: number,
   headers: Record<string, string> | undefined,
   body: unknown,
   hasToken: boolean,
-  what = 'this'
+  what = 'this item'
 ): GithubError {
   const raw = typeof body === 'object' && body ? (body as { message?: unknown }).message : ''
   const message = typeof raw === 'string' ? raw : ''
+  const refusal = explainRefusal({ status, headers, message, hasToken, what })
+  return new GithubError(refusal.kind, refusal.reason, status, refusal)
+}
 
-  if (status === 401) {
-    return new GithubError(
-      'auth',
-      hasToken
-        ? 'GitHub did not accept the token. It may be mistyped, expired or revoked — set a new one in Abele settings → GitHub.'
-        : 'GitHub asks for a token to show this. Add one in Abele settings → GitHub.',
-      status
-    )
-  }
+/** Whether a token went with the requests, and what kind — never the token itself. */
+export interface TokenInfo {
+  attached: boolean
+  length: number
+  kind: TokenKind
+}
 
-  const remaining = header(headers, 'x-ratelimit-remaining')
-  if (status === 429 || ((status === 403 || status === 429) && remaining === '0')) {
-    const reset = Number(header(headers, 'x-ratelimit-reset'))
-    const when = reset ? ` It resets at ${new Date(reset * 1000).toLocaleTimeString()}.` : ''
-    return new GithubError(
-      'rate-limit',
-      (hasToken
-        ? 'The GitHub request limit for this token is used up.'
-        : 'The GitHub limit for requests without a token (60 an hour) is used up. A token raises it to 5000.') +
-        when,
-      status
-    )
-  }
-
-  if (status === 403) {
-    const sso = header(headers, 'x-github-sso')
-    if (sso) {
-      const url = /url=([^;\s]+)/.exec(sso)?.[1]
-      return new GithubError(
-        'sso',
-        'This organisation uses single sign-on, and the token has not been authorised for it.' +
-          (url ? ` Authorise it here: ${url}` : ' Authorise it on GitHub under Settings → Tokens.'),
-        status
-      )
-    }
-    return new GithubError(
-      'forbidden',
-      `The token is not allowed to read ${what}. A fine-grained token needs this repository in its list and read access to Contents, Issues, Pull requests and Discussions` +
-        (message ? ` (GitHub: ${message})` : '.'),
-      status
-    )
-  }
-
-  if (status === 404) {
-    return new GithubError(
-      'not-found',
-      hasToken
-        ? `GitHub found nothing here. Either it does not exist, or the token cannot see this repository — a fine-grained token only sees the repositories it was given.`
-        : `GitHub found nothing here. If the repository is private, add a token in Abele settings → GitHub.`,
-      status
-    )
-  }
-
-  return new GithubError(
-    'other',
-    `GitHub answered ${status}${message ? `: ${message}` : ''}.`,
-    status
-  )
+/** One answer as it came, for the access check, which reads headers a normal read ignores. */
+export interface Probe<T = unknown> {
+  status: number
+  headers: Record<string, string>
+  body: T | null
+  /** Set when the status is not a success. */
+  error?: GithubError
 }
 
 interface Cached {
@@ -138,14 +100,24 @@ const PER_PAGE = 100
 export class GithubClient {
   private cache = new Map<string, Cached>()
 
+  private readonly token: string
+
   constructor(
     readonly endpoints: Endpoints,
-    private readonly token: string,
+    token: string,
     private readonly request: Requester = (r) => requestUrl(r)
-  ) {}
+  ) {
+    // A token pasted with a trailing newline or space is still the token; sent as it is, it is
+    // not, and GitHub answers 401 for what looks like a perfectly good token.
+    this.token = token.trim()
+  }
 
   get hasToken(): boolean {
     return !!this.token
+  }
+
+  get tokenInfo(): TokenInfo {
+    return { attached: this.hasToken, length: this.token.length, kind: tokenKind(this.token) }
   }
 
   private headers(accept: string): Record<string, string> {
@@ -198,6 +170,30 @@ export class GithubClient {
     return body as T
   }
 
+  /** One request, uncached, answered with its status and headers whatever they are. */
+  async probe<T>(path: string, options: GetOptions = {}): Promise<Probe<T>> {
+    const url = path.startsWith('http') ? path : `${this.endpoints.api}${path}`
+    const response = await this.send({
+      url,
+      method: 'GET',
+      headers: this.headers(options.accept ?? 'application/vnd.github+json'),
+    })
+    let body: T | null = null
+    try {
+      body = response.json as T
+    } catch {
+      body = null
+    }
+    const headers = response.headers ?? {}
+    const ok = response.status >= 200 && response.status < 300
+    return {
+      status: response.status,
+      headers,
+      body,
+      error: ok ? undefined : errorFor(response.status, headers, body, this.hasToken, options.what),
+    }
+  }
+
   /** A list, page after page, until a short page or `MAX_PAGES`. */
   async list<T>(
     path: string,
@@ -242,8 +238,9 @@ export class GithubClient {
     const errors = body?.errors ?? []
     if (errors.length > 0) {
       const first = errors[0]
-      if (first.type === 'NOT_FOUND') throw errorFor(404, response.headers, null, true, what)
-      if (first.type === 'FORBIDDEN') throw errorFor(403, response.headers, null, true, what)
+      // GraphQL answers 200 with the refusal inside; its message is what says which refusal.
+      if (first.type === 'NOT_FOUND') throw errorFor(404, response.headers, first, true, what)
+      if (first.type === 'FORBIDDEN') throw errorFor(403, response.headers, first, true, what)
       throw new GithubError('other', `GitHub: ${errors.map((e) => e.message).join('; ')}`)
     }
     if (!body?.data) throw new GithubError('other', 'GitHub sent back an empty answer.')

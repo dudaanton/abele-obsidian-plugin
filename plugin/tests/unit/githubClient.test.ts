@@ -119,15 +119,63 @@ describe('refusals say what to do', () => {
     expect(errorFor(403, { 'X-RateLimit-Remaining': '0' }, null, false).kind).toBe('rate-limit')
   })
 
-  it('403 otherwise names the fine-grained permissions', () => {
-    const e = errorFor(403, {}, { message: 'Resource not accessible' }, true, 'issues')
+  it('403 otherwise names the request and keeps what GitHub said', () => {
+    const e = errorFor(403, {}, { message: 'Resource not accessible' }, true, 'the issue')
     expect(e.kind).toBe('forbidden')
-    expect(e.message).toMatch(/read access to Contents, Issues, Pull requests and Discussions/)
+    expect(e.message).toMatch(/^GitHub refused the issue/)
+    expect(e.message).toContain('GitHub said: "Resource not accessible"')
   })
 
-  it('404 explains that a token only sees its own repositories', () => {
-    expect(errorFor(404, {}, null, true).message).toMatch(/only sees the repositories/)
+  it('404 explains that a token only sees the repositories it was given', () => {
+    expect(errorFor(404, {}, null, true).message).toMatch(/selected in the token/)
     expect(errorFor(404, {}, null, false).message).toMatch(/add a token/)
+  })
+
+  it('a pull request whose reviews are refused says it was the reviews', async () => {
+    const { request } = fake({
+      '/repos/o/r/pulls/7/reviews': {
+        status: 403,
+        json: { message: 'Resource not accessible by personal access token' },
+        headers: { 'X-Accepted-GitHub-Permissions': 'pull_requests=read' },
+      },
+      '/repos/o/r/issues/7/comments': { json: [] },
+      '/repos/o/r/pulls/7': { json: { number: 7 } },
+    })
+    await expect(
+      loadPull(client(request), {
+        kind: 'pull',
+        host: 'github.com',
+        owner: 'o',
+        repo: 'r',
+        number: 7,
+        tab: 'conversation',
+      })
+    ).rejects.toThrow(/refused the pull request's reviews[\s\S]*Needs: Pull requests \(read\)/)
+  })
+
+  it('a GraphQL refusal keeps its message, so an IP allow list is named as one', async () => {
+    const { request } = fake({
+      '/graphql': {
+        json: {
+          errors: [
+            {
+              type: 'FORBIDDEN',
+              message:
+                'Although you appear to have the correct authorization credentials, the `acme` organization has an IP allow list enabled, and your IP address is not permitted to access this resource.',
+            },
+          ],
+        },
+      },
+    })
+    await expect(
+      loadDiscussion(client(request), {
+        kind: 'discussion',
+        host: 'github.com',
+        owner: 'o',
+        repo: 'r',
+        number: 1,
+      })
+    ).rejects.toMatchObject({ kind: 'ip-allow-list' })
   })
 
   it('discussions without a token fail before any request', async () => {
