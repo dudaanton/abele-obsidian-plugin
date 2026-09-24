@@ -5,17 +5,7 @@
  * restart; everything that acts — the click, the menu item, the command — asks the settings
  * first, so switching the feature off takes effect at once without a reload.
  */
-import {
-  Keymap,
-  MarkdownView,
-  Modal,
-  Notice,
-  Platform,
-  Setting,
-  type App,
-  type PaneType,
-  type Plugin,
-} from 'obsidian'
+import { MarkdownView, Modal, Notice, Platform, Setting, type App, type Plugin } from 'obsidian'
 import type { EditorView } from '@codemirror/view'
 import { GithubView } from './GithubView'
 import {
@@ -25,7 +15,7 @@ import {
   openGithubUrl,
   parseForSettings,
 } from './GithubService'
-import { linkAtClick, urlAtCursor } from './links'
+import { linkAtClick, paneForClick, urlAtCursor } from './links'
 import { registerSnippetBlock } from './snippetCard'
 
 /**
@@ -41,26 +31,8 @@ const NOTE_SURFACES = '.workspace-leaf-content, .abele-markdown, .markdown-rende
  */
 const OPENING_EVENT: 'click' | 'mousedown' = Platform.isAndroidApp ? 'mousedown' : 'click'
 
-/**
- * What a click on a link asks for: `false` to open it the plain way (reusing a GitHub tab), a pane
- * type to open it in a new tab, split or window, or `null` to leave it alone.
- *
- * Mod-click follows Obsidian: `Keymap.isModEvent` says tab, split (Mod+Alt) or window
- * (Mod+Alt+Shift). Alt without Mod is the way through to the browser. In source mode a plain click
- * only places the cursor and Mod-click is how any link opens, so there Mod alone is the plain open
- * and Mod+Shift asks for the new tab.
- */
-export function paneForClick(evt: MouseEvent, sourceMode: boolean): PaneType | false | null {
-  const mod = Keymap.isModEvent(evt)
-  const pane: PaneType | false = mod === true ? 'tab' : mod
-  if (sourceMode) {
-    if (!pane) return null
-    if (pane === 'tab') return evt.shiftKey ? 'tab' : false
-    return pane
-  }
-  if (evt.altKey && !pane) return null
-  return pane
-}
+/** Kept here too: this is where it was first exported from. */
+export { paneForClick }
 
 function interceptor(app: App) {
   return (evt: MouseEvent) => {

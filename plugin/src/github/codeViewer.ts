@@ -33,6 +33,11 @@ export interface Viewer {
   lineTop(n: number): number | null | { estimate: number }
   /** The line at the top edge of the scrolling tab; null when that cannot be measured. */
   topLine(): number | null
+  /**
+   * The line at the top edge of the scrolling tab while that edge is inside the editor — the
+   * person has scrolled into it; null when the editor starts below the edge or ends above it.
+   */
+  lineInView(): number | null
   /** Whether any of the lines `from`–`to` is on screen. */
   shows(from: number, to: number): boolean
   destroy(): void
@@ -114,6 +119,13 @@ function mount(
       if (!rect) return null
       const y = rect.top - view.documentTop
       if (y <= 0) return 1
+      return view.state.doc.lineAt(view.lineBlockAtHeight(y).from).number
+    },
+    lineInView() {
+      const rect = box()
+      if (!rect || !view.dom.isConnected || view.dom.getClientRects().length === 0) return null
+      const y = rect.top - view.documentTop
+      if (y <= 0 || y >= view.contentHeight) return null
       return view.state.doc.lineAt(view.lineBlockAtHeight(y).from).number
     },
     shows(from, to) {

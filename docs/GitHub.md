@@ -96,6 +96,15 @@ A pull request with many files lists them and draws a file's diff only when it i
 with five or fewer opens them all. A file GitHub will not send a diff for — binary, or too
 large — says so; the tab's own button opens the page on GitHub.
 
+Every changed file — of a pull request or a commit — can be opened whole: the file button in its
+header, or its path, which is a link. It opens the file at the commit the diff is of (the pull
+request's head commit, or the commit itself), and a file the change deleted as it was before it
+(the base commit, or the commit's parent). It opens at the first selected line of the diff; with
+nothing selected, at the line at the top of the tab when the tab is scrolled into that diff;
+otherwise at the top of the file — where a markdown file opens rendered, and at a line as code,
+by the rule below. The clicks are those of any link here: plain follows the tab rule, Mod opens a
+new tab, Alt the browser.
+
 ## GitHub text is someone else's
 
 Everything written on GitHub that a tab or a note shows — a description, a comment, a review

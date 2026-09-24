@@ -83,6 +83,8 @@ export interface PullData extends IssueData {
   head: string
   /** The commit the pull request's branch is at: what its code is searched and linked at. */
   headSha?: string
+  /** The commit of the base branch it is compared with: where a file it deletes still exists. */
+  baseSha?: string
   additions: number
   deletions: number
   changedFiles: number
@@ -121,6 +123,8 @@ export interface CommitSummary {
 
 export interface CommitData {
   sha: string
+  /** The first parent: where a file the commit deletes still exists. */
+  parentSha?: string
   message: string
   author: string
   date: string
@@ -283,6 +287,7 @@ export async function loadPull(client: GithubClient, t: Of<'pull'>): Promise<Pul
     base: pull.base?.ref ?? '',
     head: pull.head?.label ?? pull.head?.ref ?? '',
     headSha: pull.head?.sha,
+    baseSha: pull.base?.sha,
     additions: pull.additions ?? 0,
     deletions: pull.deletions ?? 0,
     changedFiles: pull.changed_files ?? 0,
@@ -391,6 +396,7 @@ export async function loadCommit(client: GithubClient, t: Of<'commit'>): Promise
   })
   return {
     sha: c.sha,
+    parentSha: c.parents?.[0]?.sha,
     message: c.commit?.message ?? '',
     author: c.author?.login ?? c.commit?.author?.name ?? 'unknown',
     date: c.commit?.author?.date ?? '',

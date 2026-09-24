@@ -4,6 +4,7 @@
     class="abele-github-file"
     :class="{ 'abele-github-file_target': !!anchor }"
     :data-diff="file.hash"
+    :data-path="file.path"
   >
     <div
       class="abele-github-file__head"
@@ -19,13 +20,34 @@
         <span v-if="file.previousPath" class="abele-github-file__previous"
           >{{ file.previousPath }} →
         </span>
-        {{ file.path }}
+        <!-- A real link, so hovering shows where it goes and a right click offers what a link
+             does. The click itself is Obsidian's link handling, which the GitHub tabs take. -->
+        <a
+          v-if="openUrl"
+          ref="pathLink"
+          class="abele-github-file__path-link"
+          :href="openUrl"
+          @pointerdown="refreshLink"
+          @mouseenter="refreshLink"
+          @focus="refreshLink"
+          @click.stop
+          @keydown.enter.stop
+          >{{ file.path }}</a
+        >
+        <template v-else>{{ file.path }}</template>
       </span>
       <span class="abele-github-file__stats">
         <span class="abele-github-file__add">+{{ file.additions }}</span>
         <span class="abele-github-file__del">−{{ file.deletions }}</span>
       </span>
       <Badge v-if="file.status !== 'modified'" :text="file.status" />
+      <Icon
+        v-if="openUrl"
+        class="abele-github-file__open"
+        icon="file-text"
+        :tooltip="openTooltip"
+        @click.stop="openFile"
+      />
       <Icon
         v-if="file.reviewComments.length"
         class="abele-github-file__comment-count"
@@ -88,6 +110,9 @@ import type { DiffFileAnchor } from '@/github/urls'
 import { linesFor, parsePatch } from '@/github/patch'
 import { mountDiff, type Viewer } from '@/github/codeViewer'
 import { LINE_CONTEXT, elementTop, pinIntoView } from '@/github/scrollTo'
+import { fileUrl, lineOnSide } from '@/github/permalinks'
+import { paneForClick } from '@/github/links'
+import type { PaneType } from 'obsidian'
 
 const props = withDefaults(
   defineProps<{
@@ -98,9 +123,19 @@ const props = withDefaults(
     anchor?: DiffFileAnchor
     /** The review comment a link pointed at, marked where it appears. */
     commentAnchor?: string
+    /**
+     * The commits the diff is between: the file is opened whole at `head`, or at `base` when the
+     * change deleted it. Without them there is no "Open file".
+     */
+    refs?: { head?: string; base?: string }
   }>(),
-  { anchor: undefined, commentAnchor: undefined }
+  { anchor: undefined, commentAnchor: undefined, refs: undefined }
 )
+
+const emit = defineEmits<{
+  /** Opens a GitHub URL: `false` by the usual rule, a pane type in a new tab, split or window. */
+  open: [url: string, pane: PaneType | false]
+}>()
 
 const root = ref<HTMLElement>()
 const editorEl = ref<HTMLElement>()
@@ -191,6 +226,48 @@ const draw = async () => {
   viewer = mountDiff(editorEl.value, lines.value, props.file.path, highlight.value, selectionHooks)
 }
 
+/**
+ * "Open file": the whole file at the commit the diff is of — before it, for a deleted file — at
+ * the first selected line, else at the line at the top of the tab when the person has scrolled
+ * into this diff. Otherwise at no line, so a markdown file opens rendered.
+ */
+const deleted = computed(() => props.file.status === 'removed')
+const openUrl = computed(() => urlAt(undefined))
+const openTooltip = computed(() =>
+  deleted.value ? 'Open the whole file as it was before the change' : 'Open the whole file'
+)
+
+function urlAt(line: number | undefined): string | null {
+  const item = linker?.item()
+  const sha = deleted.value ? props.refs?.base : props.refs?.head
+  if (!item || !sha) return null
+  return fileUrl(item, sha, props.file.path, line)
+}
+
+/** The line to open at, now: the selection's, or the one in view. */
+function currentLine(): number | undefined {
+  const side = deleted.value ? 'old' : 'new'
+  const picked = selectedLines.value?.from ?? viewer?.lineInView() ?? null
+  return picked === null ? undefined : lineOnSide(lines.value, picked - 1, side)
+}
+
+const currentUrl = () => urlAt(currentLine())
+
+const pathLink = ref<HTMLAnchorElement>()
+/** The link's address follows the selection and the scroll; it is read when it is used. */
+const refreshLink = () => {
+  const url = currentUrl()
+  if (url && pathLink.value) pathLink.value.setAttribute('href', url)
+}
+
+const openFile = (evt: MouseEvent) => {
+  const url = currentUrl()
+  if (!url) return
+  const pane = paneForClick(evt, false)
+  if (pane === null) window.open(url)
+  else emit('open', url, pane)
+}
+
 let unpin = () => {}
 
 /** The marked line, or the file itself when the link names no line the diff shows. */
@@ -275,6 +352,16 @@ onBeforeUnmount(() => {
     min-width: 0;
     font-family: var(--font-monospace);
     overflow-wrap: anywhere;
+  }
+
+  &__path-link {
+    color: inherit;
+    text-decoration: none;
+
+    &:hover {
+      color: var(--link-external-color-hover);
+      text-decoration: underline;
+    }
   }
 
   &__previous {

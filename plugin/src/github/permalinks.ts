@@ -126,6 +126,37 @@ export function blobLink(repo: RepoRef, sha: string, path: string, span: LineSpa
   }
 }
 
+/**
+ * A whole file at a commit, as "Open file" on a diff opens it: `…/blob/<sha>/src/app.ts#L12`.
+ * With no line a markdown file opens rendered; a line asks for its source with `?plain=1`, since
+ * rendered it has no numbers to land on.
+ */
+export function fileUrl(repo: RepoRef, sha: string, path: string, line?: number): string {
+  if (line !== undefined) return blobLink(repo, sha, path, { from: line, to: line }).url
+  return `${web(repo)}/blob/${sha}/${encodePath(path)}`
+}
+
+/**
+ * The line of the file that line `index` of a diff stands for, on one side: its own number there,
+ * or failing that — a removed line seen from the new side, a hunk header — the next line's that
+ * has one, then the previous one's. Undefined when that side has no lines in the diff at all.
+ */
+export function lineOnSide(
+  lines: DiffLine[],
+  index: number,
+  side: 'old' | 'new'
+): number | undefined {
+  for (let i = Math.max(0, index); i < lines.length; i++) {
+    const n = lines[i][side]
+    if (n !== undefined) return n
+  }
+  for (let i = Math.min(index, lines.length) - 1; i >= 0; i--) {
+    const n = lines[i][side]
+    if (n !== undefined) return n
+  }
+  return undefined
+}
+
 /** What a comment is called in a label, by the anchor GitHub gives it. */
 function commentKind(anchor: string, reply: boolean): string {
   if (anchor.startsWith('pullrequestreview-')) return 'review'

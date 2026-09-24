@@ -15,6 +15,8 @@
       :initially-open="files.length <= OPEN_UP_TO || holdsComment(file)"
       :anchor="file.hash === anchor?.hash ? anchor : undefined"
       :comment-anchor="commentAnchor"
+      :refs="refs"
+      @open="(url: string, pane: PaneType | false) => emit('open', url, pane)"
     />
     <EmptyState v-if="!files.length" text="No files changed." />
     <div v-if="!complete" class="abele-github-files__missing">
@@ -29,6 +31,7 @@ import EmptyState from '../obsidian/EmptyState.vue'
 import GithubDiffFile from './GithubDiffFile.vue'
 import type { DiffFile } from '@/github/api'
 import type { DiffFileAnchor } from '@/github/urls'
+import type { PaneType } from 'obsidian'
 
 /** A short change opens whole; a long one lists its files and draws each diff on demand. */
 const OPEN_UP_TO = 5
@@ -40,9 +43,15 @@ const props = withDefaults(
     /** A review comment the link pointed at: its file opens, and the comment is marked. */
     commentAnchor?: string
     complete?: boolean
+    /** The commits the change is between, for opening a file whole. */
+    refs?: { head?: string; base?: string }
   }>(),
-  { anchor: undefined, commentAnchor: undefined, complete: true }
+  { anchor: undefined, commentAnchor: undefined, complete: true, refs: undefined }
 )
+
+const emit = defineEmits<{
+  open: [url: string, pane: PaneType | false]
+}>()
 
 const holdsComment = (file: DiffFile) =>
   !!props.commentAnchor && file.reviewComments.some((c) => c.anchor === props.commentAnchor)

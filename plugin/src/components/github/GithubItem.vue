@@ -119,6 +119,8 @@
               :complete="files.data.value.complete"
               :anchor="fileAnchor"
               :comment-anchor="anchor"
+              :refs="{ head: pull.headSha, base: pull.baseSha }"
+              @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
             />
           </template>
         </template>
@@ -155,7 +157,12 @@
           :repo="repo"
           as-document
         />
-        <GithubFiles :files="commit.files" :anchor="fileAnchor" />
+        <GithubFiles
+          :files="commit.files"
+          :anchor="fileAnchor"
+          :refs="{ head: commit.sha, base: commit.parentSha }"
+          @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
+        />
       </template>
 
       <template v-else-if="shown.kind === 'blob' && blob">

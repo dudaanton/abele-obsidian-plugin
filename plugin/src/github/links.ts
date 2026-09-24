@@ -8,6 +8,7 @@
  * that line.
  */
 import { EditorView } from '@codemirror/view'
+import { Keymap, type PaneType } from 'obsidian'
 
 /** `[text](url)`, `[text](<url> "title")`, `<url>`, and a bare `http(s)://…`. */
 const LINK_PATTERNS: RegExp[] = [
@@ -90,4 +91,25 @@ export function urlAtCursor(view: EditorView): string | null {
   const line = view.state.doc.lineAt(pos)
   const url = urlInLine(line.text, pos - line.from)
   return isWebUrl(url) ? url : null
+}
+
+/**
+ * What a click on a link asks for: `false` to open it the plain way (reusing a GitHub tab), a pane
+ * type to open it in a new tab, split or window, or `null` to leave it alone.
+ *
+ * Mod-click follows Obsidian: `Keymap.isModEvent` says tab, split (Mod+Alt) or window
+ * (Mod+Alt+Shift). Alt without Mod is the way through to the browser. In source mode a plain click
+ * only places the cursor and Mod-click is how any link opens, so there Mod alone is the plain open
+ * and Mod+Shift asks for the new tab.
+ */
+export function paneForClick(evt: MouseEvent, sourceMode: boolean): PaneType | false | null {
+  const mod = Keymap.isModEvent(evt)
+  const pane: PaneType | false = mod === true ? 'tab' : mod
+  if (sourceMode) {
+    if (!pane) return null
+    if (pane === 'tab') return evt.shiftKey ? 'tab' : false
+    return pane
+  }
+  if (evt.altKey && !pane) return null
+  return pane
 }
