@@ -1,5 +1,6 @@
 import type { AgentTool } from '../client'
 import { ScopeResolver } from '../ScopeResolver'
+import { pathTree } from './compactListing'
 
 const PAGE_SIZE = 100
 
@@ -35,7 +36,8 @@ export function createListWorkspaceTool(): AgentTool {
       const shown = offset + page.length
       const remaining = total - shown
 
-      let text = `${total} accessible files (showing ${offset + 1}–${shown}):\n${page.join('\n')}`
+      // Grouped by folder: the folder said once instead of on every path.
+      let text = `${total} accessible files (showing ${offset + 1}–${shown}):\n${pathTree(page)}`
       if (remaining > 0) {
         text += `\n\n... ${remaining} more files. Use offset=${shown} to see next page.`
       }

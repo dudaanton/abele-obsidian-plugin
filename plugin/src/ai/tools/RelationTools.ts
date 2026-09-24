@@ -12,6 +12,7 @@ import {
   parsePriority,
   PRIORITY_PROPERTY,
 } from '@/helpers/taskMeta'
+import { groupByFolder } from './compactListing'
 
 // ── Helpers ──
 
@@ -146,17 +147,23 @@ export function createReadBacklinksTool(): AgentTool {
           } else {
             lines.push(note.path)
           }
-        } else {
-          const parts = [note.path]
-          if (note.type) parts.push(`type=${note.type}`)
-          if (note.created) parts.push(note.created)
-          lines.push(parts.join(' | '))
         }
       }
 
+      // Grouped by folder, so the folder is said once rather than on every note.
       const text = includeContent
         ? lines.join('\n\n')
-        : `${notes.length} notes:\n${lines.join('\n')}`
+        : `${notes.length} notes:\n` +
+          groupByFolder(
+            notes,
+            (n) => n.path,
+            (n, name) => {
+              const parts = [name]
+              if (n.type) parts.push(`type=${n.type}`)
+              if (n.created) parts.push(n.created)
+              return parts.join(' | ')
+            }
+          )
       return { content: [{ type: 'text', text }] }
     },
   }
@@ -241,11 +248,20 @@ export function createReadTransactionsTool(): AgentTool {
         return { content: [{ type: 'text', text: 'No transactions found.' }] }
       }
 
-      const lines = rows.map((r) =>
-        [r.date, r.from, r.to, r.amount, r.category, r.path].filter(Boolean).join(' | ')
+      // Every column in its place, empty or not, so a missing category cannot pass for a path;
+      // and the folder said once for all the transactions in it.
+      const body = groupByFolder(
+        rows,
+        (r) => r.path,
+        (r, name) => [r.date, r.from, r.to, r.amount, r.category, name].join(' | ')
       )
       return {
-        content: [{ type: 'text', text: `${rows.length} transactions:\n${lines.join('\n')}` }],
+        content: [
+          {
+            type: 'text',
+            text: `${rows.length} transactions (date | from | to | amount | category | file):\n${body}`,
+          },
+        ],
       }
     },
   }
@@ -350,18 +366,26 @@ export function createReadTasksTool(): AgentTool {
         return { content: [{ type: 'text', text: 'No tasks found.' }] }
       }
 
-      const lines = rows.map((r) => {
-        const parts = [r.completed ? '[x]' : '[ ]', r.title]
-        if (r.due) parts.push(`due:${r.due}`)
-        if (r.date) parts.push(`date:${r.date}`)
-        if (r.recurrence) parts.push(`recur:${r.recurrence}`)
-        if (r.priority) parts.push(`priority:${r.priority}`)
-        if (r.labels.length) parts.push(`labels:${r.labels.join(', ')}`)
-        parts.push(r.path)
-        return parts.join(' | ')
-      })
+      // Grouped by folder, and named by the file: the title is said apart only when it is not
+      // the file's own name, which it almost always is.
+      const body = groupByFolder(
+        rows,
+        (r) => r.path,
+        (r, name) => {
+          const parts = [`${r.completed ? '[x]' : '[ ]'} ${name}`]
+          if (r.title !== name.replace(/\.md$/, '')) parts.push(`title:${r.title}`)
+          if (r.due) parts.push(`due:${r.due}`)
+          if (r.date) parts.push(`date:${r.date}`)
+          if (r.completed) parts.push(`completed:${r.completed}`)
+          if (r.recurrence) parts.push(`recur:${r.recurrence}`)
+          if (r.priority) parts.push(`priority:${r.priority}`)
+          if (r.labels.length) parts.push(`labels:${r.labels.join(', ')}`)
+          return parts.join(' | ')
+        }
+      )
+      const done = rows.filter((r) => r.completed).length
       return {
-        content: [{ type: 'text', text: `${rows.length} tasks:\n${lines.join('\n')}` }],
+        content: [{ type: 'text', text: `${rows.length} tasks (${done} done):\n${body}` }],
       }
     },
   }

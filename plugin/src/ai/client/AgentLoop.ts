@@ -370,6 +370,7 @@ export class AgentLoop {
       timestamp: Date.now(),
       injectMessages: toolResult.injectMessages,
       ...(toolResult.reads?.length ? { reads: toolResult.reads } : {}),
+      ...(toolResult.stored ? { stored: toolResult.stored } : {}),
     }
   }
 }

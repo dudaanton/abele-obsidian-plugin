@@ -294,6 +294,9 @@ export const CORE_TOOLS = new Set([
   // conventions. The other doc tools are opt-in because they are only wanted while writing the
   // thing they describe; this one is wanted before touching anything.
   'query_docs',
+  // Reads the rest of a result too long to send whole. Without it a shortened answer would be
+  // a dead end, so every agent has it. See `resultStore.ts`.
+  'read_result',
 ])
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {

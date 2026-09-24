@@ -22,6 +22,7 @@ export type {
   AgentTool,
   AgentToolResult,
   ReadMark,
+  StoredResult,
   // Model
   ModelConfig,
   StreamOptions,

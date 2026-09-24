@@ -6,7 +6,7 @@ easy to get wrong. Which of these an agent actually has depends on its own tool 
 ## Files
 
 `read`, `write`, `create`, `edit`, `replace`, `edit_selection`, `rm`, `mv`, `cp`, `ls`, `find`,
-`open`, `read_image`, `workspace`, `screenshot`, `inspect_view`.
+`open`, `read_image`, `workspace`, `screenshot`, `inspect_view`, `read_result`.
 
 - `edit` replaces one exact string in one file. `replace` applies a list of replacement actions
   and is the one for a bulk, rule-driven change. `write` overwrites the whole file — reach for
@@ -27,6 +27,9 @@ easy to get wrong. Which of these an agent actually has depends on its own tool 
   frontmatter included: the numbers a link to lines (`[[Note#L12-L18|label]]`, see the vault
   section) opens at. `start_line`/`end_line` read a window; `line_numbers: false` gives the file
   exactly as it is. The numbers are not part of the file: never copy them into `edit` or `write`.
+  A file too long for one read (about ten thousand tokens) comes back as the window of lines that
+  fits and ends with where it stopped; read on with `start_line`. Windows read one after another
+  add up: once they reach the last line the file counts as read in full, `write` included.
 - `edit_selection` exists only inside a comment chat on a note. It rewrites the passage that
   comment is anchored to and nothing else in the note; there is no path to give it. A comment on
   a message in a chat does not have it.
@@ -40,6 +43,20 @@ easy to get wrong. Which of these an agent actually has depends on its own tool 
   decides what the agent gets to see. Every screenshot is saved to the attachments folder and
   shown in the chat under the tool call, so the person sees the same picture the agent did.
 - `rm` moves to trash rather than destroying.
+- **A long answer comes in part.** Any tool answer longer than about six thousand tokens — every
+  task in a large vault, a folder of thousands of notes, a long page — is kept whole in the chat
+  and you are sent its first part, ending with a note in brackets: how many lines you got of how
+  many, and a key such as `r1a2b3c4d`. What is past that note is **not** in the message. Read on
+  with `read_result` (`key`, `start_line`, `end_line`), or take only the lines you need with
+  `grep` (plain text, case-insensitive, or `/regex/`) — searching is usually the cheaper way. The
+  key keeps working for the rest of the chat, after it is reopened too. It is the answer as it was
+  then: for the current state of a file or a list, call the tool again.
+- `workspace`, `find`, `read_tasks`, `read_transactions` and `read_backlinks` group what they list
+  by folder: a line `Folder/Sub/ (n)`, then the n names in it, indented — a path is the folder
+  line plus the name. `find` with `include_frontmatter` gives each file's properties on its line
+  as `key: value; key: value` (a plain string bare, anything else as JSON), and says once, at the
+  top, the properties every file shares. `read_transactions` names its columns in its first line
+  and leaves an empty one empty.
 
 Every one of these is bounded by the agent's scope.
 

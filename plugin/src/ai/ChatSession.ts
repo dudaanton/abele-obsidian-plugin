@@ -60,6 +60,7 @@ import { loadSkillContent } from './tools/SkillTool'
 import { ScopeResolver } from './ScopeResolver'
 import { resolveAttachmentsForApi } from './attachments'
 import { ReadGuard } from './readGuard'
+import { ResultStore, createReadResultTool, READ_RESULT } from './resultStore'
 import { linkedNotesNote } from './linkedNotes'
 import {
   getPathToLeaf,
@@ -146,6 +147,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    */
   private static readonly READ_TOOLS = [
     'read',
+    READ_RESULT,
     'ls',
     'find',
     'workspace',
@@ -194,6 +196,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     history: () => this.getMessagesForModel(),
     scope: () => this.scopeResolver,
   })
+  /** Keeps a result too big to send whole, for `read_result`. See `resultStore.ts`. */
+  private readonly results = new ResultStore({ messages: () => this.allInternalMessages })
   private dirty = false
   private writing: Promise<void> | null = null
   private persistTimer: number | null = null
@@ -820,7 +824,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       (this.toolModes.value[EDIT_SELECTION_TOOL] ?? 'ask') !== 'off'
     const withSelection = offered ? [...filtered, createEditSelectionTool(this)] : filtered
 
-    return this.wrapToolsForSession(withSelection)
+    // Every agent can read on in a result it was sent only the start of.
+    return this.wrapToolsForSession([...withSelection, createReadResultTool(this.results)])
   }
 
   /**
@@ -843,6 +848,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           if (refused) throw new Error(refused)
           const result = await tool.execute(id, params, signal)
           await this.readGuard.record(tool.name, params, result)
+          // After the guard, which has to see a file's text as the tool gave it.
+          this.results.keep(tool.name, id, result)
           // The one place that sees a tool's name, its arguments and its result together, so
           // the one place a successful write becomes a link. A run is skipped: it is never
           // listed anywhere, and its writes belong to the chat that delegated them.
@@ -1224,6 +1231,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
       // Whatever the last turn read is in the history now, or went with a turn that was stopped.
       this.readGuard.settle()
+      this.results.settle()
       this.agentLoop = new AgentLoop()
       this.unsubscribe = this.agentLoop.subscribe((event) => this.handleAgentEvent(event))
 
@@ -1423,6 +1431,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       timestamp: Date.now(),
       chatMessageId: toolChatMsg?.id,
       ...(toolResult.reads?.length ? { reads: toolResult.reads } : {}),
+      ...(toolResult.stored ? { stored: toolResult.stored } : {}),
     })
 
     if (toolResult.injectMessages?.length) {
@@ -1773,6 +1782,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.log.forget()
     this.dirty = false
     this.readGuard.settle()
+    this.results.settle()
     this.abort()
     this.abortBackground()
     this.allInternalMessages = []

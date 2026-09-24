@@ -58,6 +58,18 @@ export interface ToolResultMessage {
   chatMessageId?: string
   /** What this call showed the agent of a file, or left in it. See `ReadMark`. */
   reads?: ReadMark[]
+  /**
+   * The whole of a result too big to send, when `content` is only the start of it. The model is
+   * never sent this; `read_result` reads it by its key. See `resultStore.ts`.
+   */
+  stored?: StoredResult
+}
+
+/** A tool's whole answer, kept beside the shortened one the model was sent. */
+export interface StoredResult {
+  /** What the agent names it by, e.g. `r1a2b3c4d`. */
+  key: string
+  text: string
 }
 
 /**
@@ -75,6 +87,11 @@ export interface ReadMark {
   via: 'read' | 'attachment' | 'write'
   /** Set when only these lines (1-based, inclusive) were seen; absent for the whole file. */
   lines?: [number, number]
+  /**
+   * How many lines the file had, with `lines`: what lets two windows read one after the other
+   * add up to the whole file.
+   */
+  total?: number
 }
 
 export interface SystemMessage {
@@ -130,9 +147,11 @@ export interface AgentToolResult {
    * The text of a file this call read or left behind, as the tool saw it. Only the session's
    * read guard looks at it; it turns it into the `reads` of the tool's result message.
    */
-  seen?: { path: string; hash: string; lines?: [number, number] }
+  seen?: { path: string; hash: string; lines?: [number, number]; total?: number }
   /** Filled by the session's read guard, carried onto the result message by whoever makes it. */
   reads?: ReadMark[]
+  /** Filled by the session's result store when the answer was too big to send whole. */
+  stored?: StoredResult
 }
 
 // ── Model / Provider types ──────────────────────────────────

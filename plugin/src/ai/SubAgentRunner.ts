@@ -6,6 +6,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { CORE_TOOLS } from './types'
 import type { ToolMode } from './types'
 import { ReadGuard, withReadGuard } from './readGuard'
+import { ResultStore, withResultStore } from './resultStore'
 
 export interface SubAgentTask {
   /** System prompt for the sub-agent */
@@ -94,7 +95,10 @@ export async function runSubAgent(
   const result = await agentLoop.run({
     model: task.model,
     systemPrompt: task.systemPrompt,
-    tools: withReadGuard(task.tools, guard),
+    tools: withResultStore(
+      withReadGuard(task.tools, guard),
+      new ResultStore({ messages: () => [] })
+    ),
     messages,
     streamOptions: {
       signal: task.signal,

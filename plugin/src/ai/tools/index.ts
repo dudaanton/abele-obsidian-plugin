@@ -2,6 +2,7 @@ import type { AgentTool } from '../client'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { EDIT_SELECTION_TOOL } from '../types'
 import { createReadFileTool } from './ReadFileTool'
+import { READ_BUDGET, READ_RESULT, READ_RESULT_DESCRIPTION } from '../resultStore'
 import { isDefaultDescription } from './toolDescriptionOverrides'
 import { EDIT_SELECTION_DESCRIPTION } from './EditSelectionTool'
 import { createLsTool } from './LsTool'
@@ -151,6 +152,13 @@ export function getToolRegistry(): ToolInfo[] {
     category: 'Files',
     description: EDIT_SELECTION_DESCRIPTION,
   })
+  // Bound to the conversation's store of long results, so made by the session, not here.
+  result.push({
+    name: READ_RESULT,
+    label: 'Read result',
+    category: 'Files',
+    description: READ_RESULT_DESCRIPTION,
+  })
 
   result.sort((a, b) => {
     const ai = CATEGORY_ORDER.indexOf(a.category)
@@ -196,7 +204,10 @@ export function createAgentTools(options: AgentToolsOptions = {}): AgentTool[] {
  */
 export function codeToolDescriptions(): Record<string, string> {
   const tools = buildAgentTools({}, true)
-  const out: Record<string, string> = { [EDIT_SELECTION_TOOL]: EDIT_SELECTION_DESCRIPTION }
+  const out: Record<string, string> = {
+    [EDIT_SELECTION_TOOL]: EDIT_SELECTION_DESCRIPTION,
+    [READ_RESULT]: READ_RESULT_DESCRIPTION,
+  }
   for (const tool of tools) out[tool.name] = tool.description
   return out
 }
@@ -209,9 +220,9 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
       : (ChatSession.getActiveSession()?.agent.value ?? null)
 
   const tools = [
-    createReadFileTool({ numbered: true }),
+    createReadFileTool({ numbered: true, budget: READ_BUDGET }),
     createLsTool(),
-    createFindTool(),
+    createFindTool({ compact: true }),
     createEditFileTool(),
     createCreateFileTool(),
     createDeleteFileTool(),

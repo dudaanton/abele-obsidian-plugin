@@ -6,6 +6,7 @@ import { getNoteBody } from '@/helpers/notesUtils'
 import { TFile } from 'obsidian'
 import { stringifyYaml } from 'obsidian'
 import { chatForAgent, isChatLog } from '../chatText'
+import { pathTree, groupByFolder, propertiesLine, sharedProperties } from './compactListing'
 
 interface CriterionParam {
   type: 'path' | 'name' | 'property' | 'content'
@@ -23,7 +24,12 @@ interface CriterionParam {
   case_insensitive?: boolean
 }
 
-export function createFindTool(opts?: { skipScope?: boolean }): AgentTool {
+/**
+ * `compact` is for agents: paths grouped under their folder, properties on one line each, and
+ * what every result shares said once. A script splits the answer into one path per line, so
+ * it gets the flat list unless it asks.
+ */
+export function createFindTool(opts?: { skipScope?: boolean; compact?: boolean }): AgentTool {
   return {
     name: 'find',
     label: 'Find Files',
@@ -187,7 +193,11 @@ export function createFindTool(opts?: { skipScope?: boolean }): AgentTool {
       // Format output
       const countLabel = total > paths.length ? `${paths.length} of ${total}` : `${total}`
       let text: string
-      if (includeFm) {
+      if (opts?.compact) {
+        text = includeFm
+          ? compactWithProperties(paths, countLabel)
+          : `${countLabel} files:\n${pathTree(paths)}`
+      } else if (includeFm) {
         const lines: string[] = []
         for (const p of paths) {
           const file = app.vault.getAbstractFileByPath(p)
@@ -209,4 +219,34 @@ export function createFindTool(opts?: { skipScope?: boolean }): AgentTool {
       return { content: [{ type: 'text', text }] }
     },
   }
+}
+
+/** Frontmatter as a script would never parse it: each file one line, shared properties once. */
+function compactWithProperties(paths: string[], countLabel: string): string {
+  const { app } = GlobalStore.getInstance()
+  const props = paths.map((p) => {
+    const file = app.vault.getAbstractFileByPath(p)
+    const fm = file instanceof TFile ? app.metadataCache.getFileCache(file)?.frontmatter : undefined
+    if (!fm) return null
+    const clean: Record<string, unknown> = { ...fm }
+    delete clean.position
+    return clean
+  })
+  const withFm = props.filter((p): p is Record<string, unknown> => !!p)
+  // Shared only when every file has frontmatter: a file without any shares nothing.
+  const shared = withFm.length === props.length ? sharedProperties(withFm) : {}
+  const skip = new Set(Object.keys(shared))
+  const head = skip.size
+    ? `${countLabel} files, every one listed with ${propertiesLine(shared, new Set())}:`
+    : `${countLabel} files:`
+  const rows = paths.map((path, i) => ({ path, props: props[i] }))
+  const body = groupByFolder(
+    rows,
+    (r) => r.path,
+    (r, name) => {
+      const line = r.props ? propertiesLine(r.props, skip) : ''
+      return line ? `${name} | ${line}` : name
+    }
+  )
+  return `${head}\n${body}`
 }

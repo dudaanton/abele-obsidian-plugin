@@ -157,9 +157,14 @@ Renaming a note rewrites the path in both places. Do not edit these fields by ha
 
 A tool result or message that showed the agent a file carries `reads`: the file's path, a hash
 of its text at that moment, the time, whether it was read, attached or written by the agent, and
-the lines when only a window was seen. That is what lets `edit`, `replace` and `write` tell
-whether the agent has seen a file as it is now (see the tools section). It travels with the
-message, so it is gone once that message is compacted away or left on another branch.
+the lines when only a window was seen (with the file's length, so windows read one after another
+add up to the whole). That is what lets `edit`, `replace` and `write` tell whether the agent has
+seen a file as it is now (see the tools section). It travels with the message, so it is gone once
+that message is compacted away or left on another branch.
+
+A tool result too long to send whole carries `stored`: its key and the whole text. The model was
+sent only the start of it; `read_result` reads the rest by that key, for as long as the chat file
+holds the message — compaction and closing the chat included.
 
 ## Comments
 

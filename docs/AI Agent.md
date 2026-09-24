@@ -185,6 +185,7 @@ The agent has access to these tools:
 | `rm` | Delete a file (moves to trash) |
 | `mv` | Move or rename a file |
 | `cp` | Copy a file |
+| `read_result` | Read on in, or search, a tool answer that was too long to send whole |
 
 ### Search & Browse
 
@@ -217,6 +218,21 @@ property stores and a map layout reads.
 | `delegate` | Hand a task to another agent (see [Delegation](#delegation)) |
 
 All file operations respect the workspace scope — the agent can only access files you've allowed. File paths in tool call messages are clickable — click to open the file in the workspace.
+
+### Long answers
+
+Every tool answer stays in the conversation and is sent to the model again with each later
+request, so one very long answer — every task in a large vault, a folder of thousands of notes —
+would be paid for on every step after it. An answer over about six thousand tokens is therefore
+kept whole in the chat file, and the model is sent its first part with a note saying how much is
+missing and the key it is kept under; `read_result` pages through the rest or searches it,
+including after the chat is reopened. The tool card shows the same shortened answer the model
+saw. `read` does the same by lines: a file over about ten thousand tokens comes a window at a
+time, and the windows add up to the whole file for the read-before-write rule.
+
+Listings (`workspace`, `find`, `read_tasks`, `read_transactions`, `read_backlinks`) come grouped
+by folder rather than as full paths, which on a real vault is 20–60% fewer tokens for the same
+information. Scripts calling the same tools get the flat, whole answers they always did.
 
 ## Workspace Scope
 

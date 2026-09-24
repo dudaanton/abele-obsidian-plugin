@@ -5,13 +5,23 @@ import { TFile } from 'obsidian'
 import { chatForAgent, isChatLog } from '../chatText'
 import { READ_DESCRIPTION } from './fileToolDescriptions'
 import { contentHash } from '../readGuard'
+import { estimateTokens } from '../tokens'
 
 /**
  * `numbered` is for agents: they get every line numbered unless they ask otherwise, because a
  * link to lines (`[[Note#L10-L12]]`) is only right when its numbers are read, not counted. A
  * script parses what comes back, so it gets the file as it is unless it asks.
  */
-export function createReadFileTool(opts?: { skipScope?: boolean; numbered?: boolean }): AgentTool {
+export function createReadFileTool(opts?: {
+  skipScope?: boolean
+  numbered?: boolean
+  /**
+   * Tokens one read may return, for an agent: a longer file comes back as the window of lines
+   * that fits, said so, and recorded as only that window for the read guard. A script gets
+   * the whole file, however long — it is not paying per token, and it parses what it gets.
+   */
+  budget?: number
+}): AgentTool {
   const byDefault = !!opts?.numbered
   return {
     name: 'read',
@@ -61,15 +71,30 @@ export function createReadFileTool(opts?: { skipScope?: boolean; numbered?: bool
       const start = params.start_line as number | undefined
       const end = params.end_line as number | undefined
       const numbers = (params.line_numbers as boolean | undefined) ?? byDefault
+      const window = lineWindow(content, start, end)
+      const { from, total } = window
+      const to = opts?.budget ? within(content, from, window.to, opts.budget) : window.to
+      const cut = to < window.to
       // What the agent now knows of the file, for the read guard: all of it, or a window.
-      const { from, to, total } = lineWindow(content, start, end)
       const seen = {
         path: file.path,
         hash: contentHash(content),
-        ...(from > 1 || to < total ? { lines: [from, to] as [number, number] } : {}),
+        ...(from > 1 || to < total ? { lines: [from, to] as [number, number], total } : {}),
       }
+      const more = cut
+        ? `[This read stopped at line ${to}: the rest is longer than one read returns. ` +
+          `Read on with start_line: ${to + 1}.]`
+        : ''
       if (numbers || start !== undefined || end !== undefined) {
-        return { content: [{ type: 'text', text: numberedLines(path, content, start, end) }], seen }
+        const text = numberedLines(path, content, cut ? from : start, cut ? to : end)
+        return { content: [{ type: 'text', text: cut ? `${text}\n${more}` : text }], seen }
+      }
+      if (cut) {
+        const part = content.split('\n').slice(0, to).join('\n')
+        return {
+          content: [{ type: 'text', text: `${part}\n\n[Lines 1–${to} of ${total}.] ${more}` }],
+          seen,
+        }
       }
       return { content: [{ type: 'text', text: content }], seen }
     },
@@ -101,6 +126,24 @@ export function numberedLines(path: string, content: string, start?: number, end
     out.push(`[${note[0].toUpperCase()}${note.slice(1)}.]`)
   }
   return out.join('\n')
+}
+
+/**
+ * The last line from `from` on whose numbered text fits in `budget` tokens, `to` at most —
+ * always `from` itself, so a read shows at least one line however long.
+ */
+export function within(content: string, from: number, to: number, budget: number): number {
+  if (content.length <= budget) return to
+  const lines = content.split('\n')
+  let used = 0
+  let last = from - 1
+  while (last < to) {
+    const cost = estimateTokens(lines[last]) + 2
+    if (last >= from && used + cost > budget) break
+    used += cost
+    last++
+  }
+  return last
 }
 
 /** The lines a read of `start`–`end` covers, clamped to the file. */

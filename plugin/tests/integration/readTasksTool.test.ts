@@ -39,8 +39,9 @@ describe('read_tasks — priority and labels', () => {
   it('lists priority and labels across the vault', async () => {
     const text = await run()
 
-    expect(text).toContain('Ship it | priority:high | labels:work, home | Tasks/Ship it.md')
-    expect(text).toContain('[ ] | Plain | Tasks/Plain.md')
+    expect(text).toContain('Tasks/ (2)')
+    expect(text).toContain('[ ] Ship it.md | priority:high | labels:work, home')
+    expect(text).toContain('[ ] Plain.md')
   })
 
   it('reads labels from the configured property', async () => {

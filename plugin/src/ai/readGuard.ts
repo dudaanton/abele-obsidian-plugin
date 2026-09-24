@@ -88,14 +88,36 @@ export function marksIn(messages: readonly Message[]): ReadMark[] {
 
 /**
  * The agent's view of each file: the latest mark wins. A read of part of a text already seen
- * whole — the same text, by its hash — does not make it partial again.
+ * whole — the same text, by its hash — does not make it partial again. Two reads of windows of
+ * the same text that touch or overlap add up to one window, and to the whole file once they run
+ * from its first line to its last: a file too long for one read is read in pieces, and read
+ * that way it has been seen as surely as in one go. Only reads add up — a window carried over
+ * an edit names lines of a text that has since moved.
  */
 export function foldMarks(marks: Iterable<ReadMark>): Map<string, ReadMark> {
   const views = new Map<string, ReadMark>()
   for (const mark of marks) {
     const prior = views.get(mark.path)
-    const stillWhole = mark.lines && prior && !prior.lines && prior.hash === mark.hash
-    views.set(mark.path, stillWhole ? { ...mark, lines: undefined } : mark)
+    const same = prior && prior.hash === mark.hash
+    if (same && mark.lines && !prior.lines) {
+      views.set(mark.path, { ...mark, lines: undefined, total: undefined })
+      continue
+    }
+    if (same && mark.lines && prior.lines && mark.via === 'read' && prior.via === 'read') {
+      const [a, b] = prior.lines
+      const [c, d] = mark.lines
+      if (c <= b + 1 && a <= d + 1) {
+        const lines: [number, number] = [Math.min(a, c), Math.max(b, d)]
+        const total = mark.total ?? prior.total
+        const whole = total !== undefined && lines[0] === 1 && lines[1] >= total
+        views.set(
+          mark.path,
+          whole ? { ...mark, lines: undefined, total: undefined } : { ...mark, lines, total }
+        )
+        continue
+      }
+    }
+    views.set(mark.path, mark)
   }
   return views
 }
@@ -132,7 +154,7 @@ export function refusal(
   }
   if (target.need === 'whole' && view.lines) {
     const [from, to] = view.lines
-    return `${READ_FIRST}: you have seen only lines ${from}–${to} of ${path}, and write replaces the whole file. Read all of it first, or change just that part with edit.`
+    return `${READ_FIRST}: you have seen only lines ${from}–${to} of ${path}, and write replaces the whole file. Read the rest of it first (windows read one after another add up), or change just that part with edit.`
   }
   return null
 }
@@ -211,6 +233,8 @@ export class ReadGuard {
         at: Date.now(),
         via,
         ...(partial ? { lines: partial } : {}),
+        // How long the file is, so a later window can complete this one. Only a read knows.
+        ...(partial && via === 'read' && seen.total ? { total: seen.total } : {}),
       })
     } else if (CARRIERS.includes(toolName)) {
       const carried = await this.carry(params, result)
