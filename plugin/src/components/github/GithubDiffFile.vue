@@ -38,7 +38,12 @@
     <div v-if="expanded" class="abele-github-file__body">
       <div v-if="lines.length" ref="editorEl" class="abele-github-code" />
       <Teleport v-if="barHost && selectedSpan && linker?.item()" :to="barHost">
-        <GithubSelectionBar :linker="linker" :label="selectedLabel" :link="selectedLink" />
+        <GithubSelectionBar
+          :linker="linker"
+          :label="selectedLabel"
+          :link="selectedLink"
+          :snippet="selectedSnippet"
+        />
       </Teleport>
       <EmptyState v-else>
         {{
@@ -72,6 +77,7 @@ import EmptyState from '../obsidian/EmptyState.vue'
 import GithubComment from './GithubComment.vue'
 import GithubSelectionBar from './GithubSelectionBar.vue'
 import { LINKER } from '@/github/linking'
+import { diffSnippet, type SnippetBlock } from '@/github/snippetBlock'
 import { diffLink, diffSpan, type DiffSpan, type GithubLink } from '@/github/permalinks'
 import type { DiffFile } from '@/github/api'
 import type { DiffFileAnchor } from '@/github/urls'
@@ -109,6 +115,8 @@ const linker = inject(LINKER, null)
 /** Where CodeMirror draws the selection's bar just now, and which lines the person selected. */
 const barHost = shallowRef<HTMLElement | null>(null)
 const selectedSpan = shallowRef<DiffSpan | null>(null)
+/** The selection as the view counts lines, hunk headers included. */
+const selectedLines = shallowRef<{ from: number; to: number } | null>(null)
 
 const selectedLabel = computed(() => {
   const s = selectedSpan.value
@@ -123,9 +131,15 @@ const selectedLink = (): GithubLink => {
   return diffLink(item, props.file, selectedSpan.value)
 }
 
+const selectedSnippet = (): SnippetBlock => {
+  if (!selectedLines.value) throw new Error('nothing is selected')
+  return diffSnippet(selectedLink(), props.file.path, lines.value, selectedLines.value)
+}
+
 const selectionHooks = {
   onSelect: (span: { from: number; to: number } | null) => {
     selectedSpan.value = span ? diffSpan(lines.value, span.from - 1, span.to - 1) : null
+    selectedLines.value = span
   },
   onBarHost: (host: HTMLElement | null, removed?: HTMLElement) => {
     if (host) barHost.value = host

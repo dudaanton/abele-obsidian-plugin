@@ -26,6 +26,7 @@ import {
   parseForSettings,
 } from './GithubService'
 import { linkAtClick, urlAtCursor } from './links'
+import { registerSnippetBlock } from './snippetCard'
 
 /**
  * Where a click is taken as a click on a note's link. The settings window and dialogs are left
@@ -137,6 +138,8 @@ export function registerGithub(plugin: Plugin): void {
   const { app } = plugin
 
   plugin.registerView(GITHUB_VIEW_TYPE, (leaf) => new GithubView(leaf))
+  // Code and comments kept in notes, drawn as cards.
+  registerSnippetBlock((lang, handler) => plugin.registerMarkdownCodeBlockProcessor(lang, handler))
 
   // Capture phase, so this runs before Obsidian's own handler on the link and can stop it.
   const onClick = interceptor(app)

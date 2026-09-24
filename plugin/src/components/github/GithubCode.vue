@@ -8,7 +8,12 @@
     </div>
     <div ref="editorEl" class="abele-github-code abele-github-blob__code" />
     <Teleport v-if="barHost && selected && linker" :to="barHost">
-      <GithubSelectionBar :linker="linker" :label="selectedLabel" :link="selectedLink" />
+      <GithubSelectionBar
+        :linker="linker"
+        :label="selectedLabel"
+        :link="selectedLink"
+        :snippet="selectedSnippet"
+      />
     </Teleport>
   </div>
 </template>
@@ -17,6 +22,7 @@
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import GithubSelectionBar from './GithubSelectionBar.vue'
 import { LINKER } from '@/github/linking'
+import { codeSnippet } from '@/github/snippetBlock'
 import type { LineSpan } from '@/github/permalinks'
 import type { LineRange } from '@/github/urls'
 import { mountCode, type Viewer } from '@/github/codeViewer'
@@ -50,6 +56,12 @@ const selectedLabel = computed(() => {
 const selectedLink = () => {
   if (!linker || !selected.value) throw new Error('nothing is selected')
   return linker.blobLink(selected.value)
+}
+
+const selectedSnippet = async () => {
+  const span = selected.value
+  if (!span) throw new Error('nothing is selected')
+  return codeSnippet(await selectedLink(), props.path, props.text, span)
 }
 
 const selectionHooks = {

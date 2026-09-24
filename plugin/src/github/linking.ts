@@ -10,6 +10,7 @@ import { MarkdownView, Notice, type App, type WorkspaceLeaf } from 'obsidian'
 import type { InjectionKey } from 'vue'
 import { insertOnOwnLine } from '@/helpers/editorHelpers'
 import { blobLink, markdownLink, type GithubLink, type LineSpan, type LinkItem } from './permalinks'
+import { formatSnippet, type SnippetBlock } from './snippetBlock'
 import { commitSha, type BlobData, type CommitData } from './api'
 import type { GithubClient } from './client'
 import type { GithubTarget } from './urls'
@@ -23,6 +24,8 @@ export interface Linker {
   blobLink(span: LineSpan): Promise<GithubLink>
   copy(link: GithubLink | Promise<GithubLink>): Promise<void>
   insert(link: GithubLink | Promise<GithubLink>): Promise<void>
+  /** Writes a card holding the code or the comment itself into the note. */
+  insertSnippet(snippet: SnippetBlock | Promise<SnippetBlock>): Promise<void>
 }
 
 export const LINKER: InjectionKey<Linker> = Symbol('abele-github-linker')
@@ -58,19 +61,39 @@ export function insertLink(app: App, link: GithubLink): boolean {
   return true
 }
 
+/**
+ * Writes a snippet card at the cursor of the note last worked in, as a block of its own with a
+ * blank line either side.
+ *
+ * @returns false when no note is open
+ */
+export function insertSnippet(app: App, snippet: SnippetBlock): boolean {
+  const view = recentNoteView(app)
+  if (!view) {
+    new Notice('Open a note to put the code in')
+    return false
+  }
+  // A blank line after the block, unless the note already has one there.
+  const editor = view.editor
+  const nextLine = editor.getCursor().line + 1
+  const next = nextLine < editor.lineCount() ? editor.getLine(nextLine) : ''
+  const after = next.trim() === '' ? '' : '\n'
+  const end = insertOnOwnLine(editor, `${formatSnippet(snippet)}${after}`, true)
+  view.editor.setCursor(end)
+  new Notice(`Added to ${view.file?.basename ?? 'the note'}`)
+  return true
+}
+
 export async function copyLink(link: GithubLink): Promise<void> {
   await navigator.clipboard.writeText(markdownLink(link))
   new Notice('Link copied')
 }
 
 /** A linker's `copy` and `insert`, which wait for a link that is still being made. */
-export function sharing(app: App): Pick<Linker, 'copy' | 'insert'> {
-  const settle = async (
-    link: GithubLink | Promise<GithubLink>,
-    then: (l: GithubLink) => unknown
-  ): Promise<void> => {
+export function sharing(app: App): Pick<Linker, 'copy' | 'insert' | 'insertSnippet'> {
+  const settle = async <T>(made: T | Promise<T>, then: (made: T) => unknown): Promise<void> => {
     try {
-      await then(await link)
+      await then(await made)
     } catch (e) {
       new Notice(`Could not make the link: ${e instanceof Error ? e.message : String(e)}`)
     }
@@ -78,6 +101,7 @@ export function sharing(app: App): Pick<Linker, 'copy' | 'insert'> {
   return {
     copy: (link) => settle(link, (l) => copyLink(l)),
     insert: (link) => settle(link, (l) => insertLink(app, l)),
+    insertSnippet: (snippet) => settle(snippet, (s) => insertSnippet(app, s)),
   }
 }
 

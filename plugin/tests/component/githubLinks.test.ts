@@ -86,7 +86,7 @@ describe('a comment and the item itself', () => {
     const { wrapper } = open('https://github.com/o/r/issues/5', ISSUE_ROUTES)
     await vi.waitFor(() => expect(wrapper.findAll('.abele-github-link-actions')).toHaveLength(2))
 
-    await press(wrapper, '.abele-github-link-actions .abele-obsidian-icon:last-child', 1)
+    await press(wrapper, '.abele-github-link-actions .abele-obsidian-icon:nth-child(2)', 1)
 
     expect(note.lines).toEqual([
       '# Plans',
@@ -104,7 +104,7 @@ describe('a comment and the item itself', () => {
     const { wrapper } = open('https://github.com/o/r/issues/5', ISSUE_ROUTES)
     await vi.waitFor(() => expect(wrapper.findAll('.abele-github-link-actions')).toHaveLength(2))
 
-    await press(wrapper, '.abele-github-link-actions .abele-obsidian-icon:last-child', 0)
+    await press(wrapper, '.abele-github-link-actions .abele-obsidian-icon:nth-child(2)', 0)
 
     expect(Notice.shown).toContain('Open a note to put the link in')
   })

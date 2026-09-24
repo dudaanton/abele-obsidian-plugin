@@ -13,6 +13,13 @@
       tooltip="Insert a link to these lines into the note you were last in"
       @click="linker.insert(link())"
     />
+    <Button
+      v-if="snippet"
+      text="Insert with code"
+      icon="file-code"
+      tooltip="Insert these lines into the note you were last in, as a card holding the code itself"
+      @click="linker.insertSnippet(snippet())"
+    />
   </div>
 </template>
 
@@ -20,12 +27,15 @@
 import Button from '../obsidian/Button.vue'
 import type { GithubLink } from '@/github/permalinks'
 import type { Linker } from '@/github/linking'
+import type { SnippetBlock } from '@/github/snippetBlock'
 
 defineProps<{
   linker: Linker
   /** "Lines 10–20". */
   label: string
   link: () => GithubLink | Promise<GithubLink>
+  /** The lines with their code, for a card in the note. */
+  snippet?: () => SnippetBlock | Promise<SnippetBlock>
 }>()
 </script>
 

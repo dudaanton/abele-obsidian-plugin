@@ -134,6 +134,16 @@ describe('Card', () => {
     expect(mount(Card, { props }).find('.abele-card__icon').exists()).toBe(false)
   })
 
+  it('makes its title a link when given an address, and plain text otherwise', () => {
+    const linked = mount(Card, { props: { ...props, href: 'https://example.com/a' } })
+    const a = linked.find('a.abele-card__name')
+    expect(a.attributes('href')).toBe('https://example.com/a')
+    expect(a.classes()).toContain('external-link')
+    expect(a.text()).toBe('Researcher')
+
+    expect(mount(Card, { props }).find('a').exists()).toBe(false)
+  })
+
   it('leaves out what it was not given', () => {
     const view = mount(Card, { props: { title: 'Bare' } })
 

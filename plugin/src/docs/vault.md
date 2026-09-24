@@ -218,6 +218,33 @@ The address is GitHub's own and opens the same place on GitHub; with the integra
 on it opens a GitHub tab scrolled to that line or comment. The label is only text. A link to a
 file is pinned to a commit, not a branch, so it keeps pointing at the lines it was made from.
 
+## GitHub snippets
+
+"Insert with code" on lines selected in a GitHub tab, and "Insert as quote" on a comment, write a
+fenced block the plugin draws as a card: the label as a link to the place, then the code — or
+the comment — itself.
+
+    ```abele-github
+    url: https://github.com/acme/widgets/blob/<full commit sha>/src/app.ts#L10-L12
+    label: acme/widgets@1a2b3c4 · src/app.ts:10–12
+    lang: ts
+    start: 10
+    ---
+    the lines, as they were
+    ```
+
+`url` and `label` are what a copied link has. `lang` is the file's extension and picks the
+highlighting. Lines of a file carry `start:`, the number of the first line. Lines of a diff
+carry `diff: true` instead, and the text is unified-diff lines (` `, `-`, `+`) under an
+`@@ -old +new @@` line holding the numbers of both sides. A comment carries `comment: true`, and
+its text is a `**author** · date` line, a blank line, then the comment's markdown. The fence is
+longer than three backticks when the text holds a fence of its own.
+
+The text is a copy taken when the block was made: it reads without GitHub and does not follow
+the repository. Editing it changes what the card shows. A block without `url`, `label` or the
+`---` line is shown as plain text, as written. Do not invent these blocks: `url` must be an
+address the GitHub tab can open.
+
 ## Places
 
 A place is a note with its coordinates in one property, written `lat, lon` — `coordinates:

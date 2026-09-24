@@ -100,6 +100,25 @@ cursor's line when that line has text, in its place when it is empty, and leaves
 it so the next link goes under it. With no note open it says so and writes nothing. **Copy
 link** puts the same markdown on the clipboard.
 
+### Code and comments kept in a note
+
+Beside the two link actions there is a third that writes the thing itself into the note: **Insert
+with code** in the bar under selected lines, and **Insert as quote** (the quote mark) in a
+comment's header. It goes in at the cursor of the note last worked in, as a block with a blank
+line either side, and is drawn as a card:
+
+- the label, as a link — clicked, it opens the place in a GitHub tab by the rules above (Cmd for
+  a new tab, Alt for the browser); with the integration off it goes to the browser;
+- the lines, highlighted, numbered as they were in the file; a diff's with both columns of
+  numbers and its added and removed lines coloured;
+- a comment's text as markdown, under who wrote it and when.
+
+Long lines scroll sideways inside the card, and a long snippet scrolls within a fixed height.
+The code is stored in the note, so the card reads offline and stays what it was when it was
+taken — lines of a file are also linked by commit, not branch, for the same reason. The block's
+format is in the plugin's vault reference; a block edited by hand into something it cannot read
+is shown as plain text rather than an error.
+
 ## Access
 
 Without a token only public repositories can be read, at 60 requests an hour for the whole

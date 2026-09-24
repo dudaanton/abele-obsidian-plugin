@@ -6,6 +6,12 @@
       :tooltip="`Insert a link to this ${what} into the note`"
       @click="linker.insert(link())"
     />
+    <Icon
+      v-if="quote"
+      icon="quote"
+      :tooltip="`Insert this ${what} into the note as a quote, with its text`"
+      @click="linker.insertSnippet(quote())"
+    />
   </span>
 </template>
 
@@ -13,6 +19,7 @@
 import Icon from '../obsidian/Icon.vue'
 import type { GithubLink } from '@/github/permalinks'
 import type { Linker } from '@/github/linking'
+import type { SnippetBlock } from '@/github/snippetBlock'
 
 defineProps<{
   linker: Linker
@@ -20,6 +27,8 @@ defineProps<{
   link: () => GithubLink | Promise<GithubLink>
   /** What the link points at, for the tooltips: "comment", "review". */
   what: string
+  /** The text itself, for a quote card in the note. */
+  quote?: () => SnippetBlock
 }>()
 </script>
 

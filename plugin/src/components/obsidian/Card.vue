@@ -26,7 +26,15 @@
     <div class="abele-card__head">
       <div class="abele-card__title">
         <Icon v-if="icon" :icon="icon" no-hover class="abele-card__icon" />
-        <span class="abele-card__name">{{ title }}</span>
+        <a
+          v-if="href"
+          class="abele-card__name external-link"
+          :href="href"
+          target="_blank"
+          rel="noopener"
+          >{{ title }}</a
+        >
+        <span v-else class="abele-card__name">{{ title }}</span>
         <slot name="badges" />
       </div>
       <!-- Actions sit inside a clickable card, so their clicks must not also open it. -->
@@ -65,6 +73,11 @@ import { fromControl } from '@/helpers/interactive'
 const props = withDefaults(
   defineProps<{
     title: string
+    /**
+     * Makes the title a link to this address. Clicked, it goes wherever a link in a note goes —
+     * the plugin's own tab for one it can show — so the card itself stays unclickable.
+     */
+    href?: string
     /** A lucide icon before the title — what the item is, at a glance. Decoration, not a control. */
     icon?: string
     /** A picture across the top, edge to edge: a note's cover, a poster, a photo in a feed. Vault path, link name or URL. */
@@ -85,6 +98,7 @@ const props = withDefaults(
     selected?: boolean
   }>(),
   {
+    href: undefined,
     icon: undefined,
     cover: undefined,
     thumbnail: undefined,

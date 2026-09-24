@@ -14,7 +14,13 @@
         comment.location
       }}</span>
       <Badge v-if="comment.badge" :text="comment.badge" :accent="comment.badge === 'Answer'" />
-      <GithubLinkActions v-if="linker && link" :linker="linker" :link="link" :what="what" />
+      <GithubLinkActions
+        v-if="linker && link"
+        :linker="linker"
+        :link="link"
+        :what="what"
+        :quote="quote"
+      />
     </div>
     <Markdown
       v-if="comment.body"
@@ -43,6 +49,7 @@ import type { Comment } from '@/github/api'
 import { formatDate } from '@/github/format'
 import { LINKER } from '@/github/linking'
 import { bodyLink, commentLink, type GithubLink } from '@/github/permalinks'
+import { commentSnippet, type SnippetBlock } from '@/github/snippetBlock'
 
 const props = withDefaults(
   defineProps<{
@@ -66,6 +73,13 @@ const link = computed((): (() => GithubLink) | null => {
   const anchor = props.comment.anchor
   if (!anchor) return null
   return () => commentLink(item, { anchor, author: props.comment.author }, props.reply)
+})
+
+/** The comment quoted whole, with who wrote it and when. */
+const quote = computed((): (() => SnippetBlock) | undefined => {
+  const make = link.value
+  if (!make) return undefined
+  return () => commentSnippet(make(), props.comment)
 })
 
 const what = computed(() => {
