@@ -38,7 +38,8 @@ export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
       if (!content.includes(old_string)) {
         throw new Error(`String not found in file: "${old_string.slice(0, 100)}"`)
       }
-      const updated = content.replace(old_string, new_string)
+      // A function, not the string: in a replacement string `$&` and `$'` are patterns, not text.
+      const updated = content.replace(old_string, () => new_string)
       await app.vault.modify(file, updated)
       return {
         content: [{ type: 'text', text: `Edited: ${path}` }],
