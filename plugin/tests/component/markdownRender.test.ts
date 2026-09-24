@@ -126,11 +126,12 @@ describe('a link to a chat in rendered text', () => {
     )
 
     const wrapper = open('[[AI/Chats/Trip.abchat|Trip]]')
-    await settle(5)
+    // Opening goes through dynamic imports, so a fixed number of ticks is not enough under load.
+    await vi.waitFor(() => expect(wrapper.find('a.internal-link').exists()).toBe(true))
     await wrapper.find('a.internal-link').trigger('click')
-    await settle(5)
-
-    expect(opened).toHaveBeenCalledWith(app.vault.getAbstractFileByPath('AI/Chats/Trip.abchat'))
+    await vi.waitFor(() =>
+      expect(opened).toHaveBeenCalledWith(app.vault.getAbstractFileByPath('AI/Chats/Trip.abchat'))
+    )
     expect(openLinkText).not.toHaveBeenCalled()
   })
 
