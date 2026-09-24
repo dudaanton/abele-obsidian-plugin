@@ -194,9 +194,14 @@ export class Task {
     return parts.join('/')
   }
 
-  /** Name of the task file without extension */
+  /**
+   * Name of the task file without extension. The note's own name once it exists, not the text
+   * of the link: a task embedded under an alias was written back to a new note named after
+   * the alias, which took a copy of the text while the real note stayed as it was.
+   */
   get taskName(): string {
-    return this._taskName
+    const file = this._taskPath ? getFileByPathOrName(this._taskPath) : null
+    return file?.basename ?? this._taskName
   }
 
   createNewRecurrentTask() {
