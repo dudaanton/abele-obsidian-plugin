@@ -727,6 +727,7 @@ export class ItemView extends Component {
 export class BasesView {}
 
 /** The editor Obsidian gives a plain-text file. Again, only the class is needed. */
+export class FileView extends ItemView {}
 export class TextFileView extends ItemView {}
 
 /**

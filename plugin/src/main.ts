@@ -67,6 +67,7 @@ import { SCRIPT_VIEW_TYPE, ScriptView } from './views/ScriptView'
 import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
 import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
+import { registerReader } from './reader/register'
 import { ChatService } from './ai/ChatService'
 import { CommentService } from './ai/CommentService'
 import { useFilesInAgent } from './helpers/useFilesInAgent'
@@ -210,6 +211,9 @@ export default class AbelePlugin extends Plugin {
 
     // GitHub issues, pull requests, discussions and files in tabs of their own; off by default.
     registerGithub(this)
+
+    // Books from the vault — `.epub` — in a reader tab of their own.
+    registerReader(this)
 
     // Links to lines of a note — `[[Note#L10-L12]]` — open at those lines; and a way to copy one.
     registerLineLinks(this)

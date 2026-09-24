@@ -188,6 +188,20 @@ Three files, three concerns:
   in the tab; whole-repository code search; go to definition; and the pull request on a phone,
   with pictures in `/tmp/abele-phone/github-pull-*.png`. Notes the files write are deleted.
 
+- `bookReader.e2e.test.ts`, `bookPhone.e2e.test.ts` — **books, and nothing in them running**.
+  Writes three books to the vault for the run: one crafted in
+  `tests/fixtures/books/maliciousBook.ts` to run code in every way known — inline and external
+  scripts, handlers, frames, objects, `meta` refresh, XSLT, SVG and MathML links, SVG animations,
+  a spoofed policy, an SVG chapter, an XML chapter — each recording itself on the app's window if
+  it runs; the author's own test book (`epub-test.epub`, CC0) with its Node calls; and a plain
+  one. Visits every chapter, clicks every vector, then puts scripts into a page already showing
+  to prove the page's policy stops them without the cleaning, and asks whether anything
+  recorded itself, anything was opened or `child_process` was asked for. Runs twice: with the
+  desktop's sandbox, and with the iPhone's, which allows scripts — so the second run is the
+  cleaning and the policy alone. The phone file opens books under `emulateMobile` at 390×844,
+  checks the page keeps clear of the floating header and bar, and turns a page by a tap; pictures
+  in `/tmp/abele-phone/book-*.png`. WebKit itself cannot be run here.
+
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
 "mega group", where a single resolution currently takes about two minutes.
 

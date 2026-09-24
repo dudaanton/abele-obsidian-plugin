@@ -27,6 +27,9 @@ import { createGithubTools } from '@/ai/tools/github'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { openIconPicker } from './openIconPicker'
 import { TFile } from 'obsidian'
+import * as bookSafety from '@/reader/bookSafety'
+import { BOOK_VIEW_TYPE, bookViews, readerTestHooks } from '@/reader/BookView'
+import { openEpub } from '@/reader/openBook'
 import type { Plugin } from 'obsidian'
 
 export interface GroupResolveMeasurement {
@@ -108,6 +111,14 @@ interface AbeleTestApi {
   createRouteTool: typeof createRouteTool
   /** The GitHub tools, so a check can call them the way an agent would. */
   createGithubTools: typeof createGithubTools
+  /** The book reader: its open tabs, its cleaning, and the sandbox override for the e2e tier. */
+  reader: {
+    viewType: string
+    views: () => ReturnType<typeof bookViews>
+    safety: typeof bookSafety
+    hooks: typeof readerTestHooks
+    openEpub: typeof openEpub
+  }
   /** The keyboard diagnostics panel, on or off, without going through the settings. */
   setKeyboardDiagnostics: typeof setKeyboardDiagnostics
   plugin: Plugin
@@ -219,7 +230,7 @@ function measureGroupResolve(groupPath: string): GroupResolveMeasurement {
 
   app.metadataCache.getFileCache = function instrumentedGetFileCache(...args: unknown[]) {
     fileCacheReads++
-    return (originalGetFileCache).apply(this, args)
+    return originalGetFileCache.apply(this, args)
   } as typeof app.metadataCache.getFileCache
 
   app.metadataCache.getFirstLinkpathDest = function instrumentedDest(...args: unknown[]) {
@@ -374,7 +385,7 @@ function measureNoteRelations(notePath: string): NoteRelationsMeasurement {
 
   app.metadataCache.getFileCache = function instrumented(...args: unknown[]) {
     fileCacheReads++
-    return (originalGetFileCache).apply(this, args)
+    return originalGetFileCache.apply(this, args)
   } as typeof app.metadataCache.getFileCache
 
   app.metadataCache.getFirstLinkpathDest = function instrumented(...args: unknown[]) {
@@ -501,6 +512,13 @@ export function exposeTestApi(plugin: Plugin): void {
     createPlacesTool,
     createRouteTool,
     createGithubTools,
+    reader: {
+      viewType: BOOK_VIEW_TYPE,
+      views: () => bookViews(plugin.app),
+      safety: bookSafety,
+      hooks: readerTestHooks,
+      openEpub,
+    },
     plugin,
     viewProbe: null,
     measureGroupResolve,

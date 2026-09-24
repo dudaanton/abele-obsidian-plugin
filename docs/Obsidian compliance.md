@@ -28,6 +28,10 @@ LICENSE
 plugin/            ← source, build, tests
 ```
 
+`plugin/src/vendor/foliate-js/` is third-party source (the e-book engine, MIT) carried at a pinned
+commit because its author does not publish to npm. It is excluded from lint; its README names the
+commit and every local change. See [Book reader](Book%20reader.md).
+
 A release publishes exactly three assets — `main.js`, `manifest.json`, `styles.css` — under a
 tag matching the manifest's `version`. `.github/workflows/release.yml` fails if the build emits
 anything else, because a fourth file means a dynamic import split into a chunk no vault would
