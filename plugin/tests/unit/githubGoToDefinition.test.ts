@@ -4,16 +4,16 @@
  * already has instead of failing. Plus the word a Mod-click lands on, and how a viewer finds the
  * tab it is in.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
-import { Notice } from 'obsidian'
+import { Menu, Notice } from 'obsidian'
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { TabCode, type TabCodeSource } from '@/github/search/tabCode'
 import { clientWith } from '../helpers/githubTab'
 import { indexes } from '@/github/search/source'
-import { navFor, provideCodeNav, wordAt } from '@/github/search/navAddon'
+import { codeNavAddon, navFor, provideCodeNav, wordAt } from '@/github/search/navAddon'
 
 const archive = new Uint8Array(
   readFileSync(resolve(__dirname, '../fixtures/github/widgets.tar.gz'))
@@ -156,5 +156,61 @@ describe('a viewer finding its tab', () => {
     expect(navFor(inner)).toBe(nav)
     undo()
     expect(navFor(inner)).toBeNull()
+  })
+})
+
+describe('a long press on a name, where there is no right click', () => {
+  afterEach(() => vi.useRealTimers())
+
+  const setup = () => {
+    const root = document.body.appendChild(document.createElement('div'))
+    const nav = { pathOf: () => 'a.ts', goToDefinition: vi.fn(), findReferences: vi.fn() }
+    provideCodeNav(root, nav)
+    const view = new EditorView({
+      parent: root,
+      state: EditorState.create({ doc: 'return formatName(x)', extensions: [codeNavAddon()] }),
+    })
+    // happy-dom lays nothing out: the finger lands on "formatName".
+    view.posAtCoords = () => 10
+    const shown = vi.spyOn(Menu.prototype, 'showAtPosition')
+    const touch = (type: string, x = 5, y = 5) =>
+      view.contentDOM.dispatchEvent(
+        Object.assign(new Event(type, { bubbles: true }), {
+          touches: type === 'touchend' ? [] : [{ clientX: x, clientY: y }],
+        })
+      )
+    return { view, nav, shown, touch }
+  }
+
+  it('opens the menu for that name after half a second', () => {
+    vi.useFakeTimers()
+    const { nav, shown, touch } = setup()
+    touch('touchstart')
+    vi.advanceTimersByTime(499)
+    expect(shown).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(shown).toHaveBeenCalledTimes(1)
+    const menu = shown.mock.contexts[0] as Menu & { items: { title: string; handler: () => void }[] }
+    expect(menu.items.map((i) => i.title)).toEqual([
+      'Go to definition of formatName',
+      'Find references to formatName',
+    ])
+    menu.items[0].handler()
+    expect(nav.goToDefinition).toHaveBeenCalledWith('formatName', 'a.ts')
+    shown.mockRestore()
+  })
+
+  it('is not a press when the finger lifts or scrolls first', () => {
+    vi.useFakeTimers()
+    const { shown, touch } = setup()
+    touch('touchstart')
+    vi.advanceTimersByTime(200)
+    touch('touchend')
+    vi.advanceTimersByTime(1000)
+    touch('touchstart')
+    touch('touchmove', 5, 40)
+    vi.advanceTimersByTime(1000)
+    expect(shown).not.toHaveBeenCalled()
+    shown.mockRestore()
   })
 })

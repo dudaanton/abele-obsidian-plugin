@@ -286,7 +286,9 @@ the syntax of each file's language — `function`, `class`, `interface`, `type`,
 and `const` in Go; and the usual declarations in Java, Kotlin, C#, Swift, Rust, Ruby, PHP, C and
 C++. It uses the same downloaded repository as the code search, at the tab's commit. The nearest
 candidates come first: the same file, then the same folder, then files in the same language,
-then the rest. One candidate opens at its line; several are offered in a picker showing each file
+then the rest — and within each, the code before tests, fixtures and mocks (`__tests__/`,
+`test/`, `spec/`, `*.test.ts`, `*_test.go`, `test_*.py`, `*Test.java` and the like), where a name
+is usually a stand-in for the real one. One candidate opens at its line; several are offered in a picker showing each file
 and line with the line's text — type to narrow by path, Mod+Enter or Mod-click to open the choice
 in a new tab; none is said in a notice, which reminds that the lookup can miss. For a repository
 over the size limit it looks only at what the tab already has: the file shown, or the new side of
@@ -294,8 +296,8 @@ the changed lines.
 
 It can miss what is declared unusually — generated code, a name re-exported under another, a
 declaration spread over lines — and can offer a same-named declaration from elsewhere. On a phone
-there is no Mod key: the long-press menu offers the same two actions where the phone's WebView
-opens one on code.
+there is no Mod key and no right click: holding a finger on a name for half a second opens the
+same menu.
 
 ## Access
 

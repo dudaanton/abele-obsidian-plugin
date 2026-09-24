@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest'
 import {
   definitionPattern,
   findDefinitions,
+  isTestPath,
   languageOf,
   type Lang,
 } from '@/github/search/definitions'
@@ -226,5 +227,55 @@ describe('finding definitions across files', () => {
 
   it('finds nothing for something that is not a name', () => {
     expect(findDefinitions(files, '+=', 'a.ts')).toEqual([])
+  })
+})
+
+describe('tests, fixtures and mocks', () => {
+  it('are told by folder and by each language\'s naming', () => {
+    for (const path of [
+      'src/__tests__/store.ts',
+      'packages/a/test/util.ts',
+      'tests/helpers.py',
+      'spec/models/user_spec.rb',
+      'src/app.test.ts',
+      'src/app.spec.jsx',
+      'pkg/server_test.go',
+      'lib/test_parser.py',
+      'src/main/java/AppTest.java',
+      'app/src/test/kotlin/WidgetTests.kt',
+      'src/widget_unittest.cc',
+      'src/__mocks__/fs.ts',
+      'fixtures/data.json',
+      'test-dts/store.test-d.ts',
+    ]) {
+      expect(isTestPath(path), path).toBe(true)
+    }
+    for (const path of [
+      'src/app.ts',
+      'src/testing-library.ts',
+      'src/contest.py',
+      'pkg/server.go',
+      'src/main/java/App.java',
+      'src/attestation.rs',
+      'lib/latest/index.js',
+    ]) {
+      expect(isTestPath(path), path).toBe(false)
+    }
+  })
+
+  it('come after the code at each tier, not only at the end', () => {
+    const files = [
+      { path: 'src/ui/widget.test.ts', text: 'function render() {}' },
+      { path: 'src/ui/widget.ts', text: 'x' },
+      { path: 'src/ui/panel.ts', text: 'export function render() {}' },
+      { path: 'lib/__tests__/render.ts', text: 'export function render() {}' },
+      { path: 'lib/render.ts', text: 'export function render() {}' },
+    ]
+    expect(findDefinitions(files, 'render', 'src/ui/widget.ts').map((h) => h.path)).toEqual([
+      'src/ui/panel.ts',
+      'src/ui/widget.test.ts',
+      'lib/render.ts',
+      'lib/__tests__/render.ts',
+    ])
   })
 })

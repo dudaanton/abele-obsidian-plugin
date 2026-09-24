@@ -175,6 +175,30 @@ export function definitionPattern(lang: Lang, name: string): RegExp {
   )
 }
 
+/** A folder that holds tests, fixtures or mocks, in any of the usual spellings. */
+const TEST_DIR =
+  /(^|\/)(__tests__|__mocks__|__fixtures__|tests?|specs?|spec_helpers?|fixtures?|mocks?|testdata|test-dts|e2e|testing)\//i
+
+/** A file named as a test in its language's convention. */
+const TEST_FILE = [
+  /\.(test|spec|e2e|test-d)\.[cm]?[jt]sx?$/i, // JS/TS: app.test.ts, app.spec.js
+  /_test\.(go|py|rb|exs?|dart)$/i, // Go, Python, Ruby, Elixir, Dart: app_test.go
+  /(^|\/)test_[^/]+\.py$/i, // Python: test_app.py
+  /(^|\/)conftest\.py$/i,
+  /_spec\.rb$/i, // Ruby: app_spec.rb
+  /(Tests?|Spec|IT)\.(java|kt|kts|scala|groovy|cs|swift)$/, // Java/Kotlin/C#/Swift: AppTest.java
+  /Tests?\.php$/, // PHP: AppTest.php
+  /(_test|_tests|_unittest|Test)\.(c|cc|cpp|cxx|h|hpp)$/, // C/C++: app_test.cc
+  /\.(stories|fixture|mock)\.[cm]?[jt]sx?$/i,
+]
+
+/**
+ * A test, a fixture or a mock rather than the code itself: what a definition lookup puts last,
+ * since a name declared there is usually a stand-in for the real one.
+ */
+export const isTestPath = (path: string): boolean =>
+  TEST_DIR.test(path) || TEST_FILE.some((re) => re.test(path))
+
 export interface DefinitionHit extends LineMatch {
   path: string
 }
@@ -183,7 +207,8 @@ const dirOf = (path: string) => path.slice(0, path.lastIndexOf('/') + 1)
 
 /**
  * Where a name looks declared, nearest first: the file it was clicked in, then its folder, then
- * files in the same language, then the rest — each in path order.
+ * files in the same language, then the rest — within each, the code before its tests, fixtures
+ * and mocks, then in path order.
  */
 export function findDefinitions(
   files: Iterable<IndexedFile>,
@@ -214,8 +239,15 @@ export function findDefinitions(
     for (const m of searchText(file.text, re, 20)) hits.push({ ...m, path: file.path, rank })
   }
 
+  const test = (path: string) => (isTestPath(path) ? 1 : 0)
   return hits
-    .sort((a, b) => a.rank - b.rank || a.path.localeCompare(b.path) || a.line - b.line)
+    .sort(
+      (a, b) =>
+        a.rank - b.rank ||
+        test(a.path) - test(b.path) ||
+        a.path.localeCompare(b.path) ||
+        a.line - b.line
+    )
     .slice(0, limit)
     .map(({ rank: _rank, ...hit }) => hit)
 }

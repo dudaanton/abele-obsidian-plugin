@@ -84,6 +84,36 @@ const clearLink = (view: EditorView) => {
   if (view.state.field(linkField).size) view.dispatch({ effects: setLink.of(null) })
 }
 
+/** How long a finger rests on a name before its menu opens: a phone has no right click. */
+const LONG_PRESS_MS = 500
+
+/** The press being timed, and when a long press last opened the menu. */
+let pressing: { start: { x: number; y: number }; cancel: () => void } | null = null
+let longPressAt = 0
+
+const cancelPress = () => {
+  pressing?.cancel()
+  pressing = null
+}
+
+/** "Go to definition" and "Find references" for one name. */
+function navMenu(nav: CodeNav, view: EditorView, name: string): Menu {
+  const menu = new Menu()
+  menu.addItem((item) =>
+    item
+      .setTitle(`Go to definition of ${name}`)
+      .setIcon('locate')
+      .onClick((): void => void nav.goToDefinition(name, nav.pathOf(view.dom)))
+  )
+  menu.addItem((item) =>
+    item
+      .setTitle(`Find references to ${name}`)
+      .setIcon('search')
+      .onClick(() => nav.findReferences(name))
+  )
+  return menu
+}
+
 /** What every GitHub code viewer carries; inert outside a tab that provides navigation. */
 export function codeNavAddon(): Extension {
   return [
@@ -115,25 +145,50 @@ export function codeNavAddon(): Extension {
         return false
       },
       contextmenu(e, view) {
+        // The long press already opened the menu; the phone's own menu event after it is the same ask.
+        if (Date.now() - longPressAt < 1000) {
+          e.preventDefault()
+          return true
+        }
         const nav = navFor(view.dom)
         const word = nav && wordUnder(view, e)
         if (!nav || !word) return false
         e.preventDefault()
-        const menu = new Menu()
-        menu.addItem((item) =>
-          item
-            .setTitle(`Go to definition of ${word.text}`)
-            .setIcon('locate')
-            .onClick((): void => void nav.goToDefinition(word.text, nav.pathOf(view.dom)))
-        )
-        menu.addItem((item) =>
-          item
-            .setTitle(`Find references to ${word.text}`)
-            .setIcon('search')
-            .onClick(() => nav.findReferences(word.text))
-        )
-        menu.showAtMouseEvent(e)
+        navMenu(nav, view, word.text).showAtMouseEvent(e)
         return true
+      },
+      touchstart(e, view) {
+        cancelPress()
+        const touch = e.touches[0]
+        if (e.touches.length !== 1 || !touch || !navFor(view.dom)) return false
+        const start = { x: touch.clientX, y: touch.clientY }
+        const win = view.dom.ownerDocument.defaultView ?? window
+        const timer = win.setTimeout(() => {
+          pressing = null
+          const nav = navFor(view.dom)
+          const pos = view.posAtCoords(start, false)
+          const word = nav && pos !== null ? wordAt(view, pos) : null
+          if (!nav || !word) return
+          longPressAt = Date.now()
+          navMenu(nav, view, word.text).showAtPosition(start, view.dom.ownerDocument)
+        }, LONG_PRESS_MS)
+        pressing = { start, cancel: () => win.clearTimeout(timer) }
+        return false
+      },
+      touchmove(e) {
+        const touch = e.touches[0]
+        if (!pressing || !touch) return false
+        const moved = Math.hypot(touch.clientX - pressing.start.x, touch.clientY - pressing.start.y)
+        if (moved > 10) cancelPress()
+        return false
+      },
+      touchend() {
+        cancelPress()
+        return false
+      },
+      touchcancel() {
+        cancelPress()
+        return false
       },
     }),
   ]
