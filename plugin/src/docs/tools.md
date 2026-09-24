@@ -47,7 +47,7 @@ into markdown. Downloads land in the vault, so they are subject to scope.
 ## GitHub
 
 `github_views`, `github_read`, `github_pr_files`, `github_file`, `github_commits`,
-`github_search`, `github_open`.
+`github_search`, `github_grep`, `github_open`.
 
 Read-only access to GitHub, offered only while the person has the GitHub integration on. Nothing
 on GitHub is ever written — no comment, no review, no label. They send the person's own token to
@@ -75,6 +75,17 @@ the next part rather than trying to get everything at once.
 - `github_search` — `type: "code"` searches file contents in GitHub's syntax (needs a token on
   github.com, default branches only); `type: "issues"` searches issues and pull requests
   (`is:pr is:open author:…`). `repo` narrows either to one repository.
+- `github_grep` — grep over a repository's code at one exact version: `ref` a branch, tag or
+  commit; a pull request (its link or `owner/repo#12`) means its head; nothing means the default
+  branch. `query` plain text, `regex: true` a JavaScript regular expression, `case_sensitive`,
+  `path` a glob (`src/**/*.ts`, `*.py`); `mode: "names"` lists matching file paths instead. Lines
+  come numbered and grouped by file, 100 a page (`offset`, `limit`). The first search of a version
+  downloads the repository once for the session — a second or two — and later ones are instant.
+  Past the size set in the GitHub settings it is not downloaded and GitHub's code search answers
+  instead: default branch only, fragments, no regular expressions, only with a token — the answer
+  says so. Binary files and files over 1 MB are not searched. Prefer it to `github_search` for
+  code: any branch, exact line numbers, regular expressions, and no token needed for a public
+  repository.
 - `github_open` — puts something in front of the person in a GitHub tab. `start_line` and
   `end_line` mark lines: with `path` in a pull request's or commit's diff (`old: true` for removed
   lines), or in a file link. It reuses the tab showing the item, else the GitHub tab used last.
@@ -87,7 +98,8 @@ Exploring a codebase or a pull request, in this order:
 3. For context around a change, `github_file` at the pull request's head or base ref, with a line
    range around the lines in question rather than the whole file.
 4. For an unknown repository: `github_file` with `recursive: true` for its map, the README, then
-   `github_search` for where a name is defined or used.
+   `github_grep` for where a name is defined or used (`github_search` when the repository is too
+   big to download).
 5. When the answer is a place in the code, link it — GitHub's own address with `#L10-L20`, or
    show it with `github_open` — so the person can open it in a tab with one click.
 

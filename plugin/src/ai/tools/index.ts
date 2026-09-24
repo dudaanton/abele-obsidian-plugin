@@ -96,6 +96,7 @@ export function getToolRegistry(): ToolInfo[] {
     github_file: { label: 'Read file', category: 'GitHub' },
     github_commits: { label: 'Commits', category: 'GitHub' },
     github_search: { label: 'Search', category: 'GitHub' },
+    github_grep: { label: 'Grep code at a version', category: 'GitHub' },
     github_open: { label: 'Show in a tab', category: 'GitHub' },
     geocode: { label: 'Geocode', category: 'Maps' },
     places: { label: 'Find places', category: 'Maps' },

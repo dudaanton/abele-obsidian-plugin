@@ -6,6 +6,7 @@ import type { AgentTool } from '../../client'
 import { createGithubPrFilesTool, createGithubReadTool } from './ItemTools'
 import { createGithubCommitsTool, createGithubFileTool } from './CodeTools'
 import { createGithubSearchTool } from './SearchTool'
+import { createGithubGrepTool } from './GrepTool'
 import { createGithubOpenTool, createGithubViewsTool } from './ViewTools'
 
 export function createGithubTools(): AgentTool[] {
@@ -16,6 +17,7 @@ export function createGithubTools(): AgentTool[] {
     createGithubFileTool(),
     createGithubCommitsTool(),
     createGithubSearchTool(),
+    createGithubGrepTool(),
     createGithubOpenTool(),
   ]
 }

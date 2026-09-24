@@ -266,6 +266,7 @@ export const GITHUB_TOOLS = [
   'github_file',
   'github_commits',
   'github_search',
+  'github_grep',
   'github_open',
 ]
 
