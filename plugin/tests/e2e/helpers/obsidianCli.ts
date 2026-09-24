@@ -29,10 +29,23 @@ const sleepSync = (ms: number): void => {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 }
 
-function run(args: string[], timeoutMs = 240_000): string {
-  const deadline = Date.now() + Math.min(timeoutMs, 60_000)
+/**
+ * The longest one CLI call may block for, whatever its caller asked for.
+ *
+ * Every call here is synchronous, so while it waits the test worker cannot answer the runner —
+ * and the runner gives up on a worker after 60 s without an answer ("Timeout calling
+ * onTaskUpdate"), ending the whole tier with most of its files never run. A call the app never
+ * answered used to wait out its own allowance, fifteen minutes for a group read. Nothing the
+ * app is asked takes more than seconds; one that has not answered in this long is not going to.
+ */
+const CALL_CEILING_MS = 45_000
+
+function run(args: string[], timeoutMs = CALL_CEILING_MS): string {
+  timeoutMs = Math.min(timeoutMs, CALL_CEILING_MS)
+  const deadline = Date.now() + timeoutMs
   for (;;) {
-    const output = runOnce(args, timeoutMs)
+    // What is left of the one allowance: waiting for the app to get ready counts against it.
+    const output = runOnce(args, Math.max(1_000, deadline - Date.now()))
     if (!NOT_READY.test(output)) return output
     if (Date.now() > deadline)
       throw new Error(`obsidian ${args[0]}: the app never got ready: ${output}`)
@@ -99,8 +112,8 @@ export function activeVaultFileCount(): number {
 /**
  * Evaluates an expression in the app and returns its raw `=> …` payload as text.
  *
- * `timeoutMs` is generous by default because these tests deliberately trigger
- * multi-second main-thread stalls.
+ * `timeoutMs` is capped at `CALL_CEILING_MS`: a multi-second stall is measured, a call that
+ * never answers fails its test rather than the whole tier.
  */
 export function evalRaw(code: string, timeoutMs?: number): string {
   const output = run(['eval', `code=${code}`], timeoutMs)

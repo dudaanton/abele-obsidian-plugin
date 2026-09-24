@@ -58,21 +58,9 @@ const available = isObsidianRunning() && hasTestApi()
  * old fifteen-minute allowance was sized for the "Projects" branch, which this file does not
  * touch, and turned a CLI call that never got its answer into a quarter-hour hang.
  */
-const READ_MS = 120_000
+const READ_MS = 30_000
 
-/**
- * A read that the app never answered is asked once more before failing: the reads here change
- * nothing, and a call lost while the app was reloading — the file before this one may leave
- * phone emulation — is not a verdict on membership.
- */
-function read<T>(expression: string): T {
-  try {
-    return evalJson<T>(expression, READ_MS)
-  } catch (error) {
-    if (!/was killed/.test(String(error))) throw error
-    return evalJson<T>(expression, READ_MS)
-  }
-}
+const read = <T>(expression: string): T => evalJson<T>(expression, READ_MS)
 
 function resolvedPaths(groupPath: string): string[] {
   return read<string[]>(
