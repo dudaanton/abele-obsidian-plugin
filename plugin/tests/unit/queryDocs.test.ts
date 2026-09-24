@@ -230,3 +230,13 @@ describe('what an agent is told about links to lines', () => {
     expect(searchDocs('link to lines')).toContain('links-to-lines')
   })
 })
+
+/** An agent asked to change a tool description must know an equal-to-default one is dropped. */
+describe('what an agent is told about tool descriptions', () => {
+  it('says the settings hold overrides only, and how to go back to the default', () => {
+    const settings = DOCS.find((s) => s.id === 'settings')!
+    const text = settings.topics.map((t) => t.text).join('\n')
+    expect(text).toContain('`toolDescriptions`\nholds overrides only')
+    expect(text).toContain('remove the entry')
+  })
+})

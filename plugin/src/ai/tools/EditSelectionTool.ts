@@ -5,6 +5,9 @@ import { EDIT_SELECTION_TOOL } from '../types'
 import type { AgentTool } from '../client'
 import type { ChatSession } from '../ChatSession'
 
+export const EDIT_SELECTION_DESCRIPTION =
+  'Rewrite the passage this comment is attached to. Provide the full replacement text; the rest of the note is left alone.'
+
 /**
  * Rewrites the passage a comment is anchored to.
  *
@@ -17,8 +20,7 @@ export function createEditSelectionTool(session: ChatSession): AgentTool {
   return {
     name: EDIT_SELECTION_TOOL,
     label: 'Edit selection',
-    description:
-      'Rewrite the passage this comment is attached to. Provide the full replacement text; the rest of the note is left alone.',
+    description: EDIT_SELECTION_DESCRIPTION,
     parameters: {
       type: 'object',
       properties: {

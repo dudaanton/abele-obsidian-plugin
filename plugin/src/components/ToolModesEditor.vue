@@ -9,7 +9,7 @@
     <template v-for="group in visibleGroups" :key="group.category">
       <h4 class="abele-tool-modes__heading">{{ group.category }}</h4>
 
-      <div v-for="tool in group.tools" :key="tool.name">
+      <div v-for="tool in group.tools" :key="tool.name" class="abele-tool-modes__row">
         <Setting :name="tool.label">
           <Icon
             v-if="showDescriptions"
@@ -33,11 +33,18 @@
           class="abele-tool-modes__desc-input"
         >
           <Input
-            :model-value="getCustomDescription(tool.name)"
+            :model-value="getCustomDescription(tool.name) || getDefaultDescription(tool.name)"
             as-text-area
-            :placeholder="getDefaultDescription(tool.name)"
             @update:model-value="emitDescUpdate(tool.name, $event)"
           />
+          <div v-if="hasCustomDescription(tool.name)" class="abele-tool-modes__desc-reset">
+            <Button
+              text="Reset to default"
+              icon="rotate-ccw"
+              tooltip="Use the tool's own description again"
+              @click="emitDescUpdate(tool.name, '')"
+            />
+          </div>
         </div>
       </div>
     </template>
@@ -51,8 +58,10 @@ import Checkbox from './obsidian/Checkbox.vue'
 import Dropdown from './obsidian/Dropdown.vue'
 import Input from './obsidian/Input.vue'
 import Icon from './obsidian/Icon.vue'
+import Button from './obsidian/Button.vue'
 import { getToolRegistry } from '@/ai/tools'
-import { CORE_TOOLS, DEFAULT_AI_SETTINGS } from '@/ai/types'
+import { CORE_TOOLS } from '@/ai/types'
+import { isDefaultDescription } from '@/ai/tools/toolDescriptionOverrides'
 import type { ToolMode } from '@/ai/types'
 
 const props = withDefaults(
@@ -86,7 +95,10 @@ const modeOptions = [
   { value: 'auto', display: 'Auto' },
 ]
 
-const defaultDescs = DEFAULT_AI_SETTINGS.prompts.toolDescriptions as Record<string, string>
+/** What each tool says of itself: shown when there is no override, and the text one is measured against. */
+const defaultDescs = computed<Record<string, string>>(() =>
+  Object.fromEntries(getToolRegistry().map((tool) => [tool.name, tool.description]))
+)
 
 const isCore = (name: string) => CORE_TOOLS.has(name)
 const getMode = (name: string): ToolMode => props.toolModes[name] ?? 'off'
@@ -94,7 +106,7 @@ const setMode = (name: string, mode: ToolMode) => emit('update', name, mode)
 
 const hasCustomDescription = (name: string) => !!props.toolDescriptions?.[name]
 const getCustomDescription = (name: string) => props.toolDescriptions?.[name] || ''
-const getDefaultDescription = (name: string) => defaultDescs[name] || ''
+const getDefaultDescription = (name: string) => defaultDescs.value[name] || ''
 
 const isDescVisible = (name: string) => {
   if (hasCustomDescription(name)) return true
@@ -105,8 +117,10 @@ const toggleDescEdit = (name: string) => {
   editingDesc.value = editingDesc.value === name ? null : name
 }
 
+/** An override only when it says something the default does not; otherwise none at all. */
 const emitDescUpdate = (name: string, value: string) => {
-  emit('updateDescription', name, value)
+  const own = isDefaultDescription(name, value, getDefaultDescription(name))
+  emit('updateDescription', name, own ? '' : value)
 }
 
 interface ToolEntry {
@@ -166,6 +180,12 @@ h4.abele-tool-modes__heading {
   &--active {
     color: var(--text-accent);
   }
+}
+
+.abele-tool-modes__desc-reset {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--size-4-1);
 }
 
 .abele-tool-modes__desc-input {

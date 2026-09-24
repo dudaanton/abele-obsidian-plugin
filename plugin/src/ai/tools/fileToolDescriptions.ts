@@ -1,10 +1,4 @@
-/**
- * Descriptions of the file tools that the settings also carry as defaults.
- *
- * Kept apart from the tools so `types.ts` can hold them as defaults without importing the tools
- * and everything behind them. A tool and the settings default must say the same thing: a saved
- * default is what an agent is actually shown.
- */
+/** Descriptions the file tools share: `read` as agents have it, and what edit and write add. */
 
 /** `read` as agents have it: numbered by default. */
 export const READ_DESCRIPTION =
@@ -22,16 +16,3 @@ export const NUMBERS_NOT_TEXT =
 export const EDIT_DESCRIPTION =
   'Edit a file by replacing an exact string match with new content. File must be in workspace scope.' +
   NUMBERS_NOT_TEXT
-
-/**
- * Defaults these tools shipped with before, as settings saved them. A saved description equal to
- * one of these was never written by the person, so the current default takes its place.
- */
-export const RETIRED_DESCRIPTIONS: Record<string, string[]> = {
-  read: [
-    'Read the content of a file. Only files within the current workspace scope are accessible.',
-  ],
-  edit: [
-    'Edit a file by replacing an exact string match with new content. File must be in workspace scope.',
-  ],
-}

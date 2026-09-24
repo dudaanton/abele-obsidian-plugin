@@ -2,7 +2,8 @@ import type { AgentTool } from '../client'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { EDIT_SELECTION_TOOL } from '../types'
 import { createReadFileTool } from './ReadFileTool'
-import { RETIRED_DESCRIPTIONS } from './fileToolDescriptions'
+import { isDefaultDescription } from './toolDescriptionOverrides'
+import { EDIT_SELECTION_DESCRIPTION } from './EditSelectionTool'
 import { createLsTool } from './LsTool'
 import { createFindTool } from './FindTool'
 import { createEditFileTool } from './EditFileTool'
@@ -50,11 +51,13 @@ export interface ToolInfo {
   name: string
   label: string
   category: string
+  /** What the tool says of itself: the default the settings screen shows and edits from. */
+  description: string
 }
 
 /** Get metadata for all registered tools (for UI display) */
 export function getToolRegistry(): ToolInfo[] {
-  const tools = createAgentTools()
+  const tools = buildAgentTools()
   const labels: Record<string, string> = {}
   for (const t of tools) labels[t.name] = t.label
 
@@ -136,12 +139,18 @@ export function getToolRegistry(): ToolInfo[] {
       name: t.name,
       label: info?.label || labels[t.name] || t.name,
       category: info?.category || (t.name.startsWith('script_') ? 'Scripts' : 'Other'),
+      description: t.description,
     })
   }
 
   // Session-scoped, so it is not in `createAgentTools()` — but the agent editor still has to
   // offer its mode, and the Comment agent ships with one set.
-  result.push({ name: EDIT_SELECTION_TOOL, label: 'Edit selection', category: 'Files' })
+  result.push({
+    name: EDIT_SELECTION_TOOL,
+    label: 'Edit selection',
+    category: 'Files',
+    description: EDIT_SELECTION_DESCRIPTION,
+  })
 
   result.sort((a, b) => {
     const ai = CATEGORY_ORDER.indexOf(a.category)
@@ -164,7 +173,36 @@ export interface AgentToolsOptions {
   agentId?: string
 }
 
+/**
+ * The tools an agent is handed: each described by the person's override where there is one,
+ * and by itself otherwise. The settings hold overrides only (see `toolDescriptionOverrides`);
+ * a saved copy of a default that slipped through is still not taken for one.
+ */
 export function createAgentTools(options: AgentToolsOptions = {}): AgentTool[] {
+  const tools = buildAgentTools(options)
+  const overrides = AbeleConfig.getInstance().ai.prompts?.toolDescriptions ?? {}
+  for (const tool of tools) {
+    const saved = overrides[tool.name]
+    if (saved && !isDefaultDescription(tool.name, saved, tool.description)) {
+      tool.description = saved
+    }
+  }
+  return tools
+}
+
+/**
+ * What every tool says of itself, whatever is switched on — the defaults a saved description is
+ * compared with. A script's own tool is left out: its description is the script's.
+ */
+export function codeToolDescriptions(): Record<string, string> {
+  const tools = buildAgentTools({}, true)
+  const out: Record<string, string> = { [EDIT_SELECTION_TOOL]: EDIT_SELECTION_DESCRIPTION }
+  for (const tool of tools) out[tool.name] = tool.description
+  return out
+}
+
+/** The tools with their own descriptions. `everything` adds the ones behind a switch. */
+function buildAgentTools(options: AgentToolsOptions = {}, everything = false): AgentTool[] {
   const resolveAgent = () =>
     options.agentId
       ? AgentRegistry.getInstance().get(options.agentId)
@@ -214,25 +252,14 @@ export function createAgentTools(options: AgentToolsOptions = {}): AgentTool[] {
   ]
 
   // Read-only, and only while the integration is on: with it off there is no GitHub to read.
-  if (githubSettings().enabled) tools.push(...createGithubTools())
+  if (everything || githubSettings().enabled) tools.push(...createGithubTools())
 
   const config = AbeleConfig.getInstance().ai
-  if (config.scriptsEnabled) {
-    tools.push(...createScriptTools())
+  if (everything || config.scriptsEnabled) {
+    if (!everything) tools.push(...createScriptTools())
     tools.push(createAnswerFormTool())
     tools.push(createScriptApiDocsTool())
     tools.push(createCreateScriptTool())
-  }
-
-  const customDescriptions = AbeleConfig.getInstance().ai.prompts?.toolDescriptions
-  if (customDescriptions) {
-    for (const tool of tools) {
-      const saved = customDescriptions[tool.name]
-      // A default the person never touched, saved from an older version, is not theirs.
-      if (saved && !RETIRED_DESCRIPTIONS[tool.name]?.includes(saved)) {
-        tool.description = saved
-      }
-    }
   }
 
   return tools

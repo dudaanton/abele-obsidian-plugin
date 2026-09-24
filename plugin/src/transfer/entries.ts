@@ -13,6 +13,7 @@
 import type { AbeleSettings } from '@/services/AbeleConfig'
 import type { AiSettings } from '@/ai/types'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
+import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
 import {
   FILE_SECTION_LABELS,
   isFileSection,
@@ -163,7 +164,16 @@ export const SECTIONS: Section[] = [
   aiList('ai-secrets', 'Stored keys', 'secrets', (s: Identified & { keyId?: string }) =>
     s.keyId ? [s.keyId] : []
   ),
-  aiBlock('ai-prompts', 'Prompts', ['prompts']),
+  // Tool descriptions travel as overrides only: a default carried over would pin the other
+  // device to this version's wording, the way saved defaults once pinned every vault.
+  aiBlock('ai-prompts', 'Prompts', ['prompts'], {
+    read: (settings) => {
+      const prompts = ai(settings).prompts
+      if (!prompts) return {}
+      const { kept } = pruneToolDescriptions(prompts.toolDescriptions)
+      return { prompts: { ...prompts, toolDescriptions: kept } }
+    },
+  }),
   aiBlock('scripts', 'Script settings', ['scriptsEnabled', 'scriptsFolder']),
   {
     kind: 'list',

@@ -3,6 +3,7 @@ import { Notice } from 'obsidian'
 import { Journal, JournalDTO } from '@/entities/Journal'
 import { AiSettings, DEFAULT_AI_SETTINGS, ImageProvider, migrateOldPermissions } from '@/ai/types'
 import { migrateAgents } from '@/ai/agents/migration'
+import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
 import {
   DEFAULT_ACCOUNTS_LIST,
   normalizeAccountsList,
@@ -269,7 +270,7 @@ export class AbeleConfig {
     this.unreadableTold = false
     if (this.unreadable) console.error('[Abele] data.json could not be read; not writing to it')
 
-    const migrated = this.applySettings(stored ?? undefined)
+    const migrated = this.applySettings(stored ?? undefined, await codeToolDescriptions())
 
     // Migration only rewrites the settings held in memory. Persisting it here is what stops
     // the same migration running again on the next launch — and, for the Comment agent,
@@ -322,8 +323,13 @@ export class AbeleConfig {
     await this.plugin.saveData(this.exportSettings())
   }
 
-  /** Returns whether a migration rewrote anything, so the caller knows to persist it. */
-  applySettings(settings?: AbeleSettings): boolean {
+  /**
+   * Returns whether a migration rewrote anything, so the caller knows to persist it.
+   *
+   * `toolDefaults` is what each tool says of itself now; a saved description equal to it is
+   * dropped with the shipped defaults. Without it only the shipped defaults are recognised.
+   */
+  applySettings(settings?: AbeleSettings, toolDefaults: Record<string, string> = {}): boolean {
     this.refreshDelay = settings?.refreshDelay || DEFAULT_SETTINGS.refreshDelay
     this.tasksFolder = settings?.tasksFolder || DEFAULT_SETTINGS.tasksFolder
     this.logsNotesTypes = settings?.logsNotesTypes || [...DEFAULT_SETTINGS.logsNotesTypes]
@@ -351,7 +357,18 @@ export class AbeleConfig {
     this.ai = settings?.ai ? { ...DEFAULT_AI_SETTINGS, ...settings.ai } : { ...DEFAULT_AI_SETTINGS }
     // Runs before the legacy migrations below, so a settings file predating both is folded
     // into an agent using the values it actually had on disk.
-    const migrated = migrateAgents(this.ai)
+    let migrated = migrateAgents(this.ai)
+    // Settings used to save every default tool description, and a saved one replaces the
+    // tool's own — so a vault stayed on the descriptions of the version that first saved it.
+    // Only the ones the person changed are kept; the rest go, once, and the file is rewritten.
+    const descriptions = pruneToolDescriptions(this.ai.prompts?.toolDescriptions, toolDefaults)
+    if (descriptions.dropped > 0 && this.ai.prompts) {
+      this.ai = {
+        ...this.ai,
+        prompts: { ...this.ai.prompts, toolDescriptions: descriptions.kept },
+      }
+      migrated = true
+    }
     // Migrate old boolean permissions to toolModes
     if (
       settings?.ai &&
@@ -496,5 +513,21 @@ export class AbeleConfig {
       halfWidthSidebarsOnTablet: this.halfWidthSidebarsOnTablet,
       github: { ...this.github },
     }
+  }
+}
+
+/**
+ * What each tool says of itself, for telling a saved copy of it from an override. Loaded when
+ * the settings are, not imported: the tools import these settings, and building them costs
+ * nothing that must not happen before the settings exist. Nothing is lost if it fails — the
+ * shipped defaults are still recognised.
+ */
+async function codeToolDescriptions(): Promise<Record<string, string>> {
+  try {
+    const tools = await import('@/ai/tools')
+    return tools.codeToolDescriptions()
+  } catch (err) {
+    console.debug('[Abele] tool descriptions unavailable while loading settings', err)
+    return {}
   }
 }

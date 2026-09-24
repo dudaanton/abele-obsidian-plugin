@@ -61,8 +61,12 @@ any of these changes what an agent — including the one being asked — is allo
 the last thing to change quietly.
 
 `ai.prompts` holds the built-in prompts: `system`, `titleGeneration`, `recapPrompt`,
-`summaryPrompt`, `compactPrompt`, `memoryTemplate` and `toolDescriptions`, the last of which
-overrides what a tool tells the model about itself. `memoryTemplate` lays an agent's memory into
+`summaryPrompt`, `compactPrompt`, `memoryTemplate` and `toolDescriptions`. `toolDescriptions`
+holds overrides only — tool name to the text the person wants that tool to tell the model
+instead of its own — and is usually empty. A tool's default description lives in the tool, not
+in the settings; an entry equal to it, or to a default an older version saved there, is dropped
+when the settings load, so writing one changes nothing. To change a description, write text
+that differs; to go back to the default, remove the entry. `memoryTemplate` lays an agent's memory into
 its system prompt, with `{{memory}}` standing for the list of items; an agent with no memory gets
 nothing. The memory itself is `ai.agents.N.memory` — a list of `{ id, text, created }`, one
 agent's own, added to by `remember` and edited in that agent's settings. `ai.scriptsEnabled` and
