@@ -467,6 +467,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
        * made a new one instead would leave every existing reference pointing at a ghost.
        */
       async renameFile(file: TFile, to: string) {
+        const from = file.path
         const body = rawByPath.get(file.path)
         byPath.delete(file.path)
         rawByPath.delete(file.path)
@@ -487,6 +488,21 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
 
         byPath.set(to, file)
         if (body !== undefined) rawByPath.set(to, body)
+
+        // Obsidian carries the file's metadata and its place in the link index along with it,
+        // so a question asked right after the rename is answered for the new path.
+        const cached = cacheByPath.get(from)
+        cacheByPath.delete(from)
+        if (cached) cacheByPath.set(to, cached)
+        if (resolvedLinks[from]) {
+          resolvedLinks[to] = resolvedLinks[from]
+          delete resolvedLinks[from]
+        }
+        for (const targets of Object.values(resolvedLinks)) {
+          if (targets[from] === undefined) continue
+          targets[to] = targets[from]
+          delete targets[from]
+        }
       },
     },
     secretStorage: (() => {

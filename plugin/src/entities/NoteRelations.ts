@@ -314,32 +314,34 @@ export class NoteRelations {
   }
 
   /**
-   * Is called when a relation is renamed
-   * @param file - The renamed file
-   * @param oldPath - The old path of the file
-   * @param newPath - The new path of the file
+   * A note other than this one was renamed: drop it under its old name and judge it afresh
+   * under the new one, as reopening this note would.
+   *
+   * It used to carry the entry across unjudged. A task is renamed after its first line when
+   * the editor saves, and the same save can give it a date. When the rename landed before the
+   * metadata pass ended, the `changed` for the date was judged under the new name — not listed
+   * yet, so nothing to take out — and the old entry was then moved to the new name as it was.
+   * A task made today for another day stayed in today's note until the note was reopened.
    */
-  private relationRenameCallback(file: TFile, oldPath: string, newPath: string): void {
+  private relationRenameCallback(oldPath: string, newPath: string): void {
     oldPath = normalizePath(oldPath)
     newPath = normalizePath(newPath)
-    if (this.hasPath(oldPath)) {
-      if (this.tasks.has(oldPath)) {
-        this.removeTask(oldPath)
-        this.addTask(newPath)
-      } else if (this.transactions.has(oldPath)) {
-        this.removeTransaction(oldPath)
-        this.addTransaction(newPath)
-      } else if (this.timeEntries.has(oldPath)) {
-        this.removeTimeEntry(oldPath)
-        this.addTimeEntry(newPath)
-      } else if (this.logs.has(oldPath)) {
-        this.removeLog(oldPath)
-        this.addLog(newPath)
-      } else if (this.notes.has(oldPath)) {
-        this.removeNote(oldPath)
-        this.addNote(newPath)
-      }
+
+    const wasRelated = this.hasPath(oldPath)
+    if (wasRelated) {
+      this.removeTask(oldPath)
+      this.removeTransaction(oldPath)
+      this.removeTimeEntry(oldPath)
+      this.removeLog(oldPath)
+      this.removeNote(oldPath)
     }
+
+    if (this.isRelatedPath(newPath)) {
+      this.addBacklink(this.filePath, newPath)
+      if (this.isWalkedInto(newPath, new Set())) this.findRelations(newPath)
+    }
+    // What was filed under it may have belonged only through it.
+    if (wasRelated) this.removeRemainingRelations()
   }
 
   /**
@@ -474,7 +476,13 @@ export class NoteRelations {
         try {
           for (const callback of queue) {
             if (this.cleanedUp) return
-            callback()
+            // The queue has already been taken: a change that throws must not take the rest of
+            // the batch with it, or whatever came after it is never judged until a reopen.
+            try {
+              callback()
+            } catch (error) {
+              console.error(`[Abele] NoteRelations: a change for ${this.filePath} failed`, error)
+            }
           }
 
           if (this.resolved) return
@@ -536,7 +544,7 @@ export class NoteRelations {
               this.findRelations(this.filePath)
             }
           } else if (file instanceof TFile) {
-            this.relationRenameCallback(file, oldPath, file.path)
+            this.relationRenameCallback(oldPath, file.path)
           }
         })
       })
