@@ -1,8 +1,11 @@
 /**
- * A book on a phone: `app.emulateMobile(true)` in a 390×844 window, a plain book and the
- * author's test book opened in turn. Each is asked whether its page reaches past the screen,
- * whether the page shows text at all, and whether a tap on the right edge turns the page.
- * A picture of each goes to `/tmp/abele-phone/book-*.png` — look at them.
+ * A book on a phone: `app.emulateMobile(true)` in a 390×844 window, a plain book, the author's
+ * test book and one with contents and notes opened in turn. Each is asked whether the reader
+ * reaches past the screen or under Obsidian's floating header and bar, how far below the header
+ * the text starts, whether the page shows text at all, and whether a tap on the right edge and a
+ * swipe to the left each turn the page. The contents drawer and the text and layout dialog are
+ * opened over the last one. A picture of each goes to `/tmp/abele-phone/book-*.png` — look at
+ * them.
  *
  * What cannot be checked here: WebKit (the iPhone's engine), the system's long-press text
  * selection, and a real finger's swipe. Those are for the phone itself.
@@ -13,6 +16,7 @@ import { join } from 'node:path'
 import { hasTestApi, isObsidianRunning, evalRaw, evalJson } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildPlainEpub } from '../fixtures/books/maliciousBook'
+import { buildRichEpub } from '../fixtures/books/richBook'
 
 const PHONE = { width: 390, height: 844 }
 const SHOTS = '/tmp/abele-phone'
@@ -45,7 +49,9 @@ interface Screen {
   over?: number
   underBar?: number
   underHeader?: number
+  topGap?: number
   text?: number
+  swiped?: boolean
   sandbox?: string | null
   turned?: boolean
   shot?: string
@@ -69,13 +75,25 @@ const measure = (name: string) =>
       await wait(1000)
       const engine = view.engine
       const r = engine.getBoundingClientRect()
-      report.over = Math.max(0, Math.round(r.right - window.innerWidth))
-      // The page keeps clear of Obsidian's floating header and navigation bar.
+      const whole = view.contentEl.querySelector('.abele-book-reader').getBoundingClientRect()
+      report.over = Math.max(0, Math.round(Math.max(r.right, whole.right) - window.innerWidth))
+      // The reader keeps clear of Obsidian's floating header and navigation bar.
       const bar = document.querySelector('.mobile-navbar')?.getBoundingClientRect()
-      report.underBar = bar && bar.height ? Math.max(0, Math.round(r.bottom - bar.top)) : 0
+      report.underBar = bar && bar.height ? Math.max(0, Math.round(whole.bottom - bar.top)) : 0
       const header = leaf.view.containerEl.querySelector('.view-header')?.getBoundingClientRect()
-      report.underHeader = header ? Math.max(0, Math.round(header.bottom - r.top)) : 0
+      report.underHeader = header ? Math.max(0, Math.round(header.bottom - whole.top)) : 0
       const page = engine.renderer.getContents()[0]
+      // How far below the header the first line of text starts.
+      const walker = page.doc.createTreeWalker(page.doc.body, NodeFilter.SHOW_TEXT)
+      let first = null
+      while (!first && walker.nextNode()) {
+        if (!walker.currentNode.textContent.trim()) continue
+        const range = page.doc.createRange()
+        range.selectNodeContents(walker.currentNode)
+        if (range.getClientRects().length) first = range
+      }
+      const frameTop = page.doc.defaultView.frameElement.getBoundingClientRect().top
+      if (header && first) report.topGap = Math.round(first.getBoundingClientRect().top + frameTop - header.bottom)
       report.text = (page.doc.body?.innerText ?? '').trim().length
       report.sandbox = page.doc.defaultView.frameElement?.getAttribute('sandbox') ?? null
 
@@ -97,6 +115,20 @@ const measure = (name: string) =>
       page.doc.elementFromPoint(Math.max(0, x), y)?.dispatchEvent(new MouseEvent('click', {
         bubbles: true, cancelable: true, view: page.doc.defaultView, clientX: x, clientY: y }))
       report.turned = !!await until(() => engine.lastLocation.fraction > before, 5000)
+
+      // A finger swiped from right to left turns the page too.
+      await wait(600)
+      const swipeFrom = engine.lastLocation.fraction
+      const doc = engine.renderer.getContents()[0].doc
+      const target = doc.body
+      const touch = (x) => new Touch({ identifier: 1, target, clientX: x, clientY: 300, screenX: x, screenY: 300 })
+      const fire = (type, x) => target.dispatchEvent(new TouchEvent(type, {
+        bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [touch(x)],
+        changedTouches: [touch(x)] }))
+      fire('touchstart', 300)
+      for (let x = 280; x >= 80; x -= 40) { await wait(16); fire('touchmove', x) }
+      fire('touchend', 80)
+      report.swiped = !!await until(() => engine.lastLocation.fraction > swipeFrom, 5000)
     } catch (e) {
       report.error = String((e && e.stack) || e)
     }
@@ -106,10 +138,16 @@ const measure = (name: string) =>
 describe.skipIf(!available)('a book on a phone', () => {
   let size: [number, number] = [0, 0]
   const screens: Record<string, Screen> = {}
+  let overlays: {
+    drawer?: { left: number; right: number; rows: number } | null
+    afterPick?: { panel: boolean; chapter: string }
+    dialog?: { left: number; right: number; width: number } | null
+  } = {}
 
   beforeAll(async () => {
     const books = {
       plain: Buffer.from(buildPlainEpub(6)).toString('base64'),
+      rich: Buffer.from(buildRichEpub()).toString('base64'),
       'epub-test': readFileSync(join(__dirname, '../fixtures/books/epub-test.epub')).toString(
         'base64'
       ),
@@ -134,6 +172,38 @@ describe.skipIf(!available)('a book on a phone', () => {
     await reload('window.location.reload()')
     screens.plain = measure('plain')
     screens['epub-test'] = measure('epub-test')
+    screens.rich = measure('rich')
+    overlays = evalAsync(`(async () => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+      const shoot = async (name) => {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
+            if (img) { require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/book-' + name + '.png', img.toPNG()); return }
+          } catch { await wait(500) }
+        }
+      }
+      const view = app.workspace.getLeavesOfType('abele-book')[0].view
+      const report = {}
+      view.model.panel = true
+      await wait(800)
+      const panel = view.contentEl.querySelector('.abele-book-reader__panel')?.getBoundingClientRect()
+      report.drawer = panel ? { left: Math.round(panel.left), right: Math.round(panel.right), rows: view.contentEl.querySelectorAll('.abele-book-contents .tree-item-self').length } : null
+      await shoot('rich-contents')
+      // Picking a chapter in the drawer closes it and goes there.
+      ;[...view.contentEl.querySelectorAll('.abele-book-contents .tree-item-self')].find((row) => row.textContent.trim() === 'Chapter 2')?.click()
+      await wait(1500)
+      report.afterPick = { panel: view.model.panel, chapter: view.model.chapter }
+      view.model.settingsOpen = true
+      await wait(900)
+      const dialog = document.querySelector('.modal-container .modal')?.getBoundingClientRect()
+      report.dialog = dialog ? { left: Math.round(dialog.left), right: Math.round(dialog.right), width: window.innerWidth } : null
+      await shoot('rich-settings')
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await wait(400)
+      return report
+    })()`)
+    console.info(`\n  ${JSON.stringify(overlays)}\n`)
     console.info(`\n  ${JSON.stringify(screens)}\n`)
   }, 300_000)
 
@@ -152,16 +222,36 @@ describe.skipIf(!available)('a book on a phone', () => {
     await reload('app.emulateMobile(false)')
   }, 180_000)
 
-  it.each(['plain', 'epub-test'])('%s: shown in the phone layout, inside the screen', (name) => {
-    expect(screens[name]?.error).toBeUndefined()
-    expect(screens[name]?.phone).toBe(true)
-    expect(screens[name]?.over).toBe(0)
-    expect(screens[name]?.underBar).toBe(0)
-    expect(screens[name]?.underHeader).toBe(0)
-    expect(screens[name]?.text).toBeGreaterThan(20)
+  it.each(['plain', 'epub-test', 'rich'])(
+    '%s: shown in the phone layout, inside the screen',
+    (name) => {
+      expect(screens[name]?.error).toBeUndefined()
+      expect(screens[name]?.phone).toBe(true)
+      expect(screens[name]?.over).toBe(0)
+      expect(screens[name]?.underBar).toBe(0)
+      expect(screens[name]?.underHeader).toBe(0)
+      expect(screens[name]?.text).toBeGreaterThan(20)
+      // The text starts close under the header, not a thumb's width below it.
+      expect(screens[name]?.topGap ?? 999).toBeLessThanOrEqual(48)
+    }
+  )
+
+  it('the plain book turns its page on a tap at the right edge, and on a swipe', () => {
+    expect(screens.plain?.turned).toBe(true)
+    expect(screens.plain?.swiped).toBe(true)
   })
 
-  it('the plain book turns its page on a tap at the right edge', () => {
-    expect(screens.plain?.turned).toBe(true)
+  it('the contents open as a drawer over the page, and close when a chapter is picked', () => {
+    expect(overlays.drawer?.left).toBe(0)
+    expect(overlays.drawer!.right).toBeLessThan(PHONE.width)
+    expect(overlays.drawer!.rows).toBeGreaterThanOrEqual(4)
+    expect(overlays.afterPick?.panel).toBe(false)
+    expect(overlays.afterPick?.chapter).toBe('Chapter 2')
+  })
+
+  it('the text and layout dialog fits the screen', () => {
+    expect(overlays.dialog).toBeTruthy()
+    expect(overlays.dialog!.left).toBeGreaterThanOrEqual(0)
+    expect(overlays.dialog!.right).toBeLessThanOrEqual(overlays.dialog!.width)
   })
 })

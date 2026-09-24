@@ -1,0 +1,295 @@
+<template>
+  <div class="abele-book-reader" :class="{ 'abele-book-reader_panel': model.panel }">
+    <template v-if="model.panel && model.status === 'ready'">
+      <!-- Over the page, on a narrow screen: a tap beside the drawer closes it. -->
+      <div class="abele-book-reader__backdrop" @click="emit('panel', false)" />
+      <div class="abele-book-reader__panel">
+        <BookContents
+          :toc="model.toc"
+          :current-href="model.currentHref"
+          @pick="onPick"
+          @close="emit('panel', false)"
+        />
+      </div>
+    </template>
+
+    <div class="abele-book-reader__main">
+      <div ref="stage" class="abele-book-reader__stage" />
+      <div v-if="model.status !== 'ready'" class="abele-book-reader__message">
+        {{ model.message }}
+      </div>
+      <div v-if="model.status === 'ready'" class="abele-book-reader__footer">
+        <Icon
+          v-if="model.canGoBack"
+          icon="undo-2"
+          tooltip="Back to where you were before the link"
+          @click="emit('back')"
+        />
+        <span class="abele-book-reader__chapter">{{ model.chapter }}</span>
+        <Slider
+          class="abele-book-reader__progress"
+          :model-value="Math.round(dragging ?? model.fraction * 1000)"
+          :min="0"
+          :max="1000"
+          label="Go to a place in the book"
+          @input="dragging = $event"
+          @update:model-value="seek"
+        />
+        <span class="abele-book-reader__percent">{{
+          percent((dragging ?? model.fraction * 1000) / 1000)
+        }}</span>
+      </div>
+    </div>
+
+    <ObsidianModal
+      v-if="model.settingsOpen"
+      title="Text and layout"
+      size="tall"
+      @close="emit('settings', false)"
+    >
+      <ReaderSettingsForm />
+    </ObsidianModal>
+
+    <ObsidianModal v-if="model.footnote" :title="noteTitle" @close="emit('footnote-close')">
+      <div class="abele-book-reader__note">
+        <div ref="noteStage" class="abele-book-reader__note-stage" />
+        <div class="abele-book-reader__note-actions">
+          <Button
+            text="Go to the note"
+            tooltip="Close this and turn to the note in the book"
+            @click="emit('footnote-go')"
+          />
+        </div>
+      </div>
+    </ObsidianModal>
+  </div>
+</template>
+
+<script setup lang="ts">
+/**
+ * What a book tab shows around the page: the contents panel beside it (a drawer over it on a
+ * narrow screen), a line under it with the chapter and a slider through the whole book, the
+ * dialog with the text and layout settings, and the one a note opens in.
+ *
+ * The page itself is the engine's element, which the tab makes and puts into the stage.
+ */
+import { computed, onMounted, ref, watch } from 'vue'
+import Icon from '../obsidian/Icon.vue'
+import Button from '../obsidian/Button.vue'
+import Slider from '../obsidian/Slider.vue'
+import ObsidianModal from '../obsidian/Modal.vue'
+import BookContents from './BookContents.vue'
+import ReaderSettingsForm from './ReaderSettingsForm.vue'
+import { percent, type BookModel, type TocEntry } from '@/reader/model'
+
+const props = defineProps<{
+  model: BookModel
+}>()
+
+const emit = defineEmits<{
+  (e: 'stage', el: HTMLElement): void
+  (e: 'go', href: string, fromPanel: boolean): void
+  (e: 'seek', fraction: number): void
+  (e: 'back'): void
+  (e: 'panel', open: boolean): void
+  (e: 'settings', open: boolean): void
+  (e: 'footnote-close'): void
+  (e: 'footnote-go'): void
+}>()
+
+const stage = ref<HTMLElement>()
+const noteStage = ref<HTMLElement>()
+/** The slider while its thumb is held, in thousandths; null otherwise. */
+const dragging = ref<number | null>(null)
+
+onMounted(() => {
+  if (stage.value) emit('stage', stage.value)
+})
+
+const seek = (value: number) => {
+  dragging.value = null
+  emit('seek', value / 1000)
+}
+
+/** A narrow tab shows the panel over the page; picking a chapter there gets it out of the way. */
+const onPick = (entry: TocEntry) => {
+  const narrow = (stage.value?.closest('.abele-book-reader')?.clientWidth ?? 0) <= 640
+  emit('go', entry.href, narrow)
+}
+
+const noteTitle = computed(() => {
+  switch (props.model.footnote?.type) {
+    case 'endnote':
+      return 'Endnote'
+    case 'definition':
+      return 'Definition'
+    case 'biblioentry':
+      return 'Reference'
+    default:
+      return 'Note'
+  }
+})
+
+// The note's engine element, placed in the dialog once the dialog is there. It has to be in the
+// page before it loads: a frame outside the document never loads, and one moved reloads.
+watch(
+  () => [props.model.footnote?.view, noteStage.value] as const,
+  ([view, holder]) => {
+    if (view && holder && view.parentElement !== holder) holder.replaceChildren(view)
+  },
+  { flush: 'post' }
+)
+</script>
+
+<style lang="scss">
+.workspace-leaf-content .view-content.abele-book {
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+// On a phone Obsidian's navigation bar floats over the bottom of the tab; the reader keeps clear
+// of it by the spacing Obsidian gives its own views. The top needs nothing: the tab already
+// starts below the header, and taking the header's height off again is what left a band the
+// height of a thumb above the text.
+.is-phone .workspace-leaf-content .view-content.abele-book {
+  box-sizing: border-box;
+  padding-bottom: var(--view-bottom-spacing, 0);
+}
+
+.abele-book__mount {
+  height: 100%;
+}
+
+.abele-book-reader {
+  position: relative;
+  display: flex;
+  height: 100%;
+  container-type: inline-size;
+
+  &__main {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  &__stage {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  &__message {
+    position: absolute;
+    inset: 0;
+    padding: var(--size-4-8) var(--size-4-4);
+    color: var(--text-muted);
+    text-align: center;
+    background-color: var(--background-primary);
+  }
+
+  &__footer {
+    display: flex;
+    align-items: center;
+    gap: var(--size-4-2);
+    flex: 0 0 auto;
+    padding: var(--size-4-1) var(--size-4-3) var(--size-4-2);
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+  }
+
+  &__chapter {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 40%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  &__progress {
+    flex: 1 1 auto;
+  }
+
+  &__percent {
+    flex: 0 0 auto;
+    min-width: 3ch;
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__panel {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+    width: 18em;
+    max-width: 40%;
+    border-inline-end: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+  }
+
+  &__backdrop {
+    display: none;
+  }
+
+  &__note {
+    display: flex;
+    flex-direction: column;
+    gap: var(--size-4-3);
+  }
+
+  &__note-stage {
+    height: min(22em, 50vh);
+    border-radius: var(--radius-s);
+    overflow: hidden;
+  }
+
+  &__note-stage > * {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  &__note-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
+// Obsidian's status bar floats over the bottom right of the workspace on the desktop.
+body:not(.is-mobile) .abele-book-reader__footer {
+  padding-bottom: var(--size-4-8);
+}
+
+.abele-book-reader__stage > .abele-book__engine {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+// Too narrow to share, a phone or a split pane: the contents are a drawer over the page.
+@container (max-width: 640px) {
+  .abele-book-reader__panel {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: 2;
+    width: min(85%, 22em);
+    max-width: none;
+    box-shadow: var(--shadow-l);
+  }
+
+  .abele-book-reader__backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background-color: var(--background-modifier-cover);
+  }
+
+  .abele-book-reader__chapter {
+    display: none;
+  }
+}
+</style>

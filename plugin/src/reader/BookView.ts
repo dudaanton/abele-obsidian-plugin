@@ -3,13 +3,22 @@
  *
  * The book is drawn by foliate-js, one chapter per sandboxed frame; everything that keeps the
  * book's own code from running is in `bookSafety.ts`, and this view adds the last check — every
- * page is audited as it arrives, and one that fails is emptied before it is shown.
+ * page is audited as it arrives, and one that fails is emptied before it is shown. Around the
+ * page, a Vue side (`BookReader.vue`) shows the contents, the progress and the dialogs.
  */
-import { FileView, Platform, type TFile, type WorkspaceLeaf } from 'obsidian'
+import { FileView, Platform, type Menu, type TFile, type WorkspaceLeaf } from 'obsidian'
+import { createApp, reactive, watch, type App as VueApp, type WatchStopHandle } from 'vue'
 import { frameOptions } from '@/vendor/foliate-js/frame-options.js'
-import type { View as FoliateView } from '@/vendor/foliate-js/view.js'
+import type { FoliateLocation, View as FoliateView } from '@/vendor/foliate-js/view.js'
+import { FootnoteHandler } from '@/vendor/foliate-js/footnotes.js'
+import BookReader from '@/components/reader/BookReader.vue'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import { auditDocument, blankDocument, frameSandbox, isOpenableExternal } from './bookSafety'
 import { openEpub, type OpenedBook } from './openBook'
+import { emptyBookModel, tocEntries, type BookModel } from './model'
+import { layoutAttributes, pageStyles, readerSettingsFrom, themeValues } from './settings'
+import { bookKey } from './positions'
+import { bookPlaces } from './places'
 
 export const BOOK_VIEW_TYPE = 'abele-book'
 export const BOOK_EXTENSIONS = ['epub']
@@ -27,29 +36,42 @@ export interface PageReport {
   sandbox: string | null
 }
 
-/** The colours and font of the current theme, as literal values a page frame can use. */
-function themeCss(el: HTMLElement): string {
-  const style = getComputedStyle(el)
-  const v = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback
-  return `
-    html { color: ${v('--text-normal', 'CanvasText')}; background: transparent !important; }
-    body { background: transparent !important; }
-    a:any-link { color: ${v('--text-accent', 'LinkText')}; }
-    ::selection { background: ${v('--text-selection', 'Highlight')}; }
-  `
-}
+const PANEL_KEY = 'abele-book-panel'
 
 export class BookView extends FileView {
   allowNoFile = false
+  readonly model: BookModel = reactive(emptyBookModel())
   private reader: FoliateView | null = null
   private opened: OpenedBook | null = null
   private loadToken = 0
+  private vue: VueApp | null = null
+  private stage: HTMLElement | null = null
+  private stageReady: Promise<HTMLElement>
+  private resolveStage!: (el: HTMLElement) => void
+  private stopWatch: WatchStopHandle | null = null
+  private key = ''
+  private footnotes = new FootnoteHandler()
+  private footnoteHref = ''
   /** Every page loaded so far in this tab, newest last. */
   readonly pages: PageReport[] = []
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
     this.navigation = true
+    this.stageReady = new Promise((resolve) => (this.resolveStage = resolve))
+    // The note's own engine goes into its dialog as soon as it exists: its page loads only once
+    // it is in the document.
+    this.footnotes.addEventListener('before-render', (e) => {
+      const view = (e as CustomEvent<{ view: FoliateView }>).detail.view
+      view.addClass('abele-book__engine')
+      view.addEventListener('load', (ev) => this.onPage((ev as CustomEvent).detail, false))
+      this.applyTo(view, true)
+      this.model.footnote = { view, href: this.footnoteHref, type: null }
+    })
+    this.footnotes.addEventListener('render', (e) => {
+      const { type } = (e as CustomEvent<{ type: string | null }>).detail
+      if (this.model.footnote) this.model.footnote.type = type
+    })
   }
 
   getViewType(): string {
@@ -68,6 +90,55 @@ export class BookView extends FileView {
     return BOOK_EXTENSIONS.includes(extension)
   }
 
+  /** The engine element, once a book is open: the e2e tier and later phases reach it here. */
+  get engine(): FoliateView | null {
+    return this.reader
+  }
+
+  async onOpen(): Promise<void> {
+    this.contentEl.empty()
+    this.contentEl.addClass('abele-book')
+    const mount = this.contentEl.createDiv({ cls: 'abele-book__mount' })
+    this.model.panel = !Platform.isPhone && this.app.loadLocalStorage(PANEL_KEY) === '1'
+    this.vue = createApp(BookReader, {
+      model: this.model,
+      onStage: (el: HTMLElement) => {
+        this.stage = el
+        this.resolveStage(el)
+      },
+      onGo: (href: string, fromPanel: boolean) => {
+        if (fromPanel) this.model.panel = false
+        void this.reader?.goTo(href)
+      },
+      onSeek: (fraction: number): void => void this.reader?.goToFraction(fraction),
+      onBack: (): void => this.reader?.history.back(),
+      onPanel: (open: boolean) => this.setPanel(open),
+      onSettings: (open: boolean) => (this.model.settingsOpen = open),
+      onFootnoteClose: () => this.closeFootnote(),
+      onFootnoteGo: () => {
+        const href = this.footnoteHref
+        this.closeFootnote()
+        if (href) void this.reader?.goTo(href)
+      },
+    })
+    this.vue.mount(mount)
+
+    this.addAction('list', 'Contents', () => this.setPanel(!this.model.panel))
+    this.addAction('a-large-small', 'Text and layout', () => (this.model.settingsOpen = true))
+
+    const config = AbeleConfig.getInstance()
+    this.stopWatch = watch(config.version, () => this.applySettings())
+    this.registerEvent(this.app.workspace.on('css-change', () => this.applySettings()))
+  }
+
+  async onClose(): Promise<void> {
+    this.teardown()
+    this.stopWatch?.()
+    this.vue?.unmount()
+    this.vue = null
+    await super.onClose()
+  }
+
   async onLoadFile(file: TFile): Promise<void> {
     await super.onLoadFile(file)
     await this.show(file)
@@ -78,38 +149,99 @@ export class BookView extends FileView {
     await super.onUnloadFile(file)
   }
 
-  async onClose(): Promise<void> {
-    this.teardown()
-    await super.onClose()
+  onPaneMenu(menu: Menu, source: string): void {
+    super.onPaneMenu(menu, source)
+    const flow = readerSettingsFrom(AbeleConfig.getInstance().reader).flow
+    menu.addItem((item) =>
+      item
+        .setTitle(
+          flow === 'paginated'
+            ? 'Scroll instead of turning pages'
+            : 'Turn pages instead of scrolling'
+        )
+        .setIcon(flow === 'paginated' ? 'scroll-text' : 'book-open')
+        .setSection('view')
+        .onClick(() => void this.setFlow(flow === 'paginated' ? 'scrolled' : 'paginated'))
+    )
+    menu.addItem((item) =>
+      item
+        .setTitle('Text and layout…')
+        .setIcon('a-large-small')
+        .setSection('view')
+        .onClick(() => (this.model.settingsOpen = true))
+    )
   }
 
-  /** The engine element, once a book is open: the e2e tier and later phases reach it here. */
-  get engine(): FoliateView | null {
-    return this.reader
+  private async setFlow(flow: 'paginated' | 'scrolled'): Promise<void> {
+    const config = AbeleConfig.getInstance()
+    config.reader = readerSettingsFrom({ ...config.reader, flow })
+    await config.saveSettings()
+  }
+
+  private setPanel(open: boolean): void {
+    this.model.panel = open
+    if (!Platform.isPhone) this.app.saveLocalStorage(PANEL_KEY, open ? '1' : null)
+  }
+
+  private closeFootnote(): void {
+    const note = this.model.footnote
+    this.model.footnote = null
+    const view = note?.view as FoliateView | undefined
+    view?.close?.()
+    view?.remove()
   }
 
   private teardown(): void {
     this.loadToken++
+    this.closeFootnote()
+    void bookPlaces()?.flush()
     this.reader?.close()
     this.reader?.remove()
     this.reader = null
     this.opened?.destroy()
     this.opened = null
     this.pages.length = 0
-    this.contentEl.empty()
+    Object.assign(this.model, emptyBookModel(), { panel: this.model.panel })
   }
 
-  private showMessage(text: string): void {
-    this.contentEl.empty()
-    this.contentEl.createDiv({ cls: 'abele-book__message', text })
+  private fail(message: string): void {
+    this.model.status = 'error'
+    this.model.message = message
+  }
+
+  /** Layout and page style from the settings and the theme, on the book's engine or a note's. */
+  private applyTo(view: FoliateView, note = false): void {
+    const settings = readerSettingsFrom(AbeleConfig.getInstance().reader)
+    const renderer = view.renderer as unknown as HTMLElement & {
+      setStyles?: (css: [string, string]) => void
+    }
+    if (!renderer) return
+    const attrs = layoutAttributes(settings, Platform.isPhone)
+    if (note) {
+      attrs.flow = 'scrolled'
+      attrs.margin = '0px'
+      attrs.gap = '4%'
+      attrs['max-column-count'] = '1'
+    }
+    for (const [name, value] of Object.entries(attrs))
+      if (renderer.getAttribute(name) !== value) renderer.setAttribute(name, value)
+    renderer.setStyles?.(pageStyles(settings, themeValues(this.contentEl)))
+  }
+
+  private applySettings(): void {
+    if (this.reader) this.applyTo(this.reader)
+    const note = this.model.footnote?.view as FoliateView | undefined
+    if (note?.renderer) this.applyTo(note, true)
   }
 
   private async show(file: TFile): Promise<void> {
     this.teardown()
     const token = this.loadToken
-    this.contentEl.addClass('abele-book')
-    this.showMessage('Opening the book…')
+    this.model.status = 'loading'
+    this.model.message = 'Opening the book…'
+    this.model.title = file.basename
     try {
+      const stage = await this.stageReady
       const data = new Uint8Array(await this.app.vault.readBinary(file))
       if (token !== this.loadToken) return
       const opened = await openEpub(data)
@@ -119,33 +251,75 @@ export class BookView extends FileView {
       }
       await import('@/vendor/foliate-js/view.js')
       frameOptions.sandbox = readerTestHooks.sandbox ?? frameSandbox(Platform)
-      this.contentEl.empty()
-      const reader = this.contentEl.createEl('foliate-view', { cls: 'abele-book__engine' })
+      stage.empty()
+      const reader = stage.createEl('foliate-view', { cls: 'abele-book__engine' })
       // A custom element is defined per window: in a pop-out window the tag stays a plain element.
       if (typeof reader.open !== 'function') {
+        reader.remove()
         opened.destroy()
-        this.showMessage('Books open in the main window only.')
+        this.fail('Books open in the main window only.')
         return
       }
       reader.addEventListener('load', (e) => this.onPage((e as CustomEvent).detail))
       reader.addEventListener('external-link', (e) => this.onExternalLink(e as CustomEvent))
+      reader.addEventListener('link', (e) => this.onLink(e))
+      reader.addEventListener('relocate', (e) =>
+        this.onRelocate((e as CustomEvent<FoliateLocation>).detail)
+      )
+      reader.history.addEventListener('index-change', () => {
+        this.model.canGoBack = !!this.reader?.history.canGoBack
+      })
       this.reader = reader
       this.opened = opened
       await reader.open(opened.book)
       if (token !== this.loadToken) return
-      const renderer = reader.renderer as unknown as { setStyles?: (css: string) => void }
-      renderer.setStyles?.(themeCss(this.contentEl))
-      await reader.init({ showTextStart: true })
+      this.applyTo(reader)
+      this.model.toc = tocEntries(opened.book.toc)
+      this.key = bookKey(opened.book.metadata?.identifier, file.path)
+      const place = await bookPlaces()?.get(this.key)
+      if (token !== this.loadToken) return
+      await reader.init({ lastLocation: place?.cfi ?? null, showTextStart: true })
+      if (token !== this.loadToken) return
+      // The first page of a book is not a place to go back to.
+      this.model.canGoBack = false
+      this.model.status = 'ready'
     } catch (e) {
       if (token !== this.loadToken) return
       console.error('[Abele] book did not open', e)
       this.teardown()
-      this.showMessage(`This book could not be opened. ${(e as Error).message ?? ''}`.trim())
+      this.fail(`This book could not be opened. ${(e as Error).message ?? ''}`.trim())
     }
   }
 
+  private onRelocate(detail: FoliateLocation): void {
+    this.model.fraction = detail.fraction ?? 0
+    this.model.chapter = detail.tocItem?.label?.trim() ?? ''
+    this.model.currentHref = detail.tocItem?.href ?? null
+    const file = this.file
+    if (detail.cfi && file && this.key && this.model.status === 'ready')
+      void bookPlaces()?.set(this.key, {
+        cfi: detail.cfi,
+        fraction: detail.fraction ?? 0,
+        path: file.path,
+      })
+  }
+
+  /** A link inside the book: a note opens in its dialog, anything else is followed. */
+  private onLink(e: Event): void {
+    if (!this.opened) return
+    const href = (e as CustomEvent<{ href?: string }>).detail?.href ?? ''
+    this.footnoteHref = href
+    const done = this.footnotes.handle(this.opened.book, e)
+    // A mark that looked like a note and was not one: the link is followed after all.
+    done?.catch((err) => {
+      console.warn('[Abele] a note could not be shown', err)
+      this.closeFootnote()
+      if (href) void this.reader?.goTo(href)
+    })
+  }
+
   /** Every page, as it arrives in its frame: audited, and wired for keys and taps. */
-  private onPage({ doc, index }: { doc: Document; index: number }): void {
+  private onPage({ doc, index }: { doc: Document; index: number }, main = true): void {
     const frame = doc.defaultView?.frameElement ?? null
     const findings = auditDocument(doc)
     this.pages.push({ index, findings, sandbox: frame?.getAttribute('sandbox') ?? null })
@@ -160,6 +334,7 @@ export class BookView extends FileView {
       const link = target?.closest?.('a, area')
       if (link && !(link.localName === 'a' && link.hasAttribute('href'))) e.preventDefault()
     })
+    if (!main) return
     doc.addEventListener('keydown', (e) => this.onKey(e))
     doc.addEventListener('click', (e) => this.onTap(e, doc))
   }
@@ -186,20 +361,22 @@ export class BookView extends FileView {
     if (!this.reader || e.defaultPrevented) return
     if ((e.target as Element | null)?.closest?.('a, area')) return
     if (!doc.getSelection()?.isCollapsed) return
-    const width = this.contentEl.clientWidth
-    if (!width) return
+    const stage = this.stage
+    const width = stage?.clientWidth ?? 0
+    if (!stage || !width) return
     const frame = doc.defaultView?.frameElement
     const x =
-      e.clientX +
-      (frame?.getBoundingClientRect().left ?? 0) -
-      this.contentEl.getBoundingClientRect().left
+      e.clientX + (frame?.getBoundingClientRect().left ?? 0) - stage.getBoundingClientRect().left
     if (x < width * 0.25) void this.reader.goLeft()
     else if (x > width * 0.75) void this.reader.goRight()
   }
 
   onload(): void {
     super.onload()
-    this.registerDomEvent(this.contentEl, 'keydown', (e) => this.onKey(e))
+    this.registerDomEvent(this.contentEl, 'keydown', (e) => {
+      if ((e.target as Element | null)?.closest?.('input, select, textarea')) return
+      this.onKey(e)
+    })
   }
 }
 

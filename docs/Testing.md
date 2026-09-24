@@ -199,8 +199,16 @@ Three files, three concerns:
   recorded itself, anything was opened or `child_process` was asked for. Runs twice: with the
   desktop's sandbox, and with the iPhone's, which allows scripts — so the second run is the
   cleaning and the policy alone. The phone file opens books under `emulateMobile` at 390×844,
-  checks the page keeps clear of the floating header and bar, and turns a page by a tap; pictures
-  in `/tmp/abele-phone/book-*.png`. WebKit itself cannot be run here.
+  checks the reader keeps clear of the floating header and bar and that the text starts within
+  48px of the header, turns a page by a tap and by a synthetic swipe, opens the contents drawer
+  (and picks a chapter from it) and the text and layout dialog; pictures in
+  `/tmp/abele-phone/book-*.png`. WebKit itself cannot be run here.
+- `bookReading.e2e.test.ts` — **reading**, on the desktop, with the book of
+  `tests/fixtures/books/richBook.ts`: a note marked as one and a note marked only by a superscript
+  open in the dialog; a link to another chapter is followed and the way back works; the contents
+  sit beside the page and go to a chapter; the place is kept across closing the tab and across
+  renaming and moving the file; a change of the text and layout settings and a switch to a dark
+  theme redraw the open page. Puts the settings and the theme back after itself.
 
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
 "mega group", where a single resolution currently takes about two minutes.

@@ -705,30 +705,3 @@ body.is-mobile .abele-comment-marker_pending::after {
   font-size: var(--font-ui-small);
   white-space: normal;
 }
-
-/* Book reader: a tab holding one book, drawn by the engine element. */
-.view-content.abele-book {
-  padding: 0;
-  overflow: hidden;
-  position: relative;
-}
-
-.abele-book__engine {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-/* On a phone the tab runs under Obsidian's floating header and navigation bar; the page keeps
-   clear of both by the spacing Obsidian gives its own views. */
-.is-phone .view-content.abele-book {
-  box-sizing: border-box;
-  padding-top: var(--view-top-spacing, 0);
-  padding-bottom: var(--view-bottom-spacing, 0);
-}
-
-.abele-book__message {
-  padding: var(--size-4-8) var(--size-4-4);
-  color: var(--text-muted);
-  text-align: center;
-}

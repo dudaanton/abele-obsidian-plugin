@@ -8,10 +8,49 @@ out of the way; the console says so.
 
 ## Reading
 
-The book opens on its first chapter of text (the cover and front matter are skipped when the
-book says where the text starts). Pages turn with the arrow keys, Page Up and Page Down, the
-space bar, or a tap near the left or right edge of the page. The page takes the text colour and
-link colour of the current Obsidian theme.
+A book opens where it was left. The first time, it opens on its first chapter of text (the cover
+and front matter are skipped when the book says where the text starts).
+
+- **Turning pages.** The arrow keys, Page Up and Page Down, the space bar, a tap near the left or
+  right edge of the page, or on a touch screen a swipe.
+- **Pages or scrolling.** The pages can be turned one at a time or scrolled through a chapter at a
+  time. The tab's menu (⋯) switches between the two at once, keeping the place; so does
+  **Layout** in the text and layout settings.
+- **Contents.** The list button in the tab's header opens the book's table of contents beside the
+  page, with the chapter on screen marked and the way to it opened. On a narrow tab or a phone it
+  is a drawer over the page, which closes when a chapter is picked. Whether it is open is
+  remembered on the desktop.
+- **Notes.** A tap on a note mark opens the note in a dialog over the page, as in Apple Books.
+  Marks the book labels as notes (EPUB 3 `noteref`) are recognised, and so are the plain
+  superscript numbers older books use. **Go to the note** turns to it in the book. Notes printed
+  as asides inside the text are hidden there, since they open in the dialog.
+- **Links.** A link to another place in the book goes there; the arrow at the start of the line
+  under the page goes back to where the link was followed from. Links to the web open in the
+  browser.
+- **Progress.** The line under the page names the chapter and says how far into the book the
+  page is. Its slider goes anywhere in the book.
+- **Where it was left** is kept for each book under its identifier, so renaming or moving the file
+  keeps it. It reaches another device where the plugin's own folder is synced.
+
+## Text and layout
+
+The **Aa** button in a book's header opens the text and layout settings over the page; the same
+settings are in **Settings → Abele → Books**. Every change is applied to the open books at once
+and travels with the settings transfer.
+
+| Setting | What it does |
+|---|---|
+| Layout | Pages turned one at a time, or scrolling through each chapter. |
+| Font | The theme's text font (the one notes use), a serif, a sans-serif, or the book's own. |
+| Text size | 70% to 200% of the book's own. |
+| Line spacing | 1.2 to 2, or the book's own. |
+| Margins | Narrow, normal or wide space around the text and between columns. |
+| Column width | The widest a column of text may grow. |
+| Two columns | Two pages side by side when the tab is wide enough. |
+| Theme colours | On: the book in the theme's text, link and background colours, dark mode included. Off: the book's own colours on a light page. |
+
+On a phone the text starts just under Obsidian's header and the line under the page sits above its
+navigation bar.
 
 ## What the reader will not do: run the book's code
 
@@ -64,4 +103,5 @@ Archives are unpacked with `fflate`, one entry at a time as the engine asks for 
   that while paging through. Books of a few megabytes cost next to nothing. How far a phone goes
   has not been measured; a book of that size may not open there.
 - Books open in the main window; pop-out windows are not supported yet.
+- Scrolling runs through one chapter at a time; the next chapter follows when the end is reached.
 - Protected (DRM) books cannot be opened; the reader says so instead of showing scrambled text.

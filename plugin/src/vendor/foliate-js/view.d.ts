@@ -41,8 +41,16 @@ export interface FoliateRenderer extends HTMLElement {
   prev(): Promise<void>
 }
 
+export interface FoliateHistory extends EventTarget {
+  back(): void
+  forward(): void
+  readonly canGoBack: boolean
+  readonly canGoForward: boolean
+}
+
 export class View extends HTMLElement {
   book: FoliateBook
+  history: FoliateHistory
   renderer: FoliateRenderer
   lastLocation: FoliateLocation | null
   isFixedLayout: boolean
@@ -50,6 +58,8 @@ export class View extends HTMLElement {
   close(): void
   init(opts: { lastLocation?: string | null; showTextStart?: boolean }): Promise<void>
   goTo(target: string | number | { fraction: number }): Promise<unknown>
+  select(target: string): Promise<void>
+  deselect(): void
   goToFraction(fraction: number): Promise<void>
   next(distance?: number): Promise<void>
   prev(distance?: number): Promise<void>

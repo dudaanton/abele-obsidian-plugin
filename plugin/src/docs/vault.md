@@ -318,3 +318,11 @@ call, so the person sees what the agent saw. They are ordinary image files: noth
 back except the chat that made them, and nothing deletes them — one more each time the tool is
 called. A person who does not want them keeping is the one who removes them, like any other
 attachment.
+
+## Books
+
+`.epub` files anywhere in the vault open in Abele's book reader, a tab of its own. The plugin
+never changes a book file. Where each book was left is kept outside the notes, in
+`book-places.json` in the plugin's own folder: under the book's `dc:identifier`, so renaming or
+moving the file keeps its place, or under its path for a book without one. Nothing is written
+beside a book.

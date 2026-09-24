@@ -13,6 +13,7 @@ import AbelePlugin from '@/main'
 import { isKitColor } from '@/constants/colors'
 import { DEFAULT_LABEL_PROPERTY, type LabelColor } from '@/helpers/taskMeta'
 import { DEFAULT_GITHUB_SETTINGS, githubSettingsFrom, type GithubSettings } from '@/github/settings'
+import { DEFAULT_READER_SETTINGS, readerSettingsFrom, type ReaderSettings } from '@/reader/settings'
 import { normalizeRule, type AutomationRule } from '@/automations/types'
 
 export interface AbeleSettings {
@@ -72,6 +73,8 @@ export interface AbeleSettings {
   keyboardDiagnostics?: boolean
   // GitHub links opened inside Obsidian
   github?: GithubSettings
+  // The book reader: page layout, text and colours
+  reader?: ReaderSettings
 }
 
 export interface LinkDefinition {
@@ -189,6 +192,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   mermaidViewer: true,
   keyboardDiagnostics: false,
   github: { ...DEFAULT_GITHUB_SETTINGS },
+  reader: { ...DEFAULT_READER_SETTINGS },
 }
 
 export class AbeleConfig {
@@ -232,6 +236,7 @@ export class AbeleConfig {
   public mermaidViewer: boolean
   public keyboardDiagnostics: boolean
   public github: GithubSettings
+  public reader: ReaderSettings
 
   /**
    * Moves on every save and every reload from disk. The fields above are plain, so anything
@@ -545,6 +550,7 @@ export class AbeleConfig {
     this.mermaidViewer = settings?.mermaidViewer ?? DEFAULT_SETTINGS.mermaidViewer ?? true
     this.keyboardDiagnostics = settings?.keyboardDiagnostics ?? false
     this.github = githubSettingsFrom(settings?.github)
+    this.reader = readerSettingsFrom(settings?.reader)
 
     return migrated
   }
@@ -592,6 +598,7 @@ export class AbeleConfig {
       mermaidViewer: this.mermaidViewer,
       keyboardDiagnostics: this.keyboardDiagnostics,
       github: { ...this.github },
+      reader: { ...this.reader },
     }
   }
 }

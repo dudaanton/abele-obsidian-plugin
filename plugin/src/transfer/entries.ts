@@ -249,6 +249,7 @@ export const SECTIONS: Section[] = [
     // The token itself is in the keychain; the setting holds only its id.
     secretsOf: (settings) => (settings.github?.keyId ? [settings.github.keyId] : []),
   }),
+  rootBlock('reader', 'Book reader', ['reader']),
   rootBlock('other', 'Other', [
     'refreshDelay',
     'logsNotesTypes',

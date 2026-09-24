@@ -17,6 +17,7 @@ import {
   removedByReplace,
 } from '@/transfer/entries'
 import type { AbeleSettings } from '@/services/AbeleConfig'
+import { DEFAULT_READER_SETTINGS } from '@/reader/settings'
 import type { AiSettings } from '@/ai/types'
 import type { TransferEntry } from '@/transfer/types'
 
@@ -133,6 +134,15 @@ describe('settings that arrived later than the transfer did', () => {
     expect(entry?.data).toEqual({ github })
     expect(entry?.secretIds).toEqual(['abele-github-token'])
     expect(applyEntries([entry!], settings()).github).toEqual(github)
+  })
+
+  it('carries the book reader settings', () => {
+    const reader = { ...DEFAULT_READER_SETTINGS, fontSize: 135, flow: 'scrolled' as const }
+    const entries = collectEntries(settings({ reader }))
+    const entry = find(entries, 'reader', 'reader')
+
+    expect(entry?.data).toEqual({ reader })
+    expect(applyEntries([entry!], settings()).reader).toEqual(reader)
   })
 
   /**

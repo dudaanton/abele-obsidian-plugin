@@ -39,6 +39,7 @@ import LinksSettings from './LinksSettings.vue'
 import OtherSettings from './OtherSettings.vue'
 import TransferSettings from './TransferSettings.vue'
 import GithubSettings from './GithubSettings.vue'
+import ReaderSettings from './ReaderSettings.vue'
 
 interface SettingsTab {
   id: string
@@ -56,6 +57,7 @@ const tabs: SettingsTab[] = [
   { id: 'scripts', label: 'Scripts', component: markRaw(ScriptsSettings) },
   { id: 'links', label: 'Links', component: markRaw(LinksSettings) },
   { id: 'github', label: 'GitHub', component: markRaw(GithubSettings) },
+  { id: 'reader', label: 'Books', component: markRaw(ReaderSettings) },
   { id: 'transfer', label: 'Transfer', component: markRaw(TransferSettings) },
   { id: 'other', label: 'Other', component: markRaw(OtherSettings) },
 ]
