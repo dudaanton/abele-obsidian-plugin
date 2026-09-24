@@ -18,17 +18,17 @@
         :checked="!!checked"
         @click.stop="task.toggle"
     /></label>
-    <ObsidianIcon
-      v-if="priorityMark"
-      class="abele-task-view__priority"
-      :icon="priorityMark.icon"
-      :color="priorityMark.color"
-      :tooltip="priorityMark.label"
-      no-hover
-    />
     <div class="abele-task-view__content">
       <ObsidianMarkdown v-if="contentLoaded" :text="task.title ?? ''" :file-path="task.filePath" />
-      <div v-if="labels.length" class="abele-task-view__labels">
+      <div v-if="labels.length || priorityMark" class="abele-task-view__labels">
+        <ObsidianIcon
+          v-if="priorityMark"
+          class="abele-task-view__priority"
+          :icon="priorityMark.icon"
+          :color="priorityMark.color"
+          :tooltip="priorityMark.label"
+          no-hover
+        />
         <Badge v-for="label in labels" :key="label.text" :text="label.text" :color="label.color" />
       </div>
       <ObsidianMarkdown
@@ -299,15 +299,28 @@ onMounted(() => {
   padding-top: 1px;
 }
 
-.abele-task-view__priority {
-  flex: 0 0 auto;
-}
-
 .abele-task-view__labels {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--size-2-2);
   margin-top: var(--size-2-1);
+}
+
+// Sized to the chips beside it, so a row with a glyph is no taller than one without.
+.abele-task-view__labels .abele-task-view__priority {
+  flex: 0 0 auto;
+  height: auto;
+  padding: 0;
+
+  .abele-obsidian-icon__icon {
+    height: auto;
+  }
+
+  svg {
+    width: var(--icon-xs);
+    height: var(--icon-xs);
+  }
 }
 
 .abele-task-view__indicator {
