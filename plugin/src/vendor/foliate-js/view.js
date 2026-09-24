@@ -28,8 +28,10 @@ const isFBZ = ({ name, type }) =>
     || name.endsWith('.fb2.zip') || name.endsWith('.fbz')
 
 const makeZipLoader = async file => {
-    const { configure, ZipReader, BlobReader, TextWriter, BlobWriter } =
-        await import('./vendor/zip.js')
+    // ABELE PATCH: upstream reads archives with its vendored zip.js, which is not carried.
+    // Abele opens archives itself (src/reader/zipLoader.ts) and hands `open()` a book object.
+    throw new UnsupportedTypeError('Archives are opened by the host')
+    const { configure, ZipReader, BlobReader, TextWriter, BlobWriter } = {}
     configure({ useWebWorkers: false })
     const reader = new ZipReader(new BlobReader(file))
     const entries = await reader.getEntries()
@@ -104,13 +106,13 @@ export const makeBook = async file => {
         }
     }
     else if (await isPDF(file)) {
-        const { makePDF } = await import('./pdf.js')
-        book = await makePDF(file)
+        // ABELE PATCH: PDF goes through the host, which supplies PDF.js.
+        throw new UnsupportedTypeError('PDF is opened by the host')
     }
     else {
         const { isMOBI, MOBI } = await import('./mobi.js')
         if (await isMOBI(file)) {
-            const fflate = await import('./vendor/fflate.js')
+            const fflate = await import('fflate') // ABELE PATCH: the npm package
             book = await new MOBI({ unzlib: fflate.unzlibSync }).open(file)
         }
         else if (isFB2(file)) {

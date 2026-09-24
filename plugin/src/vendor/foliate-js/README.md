@@ -22,3 +22,28 @@ Not taken: the demo reader (`reader.html`, `reader.js`, `ui/`), `opds.js`, `dict
 `quote-image.js`, `uri-template.js`, the tests, the rollup setup and upstream's own `vendor/`
 (zip.js, fflate and PDF.js). Archives are opened by Abele with the `fflate` package it already
 depends on.
+
+## Local changes
+
+Every change is marked `ABELE PATCH` at its site.
+
+1. **The frame sandbox is the host's to set** (`frame-options.js`, new; `paginator.js`,
+   `fixed-layout.js`). Upstream hard-codes `allow-same-origin allow-scripts` on every page frame,
+   because WebKit does not deliver events into a frame without `allow-scripts` (WebKit bug
+   218086). Abele drops `allow-scripts` wherever the engine allows it — Chromium, which is the
+   desktop app and Android — and keeps it only on the iPhone and iPad.
+2. **Archives and PDF are opened by the host** (`view.js`, `makeBook`). The branches that
+   imported upstream's vendored zip.js and PDF.js throw instead; the MOBI branch imports `fflate`
+   from npm instead of upstream's vendored copy. Abele builds the book object itself and passes
+   it to `open()`, so `makeBook` is only reached for formats that need neither.
+
+## Additions
+
+`view.d.ts`, `epub.d.ts` and `frame-options.d.ts` type the parts of the modules beside them that
+Abele calls. They are Abele's, not upstream's.
+
+## What Abele adds around it
+
+The engine itself does not make a book safe to show: its author says so, and asks for a Content
+Security Policy. Abele's cleaning, policy and page audit are in `src/reader/bookSafety.ts`; the
+reasons are in `docs/Book reader.md`.

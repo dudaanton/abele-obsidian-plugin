@@ -101,6 +101,8 @@ export default [
       'plugin/coverage/**',
       'plugin/scripts/**',
       'plugin/main.js',
+      // Third-party source carried at a pinned commit; see its README. Not ours to restyle.
+      'plugin/src/vendor/**',
       // Read from disk by `validate-manifest`, not linted as source files.
       'manifest.json',
       'versions.json',

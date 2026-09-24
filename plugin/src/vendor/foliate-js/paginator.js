@@ -1,3 +1,4 @@
+import { frameOptions } from './frame-options.js' // ABELE PATCH
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 const debounce = (f, wait, immediate) => {
@@ -241,7 +242,7 @@ class View {
         })
         // `allow-scripts` is needed for events because of WebKit bug
         // https://bugs.webkit.org/show_bug.cgi?id=218086
-        this.#iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts')
+        this.#iframe.setAttribute('sandbox', frameOptions.sandbox) // ABELE PATCH
         this.#iframe.setAttribute('scrolling', 'no')
     }
     get element() {
