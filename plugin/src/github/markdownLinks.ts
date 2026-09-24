@@ -233,11 +233,7 @@ export async function repoImageUrl(
   file: RepoFile,
   repoPath: string
 ): Promise<string> {
-  const path = repoPath.split('/').map(encodeURIComponent).join('/')
-  const { bytes, type } = await client.bytes(
-    `/repos/${encodeURIComponent(file.owner)}/${encodeURIComponent(file.repo)}/contents/${path}?ref=${encodeURIComponent(file.ref)}`,
-    { what: 'the image' }
-  )
+  const { bytes, type } = await client.fileBytes(file, repoPath, file.ref, 'the image')
   // An SVG without its type is not drawn at all.
   const mime = /\.svg$/i.test(repoPath) ? 'image/svg+xml' : type
   return URL.createObjectURL(new Blob([bytes], mime ? { type: mime } : {}))

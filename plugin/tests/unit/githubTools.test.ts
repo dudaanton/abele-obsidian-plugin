@@ -370,6 +370,17 @@ describe('github_file', () => {
     expect(window).toContain('showing 990–1000')
   })
 
+  it('reads a file past a megabyte from the blob the contents API names', async () => {
+    serve({
+      '/repos/acme/widgets/contents/huge.ts': {
+        json: { type: 'file', sha: 'b1', size: 2_000_000, encoding: 'none', content: '' },
+      },
+      '/repos/acme/widgets/git/blobs/b1': { json: { encoding: 'base64', content: b64(lines(3)) } },
+    })
+    const out = await run('github_file', { repo: 'acme/widgets', path: 'huge.ts' })
+    expect(out).toContain('3  row 3')
+  })
+
   it('lists a folder, folders first', async () => {
     serve({
       '/repos/acme/widgets/contents/src': {

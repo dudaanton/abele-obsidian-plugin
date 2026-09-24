@@ -7,10 +7,20 @@
  * app's requests waiting on the very call that waits for them.
  *
  * Every request is logged to stdout as `GET <path>`, so a test can tell which were made.
+ *
+ * Started with `legacy` as its second argument it is an older Enterprise Server: it knows only
+ * the long-standing media types. `raw+json` and `sha` fall through to the default answer — for a
+ * file the contents API's JSON object with the file in base64, for a commit the whole commit —
+ * and a file over `LEGACY_LARGE` bytes stands for one past the contents API's 1 MB: its object
+ * carries no content, and only the git blobs API has it. `no-raw` is the same server ignoring
+ * every raw type as well, so that the client's own decoding is what shows the file.
  */
+import { createHash } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import {
+  BASE_FILES,
   DISCUSSION,
+  HEAD_FILES,
   HEAD_SHA,
   ISSUE,
   OWNER,
@@ -22,6 +32,55 @@ import {
 } from './fakeGithubRepo'
 
 const port = Number(process.argv[2] ?? 0)
+const mode = process.argv[3] ?? ''
+const legacy = mode === 'legacy' || mode === 'no-raw'
+/** The size that stands for the contents API's 1 MB in legacy mode: `src/long.ts` is over it. */
+const LEGACY_LARGE = 10_000
+
+/** The media types asked for, without their parameters. */
+const mediaTypes = (accept: string) => accept.split(',').map((t) => t.split(';')[0].trim())
+const RAW_TYPES: string[] =
+  mode === 'no-raw'
+    ? []
+    : legacy
+      ? ['application/vnd.github.raw', 'application/vnd.github.v3.raw']
+      : [
+          'application/vnd.github.raw',
+          'application/vnd.github.v3.raw',
+          'application/vnd.github.raw+json',
+        ]
+
+/** Git's own name for a file's contents. */
+const blobSha = (text: string) =>
+  createHash('sha1')
+    .update(`blob ${Buffer.byteLength(text)}\0${text}`)
+    .digest('hex')
+
+/** GitHub wraps its base64 at 60 columns. */
+const base64 = (text: string) =>
+  Buffer.from(text, 'utf8')
+    .toString('base64')
+    .replace(/(.{60})/g, '$1\n')
+
+/** The contents API's default answer for a file. */
+function contentsObject(path: string, text: string, web: string) {
+  const size = Buffer.byteLength(text)
+  const large = legacy && size > LEGACY_LARGE
+  return {
+    type: 'file',
+    name: path.split('/').pop(),
+    path,
+    sha: blobSha(text),
+    size,
+    url: `${web}/api/v3/repos/${OWNER}/${REPO}/contents/${path}`,
+    html_url: `${web}/${OWNER}/${REPO}/blob/main/${path}`,
+    git_url: `${web}/api/v3/repos/${OWNER}/${REPO}/git/blobs/${blobSha(text)}`,
+    download_url: null,
+    encoding: large ? 'none' : 'base64',
+    content: large ? '' : base64(text),
+    _links: {},
+  }
+}
 
 function send(res: ServerResponse, status: number, body: unknown, type = 'application/json') {
   const bytes = Buffer.isBuffer(body)
@@ -59,13 +118,16 @@ function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) 
   let m = /^\/commits\/(.+)$/.exec(path)
   if (m) {
     const ref = m[1]
-    if (accept.includes('vnd.github.sha')) {
+    if (accept.includes('vnd.github.sha') && !legacy) {
       return filesAt(ref)
         ? send(res, 200, ref === 'main' ? HEAD_SHA : ref, 'text/plain')
         : notFound(res)
     }
     const detail = f.commitDetail(ref === 'main' ? HEAD_SHA : ref)
-    return detail ? send(res, 200, detail) : notFound(res)
+    if (detail) return send(res, 200, detail)
+    // An older server answers the `sha` type with the commit; this one has only its SHA to give.
+    if (legacy && filesAt(ref)) return send(res, 200, { sha: ref === 'main' ? HEAD_SHA : ref })
+    return notFound(res)
   }
 
   m = /^\/contents\/(.+)$/.exec(path)
@@ -73,7 +135,11 @@ function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) 
     const files = filesAt(url.searchParams.get('ref') ?? 'main')
     const file = m[1]
     if (!files) return notFound(res)
-    if (file in files) return send(res, 200, files[file], 'text/plain; charset=utf-8')
+    if (file in files) {
+      if (mediaTypes(accept).some((t) => RAW_TYPES.includes(t)))
+        return send(res, 200, files[file], 'application/vnd.github.raw; charset=utf-8')
+      return send(res, 200, contentsObject(file, files[file], web))
+    }
     const inside = Object.keys(files).filter((p) => p.startsWith(`${file}/`))
     if (!inside.length) return notFound(res)
     return send(
@@ -93,6 +159,22 @@ function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) 
       size: Buffer.byteLength(text),
     }))
     return send(res, 200, { sha: m[1], tree, truncated: false })
+  }
+
+  m = /^\/git\/blobs\/([0-9a-f]{40})$/.exec(path)
+  if (m) {
+    const sha = m[1]
+    const text = [...Object.values(HEAD_FILES), ...Object.values(BASE_FILES)].find(
+      (t) => blobSha(t) === sha
+    )
+    if (text === undefined) return notFound(res)
+    return send(res, 200, {
+      sha,
+      size: Buffer.byteLength(text),
+      url: '',
+      encoding: 'base64',
+      content: base64(text),
+    })
   }
 
   m = /^\/tarball\/(.+)$/.exec(path)

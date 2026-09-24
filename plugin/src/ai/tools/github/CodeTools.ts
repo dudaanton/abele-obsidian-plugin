@@ -6,6 +6,7 @@
 import type { AgentTool } from '../../client'
 import { loadCommit, loadPullCommits, type DiffFile } from '@/github/api'
 import { GithubError, type GithubClient } from '@/github/client'
+import { utf8 } from '@/github/contents'
 import { blobCandidates, diffAnchorHash } from '@/github/urls'
 import { splitMessage } from '@/github/format'
 import {
@@ -38,11 +39,6 @@ const PATCH_BUDGET = 20_000
 // `any` below is the API's own JSON, read here and never passed on.
 
 const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/')
-
-function decodeBase64(content: string): string {
-  const bytes = Uint8Array.from(atob(content.replace(/\s/g, '')), (c) => c.charCodeAt(0))
-  return new TextDecoder().decode(bytes)
-}
 
 interface Located {
   ref: string
@@ -146,15 +142,9 @@ function folder(repo: RepoRef, ref: string, path: string, body: any[]): string {
   return out.join('\n')
 }
 
-async function fileText(client: GithubClient, repo: RepoRef, ref: string, path: string, body: any) {
-  if (body.encoding === 'base64' && body.content) return decodeBase64(body.content)
-  // Over a megabyte the contents API sends no content; the raw media type still does.
-  const query = ref ? `?ref=${encodeURIComponent(ref)}` : ''
-  return client.get<string>(`${repoPath(repo)}/contents/${encodePath(path)}${query}`, {
-    accept: 'application/vnd.github.raw+json',
-    text: true,
-    what: `${path} in ${repoName(repo)}`,
-  })
+/** Over a megabyte the object carries no content; the client reads the blob it names instead. */
+async function fileText(client: GithubClient, repo: RepoRef, path: string, body: any) {
+  return utf8(await client.contentsBytes(repo, body, `${path} in ${repoName(repo)}`))
 }
 
 function numbered(
@@ -244,7 +234,7 @@ export function createGithubFileTool(): AgentTool {
           `${at.path} is a submodule: ${body.submodule_git_url ?? 'another repository'} at ${body.sha}.`
         )
       }
-      const content = await fileText(client, repo, at.ref, at.path, body)
+      const content = await fileText(client, repo, at.path, body)
       const start = params.start_line !== undefined ? whole(params.start_line, 1) : w.lines?.start
       const end = params.end_line !== undefined ? whole(params.end_line, 1) : w.lines?.end
       return answer(numbered(repo, at.ref, at.path, content, start, end))

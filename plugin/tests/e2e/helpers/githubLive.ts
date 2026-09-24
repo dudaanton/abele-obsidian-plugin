@@ -26,8 +26,13 @@ export interface FakeGithub {
   stop(): void
 }
 
-/** Bundles the server and starts it on a free port, waiting until it listens. */
-export async function startFakeGithub(): Promise<FakeGithub> {
+/**
+ * Bundles the server and starts it on a free port, waiting until it listens. `mode` makes it an
+ * older Enterprise Server — see `fakeGithubServer.ts`.
+ */
+export async function startFakeGithub(
+  options: { mode?: 'legacy' | 'no-raw' } = {}
+): Promise<FakeGithub> {
   const dir = mkdtempSync(join(tmpdir(), 'abele-fake-github-'))
   const bundle = join(dir, 'server.mjs')
   buildSync({
@@ -38,9 +43,13 @@ export async function startFakeGithub(): Promise<FakeGithub> {
     outfile: bundle,
     logLevel: 'silent',
   })
-  const child: ChildProcess = spawn(process.execPath, [bundle, '0'], {
-    stdio: ['ignore', 'pipe', 'inherit'],
-  })
+  const child: ChildProcess = spawn(
+    process.execPath,
+    [bundle, '0', ...(options.mode ? [options.mode] : [])],
+    {
+      stdio: ['ignore', 'pipe', 'inherit'],
+    }
+  )
   const port = await new Promise<number>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('the fake GitHub did not start')), 15_000)
     let out = ''

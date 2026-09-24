@@ -492,7 +492,23 @@ export async function commitSha(
     text: true,
     what: 'the commit the file was read at',
   })
-  return sha.trim()
+  return shaOf(sha)
+}
+
+/**
+ * The SHA out of the answer: the bare SHA the `sha` media type asks for, or — from a server that
+ * answered with the whole commit instead — the `sha` inside it.
+ */
+function shaOf(answer: string): string {
+  const text = answer.trim()
+  if (!text.startsWith('{')) return text
+  try {
+    const sha: unknown = (JSON.parse(text) as { sha?: unknown }).sha
+    if (typeof sha === 'string') return sha
+  } catch {
+    // Not JSON after all; the text is the answer.
+  }
+  return text
 }
 
 const isFolderListing = (text: string): boolean => {
@@ -512,12 +528,8 @@ export async function loadBlob(client: GithubClient, t: Of<'blob'>): Promise<Blo
   let lastError: unknown = null
   // Capped: a deep path with no match would otherwise cost one request per segment.
   for (const { ref, path } of blobCandidates(t.rest).slice(0, 6)) {
-    const encodedPath = path.split('/').map(encodeURIComponent).join('/')
     try {
-      const text = await client.get<string>(
-        `${repoPath(t)}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
-        { accept: 'application/vnd.github.raw+json', text: true, what: 'the file' }
-      )
+      const text = await client.fileText(t, path, ref, 'the file')
       // A folder answers with its listing — a README's link to `packages/core` is one.
       if (isFolderListing(text)) {
         throw new GithubError(

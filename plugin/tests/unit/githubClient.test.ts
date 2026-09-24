@@ -333,7 +333,7 @@ describe('loaders', () => {
       rest: ['feature', 'x', 'src', 'a.ts'],
     })
     expect(blob).toMatchObject({ ref: 'feature/x', path: 'src/a.ts', text: 'code' })
-    expect(calls[0].headers?.Accept).toBe('application/vnd.github.raw+json')
+    expect(calls[0].headers?.Accept).toBe('application/vnd.github.raw')
     expect(calls).toHaveLength(2)
   })
 

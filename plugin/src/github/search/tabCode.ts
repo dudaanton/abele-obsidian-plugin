@@ -169,11 +169,7 @@ export class TabCode implements CodeNav {
     const sha = await this.src.sha()
     const client = this.src.client()
     const repo = this.src.repo()
-    const fetchWhole: FetchWhole = (path) =>
-      client.get<string>(
-        `/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}/contents/${encodePath(path)}?ref=${sha}`,
-        { accept: 'application/vnd.github.raw+json', text: true, what: 'the file' }
-      )
+    const fetchWhole: FetchWhole = (path) => client.fileText(repo, path, sha, 'the file')
     const result = await searchChanges(changes.files, query, { glob, fetchWhole })
     return {
       files: result.files.map((f) => ({

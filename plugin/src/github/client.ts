@@ -11,6 +11,17 @@
 import { requestUrl, type RequestUrlParam, type RequestUrlResponse } from 'obsidian'
 import type { Endpoints } from './urls'
 import {
+  RAW,
+  base64Bytes,
+  carriesContent,
+  contentsPath,
+  parseContentsObject,
+  repoApiPath,
+  utf8,
+  type ContentsObject,
+  type RepoOf,
+} from './contents'
+import {
   explainRefusal,
   header,
   refusalText,
@@ -216,6 +227,58 @@ export class GithubClient {
     }
     const type = header(response.headers, 'content-type')?.split(';')[0].trim()
     return { bytes: response.arrayBuffer, type: type || undefined }
+  }
+
+  /**
+   * A file's text at a ref — the default branch without one. Asked for raw; a server that sends
+   * the contents API's JSON object instead has it decoded, and a file too large for that object
+   * to carry is read from the git blobs API. See `contents.ts`.
+   */
+  async fileText(repo: RepoOf, path: string, ref?: string, what = 'the file'): Promise<string> {
+    const text = await this.get<string>(contentsPath(repo, path, ref), {
+      accept: RAW,
+      text: true,
+      what,
+    })
+    const object = parseContentsObject(text)
+    return object ? utf8(await this.contentsBytes(repo, object, what)) : text
+  }
+
+  /** A file's bytes at a ref, uncached, the same way as `fileText`. */
+  async fileBytes(
+    repo: RepoOf,
+    path: string,
+    ref?: string,
+    what = 'the file'
+  ): Promise<{ bytes: ArrayBuffer; type?: string }> {
+    const answer = await this.bytes(contentsPath(repo, path, ref), { what })
+    if (!answer.type || !/json/i.test(answer.type)) return answer
+    const object = parseContentsObject(utf8(answer.bytes))
+    if (!object) return answer
+    const bytes = await this.contentsBytes(repo, object, what)
+    return { bytes: bytes.slice().buffer }
+  }
+
+  /**
+   * The file a contents API object describes: its base64 decoded, or — past a megabyte, where the
+   * object carries nothing — the blob it names, which the git blobs API serves up to 100 MB.
+   */
+  async contentsBytes(
+    repo: RepoOf,
+    object: Partial<ContentsObject>,
+    what = 'the file'
+  ): Promise<Uint8Array> {
+    if (carriesContent(object)) return base64Bytes(object.content)
+    if (!object.sha) {
+      throw new GithubError('other', `GitHub sent ${what} without its contents.`)
+    }
+    const blob = await this.get<{ content?: string; encoding?: string }>(
+      `${repoApiPath(repo)}/git/blobs/${encodeURIComponent(object.sha)}`,
+      { what }
+    )
+    if (blob.encoding === 'base64') return base64Bytes(blob.content ?? '')
+    if (typeof blob.content === 'string') return new TextEncoder().encode(blob.content)
+    throw new GithubError('other', `GitHub sent ${what} without its contents.`)
   }
 
   /** One request, uncached, answered with its status and headers whatever they are. */
