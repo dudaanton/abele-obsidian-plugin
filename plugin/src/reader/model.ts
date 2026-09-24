@@ -93,6 +93,8 @@ export interface BookModel {
   /** A highlight whose comment is being written. */
   commenting: Highlight | null
   search: BookSearch
+  /** The AI side is on, so "Ask here" is offered. */
+  canAsk: boolean
 }
 
 export const emptyBookModel = (): BookModel => ({
@@ -114,6 +116,7 @@ export const emptyBookModel = (): BookModel => ({
   active: null,
   commenting: null,
   search: emptySearch(),
+  canAsk: false,
 })
 
 /** The engine's contents as the tree the panel draws. */

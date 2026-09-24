@@ -38,12 +38,10 @@ import { onExternalLink, onKey, watchPage, type PageHost } from './pageInput'
 import { bookCallbacks, type BookActions } from './bookCallbacks'
 import { bookKey } from './positions'
 import { bookPlaces } from './places'
+import { fillBookMenu } from './bookMenu'
 
-export const BOOK_VIEW_TYPE = 'abele-book'
-/** What opens in a book tab by itself. */
-export const BOOK_EXTENSIONS = ['epub']
-/** What a book tab can show: PDFs too, when asked to (a menu item, or the setting). */
-export const READER_EXTENSIONS = ['epub', 'pdf']
+export { BOOK_VIEW_TYPE, BOOK_EXTENSIONS, READER_EXTENSIONS } from './viewType'
+import { BOOK_VIEW_TYPE, READER_EXTENSIONS } from './viewType'
 
 /**
  * For the e2e tier only: a sandbox to use instead of the platform's, so the desktop app can be
@@ -141,6 +139,7 @@ export class BookView extends FileView {
 
     const config = AbeleConfig.getInstance()
     this.stopWatch = watch(config.version, () => this.applySettings())
+    this.model.canAsk = !!AbeleConfig.getInstance().ai?.enabled
     this.registerEvent(
       this.app.workspace.on('css-change', () => {
         this.applySettings()
@@ -182,53 +181,16 @@ export class BookView extends FileView {
 
   onPaneMenu(menu: Menu, source: string): void {
     super.onPaneMenu(menu, source)
-    const flow = readerSettingsFrom(AbeleConfig.getInstance().reader).flow
-    menu.addItem((item) =>
-      item
-        .setTitle(
-          flow === 'paginated'
-            ? 'Scroll instead of turning pages'
-            : 'Turn pages instead of scrolling'
-        )
-        .setIcon(flow === 'paginated' ? 'scroll-text' : 'book-open')
-        .setSection('view')
-        .onClick(() => void this.setFlow(flow === 'paginated' ? 'scrolled' : 'paginated'))
-    )
-    if (this.reading && this.model.status === 'ready')
-      menu.addItem((item) =>
-        item
-          .setTitle(this.isPdf ? 'Copy link to this page' : 'Copy link to this place')
-          .setIcon('link')
-          .setSection('action')
-          .onClick(() => void this.reading?.copyLink())
-      )
-    menu.addItem((item) =>
-      item
-        .setTitle('Search in the book')
-        .setIcon('search')
-        .setSection('view')
-        .onClick(() => this.openSearch())
-    )
-    menu.addItem((item) =>
-      item
-        .setTitle('Highlights')
-        .setIcon('highlighter')
-        .setSection('view')
-        .onClick(() => this.showPanel('highlights'))
-    )
-    menu.addItem((item) =>
-      item
-        .setTitle('Text and layout…')
-        .setIcon('a-large-small')
-        .setSection('view')
-        .onClick(() => (this.model.settingsOpen = true))
-    )
-  }
-
-  private async setFlow(flow: 'paginated' | 'scrolled'): Promise<void> {
-    const config = AbeleConfig.getInstance()
-    config.reader = readerSettingsFrom({ ...config.reader, flow })
-    await config.saveSettings()
+    fillBookMenu(menu, {
+      ready: !!this.reading && this.model.status === 'ready',
+      pdf: this.isPdf,
+      canAsk: this.model.canAsk,
+      copyLink: () => void this.reading?.copyLink(),
+      ask: () => void this.reading?.ask(),
+      openSearch: () => this.openSearch(),
+      showHighlights: () => this.showPanel('highlights'),
+      openSettings: () => (this.model.settingsOpen = true),
+    })
   }
 
   /** What the tab's Vue side can ask of it. */
@@ -303,7 +265,8 @@ export class BookView extends FileView {
     this.opened?.destroy()
     this.opened = null
     this.pages.length = 0
-    Object.assign(this.model, emptyBookModel(), { panel: this.model.panel, kind: this.model.kind })
+    const { panel, kind, canAsk } = this.model
+    Object.assign(this.model, emptyBookModel(), { panel, kind, canAsk })
   }
 
   private fail(message: string): void {
@@ -340,6 +303,7 @@ export class BookView extends FileView {
   }
 
   private applySettings(): void {
+    this.model.canAsk = !!AbeleConfig.getInstance().ai?.enabled
     // Pages side by side are decided when a PDF opens; a change opens it again, at the same page.
     const twoPages = readerSettingsFrom(AbeleConfig.getInstance().reader).pdfTwoPages
     if (this.isPdf && this.opened && this.file && twoPages !== this.openedTwoPages) {

@@ -84,6 +84,9 @@ describe.skipIf(!available)('reading a book', () => {
       closed?: boolean
     }>(`
       const { leaf, view } = await open(${JSON.stringify(BOOK)})
+      // From the first chapter, wherever an earlier run left the book.
+      await view.engine.goTo(view.model.toc[0].href)
+      await until(() => view.engine.renderer.getContents()[0]?.doc?.getElementById('ref1'), 5000)
       const read = async () => {
         await until(() => view.model.footnote, 5000)
         const note = view.model.footnote?.view
@@ -135,6 +138,8 @@ describe.skipIf(!available)('reading a book', () => {
   it('shows the contents beside the page and goes to a chapter picked there', () => {
     const r = run<{ error?: string; rows?: string[]; beside?: boolean; chapter?: string }>(`
       const { leaf, view } = await open(${JSON.stringify(BOOK)})
+      await view.engine.goTo(view.model.toc[0].href)
+      await wait(500)
       view.model.panel = true
       await wait(500)
       const panel = view.contentEl.querySelector('.abele-book-reader__panel').getBoundingClientRect()
@@ -143,9 +148,11 @@ describe.skipIf(!available)('reading a book', () => {
       ;[...view.contentEl.querySelectorAll('.abele-book-contents .tree-item-self')].find((el) => el.textContent.trim() === 'Chapter 3').click()
       await until(() => view.model.chapter === 'Chapter 3', 5000)
       const chapter = view.model.chapter
+      // Beside the page when the tab is wide enough to share; a drawer over it when it is not.
+      const wide = view.contentEl.querySelector('.abele-book-reader').clientWidth > 640
       view.model.panel = false
       leaf.detach()
-      return { rows, beside: panel.right <= stage.left + 1, chapter }
+      return { rows, beside: panel.right <= stage.left + 1 === wide, chapter }
     `)
     expect(r.error).toBeUndefined()
     expect(r.rows).toEqual(expect.arrayContaining(['Chapter 1', 'Chapter 2', 'Chapter 3', 'Notes']))

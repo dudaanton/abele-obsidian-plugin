@@ -222,6 +222,13 @@ Three files, three concerns:
   layer, a search page by page that selects the find, and a `#cfi=` link in the highlights note,
   clicked in reading view while PDFs open in Obsidian's viewer, opening in the reader with the words
   selected. The phone file adds the search in the drawer and the bar for selected words at 390×844.
+- `bookAgent.e2e.test.ts` — **the agent and books**: the book tools called as a chat calls them,
+  with the chat's scope set to the run's folder. `book_views` quotes words selected on the page
+  with their link; `book_contents`, `book_read` (a part, the next window, and from a link a search
+  gave) and `book_search` read a book that is not open; `book_open` shows a place in the book's
+  own tab with the words selected; a PDF is read by its pages; a scope without the book refuses
+  it and `book_views` counts its tab as outside; **Ask here** on selected words opens a chat whose
+  input is the link and the quote. The scope and the AI switch are put back after.
 - `bookReading.e2e.test.ts` — **reading**, on the desktop, with the book of
   `tests/fixtures/books/richBook.ts`: a note marked as one and a note marked only by a superscript
   open in the dialog; a link to another chapter is followed and the way back works; the contents

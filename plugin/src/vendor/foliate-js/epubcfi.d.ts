@@ -6,3 +6,4 @@ export function fromRange(range: Range, filter?: (node: Node) => number): string
 export function toRange(doc: Document, parts: unknown, filter?: (node: Node) => number): Range
 export function collapse(cfi: string, toEnd?: boolean): string
 export const fake: { fromIndex(index: number): string; toIndex(parts: unknown): number }
+export function joinIndir(...cfis: string[]): string

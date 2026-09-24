@@ -33,6 +33,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { quoteLines } from '@/ai/quoteSelection'
 import { lineSubpath, type LineRange } from '@/lineLinks/parse'
+import { BOOK_VIEW_TYPE } from '@/reader/viewType'
 
 export const CHAT_ABOUT_TITLE = 'Chat about this'
 const CHAT_ABOUT_ICON = 'message-square-plus'
@@ -158,6 +159,8 @@ export function registerChatAbout(plugin: Plugin): void {
   plugin.registerEvent(
     workspace.on('file-menu', (menu, file, _source, leaf) => {
       if (!aiEnabled() || !canChatAbout(file)) return
+      // A book's own tab offers its own, which links to the place on screen.
+      if (leaf?.view?.getViewType?.() === BOOK_VIEW_TYPE) return
       // Read now: choosing the item can take the page's selection away.
       const pane = paneOf(workspace, file, leaf)
       const selection = pane ? viewSelection(pane) : null

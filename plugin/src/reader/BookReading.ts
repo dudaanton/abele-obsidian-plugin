@@ -214,6 +214,12 @@ export class BookReading {
     return true
   }
 
+  /** A new chat with a link to the words, or to the page on screen, and the words quoted. */
+  async ask(target?: { cfi: string; label: string; text: string }): Promise<void> {
+    const { askAboutBook } = await import('./askAboutBook')
+    await askAboutBook(this.file, this.linkTo(target), target?.text)
+  }
+
   /** Goes to a place a link named, and marks it. */
   async goToPlace(place: BookPlace): Promise<void> {
     if ('page' in place) {

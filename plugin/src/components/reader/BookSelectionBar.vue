@@ -22,6 +22,12 @@
         :tooltip="highlight?.comment ? 'Edit the comment' : 'Highlight and write a comment'"
         @click="emit('comment')"
       />
+      <Icon
+        v-if="canAsk"
+        icon="message-square-plus"
+        tooltip="Ask the agent about these words: a new chat with them quoted"
+        @click="emit('ask')"
+      />
       <Icon icon="link" tooltip="Copy a link to this place" @click="emit('copy-link')" />
       <Icon
         icon="text-quote"
@@ -53,11 +59,14 @@ import { HIGHLIGHT_COLORS, type Highlight, type HighlightColor } from '@/reader/
 defineProps<{
   /** The highlight tapped; unset for a fresh selection. */
   highlight?: Highlight | null
+  /** The AI side is on, so a chat can be asked from here. */
+  canAsk?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'color', color: HighlightColor): void
   (e: 'comment'): void
+  (e: 'ask'): void
   (e: 'copy-link'): void
   (e: 'quote'): void
   (e: 'open-note'): void

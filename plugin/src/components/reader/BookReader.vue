@@ -43,6 +43,8 @@
       <BookSelectionBar
         v-if="model.status === 'ready' && (model.selection || model.active)"
         :highlight="model.active"
+        :can-ask="model.canAsk"
+        @ask="emit('ask', quoteTarget())"
         @color="onColor"
         @comment="onComment"
         @copy-link="emit('copy-link', target())"
@@ -156,6 +158,7 @@ const emit = defineEmits<{
   (e: 'copy-link', target?: { cfi: string; label: string }): void
   (e: 'quote', target: { cfi: string; label: string; text: string }): void
   (e: 'clear-selection'): void
+  (e: 'ask', target: { cfi: string; label: string; text: string }): void
   (e: 'recolor', h: Highlight, color: HighlightColor): void
   (e: 'edit-comment', h: Highlight): void
   (e: 'save-comment', h: Highlight, comment: string): void

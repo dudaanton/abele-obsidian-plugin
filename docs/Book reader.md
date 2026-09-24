@@ -90,6 +90,25 @@ the page on screen are outlined. A find goes to its place and selects the words.
 switches between **Contents**, **Search** and **Highlights**, the list of the book's highlights with
 their comments, each going to its place.
 
+## The agent
+
+A chat can read books and PDFs the way it reads notes, and only the ones its scope lets it read:
+a book is a file of the vault, and a book outside the chat's scope is refused, the same as a
+note. The tools are read-only — `book_views` (what is open and selected), `book_contents`,
+`book_read` (a part's text, a window at a time, or from a place), `book_search` and `book_open`
+(shows the person a place, the words selected) — and are described for the agent in its
+reference (`src/docs/tools.md`). They open the file themselves, so the book need not be open in
+a tab; a book read is kept for a few minutes so reading it a part at a time does not parse it
+again. The agent answers with links to places, which open the book there.
+
+- **Ask here** — the speech bubble with a plus on the bar under selected words (or a highlight)
+  opens a new chat whose input holds a link to the words and the words quoted. Nothing is sent
+  until the person writes their question.
+- **Chat about this** in a book tab's ⋯ menu does the same with a link to the place on screen.
+
+Both let that chat read this one book, if its scope did not already reach it — the grant **Chat
+about this** gives a note. They are offered only while the AI agent is on.
+
 ## Text and layout
 
 The **Aa** button in a book's header opens the text and layout settings over the page; the same

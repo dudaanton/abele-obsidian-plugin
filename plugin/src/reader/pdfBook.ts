@@ -40,6 +40,8 @@ export interface PdfBookExtras {
     query: string,
     isCancelled: () => boolean
   ): AsyncGenerator<PdfSearchPage | { progress: number }>
+  /** A page's words, lines as the PDF breaks them. */
+  pageText(index: number): Promise<string>
 }
 
 /* The parts of PDF.js this uses, typed loosely: it is Obsidian's copy, of Obsidian's version. */
@@ -269,9 +271,22 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
     }
   }
 
+  /** A page's words, lines as the PDF breaks them. */
+  async function pageText(index: number): Promise<string> {
+    const page: PdfPage = await pdf.getPage(index + 1)
+    const content = await page.getTextContent()
+    let text = ''
+    for (const item of content.items as { str?: string; hasEOL?: boolean }[]) {
+      text += item.str ?? ''
+      if (item.hasEOL) text += '\n'
+    }
+    return text.replace(/[ \t]+\n/g, '\n').trim()
+  }
+
   const book: FoliateBook & PdfBookExtras = {
     pageEvents,
     searchPages,
+    pageText,
     rendition: { layout: 'pre-paginated' },
     metadata: {
       title: get('dc:title') ?? meta.info?.Title,

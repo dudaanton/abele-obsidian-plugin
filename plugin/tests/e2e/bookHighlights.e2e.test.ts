@@ -147,7 +147,9 @@ describe.skipIf(!available)('highlights, links and search', () => {
       text.parentElement.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: doc.defaultView, clientX: b.left + 1, clientY: b.top + b.height / 2 }))
       await until(() => view.model.active, 3000)
       const tapped = view.model.active?.color
-      const bar = view.contentEl.querySelectorAll('.abele-book-selection__actions .abele-obsidian-icon').length
+      const bar = [...view.contentEl.querySelectorAll('.abele-book-selection__actions .abele-obsidian-icon')]
+        .map((el) => el.getAttribute('aria-label') ?? '')
+        .filter((label) => !label.startsWith('Ask the agent')).length
       await view.reading.save({ ...view.model.active, color: 'pink' })
       const recolored = await read(${JSON.stringify(BOOK_NOTE)})
       await view.reading.save({ ...view.model.active, comment: 'Worth a source.' })

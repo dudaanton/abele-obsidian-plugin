@@ -13,6 +13,7 @@ import { initBookPlaces } from './places'
 import { readerSettingsFrom } from './settings'
 import { setPdfTakeover } from './pdfTakeover'
 import { registerPlaceLinks } from './placeLinks'
+import { forgetBookTexts } from './bookText'
 
 export function registerReader(plugin: Plugin): void {
   const { app } = plugin
@@ -20,7 +21,10 @@ export function registerReader(plugin: Plugin): void {
   plugin.registerView(BOOK_VIEW_TYPE, (leaf) => new BookView(leaf))
   // The last page turned is written a moment later; quitting or unloading writes it now.
   plugin.registerEvent(app.workspace.on('quit', () => void places.flush()))
-  plugin.register(() => void places.flush())
+  plugin.register(() => {
+    void places.flush()
+    forgetBookTexts()
+  })
   try {
     plugin.registerExtensions(BOOK_EXTENSIONS, BOOK_VIEW_TYPE)
   } catch (e) {

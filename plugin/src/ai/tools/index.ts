@@ -38,6 +38,7 @@ import { createQueryDocsTool } from './QueryDocsTool'
 import { createReadSettingsTool, createWriteSettingsTool } from './SettingsTools'
 import { createRememberTool } from './RememberTool'
 import { createGithubTools } from './github'
+import { createBookTools } from './BookTools'
 import { githubSettings } from '@/github/GithubService'
 import { AgentRegistry } from '../agents/AgentRegistry'
 import { ChatSession } from '../ChatSession'
@@ -66,6 +67,7 @@ export function getToolRegistry(): ToolInfo[] {
     'Files',
     'Network',
     'GitHub',
+    'Books',
     'AI',
     'Vault data',
     'Maps',
@@ -103,6 +105,11 @@ export function getToolRegistry(): ToolInfo[] {
     github_search: { label: 'Search', category: 'GitHub' },
     github_grep: { label: 'Grep code at a version', category: 'GitHub' },
     github_open: { label: 'Show in a tab', category: 'GitHub' },
+    book_views: { label: 'Book tabs', category: 'Books' },
+    book_contents: { label: 'Book contents', category: 'Books' },
+    book_read: { label: 'Read book', category: 'Books' },
+    book_search: { label: 'Search book', category: 'Books' },
+    book_open: { label: 'Show in a book', category: 'Books' },
     geocode: { label: 'Geocode', category: 'Maps' },
     places: { label: 'Find places', category: 'Maps' },
     route: { label: 'Build route', category: 'Maps' },
@@ -261,6 +268,9 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createRouteTool(),
     createRememberTool(resolveAgent),
   ]
+
+  // Read-only: books and PDFs in the vault, as far as the chat's scope reaches.
+  tools.push(...createBookTools())
 
   // Read-only, and only while the integration is on: with it off there is no GitHub to read.
   if (everything || githubSettings().enabled) tools.push(...createGithubTools())

@@ -145,6 +145,40 @@ Exploring a codebase or a pull request, in this order:
 Unauthenticated, GitHub allows 60 requests an hour for the whole machine; spend them on the parts
 that answer the question.
 
+## Books
+
+`book_views`, `book_contents`, `book_read`, `book_search`, `book_open`.
+
+Read-only access to the books (`.epub`) and PDFs in the vault and to the book tabs the person has
+open. A book is a file of the vault: a chat reaches only the books its scope lets it read, the
+same as notes, and one outside it is refused with `Access denied`. Nothing a book holds is ever
+changed. The book need not be open for `book_contents`, `book_read` and `book_search`.
+
+A book is named by its vault path or by a link to a place in it — the links these tools write
+(`[[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]]`, `[[Paper.pdf#page=4]]`, see the vault
+section). Put those links in replies: a click opens the book at that place with the words
+selected.
+
+- `book_views` — what the person is reading: each open book, the one on screen, the chapter or
+  page and how far through, a link to that place, the words they selected — quoted, with a link to
+  them — or the highlight they tapped with its comment, and where the book's highlights note is.
+  Start here whenever they say "this book", "this passage", "here".
+- `book_contents` — title, author, the table of contents, and the book's parts numbered as
+  `book_read` takes them, with how long each is. A PDF's parts are its pages.
+- `book_read` — the text of one part (a chapter file, a PDF page), 12,000 characters by default
+  (`offset`, `limit` in characters; the answer says where the next window starts). Given a link to
+  a place instead of `part`, it reads from the paragraph that place is in. Blocks are on lines of
+  their own; the text is plain, without the book's markup.
+- `book_search` — every find of some words in the whole book, ignoring case and accents, with the
+  words around each, the part it is in and a link to exactly those words (a PDF: to the page).
+- `book_open` — opens a book in front of the person at a link's place, with the words there
+  selected; a bare path opens it where they left off. It reuses the book's tab.
+
+The book's highlights are an ordinary note (see the vault section): read it with `read`. Reading a
+book, in this order: `book_views` for what they are looking at; `book_contents` for its shape;
+`book_read` from the place in question rather than the whole book; `book_search` to find where
+something is mentioned; answer with links to the places.
+
 ## Maps
 
 `geocode`, `places`, `route`.
