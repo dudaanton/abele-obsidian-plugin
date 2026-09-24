@@ -79,6 +79,27 @@ says that request required, and **GitHub said:** its own message, word for word.
 | *This organisation uses single sign-on …* | The token has not been authorised for the organisation's SSO. | Follow the link given, or GitHub → Settings → Personal access tokens → the token → Configure SSO. |
 | *No token was sent with these requests* (in Check access) | Nothing reached GitHub with a token: the keychain on this device has none — tokens are kept per device — or the link is on github.com while **Server** points at an Enterprise server, whose token is not sent anywhere else. | Paste the token again on this device, or clear **Server**. |
 
+### Only the item itself can fail the tab
+
+A pull request is one request for itself and several for what hangs off it: its comments, its
+reviews, its changed files with their review comments, its commits. Only the pull request itself
+— or the issue, or the discussion — decides whether the tab opens. When one of the others is
+refused, the tab still shows everything else, and in that section's place says what was refused,
+in the same words as above, with a **Try again** that asks for that section alone.
+
+When the item itself was read and a section is refused on a permission the item already proves
+the token holds — a pull request's comments asking for *Issues (read) or Pull requests (read)*,
+when reading the pull request took *Pull requests (read)* — the notice says so rather than
+sending you to grant it: the server refuses that one request, and the token is fine.
+
+Before giving up on a section, a refused one (403 or 404) is asked again through GitHub's GraphQL
+API — `/graphql` on github.com, `/api/graphql` on an Enterprise Server — which is what `gh` uses,
+and which can answer where REST refuses the same token. Comments, reviews, review comments and
+commits come back complete from it, and a link to a comment still scrolls to it. Changed files
+come back as a list without their diffs, because GraphQL does not carry diffs; each file says
+so. GraphQL always needs a token, so without one this second attempt is not made. If GraphQL
+refuses too, its answer is added under GitHub's REST message.
+
 Obsidian sends its requests through the system's network settings, proxy and VPN included, so it
 can leave from a different address than a terminal or another program on the same machine — which
 matters for an IP allow list.
