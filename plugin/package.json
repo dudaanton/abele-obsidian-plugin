@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:perf": "vitest run --config vitest.perf.config.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "measure:tokens": "vitest run --config vitest.measure.config.ts",
     "test:all": "npm run test && npm run test:perf && npm run test:e2e",
     "prepare": "git config core.hooksPath .githooks",
     "lint": "cd .. && ./plugin/node_modules/.bin/eslint --no-config-lookup --config plugin/eslint.config.mjs .",

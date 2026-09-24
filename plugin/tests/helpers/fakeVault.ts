@@ -28,6 +28,11 @@ export interface FakeFileSpec {
   frontmatter?: Record<string, unknown>
   /** Note body, without frontmatter. Wikilinks in it become the file's outgoing links. */
   content?: string
+  /**
+   * The file exactly as it is on disk, for a vault loaded from one. `read` returns this rather
+   * than frontmatter re-serialised from `frontmatter`, which would not match byte for byte.
+   */
+  raw?: string
 }
 
 export interface FakeVaultStats {
@@ -298,7 +303,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     })
 
     const yaml = spec.frontmatter ? `---\n${toYaml(spec.frontmatter)}\n---\n` : ''
-    rawByPath.set(spec.path, `${yaml}${spec.content ?? ''}`)
+    rawByPath.set(spec.path, spec.raw ?? `${yaml}${spec.content ?? ''}`)
 
     const targets: Record<string, number> = {}
     for (const { link } of [...links, ...frontmatterLinks]) {
