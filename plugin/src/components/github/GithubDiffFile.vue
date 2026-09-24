@@ -285,7 +285,11 @@ const reveal = async () => {
         )
 }
 
-const toggle = () => {
+const toggle = (event?: Event) => {
+  // The path is text to copy: a drag over it ends in a click on the head, which is not a toggle.
+  const head = event?.type === 'click' ? (event.currentTarget as HTMLElement | null) : null
+  const selection = head?.ownerDocument.getSelection()
+  if (head && selection && !selection.isCollapsed && head.contains(selection.anchorNode)) return
   expanded.value = !expanded.value
 }
 

@@ -316,6 +316,21 @@ declaration spread over lines — and can offer a same-named declaration from el
 there is no Mod key and no right click: holding a finger on a name for half a second opens the
 same menu.
 
+The menu also offers **Copy**: the selected text when there is some, the name otherwise. On a
+phone that is what stands in for the word the long press would have selected — on a name the
+press opens the menu and the phone's own selection is dropped, so the two do not both appear.
+Held anywhere else in the code — a space, a bracket, an operator — and everywhere outside the
+code, the press selects text the way the phone always does.
+
+## Selecting and copying text
+
+Everything a tab shows can be selected and copied as text: the title, the description and
+comments, a rendered file, and the code of a file or a diff. Obsidian makes its own interface
+unselectable, so the tab gives selection back itself; its buttons, tabs, icons and line numbers
+stay unselectable, so a drag across a diff copies its lines as they are in the file — no numbers,
+no `+` or `-`. A changed file's path in its head is selectable too, and the click that ends a
+drag over it does not fold the diff.
+
 ## Access
 
 Without a token only public repositories can be read, at 60 requests an hour for the whole

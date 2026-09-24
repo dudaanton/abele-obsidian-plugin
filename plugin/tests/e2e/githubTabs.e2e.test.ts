@@ -9,6 +9,8 @@
  *   link to its lines.
  * - A changed file of a pull request opens whole: a deleted one at the base, at the line selected
  *   in the diff, and from its path, which is a link.
+ * - Text is selected by a mouse drag — in a comment, a file's code and a diff — and Mod+C copies
+ *   just the text: Obsidian makes its whole interface unselectable, so only the app can say.
  *
  * The clipboard is the machine's own: what it held is put back. See `helpers/githubLive.ts` for
  * the settings and the server.
@@ -21,6 +23,8 @@ import {
   enableGithub,
   evalAsync,
   realClick,
+  realCopy,
+  realDrag,
   restoreGithub,
   startFakeGithub,
   type FakeGithub,
@@ -291,6 +295,194 @@ describe.skipIf(!available)('a GitHub tab', () => {
       expect(r.url).toMatch(new RegExp(`/acme/widgets/blob/${HEAD_SHA}/README\\.md$`))
       expect(r.rendered).toBe(true)
       expect(r.tabs).toBe(1)
+    })
+  })
+
+  describe('text can be selected and copied', () => {
+    it('what the tab shows selects; its controls and line numbers do not', () => {
+      const r = evalAsync<{
+        error?: string
+        text?: Record<string, string>
+        none?: Record<string, string>
+      }>(
+        `(async () => {
+          ${PRELUDE}
+          const style = (root, selectors) => Object.fromEntries(selectors.map((s) => {
+            const el = root.querySelector(s)
+            return [s, el ? getComputedStyle(el).userSelect : 'missing']
+          }))
+          ${opening(`${gh.web}/pull/42`, 'Rework the widget loader')}
+          await until(() => root.querySelector('.abele-github-comment__body p'), 15000)
+          const text = style(root, [
+            '.abele-github-header__title',
+            '.abele-github-header__repo',
+            '.abele-github-header__meta',
+            '.abele-github-comment__author',
+            '.abele-github-comment__body p',
+          ])
+          const none = style(root, [
+            '.abele-github-header__actions .abele-obsidian-icon',
+            '.abele-github__tabs .abele-tabs__tab',
+          ])
+          await leaf.setViewState({ type: 'abele-github', state: { url: ${JSON.stringify(`${gh.web}/pull/42/files`)} }, active: true })
+          const froot = leaf.view.containerEl
+          await until(() => froot.querySelector('.abele-github-file .cm-content .cm-line'), 15000)
+          await wait(1000)
+          Object.assign(text, style(froot, [
+            '.abele-github-file .cm-content',
+            '.abele-github-file .cm-line',
+            '.abele-github-file__path',
+          ]))
+          Object.assign(none, style(froot, [
+            '.abele-github-file .cm-gutters',
+            '.abele-github-file .cm-gutterElement',
+            '.abele-github-file__head > .abele-obsidian-icon',
+            '.abele-github-file__stats',
+          ]))
+          leaf.detach()
+          return { text, none }
+        })()`
+      )
+      expect(r.error).toBeUndefined()
+      for (const [s, v] of Object.entries(r.text!)) expect(`${s}: ${v}`).toBe(`${s}: text`)
+      for (const [s, v] of Object.entries(r.none!)) expect(`${s}: ${v}`).toBe(`${s}: none`)
+    })
+
+    /**
+     * Opens `url`, runs `points` — which returns where the drag starts and ends and the text it
+     * should select — drags there with the mouse, presses Mod+C and reads what was selected and
+     * what reached the clipboard. The clipboard is put back afterwards.
+     */
+    const dragAndCopy = (url: string, title: string, points: string) => {
+      const setup = evalAsync<{
+        error?: string
+        from?: { x: number; y: number }
+        to?: { x: number; y: number }
+        expected?: string
+      }>(`(async () => {
+        ${PRELUDE}
+        const clipboard = require('electron').clipboard
+        window.__abeleSelectE2E = { kept: clipboard.readText() }
+        clipboard.writeText('')
+        const lineText = (line) => line.textContent
+        /** The viewport box of character \`i\` of the text in \`el\`. */
+        const charBox = (el, i) => {
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+          const nodes = []
+          while (walker.nextNode()) nodes.push(walker.currentNode)
+          const total = nodes.reduce((n, t) => n + t.length, 0)
+          let at = i < 0 ? total + i : i
+          for (const t of nodes) {
+            if (at < t.length) {
+              const r = document.createRange()
+              r.setStart(t, at)
+              r.setEnd(t, at + 1)
+              return r.getClientRects()[0] ?? r.getBoundingClientRect()
+            }
+            at -= t.length
+          }
+          return null
+        }
+        /** Brings \`el\` to the middle of the tab and waits until it stays there: diffs drawn above move it. */
+        const settle = async (el) => {
+          let last = null
+          for (let i = 0, same = 0; i < 60 && same < 5; i++) {
+            el.scrollIntoView({ block: 'center' })
+            await wait(200)
+            const top = Math.round(el.getBoundingClientRect().top)
+            same = top === last ? same + 1 : 0
+            last = top
+          }
+        }
+        const middle = (box, side) => ({ x: Math.round(side === 'start' ? box.left + 1 : box.right - 1),
+          y: Math.round(box.top + box.height / 2) })
+        ${opening(url, title)}
+        ${points}
+      })()`)
+      if (setup.error) return { error: setup.error }
+      realDrag(setup.from!, setup.to!)
+      realCopy()
+      const read = evalAsync<{ selected: string; copied: string }>(`(async () => {
+        ${PRELUDE}
+        const clipboard = require('electron').clipboard
+        const selected = String(window.getSelection())
+        const copied = (await until(() => clipboard.readText(), 3000)) ?? ''
+        clipboard.writeText(window.__abeleSelectE2E?.kept ?? '')
+        delete window.__abeleSelectE2E
+        window.getSelection().removeAllRanges()
+        for (const l of githubLeaves()) l.detach()
+        return { selected, copied }
+      })()`)
+      return { ...read, expected: setup.expected! }
+    }
+
+    const squash = (s: string) => s.replace(/\s+/g, ' ').trim()
+
+    it('a paragraph of a comment, dragged over, is selected and copied', () => {
+      const r = dragAndCopy(
+        `${gh.web}/pull/42`,
+        'Rework the widget loader',
+        `const p = await until(() => [...root.querySelectorAll('.abele-github-comment__body p')]
+            .find((p) => p.textContent.startsWith('A longer thought')), 15000)
+          if (!p) return { error: 'no comment paragraph' }
+          await settle(p)
+          return { from: middle(charBox(p, 0), 'start'), to: middle(charBox(p, -1), 'end'),
+            expected: p.textContent }`
+      )
+      expect(r.error).toBeUndefined()
+      expect(squash(r.selected!)).toBe(squash(r.expected!))
+      expect(squash(r.copied!)).toBe(squash(r.expected!))
+    })
+
+    it('lines of a file’s code are selected and copied without their numbers', () => {
+      const r = dragAndCopy(
+        `${gh.web}/blob/main/src/app.ts`,
+        'src/app.ts',
+        `const lines = await until(() => {
+            const l = [...root.querySelectorAll('.abele-github-blob .cm-content .cm-line')]
+            return l.length >= 6 ? l : null
+          }, 15000)
+          if (!lines) return { error: 'no code' }
+          await settle(lines[3])
+          return { from: middle(charBox(lines[3], 0), 'start'), to: middle(charBox(lines[5], -1), 'end'),
+            expected: lines.slice(3, 6).map(lineText).join('\\n') }`
+      )
+      expect(r.error).toBeUndefined()
+      expect(r.expected).toBe(
+        'export function startApp(count: number): string {\n' +
+          '  const widgets = loadWidgets(count)\n' +
+          '  return formatValue(widgets.length)'
+      )
+      expect(r.selected).toBe(r.expected)
+      expect(r.copied).toBe(r.expected)
+    })
+
+    it('lines of a diff are copied as their text: no line numbers, no plus or minus', () => {
+      const r = dragAndCopy(
+        `${gh.web}/pull/42/files`,
+        'Rework the widget loader',
+        `const lines = await until(() => {
+            const l = [...(root.querySelector('.abele-github-file[data-path="src/app.ts"]')
+              ?.querySelectorAll('.cm-content .cm-line') ?? [])]
+            return l.length >= 8 ? l : null
+          }, 15000)
+          if (!lines) return { error: 'no diff' }
+          const first = lines.findIndex((l) => l.textContent.startsWith('export function startApp'))
+          const last = lines.findIndex((l) => l.textContent === '  return formatValue(widgets.length)')
+          if (first < 0 || last < first) return { error: 'the diff is not the one expected' }
+          await settle(lines[first])
+          return { from: middle(charBox(lines[first], 0), 'start'), to: middle(charBox(lines[last], -1), 'end'),
+            expected: lines.slice(first, last + 1).map(lineText).join('\\n') }`
+      )
+      expect(r.error).toBeUndefined()
+      expect(r.expected).toBe(
+        'export function startApp(count: number): string {\n' +
+          '  return formatValue(count)\n' +
+          '  const widgets = loadWidgets(count)\n' +
+          '  return formatValue(widgets.length)'
+      )
+      expect(r.selected).toBe(r.expected)
+      expect(r.copied).toBe(r.expected)
     })
   })
 })

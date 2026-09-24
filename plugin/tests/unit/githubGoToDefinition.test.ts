@@ -190,13 +190,66 @@ describe('a long press on a name, where there is no right click', () => {
     expect(shown).not.toHaveBeenCalled()
     vi.advanceTimersByTime(1)
     expect(shown).toHaveBeenCalledTimes(1)
-    const menu = shown.mock.contexts[0] as Menu & { items: { title: string; handler: () => void }[] }
+    const menu = shown.mock.contexts[0] as Menu & {
+      items: { title: string; handler: () => void }[]
+    }
     expect(menu.items.map((i) => i.title)).toEqual([
       'Go to definition of formatName',
       'Find references to formatName',
+      'Copy formatName',
     ])
     menu.items[0].handler()
     expect(nav.goToDefinition).toHaveBeenCalledWith('formatName', 'a.ts')
+    shown.mockRestore()
+  })
+
+  // The phone's own long press selects the word under the finger too; the menu is what the press
+  // was for on a name, so the selection it started goes, and so does one starting just after.
+  it('on a name, takes the press from the phone’s own text selection', () => {
+    vi.useFakeTimers()
+    const { view, shown, touch } = setup()
+    const selection = document.getSelection()!
+    const range = document.createRange()
+    range.selectNodeContents(view.contentDOM)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    touch('touchstart')
+    vi.advanceTimersByTime(500)
+    expect(shown).toHaveBeenCalledTimes(1)
+    expect(selection.isCollapsed).toBe(true)
+    const start = new Event('selectstart', { bubbles: true, cancelable: true })
+    view.contentDOM.dispatchEvent(start)
+    expect(start.defaultPrevented).toBe(true)
+    shown.mockRestore()
+  })
+
+  it('elsewhere, leaves the phone to select text', () => {
+    vi.useFakeTimers()
+    const { view, shown, touch } = setup()
+    // After the closing parenthesis: no name there.
+    view.posAtCoords = () => 20
+    touch('touchstart')
+    // Past the second in which what follows a press that did open a menu belongs to it.
+    vi.advanceTimersByTime(2000)
+    expect(shown).not.toHaveBeenCalled()
+    const start = new Event('selectstart', { bubbles: true, cancelable: true })
+    view.contentDOM.dispatchEvent(start)
+    expect(start.defaultPrevented).toBe(false)
+    shown.mockRestore()
+  })
+
+  it('offers to copy the name, which the press no longer selects', async () => {
+    vi.useFakeTimers()
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const { shown, touch } = setup()
+    touch('touchstart')
+    vi.advanceTimersByTime(500)
+    const menu = shown.mock.contexts[0] as Menu & {
+      items: { title: string; handler: () => void }[]
+    }
+    menu.items.find((i) => i.title === 'Copy formatName')!.handler()
+    expect(writeText).toHaveBeenCalledWith('formatName')
     shown.mockRestore()
   })
 

@@ -3,6 +3,11 @@
  * to where it is declared, and holding Mod while pointing underlines the name that would be
  * followed. The context menu offers the same, and "Find references" beside it.
  *
+ * On a phone the long press shares its finger with the phone's own text selection. On a name it
+ * opens this menu, and the selection the press started is dropped — the menu offers to copy the
+ * name instead. Anywhere else in the code, and everywhere outside it, the press selects text as
+ * the phone always does.
+ *
  * The viewer does not know which repository or commit it shows; the tab does. A tab registers
  * what it knows with `provideCodeNav`, and the viewer finds it from its own element. A viewer in
  * a note — a snippet card — finds none and stays plain.
@@ -96,7 +101,17 @@ const cancelPress = () => {
   pressing = null
 }
 
-/** "Go to definition" and "Find references" for one name. */
+/** Whether the long press opened the menu a moment ago: what follows it is the same press. */
+const justPressed = () => Date.now() - longPressAt < 1000
+
+/** The text selected inside the viewer; empty when there is none, or it lies elsewhere. */
+function selectedIn(view: EditorView): string {
+  const selection = view.dom.ownerDocument.getSelection()
+  if (!selection || selection.isCollapsed || !view.dom.contains(selection.anchorNode)) return ''
+  return selection.toString()
+}
+
+/** "Go to definition", "Find references" and a copy — of the selection, or else of the name. */
 function navMenu(nav: CodeNav, view: EditorView, name: string): Menu {
   const menu = new Menu()
   menu.addItem((item) =>
@@ -110,6 +125,13 @@ function navMenu(nav: CodeNav, view: EditorView, name: string): Menu {
       .setTitle(`Find references to ${name}`)
       .setIcon('search')
       .onClick(() => nav.findReferences(name))
+  )
+  const selected = selectedIn(view)
+  menu.addItem((item) =>
+    item
+      .setTitle(selected ? 'Copy' : `Copy ${name}`)
+      .setIcon('copy')
+      .onClick((): void => void navigator.clipboard.writeText(selected || name))
   )
   return menu
 }
@@ -146,7 +168,7 @@ export function codeNavAddon(): Extension {
       },
       contextmenu(e, view) {
         // The long press already opened the menu; the phone's own menu event after it is the same ask.
-        if (Date.now() - longPressAt < 1000) {
+        if (justPressed()) {
           e.preventDefault()
           return true
         }
@@ -170,10 +192,17 @@ export function codeNavAddon(): Extension {
           const word = nav && pos !== null ? wordAt(view, pos) : null
           if (!nav || !word) return
           longPressAt = Date.now()
+          // The phone may have begun selecting the word under the finger: the menu is the answer.
+          if (selectedIn(view)) view.dom.ownerDocument.getSelection()?.removeAllRanges()
           navMenu(nav, view, word.text).showAtPosition(start, view.dom.ownerDocument)
         }, LONG_PRESS_MS)
         pressing = { start, cancel: () => win.clearTimeout(timer) }
         return false
+      },
+      selectstart(e) {
+        if (!justPressed()) return false
+        e.preventDefault()
+        return true
       },
       touchmove(e) {
         const touch = e.touches[0]

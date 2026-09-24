@@ -615,4 +615,30 @@ watch(
 body.is-phone .abele-github {
   padding: var(--size-4-2);
 }
+
+// Obsidian makes its whole interface unselectable and gives selection back only to a note; a
+// GitHub tab is there to be read and quoted, so it gives it back itself — titles, comments,
+// rendered files, code and diffs. Its controls stay unselectable, so a drag across them picks up
+// no labels, and so do the line numbers: a diff copies as its text, nothing beside it.
+.abele-github {
+  user-select: text;
+  -webkit-user-select: text;
+
+  .abele-obsidian-icon,
+  .abele-tabs,
+  button,
+  [role='button'],
+  .cm-gutters,
+  .abele-github-code__bar,
+  .abele-github-selection {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  // A changed file's head folds its diff, but its path is worth copying.
+  .abele-github-file__path {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+}
 </style>

@@ -109,6 +109,32 @@ describe('a pull request diff link', () => {
     expect(first.find('.cm-editor').exists()).toBe(true)
     expect(first.findAll('.abele-github-code__line_add')).toHaveLength(2)
   })
+
+  // The head's path is text to copy: the click that ends a drag over it is not a click on the head.
+  it('does not fold or open a file when its path was just selected', async () => {
+    const { hash, routes: r } = await routes()
+    const { wrapper } = open(`https://github.com/o/r/pull/7/files#diff-${hash}`, r)
+    await vi.waitFor(() => expect(wrapper.findAll('.abele-github-file')).toHaveLength(6))
+
+    const first = wrapper.findAll('.abele-github-file')[0]
+    const selection = document.getSelection()!
+    const range = document.createRange()
+    range.selectNodeContents(first.find('.abele-github-file__path').element)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    await first.find('.abele-github-file__head').trigger('click')
+    await flushPromises()
+    expect(first.find('.cm-editor').exists()).toBe(false)
+
+    // A selection somewhere else is no reason to ignore the click.
+    range.selectNodeContents(wrapper.find('.abele-github-header__title').element)
+    selection.removeAllRanges()
+    selection.addRange(range)
+    await first.find('.abele-github-file__head').trigger('click')
+    await flushPromises()
+    expect(first.find('.cm-editor').exists()).toBe(true)
+    selection.removeAllRanges()
+  })
 })
 
 describe('a pull request whose comments are refused', () => {
@@ -346,7 +372,9 @@ describe('a tab that follows a link to another item', () => {
     model.target = parseGithubUrl(url, ['github.com'])
     model.nonce++
 
-    await vi.waitFor(() => expect(wrapper.find('.abele-github-blob .cm-editor').exists()).toBe(true))
+    await vi.waitFor(() =>
+      expect(wrapper.find('.abele-github-blob .cm-editor').exists()).toBe(true)
+    )
     expect(wrapper.find('.abele-github-thread').exists()).toBe(false)
   })
 })

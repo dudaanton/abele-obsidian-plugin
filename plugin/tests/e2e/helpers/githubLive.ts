@@ -177,7 +177,10 @@ export const PRELUDE = `
       !leaf.view.containerEl.textContent.includes('Loading from GitHub')
   }
   const openTab = async (url, pane = 'tab') => {
-    const leaf = app.workspace.getLeaf(pane)
+    // Once the last tab has closed, the leaf Obsidian puts in its place has never been active,
+    // and a new tab finds no group to go in ("No tab group found"): that leaf is used instead.
+    let leaf
+    try { leaf = app.workspace.getLeaf(pane) } catch { leaf = app.workspace.getLeaf(false) }
     await leaf.setViewState({ type: 'abele-github', state: { url }, active: true })
     return leaf
   }
@@ -207,6 +210,47 @@ export function realClick(x: number, y: number, modifiers = 0): void {
 
 export const META = 4
 export const ALT = 1
+
+const cdp = (method: string, params: object): void => {
+  runCli(['dev:cdp', `method=${method}`, `params=${JSON.stringify(params)}`], 30_000)
+}
+
+/**
+ * A mouse drag from one point to another, the way a hand selects text: pressed, moved in a few
+ * steps with the button held, released.
+ */
+export function realDrag(from: { x: number; y: number }, to: { x: number; y: number }): void {
+  cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', ...from, button: 'none' })
+  cdp('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    ...from,
+    button: 'left',
+    buttons: 1,
+    clickCount: 1,
+  })
+  for (const t of [0.25, 0.5, 0.75, 1]) {
+    const x = Math.round(from.x + (to.x - from.x) * t)
+    const y = Math.round(from.y + (to.y - from.y) * t)
+    cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'left', buttons: 1 })
+  }
+  cdp('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    ...to,
+    button: 'left',
+    buttons: 0,
+    clickCount: 1,
+  })
+}
+
+/**
+ * Mod+C as the app menu runs it: the key reaches the page's handlers, and the browser's own copy
+ * command follows — the menu's accelerator is outside the page, so CDP names the command.
+ */
+export function realCopy(): void {
+  const key = { key: 'c', code: 'KeyC', windowsVirtualKeyCode: 67, modifiers: META }
+  cdp('Input.dispatchKeyEvent', { type: 'keyDown', ...key, commands: ['copy'] })
+  cdp('Input.dispatchKeyEvent', { type: 'keyUp', ...key })
+}
 
 /** Where to click an element: its centre, or `selector`'s first match's, in the main window. */
 export function centreOf(selectorScript: string): { x: number; y: number } | null {

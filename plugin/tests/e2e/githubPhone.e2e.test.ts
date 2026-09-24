@@ -6,9 +6,14 @@
  * `emulateMobile` reloads the app, and the window's size only reaches the page after another
  * reload, so the settings the file needs are put in place after both. A picture of each screen
  * goes to `/tmp/abele-phone/github-pull-*.png` — look at them before a release.
+ *
+ * Text stays selectable on a phone, and a finger held on a name in the code opens the code menu
+ * while one held anywhere else does not. The phone's own long-press selection cannot be made
+ * here: the Mac's Chromium turns no touch into a long-press gesture, so what is checked is that
+ * nothing stands in its way — the text is selectable, and the menu keeps to names.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, evalJson } from './helpers/obsidianCli'
+import { hasTestApi, isObsidianRunning, evalRaw, evalJson, runCli } from './helpers/obsidianCli'
 import {
   PRELUDE,
   enableGithub,
@@ -31,6 +36,32 @@ interface Screen {
 }
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const cdp = (method: string, params: object): void => {
+  runCli(['dev:cdp', `method=${method}`, `params=${JSON.stringify(params)}`], 30_000)
+}
+
+/**
+ * A finger held at a point for `ms`, through the page's touch input; `during` runs while it is
+ * still down. The Mac's Chromium makes a tap of the lift — with a mousedown that closes any menu —
+ * where a phone would take the press as a long one and send nothing, so what the press opened is
+ * read before the finger lifts.
+ */
+const longPress = async <T>(
+  at: { x: number; y: number },
+  during: () => T,
+  ms = 900
+): Promise<T> => {
+  cdp('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 })
+  try {
+    cdp('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] })
+    await pause(ms)
+    return during()
+  } finally {
+    cdp('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    cdp('Emulation.setTouchEmulationEnabled', { enabled: false })
+  }
+}
 
 const windowSize = (): [number, number] =>
   evalJson<[number, number]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
@@ -155,4 +186,68 @@ describe.skipIf(!available)('a pull request on a phone', () => {
       expect(screens[section]?.sideways).toBe(0)
     }
   )
+
+  it('text is selectable, and a long press opens the code menu on a name only', async () => {
+    const prepared = evalAsync<{
+      error?: string
+      select?: Record<string, string>
+      name?: { x: number; y: number }
+      brace?: { x: number; y: number }
+    }>(`(async () => {
+      ${PRELUDE}
+      const leaf = githubLeaves()[0]
+      const root = leaf.view.containerEl
+      const line = await until(() => [...(root.querySelector('.abele-github-file[data-path="src/app.ts"]')
+        ?.querySelectorAll('.cm-content .cm-line') ?? [])].find((l) => l.textContent.startsWith('export function startApp')), 15000)
+      if (!line) return { error: 'no diff line' }
+      line.scrollIntoView({ block: 'center' })
+      await wait(800)
+      const box = (from, to) => {
+        const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT)
+        let at = 0
+        while (walker.nextNode()) {
+          const t = walker.currentNode
+          if (from < at + t.length) {
+            const r = document.createRange()
+            r.setStart(t, from - at)
+            r.setEnd(t, Math.min(t.length, to - at))
+            const b = r.getBoundingClientRect()
+            return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) }
+          }
+          at += t.length
+        }
+        return null
+      }
+      const content = line.textContent
+      const style = (el) => el ? getComputedStyle(el).webkitUserSelect : 'missing'
+      return {
+        select: {
+          line: style(line),
+          gutter: style(root.querySelector('.abele-github-file .cm-gutterElement')),
+          title: style(root.querySelector('.abele-github-header__title')),
+        },
+        name: box(content.indexOf('startApp') + 2, content.indexOf('startApp') + 3),
+        brace: box(content.length - 1, content.length),
+      }
+    })()`)
+    expect(prepared.error).toBeUndefined()
+    expect(prepared.select).toEqual({ line: 'text', gutter: 'none', title: 'text' })
+
+    const menuAfter = (at: { x: number; y: number }) =>
+      longPress(at, () =>
+        evalAsync<{ items: string[] }>(`(async () => {
+          const menu = document.querySelector('.menu')
+          const items = menu ? [...menu.querySelectorAll('.menu-item-title')].map((t) => t.textContent) : []
+          // The lift's mousedown closes it; this is for when it does not.
+          if (menu) document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+          return { items }
+        })()`)
+      )
+    expect((await menuAfter(prepared.name!)).items).toEqual([
+      'Go to definition of startApp',
+      'Find references to startApp',
+      'Copy startApp',
+    ])
+    expect((await menuAfter(prepared.brace!)).items).toEqual([])
+  })
 })
