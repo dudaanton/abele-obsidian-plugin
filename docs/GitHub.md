@@ -108,6 +108,9 @@ selection to another; a click on the only selected line clears it. The selected 
 like the lines a link points at, and a bar under them offers **Copy link** and **Insert into
 note**.
 
+On a phone, which has no Shift, a tap on another line extends the selection to it and a tap on
+a selected line clears it; the first tap, with nothing selected, selects one line.
+
 A rendered markdown file does the same by its pieces: pointing at a paragraph, a list item or a
 heading shows a link handle at its left — on a phone the handles are always there — and a click
 on it selects that piece's lines; Shift-click extends to another piece. The bar is the same, and

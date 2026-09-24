@@ -113,6 +113,23 @@ describe('lines and blocks', () => {
     expect(pickBlock(blocks, p, 2, false)).toEqual({ selected: null, anchor: null })
   })
 
+  it('on a phone a tap extends a selection, and a tap inside it clears it', () => {
+    let p = pickBlock(blocks, { selected: null, anchor: null }, 1, false, true)
+    expect(p).toEqual({ selected: { from: 3, to: 4 }, anchor: 1 })
+    p = pickBlock(blocks, p, 3, false, true)
+    expect(p).toEqual({ selected: { from: 3, to: 7 }, anchor: 1 })
+    // Before the anchor: the range turns round it.
+    p = pickBlock(blocks, p, 0, false, true)
+    expect(p).toEqual({ selected: { from: 1, to: 4 }, anchor: 1 })
+    // A tap on a block the selection covers.
+    expect(pickBlock(blocks, p, 0, false, true)).toEqual({ selected: null, anchor: null })
+  })
+
+  it('on a phone a selection made elsewhere is extended from its first block', () => {
+    const p = pickBlock(blocks, { selected: { from: 10, to: 10 }, anchor: null }, 1, false, true)
+    expect(p.selected).toEqual({ from: 3, to: 11 })
+  })
+
   it('Shift with nothing picked before selects the one block', () => {
     expect(pickBlock(blocks, { selected: null, anchor: null }, 3, true).selected).toEqual({
       from: 7,

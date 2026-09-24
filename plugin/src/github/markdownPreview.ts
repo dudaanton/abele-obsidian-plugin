@@ -64,15 +64,30 @@ export interface Picked {
  * A click on a block's handle: selects its lines; with Shift, everything from the block picked
  * before to this one; on the only block selected, clears the selection — the way a line number
  * behaves in the code view.
+ *
+ * With `tap` — a phone, which has no Shift — a selection is extended by a plain tap on another
+ * block, and a tap on a block it covers clears it.
  */
 export function pickBlock(
   blocks: MdBlock[],
   current: Picked,
   index: number,
-  shift: boolean
+  shift: boolean,
+  tap = false
 ): Picked {
   const block = blocks[index]
   if (!block) return current
+  if (tap && current.selected) {
+    const s = current.selected
+    if (block.start <= s.to && block.end >= s.from) return { selected: null, anchor: null }
+    const anchor =
+      current.anchor !== null && blocks[current.anchor] ? current.anchor : blockAt(blocks, s.from)
+    const a = blocks[anchor]
+    return {
+      selected: { from: Math.min(a.start, block.start), to: Math.max(a.end, block.end) },
+      anchor,
+    }
+  }
   if (shift && current.anchor !== null && blocks[current.anchor]) {
     const a = blocks[current.anchor]
     return {

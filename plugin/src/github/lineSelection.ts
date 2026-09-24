@@ -18,6 +18,7 @@ import {
   type BlockInfo,
   type DecorationSet,
 } from '@codemirror/view'
+import { Platform } from 'obsidian'
 import type { LineSpan } from './permalinks'
 
 export interface SelectionHooks {
@@ -28,6 +29,11 @@ export interface SelectionHooks {
    * keep their bar.
    */
   initialBar?: boolean
+  /**
+   * A tap extends the selection, and a tap inside it clears it: a phone has no Shift. By default
+   * on a phone.
+   */
+  extendOnTap?: boolean
   /** Whether a line can be selected; a diff's hunk headers cannot. */
   selectable?: (line: number) => boolean
   /** The lines the person selected, or null when they cleared the selection. */
@@ -121,8 +127,17 @@ export function lineSelection(hooks: SelectionHooks): {
     if (hooks.selectable && !hooks.selectable(line)) return false
     const current = view.state.field(field).selected
     const shift = (event as MouseEvent).shiftKey
+    const tap = hooks.extendOnTap ?? Platform.isPhone
     let next: Selected
-    if (shift && current.anchor !== null) {
+    if (tap && current.bar && current.lines.length) {
+      next = current.lines.includes(line)
+        ? { lines: [], anchor: null, bar: false }
+        : {
+            lines: range(current.anchor ?? current.lines[0], line),
+            anchor: current.anchor ?? current.lines[0],
+            bar: true,
+          }
+    } else if (shift && current.anchor !== null) {
       next = { lines: range(current.anchor, line), anchor: current.anchor, bar: true }
     } else if (current.bar && current.lines.length === 1 && current.lines[0] === line) {
       next = { lines: [], anchor: null, bar: false }

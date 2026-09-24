@@ -30,7 +30,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Component, MarkdownRenderer } from 'obsidian'
+import { Component, MarkdownRenderer, Platform } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import type { GithubClient } from '@/github/client'
@@ -107,7 +107,8 @@ const pick = (index: number, event: MouseEvent) => {
     selected: props.selected,
     anchor: anchor ?? (props.selected ? blockAt(blocks.value, props.selected.from) : null),
   }
-  const next = pickBlock(blocks.value, current, index, event.shiftKey)
+  // A phone has no Shift: there a tap extends the selection, and a tap inside it clears it.
+  const next = pickBlock(blocks.value, current, index, event.shiftKey, Platform.isPhone)
   anchor = next.anchor
   emit('select', next.selected)
 }

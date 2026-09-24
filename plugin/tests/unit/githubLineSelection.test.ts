@@ -85,3 +85,22 @@ describe('selecting lines by their numbers', () => {
     expect(e.onSelect).toHaveBeenLastCalledWith({ from: 2, to: 4 })
   })
 })
+
+describe('on a phone, where there is no Shift', () => {
+  it('a tap extends the selection, a tap inside it clears it', () => {
+    const e = editor({ initial: [2], extendOnTap: true })
+    // The lines a link named are not a selection: the first tap selects one line.
+    e.click(4)
+    expect(e.marked()).toEqual([4])
+    e.click(6)
+    expect(e.marked()).toEqual([4, 5, 6])
+    expect(e.onSelect).toHaveBeenLastCalledWith({ from: 4, to: 6 })
+    e.click(1)
+    expect(e.marked()).toEqual([1, 2, 3, 4])
+    e.click(3)
+    expect(e.marked()).toEqual([])
+    expect(e.onSelect).toHaveBeenLastCalledWith(null)
+    expect(e.bar()).toBeNull()
+  })
+})
+
