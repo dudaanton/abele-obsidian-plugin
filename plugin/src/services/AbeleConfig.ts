@@ -65,6 +65,11 @@ export interface AbeleSettings {
   halfWidthSidebarsOnTablet?: boolean
   /** ```mermaid blocks drawn by the plugin's viewer, with zoom and full screen, not Obsidian's. */
   mermaidViewer?: boolean
+  /**
+   * A panel at the top of the screen showing what the page reports about the on-screen
+   * keyboard. For finding out from a phone what no emulator shows; stays on its device.
+   */
+  keyboardDiagnostics?: boolean
   // GitHub links opened inside Obsidian
   github?: GithubSettings
 }
@@ -141,6 +146,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   fullWidthSidebars: false,
   halfWidthSidebarsOnTablet: false,
   mermaidViewer: true,
+  keyboardDiagnostics: false,
   github: { ...DEFAULT_GITHUB_SETTINGS },
 }
 
@@ -183,6 +189,7 @@ export class AbeleConfig {
   public fullWidthSidebars: boolean
   public halfWidthSidebarsOnTablet: boolean
   public mermaidViewer: boolean
+  public keyboardDiagnostics: boolean
   public github: GithubSettings
 
   /**
@@ -493,6 +500,7 @@ export class AbeleConfig {
     this.halfWidthSidebarsOnTablet =
       settings?.halfWidthSidebarsOnTablet ?? DEFAULT_SETTINGS.halfWidthSidebarsOnTablet
     this.mermaidViewer = settings?.mermaidViewer ?? DEFAULT_SETTINGS.mermaidViewer ?? true
+    this.keyboardDiagnostics = settings?.keyboardDiagnostics ?? false
     this.github = githubSettingsFrom(settings?.github)
 
     return migrated
@@ -539,6 +547,7 @@ export class AbeleConfig {
       fullWidthSidebars: this.fullWidthSidebars,
       halfWidthSidebarsOnTablet: this.halfWidthSidebarsOnTablet,
       mermaidViewer: this.mermaidViewer,
+      keyboardDiagnostics: this.keyboardDiagnostics,
       github: { ...this.github },
     }
   }

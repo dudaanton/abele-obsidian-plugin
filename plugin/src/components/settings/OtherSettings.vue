@@ -26,6 +26,12 @@
       <Checkbox :is-enabled="mermaidViewer" @toggle="toggleMermaidViewer" />
     </Setting>
     <Setting
+      name="Keyboard diagnostics"
+      desc="Show, at the top of the screen, what the app reports about the on-screen keyboard — for a screenshot when a dialog ends up under it. Stays on this device."
+    >
+      <Checkbox :is-enabled="keyboardDiagnostics" @toggle="toggleKeyboardDiagnostics" />
+    </Setting>
+    <Setting
       name="Coordinates property"
       desc="Note property holding a place as 'lat, lon'. The agent is told to write into this one."
     >
@@ -57,11 +63,13 @@ import Checkbox from '../obsidian/Checkbox.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { SnippetService } from '@/services/SnippetService'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 
 const config = AbeleConfig.getInstance()
 const snippetsFolder = ref(config.snippetsFolder)
 const fullWidthSidebars = ref(config.fullWidthSidebars)
 const halfWidthSidebars = ref(config.halfWidthSidebarsOnTablet)
+const keyboardDiagnostics = ref(config.keyboardDiagnostics)
 const mapCoordinatesProperty = ref(config.mapCoordinatesProperty)
 const mapStyleUrl = ref(config.mapStyleUrl)
 const mermaidViewer = ref(config.mermaidViewer)
@@ -129,5 +137,12 @@ const toggleMermaidViewer = async () => {
   config.mermaidViewer = mermaidViewer.value
   await config.saveSettings()
   GlobalStore.getInstance().app.workspace.trigger('post-processor-change')
+}
+
+const toggleKeyboardDiagnostics = async () => {
+  keyboardDiagnostics.value = !keyboardDiagnostics.value
+  config.keyboardDiagnostics = keyboardDiagnostics.value
+  setKeyboardDiagnostics(keyboardDiagnostics.value)
+  await config.saveSettings()
 }
 </script>

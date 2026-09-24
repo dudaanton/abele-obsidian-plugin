@@ -243,7 +243,8 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
     doc.addEventListener('focusout', onFocusOut)
     // The variable changes with no event of its own; the attribute carrying it does.
     // The window's own constructor: a dialog in the settings window is watched from there.
-    const Observer = (win as Window & typeof globalThis).MutationObserver
+    const Observer = (win as Window & { MutationObserver: typeof MutationObserver })
+      .MutationObserver
     observer = new Observer(() => fit())
     observer.observe(doc.documentElement, { attributes: true, attributeFilter: ['style'] })
     fit()

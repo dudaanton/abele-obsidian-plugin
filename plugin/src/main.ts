@@ -8,6 +8,7 @@ import {
   TFile,
   TFolder,
 } from 'obsidian'
+import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import './styles.css'
 import { GlobalStore } from './stores/GlobalStore'
 import { pasteFromClipboard } from './commands/pasteFromClipboard'
@@ -153,6 +154,7 @@ export default class AbelePlugin extends Plugin {
     if (AbeleConfig.getInstance().halfWidthSidebarsOnTablet) {
       document.body.classList.add('abele-half-width-sidebars')
     }
+    setKeyboardDiagnostics(AbeleConfig.getInstance().keyboardDiagnostics)
 
     dayjs.updateLocale('en', {
       weekStart: AbeleConfig.getInstance().weekStartsOnMonday ? 1 : 0,
@@ -1166,6 +1168,7 @@ export default class AbelePlugin extends Plugin {
 
   onunload() {
     document.body.classList.remove('abele-full-width-sidebars', 'abele-half-width-sidebars')
+    setKeyboardDiagnostics(false)
     // Unmount Vue BEFORE store cleanup so Teleport components unmount cleanly
     if (this.vueApp) {
       this.vueApp.unmount()

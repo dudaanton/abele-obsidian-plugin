@@ -104,6 +104,11 @@ a phone and `halfWidthSidebarsOnTablet` to half of it on a tablet, `mermaidViewe
 default) draws mermaid blocks with the plugin's zoomable viewer instead of Obsidian's own, and
 `refreshDelay` is how long the plugin waits before rebuilding what a note shows.
 
+`keyboardDiagnostics` shows a panel at the top of the screen with what the app reports about
+the on-screen keyboard — page and viewport sizes, Obsidian's keyboard height, the open dialog
+and the focused field, the last keyboard events. It is a troubleshooting aid, off by default,
+and is not carried by a settings transfer.
+
 A header button runs `scriptName` with `params`, and shows on notes whose `type` is in
 `noteTypes`, on notes anywhere under one of `folders`, or on every note when `allNotes` is on —
 task notes included. `enabled: false` keeps it configured but hidden, `iconOnly` leaves its
