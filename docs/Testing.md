@@ -160,6 +160,12 @@ Three files, three concerns:
   that the half-width sidebar setting opens the drawer across half the screen, and that a
   phone-sized window still gets the list. Pictures go to `/tmp/abele-tablet/`. A window behind
   others keeps its old viewport until it is reloaded, so every resize here is followed by one.
+- `taskDatePhone.e2e.test.ts` — **the task's date dialog on a phone, keyboard up**. No emulator
+  shows a keyboard, so the two ways a platform makes room for one are mimicked in a 390×844
+  phone window: the dialog's container made shorter by hand (the page shrinks, the dialog's
+  `vh` cap does not), and `window.visualViewport` replaced by one reporting the smaller height.
+  In both the dialog has to fit the room, scroll inside, and show the time field. Writes one
+  task note for the run and removes it; pictures go to `/tmp/abele-phone/task-date-*.png`.
 
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
 "mega group", where a single resolution currently takes about two minutes.

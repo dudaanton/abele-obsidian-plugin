@@ -658,3 +658,13 @@ body.is-mobile .abele-comment-marker_pending::after {
 .abele-chat-msg__map {
   margin-top: var(--size-4-2);
 }
+
+/*
+ * A dialog's container fitted to the part of the screen the on-screen keyboard leaves free —
+ * see `useKeyboardRoom`. Only while the keyboard covers some of it.
+ */
+.modal-container.abele-keyboard-room {
+  top: var(--abele-room-top);
+  bottom: auto;
+  height: var(--abele-room-height);
+}

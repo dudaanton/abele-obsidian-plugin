@@ -525,6 +525,10 @@ export class Modal {
   isOpen = false
 
   constructor(public app?: unknown) {
+    // Obsidian's own class names, so that code finding its dialog from inside finds it here.
+    this.containerEl.className = 'modal-container'
+    this.modalEl.className = 'modal'
+    this.contentEl.className = 'modal-content'
     this.modalEl.appendChild(this.contentEl)
     this.containerEl.appendChild(this.modalEl)
   }
