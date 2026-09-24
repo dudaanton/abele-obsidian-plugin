@@ -4,6 +4,7 @@
  * The raw API objects are large and differ between REST and GraphQL; the views get these plain
  * records instead, which also makes them easy to build from fixtures in tests.
  */
+import { repoWeb } from './origin'
 import { GithubClient, GithubError } from './client'
 import { blobCandidates, diffAnchorHash, type GithubTarget } from './urls'
 import {
@@ -528,7 +529,7 @@ export async function loadBlob(client: GithubClient, t: Of<'blob'>): Promise<Blo
         ref,
         path,
         text,
-        url: `https://${t.host}/${t.owner}/${t.repo}/blob/${t.rest.join('/')}`,
+        url: `${repoWeb(t)}/blob/${t.rest.join('/')}`,
       }
     } catch (e) {
       // Only "no such ref or path" means try the next split; anything else is the answer.

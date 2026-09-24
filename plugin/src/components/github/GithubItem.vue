@@ -208,6 +208,7 @@ import { elementTop, pinIntoView } from '@/github/scrollTo'
 import { LINKER, createLinker } from '@/github/linking'
 import { SCREEN } from '@/github/screen'
 import { GITHUB_REPO } from '@/github/repoContext'
+import { repoWeb } from '@/github/origin'
 import { bodyLink, type GithubLink } from '@/github/permalinks'
 import { GlobalStore } from '@/stores/GlobalStore'
 import {
@@ -460,7 +461,7 @@ const itemLink = computed<GithubLink | null>(() => {
     const path = b.path.split('/').map(encodeURIComponent).join('/')
     return {
       label: `${t.owner}/${t.repo}@${b.ref} · ${b.path}`,
-      url: `https://${t.host}/${t.owner}/${t.repo}/blob/${b.ref}/${path}`,
+      url: `${repoWeb(t)}/blob/${b.ref}/${path}`,
     }
   }
   const item = linker.item()
@@ -503,7 +504,7 @@ const openInBrowser = (url: string) => {
 const openCommit = (sha: string) => {
   const t = shown.value
   if (t.kind !== 'pull') return
-  props.onOpen?.(`https://${t.host}/${t.owner}/${t.repo}/pull/${t.number}/commits/${sha}`)
+  props.onOpen?.(`${repoWeb(t)}/pull/${t.number}/commits/${sha}`)
 }
 
 /**

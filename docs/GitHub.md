@@ -396,7 +396,9 @@ token; links to github.com still open too, read without it.
 
 The address can be written any way it is usually pasted — with or without `https://`, in any
 letter case, with `www.`, a port or `/api/v3` — and links to that host match it the same way.
-Requests to an Enterprise Server carry no `X-GitHub-Api-Version` header, which servers older than
+Every link the plugin writes for that server — a copied link, a card's link, a search result,
+"Open file", a link given to an agent — starts the way **Server** does, scheme and port included
+(`http://git.example.com:8080/…`), so it opens in a browser too. Requests to an Enterprise Server carry no `X-GitHub-Api-Version` header, which servers older than
 3.9 refuse. **Check access** shows which host a link resolved to, which host the token is set
 for and which API address was asked, so a link that is read without the token is visible at once.
 

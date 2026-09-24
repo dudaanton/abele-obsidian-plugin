@@ -6,6 +6,7 @@
  */
 import type { DiffLine } from './patch'
 import { isMarkdownPath } from './markdownPreview'
+import { repoWeb } from './origin'
 
 export interface RepoRef {
   host: string
@@ -38,8 +39,7 @@ export interface LineSpan {
   to: number
 }
 
-const web = (r: RepoRef) =>
-  `https://${r.host}/${encodeURIComponent(r.owner)}/${encodeURIComponent(r.repo)}`
+const web = repoWeb
 
 const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/')
 

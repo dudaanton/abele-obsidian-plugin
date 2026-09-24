@@ -6,6 +6,7 @@
  * The tab's code search panel and go to definition both go through here, so a lookup started
  * from either reuses the index the other built.
  */
+import { repoWeb } from '../origin'
 import { Notice } from 'obsidian'
 import type { DiffFile } from '../api'
 import type { GithubClient } from '../client'
@@ -83,8 +84,7 @@ export interface TabCodeSource {
 
 const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/')
 
-export const webBase = (r: RepoRef) =>
-  `https://${r.host}/${encodeURIComponent(r.owner)}/${encodeURIComponent(r.repo)}`
+export const webBase = (r: RepoRef) => repoWeb(r)
 
 /**
  * A file at a ref, or a line of it. A line of a markdown file is asked for as its source —

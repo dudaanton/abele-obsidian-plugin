@@ -8,6 +8,7 @@
  * but a web or mail address — `javascript:`, `obsidian:`, `file:` — is left as text: a README is
  * written by someone else, and a link in it must not be able to act inside the app.
  */
+import { repoWeb, webOrigin } from './origin'
 import type { GithubClient } from './client'
 
 /** The file a preview shows: its repository, the ref it was read at, and its path. */
@@ -29,8 +30,7 @@ const SCHEME = /^([a-z][a-z0-9+.-]*):/i
 const SAFE_SCHEMES = new Set(['http', 'https', 'mailto'])
 
 const encodePath = (segments: string[]) => segments.map(encodeURIComponent).join('/')
-const repoBase = (f: RepoFile) =>
-  `https://${f.host}/${encodeURIComponent(f.owner)}/${encodeURIComponent(f.repo)}`
+const repoBase = (f: RepoFile) => repoWeb(f)
 
 /**
  * A path written in the file, resolved in the repository: against the file's folder, or against
@@ -134,10 +134,10 @@ export function imageSource(src: string, file: RepoFile): ImageSource | null {
     if (name !== 'http' && name !== 'https') return null
     // A link to an image's page in this repository means its bytes, as GitHub reads it.
     const page = new RegExp(
-      `^https?://${file.host.replace(/\./g, '\\.')}/([^/]+)/([^/]+)/blob/(.+)$`,
+      `^https?://${file.host.replace(/\./g, '\\.')}(?::\\d+)?/([^/]+)/([^/]+)/blob/(.+)$`,
       'i'
     ).exec(s)
-    if (page) return { src: `https://${file.host}/${page[1]}/${page[2]}/raw/${page[3]}` }
+    if (page) return { src: `${webOrigin(file.host)}/${page[1]}/${page[2]}/raw/${page[3]}` }
     return { src: s }
   }
   const segments = resolveRepoPath(file.path, parts(s).path)

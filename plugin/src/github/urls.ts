@@ -197,6 +197,8 @@ export interface Endpoints {
   /** REST base, without a trailing slash. */
   api: string
   graphql: string
+  /** Where its web addresses start: scheme, host and port, no trailing slash. */
+  origin: string
   /** A GitHub Enterprise Server, whose REST API lives under `/api/v3` on its own host. */
   server?: boolean
 }
@@ -215,6 +217,7 @@ export function endpoints(server: string): Endpoints {
       webHost: 'github.com',
       api: 'https://api.github.com',
       graphql: 'https://api.github.com/graphql',
+      origin: 'https://github.com',
     }
   }
 
@@ -231,7 +234,12 @@ export function endpoints(server: string): Endpoints {
 
   if (host.endsWith('.ghe.com')) {
     if (host.startsWith('api.')) host = host.slice(4)
-    return { webHost: host, api: `https://api.${host}`, graphql: `https://api.${host}/graphql` }
+    return {
+      webHost: host,
+      api: `https://api.${host}`,
+      graphql: `https://api.${host}/graphql`,
+      origin: `https://${host}`,
+    }
   }
 
   const port = url.port ? `:${url.port}` : ''
@@ -240,6 +248,7 @@ export function endpoints(server: string): Endpoints {
     webHost: host,
     api: `${origin}/api/v3`,
     graphql: `${origin}/api/graphql`,
+    origin,
     server: true,
   }
 }

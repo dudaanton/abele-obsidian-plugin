@@ -5,6 +5,7 @@
  * The client is the GitHub tabs' own (`githubClient`), so the tools send the same token to the
  * same server, answer repeats from the same ETag cache, and are refused in the same words.
  */
+import { repoWeb } from '@/github/origin'
 import { parseRepoInput, type RepoRef } from '@/github/accessCheck'
 import type { GithubClient } from '@/github/client'
 import { githubClient, githubHosts, githubSettings, parseForSettings } from '@/github/GithubService'
@@ -92,7 +93,7 @@ export const repoPath = (r: RepoRef) =>
 
 export const repoName = (r: RepoRef) => `${r.owner}/${r.repo}`
 
-export const webUrl = (r: RepoRef) => `https://${r.host}/${r.owner}/${r.repo}`
+export const webUrl = (r: RepoRef) => repoWeb(r)
 
 /** A whole number from a parameter, or the fallback. */
 export function whole(value: unknown, fallback: number, min = 1): number {

@@ -172,6 +172,7 @@ describe('endpoints', () => {
       webHost: 'github.com',
       api: 'https://api.github.com',
       graphql: 'https://api.github.com/graphql',
+      origin: 'https://github.com',
     })
   })
 
@@ -180,6 +181,7 @@ describe('endpoints', () => {
       webHost: 'git.corp.example',
       api: 'https://git.corp.example/api/v3',
       graphql: 'https://git.corp.example/api/graphql',
+      origin: 'https://git.corp.example',
       server: true,
     })
   })
@@ -193,6 +195,7 @@ describe('endpoints', () => {
       webHost: 'acme.ghe.com',
       api: 'https://api.acme.ghe.com',
       graphql: 'https://api.acme.ghe.com/graphql',
+      origin: 'https://acme.ghe.com',
     })
   })
 })

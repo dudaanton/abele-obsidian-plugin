@@ -183,10 +183,9 @@ describe.skipIf(!available)('a GitHub tab', () => {
       return report
     })()`)
     expect(r.error).toBeUndefined()
-    expect(r.copied).toMatch(
-      new RegExp(
-        `^\\[acme/widgets@1a2b3c4 · src/app\\.ts:5\\]\\(https?://127\\.0\\.0\\.1(:\\d+)?/acme/widgets/blob/${HEAD_SHA}/src/app\\.ts#L5\\)$`
-      )
+    // The server's own origin, scheme and port included: the link opens outside Obsidian too.
+    expect(r.copied).toBe(
+      `[acme/widgets@1a2b3c4 · src/app.ts:5](${gh.web}/blob/${HEAD_SHA}/src/app.ts#L5)`
     )
     expect(r.link).toBe(true)
     expect(r.card).toBe(true)
@@ -262,10 +261,10 @@ describe.skipIf(!available)('a GitHub tab', () => {
         return report
       })()`)
       expect(r.error).toBeUndefined()
-      expect(r.deleted).toMatch(new RegExp(`/acme/widgets/blob/${BASE_SHA}/src/old\\.ts$`))
+      expect(r.deleted).toBe(`${gh.web}/blob/${BASE_SHA}/src/old.ts`)
       expect(r.deletedText).toBe(true)
       expect(r.back).toBe(`${gh.web}/pull/42/files`)
-      expect(r.selected).toMatch(new RegExp(`/acme/widgets/blob/${HEAD_SHA}/src/app\\.ts#L5$`))
+      expect(r.selected).toBe(`${gh.web}/blob/${HEAD_SHA}/src/app.ts#L5`)
       expect(r.marked).toBe('  const widgets = loadWidgets(count)')
     })
 
