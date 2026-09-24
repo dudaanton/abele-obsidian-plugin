@@ -39,9 +39,11 @@
       <div v-if="lines.length" ref="editorEl" class="abele-github-code" />
       <EmptyState v-else>
         {{
-          file.patch === undefined
-            ? 'GitHub does not show this diff here — the file is binary or its diff is too large.'
-            : 'No changes in the text of this file.'
+          file.diffNote
+            ? file.diffNote
+            : file.patch === undefined
+              ? 'GitHub does not show this diff here — the file is binary or its diff is too large.'
+              : 'No changes in the text of this file.'
         }}
       </EmptyState>
       <div v-if="anchor?.line && !highlight.length" class="abele-github-file__note">

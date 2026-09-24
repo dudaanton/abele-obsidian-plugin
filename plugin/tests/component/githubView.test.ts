@@ -15,18 +15,25 @@ import { endpoints, parseGithubUrl } from '@/github/urls'
 import type { GithubViewModel } from '@/github/model'
 import { useVault } from '../helpers/testEnv'
 
-type Reply = { status?: number; json?: unknown; text?: string }
+type Reply = {
+  status?: number
+  json?: unknown
+  text?: string
+  headers?: Record<string, string>
+}
+type Route = Reply | ((req: RequestUrlParam) => Reply)
 
-function clientWith(routes: Record<string, Reply>) {
+function clientWith(routes: Record<string, Route>) {
   const request = vi.fn(async (req: RequestUrlParam): Promise<RequestUrlResponse> => {
     const path = req.url.replace('https://api.github.com', '').replace(/[?&]per_page=.*$/, '')
     const key = Object.keys(routes)
       .sort((a, b) => b.length - a.length)
       .find((k) => path === k || path.startsWith(k + '?'))
-    const r: Reply = key ? routes[key] : { status: 404, json: { message: 'Not Found' } }
+    const route: Route = key ? routes[key] : { status: 404, json: { message: 'Not Found' } }
+    const r = typeof route === 'function' ? route(req) : route
     return {
       status: r.status ?? 200,
-      headers: {},
+      headers: r.headers ?? {},
       json: r.json,
       text: r.text ?? JSON.stringify(r.json ?? null),
       arrayBuffer: new ArrayBuffer(0),
@@ -35,7 +42,7 @@ function clientWith(routes: Record<string, Reply>) {
   return { client: new GithubClient(endpoints(''), 'tkn', request), request }
 }
 
-function open(url: string, routes: Record<string, Reply>, enabled = true) {
+function open(url: string, routes: Record<string, Route>, enabled = true) {
   const { client } = clientWith(routes)
   const model: GithubViewModel = reactive({ url: '', target: null, nonce: 0 })
   const onTitle = vi.fn()
@@ -184,6 +191,158 @@ describe('a pull request diff link', () => {
     await flushPromises()
     expect(first.find('.cm-editor').exists()).toBe(true)
     expect(first.findAll('.abele-github-code__line_add')).toHaveLength(2)
+  })
+})
+
+describe('a pull request whose comments are refused', () => {
+  const REFUSED: Reply = {
+    status: 403,
+    json: { message: 'Resource not accessible by personal access token' },
+    headers: { 'X-Accepted-GitHub-Permissions': 'issues=read; pull_requests=read' },
+  }
+  const base = {
+    '/repos/o/r/pulls/7': { json: PULL },
+    '/repos/o/r/issues/7/comments': REFUSED,
+    '/repos/o/r/pulls/7/reviews': { json: [] },
+    '/repos/o/r/pulls/7/comments': { json: [] },
+    '/repos/o/r/pulls/7/files': { json: [file('a.ts')] },
+  }
+  const graphqlComments = {
+    json: {
+      data: {
+        repository: {
+          pullRequest: {
+            comments: {
+              totalCount: 1,
+              nodes: [
+                {
+                  id: 'IC_1',
+                  databaseId: 9,
+                  body: 'Through GraphQL',
+                  createdAt: '2026-01-03T10:00:00Z',
+                  author: { login: 'cat' },
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
+  }
+
+  it('shows the pull request, and in the conversation says what was refused', async () => {
+    const { wrapper } = open('https://github.com/o/r/pull/7', {
+      ...base,
+      '/graphql': { json: { errors: [{ type: 'FORBIDDEN', message: 'Not allowed either' }] } },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.abele-github-header__title').text()).toContain('Fix the crash')
+    expect(wrapper.find('.abele-github-comment').text()).toContain('Fixes #5')
+    const notice = wrapper.find('.abele-github-thread .abele-github-notice')
+    expect(notice.exists()).toBe(true)
+    expect(notice.text()).toMatch(/refused the pull request's comments/)
+    expect(notice.text()).toMatch(/Resource not accessible by personal access token/)
+    expect(notice.findAll('button').some((b) => b.text().includes('Try again'))).toBe(true)
+    expect(wrapper.text()).not.toContain('No comments yet.')
+    // No full-tab error.
+    expect(wrapper.find('.abele-github__error').exists()).toBe(false)
+
+    await wrapper.findAll('.abele-tabs [role="tab"]')[1].trigger('click')
+    await vi.waitFor(() => expect(wrapper.findAll('.abele-github-file')).toHaveLength(1))
+  })
+
+  it('asks again for the comments alone when told to', async () => {
+    let refuse = true
+    const { wrapper } = open('https://github.com/o/r/pull/7', {
+      ...base,
+      '/repos/o/r/issues/7/comments': () =>
+        refuse
+          ? REFUSED
+          : {
+              json: [
+                { id: 3, user: { login: 'dan' }, body: 'Now readable', created_at: '2026-01-04' },
+              ],
+            },
+      '/graphql': { json: { errors: [{ type: 'FORBIDDEN', message: 'no' }] } },
+    })
+    await flushPromises()
+    refuse = false
+    const retry = wrapper
+      .findAll('.abele-github-notice button')
+      .find((b) => b.text().includes('Try again'))!
+    await retry.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.abele-github-notice').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Now readable')
+    expect(wrapper.find('.abele-github-header__title').text()).toContain('Fix the crash')
+  })
+
+  it('shows the comments GraphQL gives when REST refuses them', async () => {
+    const { wrapper } = open('https://github.com/o/r/pull/7#issuecomment-9', {
+      ...base,
+      '/graphql': graphqlComments,
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.abele-github-notice').exists()).toBe(false)
+    expect(wrapper.findAll('.abele-github-comment__author').map((a) => a.text())).toEqual([
+      'ann',
+      'cat',
+    ])
+    // The anchor a link names still finds its comment.
+    expect(wrapper.find('.abele-github-comment_target').attributes('data-anchor')).toBe(
+      'issuecomment-9'
+    )
+  })
+
+  it('is a full-tab error when the pull request itself is not found', async () => {
+    const { wrapper } = open('https://github.com/o/r/pull/8', {
+      '/repos/o/r/issues/8/comments': { json: [] },
+      '/repos/o/r/pulls/8/reviews': { json: [] },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.abele-github__error').text()).toMatch(
+      /found nothing for the pull request/
+    )
+    expect(wrapper.find('.abele-tabs').exists()).toBe(false)
+  })
+})
+
+describe('an issue whose comments are refused', () => {
+  it('shows the issue and a notice where the comments go', async () => {
+    const { wrapper } = open('https://github.com/o/r/issues/5', {
+      '/repos/o/r/issues/5': { json: ISSUE },
+      '/repos/o/r/issues/5/comments': {
+        status: 403,
+        json: { message: 'Resource not accessible by personal access token' },
+      },
+      '/graphql': { json: { errors: [{ type: 'FORBIDDEN', message: 'no' }] } },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.abele-github-comment').text()).toContain('crashes')
+    expect(wrapper.find('.abele-github-notice').text()).toMatch(/refused the issue's comments/)
+  })
+})
+
+describe('a pull request whose review comments are refused', () => {
+  it('shows the files and says the review comments are missing', async () => {
+    const { wrapper } = open('https://github.com/o/r/pull/7/files', {
+      '/repos/o/r/pulls/7': { json: PULL },
+      '/repos/o/r/issues/7/comments': { json: [] },
+      '/repos/o/r/pulls/7/reviews': { json: [] },
+      '/repos/o/r/pulls/7/files': { json: [file('a.ts')] },
+      '/repos/o/r/pulls/7/comments': {
+        status: 403,
+        json: { message: 'Resource not accessible by personal access token' },
+      },
+      '/graphql': { json: { errors: [{ type: 'FORBIDDEN', message: 'no' }] } },
+    })
+    await vi.waitFor(() => expect(wrapper.findAll('.abele-github-file')).toHaveLength(1))
+    expect(wrapper.find('.abele-github-notice').text()).toMatch(/review comments/)
   })
 })
 

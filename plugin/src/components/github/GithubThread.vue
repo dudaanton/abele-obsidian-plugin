@@ -2,7 +2,8 @@
   <div class="abele-github-thread">
     <GithubComment :comment="opening" :target="anchor" />
     <GithubComment v-for="c in comments" :key="c.id" :comment="c" :target="anchor" />
-    <div v-if="!comments.length" class="abele-github-thread__note">No comments yet.</div>
+    <GithubNotice v-if="problem" :text="problem" :busy="retrying" @retry="emit('retry')" />
+    <div v-else-if="!comments.length" class="abele-github-thread__note">No comments yet.</div>
     <div v-if="missing > 0" class="abele-github-thread__note">
       {{ missing }} more {{ missing === 1 ? 'comment is' : 'comments are' }} on GitHub.
     </div>
@@ -15,6 +16,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import GithubComment from './GithubComment.vue'
+import GithubNotice from './GithubNotice.vue'
 import type { Comment } from '@/github/api'
 
 const props = withDefaults(
@@ -28,9 +30,17 @@ const props = withDefaults(
     missing?: number
     /** Some comments were not fetched, and how many is not known. */
     incomplete?: boolean
+    /** Why some or all of the comments could not be read. */
+    problem?: string
+    /** They are being asked for again. */
+    retrying?: boolean
   }>(),
-  { anchor: undefined, missing: 0 }
+  { anchor: undefined, missing: 0, problem: undefined }
 )
+
+const emit = defineEmits<{
+  (e: 'retry'): void
+}>()
 
 const opening = computed<Comment>(() => ({
   id: 'opening',

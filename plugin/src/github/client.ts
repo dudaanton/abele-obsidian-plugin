@@ -30,6 +30,7 @@ export class GithubError extends Error {
   readonly fix?: string
   readonly needed?: string
   readonly githubSaid?: string
+  readonly graphqlNote?: string
 
   constructor(
     readonly kind: GithubErrorKind,
@@ -43,6 +44,19 @@ export class GithubError extends Error {
     this.fix = refusal?.fix
     this.needed = refusal?.needed
     this.githubSaid = refusal?.githubSaid
+    this.graphqlNote = refusal?.graphql
+  }
+
+  /** The refusal again, to be said differently or with more to it. */
+  get refusal(): Refusal {
+    return {
+      kind: this.kind,
+      reason: this.reason,
+      fix: this.fix,
+      needed: this.needed,
+      githubSaid: this.githubSaid,
+      graphql: this.graphqlNote,
+    }
   }
 }
 

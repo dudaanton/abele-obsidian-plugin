@@ -6,6 +6,21 @@
  */
 import { GithubClient, GithubError } from './client'
 import { blobCandidates, diffAnchorHash, type GithubTarget } from './urls'
+import {
+  graphqlComments,
+  graphqlCommits,
+  graphqlFiles,
+  graphqlReviewComments,
+  graphqlReviews,
+  login,
+  REVIEW_STATES,
+  reviewLocation,
+  reviewShown,
+  type Listed,
+  type PathComment,
+  type RawFile,
+} from './graphql'
+import { problems, secondary, withFallback } from './sections'
 
 type Of<K extends GithubTarget['kind']> = Extract<GithubTarget, { kind: K }>
 
@@ -52,6 +67,15 @@ export interface IssueData extends ItemHead {
   comments: Comment[]
   /** Not every comment could be fetched; the rest are on GitHub. */
   commentsComplete: boolean
+  /** Why some of the comments could not be read at all, shown in their place. */
+  commentsProblem?: string
+}
+
+/** The comments of an issue or pull request, read apart from it so they can be asked again. */
+export interface Conversation {
+  comments: Comment[]
+  complete: boolean
+  problem?: string
 }
 
 export interface PullData extends IssueData {
@@ -75,11 +99,15 @@ export interface DiffFile {
   hash: string
   blobUrl?: string
   reviewComments: Comment[]
+  /** Why there is no diff, when it is not the file's doing. */
+  diffNote?: string
 }
 
 export interface FilesData {
   files: DiffFile[]
   complete: boolean
+  /** Why the review comments could not be read; the files are shown without them. */
+  reviewCommentsProblem?: string
 }
 
 export interface CommitSummary {
@@ -113,8 +141,6 @@ export interface BlobData {
 
 // `any` below is the API's own JSON, read once here and never passed on.
 
-const login = (user: any): string => user?.login ?? 'ghost'
-
 const repoPath = (t: { owner: string; repo: string }) =>
   `/repos/${encodeURIComponent(t.owner)}/${encodeURIComponent(t.repo)}`
 
@@ -135,18 +161,85 @@ const issueComment = (c: any): Comment => ({
   url: c.html_url,
 })
 
-const REVIEW_STATES: Record<string, string> = {
-  APPROVED: 'Approved',
-  CHANGES_REQUESTED: 'Changes requested',
-  COMMENTED: 'Reviewed',
-  DISMISSED: 'Dismissed',
+const EMPTY: Listed<Comment> = { items: [], complete: true }
+
+/** An item's conversation comments: `/issues/N/comments`, for an issue and a pull request alike. */
+const conversationComments = (client: GithubClient, t: Of<'issue'> | Of<'pull'>, what: string) =>
+  secondary(
+    client,
+    EMPTY,
+    async () => {
+      const { items, complete } = await client.list<any>(
+        `${repoPath(t)}/issues/${t.number}/comments`,
+        { what }
+      )
+      return { items: items.map(issueComment), complete }
+    },
+    () => graphqlComments(client, t, t.kind === 'pull' ? 'pullRequest' : 'issue', what)
+  )
+
+/**
+ * An issue's comments. They are only ever shown under the issue, read with the same token, so a
+ * refusal of them is said as a refusal of this one request, not of the token (see `problemText`).
+ */
+export async function loadIssueConversation(
+  client: GithubClient,
+  t: Of<'issue'>
+): Promise<Conversation> {
+  const comments = await conversationComments(client, t, "the issue's comments")
+  return {
+    comments: comments.value.items,
+    complete: comments.value.complete,
+    problem: problems([comments.error], 'Issues'),
+  }
 }
 
+export async function loadPullConversation(
+  client: GithubClient,
+  t: Of<'pull'>
+): Promise<Conversation> {
+  const [comments, reviews] = await Promise.all([
+    conversationComments(client, t, "the pull request's comments"),
+    secondary(
+      client,
+      EMPTY,
+      async () => {
+        const { items, complete } = await client.list<any>(
+          `${repoPath(t)}/pulls/${t.number}/reviews`,
+          { what: "the pull request's reviews" }
+        )
+        return {
+          items: items.filter((r: any) => reviewShown(r.state, r.body)).map(review),
+          complete,
+        }
+      },
+      () => graphqlReviews(client, t)
+    ),
+  ])
+  return {
+    comments: [...comments.value.items, ...reviews.value.items].sort((a, b) =>
+      a.createdAt.localeCompare(b.createdAt)
+    ),
+    complete: comments.value.complete && reviews.value.complete,
+    problem: problems([comments.error, reviews.error], 'Pull requests'),
+  }
+}
+
+const review = (r: any): Comment => ({
+  id: `review-${r.id}`,
+  author: login(r.user),
+  body: r.body ?? '',
+  createdAt: r.submitted_at,
+  anchor: `pullrequestreview-${r.id}`,
+  badge: REVIEW_STATES[r.state] ?? undefined,
+  url: r.html_url,
+})
+
+/** The issue itself decides whether there is a tab; its comments only whether they are shown. */
 export async function loadIssue(client: GithubClient, t: Of<'issue'>): Promise<IssueData> {
-  const base = `${repoPath(t)}/issues/${t.number}`
-  const [issue, comments] = await Promise.all([
-    client.get<any>(base, { what: 'the issue' }),
-    client.list<any>(`${base}/comments`, { what: "the issue's comments" }),
+  const [issue, conversation] = await Promise.all([
+    client.get<any>(`${repoPath(t)}/issues/${t.number}`, { what: 'the issue' }),
+    loadIssueConversation(client, t),
   ])
   return {
     title: issue.title,
@@ -157,39 +250,19 @@ export async function loadIssue(client: GithubClient, t: Of<'issue'>): Promise<I
     state: issue.state_reason === 'not_planned' ? 'not planned' : issue.state,
     labels: labels(issue.labels),
     body: issue.body ?? '',
-    comments: comments.items.map(issueComment),
-    commentsComplete: comments.complete,
+    comments: conversation.comments,
+    commentsComplete: conversation.complete,
+    commentsProblem: conversation.problem,
     isPull: !!issue.pull_request,
   }
 }
 
+/** The pull request itself decides whether there is a tab; each of its sections only itself. */
 export async function loadPull(client: GithubClient, t: Of<'pull'>): Promise<PullData> {
-  const base = `${repoPath(t)}/pulls/${t.number}`
-  const [pull, comments, reviews] = await Promise.all([
-    client.get<any>(base, { what: 'the pull request' }),
-    client.list<any>(`${repoPath(t)}/issues/${t.number}/comments`, {
-      what: "the pull request's comments",
-    }),
-    client.list<any>(`${base}/reviews`, { what: "the pull request's reviews" }),
+  const [pull, conversation] = await Promise.all([
+    client.get<any>(`${repoPath(t)}/pulls/${t.number}`, { what: 'the pull request' }),
+    loadPullConversation(client, t),
   ])
-
-  // A review with nothing to say and no verdict is the wrapper of inline comments, which show
-  // on the files they are about.
-  const reviewItems: Comment[] = reviews.items
-    .filter((r: any) => r.body || (r.state && r.state !== 'COMMENTED' && r.state !== 'PENDING'))
-    .map((r: any) => ({
-      id: `review-${r.id}`,
-      author: login(r.user),
-      body: r.body ?? '',
-      createdAt: r.submitted_at,
-      anchor: `pullrequestreview-${r.id}`,
-      badge: REVIEW_STATES[r.state] ?? undefined,
-      url: r.html_url,
-    }))
-
-  const timeline = [...comments.items.map(issueComment), ...reviewItems].sort((a, b) =>
-    a.createdAt.localeCompare(b.createdAt)
-  )
 
   return {
     title: pull.title,
@@ -200,8 +273,9 @@ export async function loadPull(client: GithubClient, t: Of<'pull'>): Promise<Pul
     state: pull.merged_at ? 'merged' : pull.draft && pull.state === 'open' ? 'draft' : pull.state,
     labels: labels(pull.labels),
     body: pull.body ?? '',
-    comments: timeline,
-    commentsComplete: comments.complete && reviews.complete,
+    comments: conversation.comments,
+    commentsComplete: conversation.complete,
+    commentsProblem: conversation.problem,
     base: pull.base?.ref ?? '',
     head: pull.head?.label ?? pull.head?.ref ?? '',
     additions: pull.additions ?? 0,
@@ -211,7 +285,11 @@ export async function loadPull(client: GithubClient, t: Of<'pull'>): Promise<Pul
   }
 }
 
-async function diffFiles(raw: any[], reviewComments: any[] = []): Promise<DiffFile[]> {
+async function diffFiles(
+  raw: any[],
+  reviewComments: PathComment[] = [],
+  diffNote?: string
+): Promise<DiffFile[]> {
   return Promise.all(
     raw.map(async (f: any) => ({
       path: f.filename,
@@ -222,33 +300,62 @@ async function diffFiles(raw: any[], reviewComments: any[] = []): Promise<DiffFi
       patch: f.patch,
       hash: await diffAnchorHash(f.filename),
       blobUrl: f.blob_url,
-      reviewComments: reviewComments
-        .filter((c: any) => c.path === f.filename)
-        .map((c: any) => ({
-          id: `rc-${c.id}`,
-          author: login(c.user),
-          body: c.body ?? '',
-          createdAt: c.created_at,
-          anchor: `discussion_r${c.id}`,
-          location:
-            c.line || c.original_line
-              ? `${c.side === 'LEFT' ? 'old ' : ''}line ${c.line ?? c.original_line}${c.line ? '' : ' (outdated)'}`
-              : undefined,
-          url: c.html_url,
-        })),
+      reviewComments: reviewComments.filter((c) => c.path === f.filename).map((c) => c.comment),
+      diffNote,
     }))
   )
 }
 
+const restReviewComment = (c: any): PathComment => ({
+  path: c.path,
+  comment: {
+    id: `rc-${c.id}`,
+    author: login(c.user),
+    body: c.body ?? '',
+    createdAt: c.created_at,
+    anchor: `discussion_r${c.id}`,
+    location: reviewLocation(c.side, c.line, c.original_line),
+    url: c.html_url,
+  },
+})
+
+const NO_DIFFS =
+  'GitHub refused the diffs to this token. The list of files came through its GraphQL API, which does not carry diffs; open the pull request on GitHub to read them.'
+
+/**
+ * The changed files, and their review comments beside them. The files are this section's own
+ * item — refused both ways, the section says so — while refused review comments leave the
+ * files shown without them.
+ */
 export async function loadPullFiles(client: GithubClient, t: Of<'pull'>): Promise<FilesData> {
   const base = `${repoPath(t)}/pulls/${t.number}`
   const [files, reviewComments] = await Promise.all([
-    client.list<any>(`${base}/files`, { what: "the pull request's changed files" }),
-    client.list<any>(`${base}/comments`, { what: "the pull request's review comments" }),
+    withFallback<{ files: RawFile[]; complete: boolean; diffNote?: string }>(
+      client,
+      async () => {
+        const { items, complete } = await client.list<any>(`${base}/files`, {
+          what: "the pull request's changed files",
+        })
+        return { files: items, complete }
+      },
+      async () => ({ ...(await graphqlFiles(client, t)), diffNote: NO_DIFFS })
+    ),
+    secondary<Listed<PathComment>>(
+      client,
+      { items: [], complete: true },
+      async () => {
+        const { items, complete } = await client.list<any>(`${base}/comments`, {
+          what: "the pull request's review comments",
+        })
+        return { items: items.map(restReviewComment), complete }
+      },
+      () => graphqlReviewComments(client, t)
+    ),
   ])
   return {
-    files: await diffFiles(files.items, reviewComments.items),
+    files: await diffFiles(files.files, reviewComments.value.items, files.diffNote),
     complete: files.complete,
+    reviewCommentsProblem: problems([reviewComments.error], 'Pull requests'),
   }
 }
 
@@ -256,15 +363,21 @@ export async function loadPullCommits(
   client: GithubClient,
   t: Of<'pull'>
 ): Promise<CommitSummary[]> {
-  const { items } = await client.list<any>(`${repoPath(t)}/pulls/${t.number}/commits`, {
-    what: "the pull request's commits",
-  })
-  return items.map((c: any) => ({
-    sha: c.sha,
-    message: c.commit?.message ?? '',
-    author: c.author?.login ?? c.commit?.author?.name ?? 'unknown',
-    date: c.commit?.author?.date ?? '',
-  }))
+  return withFallback(
+    client,
+    async () => {
+      const { items } = await client.list<any>(`${repoPath(t)}/pulls/${t.number}/commits`, {
+        what: "the pull request's commits",
+      })
+      return items.map((c: any) => ({
+        sha: c.sha,
+        message: c.commit?.message ?? '',
+        author: c.author?.login ?? c.commit?.author?.name ?? 'unknown',
+        date: c.commit?.author?.date ?? '',
+      }))
+    },
+    () => graphqlCommits(client, t)
+  )
 }
 
 export async function loadCommit(client: GithubClient, t: Of<'commit'>): Promise<CommitData> {

@@ -34,6 +34,8 @@ export interface Refusal {
   needed?: string
   /** GitHub's own `message`, verbatim. */
   githubSaid?: string
+  /** What came of asking the same thing through GraphQL, when REST refused it. */
+  graphql?: string
 }
 
 export type TokenKind = 'none' | 'fine-grained' | 'classic' | 'oauth' | 'app' | 'unknown'
@@ -267,5 +269,6 @@ export function refusalText(r: Refusal): string {
   const lines = [r.fix ? `${r.reason} ${r.fix}` : r.reason]
   if (r.needed) lines.push(`Needs: ${r.needed}`)
   if (r.githubSaid) lines.push(`GitHub said: "${r.githubSaid}"`)
+  if (r.graphql) lines.push(r.graphql)
   return lines.join('\n')
 }

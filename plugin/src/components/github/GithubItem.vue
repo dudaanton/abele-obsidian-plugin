@@ -43,6 +43,9 @@
           :comments="issue.comments"
           :anchor="anchor"
           :incomplete="!issue.commentsComplete"
+          :problem="issue.commentsProblem"
+          :retrying="conversationRetrying"
+          @retry="retryConversation"
         />
       </template>
 
@@ -67,6 +70,9 @@
           :comments="pull.comments"
           :anchor="anchor"
           :incomplete="!pull.commentsComplete"
+          :problem="pull.commentsProblem"
+          :retrying="conversationRetrying"
+          @retry="retryConversation"
         />
         <template v-else-if="pullTab === 'files'">
           <div v-if="files.error.value" class="abele-github__error">
@@ -79,16 +85,29 @@
             />
           </div>
           <EmptyState v-else-if="!files.data.value" text="Loading the changed files…" />
-          <GithubFiles
-            v-else
-            :files="files.data.value.files"
-            :complete="files.data.value.complete"
-            :anchor="fileAnchor"
-          />
+          <template v-else>
+            <GithubNotice
+              v-if="files.data.value.reviewCommentsProblem"
+              :text="files.data.value.reviewCommentsProblem"
+              :busy="files.loading.value"
+              @retry="files.load"
+            />
+            <GithubFiles
+              :files="files.data.value.files"
+              :complete="files.data.value.complete"
+              :anchor="fileAnchor"
+            />
+          </template>
         </template>
         <template v-else>
           <div v-if="commits.error.value" class="abele-github__error">
             <EmptyState :text="commits.error.value" />
+            <Button
+              text="Try again"
+              icon="refresh-cw"
+              tooltip="Ask GitHub again"
+              @click="commits.load"
+            />
           </div>
           <EmptyState v-else-if="!commits.data.value" text="Loading the commits…" />
           <div v-else class="abele-github__commits">
@@ -133,6 +152,7 @@ import GithubHeader from './GithubHeader.vue'
 import GithubThread from './GithubThread.vue'
 import GithubFiles from './GithubFiles.vue'
 import GithubCode from './GithubCode.vue'
+import GithubNotice from './GithubNotice.vue'
 import type { GithubViewModel } from '@/github/model'
 import type { GithubClient } from '@/github/client'
 import { targetKey, shortName, type GithubTarget } from '@/github/urls'
@@ -143,8 +163,10 @@ import {
   loadCommit,
   loadDiscussion,
   loadIssue,
+  loadIssueConversation,
   loadPull,
   loadPullCommits,
+  loadPullConversation,
   loadPullFiles,
   type BlobData,
   type CommitData,
@@ -232,6 +254,34 @@ const pullTabs = computed(() => [
     icon: 'git-commit-horizontal',
   },
 ])
+
+/**
+ * Asks again for the comments alone, which were refused while the item itself was read, and
+ * puts them in place without reloading the rest.
+ */
+const conversationRetrying = ref(false)
+const retryConversation = async () => {
+  const data = main.data.value as IssueData | PullData | null
+  const t = shown.value
+  if (!data || conversationRetrying.value || (t.kind !== 'pull' && t.kind !== 'issue')) return
+  conversationRetrying.value = true
+  try {
+    const conversation =
+      t.kind === 'pull'
+        ? await loadPullConversation(client(), t)
+        : await loadIssueConversation(client(), t)
+    // The item was reloaded meanwhile; that load brought its own comments.
+    if (main.data.value !== data) return
+    main.data.value = {
+      ...data,
+      comments: conversation.comments,
+      commentsComplete: conversation.complete,
+      commentsProblem: conversation.problem,
+    }
+  } finally {
+    conversationRetrying.value = false
+  }
+}
 
 watch(pullTab, (tab) => {
   if (tab === 'files' && !files.data.value && !files.loading.value) void files.load()

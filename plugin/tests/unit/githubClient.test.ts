@@ -131,7 +131,7 @@ describe('refusals say what to do', () => {
     expect(errorFor(404, {}, null, false).message).toMatch(/add a token/)
   })
 
-  it('a pull request whose reviews are refused says it was the reviews', async () => {
+  it('a pull request whose reviews are refused still loads, and says it was the reviews', async () => {
     const { request } = fake({
       '/repos/o/r/pulls/7/reviews': {
         status: 403,
@@ -141,16 +141,17 @@ describe('refusals say what to do', () => {
       '/repos/o/r/issues/7/comments': { json: [] },
       '/repos/o/r/pulls/7': { json: { number: 7 } },
     })
-    await expect(
-      loadPull(client(request), {
-        kind: 'pull',
-        host: 'github.com',
-        owner: 'o',
-        repo: 'r',
-        number: 7,
-        tab: 'conversation',
-      })
-    ).rejects.toThrow(/refused the pull request's reviews[\s\S]*Needs: Pull requests \(read\)/)
+    const pull = await loadPull(client(request), {
+      kind: 'pull',
+      host: 'github.com',
+      owner: 'o',
+      repo: 'r',
+      number: 7,
+      tab: 'conversation',
+    })
+    expect(pull.commentsProblem).toMatch(
+      /refused the pull request's reviews[\s\S]*Needs: Pull requests \(read\)/
+    )
   })
 
   it('a GraphQL refusal keeps its message, so an IP allow list is named as one', async () => {
