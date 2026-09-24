@@ -26,6 +26,8 @@ import {
   OWNER,
   PULL,
   REPO,
+  SLASHED_BRANCH,
+  FIRST_SHA,
   filesAt,
   fixtures,
   foldersOf,
@@ -94,6 +96,28 @@ function send(res: ServerResponse, status: number, body: unknown, type = 'applic
 const notFound = (res: ServerResponse) =>
   send(res, 404, { message: 'Not Found', documentation_url: 'https://docs.github.com/rest' })
 
+/** The words of a search, without its qualifiers (`repo:…`, `in:title`). */
+const searchWords = (q: string) =>
+  q
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w && !w.includes(':'))
+
+const titleMatches = (title: string, q: string) => {
+  const words = searchWords(q)
+  return words.length > 0 && words.every((w) => title.toLowerCase().includes(w))
+}
+
+/** GitHub's issue search, over the one pull request and the one issue there are. */
+function searchIssues(res: ServerResponse, url: URL, web: string) {
+  const f = fixtures(web)
+  const q = url.searchParams.get('q') ?? ''
+  const items = [{ ...f.pull, pull_request: { merged_at: null } }, { ...f.issue }].filter((i) =>
+    titleMatches(i.title, q)
+  )
+  return send(res, 200, { total_count: items.length, incomplete_results: false, items })
+}
+
 /** A list is served whole on its first page, as a short page that says it is the last. */
 const page = (url: URL, items: unknown[]) =>
   Number(url.searchParams.get('page') ?? 1) > 1 ? [] : items
@@ -101,6 +125,7 @@ const page = (url: URL, items: unknown[]) =>
 function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) {
   const f = fixtures(web)
   const accept = String(req.headers.accept ?? '')
+  if (url.pathname === '/api/v3/search/issues') return searchIssues(res, url, web)
   const prefix = `/api/v3/repos/${OWNER}/${REPO}`
   if (!url.pathname.startsWith(prefix)) return notFound(res)
   const path = decodeURIComponent(url.pathname.slice(prefix.length))
@@ -115,10 +140,19 @@ function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) 
   if (path === `/pulls/${PULL}/commits`) return send(res, 200, page(url, f.commits))
   if (path === `/issues/${ISSUE}`) return send(res, 200, f.issue)
   if (path === `/issues/${ISSUE}/comments`) return send(res, 200, page(url, f.issueComments))
+  if (path === '/branches')
+    return send(
+      res,
+      200,
+      ['main', 'loader', SLASHED_BRANCH].map((name) => ({ name }))
+    )
 
   let m = /^\/commits\/(.+)$/.exec(path)
   if (m) {
-    const ref = m[1]
+    // A short SHA is the commit it starts, as GitHub reads one.
+    const ref = /^[0-9a-f]{7,39}$/.test(m[1])
+      ? ([HEAD_SHA, FIRST_SHA].find((sha) => sha.startsWith(m![1])) ?? m[1])
+      : m[1]
     if (accept.includes('vnd.github.sha') && !legacy) {
       return filesAt(ref)
         ? send(res, 200, ref === 'main' ? HEAD_SHA : ref, 'text/plain')
@@ -222,6 +256,11 @@ async function graphql(req: IncomingMessage, res: ServerResponse, web: string) {
   const { query, variables } = JSON.parse(raw || '{}') as {
     query?: string
     variables?: Record<string, unknown>
+  }
+  if (query?.includes('type:DISCUSSION')) {
+    const d = fixtures(web).discussion
+    const nodes = titleMatches(d.title, String(variables?.q ?? '')) ? [d] : []
+    return send(res, 200, { data: { search: { nodes } } })
   }
   if (query?.includes('discussion(number') && variables?.number === DISCUSSION)
     return send(res, 200, { data: { repository: { discussion: fixtures(web).discussion } } })

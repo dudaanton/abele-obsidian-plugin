@@ -28,9 +28,15 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   With text selected in that note, the link points at the selected lines and the text is
   quoted under it
 - Show script runs · Show script API reference
-- Open GitHub link — the GitHub link under the cursor, or one pasted in, in a GitHub tab: the
-  one already showing that item, else the GitHub tab used last, else a new one (only while the
-  GitHub integration is on)
+- Open GitHub link or item — the GitHub link under the cursor opens straight away; otherwise a
+  picker takes a pasted link (github.com or the configured server), or `#123`, `owner/repo#123`,
+  a commit SHA, a branch, `owner/repo`, or words of a title, and offers what GitHub has for it
+  while typing — pull requests, issues and discussions by number or title, branches, commits,
+  repositories. A bare number or a title is looked up in the repository of the GitHub tab used
+  last, else the one last opened from the picker, else `github.defaultRepo`. It opens in the tab
+  already showing that item, else the GitHub tab used last, else a new one; Mod+Enter opens a new
+  tab. The same picker is *Open another GitHub item…* in a GitHub tab's "more options" menu (only
+  while the GitHub integration is on)
 - Chat about this GitHub item — in a GitHub tab: a new chat with a link to the item in the
   input. The same is the speech-bubble button in the tab's header and in its "more options"
   menu; *Ask here* under selected lines of code starts one with those lines quoted, and so does

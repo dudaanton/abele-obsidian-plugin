@@ -146,6 +146,60 @@ const measure = (web: string, section: 'conversation' | 'files') =>
     return report
   })()`)
 
+/**
+ * The "Open GitHub link or item" picker with `text` typed, once GitHub has answered: what reaches
+ * past the screen's edge, and a picture.
+ */
+const measurePicker = (text: string, label: string) =>
+  evalAsync<Screen & { rows?: number }>(`(async () => {
+    ${PRELUDE}
+    const report = { phone: document.body.classList.contains('is-phone') }
+    const picker = () => document.querySelector('.abele-github-open')
+    try {
+      const config = window.__abeleTest.AbeleConfig.getInstance()
+      config.github = { ...config.github, defaultRepo: 'acme/widgets' }
+      app.commands.executeCommandById('abele:open-github-link')
+      const input = await until(() => picker()?.querySelector('input'), 5000)
+      if (!input) return { ...report, error: 'no picker' }
+      input.value = ${JSON.stringify(text)}
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      await wait(200)
+      await until(() => !picker().textContent.includes('Asking GitHub'), 10000)
+      input.blur()
+      await wait(500)
+      const root = picker()
+      report.rows = root.querySelectorAll('.suggestion-item').length
+      const edge = window.innerWidth
+      const name = (el) => el.tagName.toLowerCase() + '.' + [...el.classList].join('.')
+      report.over = [...root.querySelectorAll('*')]
+        .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.right > edge + 1 })
+        .map((el) => name(el) + ' +' + Math.round(el.getBoundingClientRect().right - edge))
+        .slice(0, 12)
+      report.sideways = root.scrollWidth - root.clientWidth
+      require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
+      const shot = ${JSON.stringify(SHOTS)} + '/github-open-' + ${JSON.stringify(label)} + '.png'
+      for (let attempt = 0; attempt < 3 && !report.shot?.endsWith('.png'); attempt++) {
+        try {
+          const capture = require('@electron/remote').getCurrentWebContents().capturePage()
+          const img = await Promise.race([capture, wait(8000).then(() => null)])
+          if (img) {
+            require('fs').writeFileSync(shot, img.toPNG())
+            report.shot = shot
+          }
+        } catch (e) {
+          report.shot = 'no picture: ' + String((e && e.message) || e)
+          await wait(500)
+        }
+      }
+    } catch (e) {
+      report.error = String((e && e.message) || e)
+    } finally {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }))
+      await until(() => !picker(), 3000)
+    }
+    return report
+  })()`)
+
 describe.skipIf(!available)('a pull request on a phone', () => {
   let gh: FakeGithub
   let size: [number, number] = [0, 0]
@@ -160,6 +214,8 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     enableGithub(gh.origin, false)
     screens.conversation = measure(gh.web, 'conversation')
     screens.files = measure(gh.web, 'files')
+    screens.picker = measurePicker('loader', 'suggestions')
+    screens.pickerEmpty = measurePicker('', 'empty')
     console.info(`\n  ${JSON.stringify(screens)}\n`)
   }, 300_000)
 
@@ -178,6 +234,17 @@ describe.skipIf(!available)('a pull request on a phone', () => {
   it.each(['conversation', 'files'])('%s: shown in the phone layout', (section) => {
     expect(screens[section]?.error).toBeUndefined()
     expect(screens[section]?.phone).toBe(true)
+  })
+
+  it.each(['picker', 'pickerEmpty'])('%s: the Open GitHub item picker fits the screen', (s) => {
+    expect(screens[s]?.error).toBeUndefined()
+    expect(screens[s]?.phone).toBe(true)
+    expect(screens[s]?.over ?? ['no report']).toEqual([])
+    expect(screens[s]?.sideways).toBe(0)
+  })
+
+  it('the picker offers what GitHub has on a phone too', () => {
+    expect((screens.picker as { rows?: number } | undefined)?.rows).toBe(3)
   })
 
   it.each(['conversation', 'files'])(

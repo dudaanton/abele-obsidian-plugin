@@ -691,3 +691,17 @@ body.is-mobile .abele-comment-marker_pending::after {
   height: calc(100% - var(--safe-area-inset-top, 0px));
   max-height: calc(100% - var(--safe-area-inset-top, 0px));
 }
+
+/*
+ * The "Open on GitHub" picker is Obsidian's own; its rows are theirs too. A line that only says
+ * something — GitHub is being asked, GitHub refused — reads as a remark, not as a choice.
+ */
+.abele-github-open .suggestion-item.abele-github-open__note {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.abele-github-open .suggestion-item.abele-github-open__note .suggestion-title {
+  font-size: var(--font-ui-small);
+  white-space: normal;
+}

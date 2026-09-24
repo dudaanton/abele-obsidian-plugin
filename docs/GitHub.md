@@ -67,10 +67,37 @@ Properties side panel. With the properties shown as source, or in source mode, t
 plain text where Obsidian opens nothing, and an address in it opens as in source mode: Cmd-click.
 
 A right click on a GitHub link offers **Open in Obsidian** (the rule above) and **Open in
-Obsidian in a new tab**, whatever the setting. The command **Open GitHub link** opens the link
-under the cursor, or asks for one, by the same rule. A link clicked inside a GitHub tab — a commit
+Obsidian in a new tab**, whatever the setting. The command **Open GitHub link or item** opens the link
+under the cursor by the same rule; with none it opens a picker (see *Opening by number, title,
+branch or commit* below). A link clicked inside a GitHub tab — a commit
 in a pull request's list, a link in a comment — follows the rule too, so it usually opens in the
 tab it was clicked in.
+
+### Opening by number, title, branch or commit
+
+The picker the command opens — also **Open another GitHub item…** in a GitHub tab's "more options"
+menu — takes a pasted link, or any of these:
+
+| Typed | Opens |
+|---|---|
+| `#123` or `123` | the pull request, issue or discussion with that number — GitHub is asked which |
+| `owner/repo#123`, `owner/repo 123` | the same, in that repository |
+| a commit SHA, whole or at least seven characters | the commit |
+| a branch name, or its start | the branch's files |
+| `owner/repo` | the repository's files on its default branch |
+| words | pull requests and issues (and, with a token, discussions) with them in the title |
+| `owner/repo` and words | the same, in that repository |
+
+Suggestions arrive while typing: GitHub is asked once the typing pauses, each question once per
+picker, and an answer for something no longer in the field is not shown. The search API allows
+10 requests a minute without a token and 30 with one; when it refuses, the picker says so rather
+than going blank.
+
+`#123`, a title, a branch or a commit are looked up in the repository of the GitHub tab used
+last; with no GitHub tab, in the repository something was last opened in from the picker this
+session; failing that, in **Default repository** from the settings. Without a token a number
+that is not an issue or pull request is offered as a discussion, since only a signed-in request
+can confirm one — and only a signed-in request can then show it.
 
 ### Markdown files
 

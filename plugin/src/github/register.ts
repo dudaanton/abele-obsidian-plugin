@@ -5,7 +5,7 @@
  * restart; everything that acts — the click, the menu item, the command — asks the settings
  * first, so switching the feature off takes effect at once without a reload.
  */
-import { MarkdownView, Modal, Notice, Platform, Setting, type App, type Plugin } from 'obsidian'
+import { MarkdownView, Platform, type App, type Plugin } from 'obsidian'
 import type { EditorView } from '@codemirror/view'
 import { GithubView } from './GithubView'
 import {
@@ -17,6 +17,7 @@ import {
 } from './GithubService'
 import { linkAtClick, paneForClick, urlAtCursor } from './links'
 import { registerSnippetBlock } from './snippetCard'
+import { OpenPicker } from './open/OpenPicker'
 
 /**
  * Where a click is taken as a click on a note's link. The settings window and dialogs are left
@@ -57,57 +58,6 @@ export function linkClickHandler(app: App) {
     evt.stopImmediatePropagation()
     void openGithubUrl(app, link.url, pane)
   }
-}
-
-class OpenLinkModal extends Modal {
-  private value: string
-
-  constructor(
-    app: App,
-    initial: string,
-    private readonly onSubmit: (url: string) => void
-  ) {
-    super(app)
-    this.value = initial
-  }
-
-  onOpen() {
-    this.setTitle('Open GitHub link')
-    const submit = () => {
-      this.close()
-      this.onSubmit(this.value.trim())
-    }
-    new Setting(this.contentEl)
-      .setName('Link')
-      .setDesc('An issue, pull request, discussion, commit or file on GitHub.')
-      .addText((text) => {
-        text
-          .setPlaceholder('Paste a link to GitHub')
-          .setValue(this.value)
-          .onChange((v) => (this.value = v))
-        text.inputEl.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            submit()
-          }
-        })
-        window.setTimeout(() => text.inputEl.focus(), 0)
-      })
-    new Setting(this.contentEl).addButton((b) => b.setButtonText('Open').setCta().onClick(submit))
-  }
-
-  onClose() {
-    this.contentEl.empty()
-  }
-}
-
-export async function openOrExplain(app: App, url: string): Promise<void> {
-  if (!url) return
-  const opened = await openGithubUrl(app, url)
-  if (!opened)
-    new Notice(
-      'Abele can show GitHub issues, pull requests, discussions, commits and files — not this link.'
-    )
 }
 
 export function registerGithub(plugin: Plugin): void {
@@ -163,13 +113,13 @@ export function registerGithub(plugin: Plugin): void {
 
   plugin.addCommand({
     id: 'open-github-link',
-    name: 'Open GitHub link',
+    name: 'Open GitHub link or item',
     icon: 'github',
     checkCallback: (checking) => {
       if (!githubSettings().enabled) return false
       if (checking) return true
 
-      // A GitHub link under the cursor opens straight away; otherwise ask for one.
+      // A GitHub link under the cursor opens straight away; otherwise the picker asks.
       const view = app.workspace.getActiveViewOfType(MarkdownView)
       const cm = (view?.editor as unknown as { cm?: EditorView } | undefined)?.cm
       const underCursor = cm ? urlAtCursor(cm) : null
@@ -177,7 +127,7 @@ export function registerGithub(plugin: Plugin): void {
         void openGithubUrl(app, underCursor)
         return true
       }
-      new OpenLinkModal(app, underCursor ?? '', (url) => void openOrExplain(app, url)).open()
+      new OpenPicker(app, underCursor ?? '').open()
       return true
     },
   })

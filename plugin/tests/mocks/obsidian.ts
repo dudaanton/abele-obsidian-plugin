@@ -589,10 +589,16 @@ export class SuggestModal<T> extends Modal {
   inputEl: HTMLInputElement = document.createElement('input')
 
   setPlaceholder(): void {}
-  getSuggestions(_query: string): T[] {
+  setInstructions(_instructions: { command: string; purpose: string }[]): void {}
+  getSuggestions(_query: string): T[] | Promise<T[]> {
     return []
   }
   renderSuggestion(_value: T, _el: HTMLElement): void {}
+  /** As Obsidian does it: the dialog closes, then the choice is handed on. */
+  selectSuggestion(value: T, evt: MouseEvent | KeyboardEvent): void {
+    this.close()
+    this.onChooseSuggestion(value, evt)
+  }
   onChooseSuggestion(_value: T, _evt: unknown): void {}
 }
 

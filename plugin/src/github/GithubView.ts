@@ -18,6 +18,7 @@ import GithubItem from '@/components/github/GithubItem.vue'
 import { shortName, targetKey } from './urls'
 import type { GithubViewModel } from './model'
 import { chatSubject, emptyScreen } from './screen'
+import { OpenPicker } from './open/OpenPicker'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   GITHUB_VIEW_TYPE,
@@ -116,6 +117,13 @@ export class GithubView extends ItemView {
 
   onPaneMenu(menu: Menu, source: string): void {
     super.onPaneMenu(menu, source)
+    menu.addItem((item) =>
+      item
+        .setTitle('Open another GitHub item…')
+        .setIcon('github')
+        .setSection('open')
+        .onClick(() => new OpenPicker(this.app).open())
+    )
     if (!this.canChatAbout()) return
     menu.addItem((item) =>
       item

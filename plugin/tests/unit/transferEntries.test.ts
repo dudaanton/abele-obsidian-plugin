@@ -125,6 +125,7 @@ describe('settings that arrived later than the transfer did', () => {
       keyId: 'abele-github-token',
       server: 'https://git.example',
       openLinks: false,
+      defaultRepo: 'octo-org/octo-repo',
     }
     const entries = collectEntries(settings({ github }))
     const entry = find(entries, 'github', 'github')

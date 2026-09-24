@@ -16,6 +16,11 @@ export interface GithubSettings {
    * definition lookup downloads whole. Past it, GitHub's own code search is asked instead.
    */
   searchLimitMb: number
+  /**
+   * The repository `#123` or a title means in the "Open on GitHub" picker when no GitHub tab
+   * says otherwise: `owner/repo` or a link into it. Empty: only what the tabs say.
+   */
+  defaultRepo: string
 }
 
 export const GITHUB_TOKEN_KEY_ID = 'abele-github-token'
@@ -26,6 +31,7 @@ export const DEFAULT_GITHUB_SETTINGS: GithubSettings = {
   server: '',
   openLinks: true,
   searchLimitMb: 100,
+  defaultRepo: '',
 }
 
 export const githubSettingsFrom = (stored?: Partial<GithubSettings>): GithubSettings => ({

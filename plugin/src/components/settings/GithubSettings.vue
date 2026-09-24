@@ -15,6 +15,17 @@
         <Checkbox :is-enabled="settings.openLinks" @toggle="toggle('openLinks')" />
       </Setting>
 
+      <Setting
+        name="Default repository"
+        desc="Where the command Open GitHub link or item looks up a bare #123, a title, a branch or a commit when no GitHub tab is open. owner/repo, or a link into it."
+      >
+        <Input
+          :model-value="settings.defaultRepo"
+          placeholder="owner/repo"
+          @update:model-value="updateDefaultRepo"
+        />
+      </Setting>
+
       <Section
         title="Access"
         desc="A fine-grained personal access token with read-only access to Contents, Issues, Pull requests and Discussions for the repositories you want to read. Without one, only public repositories can be read, 60 requests an hour, and discussions not at all."
@@ -167,6 +178,11 @@ const saveServer = debounce((): void => void save(), 500)
 
 const updateServer = (value: string) => {
   settings.server = value.trim()
+  saveServer()
+}
+
+const updateDefaultRepo = (value: string) => {
+  settings.defaultRepo = value.trim()
   saveServer()
 }
 
