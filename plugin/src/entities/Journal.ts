@@ -76,14 +76,10 @@ export class Journal {
       return
     }
 
-    let parsedDate: dayjs.Dayjs
-    if (!frontmatter?.dateProperty) {
-      parsedDate = extractDateFromFilename(file.name)
-    } else {
-      const date = frontmatter[this.dateProperty]
-      if (!date) return
-      parsedDate = dayjs(date, DATE_FORMAT)
-    }
+    // The property the journal names carries the date; a note without it is dated by its name.
+    const property = this.dateProperty ? frontmatter?.[this.dateProperty] : null
+    const fromProperty = property ? dayjs(String(property), DATE_FORMAT) : null
+    const parsedDate = fromProperty?.isValid() ? fromProperty : extractDateFromFilename(file.name)
 
     if (!parsedDate?.isValid()) return
 

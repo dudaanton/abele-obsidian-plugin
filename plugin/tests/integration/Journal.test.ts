@@ -85,10 +85,9 @@ describe('Journal — deriving the date', () => {
     expect(journal.checkIfNotePathIsJournal('Journals/2026/no-date-here.md')).toBeUndefined()
   })
 
-  it('still reads the file name when a dateProperty is configured', () => {
-    // The implementation checks frontmatter for a literal `dateProperty` key rather than the
-    // configured property name, so the filename branch is what actually runs. Pinned as-is:
-    // downstream date matching depends on this behaviour.
+  it('reads the configured dateProperty over the file name', () => {
+    // It used to look for a literal `dateProperty` key on the note, so the setting was never
+    // used and the file name always won. tests/unit/journalDateProperty.test.ts covers the rest.
     useVault([
       {
         path: 'Journals/2026/2026-08-22.md',
@@ -99,7 +98,7 @@ describe('Journal — deriving the date', () => {
     const journal = new Journal(dailyJournal({ dateProperty: 'date' }))
     expect(
       journal.checkIfNotePathIsJournal('Journals/2026/2026-08-22.md')?.format('YYYY-MM-DD')
-    ).toBe('2026-08-22')
+    ).toBe('2020-01-01')
   })
 })
 
