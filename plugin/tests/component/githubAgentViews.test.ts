@@ -294,3 +294,39 @@ describe('github_open', () => {
     expect(opened).toEqual([])
   })
 })
+
+describe('a rendered markdown file', () => {
+  const SHA = '0123456789abcdef0123456789abcdef01234567'
+  const ROUTES = {
+    '/repos/o/r/contents/README.md': { text: '# Title\n\n- one\n- two\n' },
+    '/repos/o/r/commits/main': { text: SHA },
+  }
+
+  it('records lines picked in the preview, and "Ask here" passes them on', async () => {
+    const { wrapper, model } = openTab('https://github.com/o/r/blob/main/README.md', ROUTES)
+    await vi.waitFor(() => expect(wrapper.findAll('.abele-github-md__block')).toHaveLength(3))
+    const handles = wrapper.findAll('.abele-github-md__handle')
+    await handles[1].trigger('click')
+    await handles[2].trigger('click', { shiftKey: true })
+    await flushPromises()
+
+    expect(model.screen.selection).toEqual({
+      path: 'README.md',
+      label: 'Lines 3–4',
+      code: '- one\n- two',
+    })
+    const ask = wrapper
+      .findAll('.abele-github-selection button')
+      .find((b) => b.text().includes('Ask here'))!
+    await ask.trigger('click')
+    await flushPromises()
+    const [link, quote] = askAboutGithub.mock.calls.at(-1) as unknown as [unknown, unknown]
+    expect([await link, quote]).toEqual([
+      {
+        label: 'o/r@0123456 · README.md:3–4',
+        url: `https://github.com/o/r/blob/${SHA}/README.md?plain=1#L3-L4`,
+      },
+      { code: '- one\n- two', path: 'README.md' },
+    ])
+  })
+})
