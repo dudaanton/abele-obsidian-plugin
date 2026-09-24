@@ -1,7 +1,7 @@
 /**
  * What a GitHub tab has on screen right now, for an agent to ask about: which item, which of a
- * pull request's sections, which files of a diff are open, and the lines the person selected
- * together with their code.
+ * pull request's sections, which files of a diff are open, the lines the person selected
+ * together with their code, and the words they selected in a comment.
  *
  * The tab's components write it as the person moves around — they are the only ones who know —
  * and `github_views` reads it. It lives on the view's model, so it goes when the tab goes.
@@ -10,6 +10,7 @@ import type { InjectionKey } from 'vue'
 import type { DiffLine } from './patch'
 import type { GithubLink } from './permalinks'
 import type { Quote } from './chatAbout'
+import type { ProseSelection } from './proseSelection'
 
 export type PullSection = 'conversation' | 'files' | 'commits'
 
@@ -42,6 +43,12 @@ export interface GithubScreen {
   selection: ScreenSelection | null
   /** What "Chat about this" quotes while lines are selected; set and cleared with `selection`. */
   selectionChat: SelectionChat | null
+  /**
+   * Words selected in a comment, a description or a rendered file. Kept when the selection moves
+   * out of the tab — into the chat the question about it is typed in — and cleared by a click
+   * back in the tab or another item.
+   */
+  prose: ProseSelection | null
   /** A link to the item itself, labelled, for "Chat about this"; null until it has loaded. */
   link: GithubLink | null
   /** Why the item could not be shown, when it could not. */
@@ -55,6 +62,7 @@ export const emptyScreen = (): GithubScreen => ({
   expanded: [],
   selection: null,
   selectionChat: null,
+  prose: null,
   link: null,
   error: '',
 })

@@ -18,7 +18,12 @@
       </div>
     </div>
 
-    <section v-if="readme" class="abele-github-folder__readme" :data-path="readme.path">
+    <section
+      v-if="readme"
+      ref="readmeEl"
+      class="abele-github-folder__readme"
+      :data-path="readme.path"
+    >
       <div class="abele-github-folder__readme-name">{{ readme.name }}</div>
       <EmptyState v-if="readmeText.error.value" :text="readmeText.error.value" />
       <EmptyState v-else-if="readmeText.data.value === null" text="Loading the README…" />
@@ -34,7 +39,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { PaneType } from 'obsidian'
 import TreeItem from '../obsidian/TreeItem.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
@@ -47,6 +52,7 @@ import { paneForClick } from '@/github/links'
 import { usePagedList } from '@/composables/usePagedList'
 import { blobUrlAt, treeUrl } from '@/github/tree/fileTree'
 import { formatSize, readmeOf, type FolderData, type FolderEntry } from '@/github/tree/folder'
+import { registerProse, unregisterProse } from '@/github/proseSelection'
 
 /**
  * A folder of a repository, as GitHub lists one: its folders, then its files with their sizes,
@@ -98,6 +104,33 @@ const readmeText = useLoad(async () => {
   const r = readme.value
   return r ? props.client.fileText(props.repo, r.path, props.folder.ref, 'the README') : ''
 })
+/**
+ * Words selected in the README are the README's: asked about, linked and quoted as that file at
+ * the version shown, not as the folder.
+ */
+const readmeEl = ref<HTMLElement>()
+watch(readmeEl, (el, old) => {
+  if (old) unregisterProse(old)
+  if (!el) return
+  registerProse(el, {
+    what: 'README',
+    name: 'the README',
+    link: () => {
+      const r = readme.value
+      if (!r) return null
+      const { owner, repo } = props.repo
+      const ref = props.folder.ref
+      return {
+        label: `${owner}/${repo}@${/^[0-9a-f]{40}$/i.test(ref) ? ref.slice(0, 7) : ref} · ${r.path}`,
+        url: blobUrlAt(props.repo, ref, r.path),
+      }
+    },
+  })
+})
+onBeforeUnmount(() => {
+  if (readmeEl.value) unregisterProse(readmeEl.value)
+})
+
 watch(
   () => [props.folder.ref, readme.value?.path],
   () => {

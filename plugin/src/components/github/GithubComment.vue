@@ -1,5 +1,6 @@
 <template>
   <article
+    ref="el"
     class="abele-github-comment"
     :class="{
       'abele-github-comment_target': !!comment.anchor && comment.anchor === target,
@@ -42,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import Badge from '../obsidian/Badge.vue'
 import GithubText from './GithubText.vue'
 import GithubLinkActions from './GithubLinkActions.vue'
@@ -52,6 +53,7 @@ import { LINKER } from '@/github/linking'
 import { GITHUB_REPO, NO_REPO } from '@/github/repoContext'
 import { bodyLink, commentLink, type GithubLink } from '@/github/permalinks'
 import { commentSnippet, type SnippetBlock } from '@/github/snippetBlock'
+import { registerProse, unregisterProse } from '@/github/proseSelection'
 
 const props = withDefaults(
   defineProps<{
@@ -95,6 +97,32 @@ const what = computed(() => {
   if (anchor.startsWith('pullrequestreview-')) return 'review'
   if (anchor.startsWith('discussion_r')) return 'review comment'
   return props.reply ? 'reply' : 'comment'
+})
+
+// Words selected in it are asked about, linked and quoted as this comment's: see `proseSelection`.
+const el = ref<HTMLElement>()
+onMounted(() => {
+  if (!el.value) return
+  const own = el.value
+  registerProse(own, {
+    link: () => link.value?.() ?? null,
+    get what() {
+      return what.value
+    },
+    get author() {
+      return props.comment.author
+    },
+    get createdAt() {
+      return props.comment.createdAt
+    },
+    get anchor() {
+      return props.body ? undefined : props.comment.anchor
+    },
+    body: () => own.querySelector(':scope > .abele-github-comment__body'),
+  })
+})
+onBeforeUnmount(() => {
+  if (el.value) unregisterProse(el.value)
 })
 </script>
 

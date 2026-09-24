@@ -1,7 +1,7 @@
 /**
  * `github_views` and `github_open`: what the person has open in GitHub tabs — the item, the
- * section, the open files, the lines they selected with their code — and a way to put something
- * in front of them in one of those tabs.
+ * section, the open files, the lines they selected with their code, the words they selected in a
+ * comment — and a way to put something in front of them in one of those tabs.
  */
 import type { WorkspaceLeaf } from 'obsidian'
 import type { AgentTool } from '../../client'
@@ -15,6 +15,7 @@ import {
 import type { GithubViewModel } from '@/github/model'
 import { diffAnchorHash, shortName, type GithubTarget } from '@/github/urls'
 import { answer, clip, parseNamed, text, webUrl, whole } from './shared'
+import { listOf, type ProseSelection } from '@/github/proseSelection'
 
 const SELECTION_MAX = 8_000
 
@@ -79,7 +80,19 @@ function describe(n: number, { leaf, model }: Shown): string[] {
     const lang = t.kind === 'blob' ? '' : 'diff'
     out.push('   ```' + lang, clip(sel.code, SELECTION_MAX), '   ```')
   }
+  if (s.prose) out.push(...describeProse(s.prose))
   return out
+}
+
+/** Words selected in a comment or the page: where they are, a link there, and the words. */
+function describeProse(p: ProseSelection): string[] {
+  const who = p.anchor ? ` (#${p.anchor})` : ''
+  const out = [`   Selected text in ${p.where}${who} — ${p.link.url}`]
+  if (p.spans) out.push(`   It runs across ${listOf(p.spans)}.`)
+  const quoted = clip(p.text, SELECTION_MAX)
+    .split('\n')
+    .map((line) => (line.trim() ? `   > ${line}` : '   >'))
+  return [...out, ...quoted]
 }
 
 export function createGithubViewsTool(): AgentTool {
@@ -87,8 +100,8 @@ export function createGithubViewsTool(): AgentTool {
     name: 'github_views',
     label: 'GitHub tabs',
     description:
-      "What the person is looking at in GitHub tabs: each open tab's item (issue, pull request, discussion, commit, file or folder), which one is on screen, the pull request section in front, the diffs they have open, the lines they selected — with the selected code — and whether the file tree panel is open. " +
-      'Call it first when they ask about "this PR", "this code" or "these lines". Read-only.',
+      "What the person is looking at in GitHub tabs: each open tab's item (issue, pull request, discussion, commit, file or folder), which one is on screen, the pull request section in front, the diffs they have open, the lines they selected — with the selected code — words they selected in a description, comment, reply, review comment, commit message, rendered file or folder README, with which comment (author, anchor, link) they are in, and whether the file tree panel is open. " +
+      'Call it first when they ask about "this PR", "this code", "these lines" or "what does this mean". Read-only.',
     parameters: { type: 'object', properties: {} },
     execute: async () => {
       const tabs = openTabs()

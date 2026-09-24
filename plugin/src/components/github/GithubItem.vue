@@ -203,6 +203,8 @@
             @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
           />
         </template>
+
+        <GithubProseActions v-if="root && main.data.value" :root="root" />
       </template>
     </div>
   </GithubLayout>
@@ -223,6 +225,7 @@ import GithubNotice from './GithubNotice.vue'
 import GithubFindBar from './GithubFindBar.vue'
 import GithubCodeSearch from './GithubCodeSearch.vue'
 import GithubFolder from './GithubFolder.vue'
+import GithubProseActions from './GithubProseActions.vue'
 import GithubTreePanel from './GithubTreePanel.vue'
 import GithubLayout from './GithubLayout.vue'
 import { useTreePanel } from '@/github/tree/useTreePanel'
@@ -561,6 +564,8 @@ watch(
 
 <style lang="scss">
 .abele-github {
+  // The bar over selected words is placed inside it, and scrolls with the text it is over.
+  position: relative;
   padding: var(--size-4-4);
   max-width: var(--file-line-width);
   margin: 0 auto;

@@ -63,9 +63,13 @@ it. Answers are capped and say where the rest is — a page, a diff window, a li
 the next part rather than trying to get everything at once.
 
 - `github_views` — what the person has open in GitHub tabs: the item or folder, the pull request
-  section in front, the diffs drawn open, the lines they selected, with the code, and whether the
-  file tree panel is open beside it. Start here whenever
-  they say "this PR", "this file", "these lines".
+  section in front, the diffs drawn open, the lines they selected, with the code, whether the file
+  tree panel is open beside it, and words they selected in prose — a description, comment, reply,
+  review comment, commit message, rendered file or a folder's README — quoted, with which comment
+  they are in (who wrote it, its `#…` anchor, its link) or, across several, the item and the
+  comments it runs through. The last words selected stay reported while the person types in the
+  chat. Start here whenever they say "this PR", "this file", "these lines", "what does this mean";
+  `github_read` on the link gives the whole comment and the thread around it.
 - `github_read` — an issue, pull request or discussion: head, description, conversation twenty
   comments a page (`page`).
 - `github_pr_files` — a pull request's files. Without `path` the list with +/- counts; with
@@ -98,7 +102,8 @@ the next part rather than trying to get everything at once.
 
 Exploring a codebase or a pull request, in this order:
 
-1. `github_views` to learn what they are looking at, and the selection they are asking about.
+1. `github_views` to learn what they are looking at, and the selection — lines or words — they
+   are asking about.
 2. For a pull request: `github_read` for what it claims to do, then `github_pr_files` for the
    list — and only then the diffs of the files that matter, one at a time.
 3. For context around a change, `github_file` at the pull request's head or base ref, with a line

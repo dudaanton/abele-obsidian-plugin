@@ -14,7 +14,7 @@ import { formatSnippet, type SnippetBlock } from './snippetBlock'
 import { commitSha, type BlobData, type CommitData } from './api'
 import type { GithubClient } from './client'
 import type { GithubTarget } from './urls'
-import type { Quote } from './chatAbout'
+import type { ChatQuote } from './chatAbout'
 import { AbeleConfig } from '@/services/AbeleConfig'
 
 export interface Linker {
@@ -30,8 +30,8 @@ export interface Linker {
   insertSnippet(snippet: SnippetBlock | Promise<SnippetBlock>): Promise<void>
   /** Whether a chat can be opened from here: the AI side is on. */
   canAsk(): boolean
-  /** Opens a new chat with the link, and the quoted code under it, in its input. */
-  ask(link: GithubLink | Promise<GithubLink>, quote?: Quote): Promise<void>
+  /** Opens a new chat with the link, and the quoted code or words under it, in its input. */
+  ask(link: GithubLink | Promise<GithubLink>, quote?: ChatQuote): Promise<void>
 }
 
 export const LINKER: InjectionKey<Linker> = Symbol('abele-github-linker')

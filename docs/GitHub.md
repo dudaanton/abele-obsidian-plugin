@@ -251,10 +251,18 @@ With the AI chat on, a GitHub tab is something to talk about:
   With lines selected it does what **Ask here** does.
 - **Ask here**, in the bar under selected lines, does the same with a link to those lines and
   their code quoted under it: a diff's lines as a diff, a file's in its language.
+- **Words selected** anywhere in the tab's text — a description, a comment or reply, a review
+  comment, a commit message, a rendered file — bring up a small bar over them: **Ask here** opens
+  a new chat with a link to that exact comment (to the item, when the words are in its description
+  or run across several comments) and the words quoted under it; the link button copies that link,
+  and the quote button puts the words into the note you were last in as a quote card. A
+  right-click on the selection offers the same, beside Copy. On a phone the bar sits under the
+  selection, clear of the system's own menu and handles.
 
 The agent answering reads GitHub with its own tools. It can see which GitHub tabs are open, what
 each shows — the item or folder, the section in front, the diffs drawn open, the lines selected
-and their code, whether the file tree is open beside it — read issues, pull requests and discussions with their conversations, a pull request's files
+and their code, the words selected in a comment and which comment they are in, whether the file
+tree is open beside it — read issues, pull requests and discussions with their conversations, a pull request's files
 and one file's diff at a time, files and folders at any branch or commit, commits and
 comparisons, and search code, issues and pull requests. It can also put something in front of you:
 open an item or a folder in a GitHub tab, with lines marked. A link it writes in its answer opens in a tab
