@@ -50,11 +50,38 @@ access tokens → Fine-grained tokens):
   - **Metadata** is added by GitHub on its own.
 
 The token is stored in Obsidian's keychain; the settings file holds only the name of the slot.
-**Check access** in the settings sends one request and says whose token it is.
+For an organisation's repositories the token's **Resource owner** has to be that organisation,
+not your own account: a fine-grained token only reaches the repositories of the one owner picked
+when it was made.
 
-An organisation that uses single sign-on has to have the token authorised for it; when it has
-not, the tab says so and gives GitHub's link for doing it. An organisation can also require
-fine-grained tokens to be approved by an owner before they see anything.
+**Check access** in the settings asks GitHub what the token can read. Leave the field beside it
+empty and it says whose token it is. Give it a repository — `owner/name`, or any link into it,
+such as a pull request you could not open — and it tries each permission on that repository with
+one small request and shows a row for each: **OK**, **Refused** with the cause, or **Skipped**.
+Above the rows it says whether a token was sent at all (its kind and length, never the token),
+whose it is, when it expires if it does, and which API address was asked. The check uses the
+same token and the same address a tab for that repository would.
+
+## When access is refused
+
+A refused tab and a refused row lead with the cause and name the request that was refused — "the
+pull request's reviews", not just "the pull request". Under it: **Needs:** the permission GitHub
+says that request required, and **GitHub said:** its own message, word for word.
+
+| What you see | What it means | What to do |
+|---|---|---|
+| *GitHub refused … to this token* (GitHub: "Resource not accessible by personal access token") | The token lacks the permission named under **Needs**, or the repository is not in its list, or its Resource owner is your account rather than the organisation. | Edit the token on GitHub: add the permission, add the repository, or make a new token with the organisation as Resource owner. |
+| *GitHub found nothing for …* (404) with a token | GitHub answers "not found" rather than "forbidden" for a private repository the token cannot see: same causes as above, or a token still waiting for an organisation owner's approval, which reads public data only. | Check the repository list and Resource owner; ask an owner to approve the token. |
+| *… only accepts requests from its allowed IP addresses* | The organisation has an IP allow list and this device's address is not on it. The token is fine — which is why it can work from another machine and not from this one. | Connect through the office network or VPN, or ask an owner to add the address. |
+| *… refuses fine-grained tokens that are valid for longer than it allows* | The organisation caps token lifetime (366 days by default) and this token's is longer. | Shorten its expiration on GitHub (GitHub's message has the link) or make a new one. |
+| *… does not accept fine-grained personal access tokens at all* | The organisation's token policy forbids them. | Only an organisation owner can change it. |
+| *… does not accept classic personal access tokens* | The organisation forbids classic tokens. | Use a fine-grained token with the organisation as Resource owner. |
+| *This organisation uses single sign-on …* | The token has not been authorised for the organisation's SSO. | Follow the link given, or GitHub → Settings → Personal access tokens → the token → Configure SSO. |
+| *No token was sent with these requests* (in Check access) | Nothing reached GitHub with a token: the keychain on this device has none — tokens are kept per device — or the link is on github.com while **Server** points at an Enterprise server, whose token is not sent anywhere else. | Paste the token again on this device, or clear **Server**. |
+
+Obsidian sends its requests through the system's network settings, proxy and VPN included, so it
+can leave from a different address than a terminal or another program on the same machine — which
+matters for an IP allow list.
 
 ### GitHub Enterprise
 
