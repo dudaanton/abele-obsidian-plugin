@@ -5,7 +5,7 @@ import { normalizePath } from '@/helpers/pathsHelpers'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import dayjs from 'dayjs'
-import { debounce } from 'obsidian'
+import { debounce, type EventRef, type TFile } from 'obsidian'
 import { Journal } from './Journal'
 
 export class Header {
@@ -20,6 +20,7 @@ export class Header {
   public loaded = false
   public watcherInitialized = false
   private fileWatcher: FileWatcher = null
+  private metadataRefs: EventRef[] = []
 
   // to avoid debounced calls after cleanup
   private cleanedUp = false
@@ -34,15 +35,7 @@ export class Header {
       return
     }
 
-    for (const journal of AbeleConfig.getInstance().journals) {
-      const date = journal.checkIfNotePathIsJournal(this.filePath)
-      if (date) {
-        this.journal = journal
-        this.journalDate = date
-
-        break
-      }
-    }
+    this.tellJournal()
 
     const frontmatter = getFrontmatterFromCache(this.filePath)
 
@@ -53,6 +46,44 @@ export class Header {
 
     this.loaded = true
     this.initWatcher()
+  }
+
+  /** Which journal this note is, and its day — told from the note's metadata. */
+  private tellJournal() {
+    this.journal = undefined
+    this.journalDate = undefined
+    for (const journal of AbeleConfig.getInstance().journals) {
+      const date = journal.checkIfNotePathIsJournal(this.filePath)
+      if (date) {
+        this.journal = journal
+        this.journalDate = date
+
+        break
+      }
+    }
+  }
+
+  /**
+   * A note open when Obsidian starts is reached before the metadata cache has read it, and is
+   * told to be no journal at all — so it is told again when its metadata arrives: when the note
+   * itself is reported read, and once when the first pass over the vault ends.
+   */
+  private watchMetadata() {
+    const { metadataCache } = GlobalStore.getInstance().app
+    const retell = () => {
+      if (!this.cleanedUp) this.tellJournal()
+    }
+    this.metadataRefs.push(
+      metadataCache.on('changed', (file: TFile) => {
+        if (normalizePath(file.path) === this.filePath) retell()
+      })
+    )
+    const resolved = metadataCache.on('resolved', () => {
+      metadataCache.offref(resolved)
+      this.metadataRefs = this.metadataRefs.filter((ref) => ref !== resolved)
+      retell()
+    })
+    this.metadataRefs.push(resolved)
   }
 
   initWatcher() {
@@ -76,6 +107,7 @@ export class Header {
       )
     )
 
+    this.watchMetadata()
     this.watcherInitialized = true
   }
 
@@ -89,6 +121,9 @@ export class Header {
     this.cleanedUp = true
     this.fileWatcher?.cleanup()
     this.fileWatcher = null
+    const metadataCache = GlobalStore.getInstance().app?.metadataCache
+    for (const ref of this.metadataRefs) metadataCache?.offref(ref)
+    this.metadataRefs = []
     this.watcherInitialized = false
     this.cleanHeaderData()
   }
