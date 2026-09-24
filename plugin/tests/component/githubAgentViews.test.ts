@@ -187,6 +187,17 @@ describe('into a chat', () => {
   })
 })
 
+describe('a drawn diff', () => {
+  it('never says its file has no changes, selected or not', async () => {
+    const { wrapper } = openTab('https://github.com/o/r/pull/7/files', PULL_ROUTES)
+    await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
+    expect(wrapper.find('.abele-github-file__body').text()).not.toContain('No changes')
+
+    await clickLineNumber(wrapper, '.abele-github-code__gutter_new', 4)
+    expect(wrapper.find('.abele-github-file__body').text()).not.toContain('No changes')
+  })
+})
+
 describe("the tab's more-options menu", () => {
   it('offers "Chat about this" once the item has loaded, and only then', async () => {
     const view = new GithubView(new WorkspaceLeaf())

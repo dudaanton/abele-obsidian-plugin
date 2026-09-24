@@ -37,15 +37,6 @@
 
     <div v-if="expanded" class="abele-github-file__body">
       <div v-if="lines.length" ref="editorEl" class="abele-github-code" />
-      <Teleport v-if="barHost && selectedSpan && linker?.item()" :to="barHost">
-        <GithubSelectionBar
-          :linker="linker"
-          :label="selectedLabel"
-          :link="selectedLink"
-          :snippet="selectedSnippet"
-          :quote="selectedQuote"
-        />
-      </Teleport>
       <EmptyState v-else>
         {{
           file.diffNote
@@ -55,6 +46,16 @@
               : 'No changes in the text of this file.'
         }}
       </EmptyState>
+      <!-- After the empty note, not between it and the diff: `v-else` pairs with its neighbour. -->
+      <Teleport v-if="barHost && selectedSpan && linker?.item()" :to="barHost">
+        <GithubSelectionBar
+          :linker="linker"
+          :label="selectedLabel"
+          :link="selectedLink"
+          :snippet="selectedSnippet"
+          :quote="selectedQuote"
+        />
+      </Teleport>
       <div v-if="anchor?.line && !highlight.length" class="abele-github-file__note">
         Line {{ anchor.line }} is in a part of the file the diff does not show.
       </div>
