@@ -153,6 +153,22 @@ describe('a block edited by hand', () => {
     expect(parseSnippet('url: https://github.com/a/b/issues/1\nlabel: x\ncode')).toBeNull()
   })
 
+  it('is refused when its address is not a web address, so no script can hide in the title link', () => {
+    for (const url of [
+      'javascript:alert(1)',
+      'JavaScript:alert(1)',
+      'data:text/html,x',
+      'file:///etc/passwd',
+      'obsidian://open?vault=x',
+      '//github.com/a/b',
+    ]) {
+      expect(parseSnippet(`url: ${url}\nlabel: x\n---\ncode`)).toBeNull()
+    }
+    expect(
+      parseSnippet('url: http://github.example.com/a/b/issues/1\nlabel: x\n---\ncode')
+    ).not.toBeNull()
+  })
+
   it('ignores a start that is not a number', () => {
     const s = parseSnippet(
       'url: https://github.com/a/b/blob/c/d.ts#L1\nlabel: x\nstart: soon\n---\nx'

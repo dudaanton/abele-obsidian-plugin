@@ -143,6 +143,8 @@ export function parseSnippet(source: string): SnippetBlock | null {
     if (m) fields[m[1]] = m[2].trim()
   }
   if (!fields.url || !fields.label) return null
+  // Only a web address: the url becomes the card's title link, and the block is plain note text.
+  if (!/^https?:\/\//i.test(fields.url)) return null
 
   const kind = fields.diff === 'true' ? 'diff' : fields.comment === 'true' ? 'comment' : 'code'
   const start = /^\d+$/.test(fields.start ?? '') ? Number(fields.start) : undefined

@@ -144,6 +144,19 @@ describe('Card', () => {
     expect(mount(Card, { props }).find('a').exists()).toBe(false)
   })
 
+  it('never links its title to anything but a web address', () => {
+    for (const href of [
+      'javascript:alert(1)',
+      ' javascript:alert(1)',
+      'data:text/html,x',
+      'vbscript:x',
+    ]) {
+      const card = mount(Card, { props: { ...props, href } })
+      expect(card.find('a').exists()).toBe(false)
+      expect(card.find('.abele-card__name').text()).toBe('Researcher')
+    }
+  })
+
   it('leaves out what it was not given', () => {
     const view = mount(Card, { props: { title: 'Bare' } })
 

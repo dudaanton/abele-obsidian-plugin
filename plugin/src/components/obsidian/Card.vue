@@ -27,9 +27,9 @@
       <div class="abele-card__title">
         <Icon v-if="icon" :icon="icon" no-hover class="abele-card__icon" />
         <a
-          v-if="href"
+          v-if="safeHref"
           class="abele-card__name external-link"
-          :href="href"
+          :href="safeHref"
           target="_blank"
           rel="noopener"
           >{{ title }}</a
@@ -68,6 +68,7 @@
  */
 import Image from './Image.vue'
 import Icon from './Icon.vue'
+import { computed } from 'vue'
 import { fromControl } from '@/helpers/interactive'
 
 const props = withDefaults(
@@ -112,6 +113,15 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'click'): void
 }>()
+
+/**
+ * The title only ever links to a web address. `href` can come from text in a note — a snippet
+ * block anyone or any agent may have written — and a `javascript:` address there would run
+ * when the title is clicked.
+ */
+const safeHref = computed(() =>
+  props.href && /^https?:\/\//i.test(props.href.trim()) ? props.href.trim() : undefined
+)
 
 /**
  * Opens the card — unless the press started on a control inside it. A feed card opens the
