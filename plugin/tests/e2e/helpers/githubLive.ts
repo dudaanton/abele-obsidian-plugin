@@ -87,7 +87,7 @@ const KEY_ID = 'abele-e2e-github'
  * @param foldSidebars off on a phone, whose sidebars are drawers that are shut already
  */
 export function enableGithub(origin: string, foldSidebars = true): void {
-  evalRaw(
+  const result = evalRaw(
     `(() => {
       const config = window.__abeleTest.AbeleConfig.getInstance()
       if (!window.__abeleGithubE2E) {
@@ -104,6 +104,12 @@ export function enableGithub(origin: string, foldSidebars = true): void {
         app.workspace.leftSplit.collapse()
         app.workspace.rightSplit.collapse()
       }
+      // A clean start: a GitHub tab left over from an earlier file — or put back by the app
+      // reloading a layout saved while one was open — was counted as one of this file's own.
+      const stray = app.workspace.getLeavesOfType('abele-github')
+      for (const leaf of stray) leaf.detach()
+      if (app.workspace.getLeavesOfType('abele-github').length) return 'tabs still open'
+      if (stray.length) console.warn('[abele e2e] closed ' + stray.length + ' leftover GitHub tab(s)')
       const real = window.__abeleGithubE2E.getSecret
       config.github = {
         ...(config.github ?? {}),
@@ -120,6 +126,7 @@ export function enableGithub(origin: string, foldSidebars = true): void {
     })()`,
     30_000
   )
+  if (!result.includes('ok')) throw new Error(`GitHub e2e could not start clean: ${result}`)
 }
 
 /** Closes every GitHub tab and puts the settings and the keychain back as they were. */
@@ -127,8 +134,11 @@ export function restoreGithub(): void {
   evalRaw(
     `(() => {
       for (const leaf of app.workspace.getLeavesOfType('abele-github')) leaf.detach()
+      // Saved now, not when the debounce gets round to it: a file that reloads the app next
+      // (leaving phone emulation) would otherwise get the closed tabs back from the old layout.
+      const saving = app.workspace.requestSaveLayout?.run?.()
       const saved = window.__abeleGithubE2E
-      if (!saved) return 'nothing'
+      if (!saved) return Promise.resolve(saving).then(() => 'nothing')
       const config = window.__abeleTest.AbeleConfig.getInstance()
       const github = JSON.parse(saved.github)
       if (github) config.github = github
@@ -137,7 +147,7 @@ export function restoreGithub(): void {
       if (!saved.left) app.workspace.leftSplit.expand()
       if (!saved.right) app.workspace.rightSplit.expand()
       delete window.__abeleGithubE2E
-      return 'ok'
+      return Promise.resolve(saving).then(() => 'ok')
     })()`,
     30_000
   )

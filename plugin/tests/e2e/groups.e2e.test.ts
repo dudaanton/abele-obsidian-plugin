@@ -53,12 +53,32 @@ const UPDATE_SNAPSHOT = process.env.UPDATE_GROUP_SNAPSHOT === '1'
 
 const available = isObsidianRunning() && hasTestApi()
 
+/**
+ * How long one read of a group may take. These groups resolve in well under a second; the
+ * old fifteen-minute allowance was sized for the "Projects" branch, which this file does not
+ * touch, and turned a CLI call that never got its answer into a quarter-hour hang.
+ */
+const READ_MS = 120_000
+
+/**
+ * A read that the app never answered is asked once more before failing: the reads here change
+ * nothing, and a call lost while the app was reloading — the file before this one may leave
+ * phone emulation — is not a verdict on membership.
+ */
+function read<T>(expression: string): T {
+  try {
+    return evalJson<T>(expression, READ_MS)
+  } catch (error) {
+    if (!/was killed/.test(String(error))) throw error
+    return evalJson<T>(expression, READ_MS)
+  }
+}
+
 function resolvedPaths(groupPath: string): string[] {
-  return evalJson<string[]>(
+  return read<string[]>(
     `(() => { const s = new window.__abeleTest.ScopeResolver();
       s.addGroup(${JSON.stringify(groupPath)});
-      return [...s.resolve()].sort() })()`,
-    900_000
+      return [...s.resolve()].sort() })()`
   )
 }
 
@@ -99,9 +119,8 @@ describe.skipIf(!available)('groups end-to-end', () => {
   describe('agreement with the link-index reference', () => {
     it.each(SNAPSHOT_GROUPS)('resolves %s identically to the reference', (group) => {
       const viaScan = resolvedPaths(group)
-      const viaIndex = evalJson<string[]>(
-        `window.__abeleTest.groupPathsViaLinkIndex(${JSON.stringify(group)})`,
-        900_000
+      const viaIndex = read<string[]>(
+        `window.__abeleTest.groupPathsViaLinkIndex(${JSON.stringify(group)})`
       )
       expect(viaIndex).toEqual(viaScan)
     })
@@ -109,17 +128,15 @@ describe.skipIf(!available)('groups end-to-end', () => {
 
   describe('preview shown in the scope editor', () => {
     it('lists exactly the members the scope resolves to', () => {
-      const preview = evalJson<string[]>(
-        `window.__abeleTest.groupPreviewPaths(${JSON.stringify(PREVIEW_GROUP)})`,
-        900_000
+      const preview = read<string[]>(
+        `window.__abeleTest.groupPreviewPaths(${JSON.stringify(PREVIEW_GROUP)})`
       )
       expect(preview).toEqual(resolvedPaths(PREVIEW_GROUP))
     })
 
     it('counts a non-trivial number of members', () => {
-      const preview = evalJson<number>(
-        `window.__abeleTest.groupPreviewPaths(${JSON.stringify(PREVIEW_GROUP)}).length`,
-        900_000
+      const preview = read<number>(
+        `window.__abeleTest.groupPreviewPaths(${JSON.stringify(PREVIEW_GROUP)}).length`
       )
       expect(preview).toBeGreaterThan(100)
     })

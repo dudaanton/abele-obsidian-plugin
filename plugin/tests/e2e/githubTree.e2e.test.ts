@@ -11,7 +11,7 @@
  * and a picture of the panel on a desktop goes to `/tmp/abele-github-tree/` — look at it. The
  * phone's drawer is in `githubPhone.e2e.test.ts`.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
 import { evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import {
   PRELUDE,
@@ -75,6 +75,13 @@ describe.skipIf(!available)('folders of a repository in a GitHub tab', () => {
       `JSON.stringify(app.loadLocalStorage(${JSON.stringify(PANEL_KEY)}) ?? null)`
     )
   }, 60_000)
+
+  // A test that returned early left its tab open, and the next one counted it as its own.
+  afterEach(() => {
+    evalRaw(
+      `(() => { for (const l of app.workspace.getLeavesOfType('abele-github')) l.detach(); return 'ok' })()`
+    )
+  })
 
   afterAll(() => {
     if (!available) return
