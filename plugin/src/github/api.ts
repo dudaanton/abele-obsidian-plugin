@@ -485,6 +485,19 @@ export async function commitSha(
   return sha.trim()
 }
 
+const isFolderListing = (text: string): boolean => {
+  if (!text.trimStart().startsWith('[')) return false
+  try {
+    const parsed: unknown = JSON.parse(text)
+    return (
+      Array.isArray(parsed) &&
+      parsed.every((e) => typeof e === 'object' && e !== null && 'type' in e && '_links' in e)
+    )
+  } catch {
+    return false
+  }
+}
+
 export async function loadBlob(client: GithubClient, t: Of<'blob'>): Promise<BlobData> {
   let lastError: unknown = null
   // Capped: a deep path with no match would otherwise cost one request per segment.
@@ -495,6 +508,13 @@ export async function loadBlob(client: GithubClient, t: Of<'blob'>): Promise<Blo
         `${repoPath(t)}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
         { accept: 'application/vnd.github.raw+json', text: true, what: 'the file' }
       )
+      // A folder answers with its listing — a README's link to `packages/core` is one.
+      if (isFolderListing(text)) {
+        throw new GithubError(
+          'other',
+          `${path} is a folder; a tab here shows files. Open it on GitHub.`
+        )
+      }
       return {
         ref,
         path,

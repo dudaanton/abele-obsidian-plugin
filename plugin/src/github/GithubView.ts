@@ -55,7 +55,9 @@ export class GithubView extends ItemView {
   }
 
   getState(): Record<string, unknown> {
-    return { url: this.model.url }
+    return this.model.mode
+      ? { url: this.model.url, mode: this.model.mode }
+      : { url: this.model.url }
   }
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
@@ -65,8 +67,11 @@ export class GithubView extends ItemView {
       if (!target || targetKey(target) !== this.targetKey()) this.title = ''
       // A tab a link was followed in keeps where it was, for its back arrow.
       if (result && this.model.url && url !== this.model.url) result.history = true
+      const mode = (state as { mode?: unknown }).mode
       this.model.url = url
       this.model.target = target
+      // A link followed says nothing of it: the file opens the way the link asks.
+      this.model.mode = mode === 'preview' || mode === 'code' ? mode : undefined
       this.model.nonce++
       this.refreshHeader()
     }
@@ -119,6 +124,7 @@ export class GithubView extends ItemView {
         this.refreshHeader()
       },
       onOpen: (url: string): void => void openGithubUrl(this.app, url),
+      onState: () => this.app.workspace.requestSaveLayout(),
     })
     this.vue.mount(mountPoint)
   }

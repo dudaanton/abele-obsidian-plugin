@@ -47,6 +47,8 @@ export type GithubTarget =
        */
       rest: string[]
       lines?: LineRange
+      /** `?plain=1`: the source of a markdown file rather than its rendering. */
+      plain?: boolean
     })
 
 export type GithubTargetKind = GithubTarget['kind']
@@ -171,6 +173,7 @@ export function parseGithubUrl(url: string, hosts: string[]): GithubTarget | nul
         ...base,
         rest: [id, ...more],
         lines: lineAnchor(hash),
+        plain: parsed.searchParams.get('plain') === '1' || undefined,
         anchor: lineAnchor(hash) ? undefined : base.anchor,
       }
     }

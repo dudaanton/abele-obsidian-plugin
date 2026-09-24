@@ -18,6 +18,8 @@ GitHub**.
 | `…/owner/repo/commit/<sha>` (with or without `#diff-…`) | The commit's message and diff. |
 | `…/owner/repo/discussions/3` | The discussion: body, comments, replies, and which answer was chosen. |
 | `…/owner/repo/blob/<ref>/<path>#L10-L20` | The file at that branch, tag or commit, with those lines marked. |
+| `…/blob/<ref>/README.md`, `…/docs/guide.md#install` | A markdown file, rendered — scrolled to that heading when the link names one. |
+| `…/blob/<ref>/README.md?plain=1`, `…README.md#L10-L20` | A markdown file as code, as GitHub shows it for these links. |
 
 `#issuecomment-…`, `#discussioncomment-…` and `#pullrequestreview-…` scroll to that comment. A
 review comment — `…/pull/7#discussion_r…`, or `…/pull/7/files#r…` — opens the files, with the
@@ -63,6 +65,35 @@ under the cursor, or asks for one, by the same rule. A link clicked inside a Git
 in a pull request's list, a link in a comment — follows the rule too, so it usually opens in the
 tab it was clicked in.
 
+### Markdown files
+
+A markdown file — `.md`, `.markdown`, `.mdown`, `.mkd`, `.mkdn`, and `.mdx`, whose components
+render as plain HTML — opens rendered, with **Preview** and **Code** above it. A link naming
+lines or carrying `?plain=1` opens the code instead. The switch is the tab's: back, forward and
+a restart come back to the view it was left in, and a link followed in the tab opens the way
+that link asks. Switching keeps the place — the selected or linked lines when they are in sight,
+otherwise whatever was at the top of the tab.
+
+The file is rendered by Obsidian, piece by piece: every heading, paragraph, list item, table,
+code block, quote and HTML block is rendered on its own and knows which lines of the file it
+came from. That is what lets lines be linked from the rendered view (below). Front matter is
+shown as a YAML block. What it means for the rendering:
+
+- A relative link opens that file of the repository in the tab, at the same branch, tag or
+  commit; a link to a folder goes to GitHub, which is the only thing that shows one. A link to
+  a heading — `#install` — scrolls the preview to it. A web or mail address opens as usual.
+- A relative image loads from the repository's raw files at the same ref
+  (`raw.githubusercontent.com` for github.com, `<server>/<owner>/<repo>/raw/<ref>/<path>` for an
+  Enterprise server). When that address refuses it — a private repository, or a server that
+  wants a signed-in session — and a token is set, it is read once more through the API with the
+  token and shown from memory.
+- Any other kind of link — `javascript:`, `obsidian:`, `file:` — is shown as text and does
+  nothing: a README is written by someone else. A code block in a language only a plugin knows
+  (`dataviewjs`, say) is shown as plain code rather than handed to that plugin, and an embed of
+  a vault note (`![[…]]`) is shown as its name.
+- Reference-style links and footnotes work across the file; footnotes are numbered as GitHub
+  numbers them, and a footnote's number scrolls to its text.
+
 A pull request with many files lists them and draws a file's diff only when it is opened; one
 with five or fewer opens them all. A file GitHub will not send a diff for — binary, or too
 large — says so; the tab's own button opens the page on GitHub.
@@ -77,6 +108,13 @@ selection to another; a click on the only selected line clears it. The selected 
 like the lines a link points at, and a bar under them offers **Copy link** and **Insert into
 note**.
 
+A rendered markdown file does the same by its pieces: pointing at a paragraph, a list item or a
+heading shows a link handle at its left — on a phone the handles are always there — and a click
+on it selects that piece's lines; Shift-click extends to another piece. The bar is the same, and
+so is the link: to the source lines, `…/README.md?plain=1#L10-L20`, which opens the code at them
+here and on GitHub. A selection made in one view is still there after switching to the other,
+and the pieces a linked or selected range touches are marked in the preview.
+
 The link is markdown with a readable label, and the address is GitHub's own, so it opens the
 same place on GitHub and — with the integration on — in a tab here, scrolled to it:
 
@@ -85,6 +123,7 @@ same place on GitHub and — with the integration on — in a tab here, scrolled
 | Lines of a pull request's diff | `[acme/widgets#42 · src/app.ts:10–20](…/pull/42/files#diff-<hash>R10-R20)` |
 | Lines of a commit's diff | `[acme/widgets@1a2b3c4 · src/app.ts:5](…/commit/<sha>#diff-<hash>R5)` |
 | Lines of a file | `[acme/widgets@1a2b3c4 · src/app.ts:10–20](…/blob/<sha>/src/app.ts#L10-L20)` |
+| Lines of a markdown file | `[acme/widgets@1a2b3c4 · README.md:3–7](…/blob/<sha>/README.md?plain=1#L3-L7)` |
 | A comment | `[acme/widgets#42 · comment by alice](…/pull/42#issuecomment-123)` |
 | A review, a review comment | `… · review by alice` (`#pullrequestreview-…`), `… · review comment by alice` (`#discussion_r…`) |
 | A discussion comment, a reply | `… · comment by alice`, `… · reply by alice` (`#discussioncomment-…`) |

@@ -1,87 +1,52 @@
 <template>
-  <div class="abele-github-blob">
-    <div v-if="range" class="abele-github-blob__range">
-      {{ range.start === range.end ? `Line ${range.start}` : `Lines ${range.start}–${range.end}` }}
-      <span v-if="range.start > lineCount" class="abele-github-blob__warning">
-        — the file has only {{ lineCount }} lines.
-      </span>
-    </div>
-    <div ref="editorEl" class="abele-github-code abele-github-blob__code" />
-    <Teleport v-if="barHost && selected && linker" :to="barHost">
-      <GithubSelectionBar
-        :linker="linker"
-        :label="selectedLabel"
-        :link="selectedLink"
-        :snippet="selectedSnippet"
-        :quote="selectedQuote"
-      />
-    </Teleport>
-  </div>
+  <div ref="editorEl" class="abele-github-code abele-github-blob__code" />
+  <Teleport v-if="barHost && hasBar" :to="barHost">
+    <slot name="bar" />
+  </Teleport>
 </template>
 
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import GithubSelectionBar from './GithubSelectionBar.vue'
-import { LINKER } from '@/github/linking'
-import { codeSnippet } from '@/github/snippetBlock'
-import { SCREEN, blobCode } from '@/github/screen'
-import type { Quote } from '@/github/chatAbout'
+import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import type { LineSpan } from '@/github/permalinks'
 import type { LineRange } from '@/github/urls'
 import { mountCode, type Viewer } from '@/github/codeViewer'
 import { LINE_CONTEXT, pinIntoView } from '@/github/scrollTo'
 
+/**
+ * A file at a ref, as code: its lines numbered, the lines a link named marked, and lines
+ * selected by their numbers. What is selected belongs to the file view above, which shows the
+ * same selection in the rendered view of a markdown file.
+ */
 const props = withDefaults(
   defineProps<{
     text: string
     path: string
+    /** The lines the link named. */
     range?: LineRange
+    /** Lines the person selected before this view was drawn — in the rendered view, say. */
+    selected?: LineSpan | null
+    /** A line to bring into view when drawn, rather than the first marked one. */
+    focus?: { line: number; context: number } | null
   }>(),
-  { range: undefined }
+  { range: undefined, selected: null, focus: null }
 )
 
+const emit = defineEmits<{
+  (e: 'select', span: LineSpan | null): void
+}>()
+
 const editorEl = ref<HTMLElement>()
-const lineCount = computed(() => props.text.split('\n').length)
 let viewer: Viewer | null = null
 let unpin = () => {}
 
-const linker = inject(LINKER, null)
-/** Where CodeMirror draws the selection's bar just now, and which lines the person selected. */
+/** Where CodeMirror draws the selection's bar just now, and whether there is one. */
 const barHost = shallowRef<HTMLElement | null>(null)
-const selected = shallowRef<LineSpan | null>(null)
-
-const selectedLabel = computed(() => {
-  const s = selected.value
-  if (!s) return ''
-  return s.from === s.to ? `Line ${s.from}` : `Lines ${s.from}–${s.to}`
-})
-
-const selectedLink = () => {
-  if (!linker || !selected.value) throw new Error('nothing is selected')
-  return linker.blobLink(selected.value)
-}
-
-const selectedSnippet = async () => {
-  const span = selected.value
-  if (!span) throw new Error('nothing is selected')
-  return codeSnippet(await selectedLink(), props.path, props.text, span)
-}
-
-const selectedQuote = (): Quote => {
-  const s = selected.value
-  return { code: s ? blobCode(props.text, s.from, s.to) : '', path: props.path }
-}
-
-/** The tab's record of what is on screen, which an agent reads. */
-const screen = inject(SCREEN, null)
+const hasBar = ref(false)
 
 const selectionHooks = {
   onSelect: (span: LineSpan | null) => {
-    selected.value = span
-    if (screen)
-      screen.selection = span
-        ? { path: props.path, label: selectedLabel.value, code: selectedQuote().code }
-        : null
+    hasBar.value = !!span
+    emit('select', span)
   },
   onBarHost: (host: HTMLElement | null, removed?: HTMLElement) => {
     if (host) barHost.value = host
@@ -89,51 +54,48 @@ const selectionHooks = {
   },
 }
 
-const draw = async () => {
+const draw = async (focus: { line: number; context: number } | null) => {
   await nextTick()
   unpin()
   viewer?.destroy()
   viewer = null
   if (!editorEl.value) return
-  selected.value = null
-  if (screen) screen.selection = null
   barHost.value = null
-  const drawn = mountCode(editorEl.value, props.text, props.path, props.range, selectionHooks)
+  const carried = props.selected
+  hasBar.value = !!carried
+  const marked = carried ? { start: carried.from, end: carried.to } : props.range
+  const drawn = mountCode(
+    editorEl.value,
+    props.text,
+    props.path,
+    marked,
+    { ...selectionHooks, initialBar: !!carried },
+    focus?.line
+  )
   viewer = drawn
-  if (props.range) unpin = pinIntoView(editorEl.value, () => drawn.targetTop(), LINE_CONTEXT)
+  if (focus) {
+    unpin = pinIntoView(editorEl.value, () => drawn.lineTop(focus.line), {
+      context: focus.context,
+    })
+  } else if (props.range) {
+    unpin = pinIntoView(editorEl.value, () => drawn.targetTop(), LINE_CONTEXT)
+  }
 }
 
-onMounted((): void => void draw())
+onMounted((): void => void draw(props.focus))
 // A link to the same lines again is a new range object: it scrolls back to them.
 watch(
   () => [props.text, props.range],
-  (): void => void draw()
+  (): void => void draw(null)
 )
 onBeforeUnmount(() => {
   unpin()
   viewer?.destroy()
 })
+
+defineExpose({
+  /** The line at the top of the tab, for the rendered view to open at. */
+  topLine: (): number | null => viewer?.topLine() ?? null,
+  shows: (span: LineSpan): boolean => viewer?.shows(span.from, span.to) ?? false,
+})
 </script>
-
-<style lang="scss">
-.abele-github-blob {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-2);
-
-  &__range {
-    color: var(--text-muted);
-    font-size: var(--font-ui-small);
-  }
-
-  &__warning {
-    color: var(--text-error);
-  }
-
-  &__code {
-    border: 1px solid var(--background-modifier-border);
-    border-radius: var(--radius-m);
-    overflow: hidden;
-  }
-}
-</style>

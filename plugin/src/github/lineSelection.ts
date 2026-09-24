@@ -23,6 +23,11 @@ import type { LineSpan } from './permalinks'
 export interface SelectionHooks {
   /** Lines marked when the view opens — those a link named. They get no bar. */
   initial?: number[]
+  /**
+   * The initial lines are a selection the person made — in the other view of the same file — and
+   * keep their bar.
+   */
+  initialBar?: boolean
   /** Whether a line can be selected; a diff's hunk headers cannot. */
   selectable?: (line: number) => boolean
   /** The lines the person selected, or null when they cleared the selection. */
@@ -92,7 +97,7 @@ export function lineSelection(hooks: SelectionHooks): {
       const selected = {
         lines: hooks.initial ?? [],
         anchor: hooks.initial?.[0] ?? null,
-        bar: false,
+        bar: !!hooks.initialBar && !!hooks.initial?.length,
       }
       return { selected, decorations: build(state, selected, hooks) }
     },

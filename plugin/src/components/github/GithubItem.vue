@@ -138,7 +138,16 @@
       </template>
 
       <template v-else-if="shown.kind === 'blob' && blob">
-        <GithubCode :text="blob.text" :path="blob.path" :range="blobRange" />
+        <GithubBlob
+          :text="blob.text"
+          :file="blobFile!"
+          :range="blobRange"
+          :plain="blobPlain"
+          :mode="model.mode"
+          :client="client()"
+          @mode="setMode"
+          @open="(url: string) => onOpen?.(url)"
+        />
       </template>
     </template>
   </div>
@@ -154,9 +163,11 @@ import Markdown from '../obsidian/Markdown.vue'
 import GithubHeader from './GithubHeader.vue'
 import GithubThread from './GithubThread.vue'
 import GithubFiles from './GithubFiles.vue'
-import GithubCode from './GithubCode.vue'
+import GithubBlob from './GithubBlob.vue'
 import GithubNotice from './GithubNotice.vue'
 import type { GithubViewModel } from '@/github/model'
+import { anchorSlug, type RepoFile } from '@/github/markdownLinks'
+import type { BlobMode } from '@/github/markdownPreview'
 import type { GithubClient } from '@/github/client'
 import { targetKey, shortName, type GithubTarget } from '@/github/urls'
 import { formatDate, splitMessage } from '@/github/format'
@@ -194,6 +205,8 @@ const props = defineProps<{
   onTitle?: (title: string) => void
   /** Opens another GitHub URL in a tab of its own. */
   onOpen?: (url: string) => void
+  /** The tab's state changed in a way worth saving: the file view was switched. */
+  onState?: () => void
 }>()
 
 const root = ref<HTMLElement>()
@@ -204,12 +217,12 @@ const target = computed(() => props.model.target)
  * as the pull request, the way GitHub redirects it.
  */
 const promoted = ref<Of<'pull'> | null>(null)
-const shown = computed<GithubTarget>(() => promoted.value ?? target.value!)
+const shown = computed<GithubTarget>(() => promoted.value ?? target.value)
 
-const client = () => props.clientFor(target.value!.host)
+const client = () => props.clientFor(target.value.host)
 
 const main = useLoad<IssueData | PullData | DiscussionData | CommitData | BlobData>(async () => {
-  const t = target.value!
+  const t = target.value
   switch (t.kind) {
     case 'issue': {
       const issue = await loadIssue(client(), t)
@@ -247,6 +260,20 @@ const fileAnchor = computed(() => {
   return t && (t.kind === 'pull' || t.kind === 'commit') ? t.file : undefined
 })
 const blobRange = computed(() => (target.value?.kind === 'blob' ? target.value.lines : undefined))
+const blobPlain = computed(() => (target.value?.kind === 'blob' ? !!target.value.plain : false))
+/** The file on screen, for the links and images of its rendered view. */
+const blobFile = computed<RepoFile | null>(() => {
+  const t = target.value
+  const b = blob.value
+  if (!t || !b) return null
+  return { host: t.host, owner: t.owner, repo: t.repo, ref: b.ref, path: b.path }
+})
+/** Preview or code: the tab keeps it, so back, forward and a restart come back to it. */
+const setMode = (mode: BlobMode) => {
+  // The model is the tab's state, which this side writes too.
+  props.model.mode = mode
+  props.onState?.()
+}
 
 const pullTab = ref<'conversation' | 'files' | 'commits'>('conversation')
 const pullTabs = computed(() => [
@@ -422,7 +449,8 @@ const openCommit = (sha: string) => {
  */
 let unpin = () => {}
 const scrollToAnchor = async () => {
-  const a = anchor.value
+  // A heading of a rendered file is found by its slug, whatever case the link wrote it in.
+  const a = shown.value?.kind === 'blob' && anchor.value ? anchorSlug(anchor.value) : anchor.value
   if (!a || fileAnchor.value || !root.value) return
   await nextTick()
   const el = root.value
@@ -464,7 +492,7 @@ watch(
   () => (target.value ? targetKey(target.value) : null),
   (key) => {
     if (!key || !props.enabled) return
-    const t = target.value!
+    const t = target.value
     pullTab.value = t.kind === 'pull' ? t.tab : 'conversation'
     void reload()
   },

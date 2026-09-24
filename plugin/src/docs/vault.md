@@ -217,6 +217,9 @@ last worked in, on a line of its own:
 The address is GitHub's own and opens the same place on GitHub; with the integration on, a click
 on it opens a GitHub tab scrolled to that line or comment. The label is only text. A link to a
 file is pinned to a commit, not a branch, so it keeps pointing at the lines it was made from.
+Lines of a markdown file — selected in its rendered view or in its code — are linked to the
+source with `?plain=1` before the anchor (`…/README.md?plain=1#L3-L7`), which is how GitHub
+itself shows a markdown file's lines; a snippet of them carries `lang: md`.
 
 ## GitHub snippets
 

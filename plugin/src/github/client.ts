@@ -200,6 +200,24 @@ export class GithubClient {
     return body as T
   }
 
+  /** A file's bytes, uncached — an image a preview could not load from its raw address. */
+  async bytes(
+    path: string,
+    options: Pick<GetOptions, 'what'> = {}
+  ): Promise<{ bytes: ArrayBuffer; type?: string }> {
+    const url = path.startsWith('http') ? path : `${this.endpoints.api}${path}`
+    const response = await this.send({
+      url,
+      method: 'GET',
+      headers: this.headers('application/vnd.github.raw'),
+    })
+    if (response.status < 200 || response.status >= 300) {
+      throw this.refusal(response.status, response.headers, null, options.what)
+    }
+    const type = header(response.headers, 'content-type')?.split(';')[0].trim()
+    return { bytes: response.arrayBuffer, type: type || undefined }
+  }
+
   /** One request, uncached, answered with its status and headers whatever they are. */
   async probe<T>(path: string, options: GetOptions = {}): Promise<Probe<T>> {
     const url = path.startsWith('http') ? path : `${this.endpoints.api}${path}`

@@ -19,6 +19,7 @@ import { parsePatch, type DiffLine } from './patch'
 import type { LineRange } from './urls'
 import { languageFor } from './languages'
 import { lineSelection, type SelectionHooks } from './lineSelection'
+import { scrollParent } from './scrollTo'
 
 export interface Viewer {
   /**
@@ -27,6 +28,12 @@ export interface Viewer {
    * drawn this is an estimate from its height map, which scrolling to brings the line on screen.
    */
   targetTop(): number | null | { estimate: number }
+  /** Where line `n` starts, the same way. */
+  lineTop(n: number): number | null | { estimate: number }
+  /** The line at the top edge of the scrolling tab; null when that cannot be measured. */
+  topLine(): number | null
+  /** Whether any of the lines `from`–`to` is on screen. */
+  shows(from: number, to: number): boolean
   destroy(): void
 }
 
@@ -76,17 +83,40 @@ function mount(
       extensions: [...readOnly, ...(wrap ? [EditorView.lineWrapping] : []), ...extensions],
     }),
   })
+  const lineTop = (n: number | null) => {
+    if (n === null || n < 1 || n > view.state.doc.lines) return null
+    if (!view.dom.isConnected || view.dom.getClientRects().length === 0) return null
+    const from = view.state.doc.line(n).from
+    // Drawn: where it is. Not drawn yet: where the editor's height map expects it, which is
+    // only as good as its guess at how the lines above it wrap.
+    const drawn = from >= view.viewport.from && from <= view.viewport.to
+    const rect = drawn ? view.coordsAtPos(from) : null
+    if (rect) return rect.top
+    return { estimate: view.documentTop + view.lineBlockAt(from).top }
+  }
+  /** The tab's scrolling box, in viewport pixels. */
+  const box = () => {
+    const container = view.dom.isConnected ? scrollParent(view.dom) : null
+    return container ? container.getBoundingClientRect() : null
+  }
   return {
-    targetTop() {
-      if (firstHighlighted === null || firstHighlighted > view.state.doc.lines) return null
-      if (!view.dom.isConnected || view.dom.getClientRects().length === 0) return null
-      const from = view.state.doc.line(firstHighlighted).from
-      // Drawn: where it is. Not drawn yet: where the editor's height map expects it, which is
-      // only as good as its guess at how the lines above it wrap.
-      const drawn = from >= view.viewport.from && from <= view.viewport.to
-      const rect = drawn ? view.coordsAtPos(from) : null
-      if (rect) return rect.top
-      return { estimate: view.documentTop + view.lineBlockAt(from).top }
+    targetTop: () => lineTop(firstHighlighted),
+    lineTop,
+    topLine() {
+      const rect = box()
+      if (!rect) return null
+      const y = rect.top - view.documentTop
+      if (y <= 0) return 1
+      return view.state.doc.lineAt(view.lineBlockAtHeight(y).from).number
+    },
+    shows(from, to) {
+      const rect = box()
+      const doc = view.state.doc
+      if (!rect || from > doc.lines) return false
+      const top = view.documentTop + view.lineBlockAt(doc.line(Math.max(1, from)).from).top
+      const bottom =
+        view.documentTop + view.lineBlockAt(doc.line(Math.min(doc.lines, to)).from).bottom
+      return top < rect.bottom && bottom > rect.top
     },
     destroy() {
       view.destroy()
@@ -180,12 +210,17 @@ export function mountSnippet(
   return mount(parent, snippet.text, [numbers, ...language], null, false)
 }
 
+/**
+ * @param range lines to mark — a link's, or with `hooks.initialBar` a selection carried over
+ * @param focus the line `targetTop` finds, when it is not the first marked one
+ */
 export function mountCode(
   parent: HTMLElement,
   text: string,
   path: string,
   range?: LineRange,
-  hooks: SelectionHooks = {}
+  hooks: SelectionHooks = {},
+  focus?: number
 ): Viewer {
   const initial: number[] = []
   if (range) for (let n = range.start; n <= range.end; n++) initial.push(n)
@@ -199,6 +234,6 @@ export function mountCode(
       selection.extension,
       ...languageFor(path),
     ],
-    range ? range.start : null
+    focus ?? (range ? range.start : null)
   )
 }

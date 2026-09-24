@@ -116,7 +116,8 @@ describe('a link to lines of a file', () => {
 
   it('one line, and a path that needs escaping', () => {
     const link = blobLink(repo, SHA, 'docs/read me (draft).md', { from: 3, to: 3 })
-    expect(link.url.endsWith('/docs/read%20me%20(draft).md#L3')).toBe(true)
+    // A markdown file: the link asks for its source, where the lines are.
+    expect(link.url.endsWith('/docs/read%20me%20(draft).md?plain=1#L3')).toBe(true)
     expect(parse(link.url)).toMatchObject({
       rest: [SHA, 'docs', 'read me (draft).md'],
       lines: { start: 3, end: 3 },

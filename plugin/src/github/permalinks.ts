@@ -5,6 +5,7 @@
  * Each comes with a label a person can read in a note: `acme/widgets#42 · src/app.ts:10–20`.
  */
 import type { DiffLine } from './patch'
+import { isMarkdownPath } from './markdownPreview'
 
 export interface RepoRef {
   host: string
@@ -112,14 +113,16 @@ export function diffLink(
 
 /**
  * A link to lines of a file, pinned to the commit it was read at so it does not drift as the
- * branch moves on: `…/blob/<sha>/src/app.ts#L10-L20`.
+ * branch moves on: `…/blob/<sha>/src/app.ts#L10-L20`. A markdown file's link asks for its source
+ * with `?plain=1`, as GitHub's own does — rendered, the lines have no numbers to land on.
  */
 export function blobLink(repo: RepoRef, sha: string, path: string, span: LineSpan): GithubLink {
   const { from, to } = span
   const lines = from === to ? `L${from}` : `L${from}-L${to}`
+  const plain = isMarkdownPath(path) ? '?plain=1' : ''
   return {
     label: `${repo.owner}/${repo.repo}@${sha.slice(0, 7)} · ${path}:${lineText(from, to)}`,
-    url: `${web(repo)}/blob/${sha}/${encodePath(path)}#${lines}`,
+    url: `${web(repo)}/blob/${sha}/${encodePath(path)}${plain}#${lines}`,
   }
 }
 
