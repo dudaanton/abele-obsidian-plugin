@@ -8,7 +8,7 @@ import { Transaction } from './Transaction'
 import { TimeEntry } from './TimeEntry'
 import { Log } from './Log'
 import { Note } from './Note'
-import { reactive, toRaw } from 'vue'
+import { markRaw, reactive, shallowRef, toRaw } from 'vue'
 import { Journal } from './Journal'
 import dayjs from 'dayjs'
 import { DATE_FORMAT } from '@/constants/dates'
@@ -16,8 +16,31 @@ import { DATE_FORMAT } from '@/constants/dates'
 export class NoteRelations {
   public filePath: string
 
-  public journal: Journal | null
-  public journalDate: dayjs.Dayjs | null
+  /**
+   * The journal and day live in refs of their own: they are set by the vault's events, which
+   * reach this object itself rather than the reactive copy a footer draws from, and a footer
+   * drawn before its note's day was known has to show it once it is.
+   */
+  private readonly journalState = markRaw({
+    journal: shallowRef<Journal | null>(null),
+    date: shallowRef<dayjs.Dayjs | null>(null),
+  })
+
+  public get journal(): Journal | null {
+    return this.journalState.journal.value
+  }
+
+  public set journal(journal: Journal | null) {
+    this.journalState.journal.value = journal
+  }
+
+  public get journalDate(): dayjs.Dayjs | null {
+    return this.journalState.date.value
+  }
+
+  public set journalDate(date: dayjs.Dayjs | null) {
+    this.journalState.date.value = date
+  }
 
   tasks: Map<string, Task> = reactive(new Map())
   transactions: Map<string, Transaction> = reactive(new Map())
@@ -35,18 +58,47 @@ export class NoteRelations {
   constructor(filePath: string) {
     this.filePath = normalizePath(filePath)
 
-    for (const journal of AbeleConfig.getInstance().journals) {
-      const date = journal.checkIfNotePathIsJournal(this.filePath)
-      if (date && journal.isDefault) {
-        this.journal = journal
-        this.journalDate = date
+    this.tellJournal()
+    this.findRelations(this.filePath)
+    this.startWatching()
+  }
 
+  /**
+   * Which default journal this note is, and its day — told from the note's metadata. Returns
+   * whether that changed.
+   *
+   * A note open when Obsidian starts is reached before the metadata cache has read it, and is
+   * told to be no journal at all; it is told again once the metadata arrives.
+   */
+  private tellJournal(): boolean {
+    let journal: Journal | null = null
+    let date: dayjs.Dayjs | null = null
+    for (const candidate of AbeleConfig.getInstance().journals) {
+      const found = candidate.checkIfNotePathIsJournal(this.filePath)
+      if (found && candidate.isDefault) {
+        journal = candidate
+        date = found
         break
       }
     }
 
+    const same =
+      journal === this.journal &&
+      (date && this.journalDate
+        ? date.isSame(this.journalDate, 'date')
+        : !date && !this.journalDate)
+    if (same) return false
+
+    this.journal = journal
+    this.journalDate = date
+    return true
+  }
+
+  /** The note's own metadata changed or arrived: a journal it has become brings its day in. */
+  private retellJournal(): void {
+    if (!this.tellJournal()) return
+    this.removeRemainingRelations()
     this.findRelations(this.filePath)
-    this.startWatching()
   }
 
   private addTask(path: string) {
@@ -486,6 +538,9 @@ export class NoteRelations {
           }
 
           if (this.resolved) return
+          // The first pass is the one that follows the cache reading every note; one open at
+          // startup may only now say which journal it is.
+          if (this.tellJournal()) this.removeRemainingRelations()
           this.findRelations(this.filePath)
           this.resolved = true
         } finally {
@@ -503,6 +558,7 @@ export class NoteRelations {
       app.metadataCache.on('changed', (file: TFile) => {
         this.relationsCallbacksQueue.push(() => {
           const path = normalizePath(file.path)
+          if (path === this.filePath) this.retellJournal()
           const wasRelated = this.hasPath(path)
 
           if (this.isRelatedPath(path)) {
