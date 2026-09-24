@@ -338,6 +338,31 @@ describe('header buttons', () => {
   })
 })
 
+describe('automations', () => {
+  it('each travel as its own entry, whole', () => {
+    const rule = {
+      id: 'a1',
+      name: 'Log completed tasks',
+      enabled: true,
+      event: 'task.completed' as const,
+      noteTypes: [],
+      folders: ['Tasks'],
+      property: 'area',
+      value: 'home',
+      scriptName: 'Log',
+      params: { line: '{{title}}' },
+      throttleSeconds: 10,
+      includeExternal: true,
+    }
+    const arriving = collectEntries(settings({ automations: [rule] })).filter(
+      (e) => e.section === 'automations'
+    )
+
+    expect(arriving.map((e) => e.label)).toEqual(['Log completed tasks'])
+    expect(applyEntries(arriving, settings()).automations).toEqual([rule])
+  })
+})
+
 describe('packing what was ticked', () => {
   const keys: Record<string, string> = { 'key-p1': 'sk-provider', 'abele-brave-search': 'sk-brave' }
   const read = (id: string) => keys[id] ?? ''

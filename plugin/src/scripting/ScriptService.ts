@@ -19,6 +19,7 @@ import { showFormModal } from './formModal'
 import { ScriptRuns, type RunSource } from './ScriptRuns'
 import type { ParsedScript, FormField } from './types'
 import type { RestoreInfo } from './view/View'
+import type { AutomationEvent } from '@/automations/types'
 import { ref } from 'vue'
 
 /**
@@ -41,6 +42,12 @@ export interface ExecuteOptions {
   source?: RunSource
   /** A saved tab being rebuilt: the leaf waiting for the view and the state it kept. */
   restore?: RestoreInfo
+  /** What set the run off, when an automation did — the script's `event`. */
+  event?: AutomationEvent
+  /** Told each path the script is about to write; see `buildScriptContext`. */
+  onWrite?: (path: string) => void
+  /** What started the run, in words, for the list of runs: "Task completed · Tasks/Milk.md". */
+  trigger?: string
 }
 
 /**
@@ -89,12 +96,19 @@ const SCRIPT_GLOBALS = [
 
 const REDECLARED = /Identifier '(\w+)' has already been declared/
 
-/** The script as a function of its context. Throws what the engine threw, said better. */
+/**
+ * The script as a function of its context. Throws what the engine threw, said better.
+ *
+ * `event` is given in the scope around the script rather than beside the reserved names: it
+ * arrived after scripts had been written for years, and `event` is an ordinary name for a
+ * variable. Declared out there, a script's own `const event` simply shadows it.
+ */
 function compile(code: string): (ctx: ScriptContext) => Promise<unknown> {
   try {
     return new Function(
       'ctx',
       `"use strict";
+      const { event } = ctx;
       return (async () => {
         const { ${SCRIPT_GLOBALS.join(', ')} } = ctx;
         ${code}
@@ -599,6 +613,7 @@ export class ScriptService {
       params,
       source: opts.source ?? 'agent',
       stop: () => combinedController.abort(),
+      trigger: opts.trigger,
     })
     this.renderStatusBar()
 
@@ -622,6 +637,8 @@ export class ScriptService {
         },
         scriptName: script.meta.name,
         restore: opts.restore,
+        event: opts.event,
+        onWrite: opts.onWrite,
       })
 
       // Running the user's own script is the feature. The code comes from a `.js` file the

@@ -41,6 +41,7 @@
         </div>
 
         <div v-if="opened.has(run.id)" class="abele-runs__detail">
+          <div v-if="run.trigger" class="abele-runs__path">{{ run.trigger }}</div>
           <div class="abele-runs__path">{{ run.path }}</div>
 
           <div v-if="paramList(run).length" class="abele-runs__params">
@@ -138,6 +139,7 @@ const SOURCE_WORD: Record<ScriptRun['source'], string> = {
   agent: 'agent',
   script: 'script',
   view: 'view',
+  automation: 'automation',
 }
 
 const store = ScriptRuns.getInstance()
@@ -214,7 +216,8 @@ const start = async (run: ScriptRun, params: Record<string, unknown>) => {
   try {
     const result = await ScriptService.getInstance().execute(run.path, params, {
       formHandler: showFormModal,
-      source: run.source === 'agent' ? 'command' : run.source,
+      // Run again by hand, an agent's or an automation's run is the person's own.
+      source: run.source === 'agent' || run.source === 'automation' ? 'command' : run.source,
     })
     if (result.trim()) new Notice(result.length > 500 ? result.slice(0, 500) + '…' : result, 10000)
   } catch (err) {

@@ -195,6 +195,15 @@ export const SECTIONS: Section[] = [
   },
   {
     kind: 'list',
+    id: 'automations',
+    label: 'Automations',
+    read: (settings) => settings.automations ?? [],
+    write: (settings, items) => {
+      settings.automations = items as AbeleSettings['automations']
+    },
+  },
+  {
+    kind: 'list',
     id: 'journals',
     label: 'Journals',
     read: (settings) => settings.journals ?? [],

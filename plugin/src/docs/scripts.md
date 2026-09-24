@@ -28,13 +28,41 @@ goes and those lines are its output.
 
 ## Running one
 
-Four ways in: the command palette, a button in a note's header, an `abele://` link, or an
-agent calling the `script_<name>` tool. A script can call another with `runScript`.
+Five ways in: the command palette, a button in a note's header, an `abele://` link, an
+agent calling the `script_<name>` tool, or an automation when something happens to a note. A script can call another with `runScript`.
 
 The **Scripts** page of the plugin's settings lists every script as a card — its `@icon`,
 `@name`, `@description` and parameters, straight from the header above — and runs one or
 makes a header button for it from there. That header is therefore also how a script presents
 itself to the person: a script without `@description` shows up saying it has none.
+
+## Automations
+
+A script can also run by itself when something happens to a note. The **Automations** tab of
+the Scripts page holds the rules: when (a task completed, reopened, created, changed or given
+another date; a note created, changed, renamed or deleted), on which notes (note types — task
+events are about tasks already — folders, one frontmatter property equal to a value), which
+script with which parameter values, and at most how often for one note. The parameters are
+templates like a header button's: `{{title}}`, `{{path}}`, `{{event}}` and the note's
+frontmatter fields. A finance transaction being created is a note of type `transaction` being
+created.
+
+The script finds what happened in `event` — the kind, the note's path, its frontmatter before
+and after, which properties changed; `script_api_docs` has the whole shape. A run started this
+way is listed under **Show script runs** with the event beside it, and a failure is a failed
+run there plus one notice, never an error thrown at the person.
+
+What keeps them from running away: a script's own writes never set off the automation that
+ran it; one automation's write setting off another stops after three in a row; changes to one
+note within the interval are gathered into one run at its end; and more than 30 runs in a
+minute pause every automation until one of them is edited or Obsidian restarts. They do not
+run while the settings file could not be read.
+
+An automation runs on the device where the change was made. A change that arrives by sync —
+or from another app, or while Obsidian was closed — runs nothing, because the device where it
+was made has run it already; a rule can opt in to those with **Also for changes from other
+devices**. The difference is told by how the file changed: a write made here goes through
+Obsidian's vault, and one that arrives does not.
 
 ## Watching one
 

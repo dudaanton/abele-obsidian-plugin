@@ -113,7 +113,7 @@ A script is a JavaScript file in the vault that runs inside Obsidian with full v
 
 Parameters become a form when a person runs the script, and arguments when an agent or another script calls it. In the body you get file operations, structured search, the template engine, `fetch`, forms and markdown modals, `dayjs`, and `agent()` — so a script can hand the fuzzy part of a job to a model and keep the rest exact. Whatever it logs becomes its output.
 
-There are four ways to start one: the command palette, a button in a note's header that runs it against that note, an `abele://` link, or an agent calling it as a tool. Every run of the session is listed with its status, its log lines and what it returned, and can be stopped or run again from there.
+There are five ways to start one: the command palette, a button in a note's header that runs it against that note, an `abele://` link, an agent calling it as a tool, or an automation — a rule that runs it by itself when a task is completed, a note of some type changes, and so on, handing it the frontmatter before and after. Every run of the session is listed with its status, its log lines and what it returned, and can be stopped or run again from there.
 
 ### Find and replace
 

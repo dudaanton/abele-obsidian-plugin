@@ -67,6 +67,7 @@ import { ChatService } from './ai/ChatService'
 import { CommentService } from './ai/CommentService'
 import { useFilesInAgent } from './helpers/useFilesInAgent'
 import { ScriptService } from './scripting/ScriptService'
+import { AutomationService } from './automations/AutomationService'
 import { ScriptViewService } from './scripting/view/ScriptViewService'
 import { showMarkdown } from './scripting/formModal'
 import { SCRIPT_API_DOCS } from './scripting/apiDocs'
@@ -979,6 +980,13 @@ export default class AbelePlugin extends Plugin {
         ScriptService.getInstance().init()
         // The host a script's `view()` reaches for; registered before any script can run.
         ScriptViewService.getInstance()
+        // Automations name their script, so they wait for the index that finds it.
+        void ScriptService.getInstance().ready.then(() => {
+          // Not after an unload that came first.
+          if (AbeleConfig.getInstance().plugin === this) {
+            AutomationService.getInstance().start(this.app)
+          }
+        })
       })
     }
   }
@@ -1147,6 +1155,7 @@ export default class AbelePlugin extends Plugin {
       document.getElementById('abele-vue-root')?.remove()
     }
     SnippetService.destroy()
+    AutomationService.destroy()
     ScriptService.destroy()
     ScriptViewService.destroy()
     CommentService.getInstance().destroy()

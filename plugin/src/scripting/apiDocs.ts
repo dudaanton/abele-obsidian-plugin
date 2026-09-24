@@ -249,12 +249,51 @@ await v.open()
 | Name | Type | Description |
 |------|------|-------------|
 | \`params\` | \`object\` | Resolved parameter values from the script header |
+| \`event\` | \`object \\| null\` | What happened, when an automation started the run (see above) |
 | \`signal\` | \`AbortSignal\` | Cancellation signal — check \`signal.aborted\` in long loops |
 | \`dayjs\` | \`function\` | [Day.js](https://day.js.org) date library — \`dayjs()\`, \`dayjs('2026-01-01').add(7, 'day')\`, \`.format('YYYY-MM-DD')\`, etc. |
 | \`log(...args)\` | — | Append to script output. Objects are JSON-stringified |
 
 \`log()\` output is captured and returned as the script result.
 You can also \`return "result"\` directly.
+
+### event — when an automation started the run
+
+A script can be run by itself when something happens to a note (Settings → Scripts →
+Automations). Such a run finds what happened in \`event\`; any other run finds \`null\` there.
+
+\`\`\`js
+event.kind        // what the automation waits for: 'task.completed', 'task.reopened',
+                  // 'task.created', 'task.changed', 'task.date-changed', 'note.created',
+                  // 'note.changed', 'note.renamed', 'note.deleted'
+event.kinds       // every one of those this change was — completing a task also changes it
+event.path        // the note; where it was, for a deleted one
+event.oldPath     // before a rename
+event.type        // its \`type\` frontmatter
+event.before      // frontmatter before the change — null for a new note
+event.after       // frontmatter after it — null for a deleted note
+event.changed     // names of the properties that changed, added or removed
+event.bodyChanged // whether the text below the frontmatter changed
+event.origin      // 'local' — made on this device — or 'external', arrived by sync or from another app
+event.rule        // { id, name } of the automation
+\`\`\`
+
+\`\`\`js
+// @name Log completed task
+// @param log string "Log note" = "Task log.md"
+if (!event) return 'Meant to be run by an automation'
+const line = '- ' + dayjs().format('YYYY-MM-DD HH:mm') + ' [[' + event.path.replace(/\\.md$/, '') + ']]\\n'
+const text = await read(params.log).catch(() => null)
+if (text === null) await create(params.log, line)
+else await write(params.log, text + line)
+\`\`\`
+
+What the script writes does not set off the same automation again, and an automation set off
+by another one's write stops after three in a row. A script that writes to the note it was
+run for is therefore safe; one that writes to every note of the type it waits for is still
+only run once per note per the automation's interval, and more than 30 runs in a minute pause
+every automation until one is edited. \`event\` is not a reserved name: a script with its own
+\`const event\` simply has its own.
 
 Every function and global in this reference, and \`view\` with the component classes of the
 view reference, is already declared in a script's scope: a script that declares one of those

@@ -125,9 +125,9 @@ const probeFor = (phone: boolean) =>
       report[label] = measure('.abele-settings__content')
     }
 
-    // The scripts page is three pages under one tab. The header buttons one is measured with a
-    // button in it — an empty list says nothing about the rows a real one holds — and the
-    // button is deleted again through the page's own confirmation afterwards.
+    // The scripts page is four pages under one tab. The header buttons and automations ones are
+    // measured with an item in them — an empty list says nothing about the rows a real one
+    // holds — and the item is deleted again through the page's own confirmation afterwards.
     topTabs().find((t) => t.textContent.trim() === 'Scripts').click()
     await wait(300)
     const scriptTabs = () => qa('.abele-settings__scripts-tabs .abele-tabs__tab')
@@ -135,8 +135,9 @@ const probeFor = (phone: boolean) =>
       const label = tab.textContent.trim()
       tab.click()
       await wait(300)
-      const add = label === 'Header buttons'
-        ? qa('.abele-settings__scripts button').find((b) => b.textContent.trim() === 'Add button')
+      const adds = { 'Header buttons': 'Add button', Automations: 'Add automation' }
+      const add = adds[label]
+        ? qa('.abele-settings__scripts button').find((b) => b.textContent.trim() === adds[label])
         : null
       if (add) {
         add.click()
@@ -262,6 +263,7 @@ describe.skipIf(!available)('the settings pane', () => {
           expect.arrayContaining([
             'Scripts → Library',
             'Scripts → Header buttons',
+            'Scripts → Automations',
             'Scripts → General',
           ])
         )

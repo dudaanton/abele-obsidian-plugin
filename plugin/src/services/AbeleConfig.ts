@@ -13,6 +13,7 @@ import AbelePlugin from '@/main'
 import { isKitColor } from '@/constants/colors'
 import { DEFAULT_LABEL_PROPERTY, type LabelColor } from '@/helpers/taskMeta'
 import { DEFAULT_GITHUB_SETTINGS, githubSettingsFrom, type GithubSettings } from '@/github/settings'
+import { normalizeRule, type AutomationRule } from '@/automations/types'
 
 export interface AbeleSettings {
   refreshDelay: number // in milliseconds
@@ -50,6 +51,8 @@ export interface AbeleSettings {
   links?: LinkDefinition[]
   // Buttons added to the header of notes of a given type
   headerButtons?: HeaderButtonDefinition[]
+  /** Scripts run by themselves when something happens to a note. */
+  automations?: AutomationRule[]
   // Maps
   /** Note property holding a place's `lat, lon`. What the agent is told to write into. */
   mapCoordinatesProperty?: string
@@ -129,6 +132,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   timeTrackAllNotes: false,
   links: [],
   headerButtons: [],
+  automations: [],
   mapCoordinatesProperty: 'coordinates',
   mapStyleUrl: '',
   snippetsFolder: '',
@@ -169,6 +173,7 @@ export class AbeleConfig {
   public timeTrackAllNotes: boolean
   public links: LinkDefinition[]
   public headerButtons: HeaderButtonDefinition[]
+  public automations: AutomationRule[] = []
   public mapCoordinatesProperty: string
   public mapStyleUrl: string
   public snippetsFolder: string
@@ -191,6 +196,14 @@ export class AbeleConfig {
   private unreadable = false
   /** Said once per failed load: saves come from chats as well, and each would repeat it. */
   private unreadableTold = false
+
+  /**
+   * Whether the settings file exists and could not be read. Anything that acts on its own —
+   * automations — waits while it is: what is in memory then is defaults, not the person's.
+   */
+  get settingsUnreadable(): boolean {
+    return this.unreadable
+  }
 
   public get logsNotesTypes(): string[] {
     return this._logsNotesTypes
@@ -465,6 +478,9 @@ export class AbeleConfig {
       allNotes: b.allNotes ?? false,
       folders: b.folders || [],
     }))
+    this.automations = (Array.isArray(settings?.automations) ? settings.automations : []).map(
+      (rule) => normalizeRule(rule)
+    )
     this.mapCoordinatesProperty =
       settings?.mapCoordinatesProperty ?? DEFAULT_SETTINGS.mapCoordinatesProperty
     this.mapStyleUrl = settings?.mapStyleUrl ?? DEFAULT_SETTINGS.mapStyleUrl
@@ -506,6 +522,12 @@ export class AbeleConfig {
       timeTrackAllNotes: this.timeTrackAllNotes,
       links: [...this.links],
       headerButtons: [...this.headerButtons],
+      automations: this.automations.map((rule) => ({
+        ...rule,
+        noteTypes: [...rule.noteTypes],
+        folders: [...rule.folders],
+        params: { ...rule.params },
+      })),
       mapCoordinatesProperty: this.mapCoordinatesProperty,
       mapStyleUrl: this.mapStyleUrl,
       snippetsFolder: this.snippetsFolder,

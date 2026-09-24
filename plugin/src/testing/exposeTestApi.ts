@@ -18,6 +18,8 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { NoteRelations } from '@/entities/NoteRelations'
 import { ScriptService } from '@/scripting/ScriptService'
+import { ScriptRuns } from '@/scripting/ScriptRuns'
+import { AutomationService } from '@/automations/AutomationService'
 import { ScriptViewService } from '@/scripting/view/ScriptViewService'
 import { createScreenshotTool } from '@/ai/tools/ScreenshotTool'
 import { createGeocodeTool, createPlacesTool, createRouteTool } from '@/ai/tools/GeoTools'
@@ -94,6 +96,8 @@ interface AbeleTestApi {
   AbeleConfig: typeof AbeleConfig
   ScriptService: typeof ScriptService
   ScriptViewService: typeof ScriptViewService
+  ScriptRuns: typeof ScriptRuns
+  AutomationService: typeof AutomationService
   /** The agent's `screenshot` tool, so a test can take the picture it would take. */
   createScreenshotTool: typeof createScreenshotTool
   /** The map tools, so a check can run the real request the agent would send. */
@@ -483,6 +487,8 @@ export function exposeTestApi(plugin: Plugin): void {
     AbeleConfig,
     ScriptService,
     ScriptViewService,
+    ScriptRuns,
+    AutomationService,
     createScreenshotTool,
     createGeocodeTool,
     createPlacesTool,

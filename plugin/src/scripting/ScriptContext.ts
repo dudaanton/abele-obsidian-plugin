@@ -26,6 +26,7 @@ import { VIEW_GLOBALS } from './view/components'
 import { defaultViewHost } from './view/host'
 import { showFormModal } from './formModal'
 import { noteInfo as readNoteInfo, type NoteInfo } from './noteInfo'
+import type { AutomationEvent } from '@/automations/types'
 
 /** Extract first text content from tool result */
 function text(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -115,8 +116,20 @@ export function buildScriptContext(opts: {
   restore?: RestoreInfo
   /** Test seam; production resolves the service through `defaultViewHost()`. */
   viewHost?: ViewHost
+  /** What set the run off, when an automation did. The script reads it as `event`. */
+  event?: AutomationEvent
+  /**
+   * Told the path of every note the script is about to write, before it is written. An
+   * automation marks those paths with its own id, which is how the change the script makes
+   * is recognised as its echo rather than a new event.
+   */
+  onWrite?: (path: string) => void
 }) {
   const s = opts.signal
+  const wrote = (...paths: Array<string | undefined>) => {
+    if (!opts.onWrite) return
+    for (const path of paths) if (path) opts.onWrite(path)
+  }
 
   const skipScope = { skipScope: true }
   const readTool = createReadFileTool(skipScope)
@@ -154,6 +167,8 @@ export function buildScriptContext(opts: {
     params: opts.params,
     signal: s,
     dayjs,
+    /** What set this run off, when an automation did; `null` for every other run. */
+    event: opts.event ?? null,
 
     // ── Logging ──
 
@@ -178,29 +193,37 @@ export function buildScriptContext(opts: {
     read: (path: string) => call(readTool, { path }, s),
 
     async edit(path: string, oldString: string, newString: string) {
+      wrote(path)
       await call(editTool, { path, old_string: oldString, new_string: newString }, s)
     },
 
     async write(path: string, content: string) {
+      wrote(path)
       await call(writeTool, { path, content }, s)
     },
 
     /** Returns the path the file was actually created at — see `callForPath`. */
     async create(path: string, content: string): Promise<string> {
+      wrote(path, path.endsWith('.md') ? undefined : `${path}.md`)
       return callForPath(createTool, { path, content }, path, s)
     },
 
     async remove(path: string) {
+      wrote(path)
       await call(deleteTool, { path }, s)
     },
 
     /** Returns where the file ended up, which may not be `to`. */
     async move(from: string, to: string): Promise<string> {
-      return callForPath(moveTool, { from, to }, to, s)
+      wrote(from, to)
+      const landed = await callForPath(moveTool, { from, to }, to, s)
+      wrote(landed)
+      return landed
     },
 
     /** Returns where the copy ended up, which may not be `to`. */
     async copy(from: string, to: string): Promise<string> {
+      wrote(to)
       return callForPath(copyTool, { from, to }, to, s)
     },
 
@@ -275,6 +298,7 @@ export function buildScriptContext(opts: {
         directory?: string
       }>
     ): Promise<string> {
+      wrote(path)
       return call(replaceTool, { path, actions }, s)
     },
 
@@ -291,6 +315,7 @@ export function buildScriptContext(opts: {
       path: string,
       variables?: Record<string, string | string[]>
     ): Promise<string> {
+      wrote(path, path.endsWith('.md') ? undefined : `${path}.md`)
       return stripPrefix(await call(applyTemplateTool, { path, variables: variables || {} }, s))
     },
 
@@ -486,6 +511,7 @@ export function buildScriptContext(opts: {
     },
 
     async setCover(notePath: string, mediaPath?: string) {
+      wrote(notePath)
       const { setCoverFromMedia, findFirstMedia } = await import('@/commands/setCover')
       const { app } = GlobalStore.getInstance()
       const noteFile = app.vault.getAbstractFileByPath(notePath)
@@ -510,7 +536,12 @@ export function buildScriptContext(opts: {
       const service = ScriptService.getInstance()
       const script = service.getAll().find((sc) => sc.meta.name === name)
       if (!script) throw new Error(`Script not found: ${name}`)
-      return service.execute(script.path, scriptParams || {}, { signal: s, source: 'script' })
+      // Whatever the called script writes is still this run's doing.
+      return service.execute(script.path, scriptParams || {}, {
+        signal: s,
+        source: 'script',
+        onWrite: opts.onWrite,
+      })
     },
 
     // ── Views ──

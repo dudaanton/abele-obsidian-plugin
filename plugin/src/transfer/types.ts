@@ -16,6 +16,7 @@ export const TRANSFER_SECTIONS = [
   'prompt-notes',
   'links',
   'header-buttons',
+  'automations',
   'journals',
   'tasks',
   'finance',

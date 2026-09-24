@@ -12,7 +12,7 @@ import { nanoid } from 'nanoid'
 export type RunStatus = 'running' | 'done' | 'failed' | 'stopped'
 
 /** Who asked for the run. A script failing on its own is not the same as one an agent called. */
-export type RunSource = 'command' | 'note' | 'link' | 'agent' | 'script' | 'view'
+export type RunSource = 'command' | 'note' | 'link' | 'agent' | 'script' | 'view' | 'automation'
 
 export interface RunLogLine {
   at: number
@@ -33,6 +33,8 @@ export interface ScriptRun {
   note: string
   result: string
   error: string
+  /** What started it, in words, when that is more than its source: the automation's event. */
+  trigger?: string
 }
 
 /**
@@ -67,6 +69,7 @@ export class ScriptRuns {
     params: Record<string, unknown>
     source: RunSource
     stop: () => void
+    trigger?: string
   }): string {
     const id = nanoid(8)
     this.stoppers.set(id, run.stop)
@@ -84,6 +87,7 @@ export class ScriptRuns {
       note: '',
       result: '',
       error: '',
+      ...(run.trigger ? { trigger: run.trigger } : {}),
     })
     this.trim()
     return id

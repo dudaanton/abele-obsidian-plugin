@@ -107,3 +107,13 @@ A header button runs `scriptName` with `params`, and shows on notes whose `type`
 `noteTypes`, on notes anywhere under one of `folders`, or on every note when `allNotes` is on —
 task notes included. `enabled: false` keeps it configured but hidden, `iconOnly` leaves its
 `name` off the header, and the order of the list is the order in the header.
+
+`automations` is the list of scripts that run by themselves (the `scripts` docs, Automations).
+Each rule has `event` — one of `task.completed`, `task.reopened`, `task.created`,
+`task.changed`, `task.date-changed`, `note.created`, `note.changed`, `note.renamed`,
+`note.deleted` — and runs `scriptName` with `params` (templates, as for a header button) on
+notes whose `type` is in `noteTypes` (empty is any; ignored for task events), under one of
+`folders` (empty is anywhere), and, when `property` is set, whose property equals `value` (or
+is filled in, when `value` is empty). `throttleSeconds` is how often at most it runs for one
+note, 0 for every change; `includeExternal` also runs it for changes that arrived by sync;
+`enabled: false` keeps it without running it. A rule an agent adds needs an `id` of its own.

@@ -73,7 +73,7 @@ export function noteVariables(filePath: string): Record<string, string> {
 }
 
 /** A frontmatter value as a template can use it. */
-function asText(value: unknown): string {
+export function asText(value: unknown): string {
   if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   if (Array.isArray(value)) return value.map(asText).join(', ')
