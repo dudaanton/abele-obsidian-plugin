@@ -13,6 +13,7 @@ import { ChatStorage } from './ChatStorage'
 import { RunStorage, type RunFile } from './RunStorage'
 import { AI_SIDEBAR_VIEW_TYPE } from '@/constants/views'
 import { buildCommentContext } from './commentContext'
+import { buildMessageCommentContext } from './messageComments'
 
 const MAX_TABS = 8
 const STORAGE_KEY = 'abele-agent-tabs'
@@ -373,15 +374,21 @@ export class ChatService {
     const session = this.sessions.get(tabId)
     if (!session) return false
 
+    // A comment read in its tab goes the same way: deleting its file alone left its marker in
+    // the note, an icon that opened nothing.
     const comments = CommentService.getInstance()
     const commentId = session.commentId
-    if (commentId && comments.isExpanded(commentId)) {
+    if (commentId && (comments.isExpanded(commentId) || comments.isShown(commentId))) {
       await comments.remove(commentId)
       return true
     }
 
     const path = session.currentChatFile.value?.path
     if (!path) return false
+
+    // Asked on this chat's answers, reachable only from them: they go with it, while the chat
+    // can still say which they are.
+    await comments.removeCommentsOn(path)
 
     this.dropTab(tabId)
     session.destroy()
@@ -648,6 +655,14 @@ export class ChatService {
     if (session.kind !== 'comment') return prompt
     const anchor = session.anchor.value
     if (!anchor) return prompt
+
+    if (anchor.message) {
+      // On an answer in a chat: the chat as it is now, filtered to what was said in it.
+      const { app } = GlobalStore.getInstance()
+      const chat = app.vault.getAbstractFileByPath(anchor.note)
+      const content = chat instanceof TFile ? await app.vault.cachedRead(chat) : null
+      return `${prompt}\n\n${buildMessageCommentContext(anchor, content)}`
+    }
 
     const noteText = await this.readCommentNote(anchor.note)
     return `${prompt}\n\n${buildCommentContext(anchor, noteText, session.commentId ?? undefined)}`

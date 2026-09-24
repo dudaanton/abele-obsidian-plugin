@@ -469,9 +469,30 @@ export interface ChatMessage {
 
 /** Where a comment chat sits: the note holding its marker, and the text it was made on. */
 export interface CommentAnchor {
+  /** The note the comment is in — or, when `message` is set, the chat whose answer it is on. */
   note: string
   /** The selected text. Absent for a cursor comment, which is anchored to a point. */
   quote?: string
+  /**
+   * The answer a comment in a chat is about, by message id. Set only for those: `note` then
+   * names the chat file, and the passage is found through that chat's `comments`.
+   */
+  message?: string
+}
+
+/**
+ * A comment on a passage of one of this chat's answers, kept in the chat's own metadata — an
+ * answer is drawn from markdown and has no text of ours to carry a marker in.
+ */
+export interface MessageComment {
+  /** The comment's id, which is its file's basename in the comment folder. */
+  id: string
+  /** The answer it is on. */
+  message: string
+  /** The words selected, as the reader saw them. Absent for a comment on the whole answer. */
+  quote?: string
+  /** Where the quote starts in the answer's rendered text; the quote is looked for there first. */
+  start?: number
 }
 
 export interface ChatMetadata {
@@ -482,6 +503,8 @@ export interface ChatMetadata {
   kind?: 'chat' | 'comment'
   /** Set for a comment and for a chat expanded from one, so the marker still finds the file. */
   anchor?: CommentAnchor
+  /** Comments asked about passages of this chat's answers. Absent when there are none. */
+  comments?: MessageComment[]
   /** Notes this chat wrote to, deduped by path, in the order they were first written. */
   touched?: TouchedNote[]
   /** One sentence on what this chat did, by the auxiliary model. Regenerated after a write. */

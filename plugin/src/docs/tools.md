@@ -12,8 +12,9 @@ easy to get wrong. Which of these an agent actually has depends on its own tool 
   and is the one for a bulk, rule-driven change. `write` overwrites the whole file — reach for
   it only when the whole file is being rewritten.
 - `create` makes a new file and its parent folders.
-- `edit_selection` exists only inside a comment chat. It rewrites the passage that comment is
-  anchored to and nothing else in the note; there is no path to give it.
+- `edit_selection` exists only inside a comment chat on a note. It rewrites the passage that
+  comment is anchored to and nothing else in the note; there is no path to give it. A comment on
+  an answer in a chat does not have it.
 - `find` searches by name, property or content and takes structured criteria, not just a word.
 - A chat file (`.abchat`) is never in a scope. With the whole vault open, `read` on one returns
   only what was said in it, and `find` matches content against that — never against the log.

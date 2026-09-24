@@ -366,13 +366,61 @@ export class CommentService implements CommentInfoSource {
 
     await app.vault.process(note, (text) => insertMarker(text, pos, id, from).text)
 
+    const session = await this.startComment(id, { note: note.path, quote })
+    dispatchCommentsChanged(note.path)
+    return session
+  }
+
+  /**
+   * A new comment on a passage of an answer in a chat: the passage into the chat's metadata,
+   * the file into the comment folder, a session on top of it — and, as "Ask here" does in a
+   * note, in front at once.
+   *
+   * On the comment agent, like a comment in a note: one setting for what answers a comment,
+   * wherever it is asked. The chat is not in its scope; it is told about the chat in its prompt.
+   *
+   * `null` when the chat has no file yet — there is nowhere to keep where the passage is — and
+   * the person is told why. No quote is a comment on the whole answer.
+   */
+  async createOnMessage(
+    parent: ChatSession,
+    messageId: string,
+    quote?: string,
+    start?: number
+  ): Promise<ChatSession | null> {
+    const chat = parent.currentChatFile.value
+    if (!chat) {
+      new Notice('Send something in this chat first: it is not saved yet')
+      return null
+    }
+
+    const id = newCommentId()
+    await parent.addMessageComment({
+      id,
+      message: messageId,
+      ...(quote ? { quote, start: start ?? 0 } : {}),
+    })
+
+    const session = await this.startComment(id, {
+      note: chat.path,
+      ...(quote ? { quote } : {}),
+      message: messageId,
+    })
+
+    if (await this.showInSidebar(id)) ChatService.getInstance().focusRequest.value++
+    return session
+  }
+
+  /** The file and the session of a new comment, whatever it is anchored to. */
+  private async startComment(id: string, anchor: CommentAnchor): Promise<ChatSession> {
+    const { app } = GlobalStore.getInstance()
+
     // The folder has a new file in it, so what was known to be absent may not be any more.
     this.missing.clear()
 
     const config = AbeleConfig.getInstance().ai
     const registry = AgentRegistry.getInstance()
     const agent = registry.get(config.commentAgentId ?? '') ?? registry.defaultAgent()
-    const anchor: CommentAnchor = { note: note.path, quote }
 
     const metadata: ChatMetadata = {
       type: 'abele-chat',
@@ -397,8 +445,6 @@ export class CommentService implements CommentInfoSource {
     })
     await session.load(file)
     this.adopt(id, session)
-
-    dispatchCommentsChanged(note.path)
     return session
   }
 
@@ -825,16 +871,20 @@ export class CommentService implements CommentInfoSource {
    * Deletes a comment: its id out of the marker, the marker itself when it was the last id,
    * and the file. A marker deleted by hand leaves the file behind; orphans are not collected.
    */
-  async remove(id: string): Promise<void> {
+  async remove(id: string, options: { chatGoing?: boolean } = {}): Promise<void> {
     // Before the first await: a load already reading this file checks it after, and a marker
     // the person left behind must not fetch the file back.
     this.generations.set(id, (this.generations.get(id) ?? 0) + 1)
     this.missing.add(id)
 
     const session = this.sessionFor(id)
-    const notePath = session?.anchor.value?.note ?? (await this.anchorOnDisk(id))?.note ?? null
+    const anchor = session?.anchor.value ?? (await this.anchorOnDisk(id))
+    const notePath = anchor?.note ?? null
 
-    if (notePath) {
+    if (anchor?.message) {
+      // On an answer in a chat: the chat's own list of its comments, unless the chat is going.
+      if (!options.chatGoing) await this.dropFromChat(anchor.note, id)
+    } else if (notePath) {
       const { app } = GlobalStore.getInstance()
       const note = app.vault.getAbstractFileByPath(notePath)
       if (note instanceof TFile) {
@@ -860,6 +910,45 @@ export class CommentService implements CommentInfoSource {
     await ChatStorage.getInstance().deleteChat(this.commentPath(id))
     if (this.open.value === id) this.open.value = null
     if (notePath) dispatchCommentsChanged(notePath)
+  }
+
+  /**
+   * Takes a comment off the chat it was asked in. The chat's session writes it when one has
+   * it open — one writer per file — and otherwise the metadata is appended, as a rename does.
+   */
+  private async dropFromChat(chatPath: string, id: string): Promise<void> {
+    const open = ChatService.getInstance().getSessionByFile(chatPath)
+    if (open) {
+      await open.removeMessageComment(id)
+      return
+    }
+
+    const { app } = GlobalStore.getInstance()
+    const chat = app.vault.getAbstractFileByPath(chatPath)
+    if (!(chat instanceof TFile)) return
+    const metadata = parseChatMetadata(await app.vault.read(chat))
+    if (!metadata?.comments?.some((comment) => comment.id === id)) return
+    const comments = metadata.comments.filter((comment) => comment.id !== id)
+    await app.vault.append(
+      chat,
+      serializeMetadata({ ...metadata, comments: comments.length ? comments : undefined })
+    )
+  }
+
+  /**
+   * Deletes every comment asked on a chat's answers — the chat is being deleted, and there is
+   * no other way into them. Called before the chat's file goes, so its list can still be read.
+   */
+  async removeCommentsOn(chatPath: string): Promise<void> {
+    const open = ChatService.getInstance().getSessionByFile(chatPath)
+    let comments = open?.messageComments.value
+    if (!comments) {
+      const { app } = GlobalStore.getInstance()
+      const chat = app.vault.getAbstractFileByPath(chatPath)
+      comments =
+        chat instanceof TFile ? (parseChatMetadata(await app.vault.read(chat))?.comments ?? []) : []
+    }
+    for (const comment of comments) await this.remove(comment.id, { chatGoing: true })
   }
 
   /** The anchor of a comment nobody has loaded — one metadata read, no session. */

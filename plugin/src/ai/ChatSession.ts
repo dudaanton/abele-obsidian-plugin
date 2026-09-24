@@ -44,6 +44,7 @@ import {
 } from './types'
 import type {
   CommentAnchor,
+  MessageComment,
   ToolMode,
   PermissionMode,
   AiSettings,
@@ -366,6 +367,27 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    */
   public readonly touched = shallowRef<TouchedNote[]>([])
 
+  /**
+   * Comments asked about passages of this chat's answers, kept in its metadata because an
+   * answer has no text of ours to carry a marker in. Replaced, never pushed into.
+   */
+  public readonly messageComments = shallowRef<MessageComment[]>([])
+
+  /** Files a comment on one of this chat's answers and writes the chat, so the file has it. */
+  async addMessageComment(comment: MessageComment): Promise<void> {
+    this.messageComments.value = [...this.messageComments.value, comment]
+    await this.save()
+  }
+
+  /** Takes a comment off this chat. False when it was not on it. */
+  async removeMessageComment(id: string): Promise<boolean> {
+    const kept = this.messageComments.value.filter((comment) => comment.id !== id)
+    if (kept.length === this.messageComments.value.length) return false
+    this.messageComments.value = kept
+    await this.save()
+    return true
+  }
+
   /** One sentence on what this chat did, for the card under a note it changed. */
   public readonly recap = ref('')
 
@@ -635,7 +657,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       // The note a comment is anchored to is part of what the session *is*, not something
       // anyone chose in it — so it goes on top of the agent's scope and survives a switch,
       // and it is added inside `syncingScope` so it is never recorded as an override.
-      if (this.anchor.value) this.scopeResolver.addFile(this.anchor.value.note)
+      // Not a chat, though: a comment on an answer is told about that chat in its prompt, and a
+      // chat reaches another agent only as the words said in it, never as a file it may read.
+      if (this.anchor.value && !this.anchor.value.message) {
+        this.scopeResolver.addFile(this.anchor.value.note)
+      }
     } finally {
       this.syncingScope = false
     }
@@ -780,6 +806,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const offered =
       this.kind === 'comment' &&
       this.anchor.value?.quote &&
+      // An answer in a chat is what the model said, not a note anyone may rewrite.
+      !this.anchor.value.message &&
       (this.toolModes.value[EDIT_SELECTION_TOOL] ?? 'ask') !== 'off'
     const withSelection = offered ? [...filtered, createEditSelectionTool(this)] : filtered
 
@@ -1745,6 +1773,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.overrides.value = {}
     this.anchor.value = null
     this.touched.value = []
+    this.messageComments.value = []
     this.recap.value = ''
     this.summary.value = ''
     this.wroteThisTurn = false
@@ -1882,6 +1911,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       anchor: this.anchor.value ?? undefined,
       // Absent rather than empty: a chat that changed nothing says nothing about notes.
       touched: this.touched.value.length ? [...this.touched.value] : undefined,
+      comments: this.messageComments.value.length ? [...this.messageComments.value] : undefined,
       recap: this.recap.value || undefined,
       summary: this.summary.value || undefined,
       // Only what this chat actually changed. Writing the resolved values instead would freeze
@@ -2011,6 +2041,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     if (result.metadata?.kind) this.kind = result.metadata.kind
     this.anchor.value = result.metadata?.anchor ?? null
     this.touched.value = result.metadata?.touched ?? []
+    this.messageComments.value = result.metadata?.comments ?? []
     this.recap.value = result.metadata?.recap ?? ''
     this.summary.value = result.metadata?.summary ?? ''
 

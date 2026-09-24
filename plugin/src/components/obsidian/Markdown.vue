@@ -76,6 +76,8 @@ const renderContent = async () => {
 
   target.value.empty()
   while (next.firstChild) target.value.appendChild(next.firstChild)
+  // For whoever draws over the result — comments on an answer — since this replaced it whole.
+  emit('rendered')
 }
 
 onMounted(() => {
@@ -113,6 +115,8 @@ onUnmounted(() => {
 
 const emit = defineEmits<{
   (e: 'click'): void
+  /** A render has landed in the element. */
+  (e: 'rendered'): void
 }>()
 </script>
 

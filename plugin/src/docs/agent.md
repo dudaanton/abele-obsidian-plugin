@@ -103,5 +103,13 @@ question. Opening one as a full chat keeps the anchor and the file where they ar
 into the chat history and takes `edit_selection` away, because from then on it is an ordinary
 chat: the marker stays in the note and leads to it.
 
+A comment can also be asked about an agent's answer inside a chat: the person selects words in
+the answer and picks **Ask here**, or picks it with nothing selected to ask about the whole
+answer. It starts on the same `commentAgentId` agent and opens the same way, as a tab. It is
+told the chat's title, the selected words, the answer they are in and what was said before it
+in that chat — only what the person and the agent wrote, like an attached chat, never tool
+calls, their results or reasoning. The chat itself is not in its scope and it has no
+`edit_selection`: an answer is not something to rewrite.
+
 Writing to a note links this chat to it: the note shows a card for every chat that changed it,
 so what you do here is visible from there afterwards. Reading a note links nothing.

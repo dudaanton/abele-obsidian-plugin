@@ -123,7 +123,7 @@ A find-and-replace tool for note contents, which I built for vault migration. Mo
 
 - Deep links (`abele://`) that open a note, run a command, or run a script with parameters
 - Footnote sidenotes, and colored highlights with `=={color} text==`
-- Comment chats anchored to a passage, answered on the margin of the note
+- Comment chats anchored to a passage of a note, or of an agent's answer inside a chat
 - CSS snippets loaded and hot-reloaded from a folder in the vault
 - Settings transfer to another device — QR codes, a line of text, or a file — scripts, skills and prompts included
 - GitHub issues, pull requests with their diffs, discussions and files opened from links in notes, in tabs of their own — read only, off by default ([how](docs/GitHub.md))

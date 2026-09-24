@@ -50,6 +50,7 @@ import ObsidianModal from './obsidian/Modal.vue'
 import Card from './obsidian/Card.vue'
 import Icon from './obsidian/Icon.vue'
 import { ChatStorage } from '@/ai/ChatStorage'
+import { CommentService } from '@/ai/CommentService'
 import { SummaryBackfill } from '@/ai/ChatDigest'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -172,6 +173,8 @@ const select = (path: string) => {
 }
 
 const remove = async (path: string) => {
+  // Comments on its answers have no other way in, so they go first, while it can say which.
+  await CommentService.getInstance().removeCommentsOn(path)
   await ChatStorage.getInstance().deleteChat(path)
   allChats.value = allChats.value.filter((c) => c.path !== path)
   mtimeMap.delete(path)

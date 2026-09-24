@@ -4,7 +4,11 @@
     :class="[`abele-chat-msg_${message.role}`, { 'abele-chat-msg--draft': message.draft }]"
   >
     <!-- Icon — clickable to expand details -->
-    <div class="abele-chat-msg__icon" @click="expanded = !expanded">
+    <div
+      class="abele-chat-msg__icon"
+      @pointerdown="comments.captureFresh"
+      @click="expanded = !expanded"
+    >
       <Icon v-if="message.role === 'user'" icon="user" />
       <Icon v-else-if="message.role === 'assistant'" icon="bot" />
       <Icon v-else-if="message.role === 'tool-call'" icon="terminal" />
@@ -26,6 +30,14 @@
             class="abele-chat-msg__branch-action"
             @click="emit('insert-into-note', message.id)"
             >Insert into note</span
+          >
+          <!-- The words selected in the answer, or the whole answer: a comment, as in a note. -->
+          <span
+            v-if="canComment && message.role === 'assistant'"
+            class="abele-chat-msg__branch-action"
+            @pointerdown="comments.capture"
+            @click="comments.askHere"
+            >Ask here</span
           >
         </div>
         <div v-if="message.role === 'user'" class="abele-chat-msg__detail-row">
@@ -159,6 +171,13 @@
       </template>
 
       <!-- User / Assistant — markdown -->
+      <Markdown
+        v-else-if="message.role === 'assistant' && message.content"
+        :ref="comments.content"
+        :text="message.content"
+        @rendered="comments.paint"
+        @contextmenu="onContentMenu"
+      />
       <Markdown v-else-if="message.content" :text="message.content" />
 
       <!-- Attachments -->
@@ -304,8 +323,9 @@ import type { ViewerImage } from './GalleryViewer.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { getAttachmentIcon, fileName as attachmentName } from '@/ai/attachments'
 import { openVaultFile } from '@/ai/openChat'
-import type { ChatMessage } from '@/ai/types'
+import type { ChatMessage, MessageComment } from '@/ai/types'
 import type { BranchInfo } from './AiChat.vue'
+import { useMessageComments } from '@/composables/useMessageComments'
 
 const props = defineProps<{
   message: ChatMessage
@@ -313,6 +333,10 @@ const props = defineProps<{
   interceptorStreaming?: boolean
   interceptorStreamingContent?: string
   interceptorError?: string | null
+  /** Comments asked on this answer, from the chat's metadata. */
+  comments?: MessageComment[]
+  /** Whether "Ask here" is offered: an ordinary chat that has a file to keep comments in. */
+  canComment?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -328,7 +352,19 @@ const emit = defineEmits<{
   (e: 'send-interceptor', messageId: string, content: string): void
   (e: 'toggle-interceptor', messageId: string): void
   (e: 'retry-interceptor'): void
+  /** A comment on this answer: on the selected words, or on all of it when there are none. */
+  (e: 'ask-here', messageId: string, quote?: string, start?: number): void
 }>()
+
+const comments = useMessageComments(
+  () => props.comments,
+  (quote, start) => emit('ask-here', props.message.id, quote, start)
+)
+
+// Only where a comment can be kept: elsewhere a right-click stays the browser's own.
+const onContentMenu = (event: MouseEvent) => {
+  if (props.canComment) comments.onContentMenu(event)
+}
 
 const interceptorText = ref('')
 const interceptorInputEl = ref<HTMLTextAreaElement | null>(null)

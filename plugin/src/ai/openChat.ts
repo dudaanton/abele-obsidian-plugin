@@ -1,8 +1,9 @@
-import { TFile } from 'obsidian'
+import { Notice, TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatService } from './ChatService'
 import { CommentService } from './CommentService'
 import { isChatLog } from './chatText'
+import type { CommentAnchor } from './types'
 
 /**
  * Opens a chat file the way opening it anywhere else does: a comment as a comment, any other
@@ -47,4 +48,21 @@ export async function openLink(href: string, sourcePath: string): Promise<void> 
     return
   }
   await app.workspace.openLinkText(href, sourcePath)
+}
+
+/**
+ * Back from a comment on an answer to the answer: its chat in front, the answer brought into
+ * view and flashed there — on its branch, switched to when another is showing. False, and the
+ * person told, when the chat has been deleted since.
+ */
+export async function revealAnswer(anchor: CommentAnchor): Promise<boolean> {
+  const { app } = GlobalStore.getInstance()
+  const chat = app.vault.getAbstractFileByPath(anchor.note)
+  if (!anchor.message || !(chat instanceof TFile)) {
+    new Notice('The chat this was asked in has been deleted')
+    return false
+  }
+  await openChat(chat)
+  ChatService.getInstance().pendingReveal.value = anchor.message
+  return true
 }

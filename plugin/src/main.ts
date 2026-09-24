@@ -1032,7 +1032,13 @@ export default class AbelePlugin extends Plugin {
 
     this.registerEvent(
       this.app.vault.on('rename', (file, oldPath) => {
-        if (!(file instanceof TFile) || file.extension !== 'md') return
+        if (!(file instanceof TFile)) return
+        // A chat is renamed after its title; comments on its answers name it by path.
+        if (file.extension === 'abchat') {
+          void CommentService.getInstance().handleRename(oldPath, file.path)
+          return
+        }
+        if (file.extension !== 'md') return
         void CommentService.getInstance().handleRename(oldPath, file.path)
         // The chats that wrote this note name it by path, in the index and in their files.
         void ChatStorage.getInstance().handleNoteRename(oldPath, file.path)

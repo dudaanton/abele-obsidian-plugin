@@ -567,6 +567,13 @@ body.is-mobile .abele-footnote-ref-link {
   background-color: var(--background-modifier-hover);
 }
 
+/* A comment on an answer in a chat whose words are no longer in it — the answer was drawn
+   differently. Still there to be opened, at the answer's end, and faded so it does not claim
+   a passage it has lost. */
+.abele-comment-marker_orphan {
+  opacity: 0.6;
+}
+
 /* A finger is not a mouse pointer; Obsidian's own mobile sizing is the 24px step. */
 body.is-mobile .abele-comment-marker {
   min-width: var(--size-4-6);

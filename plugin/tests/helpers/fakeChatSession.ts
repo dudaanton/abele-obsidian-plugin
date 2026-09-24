@@ -51,6 +51,7 @@ export function fakeChatSession({
     streamingThinking: ref(''),
     error: ref(null),
     currentChatFile: ref(null),
+    messageComments: shallowRef([]),
     pendingQuestions,
     pendingToolCalls,
     /** Derived exactly as the real session derives it, so a test can set either side. */

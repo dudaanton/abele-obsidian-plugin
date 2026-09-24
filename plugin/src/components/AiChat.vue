@@ -118,6 +118,9 @@
           @repeat-message="onRepeatMessage"
           @retry-message="onRetryMessage"
           @insert-into-note="onInsertIntoNote"
+          :comments="commentsOn.get(msg.id)"
+          :can-comment="canComment"
+          @ask-here="onAskHere"
           @edit-message="onEditMessage"
           @confirm-draft="onConfirmDraft"
           @edit-draft="onEditDraft"
@@ -290,7 +293,8 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { parseTemplateVariables, applyTemplateVariables } from '@/templates/TemplateParser'
 import type { TemplateVariable } from '@/templates/TemplateParser'
 import { importExternalFile } from '@/ai/attachments'
-import type { ChatDraft } from '@/ai/types'
+import type { ChatDraft, MessageComment } from '@/ai/types'
+import { revealAnswer } from '@/ai/openChat'
 import { discoverSkills } from '@/ai/tools/SkillTool'
 import { getChildren } from '@/ai/chatTree'
 import { isChatLog } from '@/ai/chatText'
@@ -449,6 +453,30 @@ const onInsertIntoNote = (messageId: string) => {
   if (s) void insertMessageCard(s, messageId)
 }
 
+/** The chat's comments, by the answer each is on. */
+const commentsOn = computed(() => {
+  const byMessage = new Map<string, MessageComment[]>()
+  for (const comment of session.value?.messageComments.value ?? []) {
+    const list = byMessage.get(comment.message) ?? []
+    list.push(comment)
+    byMessage.set(comment.message, list)
+  }
+  return byMessage
+})
+
+/**
+ * Where "Ask here" is offered on an answer: an ordinary chat with a file to keep its comments
+ * in. Not in a comment — its comment tab would be the one the new comment replaces.
+ */
+const canComment = computed(
+  () => session.value?.kind === 'chat' && !!session.value?.currentChatFile.value
+)
+
+const onAskHere = (messageId: string, quote?: string, start?: number) => {
+  const s = session.value
+  if (s) void CommentService.getInstance().createOnMessage(s, messageId, quote, start)
+}
+
 const onEditMessage = (messageId: string) => {
   const s = session.value
   if (!s) return
@@ -589,8 +617,15 @@ const blockedTooltip = computed(() =>
 async function backToNote(): Promise<void> {
   const current = session.value
   const id = current?.commentId
-  const note = current?.anchor.value?.note
-  if (!id || !note) return
+  const anchor = current?.anchor.value
+  const note = anchor?.note
+  if (!id || !anchor || !note) return
+
+  // A comment on an answer goes back to that answer, in its chat.
+  if (anchor.message) {
+    await revealAnswer(anchor)
+    return
+  }
 
   const { app } = GlobalStore.getInstance()
   await app.workspace.openLinkText(note, '', false)

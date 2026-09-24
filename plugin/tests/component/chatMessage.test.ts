@@ -248,3 +248,132 @@ describe('a chat attached to a message', () => {
     expect(openFile).toHaveBeenCalledWith(app.vault.getAbstractFileByPath('Plans.md'))
   })
 })
+
+describe('comments on an answer', () => {
+  const answer = 'Take the night train.'
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 5))
+
+  // The comment's file and session are `CommentService`'s business, tested with it; here it
+  // answers for one comment that is loaded and has three messages in it.
+  beforeEach(async () => {
+    const { CommentService } = await import('@/ai/CommentService')
+    const service = CommentService.getInstance()
+    vi.spyOn(service, 'touch').mockImplementation(() => {})
+    vi.spyOn(service, 'isMissing').mockReturnValue(false)
+    vi.spyOn(service, 'get').mockReturnValue({ state: 'idle', open: false, messages: 3 })
+  })
+
+  function renderAnswer(props: Record<string, unknown> = {}) {
+    return mount(AiChatMessage, {
+      attachTo: document.body,
+      props: {
+        message: { id: 'm1', role: 'assistant', content: answer, timestamp: 1 } as ChatMessage,
+        canComment: true,
+        ...props,
+      },
+    })
+  }
+
+  function select(wrapper: ReturnType<typeof renderAnswer>, words: string) {
+    const text = wrapper.find('.abele-markdown').element.firstChild as Text
+    const at = text.textContent!.indexOf(words)
+    const range = document.createRange()
+    range.setStart(text, at)
+    range.setEnd(text, at + words.length)
+    const selection = document.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+
+  async function askHere(wrapper: ReturnType<typeof renderAnswer>) {
+    await wrapper.find('.abele-chat-msg__icon').trigger('pointerdown')
+    await wrapper.find('.abele-chat-msg__icon').trigger('click')
+    const action = wrapper
+      .findAll('.abele-chat-msg__branch-action')
+      .find((a) => a.text() === 'Ask here')!
+    await action.trigger('pointerdown')
+    await action.trigger('click')
+  }
+
+  it('marks the passage and puts the comment’s icon after it', async () => {
+    const wrapper = renderAnswer({
+      comments: [{ id: 'c1', message: 'm1', quote: 'night train', start: 9 }],
+    })
+    await settle()
+
+    expect(wrapper.find('.abele-comment__quote').text()).toBe('night train')
+    expect(wrapper.find('.abele-comment-marker').attributes('data-comment-ids')).toBe('c1')
+    wrapper.unmount()
+  })
+
+  it('opens the comment from its icon', async () => {
+    const { CommentService } = await import('@/ai/CommentService')
+    const openFrom = vi.spyOn(CommentService.getInstance(), 'openFrom').mockImplementation(() => {})
+    const wrapper = renderAnswer({
+      comments: [{ id: 'c1', message: 'm1', quote: 'night train', start: 9 }],
+    })
+    await settle()
+
+    ;(wrapper.find('.abele-comment-marker').element as HTMLElement).click()
+
+    expect(openFrom).toHaveBeenCalledWith(['c1'])
+    wrapper.unmount()
+  })
+
+  it('asks about the selected words, wherever they are in the answer', async () => {
+    const wrapper = renderAnswer()
+    await settle()
+    select(wrapper, 'night')
+
+    await askHere(wrapper)
+
+    expect(wrapper.emitted('ask-here')?.[0]).toEqual(['m1', 'night', 9])
+    wrapper.unmount()
+  })
+
+  it('asks about the whole answer when nothing is selected', async () => {
+    const wrapper = renderAnswer()
+    await settle()
+    document.getSelection()!.removeAllRanges()
+
+    await askHere(wrapper)
+
+    expect(wrapper.emitted('ask-here')?.[0]).toEqual(['m1', undefined, undefined])
+    wrapper.unmount()
+  })
+
+  it('offers "Ask here" in the menu of a selection', async () => {
+    const obsidian = await import('obsidian')
+    const shown = vi.spyOn(obsidian.Menu.prototype, 'showAtMouseEvent').mockImplementation(function (
+      this: InstanceType<typeof obsidian.Menu>
+    ) {
+      return this
+    })
+    const wrapper = renderAnswer()
+    await settle()
+    select(wrapper, 'train')
+
+    await wrapper.find('.abele-markdown').trigger('contextmenu')
+    const menu = shown.mock.contexts[0] as InstanceType<typeof obsidian.Menu>
+    menu.items.find((item) => item.title === 'Ask here')!.handler!()
+
+    expect(wrapper.emitted('ask-here')?.[0]).toEqual(['m1', 'train', 15])
+    wrapper.unmount()
+  })
+
+  it('is not offered where a comment cannot be kept, nor on the person’s own words', async () => {
+    const own = mount(AiChatMessage, {
+      props: {
+        message: { id: 'u', role: 'user', content: 'hi', timestamp: 1 } as ChatMessage,
+        canComment: true,
+      },
+    })
+    await own.find('.abele-chat-msg__icon').trigger('click')
+    expect(own.text()).not.toContain('Ask here')
+
+    const unsaved = renderAnswer({ canComment: false })
+    await unsaved.find('.abele-chat-msg__icon').trigger('click')
+    expect(unsaved.text()).not.toContain('Ask here')
+    unsaved.unmount()
+  })
+})
