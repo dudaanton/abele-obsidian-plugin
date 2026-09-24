@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { MarkdownRenderer } from 'obsidian'
+import { MarkdownRenderer, MarkdownView } from 'obsidian'
 import Markdown from '@/components/obsidian/Markdown.vue'
 import { useVault } from '../helpers/testEnv'
 
@@ -150,6 +150,95 @@ describe('a link to a chat in rendered text', () => {
     await wrapper.find('a.internal-link').trigger('click')
     await settle(5)
 
-    expect(openLinkText).toHaveBeenCalledWith('Plans', '')
+    expect(openLinkText).toHaveBeenCalledWith('Plans', '', false)
+  })
+
+  it('Mod-click on a link to a note asks Obsidian for a new tab', async () => {
+    const app = useVault([{ path: 'Plans.md', content: '' }])
+    const openLinkText = vi.fn()
+    ;(app as unknown as { workspace: unknown }).workspace = { openLinkText }
+    vi.spyOn(MarkdownRenderer, 'render').mockImplementation(
+      async (_app: unknown, _md: string, el: HTMLElement) => {
+        el.innerHTML = '<a class="internal-link" data-href="Plans">Plans</a>'
+      }
+    )
+
+    const wrapper = open('[[Plans]]')
+    await vi.waitFor(() => expect(wrapper.find('a.internal-link').exists()).toBe(true))
+    await wrapper.find('a.internal-link').trigger('click', { metaKey: true })
+    await vi.waitFor(() => expect(openLinkText).toHaveBeenCalledWith('Plans', '', 'tab'))
+  })
+})
+
+/**
+ * An agent pointing at lines of a note: `[[Projects/Budget#L3-L4|the totals]]`. Obsidian alone
+ * would read `L3-L4` as a heading, find none and open the note at the top; here it opens with
+ * those lines selected, in the leaf a plain link click uses.
+ */
+describe('a link to lines of a note in rendered text', () => {
+  const TEXT = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join('\n')
+
+  const setUp = () => {
+    const app = useVault([{ path: 'Projects/Budget.md', content: TEXT }])
+    const openLinkText = vi.fn()
+    const opened: Array<{ pane: unknown; file: unknown; selection: unknown }> = []
+    ;(app as unknown as { workspace: unknown }).workspace = {
+      openLinkText,
+      getLeaf: (pane: unknown) => {
+        const record = { pane, file: null as unknown, selection: null as unknown }
+        opened.push(record)
+        const view = Object.assign(Object.create(MarkdownView.prototype), {
+          data: TEXT,
+          getMode: () => 'source',
+          editor: {
+            getValue: () => TEXT,
+            getLine: (n: number) => TEXT.split('\n')[n],
+            setSelection: (a: unknown, b: unknown) => (record.selection = [a, b]),
+            scrollIntoView: () => {},
+            focus: () => {},
+          },
+        })
+        return {
+          view,
+          openFile: async (file: unknown) => {
+            record.file = file
+          },
+        }
+      },
+    }
+    vi.spyOn(MarkdownRenderer, 'render').mockImplementation(
+      async (_app: unknown, _md: string, el: HTMLElement) => {
+        el.innerHTML = '<a class="internal-link" data-href="Projects/Budget#L3-L4">the totals</a>'
+      }
+    )
+    return { app, openLinkText, opened }
+  }
+
+  it('opens the note with the lines selected', async () => {
+    const { app, openLinkText, opened } = setUp()
+
+    const wrapper = open('[[Projects/Budget#L3-L4|the totals]]')
+    await vi.waitFor(() => expect(wrapper.find('a.internal-link').exists()).toBe(true))
+    await wrapper.find('a.internal-link').trigger('click')
+    await vi.waitFor(() => expect(opened[0]?.selection).toBeTruthy())
+
+    expect(opened[0].pane).toBe(false)
+    expect(opened[0].file).toBe(app.vault.getAbstractFileByPath('Projects/Budget.md'))
+    expect(opened[0].selection).toEqual([
+      { line: 2, ch: 0 },
+      { line: 3, ch: 'line 4'.length },
+    ])
+    expect(openLinkText).not.toHaveBeenCalled()
+  })
+
+  it('opens it in a new tab on Mod-click', async () => {
+    const { opened } = setUp()
+
+    const wrapper = open('[[Projects/Budget#L3-L4|the totals]]')
+    await vi.waitFor(() => expect(wrapper.find('a.internal-link').exists()).toBe(true))
+    await wrapper.find('a.internal-link').trigger('click', { ctrlKey: true })
+    await vi.waitFor(() => expect(opened[0]?.selection).toBeTruthy())
+
+    expect(opened[0].pane).toBe('tab')
   })
 })

@@ -91,6 +91,7 @@ import { registerMapCodeblock } from './editor/MapCodeblock'
 import { registerMessageCardBlock } from './ai/messageCards'
 import { SnippetService } from './services/SnippetService'
 import { dictate } from '@/audio/voiceModal'
+import { registerLineLinks } from './lineLinks/register'
 import { registerGithub } from '@/github/register'
 
 export default class AbelePlugin extends Plugin {
@@ -202,6 +203,9 @@ export default class AbelePlugin extends Plugin {
 
     // GitHub issues, pull requests, discussions and files in tabs of their own; off by default.
     registerGithub(this)
+
+    // Links to lines of a note — `[[Note#L10-L12]]` — open at those lines; and a way to copy one.
+    registerLineLinks(this)
 
     // AI sidebar is always registered so the view can be restored, but commands/ribbon are conditional
     this.registerView(AI_SIDEBAR_VIEW_TYPE, (leaf) => new AiSidebarView(leaf, this.app))

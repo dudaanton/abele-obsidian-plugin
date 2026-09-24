@@ -122,8 +122,9 @@ body {
   border-radius: var(--radius-s);
 }
 
-/* Flash highlight on navigation */
-.abele-footnote-flash {
+/* Flash highlight on navigation: to a footnote, or to the lines a link names in reading view */
+.abele-footnote-flash,
+.abele-line-flash {
   animation: abele-footnote-flash 2.5s ease-out;
 }
 

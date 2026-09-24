@@ -9,7 +9,7 @@
 
 <script setup lang="ts">
 import { GlobalStore } from '@/stores/GlobalStore'
-import { Component, MarkdownRenderer } from 'obsidian'
+import { Component, Keymap, MarkdownRenderer } from 'obsidian'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 const props = defineProps<{
@@ -39,7 +39,10 @@ const handleClick = (event: MouseEvent) => {
     // Through `openLink`, which sends a chat to the sidebar: `openLinkText` would put it in the
     // leaf being read and the note there would be closed. Loaded on click, so the kit does not
     // pull the chat services in with it.
-    if (href) void import('@/ai/openChat').then((m) => m.openLink(href, props.filePath || ''))
+    // Mod-click asks for a new tab, split or window, as it does on a link in a note.
+    const mod = Keymap.isModEvent(event)
+    const pane = mod === true ? 'tab' : mod
+    if (href) void import('@/ai/openChat').then((m) => m.openLink(href, props.filePath || '', pane))
     return
   }
   emit('click')

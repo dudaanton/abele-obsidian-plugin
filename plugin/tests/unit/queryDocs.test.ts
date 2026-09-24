@@ -203,3 +203,29 @@ describe('what an agent is told about comments', () => {
     expect(readTopic('tools', 'files')).toContain('edit_selection')
   })
 })
+
+/**
+ * An agent pointing the person at lines of a note has to know the link exists and where its
+ * numbers come from — a link counted by eye lands a few lines off, frontmatter being the usual
+ * reason.
+ */
+describe('what an agent is told about links to lines', () => {
+  it('shows the link forms in the vault section, with where the numbers come from', () => {
+    const text = readTopic('vault', 'links-to-lines') ?? ''
+
+    expect(text).toContain('[[Projects/Budget#L12-L18|')
+    expect(text).toContain('(Projects/Budget.md#L12-L18)')
+    expect(text).toContain('line_numbers')
+    expect(text).toContain('frontmatter')
+  })
+
+  it('says under the file tools that read numbers lines on request', () => {
+    const text = readTopic('tools', 'files') ?? ''
+    expect(text).toContain('line_numbers')
+    expect(text).toContain('start_line')
+  })
+
+  it('is found by searching for it', () => {
+    expect(searchDocs('link to lines')).toContain('links-to-lines')
+  })
+})

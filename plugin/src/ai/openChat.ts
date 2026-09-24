@@ -1,9 +1,10 @@
-import { Notice, TFile } from 'obsidian'
+import { Notice, TFile, type PaneType } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatService } from './ChatService'
 import { CommentService } from './CommentService'
 import { isChatLog } from './chatText'
 import type { CommentAnchor } from './types'
+import { openNoteAtLines, resolveLineLink } from '@/lineLinks/open'
 
 /**
  * Opens a chat file the way opening it anywhere else does: a comment as a comment, any other
@@ -38,16 +39,29 @@ export async function openVaultFile(path: string): Promise<void> {
   await app.workspace.getLeaf(false).openFile(file)
 }
 
-/** An internal link clicked in rendered text: `openLinkText`, unless it leads to a chat. */
-export async function openLink(href: string, sourcePath: string): Promise<void> {
+/**
+ * An internal link clicked in rendered text: `openLinkText`, unless it leads to a chat — or to
+ * lines of a note (`[[Note#L10-L12]]`), which open with those lines selected. `pane` is what
+ * the click asked for (`Keymap.isModEvent`): false for the leaf a plain click reuses.
+ */
+export async function openLink(
+  href: string,
+  sourcePath: string,
+  pane: PaneType | false = false
+): Promise<void> {
   const { app } = GlobalStore.getInstance()
+  const atLines = resolveLineLink(app, href, sourcePath)
+  if (atLines) {
+    await openNoteAtLines(app, atLines.file, atLines.lines, pane)
+    return
+  }
   const linkpath = href.split('#')[0]
   const target = linkpath ? app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath) : null
   if (target && isChatLog(target.path)) {
     await openChat(target)
     return
   }
-  await app.workspace.openLinkText(href, sourcePath)
+  await app.workspace.openLinkText(href, sourcePath, pane)
 }
 
 /**

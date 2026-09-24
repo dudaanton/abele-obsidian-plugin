@@ -19,6 +19,26 @@ refused, because that is a collision rather than a typo.
 The usual way this happens is deriving a name from a markdown heading and keeping the `# `.
 Apostrophes, commas, ampersands and percent signs are all fine and are left alone.
 
+## Links to lines
+
+To point the person at particular lines of a note — in a reply or written into a note — link
+the lines, not just the note. The range goes where a heading would:
+
+```
+[[Projects/Budget#L12-L18|the totals for March]]
+[[Projects/Budget#L40]]
+[the totals for March](Projects/Budget.md#L12-L18)
+```
+
+A click opens the note with those lines selected in the editor, or flashed in reading view;
+Mod-click opens it in a new tab. Lines count from 1 over the whole file, **frontmatter
+included**, so take the numbers from `read` with `line_numbers: true` (or `start_line` and
+`end_line`) rather than counting by eye. Give the link a label saying what is there. A range
+past the end of the note stops at its last line. Without the plugin the link still opens the
+note, only at the top.
+
+The person gets the same links from **Copy link to lines** on the editor's menu.
+
 ## Tasks
 
 `type: task`. One note per task, in the tasks folder (`Tasks` by default).
