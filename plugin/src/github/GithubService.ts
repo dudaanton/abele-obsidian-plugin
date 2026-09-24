@@ -2,7 +2,7 @@
  * The GitHub integration's shared state: the client for the configured server and token, and
  * the one road by which a URL becomes an open tab.
  */
-import type { App } from 'obsidian'
+import type { App, PaneType, WorkspaceLeaf } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { GithubClient } from './client'
@@ -91,26 +91,69 @@ export function resetGithubClients(): void {
 }
 
 interface KeyedView {
-  targetKey(): string | null
+  targetKey?(): string | null
+  getViewType?(): string
+}
+
+/** Internals the typings leave out: when a leaf was last focused, and whether it is pinned. */
+interface LeafInternals {
+  activeTime?: number
+  pinned?: boolean
+}
+
+const isGithubLeaf = (leaf: WorkspaceLeaf | null | undefined): leaf is WorkspaceLeaf =>
+  (leaf?.view as unknown as KeyedView | undefined)?.getViewType?.() === GITHUB_VIEW_TYPE
+
+/** The GitHub tab focused last, as `active-leaf-change` reports it. */
+let lastGithubLeaf: WorkspaceLeaf | null = null
+
+/** Called on every `active-leaf-change`: remembers the leaf when it is a GitHub tab. */
+export function noteActiveLeaf(leaf: WorkspaceLeaf | null): void {
+  if (isGithubLeaf(leaf)) lastGithubLeaf = leaf
 }
 
 /**
- * Opens a GitHub URL in a tab of its own, or brings forward the tab already showing that item
- * and points it at the new line or comment.
+ * The GitHub tab a plain click navigates: the one focused last, so that in a split the links
+ * keep landing in the same pane. A pinned tab is left showing what it shows.
+ */
+function reusableLeaf(leaves: WorkspaceLeaf[]): WorkspaceLeaf | null {
+  const open = leaves.filter((l) => !(l as unknown as LeafInternals).pinned)
+  if (open.length === 0) return null
+  if (lastGithubLeaf && open.includes(lastGithubLeaf)) return lastGithubLeaf
+  const time = (l: WorkspaceLeaf) => (l as unknown as LeafInternals).activeTime ?? 0
+  return open.reduce((best, l) => (time(l) > time(best) ? l : best))
+}
+
+/**
+ * Opens a GitHub URL in a tab.
+ *
+ * With no `pane` — a plain click, the menu item, the command — the tab already showing that
+ * item comes forward and moves to the new line or comment; failing that the GitHub tab used
+ * last is pointed at the link, the way a browser tab follows a link (its back arrow returns);
+ * only when there is no GitHub tab is a new one opened. A `pane` — what `Keymap.isModEvent`
+ * makes of a Mod-click — always opens a new tab, split or window.
  *
  * @returns false when the URL is not one a GitHub tab can show
  */
-export async function openGithubUrl(app: App, url: string): Promise<boolean> {
+export async function openGithubUrl(
+  app: App,
+  url: string,
+  pane: PaneType | false = false
+): Promise<boolean> {
   const target = parseForSettings(url)
   if (!target) return false
   const key = targetKey(target)
 
-  const existing = app.workspace
-    .getLeavesOfType(GITHUB_VIEW_TYPE)
-    .find((leaf) => (leaf.view as unknown as KeyedView).targetKey?.() === key)
-
-  const leaf = existing ?? app.workspace.getLeaf('tab')
+  let leaf: WorkspaceLeaf
+  if (pane) {
+    leaf = app.workspace.getLeaf(pane)
+  } else {
+    const leaves = app.workspace.getLeavesOfType(GITHUB_VIEW_TYPE)
+    const same = leaves.find((l) => (l.view as unknown as KeyedView).targetKey?.() === key)
+    leaf = same ?? reusableLeaf(leaves) ?? app.workspace.getLeaf('tab')
+  }
   await leaf.setViewState({ type: GITHUB_VIEW_TYPE, state: { url }, active: true })
   await app.workspace.revealLeaf(leaf)
+  lastGithubLeaf = leaf
   return true
 }

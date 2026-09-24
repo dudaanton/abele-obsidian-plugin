@@ -585,6 +585,21 @@ export class Scope {
   }
 }
 
+/**
+ * Only `isModEvent`, as its documentation describes it: Mod (Cmd or Ctrl) or a middle click is a
+ * tab, Mod+Alt a split, Mod+Alt+Shift a window. Cmd and Ctrl both count, whatever the platform.
+ */
+export class Keymap {
+  static isModEvent(evt?: MouseEvent | KeyboardEvent | null): 'tab' | 'split' | 'window' | boolean {
+    if (!evt) return false
+    const mod = evt.metaKey || evt.ctrlKey
+    if (!mod) return evt instanceof MouseEvent && evt.button === 1 ? 'tab' : false
+    if (evt.altKey && evt.shiftKey) return 'window'
+    if (evt.altKey) return 'split'
+    return 'tab'
+  }
+}
+
 // Structural placeholders — present so imports resolve; not behaviourally modelled.
 export class App {}
 export class Vault {}

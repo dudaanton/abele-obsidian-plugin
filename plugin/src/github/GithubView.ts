@@ -25,6 +25,8 @@ export class GithubView extends ItemView {
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
+    // A tab that follows links keeps a history, so its back arrow returns to the item before.
+    this.navigation = true
   }
 
   getViewType() {
@@ -54,6 +56,8 @@ export class GithubView extends ItemView {
     if (typeof url === 'string' && url) {
       const target = parseForSettings(url)
       if (!target || targetKey(target) !== this.targetKey()) this.title = ''
+      // A tab a link was followed in keeps where it was, for its back arrow.
+      if (result && this.model.url && url !== this.model.url) result.history = true
       this.model.url = url
       this.model.target = target
       this.model.nonce++

@@ -5,10 +5,26 @@
  * restart; everything that acts — the click, the menu item, the command — asks the settings
  * first, so switching the feature off takes effect at once without a reload.
  */
-import { MarkdownView, Modal, Notice, Platform, Setting, type App, type Plugin } from 'obsidian'
+import {
+  Keymap,
+  MarkdownView,
+  Modal,
+  Notice,
+  Platform,
+  Setting,
+  type App,
+  type PaneType,
+  type Plugin,
+} from 'obsidian'
 import type { EditorView } from '@codemirror/view'
 import { GithubView } from './GithubView'
-import { GITHUB_VIEW_TYPE, githubSettings, openGithubUrl, parseForSettings } from './GithubService'
+import {
+  GITHUB_VIEW_TYPE,
+  githubSettings,
+  noteActiveLeaf,
+  openGithubUrl,
+  parseForSettings,
+} from './GithubService'
 import { linkAtClick, urlAtCursor } from './links'
 
 /**
@@ -24,6 +40,27 @@ const NOTE_SURFACES = '.workspace-leaf-content, .abele-markdown, .markdown-rende
  */
 const OPENING_EVENT: 'click' | 'mousedown' = Platform.isAndroidApp ? 'mousedown' : 'click'
 
+/**
+ * What a click on a link asks for: `false` to open it the plain way (reusing a GitHub tab), a pane
+ * type to open it in a new tab, split or window, or `null` to leave it alone.
+ *
+ * Mod-click follows Obsidian: `Keymap.isModEvent` says tab, split (Mod+Alt) or window
+ * (Mod+Alt+Shift). Alt without Mod is the way through to the browser. In source mode a plain click
+ * only places the cursor and Mod-click is how any link opens, so there Mod alone is the plain open
+ * and Mod+Shift asks for the new tab.
+ */
+export function paneForClick(evt: MouseEvent, sourceMode: boolean): PaneType | false | null {
+  const mod = Keymap.isModEvent(evt)
+  const pane: PaneType | false = mod === true ? 'tab' : mod
+  if (sourceMode) {
+    if (!pane) return null
+    if (pane === 'tab') return evt.shiftKey ? 'tab' : false
+    return pane
+  }
+  if (evt.altKey && !pane) return null
+  return pane
+}
+
 function interceptor(app: App) {
   return (evt: MouseEvent) => {
     const settings = githubSettings()
@@ -35,15 +72,13 @@ function interceptor(app: App) {
 
     const link = linkAtClick(target)
     if (!link) return
-    // In source mode a plain click places the cursor; Obsidian opens a link only on Mod-click.
-    if (link.sourceMode && !(evt.metaKey || evt.ctrlKey)) return
-    // Alt is the way through to the browser, for the one time the web page is wanted.
-    if (evt.altKey) return
+    const pane = paneForClick(evt, link.sourceMode)
+    if (pane === null) return
     if (!parseForSettings(link.url)) return
 
     evt.preventDefault()
     evt.stopImmediatePropagation()
-    void openGithubUrl(app, link.url)
+    void openGithubUrl(app, link.url, pane)
   }
 }
 
@@ -122,8 +157,18 @@ export function registerGithub(plugin: Plugin): void {
           .setSection('open')
           .onClick(() => void openGithubUrl(app, url))
       )
+      menu.addItem((item) =>
+        item
+          .setTitle('Open in Obsidian in a new tab')
+          .setIcon('github')
+          .setSection('open')
+          .onClick(() => void openGithubUrl(app, url, 'tab'))
+      )
     })
   )
+
+  // Which GitHub tab was used last, so a plain click keeps landing in it.
+  plugin.registerEvent(app.workspace.on('active-leaf-change', noteActiveLeaf))
 
   plugin.addCommand({
     id: 'open-github-link',
