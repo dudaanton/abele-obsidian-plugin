@@ -9,6 +9,7 @@ import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { App, Modal } from 'obsidian'
 import { onBeforeMount, onMounted, onUnmounted, ref, shallowRef } from 'vue'
+import { useKeyboardRoom } from '@/composables/useKeyboardRoom'
 
 const props = defineProps<{
   title?: string
@@ -27,6 +28,11 @@ const id = ref(genid())
 // Teleport by element, not by selector: a modal opened from the settings window
 // lives in that window's document, which `document.querySelector` never sees.
 const wrapper = shallowRef<HTMLElement | null>(null)
+
+// Every dialog of the plugin stands above the on-screen keyboard while one of its fields is
+// being typed into — the date dialog was the one reported, the script forms and chat setup
+// have the same fields.
+useKeyboardRoom(wrapper)
 
 class ObsidianModal extends Modal {
   constructor(app: App) {

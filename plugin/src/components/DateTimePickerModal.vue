@@ -1,7 +1,6 @@
 <template>
   <ObsidianModal :title="title" @close="emit('cancel')">
     <DateTimePicker
-      ref="picker"
       :initial-date="initialDate"
       :initial-time="initialTime"
       @confirm="emit('confirm', $event)"
@@ -12,11 +11,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import dayjs from 'dayjs'
 import ObsidianModal from './obsidian/Modal.vue'
 import DateTimePicker from './DateTimePicker.vue'
-import { useKeyboardRoom } from '@/composables/useKeyboardRoom'
 
 const props = defineProps<{
   mode: 'event' | 'due'
@@ -31,10 +29,6 @@ const emit = defineEmits<{
   (e: 'clear'): void
   (e: 'cancel'): void
 }>()
-
-// On a phone the keyboard for the time field covered half the dialog, the field included.
-const picker = ref<InstanceType<typeof DateTimePicker> | null>(null)
-useKeyboardRoom(computed(() => picker.value?.$el as HTMLElement | undefined))
 </script>
 
 <style lang="scss">

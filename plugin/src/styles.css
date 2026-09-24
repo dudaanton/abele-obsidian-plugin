@@ -676,3 +676,18 @@ body.is-mobile .abele-comment-marker_pending::after {
   bottom: auto;
   height: var(--abele-room-height);
 }
+
+/*
+ * Inside that room a dialog is never taller than the room, so it scrolls rather than reaching
+ * under the keyboard: Obsidian's caps are written in `vh`, which keep the whole screen. A
+ * centred dialog keeps an inset at both ends so its top edge stays below the notch; a sheet
+ * standing on the bottom edge (`mod-lg`, the kit's tall dialogs) needs it at the top only.
+ */
+.modal-container.abele-keyboard-room > .modal {
+  max-height: calc(100% - 2 * var(--safe-area-inset-top, 0px));
+}
+
+.modal-container.abele-keyboard-room > .modal.mod-lg {
+  height: calc(100% - var(--safe-area-inset-top, 0px));
+  max-height: calc(100% - var(--safe-area-inset-top, 0px));
+}
