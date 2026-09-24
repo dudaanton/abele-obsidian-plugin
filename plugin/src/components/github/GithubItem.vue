@@ -404,6 +404,19 @@ const reload = async () => {
   void scrollToAnchor()
 }
 
+// A tab that follows a link to another item must not draw the new item from the old one's data
+// while it loads — a pull request read as a file has no text. Cleared the moment the target
+// changes, before anything computed from it is asked again.
+watch(
+  () => (target.value ? targetKey(target.value) : null),
+  () => {
+    promoted.value = null
+    main.data.value = null
+    main.error.value = null
+  },
+  { flush: 'sync' }
+)
+
 // A new item loads from scratch; the same item at another line or comment only moves there.
 watch(
   () => (target.value ? targetKey(target.value) : null),

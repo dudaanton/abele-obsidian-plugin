@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { ISSUE, PULL, file, openTab as open, type Reply } from '../helpers/githubTab'
+import { parseGithubUrl } from '@/github/urls'
 import { useVault } from '../helpers/testEnv'
 
 beforeEach(() => {
@@ -328,5 +329,24 @@ describe('switched off', () => {
     const { wrapper } = open('https://github.com/o/r/issues/5', {}, false)
     await flushPromises()
     expect(wrapper.text()).toContain('The GitHub integration is off')
+  })
+})
+
+describe('a tab that follows a link to another item', () => {
+  it('shows the new item, never the old one read as the new kind', async () => {
+    const { wrapper, model } = open('https://github.com/o/r/issues/5', {
+      '/repos/o/r/issues/5': { json: ISSUE },
+      '/repos/o/r/issues/5/comments': { json: [] },
+      '/repos/o/r/contents/src/app.ts': { text: 'one\ntwo' },
+    })
+    await vi.waitFor(() => expect(wrapper.find('.abele-github-thread').exists()).toBe(true))
+
+    const url = 'https://github.com/o/r/blob/main/src/app.ts#L2'
+    model.url = url
+    model.target = parseGithubUrl(url, ['github.com'])
+    model.nonce++
+
+    await vi.waitFor(() => expect(wrapper.find('.abele-github-blob .cm-editor').exists()).toBe(true))
+    expect(wrapper.find('.abele-github-thread').exists()).toBe(false)
   })
 })
