@@ -358,3 +358,155 @@ describe('NoteRelations — a journal judges new notes by the rule it opened wit
     expect([...relations.tasks.keys()]).toContain('Tasks/Undated.md')
   })
 })
+
+/**
+ * Whether a note belongs is one question with one answer, whether it is asked when the note is
+ * opened or when something changes while it is open.
+ *
+ * On opening, a note gathers what links to it, and walks further only into notes that are
+ * *grouped* into it. A note changing later used to be judged by a looser rule: it was taken in
+ * if it linked to anything that linked to the open note. A task for next week, filed under a
+ * meeting note that mentions today, therefore appeared in today's daily note the moment it was
+ * made — and was gone the next time the note was opened.
+ */
+describe('NoteRelations — a note arriving later is judged exactly as on opening', () => {
+  let relations: NoteRelations | null = null
+  const TODAY = 'Journals/2026/2026-08-22.md'
+
+  const VAULT_SHAPES: FakeFileSpec[] = [
+    { path: TODAY, frontmatter: { type: 'journal' }, content: 'Today\n' },
+    // Mentions today, is not grouped into it.
+    { path: 'Notes/Standup.md', content: 'Notes from [[2026-08-22]]\n' },
+    // Grouped into today, so what is filed under it belongs too.
+    { path: 'Notes/Offsite.md', frontmatter: { groups: ['[[2026-08-22]]'] }, content: 'Offsite\n' },
+    // Grouped into a note that only mentions today.
+    { path: 'Notes/Release.md', frontmatter: { groups: ['[[Standup]]'] }, content: 'Release\n' },
+    {
+      path: 'Tasks/Filed under the standup.md',
+      frontmatter: {
+        type: 'task',
+        created: '2026-08-22',
+        date: '2026-08-29',
+        groups: ['[[Standup]]'],
+      },
+      content: 'Filed under the standup\n',
+    },
+    {
+      path: 'Tasks/Links the standup.md',
+      frontmatter: { type: 'task', created: '2026-08-22', due: '2026-08-30' },
+      content: 'See [[Standup]]\n',
+    },
+    {
+      path: 'Tasks/Filed under the release.md',
+      frontmatter: {
+        type: 'task',
+        created: '2026-08-22',
+        due: '2026-08-30',
+        groups: ['[[Release]]'],
+      },
+      content: 'Filed under the release\n',
+    },
+    {
+      path: 'Tasks/Filed under the offsite.md',
+      frontmatter: {
+        type: 'task',
+        created: '2026-08-01',
+        due: '2026-08-30',
+        groups: ['[[Offsite]]'],
+      },
+      content: 'Filed under the offsite\n',
+    },
+    {
+      path: 'Tasks/Mentions today.md',
+      frontmatter: { type: 'task', created: '2026-08-01', due: '2026-08-30' },
+      content: 'Talk about it on [[2026-08-22]]\n',
+    },
+    {
+      path: 'Logs/Standup log.md',
+      frontmatter: { type: 'log', created: '2026-08-01' },
+      content: 'Log of [[Standup]]\n',
+    },
+  ]
+
+  let app: ReturnType<typeof useVault>
+
+  beforeEach(() => {
+    app = useVault(VAULT_SHAPES)
+    configureAbele({ journals: [dailyJournal()], logsNotesTypes: ['log'] })
+  })
+
+  afterEach(() => {
+    relations?.cleanup()
+    relations = null
+    VaultWatcherWrapper.destroy()
+  })
+
+  const change = (path: string) => {
+    app.emit('metadataCache', 'changed', app.vault.getAbstractFileByPath(path))
+    app.emit('metadataCache', 'resolved')
+  }
+
+  const everything = (r: NoteRelations) =>
+    [
+      ...r.tasks.keys(),
+      ...r.transactions.keys(),
+      ...r.timeEntries.keys(),
+      ...r.logs.keys(),
+      ...r.notes.keys(),
+    ].sort()
+
+  const forget = (r: NoteRelations, path: string) => {
+    const inner = r as unknown as {
+      removeTask(p: string): void
+      removeLog(p: string): void
+      removeNote(p: string): void
+    }
+    inner.removeTask(path)
+    inner.removeLog(path)
+    inner.removeNote(path)
+  }
+
+  it.each(VAULT_SHAPES.map((s) => s.path).filter((p) => p !== TODAY))(
+    '%s ends up where reopening the note would put it',
+    (path) => {
+      const reopened = relationsFor(TODAY)
+      const expected = everything(reopened)
+      reopened.cleanup()
+
+      relations = relationsFor(TODAY)
+      // As if it had just been made: not there when the note opened.
+      forget(relations, path)
+
+      change(path)
+
+      expect(everything(relations)).toEqual(expected)
+    }
+  )
+
+  it('takes in what is filed under a note grouped into the day, and nothing merely linked', () => {
+    relations = relationsFor(TODAY)
+    const tasks = [...relations.tasks.keys()]
+
+    expect(tasks).toContain('Tasks/Filed under the offsite.md')
+    expect(tasks).toContain('Tasks/Mentions today.md')
+    expect(tasks).not.toContain('Tasks/Filed under the standup.md')
+    expect(tasks).not.toContain('Tasks/Links the standup.md')
+    expect(tasks).not.toContain('Tasks/Filed under the release.md')
+  })
+
+  it('lets go of what was filed under a note once that note leaves the day', () => {
+    relations = relationsFor(TODAY)
+    expect([...relations.tasks.keys()]).toContain('Tasks/Filed under the offsite.md')
+
+    // The offsite is no longer grouped into today (its link to the day stays, as a mention).
+    app.setFrontmatter('Notes/Offsite.md', {})
+    change('Notes/Offsite.md')
+
+    const reopened = relationsFor(TODAY)
+    const expected = everything(reopened)
+    reopened.cleanup()
+
+    expect(everything(relations)).toEqual(expected)
+    expect([...relations.tasks.keys()]).not.toContain('Tasks/Filed under the offsite.md')
+  })
+})

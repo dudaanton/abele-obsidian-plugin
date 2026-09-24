@@ -1,5 +1,5 @@
 import { isWikilink, pathToWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
-import { getBacklinksByPath, getOutgoingLinksByPath } from '@/helpers/vaultUtils'
+import { getBacklinksByPath } from '@/helpers/vaultUtils'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { EventRef, normalizePath, TAbstractFile, TFile } from 'obsidian'
@@ -343,70 +343,77 @@ export class NoteRelations {
   }
 
   /**
-   * Checks if the given path is related to the main file dirctly or via groups
-   * @param path - The path to check
-   * @param processedTreePaths - Internal parameter to avoid circular references
-   * @returns True if the path is related, false otherwise
+   * Whether `path` belongs among this note's relations — `findRelations` asked backwards, and
+   * nothing looser, so a note changing while this one is open lands exactly where reopening
+   * this one would put it.
+   *
+   * Opening gathers what links to this note and walks on only into notes *grouped* into it (and
+   * into notes grouped into those). So a note belongs if it links to one of the notes that walk
+   * reaches, or — for a journal — if it is dated to the journal's day.
+   *
+   * This used to be a looser rule of its own: a note belonged if it linked to anything that
+   * linked here, or was grouped under anything that did. A task for next week filed under a
+   * meeting note that mentions today appeared in today's daily note the moment it was made, and
+   * was gone the next time the note was opened.
    */
-  private isRelatedPath(path: string, processedTreePaths: string[] = []): boolean {
+  private isRelatedPath(path: string): boolean {
     const { app } = GlobalStore.getInstance()
 
     path = normalizePath(path)
-    const backlinks = getBacklinksByPath(this.filePath)
-
-    // direct backlink
-    if (backlinks.indexOf(path) !== -1) {
-      return true
-    }
+    if (path === this.filePath) return false
 
     const file = app.vault.getAbstractFileByPath(path)
-    if (!(file instanceof TFile)) return
+    if (!(file instanceof TFile)) return false
 
     const frontmatter = app.metadataCache.getFileCache(file)?.frontmatter
+    if (this.belongsToJournalDay(path, frontmatter)) return true
 
-    // Only for the journal's own note: further down this recursion walks into other notes'
-    // links, and a note being dated to the day says nothing about what it links to.
-    if (processedTreePaths.length === 0 && path !== this.filePath) {
-      if (this.belongsToJournalDay(path, frontmatter)) return true
+    // One set for the whole question, as `findRelations` keeps one for the whole walk: a note
+    // already looked at from one route has nothing new to say from another.
+    const visited = new Set<string>()
+    return this.linkedPaths(path).some((target) => this.isWalkedInto(target, visited))
+  }
+
+  /**
+   * Whether `findRelations` walks into `path` — this note itself, or a note grouped into one it
+   * walks into. Those are the notes whose backlinks all belong here.
+   */
+  private isWalkedInto(path: string, visited: Set<string>): boolean {
+    if (path === this.filePath) return true
+    if (visited.has(path)) return false
+    visited.add(path)
+
+    const { app } = GlobalStore.getInstance()
+
+    const file = app.vault.getAbstractFileByPath(path)
+    if (!(file instanceof TFile)) return false
+
+    const groups = app.metadataCache.getFileCache(file)?.frontmatter?.groups
+    if (!Array.isArray(groups)) return false
+
+    const linked = this.linkedPaths(path)
+    for (const group of groups) {
+      if (!isWikilink(group)) continue
+
+      const groupFile = app.metadataCache.getFirstLinkpathDest(wikilinkToPath(group), '')
+      if (!groupFile) continue
+
+      const groupPath = normalizePath(groupFile.path)
+      // `findRelations` reaches this note as a backlink of the group, and walks into it because
+      // its groups name that group — both have to hold, and a note is never its own group.
+      if (groupPath === path || !linked.includes(groupPath)) continue
+      if (this.isWalkedInto(groupPath, visited)) return true
     }
 
-    const type = frontmatter?.type
+    return false
+  }
 
-    if (
-      AbeleConfig.getInstance().isLogType(type, path) ||
-      type === 'task' ||
-      type === 'transaction' ||
-      type === 'time-entry'
-    ) {
-      const outgoingLinks = getOutgoingLinksByPath(path)
-      for (const link of outgoingLinks) {
-        if (!processedTreePaths.includes(link)) {
-          if (this.isRelatedPath(link, [...processedTreePaths, path])) return true
-        }
-      }
+  /** What `path` links to, counted the way the backlink index counts it. */
+  private linkedPaths(path: string): string[] {
+    const { app } = GlobalStore.getInstance()
 
-      return null
-    }
-
-    const groups = frontmatter?.groups
-
-    if (Array.isArray(groups) && groups.length > 0) {
-      for (const group of groups) {
-        if (!isWikilink(group)) continue
-
-        const groupFile = app.metadataCache.getFirstLinkpathDest(wikilinkToPath(group), '')
-        if (!groupFile) continue
-
-        const groupPath = normalizePath(groupFile.path)
-
-        // check if the group note links to the main file
-        if (!processedTreePaths.includes(groupPath)) {
-          if (this.isRelatedPath(groupPath, [...processedTreePaths, path])) return true
-        }
-      }
-    }
-
-    return null
+    const targets = app.metadataCache.resolvedLinks[path] ?? {}
+    return Object.keys(targets).filter((target) => targets[target])
   }
 
   /**
@@ -487,10 +494,19 @@ export class NoteRelations {
     this.eventRefs.push(
       app.metadataCache.on('changed', (file: TFile) => {
         this.relationsCallbacksQueue.push(() => {
-          if (this.isRelatedPath(file.path)) {
-            this.addBacklink(this.filePath, file.path)
-          } else if (this.hasPath(file.path)) {
-            this.unlinkPath(file.path)
+          const path = normalizePath(file.path)
+          const wasRelated = this.hasPath(path)
+
+          if (this.isRelatedPath(path)) {
+            this.addBacklink(this.filePath, path)
+            // Now grouped under something this note walks into: what is filed under it
+            // belongs too, as it would on opening.
+            if (this.isWalkedInto(path, new Set())) this.findRelations(path)
+            // Still here, but it may have stopped being a group of this note, and what was
+            // filed under it has to go with it.
+            if (wasRelated) this.removeRemainingRelations()
+          } else if (wasRelated) {
+            this.unlinkPath(path)
           }
         })
       })
