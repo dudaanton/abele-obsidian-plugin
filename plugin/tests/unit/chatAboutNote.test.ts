@@ -230,6 +230,8 @@ describe('where it is offered', () => {
             return { name }
           },
           getActiveFile: () => activeFile,
+          getActiveViewOfType: () => null,
+          getMostRecentLeaf: () => null,
         },
       },
       registerEvent: () => {},
@@ -264,11 +266,12 @@ describe('where it is offered', () => {
 
   it('in the editor’s menu, with or without a selection', () => {
     const menu = new Menu()
-    handlers.get('editor-menu')!(menu, {}, { file: fileAt(NOTE) })
+    const editor = { getSelection: () => '' }
+    handlers.get('editor-menu')!(menu, editor, { file: fileAt(NOTE) })
     expect(titles(menu)).toEqual([CHAT_ABOUT_TITLE])
 
     const detached = new Menu()
-    handlers.get('editor-menu')!(detached, {}, { file: null })
+    handlers.get('editor-menu')!(detached, editor, { file: null })
     expect(titles(detached)).toEqual([])
   })
 

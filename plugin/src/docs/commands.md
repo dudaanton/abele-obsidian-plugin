@@ -24,14 +24,17 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 - Show timeline sidebar · Show todo sidebar · Show AI chat sidebar
 - Chat about current note — a new chat with a link to that note ready in the input, and access
-  to it if the agent had none; *Chat about this* when a note is right-clicked does the same
+  to it if the agent had none; *Chat about this* when a note is right-clicked does the same.
+  With text selected in that note, the link points at the selected lines and the text is
+  quoted under it
 - Show script runs · Show script API reference
 - Open GitHub link — the GitHub link under the cursor, or one pasted in, in a GitHub tab: the
   one already showing that item, else the GitHub tab used last, else a new one (only while the
   GitHub integration is on)
 - Chat about this GitHub item — in a GitHub tab: a new chat with a link to the item in the
   input. The same is the speech-bubble button in the tab's header and in its "more options"
-  menu; *Ask here* under selected lines of code starts one with those lines quoted
+  menu; *Ask here* under selected lines of code starts one with those lines quoted, and so does
+  *Chat about this* while lines are selected
 
 ## Media
 

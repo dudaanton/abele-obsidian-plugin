@@ -130,6 +130,12 @@ palette. A new chat opens on the default agent with a link to the note already i
 the cursor after it; nothing is sent until you have written your question. Any vault file can be
 chosen this way, except a chat file.
 
+If something is selected in that note, it comes along: the link then points at the selected
+lines (`[[Note#L10-L12|Note]]`) and the passage is quoted under it, the same way **Use in AI
+agent** quotes a selection. Only the note's own selection counts — the one in the editor you
+right-clicked, or in the note in front — never one left in another note. In reading view the
+selected text is quoted under a plain link to the note.
+
 If the agent cannot see that note, this chat is given access to it — to that one file and
 nothing else, the same as attaching it would. The access is saved with the chat, so it is still
 there when the chat is reopened. The agent's own scope is not changed.

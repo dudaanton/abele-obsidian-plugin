@@ -22,6 +22,7 @@ import { createTimeEntry, stopActiveTimeEntry } from './commands/createTimeEntry
 import { createNoteInGroup } from './commands/createNoteInGroup'
 import { commentHereInView } from './commands/commentCommands'
 import { registerChatAbout } from './commands/chatAboutNote'
+import { useInAgentText } from './ai/quoteSelection'
 import {
   createNoteFromTemplate,
   replaceNoteWithTemplate,
@@ -460,9 +461,7 @@ export default class AbelePlugin extends Plugin {
               .setIcon('bot')
               .onClick(async () => {
                 const file = view.file
-                const ref = file
-                  ? `> From [[${file.basename}]]:\n> ${selection.replace(/\n/g, '\n> ')}\n\n`
-                  : `> ${selection.replace(/\n/g, '\n> ')}\n\n`
+                const ref = useInAgentText(selection, file?.basename)
                 const chatService = ChatService.getInstance()
                 chatService.pendingInput.value = { text: ref }
 
