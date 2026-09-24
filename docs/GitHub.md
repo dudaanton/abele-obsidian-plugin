@@ -139,7 +139,10 @@ file's is: each split of the link is asked, the shortest branch name first.
 repository beside what the tab shows, at the version it shows: a pull request's head commit, the
 commit, the ref a file or a folder was read at, and the default branch for an issue or a
 discussion. The file on screen is marked and its folders are open; a folder on screen is marked
-and open. Folders fold and unfold with a click; the field at the top filters by name, keeping the
+and open. Folders fold and unfold with a click. A folder's own page — its listing and README —
+opens from the folder button at the end of its row, shown while the row is pointed at (always on a
+phone), or by a Mod-click on the folder; both open it in this tab, since a plain click is taken
+by folding, and Mod+Shift opens it in a new tab (Mod+Alt a split). the field at the top filters by name, keeping the
 folders on the way to every match (a thousand at most, and it says when there are more). A click
 on a file opens it at that same version, by the tab rule, Mod for a new tab; the panel stays, and
 marks the file that opened.

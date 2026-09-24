@@ -8,6 +8,14 @@
     :collapsed="!open"
     @click="emit('pick', node, $event)"
   >
+    <template v-if="node.kind === 'dir'" #actions>
+      <Icon
+        class="abele-github-tree__open-folder"
+        icon="folder-open"
+        tooltip="Open this folder's page"
+        @click.stop="emit('page', node, $event)"
+      />
+    </template>
     <template v-if="node.kind === 'dir'">
       <div v-if="!node.children" class="abele-github-tree__note">Loading…</div>
       <GithubTreeNode
@@ -17,6 +25,7 @@
         :expanded="expanded"
         :current="current"
         @pick="(n: TreeNode, e: MouseEvent) => emit('pick', n, e)"
+        @page="(n: TreeNode, e: MouseEvent) => emit('page', n, e)"
       />
       <div v-if="paged.hasMore.value" ref="sentinel" class="abele-github-tree__note">
         {{ paged.total.value - paged.visible.value.length }} more…
@@ -28,6 +37,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import TreeItem from '../obsidian/TreeItem.vue'
+import Icon from '../obsidian/Icon.vue'
 import type { NodeKind, TreeNode } from '@/github/tree/fileTree'
 import { usePagedList } from '@/composables/usePagedList'
 
@@ -42,6 +52,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'pick', node: TreeNode, event: MouseEvent): void
+  /** The folder's own page was asked for, by its button. */
+  (e: 'page', node: TreeNode, event: MouseEvent): void
 }>()
 
 const ICONS: Record<NodeKind, string> = { dir: 'folder', file: 'file', submodule: 'package' }

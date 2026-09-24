@@ -35,6 +35,7 @@
             :expanded="shownOpen"
             :current="current?.path ?? null"
             @pick="pick"
+            @page="(n: TreeNode) => openFolder(n, false)"
           />
           <div v-if="paged.hasMore.value" ref="sentinel" class="abele-github-tree__note">
             {{ paged.total.value - paged.visible.value.length }} more…
@@ -47,7 +48,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, shallowRef, watch } from 'vue'
-import type { PaneType } from 'obsidian'
+import { Keymap, type PaneType } from 'obsidian'
 import Badge from '../obsidian/Badge.vue'
 import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
@@ -57,7 +58,14 @@ import GithubTreeNode from './GithubTreeNode.vue'
 import type { GithubClient } from '@/github/client'
 import { paneForClick } from '@/github/links'
 import { usePagedList } from '@/composables/usePagedList'
-import { ancestors, blobUrlAt, filterTree, findNode, type TreeNode } from '@/github/tree/fileTree'
+import {
+  ancestors,
+  blobUrlAt,
+  filterTree,
+  findNode,
+  treeUrl,
+  type TreeNode,
+} from '@/github/tree/fileTree'
 import { repoTree, type RepoTree } from '@/github/tree/repoTree'
 
 /**
@@ -181,8 +189,27 @@ const overlaid = () => {
   return !!el && el.ownerDocument.defaultView?.getComputedStyle(el).position === 'absolute'
 }
 
+/** A folder's page — its entries and README — in this tab, or in a new one. */
+const openFolder = (node: TreeNode, pane: PaneType | false) => {
+  if (!version.value) return
+  emit('open', treeUrl(props.repo, version.value.ref, node.path), pane, overlaid())
+}
+
+/**
+ * What a Mod-click on a folder asks for. A plain click folds it, so Mod is what opens its page:
+ * in this tab; Mod+Shift in a new one, Mod+Alt a split, as elsewhere.
+ */
+function folderPane(event: MouseEvent): PaneType | false | null {
+  const mod = Keymap.isModEvent(event)
+  if (!mod) return null
+  if (mod === true || mod === 'tab') return event.shiftKey ? 'tab' : false
+  return mod
+}
+
 const pick = (node: TreeNode, event: MouseEvent) => {
   if (node.kind === 'dir') {
+    const pane = folderPane(event)
+    if (pane !== null) return openFolder(node, pane)
     const open = shownOpen.value
     if (open.has(node.path)) open.delete(node.path)
     else {

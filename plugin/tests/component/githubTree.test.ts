@@ -202,6 +202,36 @@ describe('the file tree panel', () => {
     expect(row(wrapper, 'docs/guide.md').exists()).toBe(false)
   })
 
+  it('a folder unfolds on a click, and opens its page on Mod-click or its own button', async () => {
+    const { wrapper, onOpen } = openTab('https://github.com/o/r/blob/main/src/util/format.ts', REPO)
+    await flushPromises()
+    await click(headerIcon(wrapper, 'folder-tree'))
+    await vi.waitFor(() => expect(row(wrapper, 'docs').exists()).toBe(true))
+    onOpen.mockClear()
+
+    // Plain: folds and unfolds, opens nothing.
+    await click(row(wrapper, 'docs').element)
+    expect(row(wrapper, 'docs/guide.md').exists()).toBe(true)
+    expect(onOpen).not.toHaveBeenCalled()
+
+    // Mod: the folder's page, in this tab; Mod+Shift: in a new one.
+    await click(row(wrapper, 'docs').element, { metaKey: true })
+    expect(onOpen).toHaveBeenLastCalledWith('https://github.com/o/r/tree/main/docs', false)
+    await click(row(wrapper, 'docs').element, { metaKey: true, shiftKey: true })
+    expect(onOpen).toHaveBeenLastCalledWith('https://github.com/o/r/tree/main/docs', 'tab')
+    // Neither folded it.
+    expect(row(wrapper, 'docs/guide.md').exists()).toBe(true)
+
+    // The row's own button, which a phone can tap: the page, in this tab, nothing folded.
+    const button = row(wrapper, 'src').find('.abele-github-tree__open-folder')
+    expect(button.attributes('aria-label')).toBe("Open this folder's page")
+    await click(button.element)
+    expect(onOpen).toHaveBeenLastCalledWith('https://github.com/o/r/tree/main/src', false)
+    expect(row(wrapper, 'src').attributes('aria-expanded')).toBe('true')
+    // A file has no such button.
+    expect(row(wrapper, 'src/app.ts').find('.abele-github-tree__open-folder').exists()).toBe(false)
+  })
+
   it("stays at a pull request's head commit", async () => {
     const { wrapper, onOpen } = openTab('https://github.com/o/r/pull/7', PULL_ROUTES)
     await flushPromises()

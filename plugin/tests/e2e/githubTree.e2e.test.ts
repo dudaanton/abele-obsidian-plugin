@@ -152,6 +152,7 @@ describe.skipIf(!available)('folders of a repository in a GitHub tab', () => {
       active?: string[]
       filtered?: string[]
       fileUrl?: string
+      folderPage?: string
       stillOpen?: boolean
       activeAfter?: string[]
       beside?: { panelRight: number; mainLeft: number; panelWidth: number }
@@ -184,6 +185,14 @@ describe.skipIf(!available)('folders of a repository in a GitHub tab', () => {
       report.fileUrl = leaf.view.model.url
       input.value = ''
       input.dispatchEvent(new Event('input', { bubbles: true }))
+      await until(() => panelRow(root, 'src/util'), 5000)
+      // Mod-click on a folder: its page, in this tab; the file comes back after.
+      panelRow(root, 'src/util').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true, ctrlKey: false }))
+      await until(() => leaf.view.model.url.endsWith('/src/util') && folderRows(root).length, 15000)
+      report.folderPage = leaf.view.model.url
+      await leaf.history.back()
+      if (!(await until(() => loaded(leaf, 'src/util/format.ts'), 15000))) return { ...report, error: 'back never returned' }
+      input.dispatchEvent(new Event('input', { bubbles: true }))
       await until(() => panelRow(root, 'src/util/format.ts')?.classList.contains('is-active'), 10000)
       report.stillOpen = !!root.querySelector('.abele-github-tree')
       report.activeAfter = [...root.querySelectorAll('.abele-github-tree .tree-item-self.is-active')].map((r) => r.getAttribute('data-path'))
@@ -201,6 +210,7 @@ describe.skipIf(!available)('folders of a repository in a GitHub tab', () => {
     expect(r.active).toEqual(['src'])
     expect(r.filtered).toEqual(['src', 'src/util', 'src/util/format.ts'])
     expect(r.fileUrl).toBe(`${gh.web}/blob/${HEAD_SHA}/src/util/format.ts`)
+    expect(r.folderPage).toBe(`${gh.web}/tree/${HEAD_SHA}/src/util`)
     expect(r.stillOpen).toBe(true)
     expect(r.activeAfter).toEqual(['src/util/format.ts'])
     // Beside the content, not over it.

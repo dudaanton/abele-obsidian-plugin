@@ -316,6 +316,14 @@ describe('TreeItem', () => {
     expect(view.find('.tree-item-self').attributes('aria-expanded')).toBe('true')
   })
 
+  it('carries actions at the end of the row', () => {
+    const view = mount(TreeItem, {
+      props: { text: 'src' },
+      slots: { actions: '<span class="act">open</span>' },
+    })
+    expect(view.find('.tree-item-flair-outer .abele-tree-item__actions .act').exists()).toBe(true)
+  })
+
   it('is clicked by a click or by Enter, with the modifier keys held', async () => {
     const view = mount(TreeItem, { props: { text: 'app.ts' } })
     await view.find('.tree-item-self').trigger('click')

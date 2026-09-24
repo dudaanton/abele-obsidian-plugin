@@ -21,8 +21,10 @@
         <span v-if="icon" ref="glyph" class="abele-tree-item__glyph" />
         <span class="abele-tree-item__text">{{ text }}</span>
       </div>
-      <div v-if="flair" class="tree-item-flair-outer">
-        <span class="tree-item-flair">{{ flair }}</span>
+      <div v-if="flair || $slots.actions" class="tree-item-flair-outer">
+        <span v-if="flair" class="tree-item-flair">{{ flair }}</span>
+        <!-- Shown while the row is pointed at or focused; always on a phone, which cannot point. -->
+        <span v-if="$slots.actions" class="abele-tree-item__actions"><slot name="actions" /></span>
       </div>
     </div>
     <div v-if="collapsible && !collapsed && $slots.default" class="tree-item-children">
@@ -120,5 +122,20 @@ watch(() => [props.icon, props.collapsible], draw, { flush: 'post' })
 
 .abele-tree-item__self .tree-item-flair {
   white-space: nowrap;
+}
+
+.abele-tree-item__actions {
+  display: flex;
+  visibility: hidden;
+
+  .abele-tree-item__self:hover &,
+  .abele-tree-item__self:focus-within &,
+  body.is-phone & {
+    visibility: visible;
+  }
+
+  .abele-obsidian-icon {
+    padding: 0 var(--size-2-1);
+  }
 }
 </style>
