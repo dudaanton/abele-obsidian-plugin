@@ -18,6 +18,7 @@ import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import type { DiffLine } from './patch'
 import type { LineRange } from './urls'
 import { languageFor } from './languages'
+import { lineSelection, type SelectionHooks } from './lineSelection'
 
 export interface Viewer {
   /**
@@ -95,18 +96,24 @@ const TYPE_CLASS: Record<DiffLine['type'], string> = {
 
 /**
  * @param highlight indexes into `lines` to mark, as `linesFor` returns them
+ * @param hooks what a click on a line number does; hunk headers carry no number and are skipped
  */
 export function mountDiff(
   parent: HTMLElement,
   lines: DiffLine[],
   path: string,
-  highlight: number[] = []
+  highlight: number[] = [],
+  hooks: SelectionHooks = {}
 ): Viewer {
-  const marked = new Set(highlight)
   const widest = String(lines.reduce((max, l) => Math.max(max, l.old ?? 0, l.new ?? 0), 0)).replace(
     /\d/g,
     '0'
   )
+  const selection = lineSelection({
+    ...hooks,
+    initial: highlight.map((i) => i + 1),
+    selectable: (n) => lines[n - 1]?.old !== undefined || lines[n - 1]?.new !== undefined,
+  })
 
   const numbers = (side: 'old' | 'new') =>
     gutter({
@@ -117,20 +124,24 @@ export function mountDiff(
         return n === undefined ? null : new NumberMarker(String(n))
       },
       initialSpacer: () => new NumberMarker(widest),
+      domEventHandlers: selection.gutterHandlers,
     })
 
   const state = EditorState.create({ doc: lines.map((l) => l.text).join('\n') })
-  const decorations = lineDecorations(state, (n) => {
-    const i = n - 1
-    const classes = [TYPE_CLASS[lines[i]?.type ?? 'ctx']].filter(Boolean)
-    if (marked.has(i)) classes.push('abele-github-code__line_target')
-    return classes
-  })
+  const decorations = lineDecorations(state, (n) =>
+    [TYPE_CLASS[lines[n - 1]?.type ?? 'ctx']].filter(Boolean)
+  )
 
   return mount(
     parent,
     state.doc.toString(),
-    [numbers('old'), numbers('new'), EditorView.decorations.of(decorations), ...languageFor(path)],
+    [
+      numbers('old'),
+      numbers('new'),
+      EditorView.decorations.of(decorations),
+      selection.extension,
+      ...languageFor(path),
+    ],
     highlight.length > 0 ? Math.min(...highlight) + 1 : null
   )
 }
@@ -139,19 +150,21 @@ export function mountCode(
   parent: HTMLElement,
   text: string,
   path: string,
-  range?: LineRange
+  range?: LineRange,
+  hooks: SelectionHooks = {}
 ): Viewer {
-  const state = EditorState.create({ doc: text })
-  const decorations = range
-    ? lineDecorations(state, (n) =>
-        n >= range.start && n <= range.end ? ['abele-github-code__line_target'] : []
-      )
-    : Decoration.none
+  const initial: number[] = []
+  if (range) for (let n = range.start; n <= range.end; n++) initial.push(n)
+  const selection = lineSelection({ ...hooks, initial })
 
   return mount(
     parent,
     text,
-    [lineNumbers(), EditorView.decorations.of(decorations), ...languageFor(path)],
+    [
+      lineNumbers({ domEventHandlers: selection.gutterHandlers }),
+      selection.extension,
+      ...languageFor(path),
+    ],
     range ? range.start : null
   )
 }

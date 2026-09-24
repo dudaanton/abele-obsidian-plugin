@@ -192,6 +192,20 @@ own. The text is a copy: editing it changes what the card shows, not the chat. A
 since is found again by the message id and the `chat` line is corrected when the card is next
 pressed. Do not invent these blocks — a `message` id that is in no chat opens nothing.
 
+## GitHub links
+
+A GitHub tab writes plain markdown links into a note when the person asks it to — "Insert into
+note" on a comment, on the item itself or on selected lines of code — at the cursor of the note
+last worked in, on a line of its own:
+
+    [acme/widgets#42 · src/app.ts:10–20](https://github.com/acme/widgets/pull/42/files#diff-<sha256 of the path>R10-R20)
+    [acme/widgets#42 · comment by alice](https://github.com/acme/widgets/pull/42#issuecomment-123)
+    [acme/widgets@1a2b3c4 · src/app.ts:10–20](https://github.com/acme/widgets/blob/<full commit sha>/src/app.ts#L10-L20)
+
+The address is GitHub's own and opens the same place on GitHub; with the integration on, a click
+on it opens a GitHub tab scrolled to that line or comment. The label is only text. A link to a
+file is pinned to a commit, not a branch, so it keeps pointing at the lines it was made from.
+
 ## Places
 
 A place is a note with its coordinates in one property, written `lat, lon` — `coordinates:

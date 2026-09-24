@@ -1,6 +1,6 @@
 <template>
   <div class="abele-github-thread">
-    <GithubComment :comment="opening" :target="anchor" />
+    <GithubComment :comment="opening" :target="anchor" body />
     <GithubComment v-for="c in comments" :key="c.id" :comment="c" :target="anchor" />
     <GithubNotice v-if="problem" :text="problem" :busy="retrying" @retry="emit('retry')" />
     <div v-else-if="!comments.length" class="abele-github-thread__note">No comments yet.</div>

@@ -1,5 +1,5 @@
 import type { EditorState } from '@codemirror/state'
-import { editorEditorField, editorInfoField } from 'obsidian'
+import { editorEditorField, editorInfoField, type Editor, type EditorPosition } from 'obsidian'
 
 export function rangesOverlap(start1: number, end1: number, start2: number, end2: number): boolean {
   return start1 <= end2 && start2 <= end1
@@ -20,4 +20,27 @@ export function isNestedEditor(state: EditorState): boolean {
   const info = state.field(editorInfoField, false) as { editor?: { cm?: unknown } } | undefined
   const noteEditor = info?.editor?.cm
   return !!own && !!noteEditor && own !== noteEditor
+}
+
+/**
+ * Writes `text` at the cursor on a line of its own, so a paragraph is never cut in two: after the
+ * cursor's line when that line has text — with a blank line between when `blankLine` — and in
+ * place of the line when it is empty.
+ *
+ * @returns where the text ends
+ */
+export function insertOnOwnLine(editor: Editor, text: string, blankLine = false): EditorPosition {
+  const cursor = editor.getCursor()
+  const line = editor.getLine(cursor.line)
+  let startLine = cursor.line
+  if (line.trim()) {
+    const gap = blankLine ? '\n\n' : '\n'
+    editor.replaceRange(`${gap}${text}`, { line: cursor.line, ch: line.length })
+    startLine += gap.length
+  } else {
+    editor.replaceRange(text, { line: cursor.line, ch: 0 })
+  }
+  const written = text.split('\n')
+  const last = written[written.length - 1]
+  return { line: startLine + written.length - 1, ch: last.length }
 }

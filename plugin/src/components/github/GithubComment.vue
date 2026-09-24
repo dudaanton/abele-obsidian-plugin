@@ -14,6 +14,7 @@
         comment.location
       }}</span>
       <Badge v-if="comment.badge" :text="comment.badge" :accent="comment.badge === 'Answer'" />
+      <GithubLinkActions v-if="linker && link" :linker="linker" :link="link" :what="what" />
     </div>
     <Markdown
       v-if="comment.body"
@@ -34,20 +35,49 @@
 </template>
 
 <script setup lang="ts">
+import { computed, inject } from 'vue'
 import Badge from '../obsidian/Badge.vue'
 import Markdown from '../obsidian/Markdown.vue'
+import GithubLinkActions from './GithubLinkActions.vue'
 import type { Comment } from '@/github/api'
 import { formatDate } from '@/github/format'
+import { LINKER } from '@/github/linking'
+import { bodyLink, commentLink, type GithubLink } from '@/github/permalinks'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     comment: Comment
     /** The anchor the link pointed at; that comment is marked. */
     target?: string
     reply?: boolean
+    /** The item's own description, whose link is the item's. */
+    body?: boolean
   }>(),
   { target: undefined }
 )
+
+const linker = inject(LINKER, null)
+
+/** A link to this comment, or to the item for its description; null when there is none to make. */
+const link = computed((): (() => GithubLink) | null => {
+  const item = linker?.item()
+  if (!linker || !item) return null
+  if (props.body) return () => bodyLink(item, linker.title())
+  const anchor = props.comment.anchor
+  if (!anchor) return null
+  return () => commentLink(item, { anchor, author: props.comment.author }, props.reply)
+})
+
+const what = computed(() => {
+  const anchor = props.comment.anchor ?? ''
+  if (props.body) {
+    const kind = linker?.item()?.kind
+    return kind === 'pull' ? 'pull request' : (kind ?? 'item')
+  }
+  if (anchor.startsWith('pullrequestreview-')) return 'review'
+  if (anchor.startsWith('discussion_r')) return 'review comment'
+  return props.reply ? 'reply' : 'comment'
+})
 </script>
 
 <style lang="scss">

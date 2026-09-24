@@ -141,7 +141,9 @@ export interface BlobData {
 
 // `any` below is the API's own JSON, read once here and never passed on.
 
-const repoPath = (t: { owner: string; repo: string }) =>
+type RepoLike = { owner: string; repo: string }
+
+const repoPath = (t: RepoLike) =>
   `/repos/${encodeURIComponent(t.owner)}/${encodeURIComponent(t.repo)}`
 
 const labels = (raw: any[] | undefined): Label[] =>
@@ -465,6 +467,24 @@ export async function loadDiscussion(
  * is asked in turn, the shortest ref first — branch names are usually one segment — and the first
  * one GitHub has an answer for wins.
  */
+/**
+ * The full SHA of the commit a branch, tag or short SHA points at now, for a link that must not
+ * move when the branch does. A full SHA is its own answer and costs no request.
+ */
+export async function commitSha(
+  client: GithubClient,
+  repo: RepoLike,
+  ref: string
+): Promise<string> {
+  if (/^[0-9a-f]{40}$/i.test(ref)) return ref.toLowerCase()
+  const sha = await client.get<string>(`${repoPath(repo)}/commits/${encodeURIComponent(ref)}`, {
+    accept: 'application/vnd.github.sha',
+    text: true,
+    what: 'the commit the file was read at',
+  })
+  return sha.trim()
+}
+
 export async function loadBlob(client: GithubClient, t: Of<'blob'>): Promise<BlobData> {
   let lastError: unknown = null
   // Capped: a deep path with no match would otherwise cost one request per segment.

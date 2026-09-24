@@ -37,6 +37,9 @@
 
     <div v-if="expanded" class="abele-github-file__body">
       <div v-if="lines.length" ref="editorEl" class="abele-github-code" />
+      <Teleport v-if="barHost && selectedSpan && linker?.item()" :to="barHost">
+        <GithubSelectionBar :linker="linker" :label="selectedLabel" :link="selectedLink" />
+      </Teleport>
       <EmptyState v-else>
         {{
           file.diffNote
@@ -62,11 +65,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import Icon from '../obsidian/Icon.vue'
 import Badge from '../obsidian/Badge.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import GithubComment from './GithubComment.vue'
+import GithubSelectionBar from './GithubSelectionBar.vue'
+import { LINKER } from '@/github/linking'
+import { diffLink, diffSpan, type DiffSpan, type GithubLink } from '@/github/permalinks'
 import type { DiffFile } from '@/github/api'
 import type { DiffFileAnchor } from '@/github/urls'
 import { linesFor, parsePatch } from '@/github/patch'
@@ -99,13 +105,43 @@ const highlight = computed(() => {
 
 let viewer: Viewer | null = null
 
+const linker = inject(LINKER, null)
+/** Where CodeMirror draws the selection's bar just now, and which lines the person selected. */
+const barHost = shallowRef<HTMLElement | null>(null)
+const selectedSpan = shallowRef<DiffSpan | null>(null)
+
+const selectedLabel = computed(() => {
+  const s = selectedSpan.value
+  if (!s) return ''
+  const lines = s.start === s.end ? `Line ${s.start}` : `Lines ${s.start}–${s.end}`
+  return s.side === 'L' ? `${lines}, before the change` : lines
+})
+
+const selectedLink = (): GithubLink => {
+  const item = linker?.item()
+  if (!item || !selectedSpan.value) throw new Error('nothing is selected')
+  return diffLink(item, props.file, selectedSpan.value)
+}
+
+const selectionHooks = {
+  onSelect: (span: { from: number; to: number } | null) => {
+    selectedSpan.value = span ? diffSpan(lines.value, span.from - 1, span.to - 1) : null
+  },
+  onBarHost: (host: HTMLElement | null, removed?: HTMLElement) => {
+    if (host) barHost.value = host
+    else if (barHost.value === removed) barHost.value = null
+  },
+}
+
 /** Safe to call twice in a row: each call replaces what the one before it drew. */
 const draw = async () => {
   await nextTick()
   viewer?.destroy()
   viewer = null
   if (!expanded.value || !editorEl.value) return
-  viewer = mountDiff(editorEl.value, lines.value, props.file.path, highlight.value)
+  selectedSpan.value = null
+  barHost.value = null
+  viewer = mountDiff(editorEl.value, lines.value, props.file.path, highlight.value, selectionHooks)
 }
 
 let unpin = () => {}
@@ -249,6 +285,18 @@ onBeforeUnmount(() => {
   .cm-gutterElement {
     padding: 0 var(--size-4-1);
     text-align: right;
+  }
+
+  // A line number selects its line, as on GitHub.
+  .abele-github-code__gutter .cm-gutterElement,
+  .cm-lineNumbers .cm-gutterElement {
+    cursor: var(--cursor-link);
+  }
+
+  // The bar under a selection sits in the editor's text, which keeps its spacing.
+  &__bar {
+    white-space: normal;
+    cursor: default;
   }
 
   &__line_add {

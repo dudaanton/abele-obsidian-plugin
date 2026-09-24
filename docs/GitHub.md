@@ -67,6 +67,39 @@ A pull request with many files lists them and draws a file's diff only when it i
 with five or fewer opens them all. A file GitHub will not send a diff for — binary, or too
 large — says so; the tab's own button opens the page on GitHub.
 
+## Linking to a line or a comment
+
+Every comment, review, review comment, discussion comment and reply, and the item's own
+description, has two buttons in its header: **Copy a link** and **Insert a link into the note**.
+
+In a diff and in a file, a click on a line number selects that line and Shift-click extends the
+selection to another; a click on the only selected line clears it. The selected lines are marked
+like the lines a link points at, and a bar under them offers **Copy link** and **Insert into
+note**.
+
+The link is markdown with a readable label, and the address is GitHub's own, so it opens the
+same place on GitHub and — with the integration on — in a tab here, scrolled to it:
+
+| What | Link |
+|---|---|
+| Lines of a pull request's diff | `[acme/widgets#42 · src/app.ts:10–20](…/pull/42/files#diff-<hash>R10-R20)` |
+| Lines of a commit's diff | `[acme/widgets@1a2b3c4 · src/app.ts:5](…/commit/<sha>#diff-<hash>R5)` |
+| Lines of a file | `[acme/widgets@1a2b3c4 · src/app.ts:10–20](…/blob/<sha>/src/app.ts#L10-L20)` |
+| A comment | `[acme/widgets#42 · comment by alice](…/pull/42#issuecomment-123)` |
+| A review, a review comment | `… · review by alice` (`#pullrequestreview-…`), `… · review comment by alice` (`#discussion_r…`) |
+| A discussion comment, a reply | `… · comment by alice`, `… · reply by alice` (`#discussioncomment-…`) |
+
+In a diff, an added or unchanged line is linked on the new side (`R`), a removed one on the old
+side (`L`, and the label says "before"); a selection from a removed line to an added one is
+linked by its added lines. A file's link is pinned to the commit it was read at rather than the
+branch — asking GitHub for that commit once, when the first link is made — so it does not drift
+as the branch moves on.
+
+**Insert into note** writes the link at the cursor of the note last worked in: after the
+cursor's line when that line has text, in its place when it is empty, and leaves the cursor after
+it so the next link goes under it. With no note open it says so and writes nothing. **Copy
+link** puts the same markdown on the clipboard.
+
 ## Access
 
 Without a token only public repositories can be read, at 60 requests an hour for the whole

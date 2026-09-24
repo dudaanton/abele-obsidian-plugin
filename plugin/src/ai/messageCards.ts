@@ -4,6 +4,7 @@ import { createApp, h } from 'vue'
 import Card from '@/components/obsidian/Card.vue'
 import Markdown from '@/components/obsidian/Markdown.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { insertOnOwnLine } from '@/helpers/editorHelpers'
 import { ChatService } from './ChatService'
 import { CommentService } from './CommentService'
 import type { ChatSession } from './ChatSession'
@@ -117,16 +118,8 @@ export async function insertMessageCard(session: ChatSession, messageId: string)
     return false
   }
 
-  const editor = view.editor
-  const cursor = editor.getCursor()
-  const line = editor.getLine(cursor.line)
   const block = formatMessageBlock({ chat, message: messageId, text: message.content })
-  if (line.trim()) {
-    const at = { line: cursor.line, ch: line.length }
-    editor.replaceRange(`\n\n${block}\n`, at)
-  } else {
-    editor.replaceRange(`${block}\n`, { line: cursor.line, ch: 0 })
-  }
+  insertOnOwnLine(view.editor, `${block}\n`, true)
   new Notice(`Added to ${view.file?.basename ?? 'the note'}`)
   return true
 }

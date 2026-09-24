@@ -143,7 +143,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import Button from '../obsidian/Button.vue'
 import Tabs from '../obsidian/Tabs.vue'
@@ -160,6 +160,8 @@ import { targetKey, shortName, type GithubTarget } from '@/github/urls'
 import { formatDate, splitMessage } from '@/github/format'
 import { useLoad } from '@/github/useLoad'
 import { elementTop, pinIntoView } from '@/github/scrollTo'
+import { LINKER, createLinker } from '@/github/linking'
+import { GlobalStore } from '@/stores/GlobalStore'
 import {
   loadBlob,
   loadCommit,
@@ -339,6 +341,18 @@ const head = computed<Head>(() => {
     meta: meta.filter(Boolean),
   }
 })
+
+// Comments, diffs and the file view make links to themselves through this.
+provide(
+  LINKER,
+  createLinker({
+    app: GlobalStore.getInstance().app,
+    shown: () => (target.value ? shown.value : null),
+    data: () => main.data.value,
+    title: () => head.value.title,
+    client,
+  })
+)
 
 const tabTitle = computed(() => {
   const t = shown.value
