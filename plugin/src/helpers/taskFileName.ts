@@ -2,7 +2,7 @@ import type { App, TFile } from 'obsidian'
 import { parseNoteContent } from './notesUtils'
 import { getFolderFromPath, resolvePath } from './pathsHelpers'
 import { cleanTaskName } from './tasksUtils'
-import { getAvailablePath, readFileContent } from './vaultUtils'
+import { getAvailablePath } from './vaultUtils'
 
 /**
  * A task note is named after the first line of its text, and renamed whenever that line
@@ -65,6 +65,12 @@ export function stripSelfLinks(line: string, isSelf: (linkpath: string) => boole
     .trim()
 }
 
+/** Two names for one line: equal once cleaned, less the dots and spaces a name may lose. */
+function sameName(a: string, b: string): boolean {
+  const bare = (name: string) => cleanTaskName(name).replace(/[.\s]+$/, '')
+  return bare(a) === bare(b)
+}
+
 /**
  * The path a task note should have for its current text, or null when it already has it.
  * `date` is appended to the name of a recurring task, as its copies would otherwise collide.
@@ -74,16 +80,22 @@ export async function taskFileTarget(
   file: TFile,
   date?: string | null
 ): Promise<string | null> {
-  const parsed = await parseNoteContent(file, await readFileContent(file))
+  // The file, not an editor it is open in: this answers a change written to the file, and an
+  // editor that has not loaded its text — a background tab, a note in reading view on a phone
+  // — reads as empty, which renamed a task being ticked off to "New Task".
+  const parsed = await parseNoteContent(file, await app.vault.read(file))
   const lines = parsed.content.split('\n').filter((line: string) => line.trim() !== '')
 
-  let title = 'New Task'
-  if (lines.length > 0) {
-    const line = stripSelfLinks(lines[0], (target) => isSelfLink(app, file, target))
-    // A first line that is nothing but a link to the note names nothing new.
-    if (line === '') return null
-    title = cleanTaskName(date ? `${line} ${date}` : line) || 'New Task'
-  }
+  // A text that names nothing leaves the name it has. "New Task" is what a new note is called,
+  // not what an existing one becomes when its text is cleared or cannot be seen.
+  if (lines.length === 0) return null
+  const line = stripSelfLinks(lines[0], (target) => isSelfLink(app, file, target))
+  // A first line that is nothing but a link to the note names nothing new.
+  if (line === '') return null
+  const title = cleanTaskName(date ? `${line} ${date}` : line)
+  if (!title) return null
+  // The name already is this line, as the file system keeps it: some drop the dots at the end.
+  if (sameName(title, file.basename)) return null
 
   const newPath = await getAvailablePath(
     resolvePath(getFolderFromPath(file.path), title),
