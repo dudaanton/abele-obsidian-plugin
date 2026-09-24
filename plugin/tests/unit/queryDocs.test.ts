@@ -215,14 +215,15 @@ describe('what an agent is told about links to lines', () => {
 
     expect(text).toContain('[[Projects/Budget#L12-L18|')
     expect(text).toContain('(Projects/Budget.md#L12-L18)')
-    expect(text).toContain('line_numbers')
+    expect(text).toContain('`read` numbers them')
     expect(text).toContain('frontmatter')
   })
 
-  it('says under the file tools that read numbers lines on request', () => {
+  it('says under the file tools that read numbers lines, and that the numbers are not text', () => {
     const text = readTopic('tools', 'files') ?? ''
-    expect(text).toContain('line_numbers')
-    expect(text).toContain('start_line')
+    expect(text).toContain('`read` numbers every line')
+    expect(text).toContain('`line_numbers: false`')
+    expect(text).toContain('never copy them into `edit`')
   })
 
   it('is found by searching for it', () => {

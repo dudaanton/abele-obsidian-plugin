@@ -12,9 +12,10 @@ easy to get wrong. Which of these an agent actually has depends on its own tool 
   and is the one for a bulk, rule-driven change. `write` overwrites the whole file — reach for
   it only when the whole file is being rewritten.
 - `create` makes a new file and its parent folders.
-- `read` returns the file as it is. With `line_numbers: true`, or `start_line`/`end_line` for a
-  window, the lines come numbered from 1 over the whole file — the numbers a link to lines
-  (`[[Note#L12-L18|label]]`, see the vault section) opens at.
+- `read` numbers every line — the number, a tab, the line — from 1 over the whole file,
+  frontmatter included: the numbers a link to lines (`[[Note#L12-L18|label]]`, see the vault
+  section) opens at. `start_line`/`end_line` read a window; `line_numbers: false` gives the file
+  exactly as it is. The numbers are not part of the file: never copy them into `edit` or `write`.
 - `edit_selection` exists only inside a comment chat on a note. It rewrites the passage that
   comment is anchored to and nothing else in the note; there is no path to give it. A comment on
   a message in a chat does not have it.

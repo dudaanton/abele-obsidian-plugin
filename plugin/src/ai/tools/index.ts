@@ -2,6 +2,7 @@ import type { AgentTool } from '../client'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { EDIT_SELECTION_TOOL } from '../types'
 import { createReadFileTool } from './ReadFileTool'
+import { RETIRED_DESCRIPTIONS } from './fileToolDescriptions'
 import { createLsTool } from './LsTool'
 import { createFindTool } from './FindTool'
 import { createEditFileTool } from './EditFileTool'
@@ -170,7 +171,7 @@ export function createAgentTools(options: AgentToolsOptions = {}): AgentTool[] {
       : (ChatSession.getActiveSession()?.agent.value ?? null)
 
   const tools = [
-    createReadFileTool(),
+    createReadFileTool({ numbered: true }),
     createLsTool(),
     createFindTool(),
     createEditFileTool(),
@@ -226,8 +227,10 @@ export function createAgentTools(options: AgentToolsOptions = {}): AgentTool[] {
   const customDescriptions = AbeleConfig.getInstance().ai.prompts?.toolDescriptions
   if (customDescriptions) {
     for (const tool of tools) {
-      if (customDescriptions[tool.name]) {
-        tool.description = customDescriptions[tool.name]
+      const saved = customDescriptions[tool.name]
+      // A default the person never touched, saved from an older version, is not theirs.
+      if (saved && !RETIRED_DESCRIPTIONS[tool.name]?.includes(saved)) {
+        tool.description = saved
       }
     }
   }

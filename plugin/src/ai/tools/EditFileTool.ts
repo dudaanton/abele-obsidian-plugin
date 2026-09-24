@@ -1,4 +1,5 @@
 import type { AgentTool } from '../client'
+import { EDIT_DESCRIPTION } from './fileToolDescriptions'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
@@ -7,8 +8,7 @@ export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
     name: 'edit',
     label: 'Edit File',
-    description:
-      'Edit a file by replacing an exact string match with new content. File must be in workspace scope.',
+    description: EDIT_DESCRIPTION,
     parameters: {
       type: 'object',
       properties: {

@@ -1,4 +1,5 @@
 import { DEFAULT_MEMORY_TEMPLATE } from './agents/memory'
+import { EDIT_DESCRIPTION, READ_DESCRIPTION } from './tools/fileToolDescriptions'
 import type { TFile } from 'obsidian'
 import type { AgentDefinition, SessionOverrides } from './agents/types'
 import type { MapBlock } from '@/helpers/mapConfig'
@@ -343,10 +344,10 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
     compactPrompt:
       'Summarize the conversation below into a concise context summary. Preserve key decisions, file paths, code changes, and any pending tasks. The summary will replace the conversation history, so include everything needed to continue the work.\n\n{{messages}}',
     toolDescriptions: {
-      read: 'Read the content of a file. Only files within the current workspace scope are accessible.',
+      read: READ_DESCRIPTION,
       ls: 'List files and subdirectories in a folder. Only shows items within workspace scope. Use without path to list scope root folders.',
       find: 'Search for files within workspace scope by name pattern, frontmatter property, or content text.',
-      edit: 'Edit a file by replacing an exact string match with new content. File must be in workspace scope.',
+      edit: EDIT_DESCRIPTION,
       create: 'Create a new file in the vault with the specified content.',
       rm: 'Delete a file (moves to trash). File must be in workspace scope.',
       mv: 'Move or rename a file. Source must be in workspace scope.',

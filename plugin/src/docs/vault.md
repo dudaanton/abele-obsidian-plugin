@@ -32,8 +32,8 @@ the lines, not just the note. The range goes where a heading would:
 
 A click opens the note with those lines selected in the editor, or flashed in reading view;
 Mod-click opens it in a new tab. Lines count from 1 over the whole file, **frontmatter
-included**, so take the numbers from `read` with `line_numbers: true` (or `start_line` and
-`end_line`) rather than counting by eye. Give the link a label saying what is there. A range
+included**, exactly as `read` numbers them — take them from there rather than counting by
+eye. Give the link a label saying what is there. A range
 past the end of the note stops at its last line. Without the plugin the link still opens the
 note, only at the top.
 

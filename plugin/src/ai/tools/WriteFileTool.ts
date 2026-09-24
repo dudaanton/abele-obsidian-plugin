@@ -1,4 +1,5 @@
 import type { AgentTool } from '../client'
+import { NUMBERS_NOT_TEXT } from './fileToolDescriptions'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
@@ -8,7 +9,8 @@ export function createWriteFileTool(opts?: { skipScope?: boolean }): AgentTool {
     name: 'write',
     label: 'Write File',
     description:
-      'Overwrite a file with new content entirely. Use this when you need to rewrite the whole file instead of making a targeted edit. File must be in workspace scope.',
+      'Overwrite a file with new content entirely. Use this when you need to rewrite the whole file instead of making a targeted edit. File must be in workspace scope.' +
+      NUMBERS_NOT_TEXT,
     parameters: {
       type: 'object',
       properties: {
