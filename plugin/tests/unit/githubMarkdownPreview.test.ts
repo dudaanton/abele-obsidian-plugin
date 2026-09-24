@@ -231,9 +231,9 @@ describe('links in the rendered file', () => {
     })
   })
 
-  it('a folder goes to GitHub, which is the only thing that shows one', () => {
+  it('a folder opens in the tab too, as its listing', () => {
     expect(hrefAction('../', FILE)).toEqual({
-      kind: 'external',
+      kind: 'repo',
       url: 'https://github.com/acme/widgets/tree/feature/x/docs',
     })
   })

@@ -96,10 +96,17 @@ const OLD = `// Kept for the old dashboard; removed by the rework.
 export const legacy = true
 `
 
+/** A folder's README, rendered under its listing. */
+const SRC_README = `# Source
+
+The dashboard's code: the app, the loader and the helpers in [util](util/).
+`
+
 export type Files = Record<string, string>
 
 export const BASE_FILES: Files = {
   'README.md': README_BASE,
+  'src/README.md': SRC_README,
   'src/app.ts': APP_BASE,
   'src/long.ts': longFile(false),
   'src/old.ts': OLD,
@@ -108,15 +115,20 @@ export const BASE_FILES: Files = {
 
 export const HEAD_FILES: Files = {
   'README.md': README_HEAD,
+  'src/README.md': SRC_README,
   'src/app.ts': APP_HEAD,
   'src/loader.ts': LOADER,
   'src/long.ts': longFile(true),
   'src/util/format.ts': FORMAT,
 }
 
+/** A branch whose name holds a slash; it stands where `main` does. */
+export const SLASHED_BRANCH = 'feature/paging'
+
 /** The files at a ref: a branch name or either commit. */
 export function filesAt(ref: string): Files | null {
   if (ref === 'main' || ref === HEAD_SHA || ref === 'HEAD' || ref === FIRST_SHA) return HEAD_FILES
+  if (ref === SLASHED_BRANCH) return HEAD_FILES
   if (ref === BASE_SHA) return BASE_FILES
   return null
 }
@@ -383,4 +395,14 @@ export function fixtures(web: string) {
       },
     },
   }
+}
+
+/** The folders the files are in, each once: `src`, `src/util`. */
+export function foldersOf(files: Files): string[] {
+  const out = new Set<string>()
+  for (const path of Object.keys(files)) {
+    const parts = path.split('/').slice(0, -1)
+    for (let i = 1; i <= parts.length; i++) out.add(parts.slice(0, i).join('/'))
+  }
+  return [...out].sort()
 }

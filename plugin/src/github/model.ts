@@ -16,4 +16,10 @@ export interface GithubViewModel {
    * decides. Part of the tab's state, so back, forward and a restart keep it.
    */
   mode?: BlobMode
+  /**
+   * The file tree panel, open or closed. The tab's own: kept in its state, so a restart brings it
+   * back, and unchanged by the links followed in it. Unset until the person says, when the
+   * default for the device applies.
+   */
+  tree?: boolean
 }

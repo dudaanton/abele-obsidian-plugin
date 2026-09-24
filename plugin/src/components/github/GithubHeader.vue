@@ -1,8 +1,14 @@
 <template>
   <header class="abele-github-header">
     <div class="abele-github-header__top">
-      <div class="abele-github-header__repo">{{ repo }}</div>
+      <div class="abele-github-header__repo">{{ crumbs ? '' : repo }}</div>
       <div class="abele-github-header__actions">
+        <Icon
+          icon="folder-tree"
+          :active="tree"
+          :tooltip="tree ? 'Hide the file tree' : 'Show the repository\'s files beside this'"
+          @click="emit('tree')"
+        />
         <Icon icon="search" tooltip="Find in this tab (Mod+F)" @click="emit('find')" />
         <Icon
           icon="file-search"
@@ -30,7 +36,13 @@
       </div>
     </div>
     <h2 class="abele-github-header__title">
-      {{ title }}
+      <GithubBreadcrumbs
+        v-if="crumbs"
+        :crumbs="crumbs"
+        :ref-label="refLabel"
+        @open="(url: string, pane: PaneType | false) => emit('open', url, pane)"
+      />
+      <template v-else>{{ title }}</template>
       <span v-if="number" class="abele-github-header__number">#{{ number }}</span>
     </h2>
     <div v-if="state || labels?.length" class="abele-github-header__badges">
@@ -46,7 +58,10 @@
 <script setup lang="ts">
 import Icon from '../obsidian/Icon.vue'
 import Badge from '../obsidian/Badge.vue'
+import GithubBreadcrumbs from './GithubBreadcrumbs.vue'
+import type { PaneType } from 'obsidian'
 import type { Label } from '@/github/api'
+import type { Crumb } from '@/github/tree/fileTree'
 
 withDefaults(
   defineProps<{
@@ -60,8 +75,22 @@ withDefaults(
     loading?: boolean
     /** Offer "Chat about this". */
     chat?: boolean
+    /** For a file or a folder: the way up to the repository, shown as the title. */
+    crumbs?: Crumb[]
+    /** The version the crumbs are at, beside them. */
+    refLabel?: string
+    /** The file tree panel is open. */
+    tree?: boolean
   }>(),
-  { number: undefined, url: undefined, state: undefined, labels: () => [], meta: () => [] }
+  {
+    number: undefined,
+    url: undefined,
+    state: undefined,
+    labels: () => [],
+    meta: () => [],
+    crumbs: undefined,
+    refLabel: undefined,
+  }
 )
 
 const emit = defineEmits<{
@@ -70,6 +99,8 @@ const emit = defineEmits<{
   (e: 'chat'): void
   (e: 'find'): void
   (e: 'search'): void
+  (e: 'tree'): void
+  (e: 'open', url: string, pane: PaneType | false): void
 }>()
 
 /** The states that mean "still going": the ones worth drawing the eye to. */
@@ -110,6 +141,11 @@ const accentStates = ['open', 'draft']
     font-weight: var(--h2-weight);
     line-height: var(--line-height-tight);
     overflow-wrap: anywhere;
+  }
+
+  // A path reads as a path, not as a headline.
+  &__title .abele-github-crumbs {
+    font-size: var(--font-ui-large);
   }
 
   &__number {

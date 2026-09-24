@@ -25,6 +25,7 @@ not invent its own.
 | `ConfirmModal` | The question asked before something is destroyed. |
 | `Table` | Columns and rows, a cell slot for anything richer than text. The one element that scrolls sideways, within itself. |
 | `Image` | A picture by vault path or URL. |
+| `TreeItem` | One row of a tree — a file list, a folder listing — in Obsidian's own `tree-item` classes, so hover, the active row, indentation and the fold arrow are the theme's. `collapsible` draws the arrow and shows the children slot while open; `flair` puts muted text at the end. |
 
 If a screen needs something the kit does not have, the change belongs in the kit — with a
 test — not in the screen.

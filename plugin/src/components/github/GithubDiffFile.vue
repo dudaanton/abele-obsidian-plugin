@@ -22,18 +22,28 @@
         </span>
         <!-- A real link, so hovering shows where it goes and a right click offers what a link
              does. The click itself is Obsidian's link handling, which the GitHub tabs take. -->
-        <a
-          v-if="openUrl"
-          ref="pathLink"
-          class="abele-github-file__path-link"
-          :href="openUrl"
-          @pointerdown="refreshLink"
-          @mouseenter="refreshLink"
-          @focus="refreshLink"
-          @click.stop
-          @keydown.enter.stop
-          >{{ file.path }}</a
-        >
+        <template v-if="openUrl">
+          <!-- Each folder of the path is its listing at the same commit. -->
+          <template v-for="dir in folders" :key="dir.url"
+            ><a
+              class="abele-github-file__folder-link"
+              :href="dir.url"
+              @click.stop="openFolder($event, dir.url)"
+              @keydown.enter.stop
+              >{{ dir.name }}</a
+            >/</template
+          ><a
+            ref="pathLink"
+            class="abele-github-file__path-link"
+            :href="openUrl"
+            @pointerdown="refreshLink"
+            @mouseenter="refreshLink"
+            @focus="refreshLink"
+            @click.stop
+            @keydown.enter.stop
+            >{{ fileName }}</a
+          >
+        </template>
         <template v-else>{{ file.path }}</template>
       </span>
       <span class="abele-github-file__stats">
@@ -112,6 +122,7 @@ import { mountDiff, type Viewer } from '@/github/codeViewer'
 import { LINE_CONTEXT, elementTop, pinIntoView } from '@/github/scrollTo'
 import { fileUrl, lineOnSide } from '@/github/permalinks'
 import { paneForClick } from '@/github/links'
+import { ancestors, treeUrl } from '@/github/tree/fileTree'
 import type { PaneType } from 'obsidian'
 
 const props = withDefaults(
@@ -247,6 +258,28 @@ function urlAt(line: number | undefined): string | null {
   return fileUrl(item, sha, props.file.path, line)
 }
 
+const fileName = computed(() => props.file.path.split('/').pop() ?? props.file.path)
+
+/** The folders above the file, each a link to its listing at the commit the file opens at. */
+const folders = computed(() => {
+  const item = linker?.item()
+  const sha = deleted.value ? props.refs?.base : props.refs?.head
+  if (!item || !sha) return []
+  return ancestors(props.file.path).map((path) => ({
+    name: path.split('/').pop() ?? path,
+    url: treeUrl(item, sha, path),
+  }))
+})
+
+const openFolder = (evt: MouseEvent, url: string) => {
+  // Obsidian's link handling may have taken it already, when links open in tabs.
+  if (evt.defaultPrevented) return
+  evt.preventDefault()
+  const pane = paneForClick(evt, false)
+  if (pane === null) window.open(url)
+  else emit('open', url, pane)
+}
+
 /** The line to open at, now: the selection's, or the one in view. */
 function currentLine(): number | undefined {
   const side = deleted.value ? 'old' : 'new'
@@ -361,7 +394,8 @@ onBeforeUnmount(() => {
     overflow-wrap: anywhere;
   }
 
-  &__path-link {
+  &__path-link,
+  &__folder-link {
     color: inherit;
     text-decoration: none;
 

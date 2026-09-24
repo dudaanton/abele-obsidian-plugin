@@ -145,6 +145,7 @@ export function createLinker(o: {
         case 'commit':
           return { ...repo, kind: 'commit', sha: (data as CommitData).sha || t.sha, pull: t.pull }
         case 'blob':
+        case 'tree':
           return null
       }
     },

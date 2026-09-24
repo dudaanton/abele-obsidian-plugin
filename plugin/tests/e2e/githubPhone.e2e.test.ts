@@ -101,7 +101,8 @@ const measure = (web: string, section: 'conversation' | 'files') =>
       if (!ready) return { ...report, error: 'the pull request never showed' }
       await wait(800)
 
-      const content = leaf.view.contentEl
+      // The part of the tab that scrolls: the content beside the file tree panel.
+      const content = leaf.view.contentEl.querySelector('.abele-github-layout__main') ?? leaf.view.contentEl
       const edge = Math.min(content.getBoundingClientRect().right, window.innerWidth)
       const name = (el) => el.tagName.toLowerCase() + '.' + [...el.classList].join('.')
       const over = []
@@ -249,5 +250,81 @@ describe.skipIf(!available)('a pull request on a phone', () => {
       'Copy startApp',
     ])
     expect((await menuAfter(prepared.brace!)).items).toEqual([])
+  })
+
+  it('the file tree is a drawer over the code, which keeps its width, and goes once a file is picked', () => {
+    const r = evalAsync<{
+      error?: string
+      startsClosed?: boolean
+      position?: string
+      panel?: { left: number; right: number }
+      screen?: number
+      main?: { before: number; after: number; sideways: number }
+      over?: string[]
+      shot?: string
+      opened?: string
+      closedAfter?: boolean
+    }>(`(async () => {
+      ${PRELUDE}
+      const url = ${JSON.stringify(`${gh.web}/blob/main/src/util/format.ts`)}
+      const leaf = githubLeaves()[0] ?? app.workspace.getLeaf(false)
+      await leaf.setViewState({ type: 'abele-github', state: { url }, active: true })
+      await app.workspace.revealLeaf(leaf)
+      const root = leaf.view.containerEl
+      if (!(await until(() => loaded(leaf, 'src/util/format.ts') && root.querySelector('.cm-line'), 20000)))
+        return { error: 'the file never showed' }
+      const main = root.querySelector('.abele-github-layout__main')
+      const report = { startsClosed: !root.querySelector('.abele-github-tree'), screen: window.innerWidth }
+      const before = main.getBoundingClientRect().width
+      // The file with its breadcrumbs, before the drawer covers it.
+      try {
+        const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
+        require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
+        if (img) require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/github-tree-file.png', img.toPNG())
+      } catch (e) {}
+      const icon = [...root.querySelectorAll('.abele-github-header__actions .abele-obsidian-icon')]
+        .find((i) => i.querySelector('svg.lucide-folder-tree'))
+      if (!icon) return { ...report, error: 'no tree icon' }
+      icon.click()
+      const row = (path) => root.querySelector('.abele-github-tree .tree-item-self[data-path="' + path + '"]')
+      if (!(await until(() => row('src/util/format.ts')?.classList.contains('is-active'), 20000)))
+        return { ...report, error: 'the panel never marked the file' }
+      await wait(600)
+      const panel = root.querySelector('.abele-github-layout__panel')
+      const p = panel.getBoundingClientRect()
+      report.position = getComputedStyle(panel).position
+      report.panel = { left: Math.round(p.left), right: Math.round(p.right) }
+      report.main = { before: Math.round(before), after: Math.round(main.getBoundingClientRect().width),
+        sideways: main.scrollWidth - main.clientWidth }
+      const edge = window.innerWidth
+      report.over = [...panel.querySelectorAll('*')]
+        .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.right > edge + 1 })
+        .map((el) => el.tagName.toLowerCase() + '.' + [...el.classList].join('.')).slice(0, 8)
+      require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
+      const shot = ${JSON.stringify(SHOTS)} + '/github-tree-drawer.png'
+      for (let attempt = 0; attempt < 3 && !report.shot; attempt++) {
+        try {
+          const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
+          if (img) { require('fs').writeFileSync(shot, img.toPNG()); report.shot = shot }
+        } catch (e) { await wait(500) }
+      }
+      row('src/app.ts').click()
+      await until(() => loaded(leaf, 'src/app.ts'), 20000)
+      report.opened = leaf.view.model.url
+      report.closedAfter = !root.querySelector('.abele-github-tree')
+      return report
+    })()`)
+    expect(r.error).toBeUndefined()
+    expect(r.startsClosed).toBe(true)
+    expect(r.position).toBe('absolute')
+    expect(r.panel!.left).toBeGreaterThanOrEqual(0)
+    expect(r.panel!.right).toBeLessThanOrEqual(r.screen!)
+    // The code keeps its whole width: the drawer lies over it.
+    expect(r.main!.after).toBe(r.main!.before)
+    expect(r.main!.sideways).toBe(0)
+    expect(r.over).toEqual([])
+    expect(r.shot).toMatch(/\.png$/)
+    expect(r.opened).toMatch(/\/blob\/main\/src\/app\.ts$/)
+    expect(r.closedAfter).toBe(true)
   })
 })

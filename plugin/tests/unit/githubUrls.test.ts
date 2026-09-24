@@ -136,7 +136,6 @@ describe('files at a ref', () => {
 describe('what stays with the browser', () => {
   it.each([
     'https://github.com/o/r',
-    'https://github.com/o/r/tree/main/src',
     'https://github.com/o/r/issues',
     'https://github.com/o/r/pulls',
     'https://github.com/o/r/issues/abc',

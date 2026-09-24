@@ -20,11 +20,13 @@ GitHub**.
 | `…/owner/repo/blob/<ref>/<path>#L10-L20` | The file at that branch, tag or commit, with those lines marked. |
 | `…/blob/<ref>/README.md`, `…/docs/guide.md#install` | A markdown file, rendered — scrolled to that heading when the link names one. |
 | `…/blob/<ref>/README.md?plain=1`, `…README.md#L10-L20` | A markdown file as code, as GitHub shows it for these links. |
+| `…/owner/repo/tree/<ref>/<path>`, `…/tree/<ref>` | A folder at that branch, tag or commit — the repository's root without a path: its folders, its files and its README. |
 
 `#issuecomment-…`, `#discussioncomment-…` and `#pullrequestreview-…` scroll to that comment. A
 review comment — `…/pull/7#discussion_r…`, or `…/pull/7/files#r…` — opens the files, with the
-comment's file open and the comment marked. Anything else — a repository's front page, a folder,
-a release, a gist — still goes to the browser.
+comment's file open and the comment marked. A file link that turns out to name a folder lists the
+folder, and a folder link that names a file shows the file, as GitHub redirects them. Anything
+else — a repository's front page, a release, a gist — still goes to the browser.
 
 The tab scrolls so that what the link names sits near its top — a line of code with a few lines
 above it for context. It keeps it there while the tab settles: comments above it render and load
@@ -85,7 +87,7 @@ came from. That is what lets lines be linked from the rendered view (below). Fro
 shown as a YAML block. What it means for the rendering:
 
 - A relative link opens that file of the repository in the tab, at the same branch, tag or
-  commit; a link to a folder goes to GitHub, which is the only thing that shows one. A link to
+  commit; a link to a folder opens that folder's listing, at the same ref. A link to
   a heading — `#install` — scrolls the preview to it. A web or mail address opens as usual.
 - A relative image loads from the repository's raw files at the same ref
   (`raw.githubusercontent.com` for github.com, `<server>/<owner>/<repo>/raw/<ref>/<path>` for an
@@ -102,13 +104,56 @@ with five or fewer opens them all. A file GitHub will not send a diff for — bi
 large — says so; the tab's own button opens the page on GitHub.
 
 Every changed file — of a pull request or a commit — can be opened whole: the file button in its
-header, or its path, which is a link. It opens the file at the commit the diff is of (the pull
+header, or its name, which is a link; each folder of its path is a link too, to that folder's
+listing at the same commit (see [Folders and the file tree](#folders-and-the-file-tree)). It opens
+the file at the commit the diff is of (the pull
 request's head commit, or the commit itself), and a file the change deleted as it was before it
 (the base commit, or the commit's parent). It opens at the first selected line of the diff; with
 nothing selected, at the line at the top of the tab when the tab is scrolled into that diff;
 otherwise at the top of the file — where a markdown file opens rendered, and at a line as code,
 by the rule above. The clicks are those of any link here: plain follows the tab rule, Mod opens a
 new tab, Alt the browser.
+
+## Folders and the file tree
+
+A link to lines of a file shows the lines; the code around them is a click away, at the same
+version of the repository.
+
+**Breadcrumbs.** A file's title is the way up to its repository — `acme / widgets / src / util /
+format.ts` — with the branch, tag or short commit it was read at beside it. The repository and
+each folder are links to their listing at that same ref: a file read at a commit leads to the
+folders as they were at that commit, not as the branch has them now. The folders of a changed
+file's path in a pull request or a commit link the same way, at the pull request's head commit
+or the commit itself (the base, or the parent, for a file the change deleted). The clicks are
+those of any link here: plain follows the tab rule, so the folder usually opens in the same tab,
+whose back arrow returns to the file; Mod opens a new tab; Alt the browser.
+
+**A folder in a tab** lists its folders, then its files with their sizes — submodules between
+them, which open on GitHub — and renders its README under the list, the way GitHub does:
+`README.md` first, any other README otherwise, as rendered text like every piece of GitHub text
+here. A relative link in that README resolves in the folder. A folder of thousands of entries
+draws them a page at a time as it scrolls. A branch whose name holds a slash is found the way a
+file's is: each split of the link is asked, the shortest branch name first.
+
+**The file tree panel** — the folder-tree button in the tab's header — shows the whole
+repository beside what the tab shows, at the version it shows: a pull request's head commit, the
+commit, the ref a file or a folder was read at, and the default branch for an issue or a
+discussion. The file on screen is marked and its folders are open; a folder on screen is marked
+and open. Folders fold and unfold with a click; the field at the top filters by name, keeping the
+folders on the way to every match (a thousand at most, and it says when there are more). A click
+on a file opens it at that same version, by the tab rule, Mod for a new tab; the panel stays, and
+marks the file that opened.
+
+The repository's file list is one request, kept for the session per repository and commit, so
+opening file after file from the panel asks for nothing more. GitHub stops a list past 100,000
+entries; then the panel reads a folder when it is opened, and the filter searches only the
+folders opened so far — it says so.
+
+Each tab keeps its panel open or closed, through back, forward and a restart. A new tab on a
+desktop starts the way the last one was left, as a choice of that device's. On a phone the panel
+always starts closed, and when open it is a drawer over the code rather than a column beside it —
+the code keeps its whole width; a tap beside the drawer or its close button puts it away, and so
+does picking a file. A narrow pane on a desktop gets the drawer too.
 
 ## GitHub text is someone else's
 
@@ -205,11 +250,11 @@ With the AI chat on, a GitHub tab is something to talk about:
   their code quoted under it: a diff's lines as a diff, a file's in its language.
 
 The agent answering reads GitHub with its own tools. It can see which GitHub tabs are open, what
-each shows — the item, the section in front, the diffs drawn open, the lines selected and their
-code — read issues, pull requests and discussions with their conversations, a pull request's files
+each shows — the item or folder, the section in front, the diffs drawn open, the lines selected
+and their code, whether the file tree is open beside it — read issues, pull requests and discussions with their conversations, a pull request's files
 and one file's diff at a time, files and folders at any branch or commit, commits and
 comparisons, and search code, issues and pull requests. It can also put something in front of you:
-open an item in a GitHub tab, with lines marked. A link it writes in its answer opens in a tab
+open an item or a folder in a GitHub tab, with lines marked. A link it writes in its answer opens in a tab
 like a link in a note.
 
 These tools read and nothing more; the integration still writes nothing to GitHub. They use the

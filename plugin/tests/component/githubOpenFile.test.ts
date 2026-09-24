@@ -136,7 +136,9 @@ describe('a file of a pull request', () => {
     await vi.waitFor(() => expect(wrapper.findAll('.cm-editor')).toHaveLength(3))
 
     const link = fileEl(wrapper, 'src/app.ts').find('a.abele-github-file__path-link')
-    expect(link.text()).toBe('src/app.ts')
+    // The file's name is the link to it; the folder before it, a link to the folder.
+    expect(fileEl(wrapper, 'src/app.ts').find('.abele-github-file__path').text()).toBe('src/app.ts')
+    expect(link.text()).toBe('app.ts')
     expect(link.attributes('href')).toBe(`https://github.com/o/r/blob/${HEAD}/src/app.ts`)
 
     await clickLineNumber(wrapper, 'src/app.ts', 4)

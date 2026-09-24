@@ -28,6 +28,7 @@ import {
   REPO,
   filesAt,
   fixtures,
+  foldersOf,
   tarball,
 } from './fakeGithubRepo'
 
@@ -130,22 +131,40 @@ function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) 
     return notFound(res)
   }
 
-  m = /^\/contents\/(.+)$/.exec(path)
+  m = /^\/contents(?:\/(.*))?$/.exec(path)
   if (m) {
     const files = filesAt(url.searchParams.get('ref') ?? 'main')
-    const file = m[1]
+    const file = (m[1] ?? '').replace(/\/$/, '')
     if (!files) return notFound(res)
     if (file in files) {
       if (mediaTypes(accept).some((t) => RAW_TYPES.includes(t)))
         return send(res, 200, files[file], 'application/vnd.github.raw; charset=utf-8')
       return send(res, 200, contentsObject(file, files[file], web))
     }
-    const inside = Object.keys(files).filter((p) => p.startsWith(`${file}/`))
+    // A folder: what is directly in it, folders and files, as the contents API lists them.
+    const prefix = file ? `${file}/` : ''
+    const inside = Object.keys(files).filter((p) => p.startsWith(prefix))
     if (!inside.length) return notFound(res)
+    const names = new Map<string, { type: string; size: number }>()
+    for (const p of inside) {
+      const [name, ...deeper] = p.slice(prefix.length).split('/')
+      names.set(
+        name,
+        deeper.length
+          ? { type: 'dir', size: 0 }
+          : { type: 'file', size: Buffer.byteLength(files[p]) }
+      )
+    }
     return send(
       res,
       200,
-      inside.map((p) => ({ name: p, path: p, type: 'file', _links: {} }))
+      [...names].map(([name, e]) => ({
+        name,
+        path: `${prefix}${name}`,
+        type: e.type,
+        size: e.size,
+        _links: {},
+      }))
     )
   }
 
@@ -153,11 +172,16 @@ function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) 
   if (m) {
     const files = filesAt(m[1])
     if (!files) return notFound(res)
-    const tree = Object.entries(files).map(([p, text]) => ({
-      path: p,
-      type: 'blob',
-      size: Buffer.byteLength(text),
-    }))
+    // Folders as well as files, the way GitHub lists a whole tree.
+    const tree = [
+      ...foldersOf(files).map((p) => ({ path: p, type: 'tree', sha: blobSha(`tree:${p}`) })),
+      ...Object.entries(files).map(([p, text]) => ({
+        path: p,
+        type: 'blob',
+        size: Buffer.byteLength(text),
+        sha: blobSha(text),
+      })),
+    ]
     return send(res, 200, { sha: m[1], tree, truncated: false })
   }
 

@@ -1,184 +1,211 @@
 <template>
-  <div ref="root" class="abele-github">
-    <EmptyState v-if="!enabled">
-      The GitHub integration is off. Turn it on in Abele settings → GitHub.
-    </EmptyState>
-
-    <div v-else-if="!target" class="abele-github__fallback">
-      <EmptyState text="This is not a GitHub link a tab here can show." />
-      <Button
-        v-if="model.url"
-        text="Open in browser"
-        icon="external-link"
-        tooltip="Open the link in the browser instead"
-        @click="openInBrowser(model.url)"
+  <GithubLayout :panel="panelShown" @dismiss="setPanel(false)">
+    <template #panel>
+      <GithubTreePanel
+        :repo="repoRef!"
+        :client="client()"
+        :version-key="versionKey"
+        :resolve="resolveVersion"
+        :current="current"
+        @open="openFromPanel"
+        @close="setPanel(false)"
       />
-    </div>
+    </template>
+    <div ref="root" class="abele-github">
+      <EmptyState v-if="!enabled">
+        The GitHub integration is off. Turn it on in Abele settings → GitHub.
+      </EmptyState>
 
-    <template v-else>
-      <GithubFindBar
-        v-if="tabSearch.findOpen.value && root"
-        ref="findBar"
-        :root="root"
-        :hooks="tabSearch.finderHooks"
-        @close="tabSearch.findOpen.value = false"
-      />
-      <GithubHeader
-        :repo="`${target.owner}/${target.repo}`"
-        :title="head.title"
-        :number="head.number"
-        :url="browserUrl"
-        :state="head.state"
-        :labels="head.labels"
-        :meta="head.meta"
-        :loading="main.loading.value"
-        :chat="!!model.screen.link && linker.canAsk()"
-        @refresh="reload"
-        @browser="openInBrowser(browserUrl)"
-        @chat="chatAbout"
-        @find="showFind"
-        @search="tabSearch.openSearch"
-      />
-
-      <!-- Kept while the tab follows a result, so the next result is still there to take. -->
-      <GithubCodeSearch
-        v-if="tabSearch.searchOpen.value"
-        :code="tabSearch.code"
-        :ready="!!main.data.value"
-        :has-changes="tabSearch.hasChanges.value"
-        :request="tabSearch.searchRequest.value"
-        @open="(url: string, newTab: boolean) => props.onOpen?.(url, newTab ? 'tab' : false)"
-        @close="tabSearch.searchOpen.value = false"
-      />
-
-      <div v-if="main.error.value" class="abele-github__error">
-        <EmptyState :text="main.error.value" />
-        <Button text="Try again" icon="refresh-cw" tooltip="Ask GitHub again" @click="reload" />
+      <div v-else-if="!target" class="abele-github__fallback">
+        <EmptyState text="This is not a GitHub link a tab here can show." />
+        <Button
+          v-if="model.url"
+          text="Open in browser"
+          icon="external-link"
+          tooltip="Open the link in the browser instead"
+          @click="openInBrowser(model.url)"
+        />
       </div>
-      <EmptyState v-else-if="!main.data.value" text="Loading from GitHub…" />
 
-      <template v-else-if="shown.kind === 'issue' && issue">
-        <GithubThread
-          :author="issue.author"
-          :created-at="issue.createdAt"
-          :body="issue.body"
-          :comments="issue.comments"
-          :anchor="anchor"
-          :incomplete="!issue.commentsComplete"
-          :problem="issue.commentsProblem"
-          :retrying="conversationRetrying"
-          @retry="retryConversation"
+      <template v-else>
+        <GithubFindBar
+          v-if="tabSearch.findOpen.value && root"
+          ref="findBar"
+          :root="root"
+          :hooks="tabSearch.finderHooks"
+          @close="tabSearch.findOpen.value = false"
         />
-      </template>
+        <GithubHeader
+          :repo="`${target.owner}/${target.repo}`"
+          :title="head.title"
+          :number="head.number"
+          :url="browserUrl"
+          :state="head.state"
+          :labels="head.labels"
+          :meta="head.meta"
+          :loading="main.loading.value"
+          :chat="!!model.screen.link && linker.canAsk()"
+          :crumbs="crumbs"
+          :ref-label="crumbRef"
+          :tree="panelOpen"
+          @tree="setPanel(!panelOpen)"
+          @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
+          @refresh="reload"
+          @browser="openInBrowser(browserUrl)"
+          @chat="chatAbout"
+          @find="showFind"
+          @search="tabSearch.openSearch"
+        />
 
-      <template v-else-if="shown.kind === 'discussion' && discussion">
-        <GithubThread
-          :author="discussion.author"
-          :created-at="discussion.createdAt"
-          :body="discussion.body"
-          :comments="discussion.comments"
-          :anchor="anchor"
-          :missing="discussion.totalComments - discussion.comments.length"
+        <!-- Kept while the tab follows a result, so the next result is still there to take. -->
+        <GithubCodeSearch
+          v-if="tabSearch.searchOpen.value"
+          :code="tabSearch.code"
+          :ready="!!main.data.value"
+          :has-changes="tabSearch.hasChanges.value"
+          :request="tabSearch.searchRequest.value"
+          @open="(url: string, newTab: boolean) => props.onOpen?.(url, newTab ? 'tab' : false)"
+          @close="tabSearch.searchOpen.value = false"
         />
-      </template>
 
-      <template v-else-if="shown.kind === 'pull' && pull">
-        <Tabs v-model="pullTab" :tabs="pullTabs" level="secondary" class="abele-github__tabs" />
-        <GithubThread
-          v-if="pullTab === 'conversation'"
-          :author="pull.author"
-          :created-at="pull.createdAt"
-          :body="pull.body"
-          :comments="pull.comments"
-          :anchor="anchor"
-          :incomplete="!pull.commentsComplete"
-          :problem="pull.commentsProblem"
-          :retrying="conversationRetrying"
-          @retry="retryConversation"
-        />
-        <template v-else-if="pullTab === 'files'">
-          <div v-if="files.error.value" class="abele-github__error">
-            <EmptyState :text="files.error.value" />
-            <Button
-              text="Try again"
-              icon="refresh-cw"
-              tooltip="Ask GitHub again"
-              @click="files.load"
-            />
-          </div>
-          <EmptyState v-else-if="!files.data.value" text="Loading the changed files…" />
+        <div v-if="main.error.value" class="abele-github__error">
+          <EmptyState :text="main.error.value" />
+          <Button text="Try again" icon="refresh-cw" tooltip="Ask GitHub again" @click="reload" />
+        </div>
+        <EmptyState v-else-if="!main.data.value" text="Loading from GitHub…" />
+
+        <template v-else-if="shown.kind === 'issue' && issue">
+          <GithubThread
+            :author="issue.author"
+            :created-at="issue.createdAt"
+            :body="issue.body"
+            :comments="issue.comments"
+            :anchor="anchor"
+            :incomplete="!issue.commentsComplete"
+            :problem="issue.commentsProblem"
+            :retrying="conversationRetrying"
+            @retry="retryConversation"
+          />
+        </template>
+
+        <template v-else-if="shown.kind === 'discussion' && discussion">
+          <GithubThread
+            :author="discussion.author"
+            :created-at="discussion.createdAt"
+            :body="discussion.body"
+            :comments="discussion.comments"
+            :anchor="anchor"
+            :missing="discussion.totalComments - discussion.comments.length"
+          />
+        </template>
+
+        <template v-else-if="shown.kind === 'pull' && pull">
+          <Tabs v-model="pullTab" :tabs="pullTabs" level="secondary" class="abele-github__tabs" />
+          <GithubThread
+            v-if="pullTab === 'conversation'"
+            :author="pull.author"
+            :created-at="pull.createdAt"
+            :body="pull.body"
+            :comments="pull.comments"
+            :anchor="anchor"
+            :incomplete="!pull.commentsComplete"
+            :problem="pull.commentsProblem"
+            :retrying="conversationRetrying"
+            @retry="retryConversation"
+          />
+          <template v-else-if="pullTab === 'files'">
+            <div v-if="files.error.value" class="abele-github__error">
+              <EmptyState :text="files.error.value" />
+              <Button
+                text="Try again"
+                icon="refresh-cw"
+                tooltip="Ask GitHub again"
+                @click="files.load"
+              />
+            </div>
+            <EmptyState v-else-if="!files.data.value" text="Loading the changed files…" />
+            <template v-else>
+              <GithubNotice
+                v-if="files.data.value.reviewCommentsProblem"
+                :text="files.data.value.reviewCommentsProblem"
+                :busy="files.loading.value"
+                @retry="files.load"
+              />
+              <GithubFiles
+                :files="files.data.value.files"
+                :complete="files.data.value.complete"
+                :anchor="fileAnchor"
+                :comment-anchor="anchor"
+                :refs="{ head: pull.headSha, base: pull.baseSha }"
+                @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
+              />
+            </template>
+          </template>
           <template v-else>
-            <GithubNotice
-              v-if="files.data.value.reviewCommentsProblem"
-              :text="files.data.value.reviewCommentsProblem"
-              :busy="files.loading.value"
-              @retry="files.load"
-            />
-            <GithubFiles
-              :files="files.data.value.files"
-              :complete="files.data.value.complete"
-              :anchor="fileAnchor"
-              :comment-anchor="anchor"
-              :refs="{ head: pull.headSha, base: pull.baseSha }"
-              @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
-            />
+            <div v-if="commits.error.value" class="abele-github__error">
+              <EmptyState :text="commits.error.value" />
+              <Button
+                text="Try again"
+                icon="refresh-cw"
+                tooltip="Ask GitHub again"
+                @click="commits.load"
+              />
+            </div>
+            <EmptyState v-else-if="!commits.data.value" text="Loading the commits…" />
+            <div v-else class="abele-github__commits">
+              <Card
+                v-for="c in commits.data.value"
+                :key="c.sha"
+                :title="splitMessage(c.message).title"
+                :subtitle="`${c.sha.slice(0, 7)} · ${c.author} · ${formatDate(c.date)}`"
+                icon="git-commit-horizontal"
+                clickable
+                @click="openCommit(c.sha)"
+              />
+            </div>
           </template>
         </template>
-        <template v-else>
-          <div v-if="commits.error.value" class="abele-github__error">
-            <EmptyState :text="commits.error.value" />
-            <Button
-              text="Try again"
-              icon="refresh-cw"
-              tooltip="Ask GitHub again"
-              @click="commits.load"
-            />
-          </div>
-          <EmptyState v-else-if="!commits.data.value" text="Loading the commits…" />
-          <div v-else class="abele-github__commits">
-            <Card
-              v-for="c in commits.data.value"
-              :key="c.sha"
-              :title="splitMessage(c.message).title"
-              :subtitle="`${c.sha.slice(0, 7)} · ${c.author} · ${formatDate(c.date)}`"
-              icon="git-commit-horizontal"
-              clickable
-              @click="openCommit(c.sha)"
-            />
-          </div>
+
+        <template v-else-if="shown.kind === 'commit' && commit">
+          <GithubText
+            v-if="splitMessage(commit.message).body && repo"
+            class="abele-github__message"
+            :text="splitMessage(commit.message).body"
+            :repo="repo"
+            as-document
+          />
+          <GithubFiles
+            :files="commit.files"
+            :anchor="fileAnchor"
+            :refs="{ head: commit.sha, base: commit.parentSha }"
+            @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
+          />
+        </template>
+
+        <template v-else-if="shown.kind === 'blob' && blob">
+          <GithubBlob
+            :text="blob.text"
+            :file="blobFile!"
+            :range="blobRange"
+            :plain="blobPlain"
+            :mode="model.mode"
+            :client="client()"
+            @mode="setMode"
+            @open="(url: string) => onOpen?.(url)"
+          />
+        </template>
+
+        <template v-else-if="shown.kind === 'tree' && folder">
+          <GithubFolder
+            :folder="folder"
+            :repo="repoRef!"
+            :client="client()"
+            @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
+          />
         </template>
       </template>
-
-      <template v-else-if="shown.kind === 'commit' && commit">
-        <GithubText
-          v-if="splitMessage(commit.message).body && repo"
-          class="abele-github__message"
-          :text="splitMessage(commit.message).body"
-          :repo="repo"
-          as-document
-        />
-        <GithubFiles
-          :files="commit.files"
-          :anchor="fileAnchor"
-          :refs="{ head: commit.sha, base: commit.parentSha }"
-          @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
-        />
-      </template>
-
-      <template v-else-if="shown.kind === 'blob' && blob">
-        <GithubBlob
-          :text="blob.text"
-          :file="blobFile!"
-          :range="blobRange"
-          :plain="blobPlain"
-          :mode="model.mode"
-          :client="client()"
-          @mode="setMode"
-          @open="(url: string) => onOpen?.(url)"
-        />
-      </template>
-    </template>
-  </div>
+    </div>
+  </GithubLayout>
 </template>
 
 <script setup lang="ts">
@@ -195,13 +222,20 @@ import GithubBlob from './GithubBlob.vue'
 import GithubNotice from './GithubNotice.vue'
 import GithubFindBar from './GithubFindBar.vue'
 import GithubCodeSearch from './GithubCodeSearch.vue'
+import GithubFolder from './GithubFolder.vue'
+import GithubTreePanel from './GithubTreePanel.vue'
+import GithubLayout from './GithubLayout.vue'
+import { useTreePanel } from '@/github/tree/useTreePanel'
+import { itemHead, itemTabTitle, placeLink, type ItemHead } from '@/github/itemHead'
+import type { FolderData } from '@/github/tree/folder'
+import { loadItem, type ItemData } from '@/github/loadItem'
 import type { PaneType } from 'obsidian'
 import { useTabSearch } from '@/github/search/useTabSearch'
 import type { GithubViewModel } from '@/github/model'
 import { anchorSlug, type RepoFile } from '@/github/markdownLinks'
 import type { BlobMode } from '@/github/markdownPreview'
 import type { GithubClient } from '@/github/client'
-import { targetKey, shortName, type GithubTarget } from '@/github/urls'
+import { targetKey, type GithubTarget } from '@/github/urls'
 import { formatDate, splitMessage } from '@/github/format'
 import { useLoad } from '@/github/useLoad'
 import { elementTop, pinIntoView } from '@/github/scrollTo'
@@ -212,12 +246,7 @@ import { repoWeb } from '@/github/origin'
 import { bodyLink, type GithubLink } from '@/github/permalinks'
 import { GlobalStore } from '@/stores/GlobalStore'
 import {
-  loadBlob,
-  loadCommit,
-  loadDiscussion,
-  loadIssue,
   loadIssueConversation,
-  loadPull,
   loadPullCommits,
   loadPullConversation,
   loadPullFiles,
@@ -225,7 +254,6 @@ import {
   type CommitData,
   type DiscussionData,
   type IssueData,
-  type Label,
   type PullData,
 } from '@/github/api'
 
@@ -252,33 +280,41 @@ const target = computed(() => props.model.target)
  * What is actually on screen. An issue link whose number turns out to be a pull request is shown
  * as the pull request, the way GitHub redirects it.
  */
-const promoted = ref<Of<'pull'> | null>(null)
+const promoted = ref<GithubTarget | null>(null)
 const shown = computed<GithubTarget>(() => promoted.value ?? target.value)
 
 const client = () => props.clientFor(target.value.host)
 
-const main = useLoad<IssueData | PullData | DiscussionData | CommitData | BlobData>(async () => {
-  const t = target.value
-  switch (t.kind) {
-    case 'issue': {
-      const issue = await loadIssue(client(), t)
-      if (!issue.isPull) return issue
-      promoted.value = { ...t, kind: 'pull', tab: 'conversation' }
-      return loadPull(client(), promoted.value)
-    }
-    case 'pull':
-      return loadPull(client(), t)
-    case 'discussion':
-      return loadDiscussion(client(), t)
-    case 'commit':
-      return loadCommit(client(), t)
-    case 'blob':
-      return loadBlob(client(), t)
-  }
-})
+const main = useLoad<ItemData>(() =>
+  loadItem(client(), target.value, (t) => {
+    promoted.value = t
+  })
+)
 
 const files = useLoad(() => loadPullFiles(client(), shown.value as Of<'pull'>))
 const commits = useLoad(() => loadPullCommits(client(), shown.value as Of<'pull'>))
+
+// Where the tab is in its repository: the breadcrumbs, and the file tree panel beside it.
+const {
+  panelOpen,
+  panelShown,
+  setPanel,
+  repoRef,
+  versionKey,
+  resolveVersion,
+  current,
+  crumbs,
+  crumbRef,
+  openFromPanel,
+} = useTreePanel({
+  model: props.model,
+  enabled: () => props.enabled,
+  shown: computed(() => (target.value ? shown.value : null)),
+  data: () => main.data.value,
+  client,
+  open: (url, pane) => props.onOpen?.(url, pane),
+  saved: () => props.onState?.(),
+})
 
 // Find in the tab, code search and go to definition.
 const findBar = ref<InstanceType<typeof GithubFindBar>>()
@@ -307,6 +343,9 @@ const commit = computed(() =>
   shown.value.kind === 'commit' ? (main.data.value as CommitData) : null
 )
 const blob = computed(() => (shown.value.kind === 'blob' ? (main.data.value as BlobData) : null))
+const folder = computed(() =>
+  shown.value.kind === 'tree' ? (main.data.value as FolderData) : null
+)
 
 const anchor = computed(() => target.value?.anchor)
 const fileAnchor = computed(() => {
@@ -384,51 +423,7 @@ const browserUrl = computed(() => {
   return props.model.url || data?.url || ''
 })
 
-/** A commit SHA as GitHub shows one; a branch or a tag as it is. */
-const shortRef = (ref: string) => (/^[0-9a-f]{40}$/i.test(ref) ? ref.slice(0, 7) : ref)
-
-interface Head {
-  title: string
-  number?: number
-  state?: string
-  labels: Label[]
-  meta: string[]
-}
-
-const head = computed<Head>(() => {
-  const t = shown.value
-  const data = main.data.value
-  const fallback: Head = { title: t ? shortName(t) : '', labels: [], meta: [] }
-  if (!t || !data) return fallback
-
-  if (t.kind === 'commit') {
-    const c = data as CommitData
-    return {
-      ...fallback,
-      title: splitMessage(c.message).title,
-      meta: [c.sha.slice(0, 7), c.author, formatDate(c.date), ...(t.pull ? [`in #${t.pull}`] : [])],
-    }
-  }
-  if (t.kind === 'blob') {
-    const b = data as BlobData
-    return { ...fallback, title: b.path, meta: [`at ${shortRef(b.ref)}`] }
-  }
-
-  const item = data as IssueData | PullData | DiscussionData
-  const meta = [`${item.author} opened ${formatDate(item.createdAt)}`]
-  if (t.kind === 'pull') {
-    const p = item as PullData
-    meta.push(`${p.head} → ${p.base}`, `+${p.additions} −${p.deletions}`)
-  }
-  if (t.kind === 'discussion') meta.push((item as DiscussionData).category)
-  return {
-    title: item.title,
-    number: item.number,
-    state: item.state,
-    labels: item.labels,
-    meta: meta.filter(Boolean),
-  }
-})
+const head = computed<ItemHead>(() => itemHead(shown.value, main.data.value))
 
 // Comments, diffs and the file view make links to themselves through this.
 const linker = createLinker({
@@ -451,19 +446,13 @@ provide(GITHUB_REPO, repo)
 const screen = props.model.screen
 provide(SCREEN, screen)
 
-/** A link to the item itself — for a file, to the file at the ref it was read at. */
+/** A link to the item itself — for a file or a folder, at the ref it was read at. */
 const itemLink = computed<GithubLink | null>(() => {
   const t = shown.value
   const data = main.data.value
   if (!t || !data) return null
-  if (t.kind === 'blob') {
-    const b = data as BlobData
-    const path = b.path.split('/').map(encodeURIComponent).join('/')
-    return {
-      label: `${t.owner}/${t.repo}@${b.ref} · ${b.path}`,
-      url: `${repoWeb(t)}/blob/${b.ref}/${path}`,
-    }
-  }
+  const place = placeLink(t, data)
+  if (place !== undefined) return place
   const item = linker.item()
   return item ? bodyLink(item, head.value.title) : null
 })
@@ -486,13 +475,9 @@ const chatAbout = () => {
   if (subject) void linker.ask(subject.link, subject.quote)
 }
 
-const tabTitle = computed(() => {
-  const t = shown.value
-  if (!t || !main.data.value) return ''
-  if (t.kind === 'blob')
-    return `${(main.data.value as BlobData).path.split('/').pop()} @ ${shortRef((main.data.value as BlobData).ref)}`
-  return `${shortName(t)} ${head.value.title}`
-})
+const tabTitle = computed(() =>
+  shown.value && main.data.value ? itemTabTitle(shown.value, main.data.value, head.value.title) : ''
+)
 
 watch(tabTitle, (title) => {
   if (title) props.onTitle?.(title)

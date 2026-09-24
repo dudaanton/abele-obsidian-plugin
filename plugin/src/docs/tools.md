@@ -62,8 +62,9 @@ Every item is named by a link or `owner/repo#12`; a repository by `owner/repo` o
 it. Answers are capped and say where the rest is — a page, a diff window, a line range. Ask for
 the next part rather than trying to get everything at once.
 
-- `github_views` — what the person has open in GitHub tabs: the item, the pull request section in
-  front, the diffs drawn open, and the lines they selected, with the code. Start here whenever
+- `github_views` — what the person has open in GitHub tabs: the item or folder, the pull request
+  section in front, the diffs drawn open, the lines they selected, with the code, and whether the
+  file tree panel is open beside it. Start here whenever
   they say "this PR", "this file", "these lines".
 - `github_read` — an issue, pull request or discussion: head, description, conversation twenty
   comments a page (`page`).
@@ -90,7 +91,8 @@ the next part rather than trying to get everything at once.
   says so. Binary files and files over 1 MB are not searched. Prefer it to `github_search` for
   code: any branch, exact line numbers, regular expressions, and no token needed for a public
   repository.
-- `github_open` — puts something in front of the person in a GitHub tab. `start_line` and
+- `github_open` — puts something in front of the person in a GitHub tab: an item, a file, or a
+  folder by its `tree/<ref>/<path>` link. `start_line` and
   `end_line` mark lines: with `path` in a pull request's or commit's diff (`old: true` for removed
   lines), or in a file link. It reuses the tab showing the item, else the GitHub tab used last.
 

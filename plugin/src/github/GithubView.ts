@@ -64,9 +64,10 @@ export class GithubView extends ItemView {
   }
 
   getState(): Record<string, unknown> {
-    return this.model.mode
-      ? { url: this.model.url, mode: this.model.mode }
-      : { url: this.model.url }
+    const state: Record<string, unknown> = { url: this.model.url }
+    if (this.model.mode) state.mode = this.model.mode
+    if (this.model.tree !== undefined) state.tree = this.model.tree
+    return state
   }
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
@@ -81,6 +82,10 @@ export class GithubView extends ItemView {
       this.model.target = target
       // A link followed says nothing of it: the file opens the way the link asks.
       this.model.mode = mode === 'preview' || mode === 'code' ? mode : undefined
+      // The panel is the tab's, not the link's: only a tab that has not decided takes it from the
+      // state — a restart. Back and forward leave it as it is.
+      const tree = (state as { tree?: unknown }).tree
+      if (this.model.tree === undefined && typeof tree === 'boolean') this.model.tree = tree
       this.model.nonce++
       this.refreshHeader()
     }
@@ -130,7 +135,7 @@ export class GithubView extends ItemView {
     })
     this.contentEl.empty()
     this.contentEl.addClass('abele-github-view')
-    const mountPoint = this.contentEl.createDiv()
+    const mountPoint = this.contentEl.createDiv({ cls: 'abele-github-view__mount' })
     this.vue = createApp(GithubItem, {
       model: this.model,
       enabled: githubSettings().enabled,

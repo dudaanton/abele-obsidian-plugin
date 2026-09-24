@@ -98,8 +98,9 @@ export function hrefAction(href: string, file: RepoFile): HrefAction {
   const segments = path ? resolveRepoPath(file.path, path) : file.path.split('/')
   const ref = encodePath(file.ref.split('/'))
   if (segments.length === 0 || path.endsWith('/')) {
-    // A folder: GitHub's own tree view, which no tab here shows.
-    return { kind: 'external', url: `${repoBase(file)}/tree/${ref}/${encodePath(segments)}` }
+    // A folder: its listing, which opens in the tab like a file does.
+    const folder = segments.length ? `/${encodePath(segments)}` : ''
+    return { kind: 'repo', url: `${repoBase(file)}/tree/${ref}${folder}` }
   }
   return {
     kind: 'repo',

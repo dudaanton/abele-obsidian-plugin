@@ -394,6 +394,18 @@ describe('github_file', () => {
     expect(out.split('\n').slice(1)).toEqual(['lib/', 'b.ts  (10 bytes)'])
   })
 
+  it('lists the folder a tree link names, its branch holding a slash', async () => {
+    serve({
+      '/repos/acme/widgets/contents/src?ref=feature%2Fpaging': {
+        json: [{ name: 'app.ts', type: 'file', size: 3 }],
+      },
+    })
+    const out = await run('github_file', {
+      repo: 'https://github.com/acme/widgets/tree/feature/paging/src',
+    })
+    expect(out).toContain('app.ts  (3 bytes)')
+  })
+
   it('maps the whole tree of an unknown codebase, from the default branch', async () => {
     serve({
       '/repos/acme/widgets': { json: { default_branch: 'trunk' } },

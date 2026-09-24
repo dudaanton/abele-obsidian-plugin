@@ -9,6 +9,7 @@ import { GithubClient } from './client'
 import { checkAccess, parseRepoInput, type AccessReport } from './accessCheck'
 import { endpoints, normaliseHost, parseGithubUrl, targetKey, type GithubTarget } from './urls'
 import { DEFAULT_GITHUB_SETTINGS, type GithubSettings } from './settings'
+import { forgetRepoTrees } from './tree/repoTree'
 
 export const GITHUB_VIEW_TYPE = 'abele-github'
 
@@ -88,6 +89,7 @@ export function checkGithubAccess(repoInput: string): Promise<AccessReport> {
 /** Forgets every cached answer — for a token that was just replaced, say. */
 export function resetGithubClients(): void {
   clients.clear()
+  forgetRepoTrees()
 }
 
 interface KeyedView {

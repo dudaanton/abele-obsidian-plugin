@@ -82,6 +82,8 @@ function wanted(named: Named, params: Record<string, unknown>) {
   if (t?.kind === 'blob') {
     rest = t.rest
     lines = t.lines
+  } else if (t?.kind === 'tree') {
+    rest = t.rest
   } else if (
     named.rest &&
     (named.rest[0] === 'tree' || named.rest[0] === 'blob') &&

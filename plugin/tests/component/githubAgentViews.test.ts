@@ -133,6 +133,19 @@ describe('what is on screen', () => {
     expect(model.screen.link?.label).toBe('o/r@main · src/app.ts')
   })
 
+  it('names a folder, and says when the file tree panel is open beside it', async () => {
+    const { wrapper, model } = openTab('https://github.com/o/r/tree/main/src', {
+      '/repos/o/r/contents/src': { json: [{ name: 'a.ts', path: 'src/a.ts', type: 'file' }] },
+    })
+    await vi.waitFor(() => expect(wrapper.find('.abele-github-folder').exists()).toBe(true))
+    model.tree = true
+    leaves = [{ view: { model, containerEl: { isShown: () => true } } }]
+
+    const out = await run(createGithubViewsTool())
+    expect(out).toContain('[on screen] Folder o/r: src/ — src')
+    expect(out).toContain('The file tree panel is open beside it')
+  })
+
   it('says so when no GitHub tab is open', async () => {
     expect(await run(createGithubViewsTool())).toContain('No GitHub tab is open')
   })
@@ -347,6 +360,17 @@ describe('github_open', () => {
       start_line: 3,
     })
     expect(opened[0].url).toBe('https://github.com/acme/widgets/blob/main/src/app.ts#L3')
+  })
+
+  it('shows a folder', async () => {
+    await run(createGithubOpenTool(), { url: 'https://github.com/acme/widgets/tree/main/src' })
+    expect(opened[0].url).toBe('https://github.com/acme/widgets/tree/main/src')
+    await expect(
+      run(createGithubOpenTool(), {
+        url: 'https://github.com/acme/widgets/tree/main/src',
+        start_line: 3,
+      })
+    ).rejects.toThrow('Lines can be marked')
   })
 
   it('refuses what no tab can show', async () => {

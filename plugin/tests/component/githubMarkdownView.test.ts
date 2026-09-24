@@ -210,13 +210,15 @@ describe('links in the rendered file', () => {
 })
 
 describe('a link to a folder', () => {
-  it('says it is one, rather than showing its listing as a file', async () => {
+  it('lists the folder, as GitHub redirects to it, rather than showing its listing as a file', async () => {
     const listing = [{ name: 'a.ts', path: 'packages/core/a.ts', type: 'file', _links: {} }]
     const { wrapper } = open('https://github.com/o/r/blob/main/packages/core', {
-      '/repos/o/r/contents/packages/core': { text: JSON.stringify(listing) },
+      '/repos/o/r/contents/packages/core': { text: JSON.stringify(listing), json: listing },
     })
-    await vi.waitFor(() => expect(wrapper.find('.abele-github__error').exists()).toBe(true))
-    expect(wrapper.text()).toContain('packages/core is a folder')
+    await vi.waitFor(() => expect(wrapper.find('.abele-github-folder').exists()).toBe(true))
+    expect(wrapper.find('.abele-github-folder .tree-item-self').attributes('data-path')).toBe(
+      'packages/core/a.ts'
+    )
     expect(wrapper.find('.cm-editor').exists()).toBe(false)
   })
 })

@@ -50,6 +50,11 @@ export type GithubTarget =
       /** `?plain=1`: the source of a markdown file rather than its rendering. */
       plain?: boolean
     })
+  | (Repo & {
+      kind: 'tree'
+      /** Everything after `tree/`: a ref and a folder in it, split as for a file — `treeCandidates`. */
+      rest: string[]
+    })
 
 export type GithubTargetKind = GithubTarget['kind']
 
@@ -177,6 +182,8 @@ export function parseGithubUrl(url: string, hosts: string[]): GithubTarget | nul
         anchor: lineAnchor(hash) ? undefined : base.anchor,
       }
     }
+    case 'tree':
+      return { kind: 'tree', ...base, rest: [id, ...more] }
     default:
       return null
   }
@@ -189,6 +196,14 @@ export function blobCandidates(rest: string[]): { ref: string; path: string }[] 
     out.push({ ref: rest.slice(0, i).join('/'), path: rest.slice(i).join('/') })
   }
   return out
+}
+
+/**
+ * The same for a folder, which may also be the repository's root: the whole of `rest` as the ref
+ * is the last guess.
+ */
+export function treeCandidates(rest: string[]): { ref: string; path: string }[] {
+  return [...blobCandidates(rest), { ref: rest.join('/'), path: '' }]
 }
 
 export interface Endpoints {
@@ -272,6 +287,8 @@ export function targetKey(t: GithubTarget): string {
       return `commit:${repo}@${t.sha.toLowerCase()}`
     case 'blob':
       return `blob:${repo}/${t.rest.join('/')}`
+    case 'tree':
+      return `tree:${repo}/${t.rest.join('/')}`
   }
 }
 
@@ -288,5 +305,7 @@ export function shortName(t: GithubTarget): string {
       return `${repo}@${t.sha.slice(0, 7)}`
     case 'blob':
       return `${repo}: ${t.rest[t.rest.length - 1]}`
+    case 'tree':
+      return t.rest.length > 1 ? `${repo}: ${t.rest[t.rest.length - 1]}/` : repo
   }
 }

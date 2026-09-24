@@ -40,7 +40,7 @@ async function locate(input: unknown, ref: string): Promise<{ repo: RepoRef; ref
   if (ref) return { repo, ref }
   const t = named.target
   if (t?.kind === 'commit') return { repo, ref: t.sha }
-  if (t?.kind === 'blob') return { repo, ref: t.rest[0] }
+  if (t?.kind === 'blob' || t?.kind === 'tree') return { repo, ref: t.rest[0] }
   // A pull request's link, or `owner/repo#12` that turns out to be one.
   const number = t?.kind === 'pull' ? t.number : t ? undefined : named.number
   if (number !== undefined) {

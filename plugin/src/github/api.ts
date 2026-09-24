@@ -524,6 +524,17 @@ const isFolderListing = (text: string): boolean => {
   }
 }
 
+/** A `blob/…` link that names a folder: the tab lists the folder, as GitHub redirects to it. */
+export class FolderError extends GithubError {
+  constructor(
+    readonly ref: string,
+    readonly path: string
+  ) {
+    super('other', `${path} is a folder, not a file.`)
+    this.name = 'FolderError'
+  }
+}
+
 export async function loadBlob(client: GithubClient, t: Of<'blob'>): Promise<BlobData> {
   let lastError: unknown = null
   // Capped: a deep path with no match would otherwise cost one request per segment.
@@ -531,12 +542,7 @@ export async function loadBlob(client: GithubClient, t: Of<'blob'>): Promise<Blo
     try {
       const text = await client.fileText(t, path, ref, 'the file')
       // A folder answers with its listing — a README's link to `packages/core` is one.
-      if (isFolderListing(text)) {
-        throw new GithubError(
-          'other',
-          `${path} is a folder; a tab here shows files. Open it on GitHub.`
-        )
-      }
+      if (isFolderListing(text)) throw new FolderError(ref, path)
       return {
         ref,
         path,

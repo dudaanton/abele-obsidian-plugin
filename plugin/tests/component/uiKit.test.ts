@@ -21,6 +21,7 @@ import Icon from '@/components/obsidian/Icon.vue'
 import Input from '@/components/obsidian/Input.vue'
 import Table from '@/components/obsidian/Table.vue'
 import Image from '@/components/obsidian/Image.vue'
+import TreeItem from '@/components/obsidian/TreeItem.vue'
 import { useVault } from '../helpers/testEnv'
 
 const TABS = [
@@ -284,6 +285,43 @@ describe('EmptyState', () => {
 
     expect(view.find('code').exists()).toBe(true)
     expect(view.text()).not.toContain('No agents yet.')
+  })
+})
+
+describe('TreeItem', () => {
+  it("draws a row in Obsidian's own tree classes: glyph, name, flair, the active mark", () => {
+    const view = mount(TreeItem, {
+      props: { text: 'app.ts', icon: 'file', flair: '3 KB', active: true, path: 'src/app.ts' },
+    })
+    const self = view.find('.tree-item-self')
+    expect(self.classes()).toEqual(expect.arrayContaining(['is-clickable', 'is-active']))
+    expect(self.attributes('data-path')).toBe('src/app.ts')
+    expect(view.find('.abele-tree-item__glyph').attributes('data-icon')).toBe('file')
+    expect(view.find('.tree-item-flair').text()).toBe('3 KB')
+    // A file folds nothing: no arrow.
+    expect(view.find('.collapse-icon').exists()).toBe(false)
+  })
+
+  it('folds its children away and says so', async () => {
+    const view = mount(TreeItem, {
+      props: { text: 'src', collapsible: true, collapsed: true },
+      slots: { default: '<div class="child">app.ts</div>' },
+    })
+    expect(view.find('.collapse-icon').classes()).toContain('is-collapsed')
+    expect(view.find('.tree-item-self').attributes('aria-expanded')).toBe('false')
+    expect(view.find('.child').exists()).toBe(false)
+
+    await view.setProps({ collapsed: false })
+    expect(view.find('.tree-item-children .child').exists()).toBe(true)
+    expect(view.find('.tree-item-self').attributes('aria-expanded')).toBe('true')
+  })
+
+  it('is clicked by a click or by Enter, with the modifier keys held', async () => {
+    const view = mount(TreeItem, { props: { text: 'app.ts' } })
+    await view.find('.tree-item-self').trigger('click')
+    await view.find('.tree-item-self').trigger('keydown', { key: 'Enter', metaKey: true })
+    const events = view.emitted('click')!.map(([e]) => (e as MouseEvent).metaKey)
+    expect(events).toEqual([false, true])
   })
 })
 
