@@ -803,15 +803,36 @@ const loadOlder = () => {
  * whatever waited for one there — a reveal, a hold — waited until Obsidian was brought forward.
  */
 const nextFrame = (win: Window, run: () => void) => {
+  if (closed) return
   let done = false
   const once = () => {
     if (done) return
     done = true
+    pendingFrames.delete(cancel)
     run()
   }
-  win.requestAnimationFrame(once)
-  win.setTimeout(once, 50)
+  const frame = win.requestAnimationFrame(once)
+  const timer = win.setTimeout(once, 50)
+  const cancel = () => {
+    done = true
+    win.cancelAnimationFrame(frame)
+    win.clearTimeout(timer)
+  }
+  pendingFrames.add(cancel)
 }
+
+/**
+ * Frames still asked for, so a chat that closes stops asking. A hold runs on for a moment and
+ * would otherwise go on moving a container that is no longer on the page.
+ */
+const pendingFrames = new Set<() => void>()
+let closed = false
+onUnmounted(() => {
+  closed = true
+  anchor = null
+  for (const cancel of pendingFrames) cancel()
+  pendingFrames.clear()
+})
 
 /** Keeps the anchor where it is for as long as the messages around it take to render. */
 const holdAnchorAWhile = (el: HTMLElement) => {
@@ -1146,8 +1167,12 @@ watch(
 )
 onUnmounted(unobserve)
 
+let focusTimer: number | null = null
 onMounted(() => {
-  window.setTimeout(() => chatInput.value?.focus(), 150)
+  focusTimer = window.setTimeout(() => chatInput.value?.focus(), 150)
+})
+onUnmounted(() => {
+  if (focusTimer !== null) window.clearTimeout(focusTimer)
 })
 
 // Someone asked for a new comment and is about to type into it. After the tab has rendered.

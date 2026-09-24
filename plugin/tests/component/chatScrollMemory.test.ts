@@ -260,3 +260,25 @@ describe('a card in a note asking for one of its messages', () => {
     raf.mockRestore()
   })
 })
+
+// The hold outlived the chat: closed while a revealed message was still being held, the chat
+// went on asking for frames for the rest of the hold — in the unit suite, after the page it
+// asked had been taken away, which failed the whole run.
+describe('a chat closed while it is holding a message in place', () => {
+  it('stops asking for frames', async () => {
+    const { model } = await open()
+    ChatService.getInstance().pendingReveal.value = 'a5'
+    for (let i = 0; i < 6; i++) {
+      await nextTick()
+      model.relayout()
+      await new Promise((r) => setTimeout(r, 20))
+    }
+
+    wrapper?.unmount()
+    wrapper = null
+    const raf = vi.spyOn(window, 'requestAnimationFrame')
+    await new Promise((r) => setTimeout(r, 200))
+
+    expect(raf).not.toHaveBeenCalled()
+  })
+})
