@@ -42,6 +42,13 @@ Every change is marked `ABELE PATCH` at its site.
 `view.d.ts`, `epub.d.ts` and `frame-options.d.ts` type the parts of the modules beside them that
 Abele calls. They are Abele's, not upstream's.
 
+## PDF
+
+Upstream's `pdf.js` adapter is not carried as a file: Abele's `src/reader/pdfBook.ts` is adapted
+from it (same MIT licence), using the PDF.js Obsidian ships instead of a vendored copy, and adding
+the reader's page policy, audit and link rules. The two layer stylesheets are in
+`src/vendor/pdfjs-css/`.
+
 ## What Abele adds around it
 
 The engine itself does not make a book safe to show: its author says so, and asks for a Content

@@ -203,6 +203,15 @@ Three files, three concerns:
   48px of the header, turns a page by a tap and by a synthetic swipe, opens the contents drawer
   (and picks a chapter from it) and the text and layout dialog; pictures in
   `/tmp/abele-phone/book-*.png`. WebKit itself cannot be run here.
+- `bookPdf.e2e.test.ts` — **PDFs**, drawn by Obsidian's own PDF.js, with two PDFs written byte by
+  byte in `tests/fixtures/books/pdfFixture.ts`: the pages draw with a text layer; the outline is
+  the contents; keys, an internal link, a web link and outline entries go where they should; the
+  page is kept; page size and dark pages follow the settings; the setting that opens PDFs here
+  takes `.pdf` from Obsidian's viewer and gives it back, and the file menu offers **Open in Abele
+  reader**. A hostile PDF — JavaScript on opening, behind a link, in a form field and in the names
+  tree, a `javascript:` and a `file:` address, a launch action — is opened with both sandboxes and
+  every link on it clicked: nothing may run, open, alert or ask for `child_process`. The phone file
+  opens a PDF too, and checks the page fits the screen and turns by a tap and a swipe.
 - `bookReading.e2e.test.ts` — **reading**, on the desktop, with the book of
   `tests/fixtures/books/richBook.ts`: a note marked as one and a note marked only by a superscript
   open in the dialog; a link to another chapter is followed and the way back works; the contents

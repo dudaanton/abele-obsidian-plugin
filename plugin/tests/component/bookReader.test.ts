@@ -105,7 +105,7 @@ describe('the contents panel', () => {
 
 describe('the text and layout settings', () => {
   it('save each choice at once, within range', async () => {
-    const form = mount(ReaderSettingsForm)
+    const form = mount(ReaderSettingsForm, { props: { kind: 'epub' } })
     const selects = form.findAll('select')
     expect(selects).toHaveLength(6)
     await selects[2].setValue('150')
@@ -117,11 +117,40 @@ describe('the text and layout settings', () => {
   })
 
   it('switch theme colours and two columns', async () => {
-    const form = mount(ReaderSettingsForm)
+    const form = mount(ReaderSettingsForm, { props: { kind: 'epub' } })
     const toggles = form.findAll('.checkbox-container')
     await toggles[0].trigger('click')
     await toggles[1].trigger('click')
     expect(AbeleConfig.getInstance().reader.columns).toBe(1)
     expect(AbeleConfig.getInstance().reader.themeColors).toBe(false)
+  })
+})
+
+describe('the PDF settings', () => {
+  const names = (form: ReturnType<typeof mount>) =>
+    form.findAll('.setting-item-name').map((n) => n.text())
+
+  it("show only a PDF's own in a PDF's tab, and the switch to open PDFs here in Settings", () => {
+    const pdf = names(mount(ReaderSettingsForm, { props: { kind: 'pdf' } }))
+    expect(pdf).toEqual(['Page size', 'Two pages side by side', 'Dark pages in a dark theme'])
+    const all = names(mount(ReaderSettingsForm, { props: { kind: 'all' } }))
+    expect(all).toContain('Open PDF files in the Abele reader')
+    expect(all).toContain('Font')
+    expect(names(mount(ReaderSettingsForm, { props: { kind: 'epub' } }))).not.toContain('Page size')
+  })
+
+  it('save the page size and the switches', async () => {
+    const form = mount(ReaderSettingsForm, { props: { kind: 'all' } })
+    const config = AbeleConfig.getInstance()
+    const pdfSelect = form.findAll('select').at(-1)!
+    await pdfSelect.setValue('fit-width')
+    expect(config.reader.pdfZoom).toBe('fit-width')
+    const rows = form.findAll('.setting-item')
+    const toggle = (name: string) =>
+      rows.find((r) => r.find('.setting-item-name').text() === name)!.find('.checkbox-container')
+    await toggle('Open PDF files in the Abele reader').trigger('click')
+    await toggle('Two pages side by side').trigger('click')
+    await toggle('Dark pages in a dark theme').trigger('click')
+    expect(config.reader).toMatchObject({ openPdf: true, pdfTwoPages: true, pdfDarkPages: false })
   })
 })

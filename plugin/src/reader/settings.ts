@@ -8,6 +8,9 @@
 export type ReaderFlow = 'paginated' | 'scrolled'
 export type ReaderFont = 'theme' | 'serif' | 'sans' | 'book'
 export type ReaderMargin = 'narrow' | 'normal' | 'wide'
+/** How a PDF page is sized: to fit the tab whole, to fit its width, or at a fixed zoom. */
+export type PdfZoom = 'fit-page' | 'fit-width' | '1' | '1.25' | '1.5' | '2'
+export const PDF_ZOOMS: readonly PdfZoom[] = ['fit-page', 'fit-width', '1', '1.25', '1.5', '2']
 
 export interface ReaderSettings {
   /** Pages turned one at a time, or the chapter as one long scroll. */
@@ -26,6 +29,14 @@ export interface ReaderSettings {
   columns: 1 | 2
   /** Draw the book in the theme's text and background colours instead of its own. */
   themeColors: boolean
+  /** PDF files open in the book reader rather than in Obsidian's own PDF viewer. */
+  openPdf: boolean
+  /** How a PDF page is sized. */
+  pdfZoom: PdfZoom
+  /** Two PDF pages side by side when the tab is wide enough. */
+  pdfTwoPages: boolean
+  /** In a dark theme, PDF pages are shown with their light and dark swapped. */
+  pdfDarkPages: boolean
 }
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
@@ -37,6 +48,10 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   maxWidth: 720,
   columns: 2,
   themeColors: true,
+  openPdf: false,
+  pdfZoom: 'fit-page',
+  pdfTwoPages: false,
+  pdfDarkPages: true,
 }
 
 export const FONT_SIZES = [70, 80, 90, 100, 110, 120, 135, 150, 175, 200]
@@ -62,6 +77,10 @@ export function readerSettingsFrom(stored?: Partial<ReaderSettings> | null): Rea
     maxWidth: clamp(s.maxWidth, 300, 3000, d.maxWidth),
     columns: s.columns === 1 ? 1 : 2,
     themeColors: typeof s.themeColors === 'boolean' ? s.themeColors : d.themeColors,
+    openPdf: typeof s.openPdf === 'boolean' ? s.openPdf : d.openPdf,
+    pdfZoom: oneOf(s.pdfZoom, PDF_ZOOMS, d.pdfZoom),
+    pdfTwoPages: typeof s.pdfTwoPages === 'boolean' ? s.pdfTwoPages : d.pdfTwoPages,
+    pdfDarkPages: typeof s.pdfDarkPages === 'boolean' ? s.pdfDarkPages : d.pdfDarkPages,
   }
 }
 
@@ -160,4 +179,9 @@ export function themeValues(el: HTMLElement): ThemeValues {
     fontText: v('--font-text', ''),
     dark: el.ownerDocument.body.classList.contains('theme-dark'),
   }
+}
+
+/** Whether a PDF's pages are shown with light and dark swapped: asked for, and the theme is dark. */
+export function darkPdfPages(settings: ReaderSettings, dark: boolean): boolean {
+  return settings.pdfDarkPages && dark
 }

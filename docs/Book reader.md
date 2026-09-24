@@ -1,6 +1,6 @@
 # Book reader
 
-Abele opens EPUB books from the vault in a tab of their own. A `.epub` file opens in the reader
+Abele opens EPUB books from the vault in a tab of their own, and PDFs when asked (see [PDF](#pdf)). A `.epub` file opens in the reader
 when it is clicked in the file explorer, on the desktop and on phones alike.
 
 If another plugin already opens `.epub` files, Obsidian keeps that one, and Abele's reader stays
@@ -51,6 +51,49 @@ and travels with the settings transfer.
 
 On a phone the text starts just under Obsidian's header and the line under the page sits above its
 navigation bar.
+
+## PDF
+
+PDFs open in the same reader, drawn by the PDF.js that Obsidian itself ships (`loadPdfJs()`), so
+nothing is added to the plugin for it and the same library is on the phone. By default a `.pdf`
+still opens in Obsidian's own viewer; there are two ways to read one here:
+
+- **Open in Abele reader** in a PDF's menu — in the file explorer, or the ⋯ menu of a PDF that is
+  open in Obsidian's viewer.
+- **Open PDF files in the Abele reader** in Settings → Abele → Books: every PDF opens here until it
+  is turned off, which gives `.pdf` back to Obsidian's viewer. Obsidian lets one view own an
+  extension and refuses a second claim, so this goes through its view registry (not part of the
+  plugin API); if a future Obsidian changes it, the setting does nothing and the menu item still
+  works.
+
+What a PDF gets here that Obsidian's viewer does not: pages turned one at a time — keys, a tap at
+the edge, a swipe on a phone — rather than a long scroll; the place it was left on kept per file,
+across renames; the outline in the same contents panel as a book's; the page number and the
+outline entry under the page with a slider through the document; and, in a dark theme, pages with
+light and dark swapped (**Dark pages in a dark theme**, on by default; pictures come out as
+negatives). Text on the page can be selected and copied, links inside the document go to their
+page, and links to the web open in the browser.
+
+| Setting | What it does |
+|---|---|
+| Page size | The whole page fitted in the tab, the page's width fitted (scroll down the page), or 100%, 125%, 150% or 200%. |
+| Two pages side by side | Two pages at once when the tab is wide enough, as a printed book lies open. Off by default. |
+| Dark pages in a dark theme | See above. |
+
+The text settings (font, size, spacing, margins, columns) do not apply to a PDF, whose pages are
+pictures of a fixed layout; the **Aa** dialog of a PDF shows only its own.
+
+**Nothing in a PDF runs either.** PDF.js runs PDF JavaScript only when given a scripting sandbox,
+which the reader does not give it; fonts are not compiled with `eval`; XFA and form fields are not
+drawn. Each page is a page the reader writes — the same Content Security Policy first in its head,
+the same audit when it loads — holding a picture of the PDF page and its text laid over it as
+plain text. A link out of the document gets an address only if it is `http(s):` or `mailto:`;
+PDF.js itself drops `javascript:`, `file:` and launch actions before that. The hostile PDF in
+`tests/fixtures/books/pdfFixture.ts` carries all of those and is opened by the e2e tier with both
+sandboxes.
+
+The layer styles PDF.js needs (`text_layer_builder.css`, `annotation_layer_builder.css`, Apache
+2.0) are carried in `plugin/src/vendor/pdfjs-css/`.
 
 ## What the reader will not do: run the book's code
 

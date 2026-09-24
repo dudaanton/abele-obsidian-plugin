@@ -1,62 +1,102 @@
 <template>
   <div class="abele-reader-settings">
-    <Setting name="Layout" desc="Turn pages one at a time, or scroll through each chapter.">
-      <Dropdown
-        :options="flowOptions"
-        :model-value="settings.flow"
-        @update:model-value="set('flow', $event)"
-      />
-    </Setting>
-    <Setting name="Font" desc="The font of the text. The theme's is the one your notes use.">
-      <Dropdown
-        :options="fontOptions"
-        :model-value="settings.font"
-        @update:model-value="set('font', $event)"
-      />
-    </Setting>
-    <Setting name="Text size">
-      <Dropdown
-        :options="sizeOptions"
-        :model-value="String(settings.fontSize)"
-        @update:model-value="set('fontSize', Number($event))"
-      />
-    </Setting>
-    <Setting name="Line spacing">
-      <Dropdown
-        :options="lineOptions"
-        :model-value="String(settings.lineHeight)"
-        @update:model-value="set('lineHeight', Number($event))"
-      />
-    </Setting>
-    <Setting name="Margins" desc="The space around the text and between columns.">
-      <Dropdown
-        :options="marginOptions"
-        :model-value="settings.margin"
-        @update:model-value="set('margin', $event)"
-      />
-    </Setting>
-    <Setting name="Column width" desc="The widest a column of text may grow.">
-      <Dropdown
-        :options="widthOptions"
-        :model-value="String(settings.maxWidth)"
-        @update:model-value="set('maxWidth', Number($event))"
-      />
-    </Setting>
-    <Setting name="Two columns" desc="Two pages side by side when the tab is wide enough.">
-      <Checkbox
-        :is-enabled="settings.columns === 2"
-        @toggle="set('columns', settings.columns === 2 ? 1 : 2)"
-      />
-    </Setting>
-    <Setting
-      name="Theme colours"
-      desc="Draw the book in your theme's text and background colours, dark mode included. Off: the book's own colours, on a light page."
-    >
-      <Checkbox
-        :is-enabled="settings.themeColors"
-        @toggle="set('themeColors', !settings.themeColors)"
-      />
-    </Setting>
+    <template v-if="kind !== 'pdf'">
+      <Setting name="Layout" desc="Turn pages one at a time, or scroll through each chapter.">
+        <Dropdown
+          :options="flowOptions"
+          :model-value="settings.flow"
+          @update:model-value="set('flow', $event)"
+        />
+      </Setting>
+      <Setting name="Font" desc="The font of the text. The theme's is the one your notes use.">
+        <Dropdown
+          :options="fontOptions"
+          :model-value="settings.font"
+          @update:model-value="set('font', $event)"
+        />
+      </Setting>
+      <Setting name="Text size">
+        <Dropdown
+          :options="sizeOptions"
+          :model-value="String(settings.fontSize)"
+          @update:model-value="set('fontSize', Number($event))"
+        />
+      </Setting>
+      <Setting name="Line spacing">
+        <Dropdown
+          :options="lineOptions"
+          :model-value="String(settings.lineHeight)"
+          @update:model-value="set('lineHeight', Number($event))"
+        />
+      </Setting>
+      <Setting name="Margins" desc="The space around the text and between columns.">
+        <Dropdown
+          :options="marginOptions"
+          :model-value="settings.margin"
+          @update:model-value="set('margin', $event)"
+        />
+      </Setting>
+      <Setting name="Column width" desc="The widest a column of text may grow.">
+        <Dropdown
+          :options="widthOptions"
+          :model-value="String(settings.maxWidth)"
+          @update:model-value="set('maxWidth', Number($event))"
+        />
+      </Setting>
+      <Setting name="Two columns" desc="Two pages side by side when the tab is wide enough.">
+        <Checkbox
+          :is-enabled="settings.columns === 2"
+          @toggle="set('columns', settings.columns === 2 ? 1 : 2)"
+        />
+      </Setting>
+      <Setting
+        name="Theme colours"
+        desc="Draw the book in your theme's text and background colours, dark mode included. Off: the book's own colours, on a light page."
+      >
+        <Checkbox
+          :is-enabled="settings.themeColors"
+          @toggle="set('themeColors', !settings.themeColors)"
+        />
+      </Setting>
+    </template>
+
+    <Section v-if="kind !== 'epub'" :title="kind === 'all' ? 'PDF' : undefined">
+      <Setting
+        v-if="kind === 'all'"
+        name="Open PDF files in the Abele reader"
+        desc="PDFs open here instead of in Obsidian's own viewer, with pages to turn, the contents beside them and the place kept. Off: they open in Obsidian's viewer, and Open in Abele reader in a PDF's menu still opens one here."
+      >
+        <Checkbox :is-enabled="settings.openPdf" @toggle="set('openPdf', !settings.openPdf)" />
+      </Setting>
+      <Setting
+        name="Page size"
+        desc="Fit the whole page in the tab, fit its width, or a fixed zoom."
+      >
+        <Dropdown
+          :options="zoomOptions"
+          :model-value="settings.pdfZoom"
+          @update:model-value="set('pdfZoom', $event)"
+        />
+      </Setting>
+      <Setting
+        name="Two pages side by side"
+        desc="When the tab is wide enough, as a printed book lies open."
+      >
+        <Checkbox
+          :is-enabled="settings.pdfTwoPages"
+          @toggle="set('pdfTwoPages', !settings.pdfTwoPages)"
+        />
+      </Setting>
+      <Setting
+        name="Dark pages in a dark theme"
+        desc="The page's light and dark swapped while Obsidian's theme is dark, so a white page does not glare. Pictures come out as negatives."
+      >
+        <Checkbox
+          :is-enabled="settings.pdfDarkPages"
+          @toggle="set('pdfDarkPages', !settings.pdfDarkPages)"
+        />
+      </Setting>
+    </Section>
   </div>
 </template>
 
@@ -69,14 +109,24 @@ import { reactive, watch } from 'vue'
 import Setting from '../obsidian/Setting.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
+import Section from '../obsidian/Section.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   FONT_SIZES,
+  PDF_ZOOMS,
   LINE_HEIGHTS,
   MAX_WIDTHS,
   readerSettingsFrom,
   type ReaderSettings,
 } from '@/reader/settings'
+
+withDefaults(
+  defineProps<{
+    /** Which settings: a book's, a PDF's, or both, as the settings tab shows them. */
+    kind?: 'epub' | 'pdf' | 'all'
+  }>(),
+  { kind: 'all' }
+)
 
 const config = AbeleConfig.getInstance()
 const settings = reactive<ReaderSettings>(readerSettingsFrom(config.reader))
@@ -104,6 +154,14 @@ const marginOptions = [
   { value: 'normal', display: 'Normal' },
   { value: 'wide', display: 'Wide' },
 ]
+const zoomLabel: Record<string, string> = {
+  'fit-page': 'Whole page',
+  'fit-width': 'Page width',
+}
+const zoomOptions = PDF_ZOOMS.map((z) => ({
+  value: z,
+  display: zoomLabel[z] ?? `${Math.round(Number(z) * 100)}%`,
+}))
 const widthOptions = MAX_WIDTHS.map((n) => ({ value: String(n), display: `${n} px` }))
 
 const set = <K extends keyof ReaderSettings>(key: K, value: ReaderSettings[K] | string) => {

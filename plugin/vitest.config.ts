@@ -33,5 +33,8 @@ export default defineConfig({
       'tests/component/**/*.test.ts',
     ],
     reporters: 'default',
+    // A stylesheet imported as text (`?raw`) — the PDF page's layers — is text here too, not
+    // emptied the way vitest empties stylesheets by default.
+    css: { include: [/pdfjs-css/] },
   },
 })

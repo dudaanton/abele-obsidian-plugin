@@ -21,6 +21,8 @@ export interface Footnote {
 }
 
 export interface BookModel {
+  /** A reflowing book, or a PDF: which settings its dialog offers. */
+  kind: 'epub' | 'pdf'
   status: 'loading' | 'ready' | 'error'
   message: string
   title: string
@@ -40,6 +42,7 @@ export interface BookModel {
 }
 
 export const emptyBookModel = (): BookModel => ({
+  kind: 'epub',
   status: 'loading',
   message: 'Opening the book…',
   title: '',

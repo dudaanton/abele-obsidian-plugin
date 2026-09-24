@@ -47,7 +47,7 @@
       size="tall"
       @close="emit('settings', false)"
     >
-      <ReaderSettingsForm />
+      <ReaderSettingsForm :kind="model.kind" />
     </ObsidianModal>
 
     <ObsidianModal v-if="model.footnote" :title="noteTitle" @close="emit('footnote-close')">
@@ -255,6 +255,29 @@ watch(
     display: flex;
     justify-content: flex-end;
   }
+}
+
+// A PDF: pages on a tinted ground, so a white page has an edge.
+.abele-book-reader__stage:has(> .abele-book__engine_pdf) {
+  background-color: var(--background-secondary);
+}
+
+.abele-book__engine_pdf::part(filter) {
+  box-shadow: var(--shadow-s);
+}
+
+// A PDF in a dark theme, when asked: the page's light and dark swapped, its colours kept.
+.abele-book__engine_dark-pages::part(filter) {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+// The canvases PDF.js measures text on, which it leaves in the app's own document.
+.abele-book__pdf-hidden {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 // Obsidian's status bar floats over the bottom right of the workspace on the desktop.

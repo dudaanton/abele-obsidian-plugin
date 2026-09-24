@@ -5,7 +5,7 @@
       <Icon icon="x" tooltip="Close the contents" @click="emit('close')" />
     </div>
     <div ref="list" class="abele-book-contents__list">
-      <EmptyState v-if="!toc.length" text="This book has no table of contents." />
+      <EmptyState v-if="!toc.length" text="There is no table of contents in this file." />
       <BookContentsNode
         v-for="entry in toc"
         :key="entry.key"

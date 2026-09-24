@@ -32,6 +32,11 @@ plugin/            ← source, build, tests
 commit because its author does not publish to npm. It is excluded from lint; its README names the
 commit and every local change. See [Book reader](Book%20reader.md).
 
+The setting **Open PDF files in the Abele reader** (off by default) swaps the view `.pdf` opens in
+through `app.viewRegistry`, which is not public API: Obsidian refuses a second claim on an
+extension through `registerExtensions`. The swap is undone when the setting is turned off and
+when the plugin unloads, and does nothing if the registry is not shaped as expected.
+
 A release publishes exactly three assets — `main.js`, `manifest.json`, `styles.css` — under a
 tag matching the manifest's `version`. `.github/workflows/release.yml` fails if the build emits
 anything else, because a fourth file means a dynamic import split into a chunk no vault would

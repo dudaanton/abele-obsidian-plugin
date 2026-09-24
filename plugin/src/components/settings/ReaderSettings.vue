@@ -1,7 +1,7 @@
 <template>
   <div class="abele-settings__reader">
     <Section
-      desc="EPUB books in the vault open in a reader tab of their own. These choices apply to every book, and can also be changed from a book's tab."
+      desc="EPUB books in the vault open in a reader tab of their own, and PDFs can too. These choices apply to every book, and can also be changed from a book's tab with the Aa button."
     >
       <ReaderSettingsForm />
     </Section>

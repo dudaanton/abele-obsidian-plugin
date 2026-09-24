@@ -6,7 +6,7 @@
  * page is audited as it arrives, and one that fails is emptied before it is shown. Around the
  * page, a Vue side (`BookReader.vue`) shows the contents, the progress and the dialogs.
  */
-import { FileView, Platform, type Menu, type TFile, type WorkspaceLeaf } from 'obsidian'
+import { FileView, Platform, loadPdfJs, type Menu, type TFile, type WorkspaceLeaf } from 'obsidian'
 import { createApp, reactive, watch, type App as VueApp, type WatchStopHandle } from 'vue'
 import { frameOptions } from '@/vendor/foliate-js/frame-options.js'
 import type { FoliateLocation, View as FoliateView } from '@/vendor/foliate-js/view.js'
@@ -16,12 +16,23 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { auditDocument, blankDocument, frameSandbox, isOpenableExternal } from './bookSafety'
 import { openEpub, type OpenedBook } from './openBook'
 import { emptyBookModel, tocEntries, type BookModel } from './model'
-import { layoutAttributes, pageStyles, readerSettingsFrom, themeValues } from './settings'
+import {
+  darkPdfPages,
+  layoutAttributes,
+  pageStyles,
+  readerSettingsFrom,
+  themeValues,
+} from './settings'
+import { openPdf } from './pdfBook'
+import { swipeDirection } from './swipe'
 import { bookKey } from './positions'
 import { bookPlaces } from './places'
 
 export const BOOK_VIEW_TYPE = 'abele-book'
+/** What opens in a book tab by itself. */
 export const BOOK_EXTENSIONS = ['epub']
+/** What a book tab can show: PDFs too, when asked to (a menu item, or the setting). */
+export const READER_EXTENSIONS = ['epub', 'pdf']
 
 /**
  * For the e2e tier only: a sandbox to use instead of the platform's, so the desktop app can be
@@ -52,6 +63,7 @@ export class BookView extends FileView {
   private key = ''
   private footnotes = new FootnoteHandler()
   private footnoteHref = ''
+  private openedTwoPages = false
   /** Every page loaded so far in this tab, newest last. */
   readonly pages: PageReport[] = []
 
@@ -82,12 +94,17 @@ export class BookView extends FileView {
     return this.file?.basename ?? 'Book'
   }
 
-  getIcon(): string {
-    return 'book-open'
+  canAcceptExtension(extension: string): boolean {
+    return READER_EXTENSIONS.includes(extension)
   }
 
-  canAcceptExtension(extension: string): boolean {
-    return BOOK_EXTENSIONS.includes(extension)
+  /** Whether the tab shows a PDF, whose pages are pictures of a fixed size. */
+  get isPdf(): boolean {
+    return this.file?.extension === 'pdf'
+  }
+
+  getIcon(): string {
+    return this.isPdf ? 'file-text' : 'book-open'
   }
 
   /** The engine element, once a book is open: the e2e tier and later phases reach it here. */
@@ -201,7 +218,7 @@ export class BookView extends FileView {
     this.opened?.destroy()
     this.opened = null
     this.pages.length = 0
-    Object.assign(this.model, emptyBookModel(), { panel: this.model.panel })
+    Object.assign(this.model, emptyBookModel(), { panel: this.model.panel, kind: this.model.kind })
   }
 
   private fail(message: string): void {
@@ -216,6 +233,15 @@ export class BookView extends FileView {
       setStyles?: (css: [string, string]) => void
     }
     if (!renderer) return
+    if (view.isFixedLayout) {
+      if (renderer.getAttribute('zoom') !== settings.pdfZoom)
+        renderer.setAttribute('zoom', settings.pdfZoom)
+      view.toggleClass(
+        'abele-book__engine_dark-pages',
+        darkPdfPages(settings, themeValues(this.contentEl).dark)
+      )
+      return
+    }
     const attrs = layoutAttributes(settings, Platform.isPhone)
     if (note) {
       attrs.flow = 'scrolled'
@@ -229,6 +255,14 @@ export class BookView extends FileView {
   }
 
   private applySettings(): void {
+    // Pages side by side are decided when a PDF opens; a change opens it again, at the same page.
+    const twoPages = readerSettingsFrom(AbeleConfig.getInstance().reader).pdfTwoPages
+    if (this.isPdf && this.opened && this.file && twoPages !== this.openedTwoPages) {
+      void bookPlaces()
+        ?.flush()
+        .then(() => this.file && this.show(this.file))
+      return
+    }
     if (this.reader) this.applyTo(this.reader)
     const note = this.model.footnote?.view as FoliateView | undefined
     if (note?.renderer) this.applyTo(note, true)
@@ -240,11 +274,18 @@ export class BookView extends FileView {
     this.model.status = 'loading'
     this.model.message = 'Opening the book…'
     this.model.title = file.basename
+    this.model.kind = file.extension === 'pdf' ? 'pdf' : 'epub'
     try {
       const stage = await this.stageReady
       const data = new Uint8Array(await this.app.vault.readBinary(file))
       if (token !== this.loadToken) return
-      const opened = await openEpub(data)
+      const settings = readerSettingsFrom(AbeleConfig.getInstance().reader)
+      const opened = this.isPdf ? await openPdf(await loadPdfJs(), data) : await openEpub(data)
+      if (this.isPdf) {
+        this.openedTwoPages = settings.pdfTwoPages
+        const rendition = (opened.book.rendition ??= {})
+        if (!settings.pdfTwoPages) rendition.spread = 'none'
+      }
       if (token !== this.loadToken) {
         opened.destroy()
         return
@@ -252,7 +293,9 @@ export class BookView extends FileView {
       await import('@/vendor/foliate-js/view.js')
       frameOptions.sandbox = readerTestHooks.sandbox ?? frameSandbox(Platform)
       stage.empty()
-      const reader = stage.createEl('foliate-view', { cls: 'abele-book__engine' })
+      const reader = stage.createEl('foliate-view', {
+        cls: this.isPdf ? 'abele-book__engine abele-book__engine_pdf' : 'abele-book__engine',
+      })
       // A custom element is defined per window: in a pop-out window the tag stays a plain element.
       if (typeof reader.open !== 'function') {
         reader.remove()
@@ -293,7 +336,12 @@ export class BookView extends FileView {
 
   private onRelocate(detail: FoliateLocation): void {
     this.model.fraction = detail.fraction ?? 0
-    this.model.chapter = detail.tocItem?.label?.trim() ?? ''
+    const label = detail.tocItem?.label?.trim() ?? ''
+    // A PDF's pages are its own measure: the page number first, the outline entry after it.
+    const page = detail.section
+      ? `Page ${detail.section.current + 1} of ${detail.section.total}`
+      : ''
+    this.model.chapter = this.isPdf && page ? [page, label].filter(Boolean).join(' · ') : label
     this.model.currentHref = detail.tocItem?.href ?? null
     const file = this.file
     if (detail.cfi && file && this.key && this.model.status === 'ready')
@@ -306,7 +354,8 @@ export class BookView extends FileView {
 
   /** A link inside the book: a note opens in its dialog, anything else is followed. */
   private onLink(e: Event): void {
-    if (!this.opened) return
+    // A PDF has no notes to open in a dialog: its links go to their page.
+    if (!this.opened || this.isPdf) return
     const href = (e as CustomEvent<{ href?: string }>).detail?.href ?? ''
     this.footnoteHref = href
     const done = this.footnotes.handle(this.opened.book, e)
@@ -337,6 +386,28 @@ export class BookView extends FileView {
     if (!main) return
     doc.addEventListener('keydown', (e) => this.onKey(e))
     doc.addEventListener('click', (e) => this.onTap(e, doc))
+    // The engine turns a reflowing book's pages under a finger itself; a PDF's it does not.
+    if (this.reader?.isFixedLayout) this.watchSwipes(doc)
+  }
+
+  private watchSwipes(doc: Document): void {
+    let start: { x: number; y: number; t: number } | null = null
+    doc.addEventListener(
+      'touchstart',
+      (e) => {
+        const t = e.touches[0]
+        start = e.touches.length === 1 && t ? { x: t.screenX, y: t.screenY, t: e.timeStamp } : null
+      },
+      { passive: true }
+    )
+    doc.addEventListener('touchend', (e) => {
+      const t = e.changedTouches[0]
+      if (!start || !t || !this.reader) return
+      const way = swipeDirection(start, { x: t.screenX, y: t.screenY, t: e.timeStamp })
+      start = null
+      if (way === 'left') void this.reader.goRight()
+      else if (way === 'right') void this.reader.goLeft()
+    })
   }
 
   private onExternalLink(e: CustomEvent<{ href_?: string }>): void {

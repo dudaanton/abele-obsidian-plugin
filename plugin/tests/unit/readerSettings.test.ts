@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   DEFAULT_READER_SETTINGS,
+  darkPdfPages,
   layoutAttributes,
   pageStyles,
   readerSettingsFrom,
@@ -37,6 +38,13 @@ describe('reader settings as stored', () => {
     expect(s.flow).toBe('paginated')
     expect(s.columns).toBe(2)
     expect(s.maxWidth).toBe(DEFAULT_READER_SETTINGS.maxWidth)
+  })
+
+  it('keep PDFs in Obsidian\'s viewer, whole pages, one at a time, dark in a dark theme by default', () => {
+    const s = readerSettingsFrom({})
+    expect(s).toMatchObject({ openPdf: false, pdfZoom: 'fit-page', pdfTwoPages: false, pdfDarkPages: true })
+    expect(readerSettingsFrom({ pdfZoom: '7' as never }).pdfZoom).toBe('fit-page')
+    expect(readerSettingsFrom({ pdfZoom: '1.5' }).pdfZoom).toBe('1.5')
   })
 
   it("keep 0 as the book's own line spacing", () => {
@@ -102,5 +110,13 @@ describe('the style every page is given', () => {
   it('hides footnotes in the text, which open in a window of their own', () => {
     const [before] = pageStyles(DEFAULT_READER_SETTINGS, theme)
     expect(before).toMatch(/aside\[epub\|type~="footnote"\][^{]*\{ display: none; \}/)
+  })
+})
+
+describe('PDF pages in a dark theme', () => {
+  it('are swapped only when asked and the theme is dark', () => {
+    expect(darkPdfPages(DEFAULT_READER_SETTINGS, true)).toBe(true)
+    expect(darkPdfPages(DEFAULT_READER_SETTINGS, false)).toBe(false)
+    expect(darkPdfPages({ ...DEFAULT_READER_SETTINGS, pdfDarkPages: false }, true)).toBe(false)
   })
 })

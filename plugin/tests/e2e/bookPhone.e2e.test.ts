@@ -17,6 +17,7 @@ import { hasTestApi, isObsidianRunning, evalRaw, evalJson } from './helpers/obsi
 import { evalAsync } from './helpers/githubLive'
 import { buildPlainEpub } from '../fixtures/books/maliciousBook'
 import { buildRichEpub } from '../fixtures/books/richBook'
+import { buildPlainPdf } from '../fixtures/books/pdfFixture'
 
 const PHONE = { width: 390, height: 844 }
 const SHOTS = '/tmp/abele-phone'
@@ -50,6 +51,7 @@ interface Screen {
   underBar?: number
   underHeader?: number
   topGap?: number
+  pageFits?: boolean
   text?: number
   swiped?: boolean
   sandbox?: string | null
@@ -68,7 +70,9 @@ const measure = (name: string) =>
     const report = { phone: document.body.classList.contains('is-phone') }
     try {
       const leaf = app.workspace.getLeaf(false)
-      await leaf.openFile(app.vault.getAbstractFileByPath(${JSON.stringify(DIR)} + '/' + ${JSON.stringify(name)} + '.epub'))
+      const file = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)} + '/' + ${JSON.stringify(name)} + (${JSON.stringify(name)}.endsWith('-pdf') ? '.pdf' : '.epub'))
+      // A PDF opens in the reader the way its menu item opens it.
+      await leaf.setViewState({ type: 'abele-book', state: { file: file.path }, active: true })
       await app.workspace.revealLeaf(leaf)
       const view = leaf.view
       if (!await until(() => view.engine?.lastLocation)) return { ...report, error: 'the book never showed' }
@@ -84,6 +88,8 @@ const measure = (name: string) =>
       report.underHeader = header ? Math.max(0, Math.round(header.bottom - whole.top)) : 0
       const page = engine.renderer.getContents()[0]
       // How far below the header the first line of text starts.
+      // A PDF page's text layer is drawn a moment after its frame loads.
+      await until(() => (page.doc.body?.innerText ?? '').trim().length > 20, 8000)
       const walker = page.doc.createTreeWalker(page.doc.body, NodeFilter.SHOW_TEXT)
       let first = null
       while (!first && walker.nextNode()) {
@@ -92,8 +98,14 @@ const measure = (name: string) =>
         range.selectNodeContents(walker.currentNode)
         if (range.getClientRects().length) first = range
       }
-      const frameTop = page.doc.defaultView.frameElement.getBoundingClientRect().top
-      if (header && first) report.topGap = Math.round(first.getBoundingClientRect().top + frameTop - header.bottom)
+      const frameBox = page.doc.defaultView.frameElement.getBoundingClientRect()
+      const frameTop = frameBox.top
+      // A PDF page is a picture of a fixed shape, fitted whole and centred: it has to fit, and
+      // where its own text starts inside it is the PDF's business.
+      if (${JSON.stringify(name)}.endsWith('-pdf'))
+        report.pageFits = frameBox.top >= r.top - 1 && frameBox.bottom <= r.bottom + 1 &&
+          frameBox.left >= r.left - 1 && frameBox.right <= r.right + 1 && frameBox.height > 200
+      else if (header && first) report.topGap = Math.round(first.getBoundingClientRect().top + frameTop - header.bottom)
       report.text = (page.doc.body?.innerText ?? '').trim().length
       report.sandbox = page.doc.defaultView.frameElement?.getAttribute('sandbox') ?? null
 
@@ -148,6 +160,7 @@ describe.skipIf(!available)('a book on a phone', () => {
     const books = {
       plain: Buffer.from(buildPlainEpub(6)).toString('base64'),
       rich: Buffer.from(buildRichEpub()).toString('base64'),
+      'plain-pdf': Buffer.from(buildPlainPdf()).toString('base64'),
       'epub-test': readFileSync(join(__dirname, '../fixtures/books/epub-test.epub')).toString(
         'base64'
       ),
@@ -156,7 +169,7 @@ describe.skipIf(!available)('a book on a phone', () => {
       `(async () => {
         if (!app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})) await app.vault.createFolder(${JSON.stringify(DIR)})
         for (const [name, data] of Object.entries(${JSON.stringify(books)})) {
-          const path = ${JSON.stringify(DIR)} + '/' + name + '.epub'
+          const path = ${JSON.stringify(DIR)} + '/' + name + (name.endsWith('-pdf') ? '.pdf' : '.epub')
           const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0))
           const old = app.vault.getAbstractFileByPath(path)
           if (old) await app.vault.modifyBinary(old, bytes.buffer)
@@ -172,6 +185,7 @@ describe.skipIf(!available)('a book on a phone', () => {
     await reload('window.location.reload()')
     screens.plain = measure('plain')
     screens['epub-test'] = measure('epub-test')
+    screens['plain-pdf'] = measure('plain-pdf')
     screens.rich = measure('rich')
     overlays = evalAsync(`(async () => {
       const wait = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -222,7 +236,7 @@ describe.skipIf(!available)('a book on a phone', () => {
     await reload('app.emulateMobile(false)')
   }, 180_000)
 
-  it.each(['plain', 'epub-test', 'rich'])(
+  it.each(['plain', 'epub-test', 'plain-pdf', 'rich'])(
     '%s: shown in the phone layout, inside the screen',
     (name) => {
       expect(screens[name]?.error).toBeUndefined()
@@ -231,15 +245,19 @@ describe.skipIf(!available)('a book on a phone', () => {
       expect(screens[name]?.underBar).toBe(0)
       expect(screens[name]?.underHeader).toBe(0)
       expect(screens[name]?.text).toBeGreaterThan(20)
-      // The text starts close under the header, not a thumb's width below it.
-      expect(screens[name]?.topGap ?? 999).toBeLessThanOrEqual(48)
+      // The text starts close under the header, not a thumb's width below it; a PDF page fits.
+      if (name.endsWith('-pdf')) expect(screens[name]?.pageFits).toBe(true)
+      else expect(screens[name]?.topGap ?? 999).toBeLessThanOrEqual(48)
     }
   )
 
-  it('the plain book turns its page on a tap at the right edge, and on a swipe', () => {
-    expect(screens.plain?.turned).toBe(true)
-    expect(screens.plain?.swiped).toBe(true)
-  })
+  it.each(['plain', 'plain-pdf'])(
+    '%s turns its page on a tap at the right edge, and on a swipe',
+    (name) => {
+      expect(screens[name]?.turned).toBe(true)
+      expect(screens[name]?.swiped).toBe(true)
+    }
+  )
 
   it('the contents open as a drawer over the page, and close when a chapter is picked', () => {
     expect(overlays.drawer?.left).toBe(0)
