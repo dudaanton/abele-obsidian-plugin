@@ -160,6 +160,7 @@ watch(
     screen.selection = s
       ? { path: props.file.path, label: linesLabel(s), code: selectedQuote().code }
       : null
+    screen.selectionChat = s && linker ? { link: selectedLink, quote: selectedQuote } : null
   },
   { immediate: true }
 )

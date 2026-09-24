@@ -206,7 +206,7 @@ import { formatDate, splitMessage } from '@/github/format'
 import { useLoad } from '@/github/useLoad'
 import { elementTop, pinIntoView } from '@/github/scrollTo'
 import { LINKER, createLinker } from '@/github/linking'
-import { SCREEN } from '@/github/screen'
+import { SCREEN, chatSubject } from '@/github/screen'
 import { GITHUB_REPO } from '@/github/repoContext'
 import { repoWeb } from '@/github/origin'
 import { bodyLink, type GithubLink } from '@/github/permalinks'
@@ -482,7 +482,8 @@ watch(
 )
 
 const chatAbout = () => {
-  if (screen.link) void linker.ask(screen.link)
+  const subject = chatSubject(screen)
+  if (subject) void linker.ask(subject.link, subject.quote)
 }
 
 const tabTitle = computed(() => {

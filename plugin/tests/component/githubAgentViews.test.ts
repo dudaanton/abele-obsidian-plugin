@@ -174,6 +174,41 @@ describe('into a chat', () => {
     })
   })
 
+  it('"Chat about this" with lines selected quotes them, as "Ask here" does', async () => {
+    const hash = await diffAnchorHash('src/app.ts')
+    const { wrapper } = openTab('https://github.com/o/r/pull/7/files', PULL_ROUTES)
+    await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
+    await clickLineNumber(wrapper, '.abele-github-code__gutter_new', 4)
+
+    await wrapper
+      .find('.abele-github-header__actions [aria-label^="Chat about this"]')
+      .trigger('click')
+    await flushPromises()
+
+    expect(askAboutGithub).toHaveBeenCalledWith(
+      { label: 'o/r#7 · src/app.ts:2', url: `https://github.com/o/r/pull/7/files#diff-${hash}R2` },
+      { code: '+c', path: 'src/app.ts', diff: true }
+    )
+  })
+
+  it('"Chat about this" goes back to the item once the selection is gone', async () => {
+    const { wrapper, model } = openTab('https://github.com/o/r/pull/7/files', PULL_ROUTES)
+    await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
+    await clickLineNumber(wrapper, '.abele-github-code__gutter_new', 4)
+    await wrapper.find('.abele-github-file__head').trigger('click')
+    await flushPromises()
+    expect(model.screen.selection).toBeNull()
+
+    await wrapper
+      .find('.abele-github-header__actions [aria-label^="Chat about this"]')
+      .trigger('click')
+    await flushPromises()
+
+    const [link, quote] = askAboutGithub.mock.calls[0] as unknown as [unknown, unknown]
+    expect(link).toEqual({ label: 'o/r#7 · Fix the crash', url: 'https://github.com/o/r/pull/7' })
+    expect(quote).toBeUndefined()
+  })
+
   it('is not offered with the AI side off', async () => {
     useWorkspace(false)
     const { wrapper } = openTab('https://github.com/o/r/pull/7/files', PULL_ROUTES)
@@ -258,6 +293,33 @@ describe("the tab's more-options menu", () => {
 
     AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, enabled: false }
     expect(titles()).not.toContain('Chat about this')
+  })
+})
+
+describe('"Chat about this" from the tab\'s menu or command', () => {
+  it("quotes a file's selected lines, else links the item", async () => {
+    const { wrapper, model } = openTab('https://github.com/o/r/blob/main/src/app.ts', {
+      '/repos/o/r/contents/src/app.ts': { text: 'one\ntwo\nthree' },
+      '/repos/o/r/commits/main': { text: '0123456789abcdef0123456789abcdef01234567' },
+    })
+    await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
+    const view = new GithubView(new WorkspaceLeaf())
+    view.model.screen = model.screen
+
+    view.chatAbout()
+    await vi.waitFor(() => expect(askAboutGithub).toHaveBeenCalledTimes(1))
+    const [item, none] = askAboutGithub.mock.calls[0] as unknown as [unknown, unknown]
+    expect([item, none]).toEqual([model.screen.link, undefined])
+
+    await clickLineNumber(wrapper, '.cm-lineNumbers', 2)
+    view.chatAbout()
+    await vi.waitFor(() => expect(askAboutGithub).toHaveBeenCalledTimes(2))
+    const [link, quote] = askAboutGithub.mock.calls[1] as unknown as [unknown, unknown]
+    expect(await link).toEqual({
+      label: 'o/r@0123456 · src/app.ts:2',
+      url: 'https://github.com/o/r/blob/0123456789abcdef0123456789abcdef01234567/src/app.ts#L2',
+    })
+    expect(quote).toEqual({ code: 'two', path: 'src/app.ts' })
   })
 })
 

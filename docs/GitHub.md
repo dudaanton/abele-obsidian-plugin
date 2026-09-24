@@ -200,6 +200,7 @@ With the AI chat on, a GitHub tab is something to talk about:
 - **Chat about this** — the speech-bubble button in the tab's header, the same item in the
   tab's "more options" menu, and the command **Chat about this GitHub item** — opens a new chat
   with a link to the item in its input. Nothing is sent: say what you want and send it yourself.
+  With lines selected it does what **Ask here** does.
 - **Ask here**, in the bar under selected lines, does the same with a link to those lines and
   their code quoted under it: a diff's lines as a diff, a file's in its language.
 

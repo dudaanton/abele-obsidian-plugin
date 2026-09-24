@@ -9,6 +9,7 @@
 import type { InjectionKey } from 'vue'
 import type { DiffLine } from './patch'
 import type { GithubLink } from './permalinks'
+import type { Quote } from './chatAbout'
 
 export type PullSection = 'conversation' | 'files' | 'commits'
 
@@ -23,6 +24,12 @@ export interface ScreenSelection {
   url?: string
 }
 
+/** The selected lines as "Ask here" hands them to a chat: read when used, never serialised. */
+export interface SelectionChat {
+  link: () => GithubLink | Promise<GithubLink>
+  quote: () => Quote
+}
+
 export interface GithubScreen {
   /** The item's title once it has loaded; empty before. */
   title: string
@@ -33,6 +40,8 @@ export interface GithubScreen {
   /** Paths of the diff files drawn open. */
   expanded: string[]
   selection: ScreenSelection | null
+  /** What "Chat about this" quotes while lines are selected; set and cleared with `selection`. */
+  selectionChat: SelectionChat | null
   /** A link to the item itself, labelled, for "Chat about this"; null until it has loaded. */
   link: GithubLink | null
   /** Why the item could not be shown, when it could not. */
@@ -45,11 +54,30 @@ export const emptyScreen = (): GithubScreen => ({
   section: null,
   expanded: [],
   selection: null,
+  selectionChat: null,
   link: null,
   error: '',
 })
 
 export const SCREEN: InjectionKey<GithubScreen> = Symbol('abele-github-screen')
+
+/**
+ * What "Chat about this" is about: the selected lines with their code, as "Ask here" puts them,
+ * while there are some; else the item. Null before the item has loaded.
+ */
+export function chatSubject(
+  screen: GithubScreen
+): { link: GithubLink | Promise<GithubLink>; quote?: Quote } | null {
+  const selected = screen.selectionChat
+  if (selected) {
+    try {
+      return { link: selected.link(), quote: selected.quote() }
+    } catch {
+      // The lines went before the screen heard of it: the item is still there to talk about.
+    }
+  }
+  return screen.link ? { link: screen.link } : null
+}
 
 export function markExpanded(screen: GithubScreen, path: string, open: boolean): void {
   const has = screen.expanded.includes(path)

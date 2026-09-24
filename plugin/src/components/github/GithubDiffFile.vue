@@ -185,7 +185,9 @@ const screen = inject(SCREEN, null)
 
 /** This file's selection leaves the record, and only this file's. */
 const clearOwnSelection = () => {
-  if (screen?.selection?.path === props.file.path) screen.selection = null
+  if (screen?.selection?.path !== props.file.path) return
+  screen.selection = null
+  screen.selectionChat = null
 }
 
 const selectionHooks = {
@@ -206,6 +208,7 @@ const selectionHooks = {
       code: selectedQuote().code,
       url,
     }
+    screen.selectionChat = { link: selectedLink, quote: selectedQuote }
   },
   onBarHost: (host: HTMLElement | null, removed?: HTMLElement) => {
     if (host) barHost.value = host

@@ -17,7 +17,7 @@ import { createApp, reactive, type App as VueApp } from 'vue'
 import GithubItem from '@/components/github/GithubItem.vue'
 import { shortName, targetKey } from './urls'
 import type { GithubViewModel } from './model'
-import { emptyScreen } from './screen'
+import { chatSubject, emptyScreen } from './screen'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   GITHUB_VIEW_TYPE,
@@ -102,10 +102,11 @@ export class GithubView extends ItemView {
     return !!this.model.screen.link && !!AbeleConfig.getInstance().ai?.enabled
   }
 
-  /** A new chat with a link to the item in its input. */
+  /** A new chat with a link to the item — or to the selected lines, quoted — in its input. */
   chatAbout(): void {
-    const link = this.model.screen.link
-    if (link) void import('./chatAbout').then((m) => m.askAboutGithub(link))
+    const subject = chatSubject(this.model.screen)
+    if (subject)
+      void import('./chatAbout').then((m) => m.askAboutGithub(subject.link, subject.quote))
   }
 
   onPaneMenu(menu: Menu, source: string): void {
