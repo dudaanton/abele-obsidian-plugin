@@ -132,4 +132,17 @@ describe('pinning a target into view', () => {
     vi.advanceTimersByTime(200)
     expect(pane.scrollTop).toBe(300 - 16)
   })
+
+  it('follows an estimate until the target is drawn, then settles on where it really is', () => {
+    let drawn = false
+    pinIntoView(target, () =>
+      drawn ? PANE_TOP + 1300 - pane.scrollTop : { estimate: PANE_TOP + 900 - pane.scrollTop }
+    )
+    expect(pane.scrollTop).toBe(884)
+    // Long past the time a drawn target would be taken as settled.
+    vi.advanceTimersByTime(1500)
+    drawn = true
+    vi.advanceTimersByTime(60)
+    expect(pane.scrollTop).toBe(1284)
+  })
 })

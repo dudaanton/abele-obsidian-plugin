@@ -13,8 +13,12 @@
  * while, or the person scrolls, clicks or types in the tab themselves.
  */
 
-/** Where the target's top is, in viewport pixels; null while it is not there or not laid out. */
-export type Locate = () => number | null
+/**
+ * Where the target's top is, in viewport pixels; null while it is not there or not laid out. An
+ * `estimate` is a guess made before the target is drawn — a line of code the editor has not
+ * rendered yet: it is scrolled to, but the target is not taken as found until it is drawn.
+ */
+export type Locate = () => number | null | { estimate: number }
 
 export interface PinOptions {
   /** Pixels of what comes before the target left visible above it. */
@@ -117,8 +121,10 @@ export function pinIntoView(from: Element, locate: Locate, options: PinOptions =
     if (placedAt ? now - placedAt >= o.settleMs : now - started >= o.waitMs) return stop()
 
     // A hidden tab has no height: wait until it is shown, then measure.
-    const top = container.isConnected && container.clientHeight > 0 ? locate() : null
-    if (top !== null) {
+    const found = container.isConnected && container.clientHeight > 0 ? locate() : null
+    if (found !== null) {
+      const estimated = typeof found === 'object'
+      const top = estimated ? found.estimate : found
       const offset = top - container.getBoundingClientRect().top
       if (placedAt === 0 || Math.abs(offset - o.context) > 2) {
         const before = container.scrollTop
@@ -127,7 +133,9 @@ export function pinIntoView(from: Element, locate: Locate, options: PinOptions =
         if (placedAt === 0 || container.scrollTop !== before) stillSince = now
         if (placedAt === 0) placedAt = now
       }
-      if (now - stillSince >= o.stillMs) return stop()
+      // A guess is never where it settles: keep going until the target itself is drawn.
+      if (estimated) stillSince = now
+      else if (now - stillSince >= o.stillMs) return stop()
     }
     cancelTick = soon(win, tick)
   }

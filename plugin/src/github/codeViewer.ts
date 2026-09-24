@@ -23,10 +23,10 @@ import { lineSelection, type SelectionHooks } from './lineSelection'
 export interface Viewer {
   /**
    * Where the first highlighted line starts, in viewport pixels; null when nothing is highlighted
-   * or the editor is not laid out. Read from the editor's height map, so it is known before the
-   * line is drawn — the editor draws only what is on screen — and grows exact as it is.
+   * or the editor is not laid out. The editor draws only what is on screen, so before the line is
+   * drawn this is an estimate from its height map, which scrolling to brings the line on screen.
    */
-  targetTop(): number | null
+  targetTop(): number | null | { estimate: number }
   destroy(): void
 }
 
@@ -77,8 +77,13 @@ function mount(
     targetTop() {
       if (firstHighlighted === null || firstHighlighted > view.state.doc.lines) return null
       if (!view.dom.isConnected || view.dom.getClientRects().length === 0) return null
-      const block = view.lineBlockAt(view.state.doc.line(firstHighlighted).from)
-      return view.documentTop + block.top
+      const from = view.state.doc.line(firstHighlighted).from
+      // Drawn: where it is. Not drawn yet: where the editor's height map expects it, which is
+      // only as good as its guess at how the lines above it wrap.
+      const drawn = from >= view.viewport.from && from <= view.viewport.to
+      const rect = drawn ? view.coordsAtPos(from) : null
+      if (rect) return rect.top
+      return { estimate: view.documentTop + view.lineBlockAt(from).top }
     },
     destroy() {
       view.destroy()
