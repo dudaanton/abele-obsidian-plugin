@@ -2,7 +2,10 @@ import { EditorSelection, Prec, StateField, RangeSetBuilder, EditorState } from 
 import { Decoration, DecorationSet, EditorView, keymap } from '@codemirror/view'
 import { editorLivePreviewField, editorInfoField } from 'obsidian'
 import { GalleryWidget } from './GalleryWidget'
-import { findGalleryBlocks as findGalleryTextBlocks, GalleryImageEntry } from '@/helpers/galleryUtils'
+import {
+  findGalleryBlocks as findGalleryTextBlocks,
+  GalleryImageEntry,
+} from '@/helpers/galleryUtils'
 import { rangesOverlap } from '@/helpers/editorHelpers'
 
 interface GalleryBlock {
@@ -114,6 +117,12 @@ function buildGalleryDecorations(state: EditorState): DecorationSet {
  * Redirect target depends on where the cursor came from:
  * - from above or below → header end
  * - from header → past block
+ *
+ * Only a bare cursor is moved that way. A selection set by code — a link to lines opening a note
+ * — is kept exactly as asked. A selection the person is making (drag, Shift+arrow) whose end
+ * lands among the pictures takes the whole gallery in the direction it is going: to the block's
+ * end going down, to its header going up. Snapping it to the header used to throw away what it
+ * covered.
  */
 const galleryCursorFilter = EditorState.transactionFilter.of((tr) => {
   if (tr.newSelection.eq(tr.startState.selection)) return tr
@@ -139,6 +148,17 @@ const galleryCursorFilter = EditorState.transactionFilter.of((tr) => {
       const headerLine = doc.lineAt(block.headerFrom).number
       if (newLine === headerLine) continue
 
+      // A selection, not a cursor: kept when code set it, stretched over the block when the
+      // person is making it.
+      if (range.anchor !== range.head) {
+        if (!tr.isUserEvent('select')) return range
+        modified = true
+        return EditorSelection.range(
+          range.anchor,
+          range.anchor <= range.head ? block.blockTo : block.headerFrom
+        )
+      }
+
       // Head landed on a non-header line within the block → redirect
       modified = true
 
@@ -156,11 +176,7 @@ const galleryCursorFilter = EditorState.transactionFilter.of((tr) => {
         newHead = block.headerTo
       }
 
-      // Preserve selection (anchor) if it exists
-      if (range.anchor === range.head) {
-        return EditorSelection.cursor(newHead)
-      }
-      return EditorSelection.range(range.anchor, newHead)
+      return EditorSelection.cursor(newHead)
     }
     return range
   })
