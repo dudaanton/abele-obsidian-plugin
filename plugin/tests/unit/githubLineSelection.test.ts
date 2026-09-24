@@ -103,4 +103,3 @@ describe('on a phone, where there is no Shift', () => {
     expect(e.bar()).toBeNull()
   })
 })
-

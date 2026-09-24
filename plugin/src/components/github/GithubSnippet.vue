@@ -1,10 +1,10 @@
 <template>
   <Card v-if="snippet" class="abele-github-snippet" :title="snippet.label" :href="snippet.url">
-    <Markdown
+    <GithubText
       v-if="snippet.kind === 'comment'"
       class="abele-github-snippet__quote"
       :text="snippet.text"
-      :file-path="filePath"
+      :repo="repoOfUrl(snippet.url) ?? NO_REPO"
       as-document
     />
     <div v-else ref="codeEl" class="abele-github-code abele-github-snippet__code" />
@@ -20,7 +20,9 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import Card from '../obsidian/Card.vue'
-import Markdown from '../obsidian/Markdown.vue'
+import GithubText from './GithubText.vue'
+import { repoOfUrl } from '@/github/safeMarkdown'
+import { NO_REPO } from '@/github/repoContext'
 import { mountSnippet, type Viewer } from '@/github/codeViewer'
 import type { SnippetBlock } from '@/github/snippetBlock'
 

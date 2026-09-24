@@ -22,10 +22,11 @@
         :quote="quote"
       />
     </div>
-    <Markdown
+    <GithubText
       v-if="comment.body"
       class="abele-github-comment__body"
       :text="comment.body"
+      :repo="repo"
       as-document
     />
     <div v-else class="abele-github-comment__empty">No text.</div>
@@ -43,11 +44,12 @@
 <script setup lang="ts">
 import { computed, inject } from 'vue'
 import Badge from '../obsidian/Badge.vue'
-import Markdown from '../obsidian/Markdown.vue'
+import GithubText from './GithubText.vue'
 import GithubLinkActions from './GithubLinkActions.vue'
 import type { Comment } from '@/github/api'
 import { formatDate } from '@/github/format'
 import { LINKER } from '@/github/linking'
+import { GITHUB_REPO, NO_REPO } from '@/github/repoContext'
 import { bodyLink, commentLink, type GithubLink } from '@/github/permalinks'
 import { commentSnippet, type SnippetBlock } from '@/github/snippetBlock'
 
@@ -64,6 +66,8 @@ const props = withDefaults(
 )
 
 const linker = inject(LINKER, null)
+const repoRef = inject(GITHUB_REPO, null)
+const repo = computed(() => repoRef?.value ?? NO_REPO)
 
 /** A link to this comment, or to the item for its description; null when there is none to make. */
 const link = computed((): (() => GithubLink) | null => {

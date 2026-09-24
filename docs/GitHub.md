@@ -87,16 +87,34 @@ shown as a YAML block. What it means for the rendering:
   Enterprise server). When that address refuses it — a private repository, or a server that
   wants a signed-in session — and a token is set, it is read once more through the API with the
   token and shown from memory.
-- Any other kind of link — `javascript:`, `obsidian:`, `file:` — is shown as text and does
-  nothing: a README is written by someone else. A code block in a language only a plugin knows
-  (`dataviewjs`, say) is shown as plain code rather than handed to that plugin, and an embed of
-  a vault note (`![[…]]`) is shown as its name.
+- What keeps someone else's text from acting in the vault is the same for every piece of GitHub
+  text the plugin renders — see [GitHub text is someone else's](#github-text-is-someone-elses).
 - Reference-style links and footnotes work across the file; footnotes are numbered as GitHub
   numbers them, and a footnote's number scrolls to its text.
 
 A pull request with many files lists them and draws a file's diff only when it is opened; one
 with five or fewer opens them all. A file GitHub will not send a diff for — binary, or too
 large — says so; the tab's own button opens the page on GitHub.
+
+## GitHub text is someone else's
+
+Everything written on GitHub that a tab or a note shows — a description, a comment, a review
+comment, a commit message, a comment kept in a note as a card, a markdown file — is rendered by
+Obsidian's own renderer, which also hands the result to every other plugin. So before and after
+rendering it is kept from acting inside the vault:
+
+- a link that is not a web or mail address — `javascript:`, `obsidian:`, `file:` — is shown as
+  text and does nothing;
+- a code block in a language only a plugin knows (`dataviewjs`, `dataview`, `tasks`, a button…)
+  is shown as plain code rather than handed to that plugin;
+- inline code carries an invisible mark while it is rendered, so a plugin that reads a code span
+  as a command by how it starts — Dataview's `` `= …` `` and `` `$= …` ``, Meta Bind's
+  `` `INPUT[…]` `` — does not recognise it; the mark is taken out once the text is on screen;
+- an embed of a vault note (`![[…]]`) is shown as its name; a relative link or image points at
+  the repository — in a comment at its default branch.
+
+Obsidian offers no way to render without the other plugins, so this is not a wall: a plugin that
+acts on ordinary text, not on code spans or code blocks, still sees it.
 
 ## Linking to a line or a comment
 

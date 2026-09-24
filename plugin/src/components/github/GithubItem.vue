@@ -128,10 +128,11 @@
       </template>
 
       <template v-else-if="shown.kind === 'commit' && commit">
-        <Markdown
-          v-if="splitMessage(commit.message).body"
+        <GithubText
+          v-if="splitMessage(commit.message).body && repo"
           class="abele-github__message"
           :text="splitMessage(commit.message).body"
+          :repo="repo"
           as-document
         />
         <GithubFiles :files="commit.files" :anchor="fileAnchor" />
@@ -159,7 +160,7 @@ import EmptyState from '../obsidian/EmptyState.vue'
 import Button from '../obsidian/Button.vue'
 import Tabs from '../obsidian/Tabs.vue'
 import Card from '../obsidian/Card.vue'
-import Markdown from '../obsidian/Markdown.vue'
+import GithubText from './GithubText.vue'
 import GithubHeader from './GithubHeader.vue'
 import GithubThread from './GithubThread.vue'
 import GithubFiles from './GithubFiles.vue'
@@ -175,6 +176,7 @@ import { useLoad } from '@/github/useLoad'
 import { elementTop, pinIntoView } from '@/github/scrollTo'
 import { LINKER, createLinker } from '@/github/linking'
 import { SCREEN } from '@/github/screen'
+import { GITHUB_REPO } from '@/github/repoContext'
 import { bodyLink, type GithubLink } from '@/github/permalinks'
 import { GlobalStore } from '@/stores/GlobalStore'
 import {
@@ -382,6 +384,13 @@ const linker = createLinker({
   client,
 })
 provide(LINKER, linker)
+
+/** The repository shown: comments and messages resolve their relative links and images in it. */
+const repo = computed<RepoFile | null>(() => {
+  const t = target.value
+  return t ? { host: t.host, owner: t.owner, repo: t.repo, ref: 'HEAD', path: '' } : null
+})
+provide(GITHUB_REPO, repo)
 
 // What is on screen, for an agent to ask about: the diffs and the file view add their part.
 const screen = props.model.screen

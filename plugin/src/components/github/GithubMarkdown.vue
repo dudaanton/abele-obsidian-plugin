@@ -47,7 +47,8 @@ import {
   pickBlock,
   sourcesOf,
 } from '@/github/markdownPreview'
-import { repoImageUrl, rewriteRendered, type RepoFile } from '@/github/markdownLinks'
+import { repoImageUrl, type RepoFile } from '@/github/markdownLinks'
+import { finishGithubMarkdown, guardInlineCode } from '@/github/safeMarkdown'
 import { LINE_CONTEXT, elementTop, pinIntoView, scrollParent } from '@/github/scrollTo'
 
 /**
@@ -156,14 +157,14 @@ const renderAll = async () => {
     if (!el || !source) continue
     const next = createDiv()
     try {
-      await MarkdownRenderer.render(app, source, next, '', component)
+      await MarkdownRenderer.render(app, guardInlineCode(source), next, '', component)
     } catch (e) {
       // One block that will not render is shown as its text; the rest of the file still is.
       console.debug('Abele: a markdown block did not render', e)
       next.replaceChildren(createEl('pre', { text: source }))
     }
     if (mine !== renderRun) return
-    rewriteRendered(next, props.file)
+    finishGithubMarkdown(next, props.file)
     finishFootnotes(next, list[i], sources.value)
     for (const img of Array.from(next.querySelectorAll('img'))) retryThroughApi(img)
     el.replaceChildren(...Array.from(next.childNodes))
