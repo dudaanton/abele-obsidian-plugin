@@ -2,6 +2,7 @@ import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { toSafeVaultPath, describeRename } from '@/helpers/pathsHelpers'
+import { contentHash } from '../readGuard'
 
 export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
@@ -48,6 +49,7 @@ export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool 
         // The path as well as the diff: it may not be the one that was asked for, and the
         // script API hands it straight back to the script.
         details: { diff: { old: '', new: content }, path: safePath },
+        seen: { path: safePath, hash: contentHash(content) },
       }
     },
   }

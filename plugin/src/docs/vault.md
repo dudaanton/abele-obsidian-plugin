@@ -155,6 +155,12 @@ screen in the history. It is copied into the index the same way. A comment chat 
 same fields but is not in the index, so it appears in no footer until it is opened as a full chat.
 Renaming a note rewrites the path in both places. Do not edit these fields by hand.
 
+A tool result or message that showed the agent a file carries `reads`: the file's path, a hash
+of its text at that moment, the time, whether it was read, attached or written by the agent, and
+the lines when only a window was seen. That is what lets `edit`, `replace` and `write` tell
+whether the agent has seen a file as it is now (see the tools section). It travels with the
+message, so it is gone once that message is compacted away or left on another branch.
+
 ## Comments
 
 A comment chat is a conversation anchored to one place in a note. The anchor is a marker

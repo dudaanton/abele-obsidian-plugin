@@ -21,6 +21,7 @@ import type {
   AgentToolResult,
   Message,
   ModelConfig,
+  ReadMark,
   TextContent,
   ThinkingContent,
   ToolCallContent,
@@ -58,6 +59,7 @@ import { createEditSelectionTool } from './tools/EditSelectionTool'
 import { loadSkillContent } from './tools/SkillTool'
 import { ScopeResolver } from './ScopeResolver'
 import { resolveAttachmentsForApi } from './attachments'
+import { ReadGuard } from './readGuard'
 import { linkedNotesNote } from './linkedNotes'
 import {
   getPathToLeaf,
@@ -187,6 +189,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   /** What the chat's file already holds, so a save writes only the difference. */
   private readonly log = new ChatLogWriter()
+  /** Refuses a write to a file this conversation has not seen as it is now. See `readGuard.ts`. */
+  private readonly readGuard = new ReadGuard({
+    history: () => this.getMessagesForModel(),
+    scope: () => this.scopeResolver,
+  })
   private dirty = false
   private writing: Promise<void> | null = null
   private persistTimer: number | null = null
@@ -690,6 +697,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    * and as an internal system marker that `getMessagesForModel` truncates the history at.
    */
   applyCompactSummary(summary: string): void {
+    // What was read before the summary is out of the model's sight from here on.
+    this.readGuard.settle()
     const divider: ChatMessage = {
       id: nanoid(),
       role: 'system',
@@ -829,7 +838,11 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         ScopeResolver.setActiveInstance(this.scopeResolver)
         ChatSession._activeSession = this
         try {
+          // Before anything is written, so a refused call changes nothing at all.
+          const refused = await this.readGuard.check(tool.name, params)
+          if (refused) throw new Error(refused)
           const result = await tool.execute(id, params, signal)
+          await this.readGuard.record(tool.name, params, result)
           // The one place that sees a tool's name, its arguments and its result together, so
           // the one place a successful write becomes a link. A run is skipped: it is never
           // listed anywhere, and its writes belong to the chat that delegated them.
@@ -1209,6 +1222,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       }
       this.lastModelId = model.id
 
+      // Whatever the last turn read is in the history now, or went with a turn that was stopped.
+      this.readGuard.settle()
       this.agentLoop = new AgentLoop()
       this.unsubscribe = this.agentLoop.subscribe((event) => this.handleAgentEvent(event))
 
@@ -1223,6 +1238,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           : undefined,
         beforeIteration: () => this.takeQueued(),
         beforeToolCall: async (toolName, _id, args) => {
+          // Refused before anyone is asked: approving a write that cannot run wastes a click.
+          const refused = await this.readGuard.check(toolName, args)
+          if (refused) return { block: true, reason: refused }
           if (!this.needsApproval(toolName, args)) return
 
           // A run has nobody to ask, so a tool that would need approval is refused with a
@@ -1404,6 +1422,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       isError,
       timestamp: Date.now(),
       chatMessageId: toolChatMsg?.id,
+      ...(toolResult.reads?.length ? { reads: toolResult.reads } : {}),
     })
 
     if (toolResult.injectMessages?.length) {
@@ -1567,13 +1586,19 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       content + linkedNotesNote(content, GlobalStore.getInstance().app, this.scopeResolver)
 
     if (attachments?.length) {
-      const parts = await resolveAttachmentsForApi(attachments)
+      // An attached note is read: its text is in the message.
+      const reads: ReadMark[] = []
+      const parts = await resolveAttachmentsForApi(attachments, (seen) =>
+        reads.push({ ...seen, at: Date.now(), via: 'attachment' })
+      )
       const allParts: UserContentPart[] = [{ type: 'text', text }, ...parts]
+      this.readGuard.note(reads)
       return {
         role: 'user',
         content: allParts,
         timestamp: Date.now(),
         chatMessageId: userMsg.id,
+        ...(reads.length ? { reads } : {}),
       }
     }
     return { role: 'user', content: text, timestamp: Date.now(), chatMessageId: userMsg.id }
@@ -1747,6 +1772,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     await this.save()
     this.log.forget()
     this.dirty = false
+    this.readGuard.settle()
     this.abort()
     this.abortBackground()
     this.allInternalMessages = []

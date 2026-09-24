@@ -4,6 +4,7 @@ import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
 import { chatForAgent, isChatLog } from '../chatText'
 import { READ_DESCRIPTION } from './fileToolDescriptions'
+import { contentHash } from '../readGuard'
 
 /**
  * `numbered` is for agents: they get every line numbered unless they ask otherwise, because a
@@ -60,10 +61,17 @@ export function createReadFileTool(opts?: { skipScope?: boolean; numbered?: bool
       const start = params.start_line as number | undefined
       const end = params.end_line as number | undefined
       const numbers = (params.line_numbers as boolean | undefined) ?? byDefault
-      if (numbers || start !== undefined || end !== undefined) {
-        return { content: [{ type: 'text', text: numberedLines(path, content, start, end) }] }
+      // What the agent now knows of the file, for the read guard: all of it, or a window.
+      const { from, to, total } = lineWindow(content, start, end)
+      const seen = {
+        path: file.path,
+        hash: contentHash(content),
+        ...(from > 1 || to < total ? { lines: [from, to] as [number, number] } : {}),
       }
-      return { content: [{ type: 'text', text: content }] }
+      if (numbers || start !== undefined || end !== undefined) {
+        return { content: [{ type: 'text', text: numberedLines(path, content, start, end) }], seen }
+      }
+      return { content: [{ type: 'text', text: content }], seen }
     },
   }
 }
@@ -75,10 +83,8 @@ export function createReadFileTool(opts?: { skipScope?: boolean; numbered?: bool
  */
 export function numberedLines(path: string, content: string, start?: number, end?: number): string {
   const lines = content.split('\n')
-  const total = lines.length
   const window = start !== undefined || end !== undefined
-  const from = Math.min(Math.max(1, Math.floor(start ?? 1)), total)
-  const to = Math.min(total, Math.max(from, Math.floor(end ?? total)))
+  const { from, to, total } = lineWindow(content, start, end)
   // A bare number and a tab, as `cat -n` without its padding: the cheapest form models read
   // reliably, and one no markdown line starts with by accident.
   const rows = lines.slice(from - 1, to).map((l, i) => `${from + i}\t${l}`)
@@ -95,4 +101,16 @@ export function numberedLines(path: string, content: string, start?: number, end
     out.push(`[${note[0].toUpperCase()}${note.slice(1)}.]`)
   }
   return out.join('\n')
+}
+
+/** The lines a read of `start`–`end` covers, clamped to the file. */
+export function lineWindow(
+  content: string,
+  start?: number,
+  end?: number
+): { from: number; to: number; total: number } {
+  const total = content.split('\n').length
+  const from = Math.min(Math.max(1, Math.floor(start ?? 1)), total)
+  const to = Math.min(total, Math.max(from, Math.floor(end ?? total)))
+  return { from, to, total }
 }

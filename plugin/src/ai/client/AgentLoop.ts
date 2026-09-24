@@ -369,6 +369,7 @@ export class AgentLoop {
       isError,
       timestamp: Date.now(),
       injectMessages: toolResult.injectMessages,
+      ...(toolResult.reads?.length ? { reads: toolResult.reads } : {}),
     }
   }
 }

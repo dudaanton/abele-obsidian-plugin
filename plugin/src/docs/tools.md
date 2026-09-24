@@ -12,6 +12,17 @@ easy to get wrong. Which of these an agent actually has depends on its own tool 
   and is the one for a bulk, rule-driven change. `write` overwrites the whole file — reach for
   it only when the whole file is being rewritten.
 - `create` makes a new file and its parent folders.
+- **Read before you change.** `edit`, `replace` and `write` refuse a file that already exists
+  unless this conversation has seen it as it is now: read it, had it attached to a message, or
+  wrote it itself. A refusal starts with `File must be read first` and says why — never read, or
+  changed since you read it (by the person, a sync or a sub-agent) — and changes nothing: read
+  the file again and redo the change against what is there now. A window of lines
+  (`start_line`/`end_line`) is enough for `edit` and `replace`; `write` replaces everything, so
+  it needs the whole file read. Creating a file needs no read, and neither do `mv`, `cp` and `rm`;
+  a note moved or copied keeps counting as read at its new path. What was read is forgotten
+  when the chat is compacted or a branch is taken before the read, and kept when the chat is
+  reopened. A sub-agent starts having read nothing, and what it writes has to be read again by
+  the chat that delegated it.
 - `read` numbers every line — the number, a tab, the line — from 1 over the whole file,
   frontmatter included: the numbers a link to lines (`[[Note#L12-L18|label]]`, see the vault
   section) opens at. `start_line`/`end_line` read a window; `line_numbers: false` gives the file

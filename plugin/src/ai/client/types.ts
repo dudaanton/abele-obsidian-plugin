@@ -31,6 +31,8 @@ export interface UserMessage {
   content: string | UserContentPart[]
   timestamp: number
   chatMessageId?: string
+  /** Notes whose text this message handed the agent — its attachments. See `ReadMark`. */
+  reads?: ReadMark[]
 }
 
 export interface AssistantMessage {
@@ -54,6 +56,25 @@ export interface ToolResultMessage {
   /** Messages to inject after this tool result (e.g. user message with image) */
   injectMessages?: Message[]
   chatMessageId?: string
+  /** What this call showed the agent of a file, or left in it. See `ReadMark`. */
+  reads?: ReadMark[]
+}
+
+/**
+ * The state of one file as the agent last saw it: by reading it, by having it attached, or by
+ * writing it itself. It travels on the message that carried it, so a read counts exactly while
+ * that message is in what the model is sent — a compacted, abandoned or never-saved turn takes
+ * its reads with it. `readGuard.ts` is what reads these.
+ */
+export interface ReadMark {
+  path: string
+  /** `contentHash` of the file's text at that moment. */
+  hash: string
+  /** Milliseconds since the epoch. */
+  at: number
+  via: 'read' | 'attachment' | 'write'
+  /** Set when only these lines (1-based, inclusive) were seen; absent for the whole file. */
+  lines?: [number, number]
 }
 
 export interface SystemMessage {
@@ -105,6 +126,13 @@ export interface AgentToolResult {
   details?: unknown
   /** Extra messages injected into conversation after the tool result (e.g. image user messages) */
   injectMessages?: Message[]
+  /**
+   * The text of a file this call read or left behind, as the tool saw it. Only the session's
+   * read guard looks at it; it turns it into the `reads` of the tool's result message.
+   */
+  seen?: { path: string; hash: string; lines?: [number, number] }
+  /** Filled by the session's read guard, carried onto the result message by whoever makes it. */
+  reads?: ReadMark[]
 }
 
 // ── Model / Provider types ──────────────────────────────────

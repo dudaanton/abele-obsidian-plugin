@@ -3,6 +3,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import type { UserContentPart } from './client'
 import { isImagePath, VAULT_IMAGE_PREFIX } from './tools/ReadImageTool'
 import { chatForAgent, isChatLog } from './chatText'
+import { contentHash } from './readGuard'
 
 const MAX_TEXT_FILE_SIZE = 100 * 1024 // 100 KB
 
@@ -59,13 +60,23 @@ export function isAllowedAttachment(path: string): boolean {
 
 export const ALLOWED_ACCEPT = ALLOWED_EXTENSIONS.map((e) => `.${e}`).join(',')
 
+/** What an attachment showed the agent of a text file: all of it, or the lines before the cut. */
+export interface AttachmentSeen {
+  path: string
+  hash: string
+  lines?: [number, number]
+}
+
 /**
  * Resolve attachment vault paths into UserContentPart[] for the API.
  * Images → image_url with vault: reference (resolved to base64 at send time).
- * Text files → inline text content.
+ * Text files → inline text content, each reported to `onSeen` — the agent has read it.
  * Another chat → only what was said in it, never the file: see `chatForAgent`.
  */
-export async function resolveAttachmentsForApi(paths: string[]): Promise<UserContentPart[]> {
+export async function resolveAttachmentsForApi(
+  paths: string[],
+  onSeen?: (seen: AttachmentSeen) => void
+): Promise<UserContentPart[]> {
   const { app } = GlobalStore.getInstance()
   const parts: UserContentPart[] = []
 
@@ -88,11 +99,16 @@ export async function resolveAttachmentsForApi(paths: string[]): Promise<UserCon
       }
     } else {
       try {
-        let content = await app.vault.read(file)
+        const whole = await app.vault.read(file)
+        let content = whole
+        let lines: [number, number] | undefined
         if (file.stat.size > MAX_TEXT_FILE_SIZE) {
-          content = content.slice(0, MAX_TEXT_FILE_SIZE) + '\n\n[... truncated]'
+          content = whole.slice(0, MAX_TEXT_FILE_SIZE)
+          if (content.length < whole.length) lines = [1, content.split('\n').length]
+          content += '\n\n[... truncated]'
         }
         parts.push({ type: 'text', text: `--- ${file.name} ---\n${content}` })
+        onSeen?.({ path: file.path, hash: contentHash(whole), ...(lines ? { lines } : {}) })
       } catch {
         parts.push({ type: 'text', text: `[Cannot read: ${path}]` })
       }

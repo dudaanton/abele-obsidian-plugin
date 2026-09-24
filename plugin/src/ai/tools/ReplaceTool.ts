@@ -5,6 +5,8 @@ import { ReplacementAction } from '@/entities/ReplacementAction'
 import { getNoteBody, replaceNoteBody } from '@/helpers/notesUtils'
 import { getEditorForFile } from '@/helpers/vaultUtils'
 import { TFile } from 'obsidian'
+import { contentHash } from '../readGuard'
+import { READ_FIRST_EDIT } from './fileToolDescriptions'
 
 interface ActionParam {
   type:
@@ -30,7 +32,9 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
       'Apply replacement actions to a file. Supports: set-property, remove-property, ' +
       'add-to-list, remove-from-list, replace-in-list, replace-in-content, replace-in-property, move. ' +
       'Multiple actions are applied sequentially. ' +
-      'For replace operations, old_value supports regex in /pattern/flags format.',
+      'For replace operations, old_value supports regex in /pattern/flags format.' +
+      READ_FIRST_EDIT +
+      ' A replace that only moves the file needs no read.',
     parameters: {
       type: 'object',
       properties: {
@@ -159,6 +163,13 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
         await app.fileManager.renameFile(file, newPath)
       }
 
+      // The text as this call left it, for the read guard. Only when it wrote: a call that
+      // just moved the note has shown the agent nothing it did not know.
+      const seen =
+        fmChanged || contentChanged
+          ? { path: file.path, hash: contentHash(await app.vault.read(file)) }
+          : undefined
+
       const parts: string[] = []
       if (fmChanged) parts.push('frontmatter updated')
       if (contentChanged) parts.push('content updated')
@@ -169,6 +180,7 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
         // is the one at the end. Absent when nothing was written, so a call that matched
         // nothing links the chat to nothing.
         details: parts.length ? { path: newPath } : undefined,
+        seen,
       }
     },
   }

@@ -3,6 +3,7 @@ import { EDIT_DESCRIPTION } from './fileToolDescriptions'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
+import { contentHash } from '../readGuard'
 
 export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
@@ -37,10 +38,12 @@ export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
       if (!content.includes(old_string)) {
         throw new Error(`String not found in file: "${old_string.slice(0, 100)}"`)
       }
-      await app.vault.modify(file, content.replace(old_string, new_string))
+      const updated = content.replace(old_string, new_string)
+      await app.vault.modify(file, updated)
       return {
         content: [{ type: 'text', text: `Edited: ${path}` }],
         details: { diff: { old: old_string, new: new_string }, path },
+        seen: { path: file.path, hash: contentHash(updated) },
       }
     },
   }

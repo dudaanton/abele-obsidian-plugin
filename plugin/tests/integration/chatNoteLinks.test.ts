@@ -44,12 +44,25 @@ function newSession(kind: 'chat' | 'run' | 'comment' = 'chat'): ChatSession {
   return session
 }
 
-/** The session's own tools, wrapped as a turn would hand them to the loop. */
+/**
+ * The session's own tools, wrapped as a turn would hand them to the loop.
+ *
+ * An agent has to read a file before it may change it (`readGuard.ts`), so a tool that changes
+ * one reads it first, as an agent would. What a read links — nothing — is tested on its own.
+ */
 function toolOf(session: ChatSession, name: string): AgentTool {
   const tools = (session as unknown as { getTools: () => AgentTool[] }).getTools()
   const tool = tools.find((t) => t.name === name)
   if (!tool) throw new Error(`no ${name} tool`)
-  return tool
+  if (!['edit', 'replace', 'write'].includes(name)) return tool
+  const read = tools.find((t) => t.name === 'read') as AgentTool
+  return {
+    ...tool,
+    execute: async (id, params, signal) => {
+      await read.execute(`${id}-read`, { path: params.path })
+      return tool.execute(id, params, signal)
+    },
+  }
 }
 
 const paths = (session: ChatSession): string[] => session.touched.value.map((t) => t.path)

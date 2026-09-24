@@ -1,8 +1,9 @@
 import type { AgentTool } from '../client'
-import { NUMBERS_NOT_TEXT } from './fileToolDescriptions'
+import { NUMBERS_NOT_TEXT, READ_FIRST_WRITE } from './fileToolDescriptions'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
+import { contentHash } from '../readGuard'
 
 export function createWriteFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
@@ -10,7 +11,8 @@ export function createWriteFileTool(opts?: { skipScope?: boolean }): AgentTool {
     label: 'Write File',
     description:
       'Overwrite a file with new content entirely. Use this when you need to rewrite the whole file instead of making a targeted edit. File must be in workspace scope.' +
-      NUMBERS_NOT_TEXT,
+      NUMBERS_NOT_TEXT +
+      READ_FIRST_WRITE,
     parameters: {
       type: 'object',
       properties: {
@@ -35,6 +37,7 @@ export function createWriteFileTool(opts?: { skipScope?: boolean }): AgentTool {
       return {
         content: [{ type: 'text', text: `Written: ${path}` }],
         details: { diff: { old, new: content }, path },
+        seen: { path: file.path, hash: contentHash(content) },
       }
     },
   }

@@ -13,6 +13,21 @@ export const READ_DESCRIPTION =
 export const NUMBERS_NOT_TEXT =
   ' Line numbers from read are not part of the file: leave them out of the text.'
 
+/**
+ * The read guard, told to the tools it stands in front of, so the refusal is not the first an
+ * agent hears of it. See `readGuard.ts`.
+ */
+export const READ_FIRST_EDIT =
+  ' Read the file first: an existing file this conversation has not read, or that changed since' +
+  ' it was read, is refused with "File must be read first" and left unchanged — read it again,' +
+  ' then retry. Reading only some lines is enough.'
+
+/** `write` replaces everything, so part of the file is not enough. */
+export const READ_FIRST_WRITE =
+  ' An existing file must have been read in full in this conversation, and not changed since;' +
+  ' otherwise the call is refused with "File must be read first" and nothing is written.'
+
 export const EDIT_DESCRIPTION =
   'Edit a file by replacing an exact string match with new content. File must be in workspace scope.' +
-  NUMBERS_NOT_TEXT
+  NUMBERS_NOT_TEXT +
+  READ_FIRST_EDIT

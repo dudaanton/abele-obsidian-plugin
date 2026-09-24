@@ -5,6 +5,7 @@ import { ChatSession } from './ChatSession'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { CORE_TOOLS } from './types'
 import type { ToolMode } from './types'
+import { ReadGuard, withReadGuard } from './readGuard'
 
 export interface SubAgentTask {
   /** System prompt for the sub-agent */
@@ -87,10 +88,13 @@ export async function runSubAgent(
     },
   ]
 
+  // An agent, even one a script started: it may not write over a file it has not read.
+  const guard = new ReadGuard({ history: () => [], scope: () => ScopeResolver.getInstance() })
+
   const result = await agentLoop.run({
     model: task.model,
     systemPrompt: task.systemPrompt,
-    tools: task.tools,
+    tools: withReadGuard(task.tools, guard),
     messages,
     streamOptions: {
       signal: task.signal,
