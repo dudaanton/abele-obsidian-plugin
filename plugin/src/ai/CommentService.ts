@@ -376,8 +376,9 @@ export class CommentService implements CommentInfoSource {
    * the file into the comment folder, a session on top of it — and, as "Ask here" does in a
    * note, in front at once.
    *
-   * On the comment agent, like a comment in a note: one setting for what answers a comment,
-   * wherever it is asked. The chat is not in its scope; it is told about the chat in its prompt.
+   * On the chat's own agent, not the comment agent a note uses — the owner's call, 2026-09-24.
+   * The chat file is not in its scope; it is told about the chat in its prompt. Any message the
+   * person and the agent wrote can carry one, their own as well as the agent's answers.
    *
    * `null` when the chat has no file yet — there is nowhere to keep where the passage is — and
    * the person is told why. No quote is a comment on the whole answer.
@@ -401,18 +402,27 @@ export class CommentService implements CommentInfoSource {
       ...(quote ? { quote, start: start ?? 0 } : {}),
     })
 
-    const session = await this.startComment(id, {
-      note: chat.path,
-      ...(quote ? { quote } : {}),
-      message: messageId,
-    })
+    const session = await this.startComment(
+      id,
+      { note: chat.path, ...(quote ? { quote } : {}), message: messageId },
+      // The chat's own agent answers: the comment is a side question inside its conversation,
+      // asked of the agent that was having it — with that agent's scope, not the comment agent's.
+      parent.agentId.value
+    )
 
     if (await this.showInSidebar(id)) ChatService.getInstance().focusRequest.value++
     return session
   }
 
-  /** The file and the session of a new comment, whatever it is anchored to. */
-  private async startComment(id: string, anchor: CommentAnchor): Promise<ChatSession> {
+  /**
+   * The file and the session of a new comment, whatever it is anchored to. `agentId` names the
+   * agent that answers it; without one it is the comment agent, which is what a note gets.
+   */
+  private async startComment(
+    id: string,
+    anchor: CommentAnchor,
+    agentId?: string
+  ): Promise<ChatSession> {
     const { app } = GlobalStore.getInstance()
 
     // The folder has a new file in it, so what was known to be absent may not be any more.
@@ -420,7 +430,10 @@ export class CommentService implements CommentInfoSource {
 
     const config = AbeleConfig.getInstance().ai
     const registry = AgentRegistry.getInstance()
-    const agent = registry.get(config.commentAgentId ?? '') ?? registry.defaultAgent()
+    const agent =
+      (agentId && registry.get(agentId)) ||
+      registry.get(config.commentAgentId ?? '') ||
+      registry.defaultAgent()
 
     const metadata: ChatMetadata = {
       type: 'abele-chat',

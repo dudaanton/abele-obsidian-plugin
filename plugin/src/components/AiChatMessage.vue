@@ -31,9 +31,9 @@
             @click="emit('insert-into-note', message.id)"
             >Insert into note</span
           >
-          <!-- The words selected in the answer, or the whole answer: a comment, as in a note. -->
+          <!-- The words selected in the message, or the whole of it: a comment, as in a note. -->
           <span
-            v-if="canComment && message.role === 'assistant'"
+            v-if="canComment && (message.role === 'assistant' || message.role === 'user')"
             class="abele-chat-msg__branch-action"
             @pointerdown="comments.capture"
             @click="comments.askHere"
@@ -172,7 +172,7 @@
 
       <!-- User / Assistant — markdown -->
       <Markdown
-        v-else-if="message.role === 'assistant' && message.content"
+        v-else-if="(message.role === 'assistant' || message.role === 'user') && message.content"
         :ref="comments.content"
         :text="message.content"
         @rendered="comments.paint"
@@ -192,7 +192,6 @@
           {{ attachmentName(path) }}
         </span>
       </div>
-
     </div>
 
     <!-- Timestamp — always visible, right-aligned -->

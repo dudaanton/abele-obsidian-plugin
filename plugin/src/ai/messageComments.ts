@@ -260,7 +260,8 @@ export function buildMessageCommentContext(
 
   if (answer) {
     const cut = answer.length > ANSWER_LIMIT ? `${answer.slice(0, ANSWER_LIMIT)}…` : answer
-    lines.push('The answer it is in:', cut)
+    const who = target.role === 'user' ? 'the person' : 'the agent'
+    lines.push(`The message it is in, written by ${who}:`, cut)
   }
 
   const blocks = before.map((line) => renderLines([line]))

@@ -313,7 +313,6 @@ describe('comments on an answer', () => {
       comments: [{ id: 'c1', message: 'm1', quote: 'night train', start: 9 }],
     })
     await settle()
-
     ;(wrapper.find('.abele-comment-marker').element as HTMLElement).click()
 
     expect(openFrom).toHaveBeenCalledWith(['c1'])
@@ -344,11 +343,11 @@ describe('comments on an answer', () => {
 
   it('offers "Ask here" in the menu of a selection', async () => {
     const obsidian = await import('obsidian')
-    const shown = vi.spyOn(obsidian.Menu.prototype, 'showAtMouseEvent').mockImplementation(function (
-      this: InstanceType<typeof obsidian.Menu>
-    ) {
-      return this
-    })
+    const shown = vi
+      .spyOn(obsidian.Menu.prototype, 'showAtMouseEvent')
+      .mockImplementation(function (this: InstanceType<typeof obsidian.Menu>) {
+        return this
+      })
     const wrapper = renderAnswer()
     await settle()
     select(wrapper, 'train')
@@ -361,16 +360,25 @@ describe('comments on an answer', () => {
     wrapper.unmount()
   })
 
-  it('is not offered where a comment cannot be kept, nor on the person’s own words', async () => {
+  it('is offered on the person’s own words too, and marks them the same way', async () => {
     const own = mount(AiChatMessage, {
+      attachTo: document.body,
       props: {
-        message: { id: 'u', role: 'user', content: 'hi', timestamp: 1 } as ChatMessage,
+        message: { id: 'u', role: 'user', content: 'How about Riga?', timestamp: 1 } as ChatMessage,
         canComment: true,
+        comments: [{ id: 'c1', message: 'u', quote: 'Riga', start: 10 }],
       },
     })
-    await own.find('.abele-chat-msg__icon').trigger('click')
-    expect(own.text()).not.toContain('Ask here')
+    await settle()
+    expect(own.find('.abele-comment__quote').text()).toBe('Riga')
 
+    document.getSelection()!.removeAllRanges()
+    await askHere(own as never)
+    expect(own.emitted('ask-here')?.[0]).toEqual(['u', undefined, undefined])
+    own.unmount()
+  })
+
+  it('is not offered where a comment cannot be kept', async () => {
     const unsaved = renderAnswer({ canComment: false })
     await unsaved.find('.abele-chat-msg__icon').trigger('click')
     expect(unsaved.text()).not.toContain('Ask here')

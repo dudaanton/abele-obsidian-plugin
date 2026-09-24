@@ -116,7 +116,36 @@ describe('asking about a passage of an answer', () => {
     const own = await metadataOf(service.commentPath(id))
     expect(own?.kind).toBe('comment')
     expect(own?.anchor).toEqual({ note: CHAT, quote: 'night train', message: 'a1' })
-    expect(own?.agentId).toBe(commentAgent)
+    // The chat's own agent answers: the comment is a side question in that conversation.
+    expect(own?.agentId).toBe(parent.agentId.value)
+    expect(own?.agentId).not.toBe(commentAgent)
+  })
+
+  it('runs on the chat’s agent and that agent’s scope', async () => {
+    const registry = AgentRegistry.getInstance()
+    const planner = registry.create({
+      name: 'Planner',
+      scope: [{ type: 'file', path: 'Notes/A.md' }],
+    } as never)
+    const parent = await openParent()
+    parent.bindAgent(planner.id)
+
+    const comment = (await CommentService.getInstance().createOnMessage(parent, 'a1', 'night', 9))!
+
+    expect(comment.agentId.value).toBe(planner.id)
+    expect(comment.scopeResolver.isInScope('Notes/A.md')).toBe(true)
+    expect(comment.scopeResolver.isInScope(CHAT)).toBe(false)
+  })
+
+  it('can be asked on the person’s own message, told the conversation up to it', async () => {
+    const parent = await openParent()
+
+    const comment = (await CommentService.getInstance().createOnMessage(parent, 'u1', 'Riga', 17))!
+    const prompt = await ChatService.getInstance().getSystemPrompt(comment)
+
+    expect(comment.anchor.value).toEqual({ note: CHAT, quote: 'Riga', message: 'u1' })
+    expect(prompt).toContain('How do I get to Riga?')
+    expect(prompt).not.toContain('Take the night train from Vilnius.')
   })
 
   it('opens at once, in front, as a note comment does', async () => {

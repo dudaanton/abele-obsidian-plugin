@@ -173,14 +173,14 @@ out of the chat history until somebody opens one as a full chat. Not every user 
 a question: a comment may hold notes the person kept without asking anything, which no agent
 has answered and which are simply part of the conversation from then on.
 
-A comment can also be on an agent's answer inside a chat. An answer has no text of ours to put
-a marker in, so the chat keeps the list itself, as `comments` in its own metadata:
+A comment can also be on a message inside a chat — an agent's answer or the person's own. A
+message has no text of ours to put a marker in, so the chat keeps the list itself, as `comments` in its own metadata:
 
     "comments": [{ "id": "k7d2ph", "message": "V1StGXR8_Z5jdHi6B-myT",
                    "quote": "night train", "start": 9 }]
 
-`message` is the answer's id, `quote` the words selected as they read on screen, `start` where
-they begin in the answer's rendered text; a comment on the whole answer has neither. The comment
+`message` is the message's id, `quote` the words selected as they read on screen, `start` where
+they begin in its rendered text; a comment on the whole message has neither. The comment
 file's `anchor` is `{ note: <the chat's path>, message, quote }`. Deleting the chat deletes these
 comments with it. Leave both lists to the plugin — an entry with no file behind it draws nothing,
 and a file no chat lists is reachable from nowhere.

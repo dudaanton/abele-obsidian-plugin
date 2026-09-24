@@ -195,6 +195,14 @@ describe('what the comment’s agent is told', () => {
     expect(buildMessageCommentContext(anchor, file)).not.toContain('The same train.')
   })
 
+  it('on the person’s own message, names it as theirs and stops there', () => {
+    const context = buildMessageCommentContext({ ...anchor, quote: 'Riga', message: 'u2' }, file)
+
+    expect(context).toContain('The message it is in, written by the person:\nAnd back?')
+    expect(context).toContain('Take the night train from Vilnius.')
+    expect(context).not.toContain('The same train.')
+  })
+
   it('says so when the answer is no longer in the chat', () => {
     const context = buildMessageCommentContext({ ...anchor, message: 'gone' }, file)
 
