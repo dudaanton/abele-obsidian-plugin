@@ -255,6 +255,24 @@ export const MAP_TOOL_MODES: Record<string, ToolMode> = {
   route: 'auto',
 }
 
+/**
+ * The GitHub tools. They only read — GitHub itself stays read-only — and they are offered only
+ * while the GitHub integration is on, so they are on for every agent unless turned off.
+ */
+export const GITHUB_TOOLS = [
+  'github_views',
+  'github_read',
+  'github_pr_files',
+  'github_file',
+  'github_commits',
+  'github_search',
+  'github_open',
+]
+
+export const GITHUB_TOOL_MODES: Record<string, ToolMode> = Object.fromEntries(
+  GITHUB_TOOLS.map((name) => [name, 'auto'])
+)
+
 /** Tools always sent to agent, governed by permissionMode */
 export const CORE_TOOLS = new Set([
   'read',
@@ -292,6 +310,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
     // The map tools need no key and no account, so there is nothing for a person to set up
     // before asking where something is. See `enableMapTools` for the agents that already exist.
     ...MAP_TOOL_MODES,
+    ...GITHUB_TOOL_MODES,
   },
   scriptsEnabled: false,
   scriptsFolder: '',

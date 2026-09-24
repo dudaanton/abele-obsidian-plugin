@@ -34,6 +34,8 @@ import { createTemplateDocsTool } from './TemplateDocsTool'
 import { createQueryDocsTool } from './QueryDocsTool'
 import { createReadSettingsTool, createWriteSettingsTool } from './SettingsTools'
 import { createRememberTool } from './RememberTool'
+import { createGithubTools } from './github'
+import { githubSettings } from '@/github/GithubService'
 import { AgentRegistry } from '../agents/AgentRegistry'
 import { ChatSession } from '../ChatSession'
 import {
@@ -58,6 +60,7 @@ export function getToolRegistry(): ToolInfo[] {
   const CATEGORY_ORDER = [
     'Files',
     'Network',
+    'GitHub',
     'AI',
     'Vault data',
     'Maps',
@@ -87,6 +90,13 @@ export function getToolRegistry(): ToolInfo[] {
     fetch: { label: 'Fetch URL', category: 'Network' },
     download_image: { label: 'Download image', category: 'Network' },
     download_file: { label: 'Download file', category: 'Network' },
+    github_views: { label: 'GitHub tabs', category: 'GitHub' },
+    github_read: { label: 'Read issue or PR', category: 'GitHub' },
+    github_pr_files: { label: 'PR files', category: 'GitHub' },
+    github_file: { label: 'Read file', category: 'GitHub' },
+    github_commits: { label: 'Commits', category: 'GitHub' },
+    github_search: { label: 'Search', category: 'GitHub' },
+    github_open: { label: 'Show in a tab', category: 'GitHub' },
     geocode: { label: 'Geocode', category: 'Maps' },
     places: { label: 'Find places', category: 'Maps' },
     route: { label: 'Build route', category: 'Maps' },
@@ -200,6 +210,9 @@ export function createAgentTools(options: AgentToolsOptions = {}): AgentTool[] {
     createRouteTool(),
     createRememberTool(resolveAgent),
   ]
+
+  // Read-only, and only while the integration is on: with it off there is no GitHub to read.
+  if (githubSettings().enabled) tools.push(...createGithubTools())
 
   const config = AbeleConfig.getInstance().ai
   if (config.scriptsEnabled) {

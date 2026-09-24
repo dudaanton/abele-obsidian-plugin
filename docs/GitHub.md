@@ -119,6 +119,35 @@ taken — lines of a file are also linked by commit, not branch, for the same re
 format is in the plugin's vault reference; a block edited by hand into something it cannot read
 is shown as plain text rather than an error.
 
+## Asking an agent about it
+
+With the AI chat on, a GitHub tab is something to talk about:
+
+- **Chat about this** — the speech-bubble button in the tab's header, the same item in the
+  tab's "more options" menu, and the command **Chat about this GitHub item** — opens a new chat
+  with a link to the item in its input. Nothing is sent: say what you want and send it yourself.
+- **Ask here**, in the bar under selected lines, does the same with a link to those lines and
+  their code quoted under it: a diff's lines as a diff, a file's in its language.
+
+The agent answering reads GitHub with its own tools. It can see which GitHub tabs are open, what
+each shows — the item, the section in front, the diffs drawn open, the lines selected and their
+code — read issues, pull requests and discussions with their conversations, a pull request's files
+and one file's diff at a time, files and folders at any branch or commit, commits and
+comparisons, and search code, issues and pull requests. It can also put something in front of you:
+open an item in a GitHub tab, with lines marked. A link it writes in its answer opens in a tab
+like a link in a note.
+
+These tools read and nothing more; the integration still writes nothing to GitHub. They use the
+same token and server as the tabs, so an agent sees exactly what you can, and a refusal comes back
+in the same words. They are offered only while GitHub is on in the settings, and are on for every
+agent; each can be set to **Ask** or **Off** in the agent's tools, under GitHub. Answers are kept
+short — a page of comments, a window of a diff, a range of lines — and the agent asks for the next
+part when it needs it, so a large pull request is never sent to the model whole.
+
+Code search needs a token on github.com (GitHub does not search code for anonymous requests) and
+searches only default branches. Without a token every request an agent makes comes out of the same
+60 an hour the tabs use.
+
 ## Access
 
 Without a token only public repositories can be read, at 60 requests an hour for the whole

@@ -6,10 +6,11 @@
  * holds while every section really does have a summary and named topics. The other is that the
  * reference keeps up — a tool nobody documented is a tool an agent will use by guesswork.
  */
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { DOCS, tableOfContents, readSection, readTopic, searchDocs } from '@/docs'
 import { createQueryDocsTool } from '@/ai/tools/QueryDocsTool'
 import { getToolRegistry } from '@/ai/tools'
+import { DEFAULT_GITHUB_SETTINGS } from '@/github/settings'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
@@ -124,6 +125,12 @@ describe('coverage of what an agent can actually do', () => {
   beforeEach(() => {
     useVault([])
     AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
+    // On, so the tools it adds are registered and have to be documented too.
+    AbeleConfig.getInstance().github = { ...DEFAULT_GITHUB_SETTINGS, enabled: true }
+  })
+
+  afterEach(() => {
+    AbeleConfig.getInstance().github = { ...DEFAULT_GITHUB_SETTINGS }
   })
 
   it('names every registered tool somewhere in the reference', () => {

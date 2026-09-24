@@ -29,6 +29,9 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 - Open GitHub link — the GitHub link under the cursor, or one pasted in, in a GitHub tab: the
   one already showing that item, else the GitHub tab used last, else a new one (only while the
   GitHub integration is on)
+- Chat about this GitHub item — in a GitHub tab: a new chat with a link to the item in the
+  input. The same is the speech-bubble button in the tab's header and in its "more options"
+  menu; *Ask here* under selected lines of code starts one with those lines quoted
 
 ## Media
 

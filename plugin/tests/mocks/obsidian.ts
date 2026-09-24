@@ -86,6 +86,9 @@ export class MenuItem {
   setDisabled(): this {
     return this
   }
+  setSection(): this {
+    return this
+  }
   onClick(handler: () => void): this {
     this.handler = handler
     return this
@@ -687,6 +690,8 @@ export class ItemView extends Component {
   getState(): Record<string, unknown> {
     return {}
   }
+  /** The tab's "more options" menu; the base adds Obsidian's own items, none of them wanted here. */
+  onPaneMenu(_menu: unknown, _source: string): void {}
 }
 
 /** Obsidian's Bases view. Nothing here uses it; it only has to be a class to extend. */

@@ -20,6 +20,13 @@
       tooltip="Insert these lines into the note you were last in, as a card holding the code itself"
       @click="linker.insertSnippet(snippet())"
     />
+    <Button
+      v-if="quote && linker.canAsk()"
+      text="Ask here"
+      icon="message-circle-plus"
+      tooltip="Open a new chat with a link to these lines and their code in its input"
+      @click="linker.ask(link(), quote())"
+    />
   </div>
 </template>
 
@@ -28,15 +35,21 @@ import Button from '../obsidian/Button.vue'
 import type { GithubLink } from '@/github/permalinks'
 import type { Linker } from '@/github/linking'
 import type { SnippetBlock } from '@/github/snippetBlock'
+import type { Quote } from '@/github/chatAbout'
 
-defineProps<{
-  linker: Linker
-  /** "Lines 10–20". */
-  label: string
-  link: () => GithubLink | Promise<GithubLink>
-  /** The lines with their code, for a card in the note. */
-  snippet?: () => SnippetBlock | Promise<SnippetBlock>
-}>()
+withDefaults(
+  defineProps<{
+    linker: Linker
+    /** "Lines 10–20". */
+    label: string
+    link: () => GithubLink | Promise<GithubLink>
+    /** The lines with their code, for a card in the note. */
+    snippet?: () => SnippetBlock | Promise<SnippetBlock>
+    /** The selected code, quoted in a chat asked from here. */
+    quote?: () => Quote
+  }>(),
+  { snippet: undefined, quote: undefined }
+)
 </script>
 
 <style lang="scss">

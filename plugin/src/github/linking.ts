@@ -14,6 +14,8 @@ import { formatSnippet, type SnippetBlock } from './snippetBlock'
 import { commitSha, type BlobData, type CommitData } from './api'
 import type { GithubClient } from './client'
 import type { GithubTarget } from './urls'
+import type { Quote } from './chatAbout'
+import { AbeleConfig } from '@/services/AbeleConfig'
 
 export interface Linker {
   /** The item on screen, once it has loaded; null before, and for a file at a ref. */
@@ -26,6 +28,10 @@ export interface Linker {
   insert(link: GithubLink | Promise<GithubLink>): Promise<void>
   /** Writes a card holding the code or the comment itself into the note. */
   insertSnippet(snippet: SnippetBlock | Promise<SnippetBlock>): Promise<void>
+  /** Whether a chat can be opened from here: the AI side is on. */
+  canAsk(): boolean
+  /** Opens a new chat with the link, and the quoted code under it, in its input. */
+  ask(link: GithubLink | Promise<GithubLink>, quote?: Quote): Promise<void>
 }
 
 export const LINKER: InjectionKey<Linker> = Symbol('abele-github-linker')
@@ -90,7 +96,9 @@ export async function copyLink(link: GithubLink): Promise<void> {
 }
 
 /** A linker's `copy` and `insert`, which wait for a link that is still being made. */
-export function sharing(app: App): Pick<Linker, 'copy' | 'insert' | 'insertSnippet'> {
+export function sharing(
+  app: App
+): Pick<Linker, 'copy' | 'insert' | 'insertSnippet' | 'canAsk' | 'ask'> {
   const settle = async <T>(made: T | Promise<T>, then: (made: T) => unknown): Promise<void> => {
     try {
       await then(await made)
@@ -102,6 +110,9 @@ export function sharing(app: App): Pick<Linker, 'copy' | 'insert' | 'insertSnipp
     copy: (link) => settle(link, (l) => copyLink(l)),
     insert: (link) => settle(link, (l) => insertLink(app, l)),
     insertSnippet: (snippet) => settle(snippet, (s) => insertSnippet(app, s)),
+    canAsk: () => !!AbeleConfig.getInstance().ai?.enabled,
+    // Loaded on press, so a GitHub tab does not pull the chat services in with it.
+    ask: async (link, quote) => (await import('./chatAbout')).askAboutGithub(link, quote),
   }
 }
 

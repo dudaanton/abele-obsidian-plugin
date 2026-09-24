@@ -5,11 +5,13 @@
  * side is an app of its own mounted into the tab, the way the voice recorder is: nothing else in
  * the plugin needs to know these tabs exist.
  */
-import { ItemView, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
+import { ItemView, type Menu, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
 import { createApp, reactive, type App as VueApp } from 'vue'
 import GithubItem from '@/components/github/GithubItem.vue'
 import { shortName, targetKey } from './urls'
 import type { GithubViewModel } from './model'
+import { emptyScreen } from './screen'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   GITHUB_VIEW_TYPE,
   githubClient,
@@ -19,7 +21,12 @@ import {
 } from './GithubService'
 
 export class GithubView extends ItemView {
-  readonly model: GithubViewModel = reactive({ url: '', target: null, nonce: 0 })
+  readonly model: GithubViewModel = reactive({
+    url: '',
+    target: null,
+    nonce: 0,
+    screen: emptyScreen(),
+  })
   private title = ''
   private vue: VueApp | null = null
 
@@ -74,6 +81,29 @@ export class GithubView extends ItemView {
   private refreshHeader() {
     ;(this.leaf as unknown as { updateHeader?: () => void }).updateHeader?.()
     ;(this as unknown as { titleEl?: HTMLElement }).titleEl?.setText(this.getDisplayText())
+  }
+
+  /** Whether "Chat about this" has something to open a chat about: the item has loaded. */
+  canChatAbout(): boolean {
+    return !!this.model.screen.link && !!AbeleConfig.getInstance().ai?.enabled
+  }
+
+  /** A new chat with a link to the item in its input. */
+  chatAbout(): void {
+    const link = this.model.screen.link
+    if (link) void import('./chatAbout').then((m) => m.askAboutGithub(link))
+  }
+
+  onPaneMenu(menu: Menu, source: string): void {
+    super.onPaneMenu(menu, source)
+    if (!this.canChatAbout()) return
+    menu.addItem((item) =>
+      item
+        .setTitle('Chat about this')
+        .setIcon('message-square-plus')
+        .setSection('action')
+        .onClick(() => this.chatAbout())
+    )
   }
 
   async onOpen() {

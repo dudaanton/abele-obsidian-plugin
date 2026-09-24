@@ -13,6 +13,7 @@
         :label="selectedLabel"
         :link="selectedLink"
         :snippet="selectedSnippet"
+        :quote="selectedQuote"
       />
     </Teleport>
   </div>
@@ -23,6 +24,8 @@ import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, shallowRef
 import GithubSelectionBar from './GithubSelectionBar.vue'
 import { LINKER } from '@/github/linking'
 import { codeSnippet } from '@/github/snippetBlock'
+import { SCREEN, blobCode } from '@/github/screen'
+import type { Quote } from '@/github/chatAbout'
 import type { LineSpan } from '@/github/permalinks'
 import type { LineRange } from '@/github/urls'
 import { mountCode, type Viewer } from '@/github/codeViewer'
@@ -64,9 +67,21 @@ const selectedSnippet = async () => {
   return codeSnippet(await selectedLink(), props.path, props.text, span)
 }
 
+const selectedQuote = (): Quote => {
+  const s = selected.value
+  return { code: s ? blobCode(props.text, s.from, s.to) : '', path: props.path }
+}
+
+/** The tab's record of what is on screen, which an agent reads. */
+const screen = inject(SCREEN, null)
+
 const selectionHooks = {
   onSelect: (span: LineSpan | null) => {
     selected.value = span
+    if (screen)
+      screen.selection = span
+        ? { path: props.path, label: selectedLabel.value, code: selectedQuote().code }
+        : null
   },
   onBarHost: (host: HTMLElement | null, removed?: HTMLElement) => {
     if (host) barHost.value = host
@@ -81,6 +96,7 @@ const draw = async () => {
   viewer = null
   if (!editorEl.value) return
   selected.value = null
+  if (screen) screen.selection = null
   barHost.value = null
   const drawn = mountCode(editorEl.value, props.text, props.path, props.range, selectionHooks)
   viewer = drawn

@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Notice } from 'obsidian'
 import { AbeleConfig, type HeaderButtonDefinition } from '@/services/AbeleConfig'
-import { DEFAULT_AI_SETTINGS, MAP_TOOL_MODES } from '@/ai/types'
+import { DEFAULT_AI_SETTINGS, GITHUB_TOOL_MODES, MAP_TOOL_MODES } from '@/ai/types'
 import { createAgent } from '@/ai/agents/types'
 import { useVault } from '../helpers/testEnv'
 
@@ -38,7 +38,7 @@ function install(): FakePlugin {
 
 /** Settings with nothing left to migrate, so a load writes nothing of its own. */
 function settingsWith(headerButtons: HeaderButtonDefinition[]) {
-  const toolModes = { ...MAP_TOOL_MODES, remember: 'auto' as const }
+  const toolModes = { ...MAP_TOOL_MODES, ...GITHUB_TOOL_MODES, remember: 'auto' as const }
   return {
     headerButtons,
     ai: {

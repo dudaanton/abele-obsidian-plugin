@@ -4,6 +4,8 @@ import { createAgent } from '@/ai/agents/types'
 import {
   DEFAULT_AI_SETTINGS,
   EDIT_SELECTION_TOOL,
+  GITHUB_TOOLS,
+  GITHUB_TOOL_MODES,
   MAP_TOOL_MODES,
   type AiSettings,
 } from '@/ai/types'
@@ -203,7 +205,7 @@ describe('the Comment agent', () => {
   it('leaves settings that already name a comment agent alone', () => {
     // Both carry the map tools already, so the only thing that could report a change here
     // is the comment agent being seeded again — which is what the test is about.
-    const modes = { ...MAP_TOOL_MODES, remember: 'auto' as const }
+    const modes = { ...MAP_TOOL_MODES, ...GITHUB_TOOL_MODES, remember: 'auto' as const }
     const existing = createAgent({ id: 'comment-1', name: 'My commenter', toolModes: modes })
     const ai = {
       ...DEFAULT_AI_SETTINGS,
@@ -327,5 +329,51 @@ describe('the remember tool', () => {
     migrateAgents(ai)
 
     for (const agent of ai.agents) expect(agent.toolModes.remember).toBe('auto')
+  })
+})
+
+/**
+ * The GitHub tools came after the agents too. They only read, and only exist while the GitHub
+ * integration is on, so an agent with no opinion gets them and an `off` stays.
+ */
+describe('the GitHub tools', () => {
+  it('are switched on for agents that existed before them', () => {
+    const ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: [createAgent({ id: 'existing', name: 'Default', toolModes: { fetch: 'ask' } })],
+      defaultAgentId: 'existing',
+    } as AiSettings
+
+    expect(migrateAgents(ai)).toBe(true)
+    for (const tool of GITHUB_TOOLS) expect(ai.agents[0].toolModes[tool]).toBe('auto')
+  })
+
+  it('stay off, or ask, where someone said so', () => {
+    const ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: [
+        createAgent({
+          id: 'existing',
+          name: 'Default',
+          toolModes: { github_search: 'off', github_open: 'ask' },
+        }),
+      ],
+      defaultAgentId: 'existing',
+    } as AiSettings
+
+    migrateAgents(ai)
+
+    expect(ai.agents[0].toolModes.github_search).toBe('off')
+    expect(ai.agents[0].toolModes.github_open).toBe('ask')
+    expect(ai.agents[0].toolModes.github_read).toBe('auto')
+  })
+
+  it('are on for a new agent and for the agents a fresh vault starts with', () => {
+    const ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' } as AiSettings
+
+    migrateAgents(ai)
+
+    for (const agent of [...ai.agents, createAgent()])
+      for (const tool of GITHUB_TOOLS) expect(agent.toolModes[tool]).toBe('auto')
   })
 })

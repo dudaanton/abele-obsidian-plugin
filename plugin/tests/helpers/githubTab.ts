@@ -10,6 +10,7 @@ import GithubItem from '@/components/github/GithubItem.vue'
 import { GithubClient } from '@/github/client'
 import { endpoints, parseGithubUrl } from '@/github/urls'
 import type { GithubViewModel } from '@/github/model'
+import { emptyScreen } from '@/github/screen'
 
 export type Reply = {
   status?: number
@@ -45,7 +46,12 @@ export function openTab(
   attachTo: Element = document.body
 ) {
   const { client } = clientWith(routes)
-  const model: GithubViewModel = reactive({ url: '', target: null, nonce: 0 })
+  const model: GithubViewModel = reactive({
+    url: '',
+    target: null,
+    nonce: 0,
+    screen: emptyScreen(),
+  })
   const onTitle = vi.fn()
   const onOpen = vi.fn()
   const wrapper = mount(GithubItem, {

@@ -107,6 +107,9 @@ const isGithubLeaf = (leaf: WorkspaceLeaf | null | undefined): leaf is Workspace
 /** The GitHub tab focused last, as `active-leaf-change` reports it. */
 let lastGithubLeaf: WorkspaceLeaf | null = null
 
+/** The GitHub tab used last — the one a plain link would land in. */
+export const lastUsedGithubLeaf = (): WorkspaceLeaf | null => lastGithubLeaf
+
 /** Called on every `active-leaf-change`: remembers the leaf when it is a GitHub tab. */
 export function noteActiveLeaf(leaf: WorkspaceLeaf | null): void {
   if (isGithubLeaf(leaf)) lastGithubLeaf = leaf

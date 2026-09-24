@@ -44,6 +44,56 @@ which a hand-rolled search will not.
 `fetch` brings back a page; the vault may hold a skill that teaches a better way of turning one
 into markdown. Downloads land in the vault, so they are subject to scope.
 
+## GitHub
+
+`github_views`, `github_read`, `github_pr_files`, `github_file`, `github_commits`,
+`github_search`, `github_open`.
+
+Read-only access to GitHub, offered only while the person has the GitHub integration on. Nothing
+on GitHub is ever written — no comment, no review, no label. They send the person's own token to
+the server set in the settings, so they see what the person's GitHub tabs see, and a refusal
+comes back in the same words the tabs use: the cause, the permission it needed, GitHub's message.
+
+Every item is named by a link or `owner/repo#12`; a repository by `owner/repo` or any link into
+it. Answers are capped and say where the rest is — a page, a diff window, a line range. Ask for
+the next part rather than trying to get everything at once.
+
+- `github_views` — what the person has open in GitHub tabs: the item, the pull request section in
+  front, the diffs drawn open, and the lines they selected, with the code. Start here whenever
+  they say "this PR", "this file", "these lines".
+- `github_read` — an issue, pull request or discussion: head, description, conversation twenty
+  comments a page (`page`).
+- `github_pr_files` — a pull request's files. Without `path` the list with +/- counts; with
+  `path` that file's diff, numbered on the old and new side, 400 rows by default (`offset`,
+  `limit`), and the review comments on it.
+- `github_file` — code at a ref (`ref`, the default branch without one): a file's numbered lines,
+  600 whole or 400 at a time (`start_line`, `end_line`), a folder's entries, or with
+  `recursive: true` the whole tree under `path`. A `blob/…` link names file, ref and lines itself.
+- `github_commits` — a pull request's commits (`pull` or its link), one commit's message and diffs
+  (`sha` or its link), a comparison (`base` and `head`, or a `compare/a...b` link), or the history
+  of `ref`, of one `path` when given. Long diffs are left out and named; ask for one with `path`.
+- `github_search` — `type: "code"` searches file contents in GitHub's syntax (needs a token on
+  github.com, default branches only); `type: "issues"` searches issues and pull requests
+  (`is:pr is:open author:…`). `repo` narrows either to one repository.
+- `github_open` — puts something in front of the person in a GitHub tab. `start_line` and
+  `end_line` mark lines: with `path` in a pull request's or commit's diff (`old: true` for removed
+  lines), or in a file link. It reuses the tab showing the item, else the GitHub tab used last.
+
+Exploring a codebase or a pull request, in this order:
+
+1. `github_views` to learn what they are looking at, and the selection they are asking about.
+2. For a pull request: `github_read` for what it claims to do, then `github_pr_files` for the
+   list — and only then the diffs of the files that matter, one at a time.
+3. For context around a change, `github_file` at the pull request's head or base ref, with a line
+   range around the lines in question rather than the whole file.
+4. For an unknown repository: `github_file` with `recursive: true` for its map, the README, then
+   `github_search` for where a name is defined or used.
+5. When the answer is a place in the code, link it — GitHub's own address with `#L10-L20`, or
+   show it with `github_open` — so the person can open it in a tab with one click.
+
+Unauthenticated, GitHub allows 60 requests an hour for the whole machine; spend them on the parts
+that answer the question.
+
 ## Maps
 
 `geocode`, `places`, `route`.

@@ -174,6 +174,18 @@ export function registerGithub(plugin: Plugin): void {
   plugin.registerEvent(app.workspace.on('active-leaf-change', noteActiveLeaf))
 
   plugin.addCommand({
+    id: 'chat-about-github-item',
+    name: 'Chat about this GitHub item',
+    icon: 'message-square-plus',
+    checkCallback: (checking) => {
+      const view = app.workspace.getActiveViewOfType(GithubView)
+      if (!githubSettings().enabled || !view?.canChatAbout()) return false
+      if (!checking) view.chatAbout()
+      return true
+    },
+  })
+
+  plugin.addCommand({
     id: 'open-github-link',
     name: 'Open GitHub link',
     icon: 'github',

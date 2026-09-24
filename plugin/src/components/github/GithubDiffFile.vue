@@ -43,6 +43,7 @@
           :label="selectedLabel"
           :link="selectedLink"
           :snippet="selectedSnippet"
+          :quote="selectedQuote"
         />
       </Teleport>
       <EmptyState v-else>
@@ -78,6 +79,8 @@ import GithubComment from './GithubComment.vue'
 import GithubSelectionBar from './GithubSelectionBar.vue'
 import { LINKER } from '@/github/linking'
 import { diffSnippet, type SnippetBlock } from '@/github/snippetBlock'
+import { SCREEN, diffCode, markExpanded } from '@/github/screen'
+import type { Quote } from '@/github/chatAbout'
 import { diffLink, diffSpan, type DiffSpan, type GithubLink } from '@/github/permalinks'
 import type { DiffFile } from '@/github/api'
 import type { DiffFileAnchor } from '@/github/urls'
@@ -136,10 +139,37 @@ const selectedSnippet = (): SnippetBlock => {
   return diffSnippet(selectedLink(), props.file.path, lines.value, selectedLines.value)
 }
 
+const selectedQuote = (): Quote => {
+  const r = selectedLines.value
+  return { code: r ? diffCode(lines.value, r.from, r.to) : '', path: props.file.path, diff: true }
+}
+
+/** The tab's record of what is on screen, which an agent reads. */
+const screen = inject(SCREEN, null)
+
+/** This file's selection leaves the record, and only this file's. */
+const clearOwnSelection = () => {
+  if (screen?.selection?.path === props.file.path) screen.selection = null
+}
+
 const selectionHooks = {
   onSelect: (span: { from: number; to: number } | null) => {
     selectedSpan.value = span ? diffSpan(lines.value, span.from - 1, span.to - 1) : null
     selectedLines.value = span
+    if (!screen) return
+    if (!span || !selectedSpan.value) return clearOwnSelection()
+    let url: string | undefined
+    try {
+      url = selectedLink().url
+    } catch {
+      url = undefined
+    }
+    screen.selection = {
+      path: props.file.path,
+      label: selectedLabel.value,
+      code: selectedQuote().code,
+      url,
+    }
   },
   onBarHost: (host: HTMLElement | null, removed?: HTMLElement) => {
     if (host) barHost.value = host
@@ -154,6 +184,8 @@ const draw = async () => {
   viewer = null
   if (!expanded.value || !editorEl.value) return
   selectedSpan.value = null
+  selectedLines.value = null
+  clearOwnSelection()
   barHost.value = null
   viewer = mountDiff(editorEl.value, lines.value, props.file.path, highlight.value, selectionHooks)
 }
@@ -179,7 +211,11 @@ const toggle = () => {
   expanded.value = !expanded.value
 }
 
-watch(expanded, (): void => void draw())
+watch(expanded, (open): void => {
+  if (screen) markExpanded(screen, props.file.path, open)
+  if (!open) clearOwnSelection()
+  void draw()
+})
 // Pointed at a review comment in this file after it was drawn closed.
 watch(
   () => props.initiallyOpen,
@@ -198,6 +234,7 @@ watch(
 )
 
 onMounted(async () => {
+  if (screen && expanded.value) markExpanded(screen, props.file.path, true)
   await draw()
   if (props.anchor) await reveal()
 })
@@ -206,6 +243,8 @@ onBeforeUnmount(() => {
   unpin()
   viewer?.destroy()
   viewer = null
+  if (screen) markExpanded(screen, props.file.path, false)
+  clearOwnSelection()
 })
 </script>
 

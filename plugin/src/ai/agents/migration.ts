@@ -1,6 +1,12 @@
 import { createAgent, type AgentDefinition } from './types'
 import { REMEMBER_TOOL } from './memory'
-import { DEFAULT_AI_SETTINGS, EDIT_SELECTION_TOOL, MAP_TOOLS, type AiSettings } from '@/ai/types'
+import {
+  DEFAULT_AI_SETTINGS,
+  EDIT_SELECTION_TOOL,
+  GITHUB_TOOLS,
+  MAP_TOOLS,
+  type AiSettings,
+} from '@/ai/types'
 
 /**
  * Folds the pre-agent global configuration into agent entities.
@@ -165,6 +171,25 @@ function enableMemoryTool(ai: AiSettings): boolean {
   return changed
 }
 
+/**
+ * Hands the GitHub tools to agents saved before they existed. They read and nothing more, and
+ * they are only offered while the GitHub integration is on — so an agent with no opinion gets
+ * them, and an `off` written by hand stays off.
+ */
+function enableGithubTools(ai: AiSettings): boolean {
+  let changed = false
+
+  for (const agent of ai.agents || []) {
+    for (const tool of GITHUB_TOOLS) {
+      if (agent.toolModes[tool] !== undefined) continue
+      agent.toolModes[tool] = 'auto'
+      changed = true
+    }
+  }
+
+  return changed
+}
+
 export function migrateAgents(ai: AiSettings): boolean {
   const legacy = migrateLegacyAgents(ai)
   // Outside the legacy migration on purpose: that one is a no-op the moment any agent exists,
@@ -172,6 +197,7 @@ export function migrateAgents(ai: AiSettings): boolean {
   const comment = ensureCommentAgent(ai)
   const maps = enableMapTools(ai)
   const memory = enableMemoryTool(ai)
+  const github = enableGithubTools(ai)
 
-  return legacy || comment || maps || memory
+  return legacy || comment || maps || memory || github
 }

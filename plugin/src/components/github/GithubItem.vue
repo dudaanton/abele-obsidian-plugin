@@ -25,8 +25,10 @@
         :labels="head.labels"
         :meta="head.meta"
         :loading="main.loading.value"
+        :chat="!!model.screen.link && linker.canAsk()"
         @refresh="reload"
         @browser="openInBrowser(browserUrl)"
+        @chat="chatAbout"
       />
 
       <div v-if="main.error.value" class="abele-github__error">
@@ -161,6 +163,8 @@ import { formatDate, splitMessage } from '@/github/format'
 import { useLoad } from '@/github/useLoad'
 import { elementTop, pinIntoView } from '@/github/scrollTo'
 import { LINKER, createLinker } from '@/github/linking'
+import { SCREEN } from '@/github/screen'
+import { bodyLink, type GithubLink } from '@/github/permalinks'
 import { GlobalStore } from '@/stores/GlobalStore'
 import {
   loadBlob,
@@ -343,16 +347,52 @@ const head = computed<Head>(() => {
 })
 
 // Comments, diffs and the file view make links to themselves through this.
-provide(
-  LINKER,
-  createLinker({
-    app: GlobalStore.getInstance().app,
-    shown: () => (target.value ? shown.value : null),
-    data: () => main.data.value,
-    title: () => head.value.title,
-    client,
-  })
+const linker = createLinker({
+  app: GlobalStore.getInstance().app,
+  shown: () => (target.value ? shown.value : null),
+  data: () => main.data.value,
+  title: () => head.value.title,
+  client,
+})
+provide(LINKER, linker)
+
+// What is on screen, for an agent to ask about: the diffs and the file view add their part.
+const screen = props.model.screen
+provide(SCREEN, screen)
+
+/** A link to the item itself — for a file, to the file at the ref it was read at. */
+const itemLink = computed<GithubLink | null>(() => {
+  const t = shown.value
+  const data = main.data.value
+  if (!t || !data) return null
+  if (t.kind === 'blob') {
+    const b = data as BlobData
+    const path = b.path.split('/').map(encodeURIComponent).join('/')
+    return {
+      label: `${t.owner}/${t.repo}@${b.ref} · ${b.path}`,
+      url: `https://${t.host}/${t.owner}/${t.repo}/blob/${b.ref}/${path}`,
+    }
+  }
+  const item = linker.item()
+  return item ? bodyLink(item, head.value.title) : null
+})
+
+watch(
+  () => [itemLink.value, head.value.title, main.error.value, pullTab.value, shown.value] as const,
+  () => {
+    const t = target.value ? shown.value : null
+    screen.link = itemLink.value
+    screen.title = main.data.value ? head.value.title : ''
+    screen.kind = t?.kind ?? ''
+    screen.section = t?.kind === 'pull' ? pullTab.value : null
+    screen.error = main.error.value ?? ''
+  },
+  { immediate: true }
 )
+
+const chatAbout = () => {
+  if (screen.link) void linker.ask(screen.link)
+}
 
 const tabTitle = computed(() => {
   const t = shown.value
@@ -413,6 +453,8 @@ watch(
     promoted.value = null
     main.data.value = null
     main.error.value = null
+    screen.expanded.splice(0)
+    screen.selection = null
   },
   { flush: 'sync' }
 )

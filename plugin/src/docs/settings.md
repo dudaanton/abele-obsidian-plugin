@@ -85,6 +85,8 @@ the browser. `github.server` is a GitHub Enterprise address, empty for github.co
 `github.keyId` names the keychain slot holding the person's fine-grained token and, like every
 key, is out of reach of these tools. The token needs read access to Contents, Issues, Pull
 requests and Discussions; without one only public repositories open, and discussions not at all.
+While it is on, agents also have the read-only GitHub tools (the `tools` section, GitHub); with it
+off they are not offered at all.
 
 ## Everything else
 

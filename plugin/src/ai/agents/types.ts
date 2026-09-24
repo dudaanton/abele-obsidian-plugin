@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import type { PermissionMode, ToolMode } from '@/ai/types'
+import { GITHUB_TOOL_MODES, type PermissionMode, type ToolMode } from '@/ai/types'
 
 /** One block of an agent's system prompt: inline text, or the body of a vault note. */
 export interface AgentPrompt {
@@ -80,7 +80,8 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
     permissionMode: 'confirm-all',
     // Memory is on for every agent unless someone turns it off — `enableMemoryTool` in the
     // migration does the same for agents saved before it existed.
-    toolModes: { remember: 'auto' },
+    // The GitHub tools only read, and only exist while the integration is on.
+    toolModes: { remember: 'auto', ...GITHUB_TOOL_MODES },
     scope: [],
     fullVaultAccess: false,
     skillsMode: 'all',

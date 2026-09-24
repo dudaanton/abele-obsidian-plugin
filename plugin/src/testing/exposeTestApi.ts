@@ -21,6 +21,7 @@ import { ScriptService } from '@/scripting/ScriptService'
 import { ScriptViewService } from '@/scripting/view/ScriptViewService'
 import { createScreenshotTool } from '@/ai/tools/ScreenshotTool'
 import { createGeocodeTool, createPlacesTool, createRouteTool } from '@/ai/tools/GeoTools'
+import { createGithubTools } from '@/ai/tools/github'
 import { TFile } from 'obsidian'
 import type { Plugin } from 'obsidian'
 
@@ -99,6 +100,8 @@ interface AbeleTestApi {
   createGeocodeTool: typeof createGeocodeTool
   createPlacesTool: typeof createPlacesTool
   createRouteTool: typeof createRouteTool
+  /** The GitHub tools, so a check can call them the way an agent would. */
+  createGithubTools: typeof createGithubTools
   plugin: Plugin
   /**
    * Where an e2e probe parks its result. `obsidian eval` cannot await a promise, so a probe
@@ -484,6 +487,7 @@ export function exposeTestApi(plugin: Plugin): void {
     createGeocodeTool,
     createPlacesTool,
     createRouteTool,
+    createGithubTools,
     plugin,
     viewProbe: null,
     measureGroupResolve,

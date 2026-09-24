@@ -4,6 +4,12 @@
       <div class="abele-github-header__repo">{{ repo }}</div>
       <div class="abele-github-header__actions">
         <Icon
+          v-if="chat"
+          icon="message-square-plus"
+          tooltip="Chat about this: a new chat with a link to it in the input"
+          @click="emit('chat')"
+        />
+        <Icon
           icon="refresh-cw"
           tooltip="Load again from GitHub"
           :disabled="loading"
@@ -46,6 +52,8 @@ withDefaults(
     labels?: Label[]
     meta?: string[]
     loading?: boolean
+    /** Offer "Chat about this". */
+    chat?: boolean
   }>(),
   { number: undefined, url: undefined, state: undefined, labels: () => [], meta: () => [] }
 )
@@ -53,6 +61,7 @@ withDefaults(
 const emit = defineEmits<{
   (e: 'refresh'): void
   (e: 'browser'): void
+  (e: 'chat'): void
 }>()
 
 /** The states that mean "still going": the ones worth drawing the eye to. */
