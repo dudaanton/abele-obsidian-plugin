@@ -177,3 +177,26 @@ describe('front matter shown as source', () => {
     expect(linkAtClick(span)).toEqual({ url: PR, sourceMode: true })
   })
 })
+
+describe('the two link handlers', () => {
+  it('never both take one click: a GitHub address is not a note, and a note is not GitHub', async () => {
+    const { noteLinkAt } = await import('@/lineLinks/register')
+    const leaf = properties()
+    const internal = el(
+      'a',
+      'internal-link',
+      { 'data-href': 'Notes/Plan#L3-L5', href: 'Notes/Plan#L3-L5' },
+      ['Plan']
+    )
+    leaf.appendChild(internal)
+    const github = leaf.querySelector('.metadata-link-inner')!
+
+    // Each handler sees only its own kind.
+    expect(noteLinkAt(github)).toBeNull()
+    expect(linkAtClick(internal)).toBeNull()
+
+    const evt = click(internal)
+    expect(opened).toEqual([])
+    expect(evt.defaultPrevented).toBe(false)
+  })
+})
