@@ -157,12 +157,13 @@ defineExpose({ focus })
 }
 
 // The matches: in the page's own text through the Custom Highlight API, in code as decorations.
+// The current one in the theme's orange — Obsidian has no variable of its own for an active match.
 ::highlight(abele-find) {
   background-color: var(--text-highlight-bg);
 }
 
 ::highlight(abele-find-current) {
-  background-color: var(--text-highlight-bg-active);
+  background-color: color-mix(in srgb, var(--color-orange) 50%, transparent);
   color: var(--text-normal);
 }
 
@@ -172,7 +173,7 @@ defineExpose({ focus })
 }
 
 .abele-github-find__match_current {
-  background-color: var(--text-highlight-bg-active);
+  background-color: color-mix(in srgb, var(--color-orange) 50%, transparent);
   outline: 1px solid var(--interactive-accent);
 }
 </style>

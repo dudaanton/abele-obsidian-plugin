@@ -215,8 +215,9 @@ searches only default branches. Without a token every request an agent makes com
 **Mod+F** (Cmd+F, Ctrl+F on Windows and Linux) while a GitHub tab is focused — or the magnifier
 in its header — opens a find bar at the top of the tab. Obsidian's own find works only in a
 note, so a GitHub tab has its own. It searches everything the tab shows: the description and
-comments, the header, and the code — a file, and every diff, including the files of a long pull
-request that are still folded shut. It says how many matches there are and which one is current
+comments, the header, a markdown file as it is rendered (or its code, when switched to Code), and
+the code — a file, and every diff, including the files of a long pull request that are still
+folded shut. It says how many matches there are and which one is current
 ("3 of 17"); **Enter** goes to the next, **Shift+Enter** to the previous, both wrapping round,
 and **Esc** closes the bar. The toggle beside the field matches letter case.
 
@@ -244,7 +245,9 @@ read it as a regular expression. The second field narrows to files matching a gl
 `src/**/*.py`, several separated by commas; a glob without a slash matches the file's name in any
 folder. Results are grouped by file, with each line's number and its text, the match marked. A
 click opens the place: a line of the change in the pull request's files or the commit, a line of
-the repository as the file at that commit (so the link cannot drift as a branch moves). The tab
+the repository as the file at that commit (so the link cannot drift as a branch moves). A line of
+a markdown file opens its code at that line (`?plain=1`, as GitHub writes it); the file's own
+name opens it rendered. The tab
 rules above apply — the result usually opens in the same tab, whose back arrow returns to the
 search's item — and Mod-click opens it in a new tab. The panel stays open, with its results, while
 the tab follows them, so the next result is one click away; a search from there searches the

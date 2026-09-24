@@ -234,3 +234,47 @@ describe('the tab keeps the switch', () => {
     expect(view.getState()).toEqual({ url: `${BASE}#install` })
   })
 })
+
+describe('find in a markdown file', () => {
+  const count = (w: VueWrapper) => w.find('.abele-github-find__count').text()
+  const find = async (w: VueWrapper, keys: { find: number }, q: string) => {
+    keys.find++
+    await flushPromises()
+    const input = w.find<HTMLInputElement>('.abele-github-find__input').element
+    input.value = q
+    input.dispatchEvent(new Event('input'))
+    await new Promise((r) => setTimeout(r, 150))
+    await flushPromises()
+  }
+
+  it('finds in the rendered blocks, and in the code once switched to it', async () => {
+    const { wrapper, keys } = open(BASE, ROUTES)
+    await vi.waitFor(() => expect(blocks(wrapper)).toHaveLength(6))
+    await find(wrapper, keys, 'second line')
+    expect(count(wrapper)).toBe('1 of 1')
+    await find(wrapper, keys, 'npm i')
+    expect(count(wrapper)).toBe('1 of 1')
+
+    await switchTo(wrapper, 'Code')
+    await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
+    await find(wrapper, keys, 'second line')
+    expect(count(wrapper)).toBe('1 of 1')
+  })
+
+  it('names a file read at a commit by its short SHA in the code search scopes', async () => {
+    const { wrapper } = open(`https://github.com/o/r/blob/${SHA}/README.md`, {
+      [`/repos/o/r/contents/README.md?ref=${SHA}`]: { text: README },
+    })
+    await vi.waitFor(() => expect(blocks(wrapper)).toHaveLength(6))
+    const icon = wrapper
+      .findAll('.abele-github-header__actions .abele-obsidian-icon')
+      .find((i) => i.attributes('aria-label')?.startsWith('Search the code'))!
+    await icon.trigger('click')
+    await flushPromises()
+    const options = wrapper.findAll('.abele-github-search__scope option').map((o) => o.text())
+    expect(options).toEqual([
+      `Whole repository at ${SHA.slice(0, 7)}`,
+      `File names at ${SHA.slice(0, 7)}`,
+    ])
+  })
+})

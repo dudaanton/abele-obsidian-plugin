@@ -73,7 +73,11 @@ export function useTabSearch(o: TabSearchOptions) {
     const d = o.data()
     if (t.kind === 'pull') return (d as PullData)?.head || `#${t.number}`
     if (t.kind === 'commit') return ((d as CommitData)?.sha ?? t.sha).slice(0, 7)
-    if (t.kind === 'blob') return (d as BlobData)?.ref ?? ''
+    if (t.kind === 'blob') {
+      const ref = (d as BlobData | null)?.ref ?? ''
+      // A commit reads as GitHub shows it; a branch or a tag as it is.
+      return /^[0-9a-f]{40}$/i.test(ref) ? ref.slice(0, 7) : ref
+    }
     return 'the default branch'
   }
 

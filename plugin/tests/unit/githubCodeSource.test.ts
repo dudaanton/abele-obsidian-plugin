@@ -225,3 +225,23 @@ describe("searching a pull request's changes", () => {
     expect(result.files.map((f) => f.path)).toEqual(['b.py'])
   })
 })
+
+describe('where a result opens', () => {
+  it('opens a line of a markdown file as its code, and the file itself rendered', async () => {
+    const { blobUrl } = await import('@/github/search/tabCode')
+    const { parseGithubUrl } = await import('@/github/urls')
+    const { blobMode } = await import('@/github/markdownPreview')
+    const mode = (url: string) => {
+      const t = parseGithubUrl(url, ['github.com'])
+      if (t?.kind !== 'blob') throw new Error('not a file')
+      return blobMode({ path: t.rest.slice(1).join('/'), lines: t.lines, plain: t.plain })
+    }
+    const line = blobUrl(REPO, SHA, 'docs/guide.md', 12)
+    expect(line).toBe(`https://github.com/acme/widgets/blob/${SHA}/docs/guide.md?plain=1#L12`)
+    expect(mode(line)).toBe('code')
+    expect(mode(blobUrl(REPO, SHA, 'docs/guide.md'))).toBe('preview')
+    expect(blobUrl(REPO, SHA, 'src/app.ts', 3)).toBe(
+      `https://github.com/acme/widgets/blob/${SHA}/src/app.ts#L3`
+    )
+  })
+})

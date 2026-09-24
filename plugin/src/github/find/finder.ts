@@ -207,7 +207,10 @@ export class TabFinder {
       }
       if (node.nodeType !== Node.ELEMENT_NODE) return
       const el = node as HTMLElement
-      if (SKIP.has(el.tagName) || el.hasAttribute(FIND_SKIP_ATTR)) return
+      if (SKIP.has(el.tagName) || el.hasAttribute(FIND_SKIP_ATTR) || el.hidden) return
+      // Chrome a renderer adds around content — a code block's copy button — is not content.
+      if (el.getAttribute('aria-hidden') === 'true' || el.classList.contains('copy-code-button'))
+        return
       if (el.classList.contains('cm-editor')) {
         const view = EditorView.findFromDOM(el)
         if (view) {
