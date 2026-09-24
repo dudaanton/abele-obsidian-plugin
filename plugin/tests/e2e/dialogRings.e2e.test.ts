@@ -105,6 +105,15 @@ const script = `(async () => {
     await closeDialog()
   }
 
+  window.__abeleTest.openIconPicker('calendar')
+  if (await until(() => document.querySelector('.modal .abele-icon-picker .abele-icon-picker__icon'), 5000)) {
+    await wait(400)
+    measureAll('icon picker', document.querySelector('.modal'))
+    await closeDialog()
+  } else {
+    cuts.push({ screen: 'icon picker', field: '-', by: ['dialog did not open'] })
+  }
+
   return JSON.stringify(cuts)
 })()`
 
@@ -117,7 +126,7 @@ describe.skipIf(!available)('focus rings in the chat dialogs on the desktop', ()
     cuts = JSON.parse(evalRaw(script, 120_000)) as Cut[]
   }, 150_000)
 
-  it('no box in the setup dialog or the history cuts the ring off a focused field', () => {
+  it('no box in the setup dialog, the history or the icon picker cuts the ring off a focused field', () => {
     expect(cuts.map((c) => `${c.screen}: ${c.field} — ${c.by.join(', ')}`)).toEqual([])
   })
 })

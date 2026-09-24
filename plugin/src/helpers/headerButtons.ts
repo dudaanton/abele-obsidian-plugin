@@ -1,4 +1,4 @@
-import type { HeaderButtonDefinition } from '@/services/AbeleConfig'
+import type { HeaderButtonCondition, HeaderButtonDefinition } from '@/services/AbeleConfig'
 import { getFrontmatterFromCache, renderTemplate } from '@/helpers/notesUtils'
 import { DATE_FORMAT } from '@/constants/dates'
 import dayjs from 'dayjs'
@@ -22,22 +22,88 @@ export function buttonsForType(
 /**
  * The buttons a note shows, in the order they were configured.
  *
- * A button shows where any of its conditions holds: every note, a note of one of its types, or
- * a note anywhere under one of its folders. One that is switched off, or names no script and
- * so would do nothing if pressed, shows nowhere.
+ * Two questions, both of which have to be yes. Where: every note, a note of one of its types,
+ * or a note anywhere under one of its folders — and a button that names none of those but has
+ * property conditions means any note. Then what: its property conditions, all of them or any
+ * one, against the note's frontmatter. One that is switched off, or names no script and so
+ * would do nothing if pressed, shows nowhere.
  */
 export function buttonsForNote(
   buttons: HeaderButtonDefinition[],
-  note: { type: string | null; path: string }
+  note: { type: string | null; path: string; frontmatter?: Record<string, unknown> | null }
 ): HeaderButtonDefinition[] {
   const noteType = note.type?.trim().toLowerCase() ?? ''
 
   return buttons.filter((button) => {
     if (!button.scriptName || button.enabled === false) return false
-    if (button.allNotes) return true
-    if (noteType && button.noteTypes.some((t) => t.trim().toLowerCase() === noteType)) return true
-    return (button.folders ?? []).some((folder) => isInside(note.path, folder))
+    const conditions = (button.conditions ?? []).filter((c) => c.property.trim() !== '')
+    return (
+      placeFits(button, noteType, note.path, conditions.length > 0) &&
+      propertiesFit(conditions, button.conditionMode, note.frontmatter ?? null)
+    )
   })
+}
+
+function placeFits(
+  button: HeaderButtonDefinition,
+  noteType: string,
+  path: string,
+  hasConditions: boolean
+): boolean {
+  if (button.allNotes) return true
+  const types = button.noteTypes ?? []
+  const folders = button.folders ?? []
+  if (hasConditions && !types.length && !folders.length) return true
+  if (noteType && types.some((t) => t.trim().toLowerCase() === noteType)) return true
+  return folders.some((folder) => isInside(path, folder))
+}
+
+function propertiesFit(
+  conditions: HeaderButtonCondition[],
+  mode: 'all' | 'any' | undefined,
+  frontmatter: Record<string, unknown> | null
+): boolean {
+  if (!conditions.length) return true
+  const holds = (c: HeaderButtonCondition) => conditionHolds(c, frontmatter)
+  return mode === 'any' ? conditions.some(holds) : conditions.every(holds)
+}
+
+/** Filled in, the way a person reads a property: an empty string or list is not. */
+function filled(value: unknown): boolean {
+  if (value === undefined || value === null) return false
+  if (typeof value === 'string') return value.trim() !== ''
+  if (Array.isArray(value)) return value.some(filled)
+  return true
+}
+
+/**
+ * A value as compared: trimmed, case folded, and a link read as the note it names — so
+ * `Garden` matches `[[Garden]]` and `[[Garden|the garden]]`.
+ */
+function comparable(value: unknown): string {
+  const text = asText(value).trim().toLowerCase()
+  const link = /^\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]$/.exec(text)
+  return (link ? link[1] : text).trim()
+}
+
+function conditionHolds(
+  condition: HeaderButtonCondition,
+  frontmatter: Record<string, unknown> | null
+): boolean {
+  const actual = frontmatter?.[condition.property.trim()]
+  switch (condition.test) {
+    case 'filled':
+      return filled(actual)
+    case 'empty':
+      return !filled(actual)
+    case 'not-equals':
+    case 'equals': {
+      const wanted = comparable(condition.value)
+      const values = Array.isArray(actual) ? actual : [actual]
+      const equal = values.some((v) => filled(v) && comparable(v) === wanted)
+      return condition.test === 'equals' ? equal : !equal
+    }
+  }
 }
 
 /** Whether a vault path sits under a folder, at any depth. `Films` does not contain `Filmsy/`. */
@@ -95,4 +161,53 @@ export function buttonParams(
   }
 
   return params
+}
+
+/** What the settings know of the vault to judge a button's placement by. */
+export interface VaultShape {
+  /** Every `type` a note in the vault has, lower-cased. */
+  types: Set<string>
+  folderExists: (folder: string) => boolean
+}
+
+export interface PlacementProblems {
+  /** Why the button can show on no note at all, or null when it can show somewhere. */
+  nowhere: string | null
+  /** Its types that no note in the vault has, as they were typed. */
+  unknownTypes: string[]
+  /** Its folders that are not in the vault, as they were typed. */
+  missingFolders: string[]
+}
+
+/**
+ * Why a button would show nowhere, said in the settings where it is set up.
+ *
+ * A button set up for a type no note has — `tasks` for notes whose type is `task` — or for a
+ * folder that is not there used to simply never appear, with nothing anywhere to say why.
+ */
+export function placementProblems(
+  button: HeaderButtonDefinition,
+  vault: VaultShape
+): PlacementProblems {
+  const types = (button.noteTypes ?? []).map((t) => t.trim()).filter(Boolean)
+  const folders = (button.folders ?? []).map((f) => f.trim()).filter(Boolean)
+  const unknownTypes = types.filter((t) => !vault.types.has(t.toLowerCase()))
+  const missingFolders = folders.filter((f) => !vault.folderExists(f.replace(/^\/+|\/+$/g, '')))
+  const hasConditions = (button.conditions ?? []).some((c) => c.property.trim() !== '')
+
+  let nowhere: string | null = null
+  if (!button.scriptName) {
+    nowhere = 'Shows nowhere until a script is chosen.'
+  } else if (!button.allNotes && !types.length && !folders.length && !hasConditions) {
+    nowhere = 'Shows nowhere yet: give it note types, folders, a property, or every note.'
+  } else if (
+    !button.allNotes &&
+    (types.length || folders.length) &&
+    unknownTypes.length === types.length &&
+    missingFolders.length === folders.length
+  ) {
+    nowhere = 'Shows nowhere: no note in this vault has any of its types or sits in its folders.'
+  }
+
+  return { nowhere, unknownTypes, missingFolders }
 }

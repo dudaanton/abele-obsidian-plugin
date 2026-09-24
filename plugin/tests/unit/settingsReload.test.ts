@@ -173,7 +173,7 @@ describe('no settings file at all', () => {
 })
 
 describe('header buttons saved before they could be switched off, placed or shown everywhere', () => {
-  it('load as they behaved: on, labelled, shown by type only', async () => {
+  it('load as they behaved: on, labelled, shown by type only, asking nothing of properties', async () => {
     const old = { id: 'b1', name: 'Fetch', icon: 'play', noteTypes: ['movie'], scriptName: 'Fetch' }
     stored = settingsWith([old as HeaderButtonDefinition])
     install()
@@ -188,6 +188,8 @@ describe('header buttons saved before they could be switched off, placed or show
         iconOnly: false,
         allNotes: false,
         folders: [],
+        conditions: [],
+        conditionMode: 'all',
       },
     ])
   })

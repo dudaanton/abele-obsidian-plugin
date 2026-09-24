@@ -525,6 +525,11 @@ export function setIcon(el: HTMLElement, icon: string): void {
   el.setAttribute('data-icon', icon)
 }
 
+/** The icons Obsidian can draw. A few real Lucide ones, enough for a picker to show a grid. */
+export function getIconIds(): string[] {
+  return ['lucide-play', 'lucide-download', 'lucide-calendar', 'lucide-check']
+}
+
 /**
  * Obsidian's themed tooltip. The real one shows on hover and puts the text on `aria-label`,
  * which is what tests assert against — so this mirrors that rather than inventing an attribute.

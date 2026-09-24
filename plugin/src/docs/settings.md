@@ -111,7 +111,13 @@ and is not carried by a settings transfer.
 
 A header button runs `scriptName` with `params`, and shows on notes whose `type` is in
 `noteTypes`, on notes anywhere under one of `folders`, or on every note when `allNotes` is on —
-task notes included. `enabled: false` keeps it configured but hidden, `iconOnly` leaves its
+task notes included. `conditions` narrows that further by the note's frontmatter: each is
+`{ property, test, value }`, `test` one of `equals` (the property is `value`, or holds it in a
+list; case is ignored and `Garden` matches `[[Garden]]`), `not-equals` (anything else, a missing
+property included), `filled` or `empty`. `conditionMode` is `all` (the default) or `any`. A
+button with conditions and no `noteTypes`, `folders` or `allNotes` shows on any note that fits
+them. `icon` is a Lucide name without its `lucide-` prefix (`calendar`, `play`); the settings
+pick it from a grid. `enabled: false` keeps it configured but hidden, `iconOnly` leaves its
 `name` off the header, and the order of the list is the order in the header.
 
 `automations` is the list of scripts that run by themselves (the `scripts` docs, Automations).

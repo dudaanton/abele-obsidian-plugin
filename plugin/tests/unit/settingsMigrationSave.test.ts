@@ -76,6 +76,31 @@ describe('loading settings that still need migrating', () => {
     expect(saved[0].headerButtons).toMatchObject([button])
   })
 
+  it('reads a header button saved before property conditions existed as having none', async () => {
+    install({
+      headerButtons: [
+        { id: 'old', name: 'Old', icon: 'play', noteTypes: ['task'], scriptName: 'S', params: {} },
+        {
+          id: 'hand',
+          name: 'Hand-written',
+          icon: 'play',
+          noteTypes: [],
+          scriptName: 'S',
+          params: {},
+          conditions: [{ property: 'rating', test: 'bigger', value: 5 }, null],
+        },
+      ],
+      ai: { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' },
+    })
+
+    await AbeleConfig.getInstance().loadSettings()
+
+    const [old, hand] = AbeleConfig.getInstance().headerButtons
+    expect(old.conditions).toEqual([])
+    expect(old.conditionMode).toBe('all')
+    expect(hand.conditions).toEqual([{ property: 'rating', test: 'equals', value: '5' }])
+  })
+
   /** A save during load must not register the AI features early; `onload` does that itself. */
   it('does not sync the AI features from inside the load', async () => {
     const plugin = install({ ai: { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' } })

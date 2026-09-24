@@ -109,6 +109,47 @@ export interface HeaderButtonDefinition {
   allNotes?: boolean
   /** Folders whose notes, at any depth, show the button — besides the notes of `noteTypes`. */
   folders?: string[]
+  /**
+   * Frontmatter the note must have, on top of where it is: the button shows on a note of its
+   * types or folders only when these hold. A button naming no type and no folder shows on any
+   * note these hold for.
+   */
+  conditions?: HeaderButtonCondition[]
+  /** `all` (the default) needs every condition to hold, `any` one of them. */
+  conditionMode?: 'all' | 'any'
+}
+
+/** What a header button asks of one frontmatter property. */
+export type PropertyTest = 'equals' | 'not-equals' | 'filled' | 'empty'
+
+export const PROPERTY_TESTS: PropertyTest[] = ['equals', 'not-equals', 'filled', 'empty']
+
+export interface HeaderButtonCondition {
+  property: string
+  test: PropertyTest
+  /** Compared for `equals` and `not-equals`, ignored by the other two. */
+  value: string
+}
+
+/**
+ * A button's conditions as they may arrive: from an older settings file (none at all), from
+ * another device, or typed by hand into `data.json`. Anything that is not a condition is
+ * dropped rather than left to break the header, and a test nobody knows reads as `equals`.
+ */
+export function normalizeConditions(raw: unknown): HeaderButtonCondition[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object')
+    .map((c) => ({
+      property: typeof c.property === 'string' ? c.property : '',
+      test: PROPERTY_TESTS.includes(c.test as PropertyTest) ? (c.test as PropertyTest) : 'equals',
+      value:
+        typeof c.value === 'string'
+          ? c.value
+          : typeof c.value === 'number' || typeof c.value === 'boolean'
+            ? String(c.value)
+            : '',
+    }))
 }
 
 export const DEFAULT_SETTINGS: AbeleSettings = {
@@ -488,6 +529,8 @@ export class AbeleConfig {
       iconOnly: b.iconOnly ?? false,
       allNotes: b.allNotes ?? false,
       folders: b.folders || [],
+      conditions: normalizeConditions(b.conditions),
+      conditionMode: b.conditionMode === 'any' ? 'any' : 'all',
     }))
     this.automations = (Array.isArray(settings?.automations) ? settings.automations : []).map(
       (rule) => normalizeRule(rule)

@@ -1,5 +1,5 @@
 /**
- * Every dialog of the chat, on a phone.
+ * Every dialog of the chat, and the icon picker, on a phone.
  *
  * The 1.18.0 settings dialog shipped with its tab strip on two rows, the skills list a box in
  * the top half of an otherwise empty sheet, and a width rule reaching the dialog from inside
@@ -310,6 +310,37 @@ const probeScript = `(async () => {
       await screen('history', modal, modal && modal.querySelector('.abele-modal__body'))
       await closeDialog()
     }
+
+    // The icon picker of a header button's form: a grid of every icon, a search field above.
+    // Pictured before its fields are focused one by one: focusing the button at the foot of
+    // the grid scrolls the grid down to it, away from the current icon.
+    window.__abeleTest.openIconPicker('calendar')
+    if (
+      await until(
+        () => document.querySelector('.modal .abele-icon-picker .abele-icon-picker__icon'),
+        5000
+      )
+    ) {
+      await wait(300)
+      const modal = document.querySelector('.modal')
+      await screen('icon picker', modal, modal.querySelector('.abele-modal__body'))
+      const clipped = []
+      for (const f of modal.querySelectorAll('input, button')) {
+        if (f.getBoundingClientRect().width === 0) continue
+        f.focus()
+        for (const cut of ringClipped(f)) clipped.push(name(f) + ': ' + cut)
+        f.blur()
+      }
+      report['icon picker'].clipped = clipped
+      const field = modal.querySelector('.abele-icon-picker input')
+      field.value = 'arrow'
+      field.dispatchEvent(new Event('input', { bubbles: true }))
+      await wait(400)
+      await screen('icon picker search', modal, modal.querySelector('.abele-modal__body'))
+      await closeDialog()
+    } else {
+      report['icon picker'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'icon picker did not open' }
+    }
   } catch (e) {
     report['run'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
   } finally {
@@ -387,7 +418,12 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'setup settings',
     'setup debug',
     'history',
+    'icon picker',
+    'icon picker search',
   ]
+
+  /** Dialogs with fields, whose focus rings are measured, and which stand as a full sheet. */
+  const sheets = screens.filter((s) => s.startsWith('setup') || s === 'icon picker')
 
   it('reaches every screen', () => {
     expect(report.run?.error ?? '').toBe('')
@@ -408,12 +444,9 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       expect(s.spare, `${s.name} leaves ${s.spare}px blank under it`).toBeLessThanOrEqual(24)
   })
 
-  it.each(screens.filter((s) => s.startsWith('setup')))(
-    '%s: nothing cuts the focus ring off any field',
-    (label) => {
-      expect(report[label]?.clipped ?? ['no report']).toEqual([])
-    }
-  )
+  it.each(sheets)('%s: nothing cuts the focus ring off any field', (label) => {
+    expect(report[label]?.clipped ?? ['no report']).toEqual([])
+  })
 
   it('history: every card keeps its delete icon on the row of its title', () => {
     expect(report['history']?.stranded ?? ['no report']).toEqual([])
@@ -423,10 +456,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect(report[label]?.capped ?? ['no report']).toEqual([])
   })
 
-  it.each(screens.filter((s) => s.startsWith('setup')))(
-    '%s: the sheet stands the height of the screen',
-    (label) => {
-      expect(report[label]?.fill ?? 0).toBeGreaterThanOrEqual(0.85)
-    }
-  )
+  it.each(sheets)('%s: the sheet stands the height of the screen', (label) => {
+    expect(report[label]?.fill ?? 0).toBeGreaterThanOrEqual(0.85)
+  })
 })

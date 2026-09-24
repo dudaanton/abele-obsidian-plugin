@@ -37,6 +37,7 @@ const fetchDetails: ParsedScript = {
 }
 
 let execute: ReturnType<typeof vi.fn>
+let vault: ReturnType<typeof useVault>
 
 function configureButtons(buttons: Partial<HeaderButtonDefinition>[]) {
   AbeleConfig.getInstance().headerButtons = buttons.map((b, i) => ({
@@ -58,7 +59,7 @@ async function headerFor(path: string): Promise<Header> {
 }
 
 beforeEach(() => {
-  useVault([
+  vault = useVault([
     {
       path: FILM,
       frontmatter: { type: 'movie', status: 'watched' },
@@ -221,6 +222,62 @@ describe('a button set up beyond its note types', () => {
     expect(buttonLabels(wrapper)).not.toContain('Fetch details')
     const icon = wrapper.findAllComponents(Icon).find((i) => i.props('icon') === 'download')!
     expect(icon.props('tooltip')).toBe('Fetch details')
+  })
+})
+
+describe('a button that asks for properties', () => {
+  it('shows only on the notes whose properties it fits', async () => {
+    configureButtons([
+      { name: 'Rate', conditions: [{ property: 'status', test: 'equals', value: 'watched' }] },
+      { id: 'q', name: 'Queue', conditions: [{ property: 'status', test: 'empty', value: '' }] },
+    ])
+
+    const wrapper = mount(HeaderView, { props: { header: await headerFor(FILM) } })
+
+    expect(buttonLabels(wrapper)).toContain('Rate')
+    expect(buttonLabels(wrapper)).not.toContain('Queue')
+  })
+
+  // A property is changed in the note with the header on screen; the header has to follow it
+  // without the note being reopened, or the button would answer to what the note used to say.
+  it('comes and goes as the property is changed in the open note', async () => {
+    configureButtons([
+      { name: 'Rate', conditions: [{ property: 'status', test: 'equals', value: 'watched' }] },
+    ])
+    const wrapper = mount(HeaderView, { props: { header: await headerFor(FILM) } })
+
+    vault.setFrontmatter(FILM, { type: 'movie', status: 'queued' })
+    vault.emit('metadataCache', 'changed', vault.vault.getAbstractFileByPath(FILM))
+    await nextTick()
+    expect(buttonLabels(wrapper)).not.toContain('Rate')
+
+    vault.setFrontmatter(FILM, { type: 'movie', status: 'watched' })
+    vault.emit('metadataCache', 'changed', vault.vault.getAbstractFileByPath(FILM))
+    await nextTick()
+    expect(buttonLabels(wrapper)).toContain('Rate')
+  })
+
+  it('asks a task note too', async () => {
+    configureButtons([
+      {
+        name: 'Start',
+        noteTypes: ['task'],
+        conditions: [{ property: 'status', test: 'equals', value: 'todo' }],
+      },
+      {
+        id: 'done',
+        name: 'Archive',
+        noteTypes: ['task'],
+        conditions: [{ property: 'status', test: 'equals', value: 'done' }],
+      },
+    ])
+    const task = new TaskHeader({ id: 't1', filePath: 'Tasks/Water plants.md' })
+    task.loaded = true
+
+    const wrapper = mount(TaskHeaderView, { props: { task } })
+
+    expect(buttonLabels(wrapper)).toContain('Start')
+    expect(buttonLabels(wrapper)).not.toContain('Archive')
   })
 })
 

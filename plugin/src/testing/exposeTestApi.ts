@@ -25,6 +25,7 @@ import { createScreenshotTool } from '@/ai/tools/ScreenshotTool'
 import { createGeocodeTool, createPlacesTool, createRouteTool } from '@/ai/tools/GeoTools'
 import { createGithubTools } from '@/ai/tools/github'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
+import { openIconPicker } from './openIconPicker'
 import { TFile } from 'obsidian'
 import type { Plugin } from 'obsidian'
 
@@ -134,6 +135,8 @@ interface AbeleTestApi {
   resolvedSystemPrompt(): Promise<string>
   /** Paths in the live chat history — the list the history modal shows. */
   chatHistoryPaths(): string[]
+  /** Opens the icon picker dialog by itself, for the layout probes. */
+  openIconPicker(current?: string): void
 }
 
 export interface AgentsSnapshot {
@@ -511,6 +514,7 @@ export function exposeTestApi(plugin: Plugin): void {
     agentsSnapshot,
     resolvedSystemPrompt,
     chatHistoryPaths,
+    openIconPicker,
   }
   console.debug('[Abele] test API exposed on window.__abeleTest (development build)')
 }
