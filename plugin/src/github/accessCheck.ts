@@ -13,6 +13,7 @@
 import type { GithubClient, Probe, TokenInfo } from './client'
 import { GithubError } from './client'
 import { header } from './refusal'
+import { normaliseHost } from './urls'
 
 export interface RepoRef {
   host: string
@@ -39,7 +40,7 @@ export function parseRepoInput(input: string, defaultHost: string): RepoRef | nu
   } catch {
     return null
   }
-  let host = url.hostname.toLowerCase().replace(/^www\./, '')
+  let host = normaliseHost(url.hostname)
   let segments = url.pathname.split('/').filter(Boolean)
 
   if (host === 'api.github.com') host = 'github.com'
@@ -71,6 +72,12 @@ export interface AccessRow {
 
 export interface AccessReport {
   api: string
+  /** The web host the repository resolved to — the one the token has to belong to. */
+  host: string
+  /** The web host the configured token belongs to: the Server setting, or github.com. */
+  tokenHost: string
+  /** A token is set in the settings at all. */
+  tokenConfigured: boolean
   token: TokenInfo
   /** Why no token was sent although one is set, when that is the case. */
   tokenNote?: string
@@ -182,16 +189,19 @@ export async function checkAccess({
 }: AccessCheckInput): Promise<AccessReport> {
   const report: AccessReport = {
     api: client.endpoints.api,
+    host: repo?.host ?? client.endpoints.webHost,
+    tokenHost,
+    tokenConfigured,
     token: client.tokenInfo,
     repo: repo ?? undefined,
     rows: [],
   }
 
-  if (tokenConfigured && !client.hasToken && repo && repo.host !== tokenHost) {
-    report.tokenNote = `The token belongs to ${tokenHost}, and this repository is on ${repo.host}, so it is read without the token.`
+  if (client.noTokenReason) {
+    const why = client.noTokenReason
+    report.tokenNote = `Not sent because ${why}`
   } else if (tokenConfigured && !client.hasToken) {
-    report.tokenNote =
-      'A token is set in the settings, but the keychain on this device returned nothing for it. Paste the token again on this device.'
+    report.tokenNote = 'A token is set, but nothing reached this request.'
   }
 
   const identity = client.hasToken

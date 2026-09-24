@@ -90,6 +90,12 @@ Put the server's address in **Server** — `https://github.example.com`. Its API
 (`name.ghe.com`) at `api.name.ghe.com`. Links to that host then open in tabs, read with the
 token; links to github.com still open too, read without it.
 
+The address can be written any way it is usually pasted — with or without `https://`, in any
+letter case, with `www.`, a port or `/api/v3` — and links to that host match it the same way.
+Requests to an Enterprise Server carry no `X-GitHub-Api-Version` header, which servers older than
+3.9 refuse. **Check access** shows which host a link resolved to, which host the token is set
+for and which API address was asked, so a link that is read without the token is visible at once.
+
 ## What it costs
 
 Nothing runs in the background: GitHub is asked only when a tab opens, is refreshed, or a

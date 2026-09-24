@@ -63,7 +63,7 @@
           name="Check access"
           desc="Ask GitHub what the token can read. Give a repository — owner/name or any link into it — to try each permission on it; leave it empty to see only whose token it is."
         >
-          <div class="abele-github-settings__row">
+          <div class="abele-github-settings__row abele-github-settings__row_wrap">
             <Input
               v-model="checkRepo"
               class="abele-github-settings__repo"
@@ -206,8 +206,14 @@ const check = async () => {
     gap: var(--size-4-1);
   }
 
+  // On a phone Obsidian makes every field and button in a settings row full width, so the two
+  // take a line each there rather than squeezing the field to nothing beside the button.
+  &__row_wrap {
+    flex-wrap: wrap;
+  }
+
   &__repo {
-    flex: 1 1 auto;
+    flex: 1 1 12em;
     min-width: 0;
   }
 }

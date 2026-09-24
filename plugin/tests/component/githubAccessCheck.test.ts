@@ -180,6 +180,23 @@ describe('check access', () => {
     await check(wrapper, 'https://github.com/acme/app')
     const text = wrapper.find('.abele-github-access').text()
     expect(text).toContain('No token was sent')
-    expect(text).toContain('github.example.com')
+    expect(text).toContain('Token is set for: github.example.com')
+    expect(text).toContain('Repository: acme/app on github.com')
+    expect(text).toContain('API: https://api.github.com')
+  })
+
+  it('a link to the Enterprise server itself goes there, with the token', async () => {
+    AbeleConfig.getInstance().github = {
+      ...AbeleConfig.getInstance().github!,
+      server: 'https://GitHub.Example.com/api/v3/',
+    }
+    answer({})
+    const wrapper = open()
+    await check(wrapper, 'https://www.github.example.com/acme/app/pull/3')
+    const text = wrapper.find('.abele-github-access').text()
+    expect(text).toContain('Sent with every request')
+    expect(text).toContain('API: https://github.example.com/api/v3')
+    expect(calls[0].url.startsWith('https://github.example.com/api/v3/')).toBe(true)
+    expect(calls[0].headers?.Authorization).toBe(`Bearer ${TOKEN}`)
   })
 })

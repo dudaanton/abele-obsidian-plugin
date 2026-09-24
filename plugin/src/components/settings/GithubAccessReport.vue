@@ -62,6 +62,8 @@ const tokenLines = computed(() => {
       : 'No token was sent with these requests.'
   )
   if (r.tokenNote) lines.push(r.tokenNote)
+  if (r.tokenConfigured) lines.push(`Token is set for: ${r.tokenHost}`)
+  if (r.repo) lines.push(`Repository: ${r.repo.owner}/${r.repo.repo} on ${r.host}`)
   if (r.login) lines.push(`Belongs to ${r.login}.`)
   if (r.expires) lines.push(`Expires ${r.expires}.`)
   if (r.scopes !== undefined && r.token.kind === 'classic') {
