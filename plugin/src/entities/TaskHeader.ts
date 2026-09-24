@@ -203,10 +203,10 @@ export class TaskHeader {
   async writeContentToEditor() {
     const { app } = GlobalStore.getInstance()
 
-    const editor = getEditorForFile(getFileByPath(this.filePath))
+    const file = getFileByPath(this.filePath)
+    const editor = file ? getEditorForFile(file) : null
     if (!editor) return
 
-    const file = getFileByPath(this.filePath)
     const currentContent = await parseNoteContent(file, editor.getValue())
 
     console.debug(this.createdAt)
@@ -223,22 +223,15 @@ export class TaskHeader {
     if (this.watcherInitialized) {
       return
     }
-    this.fileWatcher = new FileWatcher(
-      GlobalStore.getInstance().app,
-      this.filePath,
-      debounce(
-        (event) => {
-          if (event.oldPath && event.newPath && event.oldPath !== event.newPath) {
-            // file renamed
-            this.filePath = event.newPath
-          }
-
-          this.load(true)
-        },
-        AbeleConfig.getInstance().refreshDelay,
-        true
-      )
-    )
+    const reload = debounce(() => this.load(true), AbeleConfig.getInstance().refreshDelay, true)
+    this.fileWatcher = new FileWatcher(GlobalStore.getInstance().app, this.filePath, (event) => {
+      // Followed at once, not with the reload: a task is renamed after its first line as it is
+      // typed, and a date picked before a debounced rename landed was written to no file.
+      if (event.oldPath && event.newPath && event.oldPath !== event.newPath) {
+        this.filePath = event.newPath
+      }
+      reload()
+    })
 
     this.watcherInitialized = true
   }
