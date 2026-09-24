@@ -14,9 +14,9 @@ import { parseNoteContent, renderTemplate } from '@/helpers/notesUtils'
 import { normalizePath, wikilinkToPath } from '@/helpers/pathsHelpers'
 import { DATE_FORMAT } from '@/constants/dates'
 import dayjs from 'dayjs'
-import { cleanTaskName } from '@/helpers/tasksUtils'
 import { getAvailablePath, readFileContent } from '@/helpers/vaultUtils'
 import { syncTaskFileName } from '@/helpers/taskFileName'
+import { transactionFileTarget } from '@/helpers/transactionFileName'
 import { VaultWatcher } from '@/helpers/VaultWatcher'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import type { FormField } from '@/scripting/types'
@@ -159,16 +159,9 @@ export class GlobalStore {
 
         const isTransaction = fm?.type === 'transaction'
         if (isTransaction) {
-          const config = AbeleConfig.getInstance()
-          const fileContent = await readFileContent(event.file)
+          // The file, not an editor it may be open in with its text not loaded yet.
+          const fileContent = await this.app.vault.read(event.file)
           const parsedContent = await parseNoteContent(event.file, fileContent)
-          const lines = parsedContent.content
-            .split('\n')
-            .filter((line: string) => line.trim() !== '')
-          const newTitle =
-            lines.length > 0 ? cleanTaskName(lines[0]) || 'New Transaction' : 'New Transaction'
-
-          const stripWikilink = (s?: string | null) => (s ? s.replace(/\[\[|\]\]/g, '').trim() : '')
 
           // Auto-set currency from accounts
           const al = this.accountsList.value
@@ -209,21 +202,8 @@ export class GlobalStore {
             }
           }
 
-          const data: Record<string, string> = {
-            date: (parsedContent.date as string) || dayjs().format(DATE_FORMAT),
-            title: newTitle,
-            from: stripWikilink(parsedContent.from as string),
-            to: stripWikilink(parsedContent.to as string),
-            amount: parsedContent.amount != null ? String(parsedContent.amount) : '',
-            currency: (parsedContent.currency as string) || config.defaultCurrency || '',
-          }
-
-          let rendered = renderTemplate(config.transactionPathTemplate, data)
-          if (!rendered.endsWith('.md')) rendered += '.md'
-
-          const newPath = await getAvailablePath(rendered, event.file.path)
-
-          if (newPath !== event.file.path) {
+          const newPath = await transactionFileTarget(this.app, event.file)
+          if (newPath) {
             await this.app.fileManager.renameFile(event.file, newPath)
           }
         }
