@@ -24,6 +24,7 @@ import { ScriptViewService } from '@/scripting/view/ScriptViewService'
 import { createScreenshotTool } from '@/ai/tools/ScreenshotTool'
 import { createGeocodeTool, createPlacesTool, createRouteTool } from '@/ai/tools/GeoTools'
 import { createGithubTools } from '@/ai/tools/github'
+import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { TFile } from 'obsidian'
 import type { Plugin } from 'obsidian'
 
@@ -106,6 +107,8 @@ interface AbeleTestApi {
   createRouteTool: typeof createRouteTool
   /** The GitHub tools, so a check can call them the way an agent would. */
   createGithubTools: typeof createGithubTools
+  /** The keyboard diagnostics panel, on or off, without going through the settings. */
+  setKeyboardDiagnostics: typeof setKeyboardDiagnostics
   plugin: Plugin
   /**
    * Where an e2e probe parks its result. `obsidian eval` cannot await a promise, so a probe
@@ -478,6 +481,7 @@ function chatHistoryPaths(): string[] {
 
 export function exposeTestApi(plugin: Plugin): void {
   window.__abeleTest = {
+    setKeyboardDiagnostics,
     ScopeResolver,
     ChatService,
     ChatStorage,

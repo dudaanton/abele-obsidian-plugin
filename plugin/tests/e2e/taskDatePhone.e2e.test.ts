@@ -12,7 +12,11 @@
  * - the page shrinks while the dialog's cap, written in viewport units, does not — the
  *   dialog's container is made shorter by hand;
  * - only the visual viewport shrinks — `window.visualViewport` is replaced for the run by one
- *   that reports the smaller height, before the dialog opens, so the dialog listens to it.
+ *   that reports the smaller height, before the dialog opens, so the dialog listens to it;
+ * - nothing shrinks, and the keyboard's height is written to `--keyboard-height` on the root
+ *   element and announced with `keyboardWillShow` — what Obsidian's iPhone app does.
+ *
+ * The keyboard diagnostics panel is then turned on over the last one and pictured.
  *
  * In both the dialog has to fit the room, scroll inside it, and show the time field. A picture
  * of each is written to `/tmp/abele-phone/task-date-*.png`; look at them. What a real keyboard
@@ -185,10 +189,44 @@ const probeScript = `(async () => {
     await wait(400)
     await measure('viewport-shrinks')
     field().blur()
+    await closeDialog()
+    if (realViewport) Object.defineProperty(window, 'visualViewport', realViewport)
+
+    // Obsidian's iPhone app: nothing shrinks, the app writes the keyboard's height on the root
+    // element and announces it on the window.
+    await openDialog()
+    field().focus()
+    document.documentElement.style.setProperty('--keyboard-height', '${KEYBOARD}px')
+    const shown = new Event('keyboardWillShow')
+    shown.keyboardHeight = ${KEYBOARD}
+    window.dispatchEvent(shown)
+    await wait(600)
+    await measure('keyboard-height')
+
+    // The diagnostics panel over the same screen, for a picture of what the owner will see.
+    window.__abeleTest.setKeyboardDiagnostics(true)
+    await wait(600)
+    const panel = document.querySelector('.abele-keyboard-diagnostics')
+    const p = panel && panel.getBoundingClientRect()
+    const hit = p && document.elementFromPoint(p.left + p.width / 2, p.top + p.height / 2)
+    report['diagnostics'] = {
+      dialog: p ? [Math.round(p.top), Math.round(p.bottom)] : [0, 0],
+      field: [0, 0],
+      content: { scrollHeight: 0, clientHeight: 0 },
+      container: panel ? 'text ' + panel.textContent.length + ' | tap lands on ' + (hit && panel.contains(hit) ? 'panel' : 'beneath') : 'no panel',
+      shot: await shoot('diagnostics'),
+      error: panel ? '' : 'no panel',
+    }
+    window.__abeleTest.setKeyboardDiagnostics(false)
+    field().blur()
+    document.documentElement.style.removeProperty('--keyboard-height')
+    window.dispatchEvent(new Event('keyboardWillHide'))
   } catch (e) {
     report['run'] = { dialog: [0, 0], field: [0, 0], content: { scrollHeight: 0, clientHeight: 0 }, shot: '', error: String((e && e.message) || e) }
   } finally {
     if (realViewport) Object.defineProperty(window, 'visualViewport', realViewport)
+    document.documentElement.style.removeProperty('--keyboard-height')
+    window.__abeleTest.setKeyboardDiagnostics(false)
     await closeDialog()
     const made = app.vault.getAbstractFileByPath(TASK)
     if (made) await app.vault.delete(made)
@@ -246,7 +284,7 @@ describe.skipIf(!available)("the task's date dialog on a phone, keyboard up", ()
     await setMobile(false)
   }, 120_000)
 
-  const keyboardUp = ['page-shrinks', 'viewport-shrinks']
+  const keyboardUp = ['page-shrinks', 'viewport-shrinks', 'keyboard-height']
 
   it('reaches every screen', () => {
     expect(report.run?.error ?? '').toBe('')
@@ -254,6 +292,14 @@ describe.skipIf(!available)("the task's date dialog on a phone, keyboard up", ()
       expect(report[label], label).toBeDefined()
       expect(report[label].error, label).toBe('')
     }
+  })
+
+  it('shows the diagnostics panel at the top without taking taps', () => {
+    const s = report['diagnostics']
+    expect(s?.error ?? 'missing').toBe('')
+    expect(s.dialog[0]).toBeGreaterThanOrEqual(0)
+    expect(s.dialog[0]).toBeLessThan(80)
+    expect(s.container).toContain('tap lands on beneath')
   })
 
   it('shows the whole dialog when nothing covers the screen', () => {

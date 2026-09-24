@@ -111,8 +111,6 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
   let observer: MutationObserver | null = null
   // The container carrying a fit of ours, if any: only then is there anything of ours to undo.
   let fitted: HTMLElement | null = null
-  // The room given last time, so that the field is brought into view only when it changes.
-  let lastRoom = ''
   // What a keyboard event said the height was, until one says the keyboard has gone.
   let announced = 0
   const timers: number[] = []
@@ -190,11 +188,9 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
       room,
     }
 
-    const key = room ? room.join(',') : ''
-    if (key !== lastRoom) {
-      lastRoom = key
-      reveal()
-    }
+    // Every time, not only when the room changes: measuring releases the fit first, and the
+    // dialog grown back for that moment has already lost its scroll position.
+    reveal()
   }
 
   const later = (ms: number) => {
