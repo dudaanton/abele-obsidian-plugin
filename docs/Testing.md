@@ -167,6 +167,27 @@ Three files, three concerns:
   In both the dialog has to fit the room, scroll inside, and show the time field. Writes one
   task note for the run and removes it; pictures go to `/tmp/abele-phone/task-date-*.png`.
 
+- `githubLinks.e2e.test.ts`, `githubTabs.e2e.test.ts`, `githubSearch.e2e.test.ts`,
+  `githubPhone.e2e.test.ts` — **the GitHub tabs, against a fake GitHub**. Each file starts a GitHub
+  Enterprise Server of its own on `127.0.0.1` (`helpers/fakeGithubServer.ts`, run as a separate
+  process: the test worker blocks on every `obsidian eval`, and a server inside it would leave the
+  app's requests waiting on the call that waits for them). It serves `acme/widgets` from
+  `helpers/fakeGithubRepo.ts` — two commits, a pull request between them whose patches are real
+  diffs of the files it serves, an issue, a discussion over GraphQL, file contents, the tree and a
+  tarball for code search — so every answer agrees with every other. The integration is switched
+  on in memory with **Server** pointed at it, the token is a wrapped `getSecret` rather than a
+  keychain entry (the keychain cannot delete one), the sidebars are folded so clicks land in the
+  note, and `helpers/githubLive.ts` puts all of it back. Links in notes are clicked for real,
+  through CDP's `Input.dispatchMouseEvent`, because what is under test is whether the plugin's
+  listener or Obsidian's own handler gets the click: Reading view, Live Preview, the tab a plain
+  click reuses, Mod-click's new tab, the back arrow, and links in a note's properties (the
+  Properties view beside the note, and the properties in Reading view, with Alt going to a stubbed
+  `window.open`). In the tabs: scrolling to a line of a diff, lines of a file and a late comment;
+  selected lines copied (the clipboard is restored), inserted as a link and as a card the note then
+  draws; a markdown file's Preview and Code and `?plain=1`; "Open file" from a pull request; find
+  in the tab; whole-repository code search; go to definition; and the pull request on a phone,
+  with pictures in `/tmp/abele-phone/github-pull-*.png`. Notes the files write are deleted.
+
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
 "mega group", where a single resolution currently takes about two minutes.
 

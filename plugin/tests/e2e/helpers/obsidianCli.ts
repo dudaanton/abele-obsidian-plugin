@@ -71,6 +71,9 @@ function runOnce(args: string[], timeoutMs: number): string {
   }
 }
 
+/** A CLI command with its arguments, as they are passed — `dev:cdp`, say. */
+export const runCli = (args: string[], timeoutMs?: number): string => run(args, timeoutMs)
+
 /** True when the CLI exists and a vault is currently open. */
 export function isObsidianRunning(): boolean {
   try {
