@@ -59,14 +59,26 @@
           />
         </Setting>
 
-        <Setting name="Check access" :desc="checkResult || 'Ask GitHub who the token belongs to.'">
-          <Button
-            text="Check"
-            :disabled="checking"
-            tooltip="Send one request to GitHub with the token and show what it answers"
-            @click="check"
-          />
+        <Setting
+          name="Check access"
+          desc="Ask GitHub what the token can read. Give a repository — owner/name or any link into it — to try each permission on it; leave it empty to see only whose token it is."
+        >
+          <div class="abele-github-settings__row">
+            <Input
+              v-model="checkRepo"
+              class="abele-github-settings__repo"
+              placeholder="owner/repo or a GitHub link"
+            />
+            <Button
+              text="Check"
+              :disabled="checking"
+              tooltip="Send a few read requests to GitHub with the token and show what each one answers"
+              @click="check"
+            />
+          </div>
         </Setting>
+        <EmptyState v-if="checkResult" :text="checkResult" />
+        <GithubAccessReport v-if="report" :report="report" />
       </Section>
     </template>
 
@@ -92,10 +104,13 @@ import Input from '../obsidian/Input.vue'
 import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
+import EmptyState from '../obsidian/EmptyState.vue'
+import GithubAccessReport from './GithubAccessReport.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { GITHUB_TOKEN_KEY_ID, githubSettingsFrom, type GithubSettings } from '@/github/settings'
-import { githubClient, resetGithubClients } from '@/github/GithubService'
+import { checkGithubAccess, resetGithubClients } from '@/github/GithubService'
+import type { AccessReport } from '@/github/accessCheck'
 
 const config = AbeleConfig.getInstance()
 const { app } = GlobalStore.getInstance()
@@ -105,6 +120,8 @@ const tokenInput = ref('')
 const secretVersion = ref(0)
 const checking = ref(false)
 const checkResult = ref('')
+const checkRepo = ref('')
+const report = ref<AccessReport | null>(null)
 const confirmingForget = ref(false)
 
 // Settings changed on disk — synced from another device — are shown rather than overwritten.
@@ -121,6 +138,7 @@ const save = async () => {
   config.github = { ...settings }
   resetGithubClients()
   checkResult.value = ''
+  report.value = null
   await config.saveSettings()
 }
 
@@ -155,16 +173,11 @@ const forgetToken = () => {
 
 const check = async () => {
   checking.value = true
+  report.value = null
   checkResult.value = 'Asking GitHub…'
   try {
-    const client = githubClient()
-    if (client.hasToken) {
-      const user = await client.get<{ login: string }>('/user')
-      checkResult.value = `The token works. It belongs to ${user.login}.`
-    } else {
-      const limit = await client.get<{ rate: { remaining: number; limit: number } }>('/rate_limit')
-      checkResult.value = `GitHub answers without a token: ${limit.rate.remaining} of ${limit.rate.limit} requests left this hour.`
-    }
+    report.value = await checkGithubAccess(checkRepo.value)
+    checkResult.value = ''
   } catch (e) {
     checkResult.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -191,6 +204,11 @@ const check = async () => {
     display: flex;
     align-items: center;
     gap: var(--size-4-1);
+  }
+
+  &__repo {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 }
 </style>

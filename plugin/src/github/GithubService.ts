@@ -6,6 +6,7 @@ import type { App } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { GithubClient } from './client'
+import { checkAccess, parseRepoInput, type AccessReport } from './accessCheck'
 import { endpoints, parseGithubUrl, targetKey, type GithubTarget } from './urls'
 import { DEFAULT_GITHUB_SETTINGS, type GithubSettings } from './settings'
 
@@ -47,6 +48,35 @@ export function githubClient(host?: string): GithubClient {
     clients.set(key, client)
   }
   return client
+}
+
+/**
+ * "Check access" for the settings: the client a tab for that repository would use — the same
+ * host rule, the same token — tried against it, or only the token when no repository is given.
+ */
+export function checkGithubAccess(repoInput: string): Promise<AccessReport> {
+  const settings = githubSettings()
+  const tokenHost = endpoints(settings.server).webHost
+  const text = repoInput.trim()
+  const repo = text ? parseRepoInput(text, tokenHost) : null
+  if (text && !repo) {
+    return Promise.reject(
+      new Error(`"${text}" is not a repository. Give owner/name, or any link into the repository.`)
+    )
+  }
+  if (repo && !githubHosts().includes(repo.host)) {
+    return Promise.reject(
+      new Error(
+        `${repo.host} is neither github.com nor the server set above, so nothing here reads it.`
+      )
+    )
+  }
+  return checkAccess({
+    client: githubClient(repo?.host),
+    repo,
+    tokenConfigured: !!settings.keyId,
+    tokenHost,
+  })
 }
 
 /** Forgets every cached answer — for a token that was just replaced, say. */
