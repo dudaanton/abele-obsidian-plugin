@@ -20,8 +20,12 @@ import type { LineRange } from './urls'
 import { languageFor } from './languages'
 
 export interface Viewer {
-  /** Scrolls the highlighted lines into the middle of whatever scrolls around the editor. */
-  reveal(): void
+  /**
+   * Where the first highlighted line starts, in viewport pixels; null when nothing is highlighted
+   * or the editor is not laid out. Read from the editor's height map, so it is known before the
+   * line is drawn — the editor draws only what is on screen — and grows exact as it is.
+   */
+  targetTop(): number | null
   destroy(): void
 }
 
@@ -69,10 +73,11 @@ function mount(
     state: EditorState.create({ doc, extensions: [...readOnly, ...extensions] }),
   })
   return {
-    reveal() {
-      if (firstHighlighted === null || firstHighlighted > view.state.doc.lines) return
-      const pos = view.state.doc.line(firstHighlighted).from
-      view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'center' }) })
+    targetTop() {
+      if (firstHighlighted === null || firstHighlighted > view.state.doc.lines) return null
+      if (!view.dom.isConnected || view.dom.getClientRects().length === 0) return null
+      const block = view.lineBlockAt(view.state.doc.line(firstHighlighted).from)
+      return view.documentTop + block.top
     },
     destroy() {
       view.destroy()

@@ -52,6 +52,8 @@ export type GithubTarget =
 export type GithubTargetKind = GithubTarget['kind']
 
 const DIFF_ANCHOR = /^diff-([0-9a-f]{64})(?:([LR])(\d+)(?:-[LR](\d+))?)?$/
+/** A review comment: `#discussion_r12` on the conversation, `#r12` on the files. */
+const REVIEW_COMMENT_ANCHOR = /^(?:discussion_)?r(\d+)$/
 const LINE_ANCHOR = /^L(\d+)(?:C\d+)?(?:-L(\d+)(?:C\d+)?)?$/
 
 const positive = (text: string): number | null => {
@@ -143,6 +145,12 @@ export function parseGithubUrl(url: string, hosts: string[]): GithubTarget | nul
       const [tab, sha] = more
       if (tab === 'commits' && sha) {
         return { kind: 'commit', ...base, sha, pull: number, file: diffAnchor(hash) }
+      }
+      // Review comments are shown beside their file, so a link to one opens the files.
+      const reviewComment = REVIEW_COMMENT_ANCHOR.exec(hash)
+      if (reviewComment && (!tab || tab === 'files' || tab === 'changes')) {
+        const anchor = `discussion_r${reviewComment[1]}`
+        return { kind: 'pull', ...base, anchor, number, tab: 'files' }
       }
       if (!tab) return { kind: 'pull', ...base, number, tab: 'conversation' }
       if (tab === 'files' || tab === 'changes') {

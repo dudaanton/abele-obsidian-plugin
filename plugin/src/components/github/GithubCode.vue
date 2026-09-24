@@ -14,6 +14,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { LineRange } from '@/github/urls'
 import { mountCode, type Viewer } from '@/github/codeViewer'
+import { LINE_CONTEXT, pinIntoView } from '@/github/scrollTo'
 
 const props = withDefaults(
   defineProps<{
@@ -27,24 +28,29 @@ const props = withDefaults(
 const editorEl = ref<HTMLElement>()
 const lineCount = computed(() => props.text.split('\n').length)
 let viewer: Viewer | null = null
+let unpin = () => {}
 
 const draw = async () => {
   await nextTick()
+  unpin()
   viewer?.destroy()
   viewer = null
   if (!editorEl.value) return
-  viewer = mountCode(editorEl.value, props.text, props.path, props.range)
-  // After a frame: the scroll has to be measured against a laid-out pane.
-  const win = editorEl.value.win ?? window
-  win.requestAnimationFrame(() => viewer?.reveal())
+  const drawn = mountCode(editorEl.value, props.text, props.path, props.range)
+  viewer = drawn
+  if (props.range) unpin = pinIntoView(editorEl.value, () => drawn.targetTop(), LINE_CONTEXT)
 }
 
 onMounted((): void => void draw())
+// A link to the same lines again is a new range object: it scrolls back to them.
 watch(
-  () => [props.text, props.range?.start, props.range?.end],
+  () => [props.text, props.range],
   (): void => void draw()
 )
-onBeforeUnmount(() => viewer?.destroy())
+onBeforeUnmount(() => {
+  unpin()
+  viewer?.destroy()
+})
 </script>
 
 <style lang="scss">

@@ -96,6 +96,7 @@
               :files="files.data.value.files"
               :complete="files.data.value.complete"
               :anchor="fileAnchor"
+              :comment-anchor="anchor"
             />
           </template>
         </template>
@@ -142,7 +143,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import Button from '../obsidian/Button.vue'
 import Tabs from '../obsidian/Tabs.vue'
@@ -158,6 +159,7 @@ import type { GithubClient } from '@/github/client'
 import { targetKey, shortName, type GithubTarget } from '@/github/urls'
 import { formatDate, splitMessage } from '@/github/format'
 import { useLoad } from '@/github/useLoad'
+import { elementTop, pinIntoView } from '@/github/scrollTo'
 import {
   loadBlob,
   loadCommit,
@@ -360,14 +362,23 @@ const openCommit = (sha: string) => {
   props.onOpen?.(`https://${t.host}/${t.owner}/${t.repo}/pull/${t.number}/commits/${sha}`)
 }
 
-/** Brings the comment a link pointed at into view, once it is on screen. */
+/**
+ * Brings the comment a link pointed at into view, once it is on screen and for as long as what
+ * is above it is still settling. A link to a line in a diff is the diff file's to scroll to.
+ */
+let unpin = () => {}
 const scrollToAnchor = async () => {
   const a = anchor.value
-  if (!a || !root.value) return
+  if (!a || fileAnchor.value || !root.value) return
   await nextTick()
-  const el = root.value.querySelector(`[data-anchor="${CSS.escape(a)}"]`)
-  el?.scrollIntoView({ block: 'start' })
+  const el = root.value
+  unpin()
+  unpin = pinIntoView(
+    el,
+    elementTop(() => el.querySelector(`[data-anchor="${CSS.escape(a)}"]`))
+  )
 }
+onBeforeUnmount(() => unpin())
 
 const reload = async () => {
   promoted.value = null

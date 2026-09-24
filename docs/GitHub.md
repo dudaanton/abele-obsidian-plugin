@@ -19,15 +19,49 @@ GitHub**.
 | `…/owner/repo/discussions/3` | The discussion: body, comments, replies, and which answer was chosen. |
 | `…/owner/repo/blob/<ref>/<path>#L10-L20` | The file at that branch, tag or commit, with those lines marked. |
 
-`#issuecomment-…`, `#discussioncomment-…` and `#pullrequestreview-…` scroll to that comment.
-Anything else — a repository's front page, a folder, a release, a gist — still goes to the
-browser.
+`#issuecomment-…`, `#discussioncomment-…` and `#pullrequestreview-…` scroll to that comment. A
+review comment — `…/pull/7#discussion_r…`, or `…/pull/7/files#r…` — opens the files, with the
+comment's file open and the comment marked. Anything else — a repository's front page, a folder,
+a release, a gist — still goes to the browser.
 
-A link clicked in a note opens its tab when **Open GitHub links in Obsidian** is on; hold Alt to
-send it to the browser instead. The command **Open GitHub link** opens the link under the
-cursor, or asks for one. A right click on a GitHub link offers **Open in Obsidian** either way.
-The same item is never open twice: a second link to it brings its tab forward and moves to the
-new line or comment.
+The tab scrolls so that what the link names sits near its top — a line of code with a few lines
+above it for context. It keeps it there while the tab settles: comments above it render and load
+their images, and diffs above it measure their lines, after the first scroll. Scrolling, clicking
+or typing in the tab stops that at once.
+
+## How a link opens
+
+A link clicked in a note opens in a tab when **Open GitHub links in Obsidian** is on. Which tab:
+
+1. The item is already open → that tab comes forward and moves to the new line or comment. The
+   same item is never open twice.
+2. Otherwise, a GitHub tab is open → the GitHub tab used last is pointed at the link, the way a
+   browser tab follows a link. With the note on one side of a split and GitHub on the other,
+   links keep landing on the GitHub side. A pinned tab is left alone.
+3. Otherwise a new tab opens.
+
+A GitHub tab keeps a history like a note does: its back arrow returns to the item or the line it
+showed before.
+
+To open a new tab regardless, hold the modifier key, as for any link in Obsidian:
+
+| Click | Reading view and Live Preview | Source mode |
+|---|---|---|
+| plain | the rule above | places the cursor, as for any link |
+| Cmd (Ctrl on Windows and Linux) | a new tab | the rule above |
+| Cmd+Shift | a new tab | a new tab |
+| Cmd+Alt | a new split | a new split |
+| Cmd+Alt+Shift | a new window | a new window |
+| Alt | the browser | places the cursor |
+
+In source mode a plain click only places the cursor and Cmd-click is how any link opens there,
+so Cmd alone follows the rule and Cmd+Shift asks for the new tab.
+
+A right click on a GitHub link offers **Open in Obsidian** (the rule above) and **Open in
+Obsidian in a new tab**, whatever the setting. The command **Open GitHub link** opens the link
+under the cursor, or asks for one, by the same rule. A link clicked inside a GitHub tab — a commit
+in a pull request's list, a link in a comment — follows the rule too, so it usually opens in the
+tab it was clicked in.
 
 A pull request with many files lists them and draws a file's diff only when it is opened; one
 with five or fewer opens them all. A file GitHub will not send a diff for — binary, or too

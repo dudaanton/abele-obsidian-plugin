@@ -50,7 +50,12 @@
         Line {{ anchor.line }} is in a part of the file the diff does not show.
       </div>
       <div v-if="file.reviewComments.length" class="abele-github-file__comments">
-        <GithubComment v-for="c in file.reviewComments" :key="c.id" :comment="c" />
+        <GithubComment
+          v-for="c in file.reviewComments"
+          :key="c.id"
+          :comment="c"
+          :target="commentAnchor"
+        />
       </div>
     </div>
   </section>
@@ -66,6 +71,7 @@ import type { DiffFile } from '@/github/api'
 import type { DiffFileAnchor } from '@/github/urls'
 import { linesFor, parsePatch } from '@/github/patch'
 import { mountDiff, type Viewer } from '@/github/codeViewer'
+import { LINE_CONTEXT, elementTop, pinIntoView } from '@/github/scrollTo'
 
 const props = withDefaults(
   defineProps<{
@@ -74,8 +80,10 @@ const props = withDefaults(
     initiallyOpen?: boolean
     /** Set when the link pointed at this file: it opens, scrolls into view and marks the line. */
     anchor?: DiffFileAnchor
+    /** The review comment a link pointed at, marked where it appears. */
+    commentAnchor?: string
   }>(),
-  { anchor: undefined }
+  { anchor: undefined, commentAnchor: undefined }
 )
 
 const root = ref<HTMLElement>()
@@ -100,14 +108,21 @@ const draw = async () => {
   viewer = mountDiff(editorEl.value, lines.value, props.file.path, highlight.value)
 }
 
-/** After a frame: the scroll has to be measured against a laid-out pane. */
+let unpin = () => {}
+
+/** The marked line, or the file itself when the link names no line the diff shows. */
 const reveal = async () => {
   await nextTick()
-  const win = root.value?.win ?? window
-  win.requestAnimationFrame(() => {
-    if (highlight.value.length && viewer) viewer.reveal()
-    else root.value?.scrollIntoView({ block: 'start' })
-  })
+  unpin()
+  if (!root.value) return
+  const drawn = viewer
+  unpin =
+    highlight.value.length && drawn
+      ? pinIntoView(root.value, () => drawn.targetTop(), LINE_CONTEXT)
+      : pinIntoView(
+          root.value,
+          elementTop(() => root.value)
+        )
 }
 
 const toggle = () => {
@@ -115,6 +130,13 @@ const toggle = () => {
 }
 
 watch(expanded, (): void => void draw())
+// Pointed at a review comment in this file after it was drawn closed.
+watch(
+  () => props.initiallyOpen,
+  (open) => {
+    if (open) expanded.value = true
+  }
+)
 watch(
   () => props.anchor,
   async (a) => {
@@ -131,6 +153,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  unpin()
   viewer?.destroy()
   viewer = null
 })

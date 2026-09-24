@@ -12,8 +12,9 @@
       v-for="file in files"
       :key="file.path"
       :file="file"
-      :initially-open="files.length <= OPEN_UP_TO"
+      :initially-open="files.length <= OPEN_UP_TO || holdsComment(file)"
       :anchor="file.hash === anchor?.hash ? anchor : undefined"
+      :comment-anchor="commentAnchor"
     />
     <EmptyState v-if="!files.length" text="No files changed." />
     <div v-if="!complete" class="abele-github-files__missing">
@@ -36,10 +37,15 @@ const props = withDefaults(
   defineProps<{
     files: DiffFile[]
     anchor?: DiffFileAnchor
+    /** A review comment the link pointed at: its file opens, and the comment is marked. */
+    commentAnchor?: string
     complete?: boolean
   }>(),
-  { anchor: undefined, complete: true }
+  { anchor: undefined, commentAnchor: undefined, complete: true }
 )
+
+const holdsComment = (file: DiffFile) =>
+  !!props.commentAnchor && file.reviewComments.some((c) => c.anchor === props.commentAnchor)
 
 const additions = computed(() => props.files.reduce((n, f) => n + f.additions, 0))
 const deletions = computed(() => props.files.reduce((n, f) => n + f.deletions, 0))

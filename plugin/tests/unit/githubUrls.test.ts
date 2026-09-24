@@ -27,6 +27,19 @@ describe('issues, pull requests and discussions', () => {
     )
   })
 
+  it('opens the files on a review comment, which is shown beside its file', () => {
+    for (const url of [
+      'https://github.com/octo/repo/pull/7#discussion_r55',
+      'https://github.com/octo/repo/pull/7/files#r55',
+      'https://github.com/octo/repo/pull/7/changes#discussion_r55',
+    ]) {
+      expect(parse(url)).toMatchObject({ kind: 'pull', tab: 'files', anchor: 'discussion_r55' })
+    }
+    expect(parse('https://github.com/octo/repo/pull/7/commits#r55')).toMatchObject({
+      tab: 'commits',
+    })
+  })
+
   it('reads a pull request and its tabs', () => {
     expect(parse('https://github.com/octo/repo/pull/7')).toMatchObject({
       kind: 'pull',
