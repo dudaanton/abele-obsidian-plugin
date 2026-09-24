@@ -80,6 +80,22 @@
         <EmptyState v-if="checkResult" :text="checkResult" />
         <GithubAccessReport v-if="report" :report="report" />
       </Section>
+
+      <Section
+        title="Code search"
+        desc="Search the code of the version a tab shows, and go to definition, from inside the tab. The repository at that version is downloaded once a session and searched here."
+      >
+        <Setting
+          name="Largest repository to download (MB)"
+          desc="Its files at that version, added up. A larger one is searched through GitHub's own code search instead, which knows only the default branch and needs a token."
+        >
+          <Input
+            :model-value="String(settings.searchLimitMb)"
+            placeholder="100"
+            @update:model-value="updateSearchLimit"
+          />
+        </Setting>
+      </Section>
     </template>
 
     <ConfirmModal
@@ -151,6 +167,13 @@ const saveServer = debounce((): void => void save(), 500)
 
 const updateServer = (value: string) => {
   settings.server = value.trim()
+  saveServer()
+}
+
+const updateSearchLimit = (value: string) => {
+  const mb = Number(value.trim())
+  if (!Number.isFinite(mb) || mb <= 0) return
+  settings.searchLimitMb = Math.round(mb)
   saveServer()
 }
 

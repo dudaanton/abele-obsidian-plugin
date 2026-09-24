@@ -5,7 +5,14 @@
  * side is an app of its own mounted into the tab, the way the voice recorder is: nothing else in
  * the plugin needs to know these tabs exist.
  */
-import { ItemView, type Menu, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
+import {
+  ItemView,
+  Scope,
+  type Menu,
+  type PaneType,
+  type ViewStateResult,
+  type WorkspaceLeaf,
+} from 'obsidian'
 import { createApp, reactive, type App as VueApp } from 'vue'
 import GithubItem from '@/components/github/GithubItem.vue'
 import { shortName, targetKey } from './urls'
@@ -29,6 +36,8 @@ export class GithubView extends ItemView {
   })
   private title = ''
   private vue: VueApp | null = null
+  /** Keys the tab handles itself; the Vue side watches them move. */
+  private readonly keys = reactive({ find: 0 })
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
@@ -112,6 +121,12 @@ export class GithubView extends ItemView {
   }
 
   async onOpen() {
+    // Obsidian's own find works only in a note; in this tab Mod+F finds in what it shows.
+    this.scope = new Scope(this.app.scope)
+    this.scope.register(['Mod'], 'f', () => {
+      this.keys.find++
+      return false
+    })
     this.contentEl.empty()
     this.contentEl.addClass('abele-github-view')
     const mountPoint = this.contentEl.createDiv()
@@ -123,7 +138,9 @@ export class GithubView extends ItemView {
         this.title = title
         this.refreshHeader()
       },
-      onOpen: (url: string): void => void openGithubUrl(this.app, url),
+      onOpen: (url: string, pane?: PaneType | false): void =>
+        void openGithubUrl(this.app, url, pane ?? false),
+      keys: this.keys,
       onState: () => this.app.workspace.requestSaveLayout(),
     })
     this.vue.mount(mountPoint)

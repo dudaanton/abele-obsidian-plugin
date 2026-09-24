@@ -20,6 +20,7 @@ import type { LineRange } from './urls'
 import { languageFor } from './languages'
 import { lineSelection, type SelectionHooks } from './lineSelection'
 import { scrollParent } from './scrollTo'
+import { codeNavAddon } from './search/navAddon'
 
 export interface Viewer {
   /**
@@ -80,7 +81,13 @@ function mount(
     parent,
     state: EditorState.create({
       doc,
-      extensions: [...readOnly, ...(wrap ? [EditorView.lineWrapping] : []), ...extensions],
+      extensions: [
+        ...readOnly,
+        ...(wrap ? [EditorView.lineWrapping] : []),
+        ...extensions,
+        // Go to definition, for a viewer inside a tab that knows its repository.
+        codeNavAddon(),
+      ],
     }),
   })
   const lineTop = (n: number | null) => {

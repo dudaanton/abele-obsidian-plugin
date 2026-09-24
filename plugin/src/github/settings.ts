@@ -11,6 +11,11 @@ export interface GithubSettings {
   server: string
   /** Clicking a supported GitHub link in a note opens it in a tab here, not in the browser. */
   openLinks: boolean
+  /**
+   * The largest repository, in megabytes of files at the commit, that a code search or a
+   * definition lookup downloads whole. Past it, GitHub's own code search is asked instead.
+   */
+  searchLimitMb: number
 }
 
 export const GITHUB_TOKEN_KEY_ID = 'abele-github-token'
@@ -20,6 +25,7 @@ export const DEFAULT_GITHUB_SETTINGS: GithubSettings = {
   keyId: '',
   server: '',
   openLinks: true,
+  searchLimitMb: 100,
 }
 
 export const githubSettingsFrom = (stored?: Partial<GithubSettings>): GithubSettings => ({

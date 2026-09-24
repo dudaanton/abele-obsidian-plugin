@@ -132,6 +132,13 @@ export class Notice {
     Notice.shown.push(message)
   }
 
+  /** A notice that says what stage a long job is at rewrites itself. */
+  setMessage(message: string): this {
+    this.message = message
+    Notice.shown.push(message)
+    return this
+  }
+
   hide(): void {}
 }
 

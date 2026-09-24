@@ -2,10 +2,12 @@
   <div
     ref="el"
     class="abele-obsidian-icon"
+    :aria-pressed="active"
     :class="{
       'abele-obsidian-icon_with-bg': withBg,
       'abele-obsidian-icon_no-hover': noHover,
       'abele-obsidian-icon_disabled': disabled,
+      'abele-obsidian-icon_active': active,
       [`abele-obsidian-icon_color-${color}`]: color && color !== 'grey',
     }"
     @click="!disabled && emit('click', $event)"
@@ -21,17 +23,30 @@ import { ref, onMounted, watch } from 'vue'
 import { setIcon, setTooltip } from 'obsidian'
 import type { KitColor } from '@/constants/colors'
 
-const props = defineProps<{
-  icon?: string
-  textLeft?: string
-  textRight?: string
-  tooltip?: string
-  withBg?: boolean
-  noHover?: boolean
-  disabled?: boolean
-  /** Tints the glyph with a theme colour by name, for an icon that carries meaning in colour. */
-  color?: KitColor
-}>()
+const props = withDefaults(
+  defineProps<{
+    icon?: string
+    textLeft?: string
+    textRight?: string
+    tooltip?: string
+    withBg?: boolean
+    noHover?: boolean
+    disabled?: boolean
+    /** Tints the glyph with a theme colour by name, for an icon that carries meaning in colour. */
+    color?: KitColor
+    /** A toggle's state: on draws it pressed, as Obsidian draws its own search options. */
+    active?: boolean
+  }>(),
+  // Left unset, an icon is not a toggle at all, rather than a toggle that is off.
+  {
+    icon: undefined,
+    textLeft: undefined,
+    textRight: undefined,
+    tooltip: undefined,
+    color: undefined,
+    active: undefined,
+  }
+)
 
 const emit = defineEmits<{
   click: [event: MouseEvent]
@@ -80,6 +95,11 @@ watch(() => props.tooltip, updateTooltip)
 
   &_with-bg {
     background-color: var(--background-secondary);
+  }
+
+  &_active {
+    color: var(--text-accent);
+    background-color: var(--background-modifier-active-hover);
   }
   &:not(.abele-obsidian-icon_disabled):not(.abele-obsidian-icon_no-hover):hover {
     cursor: var(--cursor-link);

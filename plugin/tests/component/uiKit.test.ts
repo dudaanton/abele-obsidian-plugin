@@ -401,6 +401,20 @@ describe('tooltips', () => {
     expect(view.classes()).toContain('abele-obsidian-icon_color-red')
   })
 
+  it('a toggle says whether it is on, and a plain icon says nothing of the kind', async () => {
+    const view = mount(Icon, {
+      props: { icon: 'case-sensitive', tooltip: 'Match case', active: false },
+    })
+    expect(view.attributes('aria-pressed')).toBe('false')
+    expect(view.classes()).not.toContain('abele-obsidian-icon_active')
+
+    await view.setProps({ active: true })
+    expect(view.attributes('aria-pressed')).toBe('true')
+    expect(view.classes()).toContain('abele-obsidian-icon_active')
+
+    expect(mount(Icon, { props: { icon: 'bot' } }).attributes('aria-pressed')).toBeUndefined()
+  })
+
   it('a decorative glyph is left unlabelled', () => {
     const view = mount(Icon, { props: { icon: 'bot' } })
 

@@ -81,6 +81,8 @@ export interface Conversation {
 export interface PullData extends IssueData {
   base: string
   head: string
+  /** The commit the pull request's branch is at: what its code is searched and linked at. */
+  headSha?: string
   additions: number
   deletions: number
   changedFiles: number
@@ -280,6 +282,7 @@ export async function loadPull(client: GithubClient, t: Of<'pull'>): Promise<Pul
     commentsProblem: conversation.problem,
     base: pull.base?.ref ?? '',
     head: pull.head?.label ?? pull.head?.ref ?? '',
+    headSha: pull.head?.sha,
     additions: pull.additions ?? 0,
     deletions: pull.deletions ?? 0,
     changedFiles: pull.changed_files ?? 0,

@@ -208,6 +208,95 @@ Code search needs a token on github.com (GitHub does not search code for anonymo
 searches only default branches. Without a token every request an agent makes comes out of the same
 60 an hour the tabs use.
 
+## Searching
+
+### Find in the tab
+
+**Mod+F** (Cmd+F, Ctrl+F on Windows and Linux) while a GitHub tab is focused — or the magnifier
+in its header — opens a find bar at the top of the tab. Obsidian's own find works only in a
+note, so a GitHub tab has its own. It searches everything the tab shows: the description and
+comments, the header, and the code — a file, and every diff, including the files of a long pull
+request that are still folded shut. It says how many matches there are and which one is current
+("3 of 17"); **Enter** goes to the next, **Shift+Enter** to the previous, both wrapping round,
+and **Esc** closes the bar. The toggle beside the field matches letter case.
+
+The tab scrolls to the current match. A match inside a folded diff file opens that file when it
+becomes current — not while the query is still being typed, so typing never unfolds half a pull
+request. Matches in text are painted with the browser's highlight API, which leaves the page
+itself untouched; on a phone whose WebView lacks it the count and the scrolling still work, the
+matches are just not coloured. The count follows the tab as it changes: comments that load and
+files that open are counted again.
+
+### Code search
+
+The file-search icon in the header opens a panel that searches the code at the version the tab
+shows — a pull request's head commit, the commit, the branch, tag or commit a file was read at,
+and the default branch for an issue or a discussion. It has three scopes:
+
+| Scope | Searches |
+|---|---|
+| **Only the changed files** (pull requests and commits) | The lines of the diffs: added, removed and the context around them. A removed line is found and labelled "before". A file too large for GitHub to send a diff for is read whole at the head commit, up to twenty of them. |
+| **Whole repository at …** | Every text file of the repository at that commit. |
+| **File names at …** | Paths holding every word typed, the file's own name before a folder that happens to match. Found as it is typed. |
+
+The query is plain text by default; the toggles make it match letter case, whole words only, or
+read it as a regular expression. The second field narrows to files matching a glob — `*.ts`,
+`src/**/*.py`, several separated by commas; a glob without a slash matches the file's name in any
+folder. Results are grouped by file, with each line's number and its text, the match marked. A
+click opens the place: a line of the change in the pull request's files or the commit, a line of
+the repository as the file at that commit (so the link cannot drift as a branch moves). The tab
+rules above apply — the result usually opens in the same tab, whose back arrow returns to the
+search's item — and Mod-click opens it in a new tab. The panel stays open, with its results, while
+the tab follows them, so the next result is one click away; a search from there searches the
+version that tab now shows. At most 500 lines, 50 per file, are shown;
+the summary says when there are more, and narrowing the glob is how to see them.
+
+#### How the whole repository is searched
+
+The first whole-repository search of a commit downloads that commit's archive — one request for
+the file list, one for the archive — and unpacks it in memory, then searches there; every later
+search, and go to definition, at the same commit answers at once. The panel says which stage it is
+at and has **Cancel**, which stops waiting; a download already under way finishes and is kept for
+the next search. Nothing is written to disk and nothing survives a restart. Binary files and files
+over 1 MB are left out. The four most recently used repositories are kept, up to about 400 MB of
+text between them, the oldest dropped first.
+
+Before anything is downloaded the file list says how big the repository is at that commit: its
+files' sizes added up. Over **Largest repository to download** (Settings → GitHub → Code search,
+100 MB by default) — or when GitHub will not list the whole repository, past 100,000 files — it
+is not downloaded. GitHub's own code search answers instead, and the panel says so above the
+results: it knows only the default branch, takes no regular expressions, gives fragments rather
+than line numbers, and needs a token.
+
+Without a token the file list and the archive count against the 60 requests an hour like
+anything else — two requests for a whole repository, however many times it is searched after.
+
+### Go to definition
+
+In any code view in a GitHub tab — a file, a diff — **Mod-click** a name to go to where it is
+declared. Holding Mod while pointing underlines the name that would be followed, as an editor
+does. A right click on a name offers **Go to definition** and **Find references**; the latter
+fills the code search with the name as a whole word, letter case matched, across the whole
+repository.
+
+It is a guess by pattern, not a compiler's answer: it looks for lines that declare the name in
+the syntax of each file's language — `function`, `class`, `interface`, `type`, `enum`,
+`const`/`let`/`var … =`, methods and function-valued fields in TypeScript and JavaScript; `def`,
+`class` and module-level assignments in Python; `func`, methods `func (r T) name`, `type`, `var`
+and `const` in Go; and the usual declarations in Java, Kotlin, C#, Swift, Rust, Ruby, PHP, C and
+C++. It uses the same downloaded repository as the code search, at the tab's commit. The nearest
+candidates come first: the same file, then the same folder, then files in the same language,
+then the rest. One candidate opens at its line; several are offered in a picker showing each file
+and line with the line's text — type to narrow by path, Mod+Enter or Mod-click to open the choice
+in a new tab; none is said in a notice, which reminds that the lookup can miss. For a repository
+over the size limit it looks only at what the tab already has: the file shown, or the new side of
+the changed lines.
+
+It can miss what is declared unusually — generated code, a name re-exported under another, a
+declaration spread over lines — and can offer a same-named declaration from elsewhere. On a phone
+there is no Mod key: the long-press menu offers the same two actions where the phone's WebView
+opens one on code.
+
 ## Access
 
 Without a token only public repositories can be read, at 60 requests an hour for the whole
@@ -294,6 +383,7 @@ for and which API address was asked, so a link that is read without the token is
 
 ## What it costs
 
-Nothing runs in the background: GitHub is asked only when a tab opens, is refreshed, or a
-pull request's files or commits are first shown. Answers are kept in memory with their ETag and
-asked about again with `If-None-Match`; an unchanged answer does not count against the limit.
+Nothing runs in the background: GitHub is asked only when a tab opens, is refreshed, a pull
+request's files or commits are first shown, or a search or a definition lookup asks for the
+repository. Answers are kept in memory with their ETag and asked about again with
+`If-None-Match`; an unchanged answer does not count against the limit.

@@ -16,6 +16,13 @@
     </div>
 
     <template v-else>
+      <GithubFindBar
+        v-if="tabSearch.findOpen.value && root"
+        ref="findBar"
+        :root="root"
+        :hooks="tabSearch.finderHooks"
+        @close="tabSearch.findOpen.value = false"
+      />
       <GithubHeader
         :repo="`${target.owner}/${target.repo}`"
         :title="head.title"
@@ -29,6 +36,19 @@
         @refresh="reload"
         @browser="openInBrowser(browserUrl)"
         @chat="chatAbout"
+        @find="showFind"
+        @search="tabSearch.openSearch"
+      />
+
+      <!-- Kept while the tab follows a result, so the next result is still there to take. -->
+      <GithubCodeSearch
+        v-if="tabSearch.searchOpen.value"
+        :code="tabSearch.code"
+        :ready="!!main.data.value"
+        :has-changes="tabSearch.hasChanges.value"
+        :request="tabSearch.searchRequest.value"
+        @open="(url: string, newTab: boolean) => props.onOpen?.(url, newTab ? 'tab' : false)"
+        @close="tabSearch.searchOpen.value = false"
       />
 
       <div v-if="main.error.value" class="abele-github__error">
@@ -166,6 +186,10 @@ import GithubThread from './GithubThread.vue'
 import GithubFiles from './GithubFiles.vue'
 import GithubBlob from './GithubBlob.vue'
 import GithubNotice from './GithubNotice.vue'
+import GithubFindBar from './GithubFindBar.vue'
+import GithubCodeSearch from './GithubCodeSearch.vue'
+import type { PaneType } from 'obsidian'
+import { useTabSearch } from '@/github/search/useTabSearch'
 import type { GithubViewModel } from '@/github/model'
 import { anchorSlug, type RepoFile } from '@/github/markdownLinks'
 import type { BlobMode } from '@/github/markdownPreview'
@@ -205,8 +229,10 @@ const props = defineProps<{
   clientFor: (host: string) => GithubClient
   /** Tells the tab its name once the item's title is known. */
   onTitle?: (title: string) => void
-  /** Opens another GitHub URL in a tab of its own. */
-  onOpen?: (url: string) => void
+  /** Opens another GitHub URL: by the usual rule, or in a new tab, split or window. */
+  onOpen?: (url: string, pane?: PaneType | false) => void
+  /** Moves each time Mod+F is pressed in the tab. */
+  keys?: { find: number }
   /** The tab's state changed in a way worth saving: the file view was switched. */
   onState?: () => void
 }>()
@@ -245,6 +271,24 @@ const main = useLoad<IssueData | PullData | DiscussionData | CommitData | BlobDa
 
 const files = useLoad(() => loadPullFiles(client(), shown.value as Of<'pull'>))
 const commits = useLoad(() => loadPullCommits(client(), shown.value as Of<'pull'>))
+
+// Find in the tab, code search and go to definition.
+const findBar = ref<InstanceType<typeof GithubFindBar>>()
+const tabSearch = useTabSearch({
+  root,
+  shown,
+  data: () => main.data.value,
+  files,
+  client,
+  open: (url, pane) => props.onOpen?.(url, pane),
+})
+/** Opens the find bar, or puts the cursor back in it with its query selected. */
+const showFind = async () => {
+  tabSearch.openFind()
+  await nextTick()
+  findBar.value?.focus()
+}
+watch(() => props.keys?.find, showFind)
 
 const issue = computed(() => (shown.value.kind === 'issue' ? (main.data.value as IssueData) : null))
 const pull = computed(() => (shown.value.kind === 'pull' ? (main.data.value as PullData) : null))
@@ -332,6 +376,9 @@ const browserUrl = computed(() => {
   return props.model.url || data?.url || ''
 })
 
+/** A commit SHA as GitHub shows one; a branch or a tag as it is. */
+const shortRef = (ref: string) => (/^[0-9a-f]{40}$/i.test(ref) ? ref.slice(0, 7) : ref)
+
 interface Head {
   title: string
   number?: number
@@ -356,7 +403,7 @@ const head = computed<Head>(() => {
   }
   if (t.kind === 'blob') {
     const b = data as BlobData
-    return { ...fallback, title: b.path, meta: [`at ${b.ref}`] }
+    return { ...fallback, title: b.path, meta: [`at ${shortRef(b.ref)}`] }
   }
 
   const item = data as IssueData | PullData | DiscussionData
@@ -434,7 +481,7 @@ const tabTitle = computed(() => {
   const t = shown.value
   if (!t || !main.data.value) return ''
   if (t.kind === 'blob')
-    return `${(main.data.value as BlobData).path.split('/').pop()} @ ${(main.data.value as BlobData).ref}`
+    return `${(main.data.value as BlobData).path.split('/').pop()} @ ${shortRef((main.data.value as BlobData).ref)}`
   return `${shortName(t)} ${head.value.title}`
 })
 

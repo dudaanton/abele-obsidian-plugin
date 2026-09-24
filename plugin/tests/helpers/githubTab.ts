@@ -17,6 +17,8 @@ export type Reply = {
   json?: unknown
   text?: string
   headers?: Record<string, string>
+  /** A binary answer — an archive. */
+  bytes?: Uint8Array
 }
 export type Route = Reply | ((req: RequestUrlParam) => Reply)
 
@@ -33,7 +35,9 @@ export function clientWith(routes: Record<string, Route>) {
       headers: r.headers ?? {},
       json: r.json,
       text: r.text ?? JSON.stringify(r.json ?? null),
-      arrayBuffer: new ArrayBuffer(0),
+      arrayBuffer: r.bytes
+        ? r.bytes.buffer.slice(r.bytes.byteOffset, r.bytes.byteOffset + r.bytes.byteLength)
+        : new ArrayBuffer(0),
     } as RequestUrlResponse
   })
   return { client: new GithubClient(endpoints(''), 'tkn', request), request }
@@ -45,7 +49,7 @@ export function openTab(
   enabled = true,
   attachTo: Element = document.body
 ) {
-  const { client } = clientWith(routes)
+  const { client, request } = clientWith(routes)
   const model: GithubViewModel = reactive({
     url: '',
     target: null,
@@ -54,14 +58,15 @@ export function openTab(
   })
   const onTitle = vi.fn()
   const onOpen = vi.fn()
+  const keys = reactive({ find: 0 })
   const wrapper = mount(GithubItem, {
-    props: { model, enabled, clientFor: () => client, onTitle, onOpen },
+    props: { model, enabled, clientFor: () => client, onTitle, onOpen, keys },
     attachTo,
   })
   model.url = url
   model.target = parseGithubUrl(url, ['github.com'])
   model.nonce++
-  return { wrapper, onTitle, onOpen, model }
+  return { wrapper, onTitle, onOpen, model, keys, request }
 }
 
 export const ISSUE = {

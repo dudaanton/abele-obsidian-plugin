@@ -3,6 +3,12 @@
     <div class="abele-github-header__top">
       <div class="abele-github-header__repo">{{ repo }}</div>
       <div class="abele-github-header__actions">
+        <Icon icon="search" tooltip="Find in this tab (Mod+F)" @click="emit('find')" />
+        <Icon
+          icon="file-search"
+          tooltip="Search the code: this change, the whole repository, or file names"
+          @click="emit('search')"
+        />
         <Icon
           v-if="chat"
           icon="message-square-plus"
@@ -62,6 +68,8 @@ const emit = defineEmits<{
   (e: 'refresh'): void
   (e: 'browser'): void
   (e: 'chat'): void
+  (e: 'find'): void
+  (e: 'search'): void
 }>()
 
 /** The states that mean "still going": the ones worth drawing the eye to. */
