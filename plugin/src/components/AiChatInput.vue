@@ -194,7 +194,9 @@ const attachments = ref<TFile[]>([])
 
 const autoResize = () => {
   const el = inputEl.value
-  if (!el) return
+  // A hidden field — the chat's drawer on a phone, shut while text is put in — measures
+  // nothing; it is sized when it is drawn (`watchDrawn`).
+  if (!el || !el.getClientRects().length) return
   el.style.height = `${TEXTAREA_MIN_HEIGHT}px`
   const newHeight = Math.min(el.scrollHeight, TEXTAREA_MAX_HEIGHT)
   el.style.height = `${newHeight}px`
@@ -487,12 +489,33 @@ const onCaptureKeydown = (e: KeyboardEvent) => {
   }
 }
 
+/**
+ * Sizes the field again whenever its width changes — above all from none to some, when a chat
+ * that was filled while hidden is shown: its text arrived when there was nothing to measure.
+ */
+let drawn: ResizeObserver | null = null
+let lastWidth = -1
+const watchDrawn = () => {
+  const el = inputEl.value
+  const View = el?.ownerDocument.defaultView?.ResizeObserver ?? window.ResizeObserver
+  if (!el || !View) return
+  drawn = new View((entries) => {
+    const width = entries[entries.length - 1]?.contentRect.width ?? 0
+    if (width === lastWidth) return
+    lastWidth = width
+    if (width > 0) autoResize()
+  })
+  drawn.observe(el)
+}
+
 onMounted(() => {
   window.addEventListener('keydown', onCaptureKeydown, true)
+  watchDrawn()
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', onCaptureKeydown, true)
+  drawn?.disconnect()
 })
 </script>
 
