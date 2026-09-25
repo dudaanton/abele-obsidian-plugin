@@ -942,6 +942,27 @@ describe('SyncService — a settings save', () => {
   })
 })
 
+/**
+ * `data.json` arriving from another device is reloaded, not saved. The engine must be put in
+ * step with it the same way, or it runs on what it was built on until some unrelated save.
+ */
+describe('SyncService — settings reloaded from disk', () => {
+  it('puts the engine in step with a data.json that arrived', async () => {
+    await connect()
+    await synced()
+
+    const arrived = AbeleConfig.getInstance().exportSettings()
+    arrived.sync = { ...arrived.sync!, paused: true }
+    const loading = vi.spyOn(plugin, 'loadData').mockResolvedValue(arrived)
+    try {
+      await AbeleConfig.getInstance().reloadSettings()
+      await waitFor('the engine to pause', () => service.status.value.state === 'paused')
+    } finally {
+      loading.mockRestore()
+    }
+  })
+})
+
 describe('SyncService — a plugin reload', () => {
   it('hands the next instance a clean slate, in order', async () => {
     await connect()

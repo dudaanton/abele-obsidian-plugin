@@ -525,7 +525,7 @@ export class SyncService {
    * setting changed here would be noticed up to a poll later.
    *
    * Subscribed to `AbeleConfig` at `init`, so every screen that saves reaches it — this
-   * service's own saves included. Nothing filters them: `reconcile` compares what the engine
+   * service's own saves included — and so does a `data.json` reloaded from disk. Nothing filters them: `reconcile` compares what the engine
    * was built on against what the settings now say and does nothing when they agree, which
    * costs one file `stat` and one hash. A filter would have to guess which save was whose, and
    * would drop somebody else's save that happened to land inside the window.

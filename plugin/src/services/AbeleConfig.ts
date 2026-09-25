@@ -499,7 +499,11 @@ export class AbeleConfig {
   private static instance: AbeleConfig
 
   /**
-   * Called after every settings save.
+   * Called after every settings save, and after every reload from disk.
+   *
+   * A reload is told too because to a listener it is the same event: the settings in memory are
+   * not the ones it last read. The sync service built on a server and a pause that another
+   * device's `data.json` just replaced would otherwise run on them until some unrelated save.
    *
    * A listener set rather than an import: the sync service reads and writes these settings, and
    * a call the other way would make the two modules import each other.
@@ -539,7 +543,10 @@ export class AbeleConfig {
     this.plugin = null
   }
 
-  /** Told whenever the settings have been written. The returned function unsubscribes. */
+  /**
+   * Told whenever the settings have been written or reloaded from disk. The returned function
+   * unsubscribes.
+   */
   public onSaved(cb: () => void): () => void {
     this.savedListeners.add(cb)
     return () => {
@@ -590,6 +597,7 @@ export class AbeleConfig {
   async reloadSettings() {
     await this.loadSettings()
     this.version.value++
+    this.tellSaved()
   }
 
   async saveSettings() {
@@ -613,6 +621,10 @@ export class AbeleConfig {
     }
 
 
+    this.tellSaved()
+  }
+
+  private tellSaved(): void {
     for (const cb of [...this.savedListeners]) {
       try {
         cb()
