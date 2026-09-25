@@ -3,7 +3,7 @@
     <div class="abele-timeline__header">
       <div class="abele-timeline__header-left">
         <div class="abele-timeline__header-text">{{ title ?? 'Timeline' }}</div>
-        <ObsidianIcon v-if="showAddButton" icon="calendar-plus" @click="createTask()" />
+        <ObsidianIcon v-if="showAddButton" icon="calendar-plus" @click="openTaskForm()" />
       </div>
       <div class="abele-timeline__header-right">
         <ObsidianIcon
@@ -84,7 +84,7 @@ import dayjs from 'dayjs'
 import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { useDate } from '@/composables/useDate'
 import { usePagedList } from '@/composables/usePagedList'
-import { createTask } from '@/commands/createTask'
+import { openTaskForm } from '@/commands/taskForm'
 import { useLabelFilter } from '@/composables/useLabelFilter'
 import { taskSearch, useListSearch } from '@/composables/useListSearch'
 import { useSearchHighlight } from '@/composables/useSearchHighlight'

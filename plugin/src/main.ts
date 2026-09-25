@@ -18,7 +18,8 @@ import { createPinia } from 'pinia'
 import VueEntry from './App.vue'
 import { AbeleConfig } from './services/AbeleConfig'
 import { AgentRegistry } from './ai/agents/AgentRegistry'
-import { createTask, createTaskAndInsert } from './commands/createTask'
+import { createTaskAndInsert } from './commands/createTask'
+import { openTaskForm } from './commands/taskForm'
 import { createTransaction, createTransactionAndInsert } from './commands/createTransaction'
 import { createTimeEntry, stopActiveTimeEntry } from './commands/createTimeEntry'
 import { createNoteInGroup } from './commands/createNoteInGroup'
@@ -605,7 +606,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Create new task',
       icon: 'circle-plus',
       callback: () => {
-        void createTask()
+        void openTaskForm()
       },
     })
 

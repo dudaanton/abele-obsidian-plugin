@@ -17,6 +17,7 @@
  * and CI runners, whereas milliseconds are not.
  */
 import { TFile, TFolder, TAbstractFile } from 'obsidian'
+import { dump as dumpYaml, load as loadYaml } from 'js-yaml'
 
 export interface FakeLinkCache {
   link: string
@@ -464,6 +465,29 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     fileManager: {
       async trashFile(file: TFile) {
         removeFile(file.path)
+      },
+      /**
+       * Obsidian's frontmatter editor: the properties parsed, handed to `fn` to change in place,
+       * and written back above the untouched body. The metadata cache sees the result at once,
+       * where the real one catches up a moment later.
+       */
+      async processFrontMatter(file: TFile, fn: (frontmatter: Record<string, unknown>) => void) {
+        stats.modify++
+        const raw = rawByPath.get(file.path) ?? ''
+        const match = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/.exec(raw)
+        const frontmatter = ((match ? loadYaml(match[1]) : null) ?? {}) as Record<string, unknown>
+        fn(frontmatter)
+        const body = match ? raw.slice(match[0].length) : raw
+        const head = Object.keys(frontmatter).length ? `---\n${dumpYaml(frontmatter)}---\n` : ''
+        rawByPath.set(file.path, head + body)
+        const cached = cacheByPath.get(file.path)
+        if (cached) cached.frontmatter = { ...frontmatter }
+        else
+          cacheByPath.set(file.path, {
+            frontmatter: { ...frontmatter },
+            links: [],
+            frontmatterLinks: [],
+          })
       },
       /**
        * The real one also rewrites every link pointing at the file; nothing here needs that

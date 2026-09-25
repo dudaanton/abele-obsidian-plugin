@@ -20,8 +20,9 @@ import { computed, unref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { Menu, Notice } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { createTask } from '@/commands/createTask'
+import { openTaskForm } from '@/commands/taskForm'
 import dayjs from 'dayjs'
+import { DATE_FORMAT } from '@/constants/dates'
 
 const { selectedJournal } = GlobalStore.getInstance()
 
@@ -60,12 +61,12 @@ const onDateRightClick = (date: dayjs.Dayjs, event: MouseEvent) => {
   menu.addItem((item) => {
     item.setTitle('Event date')
     item.setIcon('calendar-days')
-    item.onClick(() => createTask({ date }))
+    item.onClick(() => openTaskForm({ defaults: { date: date.format(DATE_FORMAT) } }))
   })
   menu.addItem((item) => {
     item.setTitle('Due date')
     item.setIcon('calendar-clock')
-    item.onClick(() => createTask({ due: date }))
+    item.onClick(() => openTaskForm({ defaults: { due: date.format(DATE_FORMAT) } }))
   })
   menu.showAtMouseEvent(event)
 }

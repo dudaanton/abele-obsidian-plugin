@@ -43,6 +43,8 @@ const COVERED_FILES = [
   'ScriptHtml.vue',
   'AccountsSidebar.vue',
   'AiCommentTrail.vue',
+  'NoteEditorField.vue',
+  'TaskFormModal.vue',
 ].map((name) => join(ROOT, name))
 
 /** The one component allowed to be a `<button>`: everything else goes through it. */
