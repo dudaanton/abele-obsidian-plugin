@@ -897,11 +897,13 @@ It takes well under a minute. What it makes, and takes away at the end:
 - a folder in the system's temp directory holding the server's database and blobs and the daemon's
   folder, and a server on a free port on `127.0.0.1`, killed at the end;
 - a throwaway account on that server, with a made-up password;
-- a vault, `~/obsidian/abele-sync-e2e-<8 hex>`, holding the build, an `.abele-sync-ignore` that
-  keeps its config folder out of the sync, and two settings the suite needs: menus drawn by the
-  page (a native macOS menu cannot be clicked from a script) and Obsidian's own Sync switched off
-  (it adds a second **Open version history** to the same menu). It opens in a window of its own
-  behind whatever is in front, with the vault's Restricted Mode turned off so the plugin loads.
+- a vault, a folder named `abele-sync-e2e-<8 hex>` in the folder the suite keeps test vaults
+  in (`VAULTS_DIR` in `tests/e2e/helpers/syncVault.ts`), holding the build, an
+  `.abele-sync-ignore` that keeps its config folder out of the sync, and two settings the suite
+  needs: menus drawn by the page (a native macOS menu cannot be clicked from a script) and
+  Obsidian's own Sync switched off (it adds a second **Open version history** to the same
+  menu). It opens in a window of its own behind whatever is in front, with the vault's
+  Restricted Mode turned off so the plugin loads.
 
 At the end the device is forgotten, which drops its ledger and its keychain entry; the window is
 closed; the folder is deleted; and the vault is taken off Obsidian's vault list, through the same
