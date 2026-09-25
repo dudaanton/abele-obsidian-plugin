@@ -126,8 +126,20 @@ export class IndexedDbStateStore implements StateStore {
    * (or failed). A new top-level transaction chains itself onto it before opening its overlay.
    */
   private committed: Promise<void> = Promise.resolve()
+  /** Told when another window made this connection close: see `onClosedElsewhere`. */
+  private closedElsewhere: (() => void) | null = null
 
   private constructor(private readonly db: IDBDatabase) {}
+
+  /**
+   * Called once if another window deletes or upgrades this database and the connection closes
+   * under whoever holds it. Every call after that fails, so the holder has to stop — not go on
+   * failing transaction by transaction in IndexedDB's own words. A `close()` of ours does not
+   * call it.
+   */
+  onClosedElsewhere(cb: () => void): void {
+    this.closedElsewhere = cb
+  }
 
   /**
    * Opens (and creates) the database and its stores. The factory is passed in rather than
@@ -152,12 +164,14 @@ export class IndexedDbStateStore implements StateStore {
         reject(new EngineError('io', `cannot open the state database ${name}`, request.error))
       request.onsuccess = () => {
         const db = request.result
+        const store = new IndexedDbStateStore(db)
         // A `delete` or a version bump from another window must not hang on this connection.
         db.onversionchange = () => {
           console.debug(`[abele-sync] closing the state database ${name}: another window wants it`)
           db.close()
+          store.closedElsewhere?.()
         }
-        resolve(new IndexedDbStateStore(db))
+        resolve(store)
       }
     })
   }

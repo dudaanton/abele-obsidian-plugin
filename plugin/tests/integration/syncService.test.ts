@@ -902,6 +902,26 @@ describe('SyncService — when it cannot start at all', () => {
   })
 })
 
+/**
+ * Another window of the app deleting or upgrading the ledger makes this connection close under
+ * the running engine. What follows must be a stopped engine and a sentence, not every later
+ * transaction failing with IndexedDB's own words and the status stuck at a raw error.
+ */
+describe('SyncService — a ledger closed under it', () => {
+  it('stops and says why when another window takes the ledger away', async () => {
+    await connect()
+    await synced()
+
+    const deleting = indexedDB.deleteDatabase(stateDatabaseName(ledgerOf().stateId))
+
+    await waitFor('the engine to stop', () => !service.isConnected())
+    expect(service.status.value.state).toBe('error')
+    expect(service.status.value.lastError).toContain('another window')
+    // Let through, rather than blocked by a connection the engine kept.
+    await waitFor('the delete to go through', () => deleting.readyState === 'done')
+  })
+})
+
 describe('SyncService — a settings save', () => {
   it('builds another engine only when the save moved what sync runs on', async () => {
     await connect()

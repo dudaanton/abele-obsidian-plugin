@@ -680,6 +680,7 @@ export class SyncService {
       this.factory(),
       stateDatabaseName(this.ledgerFor(app, settings.vaultId).stateId)
     )
+    store.onClosedElsewhere(() => this.closedUnderEngine(store))
     let engine: SyncEngine
     let vault: VaultClient
     try {
@@ -762,6 +763,22 @@ export class SyncService {
       return
     }
     engine.start()
+  }
+
+  /**
+   * Another window of the app deleted or upgraded the ledger, and its connection closed under
+   * the running engine. Every transaction after this would fail with IndexedDB's own message,
+   * so the engine is stopped and the status says what happened and what to do.
+   */
+  private closedUnderEngine(store: IndexedDbStateStore): void {
+    void this.serialise(async () => {
+      if (this.store !== store) return
+      await this.teardown()
+      const message =
+        'another window of this app closed the sync ledger; reload Obsidian to sync again'
+      this.note(message)
+      this.publish({ ...DISCONNECTED_STATUS, state: 'error', lastError: message })
+    })
   }
 
   /** Stop the engine, close the state database, and go back to saying nothing is connected. */
