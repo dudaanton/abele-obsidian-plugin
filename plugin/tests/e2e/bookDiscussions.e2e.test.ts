@@ -58,10 +58,20 @@ const PRELUDE = `
   }
   const comments = window.__abeleTest.CommentService.getInstance()
   const open = async (path) => {
-    for (const l of app.workspace.getLeavesOfType('abele-book')) l.detach()
+    // A new tab in the main area, made beside a leaf there before the book tabs of the last
+    // step are closed: with them gone and a chat just shown, "a new tab" was made in the
+    // sidebar's group, behind the chat, and the book never came on screen to be drawn.
+    const old = app.workspace.getLeavesOfType('abele-book')
+    let main = null
+    app.workspace.iterateRootLeaves((l) => { if (!main) main = l })
+    if (main) app.workspace.setActiveLeaf(main, { focus: false })
     let leaf
-    try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
-    await leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true })
+    try { leaf = app.workspace.getLeaf('tab') } catch { leaf = main ?? app.workspace.getLeaf(false) }
+    await Promise.race([
+      leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true }),
+      wait(15000),
+    ])
+    for (const l of old) if (l !== leaf) l.detach()
     await until(() => leaf.view?.model?.status === 'ready' && leaf.view.reading, 15000)
     await wait(600)
     return { leaf, view: leaf.view }
@@ -378,25 +388,43 @@ describe.skipIf(!available)('discussions in books', () => {
 
   it('a PDF works the same: its mark drawn over the page, a tap opening the chat', () => {
     // In two calls, each well within one call's allowance: drawing a PDF page can be slow.
-    const asked = run<{ error?: string; id?: string; bubble?: boolean }>(`
-      await closeChat()
+    const where = <T>(f: () => T): T => {
+      try {
+        return f()
+      } catch (e) {
+        throw new Error(`${(e as Error).message}, at ${evalRaw('String(window.__abeleDiscussionStep)')}`)
+      }
+    }
+    const asked = where(() => run<{ error?: string; id?: string; bubble?: boolean }>(`
+      // Where it got to, kept on the window: a call that runs out of time says nothing itself.
+      const step = (s) => (window.__abeleDiscussionStep = s)
+      step('close'); await closeChat()
+      step('open')
       const { view } = await open(${JSON.stringify(PDF)})
+      step('opened ' + view.model?.status + ' ' + view.model?.message)
       if (view.model.panel) { view.model.panel = false; await wait(300) }
-      await view.engine.goTo(0)
-      const doc = await until(() => view.engine.renderer.getContents().map((c) => c.doc).find((d) => d?.querySelector('.textLayer span')), 15000)
-      if (!doc) return { error: 'the page never drew its text' }
+      step('goto')
+      await Promise.race([view.engine.goTo(0), wait(5000)])
+      step('text')
+      const doc = await until(() => view.engine.renderer.getContents().map((c) => c.doc).find((d) => d?.querySelector('.textLayer span')), 10000)
+      if (!doc) {
+        const c = view.engine?.renderer?.getContents?.() ?? []
+        return { error: 'the page never drew its text: ' + JSON.stringify({ status: view.model.status, message: view.model.message, kind: view.model.kind, file: view.file?.path, contents: c.length, docs: c.map((x) => x.doc?.body?.innerHTML.slice(0, 80)), shown: view.containerEl.isShown?.(), size: [view.contentEl.clientWidth, view.contentEl.clientHeight], renderer: view.engine?.renderer?.localName }) }
+      }
       await wait(500)
       const span = doc.querySelector('.textLayer span')
       const range = doc.createRange(); range.setStart(span.firstChild, 0); range.setEnd(span.firstChild, 6)
       doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
       await until(() => view.model.selection, 3000)
       await wait(200)
-      askIcon(view).click()
+      step('ask'); askIcon(view).click()
       const id = await until(() => view.model.highlights.find((h) => h.discussion)?.discussion, 8000)
+      step('asked')
       const bubble = !!(await until(() => view.engine.renderer.getContents().map((c) => c.doc).find((d) => d?.querySelector('.abele-marks__bubble')), 5000))
+      step('drawn')
       await closeChat()
       return { id, bubble }
-    `)
+    `))
     expect(asked.error).toBeUndefined()
     expect(asked.bubble).toBe(true)
     const tapped = run<{ error?: string; tapped?: string | null; note?: string }>(`
