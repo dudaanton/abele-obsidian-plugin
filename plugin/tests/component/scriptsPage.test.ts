@@ -7,7 +7,7 @@
  * each can be placed, switched off, shown by folder or everywhere, and deleted after asking.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount, type VueWrapper } from '@vue/test-utils'
+import { enableAutoUnmount, mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import ScriptsSettings from '@/components/settings/ScriptsSettings.vue'
 import ScriptLibrary from '@/components/settings/scripts/ScriptLibrary.vue'
@@ -92,6 +92,12 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks()
 })
+
+// Registered after the restore, so it runs before it: a screen left mounted still has its
+// settings save waiting on a timer, and unmounting writes it now, into the stubbed save. Left
+// for later, the timer fired after the real save was back — and on a loaded machine after the
+// file had finished — where it threw for want of a plugin (three unhandled rejections).
+enableAutoUnmount(afterEach)
 
 const cards = (wrapper: VueWrapper) => wrapper.findAllComponents(Card)
 const cardTitled = (wrapper: VueWrapper, title: string) => {
