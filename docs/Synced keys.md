@@ -7,6 +7,10 @@ device it was typed on. Without synced keys, each one has to be entered again on
 Synced keys keep all of them in one encrypted store that travels with the plugin's settings.
 Each device needs only the passphrase, typed once.
 
+The one exception is the device token for vault sync. Each device connects to the sync server
+and gets a token of its own, and a device holding another's would sync as that device, so the
+token stays in the keychain of the device it belongs to and is not listed under **All keys**.
+
 **Settings → Abele → Transfer → Synced keys.**
 
 ## Setting it up

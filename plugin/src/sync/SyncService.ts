@@ -16,6 +16,7 @@ import {
 import { caseKey, type VaultInfo } from '@abele/sync-protocol'
 import type AbelePlugin from '@/main'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { secrets } from '@/secrets/SecretStore'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { ObsidianFileSystem } from './ObsidianFileSystem'
 import type { SyncSettings } from './settings'
@@ -60,7 +61,9 @@ import { fetchViaRequestUrl, wsFor } from './transport'
  *
  * The device token is in Obsidian's keychain under a generated id, and only that id is in
  * `data.json` — which is itself kept out of the sync, since a vault is precisely what gets
- * copied to another machine. The account password is used for one login and never stored; the
+ * copied to another machine. It is read and written through `secrets().device`, which is the
+ * keychain alone: the synced secret store carries keys to every device, and this one token is
+ * minted for this device only. The account password is used for one login and never stored; the
  * account token it returns lives in memory for the length of the connect flow. Nothing here
  * writes a token or a password to the log.
  */
@@ -412,7 +415,7 @@ export class SyncService {
       const tokenId = settings.deviceTokenId.startsWith(SECRET_PREFIX)
         ? settings.deviceTokenId
         : newSecretId()
-      app.secretStorage.setSecret(tokenId, enrolled.device_token)
+      secrets().device.set(tokenId, enrolled.device_token)
       if (settings.stateId === '' || settings.stateVaultId !== vaultId) {
         dropped = settings.stateId === '' ? null : settings.stateId
         settings.stateId = newStateId()
@@ -467,10 +470,10 @@ export class SyncService {
     await this.serialise(async () => {
       await this.teardown()
       const settings = this.settings
-      // Obsidian's keychain has no delete in its public API, so the secret is emptied. The id
-      // stays: `token()` reads an empty secret as no device, which is exactly the truth.
+      // The secret goes and the id stays: `token()` reads a missing secret as no device, which
+      // is exactly the truth.
       const tokenId = settings.deviceTokenId
-      if (tokenId !== '') this.app?.secretStorage.setSecret(tokenId, '')
+      if (tokenId !== '') secrets().device.remove(tokenId)
       settings.serverUrl = ''
       settings.vaultId = ''
       settings.deviceId = ''
@@ -489,7 +492,7 @@ export class SyncService {
     await this.disconnect()
     const settings = this.settings
     if (settings.deviceTokenId !== '') {
-      this.app?.secretStorage.setSecret(settings.deviceTokenId, '')
+      secrets().device.remove(settings.deviceTokenId)
       settings.deviceTokenId = ''
     }
     settings.stateId = ''
@@ -533,8 +536,8 @@ export class SyncService {
   private token(): string | null {
     const id = this.settings.deviceTokenId
     if (id === '') return null
-    const secret = this.app?.secretStorage.getSecret(id) ?? null
-    return secret === null || secret === '' ? null : secret
+    const secret = secrets().device.get(id)
+    return secret === '' ? null : secret
   }
 
   /**

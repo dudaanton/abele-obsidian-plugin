@@ -13,7 +13,7 @@ import type { AbeleSettings } from '@/services/AbeleConfig'
 import type { AiSettings } from '@/ai/types'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { feedLabel } from '@/calendars/settings'
-import { collectEntries, sectionLabel } from '@/transfer/entries'
+import { collectEntries, isDeviceOnly, sectionLabel } from '@/transfer/entries'
 import type { SectionId } from '@/transfer/types'
 import type { StoreContent, StoreStatus } from './SecretStore'
 
@@ -103,6 +103,9 @@ function usesOf(settings: AbeleSettings): Map<string, Use[]> {
   )
 
   for (const entry of collectEntries(settings)) {
+    // The sync device token: the sync settings look after it, and it has no business in the
+    // store, so a list offering to sync keys has nothing to offer about it.
+    if (isDeviceOnly(entry.section)) continue
     for (const id of entry.secretIds ?? []) {
       if (entry.section === 'calendars') {
         add(id, { kind: 'Calendar', name: calendarNames.get(id) ?? 'Calendar' })

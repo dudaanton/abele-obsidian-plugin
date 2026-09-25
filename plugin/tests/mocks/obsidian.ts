@@ -350,12 +350,6 @@ if (typeof HTMLElement !== 'undefined' && !('empty' in HTMLElement.prototype)) {
         for (const [name, value] of Object.entries(props)) this.style.setProperty(name, value)
       },
     },
-    /** The same, for a span: what the status-bar item is built out of. */
-    createSpan: {
-      value(this: HTMLElement, info?: ElInfo | string) {
-        return buildEl(this.ownerDocument, 'span', { ...normalizeElInfo(info), parent: this })
-      },
-    },
     detach: {
       value(this: HTMLElement) {
         this.parentElement?.removeChild(this)

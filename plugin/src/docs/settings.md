@@ -241,7 +241,9 @@ Keys and tokens live in each device's own keychain, and a setting only names the
 encrypted store inside the plugin's settings file, `secretStore`, so it reaches the person's
 other devices with the settings: each device is unlocked once with a passphrase and then has
 every key, and a key added or changed on any device reaches the rest. Keys are still put into
-each unlocked device's keychain, so turning the store off leaves them where they are.
+each unlocked device's keychain, so turning the store off leaves them where they are. The one
+key never in the store is the device sync token: each device enrols with the sync server and
+keeps its own, since a device given another's token would sync as that device.
 
 `secretStore` is not a setting: it is neither readable nor writable here, it is not carried by
 a settings transfer, and nothing in it can be read without the passphrase. Each transfer section

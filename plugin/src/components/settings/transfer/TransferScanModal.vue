@@ -107,7 +107,6 @@
 </template>
 
 <script setup lang="ts">
-import { secrets } from '@/secrets/SecretStore'
 import { computed, onBeforeUnmount, ref, useTemplateRef } from 'vue'
 import ObsidianModal from '../../obsidian/Modal.vue'
 import Button from '../../obsidian/Button.vue'
@@ -133,6 +132,7 @@ import {
   type PlannedEntry,
 } from '@/transfer/entries'
 import { applyFiles, planFiles, readCurrent } from '@/transfer/files'
+import { storeReceivedKeys } from '@/transfer/receivedKeys'
 import { readCodes, readableSize, closerLooks, type Rect } from '@/transfer/scan'
 import type { SectionId, TransferPayload } from '@/transfer/types'
 
@@ -355,22 +355,7 @@ const apply = async () => {
     ScriptService.getInstance().setConfirmForeign(true)
   }
 
-  let keysRefused = 0
-
-  for (const secretId of incomingKeyIds) {
-    const value = payload.value.secrets[secretId]
-    // A key that did not travel leaves whatever this device already has alone.
-    if (!value) continue
-
-    try {
-      secrets().set(secretId, value)
-    } catch {
-      // Obsidian takes only lowercase letters, digits and dashes for a key's name, and a
-      // transfer can carry any name at all — one it refuses must not abandon the rest of
-      // the settings half written.
-      keysRefused++
-    }
-  }
+  const keysRefused = storeReceivedKeys(chosen, payload.value.secrets)
 
   await config.saveSettings()
 

@@ -52,6 +52,11 @@ interface BlockSection {
   secretsOf?(settings: AbeleSettings): string[]
   /** The block's own values include a credential, so it cannot travel in the open. */
   sensitive?: boolean
+  /**
+   * Its keys belong to this device alone. A transfer the user asks for still carries them;
+   * the synced secret store never takes them in, and the list of keys does not show them.
+   */
+  deviceOnly?: boolean
 }
 
 type Section = ListSection | BlockSection
@@ -391,6 +396,10 @@ export const SECTIONS: Section[] = [
    * either of them connects again — `chooseVault` enrols afresh and mints a token of its own,
    * which is what separates them.
    *
+   * That is also why the block is `deviceOnly`: a transfer hands this device's identity to one
+   * other device, on purpose and once, while the synced secret store would hand it to every
+   * device the settings reach, for good.
+   *
    * `stateId` and `stateVaultId` ride along inside the block and are meaningless on the other
    * device; they name a ledger in *this* device's IndexedDB, which is the app's and not the
    * vault's. The receiving device finds no such database, opens an empty one under that name,
@@ -402,6 +411,7 @@ export const SECTIONS: Section[] = [
       return id ? [id] : []
     },
     sensitive: true,
+    deviceOnly: true,
   }),
   rootBlock('other', 'Other', [
     'refreshDelay',
@@ -472,6 +482,12 @@ export function arrivingSecretIds(
 
 export const sectionLabel = (id: SectionId): string =>
   sectionById.get(id)?.label ?? FILE_SECTION_LABELS[id as keyof typeof FILE_SECTION_LABELS] ?? id
+
+/** Whether a section's keys stay on the device that holds them: see `deviceOnly`. */
+export const isDeviceOnly = (id: SectionId): boolean => {
+  const section = sectionById.get(id)
+  return section?.kind === 'block' && section.deviceOnly === true
+}
 
 /** The settings half of a mixed list; the files are planned and written by `files.ts`. */
 export const settingsOnly = (entries: TransferEntry[]): TransferEntry[] =>

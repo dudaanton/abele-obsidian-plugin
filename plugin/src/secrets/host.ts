@@ -10,7 +10,7 @@
  */
 import type { Plugin } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { collectEntries } from '@/transfer/entries'
+import { collectEntries, isDeviceOnly } from '@/transfer/entries'
 import { voiceKeyId } from '@/ai/transcriptionSettings'
 import { SecretStore, type StoreHost } from './SecretStore'
 import type { SecretStoreFile } from './storeFile'
@@ -19,11 +19,14 @@ import type { SecretStoreFile } from './storeFile'
  * Every keychain id the settings point at. The transfer sections already say, for each thing
  * that can travel, which keychain ids it needs — the one list of what is a secret, so a new
  * setting that declares its `secretsOf` is in the store the day it exists.
+ *
+ * Except a `deviceOnly` section's: the sync device token belongs to the device that enrolled,
+ * and the store would carry it to every other one (`SecretStore.device`).
  */
 export function pluginSecretIds(): string[] {
-  const ids = collectEntries(AbeleConfig.getInstance().exportSettings()).flatMap(
-    (entry) => entry.secretIds ?? []
-  )
+  const ids = collectEntries(AbeleConfig.getInstance().exportSettings())
+    .filter((entry) => !isDeviceOnly(entry.section))
+    .flatMap((entry) => entry.secretIds ?? [])
   // Voice input reads its key under a default name even when its settings were never
   // touched, and untouched settings are no entry at all.
   ids.push(voiceKeyId())

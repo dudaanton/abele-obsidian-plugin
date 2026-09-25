@@ -1084,7 +1084,8 @@ and iteration count stored beside it), with a check value that tells a wrong pas
 damaged file. It lives in the settings file rather than a file of its own because Obsidian
 Sync carries only `data.json`, `main.js`, `manifest.json` and `styles.css` out of a plugin's
 folder. Without the passphrase it is unreadable. Each device keeps only the derived key, in its
-own keychain.
+own keychain. The device sync token is never in it: that one belongs to the device that
+enrolled, and stays in its keychain alone.
 
 Two devices changing keys at once are merged key by key, the later change winning, and the
 store out of a Syncthing conflict copy of the settings file (`data.sync-conflict-….json`) is

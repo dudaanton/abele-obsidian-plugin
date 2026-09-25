@@ -486,3 +486,53 @@ describe('what the store says about each key, for the list of keys', () => {
     expect(by['abele-a'].at).toBeGreaterThan(0)
   })
 })
+
+/**
+ * The sync device token is minted for one device and must stay on it: a phone that received
+ * the laptop's token would sync as the laptop, and the server would see one device where there
+ * are two. So it has a road of its own, to the keychain and nowhere else.
+ */
+describe('a secret kept on this device alone', () => {
+  it('round-trips through the keychain', () => {
+    const mac = device(shared())
+
+    mac.store.device.set('abele-sync-device-1', 'absd_token')
+
+    expect(mac.store.device.get('abele-sync-device-1')).toBe('absd_token')
+    expect(mac.keychain.getSecret('abele-sync-device-1')).toBe('absd_token')
+    expect(mac.store.device.get('abele-sync-device-unknown')).toBe('')
+  })
+
+  it('never enters the store, even with the store open here', async () => {
+    const on = shared()
+    const mac = device(on, ['abele-provider-x'])
+    mac.keychain.setSecret('abele-provider-x', 'sk-1')
+    await mac.store.enable('passphrase', FAST)
+    const writes = mac.writes
+
+    mac.store.device.set('abele-sync-device-1', 'absd_token')
+    await mac.store.flush()
+
+    expect(mac.writes).toBe(writes)
+    expect(mac.store.contents()!.map((c) => c.id)).toEqual(['abele-provider-x'])
+    // Another device opening the same store finds no such secret.
+    const phone = device(on)
+    await phone.store.load()
+    await phone.store.unlock('passphrase')
+    expect(phone.store.get('abele-sync-device-1')).toBe('')
+    expect(phone.keychain.getSecret('abele-sync-device-1')).toBeNull()
+  })
+
+  it('is taken out of the keychain by a removal, and by setting it empty', () => {
+    const mac = device(shared())
+    mac.store.device.set('abele-sync-device-1', 'absd_token')
+    mac.store.device.set('abele-sync-device-2', 'absd_other')
+
+    mac.store.device.remove('abele-sync-device-1')
+    mac.store.device.set('abele-sync-device-2', '')
+
+    expect(mac.keychain.getSecret('abele-sync-device-1')).toBeNull()
+    expect(mac.keychain.getSecret('abele-sync-device-2')).toBeNull()
+    expect(mac.store.device.get('abele-sync-device-1')).toBe('')
+  })
+})

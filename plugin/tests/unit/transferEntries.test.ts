@@ -6,7 +6,7 @@
  * replace something, or change nothing — and then does it. Nothing here touches Obsidian, so
  * the rules about what may be overwritten are testable without one.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { reactive } from 'vue'
 import {
   collectEntries,
@@ -17,6 +17,8 @@ import {
   removedByReplace,
   SECTIONS,
 } from '@/transfer/entries'
+import { storeReceivedKeys } from '@/transfer/receivedKeys'
+import { SecretStore, setSecrets, type Keychain } from '@/secrets/SecretStore'
 import type { AbeleSettings } from '@/services/AbeleConfig'
 import { DEFAULT_READER_SETTINGS } from '@/reader/settings'
 import type { AiSettings } from '@/ai/types'
@@ -1069,5 +1071,84 @@ describe('the synced secret store', () => {
     const arriving = collectEntries(settings())
     expect(applyEntries(arriving, here, 'merge').secretStore).toEqual(store)
     expect(applyEntries(arriving, here, 'replace').secretStore).toEqual(store)
+  })
+})
+
+/**
+ * The keys that arrived go where each one belongs. A provider's key is the user's, and with
+ * the synced store open it enters the store like any key set by hand. The sync device token
+ * travels only because the user asked for this transfer: it lands in this device's keychain
+ * and never in the store, or every other device would be handed it too.
+ */
+describe('the keys that arrived', () => {
+  afterEach(() => setSecrets(null))
+
+  async function unlockedStore() {
+    const keychain = new Map<string, string>()
+    const chain: Keychain = {
+      getSecret: (id) => keychain.get(id) ?? null,
+      setSecret: (id, value) => void keychain.set(id, value),
+      deleteSecret: (id) => keychain.delete(id),
+    }
+    let file: unknown = null
+    const store = new SecretStore({
+      keychain: () => chain,
+      read: () => file,
+      write: async (next) => {
+        file = next
+      },
+      ids: () => [],
+      conflictCopies: async () => [],
+      now: () => Date.now(),
+    })
+    await store.enable('passphrase', { iterations: 1000 })
+    setSecrets(store)
+    return { store, keychain }
+  }
+
+  it('puts the sync device token in the keychain alone, and every other key in the store', async () => {
+    const { store, keychain } = await unlockedStore()
+    const arriving = collectEntries(settings()).filter(
+      (e) => e.section === 'sync' || e.section === 'ai-providers'
+    )
+
+    const refused = storeReceivedKeys(arriving, {
+      'abele-sync-device-1': 'absd_token',
+      'key-p1': 'sk-provider',
+    })
+    await store.flush()
+
+    expect(refused).toBe(0)
+    expect(keychain.get('abele-sync-device-1')).toBe('absd_token')
+    expect(store.contents()!.map((c) => c.id)).toEqual(['key-p1'])
+  })
+
+  it('leaves alone a key that did not travel, and counts one the keychain refuses', () => {
+    const keychain = new Map<string, string>([['key-p1', 'sk-kept']])
+    setSecrets(
+      new SecretStore({
+        keychain: () => ({
+          getSecret: (id) => keychain.get(id) ?? null,
+          // Obsidian's rule for a key's name: lowercase letters, digits and dashes.
+          setSecret: (id, value) => {
+            if (!/^[a-z0-9-]+$/.test(id)) throw new Error('invalid id')
+            keychain.set(id, value)
+          },
+        }),
+        read: () => null,
+        write: async () => {},
+        ids: () => [],
+        conflictCopies: async () => [],
+        now: () => Date.now(),
+      })
+    )
+    const arriving = collectEntries(
+      settings({
+        ai: { providers: [provider('p1', 'kept'), provider('p2', 'refused', 'BAD ID')] },
+      } as unknown as Partial<AbeleSettings>)
+    ).filter((e) => e.section === 'ai-providers')
+
+    expect(storeReceivedKeys(arriving, { 'BAD ID': 'x' })).toBe(1)
+    expect(keychain.get('key-p1')).toBe('sk-kept')
   })
 })

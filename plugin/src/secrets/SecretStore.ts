@@ -1,6 +1,7 @@
 /**
  * Every secret the plugin reads or writes goes through here — provider keys, the GitHub
- * token, voice, web search, the named keys scripts and fetch calls use.
+ * token, voice, web search, the named keys scripts and fetch calls use. The sync device token
+ * too, on a road of its own that never enters the synced store (`device`, below).
  *
  * With the synced store off this is the device's keychain and nothing more. With it on, the
  * store in `data.json` is where secrets live: it travels with the settings, so a key set on
@@ -51,6 +52,14 @@ export interface StoreHost {
   /** `secretStore` out of every sync-conflict copy of the settings file lying beside it. */
   conflictCopies(): Promise<unknown[]>
   now(): number
+}
+
+/** A secret's road that bypasses the store: see `SecretStore.device`. */
+export interface DeviceSecrets {
+  get(id: string | undefined | null): string
+  /** Throws what the keychain throws for an id it refuses. An empty value is a removal. */
+  set(id: string, value: string): void
+  remove(id: string): void
 }
 
 /**
@@ -134,6 +143,24 @@ export class SecretStore {
   forgetLocal(id: string): void {
     this.forget(id)
     this.version.value++
+  }
+
+  /**
+   * This device's keychain and nothing else, for a secret that belongs to this device alone.
+   *
+   * The sync device token is one: the server mints it for one device, and a phone that was
+   * handed the laptop's through the store would sync as the laptop — the server would see one
+   * device where there are two. What goes through here is never recorded in the store, so it
+   * never reaches another device that way. Its ids must also stay out of the host's `ids()`, or
+   * making the store would move them in anyway; the transfer sections mark them `deviceOnly`.
+   */
+  readonly device: DeviceSecrets = {
+    get: (id) => (id ? (this.host.keychain().getSecret(id) ?? '') : ''),
+    set: (id, value) => {
+      if (value) this.host.keychain().setSecret(id, value)
+      else this.forget(id)
+    },
+    remove: (id) => this.forget(id),
   }
 
   /** Waits for writes to the settings file already under way. */

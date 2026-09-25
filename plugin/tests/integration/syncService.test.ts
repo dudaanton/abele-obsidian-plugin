@@ -8,6 +8,8 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { SyncService, type SyncServiceDeps } from '@/sync/SyncService'
 import { IndexedDbStateStore, stateDatabaseName } from '@/sync/IndexedDbStateStore'
 import { runAfterSync } from '@/helpers/runAfterSync'
+import { setSecrets, type SecretStore } from '@/secrets/SecretStore'
+import { createPluginSecrets } from '@/secrets/host'
 import type AbelePlugin from '@/main'
 import { buildFakeVault, type FakeApp } from '../helpers/fakeVault'
 import { syncServer, type SyncServer } from '../helpers/syncServer'
@@ -34,6 +36,8 @@ const PATIENCE_MS = 10_000
 let server: SyncServer
 let app: FakeApp
 let service: SyncService
+/** The plugin's secret store, on this device's keychain, as `onload` installs it. */
+let secretStore: SecretStore
 let indexedDB: IDBFactory
 /** Every listener `registerDomEvent` was handed, so a test can fire one. */
 let domEvents: (() => void)[] = []
@@ -76,12 +80,15 @@ beforeEach(async () => {
   ])
   AbeleConfig.getInstance().init(plugin)
   AbeleConfig.getInstance().applySettings(undefined)
+  secretStore = createPluginSecrets({ ...plugin, app } as unknown as AbelePlugin)
+  setSecrets(secretStore)
   service = SyncService.getInstance()
 })
 
 afterEach(async () => {
   await service.destroy()
   await server.close()
+  setSecrets(null)
   Platform.isMobile = false
 })
 
@@ -247,6 +254,27 @@ describe('SyncService — connecting', () => {
     expect(token).toMatch(/^absd_/)
     // The token itself is nowhere in what gets written to the vault.
     expect(JSON.stringify(settings())).not.toContain(token)
+  })
+
+  /**
+   * The synced secret store travels to every device the settings reach. A token that went with
+   * it would let a phone sync as this laptop, and the server would see one device where there
+   * are two: each device enrols and keeps its own.
+   */
+  it('keeps the device token out of the synced secret store, open or opened later', async () => {
+    await secretStore.enable('passphrase', { iterations: 1000 })
+    await connect()
+    await synced()
+    const tokenId = settings().deviceTokenId
+
+    expect(app.secretStorage.getSecret(tokenId)).toMatch(/^absd_/)
+    expect(secretStore.contents()!.map((c) => c.id)).not.toContain(tokenId)
+
+    // Made afresh with the token already in the keychain: it is not one of the ids moved in.
+    await secretStore.disable()
+    await secretStore.enable('passphrase', { iterations: 1000 })
+    expect(secretStore.contents()!.map((c) => c.id)).not.toContain(tokenId)
+    expect(service.isConnected()).toBe(true)
   })
 })
 

@@ -62,6 +62,13 @@ describe('the plugin’s secrets', () => {
       ].sort()
     )
   })
+
+  it('leave out the sync device token, which belongs to this device alone', () => {
+    const config = AbeleConfig.getInstance()
+    config.sync = { ...config.sync, deviceTokenId: 'abele-sync-device-1' }
+
+    expect(pluginSecretIds()).not.toContain('abele-sync-device-1')
+  })
 })
 
 describe('the settings file', () => {

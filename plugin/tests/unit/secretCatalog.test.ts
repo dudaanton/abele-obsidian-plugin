@@ -158,6 +158,17 @@ describe('the keys the plugin knows', () => {
     expect(rows[rows.length - 1].id).toBe('abele-provider-gone')
   })
 
+  it('leaves out the sync device token: nobody manages it here, and it must not be synced', () => {
+    const config = AbeleConfig.getInstance()
+    config.sync = { ...config.sync, serverUrl: 'https://s', deviceTokenId: 'abele-sync-device-1' }
+    const values = { 'abele-sync-device-1': 'absd_x' }
+
+    for (const status of ['off', 'unlocked'] as const) {
+      const rows = secretCatalog(config.exportSettings(), view(values, status, []))
+      expect(rows.map((r) => r.id)).not.toContain('abele-sync-device-1')
+    }
+  })
+
   it('with the store locked, cannot say how a key stands with it', () => {
     const rows = secretCatalog(settings, view({ 'abele-provider-p': 'x' }, 'locked'))
     expect(rows.find((r) => r.id === 'abele-provider-p')!.state).toBe('locked')
