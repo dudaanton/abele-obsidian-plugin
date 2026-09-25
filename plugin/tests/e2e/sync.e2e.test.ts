@@ -35,7 +35,7 @@ import {
 } from './helpers/syncServer'
 import { obsidianMissing, openTestVault, waitFor, type TestVault } from './helpers/syncVault'
 
-const EMAIL = 'obsidian-e2e@example.com'
+const EMAIL = 'sync-e2e@example.com'
 const PASSWORD = 'a-password-nobody-prints'
 const VAULT_NAME = 'ObsidianE2E'
 const DEVICE = 'obsidian'
