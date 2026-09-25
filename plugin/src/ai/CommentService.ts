@@ -14,6 +14,8 @@ import { ChatService } from './ChatService'
 import { ChatStorage } from './ChatStorage'
 import { AgentRegistry } from './agents/AgentRegistry'
 import { parseChatMetadata, serializeChat, serializeMetadata } from './ChatLog'
+import { firstQuestion } from './chatText'
+import { baseName, commentLineage, commentName, commentTrail, type TrailStep } from './commentTrail'
 import { type ChatMetadata, type CommentAnchor } from './types'
 
 /**
@@ -25,8 +27,7 @@ import { type ChatMetadata, type CommentAnchor } from './types'
  */
 export type CommentMoveResult = 'moved' | 'busy' | 'no-room'
 
-/** As long as a chat's own fallback title, which this stands in for. */
-const COMMENT_TITLE_LENGTH = 50
+export type { TrailStep } from './commentTrail'
 
 /**
  * The comments of this vault: their files, their sessions, and the markers that point at them.
@@ -200,6 +201,13 @@ export class CommentService implements CommentInfoSource {
   async showInSidebar(id: string): Promise<boolean> {
     const session = await this.load(id)
     if (!session) return false
+
+    // Opened as a chat since: it is one of the sidebar's own tabs now, not the one comment tab,
+    // and a way back into it from a child below must not mark it as a comment being read.
+    if (this.expanded.has(id)) {
+      await this.revealChat(id)
+      return true
+    }
 
     if (session.moving.value) return false
 
@@ -749,10 +757,12 @@ export class CommentService implements CommentInfoSource {
    * question that was asked does. Static because the tab strip has a session and no id.
    */
   static titleFor(session: ChatSession): string {
-    const asked = session.messages.value.find((message) => message.role === 'user')
-    if (!asked) return ''
+    return firstQuestion(session.messages.value)
+  }
 
-    return asked.content.replace(/\s+/g, ' ').trim().slice(0, COMMENT_TITLE_LENGTH)
+  /** What a comment is called on a trail — see `commentName`. */
+  static nameOf(session: ChatSession): string {
+    return commentName(session)
   }
 
   /**
@@ -894,6 +904,10 @@ export class CommentService implements CommentInfoSource {
     const anchor = session?.anchor.value ?? (await this.anchorOnDisk(id))
     const notePath = anchor?.note ?? null
 
+    // Asked on this comment's own messages, and on theirs: reachable only through it, so they
+    // go with it, deepest first, while it can still say which they are.
+    await this.removeCommentsOn(this.commentPath(id))
+
     if (anchor?.message) {
       // On an answer in a chat: the chat's own list of its comments, unless the chat is going.
       if (!options.chatGoing) await this.dropFromChat(anchor.note, id)
@@ -930,7 +944,7 @@ export class CommentService implements CommentInfoSource {
    * it open — one writer per file — and otherwise the metadata is appended, as a rename does.
    */
   private async dropFromChat(chatPath: string, id: string): Promise<void> {
-    const open = ChatService.getInstance().getSessionByFile(chatPath)
+    const open = this.sessionOnFile(chatPath)
     if (open) {
       await open.removeMessageComment(id)
       return
@@ -953,7 +967,7 @@ export class CommentService implements CommentInfoSource {
    * no other way into them. Called before the chat's file goes, so its list can still be read.
    */
   async removeCommentsOn(chatPath: string): Promise<void> {
-    const open = ChatService.getInstance().getSessionByFile(chatPath)
+    const open = this.sessionOnFile(chatPath)
     let comments = open?.messageComments.value
     if (!comments) {
       const { app } = GlobalStore.getInstance()
@@ -962,6 +976,36 @@ export class CommentService implements CommentInfoSource {
         chat instanceof TFile ? (parseChatMetadata(await app.vault.read(chat))?.comments ?? []) : []
     }
     for (const comment of comments) await this.remove(comment.id, { chatGoing: true })
+  }
+
+  /**
+   * The live session writing a chat file, whoever holds it: a tab, or this service — a comment
+   * nobody is reading still has a session, and writing its file behind that session's back
+   * would be undone by its next save.
+   */
+  private sessionOnFile(path: string): ChatSession | null {
+    const tab = ChatService.getInstance().getSessionByFile(path)
+    if (tab) return tab
+    if (!this.isCommentPath(path)) return null
+    const session = this.sessions.get(idOf(path)) ?? this.expanded.get(idOf(path)) ?? null
+    return session && !session.isDestroyed ? session : null
+  }
+
+  /** True for a path in the comment folder, which is what a comment on a comment hangs from. */
+  isCommentPath(path: string): boolean {
+    return path === this.commentPath(idOf(path))
+  }
+
+  // ── The trail ─────────────────────────────────────────────────
+
+  /** The way down to this comment from where it all started — see `commentTrail`. */
+  trail(session: ChatSession): Promise<TrailStep[]> {
+    return commentTrail(this, session)
+  }
+
+  /** The levels above a comment's conversation, as its agent is told them — see `commentLineage`. */
+  lineage(anchor: CommentAnchor): Promise<string[]> {
+    return commentLineage(this, anchor)
   }
 
   /** The anchor of a comment nobody has loaded — one metadata read, no session. */
@@ -1001,4 +1045,9 @@ export class CommentService implements CommentInfoSource {
     this.open.value = null
     CommentService.instance = null
   }
+}
+
+/** A comment's id, which is its file's basename. */
+function idOf(path: string): string {
+  return baseName(path)
 }

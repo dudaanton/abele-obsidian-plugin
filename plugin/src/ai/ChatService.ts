@@ -662,7 +662,9 @@ export class ChatService {
       const { app } = GlobalStore.getInstance()
       const chat = app.vault.getAbstractFileByPath(anchor.note)
       const content = chat instanceof TFile ? await app.vault.cachedRead(chat) : null
-      return `${prompt}\n\n${buildMessageCommentContext(anchor, content)}`
+      // A comment on a comment is also told the levels above, by their quotes alone.
+      const lineage = await CommentService.getInstance().lineage(anchor)
+      return `${prompt}\n\n${buildMessageCommentContext(anchor, content, lineage)}`
     }
 
     const noteText = await this.readCommentNote(anchor.note)

@@ -5,6 +5,20 @@ import { parseChat } from './ChatLog'
 /** A chat log's extension — chats, comments and delegated runs alike. */
 export const CHAT_EXTENSION = 'abchat'
 
+/** As long as a chat's own fallback title, which a comment's name stands in for. */
+const QUESTION_NAME_LENGTH = 50
+
+/**
+ * The first thing the person said, flattened and cut: what a comment is called where a chat
+ * would show its title. A comment has no title of its own, and its file name is six random
+ * characters, which tell nobody anything.
+ */
+export function firstQuestion(messages: ChatMessage[]): string {
+  const asked = messages.find((message) => message.role === 'user')
+  if (!asked) return ''
+  return asked.content.replace(/\s+/g, ' ').trim().slice(0, QUESTION_NAME_LENGTH)
+}
+
 export function isChatLog(path: string): boolean {
   return path.toLowerCase().endsWith(`.${CHAT_EXTENSION}`)
 }

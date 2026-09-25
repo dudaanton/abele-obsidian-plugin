@@ -51,6 +51,7 @@ export function fakeChatSession({
     streamingThinking: ref(''),
     error: ref(null),
     currentChatFile: ref(null),
+    chatTitle: ref(''),
     messageComments: shallowRef([]),
     pendingQuestions,
     pendingToolCalls,

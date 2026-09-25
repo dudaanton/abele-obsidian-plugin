@@ -216,6 +216,15 @@ file's `anchor` is `{ note: <the chat's path>, message, quote }`. Deleting the c
 comments with it. Leave both lists to the plugin — an entry with no file behind it draws nothing,
 and a file no chat lists is reachable from nowhere.
 
+A comment is a chat, so its own messages can carry comments too, to any depth: the list is then
+in the comment file's metadata, and the new comment's `anchor.note` is that comment file's path.
+Following `anchor.note` upwards from any comment ends at the note or the ordinary chat where it all
+started. A comment is tied to a message by the message's id, which neither compacting the
+conversation nor editing a message changes — an edit starts a new branch and leaves the old
+message where it was — so an anchor stays put; if its words no longer read the same, its icon sits
+dimmed at the end of the message. Deleting a comment deletes every comment under it, at every
+depth, and deleting a chat deletes the whole tree hung on it.
+
 ## Message cards
 
 A message from a chat can be kept in a note: "Insert into note" in a message's actions writes a

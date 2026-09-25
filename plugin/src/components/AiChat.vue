@@ -63,6 +63,9 @@
         </div>
       </div>
 
+      <!-- Over a comment on a message: the way down to it, every level a way back. -->
+      <AiCommentTrail v-if="session" :session="session" />
+
       <!-- Messages -->
       <div
         ref="messagesContainer"
@@ -283,9 +286,8 @@ import AiToolApproval from './AiToolApproval.vue'
 import AiAgentSelector from './AiAgentSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
 import AiChatSetup from './AiChatSetup.vue'
+import AiCommentTrail from './AiCommentTrail.vue'
 import { CommentService } from '@/ai/CommentService'
-import { parseMarkers } from '@/editor/commentMarkers'
-import { reliableScrollTo } from '@/helpers/scrollUtils'
 import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChatService, type PendingInput } from '@/ai/ChatService'
@@ -294,7 +296,7 @@ import { parseTemplateVariables, applyTemplateVariables } from '@/templates/Temp
 import type { TemplateVariable } from '@/templates/TemplateParser'
 import { importExternalFile } from '@/ai/attachments'
 import type { ChatDraft, MessageComment } from '@/ai/types'
-import { revealAnswer } from '@/ai/openChat'
+import { revealAnchor } from '@/ai/openChat'
 import { discoverSkills } from '@/ai/tools/SkillTool'
 import { getChildren } from '@/ai/chatTree'
 import { isChatLog } from '@/ai/chatText'
@@ -465,11 +467,15 @@ const commentsOn = computed(() => {
 })
 
 /**
- * Where "Ask here" is offered on an answer: an ordinary chat with a file to keep its comments
- * in. Not in a comment — its comment tab would be the one the new comment replaces.
+ * Where "Ask here" is offered on a message: any conversation with a file to keep its comments
+ * in — a chat, and a comment too. Asked inside a comment, the new one takes the comment tab
+ * and the one it came from steps back behind it, still alive; the trail over the messages is
+ * the way back up, to any depth.
  */
 const canComment = computed(
-  () => session.value?.kind === 'chat' && !!session.value?.currentChatFile.value
+  () =>
+    (session.value?.kind === 'chat' || session.value?.kind === 'comment') &&
+    !!session.value?.currentChatFile.value
 )
 
 const onAskHere = (messageId: string, quote?: string, start?: number) => {
@@ -618,25 +624,10 @@ async function backToNote(): Promise<void> {
   const current = session.value
   const id = current?.commentId
   const anchor = current?.anchor.value
-  const note = anchor?.note
-  if (!id || !anchor || !note) return
+  if (!id || !anchor?.note) return
 
-  // A comment on an answer goes back to that answer, in its chat.
-  if (anchor.message) {
-    await revealAnswer(anchor)
-    return
-  }
-
-  const { app } = GlobalStore.getInstance()
-  await app.workspace.openLinkText(note, '', false)
-
-  const file = app.vault.getAbstractFileByPath(note)
-  if (!(file instanceof TFile)) return
-
-  const marker = parseMarkers(await app.vault.cachedRead(file)).find((candidate) =>
-    candidate.ids.includes(id)
-  )
-  if (marker) reliableScrollTo(marker.from)
+  // A comment on a message goes back to that message, in its chat or in the comment above it.
+  await revealAnchor(id, anchor)
 }
 
 /**

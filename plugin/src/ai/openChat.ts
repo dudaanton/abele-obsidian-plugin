@@ -5,6 +5,8 @@ import { CommentService } from './CommentService'
 import { isChatLog } from './chatText'
 import type { CommentAnchor } from './types'
 import { openNoteAtLines, resolveLineLink } from '@/lineLinks/open'
+import { parseMarkers } from '@/editor/commentMarkers'
+import { reliableScrollTo } from '@/helpers/scrollUtils'
 
 /**
  * Opens a chat file the way opening it anywhere else does: a comment as a comment, any other
@@ -78,5 +80,28 @@ export async function revealAnswer(anchor: CommentAnchor): Promise<boolean> {
   }
   await openChat(chat)
   ChatService.getInstance().pendingReveal.value = anchor.message
+  return true
+}
+
+/**
+ * Back to where a comment hangs: the message it is on, in the chat or the comment above it, or
+ * its marker in a note — opened and scrolled to. The one way back, used by a comment's own back
+ * button and by every level of the trail over it, each passing the level below the one it opens.
+ */
+export async function revealAnchor(commentId: string, anchor: CommentAnchor): Promise<boolean> {
+  if (anchor.message) return revealAnswer(anchor)
+
+  const { app } = GlobalStore.getInstance()
+  const file = app.vault.getAbstractFileByPath(anchor.note)
+  if (!(file instanceof TFile)) {
+    new Notice('The note this was asked in has been deleted')
+    return false
+  }
+  await app.workspace.openLinkText(anchor.note, '', false)
+
+  const marker = parseMarkers(await app.vault.cachedRead(file)).find((candidate) =>
+    candidate.ids.includes(commentId)
+  )
+  if (marker) reliableScrollTo(marker.from)
   return true
 }

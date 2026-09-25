@@ -24,6 +24,7 @@ import Image from '@/components/obsidian/Image.vue'
 import TreeItem from '@/components/obsidian/TreeItem.vue'
 import Slider from '@/components/obsidian/Slider.vue'
 import Avatar from '@/components/obsidian/Avatar.vue'
+import Breadcrumbs from '@/components/obsidian/Breadcrumbs.vue'
 import { useVault } from '../helpers/testEnv'
 
 const TABS = [
@@ -884,5 +885,43 @@ describe('Slider', () => {
     expect((input.element as HTMLInputElement).style.getPropertyValue('--slider-fill-ratio')).toBe(
       '0.25'
     )
+  })
+})
+
+describe('Breadcrumbs', () => {
+  const ITEMS = [
+    { label: 'Riga trip', tooltip: 'Back to the chat' },
+    { label: 'Which train?', tooltip: 'Back to this comment' },
+    { label: 'Sleeping cars?' },
+  ]
+
+  it('draws every level in order, separated, the last one as where you are', () => {
+    const view = mount(Breadcrumbs, { props: { items: ITEMS } })
+
+    const items = view.findAll('.abele-breadcrumbs__item')
+    expect(items.map((i) => i.text())).toEqual(['Riga trip', 'Which train?', 'Sleeping cars?'])
+    expect(view.findAll('.abele-breadcrumbs__separator')).toHaveLength(2)
+    expect(items[2].classes()).toContain('abele-breadcrumbs__item_current')
+    expect(items[2].attributes('aria-current')).toBe('page')
+    expect(items[2].attributes('role')).toBeUndefined()
+  })
+
+  it('says which level was pressed, by click and by Enter', async () => {
+    const view = mount(Breadcrumbs, { props: { items: ITEMS } })
+    const items = view.findAll('.abele-breadcrumbs__item')
+
+    await items[1].trigger('click')
+    await items[0].trigger('keydown', { key: 'Enter' })
+
+    expect(view.emitted('select')).toEqual([[1], [0]])
+    expect(items[0].attributes('role')).toBe('button')
+  })
+
+  it('is not pressed at the level you are on', async () => {
+    const view = mount(Breadcrumbs, { props: { items: ITEMS } })
+
+    await view.findAll('.abele-breadcrumbs__item')[2].trigger('click')
+
+    expect(view.emitted('select')).toBeUndefined()
   })
 })

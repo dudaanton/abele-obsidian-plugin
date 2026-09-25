@@ -29,6 +29,7 @@ not invent its own.
 | `Image` | A picture by vault path or URL. |
 | `Avatar` | A person's picture, round, the height of a line of small text, beside their name. Decoration: the name says who it is. Without a picture, or with one that fails to load, it shows the name's first letter, drawn by CSS so it is never copied or found as text. |
 | `TreeItem` | One row of a tree — a file list, a folder listing — in Obsidian's own `tree-item` classes, so hover, the active row, indentation and the fold arrow are the theme's. `collapsible` draws the arrow and shows the children slot while open; `flair` puts muted text at the end. |
+| `Breadcrumbs` | The way down to where you are, outermost first: every level but the last pressed to go back to it, each with a tooltip saying what it opens. Wraps rather than scrolls, each level cut to one line. The trail over a comment asked inside a chat. |
 
 If a screen needs something the kit does not have, the change belongs in the kit — with a
 test — not in the screen.

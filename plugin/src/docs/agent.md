@@ -112,5 +112,10 @@ only what the person and the agent wrote, like an attached chat, never tool call
 results or reasoning. The chat file itself is not in its scope and it has no `edit_selection`:
 a message in a chat is not something to rewrite.
 
+The same works inside a comment: a message in one can be asked about in turn, and so on to any
+depth. The new comment runs on the agent of the comment it came from and is told that comment's
+messages the same way. The levels above that are named, not carried: the words each one was asked
+about and where — so the chain costs a line per level, however deep it goes.
+
 Writing to a note links this chat to it: the note shows a card for every chat that changed it,
 so what you do here is visible from there afterwards. Reading a note links nothing.

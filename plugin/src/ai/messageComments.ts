@@ -2,7 +2,7 @@ import { CommentMarkerWidget } from '@/editor/CommentMarkerWidget'
 import type { CommentState } from '@/editor/CommentPlugin'
 import { parseChat } from './ChatLog'
 import { getPathToLeaf } from './chatTree'
-import { conversationLines, renderLines } from './chatText'
+import { conversationLines, firstQuestion, renderLines } from './chatText'
 import type { ChatMessage, CommentAnchor } from './types'
 
 /**
@@ -219,7 +219,8 @@ const ANSWER_LIMIT = 12_000
  */
 export function buildMessageCommentContext(
   anchor: CommentAnchor,
-  chatContent: string | null
+  chatContent: string | null,
+  lineage: string[] = []
 ): string {
   const lines = ['## Where you are']
   const parsed = chatContent === null ? null : parseChat(chatContent)
@@ -235,12 +236,25 @@ export function buildMessageCommentContext(
     return lines.join('\n')
   }
 
+  // A comment on a comment: the conversation it is in is a side discussion itself, named by the
+  // question that opened it — its title, when it has one, is a date and that question.
+  const nested = parsed.metadata.kind === 'comment'
+  const title = nested ? firstQuestion(parsed.messages) || name : parsed.metadata.title || name
   lines.push(
-    `Chat: ${parsed.metadata.title || name} (${anchor.note})`,
-    'This comment is about a passage in one of the answers in that chat. Only what the person ' +
-      'and the agent wrote there is included; its tool calls, their results and its ' +
-      'reasoning are not.'
+    `${nested ? 'Side discussion' : 'Chat'}: ${title} (${anchor.note})`,
+    'This comment is about a passage in one of the messages in that ' +
+      (nested ? 'side discussion' : 'chat') +
+      '. Only what the person and the agent wrote there is included; its tool calls, their ' +
+      'results and its reasoning are not.'
   )
+  if (lineage.length) {
+    lines.push(
+      'That side discussion was itself started from a passage of another conversation. The ' +
+        'chain above it, nearest first — only the words asked about and where, not what was ' +
+        'said there:',
+      ...lineage
+    )
+  }
   if (anchor.quote) lines.push('Selected text:', anchor.quote)
 
   const messages: ChatMessage[] = parsed.messages

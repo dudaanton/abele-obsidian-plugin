@@ -232,6 +232,44 @@ const probeScript = `(async () => {
       const last = app.vault.getAbstractFileByPath(SEEDED[SEEDED.length - 2])
       return !!(last && app.metadataCache.getFileCache(last)?.frontmatter)
     }, 10000)
+    // A comment asked inside a comment on a chat's answer, for the trail over its messages: the
+    // levels carry long questions, which is what a phone has to wrap. After the wait above,
+    // which counts from the end of the list.
+    const comments = window.__abeleTest.CommentService.getInstance()
+    const commentDir = comments.commentPath('x').split('/').slice(0, -1)
+    for (let i = 1; i <= commentDir.length; i++) {
+      const dir = commentDir.slice(0, i).join('/')
+      if (!app.vault.getAbstractFileByPath(dir)) {
+        await app.vault.createFolder(dir)
+        SEEDED_DIRS.unshift(dir)
+      }
+    }
+    const line = (r) => JSON.stringify(r)
+    const nestedChat = 'AI/Chats/Phone probe nested ask.abchat'
+    await app.vault.create(nestedChat, [
+      line({ v: 2, k: 'meta', type: 'abele-chat', created: '2026-09-25', title: 'Getting from Vilnius to Riga by train',
+        comments: [{ id: 'pnest1', message: 'na1', quote: 'night train', start: 9 }] }),
+      line({ k: 'msg', id: 'nu1', role: 'user', content: 'How do I get to Riga?', timestamp: 1790000000000 }),
+      line({ k: 'msg', id: 'na1', role: 'assistant', parentId: 'nu1', content: 'Take the night train from Vilnius.', timestamp: 1790000001000 }),
+    ].join('\\n') + '\\n')
+    SEEDED.push(nestedChat)
+    const first = comments.commentPath('pnest1')
+    await app.vault.create(first, [
+      line({ v: 2, k: 'meta', type: 'abele-chat', kind: 'comment', created: '2026-09-25',
+        anchor: { note: nestedChat, quote: 'night train', message: 'na1' },
+        comments: [{ id: 'pnest2', message: 'p1a', quote: 'couchette', start: 25 }] }),
+      line({ k: 'msg', id: 'p1u', role: 'user', content: 'Which train exactly, and does it have sleeping cars?', timestamp: 1790000002000 }),
+      line({ k: 'msg', id: 'p1a', role: 'assistant', parentId: 'p1u', content: 'The Baltic Express, with couchette and sleeper cars.', timestamp: 1790000003000 }),
+    ].join('\\n') + '\\n')
+    SEEDED.push(first)
+    const second = comments.commentPath('pnest2')
+    await app.vault.create(second, [
+      line({ v: 2, k: 'meta', type: 'abele-chat', kind: 'comment', created: '2026-09-25',
+        anchor: { note: first, quote: 'couchette', message: 'p1a' } }),
+      line({ k: 'msg', id: 'p2u', role: 'user', content: 'What is the difference between a couchette and a sleeper?', timestamp: 1790000004000 }),
+      line({ k: 'msg', id: 'p2a', role: 'assistant', parentId: 'p2u', content: 'A couchette sleeps four to six on simple bunks; a sleeper has one to three proper beds.', timestamp: 1790000005000 }),
+    ].join('\\n') + '\\n')
+    SEEDED.push(second)
   }
   const unseed = async () => {
     for (const path of SEEDED) {
@@ -309,6 +347,17 @@ const probeScript = `(async () => {
       const modal = document.querySelector('.modal')
       await screen('history', modal, modal && modal.querySelector('.abele-modal__body'))
       await closeDialog()
+    }
+
+    // A comment asked inside a comment: the trail over its messages, on a phone's width.
+    {
+      const comments = window.__abeleTest.CommentService.getInstance()
+      await comments.showInSidebar('pnest2')
+      await until(() => document.querySelector('.abele-ai-chat .abele-breadcrumbs'), 5000)
+      await wait(400)
+      const nested = document.querySelector('.abele-ai-chat')
+      await screen('nested comment', nested, nested)
+      await comments.hideFromSidebar('pnest2')
     }
 
     // The icon picker of a header button's form: a grid of every icon, a search field above.
@@ -418,6 +467,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'setup settings',
     'setup debug',
     'history',
+    'nested comment',
     'icon picker',
     'icon picker search',
   ]
