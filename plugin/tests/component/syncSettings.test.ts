@@ -76,6 +76,7 @@ const service = {
   resume: vi.fn(),
   note: vi.fn(),
   onSettingsSaved: vi.fn(),
+  endConnect: vi.fn(),
 }
 
 /** What `init` does in the running plugin: the service hears about every settings save. */
@@ -160,6 +161,18 @@ describe('a device nobody has set up', () => {
     expect(screen.findComponent(SelectiveSync).exists()).toBe(false)
     expect(screen.findComponent(VaultPolicy).exists()).toBe(false)
     expect(client.state).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Signing in hands back an account token that can enrol devices, held in memory until a vault
+   * is picked. Someone who signs in and walks away from the tab must not leave it there.
+   */
+  it('lets go of the account sign-in when the tab closes', () => {
+    const screen = open(SyncSettings)
+
+    screen.unmount()
+
+    expect(service.endConnect).toHaveBeenCalled()
   })
 
   it('never puts the password anywhere but the field it was typed into', async () => {

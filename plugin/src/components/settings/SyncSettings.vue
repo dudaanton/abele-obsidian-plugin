@@ -122,7 +122,7 @@
  * `disconnected` is a device somebody set up: an engine that failed to build is `error`, and
  * that screen is the one that says why, where the sign-in card would only ask again.
  */
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
 import Badge from '../obsidian/Badge.vue'
@@ -175,6 +175,9 @@ const confirming = ref<'disconnect' | 'forget' | null>(null)
 watch(config.version, () => {
   device.value = snapshot()
 })
+
+// A sign-in that was never followed by a vault holds an account token; closing the tab ends it.
+onUnmounted(() => sync.endConnect())
 
 const statusLabel = computed(() => STATUS_LABEL[status.value.state])
 

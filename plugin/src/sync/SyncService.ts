@@ -389,7 +389,7 @@ export class SyncService {
    * Sign in and list the vaults this account can enrol a device on.
    *
    * The password is used for this one request and kept nowhere; the account token it answers
-   * with is held in memory until `chooseVault` has enrolled. Neither is ever written to the
+   * with is held in memory until `chooseVault` has enrolled, or `endConnect` lets it go. Neither is ever written to the
    * log or to `data.json`.
    */
   async connect(serverUrl: string, email: string, password: string): Promise<VaultInfo[]> {
@@ -408,6 +408,16 @@ export class SyncService {
     this.accountUrl = baseUrl
     this.note(`signed in; the account has ${vaults.length} vault(s)`)
     return vaults
+  }
+
+  /**
+   * Let a connect flow go without finishing it: the account token `connect` holds for
+   * `chooseVault` is dropped. The Sync tab calls this when it closes, so a sign-in nobody
+   * followed with a vault does not keep a token that can enrol devices for the whole session.
+   */
+  endConnect(): void {
+    this.account = null
+    this.accountUrl = ''
   }
 
   /**

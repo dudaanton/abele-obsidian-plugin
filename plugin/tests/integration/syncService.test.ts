@@ -293,6 +293,20 @@ describe('SyncService — connecting', () => {
   })
 })
 
+describe('SyncService — a sign-in left unfinished', () => {
+  it('forgets the account token once the connect flow is let go', async () => {
+    const { accountToken } = await server.account(EMAIL)
+    const { vaultId } = await server.vault(accountToken, 'Home')
+    start()
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+
+    service.endConnect()
+
+    await expect(service.chooseVault(vaultId, 'Laptop')).rejects.toThrow('sign in')
+    expect(service.isConnected()).toBe(false)
+  })
+})
+
 describe('SyncService — syncing', () => {
   it('sends a note made in the vault to the server', async () => {
     const { other } = await connect()
