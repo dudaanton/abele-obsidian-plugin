@@ -2,12 +2,11 @@
  * What a page of a book answers to: keys, a tap at its edges, a swipe, a tap on a highlight, and
  * a link out of the book.
  */
-import { Platform } from 'obsidian'
 import type { View as FoliateView } from '@/vendor/foliate-js/view.js'
 import { isOpenableExternal } from './bookSafety'
 import { swipeDirection } from './swipe'
 import { PDF_SCROLL_TAG } from './pdfScroll'
-import { PageGesture, SelectionPager } from './selectionPaging'
+import { PageGesture, pagerFor } from './selectionPaging'
 import { figureAt, fitFigures } from './figures'
 import type { BookModel } from './model'
 import type { BookReading } from './BookReading'
@@ -45,7 +44,7 @@ export function watchPage(host: PageHost, doc: Document): void {
     | undefined
   // The engine's own swipes wait while words are selected or a bar is open.
   if (renderer) renderer.holdPages = barOpen(host)
-  new SelectionPager(doc, {
+  pagerFor(doc, {
     // A PDF in one long scroll has no pages to turn under a selection.
     renderer: () => {
       const r = host.reader()?.renderer
@@ -54,7 +53,6 @@ export function watchPage(host: PageHost, doc: Document): void {
     stage: () => host.stage(),
     fixed: () => host.fixed(),
     visible: () => host.reader()?.lastLocation?.range ?? null,
-    touch: () => Platform.isMobile || !!doc.defaultView?.matchMedia?.('(pointer: coarse)').matches,
   })
   // The engine turns a reflowing book's pages under a finger itself; a PDF's it does not — and a
   // PDF in one long scroll is moved by the finger as it is, not turned.

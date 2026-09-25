@@ -46,10 +46,10 @@ function setup() {
     goRight: vi.fn(async () => {}),
     isFixedLayout: false,
     lastLocation: null,
-    renderer: {
+    renderer: Object.assign(new EventTarget(), {
       localName: 'foliate-paginator',
       holdPages: undefined as undefined | (() => boolean),
-    },
+    }),
   }
   const stage = stageOf()
   const model = { selection: null as unknown, active: null as unknown } as PageHost['model']
@@ -152,44 +152,81 @@ describe('a tap on a page turned one at a time', () => {
   })
 })
 
-describe('a selection held at the edge of the page', () => {
+describe('a selection on pages turned one at a time', () => {
   beforeEach(() => vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] }))
-  afterEach(() => vi.useRealTimers())
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
 
-  function pager(opts: { page?: number; pages?: number; fixed?: boolean; touch?: boolean } = {}) {
+  /**
+   * Two pages: the first paragraph is page 2 of the chapter, the second page 3. Turning moves
+   * the range on screen from one to the other and says so, as the engine does.
+   */
+  function pager(
+    opts: { page?: number; pages?: number; fixed?: boolean; scrolled?: boolean } = {}
+  ) {
     const doc = page()
-    const renderer = {
+    const a = doc.getElementById('a')!.firstChild as Text
+    const b = doc.getElementById('b')!.firstChild as Text
+    const pageRange = (t: Text) => {
+      const r = doc.createRange()
+      r.setStart(t, 0)
+      r.setEnd(t, t.length)
+      return r
+    }
+    let visible: Range = pageRange(a)
+    // Where words are: on screen when their paragraph is the page on screen, far off it else.
+    vi.spyOn(Range.prototype, 'getClientRects').mockImplementation(function (this: Range) {
+      const here = this.startContainer === visible.startContainer
+      const rect = { left: here ? 20 : 1000, top: 100, width: 30, height: 20 } as DOMRect
+      return [rect] as unknown as DOMRectList
+    })
+    const renderer = Object.assign(new EventTarget(), {
       page: opts.page ?? 2,
       pages: opts.pages ?? 8,
-      next: vi.fn(async () => {}),
-      prev: vi.fn(async () => {}),
-    }
+      scrolled: !!opts.scrolled,
+      next: vi.fn(async () => {
+        renderer.page++
+        visible = pageRange(b)
+        renderer.dispatchEvent(new Event('relocate'))
+      }),
+      prev: vi.fn(async () => {
+        renderer.page--
+        visible = pageRange(a)
+        renderer.dispatchEvent(new Event('relocate'))
+      }),
+    })
     const told: string[] = []
-    let visible: Range | null = null
-    new SelectionPager(
+    const pager = new SelectionPager(
       doc,
       {
         renderer: () => renderer,
         stage: () => stageOf(400),
         fixed: () => !!opts.fixed,
         visible: () => visible,
-        touch: () => opts.touch ?? false,
       },
       (m) => told.push(m)
     )
-    const move = (x: number) => {
-      const e = new MouseEvent('mousemove', { clientX: x, buttons: 1 })
-      doc.dispatchEvent(e)
-    }
+    const move = (x: number) =>
+      doc.dispatchEvent(new MouseEvent('mousemove', { clientX: x, buttons: 1 }))
     const press = () => doc.dispatchEvent(new Event('mousedown'))
     const release = () => doc.dispatchEvent(new Event('mouseup'))
-    return { doc, renderer, told, move, press, release, setVisible: (r: Range) => (visible = r) }
+    const sel = doc.getSelection()!
+    /** Moves the selection the way WebKit does under a handle, and lets it be heard. */
+    const handle = (anchor: [Node, number], focus: [Node, number]) => {
+      sel.setBaseAndExtent(anchor[0], anchor[1], focus[0], focus[1])
+      doc.dispatchEvent(new Event('selectionchange'))
+      vi.advanceTimersByTime(1)
+    }
+    const selected = () => sel.getRangeAt(0).cloneContents().textContent
+    return { doc, a, b, renderer, told, pager, move, press, release, handle, selected }
   }
 
-  it('turns forward once it has rested at the right edge, and again while it stays there', () => {
-    const { doc, renderer, move, press } = pager()
+  it('turns forward once a pointer has held it at the right edge, and again while it stays there', () => {
+    const { a, renderer, move, press, handle } = pager()
     press()
-    select(doc)
+    handle([a, 0], [a, 5])
     move(200)
     move(395)
     vi.advanceTimersByTime(EDGE_HOLD_MS - 100)
@@ -199,12 +236,12 @@ describe('a selection held at the edge of the page', () => {
   })
 
   it('turns back at the left edge, and not at all without a selection or once released', () => {
-    const { doc, renderer, move, press, release } = pager()
+    const { a, renderer, move, press, release, handle } = pager()
     press()
     move(5)
     vi.advanceTimersByTime(EDGE_HOLD_MS * 2)
     expect(renderer.prev).not.toHaveBeenCalled()
-    select(doc)
+    handle([a, 0], [a, 5])
     move(5)
     vi.advanceTimersByTime(EDGE_HOLD_MS + 50)
     expect(renderer.prev).toHaveBeenCalledTimes(1)
@@ -213,52 +250,73 @@ describe('a selection held at the edge of the page', () => {
     expect(renderer.prev).toHaveBeenCalledTimes(1)
   })
 
-  it('stops at the end of the chapter and says so, once', () => {
-    const { doc, renderer, told, move, press } = pager({ page: 6, pages: 8 })
-    press()
-    select(doc)
-    move(395)
-    vi.advanceTimersByTime(EDGE_HOLD_MS * 3)
+  it('never turns on its own when no pointer is followed, as under iOS’s handles', () => {
+    const { a, renderer, handle } = pager()
+    handle([a, 0], [a, 5])
+    handle([a, 0], [a, a.length])
+    vi.advanceTimersByTime(EDGE_HOLD_MS * 5)
+    expect(renderer.next).not.toHaveBeenCalled()
+  })
+
+  it('stays on the pages it has been shown on: a handle dragged off the text stops at the page’s end', () => {
+    // WebKit takes a point below a page's text for the end of the chapter: the selection runs on.
+    const { a, b, handle, selected } = pager()
+    handle([a, 6], [a, 10])
+    handle([a, 6], [b, 20])
+    expect(selected()).toBe('beta gamma delta.')
+    // Backwards too: its start held at the page's first word.
+    handle([a, 10], [a, 6])
+    expect(selected()).toBe('beta')
+  })
+
+  it('is carried onto the next page, its end on that page’s first word, then grows there', async () => {
+    const { a, b, renderer, pager: p, handle, selected } = pager()
+    handle([a, 6], [a, 10])
+    const extended = p.extend(1)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(await extended).toBe(true)
+    expect(renderer.next).toHaveBeenCalledTimes(1)
+    expect(selected()).toBe('beta gamma delta.Epsilon')
+    // Its handle taken on down the new page: nothing holds it back there.
+    handle([a, 6], [b, 20])
+    expect(selected()).toBe('beta gamma delta.Epsilon zeta eta the')
+  })
+
+  it('only turns back when its start is already on the page before', async () => {
+    const { a, renderer, pager: p, handle, selected } = pager({ page: 3 })
+    handle([a, 6], [a, 10])
+    await renderer.next()
+    const back = p.extend(-1)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(await back).toBe(true)
+    expect(renderer.prev).toHaveBeenCalledTimes(1)
+    expect(selected()).toBe('beta')
+  })
+
+  it('works a screen at a time in a scrolled chapter', async () => {
+    const { a, renderer, pager: p, handle, selected } = pager({ scrolled: true })
+    Object.assign(renderer, { start: 0, end: 400, viewSize: 2000 })
+    handle([a, 6], [a, 10])
+    const extended = p.extend(1)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(await extended).toBe(true)
+    expect(selected()).toBe('beta gamma delta.Epsilon')
+  })
+
+  it('stops at the end of the chapter and says so, once', async () => {
+    const { a, renderer, told, pager: p, handle } = pager({ page: 6, pages: 8 })
+    handle([a, 6], [a, 10])
+    expect(await p.extend(1)).toBe(false)
+    expect(await p.extend(1)).toBe(false)
     expect(renderer.next).not.toHaveBeenCalled()
     expect(told).toEqual(['The selection stops at the end of the chapter.'])
   })
 
-  it('stays on its page of a PDF, and says why', () => {
-    const { doc, renderer, told, move, press } = pager({ fixed: true })
-    press()
-    select(doc)
-    move(395)
-    vi.advanceTimersByTime(EDGE_HOLD_MS + 50)
+  it('stays on its page of a PDF, and says why', async () => {
+    const { a, renderer, told, pager: p, handle } = pager({ fixed: true })
+    handle([a, 0], [a, 5])
+    expect(await p.extend(1)).toBe(false)
     expect(renderer.next).not.toHaveBeenCalled()
     expect(told[0]).toMatch(/own page/)
-  })
-
-  it('with no pointer to follow, turns when a moved end rests on the last word of the page', () => {
-    const { doc, renderer, setVisible } = pager({ touch: true })
-    const b = doc.getElementById('b')!.firstChild!
-    const visible = doc.createRange()
-    visible.setStart(doc.getElementById('a')!.firstChild!, 0)
-    visible.setEnd(b, b.textContent!.length)
-    setVisible(visible)
-    // Selected by a long press on the last word: that alone does not turn.
-    const sel = doc.getSelection()!
-    // A handle dragged moves one end of the selection; it is never let go and made again.
-    sel.removeAllRanges()
-    const at = (from: [Node, number], to: [Node, number]) => {
-      sel.setBaseAndExtent(from[0], from[1], to[0], to[1])
-      doc.dispatchEvent(new Event('selectionchange'))
-    }
-    at([b, 29], [b, 34])
-    vi.advanceTimersByTime(EDGE_HOLD_MS * 2)
-    expect(renderer.next).not.toHaveBeenCalled()
-    // Its start handle moved back to the middle of the page: no turn either.
-    at([b, 8], [b, 34])
-    vi.advanceTimersByTime(EDGE_HOLD_MS * 2)
-    expect(renderer.next).not.toHaveBeenCalled()
-    // A selection's end handle dragged down onto the last word does turn.
-    at([b, 8], [b, 20])
-    at([b, 8], [b, 33])
-    vi.advanceTimersByTime(EDGE_HOLD_MS + 50)
-    expect(renderer.next).toHaveBeenCalledTimes(1)
   })
 })

@@ -36,29 +36,52 @@
     </template>
 
     <div class="abele-book-reader__main">
-      <div ref="stage" class="abele-book-reader__stage" />
-      <div v-if="model.status !== 'ready'" class="abele-book-reader__message">
-        {{ model.message }}
+      <!-- The page, and what stands over it: the bars never take room from the page, which the
+           engine would lay out anew — moving the words under a selection being made. -->
+      <div class="abele-book-reader__page">
+        <div ref="stage" class="abele-book-reader__stage" />
+        <div v-if="model.status !== 'ready'" class="abele-book-reader__message">
+          {{ model.message }}
+        </div>
+        <!-- Words selected in a reflowing book: carried onto the next or last page on purpose. -->
+        <template v-if="model.status === 'ready' && model.selection && model.kind === 'epub'">
+          <Icon
+            class="abele-book-reader__extend abele-book-reader__extend_prev"
+            icon="chevron-left"
+            tooltip="Carry the selection onto the page before"
+            data-ignore-swipe="true"
+            @click="emit('extend', -1)"
+          />
+          <Icon
+            class="abele-book-reader__extend abele-book-reader__extend_next"
+            icon="chevron-right"
+            tooltip="Carry the selection onto the next page"
+            data-ignore-swipe="true"
+            @click="emit('extend', 1)"
+          />
+        </template>
+        <div class="abele-book-reader__bars">
+          <BookSelectionBar
+            v-if="model.status === 'ready' && (model.selection || model.active)"
+            :highlight="model.active"
+            :can-ask="model.canAsk"
+            @ask="emit('ask', quoteTarget())"
+            @read-aloud="emit('read-aloud')"
+            @color="onColor"
+            @comment="onComment"
+            @copy-link="emit('copy-link', target())"
+            @quote="emit('quote', quoteTarget())"
+            @open-note="emit('open-note', model.active ?? undefined)"
+            @delete="model.active && emit('delete-highlight', model.active)"
+            @close="model.active ? emit('close-active') : emit('clear-selection')"
+          />
+          <BookSpeechBar
+            v-if="model.status === 'ready' && model.speech !== 'idle'"
+            :state="model.speech === 'paused' ? 'paused' : 'playing'"
+            @action="emit('speech', $event)"
+          />
+        </div>
       </div>
-      <BookSelectionBar
-        v-if="model.status === 'ready' && (model.selection || model.active)"
-        :highlight="model.active"
-        :can-ask="model.canAsk"
-        @ask="emit('ask', quoteTarget())"
-        @read-aloud="emit('read-aloud')"
-        @color="onColor"
-        @comment="onComment"
-        @copy-link="emit('copy-link', target())"
-        @quote="emit('quote', quoteTarget())"
-        @open-note="emit('open-note', model.active ?? undefined)"
-        @delete="model.active && emit('delete-highlight', model.active)"
-        @close="model.active ? emit('close-active') : emit('clear-selection')"
-      />
-      <BookSpeechBar
-        v-if="model.status === 'ready' && model.speech !== 'idle'"
-        :state="model.speech === 'paused' ? 'paused' : 'playing'"
-        @action="emit('speech', $event)"
-      />
       <div
         v-if="model.status === 'ready'"
         class="abele-book-reader__footer"
@@ -165,6 +188,7 @@ const emit = defineEmits<{
   (e: 'settings', open: boolean): void
   (e: 'footnote-close'): void
   (e: 'figure-close'): void
+  (e: 'extend', dir: 1 | -1): void
   (e: 'footnote-go'): void
   (e: 'panel-tab', tab: PanelTab): void
   (e: 'search', query: string): void
@@ -286,9 +310,50 @@ watch(
     min-width: 0;
   }
 
+  &__page {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
   &__stage {
     flex: 1 1 auto;
     min-height: 0;
+  }
+
+  &__bars {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Beside the page, halfway down, over its margin: small enough to leave the text alone. */
+  &__extend {
+    position: absolute;
+    top: 45%;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--size-4-6);
+    height: var(--size-4-12);
+    border-radius: var(--radius-l);
+    background-color: var(--background-modifier-hover);
+    color: var(--text-accent);
+  }
+
+  &__extend_prev {
+    left: var(--size-2-1);
+  }
+
+  &__extend_next {
+    right: var(--size-2-1);
   }
 
   &__message {

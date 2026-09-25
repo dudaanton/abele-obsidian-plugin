@@ -17,7 +17,7 @@
  * real finger and iOS's own gestures are for the phone itself.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, evalJson } from './helpers/obsidianCli'
+import { hasTestApi, isObsidianRunning, evalRaw, evalJson, runCli } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildFigureEpub } from '../fixtures/books/figureBook'
@@ -38,11 +38,19 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
   )
   await pause(1500)
 }
+/**
+ * The app's DevTools debugger, which the touches and clicks here are sent through, attached the
+ * way the CLI attaches it: after a fresh start of the app nothing has, and input sent through it
+ * goes nowhere.
+ */
+const attachDebugger = (): void => void runCli(['dev:debug', 'on'], 30_000)
+
 const reload = async (how: string): Promise<void> => {
   evalRaw(`(() => { setTimeout(() => { ${how} }, 50); return 'ok' })()`, 30_000)
   await pause(4000)
   const deadline = Date.now() + 60_000
   while (!hasTestApi() && Date.now() < deadline) await pause(1000)
+  attachDebugger()
   evalRaw(
     `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(false); return 'ok' })()`
   )
@@ -113,6 +121,7 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
   let size: [number, number] = [0, 0]
 
   beforeAll(async () => {
+    attachDebugger()
     const files = {
       'rich.epub': Buffer.from(buildRichEpub()).toString('base64'),
       'figures.epub': Buffer.from(buildFigureEpub()).toString('base64'),

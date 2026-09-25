@@ -78,6 +78,11 @@ const measure = (name: string) =>
       if (!await until(() => view.engine?.lastLocation)) return { ...report, error: 'the book never showed' }
       await wait(1000)
       const engine = view.engine
+      // From the start: a book opens where the last run left it, which may be its last page.
+      if (engine.lastLocation.fraction > 0) {
+        await engine.goTo(${JSON.stringify(name)}.endsWith('-pdf') ? 0 : engine.book.toc?.[0]?.href ?? 0)
+        await wait(800)
+      }
       const r = engine.getBoundingClientRect()
       const whole = view.contentEl.querySelector('.abele-book-reader').getBoundingClientRect()
       report.over = Math.max(0, Math.round(Math.max(r.right, whole.right) - window.innerWidth))

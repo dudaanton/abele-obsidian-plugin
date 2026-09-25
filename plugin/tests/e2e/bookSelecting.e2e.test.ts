@@ -16,7 +16,7 @@
  * handle would make is set by the test as the finger moves.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, evalJson } from './helpers/obsidianCli'
+import { hasTestApi, isObsidianRunning, evalRaw, evalJson, runCli } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
@@ -39,11 +39,19 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
   )
   await pause(1500)
 }
+/**
+ * The app's DevTools debugger, which the touches and clicks here are sent through, attached the
+ * way the CLI attaches it: after a fresh start of the app nothing has, and input sent through it
+ * goes nowhere.
+ */
+const attachDebugger = (): void => void runCli(['dev:debug', 'on'], 30_000)
+
 const reload = async (how: string): Promise<void> => {
   evalRaw(`(() => { setTimeout(() => { ${how} }, 50); return 'ok' })()`, 30_000)
   await pause(4000)
   const deadline = Date.now() + 60_000
   while (!hasTestApi() && Date.now() < deadline) await pause(1000)
+  attachDebugger()
   evalRaw(
     `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(false); return 'ok' })()`
   )
@@ -68,10 +76,12 @@ const PRELUDE = `
     await touch('touchEnd'); await wait(900)
   }
   const open = async (path) => {
-    const leaf = app.workspace.getLeaf('tab')
+    // A new tab, or the one Obsidian keeps when there is no tab group to put one in.
+    let leaf
+    try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
     await leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true })
+    await until(() => leaf.view?.model?.status === 'ready' && leaf.view.reading, 15000)
     const view = leaf.view
-    await until(() => view.model?.status === 'ready', 15000)
     await wait(500)
     return { leaf, view }
   }
@@ -80,6 +90,8 @@ const PRELUDE = `
   const box = (view) => R(view).getBoundingClientRect()
   /** Chapter 1, its second page, nothing selected and no bar open. */
   const fresh = async (view) => {
+    // The contents panel, which the desktop remembers open, would stand over the page.
+    if (view.model.panel) { view.model.panel = false; await wait(400) }
     view.reading.clearSelection(); view.model.active = null
     await view.engine.goTo(view.model.toc[0].href); await wait(500)
     await R(view).next(); await wait(700)
@@ -136,6 +148,7 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
   let size: [number, number] = [0, 0]
 
   beforeAll(() => {
+    attachDebugger()
     const files = {
       'rich.epub': Buffer.from(buildRichEpub()).toString('base64'),
       'plain.pdf': Buffer.from(buildPlainPdf()).toString('base64'),
@@ -458,31 +471,69 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
       expect(r.text!.startsWith(r.first!)).toBe(true)
     })
 
-    it('with no finger to follow, as iOS moves its handles, an end left on the last word turns the page', () => {
-      const r = run<{ error?: string; pages?: number[]; kept?: boolean }>(`
+    it('with no finger to follow, as under iOS’s handles, the selection stays on its page and the buttons beside it carry it on', () => {
+      const r = run<{
+        error?: string
+        pages?: number[]
+        clamped?: boolean
+        buttons?: boolean
+        carried?: { page: number; spans: boolean; ends: string; debug?: string[] }
+        grown?: boolean
+        back?: { page: number; kept: boolean }
+      }>(`
         const { leaf, view } = await open(${JSON.stringify(BOOK)})
         await fresh(view)
+        const visible = view.engine.lastLocation.range
         const list = words(view)
         const first = list[Math.floor(list.length / 2)]
-        const last = list[list.length - 1]
-        const sel = docOf(view).getSelection()
+        const doc = docOf(view)
+        const sel = doc.getSelection()
         select(view, first.range)
-        await wait(300)
+        await until(() => view.model.selection, 3000)
         const p0 = R(view).page
-        const mid = list[Math.floor(list.length * 0.75)]
-        sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, mid.range.endContainer, mid.range.endOffset)
-        await wait(200)
-        sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, last.range.endContainer, last.range.endOffset)
-        await until(() => R(view).page !== p0, 3000)
-        const p1 = R(view).page
-        const kept = !sel.isCollapsed && sel.toString().startsWith(first.range.toString())
+        // What WebKit does with a handle dragged below a page's text: the end of the chapter.
+        const body = doc.body
+        sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, body, body.childNodes.length)
+        await wait(1500)
+        const range = sel.getRangeAt(0)
+        const clamped = R(view).page === p0 && visible.comparePoint(range.endContainer, range.endOffset) === 0
+        // The buttons beside the page, tapped.
+        const next = await until(() => view.contentEl.querySelector('.abele-book-reader__extend_next'), 3000)
+        const buttons = !!next && !!view.contentEl.querySelector('.abele-book-reader__extend_prev')
+        await shoot('phone-extend-buttons')
+        const b = next.getBoundingClientRect()
+        await tap(b.left + b.width / 2, b.top + b.height / 2)
+        await wait(400)
+        const after = sel.getRangeAt(0)
+        const carried = {
+          debug: [after.toString().slice(-40), words(view)[0]?.range.toString(), visible.toString().slice(-30)],
+          page: R(view).page,
+          spans: visible.comparePoint(after.endContainer, after.endOffset) > 0,
+          ends: after.toString().trim().split(/\\s+/).pop(),
+        }
+        const onPage = words(view)
+        await shoot('phone-extended')
+        // Its end taken on further down the new page.
+        const further = onPage[Math.floor(onPage.length / 2)]
+        sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, further.range.endContainer, further.range.endOffset)
+        await wait(300)
+        const grown = sel.toString().trim().endsWith(further.range.toString())
+        // Back a page: its start is already there, so the page only turns.
+        const prev = view.contentEl.querySelector('.abele-book-reader__extend_prev').getBoundingClientRect()
+        await tap(prev.left + prev.width / 2, prev.top + prev.height / 2)
+        await wait(400)
+        const back = { page: R(view).page, kept: sel.toString().startsWith(first.range.toString()) && sel.toString().trim().endsWith(further.range.toString()) }
         view.reading.clearSelection()
         leaf.detach()
-        return { pages: [p0, p1], kept }
+        return { pages: [p0], clamped, buttons, carried, grown, back, firstWord: onPage[0]?.range.toString() }
       `)
       expect(r.error).toBeUndefined()
-      expect(r.pages![1]).toBe(r.pages![0] + 1)
-      expect(r.kept).toBe(true)
+      expect(r.clamped).toBe(true)
+      expect(r.buttons).toBe(true)
+      expect(r.carried!.page).toBe(r.pages![0] + 1)
+      expect(r.carried!.spans, JSON.stringify(r.carried)).toBe(true)
+      expect(r.grown).toBe(true)
+      expect(r.back).toEqual({ page: r.pages![0], kept: true })
     })
 
     it('stops at the end of the chapter, and says so', () => {

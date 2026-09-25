@@ -58,14 +58,19 @@ under the page:
 A **tap on a highlight** brings up the same bar for it: another colour, the comment, a link, the
 quote, the highlights note, or remove it. A tap beside the bar closes it.
 
-**A selection can run over several pages**, as in Apple Books. Held at the left or right edge of
-the page for a moment — with the mouse, or with a finger — the selection turns the page and goes
-on growing on the next one, a page a second while it stays there. On an iPhone, whose selection
-handles do not tell the page where the finger is, an end of the selection moved onto the last
-word of the page (or the first, going back) and left there does the same. The selection is one
-range of the chapter and is highlighted, linked and quoted as one. It stops at the end of its
-chapter, and says so; in a PDF or a book of fixed pages each page is a document of its own, and a
-selection stays on its page.
+**A selection can run over several pages.** While words are selected, two small buttons stand
+beside the page, halfway down: **›** turns the page and carries the selection's end onto the first
+word of the next page, where its handle can be dragged on; **‹** does the same backwards with its
+start. An end already on that page is left alone and the page only turns, so the buttons also
+move back and forth over a long selection. It works a screen at a time in a scrolled chapter too.
+With a mouse (or wherever the page hears the finger move) the selection held at the left or right
+edge of the page for a moment turns the page by itself and goes on growing, a page a second.
+
+A selection stays on the pages it has been shown on: a handle dragged off the text stops at the
+page's last word instead of running to the end of the chapter, and the page never turns under it
+by itself. The selection is one range of the chapter and is highlighted, linked and quoted as
+one. It stops at the end of its chapter, and says so; in a PDF or a book of fixed pages each page
+is a document of its own, and a selection stays on its page.
 
 **Highlights live in a note beside the book**, `<book> highlights.md`, made with the first one:
 

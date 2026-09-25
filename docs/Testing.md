@@ -255,7 +255,24 @@ Three files, three concerns:
   moved, a swipe or tap over a selection, a tap on a highlight, a tap beside an open bar and taps
   on the bars' buttons do not. A selection held at the edge turns the page and grows onto the
   next — with the mouse, with a finger, and with only its end moved, as iOS's handles do — and is
-  highlighted as one; it stops at the end of the chapter and in a PDF at its page, and says so.
+  highlighted as one. With nothing but the selection to go by, as under iOS's handles, it never turns
+  by itself, stays on its page when WebKit runs it to the end of the chapter, and the buttons beside
+  the page carry it on and back. It stops at the end of the chapter and in a PDF at its page, and
+  says so.
+- **The iOS lab** (`plugin/tests/ios/`) — the reader's engine and page wiring in a plain page, run
+  in Safari in the iOS Simulator: the real WebKit, with its own long press, selection handles and
+  scrolling, which Chromium's emulation does not have. No emulator runs Obsidian, but this is the
+  part of the reader that talks to WebKit. Start the server with `node tests/ios/run.mjs` (it
+  bundles `lab.ts` with the project's esbuild, the `obsidian` module stubbed), boot a Simulator
+  iPhone (`xcrun simctl boot <id>`) and open `http://localhost:8787/?flow=paginated` (or
+  `scrolled`) with `xcrun simctl openurl`. The page reports every selection change, scroll,
+  relocation and touch event to `/tmp/abele-ios/log.jsonl`. `tests/ios/play.sh <id> '<steps>'
+  [picture]` plays gestures — press, drag with a hold, tap, wait, in points of the screen — through
+  a UI test that drives Safari (`tests/ios/driver/`, an Xcode project of a host app and the test,
+  built once into `/tmp`), prints the log and pictures the screen. It needs Xcode and an iOS
+  Simulator runtime, nothing else. What it showed: while a selection
+  handle is dragged WebKit sends the page a touchstart and nothing else, and a handle dragged
+  below a page's text selects to the end of the chapter.
 - `bookPhoneControls.e2e.test.ts` — **the reader's controls on a phone**: the progress slider
   dragged does not open the side panel; the text and layout dialog scrolls to its last row and the
   note and comment dialogs show their buttons; a dialog with a search field keeps its size under a
