@@ -1,0 +1,56 @@
+{
+  "$comment": "What plugin/scripts/repo-guard.mjs lets into the repository. Adding an entry here is how something is allowed on purpose — see docs/Repository guard.md.",
+
+  "$layout": "Every directory named here may hold only the entries listed; a new file or folder beside them fails until it is added. Directories not named here are not checked this way.",
+  "layout": {
+    ".": [
+      ".githooks",
+      ".github",
+      "LICENSE",
+      "README.md",
+      "assets",
+      "docs",
+      "manifest.json",
+      "plugin",
+      "release.sh",
+      "versions.json"
+    ],
+    ".githooks": ["pre-commit"],
+    ".github": ["workflows"],
+    "plugin": [
+      ".gitignore",
+      ".npmrc",
+      ".prettierrc.mjs",
+      ".prod.env.example",
+      ".test.env.example",
+      "build_and_copy_plugin_prod.sh",
+      "build_and_copy_plugin_test.sh",
+      "eslint.config.mjs",
+      "eslint.review.mjs",
+      "package-lock.json",
+      "package.json",
+      "scripts",
+      "src",
+      "tests",
+      "tsconfig.json",
+      "version-bump.mjs",
+      "vite.config.mts",
+      "vitest.config.ts",
+      "vitest.e2e.config.ts",
+      "vitest.measure.config.ts",
+      "vitest.perf.config.ts",
+      "vitest.size.config.ts",
+      "watch.sh"
+    ]
+  },
+
+  "maxBytes": 1048576,
+
+  "$allow": "Globs (** crosses folders, * does not). large: files over maxBytes. images: where pictures and videos may live. junk: paths the junk rules would refuse. homePaths: files that may name a real home directory.",
+  "allow": {
+    "large": ["assets/abele_preview.jpg"],
+    "images": ["assets/**", "docs/**", "plugin/tests/fixtures/**"],
+    "junk": [],
+    "homePaths": []
+  }
+}

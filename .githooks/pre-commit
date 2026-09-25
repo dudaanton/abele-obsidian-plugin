@@ -1,6 +1,12 @@
 #!/bin/sh
 #
-# Runs the fast test tiers before every commit: unit and integration.
+# Runs before every commit: the repository guard, then the fast test tiers (unit and
+# integration).
+#
+# The guard (plugin/scripts/repo-guard.mjs) refuses stray tool output, build results, big files,
+# credentials and real home paths in what is staged. It needs nothing but node and takes well
+# under a second, so it runs even when plugin/node_modules is missing. See
+# docs/Repository guard.md for how to allow something on purpose.
 #
 # The complexity tier (`npm run test:perf`) and the end-to-end tier (`npm run test:e2e`)
 # are deliberately not run here — the first currently fails by design, and the second needs
@@ -12,6 +18,8 @@ set -e
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root/plugin"
+
+node scripts/repo-guard.mjs --staged
 
 if [ ! -d node_modules ]; then
   echo "pre-commit: plugin/node_modules missing, skipping tests"

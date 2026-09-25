@@ -9,6 +9,7 @@ Three tiers, each with its own command. All commands run from `plugin/`.
 | `npm run test:perf` | complexity | no | no | no |
 | `npm run test:e2e` | end-to-end | yes | no | no |
 | `npm run test:all` | everything | yes | no | no |
+| `npm run guard` | repository guard | no | yes (staged) | yes |
 
 `npm run test:watch` re-runs the fast tier on change.
 
@@ -22,6 +23,10 @@ carries Obsidian's own plugin rules and fails on any of them — see
 [Obsidian compliance](Obsidian%20compliance.md). It runs from the repository root, because
 several of those rules read `manifest.json` from the working directory and the manifest lives
 in the root; the `lint` script changes directory for you.
+
+The repository guard runs first, both on commit and in CI: it refuses stray tool output,
+build results, big files, credentials and real home paths — see
+[Repository guard](Repository%20guard.md), which also says how to allow something on purpose.
 
 ## Policy
 
@@ -528,7 +533,7 @@ journals, tasks, finance accounts/transactions/categories, time entries and `.ab
 Output is deterministic for a given `--seed`.
 
 ```bash
-node scripts/generate-vault.mjs --out ~/obsidian-scale-test --files 12000 --seed 42
+node scripts/generate-vault.mjs --out /path/to/scale-test-vault --files 12000 --seed 42
 ```
 
 Options: `--out` (required), `--files` (approximate total, default 12000), `--seed`

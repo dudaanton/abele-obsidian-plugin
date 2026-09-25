@@ -13,6 +13,8 @@
     "test:perf": "vitest run --config vitest.perf.config.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:size": "vitest run --config vitest.size.config.ts",
+    "guard": "node scripts/repo-guard.mjs --all",
+    "guard:staged": "node scripts/repo-guard.mjs --staged",
     "measure:tokens": "vitest run --config vitest.measure.config.ts",
     "test:all": "npm run test && npm run test:size && npm run test:perf && npm run test:e2e",
     "prepare": "git config core.hooksPath .githooks",

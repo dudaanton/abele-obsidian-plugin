@@ -14,12 +14,33 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The guard reads every commit the push or pull request brings, not only the tip.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22.x"
           cache: npm
           cache-dependency-path: plugin/package-lock.json
+
+      # Nothing extraneous and no credentials: the tree as it is, then each new commit on its
+      # own, because a secret added in one commit and deleted in the next is still published.
+      # Needs no dependencies. See docs/Repository guard.md.
+      - name: Repository guard
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          node plugin/scripts/repo-guard.mjs --all
+          base=""
+          if [ "$EVENT" = "pull_request" ]; then base="$PR_BASE"; fi
+          if [ "$EVENT" = "push" ]; then base="$PUSH_BEFORE"; fi
+          if [ -n "$base" ] && [ "$base" != "0000000000000000000000000000000000000000" ] \
+            && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            node plugin/scripts/repo-guard.mjs --range "$base..HEAD"
+          fi
 
       - name: Install dependencies
         working-directory: plugin
