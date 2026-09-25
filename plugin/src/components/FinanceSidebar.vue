@@ -25,22 +25,30 @@
           {{ formatAmount(card.assets) }}
           <span class="abele-finance-sidebar__card-currency">{{ card.currency }}</span>
         </div>
+        <!-- Both directions share one row, told apart by sign and colour; the words for each
+             are on hover. The net is only worth a row when it differs from the balance. -->
         <div v-if="card.debt > 0 || card.owed > 0" class="abele-finance-sidebar__card-details">
-          <span v-if="card.debt > 0" class="abele-finance-sidebar__card-debt">
-            Debt {{ formatAmount(card.debt) }}
-          </span>
-          <span v-if="card.owed > 0" class="abele-finance-sidebar__card-owed">
-            Owed to me {{ formatAmount(card.owed) }}
-          </span>
-          <span
-            class="abele-finance-sidebar__card-net"
-            :class="{
-              'abele-finance-sidebar__summary-value--income': card.net >= 0,
-              'abele-finance-sidebar__summary-value--expense': card.net < 0,
-            }"
-          >
-            Net {{ formatAmount(card.net) }}
-          </span>
+          <div class="abele-finance-sidebar__card-row">
+            <span class="abele-finance-sidebar__summary-label">Debts</span>
+            <span class="abele-finance-sidebar__card-debts">
+              <span
+                v-if="card.owed > 0"
+                class="abele-finance-sidebar__card-debt-amount abele-finance-sidebar__summary-value--income"
+                aria-label="Owed to me"
+                >+{{ formatAmount(card.owed) }}</span
+              >
+              <span
+                v-if="card.debt > 0"
+                class="abele-finance-sidebar__card-debt-amount abele-finance-sidebar__summary-value--expense"
+                aria-label="I owe"
+                >-{{ formatAmount(card.debt) }}</span
+              >
+            </span>
+          </div>
+          <div class="abele-finance-sidebar__card-row">
+            <span class="abele-finance-sidebar__summary-label">Net</span>
+            <span class="abele-finance-sidebar__card-net">{{ formatAmount(card.net) }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -908,22 +916,27 @@ const dayTotals = computed(() => {
   font-weight: normal;
 }
 
+// Label on the left, amount on the right, as in the period summary below — one size smaller,
+// because these belong to the balance above them rather than standing on their own.
 .abele-finance-sidebar__card-details {
   display: flex;
-  flex-wrap: wrap;
-  column-gap: var(--size-4-2);
+  flex-direction: column;
   font-size: var(--font-ui-smaller);
-  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
-  margin-top: 2px;
 }
 
-.abele-finance-sidebar__card-debt {
-  color: var(--text-error);
+.abele-finance-sidebar__card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--size-4-2);
 }
 
-.abele-finance-sidebar__card-owed {
-  color: var(--text-success);
+.abele-finance-sidebar__card-debts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  column-gap: var(--size-4-2);
 }
 
 .abele-finance-sidebar__card-net {
