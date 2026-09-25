@@ -333,6 +333,19 @@ window that no longer exists.
 The suite skips itself when Obsidian is not running or the build lacks the test hook, so
 `npm run test:all` stays usable with Obsidian closed.
 
+### A reload must not keep the previous load alive
+
+Obsidian evaluates `main.js` afresh every time the plugin is switched off and on — a reload, an
+update, a toggle — and anything the old copy left reachable from the page holds that whole copy.
+Vue's global setters (`src/helpers/vueGlobals.ts` takes this bundle's back on unload) and the
+reader's custom elements (registered on first use, see `src/vendor/foliate-js/README.md`) each
+did: a development build leaked about 65 MB per reload, until the window's renderer crashed half
+way through the e2e tier. To check for another one: tag the plugin instance
+(`app.plugins.plugins.abele.__marker = new (class LeakMarker {})()`), reload it twice, force a
+collection (`obsidian dev:cdp method=HeapProfiler.collectGarbage`), write a snapshot from the app
+with `require('v8').writeHeapSnapshot(path)` and walk the retainers of `LeakMarker`. A
+development build keeps one previous copy through Vue devtools' globals; that one is bounded.
+
 ### Asserting that a layout does not break
 
 happy-dom cannot answer this, and a screenshot only answers it for whoever looks at it. In a

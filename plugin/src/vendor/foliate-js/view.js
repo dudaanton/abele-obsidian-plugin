@@ -2,7 +2,7 @@ import * as CFI from './epubcfi.js'
 import { TOCProgress, SectionProgress } from './progress.js'
 import { Overlayer } from './overlayer.js'
 import { textWalker } from './text-walker.js'
-import { tagName, defineElement } from './elements.js'
+import { tagName, defineOnFirstUse } from './elements.js'
 
 const SEARCH_PREFIX = 'foliate-search:'
 
@@ -600,5 +600,5 @@ export class View extends HTMLElement {
     }
 }
 
-// ABELE PATCH: registered under this load's name (elements.js).
-defineElement('foliate-view', View)
+// ABELE PATCH: registered under this load's name, when a book first asks for it (elements.js).
+defineOnFirstUse('foliate-view', View)

@@ -1,5 +1,5 @@
 import { frameOptions } from './frame-options.js' // ABELE PATCH
-import { defineElement } from './elements.js' // ABELE PATCH
+import { defineOnFirstUse } from './elements.js' // ABELE PATCH
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 const debounce = (f, wait, immediate) => {
@@ -1182,5 +1182,5 @@ export class Paginator extends HTMLElement {
     }
 }
 
-// ABELE PATCH: registered under this load's name (elements.js).
-defineElement('foliate-paginator', Paginator)
+// ABELE PATCH: registered under this load's name, when a book first asks for it (elements.js).
+defineOnFirstUse('foliate-paginator', Paginator)

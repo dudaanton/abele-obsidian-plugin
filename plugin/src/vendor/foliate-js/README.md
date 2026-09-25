@@ -51,7 +51,9 @@ Every change is marked `ABELE PATCH` at its site.
    `foliate-paginator` and `foliate-fxl` once for the page. A name cannot be registered twice or
    taken back, so the plugin could not load again after being turned off and on, or updated,
    until the app restarted. Each load now registers `<name>-<six letters>` of its own, and
-   creates its elements by those names.
+   creates its elements by those names. They are registered the first time a book asks for one
+   (`defineOnFirstUse`, `tagName`), not when the module loads: a registered class holds the whole
+   bundle it came from, so registering on load kept every earlier load of the plugin in memory.
 
 6. **A finger that is selecting never moves the page** (`paginator.js`, the touch handlers).
    Upstream scrolled the page under every finger that moved and cancelled the move, which took a

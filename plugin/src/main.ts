@@ -103,6 +103,12 @@ import { registerLineLinks } from './lineLinks/register'
 import { registerGithub } from '@/github/register'
 import { secrets, setSecrets } from '@/secrets/SecretStore'
 import { createPluginSecrets } from '@/secrets/host'
+import { claimVueSetters } from '@/helpers/vueGlobals'
+
+// Every module imported above has run its top-level code by now, Vue included, so the last of
+// its global setters are this bundle's. Taken back on unload, or every reload keeps the whole
+// previous bundle alive. See `helpers/vueGlobals.ts`.
+const releaseVueSetters = claimVueSetters()
 
 export default class AbelePlugin extends Plugin {
   private vueApp: VueApp | null = null
@@ -1207,6 +1213,7 @@ export default class AbelePlugin extends Plugin {
     if (process.env.NODE_ENV !== 'production') {
       delete (window as { __abeleTest?: unknown }).__abeleTest
     }
+    releaseVueSetters()
     console.debug('Obsidian Service Plugin unloaded.')
   }
 
