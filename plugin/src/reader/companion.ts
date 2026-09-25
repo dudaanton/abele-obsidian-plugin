@@ -58,12 +58,29 @@ async function companionFor(app: App, book: TFile): Promise<TFile> {
   return app.vault.create(path, newHighlightsNote(bookLink, book.basename))
 }
 
-/** Writes a highlight into the book's note, making the note if there is none yet. */
-export async function saveHighlight(app: App, book: TFile, h: Highlight): Promise<TFile> {
+/**
+ * Writes a highlight into the book's note, making the note if there is none yet. `chatPath` is
+ * the file of the discussion it carries, if it carries one, linked after its place.
+ */
+export async function saveHighlight(
+  app: App,
+  book: TFile,
+  h: Highlight,
+  chatPath?: string
+): Promise<TFile> {
   const note = await companionFor(app, book)
   const link = linkToPlace(app, book, { cfi: h.cfi }, h.label, note.path)
-  await app.vault.process(note, (md) => upsertHighlight(md, h, link, compare))
+  const chat = h.discussion && chatPath ? chatLink(app, chatPath, note.path) : undefined
+  await app.vault.process(note, (md) => upsertHighlight(md, h, link, compare, chat))
   return note
+}
+
+/** A link to a discussion's chat, the way the person's settings write links. */
+function chatLink(app: App, path: string, from: string): string {
+  const file = app.vault.getAbstractFileByPath(path)
+  return file instanceof TFile
+    ? app.fileManager.generateMarkdownLink(file, from, '', 'Discussion')
+    : `[[${path}|Discussion]]`
 }
 
 export async function deleteHighlight(app: App, book: TFile, cfi: string): Promise<void> {

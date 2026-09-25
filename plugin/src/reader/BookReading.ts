@@ -96,21 +96,26 @@ export class BookReading {
     return true
   }
 
+  /** A highlight tapped: its bar, and — for a discussion — its chat, opened again. */
   private activate(h: Highlight): void {
     this.model.selection = null
     this.model.active = h
+    if (h.discussion) void this.discuss(h)
   }
 
   /** The selected words highlighted in a colour; the note is made if there is none. */
   async highlight(color: HighlightColor, comment?: string): Promise<Highlight | null> {
     const sel = this.model.selection
     if (!sel) return null
+    // Words already asked about keep their discussion when they are highlighted.
+    const known = this.model.highlights.find((x) => x.cfi === sel.cfi)
     const h: Highlight = {
       cfi: sel.cfi,
       color,
       text: sel.text,
-      comment: comment ?? '',
+      comment: comment ?? known?.comment ?? '',
       label: sel.label,
+      ...(known?.discussion ? { discussion: known.discussion } : {}),
     }
     this.clearSelection()
     await this.save(h)
@@ -119,7 +124,10 @@ export class BookReading {
 
   async save(h: Highlight): Promise<void> {
     try {
-      await saveHighlight(this.app, this.file, h)
+      const chat = h.discussion
+        ? (await import('./bookDiscussions')).discussionPath(h.discussion)
+        : undefined
+      await saveHighlight(this.app, this.file, h, chat)
       await this.loadHighlights()
       if (this.model.active?.cfi === h.cfi) this.model.active = { ...h }
     } catch (e) {
@@ -127,7 +135,17 @@ export class BookReading {
     }
   }
 
+  /**
+   * Removes a highlight. One carrying a discussion asks first what becomes of its chat: kept as
+   * an ordinary chat, or deleted with the mark.
+   */
   async remove(h: Highlight): Promise<void> {
+    if (h.discussion) {
+      const { askWhatToRemove, releaseDiscussion } = await import('./bookDiscussions')
+      const choice = await askWhatToRemove(h)
+      if (!choice) return
+      await releaseDiscussion(h.discussion, choice)
+    }
     await deleteHighlight(this.app, this.file, h.cfi)
     this.model.active = null
     await this.loadHighlights()
@@ -251,9 +269,82 @@ export class BookReading {
   }
 
   /** A new chat with a link to the words, or to the page on screen, and the words quoted. */
+  /**
+   * "Ask here". On words — selected, or a highlight — a discussion kept with them: the one
+   * already held about them, opened again, or a new one, listed in the highlights note and
+   * marked in the book. With no words, a chat about the page, as before.
+   */
   async ask(target?: { cfi: string; label: string; text: string }): Promise<void> {
-    const { askAboutBook } = await import('./askAboutBook')
-    await askAboutBook(this.file, this.linkTo(target), target?.text)
+    if (!target?.text.trim()) {
+      const { askAboutBook } = await import('./askAboutBook')
+      await askAboutBook(this.file, this.linkTo(target), target?.text)
+      return
+    }
+    const known = this.model.highlights.find((h) => h.cfi === target.cfi)
+    if (known?.discussion && (await this.discuss(known))) return
+    const { startDiscussion } = await import('./bookDiscussions')
+    const id = await startDiscussion(this.file, target.cfi, target.text)
+    if (!id) return
+    this.clearSelection()
+    this.model.active = null
+    await this.save(
+      known
+        ? { ...known, discussion: id }
+        : {
+            cfi: target.cfi,
+            color: 'yellow',
+            text: target.text,
+            comment: '',
+            label: target.label,
+            discussion: id,
+            plain: true,
+          }
+    )
+  }
+
+  /** Opens a highlight's discussion again; false when its chat is gone. */
+  async discuss(h: Highlight): Promise<boolean> {
+    if (!h.discussion) return false
+    const { openDiscussion } = await import('./bookDiscussions')
+    const opened = await openDiscussion(h.discussion)
+    if (!opened) new Notice('The chat of this discussion is gone. Ask here to start a new one.')
+    return opened
+  }
+
+  /** The discussions held about words on the page on screen, for the agent. */
+  discussionsOnScreen(): Highlight[] {
+    const visible = this.engine.lastLocation?.range
+    // Pages of a PDF are whole documents: a discussion is on the page on screen or not.
+    const page = (this.engine.lastLocation as { section?: { current: number } } | null)?.section
+    if (this.pdf || !visible)
+      return this.model.highlights.filter(
+        (h) =>
+          !!h.discussion &&
+          page !== undefined &&
+          (this.engine.resolveNavigation(h.cfi) as { index?: number } | null)?.index ===
+            page.current
+      )
+    return this.model.highlights.filter((h) => {
+      if (!h.discussion) return false
+      if (!visible) return false
+      const doc = visible.startContainer.ownerDocument
+      const resolved = this.engine.resolveNavigation(h.cfi) as {
+        anchor?: (d: Document) => Range | Element | null
+      } | null
+      const anchor = doc ? resolved?.anchor?.(doc) : null
+      if (!anchor) return false
+      try {
+        const range = anchor instanceof doc.defaultView.Range ? anchor : doc.createRange()
+        if (!(anchor instanceof doc.defaultView.Range)) range.selectNode(anchor)
+        // Overlapping the page: not ending before it, not starting after it.
+        return (
+          visible.comparePoint(range.endContainer, range.endOffset) >= 0 &&
+          visible.comparePoint(range.startContainer, range.startOffset) <= 0
+        )
+      } catch {
+        return false
+      }
+    })
   }
 
   /** Goes to a place a link named, and marks it. */

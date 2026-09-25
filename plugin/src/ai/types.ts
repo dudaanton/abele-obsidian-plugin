@@ -457,6 +457,12 @@ export interface CommentAnchor {
    * names the chat file, and the passage is found through that chat's `comments`.
    */
   message?: string
+  /**
+   * The place in a book or PDF a discussion is about, as a highlight keeps it (an EPUB CFI; a
+   * PDF page's text has one too). Set only for those: `note` then names the book, whose
+   * highlights note lists the discussion — no marker is written anywhere.
+   */
+  cfi?: string
 }
 
 /**

@@ -25,8 +25,12 @@
       />
       <Icon
         v-if="canAsk"
-        icon="message-square-plus"
-        tooltip="Ask the agent about these words: a new chat with them quoted"
+        :icon="highlight?.discussion ? 'messages-square' : 'message-square-plus'"
+        :tooltip="
+          highlight?.discussion
+            ? 'Open the discussion about these words'
+            : 'Ask the agent about these words: a discussion kept with them'
+        "
         @click="emit('ask')"
       />
       <Icon

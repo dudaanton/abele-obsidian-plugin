@@ -844,8 +844,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     const offered =
       this.kind === 'comment' &&
       this.anchor.value?.quote &&
-      // An answer in a chat is what the model said, not a note anyone may rewrite.
+      // An answer in a chat is what the model said, not a note anyone may rewrite; a book is
+      // never written to at all.
       !this.anchor.value.message &&
+      !this.anchor.value.cfi &&
       (this.toolModes.value[EDIT_SELECTION_TOOL] ?? 'ask') !== 'off'
     const withSelection = offered ? [...filtered, createEditSelectionTool(this)] : filtered
 

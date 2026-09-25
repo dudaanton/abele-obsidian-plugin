@@ -138,3 +138,40 @@ describe('the highlights note', () => {
     expect(removeHighlight(md, C)).toBe(md)
   })
 })
+
+describe('discussions in the highlights note', () => {
+  const note = newHighlightsNote('[[Books/Dune.epub]]', 'Dune')
+  const CHAT = '[[AI/Comments/k7d2ph.abchat|Discussion]]'
+
+  it('keeps a discussion on words as a chat callout linking to its chat', () => {
+    const h = hl(A, { discussion: 'k7d2ph', plain: true })
+    const block = highlightBlock(h, LINK(A), CHAT)
+    expect(block).toBe([`> [!chat] ${LINK(A)} · ${CHAT}`, '> Fear is the mind-killer.'].join('\n'))
+    expect(parseHighlights(block)).toEqual([hl(A, { discussion: 'k7d2ph', plain: true })])
+  })
+
+  it('keeps a highlight that was asked about with its colour, and the chat beside its place', () => {
+    const h = hl(A, { color: 'green', comment: 'Mine', discussion: 'k7d2ph' })
+    const block = highlightBlock(h, LINK(A), CHAT)
+    expect(block.split('\n')[0]).toBe(`> [!quote|green] ${LINK(A)} · ${CHAT}`)
+    expect(parseHighlights(block)).toEqual([h])
+  })
+
+  it('reads the chat from a markdown link too, and drops it when the discussion goes', () => {
+    const md = `> [!chat] [Part two](Books/Dune.epub${placeSubpath({ cfi: B })}) · [talk](AI/Comments/3mq0xa.abchat)\n> Words`
+    expect(parseHighlights(md)).toEqual([
+      hl(B, { text: 'Words', label: 'Part two', discussion: '3mq0xa', plain: true }),
+    ])
+    let doc = upsertHighlight(
+      note,
+      hl(A, { discussion: 'k7d2ph', color: 'blue' }),
+      LINK(A),
+      compare,
+      CHAT
+    )
+    expect(parseHighlights(doc)[0].discussion).toBe('k7d2ph')
+    doc = upsertHighlight(doc, hl(A, { color: 'blue' }), LINK(A), compare)
+    expect(parseHighlights(doc)).toEqual([hl(A, { color: 'blue' })])
+    expect(doc).not.toContain('abchat')
+  })
+})

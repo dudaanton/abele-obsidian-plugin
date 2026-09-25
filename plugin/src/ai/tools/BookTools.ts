@@ -94,7 +94,7 @@ export function createBookViewsTool(): AgentTool {
     name: 'book_views',
     label: 'Book tabs',
     description:
-      "What the person is reading in book tabs (EPUB and PDF): each open book, which one is on screen, the chapter or page they are at and how far in, a link to that place, the words they have selected — quoted, with a link to them — the highlight they tapped, and where the book's highlights note is. " +
+      "What the person is reading in book tabs (EPUB and PDF): each open book, which one is on screen, the chapter or page they are at and how far in, a link to that place, the words they have selected — quoted, with a link to them — the highlight they tapped, the discussions (chats kept with words, made with Ask here) on the page, and where the book's highlights note is. " +
       'Call it first when they say "this book", "this passage", "here" or "what does this mean". Read-only.',
     parameters: { type: 'object', properties: {} },
     execute: async () => {
@@ -145,6 +145,15 @@ export function createBookViewsTool(): AgentTool {
           out.push(`   ${what}: ${link(file, { cfi: sel.cfi }, sel.label)}`)
           out.push(quoted(sel.text.slice(0, 8000)))
           if (m.active?.comment) out.push(`   Their comment: ${m.active.comment}`)
+        }
+        // Discussions held about words on this page: chats kept with those words.
+        const talks = view.reading?.discussionsOnScreen() ?? []
+        if (talks.length) {
+          out.push(`   Discussions on this page: ${talks.length}`)
+          for (const t of talks) {
+            out.push(`   - ${link(file, { cfi: t.cfi }, t.label)} (chat ${t.discussion})`)
+            out.push(quoted(t.text.slice(0, 600)).replace(/^ {3}/gm, '     '))
+          }
         }
         const note = findCompanion(app(), file)
         out.push(

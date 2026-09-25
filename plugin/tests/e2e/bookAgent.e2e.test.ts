@@ -233,25 +233,16 @@ describe.skipIf(!available)('the agent and books', () => {
     expect(r.views).toMatch(/1 book tab is open, outside this chat's scope/)
   })
 
-  it('"Ask here" opens a chat with the link and the words quoted, and lets it read the book', () => {
-    const r = run<{ error?: string; offered?: boolean; text?: string; granted?: boolean }>(`
-      // The chat opens in the right sidebar; with it closed after, the next file sees the tab wide.
+  it('"Chat about this" with no words selected opens a chat with a link to the page, and lets it read the book', () => {
+    // Words selected start a discussion kept with them: bookDiscussions.e2e.test.ts.
+    const r = run<{ error?: string; text?: string; granted?: boolean }>(`
       const config = window.__abeleTest.AbeleConfig.getInstance()
       if (config.ai) config.ai.enabled = true
       config.version.value++
       const { leaf, view } = await open(${JSON.stringify(BOOK)})
       await view.engine.goTo(2)
       await wait(500)
-      const doc = view.engine.renderer.getContents()[0].doc
-      const h1 = doc.querySelector('h1')
-      const range = doc.createRange(); range.setStart(h1.firstChild, 0); range.setEnd(h1.firstChild, 7)
-      doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
-      await until(() => view.model.selection, 3000)
-      await wait(200)
-      const button = [...view.contentEl.querySelectorAll('.abele-book-selection .abele-obsidian-icon')]
-        .find((el) => el.getAttribute('aria-label')?.startsWith('Ask the agent'))
-      const offered = !!button
-      button?.click()
+      await view.reading.ask()
       const input = await until(() => {
         const i = document.querySelector('.abele-chat-input__textarea')
         return i && i.value.includes('rich.epub') ? i : null
@@ -260,13 +251,10 @@ describe.skipIf(!available)('the agent and books', () => {
       const session = chat.activeSession?.value ?? chat.sessions?.value?.at?.(-1)
       const granted = session?.scopeResolver?.isInScope?.(${JSON.stringify(BOOK)})
       leaf.detach()
-      return { offered, text: input?.value, granted }
+      return { text: input?.value, granted }
     `)
     expect(r.error).toBeUndefined()
-    expect(r.offered).toBe(true)
     expect(r.granted).toBe(true)
-    expect(r.text).toMatch(
-      /^\[\[rich\.epub#cfi=\/6\/6!\/4\/2%5Bc3%5D,\/1:0,\/1:7\|Chapter 3\]\]\n> Chapter\n\n$/
-    )
+    expect(r.text).toMatch(/^\[\[rich\.epub#cfi=[^\]]+\|Chapter 3\]\] $/)
   })
 })

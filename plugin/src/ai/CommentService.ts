@@ -423,6 +423,32 @@ export class CommentService implements CommentInfoSource {
   }
 
   /**
+   * A new discussion on words in a book or PDF — "Ask here" in the reader. The comment agent
+   * answers, as in a note; the book is in its scope, and where the words are is read out of the
+   * book for its prompt. Nothing is written into the book: the reader lists the discussion in
+   * the book's highlights note, by this id.
+   */
+  async createOnBook(book: TFile, cfi: string, quote: string): Promise<string | null> {
+    const id = newCommentId()
+    await this.startComment(id, { note: book.path, quote, cfi })
+    if (await this.showInSidebar(id)) ChatService.getInstance().focusRequest.value++
+    return id
+  }
+
+  /** Opens a comment wherever it now lives: its chat if it became one, the sidebar otherwise. */
+  async reveal(id: string): Promise<boolean> {
+    const session = await this.load(id)
+    if (!session) return false
+    if (session.kind === 'chat') {
+      // Read from a file that became a chat: `ChatService` owns it, as `expand` would have left it.
+      if (this.sessions.delete(id)) this.expanded.set(id, session)
+      await this.revealChat(id)
+      return true
+    }
+    return this.showInSidebar(id)
+  }
+
+  /**
    * The file and the session of a new comment, whatever it is anchored to. `agentId` names the
    * agent that answers it; without one it is the comment agent, which is what a note gets.
    */
@@ -908,7 +934,9 @@ export class CommentService implements CommentInfoSource {
     // go with it, deepest first, while it can still say which they are.
     await this.removeCommentsOn(this.commentPath(id))
 
-    if (anchor?.message) {
+    if (anchor?.cfi) {
+      // In a book: the book is never written to, and its highlights note is the reader's.
+    } else if (anchor?.message) {
       // On an answer in a chat: the chat's own list of its comments, unless the chat is going.
       if (!options.chatGoing) await this.dropFromChat(anchor.note, id)
     } else if (notePath) {

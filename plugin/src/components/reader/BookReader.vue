@@ -30,6 +30,7 @@
           v-else
           :highlights="model.highlights"
           @go="emit('go-highlight', $event, narrow())"
+          @discuss="emit('discuss', $event)"
           @open-note="emit('open-note')"
         />
       </div>
@@ -167,6 +168,7 @@ const emit = defineEmits<{
   (e: 'settings', open: boolean): void
   (e: 'footnote-close'): void
   (e: 'figure-close'): void
+  (e: 'discuss', h: Highlight): void
   (e: 'extend', dir: 1 | -1): void
   (e: 'footnote-go'): void
   (e: 'panel-tab', tab: PanelTab): void

@@ -13,6 +13,15 @@
  * > My note on it.
  * ```
  *
+ * A discussion — a chat with the AI about the words, made with "Ask here" — is a highlight too,
+ * its chat linked after the place in the title. Words only asked about, never highlighted, are a
+ * `chat` callout, with no colour; a highlight that was asked about keeps its `quote|colour`:
+ *
+ * ```markdown
+ * > [!chat] [[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]] · [[AI/Comments/k7d2ph.abchat|Discussion]]
+ * > Fear is the mind-killer.
+ * ```
+ *
  * The callout's title is a link to the place; its first paragraph is the highlighted text; what
  * follows a blank line inside it is the person's comment. The colour is the callout's metadata,
  * which Obsidian draws as an ordinary quote. Highlights are kept in the book's order. Anything else
@@ -34,11 +43,18 @@ export interface Highlight {
   comment: string
   /** The chapter or page it is in, written as the link's label. */
   label: string
+  /** The id of the discussion held about these words: its chat is the comment of that id. */
+  discussion?: string
+  /** Asked about, never highlighted: drawn as a discussion only, with no colour of its own. */
+  plain?: boolean
 }
 
 export const HIGHLIGHTS_TYPE = 'book-highlights'
 
-const HEADER = /^>\s*\[!quote(?:\|([a-z]+))?\][+-]?\s*(.*)$/i
+const HEADER = /^>\s*\[!(quote|chat)(?:\|([a-z]+))?\][+-]?\s*(.*)$/i
+/** A link to a chat file in a callout title, its basename being the discussion's id. */
+const CHAT_LINK =
+  /\[\[([^\]|]+?\.abchat)(?:\|[^\]]*)?\]\]|\[[^\]]*\]\(\s*<?([^)>\s]+\.abchat)>?\s*\)/i
 /** The link in a callout title: a wikilink or a markdown link, its target and label. */
 const WIKI = /\[\[([^\]|]+?)(?:\|([^\]]*))?\]\]/
 const MD = /\[([^\]]*)\]\(\s*<?([^)>\s]+)>?\s*\)/
@@ -47,6 +63,18 @@ const colorOf = (value: string | undefined): HighlightColor =>
   (HIGHLIGHT_COLORS as readonly string[]).includes((value ?? '').toLowerCase())
     ? ((value ?? '').toLowerCase() as HighlightColor)
     : 'yellow'
+
+/** The discussion a callout title links to, by its chat file's name. */
+function discussionIn(title: string): string | undefined {
+  const m = CHAT_LINK.exec(title)
+  const path = m?.[1] ?? m?.[2]
+  return path
+    ? path
+        .split('/')
+        .pop()
+        ?.replace(/\.abchat$/i, '')
+    : undefined
+}
 
 /** The place a callout title links to, and its label; null when the title is no place. */
 function placeIn(title: string): { place: BookPlace; label: string } | null {
@@ -74,7 +102,7 @@ function blocks(markdown: string): { lines: string[]; blocks: Block[] } {
   for (let i = 0; i < lines.length; i++) {
     const header = HEADER.exec(lines[i])
     if (!header) continue
-    const at = placeIn(header[2])
+    const at = placeIn(header[3].replace(CHAT_LINK, ''))
     if (!at || !('cfi' in at.place)) continue
     let end = i + 1
     const body: string[] = []
@@ -91,13 +119,17 @@ function blocks(markdown: string): { lines: string[]; blocks: Block[] } {
             .slice(blank + 1)
             .join('\n')
             .trim()
+    const discussion = discussionIn(header[3])
+    const plain = header[1].toLowerCase() === 'chat'
     found.push({
       highlight: {
         cfi: at.place.cfi,
-        color: colorOf(header[1]),
+        color: colorOf(header[2]),
         text: quote,
         comment,
         label: at.label,
+        ...(discussion ? { discussion } : {}),
+        ...(plain ? { plain } : {}),
       },
       start: i,
       end,
@@ -112,13 +144,12 @@ export function parseHighlights(markdown: string): Highlight[] {
   return blocks(markdown).blocks.map((b) => b.highlight)
 }
 
-/** One highlight as its callout, the link already made. */
-export function highlightBlock(h: Highlight, link: string): string {
+/** One highlight as its callout, the links — to the place, to its chat — already made. */
+export function highlightBlock(h: Highlight, link: string, chatLink?: string): string {
   const quote = h.text.replace(/\r\n?/g, '\n').trim()
-  const lines = [
-    `> [!quote|${h.color}] ${link}`,
-    ...quote.split('\n').map((l) => `> ${l}`.trimEnd()),
-  ]
+  const kind = h.plain && h.discussion ? 'chat' : `quote|${h.color}`
+  const title = h.discussion && chatLink ? `${link} · ${chatLink}` : link
+  const lines = [`> [!${kind}] ${title}`, ...quote.split('\n').map((l) => `> ${l}`.trimEnd())]
   const comment = h.comment.replace(/\r\n?/g, '\n').trim()
   if (comment) lines.push('>', ...comment.split('\n').map((l) => `> ${l}`.trimEnd()))
   return lines.join('\n')
@@ -139,10 +170,11 @@ export function upsertHighlight(
   markdown: string,
   h: Highlight,
   link: string,
-  compare: Compare
+  compare: Compare,
+  chatLink?: string
 ): string {
   const { lines, blocks: found } = blocks(markdown)
-  const block = highlightBlock(h, link).split('\n')
+  const block = highlightBlock(h, link, chatLink).split('\n')
   const same = found.find((b) => b.highlight.cfi === h.cfi)
   if (same) {
     lines.splice(same.start, same.end - same.start, ...block)

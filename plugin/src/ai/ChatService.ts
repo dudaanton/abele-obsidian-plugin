@@ -667,6 +667,12 @@ export class ChatService {
       return `${prompt}\n\n${buildMessageCommentContext(anchor, content, lineage)}`
     }
 
+    if (anchor.cfi) {
+      // In a book: the words and the text around them, read out of the book every turn.
+      const { bookDiscussionContext } = await import('@/reader/bookDiscussions')
+      return `${prompt}\n\n${await bookDiscussionContext(anchor)}`
+    }
+
     const noteText = await this.readCommentNote(anchor.note)
     return `${prompt}\n\n${buildCommentContext(anchor, noteText, session.commentId ?? undefined)}`
   }

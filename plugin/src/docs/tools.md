@@ -163,8 +163,9 @@ selected.
 
 - `book_views` — what the person is reading: each open book, the one on screen, the chapter or
   page and how far through, a link to that place, the words they selected — quoted, with a link to
-  them — or the highlight they tapped with its comment, and where the book's highlights note is.
-  Start here whenever they say "this book", "this passage", "here".
+  them — or the highlight they tapped with its comment, the discussions held about words on the
+  page (chats kept with those words, each with a link and a quote), and where the book's
+  highlights note is. Start here whenever they say "this book", "this passage", "here".
 - `book_contents` — title, author, the table of contents, and the book's parts numbered as
   `book_read` takes them, with how long each is. A PDF's parts are its pages.
 - `book_read` — the text of one part (a chapter file, a PDF page), 12,000 characters by default

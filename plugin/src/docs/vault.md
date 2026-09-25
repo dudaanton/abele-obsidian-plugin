@@ -202,7 +202,9 @@ marker is fine — surviving that is what it is for. To change the commented pas
 Each comment is a chat file of its own at `AI/Comments/<id>.abchat` — the folder is
 `commentFolder` in the settings — in the same format as any other `.abchat`. The quoted
 passage lives there, as `anchor.quote` in the file's metadata, together with `anchor.note`,
-the note the marker sits in. The note carries the marker and nothing else. Comment files stay
+the note the marker sits in. The note carries the marker and nothing else. A discussion in a
+book is a comment too, anchored to the book and a place in it (`anchor.cfi`), with no marker:
+the book's highlights note lists it (see Book highlights). Comment files stay
 out of the chat history until somebody opens one as a full chat. Not every user turn in one was
 a question: a comment may hold notes the person kept without asking anything, which no agent
 has answered and which are simply part of the conversation from then on.
@@ -392,6 +394,19 @@ not its name. Each highlight is one callout, in the order of the book:
 - The title is a link to the place (`#cfi=…`), labelled with the chapter or `Page N`.
 - The first paragraph is the highlighted words as they were; after a blank `>` line, the comment.
 - A highlight is told apart by its place: two callouts linking to the same CFI are one highlight.
+- A **discussion** — a chat about the words, started with "Ask here" in the reader — is kept in the
+  same note: its chat's file linked after the place in the title. Words only asked about are a
+  `chat` callout with no colour; a highlight that was asked about keeps its `quote|colour`:
+
+  ```markdown
+  > [!chat] [[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]] · [[AI/Comments/k7d2ph.abchat|Discussion]]
+  > Fear is the mind-killer.
+  ```
+
+  The chat is a comment (see Comments): its file is `<id>.abchat` in the comments folder, with
+  `anchor: { note: <the book>, quote, cfi }` — the book and the place, and no marker anywhere; the
+  book is never written to. The link is how the reader finds the chat again, so leave it as it is;
+  removing the callout takes the mark off the words and leaves the chat where it is.
 - Other callouts, headings and paragraphs in the note are the person's and are left as they are.
 
 The open book redraws whatever the note holds as soon as it changes, so adding, recolouring or

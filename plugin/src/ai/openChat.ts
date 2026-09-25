@@ -94,9 +94,17 @@ export async function revealAnchor(commentId: string, anchor: CommentAnchor): Pr
   const { app } = GlobalStore.getInstance()
   const file = app.vault.getAbstractFileByPath(anchor.note)
   if (!(file instanceof TFile)) {
-    new Notice('The note this was asked in has been deleted')
+    new Notice(anchor.cfi ? 'The book this was asked in has been deleted' : 'The note this was asked in has been deleted')
     return false
   }
+
+  // A discussion in a book goes back to its words there: the book opens at them, selected.
+  if (anchor.cfi) {
+    const { placeSubpath } = await import('@/reader/bookLinks')
+    await app.workspace.openLinkText(`${anchor.note}${placeSubpath({ cfi: anchor.cfi })}`, '', false)
+    return true
+  }
+
   await app.workspace.openLinkText(anchor.note, '', false)
 
   const marker = parseMarkers(await app.vault.cachedRead(file)).find((candidate) =>

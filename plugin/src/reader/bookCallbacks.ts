@@ -44,6 +44,7 @@ export function bookCallbacks(a: BookActions): Record<string, unknown> {
           .map((c) => c.doc) ?? [],
         dir
       ),
+    onDiscuss: (h: Highlight): void => void a.reading()?.discuss(h),
     onFigureClose: (): void => {
       model.figure = null
     },
@@ -66,8 +67,9 @@ export function bookCallbacks(a: BookActions): Record<string, unknown> {
       else if (action === 'stop') speech?.stop()
       else void speech?.narrator?.skip(action === 'next' ? 1 : -1)
     },
+    // A colour picked for words only asked about makes them a highlight as well.
     onRecolor: (h: Highlight, color: HighlightColor): void =>
-      void a.reading()?.save({ ...h, color }),
+      void a.reading()?.save({ ...h, color, plain: false }),
     onEditComment: (h: Highlight): void => {
       model.commenting = { ...h }
     },

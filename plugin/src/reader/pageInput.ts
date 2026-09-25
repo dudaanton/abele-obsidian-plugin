@@ -137,8 +137,7 @@ function onTap(host: PageHost, e: MouseEvent, doc: Document, gesture: PageGestur
       const h = marks.hitPdf(doc, e.clientX, e.clientY)
       if (h) {
         place()
-        host.model.selection = null
-        host.model.active = h
+        marks.open(h)
         return
       }
     } else if (marks.hitEpub(e)) {

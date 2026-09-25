@@ -1004,3 +1004,51 @@ describe('the marker over a comment being read in the sidebar', () => {
     expect(vi.mocked(dispatchCommentsChanged)).not.toHaveBeenCalled()
   })
 })
+
+describe('a discussion in a book', () => {
+  const BOOK = 'Books/Dune.epub'
+  const CFI = 'epubcfi(/6/8!/4/2,/1:0,/1:22)'
+
+  beforeEach(async () => {
+    await app.vault.create(BOOK, 'PK-not-a-real-book')
+  })
+
+  it('is a comment anchored to the book and the place, shown at once, with nothing written in the book', async () => {
+    const service = CommentService.getInstance()
+    const book = app.vault.getAbstractFileByPath(BOOK) as TFile
+    const id = await service.createOnBook(book, CFI, 'Fear is the mind-killer.')
+    expect(id).toMatch(/^[a-z0-9]{6}$/)
+    const file = app.vault.getAbstractFileByPath(service.commentPath(id!)) as TFile
+    const metadata = parseChatMetadata(await app.vault.read(file))
+    expect(metadata?.kind).toBe('comment')
+    expect(metadata?.anchor).toEqual({ note: BOOK, quote: 'Fear is the mind-killer.', cfi: CFI })
+    expect(await app.vault.read(book)).toBe('PK-not-a-real-book')
+    const session = service.sessionFor(id!)!
+    expect(session.scopeResolver.isInScope(BOOK)).toBe(true)
+    expect(service.open.value).toBe(id)
+  })
+
+  it('is opened again by its id, after it has been forgotten, and never gets the tool that rewrites a note', async () => {
+    const service = CommentService.getInstance()
+    const book = app.vault.getAbstractFileByPath(BOOK) as TFile
+    const id = (await service.createOnBook(book, CFI, 'Fear is the mind-killer.'))!
+    await service.hideFromSidebar(id)
+    // As after a restart: nothing in memory, only the file.
+    ;(service as unknown as { forget(id: string): void }).forget(id)
+    expect(await service.reveal(id)).toBe(true)
+    expect(service.open.value).toBe(id)
+    const tools = (
+      service.sessionFor(id) as unknown as { getTools(): { name: string }[] }
+    ).getTools()
+    expect(tools.map((t) => t.name)).not.toContain('edit_selection')
+  })
+
+  it('is removed without touching the book', async () => {
+    const service = CommentService.getInstance()
+    const book = app.vault.getAbstractFileByPath(BOOK) as TFile
+    const id = (await service.createOnBook(book, CFI, 'Fear'))!
+    await service.remove(id)
+    expect(app.vault.getAbstractFileByPath(service.commentPath(id))).toBeNull()
+    expect(await app.vault.read(book)).toBe('PK-not-a-real-book')
+  })
+})

@@ -267,6 +267,8 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
     it('stays on its page of a PDF, and says why', () => {
       const r = run<{ error?: string; pages?: number[]; told?: string[] }>(`
         const { leaf, view } = await open(${JSON.stringify(PDF)})
+        // The contents panel, which the desktop remembers open, would stand over the page.
+        if (view.model.panel) { view.model.panel = false; await wait(400) }
         await view.engine.goTo(0)
         await until(() => docOf(view)?.querySelector('.textLayer span'), 8000)
         await wait(400)

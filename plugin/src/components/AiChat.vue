@@ -643,7 +643,8 @@ async function backToNote(): Promise<void> {
   const anchor = current?.anchor.value
   if (!id || !anchor?.note) return
 
-  // A comment on a message goes back to that message, in its chat or in the comment above it.
+  // A comment on a message goes back to that message, in its chat or in the comment above it;
+  // a discussion in a book, to its words there.
   await revealAnchor(id, anchor)
 }
 

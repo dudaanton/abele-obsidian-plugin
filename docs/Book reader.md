@@ -142,8 +142,17 @@ a tab; a book read is kept for a few minutes so reading it a part at a time does
 again. The agent answers with links to places, which open the book there.
 
 - **Ask here** — the speech bubble with a plus on the bar under selected words (or a highlight)
-  opens a new chat whose input holds a link to the words and the words quoted. Nothing is sent
-  until the person writes their question.
+  starts a **discussion** kept with those words, the way a comment chat is kept with a passage in
+  a note. The chat opens in the AI sidebar; the words are marked in the book with a small speech
+  bubble (underlined in the theme's accent, or over their highlight if they have one) and listed
+  in the highlights note with a link to the chat. A tap on the marked words — or Ask here on them
+  again — opens the same chat, after a restart or on another device as well. The chat is the
+  comment agent's, told the book, the place, the words and the text around them every turn, with
+  the book in its scope; its "back to the passage" opens the book at the words. The highlights
+  panel lists discussions with the rest, a way into each chat, and can show only discussions or
+  only highlights. Removing the mark asks what becomes of the chat: kept as an ordinary chat in
+  the history, or deleted. PDFs and fixed-layout books work the same, the mark drawn over the
+  page. Nothing is written into the book file.
 - **Chat about this** in a book tab's ⋯ menu does the same with a link to the place on screen.
 
 Both let that chat read this one book, if its scope did not already reach it — the grant **Chat

@@ -18,6 +18,9 @@ import type { CommentAnchor } from './types'
  */
 const MAX_TRAIL_DEPTH = 32
 
+/** A book or PDF the reader opens: the root of a discussion asked about words in it. */
+const BOOK_FILE = /\.(epub|pdf|mobi|azw3?|fb2|fbz|cbz)$/i
+
 /** A quote from a level above, kept short: it says where, the conversation says what. */
 const QUOTE_IN_LINEAGE = 200
 
@@ -183,6 +186,8 @@ function clip(text: string, length: number): string {
 
 function describeStep(step: TrailStep): string {
   const gone = step.missing ? ', deleted since' : ''
+  // A discussion started in a book hangs from the book, which is not a note.
+  if (step.kind === 'note' && BOOK_FILE.test(step.path)) return `the book ${step.path}${gone}`
   if (step.kind === 'note') return `the note ${step.path}${gone}`
   if (step.kind === 'chat') return `the chat "${step.title}" (${step.path})${gone}`
   return `the side discussion "${step.title}" (${step.path})${gone}`
