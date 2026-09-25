@@ -54,7 +54,20 @@ export interface ReaderSettings {
   ttsRate: number
   /** What the measure beside the progress line shows; a tap on it goes to the next. */
   progressShow: ProgressShow
+  /**
+   * The file in the vault where each book was left is kept, so every device reads the same one.
+   * As typed; `placesPathOf` is the path in use.
+   */
+  placesPath: string
 }
+
+/**
+ * Where the places of books are kept unless said otherwise: a JSON file at the root of the vault.
+ * Obsidian's file list shows no `.json` file, so it stays out of sight; Obsidian Sync carries it
+ * with "Sync all other types" on, as it does chats (`.abchat`). A hidden file would be out of
+ * sight as well, but Obsidian Sync never carries a hidden one.
+ */
+export const DEFAULT_PLACES_PATH = 'abele-book-places.json'
 
 export const TTS_RATES = [0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
 
@@ -75,6 +88,7 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   ttsVoice: '',
   ttsRate: 1,
   progressShow: 'page',
+  placesPath: DEFAULT_PLACES_PATH,
 }
 
 export const FONT_SIZES = [70, 80, 90, 100, 110, 120, 135, 150, 175, 200]
@@ -108,7 +122,20 @@ export function readerSettingsFrom(stored?: Partial<ReaderSettings> | null): Rea
     ttsVoice: typeof s.ttsVoice === 'string' ? s.ttsVoice : d.ttsVoice,
     ttsRate: clamp(s.ttsRate, 0.5, 3, d.ttsRate),
     progressShow: oneOf(s.progressShow, PROGRESS_SHOWS, d.progressShow),
+    placesPath: typeof s.placesPath === 'string' ? s.placesPath : d.placesPath,
   }
+}
+
+/**
+ * The file the places are kept in: the path set, tidied, once it is a `.json` file in the vault
+ * that Obsidian Sync can carry — no part of it hidden, the vault's settings folder included —
+ * and the default until then, a path half typed included.
+ */
+export function placesPathOf(settings: ReaderSettings): string {
+  const path = settings.placesPath.trim().replace(/\\/g, '/').split('/').filter(Boolean).join('/')
+  const parts = path.split('/')
+  const fine = /\.json$/i.test(path) && path.length > 5 && parts.every((p) => !p.startsWith('.'))
+  return fine ? path : DEFAULT_PLACES_PATH
 }
 
 /** The engine's layout attributes for these settings. */

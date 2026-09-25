@@ -41,9 +41,13 @@ and front matter are skipped when the book says where the text starts).
   slider goes anywhere in the book; on a phone dragging it never opens Obsidian's
   side panel.
 - **Where it was left** is kept for each book under its identifier, so renaming or moving the file
-  keeps it. It is written a moment after the last page turn, and at once when the app is hidden
-  or quits, in two copies one after the other, so a write cut short by the app being stopped never
-  loses it. It reaches another device where the plugin's own folder is synced.
+  keeps it. It is kept in a file in the vault, `abele-book-places.json` at its root unless set
+  otherwise (**Reading places file**, below), so it reaches every device the vault is synced to.
+  It is written a moment after the last page turn, and at once when the app is hidden or quits,
+  with a copy on this device written just before, so a write cut short by the app being stopped
+  never loses it. Every device writes the one file, and none ever puts an older place over a
+  newer one: each book keeps the place read last, wherever it was read. A later place arriving
+  from another device while the book is open here moves the book on to it, and says so.
 - **Pictures and tables.** A picture that stands alone on the page is centred. A table wider than
   its column scrolls sideways in place. A tap on a picture or a table opens it full screen:
   pinch, Mod with the wheel, the buttons or plus and minus zoom; a drag moves it; a double tap
@@ -231,6 +235,15 @@ and travels with the settings transfer.
 | Voice | The voice reading aloud: the device's own for the book's language, or one chosen. |
 | Speed | How fast it reads aloud, 0.75× to 2×. |
 | (the measure under the page) | Page of the chapter, pages left, location in the book, or percent — changed by tapping it. |
+| Reading places file | In Settings only: the `.json` file in the vault where each book was left is kept, `abele-book-places.json` at its root by default. Changing it moves the places to the new file; a file that holds something else is left alone and the places stay where they were. |
+
+Why a `.json` file, and where: Obsidian's file list shows no `.json` file, so it stays out of
+sight among the notes, and Obsidian Sync carries it once **Sync all other types** is on — the same
+switch chats (`.abchat`) need. A hidden file or folder (a name starting with a dot) would be out of
+sight too, but Obsidian Sync never carries one, so the path may have no part starting with a dot.
+The places were kept in the plugin's own folder before, which Obsidian Sync does not carry beyond
+the plugin's settings; the first time the plugin loads they are moved into the vault's file,
+merged with it.
 
 On a phone the text starts just under Obsidian's header and the line under the page sits above its
 navigation bar.

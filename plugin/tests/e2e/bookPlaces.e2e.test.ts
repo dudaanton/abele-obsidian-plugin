@@ -1,7 +1,9 @@
 /**
  * Where a book was left, across a restart of the app: a book and a PDF are read to a place, the
  * app's window is reloaded with their tabs open, and the tabs Obsidian restores open them where
- * they were — and the file of places still holds those places afterwards.
+ * they were — and the file of places, in the vault, still holds those places afterwards. Then
+ * another device's later place arrives in that file, written on disk as a sync would, and the
+ * open book follows it.
  *
  * A full quit and relaunch of the app was checked by hand the same way; a phone stopping the app
  * in the background is covered by the unit tests (`tests/unit/bookPlaces.test.ts`).
@@ -26,7 +28,7 @@ const PRELUDE = `
     while (Date.now() < deadline) { try { const v = await fn(); if (v) return v } catch {} await wait(100) }
     return null
   }
-  const placesFile = app.vault.configDir + '/plugins/abele/book-places.json'
+  const placesFile = window.__abeleTest.AbeleConfig.getInstance().reader?.placesPath || 'abele-book-places.json'
   const saved = async () => JSON.parse(await app.vault.adapter.read(placesFile))
   const leafOf = (path) => app.workspace.getLeavesOfType('abele-book').find((l) => l.getViewState().state?.file === path)
   const ready = async (leaf) => {
@@ -108,6 +110,9 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
         for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
+        // The fixture vault holds nothing of the tests' own afterwards.
+        const places = window.__abeleTest.AbeleConfig.getInstance().reader?.placesPath || 'abele-book-places.json'
+        if (await app.vault.adapter.exists(places)) await app.vault.adapter.remove(places)
         return 'ok'
       })()`,
       60_000
@@ -151,5 +156,32 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
     expect(r.page).toBe(before.page)
     expect(r.bookCfi).toBe(before.bookCfi)
     expect(r.pdfCfi).toBe(before.pdfCfi)
+  })
+
+  it('follows a later place another device wrote into the file, and never writes an older one over it', () => {
+    const r = run<{ error?: string; chapter?: string; kept?: string; told?: boolean }>(`
+      const bookLeaf = await until(() => leafOf(${JSON.stringify(BOOK)}), 15000)
+      // In front: the tab before showed the PDF.
+      app.workspace.setActiveLeaf(bookLeaf, { focus: true })
+      const book = await ready(bookLeaf)
+      const key = 'id:' + ${JSON.stringify(RICH_BOOK_ID)}
+      // The start of chapter 1, read on another device just now, arriving as a sync
+      // writes it: on disk, beside the app.
+      await book.engine.goTo(book.model.toc[0].href); await wait(600)
+      const there = book.engine.lastLocation.cfi
+      await book.engine.goTo(book.model.toc[2].href); await wait(2500)
+      const places = await saved()
+      places[key] = { ...places[key], cfi: there, at: Date.now() }
+      const full = require('path').join(app.vault.adapter.getBasePath(), placesFile)
+      require('fs').writeFileSync(full, JSON.stringify(places))
+      await until(() => book.model.chapter?.startsWith('Chapter 1'), 15000)
+      const told = [...document.querySelectorAll('.notice')].some((n) => /another device/.test(n.textContent))
+      await wait(2500)
+      return { chapter: book.model.chapter, kept: (await saved())[key]?.cfi === there ? 'yes' : 'no', told }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.chapter).toMatch(/^Chapter 1/)
+    expect(r.told).toBe(true)
+    expect(r.kept).toBe('yes')
   })
 })

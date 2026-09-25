@@ -2,7 +2,13 @@
  * Where each book was left (`src/reader/positions.ts`).
  */
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { BookPlaces, MAX_PLACES, bookKey, type PlaceStorage } from '@/reader/positions'
+import {
+  BookPlaces,
+  MAX_PLACES,
+  bookKey,
+  type BookPlace,
+  type PlaceStorage,
+} from '@/reader/positions'
 
 /** Both copies in memory; `writes` counts the main one's. */
 const memory = (initial: string | null = null, backup: string | null = initial) => {
@@ -120,6 +126,21 @@ describe('the places across a restart', () => {
     expect((await new BookPlaces(other.storage).get('id:a'))?.cfi).toBe('epubcfi(/6/2!/4)')
   })
 
+  it('take the newer place of each book, not the newer copy as a whole', async () => {
+    const two = (a: [string, number], b: [string, number]) =>
+      JSON.stringify({
+        'id:a': { cfi: a[0], fraction: 0.1, path: 'a.epub', at: a[1] },
+        'id:b': { cfi: b[0], fraction: 0.1, path: 'b.epub', at: b[1] },
+      })
+    const { storage } = memory(
+      two(['a-main', 5], ['b-main', 1]),
+      two(['a-backup', 1], ['b-backup', 9])
+    )
+    const places = new BookPlaces(storage)
+    expect((await places.get('id:a'))?.cfi).toBe('a-main')
+    expect((await places.get('id:b'))?.cfi).toBe('b-backup')
+  })
+
   it('writes the backup first, and nothing at all when no place changed', async () => {
     const order: string[] = []
     const storage: PlaceStorage = {
@@ -168,5 +189,128 @@ describe('the places across a restart', () => {
     expect(store.writes).toBe(2)
     stop()
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+  })
+})
+
+/** A shared file (`main`), this device's backup, and the plugin folder's file from before. */
+const shared = (
+  main: Record<string, unknown> | null,
+  legacy: Record<string, unknown> | null = null
+) => {
+  const store = {
+    main: main ? JSON.stringify(main) : null,
+    backup: null as string | null,
+    legacy: legacy ? JSON.stringify(legacy) : null,
+    writes: 0,
+  }
+  const storage: PlaceStorage = {
+    read: async (copy) => (copy === 'backup' ? store.backup : store.main),
+    write: async (d, copy) => {
+      if (copy === 'backup') store.backup = d
+      else {
+        store.main = d
+        store.writes++
+      }
+    },
+    legacy: async () => [store.legacy],
+    dropLegacy: async () => void (store.legacy = null),
+  }
+  return {
+    store,
+    storage,
+    saved: () => JSON.parse(store.main ?? '{}') as Record<string, BookPlace>,
+  }
+}
+const at = (cfi: string, when: number, path = 'a.epub') => ({ cfi, fraction: 0.5, path, at: when })
+
+describe('the places in a file in the vault, which every device writes', () => {
+  it('fold in the plugin folder’s file from before, a newer place kept, and write it to the vault once', async () => {
+    vi.useFakeTimers()
+    const { store, storage, saved } = shared(
+      { 'id:a': at('vault-a', 5) },
+      { 'id:a': at('old-a', 2), 'id:b': at('old-b', 3, 'b.epub') }
+    )
+    const places = new BookPlaces(storage, 1000)
+    expect((await places.get('id:a'))?.cfi).toBe('vault-a')
+    expect((await places.get('id:b'))?.cfi).toBe('old-b')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(store.writes).toBe(1)
+    expect(Object.keys(saved()).sort()).toEqual(['id:a', 'id:b'])
+    // Written into the vault: the old file goes, its places kept in the backup as well.
+    expect(store.legacy).toBeNull()
+    expect(JSON.parse(store.backup!)['id:b'].cfi).toBe('old-b')
+  })
+
+  it('read the file again before writing, keeping what another device put there since', async () => {
+    const { store, storage, saved } = shared({ 'id:a': at('a-1', 1) })
+    const places = new BookPlaces(storage, 1000)
+    await places.get('id:a')
+    // Another device, meanwhile: a book this one has not seen, and a later place in one it has.
+    store.main = JSON.stringify({
+      'id:a': at('a-other', Date.now() + 60_000),
+      'id:c': at('c-other', 7, 'c.epub'),
+    })
+    await places.set('id:b', { cfi: 'b-here', fraction: 0.2, path: 'b.epub' })
+    await places.flush()
+    expect(saved()['id:a'].cfi).toBe('a-other')
+    expect(saved()['id:b'].cfi).toBe('b-here')
+    expect(saved()['id:c'].cfi).toBe('c-other')
+    expect((await places.get('id:a'))?.cfi).toBe('a-other')
+  })
+
+  it('a place read here later than the file’s is the one written', async () => {
+    const { storage, saved } = shared({ 'id:a': at('a-old', 1) })
+    const places = new BookPlaces(storage, 1000)
+    await places.set('id:a', { cfi: 'a-here', fraction: 0.2, path: 'a.epub' })
+    await places.flush()
+    expect(saved()['id:a'].cfi).toBe('a-here')
+  })
+
+  it('take a newer place from the file when it changes on disk, and say which books moved', async () => {
+    const { store, storage } = shared({ 'id:a': at('a-1', 1), 'id:b': at('b-1', 1, 'b.epub') })
+    const places = new BookPlaces(storage, 1000)
+    await places.get('id:a')
+    const moved: string[][] = []
+    const stop = places.onNewer((keys) => moved.push(keys))
+    store.main = JSON.stringify({ 'id:a': at('a-2', 9), 'id:b': at('b-0', 0, 'b.epub') })
+    await places.refresh()
+    expect((await places.get('id:a'))?.cfi).toBe('a-2')
+    expect((await places.get('id:b'))?.cfi).toBe('b-1')
+    expect(moved).toEqual([['id:a']])
+    // The file as this device wrote it, heard back: nothing new.
+    await places.refresh()
+    expect(moved).toHaveLength(1)
+    stop()
+  })
+
+  it('move to another file: all of them written there, with what it held, and none lost', async () => {
+    const from = shared({ 'id:a': at('a-1', 5) })
+    const to = shared({ 'id:a': at('a-there', 1), 'id:c': at('c-there', 2, 'c.epub') })
+    const places = new BookPlaces(from.storage, 1000)
+    await places.set('id:b', { cfi: 'b-here', fraction: 0.2, path: 'b.epub' })
+    expect(await places.moveTo(to.storage)).toBe(true)
+    expect(Object.keys(to.saved()).sort()).toEqual(['id:a', 'id:b', 'id:c'])
+    expect(to.saved()['id:a'].cfi).toBe('a-1')
+    // Later places go to the new file only.
+    const before = from.store.writes
+    await places.set('id:b', { cfi: 'b-later', fraction: 0.3, path: 'b.epub' })
+    await places.flush()
+    expect(from.store.writes).toBe(before)
+    expect(to.saved()['id:b'].cfi).toBe('b-later')
+  })
+
+  it('will not move onto a file that holds something else', async () => {
+    const from = shared({ 'id:a': at('a-1', 5) })
+    const other: PlaceStorage = {
+      read: async () => 'a note of the person’s own, not places',
+      write: vi.fn(async () => {}),
+    }
+    const places = new BookPlaces(from.storage, 1000)
+    await places.get('id:a')
+    expect(await places.moveTo(other)).toBe(false)
+    expect(other.write).not.toHaveBeenCalled()
+    await places.set('id:a', { cfi: 'a-2', fraction: 0.2, path: 'a.epub' })
+    await places.flush()
+    expect(from.saved()['id:a'].cfi).toBe('a-2')
   })
 })

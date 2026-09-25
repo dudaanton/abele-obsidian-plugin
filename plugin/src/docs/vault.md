@@ -366,9 +366,14 @@ Book files anywhere in the vault — `.epub`, `.mobi`, `.azw`, `.azw3`, `.fb2`, 
 in Abele's book reader, a tab of its own; `.pdf` files
 open there too when the person has chosen so, and otherwise in Obsidian's own viewer. The plugin
 never changes a book or PDF file. Where each book was left is kept outside the notes, in
-`book-places.json` in the plugin's own folder, with a copy in `book-places.backup.json` written just
-before it: under the book's `dc:identifier`, so renaming or moving the file keeps its place, or
-under its path for a book without one. The only note written beside a book is its highlights note.
+a JSON file in the vault — `abele-book-places.json` at its root unless the reader setting
+`placesPath` says otherwise — so every device reads the same places. It maps a key to a place:
+the book's `dc:identifier` as `id:<identifier>`, so renaming or moving the file keeps its place,
+or `path:<path>` for a book without one; each place is `{ cfi, fraction, path, at }`, `at` being
+when it was read, in milliseconds. Every device writes that file and keeps the latest `at` for each
+book. A copy, `book-places.backup.json`, is written just before it in the plugin's own folder, on
+this device only. Obsidian's file list does not show a `.json` file; Obsidian Sync carries it with
+"Sync all other types" on. The only note written beside a book is its highlights note.
 
 `.epub` and `.pdf` files can be linked at a place, like notes at lines. The place goes where a
 heading would: `[[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]]` (an EPUB CFI without its

@@ -7,6 +7,7 @@ import {
   darkPdfPages,
   layoutAttributes,
   pageStyles,
+  placesPathOf,
   readerSettingsFrom,
   type ThemeValues,
 } from '@/reader/settings'
@@ -40,9 +41,14 @@ describe('reader settings as stored', () => {
     expect(s.maxWidth).toBe(DEFAULT_READER_SETTINGS.maxWidth)
   })
 
-  it('keep PDFs in Obsidian\'s viewer, whole pages, one at a time, dark in a dark theme by default', () => {
+  it("keep PDFs in Obsidian's viewer, whole pages, one at a time, dark in a dark theme by default", () => {
     const s = readerSettingsFrom({})
-    expect(s).toMatchObject({ openPdf: false, pdfZoom: 'auto', pdfTwoPages: false, pdfDarkPages: true })
+    expect(s).toMatchObject({
+      openPdf: false,
+      pdfZoom: 'auto',
+      pdfTwoPages: false,
+      pdfDarkPages: true,
+    })
     expect(readerSettingsFrom({ pdfZoom: '7' as never }).pdfZoom).toBe('auto')
     // A zoom chosen before stays chosen.
     expect(readerSettingsFrom({ pdfZoom: 'fit-page' }).pdfZoom).toBe('fit-page')
@@ -51,6 +57,29 @@ describe('reader settings as stored', () => {
 
   it("keep 0 as the book's own line spacing", () => {
     expect(readerSettingsFrom({ lineHeight: 0 }).lineHeight).toBe(0)
+  })
+})
+
+describe('the file the places of books are kept in', () => {
+  it('is a JSON file in the vault, at its root by default', () => {
+    expect(readerSettingsFrom({}).placesPath).toBe('abele-book-places.json')
+    expect(placesPathOf(readerSettingsFrom({}))).toBe('abele-book-places.json')
+    expect(placesPathOf(readerSettingsFrom({ placesPath: ' Books//places.json ' }))).toBe(
+      'Books/places.json'
+    )
+  })
+
+  it('is the default until the path is one that can be kept and synced', () => {
+    const of = (placesPath: string) => placesPathOf(readerSettingsFrom({ placesPath }))
+    // Still being typed, or not a JSON file.
+    expect(of('Books/pla')).toBe('abele-book-places.json')
+    expect(of('Books/places.md')).toBe('abele-book-places.json')
+    // Hidden, which Obsidian Sync never carries, or inside the vault's settings folder.
+    expect(of('.abele/places.json')).toBe('abele-book-places.json')
+    expect(of('Books/.places.json')).toBe('abele-book-places.json')
+    expect(of('.obsidian/places.json')).toBe('abele-book-places.json')
+    expect(of('../outside.json')).toBe('abele-book-places.json')
+    expect(of('')).toBe('abele-book-places.json')
   })
 })
 

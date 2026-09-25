@@ -1,11 +1,15 @@
 /**
- * Where each book was left, so it opens there again.
+ * Where each book was left, so it opens there again — on this device and on the others.
  *
  * A place is kept under the book's own identifier (`dc:identifier`), which travels with the file
  * whatever it is renamed or moved to; a book with none is kept under its path, and the path is
- * followed when the file is renamed. The places live in a file of their own beside the plugin's
- * settings, written a moment after the last page turn, so reading does not rewrite the settings
- * and the places reach another device the way the settings do.
+ * followed when the file is renamed. The places live in a file in the vault (`places.ts`), written
+ * a moment after the last page turn, so they reach another device the way notes do.
+ *
+ * Every device writes that one file, so nothing here ever replaces a place by an older one: each
+ * book keeps the place read last (`at`), wherever it was read. The file is read again just before
+ * each write, and whenever it changes on disk — synced from another device — and what is newer
+ * there is taken, and said (`onNewer`), so an open book can follow it.
  */
 
 export interface BookPlace {
@@ -27,6 +31,10 @@ export interface BookPlace {
 export interface PlaceStorage {
   read(copy: PlaceCopy): Promise<string | null>
   write(data: string, copy: PlaceCopy): Promise<void>
+  /** Copies from before the places were kept here, folded in once. */
+  legacy?(): Promise<(string | null)[]>
+  /** Removes those copies, once their places have been written here. */
+  dropLegacy?(): Promise<void>
 }
 
 export type PlaceCopy = 'main' | 'backup'
@@ -48,8 +56,24 @@ function parsePlaces(raw: string | null): Places | null {
   }
 }
 
-const newest = (places: Places): number =>
-  Object.values(places).reduce((a, p) => Math.max(a, p.at ?? 0), 0)
+/**
+ * Takes into `into` each place of `from` that is newer than its own, or that it lacks. Says which
+ * books it took.
+ */
+function mergeInto(into: Places, from: Places | null): string[] {
+  const took: string[] = []
+  for (const [key, place] of Object.entries(from ?? {})) {
+    const mine = into[key]
+    if (mine && (mine.at ?? 0) >= (place.at ?? 0)) continue
+    into[key] = place
+    took.push(key)
+  }
+  return took
+}
+
+/** Whether `places` holds something `file` lacks or has older. */
+const ahead = (places: Places, file: Places | null): boolean =>
+  Object.entries(places).some(([k, p]) => !file?.[k] || (file[k].at ?? 0) < (p.at ?? 0))
 
 /** How many books are remembered; the ones read longest ago go first. */
 export const MAX_PLACES = 500
@@ -67,25 +91,75 @@ export class BookPlaces {
   private dirty = false
   private timer: number | null = null
   private pending: Promise<void> = Promise.resolve()
+  /** Copies from before are still to be dropped, once their places are written. */
+  private legacyLeft = false
+  private readonly listeners = new Set<(keys: string[]) => void>()
 
   constructor(
-    private readonly storage: PlaceStorage,
+    private storage: PlaceStorage,
     private readonly delayMs = 1500
   ) {}
 
-  private load(): Promise<void> {
-    const read = (copy: PlaceCopy): Promise<Places | null> =>
-      this.storage.read(copy).then(parsePlaces, (e: unknown): null => {
-        console.warn(`[Abele] book places (${copy}) could not be read`, e)
-        return null
-      })
-    this.loaded ??= Promise.all([read('main'), read('backup')]).then(([main, backup]) => {
-      // The whole one; the newer of the two when both are.
-      const best =
-        main && backup ? (newest(backup) > newest(main) ? backup : main) : (main ?? backup)
-      if (best) this.places = { ...best, ...this.places }
+  private read(copy: PlaceCopy, storage = this.storage): Promise<Places | null> {
+    return storage.read(copy).then(parsePlaces, (e: unknown): null => {
+      console.warn(`[Abele] book places (${copy}) could not be read`, e)
+      return null
     })
+  }
+
+  private load(): Promise<void> {
+    this.loaded ??= (async () => {
+      const [main, backup] = await Promise.all([this.read('main'), this.read('backup')])
+      const legacy = (await this.storage.legacy?.().catch((): (string | null)[] => [])) ?? []
+      // Set in this session before the file was read: newer than anything in it.
+      const set = this.places
+      this.places = {}
+      mergeInto(this.places, main)
+      mergeInto(this.places, backup)
+      for (const raw of legacy) mergeInto(this.places, parsePlaces(raw))
+      mergeInto(this.places, set)
+      this.legacyLeft = legacy.some((raw) => raw !== null)
+      // The file lacks something the backup or the old copies hold: written into it.
+      if (ahead(this.places, main) || this.legacyLeft) {
+        this.dirty = true
+        this.schedule()
+      }
+    })()
     return this.loaded
+  }
+
+  /**
+   * Hears what another device put in the file, once it has arrived: each place newer than this
+   * device's is taken, and the books it was for are said to whoever listens.
+   */
+  async refresh(): Promise<void> {
+    await this.load()
+    const took = mergeInto(this.places, await this.read('main'))
+    if (took.length) for (const listener of this.listeners) listener(took)
+  }
+
+  /** Told the books whose place came newer from another device. Returns what stops it. */
+  onNewer(listener: (keys: string[]) => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
+  /**
+   * The places moved to another file, with whatever it holds already: all of them written there
+   * at once, and later ones too. A file that holds something other than places is left alone,
+   * and the places stay where they were.
+   */
+  async moveTo(next: PlaceStorage): Promise<boolean> {
+    await this.load()
+    await this.flush()
+    const raw = await next.read('main').catch((): null => null)
+    const there = parsePlaces(raw)
+    if (raw?.trim() && !there) return false
+    mergeInto(this.places, there)
+    this.storage = next
+    this.dirty = true
+    await this.write()
+    return true
   }
 
   async get(key: string): Promise<BookPlace | null> {
@@ -161,12 +235,22 @@ export class BookPlaces {
   private write(): Promise<void> {
     if (!this.dirty) return this.pending
     this.dirty = false
-    const entries = Object.entries(this.places).sort((a, b) => b[1].at - a[1].at)
-    this.places = Object.fromEntries(entries.slice(0, MAX_PLACES))
-    const data = JSON.stringify(this.places)
+    const storage = this.storage
     this.pending = this.pending
-      .then(() => this.storage.write(data, 'backup'))
-      .then(() => this.storage.write(data, 'main'))
+      .then(async () => {
+        // What another device wrote since this one last read the file is kept.
+        const took = mergeInto(this.places, await this.read('main', storage))
+        if (took.length) for (const listener of this.listeners) listener(took)
+        const entries = Object.entries(this.places).sort((a, b) => b[1].at - a[1].at)
+        this.places = Object.fromEntries(entries.slice(0, MAX_PLACES))
+        const data = JSON.stringify(this.places)
+        await storage.write(data, 'backup')
+        await storage.write(data, 'main')
+        if (this.legacyLeft) {
+          this.legacyLeft = false
+          await storage.dropLegacy?.()
+        }
+      })
       .catch((e) => {
         this.dirty = true
         console.warn('[Abele] book places could not be saved', e)

@@ -132,6 +132,19 @@
         />
       </Setting>
     </Section>
+
+    <Section v-if="kind === 'all'" title="Where books were left">
+      <Setting
+        name="Reading places file"
+        :desc="`A .json file in the vault that keeps where each book was left, so every device opens it there. Obsidian's file list does not show it. Obsidian Sync carries it with Sync all other types on, as it does chats. Changing the path moves the places to the new file. Empty: ${DEFAULT_PLACES_PATH}.`"
+      >
+        <Input
+          :model-value="placesPath"
+          :placeholder="DEFAULT_PLACES_PATH"
+          @update:model-value="setPlacesPath"
+        />
+      </Setting>
+    </Section>
   </div>
 </template>
 
@@ -146,6 +159,7 @@ import Dropdown from '../obsidian/Dropdown.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import Section from '../obsidian/Section.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
+import Input from '../obsidian/Input.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   FONT_SIZES,
@@ -153,6 +167,7 @@ import {
   TTS_RATES,
   LINE_HEIGHTS,
   MAX_WIDTHS,
+  DEFAULT_PLACES_PATH,
   readerSettingsFrom,
   type ReaderSettings,
 } from '@/reader/settings'
@@ -225,6 +240,26 @@ const voiceOptions = computed(() => [
     ? [{ value: settings.ttsVoice, display: 'A voice from another device' }]
     : []),
 ])
+
+/** The path as typed, saved a moment after typing stops: the places move once it is saved. */
+const placesPath = ref(settings.placesPath)
+watch(
+  () => settings.placesPath,
+  (value) => (placesPath.value = value)
+)
+let placesTimer = 0
+const savePlacesPath = () => {
+  window.clearTimeout(placesTimer)
+  placesTimer = 0
+  if (placesPath.value.trim() !== settings.placesPath) set('placesPath', placesPath.value.trim())
+}
+const setPlacesPath = (value: string) => {
+  placesPath.value = value
+  window.clearTimeout(placesTimer)
+  placesTimer = window.setTimeout(savePlacesPath, 500)
+}
+// Settings closed while typing: what was typed is kept.
+onBeforeUnmount(() => placesTimer && savePlacesPath())
 
 const set = <K extends keyof ReaderSettings>(key: K, value: ReaderSettings[K] | string) => {
   ;(settings as Record<string, unknown>)[key] = value

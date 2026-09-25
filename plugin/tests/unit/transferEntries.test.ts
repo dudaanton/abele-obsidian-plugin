@@ -154,7 +154,13 @@ describe('settings that arrived later than the transfer did', () => {
   })
 
   it('carries the book reader settings', () => {
-    const reader = { ...DEFAULT_READER_SETTINGS, fontSize: 135, flow: 'scrolled' as const }
+    const reader = {
+      ...DEFAULT_READER_SETTINGS,
+      fontSize: 135,
+      flow: 'scrolled' as const,
+      // Where the places of books are kept travels too: every device reads the same file.
+      placesPath: 'Books/places.json',
+    }
     const entries = collectEntries(settings({ reader }))
     const entry = find(entries, 'reader', 'reader')
 

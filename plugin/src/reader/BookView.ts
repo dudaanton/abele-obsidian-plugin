@@ -32,7 +32,7 @@ import { parsePlaceSubpath, type BookPlace } from './bookLinks'
 import { onExternalLink, onKey, pinchZoom, watchPage, type PageHost } from './pageInput'
 import { bookCallbacks, type BookActions } from './bookCallbacks'
 import { bookKey } from './positions'
-import { bookPlaces } from './places'
+import { bookPlaces, followPlace } from './places'
 import { progressOf } from './readingProgress'
 import { fillBookMenu, fillZoomMenu } from './bookMenu'
 import { bookScope, zoomStep } from './zoom'
@@ -60,6 +60,8 @@ export class BookView extends FileView {
   private resolveStage!: (el: HTMLElement) => void
   private stopWatch: WatchStopHandle | null = null
   private key = ''
+  /** Stops following the book's place as other devices move it. */
+  private stopNewer: (() => void) | null = null
   private footnotes = new FootnoteHandler()
   private footnoteHref = ''
   /** How a PDF was laid out when it opened: a change to either opens it again. */
@@ -263,6 +265,8 @@ export class BookView extends FileView {
 
   private teardown(): void {
     this.loadToken++
+    this.stopNewer?.()
+    this.stopNewer = null
     this.closeFootnote()
     this.reading?.stopSearch()
     this.reading?.speech.stop()
@@ -396,6 +400,13 @@ export class BookView extends FileView {
       const place = await bookPlaces()?.get(this.key)
       if (token !== this.loadToken) return
       await reader.init({ lastLocation: place?.cfi ?? null, showTextStart: true })
+      // Read further on another device while open here: the tab follows, rather than writing
+      // this older place back over it at the next page turn.
+      this.stopNewer = followPlace(
+        this.key,
+        () => reader.lastLocation?.cfi,
+        (cfi) => reader.goTo(cfi)
+      )
       if (token !== this.loadToken) return
       const asked = this.pendingPlace
       this.pendingPlace = null
@@ -418,12 +429,18 @@ export class BookView extends FileView {
     this.model.progress = this.isPdf ? null : progressOf(detail, this.reader?.renderer as never)
     const label = detail.tocItem?.label?.trim() ?? ''
     // A PDF's pages are its own measure: the page number first, the outline entry after it.
-    const page = detail.section ? `Page ${detail.section.current + 1} of ${detail.section.total}` : ''
+    const page = detail.section
+      ? `Page ${detail.section.current + 1} of ${detail.section.total}`
+      : ''
     this.model.chapter = this.isPdf && page ? [page, label].filter(Boolean).join(' · ') : label
     this.model.currentHref = detail.tocItem?.href ?? null
     const file = this.file
     if (detail.cfi && file && this.key && this.model.status === 'ready')
-      void bookPlaces()?.set(this.key, { cfi: detail.cfi, fraction: detail.fraction ?? 0, path: file.path })
+      void bookPlaces()?.set(this.key, {
+        cfi: detail.cfi,
+        fraction: detail.fraction ?? 0,
+        path: file.path,
+      })
   }
 
   /** A link inside the book: a note opens in its dialog, anything else is followed. */

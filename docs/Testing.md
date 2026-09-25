@@ -315,7 +315,9 @@ Three files, three concerns:
   swipe down), and turning the phone keeps the place. Pictures in `/tmp/abele-phone/controls-*`.
 - `bookPlaces.e2e.test.ts` — **where a book was left, across a restart**: a book and a PDF read to
   a place, the window reloaded with their tabs open, the restored tabs open where they were and
-  the file of places still holds them.
+  the file of places in the vault still holds them; then a later place written into that file on
+  disk, as a sync from another device would, moves the open book on to it, and it stays in the
+  file. The file is removed afterwards, so the fixture vault holds only what it did.
 - `bookSpeech.e2e.test.ts` — **reading aloud**, with the platform's speech swapped for a stand-in
   (`window.__abeleTest.reader.hooks.speech`) that records each sentence and ends it a moment later,
   so nothing is heard. With the rich book and the plain PDF: the header's button reads from the

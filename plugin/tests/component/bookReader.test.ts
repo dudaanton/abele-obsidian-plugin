@@ -157,6 +157,33 @@ describe('the text and layout settings', () => {
   })
 })
 
+describe('the file the places of books are kept in', () => {
+  const row = (form: ReturnType<typeof mount>) =>
+    form
+      .findAll('.setting-item')
+      .find((r) => r.find('.setting-item-name').text() === 'Reading places file')
+
+  it('is set in Settings only, not from a book’s tab, and saved a moment after typing stops', async () => {
+    vi.useFakeTimers()
+    try {
+      expect(row(mount(ReaderSettingsForm, { props: { kind: 'epub' } }))).toBeUndefined()
+      const form = mount(ReaderSettingsForm, { props: { kind: 'all' } })
+      const field = row(form)!.find('input')
+      expect((field.element as HTMLInputElement).value).toBe('abele-book-places.json')
+      // It says what Obsidian Sync needs to carry it.
+      expect(row(form)!.find('.setting-item-description').text()).toMatch(/Sync all other types/)
+      const config = AbeleConfig.getInstance()
+      await field.setValue('Books/places.json')
+      expect(config.reader.placesPath).toBe('abele-book-places.json')
+      await vi.advanceTimersByTimeAsync(600)
+      expect(config.reader.placesPath).toBe('Books/places.json')
+      expect(config.saveSettings).toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe('the PDF settings', () => {
   const names = (form: ReturnType<typeof mount>) =>
     form.findAll('.setting-item-name').map((n) => n.text())
