@@ -5,6 +5,9 @@ import type { AgentDefinition, AgentMemoryItem } from './types'
 /** The tool an agent calls to remember something. On for every agent unless switched off. */
 export const REMEMBER_TOOL = 'remember'
 
+/** The tool an agent calls to drop something it remembered. Follows `remember`'s mode. */
+export const FORGET_TOOL = 'forget'
+
 /**
  * One item is one thing the person asked to be remembered, not a note.
  *
@@ -22,7 +25,7 @@ export const MEMORY_PLACEHOLDER = '{{memory}}'
 export const DEFAULT_MEMORY_TEMPLATE = [
   '## Memory',
   '',
-  'Things the person asked you to remember. They hold in every conversation until the person says otherwise.',
+  'Things the person asked you to remember. They hold in every conversation until the person asks you to change or forget one.',
   '',
   MEMORY_PLACEHOLDER,
 ].join('\n')
@@ -45,6 +48,29 @@ export function createMemoryItem(text: string): AgentMemoryItem {
  * returns the item already there instead of storing a copy.
  */
 export function addMemory(agent: AgentDefinition, raw: string): AgentMemoryItem {
+  const text = validMemoryText(raw)
+
+  if (!agent.memory) agent.memory = []
+
+  const needle = text.toLowerCase()
+  const existing = agent.memory.find((item) => item.text.toLowerCase() === needle)
+  if (existing) return existing
+
+  if (agent.memory.length >= MEMORY_MAX_ITEMS) {
+    throw new Error(
+      `Memory is full (${MEMORY_MAX_ITEMS} items). Tell the person, so they can say what to forget ` +
+        "or remove it themselves in this agent's settings, under Memory."
+    )
+  }
+
+  agent.memory.push(createMemoryItem(text))
+  // The stored item, not the local one: on a reactive agent they are different objects, and a
+  // caller comparing ids or editing it afterwards should reach the one in the settings.
+  return agent.memory[agent.memory.length - 1]
+}
+
+/** A line fit to be stored, or an error the model can act on. */
+function validMemoryText(raw: string): string {
   const text = normalizeMemoryText(raw ?? '')
   if (!text) throw new Error('Nothing to remember: the text is empty.')
 
@@ -55,23 +81,71 @@ export function addMemory(agent: AgentDefinition, raw: string): AgentMemoryItem 
     )
   }
 
-  if (!agent.memory) agent.memory = []
+  return text
+}
 
-  const needle = text.toLowerCase()
-  const existing = agent.memory.find((item) => item.text.toLowerCase() === needle)
-  if (existing) return existing
+/**
+ * The index of the item a line names.
+ *
+ * The model addresses an item by what it reads in its prompt, which is the lines and nothing
+ * else — so the whole line matches first, and a part of one is enough when only one item has
+ * it. Anything else throws with the memory as it stands now, which is also how a model whose
+ * prompt was built before a change finds out what is really there.
+ */
+function findMemoryIndex(agent: AgentDefinition, raw: string): number {
+  const items = agent.memory ?? []
+  const needle = normalizeMemoryText(raw ?? '').toLowerCase()
+  if (!needle) throw new Error('Say which remembered line you mean: the text is empty.')
+  if (!items.length) throw new Error('Nothing is remembered, so there is nothing to change or forget.')
 
-  if (agent.memory.length >= MEMORY_MAX_ITEMS) {
+  const exact = items.findIndex((item) => item.text.toLowerCase() === needle)
+  if (exact !== -1) return exact
+
+  const partial = items
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.text.toLowerCase().includes(needle))
+  if (partial.length === 1) return partial[0].index
+
+  const list = (found: AgentMemoryItem[]) => found.map((item) => `- ${item.text}`).join('\n')
+  if (partial.length > 1) {
     throw new Error(
-      `Memory is full (${MEMORY_MAX_ITEMS} items). Tell the person, so they can remove what is no ` +
-        "longer needed in this agent's settings, under Memory."
+      `"${raw}" is in ${partial.length} remembered lines. Call again with the whole line you mean:\n` +
+        list(partial.map(({ item }) => item))
     )
   }
+  throw new Error(
+    `Nothing remembered matches "${raw}". Name the line as it is written. What is remembered now:\n` +
+      list(items)
+  )
+}
 
-  agent.memory.push(createMemoryItem(text))
-  // The stored item, not the local one: on a reactive agent they are different objects, and a
-  // caller comparing ids or editing it afterwards should reach the one in the settings.
-  return agent.memory[agent.memory.length - 1]
+/** Removes the item a line names and returns it. See `findMemoryIndex` for how it is found. */
+export function forgetMemory(agent: AgentDefinition, raw: string): AgentMemoryItem {
+  const index = findMemoryIndex(agent, raw)
+  return agent.memory!.splice(index, 1)[0]
+}
+
+/**
+ * Rewrites the item a line names, keeping its id and its place, and returns it.
+ *
+ * The new line is held to the same rules as a new item. If another item already says it, the
+ * old one is dropped and that one returned, so a change never leaves the same line twice.
+ */
+export function replaceMemory(agent: AgentDefinition, old: string, raw: string): AgentMemoryItem {
+  const text = validMemoryText(raw)
+  const index = findMemoryIndex(agent, old)
+  const items = agent.memory!
+
+  const twin = items.find((item, i) => i !== index && item.text.toLowerCase() === text.toLowerCase())
+  if (twin) {
+    items.splice(index, 1)
+    return twin
+  }
+
+  const item = items[index]
+  item.text = text
+  item.created = createMemoryItem(text).created
+  return item
 }
 
 /**

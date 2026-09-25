@@ -205,7 +205,7 @@ describe('the Comment agent', () => {
   it('leaves settings that already name a comment agent alone', () => {
     // Both carry the map tools already, so the only thing that could report a change here
     // is the comment agent being seeded again — which is what the test is about.
-    const modes = { ...MAP_TOOL_MODES, ...GITHUB_TOOL_MODES, remember: 'auto' as const }
+    const modes = { ...MAP_TOOL_MODES, ...GITHUB_TOOL_MODES, remember: 'auto' as const, forget: 'auto' as const }
     const existing = createAgent({ id: 'comment-1', name: 'My commenter', toolModes: modes })
     const ai = {
       ...DEFAULT_AI_SETTINGS,
@@ -329,6 +329,59 @@ describe('the remember tool', () => {
     migrateAgents(ai)
 
     for (const agent of ai.agents) expect(agent.toolModes.remember).toBe('auto')
+  })
+})
+
+/**
+ * `forget` came after `remember`. An agent saved before it takes whatever `remember` has there —
+ * on where memory is on, off where somebody switched memory off — and a mode already set for
+ * `forget` itself is left alone.
+ */
+describe('the forget tool', () => {
+  function agentWith(toolModes: Record<string, 'auto' | 'ask' | 'off'>) {
+    const agent = createAgent({ id: 'existing', name: 'Default' })
+    agent.toolModes = toolModes
+    return { ...DEFAULT_AI_SETTINGS, agents: [agent], defaultAgentId: 'existing' } as AiSettings
+  }
+
+  it('is switched on for agents that existed before it', () => {
+    const ai = agentWith({ remember: 'auto' })
+
+    expect(migrateAgents(ai)).toBe(true)
+    expect(ai.agents[0].toolModes.forget).toBe('auto')
+  })
+
+  it('is switched on for agents that predate memory altogether', () => {
+    const ai = agentWith({ fetch: 'ask' })
+
+    migrateAgents(ai)
+
+    expect(ai.agents[0].toolModes.remember).toBe('auto')
+    expect(ai.agents[0].toolModes.forget).toBe('auto')
+  })
+
+  it('stays off where memory was switched off', () => {
+    const ai = agentWith({ remember: 'off' })
+
+    migrateAgents(ai)
+
+    expect(ai.agents[0].toolModes.forget).toBe('off')
+  })
+
+  it('stays as it was set by hand', () => {
+    const ai = agentWith({ remember: 'auto', forget: 'off' })
+
+    migrateAgents(ai)
+
+    expect(ai.agents[0].toolModes.forget).toBe('off')
+  })
+
+  it('is on for the agents a fresh vault starts with', () => {
+    const ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' } as AiSettings
+
+    migrateAgents(ai)
+
+    for (const agent of ai.agents) expect(agent.toolModes.forget).toBe('auto')
   })
 })
 

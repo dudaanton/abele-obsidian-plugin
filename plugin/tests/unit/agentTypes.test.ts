@@ -16,7 +16,7 @@ describe('createAgent', () => {
     expect(agent.prompts).toEqual([])
     expect(agent.permissionMode).toBe('confirm-all')
     // Memory is on by default, so a new agent can be asked to remember something at once.
-    expect(agent.toolModes).toEqual({ remember: 'auto', ...GITHUB_TOOL_MODES })
+    expect(agent.toolModes).toEqual({ remember: 'auto', forget: 'auto', ...GITHUB_TOOL_MODES })
     expect(agent.memory).toEqual([])
     expect(agent.scope).toEqual([])
     expect(agent.fullVaultAccess).toBe(false)

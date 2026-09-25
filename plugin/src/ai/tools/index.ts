@@ -37,6 +37,7 @@ import { createTemplateDocsTool } from './TemplateDocsTool'
 import { createQueryDocsTool } from './QueryDocsTool'
 import { createReadSettingsTool, createWriteSettingsTool } from './SettingsTools'
 import { createRememberTool } from './RememberTool'
+import { createForgetTool } from './ForgetTool'
 import { createGithubTools } from './github'
 import { createBookTools } from './BookTools'
 import { githubSettings } from '@/github/GithubService'
@@ -119,6 +120,7 @@ export function getToolRegistry(): ToolInfo[] {
     questions: { label: 'Questions', category: 'AI' },
     delegate: { label: 'Delegate', category: 'AI' },
     remember: { label: 'Remember', category: 'AI' },
+    forget: { label: 'Forget', category: 'AI' },
     chart_docs: { label: 'Chart docs', category: 'Docs' },
     template_docs: { label: 'Template docs', category: 'Docs' },
     read_logs: { label: 'Read logs', category: 'Vault data' },
@@ -181,7 +183,7 @@ export function getToolRegistry(): ToolInfo[] {
 
 export interface AgentToolsOptions {
   /**
-   * The agent the tools act for — what `remember` writes into. A chat passes its own, a script
+   * The agent the tools act for — whose memory `remember` and `forget` change. A chat passes its own, a script
    * the agent it runs. Without one, the session executing the call is asked; never the chat
    * that happens to be open, which may be on a different agent entirely.
    */
@@ -267,6 +269,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createPlacesTool(),
     createRouteTool(),
     createRememberTool(resolveAgent),
+    createForgetTool(resolveAgent),
   ]
 
   // Read-only: books and PDFs in the vault, as far as the chat's scope reaches.

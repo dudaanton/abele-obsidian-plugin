@@ -67,7 +67,7 @@ export interface AgentDefinition {
 
   /**
    * What this agent was asked to remember. Its own: only this agent's prompt shows it and only
-   * its `remember` calls add to it. Optional because agents saved before memory lack it.
+   * its `remember` and `forget` calls change it. Optional because agents saved before memory lack it.
    */
   memory?: AgentMemoryItem[]
 }
@@ -103,7 +103,7 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
     // Memory is on for every agent unless someone turns it off — `enableMemoryTool` in the
     // migration does the same for agents saved before it existed.
     // The GitHub tools only read, and only exist while the integration is on.
-    toolModes: { remember: 'auto', ...GITHUB_TOOL_MODES },
+    toolModes: { remember: 'auto', forget: 'auto', ...GITHUB_TOOL_MODES },
     scope: [],
     fullVaultAccess: false,
     skillsMode: 'all',

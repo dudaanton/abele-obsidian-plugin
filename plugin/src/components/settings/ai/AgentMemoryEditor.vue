@@ -2,7 +2,8 @@
   <Section
     desc="What this agent was asked to remember. Only this agent sees it: it is added to its
       system prompt, laid out by the memory template in the general AI settings. The agent adds
-      items with the remember tool, which can be switched off on the Access tab."
+      and changes items with the remember tool and removes them with forget; both can be switched
+      off on the Access tab."
   >
     <CardGrid v-if="items.length" stack>
       <Card v-for="item in items" :key="item.id" :title="`Added ${item.created}`">

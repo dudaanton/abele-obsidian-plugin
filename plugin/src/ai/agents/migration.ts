@@ -1,5 +1,5 @@
 import { createAgent, normaliseContextDepth, type AgentDefinition } from './types'
-import { REMEMBER_TOOL } from './memory'
+import { REMEMBER_TOOL, FORGET_TOOL } from './memory'
 import {
   DEFAULT_AI_SETTINGS,
   EDIT_SELECTION_TOOL,
@@ -158,14 +158,22 @@ function enableMapTools(ai: AiSettings): boolean {
 /**
  * Switches memory on for agents saved before it existed. Same rule as the map tools: only an
  * agent with no opinion is touched, and an `off` written by hand stays off.
+ *
+ * `forget` came later and takes whatever `remember` has on that agent: someone who switched
+ * memory off for an agent did not mean to hand it a way to change memory instead.
  */
 function enableMemoryTool(ai: AiSettings): boolean {
   let changed = false
 
   for (const agent of ai.agents || []) {
-    if (agent.toolModes[REMEMBER_TOOL] !== undefined) continue
-    agent.toolModes[REMEMBER_TOOL] = 'auto'
-    changed = true
+    if (agent.toolModes[REMEMBER_TOOL] === undefined) {
+      agent.toolModes[REMEMBER_TOOL] = 'auto'
+      changed = true
+    }
+    if (agent.toolModes[FORGET_TOOL] === undefined) {
+      agent.toolModes[FORGET_TOOL] = agent.toolModes[REMEMBER_TOOL]
+      changed = true
+    }
   }
 
   return changed
