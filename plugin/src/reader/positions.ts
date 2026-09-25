@@ -19,10 +19,37 @@ export interface BookPlace {
   at: number
 }
 
+/**
+ * Where the places are kept: two copies of one file. A write replaces a file by emptying it
+ * first, and an app stopped in that moment — reloaded, or stopped on a phone — leaves it empty;
+ * with two, written one after the other, one of them is always whole.
+ */
 export interface PlaceStorage {
-  read(): Promise<string | null>
-  write(data: string): Promise<void>
+  read(copy: PlaceCopy): Promise<string | null>
+  write(data: string, copy: PlaceCopy): Promise<void>
 }
+
+export type PlaceCopy = 'main' | 'backup'
+
+type Places = Record<string, BookPlace>
+
+/** A copy's places, or null when it is missing, empty or cut short. */
+function parsePlaces(raw: string | null): Places | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object') return null
+    const out: Places = {}
+    for (const [key, value] of Object.entries(parsed as Places))
+      if (value && typeof value.cfi === 'string') out[key] = value
+    return out
+  } catch {
+    return null
+  }
+}
+
+const newest = (places: Places): number =>
+  Object.values(places).reduce((a, p) => Math.max(a, p.at ?? 0), 0)
 
 /** How many books are remembered; the ones read longest ago go first. */
 export const MAX_PLACES = 500
@@ -34,8 +61,10 @@ export function bookKey(identifier: unknown, path: string): string {
 }
 
 export class BookPlaces {
-  private places: Record<string, BookPlace> = {}
+  private places: Places = {}
   private loaded: Promise<void> | null = null
+  /** A place changed since the last write. */
+  private dirty = false
   private timer: number | null = null
   private pending: Promise<void> = Promise.resolve()
 
@@ -45,17 +74,17 @@ export class BookPlaces {
   ) {}
 
   private load(): Promise<void> {
-    this.loaded ??= this.storage
-      .read()
-      .then((raw) => {
-        const parsed = raw ? (JSON.parse(raw) as unknown) : null
-        if (parsed && typeof parsed === 'object') {
-          for (const [key, value] of Object.entries(parsed as Record<string, BookPlace>)) {
-            if (value && typeof value.cfi === 'string') this.places[key] = value
-          }
-        }
+    const read = (copy: PlaceCopy): Promise<Places | null> =>
+      this.storage.read(copy).then(parsePlaces, (e: unknown): null => {
+        console.warn(`[Abele] book places (${copy}) could not be read`, e)
+        return null
       })
-      .catch((e) => console.warn('[Abele] book places could not be read', e))
+    this.loaded ??= Promise.all([read('main'), read('backup')]).then(([main, backup]) => {
+      // The whole one; the newer of the two when both are.
+      const best =
+        main && backup ? (newest(backup) > newest(main) ? backup : main) : (main ?? backup)
+      if (best) this.places = { ...best, ...this.places }
+    })
     return this.loaded
   }
 
@@ -67,6 +96,7 @@ export class BookPlaces {
   async set(key: string, place: Omit<BookPlace, 'at'>): Promise<void> {
     await this.load()
     this.places[key] = { ...place, at: Date.now() }
+    this.dirty = true
     this.schedule()
   }
 
@@ -83,7 +113,10 @@ export class BookPlaces {
       }
       changed = true
     }
-    if (changed) this.schedule()
+    if (changed) {
+      this.dirty = true
+      this.schedule()
+    }
   }
 
   private schedule(): void {
@@ -91,16 +124,53 @@ export class BookPlaces {
     this.timer = window.setTimeout((): void => void this.flush(), this.delayMs)
   }
 
-  /** Writes now whatever is waiting; what a closing tab calls. */
+  /**
+   * Writes now whatever is waiting; what a closing tab calls. Before the places have been read
+   * there is nothing to write — and writing then would put an empty list over the file, which is
+   * how a tab restored at startup, closing what it showed before opening its book, lost every
+   * place.
+   */
   flush(): Promise<void> {
     if (this.timer) window.clearTimeout(this.timer)
     this.timer = null
+    if (!this.loaded) return this.pending
+    return this.loaded.then(() => this.write())
+  }
+
+  /**
+   * Flushes whenever the app is hidden or its page goes away: a phone often stops an app in the
+   * background without it ever hearing that it quits. Returns what stops it.
+   */
+  flushWhenHidden(win: Window): () => void {
+    const onHide = () => {
+      if (win.document.visibilityState === 'hidden') void this.flush()
+    }
+    const onPageHide = (): void => void this.flush()
+    win.document.addEventListener('visibilitychange', onHide)
+    win.addEventListener('pagehide', onPageHide)
+    return () => {
+      win.document.removeEventListener('visibilitychange', onHide)
+      win.removeEventListener('pagehide', onPageHide)
+    }
+  }
+
+  /**
+   * Writes the places if one changed since the last write — never otherwise, so quitting,
+   * reloading or hiding the app, which all flush, touch the file only when there is news.
+   */
+  private write(): Promise<void> {
+    if (!this.dirty) return this.pending
+    this.dirty = false
     const entries = Object.entries(this.places).sort((a, b) => b[1].at - a[1].at)
     this.places = Object.fromEntries(entries.slice(0, MAX_PLACES))
     const data = JSON.stringify(this.places)
     this.pending = this.pending
-      .then(() => this.storage.write(data))
-      .catch((e) => console.warn('[Abele] book places could not be saved', e))
+      .then(() => this.storage.write(data, 'backup'))
+      .then(() => this.storage.write(data, 'main'))
+      .catch((e) => {
+        this.dirty = true
+        console.warn('[Abele] book places could not be saved', e)
+      })
     return this.pending
   }
 }

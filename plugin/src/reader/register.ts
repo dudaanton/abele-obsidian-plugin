@@ -21,6 +21,8 @@ export function registerReader(plugin: Plugin): void {
   plugin.registerView(BOOK_VIEW_TYPE, (leaf) => new BookView(leaf))
   // The last page turned is written a moment later; quitting or unloading writes it now.
   plugin.registerEvent(app.workspace.on('quit', () => void places.flush()))
+  // A phone may stop the app in the background without it ever hearing that it quits.
+  plugin.register(places.flushWhenHidden(window))
   plugin.register(() => {
     void places.flush()
     forgetBookTexts()

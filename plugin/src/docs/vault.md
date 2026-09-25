@@ -325,9 +325,9 @@ Book files anywhere in the vault — `.epub`, `.mobi`, `.azw`, `.azw3`, `.fb2`, 
 in Abele's book reader, a tab of its own; `.pdf` files
 open there too when the person has chosen so, and otherwise in Obsidian's own viewer. The plugin
 never changes a book or PDF file. Where each book was left is kept outside the notes, in
-`book-places.json` in the plugin's own folder: under the book's `dc:identifier`, so renaming or
-moving the file keeps its place, or under its path for a book without one. The only note written
-beside a book is its highlights note.
+`book-places.json` in the plugin's own folder, with a copy in `book-places.backup.json` written just
+before it: under the book's `dc:identifier`, so renaming or moving the file keeps its place, or
+under its path for a book without one. The only note written beside a book is its highlights note.
 
 `.epub` and `.pdf` files can be linked at a place, like notes at lines. The place goes where a
 heading would: `[[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]]` (an EPUB CFI without its

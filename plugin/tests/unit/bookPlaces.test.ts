@@ -4,13 +4,17 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { BookPlaces, MAX_PLACES, bookKey, type PlaceStorage } from '@/reader/positions'
 
-const memory = (initial: string | null = null) => {
-  const store = { data: initial, writes: 0 }
+/** Both copies in memory; `writes` counts the main one's. */
+const memory = (initial: string | null = null, backup: string | null = initial) => {
+  const store = { data: initial, backup, writes: 0 }
   const storage: PlaceStorage = {
-    read: async () => store.data,
-    write: async (d) => {
-      store.data = d
-      store.writes++
+    read: async (copy) => (copy === 'backup' ? store.backup : store.data),
+    write: async (d, copy) => {
+      if (copy === 'backup') store.backup = d
+      else {
+        store.data = d
+        store.writes++
+      }
     },
   }
   return { store, storage }
@@ -95,5 +99,74 @@ describe('the places of books', () => {
     const kept = Object.keys(JSON.parse(store.data!))
     expect(kept).toHaveLength(MAX_PLACES)
     expect(kept).not.toContain('id:0')
+  })
+})
+
+describe('the places across a restart', () => {
+  const place = (cfi: string, at: number) =>
+    JSON.stringify({ 'id:a': { cfi, fraction: 0.5, path: 'a.epub', at } })
+
+  it('are read from the backup when the main copy was left empty by a write cut short', async () => {
+    const { storage } = memory('', place('epubcfi(/6/6!/4)', 5))
+    expect((await new BookPlaces(storage).get('id:a'))?.cfi).toBe('epubcfi(/6/6!/4)')
+    const broken = memory('{"id:a": {"cf', place('epubcfi(/6/8!/4)', 5))
+    expect((await new BookPlaces(broken.storage).get('id:a'))?.cfi).toBe('epubcfi(/6/8!/4)')
+  })
+
+  it('take the newer copy when both are whole, and the main one when the backup is cut short', async () => {
+    const { storage } = memory(place('epubcfi(/6/2!/4)', 1), place('epubcfi(/6/4!/4)', 2))
+    expect((await new BookPlaces(storage).get('id:a'))?.cfi).toBe('epubcfi(/6/4!/4)')
+    const other = memory(place('epubcfi(/6/2!/4)', 1), '')
+    expect((await new BookPlaces(other.storage).get('id:a'))?.cfi).toBe('epubcfi(/6/2!/4)')
+  })
+
+  it('writes the backup first, and nothing at all when no place changed', async () => {
+    const order: string[] = []
+    const storage: PlaceStorage = {
+      read: async () => place('epubcfi(/6/2!/4)', 1),
+      write: async (_d, copy) => void order.push(copy),
+    }
+    const places = new BookPlaces(storage, 1000)
+    await places.get('id:a')
+    await places.flush()
+    expect(order).toEqual([])
+    await places.set('id:a', { cfi: 'epubcfi(/6/4!/4)', fraction: 0.2, path: 'a.epub' })
+    await places.flush()
+    await places.flush()
+    expect(order).toEqual(['backup', 'main'])
+  })
+
+  it('are not wiped by a flush that comes before they were read', async () => {
+    // What a tab restored at startup does: it closes whatever it showed before opening the book,
+    // which flushes, and only then asks for the book's place.
+    const saved = JSON.stringify({
+      'id:a': { cfi: 'epubcfi(/6/6!/4)', fraction: 0.9, path: 'a.epub', at: 1 },
+    })
+    const { store, storage } = memory(saved)
+    const places = new BookPlaces(storage, 1000)
+    const flushed = places.flush()
+    const place = await places.get('id:a')
+    await flushed
+    expect(place?.cfi).toBe('epubcfi(/6/6!/4)')
+    expect(store.data).toBe(saved)
+    expect(store.writes).toBe(0)
+  })
+
+  it('are written at once when the app is hidden, which on a phone may be the last it hears', async () => {
+    vi.useFakeTimers()
+    const { store, storage } = memory()
+    const places = new BookPlaces(storage, 1000)
+    const stop = places.flushWhenHidden(window)
+    await places.set('id:a', { cfi: 'epubcfi(/6/2!/4)', fraction: 0.1, path: 'a.epub' })
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.writes).toBe(1)
+    await places.set('id:a', { cfi: 'epubcfi(/6/4!/4)', fraction: 0.2, path: 'a.epub' })
+    window.dispatchEvent(new Event('pagehide'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.writes).toBe(2)
+    stop()
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
   })
 })
