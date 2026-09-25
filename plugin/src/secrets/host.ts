@@ -33,6 +33,14 @@ export function pluginSecretIds(): string[] {
   return [...new Set(ids)]
 }
 
+/** The ids of every `deviceOnly` section: what the store must never hold (`StoreHost.deviceOnly`). */
+export function deviceOnlySecretIds(): string[] {
+  const ids = collectEntries(AbeleConfig.getInstance().exportSettings())
+    .filter((entry) => isDeviceOnly(entry.section))
+    .flatMap((entry) => entry.secretIds ?? [])
+  return [...new Set(ids)]
+}
+
 /** Syncthing's name for the loser of a conflict: `data.sync-conflict-<date>-<time>-<device>.json`. */
 export const CONFLICT_COPY = /(^|\/)data\.sync-conflict-[^/]*\.json$/
 
@@ -49,6 +57,7 @@ export function pluginStoreHost(plugin: Plugin): StoreHost {
       await config.saveSettings()
     },
     ids: pluginSecretIds,
+    deviceOnly: deviceOnlySecretIds,
     conflictCopies: async () => {
       const listed = await adapter.list(dir)
       const copies: unknown[] = []

@@ -4,7 +4,12 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { Plugin } from 'obsidian'
-import { CONFLICT_COPY, pluginSecretIds, pluginStoreHost } from '@/secrets/host'
+import {
+  CONFLICT_COPY,
+  deviceOnlySecretIds,
+  pluginSecretIds,
+  pluginStoreHost,
+} from '@/secrets/host'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
@@ -68,6 +73,14 @@ describe('the plugin’s secrets', () => {
     config.sync = { ...config.sync, deviceTokenId: 'abele-sync-device-1' }
 
     expect(pluginSecretIds()).not.toContain('abele-sync-device-1')
+  })
+
+  it('name the sync device token to the store as this device’s own, and nothing else', () => {
+    const config = AbeleConfig.getInstance()
+    config.sync = { ...config.sync, deviceTokenId: 'abele-sync-device-1' }
+
+    expect(deviceOnlySecretIds()).toEqual(['abele-sync-device-1'])
+    expect(pluginStoreHost(fakePlugin({})).deviceOnly?.()).toEqual(['abele-sync-device-1'])
   })
 })
 

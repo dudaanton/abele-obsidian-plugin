@@ -1123,6 +1123,44 @@ describe('the keys that arrived', () => {
     expect(store.contents()!.map((c) => c.id)).toEqual(['key-p1'])
   })
 
+  it('keeps the sync device token out of a store locked here, once it is unlocked', async () => {
+    // Another device made the store; this one has not been given the passphrase yet. A key
+    // set now waits in memory for the unlock, so a token sent down the store's road would
+    // only show up there.
+    let file: unknown = null
+    const host = (chain: Keychain) => ({
+      keychain: () => chain,
+      read: () => file,
+      write: async (next: unknown) => {
+        file = next
+      },
+      ids: () => [],
+      conflictCopies: async () => [],
+      now: () => Date.now(),
+    })
+    const mapChain = (keychain: Map<string, string>): Keychain => ({
+      getSecret: (id) => keychain.get(id) ?? null,
+      setSecret: (id, value) => void keychain.set(id, value),
+      deleteSecret: (id) => keychain.delete(id),
+    })
+    await new SecretStore(host(mapChain(new Map()))).enable('passphrase', { iterations: 1000 })
+    const keychain = new Map<string, string>()
+    const store = new SecretStore(host(mapChain(keychain)))
+    await store.load()
+    expect(store.status.value).toBe('locked')
+    setSecrets(store)
+    const arriving = collectEntries(settings()).filter(
+      (e) => e.section === 'sync' || e.section === 'ai-providers'
+    )
+
+    storeReceivedKeys(arriving, { 'abele-sync-device-1': 'absd_token', 'key-p1': 'sk-provider' })
+    expect(await store.unlock('passphrase')).toBe(true)
+    await store.flush()
+
+    expect(store.contents()!.map((c) => c.id)).toEqual(['key-p1'])
+    expect(keychain.get('abele-sync-device-1')).toBe('absd_token')
+  })
+
   it('leaves alone a key that did not travel, and counts one the keychain refuses', () => {
     const keychain = new Map<string, string>([['key-p1', 'sk-kept']])
     setSecrets(

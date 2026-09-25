@@ -49,6 +49,11 @@ export interface StoreHost {
   write(file: SecretStoreFile | null): Promise<void>
   /** The keychain ids the settings point at: what moves into the store when it is made. */
   ids(): string[]
+  /**
+   * The keychain ids that belong to this device alone (`SecretStore.device`): never recorded,
+   * mirrored or forgotten by the store, and dropped from one that holds them anyway.
+   */
+  deviceOnly?(): string[]
   /** `secretStore` out of every sync-conflict copy of the settings file lying beside it. */
   conflictCopies(): Promise<unknown[]>
   now(): number
@@ -152,7 +157,8 @@ export class SecretStore {
    * handed the laptop's through the store would sync as the laptop — the server would see one
    * device where there are two. What goes through here is never recorded in the store, so it
    * never reaches another device that way. Its ids must also stay out of the host's `ids()`, or
-   * making the store would move them in anyway; the transfer sections mark them `deviceOnly`.
+   * making the store would move them in anyway; the transfer sections mark them `deviceOnly`,
+   * and the host's `deviceOnly()` names them to the store, which keeps them out as a guard.
    */
   readonly device: DeviceSecrets = {
     get: (id) => (id ? (this.host.keychain().getSecret(id) ?? '') : ''),
@@ -220,7 +226,7 @@ export class SecretStore {
 
     const now = this.host.now()
     const entries: SecretEntries = {}
-    for (const id of new Set(this.host.ids())) {
+    for (const id of this.storedIds()) {
       const value = this.host.keychain().getSecret(id)
       if (value) entries[id] = { value, at: now }
     }
@@ -250,7 +256,7 @@ export class SecretStore {
     // What this device held before it joined, at time zero: added where the store has no
     // such secret, and never over one the store has — nor over one it removed.
     const local: SecretEntries = {}
-    for (const id of new Set(this.host.ids())) {
+    for (const id of this.storedIds()) {
       const value = this.host.keychain().getSecret(id)
       if (value) local[id] = { value, at: 0 }
     }
@@ -283,7 +289,8 @@ export class SecretStore {
   async lock(): Promise<void> {
     await this.saving
     if (this.storeId) this.forget(deviceKeyId(this.storeId))
-    for (const id of Object.keys(this.entries ?? {})) this.forget(id)
+    const own = this.ownIds()
+    for (const id of Object.keys(this.entries ?? {})) if (!own.has(id)) this.forget(id)
     this.entries = null
     this.key = null
     this.status.value = this.storeId ? 'locked' : 'off'
@@ -360,7 +367,7 @@ export class SecretStore {
       }
     }
 
-    const merged = mergeEntries(this.entries ?? {}, incoming, ...copies)
+    const merged = this.withoutOwn(mergeEntries(this.entries ?? {}, incoming, ...copies))
     this.key = key
     this.entries = merged
     this.status.value = 'unlocked'
@@ -369,12 +376,14 @@ export class SecretStore {
 
     // Something here the file does not have — a key set while the other device's copy was
     // on its way, or one out of a conflict copy: the file gets it, or it would be lost at
-    // this device's next restart.
+    // this device's next restart. Or a device-only id the file holds and `merged` no longer
+    // does: the file loses it too.
     if (!sameEntries(merged, incoming)) this.persist()
   }
 
   private record(id: string, value: string): void {
     if (this.status.value === 'off' || !this.storeId) return
+    if (this.ownIds().has(id)) return
     this.entries = { ...(this.entries ?? {}), [id]: { value, at: this.host.now() } }
     this.version.value++
     if (this.status.value === 'unlocked') this.persist()
@@ -404,7 +413,9 @@ export class SecretStore {
   /** The keychain made to hold exactly what the store says, for the ids the store knows. */
   private mirror(entries: SecretEntries): void {
     const keychain = this.host.keychain()
+    const own = this.ownIds()
     for (const [id, entry] of Object.entries(entries)) {
+      if (own.has(id)) continue
       try {
         if (!entry.value) this.forget(id)
         else if (keychain.getSecret(id) !== entry.value) keychain.setSecret(id, entry.value)
@@ -412,6 +423,30 @@ export class SecretStore {
         // An id the keychain refuses, from a hand-edited file: skipped, the rest still land.
       }
     }
+  }
+
+  /** The ids this device's own secrets live under: see `StoreHost.deviceOnly`. */
+  private ownIds(): Set<string> {
+    return new Set(this.host.deviceOnly?.() ?? [])
+  }
+
+  /** What the settings point at and the store may hold. */
+  private storedIds(): string[] {
+    const own = this.ownIds()
+    return [...new Set(this.host.ids())].filter((id) => !own.has(id))
+  }
+
+  /**
+   * The entries with every device-only id taken out — not replaced by a removal. The id is in
+   * the settings, which travel, so devices share it: a removal would make each of them delete
+   * its own token out of its keychain on the next load.
+   */
+  private withoutOwn(entries: SecretEntries): SecretEntries {
+    const own = this.ownIds()
+    const dropped = Object.keys(entries).filter((id) => own.has(id))
+    if (!dropped.length) return entries
+    console.debug('[Abele] device-only keys dropped from the synced store', dropped.length)
+    return Object.fromEntries(Object.entries(entries).filter(([id]) => !own.has(id)))
   }
 
   private forget(id: string): void {

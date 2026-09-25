@@ -37,8 +37,11 @@ interface Device {
   writes: number
 }
 
-/** A device on the shared file. `ids` is what its settings point at. */
-function device(on: Shared, ids: string[] = []): Device {
+/**
+ * A device on the shared file. `ids` is what its settings point at; `own` the ids that belong
+ * to it alone and must never be in the store.
+ */
+function device(on: Shared, ids: string[] = [], own?: string[]): Device {
   const keychain = new FakeKeychain()
   const made: Device = { store: null as unknown as SecretStore, keychain, writes: 0 }
   const host: StoreHost = {
@@ -52,6 +55,7 @@ function device(on: Shared, ids: string[] = []): Device {
     ids: () => ids,
     conflictCopies: async () => on.copies,
     now: () => ++on.clock,
+    ...(own ? { deviceOnly: () => own } : {}),
   }
   made.store = new SecretStore(host)
   return made
@@ -534,5 +538,98 @@ describe('a secret kept on this device alone', () => {
     expect(mac.keychain.getSecret('abele-sync-device-1')).toBeNull()
     expect(mac.keychain.getSecret('abele-sync-device-2')).toBeNull()
     expect(mac.store.device.get('abele-sync-device-1')).toBe('')
+  })
+})
+
+/**
+ * A store that already holds a device-only id — written by a build that let the token in, or by
+ * a hand edit. The id is shared between devices (the settings carrying it travel), so the entry
+ * would hand one device's token to every other: the store drops it, and drops it quietly — a
+ * removal written in its place would take each device's own token out of its keychain.
+ */
+describe('a device-only id the store already holds', () => {
+  const TOKEN = 'abele-sync-device-1'
+
+  async function leaked(on: Shared) {
+    // A device whose settings count the token among the store's secrets, as the leak did.
+    const mac = device(on, ['abele-provider-x', TOKEN])
+    mac.keychain.setSecret('abele-provider-x', 'sk-1')
+    mac.keychain.setSecret(TOKEN, 'absd_mac')
+    await mac.store.enable('passphrase', FAST)
+    return mac
+  }
+
+  function phoneWithToken(on: Shared) {
+    const phone = device(on, ['abele-provider-x'], [TOKEN])
+    phone.keychain.setSecret(TOKEN, 'absd_phone')
+    return phone
+  }
+
+  it('is dropped on unlock and on load, and this device keeps its own token', async () => {
+    const on = shared()
+    const mac = await leaked(on)
+    const phone = phoneWithToken(on)
+
+    await phone.store.load()
+    expect(await phone.store.unlock('passphrase')).toBe(true)
+    await phone.store.flush()
+
+    expect(phone.keychain.getSecret(TOKEN)).toBe('absd_phone')
+    expect(phone.store.get(TOKEN)).toBe('absd_phone')
+    expect(phone.store.contents()!.map((c) => c.id)).toEqual(['abele-provider-x'])
+    expect(phone.store.get('abele-provider-x')).toBe('sk-1')
+
+    // The leaky device writes it back in; the next load drops it again.
+    mac.store.set(TOKEN, 'absd_mac2')
+    await mac.store.flush()
+    await phone.store.load()
+    await phone.store.flush()
+    expect(phone.keychain.getSecret(TOKEN)).toBe('absd_phone')
+    expect(phone.store.contents()!.map((c) => c.id)).toEqual(['abele-provider-x'])
+  })
+
+  it('leaves the file without it and without a removal in its place', async () => {
+    const on = shared()
+    await leaked(on)
+    const phone = phoneWithToken(on)
+    await phone.store.load()
+    await phone.store.unlock('passphrase')
+    await phone.store.flush()
+
+    // A third device opening what the phone wrote finds no such key, removed or not.
+    const tablet = device(on)
+    tablet.keychain.setSecret(TOKEN, 'absd_tablet')
+    await tablet.store.load()
+    await tablet.store.unlock('passphrase')
+    expect(tablet.store.contents()!.map((c) => c.id)).toEqual(['abele-provider-x'])
+    expect(tablet.keychain.getSecret(TOKEN)).toBe('absd_tablet')
+  })
+
+  it('stays in this device’s keychain when the store is removed from it', async () => {
+    const on = shared()
+    await leaked(on)
+    const phone = phoneWithToken(on)
+    await phone.store.load()
+    await phone.store.unlock('passphrase')
+
+    await phone.store.lock()
+
+    expect(phone.keychain.getSecret(TOKEN)).toBe('absd_phone')
+    expect(phone.keychain.getSecret('abele-provider-x')).toBeNull()
+  })
+
+  it('is kept out when something sets it through the store road', async () => {
+    const on = shared()
+    const phone = device(on, ['abele-provider-x'], [TOKEN])
+    phone.keychain.setSecret('abele-provider-x', 'sk-1')
+    await phone.store.enable('passphrase', FAST)
+    const writes = phone.writes
+
+    phone.store.set(TOKEN, 'absd_phone')
+    await phone.store.flush()
+
+    expect(phone.writes).toBe(writes)
+    expect(phone.keychain.getSecret(TOKEN)).toBe('absd_phone')
+    expect(phone.store.contents()!.map((c) => c.id)).toEqual(['abele-provider-x'])
   })
 })
