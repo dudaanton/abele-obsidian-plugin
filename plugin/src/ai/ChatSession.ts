@@ -259,6 +259,22 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   })
 
   /**
+   * Whether something is running that a message typed now would land in the middle of.
+   *
+   * Streaming is only one of them. A tool approved by hand runs outside the loop, and a failed
+   * request counting down to its next attempt has no loop at all — in both the conversation
+   * is half-way through a turn, so a message has to wait for it rather than start another.
+   */
+  private get isBusy(): boolean {
+    return (
+      this.isStreaming.value ||
+      this.isCompacting.value ||
+      this.isExecutingTool.value ||
+      this.retrying.value !== null
+    )
+  }
+
+  /**
    * True while the conversation must not be touched from outside.
    *
    * A `tool_use` and its `tool_result` are one pair as far as every provider is concerned, so
@@ -789,9 +805,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     if (this.allInternalMessages.length === 0) return
 
     this.error.value = null
-    await this.runAgentLoop()
-    // A turn just ended: a natural point to be sure the disk has it.
-    await this.save()
+    try {
+      await this.runAgentLoop()
+      // A turn just ended: a natural point to be sure the disk has it.
+      await this.save()
+    } finally {
+      await this.drainQueue()
+    }
   }
 
   /** Whether a fallback model is configured, so the UI knows to offer it after a failure. */
@@ -1522,8 +1542,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
   async sendMessage(content: string, attachments?: string[]): Promise<void> {
     // Busy is not a reason to lose what was typed: it waits its turn instead. `takeQueued`
-    // hands it to the loop that is already running, at its next iteration.
-    if (this.isStreaming.value || this.isCompacting.value) {
+    // hands it to the loop that is already running, at its next iteration; `drainQueue` gives
+    // it a turn of its own when the one it waited behind ends without another iteration.
+    if (this.isBusy) {
       this.queuedMessages.value = [
         ...this.queuedMessages.value,
         { id: nanoid(), content, attachments: attachments?.length ? attachments : undefined },
@@ -1544,13 +1565,26 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     this.allInternalMessages.push(await this.userMessage(content, attachments))
 
-    await this.runAgentLoop()
+    try {
+      await this.runAgentLoop()
 
-    if (gen !== this.generation) return
+      if (gen !== this.generation) return
 
-    // A turn just ended: a natural point to be sure the disk has it.
-    await this.save()
+      // A turn just ended: a natural point to be sure the disk has it.
+      await this.save()
 
+      await this.afterTurn()
+    } finally {
+      // Whatever became of the turn — an answer, a bare tool call, an error, a title that
+      // failed to generate — what was typed while it ran is what comes next.
+      await this.drainQueue()
+    }
+  }
+
+  /**
+   * The work a finished turn leaves behind: a title, a summary, a recap, a compaction.
+   */
+  private async afterTurn(): Promise<void> {
     const sequential = AbeleConfig.getInstance().ai.sequentialAuxiliary
 
     // A run is never listed anywhere, so naming it would be a request nobody reads the answer to.
@@ -1597,8 +1631,6 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
         return
       })
     }
-
-    await this.drainQueue()
   }
 
   /**
@@ -1611,7 +1643,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    * takes the queue with it.
    */
   private async drainQueue(): Promise<void> {
-    if (this.isStreaming.value || this.isCompacting.value) return
+    if (this.isBusy) return
     if (this.pendingToolCalls.value.length) return
 
     const [next, ...rest] = this.queuedMessages.value
@@ -1708,8 +1740,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       }
     }
 
-    await this.processAllPendingToolCalls({ args: modifiedArgs })
-    this.markDirty()
+    try {
+      await this.processAllPendingToolCalls({ args: modifiedArgs })
+      this.markDirty()
+    } finally {
+      // The agent carries on after the answer and may finish there: whatever was typed
+      // meanwhile is what comes next.
+      await this.drainQueue()
+    }
   }
 
   abortToolExecution(): void {
@@ -1743,8 +1781,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     this.pendingToolCalls.value = this.pendingToolCalls.value.slice(1)
 
-    await this.processAllPendingToolCalls()
-    this.markDirty()
+    try {
+      await this.processAllPendingToolCalls()
+      this.markDirty()
+    } finally {
+      await this.drainQueue()
+    }
   }
 
   // ── Questions tool ──────────────────────────────────────────────
@@ -2373,60 +2415,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       })
     }
 
-    await this.runAgentLoop()
+    try {
+      await this.runAgentLoop()
 
-    if (gen !== this.generation) return
+      if (gen !== this.generation) return
 
-    this.markDirty()
+      this.markDirty()
 
-    const sequential = AbeleConfig.getInstance().ai.sequentialAuxiliary
-
-    // A run is never listed anywhere, so naming it would be a request nobody reads the answer to.
-    const wantsTitle =
-      this.kind === 'chat' && ChatSession.TITLE_GENERATION_TRIGGERS.includes(this.userMessageCount)
-    if (wantsTitle) {
-      if (sequential) {
-        await this.summarizer.generateTitle()
-      } else {
-        this.summarizer.generateTitle().catch(() => {
-          return
-        })
-      }
+      await this.afterTurn()
+    } finally {
+      await this.drainQueue()
     }
-
-    if (this.kind === 'chat' && ChatSession.SUMMARY_TRIGGERS.includes(this.userMessageCount)) {
-      if (sequential) await this.summarizer.generateSummary()
-      else {
-        this.summarizer.generateSummary().catch(() => {
-          return
-        })
-      }
-    }
-
-    // A recap describes what the chat did to a note, so unlike a title it is regenerated on
-    // every turn that wrote, not once. The mirror follows it, since the sentence is part of
-    // what the card under the note shows.
-    if (this.wantsRecap()) {
-      if (sequential) await this.summarizer.generateRecap()
-      else {
-        this.summarizer.generateRecap().catch(() => {
-          return
-        })
-      }
-      // Ahead of the recap rather than after it: the links are already known, and the
-      // sentence, when it lands, mirrors itself through the save `generateRecap` makes.
-      this.mirrorNoteLinks()
-    }
-
-    if (sequential) {
-      await this.summarizer.autoCompactIfNeeded()
-    } else {
-      this.summarizer.autoCompactIfNeeded().catch(() => {
-        return
-      })
-    }
-
-    await this.drainQueue()
   }
 
   getDraftMessage(): ChatMessage | null {
