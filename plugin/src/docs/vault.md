@@ -1127,13 +1127,17 @@ when asked, and leave choosing between them to the person. A merged note may hol
 twice, once as each device wrote it, for the same reason.
 
 `.abele-sync-ignore` at the vault root lists, in gitignore patterns, what this device does not
-sync; it never syncs itself, so each device has its own. The daemon's `.abele-sync/` folder, when
+sync; it never syncs itself, so each device has its own. If it is there but cannot be read, sync
+stops with an error rather than running without it. Other hidden files and folders — `.git/`,
+`.DS_Store`, `.trash/` — are neither fetched nor sent by the plugin, nor is a config folder renamed
+from `.obsidian`. The daemon's `.abele-sync/` folder, when
 a vault is synced by the command-line client, is its state and never syncs either. Leave both
 alone unless asked.
 
 What the device has synced is recorded outside the vault, in Obsidian's IndexedDB, as a database
-named `abele-sync-<stateId>`; the device token is in the keychain, under the id in
-`sync.deviceTokenId`. Neither is a file an agent can see. Version history and deleted files are
+named `abele-sync-<id>`, the id kept in Obsidian's local storage for this vault and in no file, so
+a copied or transferred `data.json` never points another vault at it; the device token is in the
+keychain, under the id in `sync.deviceTokenId`. Neither is a file an agent can see. Version history and deleted files are
 kept on the server and shown in dialogs the person opens (the `commands` section).
 
 ## Screenshots

@@ -236,20 +236,24 @@ cache), so the lists show it without a network.
 
 ## Sync
 
-`sync` is this device's side of Abele Sync, and it never leaves the device: the plugin's own
-`data.json` is kept out of the sync by name. `sync.serverUrl`, `sync.vaultId`, `sync.deviceId`,
-`sync.deviceName`, `sync.deviceTokenId`, `sync.stateId` and `sync.stateVaultId` are this device's
-enrolment — which server, which vault, what the device is called there, the keychain slot its
-token is in, and the local ledger of what it has synced. They are set by signing in on the Sync
-tab and cleared by **Disconnect** and **Forget** there. Never write them: the running sync is
-rebuilt from them on every save, so a changed address sends this device's token to that address.
-All of them empty means the device is not connected.
+`sync` is this device's side of Abele Sync. Abele Sync itself never carries it — the plugin's own
+`data.json` is kept out of the sync by name — but it is in `data.json`, so the Transfer tab carries
+it on purpose and any other tool that syncs or copies that file carries it too. `sync.serverUrl`,
+`sync.vaultId`, `sync.deviceId`, `sync.deviceName` and `sync.deviceTokenId` are this device's
+enrolment — which server, which vault, what the device is called there, and the keychain slot its
+token is in (always named `abele-sync-device-…`; any other name is ignored, never read or sent).
+They are set by signing in on the Sync tab and cleared by **Disconnect** and **Forget** there.
+Never write them: the running sync is rebuilt from them on every save, so a changed address sends
+this device's token to that address. All of them empty means the device is not connected. The
+record of what this device has synced is not in the settings at all (see the vault reference).
 
 `sync.selective` is what this device takes — `images`, `audio`, `video`, `pdf` and `other`
 (true/false each; notes and canvases always sync), `excludedFolders` (folders this device skips),
-`maxFileBytes` (a size cap in bytes, `null` for none; a phone starts at 50 MB) and `settings`,
+`maxFileBytes` (a size cap in bytes, `null` for none; a phone with no `sync` settings yet starts at
+50 MB, one whose settings arrived with a `sync` section keeps that section's cap) and `settings`,
 which parts of the config folder travel: `main`, `appearance`, `hotkeys`, `corePlugins`,
-`communityPlugins`, `pluginSettings`. `sync.paused` holds syncing without disconnecting.
+`communityPlugins`, `pluginSettings` — only when that folder is `.obsidian`; a renamed config folder
+does not sync. Hidden files and folders other than the config folder never sync from the plugin. `sync.paused` holds syncing without disconnecting.
 `sync.keySignature` is stored but not yet applied. The vault-wide policy — merge or conflict file,
 the server's size cap, how long history is kept — is on the server, not here.
 

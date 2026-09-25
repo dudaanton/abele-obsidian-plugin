@@ -41,7 +41,8 @@ device syncs**:
 | PDFs | Papers, manuals and scans. |
 | Everything else | Attachments of no listed type, and the scripts folder. |
 
-**Largest file** skips anything bigger, in megabytes; empty takes everything. The vault has a cap
+**Largest file** skips anything bigger, in megabytes; empty takes everything. It takes effect when
+you leave the field or press Enter, not while you type. The vault has a cap
 of its own too, set on the server and shown under **Vault policy**.
 
 **Obsidian settings** decides how much of the configuration folder travels: **App settings**,
@@ -49,16 +50,26 @@ of its own too, set on the server and shown under **Vault policy**.
 plugins themselves, so a new device installs what this one runs) and **Plugin settings** (each
 community plugin's `data.json`). The workspace, the graph and every plugin's cache never travel.
 
+These switches only work when the configuration folder is called `.obsidian`. On a device where
+Obsidian was told to use another folder (**Override config folder**, a phone on `.obsidian-mobile`
+for instance), the configuration folder does not sync at all for now: the Sync tab says so instead
+of showing the switches, nothing in it is sent, and the settings the other devices keep on the
+server are left alone.
+
 **Folders this device skips** leaves whole folders alone on this device; the other devices still
 hold them. Taking a folder or a kind back in makes the next sync walk the vault again, so what this
 device passed over arrives.
 
-Two files never travel, whatever the switches say:
+These never travel, whatever the switches say:
 
 - **Abele's own `data.json`.** It holds this device's identity — the vault, the device id, and
   the name of the keychain entry the device token is in — and a vault is exactly what gets copied
   to another machine. So Abele's settings, the synced keys among them, do not reach your other
   devices through Abele Sync; the Transfer tab, or whatever else syncs your settings, carries them.
+- **Hidden files and folders**, anything with a name starting with a dot — `.git/`, `.gitignore`,
+  `.DS_Store`, `.stfolder`, `.trash/` — except the configuration folder. Obsidian does not show
+  them to plugins, so the plugin neither fetches nor sends them, and never deletes them on the
+  server either. The command-line client can still sync them between folders it runs on.
 - **`.abele-sync-ignore`** at the vault root. Each device may have one, and it stays on that
   device. It takes gitignore patterns, one per line, and whatever it matches is neither sent nor
   fetched by this device:
@@ -139,9 +150,11 @@ the app the moment it leaves the screen. It syncs when Obsidian starts and every
 back to the front, and whenever **Sync now** is pressed. A change made on a laptop reaches the phone
 the next time the phone is opened, not while it sits in a pocket.
 
-On a phone opening the vault for the first time, **Largest file** starts at 50 MB, so the vault's
-video and big scans stay off it while every note arrives. Set it to anything else, or empty, like
-on any device.
+On a phone whose settings hold no sync section yet, **Largest file** starts at 50 MB, so the
+vault's video and big scans stay off it while every note arrives. Settings that arrived with a sync
+section already in them — sent from a laptop with **Transfer**, or brought in by whatever syncs
+Abele's `data.json` — keep the cap they came with, which on a laptop is usually none. Set it to
+anything else, or empty, like on any device.
 
 ## The device token
 
@@ -155,3 +168,9 @@ other device arrives connected without the password being typed on a phone. The 
 share one identity — the vault's device list shows one device where there are two — until either
 of them connects again, which enrols it afresh with a token of its own. Without **Include keys**
 the other device receives the settings but no token, and shows as not connected until it signs in.
+
+What the transfer never carries is the record of what this device has already synced. That record
+belongs to one vault on one machine, and is kept in Obsidian's storage for that vault rather than in
+any file; the receiving vault starts a record of its own, so its first sync reads the whole vault
+from the server and deletes nothing. The same holds for a vault copied in Finder, or a `data.json`
+carried over by another sync tool.
