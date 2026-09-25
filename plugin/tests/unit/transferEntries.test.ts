@@ -200,6 +200,18 @@ describe('the sync settings', () => {
     expect(needsCode(buildPayload(chosen, null))).toBe(true)
   })
 
+  /**
+   * The id is read out of the settings, and an agent or a synced file can point it anywhere.
+   * Only a sync device token's id is asked of the keychain, so the block can never send, or
+   * write on arrival, a provider's key under the sync block's name.
+   */
+  it('takes no key whose id is not a sync device token', () => {
+    const sync = { ...defaultSyncSettings(), deviceTokenId: 'abele-brave-search' }
+    const entries = collectEntries(settings({ sync }))
+
+    expect(find(entries, 'sync', 'sync')?.secretIds).toEqual([])
+  })
+
   it('asks the keychain for nothing when no device was ever enrolled', () => {
     const entries = collectEntries(settings({ sync: defaultSyncSettings() }))
 
@@ -1121,6 +1133,20 @@ describe('the keys that arrived', () => {
     expect(refused).toBe(0)
     expect(keychain.get('abele-sync-device-1')).toBe('absd_token')
     expect(store.contents()!.map((c) => c.id)).toEqual(['key-p1'])
+  })
+
+  it('writes no key under the sync block that is not a sync device token', async () => {
+    const { keychain } = await unlockedStore()
+    keychain.set('abele-brave-search', 'BSA-mine')
+    const entry = {
+      ...collectEntries(settings()).find((e) => e.section === 'sync')!,
+      secretIds: ['abele-brave-search'],
+    }
+
+    const refused = storeReceivedKeys([entry], { 'abele-brave-search': 'absd_foreign' })
+
+    expect(refused).toBe(1)
+    expect(keychain.get('abele-brave-search')).toBe('BSA-mine')
   })
 
   it('keeps the sync device token out of a store locked here, once it is unlocked', async () => {

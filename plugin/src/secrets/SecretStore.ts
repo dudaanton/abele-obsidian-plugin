@@ -14,6 +14,7 @@
  * "Remove from this device" is what takes them out of the keychain again.
  */
 import { CredentialGenerations } from './credentialGenerations'
+import { DEVICE_SECRET_PREFIX, isDeviceSecretId } from './deviceSecret'
 import { ref, type Ref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { fromBase64, toBase64 } from './crypto'
@@ -59,10 +60,15 @@ export interface StoreHost {
   now(): number
 }
 
+export { DEVICE_SECRET_PREFIX, isDeviceSecretId }
+
 /** A secret's road that bypasses the store: see `SecretStore.device`. */
 export interface DeviceSecrets {
   get(id: string | undefined | null): string
-  /** Throws what the keychain throws for an id it refuses. An empty value is a removal. */
+  /**
+   * Throws what the keychain throws for an id it refuses, and for an id that is not a device
+   * secret's at all. An empty value is a removal.
+   */
   set(id: string, value: string): void
   remove(id: string): void
 }
@@ -159,14 +165,20 @@ export class SecretStore {
    * never reaches another device that way. Its ids must also stay out of the host's `ids()`, or
    * making the store would move them in anyway; the transfer sections mark them `deviceOnly`,
    * and the host's `deviceOnly()` names them to the store, which keeps them out as a guard.
+   *
+   * Only an id that starts with {@link DEVICE_SECRET_PREFIX} is touched: any other reads as no
+   * secret, is never removed, and is refused on a write.
    */
   readonly device: DeviceSecrets = {
-    get: (id) => (id ? (this.host.keychain().getSecret(id) ?? '') : ''),
+    get: (id) => (isDeviceSecretId(id) ? (this.host.keychain().getSecret(id) ?? '') : ''),
     set: (id, value) => {
+      if (!isDeviceSecretId(id)) throw new Error(`not a device secret: ${id}`)
       if (value) this.host.keychain().setSecret(id, value)
       else this.forget(id)
     },
-    remove: (id) => this.forget(id),
+    remove: (id) => {
+      if (isDeviceSecretId(id)) this.forget(id)
+    },
   }
 
   /** Waits for writes to the settings file already under way. */

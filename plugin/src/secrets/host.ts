@@ -12,7 +12,7 @@ import type { Plugin } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { collectEntries, isDeviceOnly } from '@/transfer/entries'
 import { voiceKeyId } from '@/ai/transcriptionSettings'
-import { SecretStore, type StoreHost } from './SecretStore'
+import { SecretStore, isDeviceSecretId, type StoreHost } from './SecretStore'
 import type { SecretStoreFile } from './storeFile'
 
 /**
@@ -33,11 +33,16 @@ export function pluginSecretIds(): string[] {
   return [...new Set(ids)]
 }
 
-/** The ids of every `deviceOnly` section: what the store must never hold (`StoreHost.deviceOnly`). */
+/**
+ * The ids of every `deviceOnly` section: what the store must never hold (`StoreHost.deviceOnly`).
+ * Only a device secret's name counts — an id the settings point elsewhere would otherwise have
+ * the store drop somebody's provider key.
+ */
 export function deviceOnlySecretIds(): string[] {
   const ids = collectEntries(AbeleConfig.getInstance().exportSettings())
     .filter((entry) => isDeviceOnly(entry.section))
     .flatMap((entry) => entry.secretIds ?? [])
+    .filter(isDeviceSecretId)
   return [...new Set(ids)]
 }
 

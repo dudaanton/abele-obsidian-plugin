@@ -70,6 +70,7 @@ beforeEach(async () => {
   domEvents = []
   socketsOpened = 0
   offline = false
+  bearers = []
   Platform.isMobile = false
   app = buildFakeVault([
     { path: 'Existing.md', content: 'already here', mtime: 1000, ctime: 1000 },
@@ -94,9 +95,15 @@ afterEach(async () => {
 
 /* -- The seams a browser would have filled ------------------------------- */
 
+/** Every `Authorization` header the service sent, so a test can say what it never sent. */
+let bearers: string[] = []
+
 /** A `fetch` into the running server that a test can take away by setting `offline`. */
-const transport: typeof fetch = (input, init) =>
-  offline ? Promise.reject(new Error('the network is gone')) : server.fetch(input, init)
+const transport: typeof fetch = (input, init) => {
+  const auth = new Headers(init?.headers).get('authorization')
+  if (auth !== null) bearers.push(auth)
+  return offline ? Promise.reject(new Error('the network is gone')) : server.fetch(input, init)
+}
 
 /** The harness's socket, counted, so a test can say that none was opened. */
 function countedSocket(): typeof WebSocket {
@@ -531,6 +538,47 @@ describe('SyncService — disconnecting', () => {
     } finally {
       store.close()
     }
+  })
+})
+
+/**
+ * The keychain id comes out of the settings, which an agent's `write_settings` or another
+ * device's `data.json` can write. Pointed at a provider's key, it would send that key to the
+ * server as a bearer token and delete it on Disconnect. Only an id this plugin mints is read.
+ */
+describe('SyncService — a keychain id it did not mint', () => {
+  it('neither sends nor deletes a secret the settings name by another id', async () => {
+    await connect()
+    await synced()
+    app.secretStorage.setSecret('abele-provider-x', 'sk-provider')
+
+    settings().deviceTokenId = 'abele-provider-x'
+    await AbeleConfig.getInstance().saveSettings()
+    await waitFor('the engine to stop', () => !service.isConnected())
+    bearers = []
+    await service.syncNow()
+    await service.disconnect()
+    await service.forget()
+
+    expect(bearers.join('\n')).not.toContain('sk-provider')
+    expect(app.secretStorage.getSecret('abele-provider-x')).toBe('sk-provider')
+  })
+
+  it('says nothing is connected at a launch whose settings name such an id', async () => {
+    const { vaultId } = await connect()
+    await synced()
+    await service.destroy()
+    app.secretStorage.setSecret('abele-provider-x', 'sk-provider')
+    settings().deviceTokenId = 'abele-provider-x'
+    settings().vaultId = vaultId
+    bearers = []
+
+    service = SyncService.getInstance()
+    start()
+    await tick()
+
+    expect(service.isConnected()).toBe(false)
+    expect(bearers.join('\n')).not.toContain('sk-provider')
   })
 })
 

@@ -527,6 +527,23 @@ describe('a secret kept on this device alone', () => {
     expect(phone.keychain.getSecret('abele-sync-device-1')).toBeNull()
   })
 
+  /**
+   * The id comes out of the settings, which an agent or another device's file can write. Named
+   * at a provider's key, the road would hand that key to the sync server as a bearer token and
+   * delete it on Disconnect; only an id this plugin mints for a device token is ever taken.
+   */
+  it('touches no keychain entry that is not a sync device token', () => {
+    const mac = device(shared())
+    mac.keychain.setSecret('abele-provider-x', 'sk-provider')
+
+    expect(mac.store.device.get('abele-provider-x')).toBe('')
+    mac.store.device.remove('abele-provider-x')
+    expect(() => mac.store.device.set('abele-provider-x', 'absd_token')).toThrow()
+    expect(mac.store.device.get('abele-sync-device-')).toBe('')
+
+    expect(mac.keychain.getSecret('abele-provider-x')).toBe('sk-provider')
+  })
+
   it('is taken out of the keychain by a removal, and by setting it empty', () => {
     const mac = device(shared())
     mac.store.device.set('abele-sync-device-1', 'absd_token')

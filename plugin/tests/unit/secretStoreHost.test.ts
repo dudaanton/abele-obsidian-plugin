@@ -82,6 +82,15 @@ describe('the plugin’s secrets', () => {
     expect(deviceOnlySecretIds()).toEqual(['abele-sync-device-1'])
     expect(pluginStoreHost(fakePlugin({})).deviceOnly?.()).toEqual(['abele-sync-device-1'])
   })
+
+  it('names no id to the store as this device’s own that is not a sync device token', () => {
+    const config = AbeleConfig.getInstance()
+    config.sync = { ...config.sync, deviceTokenId: 'abele-brave-search' }
+
+    // Named as device-only, the store would drop the search key and no device would get it.
+    expect(deviceOnlySecretIds()).toEqual([])
+    expect(pluginSecretIds()).toContain('abele-brave-search')
+  })
 })
 
 describe('the settings file', () => {

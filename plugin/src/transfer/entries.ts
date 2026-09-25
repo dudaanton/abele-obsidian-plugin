@@ -19,6 +19,7 @@ import { savedKeysWithIds } from '@/ai/savedKeyIds'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
 import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
+import { isDeviceSecretId } from '@/secrets/deviceSecret'
 import {
   FILE_SECTION_LABELS,
   isFileSection,
@@ -407,9 +408,10 @@ export const SECTIONS: Section[] = [
    * fresh enrolment does.
    */
   rootBlock('sync', 'Sync', ['sync'], {
+    // Only an id the sync service minted: one pointed at another key would send that key.
     secretsOf: (settings) => {
       const id = settings.sync?.deviceTokenId
-      return id ? [id] : []
+      return isDeviceSecretId(id) ? [id] : []
     },
     sensitive: true,
     deviceOnly: true,

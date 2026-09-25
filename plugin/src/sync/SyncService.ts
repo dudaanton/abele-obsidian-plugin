@@ -17,7 +17,7 @@ import {
 import { caseKey, type VaultInfo } from '@abele/sync-protocol'
 import type AbelePlugin from '@/main'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { secrets } from '@/secrets/SecretStore'
+import { DEVICE_SECRET_PREFIX, isDeviceSecretId, secrets } from '@/secrets/SecretStore'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { ObsidianFileSystem } from './ObsidianFileSystem'
 import { NO_LEDGER, migrateLedgerId, readLedgerId, writeLedgerId, type LedgerId } from './ledgerId'
@@ -78,9 +78,6 @@ const SCOPE_KEY = 'scope'
 
 /** The vault's ignore file, read from its root. */
 const IGNORE_FILE = '.abele-sync-ignore'
-
-/** Every secret this plugin mints for a device token is named this way. */
-const SECRET_PREFIX = 'abele-sync-device-'
 
 /**
  * Whether this vault's config folder is the one the wire knows.
@@ -429,7 +426,7 @@ export class SyncService {
       )
 
       const settings = this.settings
-      const tokenId = settings.deviceTokenId.startsWith(SECRET_PREFIX)
+      const tokenId = isDeviceSecretId(settings.deviceTokenId)
         ? settings.deviceTokenId
         : newSecretId()
       secrets().device.set(tokenId, enrolled.device_token)
@@ -572,10 +569,14 @@ export class SyncService {
     return minted
   }
 
-  /** The device token, or null when the settings name one the keychain does not hold. */
+  /**
+   * The device token, or null when the settings name one the keychain does not hold — or name
+   * an id this plugin never mints, which is never read: pointed at a provider's key, it would
+   * send that key to the server as a bearer token.
+   */
   private token(): string | null {
     const id = this.settings.deviceTokenId
-    if (id === '') return null
+    if (!isDeviceSecretId(id)) return null
     const secret = secrets().device.get(id)
     return secret === '' ? null : secret
   }
@@ -910,7 +911,7 @@ export class SyncService {
 
 /** A keychain id: lowercase letters, digits and dashes, which is all Obsidian accepts. */
 function newSecretId(): string {
-  return `${SECRET_PREFIX}${randomStem()}`
+  return `${DEVICE_SECRET_PREFIX}${randomStem()}`
 }
 
 /** The name this device's ledger is filed under. Local to this vault and shown to nobody. */
