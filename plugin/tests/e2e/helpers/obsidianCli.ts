@@ -164,7 +164,8 @@ function runOnPhone(args: string[], timeoutMs: number): string {
 /**
  * The CLI quotes some answers and not others, so the text is tried as it came and then with
  * the quotes taken off. The order matters for a string: `"one"` is already JSON, and stripped
- * it is not.
+ * it is not. So an expression answering with a numeric string (`String(5)`) comes back as the
+ * number 5: return an object when the type matters.
  */
 function parseJson<T>(raw: string): T {
   const candidates = [raw, raw.replace(/^'(.*)'$/s, '$1'), raw.replace(/^"(.*)"$/s, '$1')]

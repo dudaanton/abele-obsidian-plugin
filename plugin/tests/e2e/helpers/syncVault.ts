@@ -131,6 +131,11 @@ export function buildProblem(): string | null {
   const main = join(BUILD_DIR, 'main.js')
   const fix = 'run `npm run build:test` in plugin/ first'
   if (!existsSync(main)) return `there is no ${main}; ${fix}`
+  // The other two files the vault is given. Checked here, before a folder exists, so a missing
+  // one refuses the suite rather than leaving a half-made vault behind.
+  for (const needed of [join(BUILD_DIR, 'main.css'), MANIFEST]) {
+    if (!existsSync(needed)) return `there is no ${needed}; ${fix}`
+  }
   const built = statSync(main).mtimeMs
   const newest = Math.max(
     newestMs(join(PLUGIN_DIR, 'src')),
@@ -158,19 +163,25 @@ export async function openTestVault(): Promise<TestVault> {
 
   const path = join(VAULTS_DIR, `${PREFIX}${randomBytes(4).toString('hex')}`)
   const pluginDir = join(path, '.obsidian/plugins/abele')
-  mkdirSync(pluginDir, { recursive: true })
-  copyFileSync(join(BUILD_DIR, 'main.js'), join(pluginDir, 'main.js'))
-  copyFileSync(join(BUILD_DIR, 'main.css'), join(pluginDir, 'styles.css'))
-  copyFileSync(MANIFEST, join(pluginDir, 'manifest.json'))
-  writeFileSync(join(path, '.obsidian/community-plugins.json'), '["abele"]\n')
-  writeFileSync(join(path, '.abele-sync-ignore'), '.obsidian/\n')
-  // Menus drawn in the page rather than by macOS: a native menu is nothing the page can see
-  // or click, and the history dialog is opened from the file list's context menu.
-  writeFileSync(join(path, '.obsidian/app.json'), '{ "nativeMenus": false }\n')
-  // Obsidian's own Sync off. It puts an item called "Open version history" in the same menu,
-  // and the suite must press the plugin's. The rest is what a new vault gets by default — the
-  // file is read whole, so a core plugin left out of it would be switched off too.
-  writeFileSync(join(path, '.obsidian/core-plugins.json'), JSON.stringify(CORE_PLUGINS, null, 2))
+  // Nothing is registered with Obsidian yet, so a copy that fails takes only the folder with it.
+  try {
+    mkdirSync(pluginDir, { recursive: true })
+    copyFileSync(join(BUILD_DIR, 'main.js'), join(pluginDir, 'main.js'))
+    copyFileSync(join(BUILD_DIR, 'main.css'), join(pluginDir, 'styles.css'))
+    copyFileSync(MANIFEST, join(pluginDir, 'manifest.json'))
+    writeFileSync(join(path, '.obsidian/community-plugins.json'), '["abele"]\n')
+    writeFileSync(join(path, '.abele-sync-ignore'), '.obsidian/\n')
+    // Menus drawn in the page rather than by macOS: a native menu is nothing the page can see
+    // or click, and the history dialog is opened from the file list's context menu.
+    writeFileSync(join(path, '.obsidian/app.json'), '{ "nativeMenus": false }\n')
+    // Obsidian's own Sync off. It puts an item called "Open version history" in the same menu,
+    // and the suite must press the plugin's. The rest is what a new vault gets by default — the
+    // file is read whole, so a core plugin left out of it would be switched off too.
+    writeFileSync(join(path, '.obsidian/core-plugins.json'), JSON.stringify(CORE_PLUGINS, null, 2))
+  } catch (error) {
+    removeFolder(path)
+    throw error
+  }
 
   let windowId: number | null = null
   const vault: TestVault = {
@@ -328,7 +339,16 @@ async function dispose(host: VaultCli, vault: TestVault, windowId: number | null
       /* asked again below */
     }
   }
-  if (!closed) console.warn(`the window on ${vault.name} would not close`)
+  if (!closed) {
+    // Left exactly as it is. With the window open, Obsidian writes `.obsidian` back out a moment
+    // after the folder goes and refuses to take the vault off its list, so removing anything now
+    // would leave a stub folder and a list entry instead of one vault a person can close.
+    console.warn(
+      `the window on ${vault.name} would not close, so ${vault.path} is left in place: ` +
+        'close that window, remove the vault from the vault switcher, then delete the folder'
+    )
+    return
+  }
   // Removed only once the window is gone, or Obsidian writes `.obsidian` back out a moment
   // after the folder was deleted. Three goes, in case one did anyway.
   for (let attempt = 0; attempt < 3 && existsSync(vault.path); attempt++) {
