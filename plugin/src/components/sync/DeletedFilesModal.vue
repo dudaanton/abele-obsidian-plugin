@@ -63,7 +63,7 @@ import Badge from '../obsidian/Badge.vue'
 import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import { SyncService } from '@/sync/SyncService'
-import { formatWhen, reasonOf } from '@/sync/format'
+import { formatWhen, reasonOf, restoredNotice } from '@/sync/format'
 import { formatBytes } from '@/helpers/reduceImage'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -126,7 +126,13 @@ async function restore(item: TrashItem): Promise<void> {
     await sync.syncNow()
     // The server's path, not the one that was asked for: the old name may have been taken
     // since, and then the file comes back beside it under the next free one.
-    new Notice(`${result.path} restored.`)
+    new Notice(
+      restoredNotice(
+        sync.status.value.state,
+        `${result.path} restored.`,
+        `${result.path} is back on the server`
+      )
+    )
     // Off the list rather than re-read: the whole trash is a round trip, and the one thing
     // that changed is the row that was pressed.
     items.value = items.value.filter((held) => held.file_id !== item.file_id)

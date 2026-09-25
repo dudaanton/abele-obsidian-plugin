@@ -141,6 +141,7 @@ beforeEach(() => {
   useVault([{ path: PATH, content: CURRENT }])
   Notice.shown.length = 0
   service.connected = true
+  service.status.value = { ...DISCONNECTED_STATUS, state: 'idle' }
   service.entryFor.mockResolvedValue(ENTRY)
   client.versions.mockResolvedValue(HISTORY)
   client.versionBytes.mockResolvedValue(bytesOf('one\nTWO\n'))
@@ -364,6 +365,18 @@ describe('putting an old version back', () => {
     // The commit is on the server; the engine is what puts the bytes back in the vault.
     expect(service.syncNow).toHaveBeenCalled()
     expect(screen.emitted('close')).toHaveLength(1)
+  })
+
+  it('says the version reaches the file when sync resumes, while it is paused', async () => {
+    service.status.value = { ...DISCONNECTED_STATUS, state: 'paused' }
+    const screen = open()
+    await flushPromises()
+
+    await confirmRestore(screen, 2)
+
+    expect(Notice.shown).toEqual([
+      `${PATH} is at version #2 on the server; it reaches this device when sync is resumed.`,
+    ])
   })
 
   /** A restore retried under the key it was first sent with is the first answer again. */

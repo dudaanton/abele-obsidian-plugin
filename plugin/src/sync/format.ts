@@ -1,5 +1,6 @@
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
+import type { SyncState } from './status'
 
 /**
  * The three things the sync screens have to spell out for a person: when something happened,
@@ -36,4 +37,19 @@ export function reasonOf(error: unknown): string {
   if (error instanceof Error) return error.message
   if (typeof error === 'string' && error !== '') return error
   return 'no reason was given'
+}
+
+/**
+ * What a restore tells the person, given the state sync was left in by the pull that followed
+ * it. The restore is a commit on the server; only a pull that ran puts it on this disk, and
+ * while sync is paused, offline or failing none did — "restored" would send somebody looking
+ * for a file that is not there yet. `done` is the sentence for a pull that ran; `what` names the
+ * file as it now stands on the server.
+ */
+export function restoredNotice(state: SyncState, done: string, what: string): string {
+  if (state === 'paused') return `${what}; it reaches this device when sync is resumed.`
+  if (state === 'offline' || state === 'error') {
+    return `${what}; it reaches this device at the next sync that gets through.`
+  }
+  return done
 }

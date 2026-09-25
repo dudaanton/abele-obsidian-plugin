@@ -107,7 +107,7 @@ import EmptyState from '../obsidian/EmptyState.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { SyncService } from '@/sync/SyncService'
-import { formatWhen, reasonOf } from '@/sync/format'
+import { formatWhen, reasonOf, restoredNotice } from '@/sync/format'
 import { unifiedDiff } from '@/sync/diff'
 import { formatBytes } from '@/helpers/reduceImage'
 
@@ -324,7 +324,13 @@ async function restore(): Promise<void> {
     // The commit is on the server; the file on disk is still the old one until the engine
     // fetches it, and there is no reason to make somebody wait for the next trigger.
     await sync.syncNow()
-    new Notice(`${result.path} restored to version #${version.no}.`)
+    new Notice(
+      restoredNotice(
+        sync.status.value.state,
+        `${result.path} restored to version #${version.no}.`,
+        `${result.path} is at version #${version.no} on the server`
+      )
+    )
     emit('close')
   } catch (failure) {
     error.value = `Version #${version.no} could not be restored: ${reasonOf(failure)}`

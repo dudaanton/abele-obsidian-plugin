@@ -100,6 +100,7 @@ beforeEach(() => {
   useVault([])
   Notice.shown.length = 0
   service.connected = true
+  service.status.value = { ...DISCONNECTED_STATUS, state: 'idle' }
   client.trash.mockResolvedValue(TRASH)
   client.restoreDeleted.mockResolvedValue(applied('Notes/older.md'))
   vi.spyOn(SyncService, 'getInstance').mockReturnValue(service as never)
@@ -199,6 +200,38 @@ describe('bringing a file back', () => {
     await flushPromises()
 
     expect(Notice.shown).toEqual(['Notes/older 1.md restored.'])
+  })
+
+  /**
+   * While sync is paused the file is back on the server and nowhere else: the pull that would
+   * bring it home does not run. Saying "restored" then sends somebody looking for it.
+   */
+  it('says the file comes back when sync resumes, while it is paused', async () => {
+    client.restoreDeleted.mockResolvedValue(applied('Notes/older.md'))
+    service.status.value = { ...DISCONNECTED_STATUS, state: 'paused' }
+    const screen = open()
+    await flushPromises()
+
+    await restoreFor(screen, 'Notes/older.md')?.trigger('click')
+    await flushPromises()
+
+    expect(Notice.shown).toEqual([
+      'Notes/older.md is back on the server; it reaches this device when sync is resumed.',
+    ])
+  })
+
+  it('says the file comes back at the next sync, when the pull could not get through', async () => {
+    client.restoreDeleted.mockResolvedValue(applied('Notes/older.md'))
+    service.status.value = { ...DISCONNECTED_STATUS, state: 'offline' }
+    const screen = open()
+    await flushPromises()
+
+    await restoreFor(screen, 'Notes/older.md')?.trigger('click')
+    await flushPromises()
+
+    expect(Notice.shown).toEqual([
+      'Notes/older.md is back on the server; it reaches this device at the next sync that gets through.',
+    ])
   })
 
   /** Restoring puts a file back; it destroys nothing, so nothing is asked before it. */
