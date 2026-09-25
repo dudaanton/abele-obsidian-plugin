@@ -341,6 +341,13 @@ Three files, three concerns:
   edition under the same identifier), which opens it at its start instead of failing, and has
   the page's fonts arrive (`loadingdone`): the columns are laid out again and nothing on the page
   moves.
+- `bookBookmarks.e2e.test.ts` — **bookmarks**: the bookmark under the page marks the page and
+  fills, turning on empties it, the Bookmarks tab lists it with its chapter and words and goes back
+  to it, a text size of 150% keeps it on its words, the file in the vault holds it, `book_views`
+  lists it, and a removal written into the file on disk, as another device's sync would, takes it
+  away; a PDF page is marked with its words and known again. Then on a phone at 390×844: the
+  button inside the screen and the list inside the drawer, pictures in
+  `/tmp/abele-phone/bookmarks-*`. Both files are removed afterwards.
 - `bookNotesFile.e2e.test.ts` — **where highlights go**: with one note for every book and a
   template set, the first highlight makes the note from the whole template and the second adds
   only its body; the book's Aa dialog sends the book to a note of its own, the next highlight is

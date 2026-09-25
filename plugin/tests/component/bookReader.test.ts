@@ -12,6 +12,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_READER_SETTINGS } from '@/reader/settings'
 import { emptyBookModel, emptySearch, tocEntries, type BookModel } from '@/reader/model'
 import { useVault } from '../helpers/testEnv'
+import type { Bookmark } from '@/reader/bookmarks'
 
 const readyModel = (over: Partial<BookModel> = {}): BookModel =>
   reactive({
@@ -85,10 +86,16 @@ describe('the line under the page', () => {
   it('offers the way back only after a link was followed', async () => {
     const model = readyModel()
     const view = mount(BookReader, { props: { model } })
-    expect(view.find('.abele-book-reader__footer .abele-obsidian-icon').exists()).toBe(false)
+    expect(
+      view
+        .find('.abele-book-reader__footer .abele-obsidian-icon:not(.abele-book-reader__bookmark)')
+        .exists()
+    ).toBe(false)
     model.canGoBack = true
     await flushPromises()
-    await view.find('.abele-book-reader__footer .abele-obsidian-icon').trigger('click')
+    await view
+      .find('.abele-book-reader__footer .abele-obsidian-icon:not(.abele-book-reader__bookmark)')
+      .trigger('click')
     expect(view.emitted('back')).toHaveLength(1)
   })
 
@@ -226,12 +233,12 @@ describe('the PDF settings', () => {
 })
 
 describe('the panel', () => {
-  it('switches between the contents, the search and the highlights', async () => {
+  it('switches between the contents, the search, the highlights and the bookmarks', async () => {
     const model = readyModel({ panel: true })
     const view = mount(BookReader, { props: { model } })
     await flushPromises()
     const tabs = view.findAll('.abele-book-reader__panel-head .abele-tabs__tab')
-    expect(tabs.map((t) => t.text())).toEqual(['Contents', 'Search', 'Highlights'])
+    expect(tabs.map((t) => t.text())).toEqual(['Contents', 'Search', 'Highlights', 'Bookmarks'])
     await tabs[1].trigger('click')
     expect(view.emitted('panel-tab')).toEqual([['search']])
   })
@@ -450,5 +457,68 @@ describe('the row under the page', () => {
     model.speech = 'idle'
     await view.vm.$nextTick()
     expect(slot(view).find('.abele-book-reader__footer').exists()).toBe(true)
+  })
+})
+
+describe('bookmarks', () => {
+  const bm = (id: string, over: Partial<Bookmark> = {}): Bookmark => ({
+    id,
+    cfi: `epubcfi(/6/${id.length * 2}!/4/2/1:0)`,
+    fraction: 0.2,
+    label: 'Chapter 1',
+    text: 'It was a bright cold day in April',
+    created: Date.UTC(2026, 8, 20),
+    at: Date.UTC(2026, 8, 20),
+    ...over,
+  })
+
+  it('the bookmark under the page is filled when the page has one, and a tap marks or unmarks it', async () => {
+    const model = readyModel()
+    const view = mount(BookReader, { props: { model } })
+    const button = () => view.find('.abele-book-reader__bookmark')
+    expect(button().classes()).not.toContain('abele-obsidian-icon_active')
+    await button().trigger('click')
+    expect(view.emitted('bookmark')).toHaveLength(1)
+    model.bookmarksHere = ['a']
+    await view.vm.$nextTick()
+    expect(button().classes()).toContain('abele-obsidian-icon_active')
+    expect(button().attributes('aria-pressed')).toBe('true')
+  })
+
+  it('has a tab of its own beside the contents, which says how to make one while there are none', async () => {
+    const model = readyModel({ panel: true })
+    const view = mount(BookReader, { props: { model } })
+    const tabs = view.findAll('.abele-book-reader__panel-head .abele-tabs__tab')
+    expect(tabs.map((t) => t.text())).toContain('Bookmarks')
+    await tabs.find((t) => t.text() === 'Bookmarks')!.trigger('click')
+    expect(view.emitted('panel-tab')).toEqual([['bookmarks']])
+    model.panelTab = 'bookmarks'
+    await view.vm.$nextTick()
+    expect(view.find('.abele-book-bookmarks').text()).toMatch(/No bookmarks yet/)
+  })
+
+  it('lists each with its chapter, its first words and its day, marks the ones on the page, goes there and removes', async () => {
+    const model = readyModel({
+      panel: true,
+      panelTab: 'bookmarks',
+      bookmarks: [bm('a'), bm('bb', { label: 'Chapter 2', text: '' })],
+      bookmarksHere: ['bb'],
+    })
+    const view = mount(BookReader, { props: { model } })
+    const rows = view.findAll('.abele-book-bookmarks__item')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].find('.abele-book-bookmarks__label').text()).toBe('Chapter 1')
+    expect(rows[0].find('.abele-book-bookmarks__text').text()).toBe(
+      'It was a bright cold day in April'
+    )
+    expect(rows[0].find('.abele-book-bookmarks__date').text()).toMatch(/2026/)
+    expect(rows[1].find('.abele-book-bookmarks__text').exists()).toBe(false)
+    expect(rows.map((r) => r.classes().includes('is-active'))).toEqual([false, true])
+    await rows[0].trigger('click')
+    expect(view.emitted('go-bookmark')?.[0]?.[0]).toMatchObject({ id: 'a' })
+    await rows[1].find('.abele-obsidian-icon').trigger('click')
+    expect(view.emitted('remove-bookmark')?.[0]?.[0]).toMatchObject({ id: 'bb' })
+    // Removing is not going there.
+    expect(view.emitted('go-bookmark')).toHaveLength(1)
   })
 })

@@ -7,6 +7,7 @@ import type { SearchExcerpt } from '@/vendor/foliate-js/search.js'
 import type { Highlight } from './highlights'
 import type { BookFigure } from './figures'
 import type { BookProgress } from './readingProgress'
+import type { Bookmark } from './bookmarks'
 
 /** Words selected on the page. */
 export interface BookSelection {
@@ -39,7 +40,7 @@ export interface BookSearch {
   count: number
 }
 
-export type PanelTab = 'contents' | 'search' | 'highlights'
+export type PanelTab = 'contents' | 'search' | 'highlights' | 'bookmarks'
 
 export const emptySearch = (): BookSearch => ({
   query: '',
@@ -107,6 +108,10 @@ export interface BookModel {
   selecting: boolean
   /** A picture or a table opened full screen from the page. */
   figure: BookFigure | null
+  /** The book's bookmarks, in the book's order. */
+  bookmarks: Bookmark[]
+  /** The ids of the bookmarks on the page on screen; empty when it has none. */
+  bookmarksHere: string[]
 }
 
 export const emptyBookModel = (): BookModel => ({
@@ -134,6 +139,8 @@ export const emptyBookModel = (): BookModel => ({
   speech: 'idle',
   figure: null,
   selecting: false,
+  bookmarks: [],
+  bookmarksHere: [],
 })
 
 /** The engine's contents as the tree the panel draws. */

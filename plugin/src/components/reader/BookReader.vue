@@ -26,6 +26,13 @@
           @search="emit('search', $event)"
           @go="emit('search-hit', $event, narrow())"
         />
+        <BookBookmarks
+          v-else-if="model.panelTab === 'bookmarks'"
+          :bookmarks="model.bookmarks"
+          :current="model.bookmarksHere"
+          @go="emit('go-bookmark', $event, narrow())"
+          @remove="emit('remove-bookmark', $event)"
+        />
         <BookHighlights
           v-else
           :highlights="model.highlights"
@@ -67,7 +74,13 @@
           :state="model.speech === 'paused' ? 'paused' : 'playing'"
           @action="emit('speech', $event)"
         />
-        <BookFooter v-else :model="model" @back="emit('back')" @seek="emit('seek', $event)" />
+        <BookFooter
+          v-else
+          :model="model"
+          @back="emit('back')"
+          @seek="emit('seek', $event)"
+          @bookmark="emit('bookmark')"
+        />
       </div>
     </div>
 
@@ -124,6 +137,7 @@ import ObsidianModal from '../obsidian/Modal.vue'
 import BookContents from './BookContents.vue'
 import BookSearch from './BookSearch.vue'
 import BookHighlights from './BookHighlights.vue'
+import BookBookmarks from './BookBookmarks.vue'
 import BookSelectionBar from './BookSelectionBar.vue'
 import BookComment from './BookComment.vue'
 import BookSpeechBar from './BookSpeechBar.vue'
@@ -132,6 +146,7 @@ import type { Highlight, HighlightColor } from '@/reader/highlights'
 import ReaderSettingsForm from './ReaderSettingsForm.vue'
 import BookNotesSettings from './BookNotesSettings.vue'
 import { type BookModel, type PanelTab, type SearchHit, type TocEntry } from '@/reader/model'
+import type { Bookmark } from '@/reader/bookmarks'
 
 const props = defineProps<{
   model: BookModel
@@ -167,12 +182,16 @@ const emit = defineEmits<{
   (e: 'delete-highlight', h: Highlight): void
   (e: 'open-note', h?: Highlight): void
   (e: 'close-active'): void
+  (e: 'bookmark'): void
+  (e: 'go-bookmark', b: Bookmark, fromPanel: boolean): void
+  (e: 'remove-bookmark', b: Bookmark): void
 }>()
 
 const panelTabs = [
   { id: 'contents', label: 'Contents' },
   { id: 'search', label: 'Search' },
   { id: 'highlights', label: 'Highlights' },
+  { id: 'bookmarks', label: 'Bookmarks' },
 ]
 
 /** The words or highlight the bar is about, for a link. */

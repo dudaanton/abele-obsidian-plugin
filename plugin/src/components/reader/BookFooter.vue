@@ -24,6 +24,13 @@
       @click="cycle"
     />
     <span v-else class="abele-book-reader__percent">{{ percentText }}</span>
+    <Icon
+      class="abele-book-reader__bookmark"
+      icon="bookmark"
+      :active="marked"
+      :tooltip="marked ? 'Remove the bookmark from this page' : 'Bookmark this page'"
+      @click="emit('bookmark')"
+    />
   </div>
 </template>
 
@@ -33,7 +40,8 @@
  * whole book, and a measure of how far into it the page is. In a reflowing book a tap on the
  * measure goes round its ways — the page of the chapter, the pages left in it, the place in the
  * whole book, the percentage — and the one chosen is kept, on every device the settings reach.
- * While the slider is held the measure shows where it would go, as a percentage.
+ * While the slider is held the measure shows where it would go, as a percentage. At the end, the
+ * bookmark: filled when the page has one, a tap marks the page or unmarks it.
  */
 import { computed, ref, watch } from 'vue'
 import Icon from '../obsidian/Icon.vue'
@@ -48,7 +56,10 @@ const props = defineProps<{ model: BookModel }>()
 const emit = defineEmits<{
   (e: 'back'): void
   (e: 'seek', fraction: number): void
+  (e: 'bookmark'): void
 }>()
+
+const marked = computed(() => props.model.bookmarksHere.length > 0)
 
 const config = AbeleConfig.getInstance()
 const show = ref<ProgressShow>(readerSettingsFrom(config.reader).progressShow)
@@ -116,6 +127,11 @@ const cycle = () => {
     min-width: 3ch;
     text-align: end;
     font-variant-numeric: tabular-nums;
+  }
+
+  /* A page with a bookmark: the ribbon filled, as a bookmark in a book is. */
+  &__bookmark.abele-obsidian-icon_active svg {
+    fill: currentColor;
   }
 
   /* The measure is a button to tap, drawn as the quiet text it was. */

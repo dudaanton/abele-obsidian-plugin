@@ -382,6 +382,15 @@ book. A copy, `book-places.backup.json`, is written just before it in the plugin
 this device only. Obsidian's file list does not show a `.json` file; Obsidian Sync carries it with
 "Sync all other types" on. The only note written beside a book is its highlights note.
 
+Bookmarks — pages the person marked to come back to — are kept the same way, in
+`abele-book-bookmarks.json` in the same folder as the places file, under the same book keys: each
+key maps bookmark ids to `{ id, cfi, fraction, label, text, created, at }` — the page's CFI (a
+PDF's page as `/6/<2×page>`), the chapter or page it is in, the page's first words, and when it
+was made and last changed, in milliseconds. A removed one stays as `deleted: true` for 180 days, so
+another device's copy does not bring it back. Every device keeps the latest `at` for each bookmark;
+`book-bookmarks.backup.json` in the plugin's folder is this device's copy. The agent sees them
+through `book_views` and never writes them.
+
 `.epub` and `.pdf` files can be linked at a place, like notes at lines. The place goes where a
 heading would: `[[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]]` (an EPUB CFI without its
 `epubcfi(…)` wrapper, with `[`, `]`, `(`, `)`, `|`, `#`, `%`, `^` and spaces percent-encoded) or

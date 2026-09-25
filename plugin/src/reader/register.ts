@@ -10,6 +10,7 @@ import { watch } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { BOOK_EXTENSIONS, BOOK_VIEW_TYPE, BookView, READER_EXTENSIONS } from './BookView'
 import { initBookPlaces } from './places'
+import { initBookBookmarks } from './bookmarkFiles'
 import { readerSettingsFrom, renamedBookNotes } from './settings'
 import { setPdfTakeover } from './pdfTakeover'
 import { registerPlaceLinks } from './placeLinks'
@@ -18,13 +19,17 @@ import { forgetBookTexts } from './bookText'
 export function registerReader(plugin: Plugin): void {
   const { app } = plugin
   const places = initBookPlaces(plugin)
+  const bookmarks = initBookBookmarks(plugin)
   plugin.registerView(BOOK_VIEW_TYPE, (leaf) => new BookView(leaf))
   // The last page turned is written a moment later; quitting or unloading writes it now.
   plugin.registerEvent(app.workspace.on('quit', () => void places.flush()))
   // A phone may stop the app in the background without it ever hearing that it quits.
   plugin.register(places.flushWhenHidden(window))
+  plugin.registerEvent(app.workspace.on('quit', () => void bookmarks.flush()))
+  plugin.register(bookmarks.flushWhenHidden(window))
   plugin.register(() => {
     void places.flush()
+    void bookmarks.flush()
     forgetBookTexts()
   })
   // One at a time: an extension another plugin already has stays with it, the rest come here.
@@ -40,6 +45,7 @@ export function registerReader(plugin: Plugin): void {
     app.vault.on('rename', (file, oldPath) => {
       if (!(file instanceof TFile) || !READER_EXTENSIONS.includes(file.extension)) return
       void places.renamed(oldPath, file.path)
+      void bookmarks.renamed(oldPath, file.path)
       // Its own choice of where its highlights go, too.
       const config = AbeleConfig.getInstance()
       const reader = readerSettingsFrom(config.reader)

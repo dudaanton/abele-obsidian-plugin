@@ -93,7 +93,7 @@ export function createBookViewsTool(): AgentTool {
     name: 'book_views',
     label: 'Book tabs',
     description:
-      "What the person is reading in book tabs (EPUB and PDF): each open book, which one is on screen, the chapter or page they are at and how far in, a link to that place, the words they have selected — quoted, with a link to them — the highlight they tapped, the discussions (chats kept with words, made with Ask here) on the page, and where the book's highlights note is. " +
+      "What the person is reading in book tabs (EPUB and PDF): each open book, which one is on screen, the chapter or page they are at and how far in, a link to that place, the words they have selected — quoted, with a link to them — the highlight they tapped, the discussions (chats kept with words, made with Ask here) on the page, where the book's highlights note is, and the pages they bookmarked, with links. " +
       'Call it first when they say "this book", "this passage", "here" or "what does this mean". Read-only.',
     parameters: { type: 'object', properties: {} },
     execute: async () => {
@@ -160,6 +160,15 @@ export function createBookViewsTool(): AgentTool {
             ? `   Highlights: ${m.highlights.length}, kept in ${notes.join(' and ')}`
             : '   Highlights: none yet'
         )
+        // Pages they marked to come back to; the ones on this page said so.
+        const saved = m.bookmarks ?? []
+        if (saved.length) {
+          out.push(`   Bookmarks: ${saved.length}`)
+          for (const b of saved.slice(0, 50))
+            out.push(
+              `   - ${link(file, { cfi: b.cfi }, b.label)}${m.bookmarksHere?.includes(b.id) ? ' (this page)' : ''}`
+            )
+        }
         out.push('')
       })
       if (hidden)

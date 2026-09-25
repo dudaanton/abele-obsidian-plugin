@@ -34,6 +34,7 @@ import { relayoutOnFonts } from './pageLayout'
 import { bookCallbacks, type BookActions } from './bookCallbacks'
 import { bookKey } from './positions'
 import { bookPlaces, followPlace } from './places'
+import { bookmarksFor, type PageBookmarks } from './pageBookmarks'
 import { progressOf } from './readingProgress'
 import { nameOf } from './bookText'
 import { fillBookMenu, fillZoomMenu } from './bookMenu'
@@ -72,6 +73,8 @@ export class BookView extends FileView {
   private zoomOverride: string | null = null
   /** Selections, highlights, links and search, once a book is showing. */
   reading: BookReading | null = null
+  /** The book's bookmarks, once it is showing. */
+  bookmarks: PageBookmarks | null = null
   /** A place a link asked for, gone to once the book is open. */
   private pendingPlace: BookPlace | null = null
   /** Every page loaded so far in this tab, newest last. */
@@ -210,6 +213,7 @@ export class BookView extends FileView {
       closeFootnote: () => this.closeFootnote(),
       footnoteHref: () => this.footnoteHref,
       commentOnSelection: () => this.commentOnSelection(),
+      bookmarks: () => this.bookmarks,
     }
   }
 
@@ -273,6 +277,8 @@ export class BookView extends FileView {
     this.reading?.stopSearch()
     this.reading?.speech.stop()
     this.reading = null
+    this.bookmarks?.stop()
+    this.bookmarks = null
     void bookPlaces()?.flush()
     this.reader?.close()
     this.reader?.remove()
@@ -401,6 +407,7 @@ export class BookView extends FileView {
         () => ({ key: this.key, title: nameOf(meta?.title), author: nameOf(meta?.author) })
       )
       void this.reading.loadHighlights()
+      this.bookmarks = bookmarksFor(this.key, this.model, reader, this.isPdf ? opened.book : null)
       if (!this.isPdf && reader.isFixedLayout) this.model.kind = 'fixed'
       this.model.toc = tocEntries(opened.book.toc)
       const place = await bookPlaces()?.get(this.key)
@@ -448,6 +455,7 @@ export class BookView extends FileView {
       : ''
     this.model.chapter = this.isPdf && page ? [page, label].filter(Boolean).join(' · ') : label
     this.model.currentHref = detail.tocItem?.href ?? null
+    this.bookmarks?.relocated()
     const file = this.file
     if (detail.cfi && file && this.key && this.model.status === 'ready')
       void bookPlaces()?.set(this.key, {

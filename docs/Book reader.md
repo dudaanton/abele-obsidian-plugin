@@ -48,6 +48,15 @@ and front matter are skipped when the book says where the text starts).
   never loses it. Every device writes the one file, and none ever puts an older place over a
   newer one: each book keeps the place read last, wherever it was read. A later place arriving
   from another device while the book is open here moves the book on to it, and says so.
+- **Bookmarks.** The bookmark at the end of the line under the page marks the page on screen; it
+  is filled while the page has one, and a second tap removes it. The side panel's **Bookmarks** tab
+  lists them in the book's order — each with its chapter (a PDF: its page), the first words of the
+  page and the day it was made, the ones on the page on screen marked at the edge. A tap goes
+  there; the bin removes one. A bookmark belongs to the words at the top of its page, not to a
+  page number, so it stays with them when the text size or the window changes. They are kept like
+  the places, in `abele-book-bookmarks.json` beside the places file, and reach every device the
+  same way: each device's bookmarks are merged one by one, and one removed on any device stays
+  removed. The agent sees them, read-only, with what is on screen.
 - **Pictures and tables.** A picture that stands alone on the page is centred. A table wider than
   its column scrolls sideways in place. A tap on a picture or a table opens it full screen:
   pinch, Mod with the wheel, the buttons or plus and minus zoom; a drag moves it; a double tap
@@ -235,7 +244,7 @@ and travels with the settings transfer.
 | Voice | The voice reading aloud: the device's own for the book's language, or one chosen. |
 | Speed | How fast it reads aloud, 0.75× to 2×. |
 | (the measure under the page) | Page of the chapter, pages left, location in the book, or percent — changed by tapping it. |
-| Reading places file | In Settings only: the `.json` file in the vault where each book was left is kept, `abele-book-places.json` at its root by default. Changing it moves the places to the new file; a file that holds something else is left alone and the places stay where they were. |
+| Reading places file | In Settings only: the `.json` file in the vault where each book was left is kept, `abele-book-places.json` at its root by default. Changing it moves the places to the new file; a file that holds something else is left alone and the places stay where they were. The bookmarks file, `abele-book-bookmarks.json`, follows it to the same folder. |
 
 Why a `.json` file, and where: Obsidian's file list shows no `.json` file, so it stays out of
 sight among the notes, and Obsidian Sync carries it once **Sync all other types** is on — the same

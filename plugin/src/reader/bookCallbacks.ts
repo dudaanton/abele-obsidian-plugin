@@ -6,6 +6,8 @@ import type { View as FoliateView } from '@/vendor/foliate-js/view.js'
 import type { Highlight, HighlightColor } from './highlights'
 import type { BookModel, PanelTab, SearchHit } from './model'
 import type { BookReading } from './BookReading'
+import type { Bookmark } from './bookmarks'
+import type { PageBookmarks } from './pageBookmarks'
 
 export interface BookActions {
   model: BookModel
@@ -16,6 +18,7 @@ export interface BookActions {
   closeFootnote(): void
   footnoteHref(): string
   commentOnSelection(): Promise<void>
+  bookmarks(): PageBookmarks | null
 }
 
 type Place = { cfi: string; label: string }
@@ -88,5 +91,11 @@ export function bookCallbacks(a: BookActions): Record<string, unknown> {
       if (fromPanel) model.panel = false
       void a.reading()?.goToHit(hit)
     },
+    onBookmark: (): void => void a.bookmarks()?.toggle(),
+    onGoBookmark: (b: Bookmark, fromPanel: boolean): void => {
+      if (fromPanel) model.panel = false
+      void a.bookmarks()?.go(b)
+    },
+    onRemoveBookmark: (b: Bookmark): void => void a.bookmarks()?.remove(b),
   }
 }
