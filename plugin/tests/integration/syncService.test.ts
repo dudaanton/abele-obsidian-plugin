@@ -305,6 +305,23 @@ describe('SyncService — a sign-in left unfinished', () => {
     await expect(service.chooseVault(vaultId, 'Laptop')).rejects.toThrow('sign in')
     expect(service.isConnected()).toBe(false)
   })
+
+  /** The tab closed while the enrolment was on the wire: the device is still enrolled there. */
+  it('files the server an enrolment started on even when the tab closes mid-way', async () => {
+    const { accountToken } = await server.account(EMAIL)
+    const { vaultId } = await server.vault(accountToken, 'Home')
+    start()
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+
+    const choosing = service.chooseVault(vaultId, 'Laptop')
+    service.endConnect()
+    await choosing
+
+    expect(settings().serverUrl).toBe(server.BASE_URL)
+    expect(settings().vaultId).toBe(vaultId)
+    await synced()
+    expect(service.isConnected()).toBe(true)
+  })
 })
 
 describe('SyncService — syncing', () => {

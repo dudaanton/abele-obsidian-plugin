@@ -432,6 +432,9 @@ export class SyncService {
    */
   async chooseVault(choice: VaultChoice, deviceName: string): Promise<void> {
     const account = this.account
+    // Read with the account, not after the awaits: the tab closing mid-enrolment calls
+    // `endConnect`, and the device the server enrols meanwhile must still be filed against it.
+    const accountUrl = this.accountUrl
     const app = this.app
     if (account === null) throw new Error('sign in to the server before choosing a vault')
     if (app === null) throw new Error('the sync service has not been started yet')
@@ -459,7 +462,7 @@ export class SyncService {
         dropped = ledger.stateId === '' ? null : ledger.stateId
         writeLedgerId(app, { stateId: newStateId(), vaultId })
       }
-      settings.serverUrl = this.accountUrl
+      settings.serverUrl = accountUrl
       settings.vaultId = vaultId
       settings.deviceId = enrolled.device_id
       settings.deviceTokenId = tokenId
