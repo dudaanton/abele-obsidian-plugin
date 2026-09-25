@@ -158,3 +158,14 @@ describe('a comparison', () => {
     await vi.waitFor(() => expect(wrapper.find('.abele-github__error').exists()).toBe(true))
   })
 })
+
+describe('a comparison of commits', () => {
+  it('titles its sides by their short SHAs, as GitHub does', async () => {
+    const base = 'c'.repeat(40)
+    const { wrapper } = open(`https://github.com/octocat/Hello-World/compare/${base}...main`, {
+      [`/repos/octocat/Hello-World/compare/${base}...main`]: { json: COMPARE },
+    })
+    await vi.waitFor(() => expect(wrapper.find('.abele-github-compare').exists()).toBe(true))
+    expect(wrapper.find('.abele-github-header__title').text()).toBe('ccccccc...main')
+  })
+})

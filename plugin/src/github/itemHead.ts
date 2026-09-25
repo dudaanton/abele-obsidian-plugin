@@ -56,7 +56,8 @@ export function itemHead(t: GithubTarget | null, data: ItemData | null): ItemHea
     const commits = `${c.aheadBy} commit${c.aheadBy === 1 ? '' : 's'} ahead`
     return {
       ...fallback,
-      title: `${c.base}${c.direct ? '..' : '...'}${c.head}`,
+      // A commit by its short SHA, as GitHub writes one; a branch or a tag as it is.
+      title: `${shortRef(c.base)}${c.direct ? '..' : '...'}${shortRef(c.head)}`,
       state: c.status || undefined,
       meta: [
         commits,

@@ -195,7 +195,7 @@ describe.skipIf(!available)('GitHub links in a note', () => {
     expect(at).not.toBeNull()
     realClick(at!.x, at!.y)
 
-    const { tabs } = tabsOnce(`${BASE_SHA}...main`)
+    const { tabs } = tabsOnce(`${BASE_SHA.slice(0, 7)}...main`)
     expect(tabs).toHaveLength(2)
     expect(tabs.find((t) => t.url === COMPARE)?.title).toContain('...main')
   })

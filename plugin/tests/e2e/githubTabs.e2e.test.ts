@@ -246,7 +246,7 @@ describe.skipIf(!available)('a GitHub tab', () => {
           .find((i) => (i.getAttribute('aria-label') ?? '').startsWith('Swap'))
         if (!swap) return { error: 'no swap button', commits }
         swap.click()
-        await until(() => loaded(leaf, 'main...${BASE_SHA}'), 15000)
+        await until(() => loaded(leaf, 'main...${BASE_SHA.slice(0, 7)}'), 15000)
         const out = {
           commits,
           url: leaf.view.getState().url,
@@ -259,7 +259,7 @@ describe.skipIf(!available)('a GitHub tab', () => {
       expect(r.error).toBeUndefined()
       expect(r.commits).toEqual(['Add the loader', 'Rework the widget loader'])
       expect(r.url).toBe(`${gh.web}/compare/main...${BASE_SHA}`)
-      expect(r.title).toBe(`main...${BASE_SHA}`)
+      expect(r.title).toBe(`main...${BASE_SHA.slice(0, 7)}`)
     })
   })
 
