@@ -4,8 +4,23 @@
  * the element that scrolls in a real tab — was moved to it once it had rendered.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { ISSUE, PULL, file, openTab as open } from '../helpers/githubTab'
+import { ISSUE, PULL, file, openTab } from '../helpers/githubTab'
 import { useVault } from '../helpers/testEnv'
+
+/**
+ * Every tab opened is closed after its test. A tab left mounted goes on keeping its target in
+ * view for seconds, on the clock of a window the runner has already torn down, and the next
+ * frame it asked for then fails the whole run as an uncaught error.
+ */
+const opened: Array<ReturnType<typeof openTab>> = []
+const open = (...args: Parameters<typeof openTab>) => {
+  const tab = openTab(...args)
+  opened.push(tab)
+  return tab
+}
+afterEach(() => {
+  for (const tab of opened.splice(0)) tab.wrapper.unmount()
+})
 
 beforeEach(() => {
   useVault([])
