@@ -1141,6 +1141,39 @@ describe('SyncService — runAfterSync at startup', () => {
   })
 })
 
+/**
+ * An `abele://` link can open the app cold, and its handler asks `runAfterSync` before the
+ * layout is ready and `init` has run. `onload` announces the pull as soon as the settings and
+ * the keychain are read, so the link waits for it too.
+ */
+describe('SyncService — runAfterSync before init', () => {
+  it('holds a callback asked for between onload and the layout being ready', async () => {
+    await connect()
+    await synced()
+    await service.destroy()
+    service = SyncService.getInstance()
+
+    service.announce()
+    const ran = vi.fn()
+    runAfterSync(app as unknown as App, ran)
+    expect(service.status.value.state).toBe('syncing')
+    expect(ran).not.toHaveBeenCalled()
+
+    start()
+    await synced()
+    expect(ran).toHaveBeenCalledOnce()
+  })
+
+  it('holds nothing on a device nobody set up', () => {
+    service.announce()
+    const ran = vi.fn()
+    runAfterSync(app as unknown as App, ran)
+
+    expect(service.status.value.state).toBe('disconnected')
+    expect(ran).toHaveBeenCalledOnce()
+  })
+})
+
 describe('SyncService — a phone', () => {
   it('opens no socket and syncs when the app comes back to the front', async () => {
     Platform.isMobile = true

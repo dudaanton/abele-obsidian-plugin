@@ -293,6 +293,8 @@ export default class AbelePlugin extends Plugin {
       )
       // After the store: a token moved out of the settings lands in it when it is open here.
       await startupStepAsync('legacy secrets', () => AbeleConfig.getInstance().moveLegacySecrets())
+      // Announce before layout-ready so cold-start links wait for the first pull.
+      SyncService.getInstance().announce()
 
       // Apply body classes from settings
       if (AbeleConfig.getInstance().fullWidthSidebars) {

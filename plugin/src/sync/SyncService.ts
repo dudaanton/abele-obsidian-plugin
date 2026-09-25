@@ -214,13 +214,8 @@ export class SyncService {
     this.unhookSettings?.()
     this.unhookSettings = AbeleConfig.getInstance().onSaved(() => this.onSettingsSaved())
     this.hookVisibility()
-    // Said before anything is opened. `runAfterSync` asks the moment the layout is ready, and a
-    // device that is set up is about to pull: reporting `disconnected` in that gap would let a
-    // script run over a vault the first pull is about to rewrite.
-    const settings = this.settings
-    if (settings.serverUrl !== '' && settings.vaultId !== '' && this.token() !== null) {
-      this.publish({ ...DISCONNECTED_STATUS, state: settings.paused ? 'paused' : 'syncing' })
-    }
+    // Said again here, for an instance `onload` did not announce — a plugin reload's.
+    this.announce()
     // Read here and not inside the queued work: a `destroy()` in this same tick would file its
     // own teardown as `lastTeardown`, and waiting for that from behind it in the queue is a
     // deadlock — the teardown cannot start until this item lets go.
@@ -230,6 +225,22 @@ export class SyncService {
       await pending
       await this.reconcile()
     })
+  }
+
+  /**
+   * Say a pull is coming, before anything is opened: `syncing` (or `paused`) when the settings
+   * name a server, a vault and a device token the keychain holds, and nothing otherwise.
+   *
+   * Called from `onload` as soon as the settings and the keychain are read, and again by
+   * `init`. `runAfterSync` can be asked before the layout is ready — an `abele://` link that
+   * opened the app cold — and a device that is set up is about to pull: `disconnected` in that
+   * gap would let a script run over a vault the first pull is about to rewrite.
+   */
+  announce(): void {
+    const settings = this.settings
+    if (settings.serverUrl !== '' && settings.vaultId !== '' && this.token() !== null) {
+      this.publish({ ...DISCONNECTED_STATUS, state: settings.paused ? 'paused' : 'syncing' })
+    }
   }
 
   /** Stop everything and let the singleton go; the next `getInstance` builds a fresh one. */
