@@ -194,6 +194,7 @@ export class BookView extends FileView {
       ask: () => void this.reading?.ask(),
       openSearch: () => this.openSearch(),
       showHighlights: () => this.showPanel('highlights'),
+      showBookmarks: () => this.showPanel('bookmarks'),
       openSettings: () => (this.model.settingsOpen = true),
     })
     if (this.fixed) fillZoomMenu(menu, (way) => this.zoom(way))

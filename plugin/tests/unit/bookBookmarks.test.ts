@@ -18,7 +18,7 @@ import {
 } from '@/reader/bookmarks'
 import { bookmarksPathOf, bookmarkFiles, initBookBookmarks } from '@/reader/bookmarkFiles'
 import { MOVE_AFTER_MS, type PlacesAdapter } from '@/reader/places'
-import { PageBookmarks } from '@/reader/pageBookmarks'
+import { PageBookmarks, textOf } from '@/reader/pageBookmarks'
 import { emptyBookModel } from '@/reader/model'
 import { reactive } from 'vue'
 
@@ -274,7 +274,9 @@ describe('the bookmarks of an open book', () => {
   }
 
   it('marks the page on screen with its chapter and first words, and unmarks it on a second press', async () => {
-    const range = { toString: () => 'It was a bright cold day in April, and the clocks' } as Range
+    document.body.innerHTML = '<p>It was a bright cold day in April, and the clocks</p>'
+    const range = document.createRange()
+    range.selectNodeContents(document.body)
     const { marks, model, engine } = setup({ cfi: PAGE_TWO, range })
     const page = new PageBookmarks(marks, 'k', model, () => engine)
     await page.toggle()
@@ -326,5 +328,15 @@ describe('the bookmarks of an open book', () => {
     await marks.refresh()
     await new Promise((r) => setTimeout(r, 0))
     expect(model.bookmarks).toHaveLength(1)
+  })
+})
+
+describe('the words a bookmark keeps', () => {
+  it('put a space where a heading or a paragraph ends, and start and end where the page does', () => {
+    document.body.innerHTML = '<h1>Chapter</h1><p>First words.</p><p>Second <em>para</em>graph.</p>'
+    const range = document.createRange()
+    range.setStart(document.querySelector('h1')!.firstChild!, 2)
+    range.setEnd(document.querySelectorAll('p')[1].lastChild!, 5)
+    expect(textOf(range).replace(/\s+/g, ' ').trim()).toBe('apter First words. Second paragraph')
   })
 })

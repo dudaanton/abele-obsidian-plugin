@@ -164,7 +164,11 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
       const bigger = filled(view)
       await wait(1200)
       const file = Object.values((await savedMarks())[key] ?? {}).filter((b) => !b.deleted)
-      const views = await call('book_views')
+      // The tools answer to the chat's scope; for the call it reaches the whole vault.
+      const scope = window.__abeleTest.ScopeResolver.getInstance()
+      const full = scope.fullVaultAccess.value
+      scope.setFullVaultAccess(true)
+      const views = await call('book_views').finally(() => scope.setFullVaultAccess(full))
       // Removed on another device: its copy arrives on disk, as a sync writes it.
       const all = await savedMarks()
       for (const b of Object.values(all[key])) { b.deleted = true; b.at = Date.now() + 1000 }
@@ -246,7 +250,13 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
         phone?: boolean
         button?: { left: number; right: number; top: number; bottom: number }
         screen?: { width: number; height: number }
-        tabs?: { right: number; rows: number }
+        tabs?: {
+          right: number
+          left: number
+          label: string
+          rows: number
+          strip: { left: number; right: number }
+        }
         drawer?: { left: number; right: number }
         rows?: { left: number; right: number }[]
       }>(`
@@ -263,7 +273,10 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
         await shoot('list')
         const drawer = rect(view.contentEl.querySelector('.abele-book-reader__panel'))
         const tabEls = [...view.contentEl.querySelectorAll('.abele-book-reader__panel-head .abele-tabs__tab')]
-        const tabs = { right: Math.max(...tabEls.map((t) => rect(t).right)), rows: new Set(tabEls.map((t) => rect(t).top)).size }
+        const active = view.contentEl.querySelector('.abele-book-reader__panel-head .abele-tabs__tab_active')
+        const s = active.parentElement
+        const strip = { ...rect(s), sw: s.scrollWidth, cw: s.clientWidth, sl: s.scrollLeft, head: rect(s.parentElement), css: getComputedStyle(s).overflowX + ' ' + getComputedStyle(s).flex }
+        const tabs = { right: rect(active).right, left: rect(active).left, label: active.textContent.trim(), rows: new Set(tabEls.map((t) => rect(t).top)).size, strip }
         const rows = [...view.contentEl.querySelectorAll('.abele-book-bookmarks__item')].map(rect)
         view.model.panel = false; await wait(300)
         for (const b of view.model.bookmarks) await view.bookmarks.remove(b)
@@ -276,7 +289,11 @@ describe.skipIf(!available)('bookmarks in the reader', () => {
       expect(r.button!.left).toBeGreaterThanOrEqual(0)
       expect(r.button!.right).toBeLessThanOrEqual(r.screen!.width)
       expect(r.button!.bottom).toBeLessThanOrEqual(r.screen!.height)
-      expect(r.tabs!.right).toBeLessThanOrEqual(r.drawer!.right)
+      // The strip scrolls sideways on a phone; the tab showing is in view.
+      expect(r.tabs!.label).toBe('Bookmarks')
+      expect(r.tabs!.rows).toBe(1)
+      expect(r.tabs!.left).toBeGreaterThanOrEqual(r.tabs!.strip.left)
+      expect(r.tabs!.right).toBeLessThanOrEqual(r.tabs!.strip.right)
       expect(r.rows).toHaveLength(2)
       for (const row of r.rows!) {
         expect(row.left).toBeGreaterThanOrEqual(r.drawer!.left)

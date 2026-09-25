@@ -151,6 +151,13 @@ const emit = defineEmits<{
   .abele-tabs__tab {
     flex: 0 0 auto;
   }
+
+  // A scrolling row does not scroll through its own end padding: the last tab, scrolled to the
+  // end, stood cut against the edge. Room made of something that scrolls.
+  &::after {
+    content: '';
+    flex: 0 0 var(--size-2-2);
+  }
 }
 
 .abele-tabs_vertical {

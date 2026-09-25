@@ -12,7 +12,12 @@ import type { PdfBookExtras } from './pdfBook'
 
 /** What of the engine the bookmarks need: where it is, and going somewhere. */
 export interface BookmarkEngine {
-  lastLocation?: { cfi?: string; range?: Range | null; index?: number } | null
+  lastLocation?: {
+    cfi?: string
+    range?: Range | null
+    index?: number
+    section?: { current?: number }
+  } | null
   goTo(target: string): Promise<unknown>
 }
 
@@ -22,6 +27,32 @@ export const SNIPPET_CHARS = 200
 const snippet = (text: string) => {
   const flat = text.replace(/\s+/g, ' ').trim()
   return flat.length > SNIPPET_CHARS ? `${flat.slice(0, SNIPPET_CHARS - 1).trimEnd()}…` : flat
+}
+
+const BLOCKS = /^(p|div|h[1-6]|li|blockquote|pre|section|article|td|th|dd|dt|figcaption|br)$/i
+
+/**
+ * A range's words with a space where one block ends and the next begins: `toString` runs a heading
+ * and its paragraph, or two paragraphs, into one word.
+ */
+export function textOf(range: Range): string {
+  const root = range.commonAncestorContainer
+  const doc = root.ownerDocument ?? (root as Document)
+  if (root.nodeType === 3) return range.toString()
+  const walker = doc.createTreeWalker(root, 1 | 4)
+  let out = ''
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!range.intersectsNode(node)) continue
+    if (node.nodeType === 1) {
+      if (BLOCKS.test((node as Element).localName)) out += ' '
+      continue
+    }
+    const value = node.nodeValue ?? ''
+    const start = node === range.startContainer ? range.startOffset : 0
+    const end = node === range.endContainer ? range.endOffset : value.length
+    out += value.slice(start, end)
+  }
+  return out
 }
 
 export class PageBookmarks {
@@ -68,9 +99,10 @@ export class PageBookmarks {
     }
     const at = this.engine()?.lastLocation
     if (!at?.cfi) return
-    let text = at.range?.toString() ?? ''
-    if (!text && this.pageText && typeof at.index === 'number')
-      text = await this.pageText(at.index).catch((): string => '')
+    let text = at.range ? textOf(at.range) : ''
+    const index = at.index ?? at.section?.current
+    if (!text && this.pageText && typeof index === 'number')
+      text = await this.pageText(index).catch((): string => '')
     await this.store.add(this.key, {
       cfi: at.cfi,
       fraction: this.model.fraction,

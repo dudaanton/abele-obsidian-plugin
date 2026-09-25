@@ -4,7 +4,7 @@
       <!-- Over the page, on a narrow screen: a tap beside the drawer closes it. -->
       <div class="abele-book-reader__backdrop" @click="emit('panel', false)" />
       <div class="abele-book-reader__panel">
-        <div class="abele-book-reader__panel-head">
+        <div ref="panelHead" class="abele-book-reader__panel-head">
           <Tabs
             :tabs="panelTabs"
             :model-value="model.panelTab"
@@ -234,6 +234,28 @@ const noteTitle = computed(() => {
       return 'Note'
   }
 })
+
+// On a phone the panel's tabs are one row that scrolls sideways: the one showing is brought into
+// view, so a list opened from the menu or by a test is not named by a tab off the edge.
+const panelHead = ref<HTMLElement>()
+const revealTab = (head: HTMLElement) => {
+  const tab = head.querySelector<HTMLElement>('.abele-tabs__tab_active')
+  const strip = tab?.parentElement
+  if (!tab || !strip || strip.scrollWidth <= strip.clientWidth) return
+  const t = tab.getBoundingClientRect()
+  const box = strip.getBoundingClientRect()
+  const pad = parseFloat(getComputedStyle(strip).paddingInlineEnd) || 0
+  if (t.left < box.left + pad) strip.scrollLeft -= box.left + pad - t.left
+  else if (t.right > box.right - pad) strip.scrollLeft += t.right - (box.right - pad)
+}
+watch(
+  () => [props.model.panel, props.model.panelTab, panelHead.value] as const,
+  ([open, , head]) => {
+    // Once laid out: measured as it is first drawn, the strip was not yet as wide as it ends up.
+    if (open && head) head.win.requestAnimationFrame(() => revealTab(head))
+  },
+  { flush: 'post' }
+)
 
 // The note's engine element, placed in the dialog once the dialog is there. It has to be in the
 // page before it loads: a frame outside the document never loads, and one moved reloads.

@@ -50,7 +50,7 @@ and front matter are skipped when the book says where the text starts).
   from another device while the book is open here moves the book on to it, and says so.
 - **Bookmarks.** The bookmark at the end of the line under the page marks the page on screen; it
   is filled while the page has one, and a second tap removes it. The side panel's **Bookmarks** tab
-  lists them in the book's order — each with its chapter (a PDF: its page), the first words of the
+  (also **Bookmarks** in the tab's ⋯ menu) lists them in the book's order — each with its chapter (a PDF: its page), the first words of the
   page and the day it was made, the ones on the page on screen marked at the edge. A tap goes
   there; the bin removes one. A bookmark belongs to the words at the top of its page, not to a
   page number, so it stays with them when the text size or the window changes. They are kept like

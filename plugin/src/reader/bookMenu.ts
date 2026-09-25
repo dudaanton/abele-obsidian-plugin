@@ -1,6 +1,6 @@
 /**
  * What a book tab's ⋯ menu offers besides Obsidian's own: pages or scrolling, a link to the place
- * on screen, a chat about it, the search, the highlights and the text and layout settings.
+ * on screen, a chat about it, the search, the highlights, the bookmarks and the text and layout settings.
  */
 import type { Menu } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -15,6 +15,7 @@ export interface BookMenuHost {
   ask(): void
   openSearch(): void
   showHighlights(): void
+  showBookmarks(): void
   openSettings(): void
 }
 
@@ -93,6 +94,13 @@ export function fillBookMenu(menu: Menu, host: BookMenuHost): void {
       .setIcon('highlighter')
       .setSection('view')
       .onClick(() => host.showHighlights())
+  )
+  menu.addItem((item) =>
+    item
+      .setTitle('Bookmarks')
+      .setIcon('bookmark')
+      .setSection('view')
+      .onClick(() => host.showBookmarks())
   )
   menu.addItem((item) =>
     item
