@@ -79,7 +79,7 @@ export function createCreateScriptTool(): AgentTool {
             text: `Script created: ${path}. It will be available as a command after auto-discovery.`,
           },
         ],
-        details: { diff: { old: '', new: content } },
+        details: { diff: { old: '', new: content }, path },
       }
     },
   }

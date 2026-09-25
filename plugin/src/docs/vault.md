@@ -147,6 +147,8 @@ is linked to — the ones it wrote to (created, edited, replaced, moved or copie
 never merely read), each with the time it was last written, and the ones the person attached it
 to by hand, each with the time it was attached. The two are the same entry and look the same;
 detaching a chat from a note removes its entry either way, and a later write links it again.
+Scripts — `.js` files under the scripts folder — are linked the same way, `create_script`
+included, and list their chats under the code when opened; no other file is linked.
 `recap` is a one-sentence summary of the work, written by the background model after a turn
 that wrote something. Both are copied into the chat index in the plugin's settings, which is
 what draws the **Chats** list under a note: one card per linked chat, with its title, its recap
@@ -156,7 +158,7 @@ it from the text the person and the agent exchanged — never from what a tool r
 the first turn and again as the chat grows, and for an older chat when its card first comes on
 screen in the history. It is copied into the index the same way. A comment chat carries the
 same fields but is not in the index, so it appears in no footer until it is opened as a full chat.
-Renaming a note rewrites the path in both places. Do not edit these fields by hand.
+Renaming a note or a script rewrites the path in both places. Do not edit these fields by hand.
 
 A tool result or message that showed the agent a file carries `reads`: the file's path, a hash
 of its text at that moment, the time, whether it was read, attached or written by the agent, and

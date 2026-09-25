@@ -23,7 +23,7 @@
           <Icon
             class="abele-chats-list__detach"
             icon="unlink"
-            tooltip="Detach this chat from the note"
+            :tooltip="`Detach this chat from the ${subject}`"
             @click="detach(chat)"
           />
         </template>
@@ -43,9 +43,14 @@ import { detachNote } from '@/ai/chatNoteLinks'
 import { usePagedList } from '@/composables/usePagedList'
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
 
-const props = defineProps<{
-  chats: ChatLink[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    chats: ChatLink[]
+    /** What the list sits under, for the detach button's tooltip: a note or a script. */
+    subject?: string
+  }>(),
+  { subject: 'note' }
+)
 
 /** Already ordered by `useChatLinks`; kept as a getter so paging follows a refiltered list. */
 const sorted = computed(() => props.chats)

@@ -25,6 +25,7 @@ import { createNoteInGroup } from './commands/createNoteInGroup'
 import { commentHereInView } from './commands/commentCommands'
 import { registerChatAbout } from './commands/chatAboutNote'
 import { registerAttachChat } from './commands/attachChat'
+import { isScriptPath } from './scripting/scriptPath'
 import { useInAgentText } from './ai/quoteSelection'
 import {
   createNoteFromTemplate,
@@ -1101,6 +1102,11 @@ export default class AbelePlugin extends Plugin {
         // A chat is renamed after its title; comments on its answers name it by path.
         if (file.extension === 'abchat') {
           void CommentService.getInstance().handleRename(oldPath, file.path)
+          return
+        }
+        // A script's chats name it by path too, and follow it the same way a note's do.
+        if (isScriptPath(oldPath) || isScriptPath(file.path)) {
+          void ChatStorage.getInstance().handleNoteRename(oldPath, file.path)
           return
         }
         if (file.extension !== 'md') return

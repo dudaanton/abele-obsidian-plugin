@@ -88,6 +88,8 @@ beforeEach(() => {
     { path: NOTE_B, content: 'beta' },
     { path: NOTE_C, content: 'gamma' },
     { path: 'Pictures/x.png', content: 'png' },
+    { path: 'Scripts/tidy.js', content: '// @name tidy' },
+    { path: 'Elsewhere/loose.js', content: '' },
   ])
   activeFile = null
   lastOpen = []
@@ -105,6 +107,7 @@ beforeEach(() => {
     defaultAgentId: '',
     chatHistory: [],
     chatFolder: 'AI/Chats/{{name}}',
+    scriptsFolder: 'Scripts',
   }
   AbeleConfig.getInstance().saveSettings = vi.fn(async () => {})
   AgentRegistry.getInstance().setDefault(AgentRegistry.getInstance().create({ name: 'D' }).id)
@@ -184,6 +187,21 @@ describe('from a note: where it is offered', () => {
     expect([titles(folder), titles(picture), titles(off)]).toEqual([[], [], []])
   })
 
+  it('in the file menu of a script, and not of any other .js', () => {
+    const script = new Menu()
+    handlers.get('file-menu')!(script, fileAt('Scripts/tidy.js'), 'more-options')
+    const loose = new Menu()
+    handlers.get('file-menu')!(loose, fileAt('Elsewhere/loose.js'), 'more-options')
+
+    expect([titles(script), titles(loose)]).toEqual([[ATTACH_CHAT_TITLE], []])
+  })
+
+  it('as a command for the script in front', () => {
+    const command = commands.find((c) => c.id === 'attach-chat-to-current-note')!
+    activeFile = fileAt('Scripts/tidy.js')
+    expect(command.checkCallback(true)).toBe(true)
+  })
+
   it('as a command for the note in front', () => {
     const command = commands.find((c) => c.id === 'attach-chat-to-current-note')!
     expect(command.checkCallback(true)).toBe(false)
@@ -201,6 +219,14 @@ describe('from a chat: the menu behind the link button', () => {
     activeFile = fileAt(NOTE_A)
 
     expect(titles(chatNotesMenu(session))).toEqual(['Attach to A', 'Attach to a note…'])
+  })
+
+  it('attaches to the script in front', async () => {
+    const session = await openSession(await seedChat('Trip'))
+    activeFile = fileAt('Scripts/tidy.js')
+
+    const item = chatNotesMenu(session).items.find((i) => i.title === 'Attach to tidy')
+    expect(item).toBeDefined()
   })
 
   it('attaches to the note in front', async () => {

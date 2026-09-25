@@ -38,6 +38,9 @@ import { css } from '@codemirror/lang-css'
 import { html } from '@codemirror/lang-html'
 import { xml } from '@codemirror/lang-xml'
 import { yaml } from '@codemirror/lang-yaml'
+import { reactive } from 'vue'
+import { isScriptPath } from '@/scripting/scriptPath'
+import { mountFileChats, type FileChatsModel } from './codeViewChats'
 
 export const CODE_VIEW_TYPE = 'abele-code'
 
@@ -60,6 +63,14 @@ export class CodeView extends TextFileView {
   private suppressDirty = false
   private saveBtn: HTMLButtonElement | null = null
   private modifyRef: EventRef | null = null
+  /**
+   * The chats linked to the script in this tab, listed under the code as a note lists them in
+   * its footer. One element for the life of the view, put back after the code whenever the
+   * editor is rebuilt; its path is empty for anything that is not a script.
+   */
+  private chatsEl: HTMLElement | null = null
+  private readonly chatsModel = reactive<FileChatsModel>({ path: '' })
+  private unmountChats: (() => void) | null = null
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
@@ -116,11 +127,34 @@ export class CodeView extends TextFileView {
   async onLoadFile(file: TFile): Promise<void> {
     await super.onLoadFile(file)
     this.startWatching()
+    this.showChats(file)
   }
 
   async onUnloadFile(file: TFile): Promise<void> {
     this.stopWatching()
+    this.chatsModel.path = ''
     await super.onUnloadFile(file)
+  }
+
+  async onRename(file: TFile): Promise<void> {
+    await super.onRename(file)
+    this.chatsModel.path = isScriptPath(file.path) ? file.path : ''
+  }
+
+  async onClose(): Promise<void> {
+    this.unmountChats?.()
+    this.unmountChats = null
+    this.chatsEl = null
+    await super.onClose()
+  }
+
+  private showChats(file: TFile): void {
+    this.chatsModel.path = isScriptPath(file.path) ? file.path : ''
+    if (!this.chatsEl) {
+      this.chatsEl = createDiv({ cls: 'abele-code-chats' })
+      this.unmountChats = mountFileChats(this.chatsEl, this.chatsModel)
+    }
+    this.contentEl.appendChild(this.chatsEl)
   }
 
   private startWatching() {
@@ -349,5 +383,7 @@ export class CodeView extends TextFileView {
       }),
       parent: this.contentEl,
     })
+    // `contentEl.empty()` above took the list of chats out with everything else.
+    if (this.chatsEl) this.contentEl.appendChild(this.chatsEl)
   }
 }

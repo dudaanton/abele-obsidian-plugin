@@ -16,6 +16,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ChatStorage } from '@/ai/ChatStorage'
 import type { ChatSession } from '@/ai/ChatSession'
 import { attachNote, detachNote } from '@/ai/chatNoteLinks'
+import { isScriptPath } from '@/scripting/scriptPath'
 import { pickChat } from '@/helpers/suggesters/ChatPicker'
 import { pickNote } from '@/helpers/suggesters/NotePicker'
 
@@ -23,9 +24,12 @@ export const ATTACH_CHAT_TITLE = 'Attach a chat…'
 export const ATTACH_ICON = 'link'
 export const DETACH_ICON = 'unlink'
 
-/** Whether a chat can be attached to this: a note, which has a footer to show it under. */
+/**
+ * Whether a chat can be attached to this: a note, which has a footer to show it under, or a
+ * script, whose code view lists its chats the same way.
+ */
 export function canAttachTo(file: TAbstractFile | null | undefined): file is TFile {
-  return file instanceof TFile && file.extension === 'md'
+  return file instanceof TFile && (file.extension === 'md' || isScriptPath(file.path))
 }
 
 const titleOf = (chatPath: string): string =>

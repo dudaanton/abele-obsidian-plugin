@@ -67,6 +67,7 @@ import type {
 import type { CommentState } from '@/editor/CommentPlugin'
 import type { UserContentPart } from './client'
 import { createAgentTools } from './tools'
+import { isScriptPath } from '@/scripting/scriptPath'
 import { createEditSelectionTool } from './tools/EditSelectionTool'
 import { loadSkillContent } from './tools/SkillTool'
 import { ScopeResolver } from './ScopeResolver'
@@ -304,12 +305,13 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
    * Records that this chat wrote to `path`.
    *
    * Called by the tool wrapper on every successful write, and public so a live check can drive
-   * a link without a model behind it. Only `.md` paths are kept: a footer exists under a note,
-   * so a chat that wrote a `.canvas` or another chat file has nothing to appear under.
+   * a link without a model behind it. Only notes and scripts are kept: a footer exists under a
+   * note and the code view lists a script's chats the same way, so a chat that wrote a
+   * `.canvas` or another chat file has nothing to appear under.
    */
   noteTouched(path: string): void {
     const clean = path.trim().replace(/^\.?\//, '')
-    if (!clean.endsWith('.md')) return
+    if (!clean.endsWith('.md') && !isScriptPath(clean)) return
     if (clean === this.currentChatFile.value?.path) return
 
     this.wroteThisTurn = true

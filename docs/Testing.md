@@ -163,6 +163,10 @@ Three files, three concerns:
   and a second marker pressed replaces that tab rather than adding one. The same press is made
   again under `app.emulateMobile(true)` in a phone-sized window, where the sidebar is the whole
   screen. Cleans the note, the file and the window size up after itself.
+- `scriptChats.e2e.test.ts` — **chats under a script**. Opens a scratch script in the code view,
+  attaches a scratch chat to it with the command, and checks the card is drawn under the code,
+  that pressing it opens the chat in the sidebar while the script's tab stays, that a rename
+  keeps the link, and that the card's unlink button detaches it. Removes both files after.
 - `dialogRings.e2e.test.ts` — **focus rings in the chat dialogs, on the desktop**. Focuses every
   focusable thing in every tab of the setup dialog and in the history, and measures its ring
   against every ancestor that clips: a box standing flush with the content cuts the ring a field

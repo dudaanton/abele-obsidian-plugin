@@ -236,10 +236,11 @@ export const WRITE_TOOLS = ['edit', 'create', 'replace', 'write', EDIT_SELECTION
  * Tools whose success means a file in the vault changed — what links a chat to a note.
  *
  * Wider than `WRITE_TOOLS`: moving or copying a note produces one, and a note that arrived
- * that way was changed by the chat as surely as one it edited. `rm` is absent — a deleted note
- * has no footer for the link to show in.
+ * that way was changed by the chat as surely as one it edited; so does `create_script`, whose
+ * script lists its chats in the code view. `rm` is absent — a deleted note has no footer for
+ * the link to show in.
  */
-export const TOUCHING_TOOLS = [...WRITE_TOOLS, 'mv', 'cp']
+export const TOUCHING_TOOLS = [...WRITE_TOOLS, 'mv', 'cp', 'create_script']
 
 /**
  * The tools that read the map — free, keyless, and on unless someone turns them off.

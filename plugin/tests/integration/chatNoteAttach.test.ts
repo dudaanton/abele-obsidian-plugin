@@ -287,3 +287,30 @@ describe('which chats a note has', () => {
     ).toEqual(['Attached', 'Wrote A'])
   })
 })
+
+describe('a script', () => {
+  const SCRIPT = 'Scripts/tidy.js'
+
+  beforeEach(async () => {
+    AbeleConfig.getInstance().ai.scriptsFolder = 'Scripts'
+    await app.vault.create(SCRIPT, '// @name tidy\n')
+    await app.vault.create('Elsewhere/loose.js', '')
+  })
+
+  it('takes a chat attached by hand, and lists it', async () => {
+    const file = await seedChat('Plans')
+
+    expect(await attachNote(file.path, SCRIPT)).toBe(true)
+
+    expect(await inFile(file)).toEqual([SCRIPT])
+    expect(chatsOf(SCRIPT).map((e) => e.title)).toEqual(['Plans'])
+  })
+
+  it('is only a .js under the scripts folder', async () => {
+    const file = await seedChat('Plans')
+
+    expect(await attachNote(file.path, 'Elsewhere/loose.js')).toBe(false)
+    AbeleConfig.getInstance().ai.scriptsFolder = ''
+    expect(await attachNote(file.path, SCRIPT)).toBe(false)
+  })
+})

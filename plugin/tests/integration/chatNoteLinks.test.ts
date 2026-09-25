@@ -713,3 +713,57 @@ describe('a comment folder the settings no longer name', () => {
     expect(meta?.touched?.map((t) => t.path)).toEqual(['Notes/Renamed.md'])
   })
 })
+
+/**
+ * A script is the other file a chat can be linked to: a `.js` under the scripts folder, which
+ * the code view draws the same list of chats under. Any other `.js` has nowhere to show one.
+ */
+describe('a chat that writes to a script', () => {
+  const SCRIPT = 'Scripts/tidy.js'
+
+  beforeEach(async () => {
+    AbeleConfig.getInstance().ai.scriptsEnabled = true
+    AbeleConfig.getInstance().ai.scriptsFolder = 'Scripts'
+    await app.vault.create(SCRIPT, '// @name tidy\nlog("alpha")\n')
+    await app.vault.create('Elsewhere/loose.js', 'log("alpha")\n')
+  })
+
+  function scriptSession(): ChatSession {
+    const session = newSession()
+    session.scopeResolver.entries.value = [
+      { type: 'folder', path: 'Scripts' },
+      { type: 'folder', path: 'Elsewhere' },
+    ]
+    session.toolModes.value = { ...session.toolModes.value, create_script: 'auto' }
+    return session
+  }
+
+  it('records the script it edited', async () => {
+    const session = scriptSession()
+    await toolOf(session, 'edit').execute('c1', {
+      path: SCRIPT,
+      old_string: 'alpha',
+      new_string: 'ALPHA',
+    })
+    expect(paths(session)).toEqual([SCRIPT])
+  })
+
+  it('records the script it created', async () => {
+    const session = scriptSession()
+    await toolOf(session, 'create_script').execute('c1', {
+      name: 'fresh',
+      content: '// @name fresh\n',
+    })
+    expect(paths(session)).toEqual(['Scripts/fresh.js'])
+  })
+
+  it('records nothing for a .js outside the scripts folder', async () => {
+    const session = scriptSession()
+    await toolOf(session, 'edit').execute('c1', {
+      path: 'Elsewhere/loose.js',
+      old_string: 'alpha',
+      new_string: 'ALPHA',
+    })
+    expect(session.touched.value).toEqual([])
+  })
+})

@@ -10,6 +10,7 @@
  */
 import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { isScriptPath } from '@/scripting/scriptPath'
 import { ChatService } from './ChatService'
 import { ChatStorage } from './ChatStorage'
 import { parseChatMetadata, serializeMetadata } from './ChatLog'
@@ -22,10 +23,13 @@ export function chatsOf(notePath: string): AiChatHistoryEntry[] {
     .filter((entry) => entry.notes?.some((note) => note.path === notePath))
 }
 
-/** Whether a path is something a chat can be linked to: a note, which has a footer. */
+/**
+ * Whether a path is something a chat can be linked to: a note, which has a footer, or a script,
+ * whose code view lists its chats the same way.
+ */
 export function isLinkableNote(path: string): boolean {
   const file = GlobalStore.getInstance().app.vault.getAbstractFileByPath(path)
-  return file instanceof TFile && file.extension === 'md'
+  return file instanceof TFile && (file.extension === 'md' || isScriptPath(file.path))
 }
 
 /**
