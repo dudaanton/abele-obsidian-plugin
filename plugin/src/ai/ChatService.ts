@@ -65,7 +65,10 @@ export class ChatService {
    */
   public readonly pendingReveal = ref<string | null>(null)
 
-  /** Bumped to put the cursor in the composer of whatever chat is in front — a new comment. */
+  /**
+   * Bumped to put the cursor in the composer of whatever chat is in front: a new chat, a new
+   * comment. The chat answers it; `requestFocus` is the way to ask.
+   */
   public readonly focusRequest = ref(0)
 
   static getInstance(): ChatService {
@@ -221,6 +224,22 @@ export class ChatService {
     return session.id
   }
 
+  /** Puts the cursor in the composer of the chat in front, once it is on screen. */
+  requestFocus(): void {
+    this.focusRequest.value++
+  }
+
+  /**
+   * The + in the tab bar: a new tab, with the cursor in it. `createTab` alone asks for no
+   * cursor, because it is also what restoring the layout at startup makes its tabs with, and
+   * that should not pull the cursor out of the note somebody is opening the app to.
+   */
+  newTab(): string {
+    const id = this.createTab()
+    this.requestFocus()
+    return id
+  }
+
   /**
    * "New chat", from a tab.
    *
@@ -234,11 +253,12 @@ export class ChatService {
     if (!session) return
 
     if (session.kind === 'comment') {
-      this.createTab()
+      this.newTab()
       return
     }
 
     await session.reset()
+    this.requestFocus()
   }
 
   /**
@@ -331,6 +351,25 @@ export class ChatService {
       await leaf.setViewState({ type: AI_SIDEBAR_VIEW_TYPE, active: true })
     }
     void workspace.revealLeaf(leaf)
+
+    // A blank chat is there to be typed into, so it gets the cursor as it comes into view. A
+    // conversation does not: on a phone the cursor brings up the keyboard, which would cover
+    // the half of what was opened to be read.
+    if (ChatService.isBlank(this.activeSession.value)) this.requestFocus()
+  }
+
+  /**
+   * Nothing would be lost by starting over in it: an ordinary chat, never saved, with no
+   * messages and no turn under way.
+   */
+  private static isBlank(s: ChatSession | null | undefined): s is ChatSession {
+    return (
+      !!s &&
+      s.kind === 'chat' &&
+      !s.currentChatFile.value &&
+      s.allMessages.value.length === 0 &&
+      !s.isStreaming.value
+    )
   }
 
   async closeTab(tabId: string): Promise<void> {
@@ -539,13 +578,7 @@ export class ChatService {
    * person is told why.
    */
   async openBlankChat(): Promise<ChatSession | null> {
-    const isBlank = (s: ChatSession | null | undefined): s is ChatSession =>
-      !!s &&
-      s.kind === 'chat' &&
-      !s.currentChatFile.value &&
-      s.allMessages.value.length === 0 &&
-      !s.isStreaming.value
-
+    const isBlank = ChatService.isBlank
     const active = this.activeSession.value
     let session: ChatSession | null = isBlank(active)
       ? active

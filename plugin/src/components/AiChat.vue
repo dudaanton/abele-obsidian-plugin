@@ -12,7 +12,7 @@
       :can-create="chatService.canCreateTab"
       @select="chatService.switchTab($event)"
       @close="chatService.closeTab($event)"
-      @create="chatService.createTab()"
+      @create="chatService.newTab()"
     />
 
     <AiRunView v-if="activeRun" :run="activeRun" />
@@ -1080,7 +1080,7 @@ function pendingFor(tabId: string | null | undefined): PendingInput | null {
 /** Marks it taken, and puts the cursor after it when that was asked for. */
 function takePending(pending: PendingInput) {
   if (chatService.pendingInput.value === pending) chatService.pendingInput.value = null
-  if (pending.focus) void nextTick(() => chatInput.value?.focus({ atEnd: true }))
+  if (pending.focus) void nextTick(focusComposer)
 }
 
 // Text from outside — a context menu, "Chat about this" — for the tab in front. One arriving
@@ -1186,18 +1186,52 @@ watch(
 )
 onUnmounted(unobserve)
 
+/**
+ * Puts the cursor in the composer, after whatever is already typed there, and goes on trying
+ * for a moment when it does not take.
+ *
+ * A focus given to a field not on screen yet is dropped without a word, and a new chat is
+ * asked for at exactly that moment: the panel's leaf is still being made, a phone's drawer is
+ * still sliding in, the tab just added has not rendered. One try on a timer lost that race as
+ * often as it won it. Once the cursor is in, nothing more is tried, so a click somewhere else
+ * afterwards is left alone.
+ */
+const FOCUS_TRIES_FOR_MS = 1000
+const FOCUS_RETRY_MS = 50
 let focusTimer: number | null = null
-onMounted(() => {
-  focusTimer = window.setTimeout(() => chatInput.value?.focus(), 150)
-})
-onUnmounted(() => {
-  if (focusTimer !== null) window.clearTimeout(focusTimer)
-})
+/**
+ * The window the chat is drawn in, whose clock the retries run on: a chat in a popout window
+ * waits on that window, and the timers go with it when it closes.
+ */
+let focusWindow: Window | null = null
 
-// Someone asked for a new comment and is about to type into it. After the tab has rendered.
+function stopFocusing() {
+  if (focusTimer !== null) focusWindow?.clearTimeout(focusTimer)
+  focusTimer = null
+}
+
+function focusComposer() {
+  stopFocusing()
+  focusWindow = chatContainer.value?.ownerDocument.defaultView ?? window
+  const win = focusWindow
+  const until = Date.now() + FOCUS_TRIES_FOR_MS
+  const attempt = () => {
+    focusTimer = null
+    const input = chatInput.value
+    input?.focus({ atEnd: true })
+    if (input?.hasFocus()) return
+    if (Date.now() < until) focusTimer = win.setTimeout(attempt, FOCUS_RETRY_MS)
+  }
+  attempt()
+}
+
+onMounted(() => void nextTick(focusComposer))
+onUnmounted(stopFocusing)
+
+// A new chat or a new comment, and somebody about to type into it. After the tab has rendered.
 watch(
   () => chatService.focusRequest.value,
-  () => void nextTick(() => chatInput.value?.focus())
+  () => void nextTick(focusComposer)
 )
 
 const onSend = async (content: string, attachments: string[] = []) => {

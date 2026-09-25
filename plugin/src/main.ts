@@ -1147,13 +1147,15 @@ export default class AbelePlugin extends Plugin {
       id: 'show-ai-sidebar',
       name: 'Show AI chat sidebar',
       icon: 'bot',
+      // Through the chat service rather than `activateView`: a blank chat shown this way gets
+      // the cursor, and only the service knows whether the chat in front is blank.
       callback: () => {
-        void this.activateView(AI_SIDEBAR_VIEW_TYPE)
+        void ChatService.getInstance().revealSidebar()
       },
     })
 
     this.addRibbonIcon(AiSidebarView.getIcon(), 'Show AI chat', () => {
-      void this.activateView(AI_SIDEBAR_VIEW_TYPE)
+      void ChatService.getInstance().revealSidebar()
     })
 
     // Registered whether or not scripts are enabled: the reference is what someone reads

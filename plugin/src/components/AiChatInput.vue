@@ -464,7 +464,13 @@ function focus(options: { atEnd?: boolean } = {}) {
   if (options.atEnd) el.setSelectionRange(el.value.length, el.value.length)
 }
 
-defineExpose({ setText, addAttachment, focus, takeDraft, putDraft })
+/** Whether the field has the cursor — a focus given to one not on screen yet is dropped. */
+function hasFocus(): boolean {
+  const el = inputEl.value
+  return !!el && el.ownerDocument.activeElement === el
+}
+
+defineExpose({ setText, addAttachment, focus, hasFocus, takeDraft, putDraft })
 
 const onKeydown = (e: KeyboardEvent) => {
   // Alt+Enter is Enter without the model, and only where there is a note to keep.
