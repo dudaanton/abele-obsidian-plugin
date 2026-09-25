@@ -265,11 +265,20 @@ const probeScript = `(async () => {
     const second = comments.commentPath('pnest2')
     await app.vault.create(second, [
       line({ v: 2, k: 'meta', type: 'abele-chat', kind: 'comment', created: '2026-09-25',
-        anchor: { note: first, quote: 'couchette', message: 'p1a' } }),
+        anchor: { note: first, quote: 'couchette', message: 'p1a' },
+        comments: [{ id: 'pnest3', message: 'p2a', quote: 'proper beds', start: 70 }] }),
       line({ k: 'msg', id: 'p2u', role: 'user', content: 'What is the difference between a couchette and a sleeper?', timestamp: 1790000004000 }),
       line({ k: 'msg', id: 'p2a', role: 'assistant', parentId: 'p2u', content: 'A couchette sleeps four to six on simple bunks; a sleeper has one to three proper beds.', timestamp: 1790000005000 }),
     ].join('\\n') + '\\n')
     SEEDED.push(second)
+    // A fourth level, so the trail is deep enough to fold.
+    const third = comments.commentPath('pnest3')
+    await app.vault.create(third, [
+      line({ v: 2, k: 'meta', type: 'abele-chat', kind: 'comment', created: '2026-09-25',
+        anchor: { note: second, quote: 'proper beds', message: 'p2a' } }),
+      line({ k: 'msg', id: 'p3u', role: 'user', content: 'How much more does a proper bed cost than a couchette?', timestamp: 1790000006000 }),
+    ].join('\\n') + '\\n')
+    SEEDED.push(third)
   }
   const unseed = async () => {
     for (const path of SEEDED) {
@@ -357,7 +366,20 @@ const probeScript = `(async () => {
       await wait(400)
       const nested = document.querySelector('.abele-ai-chat')
       await screen('nested comment', nested, nested)
-      await comments.hideFromSidebar('pnest2')
+      // Four levels: folded to one row, then opened by its ellipsis.
+      await comments.showInSidebar('pnest3')
+      await until(() => document.querySelector('.abele-ai-chat .abele-breadcrumbs__more'), 5000)
+      await wait(400)
+      const deep = document.querySelector('.abele-ai-chat')
+      await screen('nested comment folded', deep, deep)
+      const trail = deep.querySelector('.abele-breadcrumbs')
+      // By the middle of each piece: a glyph and a word on one row do not share a top.
+      const rows = new Set([...trail.children].map((c) => { const r = c.getBoundingClientRect(); return Math.round((r.top + r.bottom) / 2) }))
+      report['nested comment folded'].rows = rows.size
+      deep.querySelector('.abele-breadcrumbs__more').click()
+      await wait(400)
+      await screen('nested comment opened', deep, deep)
+      await comments.hideFromSidebar('pnest3')
     }
 
     // The icon picker of a header button's form: a grid of every icon, a search field above.
@@ -468,6 +490,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'setup debug',
     'history',
     'nested comment',
+    'nested comment folded',
+    'nested comment opened',
     'icon picker',
     'icon picker search',
   ]
@@ -496,6 +520,10 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 
   it.each(sheets)('%s: nothing cuts the focus ring off any field', (label) => {
     expect(report[label]?.clipped ?? ['no report']).toEqual([])
+  })
+
+  it('nested comment folded: a trail of four levels keeps to one row', () => {
+    expect((report['nested comment folded'] as Screen & { rows?: number })?.rows).toBe(1)
   })
 
   it('history: every card keeps its delete icon on the row of its title', () => {

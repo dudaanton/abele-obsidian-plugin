@@ -925,3 +925,59 @@ describe('Breadcrumbs', () => {
     expect(view.emitted('select')).toBeUndefined()
   })
 })
+
+describe('Breadcrumbs, deep', () => {
+  const DEEP = [
+    { label: 'Riga trip' },
+    { label: 'Which train?' },
+    { label: 'Sleeping cars?' },
+    { label: 'Couchette or sleeper?' },
+    { label: 'Prices' },
+  ]
+  const labels = (view: ReturnType<typeof mount>) =>
+    view.findAll('.abele-breadcrumbs__item').map((i) => i.text())
+
+  it('keeps three levels whole', () => {
+    const view = mount(Breadcrumbs, { props: { items: DEEP.slice(0, 3) } })
+
+    expect(labels(view)).toEqual(['Riga trip', 'Which train?', 'Sleeping cars?'])
+    expect(view.find('.abele-breadcrumbs__more').exists()).toBe(false)
+  })
+
+  it('folds more than three into the root, an ellipsis, the parent and where you are, on one row', () => {
+    const view = mount(Breadcrumbs, { props: { items: DEEP } })
+
+    expect(labels(view)).toEqual(['Riga trip', 'Couchette or sleeper?', 'Prices'])
+    expect(view.find('.abele-breadcrumbs__more').text()).toBe('…')
+    expect(view.classes()).toContain('abele-breadcrumbs_folded')
+  })
+
+  it('still says which level was pressed by its place in the whole trail', async () => {
+    const view = mount(Breadcrumbs, { props: { items: DEEP } })
+
+    const items = view.findAll('.abele-breadcrumbs__item')
+    await items[1].trigger('click')
+    await items[0].trigger('click')
+
+    expect(view.emitted('select')).toEqual([[3], [0]])
+  })
+
+  it('opens the whole trail, wrapping, when the ellipsis is pressed', async () => {
+    const view = mount(Breadcrumbs, { props: { items: DEEP } })
+
+    await view.find('.abele-breadcrumbs__more').trigger('click')
+
+    expect(labels(view)).toEqual(DEEP.map((d) => d.label))
+    expect(view.classes()).not.toContain('abele-breadcrumbs_folded')
+    expect(view.emitted('select')).toBeUndefined()
+  })
+
+  it('folds again when it is given another trail', async () => {
+    const view = mount(Breadcrumbs, { props: { items: DEEP } })
+    await view.find('.abele-breadcrumbs__more').trigger('keydown', { key: 'Enter' })
+
+    await view.setProps({ items: [...DEEP, { label: 'Deeper' }] })
+
+    expect(labels(view)).toEqual(['Riga trip', 'Prices', 'Deeper'])
+  })
+})
