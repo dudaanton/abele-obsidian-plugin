@@ -110,27 +110,36 @@ export class Log {
     return targetWikilinks
   }
 
+  /**
+   * The part of a log's body that concerns the target note: the paragraphs linking to it, or to
+   * a note in its groups — the whole body when none does. What the list shows, and what its
+   * search reads, so a word elsewhere in a daily note does not surface it under every group.
+   */
+  relatedText(body: string): string {
+    let paragraphs = body.split('\n\n').map((p) => p.trim())
+
+    // find paragraphs containing one of wikilink type to targetFilePath (full path or name only)
+    if (this.targetFilePath) {
+      const targets = this.findRelatedLinks().flatMap((path) =>
+        this.getTargetWikiLinksPatternsFromPath(path)
+      )
+
+      const newParagraphs = paragraphs.filter((p) =>
+        targets.some((link) => p.toLowerCase().includes(link.toLowerCase()))
+      )
+
+      if (newParagraphs.length) {
+        paragraphs = newParagraphs
+      }
+    }
+
+    return paragraphs.join('\n\n')
+  }
+
   async loadContent() {
     const data = await getNoteData(this.filePath)
     if (data) {
-      let paragraphs = (data.content as string).split('\n\n').map((p) => p.trim())
-
-      // find paragraphs containing one of wikilink type to targetFilePath (full path or name only)
-      if (this.targetFilePath) {
-        const targets = this.findRelatedLinks().flatMap((path) =>
-          this.getTargetWikiLinksPatternsFromPath(path)
-        )
-
-        const newParagraphs = paragraphs.filter((p) =>
-          targets.some((link) => p.toLowerCase().includes(link.toLowerCase()))
-        )
-
-        if (newParagraphs.length) {
-          paragraphs = newParagraphs
-        }
-      }
-
-      this.content = paragraphs.join('\n\n')
+      this.content = this.relatedText(data.content as string)
     } else {
       this.noteNotFound = true
     }

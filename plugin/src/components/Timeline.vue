@@ -7,6 +7,15 @@
       </div>
       <div class="abele-timeline__header-right">
         <ObsidianIcon
+          class="abele-timeline__search-toggle"
+          icon="search"
+          :active="search.open.value"
+          :tooltip="
+            search.open.value ? 'Close the search' : 'Search tasks by title and description'
+          "
+          @click="search.toggle"
+        />
+        <ObsidianIcon
           v-if="labelOptions.length"
           class="abele-task-label-filter"
           icon="tag"
@@ -21,34 +30,46 @@
         />
       </div>
     </div>
-    <div v-for="[date, dateTasks] in visible" :key="date" class="abele-timeline__date-block">
-      <div
-        class="abele-timeline__date-indicator"
-        :class="{ 'abele-timeline__date-indicator_overdue': dayjs(date).isBefore(now, 'day') }"
-      >
-        <div class="abele-timeline__date-icon abele-timeline__date-icon_overdue">
-          <ObsidianIcon icon="flame" no-hover />
+    <ObsidianSearch
+      v-if="search.open.value"
+      v-model="search.query.value"
+      class="abele-timeline__search"
+      placeholder="Search tasks…"
+      autofocus
+      @keydown.escape.stop.prevent="search.close"
+    />
+    <div ref="itemsEl" class="abele-timeline__blocks">
+      <div v-for="[date, dateTasks] in visible" :key="date" class="abele-timeline__date-block">
+        <div
+          class="abele-timeline__date-indicator"
+          :class="{ 'abele-timeline__date-indicator_overdue': dayjs(date).isBefore(now, 'day') }"
+        >
+          <div class="abele-timeline__date-icon abele-timeline__date-icon_overdue">
+            <ObsidianIcon icon="flame" no-hover />
+          </div>
+          <div class="abele-timeline__date-icon abele-timeline__date-icon_upcoming">
+            <ObsidianIcon icon="calendar" no-hover />
+          </div>
+          <div class="abele-timeline__date-line" />
         </div>
-        <div class="abele-timeline__date-icon abele-timeline__date-icon_upcoming">
-          <ObsidianIcon icon="calendar" no-hover />
-        </div>
-        <div class="abele-timeline__date-line" />
-      </div>
-      <div class="abele-timeline__block-content">
-        <ObsidianMarkdown class="timeline__date" :text="getDateWikilink(date)" />
-        <div class="abele-timeline__tasks">
-          <TaskView
-            v-for="task in dateTasks"
-            :key="task.id"
-            class="abele-timeline__task"
-            :task="task"
-            at-timeline
-          />
+        <div class="abele-timeline__block-content">
+          <ObsidianMarkdown class="timeline__date" :text="getDateWikilink(date)" />
+          <div class="abele-timeline__tasks">
+            <TaskView
+              v-for="task in dateTasks"
+              :key="task.id"
+              class="abele-timeline__task"
+              :task="task"
+              at-timeline
+            />
+          </div>
         </div>
       </div>
     </div>
     <div v-if="hasMore" ref="sentinel" class="abele-timeline__sentinel" />
-    <div v-if="!dates.length" class="abele-timeline__no-tasks">No tasks to show.</div>
+    <div v-if="!dates.length" class="abele-timeline__no-tasks">
+      {{ search.terms.value.length ? 'Nothing matches the search.' : 'No tasks to show.' }}
+    </div>
   </div>
 </template>
 
@@ -58,12 +79,15 @@ import TaskView from './Task.vue'
 import { computed, ref, watch } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
+import ObsidianSearch from './obsidian/Search.vue'
 import dayjs from 'dayjs'
 import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { useDate } from '@/composables/useDate'
 import { usePagedList } from '@/composables/usePagedList'
 import { createTask } from '@/commands/createTask'
 import { useLabelFilter } from '@/composables/useLabelFilter'
+import { taskSearch, useListSearch } from '@/composables/useListSearch'
+import { useSearchHighlight } from '@/composables/useSearchHighlight'
 
 /**
  * Pages by date block rather than by task: a task that spans several days is deliberately
@@ -95,10 +119,15 @@ const {
   openMenu: openLabelMenu,
 } = useLabelFilter(() => shownTasks.value)
 
+const search = useListSearch(() => filtered.value, taskSearch)
+
+const itemsEl = ref<HTMLElement | null>(null)
+useSearchHighlight(itemsEl, search.terms)
+
 const dates = computed(() => {
   const datesSet = new Map<string, Task[]>()
 
-  for (const task of filtered.value) {
+  for (const task of search.results.value) {
     for (const date of task.dates) {
       if (!datesSet.has(date)) {
         datesSet.set(date, [])
@@ -120,6 +149,7 @@ const { visible, hasMore, sentinel, reset } = usePagedList(() => dates.value, PA
 // expanded window no longer matches what the reader has actually scrolled through.
 watch(hideCompleted, reset)
 watch(labelSelection, reset)
+watch(search.terms, reset)
 
 const getDateWikilink = (dateStr: string) => {
   const date = dayjs(dateStr, DATE_FORMAT)
@@ -139,6 +169,10 @@ const getDateWikilink = (dateStr: string) => {
 </script>
 
 <style lang="scss">
+.abele-timeline__search {
+  margin-bottom: var(--p-spacing);
+}
+
 .abele-timeline__sentinel {
   height: 1px;
 }

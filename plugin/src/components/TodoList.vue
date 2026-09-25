@@ -7,6 +7,15 @@
       </div>
       <div class="abele-todo-list__header-right">
         <ObsidianIcon
+          class="abele-todo-list__search-toggle"
+          icon="search"
+          :active="search.open.value"
+          :tooltip="
+            search.open.value ? 'Close the search' : 'Search tasks by title and description'
+          "
+          @click="search.toggle"
+        />
+        <ObsidianIcon
           v-if="labelOptions.length"
           class="abele-task-label-filter"
           icon="tag"
@@ -21,11 +30,21 @@
         />
       </div>
     </div>
-    <div class="abele-todo-list__tasks">
+    <ObsidianSearch
+      v-if="search.open.value"
+      v-model="search.query.value"
+      class="abele-todo-list__search"
+      placeholder="Search tasks…"
+      autofocus
+      @keydown.escape.stop.prevent="search.close"
+    />
+    <div ref="itemsEl" class="abele-todo-list__tasks">
       <TaskView v-for="task in visible" :key="task.id" :task="task" class="abele-todo-list__task" />
       <div v-if="hasMore" ref="sentinel" class="abele-todo-list__sentinel" />
     </div>
-    <div v-if="!shown.length" class="abele-todo-list__no-tasks">No tasks to show.</div>
+    <div v-if="!shown.length" class="abele-todo-list__no-tasks">
+      {{ search.terms.value.length ? 'Nothing matches the search.' : 'No tasks to show.' }}
+    </div>
   </div>
 </template>
 
@@ -33,11 +52,14 @@
 import { Task } from '@/entities/Task'
 import TaskView from './Task.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
+import ObsidianSearch from './obsidian/Search.vue'
 import { computed, ref, watch } from 'vue'
 import { createTask } from '@/commands/createTask'
 import { usePagedList } from '@/composables/usePagedList'
 import { useLabelFilter } from '@/composables/useLabelFilter'
 import { sortByPriority } from '@/helpers/taskMeta'
+import { taskSearch, useListSearch } from '@/composables/useListSearch'
+import { useSearchHighlight } from '@/composables/useSearchHighlight'
 
 const props = defineProps<{
   showAddButton?: boolean
@@ -60,7 +82,12 @@ const {
 
 // Priority first, then whatever order the list was handed — the sort is stable, so the date
 // order underneath survives within each priority.
-const shown = computed(() => sortByPriority(filtered.value))
+const search = useListSearch(() => filtered.value, taskSearch)
+
+const shown = computed(() => sortByPriority(search.results.value))
+
+const itemsEl = ref<HTMLElement | null>(null)
+useSearchHighlight(itemsEl, search.terms)
 
 const { visible, hasMore, sentinel, reset } = usePagedList(() => shown.value)
 
@@ -69,6 +96,7 @@ const { visible, hasMore, sentinel, reset } = usePagedList(() => shown.value)
 // filter is a different list altogether.
 watch(hideCompleted, reset)
 watch(labelSelection, reset)
+watch(search.terms, reset)
 </script>
 
 <style lang="scss">
@@ -100,6 +128,10 @@ watch(labelSelection, reset)
   display: flex;
   align-items: center;
   gap: calc(var(--p-spacing) / 2);
+}
+
+.abele-todo-list__search {
+  margin-bottom: var(--p-spacing);
 }
 
 .abele-todo-list__sentinel {

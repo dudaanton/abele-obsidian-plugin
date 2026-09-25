@@ -14,6 +14,8 @@ const props = defineProps<{
   placeholder?: string
   suggester?: typeof FileSuggest | typeof FolderSuggest
   disabled?: boolean
+  /** Puts the cursor in the field as it appears — for a field opened by pressing something. */
+  autofocus?: boolean
 }>()
 
 const el = ref<HTMLElement>()
@@ -41,6 +43,7 @@ const initSearch = () => {
   if (props.disabled !== undefined) {
     search.value.setDisabled(props.disabled)
   }
+  if (props.autofocus) search.value.inputEl.focus()
 }
 
 onMounted(initSearch)
