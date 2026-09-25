@@ -284,5 +284,13 @@ arguments lists them all; with a `path` it returns one. `write_settings` changes
 and the setting has to exist already and keep its type. Keys, keychain ids and the chat index
 are neither readable nor writable.
 
+A list setting — agents, header buttons, automations, providers, journals — is changed one item
+at a time, not rewritten. An item is named in the path by its place, its id or its name:
+`ai.agents.Writer`, `headerButtons.<id>`. `write_settings` takes an `op`: `set` (the default)
+replaces a value; `update` merges a JSON object of just the fields to change into one item;
+`add` puts a new item into a list, filled in with defaults and given an id; `remove` takes one
+item out; `move` puts one at another `index`. Each answers with the item it touched, not the
+list.
+
 Each carries its own mode, so reading the settings and changing them are two permissions. What
 each setting decides is the `settings` section of this reference.

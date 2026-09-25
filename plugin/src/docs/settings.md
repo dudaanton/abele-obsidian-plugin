@@ -7,8 +7,33 @@ setting per write, and the new value must be of the same type as the old one —
 ## Reading and changing them
 
 `read_settings` with no arguments lists every setting with its value, or with its size when it
-is a list or an object. With `path` it returns that one value as JSON. `write_settings` takes a
+is a list or an object. With `path` it returns that one value as JSON; a list too long to return
+whole comes back as one line per item — its place, id and name. `write_settings` takes a
 `path` and a `value` and changes exactly that.
+
+In a list, a path segment names one item by its place, its `id`, or its `name` (a label colour
+by its `value`, a list of words by the word): `ai.agents.Writer.prompts`,
+`headerButtons.<id>.icon`, `logsNotesTypes.log`. A name several items share is refused — use
+the id.
+
+## Changing one item of a list
+
+Lists — `ai.agents`, `headerButtons`, `automations`, `links`, `journals`, `ai.providers`,
+`taskLabelColors` and the rest — are changed one item at a time with `write_settings`' `op`,
+never by writing the whole list back:
+
+- `update` with `path` naming an item and `value` a JSON object of only the fields to change:
+  `{"op":"update","path":"ai.agents.Writer","value":"{\"modelId\":\"m2\"}"}`. Nested objects
+  merge — `{"toolModes":{"fetch":"ask"}}` changes one tool's mode — and `null` removes a field.
+- `add` with `path` naming the list and `value` the new item; `index` inserts it at a place,
+  otherwise it goes last. An agent, button, link, automation or journal is filled in with the
+  same defaults the settings screen gives it, and gets an id when it has none.
+- `remove` with `path` naming the item.
+- `move` with `path` naming the item and `index` its new place.
+
+Each answers with the one item it touched, which is also where its new id is. The same rules as
+any write hold: types keep, keys stay out of reach, an interceptor has to be another agent.
+`set` on a whole list still works, and a keychain id it was shown as `<hidden>` stays as it was.
 
 Three rules hold for every write. The setting has to exist already: this changes settings rather
 than inventing them, and a key the plugin never reads would otherwise sit in the file for good.

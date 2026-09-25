@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { nanoid } from 'nanoid'
 import { Notice } from 'obsidian'
 import { Journal, JournalDTO } from '@/entities/Journal'
 import { AiSettings, DEFAULT_AI_SETTINGS, ImageProvider, migrateOldPermissions } from '@/ai/types'
@@ -165,6 +166,44 @@ export function normalizeConditions(raw: unknown): HeaderButtonCondition[] {
             ? String(c.value)
             : '',
     }))
+}
+
+/** A link as settings, an agent or a transfer may have left it, made whole. */
+export function normalizeLink(raw: Partial<LinkDefinition>): LinkDefinition {
+  return {
+    ...raw,
+    id: raw.id || nanoid(),
+    name: raw.name ?? '',
+    scriptName: raw.scriptName ?? '',
+    type: raw.type || 'script',
+    commandId: raw.commandId || '',
+    waitForSync: raw.waitForSync ?? true,
+  }
+}
+
+/**
+ * A header button made whole. Older settings files have no buttons at all, and a button saved
+ * before a field existed is missing it rather than holding a default — so each one is filled in
+ * on the way in, and so is one an agent adds with only the fields it cared about.
+ */
+export function normalizeHeaderButton(
+  raw: Partial<HeaderButtonDefinition>
+): HeaderButtonDefinition {
+  return {
+    ...raw,
+    id: raw.id || nanoid(),
+    name: raw.name ?? '',
+    scriptName: raw.scriptName ?? '',
+    icon: raw.icon || 'play',
+    noteTypes: raw.noteTypes || [],
+    params: raw.params || {},
+    enabled: raw.enabled ?? true,
+    iconOnly: raw.iconOnly ?? false,
+    allNotes: raw.allNotes ?? false,
+    folders: raw.folders || [],
+    conditions: normalizeConditions(raw.conditions),
+    conditionMode: raw.conditionMode === 'any' ? 'any' : 'all',
+  }
 }
 
 export const DEFAULT_SETTINGS: AbeleSettings = {
@@ -544,26 +583,8 @@ export class AbeleConfig {
       ...DEFAULT_SETTINGS.timeTrackableNoteTypes,
     ]
     this.timeTrackAllNotes = settings?.timeTrackAllNotes ?? DEFAULT_SETTINGS.timeTrackAllNotes
-    this.links = (settings?.links || []).map((l) => ({
-      ...l,
-      type: l.type || 'script',
-      commandId: l.commandId || '',
-      waitForSync: l.waitForSync ?? true,
-    }))
-    // Older settings files have no buttons at all, and a button saved before a field existed
-    // is missing it rather than holding a default — so each one is filled in on the way in.
-    this.headerButtons = (settings?.headerButtons || []).map((b) => ({
-      ...b,
-      icon: b.icon || 'play',
-      noteTypes: b.noteTypes || [],
-      params: b.params || {},
-      enabled: b.enabled ?? true,
-      iconOnly: b.iconOnly ?? false,
-      allNotes: b.allNotes ?? false,
-      folders: b.folders || [],
-      conditions: normalizeConditions(b.conditions),
-      conditionMode: b.conditionMode === 'any' ? 'any' : 'all',
-    }))
+    this.links = (settings?.links || []).map(normalizeLink)
+    this.headerButtons = (settings?.headerButtons || []).map(normalizeHeaderButton)
     this.automations = (Array.isArray(settings?.automations) ? settings.automations : []).map(
       (rule) => normalizeRule(rule)
     )
