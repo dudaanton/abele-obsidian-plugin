@@ -1,6 +1,6 @@
 # GitHub
 
-Abele can show GitHub issues, pull requests, discussions, commits and files in tabs inside
+Abele can show GitHub issues, pull requests, discussions, commits, comparisons and files in tabs inside
 Obsidian, so a link in a note opens the thing it points at without a trip to the browser. It
 reads only: nothing is ever written to GitHub. It is off until turned on in **Settings → Abele →
 GitHub**.
@@ -16,6 +16,9 @@ GitHub**.
 | `…/pull/7/files#diff-<hash>R42`, `…L3-L9` | The same, with those lines of the new (`R`) or old (`L`) side marked. |
 | `…/pull/7/commits`, `…/pull/7/commits/<sha>` | The commit list, or that one commit's diff. |
 | `…/owner/repo/commit/<sha>` (with or without `#diff-…`) | The commit's message and diff. |
+| `…/owner/repo/compare/main...feature` | The comparison: how far head is ahead of base and behind it, its changed files with their diffs, and its commits. Either side may be a branch, a tag, a commit or another fork's `owner:branch`; `…/compare/feature` alone is that branch against the default one. `?expand=1` is ignored. |
+| `…/compare/main...feature#diff-<hash>R42` | The same, with that file opened and those lines marked. |
+| `…/compare/v1..v2` | The same. GitHub's API compares only from where the two split, so when they have diverged the tab says it shows what head changed since then, not the two versions side by side. |
 | `…/owner/repo/discussions/3` | The discussion: body, comments, replies, and which answer was chosen. |
 | `…/owner/repo/blob/<ref>/<path>#L10-L20` | The file at that branch, tag or commit, with those lines marked. |
 | `…/blob/<ref>/README.md`, `…/docs/guide.md#install` | A markdown file, rendered — scrolled to that heading when the link names one. |
@@ -27,6 +30,12 @@ review comment — `…/pull/7#discussion_r…`, or `…/pull/7/files#r…` — 
 comment's file open and the comment marked. A file link that turns out to name a folder lists the
 folder, and a folder link that names a file shows the file, as GitHub redirects them. Anything
 else — a repository's front page, a release, a gist — still goes to the browser.
+
+A comparison's header has a button that swaps its two sides in the same tab — what base has that
+head has not — and its back arrow returns. GitHub sends at most 300 changed files for one
+comparison; past that the tab says the rest are on GitHub. Commits are read up to a thousand. In
+the "Open GitHub link or item" picker, `main...feature` typed on its own is a comparison in the
+picker's repository, and `owner/repo main...feature` one in that repository.
 
 The tab scrolls so that what the link names sits near its top — a line of code with a few lines
 above it for context. It keeps it there while the tab settles: comments above it render and load

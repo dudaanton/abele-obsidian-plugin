@@ -42,8 +42,15 @@ const FILES_PER_PAGE = 200
 function itemOf(named: Named): { repo: RepoRef; number: number; kind?: string } {
   const t = named.target
   if (t && t.kind !== 'issue' && t.kind !== 'pull' && t.kind !== 'discussion') {
-    const tool = t.kind === 'commit' ? 'github_commits' : 'github_file'
-    const what = t.kind === 'blob' ? 'file' : t.kind === 'tree' ? 'folder' : t.kind
+    const tool = t.kind === 'commit' || t.kind === 'compare' ? 'github_commits' : 'github_file'
+    const what =
+      t.kind === 'blob'
+        ? 'file'
+        : t.kind === 'tree'
+          ? 'folder'
+          : t.kind === 'compare'
+            ? 'comparison'
+            : t.kind
     throw new Error(`That link is a ${what}; read it with ${tool}.`)
   }
   if (!named.number) {

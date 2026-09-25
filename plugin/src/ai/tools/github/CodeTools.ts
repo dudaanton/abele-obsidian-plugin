@@ -14,7 +14,8 @@ import {
 import { githubUsers, personLabel } from '@/github/users'
 import { GithubError, type GithubClient } from '@/github/client'
 import { utf8 } from '@/github/contents'
-import { blobCandidates, diffAnchorHash } from '@/github/urls'
+import { blobCandidates } from '@/github/urls'
+import { loadCompare } from '@/github/compare'
 import { splitMessage } from '@/github/format'
 import {
   answer,
@@ -295,6 +296,8 @@ interface CommitsWanted {
   sha?: string
   base?: string
   head?: string
+  /** A lone-ref compare link: head against the default branch. */
+  defaultBase?: boolean
 }
 
 /** Which of the four the link and parameters ask for. */
@@ -309,11 +312,11 @@ function commitsWanted(named: Named, params: Record<string, unknown>): CommitsWa
   if (t?.kind === 'commit') w.sha ??= t.sha
   if (t?.kind === 'pull' || t?.kind === 'issue') w.pull ??= t.number
   if (!t && named.number) w.pull ??= named.number
-  const compare = named.rest?.[0] === 'compare' ? named.rest.slice(1).join('/') : ''
-  const m = /^(.+?)\.{2,3}(.+)$/.exec(compare)
-  if (m) {
-    w.base ??= m[1]
-    w.head ??= m[2]
+  if (t?.kind === 'compare') {
+    // `compare/<head>` is head against the default branch, which the comparison looks up.
+    w.head ??= t.head
+    w.base ??= t.base
+    w.defaultBase = !w.base
   }
   return w
 }
@@ -336,46 +339,38 @@ async function oneCommit(repo: RepoRef, sha: string, path: string, offset: numbe
 
 async function compare(
   repo: RepoRef,
-  base: string,
+  base: string | undefined,
   head: string,
   path: string,
   offset: number,
   limit: number
 ) {
-  const client = clientFor(repo)
-  const range = `${encodeURIComponent(base)}...${encodeURIComponent(head)}`
-  const c = await client.get<any>(`${repoPath(repo)}/compare/${range}`, {
-    what: `the comparison of ${base} and ${head}`,
+  const c = await loadCompare(clientFor(repo), {
+    ...repo,
+    kind: 'compare',
+    base,
+    head,
+    direct: false,
   })
-  const files: DiffFile[] = await Promise.all(
-    ((c.files ?? []) as any[]).map(async (f) => ({
-      path: f.filename,
-      previousPath: f.previous_filename,
-      status: f.status,
-      additions: f.additions ?? 0,
-      deletions: f.deletions ?? 0,
-      patch: f.patch,
-      hash: await diffAnchorHash(f.filename),
-      reviewComments: [] as DiffFile['reviewComments'],
-    }))
-  )
-  const commits = ((c.commits ?? []) as any[]).map(restCommit)
-  const again = `call github_commits again with base="${base}", head="${head}",`
+  const again = `call github_commits again with base="${c.base}", head="${head}",`
   const out = [
-    `Compare ${repoName(repo)} ${base}...${head} — ${c.status}: ${c.ahead_by} ahead, ${c.behind_by} behind`,
-    `URL: ${c.html_url ?? ''}`,
+    `Compare ${repoName(repo)} ${c.base}...${head} — ${c.status}: ${c.aheadBy} ahead, ${c.behindBy} behind`,
+    `URL: ${c.url}`,
     '',
   ]
+  if (c.note) out.push(c.note, '')
   if (path) {
-    out.push(patchWindow(findFile(files, path), offset, limit, `${again} path=…,`))
+    out.push(patchWindow(findFile(c.files, path), offset, limit, `${again} path=…,`))
     return out.join('\n')
   }
-  out.push(
-    `## Commits (${c.total_commits ?? commits.length})`,
-    ...(await commitRows(repo, commits.slice(0, 50)))
-  )
-  if (commits.length > 50) out.push(`[${commits.length - 50} more commits not listed.]`)
-  out.push('', ...filesWithPatches(files, again))
+  out.push(`## Commits (${c.totalCommits})`, ...(await commitRows(repo, c.commits.slice(0, 50))))
+  if (c.totalCommits > 50) out.push(`[${c.totalCommits - 50} more commits not listed.]`)
+  out.push('', ...filesWithPatches(c.files, again))
+  if (!c.filesComplete && c.files.length) {
+    out.push(
+      `GitHub lists only the first ${c.files.length} files of a comparison; the rest are on GitHub.`
+    )
+  }
   return out.join('\n')
 }
 
@@ -417,7 +412,8 @@ export function createGithubCommitsTool(): AgentTool {
       const page = whole(params.page, 1)
 
       if (w.sha) return answer(await oneCommit(repo, w.sha, path, offset, limit))
-      if (w.base && w.head) return answer(await compare(repo, w.base, w.head, path, offset, limit))
+      if (w.head && (w.base || w.defaultBase))
+        return answer(await compare(repo, w.base, w.head, path, offset, limit))
       if (w.base || w.head) throw new Error('A comparison needs both base and head.')
 
       if (w.pull) {

@@ -90,8 +90,8 @@ Every item is named by a link or `owner/repo#12`; a repository by `owner/repo` o
 it. Answers are capped and say where the rest is — a page, a diff window, a line range. Ask for
 the next part rather than trying to get everything at once.
 
-- `github_views` — what the person has open in GitHub tabs: the item or folder, the pull request
-  section in front, the diffs drawn open, the lines they selected, with the code, whether the file
+- `github_views` — what the person has open in GitHub tabs: the item, comparison or folder, the
+  pull request's or comparison's section in front, the diffs drawn open, the lines they selected, with the code, whether the file
   tree panel is open beside it, and words they selected in prose — a description, comment, reply,
   review comment, commit message, rendered file or a folder's README — quoted, with which comment
   they are in (who wrote it, its `#…` anchor, its link) or, across several, the item and the
@@ -107,8 +107,10 @@ the next part rather than trying to get everything at once.
   600 whole or 400 at a time (`start_line`, `end_line`), a folder's entries, or with
   `recursive: true` the whole tree under `path`. A `blob/…` link names file, ref and lines itself.
 - `github_commits` — a pull request's commits (`pull` or its link), one commit's message and diffs
-  (`sha` or its link), a comparison (`base` and `head`, or a `compare/a...b` link), or the history
-  of `ref`, of one `path` when given. Long diffs are left out and named; ask for one with `path`.
+  (`sha` or its link), a comparison (`base` and `head`, or a `compare/a...b` link; `compare/b`
+  alone is `b` against the default branch), or the history of `ref`, of one `path` when given.
+  A comparison lists at most 300 files, as GitHub does. Long diffs are left out and named; ask
+  for one with `path`.
 - `github_search` — `type: "code"` searches file contents in GitHub's syntax (needs a token on
   github.com, default branches only); `type: "issues"` searches issues and pull requests
   (`is:pr is:open author:…`). `repo` narrows either to one repository.
@@ -123,10 +125,10 @@ the next part rather than trying to get everything at once.
   says so. Binary files and files over 1 MB are not searched. Prefer it to `github_search` for
   code: any branch, exact line numbers, regular expressions, and no token needed for a public
   repository.
-- `github_open` — puts something in front of the person in a GitHub tab: an item, a file, or a
-  folder by its `tree/<ref>/<path>` link. `start_line` and
-  `end_line` mark lines: with `path` in a pull request's or commit's diff (`old: true` for removed
-  lines), or in a file link. It reuses the tab showing the item, else the GitHub tab used last.
+- `github_open` — puts something in front of the person in a GitHub tab: an item, a comparison
+  (`compare/base...head`), a file, or a folder by its `tree/<ref>/<path>` link. `start_line` and
+  `end_line` mark lines: with `path` in a pull request's, commit's or comparison's diff
+  (`old: true` for removed lines), or in a file link. It reuses the tab showing the item, else the GitHub tab used last.
 
 Exploring a codebase or a pull request, in this order:
 

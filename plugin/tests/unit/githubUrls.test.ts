@@ -5,7 +5,15 @@
  * it always did, which is the whole promise of "unsupported URLs still work".
  */
 import { describe, it, expect } from 'vitest'
-import { parseGithubUrl, endpoints, diffAnchorHash, blobCandidates } from '@/github/urls'
+import {
+  parseGithubUrl,
+  endpoints,
+  diffAnchorHash,
+  blobCandidates,
+  shortName,
+  targetKey,
+} from '@/github/urls'
+import { compareUrl } from '@/github/compare'
 
 const parse = (url: string) => parseGithubUrl(url, ['github.com'])
 
@@ -130,6 +138,91 @@ describe('files at a ref', () => {
       { ref: 'feature/x', path: 'src/a.ts' },
       { ref: 'feature/x/src', path: 'a.ts' },
     ])
+  })
+})
+
+describe('comparisons', () => {
+  const H = 'https://github.com/octocat/Hello-World/compare'
+
+  it('reads base...head', () => {
+    expect(parse(`${H}/master...octocat-patch-1`)).toEqual({
+      kind: 'compare',
+      host: 'github.com',
+      owner: 'octocat',
+      repo: 'Hello-World',
+      base: 'master',
+      head: 'octocat-patch-1',
+      direct: false,
+      file: undefined,
+      anchor: undefined,
+    })
+  })
+
+  it('reads two dots as the direct comparison', () => {
+    expect(parse(`${H}/v1.0..v2.0`)).toMatchObject({ base: 'v1.0', head: 'v2.0', direct: true })
+  })
+
+  it('reads one ref as that ref against the default branch', () => {
+    expect(parse(`${H}/feature`)).toMatchObject({ base: undefined, head: 'feature' })
+  })
+
+  it('keeps branches with slashes, forks, SHAs and tags whole', () => {
+    expect(parse(`${H}/release/1.0...feature/login/form`)).toMatchObject({
+      base: 'release/1.0',
+      head: 'feature/login/form',
+    })
+    expect(parse(`${H}/main...someone:Hello-World:fix`)).toMatchObject({
+      base: 'main',
+      head: 'someone:Hello-World:fix',
+    })
+    expect(parse(`${H}/main...someone:fix`)).toMatchObject({ head: 'someone:fix' })
+    expect(parse(`${H}/1a2b3c4...9f8e7d6c5b4a39281706f5e4d3c2b1a098765432`)).toMatchObject({
+      base: '1a2b3c4',
+      head: '9f8e7d6c5b4a39281706f5e4d3c2b1a098765432',
+    })
+  })
+
+  it('ignores ?expand=1 and reads a file anchor in the diff', () => {
+    const hash = 'b'.repeat(64)
+    expect(parse(`${H}/main...dev?expand=1#diff-${hash}R4-R6`)).toMatchObject({
+      base: 'main',
+      head: 'dev',
+      file: { hash, side: 'R', line: 4, endLine: 6 },
+    })
+  })
+
+  it('reads percent-encoded refs', () => {
+    expect(parse(`${H}/main...feature%2Flogin`)).toMatchObject({ head: 'feature/login' })
+  })
+
+  it('takes the comparison on a configured Enterprise host', () => {
+    expect(
+      parseGithubUrl('https://git.example.com/o/r/compare/a...b', ['github.com', 'git.example.com'])
+    ).toMatchObject({ kind: 'compare', host: 'git.example.com', base: 'a', head: 'b' })
+  })
+
+  it.each([`${H}`, `${H}/...`, `${H}/main...`, `${H}/...dev`, `${H}/a....b`])(
+    'leaves %s to the browser',
+    (url) => {
+      expect(parse(url)).toBeNull()
+    }
+  )
+
+  it('names the tab and keys the item by its two sides', () => {
+    const t = parse(`${H}/master...octocat-patch-1#diff-${'c'.repeat(64)}`)!
+    expect(shortName(t)).toBe('octocat/Hello-World master...octocat-patch-1')
+    expect(targetKey(t)).toBe('compare:github.com/octocat/hello-world/master...octocat-patch-1')
+    expect(targetKey(parse(`${H}/master..octocat-patch-1`)!)).not.toBe(targetKey(t))
+    expect(shortName(parse(`${H}/feature`)!)).toBe('octocat/Hello-World compare feature')
+  })
+
+  it('writes the address back, sides swapped when asked', () => {
+    const repo = { host: 'github.com', owner: 'octocat', repo: 'Hello-World' }
+    expect(compareUrl(repo, 'main', 'feature/x')).toBe(`${H}/main...feature/x`)
+    expect(compareUrl(repo, 'v1', 'v2', true)).toBe(`${H}/v1..v2`)
+    expect(compareUrl(repo, 'main', 'someone:Hello-World:fix')).toBe(
+      `${H}/main...someone:Hello-World:fix`
+    )
   })
 })
 

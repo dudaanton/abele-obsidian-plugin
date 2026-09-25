@@ -10,6 +10,7 @@ import type { GithubLink } from './permalinks'
 import type { ItemData } from './loadItem'
 import type { BlobData, CommitData, DiscussionData, IssueData, Label, PullData } from './api'
 import type { FolderData } from './tree/folder'
+import type { CompareData } from './compare'
 import { treeUrl } from './tree/fileTree'
 
 /** A commit SHA as GitHub shows one; a branch or a tag as it is. */
@@ -50,6 +51,21 @@ export function itemHead(t: GithubTarget | null, data: ItemData | null): ItemHea
       ],
     }
   }
+  if (t.kind === 'compare') {
+    const c = data as CompareData
+    const commits = `${c.aheadBy} commit${c.aheadBy === 1 ? '' : 's'} ahead`
+    return {
+      ...fallback,
+      title: `${c.base}${c.direct ? '..' : '...'}${c.head}`,
+      state: c.status || undefined,
+      meta: [
+        commits,
+        `${c.behindBy} behind`,
+        c.filesComplete || c.files.length ? `+${c.additions} −${c.deletions}` : '',
+        c.mergeBaseSha ? `split at ${c.mergeBaseSha.slice(0, 7)}` : '',
+      ].filter(Boolean),
+    }
+  }
   // A file or a folder is titled by where it is, which the breadcrumbs draw with its ref.
   if (t.kind === 'blob' || t.kind === 'tree') {
     const b = data as BlobData | FolderData
@@ -78,8 +94,12 @@ export function itemHead(t: GithubTarget | null, data: ItemData | null): ItemHea
   }
 }
 
-/** The tab's name: `app.ts @ main`, `util/ @ 1a2b3c4`, `acme/widgets#42 The title`. */
+/**
+ * The tab's name: `app.ts @ main`, `util/ @ 1a2b3c4`, `acme/widgets#42 The title`,
+ * `acme/widgets main...dev`.
+ */
 export function itemTabTitle(t: GithubTarget, data: ItemData, title: string): string {
+  if (t.kind === 'compare') return `${t.owner}/${t.repo} ${title}`
   if (t.kind === 'blob' || t.kind === 'tree') {
     const b = data as BlobData | FolderData
     const name = b.path ? b.path.split('/').pop() : t.repo

@@ -21,10 +21,18 @@ import {
   type PullData,
 } from './api'
 import { NotAFolderError, loadFolder, type FolderData } from './tree/folder'
+import { loadCompare, type CompareData } from './compare'
 
 type Of<K extends GithubTarget['kind']> = Extract<GithubTarget, { kind: K }>
 
-export type ItemData = IssueData | PullData | DiscussionData | CommitData | BlobData | FolderData
+export type ItemData =
+  | IssueData
+  | PullData
+  | DiscussionData
+  | CommitData
+  | BlobData
+  | FolderData
+  | CompareData
 
 export async function loadItem(
   client: GithubClient,
@@ -45,6 +53,8 @@ export async function loadItem(
       return loadDiscussion(client, t)
     case 'commit':
       return loadCommit(client, t)
+    case 'compare':
+      return loadCompare(client, t)
     case 'blob':
       try {
         return await loadBlob(client, t)

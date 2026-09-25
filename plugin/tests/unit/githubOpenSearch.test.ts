@@ -317,3 +317,33 @@ describe('a pasted link', () => {
     expect((await run('https://example.com/a/b/pull/1')).message).toMatch(/example\.com/)
   })
 })
+
+describe('a comparison', () => {
+  it('typed as base...head is offered at once, asking GitHub nothing', async () => {
+    const { run, calls } = setup({})
+    const view = await run('main...dev')
+    expect(calls).toHaveLength(0)
+    expect(view.rows).toEqual([
+      {
+        kind: 'compare',
+        title: 'main...dev',
+        note: 'octo-org/octo-repo · Comparison · what dev has that main has not',
+        url: 'https://github.com/octo-org/octo-repo/compare/main...dev',
+        repo,
+      },
+    ])
+  })
+
+  it('without a repository asks for one', async () => {
+    const { run } = setup({})
+    const view = await run('main...dev', { ...ctx, repo: null })
+    expect(view.rows).toEqual([])
+    expect(view.message).toMatch(/which repository/)
+  })
+
+  it('as a link is a comparison row', async () => {
+    const { run } = setup({})
+    const view = await run('https://github.com/octo-org/octo-repo/compare/v1..v2')
+    expect(view.rows[0]).toMatchObject({ kind: 'compare', title: 'octo-org/octo-repo v1..v2' })
+  })
+})

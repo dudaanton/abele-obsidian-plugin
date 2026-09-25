@@ -7,6 +7,7 @@
 import type { DiffLine } from './patch'
 import { isMarkdownPath } from './markdownPreview'
 import { repoWeb } from './origin'
+import { compareUrl } from './compare'
 
 export interface RepoRef {
   host: string
@@ -19,6 +20,7 @@ export type LinkItem = RepoRef &
   (
     | { kind: 'issue' | 'pull' | 'discussion'; number: number }
     | { kind: 'commit'; sha: string; pull?: number }
+    | { kind: 'compare'; base: string; head: string; direct?: boolean }
   )
 
 export interface GithubLink {
@@ -43,7 +45,7 @@ const web = repoWeb
 
 const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/')
 
-/** The item's own address: an issue, a pull request, a discussion, a commit. */
+/** The item's own address: an issue, a pull request, a discussion, a commit, a comparison. */
 export function itemUrl(item: LinkItem): string {
   switch (item.kind) {
     case 'issue':
@@ -56,12 +58,19 @@ export function itemUrl(item: LinkItem): string {
       return item.pull
         ? `${web(item)}/pull/${item.pull}/commits/${item.sha}`
         : `${web(item)}/commit/${item.sha}`
+    case 'compare':
+      return compareUrl(item, item.base, item.head, item.direct)
   }
 }
 
-/** How the item is named at the start of a label: `acme/widgets#42`, `acme/widgets@1a2b3c4`. */
+/**
+ * How the item is named at the start of a label: `acme/widgets#42`, `acme/widgets@1a2b3c4`,
+ * `acme/widgets main...dev`.
+ */
 export function itemName(item: LinkItem): string {
   const repo = `${item.owner}/${item.repo}`
+  if (item.kind === 'compare')
+    return `${repo} ${item.base}${item.direct ? '..' : '...'}${item.head}`
   return item.kind === 'commit' ? `${repo}@${item.sha.slice(0, 7)}` : `${repo}#${item.number}`
 }
 

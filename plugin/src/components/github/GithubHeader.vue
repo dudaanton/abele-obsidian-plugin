@@ -9,6 +9,12 @@
           :tooltip="tree ? 'Hide the file tree' : 'Show the repository\'s files beside this'"
           @click="emit('tree')"
         />
+        <Icon
+          v-if="swap"
+          icon="arrow-left-right"
+          tooltip="Swap base and head: what base has that head has not"
+          @click="emit('swap')"
+        />
         <Icon icon="search" tooltip="Find in this tab (Mod+F)" @click="emit('find')" />
         <Icon
           icon="file-search"
@@ -90,6 +96,8 @@ withDefaults(
     refLabel?: string
     /** The file tree panel is open. */
     tree?: boolean
+    /** Offer to swap a comparison's two sides. */
+    swap?: boolean
   }>(),
   {
     number: undefined,
@@ -109,6 +117,7 @@ const emit = defineEmits<{
   (e: 'find'): void
   (e: 'search'): void
   (e: 'tree'): void
+  (e: 'swap'): void
   (e: 'open', url: string, pane: PaneType | false): void
 }>()
 

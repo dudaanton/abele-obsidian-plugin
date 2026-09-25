@@ -30,6 +30,7 @@ const ICONS: Record<RowKind, string> = {
   issue: 'circle-dot',
   discussion: 'messages-square',
   commit: 'git-commit-horizontal',
+  compare: 'git-compare',
   branch: 'git-branch',
   repo: 'book-marked',
   file: 'file-code',

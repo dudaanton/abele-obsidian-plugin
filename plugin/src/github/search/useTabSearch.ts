@@ -8,6 +8,7 @@ import type { PaneType } from 'obsidian'
 import type { BlobData, CommitData, DiffFile, FilesData, PullData } from '../api'
 import type { GithubClient } from '../client'
 import { commitSha } from '../api'
+import type { CompareData } from '../compare'
 import type { FolderData } from '../tree/folder'
 import { parsePatch } from '../patch'
 import type { GithubTarget } from '../urls'
@@ -56,8 +57,14 @@ export function useTabSearch(o: TabSearchOptions) {
     const key = JSON.stringify([t.kind, t.host, t.owner, t.repo, (d as { url?: string })?.url])
     if (shaFor?.key === key) return shaFor.sha
     let promise: Promise<string>
-    const head = t.kind === 'pull' ? (d as PullData | null)?.headSha : undefined
+    const head =
+      t.kind === 'pull'
+        ? (d as PullData | null)?.headSha
+        : t.kind === 'compare'
+          ? (d as CompareData | null)?.headSha
+          : undefined
     if (head) promise = Promise.resolve(head)
+    else if (t.kind === 'compare') promise = resolveSha(o.client(), repo(), t.head)
     else if (t.kind === 'commit' && d) promise = Promise.resolve((d as CommitData).sha)
     else if ((t.kind === 'blob' || t.kind === 'tree') && d)
       promise = commitSha(o.client(), repo(), (d as BlobData | FolderData).ref)
@@ -75,6 +82,7 @@ export function useTabSearch(o: TabSearchOptions) {
     const d = o.data()
     if (t.kind === 'pull') return (d as PullData)?.head || `#${t.number}`
     if (t.kind === 'commit') return ((d as CommitData)?.sha ?? t.sha).slice(0, 7)
+    if (t.kind === 'compare') return t.head
     if (t.kind === 'blob' || t.kind === 'tree') {
       const ref = (d as BlobData | FolderData | null)?.ref ?? ''
       // A commit reads as GitHub shows it; a branch or a tag as it is.
@@ -83,8 +91,8 @@ export function useTabSearch(o: TabSearchOptions) {
     return 'the default branch'
   }
 
-  const hasChanges = computed(
-    () => o.shown.value?.kind === 'pull' || o.shown.value?.kind === 'commit'
+  const hasChanges = computed(() =>
+    ['pull', 'commit', 'compare'].includes(o.shown.value?.kind ?? '')
   )
 
   const changes = async (): Promise<TabChanges | null> => {
@@ -106,6 +114,15 @@ export function useTabSearch(o: TabSearchOptions) {
         files: c.files,
         lineUrl: (hash, side, line) =>
           `${webBase(t)}/commit/${c.sha}#diff-${hash}${side && line ? `${side}${line}` : ''}`,
+      }
+    }
+    if (t.kind === 'compare') {
+      const c = o.data() as CompareData | null
+      if (!c) return null
+      return {
+        files: c.files,
+        lineUrl: (hash, side, line) =>
+          `${c.url.replace(/#.*$/, '')}#diff-${hash}${side && line ? `${side}${line}` : ''}`,
       }
     }
     return null
@@ -147,6 +164,7 @@ export function useTabSearch(o: TabSearchOptions) {
     if (!t) return []
     if (t.kind === 'pull') return o.files.data.value?.files ?? []
     if (t.kind === 'commit') return (o.data() as CommitData | null)?.files ?? []
+    if (t.kind === 'compare') return (o.data() as CompareData | null)?.files ?? []
     return []
   }
   watch([() => o.files.data.value, () => o.data()], () => code.noteFiles(diffFiles()), {

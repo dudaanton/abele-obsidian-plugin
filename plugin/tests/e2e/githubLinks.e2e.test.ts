@@ -6,7 +6,7 @@
  * would send the link to the browser. A dispatched DOM event would skip half of that.
  *
  * Covered: Reading view and Live Preview, the tab a plain click reuses, a Mod-click's new tab, the
- * tab's back arrow, and the links in a note's properties — in the Properties panel and in the note
+ * tab's back arrow, a comparison's link, and the links in a note's properties — in the Properties panel and in the note
  * — with Alt taking one to the browser (`window.open` stubbed, so no browser actually opens).
  *
  * The integration is switched on in memory against the fake server and put back after; the note
@@ -26,6 +26,7 @@ import {
   startFakeGithub,
   type FakeGithub,
 } from './helpers/githubLive'
+import { BASE_SHA } from './helpers/fakeGithubRepo'
 
 const NOTE = 'Abele GitHub links probe.md'
 const available = isObsidianRunning() && hasTestApi()
@@ -40,6 +41,7 @@ describe.skipIf(!available)('GitHub links in a note', () => {
   let PR = ''
   let ISSUE = ''
   let DISCUSSION = ''
+  let COMPARE = ''
 
   /** The GitHub tabs once `title` shows in one of them, or whatever there is after 20 s. */
   const tabsOnce = (title: string) =>
@@ -78,6 +80,7 @@ describe.skipIf(!available)('GitHub links in a note', () => {
     PR = `${gh.web}/pull/42`
     ISSUE = `${gh.web}/issues/7`
     DISCUSSION = `${gh.web}/discussions/3`
+    COMPARE = `${gh.web}/compare/${BASE_SHA}...main`
     enableGithub(gh.origin)
     const text = [
       '---',
@@ -90,6 +93,7 @@ describe.skipIf(!available)('GitHub links in a note', () => {
       `- [the pull request](${PR})`,
       `- [the issue](${ISSUE})`,
       `- [the discussion](${DISCUSSION})`,
+      `- [the comparison](${COMPARE})`,
       '',
       'The end.',
       '',
@@ -181,6 +185,19 @@ describe.skipIf(!available)('GitHub links in a note', () => {
     // Two tabs still: the discussion replaced what the last used one showed.
     expect(tabs).toHaveLength(2)
     expect(tabs.map((t) => t.url)).toContain(DISCUSSION)
+  })
+
+  it('a compare link opens the comparison in the GitHub tab used last, not the browser', () => {
+    expect(showNote('preview').ok).toBe(true)
+    const at = centreOf(
+      `${noteLeaf}.view.previewMode.containerEl.querySelector('a[href="${COMPARE}"]')`
+    )
+    expect(at).not.toBeNull()
+    realClick(at!.x, at!.y)
+
+    const { tabs } = tabsOnce(`${BASE_SHA}...main`)
+    expect(tabs).toHaveLength(2)
+    expect(tabs.find((t) => t.url === COMPARE)?.title).toContain('...main')
   })
 
   describe('a link in the properties', () => {

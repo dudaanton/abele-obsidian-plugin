@@ -179,6 +179,42 @@ describe('the code search panel', () => {
     expect(onOpen.mock.calls[0][0]).toBe(`https://github.com/o/r/blob/${SHA}/src/app.ts#L1`)
   })
 
+  it('searches the changes of a comparison and opens a result at its line there', async () => {
+    const tab = openTab('https://github.com/o/r/compare/main...fix', {
+      '/repos/o/r/compare/main...fix': {
+        json: {
+          status: 'ahead',
+          ahead_by: 1,
+          behind_by: 0,
+          total_commits: 1,
+          commits: [],
+          files: [
+            {
+              ...file('src/app.ts', '@@ -1,2 +1,2 @@\n keep\n-old formatName\n+new formatName'),
+              contents_url: `https://api.github.com/repos/o/r/contents/src/app.ts?ref=${SHA}`,
+            },
+          ],
+        },
+      },
+    })
+    await flushPromises()
+    const icon = tab.wrapper
+      .findAll('.abele-github-header__actions .abele-obsidian-icon')
+      .find((i) => i.attributes('aria-label')?.startsWith('Search the code'))!
+    await icon.trigger('click')
+    await flushPromises()
+    const options = tab.wrapper.findAll('.abele-github-search__scope option').map((o) => o.text())
+    expect(options).toEqual([
+      'Only the changed files',
+      'Whole repository at fix',
+      'File names at fix',
+    ])
+    await search(tab.wrapper, 'formatName')
+    const lines = tab.wrapper.findAll('.abele-github-search__line')
+    await lines[1].trigger('click')
+    expect(tab.onOpen.mock.calls[0][0]).toMatch(/\/compare\/main\.\.\.fix#diff-[0-9a-f]{64}R2$/)
+  })
+
   it('finds file names as they are typed', async () => {
     const { wrapper } = await openPanel()
     await wrapper.find<HTMLSelectElement>('.abele-github-search__scope select').setValue('names')

@@ -51,6 +51,19 @@ export type GithubTarget =
       plain?: boolean
     })
   | (Repo & {
+      kind: 'compare'
+      /** Unset for `compare/<head>`, which GitHub compares with the default branch. */
+      base?: string
+      /** A branch, tag or SHA; another fork's as `owner:branch` or `owner:repo:branch`. */
+      head: string
+      /**
+       * Two dots: the two versions against each other, rather than what head has that base has not
+       * (three dots, GitHub's default).
+       */
+      direct: boolean
+      file?: DiffFileAnchor
+    })
+  | (Repo & {
       kind: 'tree'
       /** Everything after `tree/`: a ref and a folder in it, split as for a file — `treeCandidates`. */
       rest: string[]
@@ -184,9 +197,25 @@ export function parseGithubUrl(url: string, hosts: string[]): GithubTarget | nul
     }
     case 'tree':
       return { kind: 'tree', ...base, rest: [id, ...more] }
+    case 'compare': {
+      const sides = compareSides([id, ...more].join('/'))
+      return sides && { kind: 'compare', ...base, ...sides, file: diffAnchor(hash) }
+    }
     default:
       return null
   }
+}
+
+/**
+ * `base...head`, `base..head` or a lone `head`. Git refuses `..` inside a ref name, so the first
+ * run of dots is the separator; any other count of dots, or a side left empty, is not a comparison.
+ */
+function compareSides(range: string): { base?: string; head: string; direct: boolean } | null {
+  const m = /^(.*?)(\.{2,})(.*)$/.exec(range)
+  if (!m) return range ? { base: undefined, head: range, direct: false } : null
+  const [, base, dots, head] = m
+  if (!base || !head || dots.length > 3 || head.includes('..')) return null
+  return { base, head, direct: dots.length === 2 }
 }
 
 /** Every way `rest` can be split into a ref and a path, the shortest ref first. */
@@ -289,6 +318,8 @@ export function targetKey(t: GithubTarget): string {
       return `blob:${repo}/${t.rest.join('/')}`
     case 'tree':
       return `tree:${repo}/${t.rest.join('/')}`
+    case 'compare':
+      return `compare:${repo}/${t.base ?? ''}${t.direct ? '..' : '...'}${t.head}`
   }
 }
 
@@ -307,5 +338,9 @@ export function shortName(t: GithubTarget): string {
       return `${repo}: ${t.rest[t.rest.length - 1]}`
     case 'tree':
       return t.rest.length > 1 ? `${repo}: ${t.rest[t.rest.length - 1]}/` : repo
+    case 'compare':
+      return t.base
+        ? `${repo} ${t.base}${t.direct ? '..' : '...'}${t.head}`
+        : `${repo} compare ${t.head}`
   }
 }

@@ -31,6 +31,8 @@ export type OpenQuery =
    * typed on its own, which may also be the repository itself.
    */
   | { kind: 'text'; repo: RepoRef | null; text: string; named?: RepoRef }
+  /** `main...dev`, `v1..v2`, `owner/repo main...dev`: two versions compared. */
+  | { kind: 'compare'; repo: RepoRef | null; base: string; head: string; direct: boolean }
   | { kind: 'empty' }
 
 export interface QueryContext {
@@ -46,6 +48,8 @@ const NAME = '[A-Za-z0-9_.-]+'
 const NUMBER = new RegExp(`^(?:(${NAME})/(${NAME}))?#(\\d+)$`)
 const REPO = new RegExp(`^(${NAME})/(${NAME})$`)
 const REPO_THEN_TEXT = new RegExp(`^(${NAME})/(${NAME})\\s+(.+)$`)
+/** Two refs and the dots between them; a ref holds no spaces and no `..` (git refuses both). */
+const RANGE = /^(?:([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\s+)?(\S+?)(\.{2,3})(\S+)$/
 /** A commit's SHA, whole or shortened the way GitHub shortens it. */
 export const SHA = /^[0-9a-f]{7,40}$/i
 
@@ -94,6 +98,17 @@ export function parseOpenQuery(input: string, ctx: QueryContext): OpenQuery {
     owner,
     repo: repo.replace(/\.git$/, ''),
   })
+
+  const range = RANGE.exec(text)
+  if (range && !range[3].endsWith('.') && !range[5].startsWith('.') && !range[5].includes('..')) {
+    return {
+      kind: 'compare',
+      repo: range[1] && range[2] ? named(range[1], range[2]) : ctx.repo,
+      base: range[3],
+      head: range[5],
+      direct: range[4].length === 2,
+    }
+  }
 
   const numbered = NUMBER.exec(text)
   if (numbered) {

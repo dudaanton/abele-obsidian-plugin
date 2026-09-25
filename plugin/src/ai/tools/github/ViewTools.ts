@@ -24,6 +24,7 @@ const KIND_NAME: Record<string, string> = {
   pull: 'Pull request',
   discussion: 'Discussion',
   commit: 'Commit',
+  compare: 'Comparison',
   blob: 'File',
   tree: 'Folder',
 }
@@ -100,7 +101,7 @@ export function createGithubViewsTool(): AgentTool {
     name: 'github_views',
     label: 'GitHub tabs',
     description:
-      "What the person is looking at in GitHub tabs: each open tab's item (issue, pull request, discussion, commit, file or folder), which one is on screen, the pull request section in front, the diffs they have open, the lines they selected — with the selected code — words they selected in a description, comment, reply, review comment, commit message, rendered file or folder README, with which comment (author, anchor, link) they are in, and whether the file tree panel is open. " +
+      "What the person is looking at in GitHub tabs: each open tab's item (issue, pull request, discussion, commit, comparison of two branches or tags, file or folder), which one is on screen, the pull request's or comparison's section in front, the diffs they have open, the lines they selected — with the selected code — words they selected in a description, comment, reply, review comment, commit message, rendered file or folder README, with which comment (author, anchor, link) they are in, and whether the file tree panel is open. " +
       'Call it first when they ask about "this PR", "this code", "these lines" or "what does this mean". Read-only.',
     parameters: { type: 'object', properties: {} },
     execute: async () => {
@@ -133,13 +134,13 @@ async function withLines(
     const lines = start === end ? `${side}${start}` : `${side}${start}-${side}${end}`
     return `${repo}/pull/${target.number}/files#diff-${await diffAnchorHash(path)}${lines}`
   }
-  if (target.kind === 'commit') {
+  if (target.kind === 'commit' || target.kind === 'compare') {
     const side = old ? 'L' : 'R'
     const lines = start === end ? `${side}${start}` : `${side}${start}-${side}${end}`
     return `${base}#diff-${await diffAnchorHash(path)}${lines}`
   }
   if (target.kind === 'blob') return `${base}#L${start}${end !== start ? `-L${end}` : ''}`
-  throw new Error('Lines can be shown in a pull request, a commit or a file.')
+  throw new Error('Lines can be shown in a pull request, a commit, a comparison or a file.')
 }
 
 export function createGithubOpenTool(): AgentTool {
@@ -147,8 +148,8 @@ export function createGithubOpenTool(): AgentTool {
     name: 'github_open',
     label: 'Show on GitHub tab',
     description:
-      'Show the person something in a GitHub tab inside Obsidian: an issue, pull request, discussion, commit, file or folder (a `tree/<ref>/<path>` link), by link or owner/repo#12. ' +
-      "A link keeps its place — `#L10-L20` on a file, `#issuecomment-…` on a comment. To mark lines give `start_line` (and `end_line`): with `path` on a pull request or commit it marks them in that file's diff (`old: true` for removed lines), on a file link in the file. " +
+      'Show the person something in a GitHub tab inside Obsidian: an issue, pull request, discussion, commit, comparison (a `compare/base...head` link), file or folder (a `tree/<ref>/<path>` link), by link or owner/repo#12. ' +
+      "A link keeps its place — `#L10-L20` on a file, `#issuecomment-…` on a comment. To mark lines give `start_line` (and `end_line`): with `path` on a pull request, commit or comparison it marks them in that file's diff (`old: true` for removed lines), on a file link in the file. " +
       'The tab already showing the item is reused, else the GitHub tab used last; `new_tab: true` opens another. Nothing on GitHub changes.',
     parameters: {
       type: 'object',
@@ -156,7 +157,7 @@ export function createGithubOpenTool(): AgentTool {
         url: { type: 'string', description: 'A GitHub link, or owner/repo#12' },
         path: {
           type: 'string',
-          description: 'With a pull request or commit: the file whose lines to mark',
+          description: 'With a pull request, commit or comparison: the file whose lines to mark',
         },
         start_line: { type: 'number', description: 'First line to mark' },
         end_line: { type: 'number', description: 'Last line to mark' },
@@ -171,7 +172,7 @@ export function createGithubOpenTool(): AgentTool {
       if (!named.target) {
         if (!named.number) {
           throw new Error(
-            'A GitHub tab shows an issue, pull request, discussion, commit, file or folder — not this link. Give the person the link instead.'
+            'A GitHub tab shows an issue, pull request, discussion, commit, comparison, file or folder — not this link. Give the person the link instead.'
           )
         }
         url = `${webUrl(named.repo)}/issues/${named.number}`
@@ -182,7 +183,11 @@ export function createGithubOpenTool(): AgentTool {
         const start = whole(params.start_line, 1)
         const end = Math.max(start, whole(params.end_line, start))
         const path = text(params.path)
-        if (target && (target.kind === 'pull' || target.kind === 'commit') && !path) {
+        if (
+          target &&
+          (target.kind === 'pull' || target.kind === 'commit' || target.kind === 'compare') &&
+          !path
+        ) {
           throw new Error('Name the file with `path` to mark lines in a diff.')
         }
         if (
@@ -192,7 +197,7 @@ export function createGithubOpenTool(): AgentTool {
           target.kind === 'tree'
         ) {
           throw new Error(
-            'Lines can be marked in a pull request, a commit or a file. For an issue number that is a pull request, give its /pull/ link.'
+            'Lines can be marked in a pull request, a commit, a comparison or a file. For an issue number that is a pull request, give its /pull/ link.'
           )
         }
         url = await withLines(target, url, path, start, end, params.old === true)

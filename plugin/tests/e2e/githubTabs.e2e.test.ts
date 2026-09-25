@@ -5,6 +5,7 @@
  *   is on screen — happy-dom lays nothing out, so only the app can say where a line ends up.
  * - Lines selected by their numbers are copied as a link, written into the note last worked in as
  *   a link, and as a card holding the code, which the note then draws.
+ * - A comparison opens on its files at the line a link names, lists its commits and swaps its sides.
  * - A markdown file opens rendered, switches to its code, and opens as code from `?plain=1` or a
  *   link to its lines.
  * - A changed file of a pull request opens whole: a deleted one at the base, at the line selected
@@ -194,6 +195,72 @@ describe.skipIf(!available)('a GitHub tab', () => {
     expect(r.link).toBe(true)
     expect(r.card).toBe(true)
     expect(r.cardCode).toContain('const widgets = loadWidgets(count)')
+  })
+
+  describe('a comparison', () => {
+    const URL_ = () => `${gh.web}/compare/${BASE_SHA}...main`
+
+    it('opens on its files at the line a link names, and says how far ahead head is', () => {
+      const r = evalAsync<{
+        error?: string
+        inView?: boolean
+        badge?: string
+        meta?: string
+        tabs?: string[]
+        files?: number
+      }>(`(async () => {
+        ${PRELUDE}
+        ${opening(`${URL_()}#diff-${diffHash('src/long.ts')}R300`, '...main')}
+        const el = await until(() => root.querySelector('.abele-github-code__line_target'), 15000)
+        if (!el) return { error: 'nothing marked' }
+        await wait(2500)
+        const at = placeInView(el)
+        const out = {
+          inView: at.inView,
+          badge: root.querySelector('.abele-github-header .abele-badge')?.textContent.trim(),
+          meta: root.querySelector('.abele-github-header__meta')?.textContent,
+          tabs: [...root.querySelectorAll('.abele-tabs__label')].map((t) => t.textContent.trim()),
+          files: root.querySelectorAll('.abele-github-file').length,
+        }
+        leaf.detach()
+        return out
+      })()`)
+      expect(r.error).toBeUndefined()
+      expect(r.inView).toBe(true)
+      expect(r.badge).toBe('ahead')
+      expect(r.meta).toContain('2 commits ahead')
+      expect(r.tabs).toEqual(['Files (5)', 'Commits (2)'])
+      expect(r.files).toBe(5)
+    })
+
+    it('lists its commits, and swaps its sides in the same tab', () => {
+      const r = evalAsync<{ error?: string; commits?: string[]; url?: string; title?: string }>(
+        `(async () => {
+        ${PRELUDE}
+        ${opening(URL_(), '...main')}
+        const tab = [...root.querySelectorAll('.abele-tabs__tab')].find((t) => t.textContent.includes('Commits'))
+        tab.click()
+        await until(() => root.querySelector('.abele-github-commits'), 5000)
+        const commits = [...root.querySelectorAll('.abele-github-commits .abele-card__title')].map((t) => t.textContent.trim())
+        const swap = [...root.querySelectorAll('.abele-github-header__actions .abele-obsidian-icon')]
+          .find((i) => (i.getAttribute('aria-label') ?? '').startsWith('Swap'))
+        if (!swap) return { error: 'no swap button', commits }
+        swap.click()
+        await until(() => loaded(leaf, 'main...${BASE_SHA}'), 15000)
+        const out = {
+          commits,
+          url: leaf.view.getState().url,
+          title: root.querySelector('.abele-github-header__title')?.textContent.trim(),
+        }
+        leaf.detach()
+        return out
+      })()`
+      )
+      expect(r.error).toBeUndefined()
+      expect(r.commits).toEqual(['Add the loader', 'Rework the widget loader'])
+      expect(r.url).toBe(`${gh.web}/compare/main...${BASE_SHA}`)
+      expect(r.title).toBe(`main...${BASE_SHA}`)
+    })
   })
 
   describe('a markdown file', () => {

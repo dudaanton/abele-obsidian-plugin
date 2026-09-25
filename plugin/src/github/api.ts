@@ -313,7 +313,7 @@ export async function loadPull(client: GithubClient, t: Of<'pull'>): Promise<Pul
   }
 }
 
-async function diffFiles(
+export async function diffFiles(
   raw: any[],
   reviewComments: PathComment[] = [],
   diffNote?: string

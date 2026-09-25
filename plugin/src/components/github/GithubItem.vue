@@ -48,7 +48,9 @@
           :crumbs="crumbs"
           :ref-label="crumbRef"
           :tree="panelOpen"
+          :swap="!!compared"
           @tree="setPanel(!panelOpen)"
+          @swap="swapSides"
           @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
           @refresh="reload"
           @browser="openInBrowser(browserUrl)"
@@ -155,23 +157,7 @@
               />
             </div>
             <EmptyState v-else-if="!commits.data.value" text="Loading the commits…" />
-            <div v-else class="abele-github__commits">
-              <Card
-                v-for="c in commits.data.value"
-                :key="c.sha"
-                :title="splitMessage(c.message).title"
-                icon="git-commit-horizontal"
-                clickable
-                @click="openCommit(c.sha)"
-              >
-                <template #subtitle>
-                  {{ c.sha.slice(0, 7) }} ·
-                  <GithubUser v-if="c.login" :login="c.login" :avatar="c.avatar" />
-                  <template v-else>{{ c.author }}</template>
-                  · {{ formatDate(c.date) }}
-                </template>
-              </Card>
-            </div>
+            <GithubCommits v-else :commits="commits.data.value" @open="openCommit" />
           </template>
         </template>
 
@@ -190,6 +176,16 @@
             @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
           />
         </template>
+
+        <GithubCompare
+          v-else-if="shown.kind === 'compare' && compared"
+          :data="compared"
+          :repo="shown"
+          :tab="compareTab"
+          :anchor="fileAnchor"
+          @tab="(tab: CompareSection) => (compareTab = tab)"
+          @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
+        />
 
         <template v-else-if="shown.kind === 'blob' && blob">
           <GithubBlob
@@ -224,10 +220,10 @@ import { computed, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import Button from '../obsidian/Button.vue'
 import Tabs from '../obsidian/Tabs.vue'
-import Card from '../obsidian/Card.vue'
 import GithubText from './GithubText.vue'
 import GithubHeader from './GithubHeader.vue'
-import GithubUser from './GithubUser.vue'
+import GithubCommits from './GithubCommits.vue'
+import GithubCompare, { type CompareSection } from './GithubCompare.vue'
 import GithubThread from './GithubThread.vue'
 import GithubFiles from './GithubFiles.vue'
 import GithubBlob from './GithubBlob.vue'
@@ -249,7 +245,8 @@ import { anchorSlug, type RepoFile } from '@/github/markdownLinks'
 import type { BlobMode } from '@/github/markdownPreview'
 import type { GithubClient } from '@/github/client'
 import { targetKey, type GithubTarget } from '@/github/urls'
-import { formatDate, splitMessage } from '@/github/format'
+import { splitMessage } from '@/github/format'
+import { swappedUrl, type CompareData } from '@/github/compare'
 import { useLoad } from '@/github/useLoad'
 import { elementTop, pinIntoView } from '@/github/scrollTo'
 import { LINKER, createLinker } from '@/github/linking'
@@ -374,10 +371,16 @@ const folder = computed(() =>
   shown.value.kind === 'tree' ? (main.data.value as FolderData) : null
 )
 
+const compared = computed(() =>
+  shown.value?.kind === 'compare' ? (main.data.value as CompareData | null) : null
+)
+
 const anchor = computed(() => target.value?.anchor)
 const fileAnchor = computed(() => {
   const t = target.value
-  return t && (t.kind === 'pull' || t.kind === 'commit') ? t.file : undefined
+  return t && (t.kind === 'pull' || t.kind === 'commit' || t.kind === 'compare')
+    ? t.file
+    : undefined
 })
 const blobRange = computed(() => (target.value?.kind === 'blob' ? target.value.lines : undefined))
 const blobPlain = computed(() => (target.value?.kind === 'blob' ? !!target.value.plain : false))
@@ -396,6 +399,11 @@ const setMode = (mode: BlobMode) => {
 }
 
 const pullTab = ref<'conversation' | 'files' | 'commits'>('conversation')
+/** A comparison opens on its files — what a link to one is for — unless it has none to show. */
+const compareTab = ref<CompareSection>('files')
+watch(compared, (c) => {
+  if (c && !c.files.length && c.commits.length && !fileAnchor.value) compareTab.value = 'commits'
+})
 const pullTabs = computed(() => [
   { id: 'conversation', label: 'Conversation', icon: 'message-square' },
   {
@@ -487,13 +495,22 @@ const itemLink = computed<GithubLink | null>(() => {
 })
 
 watch(
-  () => [itemLink.value, head.value.title, main.error.value, pullTab.value, shown.value] as const,
+  () =>
+    [
+      itemLink.value,
+      head.value.title,
+      main.error.value,
+      pullTab.value,
+      compareTab.value,
+      shown.value,
+    ] as const,
   () => {
     const t = target.value ? shown.value : null
     screen.link = itemLink.value
     screen.title = main.data.value ? head.value.title : ''
     screen.kind = t?.kind ?? ''
-    screen.section = t?.kind === 'pull' ? pullTab.value : null
+    screen.section =
+      t?.kind === 'pull' ? pullTab.value : t?.kind === 'compare' ? compareTab.value : null
     screen.error = main.error.value ?? ''
   },
   { immediate: true }
@@ -514,6 +531,12 @@ watch(tabTitle, (title) => {
 
 const openInBrowser = (url: string) => {
   if (url) window.open(url)
+}
+
+/** The same two versions the other way round, in this tab: its back arrow returns. */
+const swapSides = () => {
+  const t = shown.value
+  if (compared.value && t) props.onOpen?.(swappedUrl(t, compared.value), false)
 }
 
 const openCommit = (sha: string) => {
@@ -573,6 +596,7 @@ watch(
     if (!key || !props.enabled) return
     const t = target.value
     pullTab.value = t.kind === 'pull' ? t.tab : 'conversation'
+    compareTab.value = 'files'
     void reload()
   },
   { immediate: true }
@@ -583,6 +607,7 @@ watch(
   () => {
     const t = target.value
     if (t?.kind === 'pull') pullTab.value = t.tab
+    if (t?.kind === 'compare' && t.file) compareTab.value = 'files'
     void scrollToAnchor()
   }
 )
@@ -617,12 +642,6 @@ watch(
   &__error {
     white-space: pre-line;
     overflow-wrap: anywhere;
-  }
-
-  &__commits {
-    display: flex;
-    flex-direction: column;
-    gap: var(--size-4-2);
   }
 
   &__message {

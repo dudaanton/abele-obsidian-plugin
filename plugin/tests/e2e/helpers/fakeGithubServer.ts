@@ -30,6 +30,7 @@ import {
   REPO,
   SLASHED_BRANCH,
   FIRST_SHA,
+  changedFiles,
   filesAt,
   fixtures,
   foldersOf,
@@ -194,6 +195,35 @@ function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) 
       200,
       ['main', 'loader', SLASHED_BRANCH].map((name) => ({ name }))
     )
+
+  // A comparison of two refs the repository knows: head ahead of base by the pull request's commits.
+  const compared = /^\/compare\/(.+?)\.\.\.(.+)$/.exec(path)
+  if (compared) {
+    const [, base, head] = compared
+    const before = filesAt(base)
+    const after = filesAt(head)
+    if (!before || !after) return notFound(res)
+    const sha = (ref: string) => (/^[0-9a-f]{40}$/.test(ref) ? ref : HEAD_SHA)
+    const same = sha(base) === sha(head)
+    const first = Number(url.searchParams.get('page') ?? 1) === 1
+    const files = changedFiles(before, after, web, sha(head)).map((file) => ({
+      ...file,
+      contents_url: `${web}/api/v3/repos/${OWNER}/${REPO}/contents/${file.filename}?ref=${
+        file.status === 'removed' ? sha(base) : sha(head)
+      }`,
+    }))
+    return send(res, 200, {
+      status: same ? 'identical' : 'ahead',
+      ahead_by: same ? 0 : f.commits.length,
+      behind_by: 0,
+      total_commits: same ? 0 : f.commits.length,
+      base_commit: { sha: sha(base) },
+      merge_base_commit: { sha: sha(base) },
+      html_url: `${web}/${OWNER}/${REPO}/compare/${base}...${head}`,
+      commits: same || !first ? [] : f.commits,
+      files: same || !first ? [] : files,
+    })
+  }
 
   let m = /^\/commits\/(.+)$/.exec(path)
   if (m) {

@@ -2,6 +2,7 @@
   <div class="abele-github-notice">
     <div class="abele-github-notice__text">{{ text }}</div>
     <Button
+      v-if="retry"
       text="Try again"
       icon="refresh-cw"
       tooltip="Ask GitHub again for this part"
@@ -18,10 +19,15 @@ import Button from '../obsidian/Button.vue'
  * One section of an item that could not be read, said in that section's place: the rest of the
  * item is on screen, so this is a line in it rather than an error instead of it.
  */
-defineProps<{
-  text: string
-  busy?: boolean
-}>()
+withDefaults(
+  defineProps<{
+    text: string
+    busy?: boolean
+    /** Offer to ask again; off for a notice no second asking would change. */
+    retry?: boolean
+  }>(),
+  { busy: false, retry: true }
+)
 
 const emit = defineEmits<{
   (e: 'retry'): void

@@ -13,6 +13,7 @@ import { GithubError, type GithubClient } from '../client'
 import { repoApiPath } from '../contents'
 import { repoWeb } from '../origin'
 import { shortName, type GithubTarget } from '../urls'
+import { compareUrl } from '../compare'
 import { SHA, repoKey, repoName, type OpenQuery, type RepoRef } from './query'
 
 export type RowKind =
@@ -20,6 +21,7 @@ export type RowKind =
   | 'issue'
   | 'discussion'
   | 'commit'
+  | 'compare'
   | 'branch'
   | 'repo'
   | 'file'
@@ -72,6 +74,7 @@ const KIND_OF_TARGET: Record<GithubTarget['kind'], RowKind> = {
   pull: 'pull',
   discussion: 'discussion',
   commit: 'commit',
+  compare: 'compare',
   blob: 'file',
   tree: 'folder',
 }
@@ -81,6 +84,7 @@ const KIND_NAME: Record<RowKind, string> = {
   issue: 'Issue',
   discussion: 'Discussion',
   commit: 'Commit',
+  compare: 'Comparison',
   branch: 'Branch',
   repo: 'Repository',
   file: 'File',
@@ -507,6 +511,32 @@ export class OpenSearch {
           ],
           pending: false,
         }
+      case 'compare': {
+        const range = `${q.base}${q.direct ? '..' : '...'}${q.head}`
+        if (!q.repo) {
+          return {
+            rows: [],
+            pending: false,
+            message: `${range} in which repository? Type owner/repo ${range}, or open a GitHub tab first.`,
+          }
+        }
+        return {
+          rows: [
+            {
+              kind: 'compare',
+              title: range,
+              note: `${repoName(q.repo)} · Comparison · ${
+                q.direct
+                  ? `${q.base} and ${q.head} side by side`
+                  : `what ${q.head} has that ${q.base} has not`
+              }`,
+              url: compareUrl(q.repo, q.base, q.head, q.direct),
+              repo: q.repo,
+            },
+          ],
+          pending: false,
+        }
+      }
       case 'number':
         if (!q.repo) {
           return {

@@ -108,3 +108,35 @@ describe('anything else', () => {
     expect(parseOpenQuery('   ', ctx)).toEqual({ kind: 'empty' })
   })
 })
+
+describe('a comparison', () => {
+  it('as a link opens as it is', () => {
+    const q = parseOpenQuery('https://github.com/octo-org/octo-repo/compare/main...dev', ctx)
+    expect(q).toMatchObject({
+      kind: 'link',
+      target: { kind: 'compare', base: 'main', head: 'dev' },
+    })
+  })
+
+  it('typed as base...head or base..head is a comparison in the repository', () => {
+    expect(parseOpenQuery('main...feature/login', ctx)).toEqual({
+      kind: 'compare',
+      repo,
+      base: 'main',
+      head: 'feature/login',
+      direct: false,
+    })
+    expect(parseOpenQuery('v1.0..v2.0', ctx)).toMatchObject({ kind: 'compare', direct: true })
+    expect(parseOpenQuery('octocat/Hello-World master...test', ctx)).toMatchObject({
+      kind: 'compare',
+      repo: { owner: 'octocat', repo: 'Hello-World' },
+      base: 'master',
+      head: 'test',
+    })
+  })
+
+  it('is not made of a version number or a sentence', () => {
+    expect(parseOpenQuery('v1.2.3', ctx).kind).toBe('text')
+    expect(parseOpenQuery('wait... what', ctx).kind).toBe('text')
+  })
+})

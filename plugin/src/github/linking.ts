@@ -14,6 +14,7 @@ import { formatSnippet, type SnippetBlock } from './snippetBlock'
 import { commitSha, type BlobData, type CommitData } from './api'
 import type { GithubClient } from './client'
 import type { GithubTarget } from './urls'
+import type { CompareData } from './compare'
 import type { ChatQuote } from './chatAbout'
 import { AbeleConfig } from '@/services/AbeleConfig'
 
@@ -144,6 +145,11 @@ export function createLinker(o: {
           return { ...repo, kind: t.kind, number: t.number }
         case 'commit':
           return { ...repo, kind: 'commit', sha: (data as CommitData).sha || t.sha, pull: t.pull }
+        case 'compare': {
+          // The base as compared: a lone `compare/<head>` names the default branch once loaded.
+          const c = data as CompareData
+          return { ...repo, kind: 'compare', base: c.base, head: c.head, direct: c.direct }
+        }
         case 'blob':
         case 'tree':
           return null

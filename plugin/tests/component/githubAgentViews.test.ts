@@ -146,6 +146,35 @@ describe('what is on screen', () => {
     expect(out).toContain('The file tree panel is open beside it')
   })
 
+  it('names a comparison, its two sides and the section in front', async () => {
+    const { wrapper, model } = openTab(
+      'https://github.com/octocat/Hello-World/compare/master...topic',
+      {
+        '/repos/octocat/Hello-World/compare/master...topic': {
+          json: {
+            status: 'ahead',
+            ahead_by: 1,
+            behind_by: 0,
+            total_commits: 1,
+            commits: [],
+            files: [file('src/app.ts')],
+          },
+        },
+      }
+    )
+    await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
+    await clickLineNumber(wrapper, '.abele-github-code__gutter_new', 4)
+    leaves = [{ view: { model, containerEl: { isShown: () => true } } }]
+
+    const out = await run(createGithubViewsTool())
+    expect(out).toContain(
+      '[on screen] Comparison octocat/Hello-World master...topic — master...topic'
+    )
+    expect(out).toContain('Showing the changed files.')
+    expect(out).toContain('Selected: src/app.ts, Line 2')
+    expect(out).toMatch(/compare\/master\.\.\.topic#diff-[0-9a-f]{64}R2/)
+  })
+
   it('says so when no GitHub tab is open', async () => {
     expect(await run(createGithubViewsTool())).toContain('No GitHub tab is open')
   })
@@ -352,6 +381,19 @@ describe('github_open', () => {
       end_line: 12,
     })
     expect(opened[0].url).toBe(`https://github.com/acme/widgets/pull/7/files#diff-${hash}R10-R12`)
+  })
+
+  it('shows a comparison, and marks lines in one of its files', async () => {
+    await run(createGithubOpenTool(), { url: 'https://github.com/acme/widgets/compare/v1...v2' })
+    expect(opened[0].url).toBe('https://github.com/acme/widgets/compare/v1...v2')
+    const hash = await diffAnchorHash('src/app.ts')
+    await run(createGithubOpenTool(), {
+      url: 'https://github.com/acme/widgets/compare/v1...v2',
+      path: 'src/app.ts',
+      start_line: 4,
+      old: true,
+    })
+    expect(opened[1].url).toBe(`https://github.com/acme/widgets/compare/v1...v2#diff-${hash}L4`)
   })
 
   it('marks lines of a file', async () => {

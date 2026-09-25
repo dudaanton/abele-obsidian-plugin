@@ -251,6 +251,12 @@ describe('github_read', () => {
     expect(out).toContain('Answer · ann')
   })
 
+  it('sends a comparison to github_commits', async () => {
+    await expect(
+      run('github_read', { item: 'https://github.com/acme/widgets/compare/a...b' })
+    ).rejects.toThrow('github_commits')
+  })
+
   it('sends a file link to the tool that reads files', async () => {
     await expect(
       run('github_read', { item: 'https://github.com/acme/widgets/blob/main/a.ts' })
@@ -493,6 +499,30 @@ describe('github_commits', () => {
     expect(out).toContain('Compare acme/widgets main...feature — ahead: 1 ahead, 0 behind')
     expect(out).toContain('abcdef1  2026-01-02  ann  Fix the crash')
     expect(out).toContain('+c')
+  })
+
+  it('compares from a lone-ref compare link with the default branch, reading every page', async () => {
+    serve({
+      '/repos/acme/widgets': { json: { default_branch: 'main' } },
+      '/repos/acme/widgets/compare/main...feature': (req: RequestUrlParam) => ({
+        json: {
+          status: 'ahead',
+          ahead_by: 101,
+          behind_by: 0,
+          total_commits: 101,
+          commits: /page=2/.test(req.url)
+            ? [commit([])]
+            : Array.from({ length: 100 }, () => commit([])),
+          files: /page=2/.test(req.url) ? [] : [prFile('src/app.ts')],
+        },
+      }),
+    })
+    const out = await run('github_commits', {
+      repo: 'https://github.com/acme/widgets/compare/feature',
+    })
+    expect(out).toContain('Compare acme/widgets main...feature — ahead: 101 ahead, 0 behind')
+    expect(out).toContain('## Commits (101)')
+    expect(out).toContain('[51 more commits not listed.]')
   })
 
   it("lists a pull request's commits", async () => {
