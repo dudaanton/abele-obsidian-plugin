@@ -7,6 +7,14 @@
       <Badge :text="statusLabel" :color="statusColor" />
     </Setting>
 
+    <Setting
+      name="All keys"
+      desc="Every key the plugin uses on this device: what it is for, whether it is synced, and a way to show or copy it."
+    >
+      <Button text="Show" tooltip="List every key on this device" @click="listing = true" />
+    </Setting>
+    <SecretsListModal v-if="listing" @close="listing = false" />
+
     <!-- Off: make one -->
     <template v-if="status === 'off'">
       <template v-if="form === 'create'">
@@ -169,6 +177,7 @@ import Input from '../obsidian/Input.vue'
 import Button from '../obsidian/Button.vue'
 import Badge from '../obsidian/Badge.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
+import SecretsListModal from './SecretsListModal.vue'
 import type { KitColor } from '@/constants/colors'
 import { secrets } from '@/secrets/SecretStore'
 import { pluginSecretIds } from '@/secrets/host'
@@ -187,6 +196,7 @@ const form = ref<'create' | 'change' | null>(null)
 const passphrase = ref('')
 const repeat = ref('')
 const busy = ref(false)
+const listing = ref(false)
 const confirming = ref<'lock' | 'disable' | 'discard' | null>(null)
 /** Said under the unlock field after a passphrase that does not open the store. */
 const refused = ref(false)

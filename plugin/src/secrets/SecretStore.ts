@@ -61,6 +61,17 @@ export interface StoreHost {
  */
 export type StoreStatus = 'off' | 'locked' | 'unlocked' | 'stale' | 'damaged'
 
+/** What the store says about one secret, the value left out. */
+export interface StoreContent {
+  id: string
+  /** When it was last set, in milliseconds; 0 for a key a device brought with it on joining. */
+  at: number
+  /** The store holds a removal: the key was taken out on some device. */
+  removed: boolean
+  /** Whether this device's keychain holds the same value, another one, or none. */
+  inKeychain: 'same' | 'different' | 'missing'
+}
+
 export class SecretStore {
   readonly status: Ref<StoreStatus> = ref('off')
   /** Bumped whenever the secrets change, for screens showing a masked value. */
@@ -241,6 +252,24 @@ export class SecretStore {
   /** How many secrets the store holds, removals not counted. */
   count(): number {
     return Object.values(this.entries ?? {}).filter((entry) => entry.value).length
+  }
+
+  /**
+   * Every secret the store holds, for the list of keys — without their values. `null` unless
+   * the store is open here: locked, its names are as unreadable as its values.
+   */
+  contents(): StoreContent[] | null {
+    if (this.status.value !== 'unlocked' || !this.entries) return null
+    const keychain = this.host.keychain()
+    return Object.entries(this.entries).map(([id, entry]) => {
+      const held = keychain.getSecret(id)
+      return {
+        id,
+        at: entry.at,
+        removed: !entry.value,
+        inKeychain: !held ? 'missing' : held === entry.value ? 'same' : 'different',
+      }
+    })
   }
 
   // ── Inside ─────────────────────────────────────────────────

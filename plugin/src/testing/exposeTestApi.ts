@@ -29,6 +29,7 @@ import { githubUsers } from '@/github/users'
 import { createBookTools } from '@/ai/tools/BookTools'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { openIconPicker } from './openIconPicker'
+import { openSecretsList } from './openSecretsList'
 import { TFile } from 'obsidian'
 import * as bookSafety from '@/reader/bookSafety'
 import { BOOK_VIEW_TYPE, bookViews, readerTestHooks } from '@/reader/BookView'
@@ -155,6 +156,8 @@ interface AbeleTestApi {
   chatHistoryPaths(): string[]
   /** Opens the icon picker dialog by itself, for the layout probes. */
   openIconPicker(current?: string): void
+  /** Opens the list of keys (Settings → Transfer → Synced keys → All keys), for the layout probes. */
+  openSecretsList(): void
 }
 
 export interface AgentsSnapshot {
@@ -543,6 +546,7 @@ export function exposeTestApi(plugin: Plugin): void {
     resolvedSystemPrompt,
     chatHistoryPaths,
     openIconPicker,
+    openSecretsList,
   }
   console.debug('[Abele] test API exposed on window.__abeleTest (development build)')
 }

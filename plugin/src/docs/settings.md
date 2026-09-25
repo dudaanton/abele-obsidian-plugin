@@ -129,6 +129,11 @@ changing the passphrase, removing the keys from one device and turning it off ar
 screen and nowhere else. When a key the person expects is missing on a device, the answer may
 be that synced keys are locked there — say so rather than asking for the key again.
 
+The same screen has **All keys**, the person's own list of every key the plugin knows on the
+device — what each is for, where it is used, whether it is set and synced — where each can be
+shown or copied and all of them copied at once. It is theirs alone: no tool reads it or its
+values, and none should be asked to. Send a person who wants to see or copy a key there.
+
 ## Everything else
 
 `snippetsFolder` is where CSS snippets are written, `links` and `headerButtons` are the buttons

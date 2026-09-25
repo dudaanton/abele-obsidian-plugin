@@ -30,6 +30,51 @@ settings.
 | Out of date | The passphrase was changed on another device. Keys already here keep working; enter the new passphrase to receive changes again. |
 | Damaged | The store in the settings file does not decrypt although the passphrase is right — the file was changed by something else. Keys already on this device keep working; **Start over** makes way for a new store. |
 
+## All keys
+
+**All keys → Show** lists every key the plugin knows on this device, whether synced keys are on
+or not: each under the name of what it belongs to — the provider, the integration, the stored
+key's own name — with every place it is used (a provider's key names the agents that run on that
+provider too), its keychain id, whether it is set, and how it stands with the store:
+
+| Badge | Meaning |
+|---|---|
+| On this device | Synced keys are off; the key is in this device's keychain. |
+| Synced | In the store, and this device's keychain holds the same value. |
+| Differs from keychain | In the store, and the keychain here holds another value — changed outside the plugin, through Obsidian's own keychain screen. The store's value is the one used. |
+| Only in the store | In the store, missing from this device's keychain. The plugin still uses it. |
+| Not in the store | Set on this device only. Setting it again puts it in the store. |
+| Store locked | Set here; the store cannot be read on this device, so whether it matches is unknown. |
+| Not set | No value on this device. |
+
+With the store open, the list also shows when each key was last changed, and the keys the store
+holds that no setting on this device uses (another device's, or left behind), by their keychain
+id. With the store locked, the keys only it holds cannot be listed — their names are encrypted
+along with their values — so the list says the store may hold more and offers the passphrase
+right there; once unlocked, they appear.
+
+- **Show** (the eye) shows one value. It hides itself after 30 seconds, when the window goes to
+  the background, and when the list is closed.
+- **Copy** puts one value on the clipboard without showing it. On the desktop the clipboard is
+  cleared a minute later if it still holds that key, and left alone if something else was copied
+  since. On iOS and Android it is not: reading the clipboard back there makes the system ask the
+  person for permission (iOS shows its "Allow Paste" prompt), and a prompt out of nowhere a minute
+  later is worse than the risk. The key stays until something else is copied — and on an Apple
+  device, Universal Clipboard can carry it to the person's other devices meanwhile. The notice
+  after each copy says which of the two happened.
+- **Copy all** puts every key that is set on the clipboard as `name (keychain id) = value`
+  lines, after a warning that every key goes onto the clipboard as plain text. The same clearing
+  rule applies.
+
+There is deliberately no *export to a file*. A file of keys in plain text lands in the vault or
+next to it, and from there in whatever the vault is synced and backed up with — Obsidian Sync,
+Syncthing, a git history — where it outlives the moment it was wanted for and cannot be recalled.
+Moving keys to another device is what synced keys and the Transfer's **Include keys** already do,
+encrypted; a person who wants them in a password manager has **Copy all**.
+
+Values never reach the console or a log, and the list is out of reach of AI agents: the settings
+tools return no value or keychain id, and nothing an agent runs can open the list.
+
 ## The other actions
 
 - **Change passphrase** re-encrypts the store. Other devices keep their keys and show *Out of

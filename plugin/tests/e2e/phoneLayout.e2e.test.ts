@@ -459,6 +459,39 @@ const probeScript = `(async () => {
     } else {
       report['icon picker'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'icon picker did not open' }
     }
+
+    // The list of keys, with two fake ones set so its rows carry their show and copy icons.
+    // Whatever the keychain held under those ids is put back exactly, absent included.
+    const keychain = app.secretStorage
+    const FAKE_KEYS = { 'abele-firefly-token': 'fake-probe-value-1', 'abele-openrouter': 'fake-probe-value-2' }
+    const held = {}
+    for (const id of Object.keys(FAKE_KEYS)) held[id] = keychain.getSecret(id)
+    try {
+      for (const [id, value] of Object.entries(FAKE_KEYS)) keychain.setSecret(id, value)
+      window.__abeleTest.openSecretsList()
+      if (await until(() => document.querySelector('.modal .abele-secrets-list .abele-card'), 5000)) {
+        await wait(300)
+        const modal = document.querySelector('.modal')
+        await screen('secrets list', modal, modal.querySelector('.abele-modal__body'))
+        const clipped = []
+        for (const f of modal.querySelectorAll('input, button')) {
+          if (f.getBoundingClientRect().width === 0) continue
+          f.focus()
+          for (const cut of ringClipped(f)) clipped.push(name(f) + ': ' + cut)
+          f.blur()
+        }
+        report['secrets list'].clipped = clipped
+        await closeDialog()
+      } else {
+        report['secrets list'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'the list of keys did not open' }
+      }
+    } finally {
+      for (const [id, value] of Object.entries(held)) {
+        if (value) keychain.setSecret(id, value)
+        else if (keychain.deleteSecret) keychain.deleteSecret(id)
+        else keychain.setSecret(id, '')
+      }
+    }
   } catch (e) {
     report['run'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
   } finally {
@@ -544,10 +577,13 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'chat picker',
     'icon picker',
     'icon picker search',
+    'secrets list',
   ]
 
   /** Dialogs with fields, whose focus rings are measured, and which stand as a full sheet. */
-  const sheets = screens.filter((s) => s.startsWith('setup') || s === 'icon picker')
+  const sheets = screens.filter(
+    (s) => s.startsWith('setup') || s === 'icon picker' || s === 'secrets list'
+  )
 
   it('reaches every screen', () => {
     expect(report.run?.error ?? '').toBe('')
@@ -586,6 +622,10 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 
   it('history: every card keeps its delete icon on the row of its title', () => {
     expect(report['history']?.stranded ?? ['no report']).toEqual([])
+  })
+
+  it('secrets list: every key keeps its show and copy icons on the row of its name', () => {
+    expect(report['secrets list']?.stranded ?? ['no report']).toEqual([])
   })
 
   it.each(screens)('%s: no box is capped below the height of the sheet', (label) => {

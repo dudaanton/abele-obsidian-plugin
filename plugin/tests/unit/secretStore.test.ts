@@ -373,3 +373,39 @@ describe('what reaches the console', () => {
     expect(all).not.toContain(mac.keychain.getSecret(deviceKeyId(file.id)) ?? '<none>')
   })
 })
+
+describe('what the store says about each key, for the list of keys', () => {
+  it('is nothing while the store is off, locked or cannot be opened', async () => {
+    const on = shared()
+    const mac = device(on, ['abele-provider-x'])
+    mac.keychain.setSecret('abele-provider-x', 'fake-value-1')
+    expect(mac.store.contents()).toBeNull()
+
+    await mac.store.enable('the passphrase', FAST)
+    const phone = device(on)
+    await phone.store.load()
+    expect(phone.store.status.value).toBe('locked')
+    expect(phone.store.contents()).toBeNull()
+  })
+
+  it('names each key, when it was set, and whether this keychain holds the same — never a value', async () => {
+    const on = shared()
+    const mac = device(on, ['abele-a', 'abele-b', 'abele-c'])
+    mac.keychain.setSecret('abele-a', 'fake-a')
+    mac.keychain.setSecret('abele-b', 'fake-b')
+    mac.keychain.setSecret('abele-c', 'fake-c')
+    await mac.store.enable('the passphrase', FAST)
+    mac.store.remove('abele-c')
+    // Changed behind the store's back — Obsidian's own keychain screen can do that.
+    mac.keychain.setSecret('abele-b', 'fake-b-edited')
+    mac.keychain.deleteSecret('abele-a')
+
+    const contents = mac.store.contents()!
+    expect(JSON.stringify(contents)).not.toMatch(/fake-/)
+    const by = Object.fromEntries(contents.map((c) => [c.id, c]))
+    expect(by['abele-a']).toMatchObject({ removed: false, inKeychain: 'missing' })
+    expect(by['abele-b']).toMatchObject({ removed: false, inKeychain: 'different' })
+    expect(by['abele-c']).toMatchObject({ removed: true })
+    expect(by['abele-a'].at).toBeGreaterThan(0)
+  })
+})
