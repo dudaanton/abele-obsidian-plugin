@@ -6,7 +6,7 @@
  * page is audited as it arrives, and one that fails is emptied before it is shown. Around the
  * page, a Vue side (`BookReader.vue`) shows the contents, the progress and the dialogs.
  */
-import { FileView, Platform, TFile, loadPdfJs, type Menu, type WorkspaceLeaf } from 'obsidian'
+import { FileView, Platform, TFile, type Menu, type WorkspaceLeaf } from 'obsidian'
 import { createApp, reactive, watch, type App as VueApp, type WatchStopHandle } from 'vue'
 import { frameOptions } from '@/vendor/foliate-js/frame-options.js'
 import type { FoliateLocation, View as FoliateView } from '@/vendor/foliate-js/view.js'
@@ -14,7 +14,8 @@ import { FootnoteHandler } from '@/vendor/foliate-js/footnotes.js'
 import BookReader from '@/components/reader/BookReader.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { auditDocument, blankDocument, frameSandbox } from './bookSafety'
-import { openEpub, type OpenedBook } from './openBook'
+import type { OpenedBook } from './openBook'
+import { openBookFile } from './openFile'
 import { emptyBookModel, tocEntries, type BookModel, type PanelTab } from './model'
 import {
   darkPdfPages,
@@ -24,7 +25,7 @@ import {
   readerSettingsFrom,
   themeValues,
 } from './settings'
-import { openPdf, type PdfBookExtras } from './pdfBook'
+import type { PdfBookExtras } from './pdfBook'
 import { BookReading } from './BookReading'
 import { parsePlaceSubpath, type BookPlace } from './bookLinks'
 import { onExternalLink, onKey, pinchZoom, watchPage, type PageHost } from './pageInput'
@@ -102,6 +103,11 @@ export class BookView extends FileView {
   }
 
   /** Whether the tab shows a PDF, whose pages are pictures of a fixed size. */
+  /** Whether the book's pages are pictures of a fixed size — a PDF, a comic — which zoom. */
+  get fixed(): boolean {
+    return !!this.reader?.isFixedLayout
+  }
+
   get isPdf(): boolean {
     return this.file?.extension === 'pdf'
   }
@@ -145,7 +151,7 @@ export class BookView extends FileView {
     this.registerEvent(this.app.vault.on('delete', noteChanged))
     this.scope = bookScope(this.app.scope, {
       search: () => this.openSearch(),
-      pdf: () => this.isPdf,
+      pdf: () => this.fixed,
       zoom: (way) => this.zoom(way),
     })
   }
@@ -180,7 +186,7 @@ export class BookView extends FileView {
       showHighlights: () => this.showPanel('highlights'),
       openSettings: () => (this.model.settingsOpen = true),
     })
-    if (this.isPdf) fillZoomMenu(menu, (way) => this.zoom(way))
+    if (this.fixed) fillZoomMenu(menu, (way) => this.zoom(way))
   }
 
   /** What the tab's Vue side can ask of it. */
@@ -202,7 +208,7 @@ export class BookView extends FileView {
 
   /** A PDF zoomed a step in or out, or back to the setting's zoom. */
   zoom(way: 'in' | 'out' | 'reset'): void {
-    if (!this.isPdf || !this.reader) return
+    if (!this.fixed || !this.reader) return
     const renderer = this.reader.renderer as unknown as HTMLElement & { scale?: number }
     const now = renderer.scale ?? (Number(renderer.getAttribute('zoom')) || 1)
     this.zoomOverride = way === 'reset' ? null : String(zoomStep(now, way === 'in'))
@@ -281,12 +287,11 @@ export class BookView extends FileView {
     }
     if (!renderer) return
     if (view.isFixedLayout) {
-      const zoom = this.zoomOverride ?? pdfZoomFor(settings)
+      // A comic or a fixed-layout book fits its page: its pictures are the page.
+      const zoom = this.zoomOverride ?? (this.isPdf ? pdfZoomFor(settings) : 'fit-page')
       if (renderer.getAttribute('zoom') !== zoom) renderer.setAttribute('zoom', zoom)
-      view.toggleClass(
-        'abele-book__engine_dark-pages',
-        darkPdfPages(settings, themeValues(this.contentEl).dark)
-      )
+      const dark = this.isPdf && darkPdfPages(settings, themeValues(this.contentEl).dark)
+      view.toggleClass('abele-book__engine_dark-pages', dark)
       return
     }
     const attrs = layoutAttributes(settings, Platform.isPhone)
@@ -328,7 +333,7 @@ export class BookView extends FileView {
       const data = new Uint8Array(await this.app.vault.readBinary(file))
       if (token !== this.loadToken) return
       const settings = readerSettingsFrom(AbeleConfig.getInstance().reader)
-      const opened = this.isPdf ? await openPdf(await loadPdfJs(), data) : await openEpub(data)
+      const opened = await openBookFile(file, data)
       if (this.isPdf) {
         this.openedPdfLayout = pdfLayoutKey(settings)
         const rendition = (opened.book.rendition ??= {})
@@ -381,6 +386,7 @@ export class BookView extends FileView {
         this.isPdf ? (opened.book as unknown as PdfBookExtras) : null
       )
       void this.reading.loadHighlights()
+      if (!this.isPdf && reader.isFixedLayout) this.model.kind = 'fixed'
       this.model.toc = tocEntries(opened.book.toc)
       this.key = bookKey(opened.book.metadata?.identifier, file.path)
       const place = await bookPlaces()?.get(this.key)
@@ -454,6 +460,8 @@ export class BookView extends FileView {
     })
     if (!main) return
     this.reading?.watchSelection(doc, index)
+    // A PDF's pages say when they are drawn; another book's fixed pages are drawn as they load.
+    if (this.fixed && !this.isPdf) this.reading?.marks.drawPdf(doc, index)
     watchPage(this.pageHost(), doc)
   }
 
@@ -464,6 +472,7 @@ export class BookView extends FileView {
       reading: () => this.reading,
       model: this.model,
       pdf: this.isPdf,
+      fixed: () => this.fixed,
       zoom: (way) => this.zoom(way),
     }
   }

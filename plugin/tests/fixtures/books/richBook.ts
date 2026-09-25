@@ -76,3 +76,41 @@ export function buildRichEpub(): Uint8Array {
     entries[path] = [strToU8(text), { level: path === 'mimetype' ? 0 : 6 }]
   return zipSync(entries)
 }
+
+/**
+ * A fixed-layout book, like a picture book or a comic laid out as pages: three pages of 600×800,
+ * each with a line of text and a script that must not run.
+ */
+export function buildFixedEpub(): Uint8Array {
+  const page = (n: number) => `${HEAD}
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Page ${n}</title>
+<meta name="viewport" content="width=600, height=800"/>
+<style>body { margin: 0; width: 600px; height: 800px; background: #fdf6e3; font: 32px serif; }</style>
+</head><body><p id="line${n}">Fixed page ${n} of the picture book.</p>
+<script>try{top.__abelePwned=(top.__abelePwned||[]).concat('fxl-${n}')}catch(e){}</script></body></html>`
+  const files: Record<string, string> = {
+    mimetype: 'application/epub+zip',
+    'META-INF/container.xml': container,
+    'OEBPS/content.opf': `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+<dc:identifier id="id">urn:uuid:abele-fixed-test-book</dc:identifier><dc:title>Fixed test book</dc:title>
+<dc:language>en</dc:language><meta property="rendition:layout">pre-paginated</meta>
+</metadata><manifest>
+<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+<item id="p1" href="p1.xhtml" media-type="application/xhtml+xml"/>
+<item id="p2" href="p2.xhtml" media-type="application/xhtml+xml"/>
+<item id="p3" href="p3.xhtml" media-type="application/xhtml+xml"/>
+</manifest><spine><itemref idref="p1"/><itemref idref="p2"/><itemref idref="p3"/></spine></package>`,
+    'OEBPS/nav.xhtml': `${HEAD}
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Contents</title></head><body>
+<nav epub:type="toc"><ol><li><a href="p1.xhtml">Page 1</a></li><li><a href="p3.xhtml">Page 3</a></li></ol></nav></body></html>`,
+    'OEBPS/p1.xhtml': page(1),
+    'OEBPS/p2.xhtml': page(2),
+    'OEBPS/p3.xhtml': page(3),
+  }
+  const entries: Record<string, [Uint8Array, { level: 0 | 6 }]> = {}
+  for (const [path, text] of Object.entries(files))
+    entries[path] = [strToU8(text), { level: path === 'mimetype' ? 0 : 6 }]
+  return zipSync(entries)
+}

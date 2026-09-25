@@ -1,10 +1,12 @@
 # Book reader
 
-Abele opens EPUB books from the vault in a tab of their own, and PDFs when asked (see [PDF](#pdf)). A `.epub` file opens in the reader
-when it is clicked in the file explorer, on the desktop and on phones alike.
+Abele opens books from the vault in a tab of their own — EPUB, Mobipocket and Kindle (`.mobi`,
+`.azw`, `.azw3`), FictionBook (`.fb2`, and zipped as `.fbz`) and comic book archives (`.cbz`) — and
+PDFs when asked (see [PDF](#pdf)). Such a file opens in the reader when it is clicked in the file
+explorer, on the desktop and on phones alike.
 
-If another plugin already opens `.epub` files, Obsidian keeps that one, and Abele's reader stays
-out of the way; the console says so.
+If another plugin already opens one of these extensions, Obsidian keeps that one for it, and the
+others still come here; the console says which.
 
 ## Reading
 
@@ -181,6 +183,30 @@ sandboxes.
 
 The layer styles PDF.js needs (`text_layer_builder.css`, `annotation_layer_builder.css`, Apache
 2.0) are carried in `plugin/src/vendor/pdfjs-css/`.
+
+## Other formats
+
+- **Mobipocket and Kindle** (`.mobi`, `.azw`, `.azw3`): both the old MOBI format and Kindle's
+  KF8. A book protected by DRM — its header says its text is encrypted — is refused with a line
+  saying so.
+- **FictionBook** (`.fb2`, `.fbz`): its sections are the book's parts, its notes open in the note
+  dialog, its pictures show.
+- **Comic book archives** (`.cbz`): the pictures in the archive, in the order their names sort as
+  numbers (`page2` before `page10`), one page at a time, fitted to the tab.
+- **Fixed-layout EPUBs** — picture books, comics, some textbooks, whose pages are laid out by the
+  book — are shown page by page (two side by side where the book asks for spreads), fitted to the
+  tab.
+
+A book of fixed pages (a comic, a fixed-layout EPUB) zooms like a PDF — Mod and plus or minus, a
+pinch, the tab's menu — and has no text settings: its **Aa** dialog says so. Highlights, links to
+places, search and the agent tools work in every format that has text.
+
+The engine builds the pages of these formats itself, and not every format sends them through the
+hook the EPUB cleaning uses. So each of their pages is taken as the engine made it and cleaned the
+same way before a frame may open it — see below. One more fix was needed in the engine: it
+unescaped a Kindle book's title and author through an element of the app's own document, where a
+crafted title could have loaded and run something; it now does so in an inert document (listed
+in the vendored engine's README).
 
 ## What the reader will not do: run the book's code
 

@@ -44,7 +44,11 @@ export class BookReading {
     private readonly themeEl: HTMLElement,
     private readonly pdf: (PdfBookExtras & object) | null
   ) {
-    this.marks = new BookMarks(engine, themeEl, !!pdf, (h) => this.activate(h))
+    // Pages of a fixed size — a PDF, a comic, a fixed-layout book — have no overlay in the
+    // engine: the reader marks them itself.
+    this.marks = new BookMarks(engine, themeEl, !!pdf || engine.isFixedLayout, (h) =>
+      this.activate(h)
+    )
     pdf?.pageEvents.addEventListener('drawn', (e) => {
       const { doc, index } = (e as CustomEvent<PdfPageDrawn>).detail
       this.marks.drawPdf(doc, index)

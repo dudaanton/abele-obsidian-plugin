@@ -14,13 +14,15 @@ export interface PageHost {
   reading(): BookReading | null
   model: BookModel
   pdf: boolean
+  /** Pages of a fixed size — a PDF, a comic — which zoom and are marked by the reader itself. */
+  fixed(): boolean
   zoom(way: 'in' | 'out' | 'reset'): void
 }
 
 /** Wires one page, as it arrives in its frame, for keys, taps and swipes. */
 export function watchPage(host: PageHost, doc: Document): void {
   doc.addEventListener('keydown', (e) => onKey(host.reader(), e))
-  if (host.pdf) doc.addEventListener('wheel', pinchZoom(host), { passive: false })
+  if (host.fixed()) doc.addEventListener('wheel', pinchZoom(host), { passive: false })
   doc.addEventListener('click', (e) => onTap(host, e, doc))
   // The engine turns a reflowing book's pages under a finger itself; a PDF's it does not — and a
   // PDF in one long scroll is moved by the finger as it is, not turned.
@@ -54,10 +56,10 @@ function watchSwipes(host: PageHost, doc: Document): void {
  * Ctrl with the wheel — what a trackpad's pinch sends too — zooms a PDF a step at a time, one
  * step per burst of wheel events rather than one per event.
  */
-export function pinchZoom(host: Pick<PageHost, 'zoom'>): (e: WheelEvent) => void {
+export function pinchZoom(host: Pick<PageHost, 'zoom' | 'fixed'>): (e: WheelEvent) => void {
   let last = 0
   return (e) => {
-    if (!e.ctrlKey && !e.metaKey) return
+    if (!host.fixed() || (!e.ctrlKey && !e.metaKey)) return
     e.preventDefault()
     if (e.timeStamp - last < 120 || !e.deltaY) return
     last = e.timeStamp
@@ -91,7 +93,7 @@ function onTap(host: PageHost, e: MouseEvent, doc: Document): void {
   if (!doc.getSelection()?.isCollapsed) return
   const marks = host.reading()?.marks
   if (marks) {
-    if (host.pdf) {
+    if (host.fixed()) {
       const h = marks.hitPdf(doc, e.clientX, e.clientY)
       if (h) {
         host.model.selection = null

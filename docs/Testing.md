@@ -237,6 +237,14 @@ Three files, three concerns:
   returns to the setting; switching to pages and back keeps the page. On a phone at 390×844 the page
   fills the width, keeps clear of the bars and scrolls; picture in `/tmp/abele-phone/`.
   `bookPdf.e2e.test.ts` and the phone file run with pages turned one at a time.
+- `bookFormats.e2e.test.ts` — **the other formats**, with files written byte by byte in
+  `tests/fixtures/books/otherFormats.ts` and `richBook.ts`: a Mobipocket book, a FictionBook bare
+  and zipped, a comic archive and a fixed-layout EPUB, each carrying scripts, handlers or runnable
+  links. Each opens from its file, every part is visited and every element clicked, with the
+  desktop's sandbox and the iPhone's: its text shows, no script is in any page, nothing runs or
+  opens. The comic's pages come in numeric order; a Kindle book whose header says it is encrypted
+  says it is protected by DRM; words on a fixed page are highlighted with boxes; `book_read` and
+  `book_search` read the Mobipocket and FictionBook files.
 - `bookReading.e2e.test.ts` — **reading**, on the desktop, with the book of
   `tests/fixtures/books/richBook.ts`: a note marked as one and a note marked only by a superscript
   open in the dialog; a link to another chapter is followed and the way back works; the contents

@@ -321,7 +321,8 @@ attachment.
 
 ## Books
 
-`.epub` files anywhere in the vault open in Abele's book reader, a tab of its own; `.pdf` files
+Book files anywhere in the vault — `.epub`, `.mobi`, `.azw`, `.azw3`, `.fb2`, `.fbz`, `.cbz` — open
+in Abele's book reader, a tab of its own; `.pdf` files
 open there too when the person has chosen so, and otherwise in Obsidian's own viewer. The plugin
 never changes a book or PDF file. Where each book was left is kept outside the notes, in
 `book-places.json` in the plugin's own folder: under the book's `dc:identifier`, so renaming or

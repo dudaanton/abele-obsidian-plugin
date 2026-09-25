@@ -59,7 +59,9 @@ export function namedBook(input: unknown): { file: TFile; place: BookPlace | nul
   const file = direct instanceof TFile ? direct : app().metadataCache.getFirstLinkpathDest(path, '')
   if (!(file instanceof TFile)) throw new Error(`No book at ${path}.`)
   if (!READER_EXTENSIONS.includes(file.extension))
-    throw new Error(`${file.path} is not a book: the book tools read .epub and .pdf files.`)
+    throw new Error(
+      `${file.path} is not a book: the book tools read EPUB, PDF, MOBI, AZW3, FB2 and CBZ files.`
+    )
   if (!inScope(file.path))
     throw new Error(`Access denied: ${file.path} is not in this chat's scope.`)
   return { file, place }

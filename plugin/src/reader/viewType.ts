@@ -4,10 +4,10 @@
  */
 export const BOOK_VIEW_TYPE = 'abele-book'
 
-/** What opens in a book tab by itself. */
-export const BOOK_EXTENSIONS = ['epub']
+/** What opens in a book tab by itself: EPUB, Mobipocket and Kindle, FictionBook, comics. */
+export const BOOK_EXTENSIONS = ['epub', 'mobi', 'azw', 'azw3', 'fb2', 'fbz', 'cbz']
 /** What a book tab can show: PDFs too, when asked to (a menu item, or the setting). */
-export const READER_EXTENSIONS = ['epub', 'pdf']
+export const READER_EXTENSIONS = [...BOOK_EXTENSIONS, 'pdf']
 
 /**
  * For the e2e tier only: a sandbox to use instead of the platform's, so the desktop app can be

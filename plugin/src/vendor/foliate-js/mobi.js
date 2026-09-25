@@ -1,6 +1,10 @@
+// ABELE PATCH: upstream set the book's own text as `innerHTML` of an element made in the app's
+// document, where a crafted title could close the textarea and leave an `<img onerror>` that
+// loads, and runs, in the app. A parsed document is inert: nothing in it loads or runs.
 const unescapeHTML = str => {
     if (!str) return ''
-    const textarea = document.createElement('textarea')
+    const doc = new DOMParser().parseFromString('<!DOCTYPE html><body></body>', 'text/html')
+    const textarea = doc.createElement('textarea')
     textarea.innerHTML = str
     return textarea.value
 }

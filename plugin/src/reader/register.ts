@@ -25,11 +25,13 @@ export function registerReader(plugin: Plugin): void {
     void places.flush()
     forgetBookTexts()
   })
-  try {
-    plugin.registerExtensions(BOOK_EXTENSIONS, BOOK_VIEW_TYPE)
-  } catch (e) {
-    console.warn('[Abele] .epub is already handled by another plugin; the book reader stays off', e)
-  }
+  // One at a time: an extension another plugin already has stays with it, the rest come here.
+  for (const extension of BOOK_EXTENSIONS)
+    try {
+      plugin.registerExtensions([extension], BOOK_VIEW_TYPE)
+    } catch (e) {
+      console.warn(`[Abele] .${extension} is already handled by another plugin; it stays there`, e)
+    }
 
   // A book kept by its path follows the file when it is renamed or moved.
   plugin.registerEvent(

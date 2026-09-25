@@ -1,6 +1,10 @@
 <template>
   <div class="abele-reader-settings">
-    <template v-if="kind !== 'pdf'">
+    <EmptyState
+      v-if="kind === 'fixed'"
+      text="This book's pages are laid out by the book, like a comic's: there is nothing to set for them. Zoom with Mod and plus or minus, a pinch, or the tab's menu."
+    />
+    <template v-if="kind === 'epub' || kind === 'all'">
       <Setting name="Layout" desc="Turn pages one at a time, or scroll through each chapter.">
         <Dropdown
           :options="flowOptions"
@@ -60,7 +64,7 @@
       </Setting>
     </template>
 
-    <Section v-if="kind !== 'epub'" :title="kind === 'all' ? 'PDF' : undefined">
+    <Section v-if="kind === 'pdf' || kind === 'all'" :title="kind === 'all' ? 'PDF' : undefined">
       <Setting
         v-if="kind === 'all'"
         name="Open PDF files in the Abele reader"
@@ -121,6 +125,7 @@ import Setting from '../obsidian/Setting.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import Section from '../obsidian/Section.vue'
+import EmptyState from '../obsidian/EmptyState.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   FONT_SIZES,
@@ -134,7 +139,7 @@ import {
 withDefaults(
   defineProps<{
     /** Which settings: a book's, a PDF's, or both, as the settings tab shows them. */
-    kind?: 'epub' | 'pdf' | 'all'
+    kind?: 'epub' | 'pdf' | 'fixed' | 'all'
   }>(),
   { kind: 'all' }
 )

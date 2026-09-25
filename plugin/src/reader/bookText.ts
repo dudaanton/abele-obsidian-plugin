@@ -4,13 +4,14 @@
  * cleaning, the same PDF.js) and kept for a few minutes, so reading a book a part at a time
  * does not parse it again for every part.
  */
-import { loadPdfJs, type App, type TFile } from 'obsidian'
+import type { App, TFile } from 'obsidian'
 import { joinIndir, fromRange } from '@/vendor/foliate-js/epubcfi.js'
 import { textWalker } from '@/vendor/foliate-js/text-walker.js'
 import { searchMatcher, type SearchExcerpt } from '@/vendor/foliate-js/search.js'
 import type { FoliateBook, FoliateTocItem } from '@/vendor/foliate-js/view.js'
-import { openEpub, type OpenedBook } from './openBook'
-import { openPdf, type PdfBookExtras } from './pdfBook'
+import type { OpenedBook } from './openBook'
+import type { PdfBookExtras } from './pdfBook'
+import { openBookFile } from './openFile'
 
 export interface BookSectionInfo {
   index: number
@@ -62,7 +63,7 @@ async function indexOfHref(book: Resolver, href: string): Promise<number> {
 async function load(app: App, file: TFile): Promise<LoadedBook> {
   const data = new Uint8Array(await app.vault.readBinary(file))
   const pdf = file.extension === 'pdf'
-  const opened: OpenedBook = pdf ? await openPdf(await loadPdfJs(), data) : await openEpub(data)
+  const opened: OpenedBook = await openBookFile(file, data)
   const book = opened.book as LoadedBook['book']
   const toc: LoadedBook['toc'] = []
   const walk = async (items: FoliateTocItem[] | undefined, depth: number) => {

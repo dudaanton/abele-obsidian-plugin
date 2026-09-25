@@ -64,8 +64,8 @@ export interface Footnote {
 }
 
 export interface BookModel {
-  /** A reflowing book, or a PDF: which settings its dialog offers. */
-  kind: 'epub' | 'pdf'
+  /** A reflowing book, a PDF, or another book of fixed pages (a comic): which settings its dialog offers. */
+  kind: 'epub' | 'pdf' | 'fixed'
   status: 'loading' | 'ready' | 'error'
   message: string
   title: string

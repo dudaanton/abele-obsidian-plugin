@@ -41,6 +41,11 @@ Every change is marked `ABELE PATCH` at its site.
    `fixedLayoutRenderer` gets that element instead of `foliate-fxl`: Abele's continuous scroll
    for PDFs (`src/reader/pdfScroll.ts`) is one.
 
+4. **MOBI metadata is unescaped in an inert document** (`mobi.js`, `unescapeHTML`). Upstream set a
+   book's own title, author and description as `innerHTML` of a `textarea` made in the app's
+   document; a crafted value can end the textarea and leave an element that loads and runs there.
+   Abele makes the textarea in a document from `DOMParser`, where nothing loads or runs.
+
 ## Additions
 
 `view.d.ts`, `epub.d.ts` and `frame-options.d.ts` type the parts of the modules beside them that
