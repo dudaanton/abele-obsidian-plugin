@@ -25,6 +25,8 @@ interface Level {
   quote: string
   /** The trail's levels as drawn over the messages, outermost first. */
   trail: string[]
+  /** Four levels and more: the trail as first drawn, folded — `trail` is it opened. */
+  folded?: string[]
   /** The ids the comment's own file lists as asked on its messages, read after the next level. */
   listed: string[]
 }
@@ -162,12 +164,19 @@ const script = `(async () => {
     const secondLine = await say(second, 'Is there a sleeping car on it?')
 
     const third = await askOn(secondLine, 'sleeping car')
+    // Four levels fold to the root, an ellipsis, the parent and this one; the ellipsis opens them.
+    await until(() => document.querySelector('.abele-ai-chat .abele-breadcrumbs__more'), 5000)
+    const folded = trail()
+    const more = document.querySelector('.abele-ai-chat .abele-breadcrumbs__more')
+    if (!more) throw new Error('a trail of four levels did not fold')
+    more.click()
     report.levels.push(await level(third, 4))
+    report.levels[2].folded = folded
     await shoot('desktop-level3')
 
     for (const l of report.levels) l.listed = await listed(l.id)
 
-    // Back up one level through the trail: chat, first, second, third — the third item.
+    // Back up one level through the opened trail: chat, first, second, third — the third item.
     const crumbs = [...document.querySelectorAll('.abele-ai-chat .abele-breadcrumbs__item')]
     crumbs[2].click()
     await until(() => chats.activeSession.value && chats.activeSession.value.commentId === second.commentId, 5000)
@@ -242,7 +251,7 @@ describe.runIf(available)('asking inside a comment, three levels down', () => {
     expect(third.listed).toEqual([])
   })
 
-  it('drew the trail one level longer at every depth', () => {
+  it('drew the trail one level longer at every depth, folding it past three', () => {
     const [first, second, third] = report.levels
     expect(first.trail).toEqual(['Nested ask probe', 'night train'])
     expect(second.trail).toEqual([
@@ -250,8 +259,17 @@ describe.runIf(available)('asking inside a comment, three levels down', () => {
       'Which train exactly leaves at night?',
       'Which train',
     ])
-    expect(third.trail).toHaveLength(4)
-    expect(third.trail[0]).toBe('Nested ask probe')
+    expect(third.folded).toEqual([
+      'Nested ask probe',
+      'Is there a sleeping car on it?',
+      'sleeping car',
+    ])
+    expect(third.trail).toEqual([
+      'Nested ask probe',
+      'Which train exactly leaves at night?',
+      'Is there a sleeping car on it?',
+      'sleeping car',
+    ])
   })
 
   it('goes back a level through the trail, the passage marked there', () => {
