@@ -20,6 +20,7 @@ import type { AbeleSettings } from '@/services/AbeleConfig'
 import { DEFAULT_READER_SETTINGS } from '@/reader/settings'
 import type { AiSettings } from '@/ai/types'
 import type { TransferEntry } from '@/transfer/types'
+import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
 
 const provider = (id: string, name: string, apiKeyId = `key-${id}`) => ({
   id,
@@ -81,10 +82,23 @@ describe('what the sending side offers', () => {
     expect(entries.some((e) => e.section === 'ai-interceptors')).toBe(false)
   })
 
-  it('marks the block holding a token as one that cannot travel in the open', () => {
-    const entries = collectEntries(settings())
+  /**
+   * The Firefly token lives in the keychain now, like every other credential: the finance
+   * block carries its keychain id, the token itself only rides along when keys are asked for.
+   */
+  it('carries the Firefly token as a key, never inside the finance settings', () => {
+    const entries = collectEntries(settings({ fireflyBaseUrl: 'https://ff.example' }))
+    const finance = find(entries, 'finance', 'finance')
 
-    expect(find(entries, 'finance', 'finance')?.sensitive).toBe(true)
+    expect(JSON.stringify(finance?.data)).not.toContain('firefly-secret-token')
+    expect(finance?.sensitive).toBeFalsy()
+    expect(finance?.secretIds).toEqual([FIREFLY_TOKEN_KEY_ID])
+
+    const withKeys = buildPayload([finance!], (id) =>
+      id === FIREFLY_TOKEN_KEY_ID ? 'from-keychain' : ''
+    )
+    expect(withKeys.secrets).toEqual({ [FIREFLY_TOKEN_KEY_ID]: 'from-keychain' })
+    expect(needsCode(buildPayload([finance!], null))).toBe(false)
   })
 })
 
@@ -436,11 +450,16 @@ describe('deciding whether a code is needed', () => {
     expect(needsCode(buildPayload(chosen, null))).toBe(false)
   })
 
-  it('is needed for a block that holds a token of its own, keys or not', () => {
-    const entries = collectEntries(settings())
-    const chosen = [find(entries, 'finance', 'finance')!]
+  it('is needed for a block that holds a credential of its own, keys or not', () => {
+    const own: TransferEntry = {
+      section: 'finance',
+      id: 'finance',
+      label: 'F',
+      data: {},
+      sensitive: true,
+    }
 
-    expect(needsCode(buildPayload(chosen, null))).toBe(true)
+    expect(needsCode(buildPayload([own], null))).toBe(true)
   })
 })
 

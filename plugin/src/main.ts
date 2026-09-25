@@ -157,6 +157,8 @@ export default class AbelePlugin extends Plugin {
     await secretStore.load().catch((e) => {
       console.error('[Abele] the synced secrets could not be opened', (e as Error)?.message)
     })
+    // After the store: a token moved out of the settings lands in it when it is open here.
+    await AbeleConfig.getInstance().moveLegacySecrets()
 
     // Apply body classes from settings
     if (AbeleConfig.getInstance().fullWidthSidebars) {
@@ -1255,6 +1257,7 @@ export default class AbelePlugin extends Plugin {
       .catch((e) =>
         console.error('[Abele] the synced secrets could not be reopened', (e as Error)?.message)
       )
+    await AbeleConfig.getInstance().moveLegacySecrets()
     AgentRegistry.getInstance().notifyConfigReloaded()
     this.syncAiFeatures()
   }

@@ -5,7 +5,7 @@
         <Input v-model="baseUrl" placeholder="e.g. https://firefly.example.com" />
       </Setting>
       <Setting name="Personal Access Token" desc="Generate in Firefly III → Profile → OAuth.">
-        <Input v-model="token" placeholder="Enter your token" />
+        <Input v-model="token" password placeholder="Enter your token" />
       </Setting>
       <Setting
         name="Account name template"
@@ -116,6 +116,7 @@
 </template>
 
 <script setup lang="ts">
+import { fireflyToken, setFireflyToken } from '@/secrets/legacy'
 import ObsidianModal from './obsidian/Modal.vue'
 import ObsidianButton from './obsidian/Button.vue'
 import Setting from './obsidian/Setting.vue'
@@ -136,7 +137,7 @@ import dayjs from 'dayjs'
 const config = AbeleConfig.getInstance()
 
 const baseUrl = ref(config.fireflyBaseUrl || '')
-const token = ref(config.fireflyToken || '')
+const token = ref(fireflyToken())
 const accountNameTemplate = ref('{{name}} {{currency}}')
 const dryRun = ref(false)
 
@@ -174,12 +175,12 @@ const startMigration = async () => {
 
   // Save settings for future use
   config.fireflyBaseUrl = baseUrl.value.trim().replace(/\/$/, '')
-  config.fireflyToken = token.value.trim()
+  setFireflyToken(token.value)
   await config.saveSettings()
 
   const migrationConfig: MigrationConfig = {
     baseUrl: config.fireflyBaseUrl,
-    token: config.fireflyToken,
+    token: fireflyToken(),
     accountsFolder: config.accountsFolder,
     categoriesFolder: config.financeCategoriesFolder,
     accountNameTemplate: accountNameTemplate.value.trim() || '{{name}} {{currency}}',

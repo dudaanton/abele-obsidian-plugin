@@ -15,6 +15,7 @@ import { DEFAULT_LABEL_PROPERTY, type LabelColor } from '@/helpers/taskMeta'
 import { DEFAULT_GITHUB_SETTINGS, githubSettingsFrom, type GithubSettings } from '@/github/settings'
 import { DEFAULT_READER_SETTINGS, readerSettingsFrom, type ReaderSettings } from '@/reader/settings'
 import { normalizeRule, type AutomationRule } from '@/automations/types'
+import { moveLegacySecrets, notePlainSecrets } from '@/secrets/legacy'
 
 export interface AbeleSettings {
   refreshDelay: number // in milliseconds
@@ -41,7 +42,12 @@ export interface AbeleSettings {
   defaultCurrency?: string // Default currency code for new transactions
   pinnedCurrencies?: string // Comma-separated currencies to show in sidebar
   fireflyBaseUrl?: string // Firefly III instance base URL for migration
-  fireflyToken?: string // Firefly III Personal Access Token for migration
+  /**
+   * Legacy: the Firefly III token as it was once saved, in the clear. Moved into the keychain
+   * at the next save and dropped from the file (`src/secrets/legacy.ts`); read the token with
+   * `fireflyToken()`, never from here.
+   */
+  fireflyToken?: string
   /** What the accounts panel lists and how it orders them. */
   accountsList?: AccountsListSettings
   // Time tracking settings
@@ -372,6 +378,9 @@ export class AbeleConfig {
     }
 
     const plugin = this.plugin
+    // A credential still held in the clear goes to the keychain before the file is written,
+    // so the write that follows is the one that drops it.
+    moveLegacySecrets(this)
     await this.writeSettings()
     this.version.value++
 
@@ -379,6 +388,15 @@ export class AbeleConfig {
     // road every settings change takes — so switching it on takes effect here rather than at
     // the next restart. Read from the local: the plugin may have unloaded during the write.
     if (this.plugin === plugin) plugin.syncAiFeatures()
+  }
+
+  /**
+   * At startup and when settings arrive from another device: a credential still in the clear
+   * goes to the keychain and the file is written without it. Only the write — the features
+   * are not synced from here, for the same reason `loadSettings` does not.
+   */
+  async moveLegacySecrets(): Promise<void> {
+    if (moveLegacySecrets(this)) await this.writeSettings()
   }
 
   /**
@@ -517,7 +535,8 @@ export class AbeleConfig {
     this.defaultCurrency = settings?.defaultCurrency || DEFAULT_SETTINGS.defaultCurrency
     this.pinnedCurrencies = settings?.pinnedCurrencies ?? DEFAULT_SETTINGS.pinnedCurrencies
     this.fireflyBaseUrl = settings?.fireflyBaseUrl ?? DEFAULT_SETTINGS.fireflyBaseUrl
-    this.fireflyToken = settings?.fireflyToken ?? DEFAULT_SETTINGS.fireflyToken
+    this.fireflyToken = settings?.fireflyToken ?? DEFAULT_SETTINGS.fireflyToken ?? ''
+    notePlainSecrets(this)
     this.accountsList = normalizeAccountsList(settings?.accountsList)
     this.timeEntryPathTemplate =
       settings?.timeEntryPathTemplate ?? DEFAULT_SETTINGS.timeEntryPathTemplate
@@ -586,7 +605,7 @@ export class AbeleConfig {
       defaultCurrency: this.defaultCurrency,
       pinnedCurrencies: this.pinnedCurrencies,
       fireflyBaseUrl: this.fireflyBaseUrl,
-      fireflyToken: this.fireflyToken,
+      ...(this.fireflyToken ? { fireflyToken: this.fireflyToken } : {}),
       accountsList: { ...this.accountsList, types: [...this.accountsList.types] },
       timeEntryPathTemplate: this.timeEntryPathTemplate,
       timeTrackableNoteTypes: [...this.timeTrackableNoteTypes],

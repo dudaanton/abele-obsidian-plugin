@@ -1,3 +1,4 @@
+import { fireflyToken } from '@/secrets/legacy'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { DATE_FORMAT } from '@/constants/dates'
@@ -220,7 +221,7 @@ export async function migrateFromFirefly(
     // Use settings from plugin config — baseUrl and apiToken
     config = {
       baseUrl: settings.fireflyBaseUrl.replace(/\/$/, ''),
-      token: settings.fireflyToken,
+      token: fireflyToken(),
       accountsFolder: settings.accountsFolder,
       categoriesFolder: settings.financeCategoriesFolder,
       transactionPathTemplate: settings.transactionPathTemplate,

@@ -14,6 +14,7 @@ import type { AbeleSettings } from '@/services/AbeleConfig'
 import type { AiSettings } from '@/ai/types'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
+import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
 import {
   FILE_SECTION_LABELS,
   isFileSection,
@@ -232,12 +233,11 @@ export const SECTIONS: Section[] = [
       'defaultCurrency',
       'pinnedCurrencies',
       'fireflyBaseUrl',
-      'fireflyToken',
       'accountsList',
     ],
-    // The Firefly token is kept in the settings themselves rather than the keychain, so this
-    // block is a credential whether or not keys were asked for.
-    { sensitive: true }
+    // The Firefly token is in the keychain; it rides along only when keys are sent. A plain
+    // one left in an old settings file is moved there at the next save and never sent.
+    { secretsOf: () => [FIREFLY_TOKEN_KEY_ID] }
   ),
   rootBlock('time-tracking', 'Time tracking', [
     'timeEntryPathTemplate',

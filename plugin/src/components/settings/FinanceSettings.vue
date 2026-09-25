@@ -48,9 +48,13 @@
         @update:model-value="fireflyBaseUrlChanged"
       />
     </Setting>
-    <Setting name="Firefly III token" desc="Personal Access Token for Firefly III API.">
+    <Setting
+      name="Firefly III token"
+      desc="Personal Access Token for Firefly III API. Stored in the keychain, never in the settings file."
+    >
       <Input
         :model-value="fireflyToken"
+        password
         placeholder="Enter your Firefly III token"
         @update:model-value="fireflyTokenChanged"
       />
@@ -75,6 +79,7 @@
 </template>
 
 <script setup lang="ts">
+import { fireflyToken as readFireflyToken, setFireflyToken } from '@/secrets/legacy'
 import { ref } from 'vue'
 import Setting from '../obsidian/Setting.vue'
 import Search from '../obsidian/Search.vue'
@@ -91,7 +96,7 @@ const financeCategoriesFolder = ref(AbeleConfig.getInstance().financeCategoriesF
 const defaultCurrency = ref(AbeleConfig.getInstance().defaultCurrency)
 const pinnedCurrencies = ref(AbeleConfig.getInstance().pinnedCurrencies)
 const fireflyBaseUrl = ref(AbeleConfig.getInstance().fireflyBaseUrl)
-const fireflyToken = ref(AbeleConfig.getInstance().fireflyToken)
+const fireflyToken = ref(readFireflyToken())
 
 const saveSettings = debounce(async () => {
   const config = AbeleConfig.getInstance()
@@ -106,7 +111,7 @@ const saveSettings = debounce(async () => {
   config.defaultCurrency = defaultCurrency.value.trim().toUpperCase()
   config.pinnedCurrencies = pinnedCurrencies.value.trim()
   config.fireflyBaseUrl = fireflyBaseUrl.value.trim().replace(/\/$/, '')
-  config.fireflyToken = fireflyToken.value.trim()
+  setFireflyToken(fireflyToken.value)
 
   await config.saveSettings()
 }, 500)

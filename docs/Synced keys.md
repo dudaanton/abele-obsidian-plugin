@@ -1,7 +1,7 @@
 # Synced keys
 
 Every API key and token the plugin uses — AI providers, image providers, voice input, web
-search, GitHub, the named keys scripts and fetch calls use — is kept in the keychain of the
+search, GitHub, the Firefly III token, the named keys scripts and fetch calls use — is kept in the keychain of the
 device it was typed on. Without synced keys, each one has to be entered again on every device.
 
 Synced keys keep all of them in one encrypted store that travels with the plugin's settings.
@@ -54,6 +54,10 @@ settings.
 - AI agents cannot see or change the store through the settings tools, and a settings transfer
   never carries it or the passphrase. A transfer can still carry keys themselves when **Include
   keys** is ticked, as before.
+
+The Firefly III token used to be saved in the settings file in the clear. It is now moved into
+the keychain the first time the plugin starts (or its settings are saved) and dropped from the
+file, so it is synced like every other key.
 
 ## Sync conflicts
 

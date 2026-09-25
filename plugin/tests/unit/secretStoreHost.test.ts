@@ -9,6 +9,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { DEFAULT_GITHUB_SETTINGS, GITHUB_TOKEN_KEY_ID } from '@/github/settings'
+import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
 
 beforeEach(() => {
   const config = AbeleConfig.getInstance()
@@ -44,6 +45,7 @@ describe('the plugin’s secrets', () => {
         'abele-img-i',
         GITHUB_TOKEN_KEY_ID,
         DEFAULT_TRANSCRIPTION.apiKeyId,
+        FIREFLY_TOKEN_KEY_ID,
       ].sort()
     )
   })

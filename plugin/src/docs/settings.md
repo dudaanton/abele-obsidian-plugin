@@ -42,6 +42,9 @@ made from. `defaultCurrency` and `pinnedCurrencies` are what the finance sidebar
 `accountsList` is what the accounts sidebar lists: `sort` (`size` — the balance's magnitude —,
 `balance` or `name`), `groupByType`, `types` (account types shown), `hideZero`, `showExcluded`
 (accounts marked `excludeFromTotal`) and `currency` (one currency, or every one when empty).
+`fireflyBaseUrl` is the Firefly III server a migration reads from; its token is in the keychain
+(and in the synced keys when those are on), never in the settings — `fireflyToken` exists only
+in old settings files and is moved to the keychain the next time the settings are saved.
 `timeEntryPathTemplate` is where a time entry is written; `timeTrackableNoteTypes` and
 `timeTrackAllNotes` decide which notes get the timer button in their header.
 
