@@ -32,7 +32,7 @@ export interface PdfInkHost {
 }
 
 /** The pen's width and the marker's, in page units: a fine nib, a highlighter's tip. */
-const SIZES = { pen: 1.8, marker: 12 }
+const SIZES = { pen: 2.2, marker: 12 }
 /** How long after the last stroke a page is written. */
 const WRITE_AFTER = 600
 

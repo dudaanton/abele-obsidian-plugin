@@ -20,6 +20,7 @@
         :active="current === c"
         :tooltip="`Draw in ${c}`"
         class="abele-book-ink__swatch"
+        :class="{ 'abele-book-ink__swatch_ink': c === 'black' }"
         @click="emit('color', c)"
       />
     </div>
@@ -133,6 +134,12 @@ const current = computed(() =>
 
   &__swatch svg {
     fill: currentColor;
+  }
+
+  /* The pen's black is the text's colour, pressed or not: a pressed glyph otherwise takes the
+     accent, and black would read as purple. */
+  &__swatch_ink.abele-obsidian-icon {
+    color: var(--text-normal);
   }
 }
 

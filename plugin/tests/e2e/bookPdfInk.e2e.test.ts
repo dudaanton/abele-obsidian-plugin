@@ -73,9 +73,13 @@ const PRELUDE = `
     await touch('touchEnd'); await wait(600)
   }
   const open = async (path) => {
+    // Just after a reload the workspace may still be putting itself back: a tab made then is lost.
+    await until(() => app.workspace.layoutReady, 15000)
+    await wait(1000)
     let leaf
     try { leaf = app.workspace.getLeaf('tab') } catch { leaf = app.workspace.getLeaf(false) }
     await leaf.setViewState({ type: 'abele-book', state: { file: path }, active: true })
+    await app.workspace.revealLeaf(leaf)
     await until(() => leaf.view?.model?.status === 'ready' && leaf.view.ink, 15000)
     const view = leaf.view
     if (view.model.panel) view.model.panel = false
@@ -201,7 +205,8 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
     expect(r.file).toContain('data-tool="pen"')
     expect(r.pressures).toBeGreaterThan(3)
     expect(r.note).toContain('type: book-highlights')
-    expect(r.note).toContain(`> [!ink] [[${PDF}#page=1|Page 1]]`)
+    // The link to the page in the vault's own link format; the picture by its whole path.
+    expect(r.note).toMatch(/> \[!ink\] \[\[(.*\/)?long\.pdf#page=1\|Page 1\]\]/)
     expect(r.note).toContain(`> ![[${INK}]]`)
   })
 
@@ -270,7 +275,8 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       await wait(800)
       const moved = before - frame(doc).top
       const paths = inked(doc)
-      // The marker, drawn in yellow.
+      // The marker, drawn in yellow, on the first page brought back.
+      await view.engine.goTo(0); await wait(800)
       q(view, '.abele-book-ink__tool:nth-child(2)').click(); await wait(100)
       const f = frame(doc)
       await draw(f.left + f.width * 0.2, f.top + f.height * 0.4, f.left + f.width * 0.7, f.top + f.height * 0.4, 'pen')
@@ -310,18 +316,25 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
   })
 
   it('draws on pages turned one at a time too, and a finger turns them', () => {
-    const r = run<{ error?: string; paths?: number; before?: number; after?: number }>(`
+    const r = run<{
+      error?: string
+      paths?: number
+      before?: number
+      after?: number
+      seen?: unknown
+    }>(`
       for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
       await settings({ pdfLayout: 'paginated' })
       const { view } = await open(${JSON.stringify(PDF)})
       await view.engine.goTo(1); await wait(800)
       click(view, '.abele-book-reader__draw')
       await until(() => q(view, '.abele-ink-overlay'))
-      const doc = R(view).getContents().map((c) => c.doc).find((d) => frame(d).width > 0)
+      const doc = await until(() => R(view).getContents().map((c) => c.doc).find((d) => d?.querySelector('#canvas img') && frame(d).width > 0))
       const f = frame(doc)
       await draw(f.left + f.width * 0.3, f.top + f.height * 0.6, f.left + f.width * 0.6, f.top + f.height * 0.7, 'pen')
       const paths = inked(doc)
       const file = await until(() => app.vault.getAbstractFileByPath(${JSON.stringify(DIR)} + '/long ink/long page 2.svg'), 5000)
+      const seen = { idx: R(view).getContents().map((c) => view.ink.docIndex.get(c.doc)), loc: view.engine.lastLocation?.section?.current, paths, pages: [...view.ink.pages.keys()], frames: R(view).getContents().map((c) => ({ index: c.index, w: c.doc ? frame(c.doc).width : null })), f: [f.left, f.top, f.width, f.height], overlay: q(view, '.abele-ink-overlay')?.getBoundingClientRect().toJSON() }
       const before = view.engine.lastLocation?.section?.current
       const stage = q(view, '.abele-book-reader__stage').getBoundingClientRect()
       await drag(stage.left + stage.width * 0.8, stage.top + stage.height / 2, stage.left + stage.width * 0.2, stage.top + stage.height / 2)
@@ -329,9 +342,10 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       const after = view.engine.lastLocation?.section?.current
       click(view, '.abele-book-ink__done')
       await settings({ pdfLayout: 'scrolled' })
-      return { paths: file ? paths : -1, before, after }
+      return { paths: file ? paths : -1, before, after, seen }
     `)
     expect(r.error).toBeUndefined()
+    if (r.paths !== 1) console.log(JSON.stringify(r.seen))
     expect(r.paths).toBe(1)
     expect(r.before).toBe(1)
     expect(r.after).toBe(2)
@@ -358,7 +372,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       const fits = barEl.scrollWidth <= barEl.clientWidth + 1
       const b = barEl.getBoundingClientRect()
       const finger = view.model.ink.finger
-      const doc = page(view, 2)
+      const doc = await until(() => page(view, 2)?.querySelector('#canvas img') && page(view, 2))
       const f = frame(doc)
       const ears = listen()
       await drag(f.left + f.width * 0.2, f.top + 80, f.left + f.width * 0.7, f.top + 140)
@@ -384,17 +398,19 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       await until(() => q(view, '.abele-book-ink'))
       await wait(400)
       const finger = view.model.ink.finger
-      const doc = page(view, 2)
+      const doc = await until(() => page(view, 2)?.querySelector('#canvas img') && page(view, 2))
+      if (!doc) return { error: 'no page 3: ' + JSON.stringify({ size: [innerWidth, innerHeight], contents: R(view).getContents().map((c) => [c.index, !!c.doc?.querySelector('#canvas img')]), status: view.model.status, stage: q(view, '.abele-book-reader__stage')?.getBoundingClientRect().toJSON(), shown: view.containerEl.isShown(), tablet: document.body.className, leaves: app.workspace.getLeavesOfType('abele-book').length, sized: R(view).sized }) }
       const top = frame(doc).top
       const before = inked(doc)
       const stage = q(view, '.abele-book-reader__stage').getBoundingClientRect()
       await drag(stage.left + stage.width / 2, stage.top + stage.height * 0.6, stage.left + stage.width / 2, stage.top + stage.height * 0.4)
       await wait(600)
       const moved = top - frame(doc).top
+      const after = inked(doc)
       await view.engine.goTo(2); await wait(600)
       await shoot('tablet')
       click(view, '.abele-book-ink__done')
-      return { finger, paths: inked(page(view, 2)) - before, moved }
+      return { finger, paths: after - before, moved }
     `)
     expect(tablet.error).toBeUndefined()
     expect(tablet.finger).toBe(false)
