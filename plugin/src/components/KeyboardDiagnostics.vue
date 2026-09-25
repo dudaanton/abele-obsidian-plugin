@@ -87,14 +87,14 @@ function read(): string[] {
     `${KEYBOARD_VAR} inline ${root.style.getPropertyValue(KEYBOARD_VAR) || '—'} computed ${cssVar(root, KEYBOARD_VAR)} (${keyboardVar(document)})`,
     `safe-area top ${cssVar(document.body, '--safe-area-inset-top')} bottom ${cssVar(document.body, '--safe-area-inset-bottom')}  scrollY ${round(window.scrollY)}`,
     `body ${[...document.body.classList].filter((c) => TELLING.test(c)).join(' ') || '—'}`,
-    `.modal-container ${rect(container)}${container?.classList.contains('abele-keyboard-room') ? ' FITTED' : ''}`,
+    `.modal-container ${rect(container)}${container?.classList.contains('abele-keyboard-room') ? ' FITTED' : ''}${container?.classList.contains('abele-keyboard-cover') ? ' COVERED' : ''}${container?.classList.contains('abele-keyboard-lift') ? ' LIFTED' : ''}`,
     `.modal ${rect(modal)}`,
     `focus ${describe(focused)} ${focused ? rect(focused) : ''}`,
   ]
   if (report) {
     const room = report.room ? `${round(report.room[0])}+${round(report.room[1])}` : 'none'
     out.push(
-      `room ${room}  vvBottom ${report.viewportBottom === null ? '—' : round(report.viewportBottom)} kbTop ${report.keyboardTop === null ? '—' : round(report.keyboardTop)} kb ${round(report.keyboardHeight)} full ${round(report.fullHeight)} typing ${report.typing ? 'yes' : 'no'}`
+      `room ${room}  vvBottom ${report.viewportBottom === null ? '—' : round(report.viewportBottom)} kbTop ${report.keyboardTop === null ? '—' : round(report.keyboardTop)} kb ${round(report.keyboardHeight)} full ${round(report.fullHeight)} typing ${report.typing ? 'yes' : 'no'}${report.lift !== undefined ? ` lift ${round(report.lift)} cover ${round(report.cover ?? 0)}` : ''}`
     )
   }
   return out

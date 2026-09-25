@@ -706,8 +706,28 @@ body.is-mobile .abele-comment-marker_pending::after {
   align-self: flex-start;
 }
 
+/*
+ * A tablet's dialog stands in the middle of the screen and the keyboard covers less of it: it is
+ * moved up by what the keyboard covers, no further, and stays where Obsidian put it otherwise.
+ * `top` rather than a transform — Obsidian animates the dialog's transform as it opens — and no
+ * transition, which would leave the next measurement reading a dialog half way there.
+ */
+.modal-container.abele-keyboard-lift > .modal {
+  top: calc(-1 * var(--abele-keyboard-lift));
+}
+
+/* Measures the top safe-area inset for `keyboardLift.ts`; never seen. */
+.abele-safe-area-probe {
+  position: fixed;
+  visibility: hidden;
+  pointer-events: none;
+  height: 0;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
 /* Under the container's class, so a scroller's own padding (a component's) does not win. */
-.modal-container.abele-keyboard-cover .abele-keyboard-scroller {
+.modal-container.abele-keyboard-cover .abele-keyboard-scroller,
+.modal-container.abele-keyboard-lift .abele-keyboard-scroller {
   box-sizing: border-box;
   height: var(--abele-keyboard-keep);
   max-height: var(--abele-keyboard-keep);

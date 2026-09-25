@@ -1,4 +1,5 @@
 import { onBeforeUnmount, onMounted, type Ref } from 'vue'
+import { KEYBOARD_GAP, liftFor, revealDelta, safeAreaTop } from './keyboardLift'
 
 /**
  * On the dialog's container while it is moved into the room the keyboard leaves, whole; the
@@ -12,6 +13,11 @@ const FITTED = 'abele-keyboard-room'
  */
 const COVERED = 'abele-keyboard-cover'
 const SCROLLER = 'abele-keyboard-scroller'
+/**
+ * On a tablet's container while its dialog is moved up by `--abele-keyboard-lift`, only as far
+ * as the keyboard covers it — see `keyboardLift.ts`.
+ */
+const LIFTED = 'abele-keyboard-lift'
 
 /** Obsidian's own: the height of the on-screen keyboard, written by the mobile app. */
 export const KEYBOARD_VAR = '--keyboard-height'
@@ -45,6 +51,9 @@ export interface KeyboardRoomReport {
   typing: boolean
   /** The room given as top and height, or null when the container was left as it was. */
   room: [number, number] | null
+  /** On a tablet: how far the dialog was moved up, and how much of it still scrolls. */
+  lift?: number
+  cover?: number
 }
 
 export const keyboardRoomReport: { last: KeyboardRoomReport | null } = { last: null }
@@ -113,6 +122,14 @@ function fullHeight(win: Window): number {
  * The dialog ends up no taller than the room and scrolls inside, and the field that has focus
  * is scrolled into view each time the room changes and each time a field takes focus.
  *
+ * That is the phone, where Obsidian draws a dialog as a sheet over the screen. On a tablet it
+ * stands in the middle, the keyboard covers less of it or none, and the phone's rules jumped it
+ * to the top of the screen and scrolled the field to the middle of a box the keyboard still
+ * covered — "scrolls very strangely, and the field is still under the keyboard", from the
+ * owner's iPad. There the dialog is only moved up by what the keyboard covers of it
+ * (`keyboardLift.ts`), the field is scrolled only while it is covered and only inside the
+ * dialog, and a measurement that finds what the last one found changes nothing.
+ *
  * @param root - An element inside the dialog. The dialog and its container are found from it.
  */
 export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefined>>): void {
@@ -122,6 +139,10 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
   // The container carrying a fit of ours, if any: only then is there anything of ours to undo.
   let fitted: HTMLElement | null = null
   let scroller: HTMLElement | null = null
+  // The tablet's move, kept across measurements so that a measurement changes nothing it need not.
+  let lifted: HTMLElement | null = null
+  let lift = 0
+  let cover = 0
   // What a keyboard event said the height was, until one says the keyboard has gone.
   let announced = 0
   const timers: number[] = []
@@ -131,11 +152,24 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
   const dialog = () => root.value?.closest<HTMLElement>('.modal') ?? null
   const container = () => root.value?.closest<HTMLElement>('.modal-container') ?? null
 
-  const release = () => {
+  const releaseScroller = () => {
     scroller?.classList.remove(SCROLLER)
     scroller?.style.removeProperty('--abele-keyboard-cover')
     scroller?.style.removeProperty('--abele-keyboard-keep')
     scroller = null
+  }
+
+  const releaseLift = () => {
+    lifted?.classList.remove(LIFTED)
+    lifted?.style.removeProperty('--abele-keyboard-lift')
+    lifted = null
+    lift = 0
+    cover = 0
+  }
+
+  const release = () => {
+    releaseScroller()
+    releaseLift()
     if (!fitted) return
     fitted.classList.remove(FITTED, COVERED)
     fitted.style.removeProperty('--abele-room-top')
@@ -178,11 +212,91 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
     return active
   }
 
-  const reveal = () => focused()?.scrollIntoView({ block: 'center' })
+  /**
+   * Obsidian's tablet layout: a dialog in the middle of the screen rather than a sheet over it.
+   * Obsidian only sets `is-phone` on a mobile device, so a desktop window keeps the phone's rules.
+   */
+  const tablet = () => {
+    const body = doc?.body
+    return !!body && body.classList.contains('is-mobile') && !body.classList.contains('is-phone')
+  }
+
+  /** Where the field may stand on a tablet: set by the last measurement. */
+  let band: [number, number] | null = null
+
+  /** The field brought between the top of the screen and the keyboard, only if it is not. */
+  const revealOnTablet = () => {
+    const field = focused()
+    const panel = dialog()
+    if (!field || !panel || !band) return
+    const delta = revealDelta(field.getBoundingClientRect(), band[0], band[1])
+    if (Math.abs(delta) < 1) return
+    // Its own box, never the page: scrolling the page pans the whole app under the keyboard.
+    const box = scroller ?? scrollerOf(field, panel)
+    box.scrollTop += delta
+  }
+
+  const reveal = () => {
+    if (tablet()) revealOnTablet()
+    else focused()?.scrollIntoView({ block: 'center' })
+  }
+
+  /**
+   * The tablet's measurement. The dialog is moved up only by what the keyboard covers of it, and
+   * only while it covers some; what still does not fit scrolls. Nothing is let go first, so a
+   * measurement that finds what the last one found changes nothing and scrolls nothing.
+   */
+  const fitTablet = (
+    box: HTMLElement,
+    panel: HTMLElement | null,
+    top: number,
+    bottom: number,
+    covered: boolean
+  ): { lift: number; cover: number } | null => {
+    if (!panel || !covered) {
+      release()
+      band = null
+      return null
+    }
+    const ceiling = Math.max(top, safeAreaTop(box.ownerDocument)) + KEYBOARD_GAP
+    const floor = bottom - KEYBOARD_GAP
+    band = [ceiling, floor]
+    const rect = panel.getBoundingClientRect()
+    // Where Obsidian put it: our move is a shift and nothing else.
+    const wanted = liftFor({ top: rect.top + lift, bottom: rect.bottom + lift }, ceiling, floor)
+    if (!wanted) {
+      releaseScroller()
+      releaseLift()
+      return null
+    }
+    if (lifted !== box || Math.abs(wanted.lift - lift) >= 1) {
+      if (lifted !== box) releaseLift()
+      box.style.setProperty('--abele-keyboard-lift', `${wanted.lift}px`)
+      box.classList.add(LIFTED)
+      lifted = box
+      lift = wanted.lift
+    }
+    if (wanted.cover < 1) releaseScroller()
+    else if (!scroller || Math.abs(wanted.cover - cover) >= 1) {
+      const target = scroller ?? scrollerOf(focused(), panel)
+      if (!scroller) {
+        // Held at the height it has, so the room added at its end scrolls rather than grows it.
+        const held = target.getBoundingClientRect().height
+        target.style.setProperty('--abele-keyboard-keep', `${Math.floor(held)}px`)
+        target.classList.add(SCROLLER)
+        scroller = target
+      }
+      target.style.setProperty('--abele-keyboard-cover', `${wanted.cover}px`)
+    }
+    cover = wanted.cover < 1 ? 0 : wanted.cover
+    return { lift, cover }
+  }
 
   const fit = () => {
-    // Measured as Obsidian left it, so that a keyboard going away gives the room back.
-    release()
+    const onTablet = tablet()
+    // Measured as Obsidian left it, so that a keyboard going away gives the room back. A
+    // tablet's move is only a shift of the dialog, so it is measured through instead.
+    if (!onTablet || fitted) release()
     const box = container()
     if (!box || !win || !doc) return
 
@@ -209,6 +323,25 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
     }
 
     const covered = top > rect.top + 1 || bottom < rect.bottom - 1
+
+    if (onTablet) {
+      const moved = fitTablet(box, dialog(), top, bottom, covered)
+      keyboardRoomReport.last = {
+        at: Date.now(),
+        container: [rect.top, rect.bottom],
+        viewportBottom,
+        keyboardTop,
+        keyboardHeight: height,
+        fullHeight: full,
+        typing,
+        room: covered ? [top, bottom - top] : null,
+        lift: moved?.lift ?? 0,
+        cover: moved?.cover ?? 0,
+      }
+      revealOnTablet()
+      return
+    }
+
     const room: [number, number] | null = covered && bottom - top > 0 ? [top, bottom - top] : null
     const panel = dialog()
     if (room && panel) {

@@ -196,6 +196,13 @@ Three files, three concerns:
   it keeps its size, and what the keyboard covers scrolls up above it — the time field in sight,
   the buttons reachable. Writes one task note for the run and removes it; pictures go to
   `/tmp/abele-phone/task-date-*.png`.
+- `taskDateTablet.e2e.test.ts` — **the same dialog on a tablet, keyboard up**. Obsidian's tablet
+  layout (a 1180×820 window and a taller portrait one under `emulateMobile`) stands the dialog
+  in the middle of the screen. The keyboard's height is written as Obsidian's iOS app writes it:
+  the bar a hardware keyboard leaves must move nothing, a full keyboard moves the dialog up only
+  by what it covers, the time field and the buttons end up above it, the dialog keeps its size,
+  measuring the keyboard again moves nothing, and the keyboard gone puts it back. Pictures go
+  to `/tmp/abele-tablet/task-date-*.png`.
 
 - `githubLinks.e2e.test.ts`, `githubTabs.e2e.test.ts`, `githubSearch.e2e.test.ts`,
   `githubPhone.e2e.test.ts` — **the GitHub tabs, against a fake GitHub**. Each file starts a GitHub
