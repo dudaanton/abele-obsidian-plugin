@@ -1,10 +1,14 @@
 import { MarkdownRenderChild, MarkdownView, Notice, TFile } from 'obsidian'
 import type { MarkdownPostProcessorContext } from 'obsidian'
 import { createApp, h } from 'vue'
+import dayjs from 'dayjs'
+import customParseFormat from 'dayjs/plugin/customParseFormat'
 import Card from '@/components/obsidian/Card.vue'
+import Icon from '@/components/obsidian/Icon.vue'
 import Markdown from '@/components/obsidian/Markdown.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { insertOnOwnLine } from '@/helpers/editorHelpers'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { insertBlockOnOwnLine } from '@/helpers/editorHelpers'
 import { ChatService } from './ChatService'
 import { openChat } from './openChat'
 import type { ChatSession } from './ChatSession'
@@ -19,6 +23,8 @@ import type { ChatMessage } from './types'
  *     ```abele-message
  *     chat: AI/Chats/Planning the trip.abchat
  *     message: V1StGXR8_Z5jdHi6B-myT
+ *     title: Planning the trip
+ *     date: 2026-09-23 14:05
  *     ---
  *     The message, as it was written.
  *     ```
@@ -27,14 +33,26 @@ import type { ChatMessage } from './types'
  * it. The chat is named by its path, which is not for good: a chat is renamed after its title,
  * and a comment moves when it is opened as a full chat. A path that has gone is looked for by the
  * message id among every chat file, and the block is corrected once the chat is found.
+ *
+ * `title` and `date` are what the card shows: the chat's title when the card was made, and when
+ * the message was written. Both are optional — a card from before them shows the file name — and
+ * they come after `chat` and `message`, whose two adjacent lines are what a moved chat is
+ * corrected by.
  */
 export const MESSAGE_BLOCK = 'abele-message'
+
+dayjs.extend(customParseFormat)
 
 export interface MessageBlock {
   chat: string
   message: string
+  title?: string
+  /** Local time, `YYYY-MM-DD HH:mm`. */
+  date?: string
   text: string
 }
+
+const DATE_FORMAT = 'YYYY-MM-DD HH:mm'
 
 /** The block for a message. The fence outgrows any run of backticks in the text itself. */
 export function formatMessageBlock(block: MessageBlock): string {
@@ -44,6 +62,9 @@ export function formatMessageBlock(block: MessageBlock): string {
     `${fence}${MESSAGE_BLOCK}`,
     `chat: ${block.chat}`,
     `message: ${block.message}`,
+    // One line each: a title holding a line break would end the field and start the text.
+    ...(block.title ? [`title: ${block.title.replace(/\s+/g, ' ').trim()}`] : []),
+    ...(block.date ? [`date: ${block.date}`] : []),
     '---',
     block.text.trimEnd(),
     fence,
@@ -65,6 +86,8 @@ export function parseMessageBlock(source: string): MessageBlock | null {
   return {
     chat: fields.chat,
     message: fields.message,
+    ...(fields.title ? { title: fields.title } : {}),
+    ...(fields.date ? { date: fields.date } : {}),
     text: lines
       .slice(i + 1)
       .join('\n')
@@ -98,7 +121,7 @@ function targetView(session: ChatSession): MarkdownView | null {
  * Puts a card for one message at the cursor of the note being worked in.
  *
  * On a line of its own: after the cursor's line when that line has text, so a paragraph is
- * never cut in two, and with a blank line either side so the block stays a block.
+ * never cut in two, with a blank line before it and exactly one after.
  */
 export async function insertMessageCard(session: ChatSession, messageId: string): Promise<boolean> {
   const message = session.allMessages.value.find((m: ChatMessage) => m.id === messageId)
@@ -118,8 +141,14 @@ export async function insertMessageCard(session: ChatSession, messageId: string)
     return false
   }
 
-  const block = formatMessageBlock({ chat, message: messageId, text: message.content })
-  insertOnOwnLine(view.editor, `${block}\n`, true)
+  const block = formatMessageBlock({
+    chat,
+    message: messageId,
+    title: session.chatTitle.value || undefined,
+    date: dayjs(message.timestamp).format(DATE_FORMAT),
+    text: message.content,
+  })
+  insertBlockOnOwnLine(view.editor, block)
   new Notice(`Added to ${view.file?.basename ?? 'the note'}`)
   return true
 }
@@ -164,6 +193,72 @@ export async function openMessage(block: MessageBlock, notePath?: string): Promi
   ChatService.getInstance().pendingReveal.value = block.message
 }
 
+/**
+ * The note without the card for this message, and without one of the blank lines around it, so
+ * the text on either side closes up as it was before the card came.
+ *
+ * Found by its message rather than taken on trust from the line it was drawn at: the note may
+ * have been edited since. `near` — that line — picks between two cards of the same message.
+ */
+export function removeMessageBlock(text: string, messageId: string, near?: number): string {
+  const lines = text.split('\n')
+  const opening = new RegExp(`^(\`{3,})${MESSAGE_BLOCK}$`)
+  const found: { start: number; end: number }[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const open = opening.exec(lines[i].trim())
+    if (!open) continue
+    let end = i + 1
+    while (end < lines.length && lines[end].trim() !== open[1]) end++
+    if (end >= lines.length) break
+    if (parseMessageBlock(lines.slice(i + 1, end).join('\n'))?.message === messageId) {
+      found.push({ start: i, end })
+    }
+    i = end
+  }
+  if (!found.length) return text
+
+  const { start, end } =
+    near === undefined
+      ? found[0]
+      : found.reduce((best, b) =>
+          Math.abs(b.start - near) < Math.abs(best.start - near) ? b : best
+        )
+  lines.splice(start, end - start + 1)
+  const blank = (n: number) => n >= 0 && n < lines.length && lines[n].trim() === ''
+  if (blank(start) && (start === 0 || blank(start - 1))) lines.splice(start, 1)
+  else if (start === lines.length && blank(start - 1)) lines.splice(start - 1, 1)
+  return lines.join('\n')
+}
+
+/** Takes a card out of the note it is in. */
+async function removeCard(block: MessageBlock, notePath: string, near?: number): Promise<void> {
+  const { vault } = GlobalStore.getInstance().app
+  const note = vault.getFileByPath(notePath)
+  if (!note) return
+  await vault.process(note, (text) => removeMessageBlock(text, block.message, near))
+}
+
+/**
+ * What the card is called: the title the chat history has for the chat now, since a chat is
+ * retitled after the card was made; else the one written into the card; else the file's name.
+ */
+function cardTitle(block: MessageBlock): string {
+  const history = AbeleConfig.getInstance().ai?.chatHistory ?? []
+  const current = history.find((entry) => entry.path === block.chat)?.title
+  const name = block.chat
+    .split('/')
+    .pop()
+    ?.replace(/\.abchat$/, '')
+  return current || block.title || name || block.chat
+}
+
+/** When the message was written, in the form the chat history dates a chat. */
+function cardMeta(block: MessageBlock): string[] | undefined {
+  if (!block.date) return undefined
+  const date = dayjs(block.date, DATE_FORMAT, true)
+  return date.isValid() ? [date.format('D MMM YYYY, HH:mm')] : undefined
+}
+
 class MessageCardChild extends MarkdownRenderChild {
   constructor(
     el: HTMLElement,
@@ -190,18 +285,23 @@ export function registerMessageCardBlock(
       el.createDiv({ cls: 'abele-map-error', text: 'This message card names no chat' })
       return
     }
-    const title =
-      block.chat
-        .split('/')
-        .pop()
-        ?.replace(/\.abchat$/, '') ?? block.chat
     const host = el.createDiv({ cls: 'abele-message-card' })
+    const remove = (): void => void removeCard(block, ctx.sourcePath, ctx.getSectionInfo(el)?.lineStart)
     const app = createApp({
       render: () =>
         h(
           Card,
-          { title, clickable: true, onClick: () => void openMessage(block, ctx.sourcePath) },
-          () => h(Markdown, { text: block.text, filePath: ctx.sourcePath })
+          {
+            title: cardTitle(block),
+            meta: cardMeta(block),
+            clickable: true,
+            onClick: () => void openMessage(block, ctx.sourcePath),
+          },
+          {
+            // The delete icon a chat's own card has in the history, in the same place.
+            actions: () => h(Icon, { icon: 'trash', tooltip: 'Remove card', onClick: remove }),
+            default: () => h(Markdown, { text: block.text, filePath: ctx.sourcePath }),
+          }
         ),
     })
     app.mount(host)

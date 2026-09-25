@@ -8,7 +8,7 @@
  */
 import { MarkdownView, Notice, type App, type WorkspaceLeaf } from 'obsidian'
 import type { InjectionKey } from 'vue'
-import { insertOnOwnLine } from '@/helpers/editorHelpers'
+import { insertBlockOnOwnLine, insertOnOwnLine } from '@/helpers/editorHelpers'
 import { blobLink, markdownLink, type GithubLink, type LineSpan, type LinkItem } from './permalinks'
 import { formatSnippet, type SnippetBlock } from './snippetBlock'
 import { commitSha, type BlobData, type CommitData } from './api'
@@ -80,12 +80,7 @@ export function insertSnippet(app: App, snippet: SnippetBlock): boolean {
     new Notice('Open a note to put the code in')
     return false
   }
-  // A blank line after the block, unless the note already has one there.
-  const editor = view.editor
-  const nextLine = editor.getCursor().line + 1
-  const next = nextLine < editor.lineCount() ? editor.getLine(nextLine) : ''
-  const after = next.trim() === '' ? '' : '\n'
-  const end = insertOnOwnLine(editor, `${formatSnippet(snippet)}${after}`, true)
+  const end = insertBlockOnOwnLine(view.editor, formatSnippet(snippet))
   view.editor.setCursor(end)
   new Notice(`Added to ${view.file?.basename ?? 'the note'}`)
   return true

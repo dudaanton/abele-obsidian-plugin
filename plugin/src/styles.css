@@ -627,6 +627,15 @@ body.is-mobile .abele-comment-marker_pending::after {
   cursor: pointer;
 }
 
+/*
+ * A chat message kept in a note. In live preview Obsidian puts its own "edit this block" button
+ * over the top right corner of any rendered block, on hover — where the card's delete icon is.
+ * Pressed, it puts the cursor into the block instead of deleting it, so the icon keeps clear.
+ */
+.cm-embed-block .abele-message-card .abele-card__actions {
+  margin-inline-end: var(--size-4-8);
+}
+
 .abele-map-error {
   padding: var(--size-4-2);
   color: var(--text-error);

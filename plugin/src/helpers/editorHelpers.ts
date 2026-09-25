@@ -44,3 +44,18 @@ export function insertOnOwnLine(editor: Editor, text: string, blankLine = false)
   const last = written[written.length - 1]
   return { line: startLine + written.length - 1, ch: last.length }
 }
+
+/**
+ * Writes a block — a fenced card — at the cursor on lines of its own, with a blank line before
+ * it when it follows text and a blank line after it unless the note already has one there.
+ * Adding one regardless left two blank lines under the card, which live preview draws as an
+ * empty line hanging below it.
+ *
+ * @returns where the block ends
+ */
+export function insertBlockOnOwnLine(editor: Editor, block: string): EditorPosition {
+  const nextLine = editor.getCursor().line + 1
+  const next = nextLine < editor.lineCount() ? editor.getLine(nextLine) : ''
+  const after = next.trim() === '' ? '' : '\n'
+  return insertOnOwnLine(editor, `${block}${after}`, true)
+}

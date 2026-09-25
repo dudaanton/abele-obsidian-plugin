@@ -239,12 +239,17 @@ the card opens the chat — a comment as a comment — and scrolls to that messa
     ```abele-message
     chat: AI/Chats/Planning the trip.abchat
     message: V1StGXR8_Z5jdHi6B-myT
+    title: Planning the trip
+    date: 2026-09-23 14:05
     ---
     The message's text, as it was when the card was made.
     ```
 
-`chat` is the chat file's path and `message` the message's id in it; everything after `---` is
-the text shown. The fence is longer than three backticks when the text holds a fence of its
+`chat` is the chat file's path and `message` the message's id in it, always the first two lines
+and in that order; everything after `---` is the text shown. `title` (the chat's title when the
+card was made) and `date` (when the message was written, local time) are optional: the card
+shows the chat's current title when the chat history has one, then `title`, then the file name,
+with the date under it. The card's delete icon removes the whole block from the note. The fence is longer than three backticks when the text holds a fence of its
 own. The text is a copy: editing it changes what the card shows, not the chat. A chat renamed
 since is found again by the message id and the `chat` line is corrected when the card is next
 pressed. Do not invent these blocks — a `message` id that is in no chat opens nothing.

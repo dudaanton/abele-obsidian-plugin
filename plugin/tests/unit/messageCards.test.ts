@@ -17,6 +17,7 @@ import {
   parseMessageBlock,
   insertMessageCard,
   openMessage,
+  removeMessageBlock,
 } from '@/ai/messageCards'
 import type { ChatSession } from '@/ai/ChatSession'
 
@@ -47,6 +48,37 @@ describe('the block a card is written as', () => {
     expect(parseMessageBlock(inner(block))?.text).toBe(text)
   })
 
+  it("carries the chat's title and the message's date, after the two lines that find it", () => {
+    const block = formatMessageBlock({
+      chat: 'AI/Chats/Trip.abchat',
+      message: 'abc123',
+      title: 'Planning the trip',
+      date: '2026-09-23 14:05',
+      text: 'Riga.',
+    })
+
+    expect(block.split('\n').slice(1, 5)).toEqual([
+      'chat: AI/Chats/Trip.abchat',
+      'message: abc123',
+      'title: Planning the trip',
+      'date: 2026-09-23 14:05',
+    ])
+    expect(parseMessageBlock(inner(block))).toEqual({
+      chat: 'AI/Chats/Trip.abchat',
+      message: 'abc123',
+      title: 'Planning the trip',
+      date: '2026-09-23 14:05',
+      text: 'Riga.',
+    })
+  })
+
+  it('reads a card written before it had a title or a date', () => {
+    const block = parseMessageBlock('chat: c.abchat\nmessage: m\n---\ntext')
+
+    expect(block?.title).toBeUndefined()
+    expect(block?.date).toBeUndefined()
+  })
+
   it('is refused when it names no chat or no message', () => {
     expect(parseMessageBlock('message: m\n---\ntext')).toBeNull()
     expect(parseMessageBlock('chat: c.abchat\n---\ntext')).toBeNull()
@@ -61,6 +93,7 @@ function openNote(path: string, lines: string[], cursorLine: number) {
     lines,
     getCursor: () => ({ line: cursorLine, ch: 0 }),
     getLine: (n: number) => lines[n],
+    lineCount: () => lines.length,
     replaceRange: (text: string, at: { line: number; ch: number }) => {
       const joined = lines.join('\n')
       let offset = 0
@@ -74,13 +107,19 @@ function openNote(path: string, lines: string[], cursorLine: number) {
   return { view, editor, lines }
 }
 
-function session(options: { note?: string; file?: string | null } = {}) {
+function session(options: { note?: string; file?: string | null; title?: string } = {}) {
   const file = options.file === null ? null : { path: options.file ?? 'AI/Chats/Trip.abchat' }
   return {
     allMessages: ref([
       { id: 'm1', role: 'user', content: 'Where to?', timestamp: 1 },
-      { id: 'm2', role: 'assistant', content: 'Riga, then Tallinn.', timestamp: 2 },
+      {
+        id: 'm2',
+        role: 'assistant',
+        content: 'Riga, then Tallinn.',
+        timestamp: new Date(2026, 8, 23, 14, 5).getTime(),
+      },
     ]),
+    chatTitle: ref(options.title ?? ''),
     anchor: shallowRef(options.note ? { note: options.note } : null),
     currentChatFile: shallowRef(file),
     save: vi.fn(),
@@ -107,8 +146,45 @@ describe('putting a card into a note', () => {
 
     expect(note.lines.slice(0, 4)).toEqual(['# Plans', 'A paragraph', '', '```abele-message'])
     const text = note.lines.join('\n')
-    expect(text).toContain('chat: AI/Chats/Trip.abchat\nmessage: m2\n---\nRiga, then Tallinn.\n```')
+    expect(text).toContain('Riga, then Tallinn.\n```\n\nMore')
     expect(text.endsWith('\nMore')).toBe(true)
+  })
+
+  it('leaves one blank line under it, not two, when the note already has one there', async () => {
+    const note = openNote('Plans.md', ['A paragraph', '', 'More'], 0)
+    workspaceWith([note.view], note.view)
+
+    await insertMessageCard(session(), 'm2')
+
+    expect(note.lines.join('\n')).toContain('Riga, then Tallinn.\n```\n\nMore')
+  })
+
+  it('leaves one blank line under it when put on an empty line with another below', async () => {
+    const note = openNote('Plans.md', ['Text', '', '', 'More'], 1)
+    workspaceWith([note.view], note.view)
+
+    await insertMessageCard(session(), 'm2')
+
+    expect(note.lines.join('\n')).toContain('Riga, then Tallinn.\n```\n\nMore')
+  })
+
+  it('adds no empty line at the end of a note', async () => {
+    const note = openNote('Plans.md', ['Text', ''], 1)
+    workspaceWith([note.view], note.view)
+
+    await insertMessageCard(session(), 'm2')
+
+    expect(note.lines[note.lines.length - 1]).toBe('```')
+  })
+
+  it("names the chat by its title and dates the card by the message's time", async () => {
+    const note = openNote('Plans.md', ['x'], 0)
+    workspaceWith([note.view], note.view)
+
+    await insertMessageCard(session({ title: 'Baltic trip' }), 'm2')
+
+    const text = note.lines.join('\n')
+    expect(text).toContain('message: m2\ntitle: Baltic trip\ndate: 2026-09-23 14:05\n---')
   })
 
   it('takes an empty line as it is', async () => {
@@ -226,5 +302,38 @@ describe('pressing a card', () => {
 
     expect(shown).toHaveBeenCalledWith('k7d2ph')
     expect(expanded).not.toHaveBeenCalled()
+  })
+})
+
+describe('removing a card from its note', () => {
+  const card = (message: string, text = 'hi') =>
+    formatMessageBlock({ chat: 'c.abchat', message, text })
+
+  it('takes the block out with one of the blank lines around it', () => {
+    const note = ['Before', '', card('m1'), '', 'After'].join('\n')
+
+    expect(removeMessageBlock(note, 'm1')).toBe('Before\n\nAfter')
+  })
+
+  it('takes the blank line after a card that opened the note', () => {
+    expect(removeMessageBlock([card('m1'), '', 'After'].join('\n'), 'm1')).toBe('After')
+  })
+
+  it('takes only the card for that message, a fence inside a message included', () => {
+    const other = card('m2', 'code:\n```js\nx()\n```')
+    const note = ['A', '', card('m1'), '', other, '', 'B'].join('\n')
+
+    expect(removeMessageBlock(note, 'm2')).toBe(['A', '', card('m1'), '', 'B'].join('\n'))
+  })
+
+  it('takes the one on the given line when a message is in the note twice', () => {
+    const note = [card('m1', 'first'), '', card('m1', 'second')].join('\n')
+    const second = note.split('\n').indexOf('second') - 4
+
+    expect(removeMessageBlock(note, 'm1', second)).toBe(card('m1', 'first'))
+  })
+
+  it('leaves a note with no such card as it was', () => {
+    expect(removeMessageBlock('Just text', 'm1')).toBe('Just text')
   })
 })

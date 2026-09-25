@@ -297,6 +297,21 @@ const open = (event: Event) => {
   overflow: hidden;
 }
 
+/**
+ * Markdown held in a card — a chat message kept in a note — sits flush with the card's padding.
+ * Reading-view spacing is for a page: the last paragraph's margin read as an empty line under
+ * the text, and the first one's as a gap between the card's head and what it holds.
+ */
+.abele-card > .abele-markdown {
+  > :first-child {
+    margin-top: var(--size-4-1);
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+}
+
 .abele-card__meta {
   display: flex;
   flex-wrap: wrap;
