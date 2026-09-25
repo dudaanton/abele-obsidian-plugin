@@ -2,6 +2,7 @@ import { DEFAULT_MEMORY_TEMPLATE } from './agents/memory'
 import type { TFile } from 'obsidian'
 import type { AgentDefinition, SessionOverrides } from './agents/types'
 import type { MapBlock } from '@/helpers/mapConfig'
+import type { McpServer } from './mcp/types'
 
 /**
  * What is typed into the chat but not sent yet.
@@ -208,6 +209,8 @@ export interface AiSettings {
   voice?: VoiceSettings
   /** Trying a failed request again on its own. Off unless asked for. */
   autoRetry?: RetrySettings
+  /** MCP servers reached over HTTP, whose tools agents can be given. See `ai/mcp/`. */
+  mcpServers?: McpServer[]
   /** @deprecated migrated to imageProviders */
   openRouterApiKey?: string
   /** @deprecated migrated to imageProviders */
@@ -345,6 +348,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   interceptors: [],
   agents: [],
   defaultAgentId: '',
+  mcpServers: [],
   prompts: {
     system:
       "You are an AI assistant integrated into Obsidian note-taking app through the Abele plugin. You can read, create, edit, delete, and move files in the user's vault. You can also search the web.\n\nWhen working with files, always explain what you're about to do before doing it. Be concise but thorough.",

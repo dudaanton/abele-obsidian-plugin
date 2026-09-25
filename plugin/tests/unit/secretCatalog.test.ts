@@ -39,6 +39,17 @@ beforeEach(() => {
       },
     ],
     agents: [createAgent({ id: 'w', name: 'Writer', providerId: 'p', modelId: 'm' })],
+    mcpServers: [
+      {
+        id: 'mc',
+        name: 'Context',
+        url: 'https://mcp.example/mcp',
+        enabled: true,
+        keyId: 'abele-mcp-mc',
+        headers: {},
+        tools: [],
+      },
+    ],
   }
   config.github = { ...DEFAULT_GITHUB_SETTINGS, keyId: GITHUB_TOKEN_KEY_ID }
   settings = config.exportSettings()
@@ -63,6 +74,7 @@ describe('the keys the plugin knows', () => {
         GITHUB_TOKEN_KEY_ID,
         DEFAULT_TRANSCRIPTION.apiKeyId,
         FIREFLY_TOKEN_KEY_ID,
+        'abele-mcp-mc',
       ].sort()
     )
 
@@ -81,6 +93,8 @@ describe('the keys the plugin knows', () => {
     expect(by[DEFAULT_TRANSCRIPTION.apiKeyId].name).toBe('Voice input')
     expect(by[DEFAULT_TRANSCRIPTION.apiKeyId].uses).toEqual(['Voice input'])
     expect(by[FIREFLY_TOKEN_KEY_ID].uses).toEqual(['Finance · Firefly III'])
+    expect(by['abele-mcp-mc'].name).toBe('Context')
+    expect(by['abele-mcp-mc'].uses).toEqual(['MCP server · Context'])
   })
 
   it('says which are set, and with the store off, that they live on this device', () => {

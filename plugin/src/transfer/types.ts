@@ -10,6 +10,7 @@ export const TRANSFER_SECTIONS = [
   'ai-secrets',
   'ai-prompts',
   'ai-voice',
+  'ai-mcp-servers',
   'scripts',
   'script-files',
   'skill-notes',

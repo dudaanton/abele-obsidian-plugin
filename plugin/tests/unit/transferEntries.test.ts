@@ -153,6 +153,32 @@ describe('settings that arrived later than the transfer did', () => {
     expect(applyEntries([entry!], settings()).github).toEqual(github)
   })
 
+  it('carries each MCP server as its own entry, with the token it points at', () => {
+    const server = {
+      id: 'm1',
+      name: 'Context',
+      url: 'https://mcp.example/mcp',
+      enabled: true,
+      keyId: 'abele-mcp-m1',
+      headers: { 'X-Team': '${abele_key:team}' },
+      tools: [{ name: 'lookup', description: 'Looks up.', inputSchema: { type: 'object' } }],
+      fetchedAt: '2026-09-26T10:00:00.000Z',
+    }
+    const bare = { ...server, id: 'm2', name: 'Open', keyId: '' }
+    const base = settings()
+    const entries = collectEntries({
+      ...base,
+      ai: { ...base.ai, mcpServers: [server, bare] },
+    } as AbeleSettings)
+
+    const entry = find(entries, 'ai-mcp-servers', 'm1')
+    expect(entry?.label).toBe('Context')
+    expect(entry?.data).toEqual(server)
+    expect(entry?.secretIds).toEqual(['abele-mcp-m1'])
+    expect(find(entries, 'ai-mcp-servers', 'm2')?.secretIds).toEqual([])
+    expect(applyEntries([entry!], settings()).ai.mcpServers).toEqual([server])
+  })
+
   it('carries the book reader settings', () => {
     const reader = {
       ...DEFAULT_READER_SETTINGS,

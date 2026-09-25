@@ -64,6 +64,7 @@ const KINDS: Partial<Record<SectionId, string>> = {
   'ai-secrets': 'Stored key',
   'ai-general': 'Web search',
   'ai-voice': 'Voice input',
+  'ai-mcp-servers': 'MCP server',
   finance: 'Finance',
   github: 'GitHub',
 }

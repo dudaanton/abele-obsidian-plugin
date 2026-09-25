@@ -92,7 +92,7 @@ An agent is a named configuration: a model and a fallback, a system prompt compo
 
 An agent with delegation depth above zero can hand a self-contained task to another agent, or fan the same task out over a list of items with one sub-agent per item. Every delegated run keeps its full transcript, readable inline in the chat or in its own tab.
 
-To work with a vault, agents have file operations, search, the plugin's own relation tools (the logs, backlinks, tasks and transactions of a note), web search and fetch, image reading and generation, voice input, and the ability to run any script. There is also a prompt library and support for skills. My favorites are still ["defuddle"](https://github.com/kepano/defuddle), which teaches the agent to load a website straight into clean markdown, and "deepresearch", which has it dig into a topic iteratively, through web search and whatever other tools it has to hand.
+To work with a vault, agents have file operations, search, the plugin's own relation tools (the logs, backlinks, tasks and transactions of a note), web search and fetch, image reading and generation, voice input, the ability to run any script, and the tools of any MCP server reachable over HTTP ([how](docs/AI%20Agent.md#mcp-servers)). There is also a prompt library and support for skills. My favorites are still ["defuddle"](https://github.com/kepano/defuddle), which teaches the agent to load a website straight into clean markdown, and "deepresearch", which has it dig into a topic iteratively, through web search and whatever other tools it has to hand.
 
 Any of that can also be asked in place. Select a passage in a note, ask your question, and the chat opens on the margin beside it — anchored to that passage, scoped to that note, and able to edit the text it is about. It is an ordinary chat underneath, so when a question turns into work, open it in the sidebar and carry on there.
 
@@ -128,6 +128,18 @@ A find-and-replace tool for note contents, which I built for vault migration. Mo
 - CSS snippets loaded and hot-reloaded from a folder in the vault
 - Settings transfer to another device — QR codes, a line of text, or a file — scripts, skills and prompts included
 - GitHub issues, pull requests with their diffs, discussions, comparisons and files opened from links in notes, in tabs of their own — read only, off by default ([how](docs/GitHub.md))
+
+## Network use
+
+Nothing leaves the device unless a feature you set up sends it:
+
+- **AI agents** talk to the model providers you add, and send them the conversation, including notes the agent read. Web search goes to Brave, with your key; `fetch` and downloads go wherever the agent points them; the map tools ask OpenStreetMap services (Photon, Overpass, FOSSGIS routing) and the maps load OpenFreeMap tiles; image generation goes to the image provider you add.
+- **Scripts** you write can make requests of their own; the Firefly III migration reads from the server you name.
+- **MCP servers** you connect are sent the tool calls an agent makes to them — the arguments, which may hold text from your notes — along with the token and headers you gave that server. Only servers reached over HTTP are supported; the plugin never starts a program on your computer.
+- **GitHub** tabs, when switched on, read from GitHub or your GitHub Enterprise server with your token.
+- **Voice input** sends the recording to the transcription model you chose.
+
+Keys and tokens are kept in Obsidian's keychain, not in the settings file.
 
 ## Roadmap
 

@@ -25,6 +25,8 @@ import { ScriptViewService } from '@/scripting/view/ScriptViewService'
 import { createScreenshotTool } from '@/ai/tools/ScreenshotTool'
 import { createGeocodeTool, createPlacesTool, createRouteTool } from '@/ai/tools/GeoTools'
 import { createGithubTools } from '@/ai/tools/github'
+import { createAgentTools } from '@/ai/tools'
+import { McpService } from '@/ai/mcp/McpService'
 import { githubUsers } from '@/github/users'
 import { createBookTools } from '@/ai/tools/BookTools'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
@@ -120,6 +122,10 @@ interface AbeleTestApi {
   createRouteTool: typeof createRouteTool
   /** The GitHub tools, so a check can call them the way an agent would. */
   createGithubTools: typeof createGithubTools
+  /** Every tool an agent could be handed now, MCP servers' included, to call as an agent would. */
+  createAgentTools: typeof createAgentTools
+  /** The connections to MCP servers, to fetch a server's tools the way the settings do. */
+  McpService: typeof McpService
   githubUsers: typeof githubUsers
   createBookTools: typeof createBookTools
   /** The book reader: its open tabs, its cleaning, and the sandbox override for the e2e tier. */
@@ -534,6 +540,8 @@ export function exposeTestApi(plugin: Plugin): void {
     createPlacesTool,
     createRouteTool,
     createGithubTools,
+    createAgentTools,
+    McpService,
     githubUsers,
     createBookTools,
     reader: {

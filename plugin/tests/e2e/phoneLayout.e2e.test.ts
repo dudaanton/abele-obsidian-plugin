@@ -197,7 +197,19 @@ const probeScript = `(async () => {
   // stands in a sheet. These are written for the run and removed after it.
   const SEEDED = []
   const SEEDED_DIRS = []
+  // An MCP server with a few tools, in memory only: the chat's tools tab shows its group and
+  // switch, and the settings' MCP tab has a card to open. Put back as it was by \`unseed\`.
+  const mcpConfig = window.__abeleTest.AbeleConfig.getInstance()
+  const MCP_BEFORE = mcpConfig.ai.mcpServers
   const seed = async () => {
+    const lorem = 'Reads a page of the documentation for a library and returns it as markdown, with the examples kept whole.'
+    mcpConfig.ai = { ...mcpConfig.ai, mcpServers: [{
+      id: 'phone-probe', name: 'context7', url: 'https://mcp.context7.com/mcp', enabled: true,
+      keyId: '', headers: { 'X-Team': 'docs' }, fetchedAt: new Date().toISOString(),
+      tools: ['resolve-library-id', 'get-library-docs', 'search'].map((name) => ({
+        name, description: lorem, inputSchema: { type: 'object', properties: {} },
+      })),
+    }] }
     const folder = 'Phone probe'
     if (!app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder)
     for (let i = 1; i <= 12; i++) {
@@ -282,6 +294,7 @@ const probeScript = `(async () => {
     SEEDED.push(third)
   }
   const unseed = async () => {
+    mcpConfig.ai = { ...mcpConfig.ai, mcpServers: MCP_BEFORE }
     for (const path of SEEDED) {
       const file = app.vault.getAbstractFileByPath(path)
       if (file) await app.vault.delete(file)
@@ -458,6 +471,47 @@ const probeScript = `(async () => {
       await closeDialog()
     } else {
       report['icon picker'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'icon picker did not open' }
+    }
+
+    // The MCP settings as a phone shows them: the tab with the seeded server, then its dialog.
+    try {
+      app.setting.open()
+      app.setting.openTabById('abele')
+      await until(() => document.querySelector('.abele-settings__nav .abele-tabs__tab'), 5000)
+      ;[...document.querySelectorAll('.abele-settings__nav .abele-tabs__tab')]
+        .find((t) => t.textContent.includes('AI Agent'))?.click()
+      await wait(300)
+      ;[...document.querySelectorAll('.abele-ai-settings__tabs .abele-tabs__tab')]
+        .find((t) => t.textContent.trim() === 'MCP')?.click()
+      await until(() => document.querySelector('.abele-settings__content .abele-card'), 5000)
+      const card = document.querySelector('.abele-settings__content .abele-card')
+      const settingsModal = document.querySelector('.modal.mod-settings') || document.querySelector('.modal')
+      await screen('settings mcp', settingsModal, settingsModal && settingsModal.querySelector('.vertical-tab-content'))
+      if (card) {
+        card.click()
+        await until(() => document.querySelector('.abele-mcp-server'), 5000)
+        await wait(300)
+        const form = document.querySelector('.abele-mcp-server')
+        const dialog = form && form.closest('.modal')
+        await screen('mcp server', dialog, dialog && dialog.querySelector('.abele-modal__body'))
+        const clipped = []
+        if (dialog) {
+          for (const f of dialog.querySelectorAll('input, textarea, button, [tabindex="0"]')) {
+            if (f.getBoundingClientRect().width === 0) continue
+            f.focus()
+            for (const cut of ringClipped(f)) clipped.push(name(f) + ': ' + cut)
+            f.blur()
+          }
+        }
+        if (report['mcp server']) report['mcp server'].clipped = clipped
+      }
+    } finally {
+      await closeDialog()
+      // The AI page goes back to its first tab, where the keys the next screens look at are.
+      ;[...document.querySelectorAll('.abele-ai-settings__tabs .abele-tabs__tab')]
+        .find((t) => t.textContent.trim() === 'General')?.click()
+      try { app.setting.close() } catch {}
+      await closeDialog()
     }
 
     // The list of keys, with two fake ones set so its rows carry their show and copy icons.
@@ -673,6 +727,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'settings finance keys',
     'task form',
     'transaction form',
+    'settings mcp',
+    'mcp server',
   ]
 
   /** Dialogs with fields, whose focus rings are measured, and which stand as a full sheet. */
@@ -682,7 +738,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       s === 'icon picker' ||
       s === 'secrets list' ||
       s === 'task form' ||
-      s === 'transaction form'
+      s === 'transaction form' ||
+      s === 'mcp server'
   )
 
   it('reaches every screen', () => {

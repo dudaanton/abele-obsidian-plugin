@@ -41,6 +41,7 @@ import { createForgetTool } from './ForgetTool'
 import { createGithubTools } from './github'
 import { createBookTools } from './BookTools'
 import { githubSettings } from '@/github/GithubService'
+import { createMcpTools } from '../mcp/tools'
 import { AgentRegistry } from '../agents/AgentRegistry'
 import { ChatSession } from '../ChatSession'
 import {
@@ -148,7 +149,8 @@ export function getToolRegistry(): ToolInfo[] {
     result.push({
       name: t.name,
       label: info?.label || labels[t.name] || t.name,
-      category: info?.category || (t.name.startsWith('script_') ? 'Scripts' : 'Other'),
+      category:
+        info?.category || t.category || (t.name.startsWith('script_') ? 'Scripts' : 'Other'),
       description: t.description,
     })
   }
@@ -175,6 +177,8 @@ export function getToolRegistry(): ToolInfo[] {
     const ca = ai === -1 ? 999 : ai
     const cb = bi === -1 ? 999 : bi
     if (ca !== cb) return ca - cb
+    // Groups the list does not know — one per MCP server — stay whole, in the order of their names.
+    if (a.category !== b.category) return a.category.localeCompare(b.category)
     return a.label.localeCompare(b.label)
   })
 
@@ -279,6 +283,10 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
   if (everything || githubSettings().enabled) tools.push(...createGithubTools())
 
   const config = AbeleConfig.getInstance().ai
+
+  // Each server's tools as the person last fetched them; which agent gets them is its modes.
+  tools.push(...createMcpTools(config.mcpServers))
+
   if (everything || config.scriptsEnabled) {
     if (!everything) tools.push(...createScriptTools())
     tools.push(createAnswerFormTool())

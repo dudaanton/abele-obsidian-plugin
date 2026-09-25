@@ -357,6 +357,13 @@ store out of a Syncthing conflict copy of the settings file (`data.sync-conflict
 merged the same way; the copy itself is left for the person to delete. Never edit the store
 by hand: a single changed character makes it undecryptable on every device.
 
+## MCP servers
+
+The MCP servers connected in the settings are kept in the same settings file, `ai.mcpServers`:
+each server's address, the headers sent to it, the name of the keychain slot holding its token
+(never the token), and a copy of its tool list from the last time it was fetched — names,
+descriptions and parameter schemas, as the server gave them. Nothing is written into the vault.
+
 ## Screenshots
 
 Every picture the `screenshot` tool takes — of a note, or of the visible part of a script view —

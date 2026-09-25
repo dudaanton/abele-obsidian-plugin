@@ -9,6 +9,15 @@
     <template v-for="group in visibleGroups" :key="group.category">
       <h4 class="abele-tool-modes__heading">{{ group.category }}</h4>
 
+      <!-- An MCP server is given to an agent whole; each tool can then be tuned below. -->
+      <Setting
+        v-if="group.mcp && !descriptionsOnly"
+        name="Use this server"
+        desc="Gives every tool of this server, each asking before it runs."
+      >
+        <Checkbox :is-enabled="serverInUse(group)" @toggle="toggleServer(group)" />
+      </Setting>
+
       <div v-for="tool in group.tools" :key="tool.name" class="abele-tool-modes__row">
         <Setting :name="tool.label">
           <Icon
@@ -63,6 +72,7 @@ import { getToolRegistry } from '@/ai/tools'
 import { CORE_TOOLS } from '@/ai/types'
 import { isDefaultDescription } from '@/ai/tools/toolDescriptionOverrides'
 import type { ToolMode } from '@/ai/types'
+import { isMcpToolName } from '@/ai/mcp/names'
 
 const props = withDefaults(
   defineProps<{
@@ -131,6 +141,16 @@ interface ToolEntry {
 interface ToolGroup {
   category: string
   tools: ToolEntry[]
+  /** The tools of one MCP server. */
+  mcp: boolean
+}
+
+const serverInUse = (group: ToolGroup) => group.tools.some((t) => getMode(t.name) !== 'off')
+
+/** On gives every tool at Ask — never Auto by one tap; off takes them all away. */
+const toggleServer = (group: ToolGroup) => {
+  const mode: ToolMode = serverInUse(group) ? 'off' : 'ask'
+  for (const tool of group.tools) setMode(tool.name, mode)
 }
 
 const visibleGroups = computed<ToolGroup[]>(() => {
@@ -144,7 +164,11 @@ const visibleGroups = computed<ToolGroup[]>(() => {
     groups.get(tool.category)!.push({ name: tool.name, label: tool.label })
   }
 
-  return Array.from(groups.entries()).map(([category, tools]) => ({ category, tools }))
+  return Array.from(groups.entries()).map(([category, tools]) => ({
+    category,
+    tools,
+    mcp: tools.every((t) => isMcpToolName(t.name)),
+  }))
 })
 </script>
 

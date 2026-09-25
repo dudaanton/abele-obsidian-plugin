@@ -104,6 +104,14 @@ agent's own, added to and changed by `remember`, pruned by `forget`, and edited 
 settings. `ai.scriptsEnabled` and `ai.scriptsFolder` are the script feature; `ai.voice` is
 dictation — which model transcribes and where its key lives.
 
+`ai.mcpServers` are the MCP servers the person connected, each `{ id, name, url, enabled, keyId,
+headers, tools, fetchedAt }`. `url` is the server's MCP endpoint, reached over HTTP; `keyId`
+names the keychain slot of a token sent as `Authorization: Bearer`; `headers` are sent as
+written, a value naming a stored key as `${abele_key:name}`. `tools` is the list as it was last
+fetched from the server, and it is what agents are told — fetching again is done in the
+settings, where the person sees the new list. The tools themselves are `mcp_<server>_<tool>` in
+`toolModes`, off for an agent until given; see the tools section.
+
 ## Maps
 
 `mapCoordinatesProperty` is the note property a place is stored in — `coordinates` unless the

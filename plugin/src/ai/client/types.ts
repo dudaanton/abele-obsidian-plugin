@@ -131,6 +131,8 @@ export interface ToolDefinition {
 
 export interface AgentTool extends ToolDefinition {
   label: string
+  /** The group the settings show it in, for tools that bring their own (an MCP server's). */
+  category?: string
   execute: (
     toolCallId: string,
     params: Record<string, unknown>,

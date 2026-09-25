@@ -162,6 +162,51 @@ const probeFor = (phone: boolean) =>
     await wait(300)
     report['AI → Agents'] = measure('.abele-settings__content')
 
+    // The MCP tab, measured with a server in it — an empty list says nothing about a card — and
+    // its dialog with a fetched list of tools. The server is put into memory for the look only
+    // and taken out again; nothing is saved. A picture of each goes to /tmp/abele-phone/.
+    const config = window.__abeleTest?.AbeleConfig.getInstance()
+    const mcpBefore = config?.ai.mcpServers
+    const shoot = async (name) => {
+      const { remote } = require('electron')
+      const w = remote.BrowserWindow.getAllWindows().find((x) => x.getTitle().startsWith('Settings'))
+      if (!w) return
+      require('fs').mkdirSync('/tmp/abele-phone', { recursive: true })
+      const image = await w.webContents.capturePage()
+      const tag = ${phone} ? 'phone' : String(view.innerWidth)
+      require('fs').writeFileSync('/tmp/abele-phone/settings-' + name + '-' + tag + '.png', image.toPNG())
+    }
+    try {
+      if (config) {
+        const lorem = 'Reads a page of the documentation for a library and returns it as markdown, with the examples kept whole.'
+        config.ai = { ...config.ai, mcpServers: [{
+          id: 'layout-probe', name: 'context7', url: 'https://mcp.context7.com/mcp', enabled: true,
+          keyId: '', headers: { 'X-Team': 'docs' }, fetchedAt: new Date().toISOString(),
+          tools: ['resolve-library-id', 'get-library-docs', 'search'].map((name) => ({
+            name, description: lorem, inputSchema: { type: 'object', properties: {} },
+          })),
+        }] }
+      }
+      qa('.abele-ai-settings__tabs .abele-tabs__tab')
+        .find((t) => t.textContent.trim() === 'MCP')
+        .click()
+      await wait(300)
+      report['AI → MCP'] = measure('.abele-settings__content')
+      await shoot('mcp')
+      d.querySelector('.abele-settings__content .abele-card').click()
+      await wait(500)
+      report['MCP server dialog'] = measure('.abele-mcp-server')
+      await shoot('mcp-server')
+      d.querySelector('.modal-container .modal-close-button')?.click()
+      await wait(300)
+    } finally {
+      if (config) config.ai = { ...config.ai, mcpServers: mcpBefore }
+    }
+    qa('.abele-ai-settings__tabs .abele-tabs__tab')
+      .find((t) => t.textContent.trim() === 'Agents')
+      .click()
+    await wait(300)
+
     d.querySelector('.abele-card').click()
     await wait(500)
     for (const section of qa('.abele-agent-editor .abele-tabs__tab')) {
@@ -259,6 +304,9 @@ describe.skipIf(!available)('the settings pane', () => {
         const report = reportFor(pass.label)
 
         expect(Object.keys(report)).toContain('AI → Agents')
+        expect(Object.keys(report)).toEqual(
+          expect.arrayContaining(['AI → MCP', 'MCP server dialog'])
+        )
         expect(Object.keys(report)).toEqual(
           expect.arrayContaining([
             'Scripts → Library',

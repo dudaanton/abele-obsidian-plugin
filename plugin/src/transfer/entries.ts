@@ -161,6 +161,12 @@ export const SECTIONS: Section[] = [
     (p: Identified & { apiKeyId?: string }) => (p.apiKeyId ? [p.apiKeyId] : [])
   ),
   aiList('ai-agents', 'Agents', 'agents'),
+  // Each server travels with the tools it was last seen offering, so the other device tells
+  // its agents the same thing without fetching first. There is no command to carry: servers are
+  // only ever reached over HTTP. The token is in the keychain; the setting names it.
+  aiList('ai-mcp-servers', 'MCP servers', 'mcpServers', (s: Identified & { keyId?: string }) =>
+    s.keyId ? [s.keyId] : []
+  ),
   aiList('ai-interceptors', 'Interceptors', 'interceptors'),
   aiList('ai-secrets', 'Stored keys', 'secrets', (s: Identified & { keyId?: string }) =>
     s.keyId ? [s.keyId] : []

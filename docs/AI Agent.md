@@ -226,6 +226,40 @@ chat shows a map under the tool call, and the same map can be written into a not
 `abele-map` block. Coordinates come back as `lat, lon`, the form a note
 property stores and a map layout reads.
 
+### MCP servers
+
+**Settings → AI Agent → MCP** connects [MCP](https://modelcontextprotocol.io) servers, and each
+server's tools become tools an agent can be given. Only servers reached over HTTP are supported
+(Streamable HTTP, both the 2026-07-28 revision and the session-based one before it); nothing is
+ever started on the device, so the same servers work on a phone. The deprecated HTTP+SSE
+transport of 2024-11-05 is not spoken.
+
+| Field | Meaning |
+|-------|---------|
+| Name | What you call it. Its tools are named `mcp_<name>_<tool>`, so two servers need different names |
+| URL | The server's MCP endpoint |
+| On | Off keeps the server configured and hands its tools to nobody |
+| Token | Sent as `Authorization: Bearer`, kept in the keychain like a provider key |
+| Headers | Any other headers, one per line as `Name: value`; a secret is written `${abele_key:name}` |
+
+**Fetch tools** connects and reads the server's list. That list is saved with the server and is
+what agents are told from then on: a server that changes its tools or their descriptions changes
+nothing until you fetch again and look at the new list.
+
+A server's tools are off for every agent until you switch them on — in the agent's **Access** tab
+(or a chat's permissions) each server is a group with a **Use this server** switch. Switching it
+on puts every tool at *Ask*; set single tools to *Auto* or *Off* below it. Tool descriptions from
+a server go to the model on every request, so a server with many tools costs tokens in every chat
+of every agent it is given to.
+
+What a server answers is handed to the model marked as outside content, to be read as data and
+not as instructions. Pictures it returns are shown to the model; audio and files are named but
+not passed on. **Stop** ends the wait at once; the plugin cannot close the connection, so the
+server may still finish the call on its side.
+
+Servers travel with the rest of the settings (Transfer), their tools list included; the token
+travels only when keys are sent.
+
 ### AI Tools
 
 | Tool | Description |

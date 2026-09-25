@@ -139,10 +139,18 @@ describe('coverage of what an agent can actually do', () => {
     const documented = getToolRegistry()
       .map((tool) => tool.name)
       .filter((name) => !name.startsWith('script_') || name === 'script_api_docs')
+      // An MCP server's tools are named by the server; the reference documents the pattern.
+      .filter((name) => !name.startsWith('mcp_'))
 
     const missing = documented.filter((name) => !text.includes(name))
 
     expect(missing).toEqual([])
+  })
+
+  it('explains how the tools of an MCP server are named', () => {
+    const text = DOCS.map((s) => s.topics.map((t) => t.text).join('\n')).join('\n')
+
+    expect(text).toContain('mcp_<server>_<tool>')
   })
 })
 
