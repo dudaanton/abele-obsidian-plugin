@@ -152,6 +152,17 @@ const getVisibleRange = (doc, start, end, mapRect) => {
     return range
 }
 
+// ABELE PATCH: whether a touch began inside something that scrolls sideways itself — a wide
+// table — which the finger then moves instead of the page.
+const scrollsSideways = target => {
+    for (let el = target?.nodeType === 1 ? target : target?.parentElement; el && el.localName !== 'body'; el = el.parentElement) {
+        if (el.scrollWidth <= el.clientWidth + 1) continue
+        const overflow = el.ownerDocument.defaultView?.getComputedStyle(el).overflowX
+        if (overflow === 'auto' || overflow === 'scroll') return true
+    }
+    return false
+}
+
 const selectionIsBackward = sel => {
     const range = document.createRange()
     range.setStart(sel.anchorNode, sel.anchorOffset)
@@ -844,7 +855,7 @@ export class Paginator extends HTMLElement {
             vx: 0, xy: 0,
             // ABELE PATCH: where and when it began, and whether it is selecting.
             x0: touch?.screenX, y0: touch?.screenY, t0: e.timeStamp,
-            selecting: this.#selectionActive(), swiping: false,
+            selecting: this.#selectionActive() || scrollsSideways(e.target), swiping: false,
         }
     }
     #onTouchMove(e) {

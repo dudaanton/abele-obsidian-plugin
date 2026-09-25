@@ -8,6 +8,7 @@ import { isOpenableExternal } from './bookSafety'
 import { swipeDirection } from './swipe'
 import { PDF_SCROLL_TAG } from './pdfScroll'
 import { PageGesture, SelectionPager } from './selectionPaging'
+import { figureAt, fitFigures } from './figures'
 import type { BookModel } from './model'
 import type { BookReading } from './BookReading'
 
@@ -29,6 +30,13 @@ const barOpen = (host: PageHost) => () => !!(host.model.selection || host.model.
 export function watchPage(host: PageHost, doc: Document): void {
   doc.addEventListener('keydown', (e) => onKey(host.reader(), e))
   if (host.fixed()) doc.addEventListener('wheel', pinchZoom(host), { passive: false })
+  // Pictures and tables as large as the page allows, once they have their size, and again when
+  // the page is laid out anew — a phone turned on its side.
+  if (!host.fixed()) {
+    fitFigures(doc)
+    doc.addEventListener('load', () => fitFigures(doc), true)
+    doc.defaultView?.addEventListener('resize', () => fitFigures(doc))
+  }
   const gesture = new PageGesture(doc, barOpen(host))
   doc.addEventListener('click', (e) => onTap(host, e, doc, gesture))
   const reader = host.reader()
@@ -137,6 +145,12 @@ function onTap(host: PageHost, e: MouseEvent, doc: Document, gesture: PageGestur
     return
   }
   if (!gesture.cleanTap) return
+  // A picture or a table opens full screen, wherever on the page it is.
+  const figure = host.fixed() ? null : figureAt(e.target as Element | null)
+  if (figure) {
+    host.model.figure = figure
+    return
+  }
   const stage = host.stage()
   const width = stage?.clientWidth ?? 0
   if (!stage || !width) return

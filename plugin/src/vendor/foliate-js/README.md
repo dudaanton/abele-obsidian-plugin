@@ -60,7 +60,8 @@ Every change is marked `ABELE PATCH` at its site.
    page while a pointer was down — a touch's pointer is cancelled, not lifted, once a long press
    selects, so that flag stayed set. Now a touch is a swipe only once it has moved past a small
    slop soon after it began, with nothing selected and nothing the host holds the page for
-   (`holdPages`, a bar open); and the host turns pages under a selection held at the edge
+   (`holdPages`, a bar open); a touch that begins in something that scrolls sideways itself (a
+   wide table) is left to it; and the host turns pages under a selection held at the edge
    (`src/reader/selectionPaging.ts`).
 
 ## Additions

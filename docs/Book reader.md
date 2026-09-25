@@ -14,7 +14,9 @@ A book opens where it was left. The first time, it opens on its first chapter of
 and front matter are skipped when the book says where the text starts).
 
 - **Turning pages.** The arrow keys, Page Up and Page Down, the space bar, a tap near the left or
-  right edge of the page, or on a touch screen a swipe.
+  right edge of the page, or on a touch screen a swipe. Only a clean tap or swipe turns: not a
+  long press, not a finger held and then moved, not a tap while words are selected or a bar is
+  open (that tap only closes the bar), not a tap on a highlight, a picture or a table.
 - **Pages or scrolling.** The pages can be turned one at a time or scrolled through a chapter at a
   time. The tab's menu (⋯) switches between the two at once, keeping the place; so does
   **Layout** in the text and layout settings.
@@ -30,9 +32,18 @@ and front matter are skipped when the book says where the text starts).
   under the page goes back to where the link was followed from. Links to the web open in the
   browser.
 - **Progress.** The line under the page names the chapter and says how far into the book the
-  page is. Its slider goes anywhere in the book.
+  page is. Its slider goes anywhere in the book; on a phone dragging it never opens Obsidian's
+  side panel.
 - **Where it was left** is kept for each book under its identifier, so renaming or moving the file
-  keeps it. It reaches another device where the plugin's own folder is synced.
+  keeps it. It is written a moment after the last page turn, and at once when the app is hidden
+  or quits, in two copies one after the other, so a write cut short by the app being stopped never
+  loses it. It reaches another device where the plugin's own folder is synced.
+- **Pictures and tables.** A picture that stands alone on the page is centred. A table wider than
+  its column scrolls sideways in place. A tap on a picture or a table opens it full screen:
+  pinch, Mod with the wheel, the buttons or plus and minus zoom; a drag moves it; a double tap
+  zooms in on a spot and back; the middle button or 0 fits it again; a swipe down (while it is
+  fitted), Escape or the close button closes it. Small pictures among the words — icons,
+  letters — are left alone. A table is shown in a frame that runs nothing, like every page.
 
 ## Highlights, links and search
 
@@ -46,6 +57,15 @@ under the page:
 
 A **tap on a highlight** brings up the same bar for it: another colour, the comment, a link, the
 quote, the highlights note, or remove it. A tap beside the bar closes it.
+
+**A selection can run over several pages**, as in Apple Books. Held at the left or right edge of
+the page for a moment — with the mouse, or with a finger — the selection turns the page and goes
+on growing on the next one, a page a second while it stays there. On an iPhone, whose selection
+handles do not tell the page where the finger is, an end of the selection moved onto the last
+word of the page (or the first, going back) and left there does the same. The selection is one
+range of the chapter and is highlighted, linked and quoted as one. It stops at the end of its
+chapter, and says so; in a PDF or a book of fixed pages each page is a document of its own, and a
+selection stays on its page.
 
 **Highlights live in a note beside the book**, `<book> highlights.md`, made with the first one:
 

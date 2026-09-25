@@ -164,8 +164,11 @@ Three files, three concerns:
   shows a keyboard, so the two ways a platform makes room for one are mimicked in a 390×844
   phone window: the dialog's container made shorter by hand (the page shrinks, the dialog's
   `vh` cap does not), and `window.visualViewport` replaced by one reporting the smaller height.
-  In both the dialog has to fit the room, scroll inside, and show the time field. Writes one
-  task note for the run and removes it; pictures go to `/tmp/abele-phone/task-date-*.png`.
+  A third writes the keyboard's height as Obsidian's iPhone app does. Where the page shrinks the
+  dialog has to fit the smaller page and scroll inside; where the keyboard is drawn over the page
+  it keeps its size, and what the keyboard covers scrolls up above it — the time field in sight,
+  the buttons reachable. Writes one task note for the run and removes it; pictures go to
+  `/tmp/abele-phone/task-date-*.png`.
 
 - `githubLinks.e2e.test.ts`, `githubTabs.e2e.test.ts`, `githubSearch.e2e.test.ts`,
   `githubPhone.e2e.test.ts` — **the GitHub tabs, against a fake GitHub**. Each file starts a GitHub
@@ -245,6 +248,24 @@ Three files, three concerns:
   opens. The comic's pages come in numeric order; a Kindle book whose header says it is encrypted
   says it is protected by DRM; words on a fixed page are highlighted with boxes; `book_read` and
   `book_search` read the Mobipocket and FictionBook files.
+- `bookSelecting.e2e.test.ts` — **selecting on pages turned one at a time**: with the mouse on the
+  desktop, then under `emulateMobile` at 390×844 with touches sent through the app's own input
+  pipeline (`Input.dispatchTouchEvent`, from inside the app so a long press lasts as long as it
+  says). Only a clean tap at an edge or a swipe turns the page; a long press, a finger held and
+  moved, a swipe or tap over a selection, a tap on a highlight, a tap beside an open bar and taps
+  on the bars' buttons do not. A selection held at the edge turns the page and grows onto the
+  next — with the mouse, with a finger, and with only its end moved, as iOS's handles do — and is
+  highlighted as one; it stops at the end of the chapter and in a PDF at its page, and says so.
+- `bookPhoneControls.e2e.test.ts` — **the reader's controls on a phone**: the progress slider
+  dragged does not open the side panel; the text and layout dialog scrolls to its last row and the
+  note and comment dialogs show their buttons; a dialog with a search field keeps its size under a
+  keyboard mimicked as Obsidian's iPhone app reports it, and its list scrolls up above it; with
+  `tests/fixtures/books/figureBook.ts`, a lone picture is centred, a small one left alone, a wide
+  table scrolls sideways without turning the page, a tap opens either full screen (pinch, fit,
+  swipe down), and turning the phone keeps the place. Pictures in `/tmp/abele-phone/controls-*`.
+- `bookPlaces.e2e.test.ts` — **where a book was left, across a restart**: a book and a PDF read to
+  a place, the window reloaded with their tabs open, the restored tabs open where they were and
+  the file of places still holds them.
 - `bookSpeech.e2e.test.ts` — **reading aloud**, with the platform's speech swapped for a stand-in
   (`window.__abeleTest.reader.hooks.speech`) that records each sentence and ends it a moment later,
   so nothing is heard. With the rich book and the plain PDF: the header's button reads from the

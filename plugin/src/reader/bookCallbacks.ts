@@ -35,6 +35,9 @@ export function bookCallbacks(a: BookActions): Record<string, unknown> {
       model.settingsOpen = open
     },
     onFootnoteClose: (): void => a.closeFootnote(),
+    onFigureClose: (): void => {
+      model.figure = null
+    },
     onFootnoteGo: (): void => {
       const href = a.footnoteHref()
       a.closeFootnote()

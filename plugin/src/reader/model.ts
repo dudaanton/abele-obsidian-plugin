@@ -5,6 +5,7 @@
 import type { FoliateTocItem } from '@/vendor/foliate-js/view.js'
 import type { SearchExcerpt } from '@/vendor/foliate-js/search.js'
 import type { Highlight } from './highlights'
+import type { BookFigure } from './figures'
 
 /** Words selected on the page. */
 export interface BookSelection {
@@ -97,6 +98,8 @@ export interface BookModel {
   canAsk: boolean
   /** Reading aloud: playing, paused, or not at all. */
   speech: 'idle' | 'playing' | 'paused'
+  /** A picture or a table opened full screen from the page. */
+  figure: BookFigure | null
 }
 
 export const emptyBookModel = (): BookModel => ({
@@ -120,6 +123,7 @@ export const emptyBookModel = (): BookModel => ({
   search: emptySearch(),
   canAsk: false,
   speech: 'idle',
+  figure: null,
 })
 
 /** The engine's contents as the tree the panel draws. */

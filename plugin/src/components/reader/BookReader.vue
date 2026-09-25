@@ -104,6 +104,8 @@
       @cancel="emit('cancel-comment')"
     />
 
+    <BookFigureViewer v-if="model.figure" :figure="model.figure" @close="emit('figure-close')" />
+
     <ObsidianModal v-if="model.footnote" :title="noteTitle" @close="emit('footnote-close')">
       <div class="abele-book-reader__note">
         <div ref="noteStage" class="abele-book-reader__note-stage" />
@@ -131,6 +133,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
 import Slider from '../obsidian/Slider.vue'
+import BookFigureViewer from './BookFigureViewer.vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import BookContents from './BookContents.vue'
 import BookSearch from './BookSearch.vue'
@@ -161,6 +164,7 @@ const emit = defineEmits<{
   (e: 'panel', open: boolean): void
   (e: 'settings', open: boolean): void
   (e: 'footnote-close'): void
+  (e: 'figure-close'): void
   (e: 'footnote-go'): void
   (e: 'panel-tab', tab: PanelTab): void
   (e: 'search', query: string): void
