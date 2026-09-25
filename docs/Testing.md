@@ -325,6 +325,15 @@ Three files, three concerns:
   the file of places in the vault still holds them; then a later place written into that file on
   disk, as a sync from another device would, moves the open book on to it, and it stays in the
   file. The file is removed afterwards, so the fixture vault holds only what it did.
+- `bookLayout.e2e.test.ts` — **paragraphs never drawn over each other**: a book of long Russian
+  paragraphs with footnote marks (`tests/fixtures/books/proseBook.ts`) on the desktop in two
+  columns and one, and on a phone. After each thing that lays the pages out again — the window
+  resized, side panels and the contents panel opened and closed, a column's step and the return
+  to a page's edge, the chapter scrolled for a while and turned back into pages, the book restored
+  when the app starts — every line of every paragraph in the chapter is compared with the lines of
+  the paragraphs after it. The probe is first shown paragraphs made too short on purpose, so a pass
+  means something. It also opens the book with a saved place the book does not have (another
+  edition under the same identifier), which opens it at its start instead of failing.
 - `bookNotesFile.e2e.test.ts` — **where highlights go**: with one note for every book and a
   template set, the first highlight makes the note from the whole template and the second adds
   only its body; the book's Aa dialog sends the book to a note of its own, the next highlight is

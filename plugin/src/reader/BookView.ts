@@ -404,7 +404,15 @@ export class BookView extends FileView {
       this.model.toc = tocEntries(opened.book.toc)
       const place = await bookPlaces()?.get(this.key)
       if (token !== this.loadToken) return
-      await reader.init({ lastLocation: place?.cfi ?? null, showTextStart: true })
+      try {
+        await reader.init({ lastLocation: place?.cfi ?? null, showTextStart: true })
+      } catch (e) {
+        // A place the book no longer has — another edition of it under the same identifier —
+        // opens it at its start rather than not at all.
+        if (!place?.cfi || token !== this.loadToken) throw e
+        console.warn('[Abele] the book’s place was not found in it, opened at the start', e)
+        await reader.init({ lastLocation: null, showTextStart: true })
+      }
       // Read further on another device while open here: the tab follows, rather than writing
       // this older place back over it at the next page turn.
       this.stopNewer = followPlace(
