@@ -3,7 +3,7 @@
  * scopes — the change itself, the whole repository at the tab's commit, file names — whose
  * results open where they point, in a new tab on Mod-click.
  */
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
@@ -168,8 +168,12 @@ describe('the code search panel', () => {
     await select.setValue('repo')
     await search(wrapper, 'formatName')
 
-    expect(wrapper.findAll('.abele-github-search__path').map((p) => p.find('span').text())).toEqual(
-      ['src/app.ts', 'src/util/format.ts']
+    // The index is built from the archive, which gunzips off the main thread: no fixed number of
+    // turns is sure to see it finish under a loaded run, so wait for the answer itself.
+    await vi.waitFor(() =>
+      expect(
+        wrapper.findAll('.abele-github-search__path').map((p) => p.find('span').text())
+      ).toEqual(['src/app.ts', 'src/util/format.ts'])
     )
     await wrapper.findAll('.abele-github-search__line')[0].trigger('click')
     expect(onOpen.mock.calls[0][0]).toBe(`https://github.com/o/r/blob/${SHA}/src/app.ts#L1`)
@@ -179,11 +183,11 @@ describe('the code search panel', () => {
     const { wrapper } = await openPanel()
     await wrapper.find<HTMLSelectElement>('.abele-github-search__scope select').setValue('names')
     await wrapper.find<HTMLInputElement>('.abele-github-search__query').setValue('format')
-    await new Promise((r) => setTimeout(r, 300))
-    await settle()
-    expect(wrapper.findAll('.abele-github-search__path').map((p) => p.text())).toEqual([
-      'src/util/format.ts',
-    ])
+    await vi.waitFor(() =>
+      expect(wrapper.findAll('.abele-github-search__path').map((p) => p.text())).toEqual([
+        'src/util/format.ts',
+      ])
+    )
   })
 
   it('keeps its results when a result is followed, and searches the repository from the file', async () => {
