@@ -22,6 +22,7 @@ import type { Comment } from '@/github/api'
 const props = withDefaults(
   defineProps<{
     author: string
+    avatar?: string
     createdAt: string
     body: string
     comments: Comment[]
@@ -35,7 +36,7 @@ const props = withDefaults(
     /** They are being asked for again. */
     retrying?: boolean
   }>(),
-  { anchor: undefined, missing: 0, problem: undefined }
+  { anchor: undefined, avatar: undefined, missing: 0, problem: undefined }
 )
 
 const emit = defineEmits<{
@@ -45,6 +46,7 @@ const emit = defineEmits<{
 const opening = computed<Comment>(() => ({
   id: 'opening',
   author: props.author,
+  avatar: props.avatar,
   createdAt: props.createdAt,
   body: props.body,
 }))

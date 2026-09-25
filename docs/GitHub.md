@@ -33,6 +33,34 @@ above it for context. It keeps it there while the tab settles: comments above it
 their images, and diffs above it measure their lines, after the first scroll. Scrolling, clicking
 or typing in the tab stops that at once.
 
+## People
+
+Whoever wrote the item, a comment, a reply, a review or a review comment, and whoever made a
+commit, is shown with their picture and by the name on their GitHub profile. **Settings → GitHub
+→ Show people by** switches that to their login. The other one is never out of reach: hovering
+shows both, and a click or a tap on a person swaps name and login right there — which is how a
+phone, with no hover, gets to the login. Someone whose profile has no name, an app such as
+`dependabot[bot]`, and a deleted account are shown by login. A commit whose git author is not
+linked to an account shows git's name, with no picture.
+
+Names are a request of their own — the API names people by login everywhere — so the logins on
+screen are gathered and asked about together: one GraphQL query for up to fifty with a token; one
+`/users/<login>` request each without one (GraphQL needs a token), and no more than ten at a time,
+since an unsigned client has sixty requests an hour for everything. Pictures are fetched at 40
+pixels, twice the size they are drawn at. Both are kept for a week on the device, in a file of
+their own in the plugin's folder rather than in the settings: they are other people's details,
+rebuilt at will, and several hundred kilobytes once pictures are in them — nothing that should
+sync between devices or travel in a settings transfer. Because the pictures are kept as data,
+they show offline. **Kept names and pictures → Clear** forgets them all, to see a name someone
+just changed.
+
+On an Enterprise server the pictures are asked for with the token when they are on the server's
+own host or one under it (`avatars.github.example.com`), where private mode puts them behind
+sign-in; a picture anywhere else, github.com's included, is asked for without it.
+
+The agent's tools say who people are the same way, `Ann Example (ann)`, so a question about "what
+Ann said" finds her.
+
 ## How a link opens
 
 A link clicked in a note opens in a tab when **Open GitHub links in Obsidian** is on. Which tab:
@@ -506,4 +534,6 @@ for and which API address was asked, so a link that is read without the token is
 Nothing runs in the background: GitHub is asked only when a tab opens, is refreshed, a pull
 request's files or commits are first shown, or a search or a definition lookup asks for the
 repository. Answers are kept in memory with their ETag and asked about again with
-`If-None-Match`; an unchanged answer does not count against the limit.
+`If-None-Match`; an unchanged answer does not count against the limit. People's names cost
+one request for everyone in a tab and each picture one more, the first time they are shown, and
+nothing for a week after (see People).

@@ -21,6 +21,11 @@ export interface GithubSettings {
    * says otherwise: `owner/repo` or a link into it. Empty: only what the tabs say.
    */
   defaultRepo: string
+  /**
+   * What a person in a tab is shown by: the name on their profile, or their login. The other is
+   * in the tooltip, and a click on the person swaps the two in place.
+   */
+  userDisplay: 'name' | 'login'
 }
 
 export const GITHUB_TOKEN_KEY_ID = 'abele-github-token'
@@ -32,6 +37,7 @@ export const DEFAULT_GITHUB_SETTINGS: GithubSettings = {
   openLinks: true,
   searchLimitMb: 100,
   defaultRepo: '',
+  userDisplay: 'name',
 }
 
 export const githubSettingsFrom = (stored?: Partial<GithubSettings>): GithubSettings => ({

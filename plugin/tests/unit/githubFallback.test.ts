@@ -203,7 +203,8 @@ describe('GraphQL answers in the REST model', () => {
       ],
     })
     expect(commits).toEqual([
-      { sha: 'abc123', message: 'fix: it', author: 'bob', date: '2026-01-01' },
+      // The account, when git's author is linked to one; git's name alone when not.
+      { sha: 'abc123', message: 'fix: it', author: 'bob', login: 'bob', date: '2026-01-01' },
       { sha: 'def', message: 'x', author: 'Nobody', date: '' },
     ])
   })

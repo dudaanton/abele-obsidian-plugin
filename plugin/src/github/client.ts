@@ -9,7 +9,7 @@
  * which is what makes reopening the same pull request free.
  */
 import { requestUrl, type RequestUrlParam, type RequestUrlResponse } from 'obsidian'
-import type { Endpoints } from './urls'
+import { normaliseHost, type Endpoints } from './urls'
 import {
   RAW,
   base64Bytes,
@@ -117,6 +117,17 @@ export interface GetOptions {
   text?: boolean
   /** Named in an error, as in "not allowed to read <what>". */
   what?: string
+}
+
+/** The host itself, or one under it: `avatars.git.example.com` within `git.example.com`. */
+const hostWithin = (host: string, parent: string) => host === parent || host.endsWith(`.${parent}`)
+
+function bytesBase64(bytes: Uint8Array): string {
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  }
+  return btoa(binary)
 }
 
 /** Pages a list is read to before stopping. 1000 comments is past anything worth scrolling. */
@@ -320,8 +331,38 @@ export class GithubClient {
     return { items, complete: false }
   }
 
+  /**
+   * A picture — a person's avatar — as a `data:` URL, so it can be kept and shown offline. The
+   * token goes only to the configured Enterprise server and its subdomains, where avatars can
+   * sit behind sign-in; github.com's avatars are public and never see it.
+   */
+  async image(url: string): Promise<string> {
+    const host = normaliseHost(new URL(url).hostname)
+    const own = this.endpoints.webHost !== 'github.com' && hostWithin(host, this.endpoints.webHost)
+    const headers: Record<string, string> = { Accept: 'image/*' }
+    if (own && this.token) headers.Authorization = `Bearer ${this.token}`
+    const response = await this.send({ url, method: 'GET', headers })
+    if (response.status < 200 || response.status >= 300) {
+      throw this.refusal(response.status, response.headers, null, 'the picture')
+    }
+    const type = header(response.headers, 'content-type')?.split(';')[0].trim() || 'image/png'
+    if (!type.startsWith('image/')) {
+      throw new GithubError('other', `GitHub sent ${type} where a picture was expected.`)
+    }
+    return `data:${type};base64,${bytesBase64(new Uint8Array(response.arrayBuffer))}`
+  }
+
   /** GraphQL, which is the only way to discussions. It always needs a token. */
-  async graphql<T>(query: string, variables: Record<string, unknown>, what?: string): Promise<T> {
+  async graphql<T>(
+    query: string,
+    variables: Record<string, unknown>,
+    what?: string,
+    /**
+     * Take the answer when the only errors are things that do not exist — a batch of
+     * `user(login:)` lookups in which one login is a bot or a deleted account.
+     */
+    options: { allowMissing?: boolean } = {}
+  ): Promise<T> {
     if (!this.token) {
       throw new GithubError(
         'auth',
@@ -347,6 +388,9 @@ export class GithubClient {
     }
 
     const errors = body?.errors ?? []
+    if (options.allowMissing && body?.data && errors.every((e) => e.type === 'NOT_FOUND')) {
+      return body.data
+    }
     if (errors.length > 0) {
       const first = errors[0]
       // GraphQL answers 200 with the refusal inside; its message is what says which refusal.

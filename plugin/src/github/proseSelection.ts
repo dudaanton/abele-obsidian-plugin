@@ -18,7 +18,10 @@ export interface ProseSource {
   link(): GithubLink | null
   /** "comment", "reply", "review comment", "issue" for a description. */
   what: string
+  /** The login. */
   author?: string
+  /** The author as the agent is told: with the name from their profile when it is known. */
+  by?: string
   createdAt?: string
   /** The `#…` GitHub gives it; none for a description. */
   anchor?: string
@@ -72,7 +75,8 @@ function sourceAround(node: Node, root: Element): { el: Element; source: ProseSo
 export function describeSource(source: ProseSource): string {
   if (source.name) return source.name
   if (!source.anchor) return `the ${source.what}'s description`
-  return source.author ? `the ${source.what} by ${source.author}` : `the ${source.what}`
+  const by = source.by ?? source.author
+  return by ? `the ${source.what} by ${by}` : `the ${source.what}`
 }
 
 /** A selection's text tidied for quoting: no run of blank lines, no space at either end. */

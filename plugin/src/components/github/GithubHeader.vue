@@ -50,7 +50,13 @@
       <Badge v-for="label in labels" :key="label.name" :text="label.name" />
     </div>
     <div v-if="meta.length" class="abele-github-header__meta">
-      <span v-for="(part, i) in meta" :key="i">{{ part }}</span>
+      <span v-for="(part, i) in meta" :key="i">
+        <template v-if="typeof part === 'string'">{{ part }}</template>
+        <template v-else>
+          <GithubUser :login="part.login" :avatar="part.avatar" />
+          <template v-if="part.after">{{ ` ${part.after}` }}</template>
+        </template>
+      </span>
     </div>
   </header>
 </template>
@@ -59,9 +65,11 @@
 import Icon from '../obsidian/Icon.vue'
 import Badge from '../obsidian/Badge.vue'
 import GithubBreadcrumbs from './GithubBreadcrumbs.vue'
+import GithubUser from './GithubUser.vue'
 import type { PaneType } from 'obsidian'
 import type { Label } from '@/github/api'
 import type { Crumb } from '@/github/tree/fileTree'
+import type { MetaPart } from '@/github/itemHead'
 
 withDefaults(
   defineProps<{
@@ -71,7 +79,8 @@ withDefaults(
     url?: string
     state?: string
     labels?: Label[]
-    meta?: string[]
+    /** The details under the title; a person is drawn with their name and picture. */
+    meta?: MetaPart[]
     loading?: boolean
     /** Offer "Chat about this". */
     chat?: boolean

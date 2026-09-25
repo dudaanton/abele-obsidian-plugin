@@ -23,6 +23,7 @@ import Table from '@/components/obsidian/Table.vue'
 import Image from '@/components/obsidian/Image.vue'
 import TreeItem from '@/components/obsidian/TreeItem.vue'
 import Slider from '@/components/obsidian/Slider.vue'
+import Avatar from '@/components/obsidian/Avatar.vue'
 import { useVault } from '../helpers/testEnv'
 
 const TABS = [
@@ -127,6 +128,19 @@ describe('Card', () => {
     expect(view.find('.abele-card__subtitle').text()).toBe('qwen3.5:27b')
     expect(view.find('.abele-card__description').text()).toContain('Reads the vault')
     expect(view.find('.abele-card__meta').text()).toContain('1 prompt')
+  })
+
+  it('takes a subtitle with something richer than text in it', () => {
+    const view = mount(Card, {
+      props: { title: 'Fix' },
+      slots: { subtitle: () => h('b', 'someone') },
+    })
+    expect(view.find('.abele-card__subtitle b').text()).toBe('someone')
+    expect(
+      mount(Card, { props: { title: 'Fix' } })
+        .find('.abele-card__subtitle')
+        .exists()
+    ).toBe(false)
   })
 
   it('puts an icon before its title when given one, and none otherwise', () => {
@@ -813,6 +827,29 @@ describe('Card as a post', () => {
   })
 })
 
+describe('Avatar', () => {
+  it('draws the picture as decoration, the name beside it saying who it is', () => {
+    const view = mount(Avatar, { props: { src: 'https://example.com/a.png', name: 'octocat' } })
+    expect(view.find('img').attributes('src')).toBe('https://example.com/a.png')
+    expect(view.find('img').attributes('alt')).toBe('')
+    expect(view.attributes('aria-hidden')).toBe('true')
+  })
+
+  it('shows the first letter when there is no picture, or it would not load', async () => {
+    const none = mount(Avatar, { props: { src: null, name: 'octocat' } })
+    expect(none.find('img').exists()).toBe(false)
+    expect(none.attributes('data-initial')).toBe('O')
+    // Drawn by CSS: the letter is not part of the text around it.
+    expect(none.text()).toBe('')
+
+    const broken = mount(Avatar, { props: { src: 'https://example.com/x.png', name: 'hubot' } })
+    await broken.find('img').trigger('error')
+    expect(broken.find('img').exists()).toBe(false)
+    await broken.setProps({ src: 'https://example.com/y.png' })
+    expect(broken.find('img').exists()).toBe(true)
+  })
+})
+
 describe('Slider', () => {
   it("is Obsidian's own slider, following the thumb while dragged and settling when let go", async () => {
     const slider = mount(Slider, {
@@ -822,7 +859,6 @@ describe('Slider', () => {
     expect(input.classes()).toContain('slider')
     expect(input.attributes('type')).toBe('range')
     expect(input.attributes('aria-label')).toBe('Go to a place in the book')
-
     ;(input.element as HTMLInputElement).value = '500'
     await input.trigger('input')
     expect(slider.emitted('input')).toEqual([[500]])

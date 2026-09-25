@@ -98,6 +98,11 @@ no GitHub tab has been used and nothing was opened from it yet this session.
 added up, in megabytes — that a tab's code search, go to definition or `github_grep` downloads
 whole to search; a larger one is searched through GitHub's own code search instead, on the
 default branch only.
+`github.userDisplay` is what a person in a GitHub tab — an author, a commenter, a reviewer, a
+commit's author — is shown by: `name` (the default), the name on their GitHub profile with their
+picture, or `login`. The other one is in the tooltip, and a click on the person swaps the two in
+place; someone whose profile has no name shows their login either way. Names and pictures are
+kept on the device for a week (see the vault reference, GitHub people), not in these settings.
 
 ## Everything else
 

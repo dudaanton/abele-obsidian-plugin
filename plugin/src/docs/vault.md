@@ -252,6 +252,15 @@ Lines of a markdown file — selected in its rendered view or in its code — ar
 source with `?plain=1` before the anchor (`…/README.md?plain=1#L3-L7`), which is how GitHub
 itself shows a markdown file's lines; a snippet of them carries `lang: md`.
 
+## GitHub people
+
+The names and pictures of the people shown in GitHub tabs are kept in `github-users.json` in the
+plugin's own folder, on this device only: under the server and the login, the name from the
+profile (or none), the picture as a `data:` URL, and when each was read. An entry is asked for
+again after a week. Nothing in a note depends on it — links and snippets name people by login —
+so the file can be deleted at any time; **Settings → GitHub → Kept names and pictures → Clear**
+does the same.
+
 ## GitHub snippets
 
 "Insert with code" on lines selected in a GitHub tab, and "Insert as quote" on a comment, write a

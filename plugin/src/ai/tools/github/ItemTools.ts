@@ -15,6 +15,7 @@ import {
   type PullData,
 } from '@/github/api'
 import { GithubError } from '@/github/client'
+import { githubUsers, personLabel } from '@/github/users'
 import {
   answer,
   clientFor,
@@ -51,13 +52,13 @@ function itemOf(named: Named): { repo: RepoRef; number: number; kind?: string } 
   return { repo: named.repo, number: named.number, kind: t?.kind }
 }
 
-function commentBlock(c: Comment, indent = ''): string[] {
+function commentBlock(host: string, c: Comment, indent = ''): string[] {
   const what = c.badge ? `${c.badge} · ` : ''
   const where = c.location ? ` · ${c.location}` : ''
-  const head = `${indent}### ${what}${c.author} · ${day(c.createdAt)}${where}${c.url ? ` · ${c.url}` : ''}`
+  const head = `${indent}### ${what}${personLabel(host, c.author)} · ${day(c.createdAt)}${where}${c.url ? ` · ${c.url}` : ''}`
   const body = clip(c.body.trim() || '(no text)', COMMENT_MAX)
   const out = [head, ...body.split('\n').map((l) => `${indent}${l}`)]
-  for (const r of c.replies ?? []) out.push('', ...commentBlock(r, `${indent}  `))
+  for (const r of c.replies ?? []) out.push('', ...commentBlock(host, r, `${indent}  `))
   if (c.moreReplies) out.push(`${indent}  (${c.moreReplies} more replies on GitHub)`)
   return out
 }
@@ -87,11 +88,26 @@ async function load(repo: RepoRef, number: number, kind?: string): Promise<Read>
   }
 }
 
+/** Looks up the names of everyone in the item, so the answer can say who they are. */
+async function namePeople(repo: RepoRef, d: IssueData | PullData | DiscussionData) {
+  const logins = [d.author]
+  const add = (c: Comment) => {
+    logins.push(c.author)
+    c.replies?.forEach(add)
+  }
+  d.comments.forEach(add)
+  await githubUsers().lookup(clientFor(repo), logins)
+}
+
 const KIND_NAME = { issue: 'Issue', pull: 'Pull request', discussion: 'Discussion' }
 
 export function formatItem(repo: RepoRef, read: Read, page: number): string {
   const d = read.data
-  const facts = [`State: ${d.state}`, `by ${d.author}`, `opened ${day(d.createdAt)}`]
+  const facts = [
+    `State: ${d.state}`,
+    `by ${personLabel(repo.host, d.author)}`,
+    `opened ${day(d.createdAt)}`,
+  ]
   if (read.kind === 'pull') {
     const p = d as PullData
     facts.push(
@@ -128,7 +144,7 @@ export function formatItem(repo: RepoRef, read: Read, page: number): string {
       `## Conversation — ${what} ${first + 1}–${first + shown.length} of ${comments.length}`,
       ''
     )
-    for (const c of shown) out.push(...commentBlock(c), '')
+    for (const c of shown) out.push(...commentBlock(repo.host, c), '')
     if (first + shown.length < comments.length) {
       out.push(`[More: call again with page=${page + 1}.]`)
     }
@@ -170,6 +186,7 @@ export function createGithubReadTool(): AgentTool {
     execute: async (_id, params) => {
       const { repo, number, kind } = itemOf(parseNamed(params.item))
       const read = await load(repo, number, kind)
+      await namePeople(repo, read.data)
       return answer(formatItem(repo, read, whole(params.page, 1)))
     },
   }
@@ -217,8 +234,12 @@ export function createGithubPrFilesTool(): AgentTool {
           ),
         ]
         if (file.reviewComments.length) {
+          await githubUsers().lookup(
+            clientFor(repo),
+            file.reviewComments.map((c) => c.author)
+          )
           out.push('', `## Review comments on ${file.path}`, '')
-          for (const c of file.reviewComments) out.push(...commentBlock(c), '')
+          for (const c of file.reviewComments) out.push(...commentBlock(repo.host, c), '')
         }
         if (data.reviewCommentsProblem) out.push('', data.reviewCommentsProblem)
         return answer(out.join('\n'))

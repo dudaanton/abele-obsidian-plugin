@@ -43,7 +43,9 @@
       </div>
     </div>
 
-    <div v-if="subtitle" class="abele-card__subtitle">{{ subtitle }}</div>
+    <div v-if="subtitle || $slots.subtitle" class="abele-card__subtitle">
+      <slot name="subtitle">{{ subtitle }}</slot>
+    </div>
     <div
       v-if="description"
       class="abele-card__description"

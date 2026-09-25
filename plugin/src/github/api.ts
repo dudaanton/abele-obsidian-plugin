@@ -13,6 +13,7 @@ import {
   graphqlFiles,
   graphqlReviewComments,
   graphqlReviews,
+  avatarOf,
   login,
   REVIEW_STATES,
   reviewLocation,
@@ -32,7 +33,10 @@ export interface Label {
 
 export interface Comment {
   id: string
+  /** The login. */
   author: string
+  /** The author's picture, as the answer named it. */
+  avatar?: string
   body: string
   createdAt: string
   /** The `#…` a link uses for this comment, to scroll to it. */
@@ -51,7 +55,9 @@ export interface ItemHead {
   title: string
   number: number
   url: string
+  /** The login. */
   author: string
+  authorAvatar?: string
   createdAt: string
   /** `open`, `closed`, `merged`, `draft`, `answered`. */
   state: string
@@ -118,7 +124,11 @@ export interface FilesData {
 export interface CommitSummary {
   sha: string
   message: string
+  /** The login when the commit is linked to an account, git's author name when not. */
   author: string
+  /** Set when `author` is a login. */
+  login?: string
+  avatar?: string
   date: string
 }
 
@@ -127,7 +137,10 @@ export interface CommitData {
   /** The first parent: where a file the commit deletes still exists. */
   parentSha?: string
   message: string
+  /** As in `CommitSummary`. */
   author: string
+  login?: string
+  avatar?: string
   date: string
   url: string
   files: DiffFile[]
@@ -164,6 +177,7 @@ const labels = (raw: any[] | undefined): Label[] =>
 const issueComment = (c: any): Comment => ({
   id: String(c.id),
   author: login(c.user),
+  avatar: avatarOf(c.user),
   body: c.body ?? '',
   createdAt: c.created_at,
   anchor: `issuecomment-${c.id}`,
@@ -237,6 +251,7 @@ export async function loadPullConversation(
 const review = (r: any): Comment => ({
   id: `review-${r.id}`,
   author: login(r.user),
+  avatar: avatarOf(r.user),
   body: r.body ?? '',
   createdAt: r.submitted_at,
   anchor: `pullrequestreview-${r.id}`,
@@ -255,6 +270,7 @@ export async function loadIssue(client: GithubClient, t: Of<'issue'>): Promise<I
     number: issue.number,
     url: issue.html_url,
     author: login(issue.user),
+    authorAvatar: avatarOf(issue.user),
     createdAt: issue.created_at,
     state: issue.state_reason === 'not_planned' ? 'not planned' : issue.state,
     labels: labels(issue.labels),
@@ -278,6 +294,7 @@ export async function loadPull(client: GithubClient, t: Of<'pull'>): Promise<Pul
     number: pull.number,
     url: pull.html_url,
     author: login(pull.user),
+    authorAvatar: avatarOf(pull.user),
     createdAt: pull.created_at,
     state: pull.merged_at ? 'merged' : pull.draft && pull.state === 'open' ? 'draft' : pull.state,
     labels: labels(pull.labels),
@@ -322,6 +339,7 @@ const restReviewComment = (c: any): PathComment => ({
   comment: {
     id: `rc-${c.id}`,
     author: login(c.user),
+    avatar: avatarOf(c.user),
     body: c.body ?? '',
     createdAt: c.created_at,
     anchor: `discussion_r${c.id}`,
@@ -370,6 +388,16 @@ export async function loadPullFiles(client: GithubClient, t: Of<'pull'>): Promis
   }
 }
 
+/** A commit from REST: by its account when git's author is linked to one. */
+export const restCommit = (c: any): CommitSummary => ({
+  sha: c.sha,
+  message: c.commit?.message ?? '',
+  author: c.author?.login ?? c.commit?.author?.name ?? 'unknown',
+  login: c.author?.login || undefined,
+  avatar: avatarOf(c.author),
+  date: c.commit?.author?.date ?? '',
+})
+
 export async function loadPullCommits(
   client: GithubClient,
   t: Of<'pull'>
@@ -380,12 +408,7 @@ export async function loadPullCommits(
       const { items } = await client.list<any>(`${repoPath(t)}/pulls/${t.number}/commits`, {
         what: "the pull request's commits",
       })
-      return items.map((c: any) => ({
-        sha: c.sha,
-        message: c.commit?.message ?? '',
-        author: c.author?.login ?? c.commit?.author?.name ?? 'unknown',
-        date: c.commit?.author?.date ?? '',
-      }))
+      return items.map(restCommit)
     },
     () => graphqlCommits(client, t)
   )
@@ -396,11 +419,8 @@ export async function loadCommit(client: GithubClient, t: Of<'commit'>): Promise
     what: 'the commit',
   })
   return {
-    sha: c.sha,
+    ...restCommit(c),
     parentSha: c.parents?.[0]?.sha,
-    message: c.commit?.message ?? '',
-    author: c.author?.login ?? c.commit?.author?.name ?? 'unknown',
-    date: c.commit?.author?.date ?? '',
     url: c.html_url,
     files: await diffFiles(c.files ?? []),
   }
@@ -411,17 +431,17 @@ query($owner: String!, $repo: String!, $number: Int!) {
   repository(owner: $owner, name: $repo) {
     discussion(number: $number) {
       title number url body createdAt closed isAnswered
-      author { login }
+      author { login avatarUrl }
       category { name }
       labels(first: 20) { nodes { name color } }
       comments(first: 100) {
         totalCount
         nodes {
           id databaseId body createdAt isAnswer url
-          author { login }
+          author { login avatarUrl }
           replies(first: 50) {
             totalCount
-            nodes { id databaseId body createdAt url author { login } }
+            nodes { id databaseId body createdAt url author { login avatarUrl } }
           }
         }
       }
@@ -444,6 +464,7 @@ export async function loadDiscussion(
   const reply = (r: any): Comment => ({
     id: r.id,
     author: login(r.author),
+    avatar: avatarOf(r.author),
     body: r.body ?? '',
     createdAt: r.createdAt,
     anchor: r.databaseId ? `discussioncomment-${r.databaseId}` : undefined,
@@ -462,6 +483,7 @@ export async function loadDiscussion(
     number: d.number,
     url: d.url,
     author: login(d.author),
+    authorAvatar: avatarOf(d.author),
     createdAt: d.createdAt,
     state: d.isAnswered ? 'answered' : d.closed ? 'closed' : 'open',
     labels: labels(d.labels?.nodes),

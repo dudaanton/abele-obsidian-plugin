@@ -24,6 +24,7 @@ import { ScriptViewService } from '@/scripting/view/ScriptViewService'
 import { createScreenshotTool } from '@/ai/tools/ScreenshotTool'
 import { createGeocodeTool, createPlacesTool, createRouteTool } from '@/ai/tools/GeoTools'
 import { createGithubTools } from '@/ai/tools/github'
+import { githubUsers } from '@/github/users'
 import { createBookTools } from '@/ai/tools/BookTools'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { openIconPicker } from './openIconPicker'
@@ -112,6 +113,7 @@ interface AbeleTestApi {
   createRouteTool: typeof createRouteTool
   /** The GitHub tools, so a check can call them the way an agent would. */
   createGithubTools: typeof createGithubTools
+  githubUsers: typeof githubUsers
   createBookTools: typeof createBookTools
   /** The book reader: its open tabs, its cleaning, and the sandbox override for the e2e tier. */
   reader: {
@@ -514,6 +516,7 @@ export function exposeTestApi(plugin: Plugin): void {
     createPlacesTool,
     createRouteTool,
     createGithubTools,
+    githubUsers,
     createBookTools,
     reader: {
       viewType: BOOK_VIEW_TYPE,

@@ -4,7 +4,14 @@
  * commit's diff, a comparison of two refs.
  */
 import type { AgentTool } from '../../client'
-import { loadCommit, loadPullCommits, type DiffFile } from '@/github/api'
+import {
+  loadCommit,
+  loadPullCommits,
+  restCommit,
+  type CommitSummary,
+  type DiffFile,
+} from '@/github/api'
+import { githubUsers, personLabel } from '@/github/users'
 import { GithubError, type GithubClient } from '@/github/client'
 import { utf8 } from '@/github/contents'
 import { blobCandidates, diffAnchorHash } from '@/github/urls'
@@ -246,22 +253,20 @@ export function createGithubFileTool(): AgentTool {
 
 // ── Commits ────────────────────────────────────────────────────
 
-interface CommitRow {
-  sha: string
-  message: string
-  author: string
-  date: string
+/** Who made a commit: the account's name and login when it is linked to one, git's name if not. */
+const byWhom = (host: string, c: CommitSummary) => (c.login ? personLabel(host, c.login) : c.author)
+
+/** One line per commit, with the names of the people in them looked up first. */
+async function commitRows(repo: RepoRef, commits: CommitSummary[]): Promise<string[]> {
+  await githubUsers().lookup(
+    clientFor(repo),
+    commits.map((c) => c.login ?? '')
+  )
+  return commits.map(
+    (c) =>
+      `${c.sha.slice(0, 7)}  ${day(c.date)}  ${byWhom(repo.host, c)}  ${splitMessage(c.message).title}`
+  )
 }
-
-const commitRow = (c: CommitRow) =>
-  `${c.sha.slice(0, 7)}  ${day(c.date)}  ${c.author}  ${splitMessage(c.message).title}`
-
-const restCommit = (c: any): CommitRow => ({
-  sha: c.sha,
-  message: c.commit?.message ?? '',
-  author: c.author?.login ?? c.commit?.author?.name ?? 'unknown',
-  date: c.commit?.author?.date ?? '',
-})
 
 /** A diff's files with their patches, as far as the budget reaches; the rest by path. */
 function filesWithPatches(files: DiffFile[], again: string): string[] {
@@ -315,9 +320,10 @@ function commitsWanted(named: Named, params: Record<string, unknown>): CommitsWa
 
 async function oneCommit(repo: RepoRef, sha: string, path: string, offset: number, limit: number) {
   const c = await loadCommit(clientFor(repo), { ...repo, kind: 'commit', sha })
+  if (c.login) await githubUsers().lookup(clientFor(repo), [c.login])
   const again = `call github_commits again with sha="${c.sha.slice(0, 12)}",`
   const out = [
-    `Commit ${repoName(repo)}@${c.sha.slice(0, 7)} — ${c.author}, ${day(c.date)}`,
+    `Commit ${repoName(repo)}@${c.sha.slice(0, 7)} — ${byWhom(repo.host, c)}, ${day(c.date)}`,
     `URL: ${c.url}`,
     '',
     clip(c.message.trim(), 5_000),
@@ -366,7 +372,7 @@ async function compare(
   }
   out.push(
     `## Commits (${c.total_commits ?? commits.length})`,
-    ...commits.slice(0, 50).map(commitRow)
+    ...(await commitRows(repo, commits.slice(0, 50)))
   )
   if (commits.length > 50) out.push(`[${commits.length - 50} more commits not listed.]`)
   out.push('', ...filesWithPatches(files, again))
@@ -425,7 +431,7 @@ export function createGithubCommitsTool(): AgentTool {
         const shown = all.slice(first, first + 100)
         const out = [
           `Pull request ${repoName(repo)}#${w.pull} — ${all.length} commit${all.length === 1 ? '' : 's'}${shown.length ? ` (${first + 1}–${first + shown.length})` : ''}`,
-          ...shown.map(commitRow),
+          ...(await commitRows(repo, shown)),
         ]
         if (first + shown.length < all.length) out.push(`[More: page=${page + 1}.]`)
         out.push('', "One commit's diff: call again with its sha.")
@@ -447,7 +453,7 @@ export function createGithubCommitsTool(): AgentTool {
       )
       const out = [
         `${repoName(repo)} — commits on ${ref || 'the default branch'}${path ? ` touching ${path}` : ''}, page ${page}`,
-        ...list.map(restCommit).map(commitRow),
+        ...(await commitRows(repo, list.map(restCommit))),
       ]
       if (list.length === 0) out.push('(none)')
       if (list.length === COMMITS_PER_PAGE) out.push(`[Older: page=${page + 1}.]`)

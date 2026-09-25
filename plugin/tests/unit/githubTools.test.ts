@@ -11,6 +11,7 @@ import type { RequestUrlParam } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_GITHUB_SETTINGS, GITHUB_TOKEN_KEY_ID } from '@/github/settings'
 import { resetGithubClients } from '@/github/GithubService'
+import { GithubUsers, setGithubUsers } from '@/github/users'
 import { createGithubTools } from '@/ai/tools/github'
 import { MAX_OUTPUT, answer } from '@/ai/tools/github/shared'
 import { createAgentTools, getToolRegistry } from '@/ai/tools'
@@ -510,6 +511,57 @@ describe('github_commits', () => {
     })
     expect(out).toContain('commits on dev touching src/app.ts')
     expect(urls()[0]).toContain('sha=dev&path=src%2Fapp.ts')
+  })
+})
+
+describe('people named in what the tools say', () => {
+  /** The batched `user(login:)` query: bob and ann have names on their profiles. */
+  const people = (req: RequestUrlParam): Reply => {
+    const { variables } = JSON.parse(String(req.body)) as { variables: Record<string, string> }
+    const names: Record<string, string> = { bob: 'Bob Example', ann: 'Ann Example' }
+    const data = Object.fromEntries(
+      Object.entries(variables).map(([v, login]) => [
+        `u${v.slice(1)}`,
+        { login, name: names[login] ?? null },
+      ])
+    )
+    return { json: { data } }
+  }
+
+  beforeEach(() => {
+    setGithubUsers(new GithubUsers())
+    configure({ token: 'tkn' })
+  })
+
+  it('github_read gives the name beside the login, and the login alone without one', async () => {
+    serve({
+      '/repos/acme/widgets/issues/5': { json: ISSUE },
+      '/repos/acme/widgets/issues/5/comments': {
+        json: [{ ...comment(1), user: { login: 'ann' } }, comment(2)],
+      },
+      '/graphql': people,
+    })
+    const out = await run('github_read', { item: 'acme/widgets#5' })
+    expect(out).toContain('by Bob Example (bob)')
+    expect(out).toContain('### Ann Example (ann) ·')
+    expect(out).toContain('### user2 ·')
+  })
+
+  it('github_commits names the people behind the commits', async () => {
+    serve({
+      '/repos/acme/widgets/pulls/7/commits': {
+        json: [
+          {
+            sha: 'abcdef1234567890abcdef1234567890abcdef12',
+            author: { login: 'ann' },
+            commit: { message: 'Fix', author: { name: 'a', date: '2026-01-02T00:00:00Z' } },
+          },
+        ],
+      },
+      '/graphql': people,
+    })
+    const out = await run('github_commits', { repo: 'acme/widgets#7' })
+    expect(out).toContain('abcdef1  2026-01-02  Ann Example (ann)  Fix')
   })
 })
 

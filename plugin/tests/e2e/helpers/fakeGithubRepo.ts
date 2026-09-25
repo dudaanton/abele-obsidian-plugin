@@ -247,7 +247,24 @@ export function tarball(files: Files, folder: string): Buffer {
   return gzipSync(Buffer.concat(blocks))
 }
 
-const user = (login: string) => ({ login })
+/**
+ * The names on the people's profiles, as the batched `user(login:)` query and `/users/<login>`
+ * answer them. carol's profile has no name, so she is shown by login whatever the setting says.
+ */
+export const PEOPLE: Record<string, string | null> = {
+  alice: 'Alice Example',
+  bob: 'Bob Example',
+  carol: null,
+  dave: 'Dave Example',
+  erin: 'Erin Example',
+  frank: 'Frank Example',
+}
+
+/** A person as the API names one: the login, and where their picture is on the server. */
+const person = (web: string) => (login: string) => ({
+  login,
+  avatar_url: `${web}/avatars/u/${login}`,
+})
 
 const paragraph = (i: number) =>
   `A longer thought about the change, number ${i}. It goes on for a while so that the ` +
@@ -256,6 +273,7 @@ const paragraph = (i: number) =>
 /** Everything the REST and GraphQL answers are built from, for one web origin. */
 export function fixtures(web: string) {
   const repoWeb = `${web}/${OWNER}/${REPO}`
+  const user = person(web)
   const pullComments = Array.from({ length: 15 }, (_, i) => ({
     id: LATE_COMMENT - 14 + i,
     user: user(['bob', 'carol', 'dave'][i % 3]),

@@ -9,7 +9,11 @@
     :data-anchor="comment.anchor"
   >
     <div class="abele-github-comment__head">
-      <span class="abele-github-comment__author">{{ comment.author }}</span>
+      <GithubUser
+        class="abele-github-comment__author"
+        :login="comment.author"
+        :avatar="comment.avatar"
+      />
       <span class="abele-github-comment__date">{{ formatDate(comment.createdAt) }}</span>
       <span v-if="comment.location" class="abele-github-comment__location">{{
         comment.location
@@ -47,6 +51,7 @@ import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import Badge from '../obsidian/Badge.vue'
 import GithubText from './GithubText.vue'
 import GithubLinkActions from './GithubLinkActions.vue'
+import GithubUser from './GithubUser.vue'
 import type { Comment } from '@/github/api'
 import { formatDate } from '@/github/format'
 import { LINKER } from '@/github/linking'
@@ -54,6 +59,7 @@ import { GITHUB_REPO, NO_REPO } from '@/github/repoContext'
 import { bodyLink, commentLink, type GithubLink } from '@/github/permalinks'
 import { commentSnippet, type SnippetBlock } from '@/github/snippetBlock'
 import { registerProse, unregisterProse } from '@/github/proseSelection'
+import { GITHUB_PEOPLE, personLabel } from '@/github/users'
 
 const props = withDefaults(
   defineProps<{
@@ -68,6 +74,7 @@ const props = withDefaults(
 )
 
 const linker = inject(LINKER, null)
+const people = inject(GITHUB_PEOPLE, null)
 const repoRef = inject(GITHUB_REPO, null)
 const repo = computed(() => repoRef?.value ?? NO_REPO)
 
@@ -111,6 +118,10 @@ onMounted(() => {
     },
     get author() {
       return props.comment.author
+    },
+    get by() {
+      const host = people?.()?.endpoints.webHost
+      return host ? personLabel(host, props.comment.author) : props.comment.author
     },
     get createdAt() {
       return props.comment.createdAt

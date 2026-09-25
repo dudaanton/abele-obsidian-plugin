@@ -18,6 +18,7 @@ import {
 import { linkAtClick, paneForClick, urlAtCursor } from './links'
 import { registerSnippetBlock } from './snippetCard'
 import { OpenPicker } from './open/OpenPicker'
+import { initGithubUsers } from './users'
 
 /**
  * Where a click is taken as a click on a note's link. The settings window and dialogs are left
@@ -64,6 +65,9 @@ export function registerGithub(plugin: Plugin): void {
   const { app } = plugin
 
   plugin.registerView(GITHUB_VIEW_TYPE, (leaf) => new GithubView(leaf))
+  // People's names and pictures, kept on this device; what was met last is written on the way out.
+  const users = initGithubUsers(plugin)
+  plugin.register(() => void users.save())
   // Code and comments kept in notes, drawn as cards.
   registerSnippetBlock((lang, handler) => plugin.registerMarkdownCodeBlockProcessor(lang, handler))
 

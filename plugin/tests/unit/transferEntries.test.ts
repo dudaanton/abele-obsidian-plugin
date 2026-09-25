@@ -127,6 +127,7 @@ describe('settings that arrived later than the transfer did', () => {
       server: 'https://git.example',
       openLinks: false,
       defaultRepo: 'octo-org/octo-repo',
+      userDisplay: 'login' as const,
     }
     const entries = collectEntries(settings({ github }))
     const entry = find(entries, 'github', 'github')

@@ -15,12 +15,22 @@ import { treeUrl } from './tree/fileTree'
 /** A commit SHA as GitHub shows one; a branch or a tag as it is. */
 export const shortRef = (ref: string) => (/^[0-9a-f]{40}$/i.test(ref) ? ref.slice(0, 7) : ref)
 
+/** A person in the details under the title, drawn with their name and picture. */
+export interface MetaPerson {
+  login: string
+  avatar?: string
+  /** Words after them: `opened 1 Sep 2026, 10:00`. */
+  after?: string
+}
+
+export type MetaPart = string | MetaPerson
+
 export interface ItemHead {
   title: string
   number?: number
   state?: string
   labels: Label[]
-  meta: string[]
+  meta: MetaPart[]
 }
 
 export function itemHead(t: GithubTarget | null, data: ItemData | null): ItemHead {
@@ -32,7 +42,12 @@ export function itemHead(t: GithubTarget | null, data: ItemData | null): ItemHea
     return {
       ...fallback,
       title: splitMessage(c.message).title,
-      meta: [c.sha.slice(0, 7), c.author, formatDate(c.date), ...(t.pull ? [`in #${t.pull}`] : [])],
+      meta: [
+        c.sha.slice(0, 7),
+        c.login ? { login: c.login, avatar: c.avatar } : c.author,
+        formatDate(c.date),
+        ...(t.pull ? [`in #${t.pull}`] : []),
+      ],
     }
   }
   // A file or a folder is titled by where it is, which the breadcrumbs draw with its ref.
@@ -42,7 +57,13 @@ export function itemHead(t: GithubTarget | null, data: ItemData | null): ItemHea
   }
 
   const item = data as IssueData | PullData | DiscussionData
-  const meta = [`${item.author} opened ${formatDate(item.createdAt)}`]
+  const meta: MetaPart[] = [
+    {
+      login: item.author,
+      avatar: item.authorAvatar,
+      after: `opened ${formatDate(item.createdAt)}`,
+    },
+  ]
   if (t.kind === 'pull') {
     const p = item as PullData
     meta.push(`${p.head} → ${p.base}`, `+${p.additions} −${p.deletions}`)

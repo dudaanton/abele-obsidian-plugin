@@ -298,6 +298,53 @@ describe.skipIf(!available)('a GitHub tab', () => {
     })
   })
 
+  describe('people', () => {
+    it('are shown by name with their picture, kept as data, the login a click away', () => {
+      const queries = () => gh.requests().filter((l) => l.startsWith('POST /api/graphql')).length
+      const before = queries()
+      const r = evalAsync<{
+        error?: string
+        meta?: string
+        authors?: string[]
+        pictures?: string[]
+        tooltip?: string
+        swapped?: string
+        requests?: number
+      }>(`(async () => {
+        ${PRELUDE}
+        await window.__abeleTest.githubUsers().clear()
+        ${opening(`${gh.web}/pull/42`, 'Rework the widget loader')}
+        const named = await until(() => {
+          const a = root.querySelector('.abele-github-comment__author img')
+          return a && a.src.startsWith('data:image/png') &&
+            root.querySelector('.abele-github-header__meta').textContent.includes('Alice Example')
+        }, 15000)
+        if (!named) return { error: 'the names and pictures never came' }
+        const authors = [...root.querySelectorAll('.abele-github-comment__author')]
+        const report = {
+          meta: root.querySelector('.abele-github-header__meta').textContent.replace(/\\s+/g, ' ').trim(),
+          authors: [...new Set(authors.map((a) => a.textContent.trim()))],
+          pictures: [...new Set(authors.map((a) => (a.querySelector('img')?.src ?? '').slice(0, 15)))],
+          tooltip: authors[1].getAttribute('aria-label'),
+        }
+        authors[1].click()
+        await wait(100)
+        report.swapped = authors[1].textContent.trim()
+        leaf.detach()
+        return report
+      })()`)
+      expect(r.error).toBeUndefined()
+      expect(r.meta).toContain('Alice Example opened')
+      // bob, carol and dave comment in turn; carol's profile has no name.
+      expect(r.authors).toEqual(expect.arrayContaining(['Bob Example', 'carol', 'Dave Example']))
+      expect(r.pictures).toEqual(['data:image/png;'])
+      expect(r.tooltip).toMatch(/ · (bob|dave)$/)
+      expect(r.swapped).toMatch(/^(bob|dave)$/)
+      // Everyone on the conversation was asked about in one query.
+      expect(queries() - before).toBe(1)
+    })
+  })
+
   describe('text can be selected and copied', () => {
     it('what the tab shows selects; its controls and line numbers do not', () => {
       const r = evalAsync<{
@@ -416,7 +463,7 @@ describe.skipIf(!available)('a GitHub tab', () => {
       return { ...read, expected: setup.expected! }
     }
 
-    const squash = (s: string) => s.replace(/\s+/g, ' ').trim()
+    const squash = (s: string) => s.replace(/\\s+/g, ' ').trim()
 
     it('a paragraph of a comment, dragged over, is selected and copied', () => {
       const r = dragAndCopy(

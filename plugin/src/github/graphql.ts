@@ -36,6 +36,10 @@ export interface RawFile {
 
 export const login = (user: any): string => user?.login ?? 'ghost'
 
+/** A person's picture, from REST's `avatar_url` or GraphQL's `avatarUrl`. */
+export const avatarOf = (user: any): string | undefined =>
+  user?.avatar_url || user?.avatarUrl || undefined
+
 export const REVIEW_STATES: Record<string, string> = {
   APPROVED: 'Approved',
   CHANGES_REQUESTED: 'Changes requested',
@@ -70,6 +74,7 @@ export function commentsFromGraphql(connection: any): Listed<Comment> {
     (c: any): Comment => ({
       id: id(c),
       author: login(c.author),
+      avatar: avatarOf(c.author),
       body: c.body ?? '',
       createdAt: c.createdAt ?? '',
       anchor: c.databaseId ? `issuecomment-${c.databaseId}` : undefined,
@@ -86,6 +91,7 @@ export function reviewsFromGraphql(connection: any): Listed<Comment> {
       (r: any): Comment => ({
         id: `review-${id(r)}`,
         author: login(r.author),
+        avatar: avatarOf(r.author),
         body: r.body ?? '',
         createdAt: r.submittedAt ?? r.createdAt ?? '',
         anchor: r.databaseId ? `pullrequestreview-${r.databaseId}` : undefined,
@@ -104,6 +110,7 @@ export function reviewCommentsFromGraphql(connection: any): Listed<PathComment> 
         comment: {
           id: `rc-${id(c)}`,
           author: login(c.author),
+          avatar: avatarOf(c.author),
           body: c.body ?? '',
           createdAt: c.createdAt ?? '',
           anchor: c.databaseId ? `discussion_r${c.databaseId}` : undefined,
@@ -125,6 +132,8 @@ export function commitsFromGraphql(connection: any): CommitSummary[] {
     sha: n.commit?.oid ?? '',
     message: n.commit?.message ?? '',
     author: n.commit?.author?.user?.login ?? n.commit?.author?.name ?? 'unknown',
+    login: n.commit?.author?.user?.login || undefined,
+    avatar: avatarOf(n.commit?.author?.user) ?? avatarOf(n.commit?.author),
     date: n.commit?.author?.date ?? '',
   }))
 }
@@ -181,7 +190,7 @@ query($owner: String!, $repo: String!, $number: Int!) {
   return node
 }
 
-const AUTHOR = 'author { login }'
+const AUTHOR = 'author { login avatarUrl }'
 
 export async function graphqlComments(
   client: GithubClient,
@@ -230,7 +239,7 @@ export async function graphqlCommits(client: GithubClient, t: Item): Promise<Com
     client,
     t,
     'pullRequest',
-    'commits(first: 100) { totalCount nodes { commit { oid message author { name date user { login } } } } }',
+    'commits(first: 100) { totalCount nodes { commit { oid message author { name date avatarUrl user { login avatarUrl } } } } }',
     "the pull request's commits"
   )
   return commitsFromGraphql(node.commits)

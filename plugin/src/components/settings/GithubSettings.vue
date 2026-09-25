@@ -93,6 +93,34 @@
       </Section>
 
       <Section
+        title="People"
+        desc="Who wrote an issue, a comment, a review or a commit, with their picture. Names and pictures are asked of GitHub once and kept on this device for a week."
+      >
+        <Setting
+          name="Show people by"
+          desc="Their name as their profile gives it, or their login. The other one is in the tooltip, and a click or a tap on a person swaps the two right there. Someone whose profile has no name is shown by login either way."
+        >
+          <Dropdown
+            :options="displayOptions"
+            :model-value="settings.userDisplay"
+            @update:model-value="updateUserDisplay"
+          />
+        </Setting>
+        <Setting name="Kept names and pictures" :desc="peopleDesc">
+          <Button
+            text="Clear"
+            :disabled="!peopleCount"
+            :tooltip="
+              peopleCount
+                ? 'Forget every kept name and picture; they are asked for again as people are shown'
+                : 'Nothing is kept yet'
+            "
+            @click="clearPeople"
+          />
+        </Setting>
+      </Section>
+
+      <Section
         title="Code search"
         desc="Search the code of the version a tab shows, and go to definition, from inside the tab. The repository at that version is downloaded once a session and searched here."
       >
@@ -132,12 +160,14 @@ import Button from '../obsidian/Button.vue'
 import Icon from '../obsidian/Icon.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
+import Dropdown from '../obsidian/Dropdown.vue'
 import GithubAccessReport from './GithubAccessReport.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { GITHUB_TOKEN_KEY_ID, githubSettingsFrom, type GithubSettings } from '@/github/settings'
 import { checkGithubAccess, resetGithubClients } from '@/github/GithubService'
 import type { AccessReport } from '@/github/accessCheck'
+import { githubUsers } from '@/github/users'
 
 const config = AbeleConfig.getInstance()
 const { app } = GlobalStore.getInstance()
@@ -167,6 +197,30 @@ const save = async () => {
   checkResult.value = ''
   report.value = null
   await config.saveSettings()
+}
+
+const displayOptions = [
+  { value: 'name', display: 'Name' },
+  { value: 'login', display: 'Login' },
+]
+
+const updateUserDisplay = (value: string) => {
+  settings.userDisplay = value === 'login' ? 'login' : 'name'
+  void save()
+}
+
+const peopleCount = ref(githubUsers().size)
+void githubUsers()
+  .ready()
+  .then(() => (peopleCount.value = githubUsers().size))
+const peopleDesc = computed(() =>
+  peopleCount.value
+    ? `${peopleCount.value} ${peopleCount.value === 1 ? 'person is' : 'people are'} kept on this device. Clear them to have every name and picture asked for again — after someone changed theirs, say.`
+    : 'None kept on this device yet.'
+)
+const clearPeople = async () => {
+  await githubUsers().clear()
+  peopleCount.value = 0
 }
 
 const toggle = (key: 'enabled' | 'openLinks') => {

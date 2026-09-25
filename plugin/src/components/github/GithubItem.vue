@@ -77,6 +77,7 @@
         <template v-else-if="shown.kind === 'issue' && issue">
           <GithubThread
             :author="issue.author"
+            :avatar="issue.authorAvatar"
             :created-at="issue.createdAt"
             :body="issue.body"
             :comments="issue.comments"
@@ -91,6 +92,7 @@
         <template v-else-if="shown.kind === 'discussion' && discussion">
           <GithubThread
             :author="discussion.author"
+            :avatar="discussion.authorAvatar"
             :created-at="discussion.createdAt"
             :body="discussion.body"
             :comments="discussion.comments"
@@ -104,6 +106,7 @@
           <GithubThread
             v-if="pullTab === 'conversation'"
             :author="pull.author"
+            :avatar="pull.authorAvatar"
             :created-at="pull.createdAt"
             :body="pull.body"
             :comments="pull.comments"
@@ -157,11 +160,17 @@
                 v-for="c in commits.data.value"
                 :key="c.sha"
                 :title="splitMessage(c.message).title"
-                :subtitle="`${c.sha.slice(0, 7)} · ${c.author} · ${formatDate(c.date)}`"
                 icon="git-commit-horizontal"
                 clickable
                 @click="openCommit(c.sha)"
-              />
+              >
+                <template #subtitle>
+                  {{ c.sha.slice(0, 7) }} ·
+                  <GithubUser v-if="c.login" :login="c.login" :avatar="c.avatar" />
+                  <template v-else>{{ c.author }}</template>
+                  · {{ formatDate(c.date) }}
+                </template>
+              </Card>
             </div>
           </template>
         </template>
@@ -218,6 +227,7 @@ import Tabs from '../obsidian/Tabs.vue'
 import Card from '../obsidian/Card.vue'
 import GithubText from './GithubText.vue'
 import GithubHeader from './GithubHeader.vue'
+import GithubUser from './GithubUser.vue'
 import GithubThread from './GithubThread.vue'
 import GithubFiles from './GithubFiles.vue'
 import GithubBlob from './GithubBlob.vue'
@@ -245,6 +255,7 @@ import { elementTop, pinIntoView } from '@/github/scrollTo'
 import { LINKER, createLinker } from '@/github/linking'
 import { SCREEN, chatSubject } from '@/github/screen'
 import { GITHUB_REPO } from '@/github/repoContext'
+import { GITHUB_PEOPLE } from '@/github/users'
 import { repoWeb } from '@/github/origin'
 import { bodyLink, type GithubLink } from '@/github/permalinks'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -444,6 +455,8 @@ const repo = computed<RepoFile | null>(() => {
   return t ? { host: t.host, owner: t.owner, repo: t.repo, ref: 'HEAD', path: '' } : null
 })
 provide(GITHUB_REPO, repo)
+// The people in it are looked up with the tab's own client: its server, its token.
+provide(GITHUB_PEOPLE, () => (target.value ? client() : null))
 
 // What is on screen, for an agent to ask about: the diffs and the file view add their part.
 const screen = props.model.screen
@@ -626,8 +639,10 @@ body.is-phone .abele-github {
     -webkit-user-select: none;
   }
 
-  // A changed file's head folds its diff, but its path is worth copying.
-  .abele-github-file__path {
+  // A changed file's head folds its diff, but its path is worth copying; a person swaps their
+  // name and login on a click, but the name is worth copying too.
+  .abele-github-file__path,
+  .abele-github-user {
     user-select: text;
     -webkit-user-select: text;
   }

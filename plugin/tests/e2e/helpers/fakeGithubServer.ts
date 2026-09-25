@@ -17,6 +17,7 @@
  */
 import { createHash } from 'node:crypto'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { deflateSync } from 'node:zlib'
 import {
   BASE_FILES,
   DISCUSSION,
@@ -24,6 +25,7 @@ import {
   HEAD_SHA,
   ISSUE,
   OWNER,
+  PEOPLE,
   PULL,
   REPO,
   SLASHED_BRANCH,
@@ -122,10 +124,56 @@ function searchIssues(res: ServerResponse, url: URL, web: string) {
 const page = (url: URL, items: unknown[]) =>
   Number(url.searchParams.get('page') ?? 1) > 1 ? [] : items
 
+/** CRC-32, for the chunks of a PNG. */
+function crc32(bytes: Buffer): number {
+  let c = ~0
+  for (const b of bytes) {
+    c ^= b
+    for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1))
+  }
+  return ~c >>> 0
+}
+
+/** A square PNG of one colour — a person's picture, told apart from the others by its colour. */
+function avatarPng(login: string): Buffer {
+  const hue = [...login].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 360, 7)
+  const [r, g, b] = [0, 120, 240].map((shift) =>
+    Math.round(127 + 100 * Math.cos(((hue + shift) * Math.PI) / 180))
+  )
+  const size = 40
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array(size).fill([r, g, b]).flat())])
+  const chunk = (type: string, data: Buffer) => {
+    const head = Buffer.alloc(4)
+    head.writeUInt32BE(data.length)
+    const body = Buffer.concat([Buffer.from(type), data])
+    const crc = Buffer.alloc(4)
+    crc.writeUInt32BE(crc32(body))
+    return Buffer.concat([head, body, crc])
+  }
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(size, 0)
+  ihdr.writeUInt32BE(size, 4)
+  ihdr.set([8, 2, 0, 0, 0], 8)
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(Buffer.concat(Array(size).fill(row)))),
+    chunk('IEND', Buffer.alloc(0)),
+  ])
+}
+
 function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) {
   const f = fixtures(web)
   const accept = String(req.headers.accept ?? '')
   if (url.pathname === '/api/v3/search/issues') return searchIssues(res, url, web)
+  const profile = /^\/api\/v3\/users\/([^/]+)$/.exec(url.pathname)
+  if (profile) {
+    const login = decodeURIComponent(profile[1])
+    if (!(login in PEOPLE)) return notFound(res)
+    return send(res, 200, { login, name: PEOPLE[login], avatar_url: `${web}/avatars/u/${login}` })
+  }
+  const picture = /^\/avatars\/u\/([^/]+)$/.exec(url.pathname)
+  if (picture) return send(res, 200, avatarPng(picture[1]), 'image/png')
   const prefix = `/api/v3/repos/${OWNER}/${REPO}`
   if (!url.pathname.startsWith(prefix)) return notFound(res)
   const path = decodeURIComponent(url.pathname.slice(prefix.length))
@@ -261,6 +309,21 @@ async function graphql(req: IncomingMessage, res: ServerResponse, web: string) {
     const d = fixtures(web).discussion
     const nodes = titleMatches(d.title, String(variables?.q ?? '')) ? [d] : []
     return send(res, 200, { data: { search: { nodes } } })
+  }
+  if (query?.includes('user(login:')) {
+    // The batched lookup of people's names: `u0: user(login: $l0)`, one alias per login.
+    const data: Record<string, unknown> = {}
+    const errors: unknown[] = []
+    for (const [name, login] of Object.entries(variables ?? {})) {
+      const alias = `u${name.slice(1)}`
+      if (typeof login === 'string' && login in PEOPLE) {
+        data[alias] = { login, name: PEOPLE[login], avatarUrl: `${web}/avatars/u/${login}` }
+      } else {
+        data[alias] = null
+        errors.push({ type: 'NOT_FOUND', path: [alias], message: 'Could not resolve to a User' })
+      }
+    }
+    return send(res, 200, { data, ...(errors.length ? { errors } : {}) })
   }
   if (query?.includes('discussion(number') && variables?.number === DISCUSSION)
     return send(res, 200, { data: { repository: { discussion: fixtures(web).discussion } } })
