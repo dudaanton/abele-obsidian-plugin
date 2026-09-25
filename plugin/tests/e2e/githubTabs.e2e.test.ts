@@ -299,7 +299,7 @@ describe.skipIf(!available)('a GitHub tab', () => {
   })
 
   describe('people', () => {
-    it('are shown by name with their picture, kept as data, the login a click away', () => {
+    it('are shown by name with their picture, kept as data, the login a click away', async () => {
       const queries = () => gh.requests().filter((l) => l.startsWith('POST /api/graphql')).length
       const before = queries()
       const r = evalAsync<{
@@ -340,7 +340,9 @@ describe.skipIf(!available)('a GitHub tab', () => {
       expect(r.pictures).toEqual(['data:image/png;'])
       expect(r.tooltip).toMatch(/ · (bob|dave)$/)
       expect(r.swapped).toMatch(/^(bob|dave)$/)
-      // Everyone on the conversation was asked about in one query.
+      // Everyone on the conversation was asked about in one query. The server's log is read only
+      // while the worker is not blocked on an eval, so it is given a moment to arrive.
+      await new Promise((resolve) => setTimeout(resolve, 500))
       expect(queries() - before).toBe(1)
     })
   })
