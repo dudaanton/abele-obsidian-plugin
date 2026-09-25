@@ -157,7 +157,8 @@ be that synced keys are locked there — say so rather than asking for the key a
 The same screen has **All keys**, the person's own list of every key the plugin knows on the
 device — what each is for, where it is used, whether it is set and synced — where each can be
 shown or copied and all of them copied at once. It is theirs alone: no tool reads it or its
-values, and none should be asked to. Send a person who wants to see or copy a key there.
+values, and none should be asked to. Send a person who wants to see or copy a key there, or to the field the key was entered in:
+every one of them has the same show and copy icons beside the stored key.
 
 ## Everything else
 

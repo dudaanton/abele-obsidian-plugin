@@ -31,32 +31,24 @@
         desc="A fine-grained personal access token with read-only access to Contents, Issues, Pull requests and Discussions for the repositories you want to read. Without one, only public repositories can be read, 60 requests an hour, and discussions not at all."
       >
         <Setting name="Token" desc="Stored in the keychain, never in the settings file.">
-          <div class="abele-github-settings__secret">
-            <span v-if="masked" class="abele-github-settings__mask">{{ masked }}</span>
-            <div class="abele-github-settings__row">
-              <input
-                v-model="tokenInput"
-                type="password"
-                class="abele-obsidian-input"
-                :placeholder="masked ? 'New token...' : 'github_pat_...'"
-                @keydown.enter="saveToken"
-              />
+          <SecretField
+            v-model="tokenInput"
+            :value="stored"
+            placeholder="github_pat_..."
+            replace-placeholder="New token..."
+            save-tooltip="Save the token"
+            what="The token"
+            @save="saveToken"
+          >
+            <template #actions>
               <Icon
-                v-if="tokenInput"
-                icon="check"
-                with-bg
-                tooltip="Save the token"
-                @click="saveToken"
-              />
-              <Icon
-                v-else-if="masked"
                 icon="trash-2"
                 with-bg
                 tooltip="Forget the token"
                 @click="confirmingForget = true"
               />
-            </div>
-          </div>
+            </template>
+          </SecretField>
         </Setting>
 
         <Setting
@@ -185,6 +177,7 @@
 
 <script setup lang="ts">
 import { secrets } from '@/secrets/SecretStore'
+import SecretField from './SecretField.vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { debounce } from 'obsidian'
 import Setting from '../obsidian/Setting.vue'
@@ -218,11 +211,10 @@ const confirmingForget = ref(false)
 // Settings changed on disk — synced from another device — are shown rather than overwritten.
 watch(config.version, () => Object.assign(settings, githubSettingsFrom(config.github)))
 
-const masked = computed(() => {
+const stored = computed(() => {
   void secretVersion.value
-  const secret = settings.keyId ? secrets().get(settings.keyId) : ''
-  if (!secret) return ''
-  return secret.length <= 8 ? '••••••••' : `${secret.slice(0, 4)}••••${secret.slice(-4)}`
+  void secrets().version.value
+  return settings.keyId ? secrets().get(settings.keyId) : ''
 })
 
 const save = async () => {
@@ -343,18 +335,6 @@ const check = async () => {
 
 <style lang="scss">
 .abele-github-settings {
-  &__secret {
-    display: flex;
-    flex-direction: column;
-    gap: var(--size-4-1);
-  }
-
-  &__mask {
-    font-family: var(--font-monospace);
-    font-size: var(--font-small);
-    color: var(--text-muted);
-  }
-
   &__row {
     display: flex;
     align-items: center;

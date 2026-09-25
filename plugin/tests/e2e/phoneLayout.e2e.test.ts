@@ -464,6 +464,10 @@ const probeScript = `(async () => {
     // Whatever the keychain held under those ids is put back exactly, absent included.
     const keychain = app.secretStorage
     const FAKE_KEYS = { 'abele-firefly-token': 'fake-probe-value-1', 'abele-openrouter': 'fake-probe-value-2' }
+    // The first AI provider's key too, when the vault has one: its field is the first on the
+    // AI page, and the one a person reaches for.
+    const provider = (window.__abeleTest.AbeleConfig.getInstance().ai.providers || [])[0]
+    if (provider && provider.apiKeyId) FAKE_KEYS[provider.apiKeyId] = 'fake-probe-value-3-long-enough-to-wrap-on-a-phone-0123456789'
     const held = {}
     for (const id of Object.keys(FAKE_KEYS)) held[id] = keychain.getSecret(id)
     try {
@@ -485,6 +489,54 @@ const probeScript = `(async () => {
       } else {
         report['secrets list'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'the list of keys did not open' }
       }
+
+      // The settings pages whose fields hold keys, as a phone shows them: each stored key
+      // masked with its show and copy icons beside it, the first one shown in full.
+      app.setting.open()
+      app.setting.openTabById('abele')
+      await until(() => document.querySelector('.abele-settings__nav .abele-tabs__tab'), 5000)
+      const PAGES = [['settings ai keys', 'AI Agent'], ['settings finance keys', 'Finance']]
+      for (const [label, page] of PAGES) {
+        const tab = [...document.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find(
+          (t) => t.textContent.trim() === page
+        )
+        if (!tab) {
+          report[label] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'no page ' + page }
+          continue
+        }
+        tab.click()
+        if (!(await until(() => document.querySelector('.abele-secret-field__stored'), 5000))) {
+          report[label] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'no stored key on ' + page }
+        } else {
+          const first = document.querySelector('.abele-secret-field')
+          first.querySelector('.abele-secret-field__stored .abele-obsidian-icon').click()
+          first.scrollIntoView({ block: 'center' })
+          await wait(400)
+          const modal = document.querySelector('.modal')
+          await screen(label, modal, modal.querySelector('.vertical-tab-content-container') || modal)
+          // The show and copy icons belong on the row of the key, not on a line of their own.
+          const stranded = []
+          for (const row of modal.querySelectorAll('.abele-secret-field__stored')) {
+            const value = row.querySelector('.abele-secret-field__value').getBoundingClientRect()
+            for (const icon of row.querySelectorAll('.abele-obsidian-icon')) {
+              if (icon.getBoundingClientRect().top >= value.bottom - 1) stranded.push(row.textContent.trim().slice(0, 24))
+            }
+          }
+          report[label].stranded = stranded
+          const clipped = []
+          for (const f of modal.querySelectorAll('.abele-secret-field input')) {
+            if (f.getBoundingClientRect().width === 0) continue
+            f.focus()
+            for (const cut of ringClipped(f)) clipped.push(name(f) + ': ' + cut)
+            f.blur()
+          }
+          report[label].clipped = clipped
+        }
+        const back = document.querySelector('.modal-setting-back-button')
+        if (back) back.click()
+        await until(() => document.querySelector('.abele-settings__nav .abele-tabs__tab'), 3000)
+      }
+      app.setting.close()
     } finally {
       for (const [id, value] of Object.entries(held)) {
         if (value) keychain.setSecret(id, value)
@@ -578,6 +630,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'icon picker',
     'icon picker search',
     'secrets list',
+    'settings ai keys',
+    'settings finance keys',
   ]
 
   /** Dialogs with fields, whose focus rings are measured, and which stand as a full sheet. */
@@ -605,7 +659,10 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
   const prompts = new Set(['note picker', 'chat picker'])
 
   it.each(screens)('%s: one thing scrolls inside the body, and it reaches the bottom', (label) => {
-    const scrollers = report[label]?.scrollers ?? []
+    // A settings page's prompt editors are fields that scroll their own text, by design.
+    const scrollers = (report[label]?.scrollers ?? []).filter(
+      (s) => !(label.startsWith('settings') && s.name === 'abele-obsidian-input')
+    )
     expect(scrollers.length, JSON.stringify(scrollers)).toBeLessThanOrEqual(1)
     if (prompts.has(label)) return
     for (const s of scrollers)
@@ -627,6 +684,14 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
   it('secrets list: every key keeps its show and copy icons on the row of its name', () => {
     expect(report['secrets list']?.stranded ?? ['no report']).toEqual([])
   })
+
+  it.each(['settings ai keys', 'settings finance keys'])(
+    '%s: every stored key keeps its show and copy icons on its own row, and no field loses its focus ring',
+    (label) => {
+      expect(report[label]?.stranded ?? ['no report']).toEqual([])
+      expect(report[label]?.clipped ?? ['no report']).toEqual([])
+    }
+  )
 
   it.each(screens)('%s: no box is capped below the height of the sheet', (label) => {
     expect(report[label]?.capped ?? ['no report']).toEqual([])

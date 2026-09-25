@@ -101,7 +101,8 @@ import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import type { KitColor } from '@/constants/colors'
 import { secrets } from '@/secrets/SecretStore'
 import { copyAllText, secretCatalog, type KeyState, type SecretRow } from '@/secrets/catalog'
-import { copySecret, platformClipboard } from '@/secrets/clipboard'
+import { platformClipboard } from '@/secrets/clipboard'
+import { copyKey } from '@/secrets/copyKey'
 import { AbeleConfig } from '@/services/AbeleConfig'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -209,20 +210,8 @@ onUnmounted(() => {
 const clipboard = () => platformClipboard(doc().defaultView ?? activeWindow)
 const confirmingAll = ref(false)
 
-async function copy(text: string, what: string): Promise<void> {
-  try {
-    const { clears } = await copySecret(text, clipboard())
-    new Notice(
-      clears
-        ? `${what} copied. It is cleared from the clipboard in a minute.`
-        : `${what} copied. It stays on the clipboard until something else is copied.`
-    )
-  } catch (e) {
-    // The failure, never the text that was being copied.
-    console.error('[Abele] a key could not be copied', (e as Error)?.message)
-    new Notice('The clipboard refused it: nothing was copied.')
-  }
-}
+const copy = (text: string, what: string) =>
+  copyKey(text, what, doc().defaultView ?? activeWindow)
 
 const copyOne = (row: SecretRow) => copy(store.get(row.id), row.name)
 

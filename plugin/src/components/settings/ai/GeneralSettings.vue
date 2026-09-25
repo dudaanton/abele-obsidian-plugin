@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-settings__ai">
+  <div ref="settingsRoot" class="abele-settings__ai">
     <Setting name="AI Agent" desc="Enable AI agent features including the chat sidebar.">
       <Checkbox :is-enabled="enabled" @toggle="toggleEnabled" />
     </Setting>
@@ -34,31 +34,13 @@
           </Setting>
 
           <Setting name="API Key" desc="Stored securely in keychain.">
-            <div class="abele-ai-provider__secret">
-              <span
-                v-if="getSecretDisplay(provider.apiKeyId)"
-                class="abele-ai-provider__secret-mask"
-              >
-                {{ getSecretDisplay(provider.apiKeyId) }}
-              </span>
-              <div class="abele-ai-provider__secret-row">
-                <input
-                  type="password"
-                  class="abele-obsidian-input"
-                  :value="secretInputs[provider.id] || ''"
-                  :placeholder="getSecretDisplay(provider.apiKeyId) ? 'New key...' : 'sk-...'"
-                  @input="secretInputs[provider.id] = ($event.target as HTMLInputElement).value"
-                  @keydown.enter="applyProviderSecret(pIdx)"
-                />
-                <Icon
-                  v-if="secretInputs[provider.id]"
-                  icon="check"
-                  with-bg
-                  tooltip="Save key"
-                  @click="applyProviderSecret(pIdx)"
-                />
-              </div>
-            </div>
+            <SecretField
+              :value="storedSecret(provider.apiKeyId)"
+              :model-value="secretInputs[provider.id] || ''"
+              :placeholder="'sk-...'"
+              @update:model-value="secretInputs[provider.id] = $event"
+              @save="applyProviderSecret(pIdx)"
+            />
           </Setting>
 
           <div class="abele-ai-provider__models">
@@ -226,28 +208,13 @@
 
       <Section title="Integrations">
         <Setting name="Brave Search API Key" desc="Stored securely in keychain.">
-          <div class="abele-ai-provider__secret">
-            <span v-if="getSecretDisplay(braveSearchApiKey)" class="abele-ai-provider__secret-mask">
-              {{ getSecretDisplay(braveSearchApiKey) }}
-            </span>
-            <div class="abele-ai-provider__secret-row">
-              <input
-                type="password"
-                class="abele-obsidian-input"
-                :value="braveSecretInput"
-                :placeholder="getSecretDisplay(braveSearchApiKey) ? 'New key...' : 'BSA...'"
-                @input="braveSecretInput = ($event.target as HTMLInputElement).value"
-                @keydown.enter="applyBraveSecret"
-              />
-              <Icon
-                v-if="braveSecretInput"
-                icon="check"
-                with-bg
-                tooltip="Save key"
-                @click="applyBraveSecret"
-              />
-            </div>
-          </div>
+          <SecretField
+            :value="storedSecret(braveSearchApiKey)"
+            :model-value="braveSecretInput"
+            :placeholder="'BSA...'"
+            @update:model-value="braveSecretInput = $event"
+            @save="applyBraveSecret"
+          />
         </Setting>
       </Section>
 
@@ -327,28 +294,13 @@
           name="OpenRouter API key"
           desc="Stored in the keychain, shared with image generation."
         >
-          <div class="abele-ai-provider__secret">
-            <span v-if="getSecretDisplay(voiceKeyName)" class="abele-ai-provider__secret-mask">
-              {{ getSecretDisplay(voiceKeyName) }}
-            </span>
-            <div class="abele-ai-provider__secret-row">
-              <input
-                type="password"
-                class="abele-obsidian-input"
-                :value="voiceSecretInput"
-                :placeholder="getSecretDisplay(voiceKeyName) ? 'New key...' : 'sk-or-...'"
-                @input="voiceSecretInput = ($event.target as HTMLInputElement).value"
-                @keydown.enter="applyVoiceSecret"
-              />
-              <Icon
-                v-if="voiceSecretInput"
-                icon="check"
-                with-bg
-                tooltip="Save key"
-                @click="applyVoiceSecret"
-              />
-            </div>
-          </div>
+          <SecretField
+            :value="storedSecret(voiceKeyName)"
+            :model-value="voiceSecretInput"
+            :placeholder="'sk-or-...'"
+            @update:model-value="voiceSecretInput = $event"
+            @save="applyVoiceSecret"
+          />
         </Setting>
       </Section>
 
@@ -401,28 +353,13 @@
           </Setting>
 
           <Setting name="API Key" desc="Stored securely in keychain.">
-            <div class="abele-ai-provider__secret">
-              <span v-if="getSecretDisplay(ip.apiKeyId)" class="abele-ai-provider__secret-mask">
-                {{ getSecretDisplay(ip.apiKeyId) }}
-              </span>
-              <div class="abele-ai-provider__secret-row">
-                <input
-                  type="password"
-                  class="abele-obsidian-input"
-                  :value="imgSecretInputs[ip.id] || ''"
-                  :placeholder="getSecretDisplay(ip.apiKeyId) ? 'New key...' : 'sk-...'"
-                  @input="imgSecretInputs[ip.id] = ($event.target as HTMLInputElement).value"
-                  @keydown.enter="applyImageProviderSecret(ipIdx)"
-                />
-                <Icon
-                  v-if="imgSecretInputs[ip.id]"
-                  icon="check"
-                  with-bg
-                  tooltip="Save key"
-                  @click="applyImageProviderSecret(ipIdx)"
-                />
-              </div>
-            </div>
+            <SecretField
+              :value="storedSecret(ip.apiKeyId)"
+              :model-value="imgSecretInputs[ip.id] || ''"
+              :placeholder="'sk-...'"
+              @update:model-value="imgSecretInputs[ip.id] = $event"
+              @save="applyImageProviderSecret(ipIdx)"
+            />
           </Setting>
 
           <div class="abele-ai-provider__models">
@@ -515,7 +452,7 @@
                   :tooltip="revealedInputs[sIdx] ? 'Hide' : 'Reveal'"
                   @click="revealedInputs[sIdx] = !revealedInputs[sIdx]"
                 />
-                <Icon icon="copy" tooltip="Copy" @click="copySecret(secret.keyId)" />
+                <Icon icon="copy" tooltip="Copy the key" @click="copySecret(secret.keyId)" />
               </div>
               <div class="abele-ai-secret__row">
                 <Button
@@ -666,6 +603,8 @@ import ToolModesEditor from '../../ToolModesEditor.vue'
 import ModelEditModal from '../ModelEditModal.vue'
 import ImageModelEditModal from '../ImageModelEditModal.vue'
 import Icon from '../../obsidian/Icon.vue'
+import SecretField from '../SecretField.vue'
+import { copyKey } from '@/secrets/copyKey'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { TRANSCRIPTION_MODELS } from '@/ai/transcription'
 import { DEFAULT_RETRY, type RetrySettings } from '@/ai/retry'
@@ -831,6 +770,12 @@ const toggleSequentialAuxiliary = () => {
 }
 
 // ── Secret helpers ──────────────────────────────────────────
+
+/** The key stored under an id, re-read whenever the keys change. */
+const storedSecret = (secretId: string): string => {
+  void secretStore().version.value
+  return secretId ? secretStore().get(secretId) : ''
+}
 
 const getSecretDisplay = (secretId: string): string => {
   if (!secretId) return ''
@@ -1054,9 +999,12 @@ const getSecretFullValue = (secretId: string): string => {
 
 const revealedInputs = reactive<Record<number, boolean>>({})
 
+const settingsRoot = ref<HTMLElement>()
+
 const copySecret = (secretId: string) => {
   const value = getSecretFullValue(secretId)
-  if (value) navigator.clipboard.writeText(value)
+  if (!value) return
+  void copyKey(value, 'The key', settingsRoot.value?.ownerDocument.defaultView ?? activeWindow)
 }
 
 const addSecret = () => {
@@ -1345,24 +1293,6 @@ const updatePrompt = (field: keyof Omit<AiPrompts, 'toolDescriptions'>, value: s
 
 .abele-settings__ai-actions {
   margin-top: var(--size-4-4);
-}
-
-.abele-ai-provider__secret {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-1);
-}
-
-.abele-ai-provider__secret-mask {
-  font-family: var(--font-monospace);
-  font-size: var(--font-small);
-  color: var(--text-muted);
-}
-
-.abele-ai-provider__secret-row {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-1);
 }
 
 .abele-ai-provider__models {

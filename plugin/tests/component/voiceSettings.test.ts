@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import GeneralSettings from '@/components/settings/ai/GeneralSettings.vue'
 import Dropdown from '@/components/obsidian/Dropdown.vue'
+import SecretField from '@/components/settings/SecretField.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiSettings } from '@/ai/types'
 import { TRANSCRIPTION_MODELS, DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
@@ -96,13 +97,12 @@ describe('the key', () => {
 
   it('goes into the keychain when it is entered', async () => {
     const wrapper = open()
-    const field = wrapper.findAll('input[type="password"]').at(-1)
+    const field = wrapper
+      .findAllComponents(SecretField)
+      .find((f) => f.props('placeholder') === 'sk-or-...')!
 
-    await field?.setValue('sk-or-secret')
-    await wrapper
-      .findAll('.abele-obsidian-icon')
-      .find((i) => i.attributes('aria-label') === 'Save key' && i.isVisible())
-      ?.trigger('click')
+    await field.vm.$emit('update:model-value', 'sk-or-secret')
+    await field.vm.$emit('save')
 
     expect(app.secretStorage.getSecret('abele-openrouter')).toBe('sk-or-secret')
   })

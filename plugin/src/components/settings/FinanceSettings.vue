@@ -52,12 +52,19 @@
       name="Firefly III token"
       desc="Personal Access Token for Firefly III API. Stored in the keychain, never in the settings file."
     >
-      <Input
-        :model-value="fireflyToken"
-        password
+      <SecretField
+        v-model="tokenInput"
+        :value="fireflyToken"
         placeholder="Enter your Firefly III token"
-        @update:model-value="fireflyTokenChanged"
-      />
+        replace-placeholder="New token..."
+        save-tooltip="Save the token"
+        what="The token"
+        @save="saveToken"
+      >
+        <template #actions>
+          <Icon icon="trash-2" with-bg tooltip="Forget the token" @click="forgetToken" />
+        </template>
+      </SecretField>
     </Setting>
     <Setting name="Accounts folder" desc="Folder for account notes created during migration.">
       <Search
@@ -80,10 +87,13 @@
 
 <script setup lang="ts">
 import { fireflyToken as readFireflyToken, setFireflyToken } from '@/secrets/legacy'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import Setting from '../obsidian/Setting.vue'
 import Search from '../obsidian/Search.vue'
 import Input from '../obsidian/Input.vue'
+import Icon from '../obsidian/Icon.vue'
+import SecretField from './SecretField.vue'
+import { secrets } from '@/secrets/SecretStore'
 import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -96,7 +106,14 @@ const financeCategoriesFolder = ref(AbeleConfig.getInstance().financeCategoriesF
 const defaultCurrency = ref(AbeleConfig.getInstance().defaultCurrency)
 const pinnedCurrencies = ref(AbeleConfig.getInstance().pinnedCurrencies)
 const fireflyBaseUrl = ref(AbeleConfig.getInstance().fireflyBaseUrl)
-const fireflyToken = ref(readFireflyToken())
+const tokenInput = ref('')
+/** Bumped on a save here, for a keychain that changes nothing the store can see. */
+const tokenVersion = ref(0)
+const fireflyToken = computed(() => {
+  void tokenVersion.value
+  void secrets().version.value
+  return readFireflyToken()
+})
 
 const saveSettings = debounce(async () => {
   const config = AbeleConfig.getInstance()
@@ -111,7 +128,6 @@ const saveSettings = debounce(async () => {
   config.defaultCurrency = defaultCurrency.value.trim().toUpperCase()
   config.pinnedCurrencies = pinnedCurrencies.value.trim()
   config.fireflyBaseUrl = fireflyBaseUrl.value.trim().replace(/\/$/, '')
-  setFireflyToken(fireflyToken.value)
 
   await config.saveSettings()
 }, 500)
@@ -151,8 +167,15 @@ const fireflyBaseUrlChanged = (value: string) => {
   saveSettings()
 }
 
-const fireflyTokenChanged = (value: string) => {
-  fireflyToken.value = value.trim()
-  saveSettings()
+const saveToken = () => {
+  if (!tokenInput.value.trim()) return
+  setFireflyToken(tokenInput.value)
+  tokenInput.value = ''
+  tokenVersion.value++
+}
+
+const forgetToken = () => {
+  setFireflyToken('')
+  tokenVersion.value++
 }
 </script>

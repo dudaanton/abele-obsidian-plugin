@@ -75,6 +75,15 @@ encrypted; a person who wants them in a password manager has **Copy all**.
 Values never reach the console or a log, and the list is out of reach of AI agents: the settings
 tools return no value or keychain id, and nothing an agent runs can open the list.
 
+## Where each key is entered
+
+Every setting that holds a key — an AI provider's API key, the web search key, the voice input
+key, an image provider's key, a named secret once its card is open, the GitHub token, the
+Firefly III token — shows the key it holds masked, with the same two icons beside it: **Show**
+(the eye) puts the whole key in place of the mask until it is pressed again or the settings are
+closed, and **Copy** copies it, under the same clearing rule as the list above. Below it is the
+field for a new key.
+
 ## The other actions
 
 - **Change passphrase** re-encrypts the store. Other devices keep their keys and show *Out of
