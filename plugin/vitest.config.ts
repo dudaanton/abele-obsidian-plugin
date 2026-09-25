@@ -32,6 +32,8 @@ export default defineConfig({
       // these assert what reaches the DOM and in what order, never how it looks.
       'tests/component/**/*.test.ts',
     ],
+    // Fails the test that leaves a delayed settings or chat write behind — see the file.
+    setupFiles: ['tests/setup/pendingWrites.ts'],
     reporters: 'default',
     // A stylesheet imported as text (`?raw`) — the PDF page's layers — is text here too, not
     // emptied the way vitest empties stylesheets by default.

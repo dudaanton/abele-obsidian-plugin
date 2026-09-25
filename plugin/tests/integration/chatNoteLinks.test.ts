@@ -20,6 +20,7 @@ import { DEFAULT_AI_SETTINGS, type ChatMessage, type TouchedNote } from '@/ai/ty
 import type { AgentTool } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
+import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 
 // The editor is not standing up here: `dispatchCommentsChanged` walks the workspace's leaves,
 // which a fake vault has none of. Nothing in this file observes the repaint.
@@ -66,6 +67,8 @@ function toolOf(session: ChatSession, name: string): AgentTool {
 }
 
 const paths = (session: ChatSession): string[] => session.touched.value.map((t) => t.path)
+
+destroyChatsAfterEach()
 
 beforeEach(() => {
   app = useVault([

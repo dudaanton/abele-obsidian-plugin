@@ -21,6 +21,7 @@ import {
 } from '@/ai/types'
 import type { Message, ModelConfig } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
+import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 
 const streamed: Array<{ system: string; messages: Message[] }> = []
 
@@ -75,6 +76,8 @@ async function saveWithOneMessage(session: ChatSession): Promise<void> {
   ]
   await session.save()
 }
+
+destroyChatsAfterEach()
 
 beforeEach(() => {
   useVault([])

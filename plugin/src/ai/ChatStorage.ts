@@ -131,7 +131,7 @@ export class ChatStorage {
     const settle = (): AiChatHistoryEntry[] => {
       if (pruned) {
         GlobalStore.getInstance().chatLinksVersion.value++
-        void config.saveSettings()
+        this.saveHistory()
       }
       return config.ai.chatHistory
     }
@@ -195,7 +195,7 @@ export class ChatStorage {
       // Those entries were built out of the files' own `touched`, so they carry links nothing
       // has drawn yet.
       GlobalStore.getInstance().chatLinksVersion.value++
-      config.saveSettings()
+      this.saveHistory()
     }
 
     return config.ai.chatHistory
@@ -215,7 +215,7 @@ export class ChatStorage {
 
     if (await this.syncEntry(entry, file)) {
       GlobalStore.getInstance().chatLinksVersion.value++
-      config.saveSettings()
+      this.saveHistory()
     }
   }
 
@@ -346,6 +346,18 @@ export class ChatStorage {
 
   // ── History management (stored in plugin data.json) ──
 
+  /**
+   * Writes the history without the caller waiting on it. Those callers are chat writes and
+   * index syncs that must not stall on the settings file, so nobody awaits this — and a write
+   * that fails, or that lands after the plugin unloaded, is logged here rather than left as an
+   * unhandled rejection.
+   */
+  private saveHistory(): void {
+    AbeleConfig.getInstance()
+      .saveSettings()
+      .catch((err) => console.error('[Abele] Failed to save the chat history', err))
+  }
+
   /** Public because expansion adds a comment file to the history the moment it becomes a chat. */
   addHistoryEntry(entry: AiChatHistoryEntry): void {
     const config = AbeleConfig.getInstance()
@@ -357,7 +369,7 @@ export class ChatStorage {
     // A chat arriving in the index may already name notes — an expanded comment does, and so
     // does one that came in by sync. Without this its card never appears under them.
     GlobalStore.getInstance().chatLinksVersion.value++
-    config.saveSettings()
+    this.saveHistory()
   }
 
   /**
@@ -384,7 +396,7 @@ export class ChatStorage {
     entry.recap = recap || undefined
     entry.agentId = agentId || undefined
     GlobalStore.getInstance().chatLinksVersion.value++
-    config.saveSettings()
+    this.saveHistory()
   }
 
   /**
@@ -471,7 +483,7 @@ export class ChatStorage {
     if (entry.title === title && entry.summary === nextSummary) return
     entry.title = title
     entry.summary = nextSummary
-    config.saveSettings()
+    this.saveHistory()
   }
 
   /** Records a summary written for a chat that is not open, into its index entry. */
@@ -480,7 +492,7 @@ export class ChatStorage {
     const entry = config.ai.chatHistory?.find((e) => e.path === path)
     if (!entry || entry.summary === summary) return
     entry.summary = summary
-    config.saveSettings()
+    this.saveHistory()
   }
 
   /**
@@ -494,7 +506,7 @@ export class ChatStorage {
     // The entry carried the links, so its card has to go with it — a comment sent back to its
     // note, or a chat deleted, must not leave a card behind pointing at nothing.
     GlobalStore.getInstance().chatLinksVersion.value++
-    config.saveSettings()
+    this.saveHistory()
   }
 
   /** Public because `CommentService` creates the comment folder before writing into it. */

@@ -20,6 +20,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 import type { Message, ModelConfig } from '@/ai/client'
+import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 
 vi.mock('@/ai/client/OpenAIClient', () => {
   class OpenAIClient {
@@ -66,6 +67,8 @@ interface Write {
 }
 
 let writes: Write[] = []
+
+destroyChatsAfterEach()
 
 beforeEach(() => {
   writes = []

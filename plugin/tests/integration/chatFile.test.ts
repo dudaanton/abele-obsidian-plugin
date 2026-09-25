@@ -17,6 +17,7 @@ import { DEFAULT_AI_SETTINGS, type AiProvider, type SubAgentRunRef } from '@/ai/
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 import type { Message, ModelConfig } from '@/ai/client'
+import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 
 vi.mock('@/ai/client/OpenAIClient', () => {
   class OpenAIClient {
@@ -51,6 +52,8 @@ const provider: AiProvider = {
 }
 
 let app: FakeApp
+
+destroyChatsAfterEach()
 
 beforeEach(() => {
   app = useVault([])

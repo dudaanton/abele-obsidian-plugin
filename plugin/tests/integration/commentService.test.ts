@@ -20,6 +20,7 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
+import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 
 // The editor is not standing up here: `dispatchCommentsChanged` walks the workspace's leaves,
 // which a fake vault has none of. What matters to these tests is that it is called.
@@ -36,6 +37,8 @@ let app: FakeApp
 
 const noteFile = () => app.vault.getAbstractFileByPath('Notes/A.md') as TFile
 const noteText = async () => (await app.vault.read(noteFile())) as string
+
+destroyChatsAfterEach()
 
 beforeEach(() => {
   app = useVault([{ path: 'Notes/A.md', content: NOTE }])

@@ -18,6 +18,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
 import type { AgentTool, Message, ToolCallContent } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
+import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 
 const provider: AiProvider = {
   id: 'p1',
@@ -101,6 +102,8 @@ function loopPausingOnce(): void {
     }
   })
 }
+
+destroyChatsAfterEach()
 
 beforeEach(() => {
   vi.restoreAllMocks()

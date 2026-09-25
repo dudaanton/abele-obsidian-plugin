@@ -18,12 +18,18 @@ export function useSettingsSave(apply: () => void, reseed: () => void) {
   const config = AbeleConfig.getInstance()
   let timer: number | null = null
 
+  // Nobody waits on the write: a failed one, or one landing after the plugin unloaded, is
+  // logged rather than left as an unhandled rejection.
+  const write = () => {
+    config.saveSettings().catch((err) => console.error('[Abele] Failed to save settings', err))
+  }
+
   const save = () => {
     apply()
     if (timer !== null) window.clearTimeout(timer)
     timer = window.setTimeout(() => {
       timer = null
-      void config.saveSettings()
+      write()
     }, 500)
   }
 
@@ -31,7 +37,7 @@ export function useSettingsSave(apply: () => void, reseed: () => void) {
     if (timer === null) return
     window.clearTimeout(timer)
     timer = null
-    void config.saveSettings()
+    write()
   })
 
   watch(config.version, () => {
