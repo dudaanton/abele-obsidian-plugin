@@ -18,22 +18,6 @@
       </select>
     </Setting>
 
-    <Setting name="Model" :desc="modelDesc">
-      <div class="abele-chat-settings__override">
-        <Dropdown
-          :model-value="modelKey"
-          :options="modelOptions"
-          @update:model-value="selectModel($event)"
-        />
-        <Icon
-          v-if="modelOverridden"
-          icon="rotate-ccw"
-          title="Back to the agent's model"
-          @click="resetModel"
-        />
-      </div>
-    </Setting>
-
     <Setting
       v-if="activeInterceptorId"
       name="Interceptor context"
@@ -48,6 +32,22 @@
           {{ opt.display }}
         </option>
       </select>
+    </Setting>
+
+    <Setting name="Model" :desc="modelDesc">
+      <div class="abele-chat-settings__override">
+        <Dropdown
+          :model-value="modelKey"
+          :options="modelOptions"
+          @update:model-value="selectModel($event)"
+        />
+        <Icon
+          v-if="modelOverridden"
+          icon="rotate-ccw"
+          title="Back to the agent's model"
+          @click="resetModel"
+        />
+      </div>
     </Setting>
 
     <h4 style="margin: var(--size-4-3) 0 var(--size-4-1)">System Prompt</h4>
