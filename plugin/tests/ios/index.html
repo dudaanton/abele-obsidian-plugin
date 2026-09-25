@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Abele iOS lab</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: -apple-system, sans-serif; }
+  #stage { position: absolute; top: 60px; bottom: 90px; left: 0; right: 0; }
+  .notice { position: fixed; top: 8px; left: 8px; right: 8px; background: #333; color: #fff; padding: 8px; border-radius: 8px; z-index: 9; }
+  .extend { position: fixed; top: 50%; width: 28px; height: 56px; margin-top: -28px; display: none; border: 0; border-radius: 14px; background: rgba(0,0,0,.08); font-size: 20px; z-index: 5; }
+  #prev { left: 2px; } #next { right: 2px; }
+</style></head>
+<body><div id="stage"></div>
+<button id="prev" class="extend">‹</button><button id="next" class="extend">›</button>
+<script src="lab.js"></script></body></html>

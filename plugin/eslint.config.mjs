@@ -299,4 +299,11 @@ export default [
       'no-console': 'off',
     },
   },
+
+  // The iOS lab runs in Safari and on the Mac, not in Obsidian: `fetch` is what a page has there,
+  // and the lab server imports its own freshly built bundle.
+  {
+    files: ['plugin/tests/ios/**'],
+    rules: { 'no-restricted-globals': 'off', 'no-unsanitized/method': 'off' },
+  },
 ]

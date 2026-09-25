@@ -1,0 +1,32 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+		A0000000000000000000000A /* HostApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000B; };
+		A0000000000000000000000C /* LabUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000D; };
+		A0000000000000000000000B = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostApp.swift; sourceTree = "<group>"; };
+		A0000000000000000000000D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabUITests.swift; sourceTree = "<group>"; };
+		A0000000000000000000000E = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Host.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A0000000000000000000000F = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LabUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000010 = {isa = PBXGroup; children = (A00000000000000000000011, A00000000000000000000012, A00000000000000000000013); sourceTree = "<group>"; };
+		A00000000000000000000011 = {isa = PBXGroup; children = (A0000000000000000000000B); path = Host; sourceTree = "<group>"; };
+		A00000000000000000000012 = {isa = PBXGroup; children = (A0000000000000000000000D); path = LabUITests; sourceTree = "<group>"; };
+		A00000000000000000000013 = {isa = PBXGroup; children = (A0000000000000000000000E, A0000000000000000000000F); name = Products; sourceTree = "<group>"; };
+		A00000000000000000000020 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A0000000000000000000000A); runOnlyForDeploymentPostprocessing = 0; };
+		A00000000000000000000021 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A0000000000000000000000C); runOnlyForDeploymentPostprocessing = 0; };
+		A00000000000000000000030 = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000040; buildPhases = (A00000000000000000000020); buildRules = (); dependencies = (); name = Host; productName = Host; productReference = A0000000000000000000000E; productType = "com.apple.product-type.application"; };
+		A00000000000000000000031 = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000041; buildPhases = (A00000000000000000000021); buildRules = (); dependencies = (A00000000000000000000050); name = LabUITests; productName = LabUITests; productReference = A0000000000000000000000F; productType = "com.apple.product-type.bundle.ui-testing"; };
+		A00000000000000000000050 = {isa = PBXTargetDependency; target = A00000000000000000000030; targetProxy = A00000000000000000000051; };
+		A00000000000000000000051 = {isa = PBXContainerItemProxy; containerPortal = A00000000000000000000060; proxyType = 1; remoteGlobalIDString = A00000000000000000000030; remoteInfo = Host; };
+		A00000000000000000000060 = {isa = PBXProject; attributes = {LastUpgradeCheck = 1600; TargetAttributes = {A00000000000000000000031 = {TestTargetID = A00000000000000000000030; }; }; }; buildConfigurationList = A00000000000000000000042; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = A00000000000000000000010; productRefGroup = A00000000000000000000013; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000030, A00000000000000000000031); };
+		A00000000000000000000070 = {isa = XCBuildConfiguration; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = dev.abele.lab.host; PRODUCT_NAME = "$(TARGET_NAME)"; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_UILaunchScreen_Generation = YES; SWIFT_VERSION = 5.0; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; CODE_SIGNING_ALLOWED = NO; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+		A00000000000000000000071 = {isa = XCBuildConfiguration; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = dev.abele.lab.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; GENERATE_INFOPLIST_FILE = YES; SWIFT_VERSION = 5.0; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; TEST_TARGET_NAME = Host; CODE_SIGNING_ALLOWED = NO; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+		A00000000000000000000072 = {isa = XCBuildConfiguration; buildSettings = {SDKROOT = iphoneos; }; name = Debug; };
+		A00000000000000000000040 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000070); defaultConfigurationName = Debug; };
+		A00000000000000000000041 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000071); defaultConfigurationName = Debug; };
+		A00000000000000000000042 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000072); defaultConfigurationName = Debug; };
+	};
+	rootObject = A00000000000000000000060;
+}
