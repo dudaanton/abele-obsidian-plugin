@@ -37,45 +37,38 @@
     </template>
 
     <div class="abele-book-reader__main">
-      <!-- The page, and what stands over it: the bars never take room from the page, which the
-           engine would lay out anew — moving the words under a selection being made. -->
       <div class="abele-book-reader__page">
         <div ref="stage" class="abele-book-reader__stage" />
         <div v-if="model.status !== 'ready'" class="abele-book-reader__message">
           {{ model.message }}
         </div>
-        <div
-          class="abele-book-reader__bars"
-          :class="{ 'abele-book-reader__bars_top': model.barTop }"
-        >
-          <BookSelectionBar
-            v-if="model.status === 'ready' && (model.selection || model.active) && !model.selecting"
-            :highlight="model.active"
-            :can-ask="model.canAsk"
-            @ask="emit('ask', quoteTarget())"
-            @read-aloud="emit('read-aloud')"
-            @color="onColor"
-            @comment="onComment"
-            @copy-link="emit('copy-link', target())"
-            @quote="emit('quote', quoteTarget())"
-            @open-note="emit('open-note', model.active ?? undefined)"
-            @delete="model.active && emit('delete-highlight', model.active)"
-            @close="model.active ? emit('close-active') : emit('clear-selection')"
-          />
-        </div>
       </div>
-      <!-- Reading aloud goes down the whole page: its bar takes room of its own, below it. -->
-      <BookSpeechBar
-        v-if="model.status === 'ready' && model.speech !== 'idle'"
-        :state="model.speech === 'paused' ? 'paused' : 'playing'"
-        @action="emit('speech', $event)"
-      />
-      <BookFooter
-        v-if="model.status === 'ready'"
-        :model="model"
-        @back="emit('back')"
-        @seek="emit('seek', $event)"
-      />
+      <!-- One row under the page, always as tall, for one thing at a time: the bar for words
+           selected or a highlight tapped, else the bar for reading aloud, else the line with the
+           slider. Nothing stands over the text, and the page is never laid out anew for a bar —
+           which would move the words under a selection. -->
+      <div v-if="model.status === 'ready'" class="abele-book-reader__foot">
+        <BookSelectionBar
+          v-if="(model.selection || model.active) && !model.selecting"
+          :highlight="model.active"
+          :can-ask="model.canAsk"
+          @ask="emit('ask', quoteTarget())"
+          @read-aloud="emit('read-aloud')"
+          @color="onColor"
+          @comment="onComment"
+          @copy-link="emit('copy-link', target())"
+          @quote="emit('quote', quoteTarget())"
+          @open-note="emit('open-note', model.active ?? undefined)"
+          @delete="model.active && emit('delete-highlight', model.active)"
+          @close="model.active ? emit('close-active') : emit('clear-selection')"
+        />
+        <BookSpeechBar
+          v-else-if="model.speech !== 'idle'"
+          :state="model.speech === 'paused' ? 'paused' : 'playing'"
+          @action="emit('speech', $event)"
+        />
+        <BookFooter v-else :model="model" @back="emit('back')" @seek="emit('seek', $event)" />
+      </div>
     </div>
 
     <ObsidianModal
@@ -279,25 +272,20 @@ watch(
     min-height: 0;
   }
 
-  &__bars {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 4;
+  /* The row under the page: as tall whatever it holds, so swapping what it holds moves no
+     line of the page. On the desktop Obsidian's status bar floats over its bottom right. */
+  &__foot {
     display: flex;
-    flex-direction: column;
+    flex: 0 0 auto;
+    box-sizing: content-box;
+    height: var(--abele-book-foot, 2.75rem);
   }
 
-  /* At the head of the page, over words in the lower part of it: the bar keeps off them. */
-  &__bars_top {
-    top: 0;
-    bottom: auto;
-  }
-
-  &__bars_top .abele-book-selection {
-    border-top: none;
-    border-bottom: 1px solid var(--background-modifier-border);
+  &__foot > * {
+    flex: 1 1 auto;
+    min-width: 0;
+    box-sizing: border-box;
+    height: 100%;
   }
 
   &__message {
@@ -390,7 +378,7 @@ watch(
 }
 
 // Obsidian's status bar floats over the bottom right of the workspace on the desktop.
-body:not(.is-mobile) .abele-book-reader__footer {
+body:not(.is-mobile) .abele-book-reader__foot {
   padding-bottom: var(--size-4-8);
 }
 

@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { watchPage, type PageHost } from '@/reader/pageInput'
-import { EDGE_HOLD_MS, QUIET_MS, SelectionPager } from '@/reader/selectionPaging'
+import { EDGE_HOLD_MS, QUIET_MS, SETTLE_MS, SelectionPager } from '@/reader/selectionPaging'
 import { LONG_PRESS_MS } from '@/reader/pageGesture'
 
 // The page is the test's own document: happy-dom collapses every range set in a document made
@@ -211,24 +211,31 @@ describe('a selection on pages turned one at a time', () => {
       const rect = { left: here ? 20 : 1000, top: 100, width: 30, height: 20 } as DOMRect
       return [rect] as unknown as DOMRectList
     })
+    // Pages of two columns, 400 wide: a step under a selection is one column, half a page,
+    // which here brings the other paragraph on screen as a whole page would.
     const renderer = Object.assign(new EventTarget(), {
       page: opts.page ?? 2,
       pages: opts.pages ?? 8,
+      size: 400,
+      start: (opts.page ?? 2) * 400,
+      columns: 2,
       scrolled: !!opts.scrolled,
       next: vi.fn(async () => {
         renderer.page++
+        renderer.start = renderer.page * 400
         visible = pageRange(b)
         renderer.dispatchEvent(new Event('relocate'))
       }),
       prev: vi.fn(async () => {
         renderer.page--
+        renderer.start = renderer.page * 400
         visible = pageRange(a)
         renderer.dispatchEvent(new Event('relocate'))
       }),
+      stepBy: vi.fn(async (d: number) => (d > 0 ? renderer.next() : renderer.prev())),
     })
     const told: string[] = []
     const adjusted: boolean[] = []
-    const moved = vi.fn()
     const pager = new SelectionPager(
       doc,
       {
@@ -237,7 +244,6 @@ describe('a selection on pages turned one at a time', () => {
         fixed: () => !!opts.fixed,
         visible: () => visible,
         adjusting: (on) => adjusted.push(on),
-        moved,
       },
       (m) => told.push(m)
     )
@@ -262,7 +268,6 @@ describe('a selection on pages turned one at a time', () => {
       renderer,
       told,
       adjusted,
-      moved,
       pager,
       move,
       press,
@@ -271,16 +276,6 @@ describe('a selection on pages turned one at a time', () => {
       selected,
     }
   }
-
-  it('tells the host once the page has turned under a selection, so its bar is placed anew', async () => {
-    const { a, renderer, moved, pager: p, handle } = pager()
-    handle([a, 0], [a, 5])
-    const turned = p.tapTurn(1, null)
-    await vi.advanceTimersByTimeAsync(100)
-    await turned
-    expect(renderer.next).toHaveBeenCalledTimes(1)
-    expect(moved).toHaveBeenCalled()
-  })
 
   it('turns forward once a pointer has held it at the right edge, and again while it stays there', () => {
     const { a, renderer, move, press, handle } = pager()
@@ -292,6 +287,8 @@ describe('a selection on pages turned one at a time', () => {
     expect(renderer.next).not.toHaveBeenCalled()
     vi.advanceTimersByTime(200)
     expect(renderer.next).toHaveBeenCalledTimes(1)
+    // By half the page, not a whole one: the words just selected stay on screen.
+    expect(renderer.stepBy).toHaveBeenCalledWith(200)
   })
 
   it('turns back at the left edge, and not at all without a selection or once released', () => {
@@ -318,6 +315,22 @@ describe('a selection on pages turned one at a time', () => {
     // Its end taken back and brought down onto the last word again, and held: the page turns.
     handle([a, 17], [a, 20])
     handle([a, 17], [a, a.length])
+    vi.advanceTimersByTime(EDGE_HOLD_MS + 50)
+    expect(renderer.next).toHaveBeenCalledTimes(1)
+  })
+
+  it('with no pointer to follow, moves on for an end dragged into the foot of the page and held there', () => {
+    const { a, renderer, handle } = pager()
+    handle([a, 0], [a, 5])
+    // Its end's line near the foot, above the last: under iOS a finger below the text is taken
+    // for a line anywhere near it, and in a scrolled chapter for one out of sight.
+    vi.spyOn(Range.prototype, 'getClientRects').mockImplementation(
+      () =>
+        [
+          { left: 20, top: 740, width: 30, height: 20, bottom: 760 } as DOMRect,
+        ] as unknown as DOMRectList
+    )
+    handle([a, 0], [a, 10])
     vi.advanceTimersByTime(EDGE_HOLD_MS + 50)
     expect(renderer.next).toHaveBeenCalledTimes(1)
   })
@@ -421,14 +434,45 @@ describe('a selection on pages turned one at a time', () => {
     expect(selected()).toBe('beta')
   })
 
-  it('works a screen at a time in a scrolled chapter', async () => {
+  it('works half a screen at a time in a scrolled chapter', async () => {
     const { a, renderer, pager: p, handle, selected } = pager({ scrolled: true })
     Object.assign(renderer, { start: 0, end: 400, viewSize: 2000 })
     handle([a, 6], [a, 10])
     const extended = p.extend(1)
     await vi.advanceTimersByTimeAsync(10)
     expect(await extended).toBe(true)
+    expect(renderer.next).toHaveBeenCalledWith(200)
     expect(selected()).toBe('beta gamma delta.Epsilon')
+  })
+
+  it('once let go, puts pages moved by a column back on the page where the selection ended', async () => {
+    const { a, b, renderer, handle, doc } = pager()
+    const show = vi.fn(async () => {})
+    Object.assign(renderer, { showAnchor: show })
+    handle([a, 6], [b, 7])
+    renderer.start = 1000 // a column into the next page
+    doc.getSelection()!.removeAllRanges()
+    doc.dispatchEvent(new Event('selectionchange'))
+    await vi.advanceTimersByTimeAsync(SETTLE_MS - 50)
+    expect(show).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(100)
+    expect(show).toHaveBeenCalledTimes(1)
+    const at = (show.mock.calls[0] as unknown as [Range])[0]
+    expect([at.startContainer, at.startOffset]).toEqual([b, 7])
+  })
+
+  it('a tap that lets the selection go a moment before putting it back leaves the page where it is', async () => {
+    const { a, b, renderer, handle, doc } = pager()
+    const show = vi.fn(async () => {})
+    Object.assign(renderer, { showAnchor: show })
+    handle([a, 6], [b, 7])
+    renderer.start = 1000
+    doc.getSelection()!.removeAllRanges()
+    doc.dispatchEvent(new Event('selectionchange'))
+    await vi.advanceTimersByTimeAsync(100)
+    handle([a, 6], [b, 7])
+    await vi.advanceTimersByTimeAsync(SETTLE_MS * 2)
+    expect(show).not.toHaveBeenCalled()
   })
 
   it('is drawn again after every turn, and still covers the pages it had', async () => {

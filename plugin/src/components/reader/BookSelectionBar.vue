@@ -90,19 +90,33 @@ const emit = defineEmits<{
 <style lang="scss">
 .abele-book-selection {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--size-4-1) var(--size-4-3);
-  padding: var(--size-4-1) var(--size-4-3);
+  gap: var(--size-4-2);
+  padding: 0 var(--size-4-2);
+  /* One row, in the place of the line under the page and as tall: what does not fit on a
+     narrow screen scrolls sideways rather than taking a second row from the page. */
+  overflow-x: auto;
+  scrollbar-width: none;
   border-top: 1px solid var(--background-modifier-border);
   background-color: var(--background-primary);
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
 
   &__colors,
   &__actions {
     display: flex;
+    flex: 0 0 auto;
     align-items: center;
-    gap: var(--size-4-1);
+    gap: var(--size-2-1);
+  }
+
+  /* Dots, narrower than the glyphs beside them: a highlight's full row fits a phone. */
+  &__swatch.abele-obsidian-icon {
+    padding-inline: var(--size-2-1);
   }
 
   &__swatch svg {

@@ -54,7 +54,7 @@ and front matter are skipped when the book says where the text starts).
 ## Highlights, links and search
 
 **Selecting words** on the page — with the mouse, or a long press on a phone — brings up a bar
-under the page:
+under the page, in the place of the line with the slider:
 
 - a colour highlights them (yellow, green, blue, pink, purple, orange);
 - the speech bubble highlights them and opens a box for a comment;
@@ -64,29 +64,47 @@ under the page:
 A **tap on a highlight** brings up the same bar for it: another colour, the comment, a link, the
 quote, the highlights note, or remove it. A tap beside the bar closes it.
 
-**A selection can run over several pages.** While words are selected:
+**A selection can run on past the page.** While words are selected, the page moves on under
+them by **half a page**, not a whole one, so the words just selected stay on screen beside the ones
+coming:
 
-- **A tap on the very edge of the page** — its outer sixth, left or right — turns the page and
-  carries the selection on: going forward its end moves to the first word of the new page, going
-  back its start to the last word of the page before, drawn again with its handles to drag on
-  from there. An end already on that page is left alone and the page only turns. A tap anywhere
-  else still turns nothing.
-- **A handle dragged to the foot of the page and held there** for a moment — its end on the
-  page's last word, or past the text — turns the page forward the same way, and again while it
-  stays there; the start dragged to the head of the page (its first word) and held goes back.
-  With a mouse, or wherever the page hears the finger move, the pointer held at the bottom or
-  right edge does the same, and at the top or left edge goes back. A selection just made by a long
-  press on the last word does not turn the page: only an end that was dragged there does.
+- **A tap on the very edge of the page** — its outer sixth, left or right — moves it on (right)
+  or back (left) by half a page. The selection is kept: if its end has gone off screen it moves to
+  the first word on it, going back its start to the last word, drawn again with its handles to
+  drag on from there. A tap anywhere else still turns nothing, and a tap on the edge with nothing
+  selected turns a whole page as always.
+- **A handle dragged to the foot of the page and held there** for a moment — its line in the
+  lowest eighth of the page, on its last word, or past the text — moves it on the same way, and
+  again each time it is dragged back down there and held; the start held at the head of the page
+  goes back. With a mouse, or wherever the page hears the finger move, the pointer held at the
+  bottom or right edge does the same, and at the top or left edge goes back. A selection just made
+  by a long press does not move the page: only an end that was dragged there does.
+
+How "half a page" looks depends on the page:
+
+- **Pages of two columns** move by one column: the second column of one page beside the first of
+  the next, every line whole.
+- **Pages of one column** — a phone — cannot: half a column shows the ends of one page's lines
+  beside the starts of the next page's, every line cut. So while the selection is carried on, the
+  chapter is scrolled instead, in the page's own box and at the same width, so no line of it wraps
+  differently or moves, and each step scrolls half the page's height.
+- **A chapter scrolled** by choice moves half the screen's height.
+
+Once the selection is let go — highlighted, quoted, cleared — the pages come back on the page
+where it ended; not as soon as its bar shows, which would move the words just as they are about to
+be used.
 
 While the selection is being made — a finger or the mouse still at it — **the bar for the words
-is hidden**, so nothing covers the page, its top included, where the handle goes on from after a
-turn. It comes back once the selection has rested for half a second (and the mouse button is up):
-iOS tells a page nothing while a handle is dragged, so resting is the only sign a finger has
-stopped. It stands at the foot of the page, or at its head when the words are in the lower part
-of the page, so its buttons never cover a handle — measured again after every turn, by the
-words on the new page alone. It stands over the page rather than beside it:
-making room for it would lay the page out anew under the finger. The bar for reading aloud takes
-a place of its own under the page.
+is hidden**, and the line with the slider shows. The bar comes back once the selection has rested
+for half a second (and the mouse button is up), and a second longer after the page has moved: iOS
+tells a page nothing while a handle is dragged, so resting is the only sign a finger has stopped.
+
+**The row under the page holds one thing at a time**, and is as tall whatever it holds: the bar for
+words selected or a highlight tapped, else the bar for reading aloud while it reads, else the line
+with the chapter and the slider. So nothing stands over the text and the page is never laid out
+anew for a bar. The bar for words wins over the one for reading aloud: it is there only while
+words are selected, and reading goes on underneath. Its buttons fit a phone's width in one row;
+on a narrower pane what does not fit scrolls sideways.
 
 The selection is kept through every page turn and shown again, with its handles, on any page it
 reaches — iOS keeps a selection through a turn but stops drawing it, so the reader sets it again.
@@ -181,7 +199,7 @@ system voices. **Read aloud from here** on the bar under selected words starts a
 - It reads a sentence at a time and marks the one being read: a highlight in a book, a box over the
   words on a PDF page or a fixed page. The page turns to follow it.
 - At the end of a chapter or a PDF page it goes on into the next one, to the end of the book.
-- A bar under the page, while it reads, pauses and goes on, reads the last sentence again, skips to
+- A bar under the page, in the place of the line with the slider while it reads, pauses and goes on, reads the last sentence again, skips to
   the next, opens the voice and speed settings and stops.
 - Closing the tab, or the book, stops it.
 

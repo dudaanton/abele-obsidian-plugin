@@ -9,7 +9,6 @@ import { PDF_SCROLL_TAG } from './pdfScroll'
 import { PageGesture } from './pageGesture'
 import { TAP_EDGE, pagerFor, pagerOf } from './selectionPaging'
 import { figureAt, fitFigures } from './figures'
-import { barAtTop } from './barPlace'
 import type { BookModel } from './model'
 import type { BookReading } from './BookReading'
 
@@ -63,23 +62,13 @@ export function watchPage(host: PageHost, doc: Document): void {
     stage: () => host.stage(),
     fixed: () => host.fixed(),
     visible: () => host.reader()?.lastLocation?.range ?? null,
-    // The bars stay out of the way while words are being selected, and come back beside them —
-    // at the foot of the page unless they are in its lower part — where they are once it rests.
-    adjusting: (on) => {
-      host.model.selecting = on
-      if (!on) placeBar(host, doc)
-    },
-    moved: () => placeBar(host, doc),
+    // The bars stay out of the way while words are being selected.
+    adjusting: (on) => (host.model.selecting = on),
   })
   // The engine turns a reflowing book's pages under a finger itself; a PDF's it does not — and a
   // PDF in one long scroll is moved by the finger as it is, not turned.
   if (reader?.isFixedLayout && renderer?.localName !== PDF_SCROLL_TAG)
     watchSwipes(host, doc, gesture)
-}
-
-function placeBar(host: PageHost, doc: Document): void {
-  const sel = doc.getSelection()
-  if (sel?.rangeCount && !sel.isCollapsed) host.reading()?.placeBar(sel.getRangeAt(0))
 }
 
 function watchSwipes(host: PageHost, doc: Document, gesture: PageGesture): void {
@@ -156,21 +145,13 @@ function onTap(host: PageHost, e: MouseEvent, doc: Document, gesture: PageGestur
   }
   const marks = host.reading()?.marks
   if (marks) {
-    // A highlight tapped: its bar at the head of the page when the tap was in its lower part.
-    const stage = host.stage()?.getBoundingClientRect()
-    const y = e.clientY + (doc.defaultView?.frameElement?.getBoundingClientRect().top ?? 0)
-    const place = () => stage && (host.model.barTop = barAtTop(y, stage))
     if (host.fixed()) {
       const h = marks.hitPdf(doc, e.clientX, e.clientY)
       if (h) {
-        place()
         marks.open(h)
         return
       }
-    } else if (marks.hitEpub(e)) {
-      place()
-      return
-    }
+    } else if (marks.hitEpub(e)) return
   }
   // A tap beside an open highlight's bar closes it, rather than turning the page as well.
   if (host.model.active) {

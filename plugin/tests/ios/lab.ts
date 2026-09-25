@@ -95,10 +95,11 @@ async function main() {
       relocate: d.reason ?? '',
       page: (reader.renderer as unknown as { page?: number }).page,
       scroll: scrollOf(),
+      scrolledFlow: (reader.renderer as unknown as { scrolled?: boolean }).scrolled,
     })
   })
-  // The bar under the page, as the reader shows it: for words selected, and not while they are
-  // still being selected.
+  // The bar in the row under the page, as the reader shows it: for words selected, and not while
+  // they are still being selected.
   let barShown = false
   setInterval(() => {
     const show = !!model.selection && !model.selecting

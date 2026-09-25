@@ -462,6 +462,10 @@ export class Paginator extends HTMLElement {
     #touchState
     #touchScrolled
     #lastVisibleRange
+    // ABELE PATCH: how many columns a page has, and whether the chapter is scrolled only for a
+    // while, in the box and at the width of its pages (`setFlow`).
+    #columns = 1
+    #keep = false
     constructor() {
         super()
         this.#root.innerHTML = `<style>
@@ -525,6 +529,12 @@ export class Paginator extends HTMLElement {
             grid-column: 1 / -1;
             grid-row: 1 / -1;
             overflow: auto;
+        }
+        /* ABELE PATCH: scrolled for a while, where the page was. */
+        :host([flow="scrolled"][data-keep]) #container {
+            grid-column: 2 / 5;
+            grid-row: 2;
+            scrollbar-width: none;
         }
         #header {
             grid-column: 3 / 4;
@@ -740,11 +750,16 @@ export class Paginator extends HTMLElement {
             this.feet = null
             this.#header.replaceChildren()
             this.#footer.replaceChildren()
+            this.#columns = 1
 
+            // ABELE PATCH: scrolled for a while, the text as wide as on its page, so no line of
+            // it wraps anew.
+            if (this.#keep) return { flow, margin, gap: gap / 2, columnWidth: size - gap }
             return { flow, margin, gap, columnWidth }
         }
 
         const divisor = Math.min(maxColumnCount, Math.ceil(size / maxInlineSize))
+        this.#columns = divisor // ABELE PATCH
         const columnWidth = (size / divisor) - gap
         this.setAttribute('dir', rtl ? 'rtl' : 'ltr')
 
@@ -937,7 +952,8 @@ export class Paginator extends HTMLElement {
     }
     async #scrollToRect(rect, reason) {
         if (this.scrolled) {
-            const offset = this.#getRectMapper()(rect).left - this.#margin
+            // ABELE PATCH: scrolled in the page's own box, a line goes to its top, as on a page.
+            const offset = this.#getRectMapper()(rect).left - (this.#keep ? 0 : this.#margin)
             return this.#scrollTo(offset, reason)
         }
         const offset = this.#getRectMapper()(rect).left
@@ -998,8 +1014,10 @@ export class Paginator extends HTMLElement {
         await this.#scrollToPage(newPage + 1, reason)
     }
     #getVisibleRange() {
+        // ABELE PATCH: scrolled in the page's own box, all of it is on screen.
+        const margin = this.#keep ? 0 : this.#margin
         if (this.scrolled) return getVisibleRange(this.#view.document,
-            this.start + this.#margin, this.end - this.#margin, this.#getRectMapper())
+            this.start + margin, this.end - margin, this.#getRectMapper())
         const size = this.#rtl ? -this.size : this.size
         return getVisibleRange(this.#view.document,
             this.start - size, this.end - size, this.#getRectMapper())
@@ -1126,6 +1144,32 @@ export class Paginator extends HTMLElement {
     }
     prev(distance) {
         return this.#turnPage(-1, distance)
+    }
+    // ABELE PATCH: the columns of a page, so a selection carried on can move by part of one.
+    get columns() {
+        return this.#columns
+    }
+    // ABELE PATCH: moves the pages by a distance, not to a page's edge — part of a page, a column
+    // of two — and says where it is, as a turn does.
+    async stepBy(distance) {
+        if (!this.#view || this.scrolled || this.#locked) return
+        const { size, pages } = this
+        const offset = Math.max(size, Math.min((pages - 2) * size, this.start + distance))
+        return this.#scrollTo(this.#rtl ? -offset : offset, 'page', true)
+    }
+    // ABELE PATCH: shows a place without selecting it, as a page drawn anew would.
+    showAnchor(anchor) {
+        return this.#scrollToAnchor(anchor, 'anchor')
+    }
+    // ABELE PATCH: pages or a scroll, shown at a place. `keep` scrolls in the page's own box and
+    // at its width, so going over to it and back moves no line of the text: what a selection
+    // carried on by part of a page does while it is made (`src/reader/selectionStep.ts`).
+    setFlow(flow, anchor, keep = false) {
+        this.#keep = keep && flow === 'scrolled'
+        this.toggleAttribute('data-keep', this.#keep)
+        if (anchor) this.#anchor = anchor
+        if (this.getAttribute('flow') === flow) this.render()
+        else this.setAttribute('flow', flow)
     }
     next(distance) {
         return this.#turnPage(1, distance)

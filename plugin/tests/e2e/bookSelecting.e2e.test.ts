@@ -128,6 +128,11 @@ const PRELUDE = `
     const frame = doc.defaultView.frameElement.getBoundingClientRect()
     return doc.caretRangeFromPoint(x - frame.left, y - frame.top)
   }
+  /** Whether a word is wholly on screen still. */
+  const shown = (view, range) =>
+    words(view).some((w) => w.range.compareBoundaryPoints(Range.START_TO_START, range) === 0)
+  /** Where the engine's view is: scrolled for now or in pages, and how far along. */
+  const at = (view) => ({ scrolled: R(view).scrolled, start: R(view).start, size: R(view).size, page: R(view).page })
   const notices = () => [...document.querySelectorAll('.notice')].map((n) => n.textContent)
   const shoot = async (name) => {
     const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
@@ -193,13 +198,16 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
   }, 180_000)
 
   describe('with the mouse, on the desktop', () => {
-    it('a click at the edge turns the page; with words selected only one on the very edge does, carrying them on', () => {
+    it('a click at the edge turns the page; with words selected only one on the very edge moves it, by a column', () => {
       const r = run<{
         error?: string
         clicked?: number[]
         withSelection?: number[]
         atEdge?: number
+        step?: number
+        size?: number
         kept?: boolean
+        still?: boolean
       }>(`
         const { leaf, view } = await open(${JSON.stringify(BOOK)})
         await fresh(view)
@@ -219,23 +227,29 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         await click(s.left + s.width * 0.8)
         const withSelection = [p1, R(view).page]
         // That click let the words go, as a click beside a selection does: selected again.
-        select(view, words(view)[5].range); await wait(700)
-        const p2 = R(view).page
+        // A word of the right-hand column, as words reaching for the edge are.
+        const chosen = words(view).filter((w) => w.x > s.left + s.width / 2)[3].range
+        select(view, chosen); await wait(700)
+        const s2 = at(view)
         await click(s.right - 4)
-        const atEdge = R(view).page
+        await wait(300)
+        // Half a page on: of two columns, one — the words just selected still on screen.
+        const step = at(view).start - s2.start
+        const still = shown(view, chosen)
         const kept = !docOf(view).getSelection().isCollapsed
         view.reading.clearSelection()
         leaf.detach()
-        return { clicked, withSelection, atEdge: atEdge - p2, kept }
+        return { clicked, withSelection, step, size: s2.size, kept, still }
       `)
       expect(r.error).toBeUndefined()
       expect(r.clicked![1]).toBe(r.clicked![0] + 1)
       expect(r.withSelection![1]).toBe(r.withSelection![0])
-      expect(r.atEdge).toBe(1)
+      expect(Math.abs(r.step! - r.size! / 2)).toBeLessThan(2)
       expect(r.kept).toBe(true)
+      expect(r.still).toBe(true)
     })
 
-    it('a selection dragged to the edge turns the page, grows onto the next, and is highlighted as one', () => {
+    it('a selection dragged to the edge moves the pages on by a column, grows onto what comes, and is highlighted as one', () => {
       const r = run<{
         error?: string
         pages?: number[]
@@ -243,10 +257,14 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         first?: string
         text?: string
         note?: string
+        step?: number
+        size?: number
+        aligned?: boolean
       }>(`
         const { leaf, view } = await open(${JSON.stringify(BOOK)})
         await fresh(view)
         const s = box(view)
+        const s0 = at(view)
         const visible = view.engine.lastLocation.range
         const list = words(view)
         const start = list[Math.floor(list.length / 2)]
@@ -254,11 +272,12 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         await mouse('mouseMoved', start.left + 1, start.y, 0)
         await mouse('mousePressed', start.left + 1, start.y)
         for (const t of [0.5, 1]) { await mouse('mouseMoved', start.x + (s.right - 3 - start.x) * t, start.y); await wait(60) }
-        // Held at the edge until the page turns, the pointer never quite still.
-        await until(async () => { await mouse('mouseMoved', s.right - 3 - (Date.now() % 2), start.y); return R(view).page !== p0 }, 3000)
-        const p1 = R(view).page
-        await mouse('mouseMoved', s.left + s.width * 0.3, s.top + s.height * 0.3); await wait(100)
-        await mouse('mouseReleased', s.left + s.width * 0.3, s.top + s.height * 0.3, 0)
+        // Held at the edge until the pages move on, the pointer never quite still.
+        await until(async () => { await mouse('mouseMoved', s.right - 3 - (Date.now() % 2), start.y); return R(view).start !== s0.start }, 3000)
+        // On into the column that came: the next page's first.
+        await mouse('mouseMoved', s.left + s.width * 0.7, s.top + s.height * 0.3); await wait(500)
+        const step = at(view).start - s0.start
+        await mouse('mouseReleased', s.left + s.width * 0.7, s.top + s.height * 0.3, 0)
         await wait(500)
         const sel = docOf(view).getSelection()
         const range = sel.getRangeAt(0)
@@ -268,18 +287,57 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         await view.reading.highlight('yellow')
         const file = await until(() => app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}), 5000)
         const note = file ? await app.vault.read(file) : ''
+        // Let go — highlighted — the pages come back to rest on a page's edge.
+        await wait(800)
+        const aligned = Math.abs(R(view).start / R(view).size - Math.round(R(view).start / R(view).size)) < 0.01
         const pEnd = R(view).page
         leaf.detach()
-        return { pages: [p0, p1, pEnd], spans, first: start.range.toString(), text, note }
+        return { pages: [p0, pEnd], spans, first: start.range.toString(), text, note, step, size: s0.size, aligned }
       `)
       expect(r.error).toBeUndefined()
-      expect(r.pages![1]).toBe(r.pages![0] + 1)
+      expect(Math.abs(r.step! - r.size! / 2)).toBeLessThan(2)
+      expect(r.aligned).toBe(true)
       expect(r.spans).toBe(true)
       expect(r.text!.startsWith(r.first!)).toBe(true)
       // The highlight is one callout holding the words of both pages.
       expect(r.note).toContain('> [!quote|yellow]')
       // The words of both pages, the last of them as the note quotes them.
       expect(r.note!.replace(/\s+/g, ' ')).toContain(r.text!.split('\n').pop()!.trim().slice(-30))
+    })
+
+    it('in a chapter scrolled by the reader’s own choice, words selected move it half a screen', () => {
+      const r = run<{ error?: string; step?: number; size?: number; still?: boolean }>(`
+        const cfg = window.__abeleTest.AbeleConfig.getInstance()
+        cfg.reader = { ...cfg.reader, flow: 'scrolled' }
+        await cfg.saveSettings()
+        try {
+          const { leaf, view } = await open(${JSON.stringify(BOOK)})
+          if (view.model.panel) { view.model.panel = false; await wait(400) }
+          await until(() => R(view).scrolled, 3000)
+          await wait(500)
+          const s = box(view)
+          const list = words(view)
+          const chosen = list[list.length - 2]
+          select(view, chosen.range)
+          await until(() => view.model.selection, 3000)
+          await wait(700)
+          const s0 = at(view)
+          const x = s.right - 4, y = s.top + s.height / 2
+          await mouse('mouseMoved', x, y, 0); await mouse('mousePressed', x, y); await mouse('mouseReleased', x, y, 0)
+          await wait(900)
+          const step = at(view).start - s0.start
+          const still = shown(view, chosen.range)
+          view.reading.clearSelection()
+          leaf.detach()
+          return { step, size: s0.size, still }
+        } finally {
+          cfg.reader = { ...cfg.reader, flow: 'paginated' }
+          await cfg.saveSettings()
+        }
+      `)
+      expect(r.error).toBeUndefined()
+      expect(Math.abs(r.step! - r.size! / 2)).toBeLessThan(2)
+      expect(r.still).toBe(true)
     })
 
     it('stays on its page of a PDF, and says why', () => {
@@ -444,13 +502,16 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
       expect(r.turned).toBe(r.pages![0] + 1)
     })
 
-    it('a selection’s end dragged to the edge turns the page and grows onto the next', () => {
+    it('a selection’s end dragged to the edge moves the page on by half, and grows onto what comes', () => {
       const r = run<{
         error?: string
-        pages?: number[]
+        moved?: boolean
+        still?: boolean
         spans?: boolean
         text?: string
         first?: string
+        settled?: boolean
+        endShown?: boolean
       }>(`
         const { leaf, view } = await open(${JSON.stringify(BOOK)})
         await fresh(view)
@@ -466,34 +527,49 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
           const c = caretAt(view, Math.min(x, s.right - 2), y)
           if (c) sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, c.startContainer, c.startOffset)
         }
-        const p0 = R(view).page
+        const s0 = at(view)
         const yLow = s.top + s.height * 0.8
         await touch('touchStart', first.right, first.y)
         for (let i = 1; i <= 5; i++) {
           const x = first.right + (s.right - 4 - first.right) * i / 5, yy = first.y + (yLow - first.y) * i / 5
           await touch('touchMove', x, yy); extendTo(x, yy); await wait(40)
         }
-        await until(async () => { await touch('touchMove', s.right - 4 - (Date.now() % 2), yLow); return R(view).page !== p0 }, 3000)
-        const p1 = R(view).page
-        await touch('touchMove', s.left + s.width / 2, s.top + s.height * 0.3)
-        extendTo(s.left + s.width / 2, s.top + s.height * 0.3)
+        // The last word selected before the page moved on.
+        const tail = list.filter((w) => sel.getRangeAt(0).isPointInRange(w.range.endContainer, w.range.endOffset)).pop()
+        const moved = !!(await until(async () => { await touch('touchMove', s.right - 4 - (Date.now() % 2), yLow); return R(view).scrolled }, 3000))
+        await wait(500)
+        // Half a page on, scrolled for now: the words last selected still on screen.
+        const still = !!tail && shown(view, tail.range)
+        const low = words(view).filter((w) => w.y > s.top + s.height * 0.75)
+        const further = low[Math.floor(low.length / 2)]
+        await touch('touchMove', further.x, further.y)
+        sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, further.range.endContainer, further.range.endOffset)
         await wait(100)
         await touch('touchEnd')
         await wait(600)
         const range = sel.getRangeAt(0)
         const spans = visible.comparePoint(range.endContainer, range.endOffset) > 0
-        await until(() => view.model.selection?.text?.length > first.range.toString().length + 200, 3000)
+        await until(() => view.model.selection && !view.model.selecting, 3000)
         await shoot('phone-across-pages')
         const text = view.model.selection?.text ?? ''
+        const end = [range.endContainer, range.endOffset]
         view.reading.clearSelection()
-        const pEnd = R(view).page
+        // Let go: pages again, on the one where the selection ended.
+        const settled = !!(await until(() => !R(view).scrolled, 3000))
+        await wait(300)
+        const endShown = view.engine.lastLocation.range.comparePoint(end[0], end[1]) === 0
+        await shoot('phone-settled')
         leaf.detach()
-        return { pages: [p0, p1, pEnd], spans, text, first: first.range.toString() }
+        return { moved, still, spans, text, first: first.range.toString(), settled, endShown }
       `)
       expect(r.error).toBeUndefined()
-      expect(r.pages![1]).toBe(r.pages![0] + 1)
-      expect(r.pages![2]).toBe(r.pages![1])
-      expect(r.spans).toBe(true)
+      expect(r).toMatchObject({
+        moved: true,
+        still: true,
+        spans: true,
+        settled: true,
+        endShown: true,
+      })
       expect(r.text!.startsWith(r.first!)).toBe(true)
     })
 
@@ -524,136 +600,138 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
       expect(r.after).toBe(true)
     })
 
-    it('with words selected, a tap on the very edge turns the page and carries them on, and back', () => {
+    it('with words selected, a tap on the very edge moves the page on by half, and back', () => {
       const r = run<{
         error?: string
-        pages?: number[]
-        spans?: boolean
+        moved?: boolean
+        step?: number
+        size?: number
+        still?: boolean
+        back?: number
         kept?: boolean
-        firstWord?: string
-        ends?: string
-        barTop?: boolean
       }>(`
         const { leaf, view } = await open(${JSON.stringify(BOOK)})
         await fresh(view)
         const s = box(view), y = s.top + s.height / 2
-        const visible = view.engine.lastLocation.range
         const list = words(view)
-        const first = list[Math.floor(list.length / 2)]
-        select(view, first.range)
+        const chosen = list[list.length - 3]
+        select(view, chosen.range)
         await until(() => view.model.selection, 3000)
         await wait(700)
-        const p0 = R(view).page
         await tap(s.right - 10, y)
         await wait(400)
-        const p1 = R(view).page
+        const a1 = at(view)
+        const still = shown(view, chosen.range)
         const sel = docOf(view).getSelection()
-        const range = sel.getRangeAt(0)
-        const spans = visible.comparePoint(range.endContainer, range.endOffset) > 0
-        const firstWord = words(view)[0]?.range.toString()
-        const ends = sel.toString().trim().split(/\\s+/).pop()
         await until(() => view.model.selection && !view.model.selecting, 3000)
-        await wait(400)
-        // Its end now on the page's first line: the bar at the foot, clear of it.
-        const barTop = view.model.barTop
+        await wait(300)
         await shoot('phone-edge-tap')
+        await tap(s.right - 10, y)
+        await wait(400)
+        const step = at(view).start - a1.start
         await tap(s.left + 10, y)
         await wait(400)
-        const p2 = R(view).page
-        const kept = !sel.isCollapsed && sel.toString().startsWith(first.range.toString())
+        const back = at(view).start - a1.start
+        const kept = !sel.isCollapsed && sel.toString().startsWith(chosen.range.toString())
         view.reading.clearSelection()
         leaf.detach()
-        return { pages: [p0, p1, p2], spans, kept, firstWord, ends, barTop }
+        return { moved: a1.scrolled, step, size: a1.size, still, back, kept }
       `)
       expect(r.error).toBeUndefined()
-      expect(r.pages).toEqual([r.pages![0], r.pages![0] + 1, r.pages![0]])
-      expect(r.spans).toBe(true)
-      expect(r.ends).toBe(r.firstWord)
+      // Pages of one column cannot move by half without cutting every line: scrolled for now.
+      expect(r.moved).toBe(true)
+      expect(r.still).toBe(true)
+      expect(Math.abs(r.step! - r.size! / 2)).toBeLessThan(2)
+      expect(Math.abs(r.back!)).toBeLessThan(2)
       expect(r.kept).toBe(true)
-      expect(r.barTop).toBe(false)
     })
 
-    it('with no finger to follow, as under iOS’s handles, an end brought to the foot and held turns the page, the top left free', () => {
+    it('with no finger to follow, as under iOS’s handles, an end brought to the foot and held moves the page on by half, the top left free', () => {
       const r = run<{
         error?: string
-        pages?: number[]
-        spans?: boolean
+        moved?: boolean
+        still?: boolean
         barDuring?: boolean
         grown?: boolean
       }>(`
         const { leaf, view } = await open(${JSON.stringify(BOOK)})
         await fresh(view)
-        const visible = view.engine.lastLocation.range
         const list = words(view)
         const first = list[Math.floor(list.length / 2)]
         const last = list[list.length - 1]
         const sel = docOf(view).getSelection()
         select(view, first.range)
         await wait(300)
-        const p0 = R(view).page
         // Dragged down to the foot of the page, and held there.
         const mid = list[Math.floor(list.length * 0.75)]
         sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, mid.range.endContainer, mid.range.endOffset)
         await wait(150)
         sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, last.range.endContainer, last.range.endOffset)
-        await until(() => R(view).page !== p0, 3000)
-        const p1 = R(view).page
-        await wait(100)
+        const moved = !!(await until(() => R(view).scrolled, 3000))
+        await wait(400)
         const barDuring = !!view.contentEl.querySelector('.abele-book-selection')
+        const still = shown(view, last.range)
         await shoot('phone-held-at-foot')
-        const range = sel.getRangeAt(0)
-        const spans = visible.comparePoint(range.endContainer, range.endOffset) > 0
-        // Taken on down the new page from its top.
-        const onPage = words(view)
-        const further = onPage[Math.floor(onPage.length / 2)]
+        // Taken on down the screen.
+        const onScreen = words(view)
+        const further = onScreen[onScreen.length - 3]
         sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, further.range.endContainer, further.range.endOffset)
         await wait(300)
         const grown = sel.toString().trim().endsWith(further.range.toString())
         view.reading.clearSelection()
         leaf.detach()
-        return { pages: [p0, p1], spans, barDuring, grown }
+        return { moved, still, barDuring, grown }
       `)
       expect(r.error).toBeUndefined()
-      expect(r.pages![1]).toBe(r.pages![0] + 1)
-      expect(r.spans).toBe(true)
+      expect(r.moved).toBe(true)
+      expect(r.still).toBe(true)
       expect(r.barDuring).toBe(false)
       expect(r.grown).toBe(true)
     })
 
-    it('words on the last line are not covered: their bar stands at the head of the page', () => {
+    it('the bar takes the place of the line with the slider: no word covered, the page not laid out anew', () => {
       const r = run<{
         error?: string
-        low?: { top: boolean; bar: number[]; words: number[] }
-        high?: { top: boolean; bar: number[]; words: number[] }
+        stage?: number[]
+        withBar?: number[]
+        bar?: number[]
+        footerGone?: boolean
+        footer?: number[]
+        speech?: number[]
       }>(`
         const { leaf, view } = await open(${JSON.stringify(BOOK)})
         await fresh(view)
+        const rect = (el) => { const b = el.getBoundingClientRect(); return [Math.round(b.top), Math.round(b.bottom)] }
+        const stageEl = view.contentEl.querySelector('.abele-book-reader__stage')
+        const stage = rect(stageEl)
+        const footer = rect(view.contentEl.querySelector('.abele-book-reader__footer'))
+        await shoot('phone-footer')
         const list = words(view)
-        const place = async (w) => {
-          view.reading.clearSelection(); await wait(400)
-          select(view, w.range)
-          await until(() => view.model.selection, 3000)
-          // Once the words have rested: the bar stays hidden while they are being selected.
-          await until(() => view.contentEl.querySelector('.abele-book-selection'), 3000)
-          await wait(200)
-          const bar = view.contentEl.querySelector('.abele-book-selection').getBoundingClientRect()
-          return { top: view.model.barTop, bar: [Math.round(bar.top), Math.round(bar.bottom)], words: [Math.round(w.y - 8), Math.round(w.y + 8)] }
-        }
-        const low = await place(list[list.length - 1])
-        await shoot('phone-bar-top')
-        const high = await place(list[2])
-        await shoot('phone-bar-bottom')
+        select(view, list[list.length - 1].range)
+        await until(() => view.model.selection && !view.model.selecting && view.contentEl.querySelector('.abele-book-selection'), 3000)
+        await wait(200)
+        const bar = rect(view.contentEl.querySelector('.abele-book-selection'))
+        const withBar = rect(stageEl)
+        const footerGone = !view.contentEl.querySelector('.abele-book-reader__footer')
+        await shoot('phone-bar')
         view.reading.clearSelection()
+        await until(() => !view.contentEl.querySelector('.abele-book-selection'), 3000)
+        view.model.speech = 'paused'
+        await wait(200)
+        const speech = rect(view.contentEl.querySelector('.abele-book-speech'))
+        await shoot('phone-speech-bar')
+        view.model.speech = 'idle'
         leaf.detach()
-        return { low, high }
+        return { stage, withBar, bar, footerGone, footer, speech }
       `)
       expect(r.error).toBeUndefined()
-      const apart = (s: { bar: number[]; words: number[] }) =>
-        s.bar[1] <= s.words[0] || s.bar[0] >= s.words[1]
-      expect(r.low!.top).toBe(true)
-      expect(apart(r.low!)).toBe(true)
-      expect(r.high!.top).toBe(false)
-      expect(apart(r.high!)).toBe(true)
+      // In the row under the page, not over it, and the page just as tall.
+      expect(r.bar![0]).toBeGreaterThanOrEqual(r.stage![1] - 1)
+      expect(r.withBar).toEqual(r.stage)
+      expect(r.footerGone).toBe(true)
+      // The three are one row, as tall as each other.
+      expect(r.bar).toEqual(r.footer)
+      expect(r.speech).toEqual(r.footer)
     })
 
     it('stops at the end of the chapter, and says so', () => {

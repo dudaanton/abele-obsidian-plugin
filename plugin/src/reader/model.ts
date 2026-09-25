@@ -103,8 +103,6 @@ export interface BookModel {
   speech: 'idle' | 'playing' | 'paused'
   /** Words are being selected — a finger or the mouse still at it: the bars stay hidden. */
   selecting: boolean
-  /** The bar for the selection or a highlight stands at the head of the page, not its foot. */
-  barTop: boolean
   /** A picture or a table opened full screen from the page. */
   figure: BookFigure | null
 }
@@ -132,7 +130,6 @@ export const emptyBookModel = (): BookModel => ({
   canAsk: false,
   speech: 'idle',
   figure: null,
-  barTop: false,
   selecting: false,
 })
 

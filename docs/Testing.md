@@ -280,14 +280,15 @@ Three files, three concerns:
   pipeline (`Input.dispatchTouchEvent`, from inside the app so a long press lasts as long as it
   says). Only a clean tap at an edge or a swipe turns the page; a long press, a finger held and
   moved, a swipe or tap over a selection, a tap on a highlight, a tap beside an open bar and taps
-  on the bars' buttons do not. A selection held at the edge turns the page and grows onto the
-  next — with the mouse, with a finger, and with only its end moved, as iOS's handles do — and is
-  highlighted as one. With nothing but the selection to go by, as under iOS's handles, an end
-  brought onto the page's last word and held turns the page, the bar hidden throughout so the top
-  of the new page is free, and the selection is dragged on there. The bar is hidden while words
-  are being selected and comes back once they rest. A tap on the very edge with words selected
-  turns the page and carries them on, and back. It stops at the end of the chapter and in a PDF at
-  its page, and says so.
+  on the bars' buttons do not. A selection held at the edge or tapped on its edge moves the page on
+  by half — one column of two on the desktop, a scroll of half the page, in the page's own box, on
+  a phone — keeping the words just selected on screen, and grows onto what came — with the mouse,
+  with a finger, and with only its end moved, as iOS's handles do — and is highlighted as one; let
+  go, the pages come back on the page where it ended. A chapter scrolled by choice moves half a
+  screen. The bar is hidden while words are being selected and comes back once they rest, in the
+  row under the page in place of the line with the slider, as tall, the page not laid out anew —
+  and the bar for reading aloud the same. It stops at the end of the chapter and in a PDF at its
+  page, and says so.
 - **The iOS lab** (`plugin/tests/ios/`) — the reader's engine and page wiring in a plain page, run
   in Safari in the iOS Simulator: the real WebKit, with its own long press, selection handles and
   scrolling, which Chromium's emulation does not have. No emulator runs Obsidian, but this is the

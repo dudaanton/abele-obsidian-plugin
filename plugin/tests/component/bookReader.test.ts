@@ -382,3 +382,46 @@ describe('the bar for selected words while they are being selected', () => {
     expect(view.find('.abele-book-reader__extend').exists()).toBe(false)
   })
 })
+
+describe('the row under the page', () => {
+  const slot = (view: ReturnType<typeof mount>) => view.find('.abele-book-reader__foot')
+
+  it('holds the line with the slider, and the bar for words in its place while they are selected', async () => {
+    const model = readyModel()
+    const view = mount(BookReader, { props: { model } })
+    expect(slot(view).find('.abele-book-reader__footer').exists()).toBe(true)
+    model.selection = { cfi: 'x', text: 'Words', label: '' }
+    await view.vm.$nextTick()
+    expect(slot(view).find('.abele-book-selection').exists()).toBe(true)
+    expect(view.find('.abele-book-reader__footer').exists()).toBe(false)
+    // Nothing stands over the page any more: the bar is in the row, not over the text.
+    expect(view.find('.abele-book-reader__page .abele-book-selection').exists()).toBe(false)
+    // Still being selected: the line with the slider stays, the bar comes once they are made.
+    model.selecting = true
+    await view.vm.$nextTick()
+    expect(slot(view).find('.abele-book-reader__footer').exists()).toBe(true)
+    model.selecting = false
+    model.selection = null
+    model.active = { cfi: 'y', color: 'yellow', text: 't', comment: '', label: '' }
+    await view.vm.$nextTick()
+    expect(slot(view).find('.abele-book-selection').exists()).toBe(true)
+    model.active = null
+    await view.vm.$nextTick()
+    expect(slot(view).find('.abele-book-reader__footer').exists()).toBe(true)
+  })
+
+  it('holds the bar for reading aloud while it reads, and the bar for words over it while there are some', async () => {
+    const model = readyModel({ speech: 'playing' })
+    const view = mount(BookReader, { props: { model } })
+    expect(slot(view).find('.abele-book-speech').exists()).toBe(true)
+    expect(view.find('.abele-book-reader__footer').exists()).toBe(false)
+    model.selection = { cfi: 'x', text: 'Words', label: '' }
+    await view.vm.$nextTick()
+    expect(slot(view).find('.abele-book-selection').exists()).toBe(true)
+    expect(view.find('.abele-book-speech').exists()).toBe(false)
+    model.selection = null
+    model.speech = 'idle'
+    await view.vm.$nextTick()
+    expect(slot(view).find('.abele-book-reader__footer').exists()).toBe(true)
+  })
+})

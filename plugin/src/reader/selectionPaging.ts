@@ -7,9 +7,12 @@
  */
 import { Notice } from 'obsidian'
 import { before, pageSpan, wordFrom, wordShown, type Point } from './pageWords'
+import { heldAt } from './selectionEdge'
 import { SelectionQuiet } from './selectionQuiet'
+import { SelectionStep, type StepRenderer } from './selectionStep'
 
 export { QUIET_MS } from './selectionQuiet'
+export { STEP } from './selectionStep'
 
 /** How long a selection is held at an edge before the page turns. */
 export const EDGE_HOLD_MS = 600
@@ -19,18 +22,10 @@ export const REPEAT_MS = 1000
 export const AFTER_TURN_MS = 1000
 /** The share of the page's width, either side, where a tap with words selected turns the page. */
 export const TAP_EDGE = 0.15
+/** How long a selection stays let go before the page comes to rest: a tap lets it go a moment. */
+export const SETTLE_MS = 300
 
-interface Renderer extends EventTarget {
-  page?: number
-  pages?: number
-  scrolled?: boolean
-  /** In a scrolled chapter: where the screen starts and ends, and how long the chapter is. */
-  start?: number
-  end?: number
-  viewSize?: number
-  next?: () => Promise<void>
-  prev?: () => Promise<void>
-}
+type Renderer = StepRenderer
 
 export interface PagerHost {
   renderer(): Renderer | null
@@ -41,8 +36,6 @@ export interface PagerHost {
   visible(): Range | null
   /** Words are being selected or a selection is being changed (`true`), or it has been made. */
   adjusting?(on: boolean): void
-  /** The page moved under the selection: whatever is placed by it is placed again. */
-  moved?(): void
 }
 
 /**
@@ -97,9 +90,16 @@ export class SelectionPager {
    */
   private readonly quiet = new SelectionQuiet(
     (on) => this.host.adjusting?.(on),
-    () => this.mouseDown || !!this.holding
+    () => this.mouseDown || !!this.holding || this.stepping
   )
+  /** The page is being moved on under the selection held at its edge. */
+  private stepping = false
   private readonly stop = new AbortController()
+  /** How far the page moves under the selection, and where it rests once it is let go. */
+  private readonly stepper = new SelectionStep(() => this.host.renderer())
+  private settling = 0
+  /** Where the selection ended, once it has been let go. */
+  private ended: Point | null = null
 
   constructor(
     private readonly doc: Document,
@@ -172,7 +172,10 @@ export class SelectionPager {
   dispose(): void {
     this.stop.abort()
     window.clearTimeout(this.timer)
+    window.clearTimeout(this.settling)
     this.quiet.dispose()
+    // Gone with the chapter scrolled for a selection: the next one is shown in pages again.
+    if (this.stepper.temporary) void this.stepper.settle(null)
   }
 
   /** The page's own box: the stage can be taller than what the engine lays a page out in. */
@@ -192,9 +195,10 @@ export class SelectionPager {
     return sel && sel.rangeCount && !sel.isCollapsed ? sel.getRangeAt(0) : null
   }
 
+  /** Pages turned one at a time — or scrolled for now, while a selection is carried on. */
   private paged(): boolean {
     const r = this.host.renderer()
-    return !!r && !r.scrolled && !this.host.fixed()
+    return !!r && !this.host.fixed() && (!r.scrolled || this.stepper.temporary)
   }
 
   /** The first word wholly on screen past a point (or, `-1`, the last one before it). */
@@ -225,6 +229,7 @@ export class SelectionPager {
     if (!range) {
       // Let go for a moment while it is drawn again: it is still the same selection.
       if (this.moving) return
+      this.letGo()
       this.span = null
       this.holding = null
       this.stopped = null
@@ -235,6 +240,7 @@ export class SelectionPager {
     }
     // A change of the reader's own — drawn again, carried over a page — is not the person's.
     // Told by the selection itself as well: the change may be heard after the flag is down.
+    window.clearTimeout(this.settling)
     if (this.moving || this.isMine()) return
     // Heard again with nothing changed — the window taking focus back, say — is not a change.
     if (this.unchanged(range)) return
@@ -246,6 +252,27 @@ export class SelectionPager {
     // Still held past the same edge: the hold that began there goes on; anything else ends it.
     if (this.stopped !== wasStopped) this.holding = null
     this.check()
+  }
+
+  /**
+   * The selection let go: once it has stayed so — a tap on the edge lets it go for a moment
+   * before it is put back — the page comes to rest on the page where it ended.
+   */
+  private letGo(): void {
+    // Heard let go more than once: where it ended was known the first time.
+    if (this.last) this.ended = this.last.end
+    window.clearTimeout(this.settling)
+    this.settling = window.setTimeout(() => {
+      const end = this.ended
+      if (this.selection() || !this.doc.defaultView) return
+      this.ended = null
+      let at: Range | null = null
+      if (end?.[0].isConnected) {
+        at = this.doc.createRange()
+        at.setStart(end[0], end[1])
+      }
+      void this.stepper.settle(at)
+    }, SETTLE_MS)
   }
 
   /** Whether the selection is still the one the reader last set itself. */
@@ -318,7 +345,6 @@ export class SelectionPager {
     this.moving = true
     sel.removeAllRanges()
     this.set(anchor, focus)
-    this.host.moved?.()
   }
 
   private set(anchor: Point, focus: Point): void {
@@ -329,42 +355,26 @@ export class SelectionPager {
     window.setTimeout(() => (this.moving = false), 0)
   }
 
-  private edge(): number {
-    const width = this.pageBox()?.width ?? 0
-    return Math.max(24, width * 0.06)
-  }
-
   /**
-   * Which way the selection is held against the edge of the page now, if it is: by the pointer
-   * where one reports itself — the bottom or right edge forward, the top or left back — and
-   * otherwise, as under iOS's handles, by an end of the selection that went past the page's text
-   * and was stopped at its edge.
+   * Which way the selection is held against the edge of the page now, if it is
+   * (`selectionEdge.ts`).
    */
   private direction(): 1 | -1 | null {
-    // Only pages turn under a held selection; a scrolled chapter scrolls under it by itself.
-    if (!this.selection() || !this.paged()) return null
-    const box = this.pageBox()
-    if (this.down && this.x !== null && this.y !== null && box?.width) {
-      const band = Math.max(32, box.height * 0.07)
-      if (this.x >= box.width - this.edge() || this.y >= box.height - band) return 1
-      if (this.x <= this.edge() || this.y <= band) return -1
-      return null
-    }
-    if (this.stopped === 'end') return 1
-    if (this.stopped === 'start') return -1
-    // A handle brought down onto the page's last word — its foot — or up onto its first: under
-    // iOS a finger below the text is as often taken for the last line as for past it.
     const range = this.selection()
-    const page = this.page()
-    if (!range || !page) return null
-    if (this.moved === 'end' && !before([range.endContainer, range.endOffset], page.end, this.doc))
-      return 1
-    if (
-      this.moved === 'start' &&
-      !before(page.start, [range.startContainer, range.startOffset], this.doc)
-    )
-      return -1
-    return null
+    if (!range || !this.host.renderer() || this.host.fixed()) return null
+    const paged = this.paged()
+    // A chapter scrolled for good scrolls under a selection the mouse drags past it by itself.
+    if (!paged && this.mouseDown) return null
+    return heldAt({
+      doc: this.doc,
+      range,
+      box: this.pageBox(),
+      paged,
+      pointer: this.down && this.x !== null && this.y !== null ? { x: this.x, y: this.y } : null,
+      stopped: this.stopped,
+      moved: this.moved,
+      page: () => this.page(),
+    })
   }
 
   /** Starts, keeps or drops the hold at the edge, and turns once it has lasted. */
@@ -392,7 +402,9 @@ export class SelectionPager {
     this.holding = null
     this.stopped = null
     this.moved = null
+    this.stepping = true
     void this.extend(holding.dir).then((turned) => {
+      this.stepping = false
       // A turn is part of making the selection: the quiet that brings the bar back starts over,
       // and longer — the finger that held the page there is usually about to drag on, and iOS
       // does not say whether it is still down.
@@ -455,7 +467,7 @@ export class SelectionPager {
     return this.extend(dir)
   }
 
-  /** Turns one page under the selection, within its document; says so at the end of it. */
+  /** Moves the page on under the selection, within its document; says so at the end of it. */
   async turn(dir: 1 | -1): Promise<boolean> {
     const renderer = this.host.renderer()
     if (!renderer) return false
@@ -468,24 +480,17 @@ export class SelectionPager {
       say('A selection stays on its own page here: each page is separate.')
       return false
     }
-    // Scrolled, a screen at a time; paged, a page — the first and last of `pages` being the
-    // engine's way into the chapters either side, which a selection does not go to.
-    const page = renderer.page ?? 0
-    const pages = renderer.pages ?? 0
-    const atEnd = renderer.scrolled
-      ? (renderer.viewSize ?? 0) - (renderer.end ?? 0) <= 2
-      : page >= pages - 2
-    const atStart = renderer.scrolled ? (renderer.start ?? 0) <= 0 : page <= 1
-    if (dir > 0 && atEnd) {
-      say('The selection stops at the end of the chapter.')
+    if (this.stepper.atEdge(dir)) {
+      say(`The selection stops at the ${dir > 0 ? 'end' : 'start'} of the chapter.`)
       return false
     }
-    if (dir < 0 && atStart) {
-      say('The selection stops at the start of the chapter.')
-      return false
+    const first = this.page()?.start
+    let from: Range | null = null
+    if (first) {
+      from = this.doc.createRange()
+      from.setStart(first[0], first[1])
     }
-    await (dir > 0 ? renderer.next?.() : renderer.prev?.())
-    return true
+    return this.stepper.step(dir, from)
   }
 }
 

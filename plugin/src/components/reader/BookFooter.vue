@@ -93,7 +93,7 @@ const cycle = () => {
     align-items: center;
     gap: var(--size-4-2);
     flex: 0 0 auto;
-    padding: var(--size-4-1) var(--size-4-3) var(--size-4-2);
+    padding: 0 var(--size-4-3);
     font-size: var(--font-ui-smaller);
     color: var(--text-muted);
   }

@@ -66,6 +66,13 @@ Every change is marked `ABELE PATCH` at its site.
    wide table) is left to it; and the host turns pages under a selection held at the edge
    (`src/reader/selectionPaging.ts`).
 
+7. **Pages can move by part of a page, and scroll for a while where they were** (`paginator.js`,
+   `columns`, `stepBy`, `showAnchor`, `setFlow`). A selection carried on past the page moves it by
+   half a page (`src/reader/selectionStep.ts`): one column of two with `stepBy`, and on pages of
+   one column a scroll with `setFlow('scrolled', anchor, true)` — in the page's own box, the text
+   as wide as on its page and a line shown at the top as on a page, so going over to it and back
+   moves no line. `showAnchor` puts a place on screen without selecting it.
+
 ## Additions
 
 `view.d.ts`, `epub.d.ts` and `frame-options.d.ts` type the parts of the modules beside them that
