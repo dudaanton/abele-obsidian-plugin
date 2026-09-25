@@ -127,6 +127,16 @@ describe('the style every page is given', () => {
     expect(after).not.toContain(theme.text)
   })
 
+  it('puts pictures on light paper in a dark theme, where dark line art on transparency vanishes', () => {
+    const backdrop = /img, svg:not\(svg svg\) \{ background-color: #fff !important;/
+    expect(pageStyles(DEFAULT_READER_SETTINGS, theme)[1]).toMatch(backdrop)
+    expect(pageStyles(DEFAULT_READER_SETTINGS, { ...theme, dark: false })[1]).not.toMatch(backdrop)
+    // The book's own colours are already on light paper.
+    expect(
+      pageStyles({ ...DEFAULT_READER_SETTINGS, themeColors: false }, theme).join('')
+    ).not.toMatch(backdrop)
+  })
+
   it('cannot be broken out of by a theme value', () => {
     const braces = (css: string) => css.split('{').length + css.split('}').length
     const [, plain] = pageStyles(DEFAULT_READER_SETTINGS, theme)

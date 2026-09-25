@@ -356,6 +356,10 @@ Three files, three concerns:
   back do what they say; closing the tab stops it; **Read aloud from here** starts at the selected
   words in the chosen voice and speed; a PDF is read a page at a time with a box over the sentence,
   turning to the next page. Last, it checks the app has platform voices, English among them.
+- `bookDarkPictures.e2e.test.ts` — **pictures in a dark theme**: a book whose diagrams are dark
+  lines on transparency (a PNG with alpha, an SVG file in an `img`, an SVG in the page) is opened
+  in a dark theme; each picture on screen must show light paper with dark lines on it, measured
+  from a picture of the window (`/tmp/abele-dark-pictures.png`).
 - `bookReading.e2e.test.ts` — **reading**, on the desktop, with the book of
   `tests/fixtures/books/richBook.ts`: a note marked as one and a note marked only by a superscript
   open in the dialog; a link to another chapter is followed and the way back works; the contents

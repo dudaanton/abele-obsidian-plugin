@@ -231,7 +231,7 @@ and travels with the settings transfer.
 | Margins | Narrow, normal or wide space around the text and between columns. |
 | Column width | The widest a column of text may grow. |
 | Two columns | Two pages side by side when the tab is wide enough. |
-| Theme colours | On: the book in the theme's text, link and background colours, dark mode included. Off: the book's own colours on a light page. |
+| Theme colours | On: the book in the theme's text, link and background colours, dark mode included — in a dark theme pictures sit on white paper, so diagrams drawn as dark lines on transparency still show. Off: the book's own colours on a light page. |
 | Voice | The voice reading aloud: the device's own for the book's language, or one chosen. |
 | Speed | How fast it reads aloud, 0.75× to 2×. |
 | (the measure under the page) | Page of the chapter, pages left, location in the book, or percent — changed by tapping it. |

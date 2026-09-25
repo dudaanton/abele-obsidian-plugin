@@ -67,6 +67,39 @@ export function tablePng(width: number, height: number): Uint8Array {
   return out
 }
 
+/**
+ * Line art on transparency, the way diagrams are often drawn for white paper: black lines and a
+ * box on a fully transparent ground (grey with alpha). On a dark page nothing of it shows.
+ */
+export function lineArtPng(width: number, height: number): Uint8Array {
+  const raw = new Uint8Array((width * 2 + 1) * height)
+  for (let y = 0; y < height; y++) {
+    raw[y * (width * 2 + 1)] = 0
+    for (let x = 0; x < width; x++) {
+      const border = x < 3 || y < 3 || x >= width - 3 || y >= height - 3
+      const diagonal = Math.abs(x * height - y * width) < 2 * Math.max(width, height)
+      const ink = border || diagonal
+      const at = y * (width * 2 + 1) + 1 + x * 2
+      raw[at] = 0
+      raw[at + 1] = ink ? 255 : 0
+    }
+  }
+  const ihdr = new Uint8Array([...u32(width), ...u32(height), 8, 4, 0, 0, 0])
+  const parts = [
+    new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', zlibSync(raw)),
+    chunk('IEND', new Uint8Array()),
+  ]
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
+  let at = 0
+  for (const p of parts) {
+    out.set(p, at)
+    at += p.length
+  }
+  return out
+}
+
 const PARA = '<p>Plain text of the chapter, long enough to wrap onto several lines of a page.</p>'
 
 const cells = (row: number) =>

@@ -332,6 +332,11 @@ export function pageStyles(settings: ReaderSettings, theme: ThemeValues): [strin
       `a:any-link { color: ${cssText(theme.accent)} !important; }`,
       `::selection { background: ${cssText(theme.selection)}; }`
     )
+    // Line art is often dark lines on transparency, made for white paper: on a dark theme's
+    // background it vanishes. Pictures get the paper back; an opaque one covers it anyway. The
+    // figure viewer does the same.
+    if (theme.dark)
+      rules.push(`img, svg:not(svg svg) { background-color: #fff !important; border-radius: 2px; }`)
   }
   // The book's own colours, on paper: a book that sets none is dark text on light, whatever the
   // theme, rather than dark text on a dark theme's background. Before the book's styles, so its
