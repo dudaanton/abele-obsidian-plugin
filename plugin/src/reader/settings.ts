@@ -9,8 +9,16 @@ export type ReaderFlow = 'paginated' | 'scrolled'
 export type ReaderFont = 'theme' | 'serif' | 'sans' | 'book'
 export type ReaderMargin = 'narrow' | 'normal' | 'wide'
 /** How a PDF page is sized: to fit the tab whole, to fit its width, or at a fixed zoom. */
-export type PdfZoom = 'fit-page' | 'fit-width' | '1' | '1.25' | '1.5' | '2'
-export const PDF_ZOOMS: readonly PdfZoom[] = ['fit-page', 'fit-width', '1', '1.25', '1.5', '2']
+export type PdfZoom = 'auto' | 'fit-page' | 'fit-width' | '1' | '1.25' | '1.5' | '2'
+export const PDF_ZOOMS: readonly PdfZoom[] = [
+  'auto',
+  'fit-page',
+  'fit-width',
+  '1',
+  '1.25',
+  '1.5',
+  '2',
+]
 
 export interface ReaderSettings {
   /** Pages turned one at a time, or the chapter as one long scroll. */
@@ -52,7 +60,7 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   themeColors: true,
   openPdf: false,
   pdfLayout: 'scrolled',
-  pdfZoom: 'fit-page',
+  pdfZoom: 'auto',
   pdfTwoPages: false,
   pdfDarkPages: true,
 }
@@ -188,4 +196,13 @@ export function themeValues(el: HTMLElement): ThemeValues {
 /** Whether a PDF's pages are shown with light and dark swapped: asked for, and the theme is dark. */
 export function darkPdfPages(settings: ReaderSettings, dark: boolean): boolean {
   return settings.pdfDarkPages && dark
+}
+
+/**
+ * The zoom a PDF is drawn at: `auto`, the default, is the page's width in the continuous scroll —
+ * what a PDF viewer usually shows — and the whole page when pages are turned one at a time.
+ */
+export function pdfZoomFor(settings: ReaderSettings): Exclude<PdfZoom, 'auto'> {
+  if (settings.pdfZoom !== 'auto') return settings.pdfZoom
+  return settings.pdfLayout === 'scrolled' ? 'fit-width' : 'fit-page'
 }

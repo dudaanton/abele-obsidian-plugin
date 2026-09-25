@@ -20,6 +20,7 @@ import {
   darkPdfPages,
   layoutAttributes,
   pageStyles,
+  pdfZoomFor,
   readerSettingsFrom,
   themeValues,
 } from './settings'
@@ -280,7 +281,7 @@ export class BookView extends FileView {
     }
     if (!renderer) return
     if (view.isFixedLayout) {
-      const zoom = this.zoomOverride ?? settings.pdfZoom
+      const zoom = this.zoomOverride ?? pdfZoomFor(settings)
       if (renderer.getAttribute('zoom') !== zoom) renderer.setAttribute('zoom', zoom)
       view.toggleClass(
         'abele-book__engine_dark-pages',

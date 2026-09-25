@@ -163,7 +163,7 @@ is not saved.
 | Setting | What it does |
 |---|---|
 | Layout | Continuous scroll (the default), or pages turned one at a time. |
-| Page size | The whole page fitted in the tab, the page's width fitted, or 100%, 125%, 150% or 200%. |
+| Page size | Automatic (the default): the page's width in the scroll, the whole page with pages. Or the whole page fitted in the tab, the page's width fitted, or 100%, 125%, 150% or 200%. A size chosen before this setting had Automatic stays as it was. |
 | Two pages side by side | With pages turned one at a time: two at once when the tab is wide enough, as a printed book lies open. Off by default. |
 | Dark pages in a dark theme | See above. |
 

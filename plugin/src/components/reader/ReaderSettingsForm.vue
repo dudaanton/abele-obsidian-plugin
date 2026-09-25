@@ -80,7 +80,7 @@
       </Setting>
       <Setting
         name="Page size"
-        desc="Fit the whole page in the tab, fit its width, or a fixed zoom."
+        desc="Automatic is the page's width when scrolling and the whole page with pages. Or fit the whole page, fit its width, or a fixed zoom."
       >
         <Dropdown
           :options="zoomOptions"
@@ -170,6 +170,7 @@ const pdfLayoutOptions = [
   { value: 'paginated', display: 'Pages' },
 ]
 const zoomLabel: Record<string, string> = {
+  auto: 'Automatic',
   'fit-page': 'Whole page',
   'fit-width': 'Page width',
 }

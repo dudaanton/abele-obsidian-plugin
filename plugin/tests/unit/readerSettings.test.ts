@@ -42,8 +42,10 @@ describe('reader settings as stored', () => {
 
   it('keep PDFs in Obsidian\'s viewer, whole pages, one at a time, dark in a dark theme by default', () => {
     const s = readerSettingsFrom({})
-    expect(s).toMatchObject({ openPdf: false, pdfZoom: 'fit-page', pdfTwoPages: false, pdfDarkPages: true })
-    expect(readerSettingsFrom({ pdfZoom: '7' as never }).pdfZoom).toBe('fit-page')
+    expect(s).toMatchObject({ openPdf: false, pdfZoom: 'auto', pdfTwoPages: false, pdfDarkPages: true })
+    expect(readerSettingsFrom({ pdfZoom: '7' as never }).pdfZoom).toBe('auto')
+    // A zoom chosen before stays chosen.
+    expect(readerSettingsFrom({ pdfZoom: 'fit-page' }).pdfZoom).toBe('fit-page')
     expect(readerSettingsFrom({ pdfZoom: '1.5' }).pdfZoom).toBe('1.5')
   })
 
@@ -118,5 +120,16 @@ describe('PDF pages in a dark theme', () => {
     expect(darkPdfPages(DEFAULT_READER_SETTINGS, true)).toBe(true)
     expect(darkPdfPages(DEFAULT_READER_SETTINGS, false)).toBe(false)
     expect(darkPdfPages({ ...DEFAULT_READER_SETTINGS, pdfDarkPages: false }, true)).toBe(false)
+  })
+})
+
+describe('the zoom a PDF opens at', () => {
+  it('is the page width when scrolling and the whole page with pages, unless one was chosen', async () => {
+    const { pdfZoomFor } = await import('@/reader/settings')
+    const s = DEFAULT_READER_SETTINGS
+    expect(pdfZoomFor({ ...s, pdfLayout: 'scrolled' })).toBe('fit-width')
+    expect(pdfZoomFor({ ...s, pdfLayout: 'paginated' })).toBe('fit-page')
+    expect(pdfZoomFor({ ...s, pdfLayout: 'scrolled', pdfZoom: 'fit-page' })).toBe('fit-page')
+    expect(pdfZoomFor({ ...s, pdfZoom: '1.5' })).toBe('1.5')
   })
 })
