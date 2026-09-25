@@ -112,6 +112,26 @@
         />
       </Setting>
     </Section>
+
+    <Section title="Reading aloud">
+      <Setting
+        name="Voice"
+        desc="The voices this device has; on an iPhone, the ones in Settings → Accessibility → Spoken Content. A voice chosen on another device that this one lacks reads as the default."
+      >
+        <Dropdown
+          :options="voiceOptions"
+          :model-value="settings.ttsVoice"
+          @update:model-value="set('ttsVoice', $event)"
+        />
+      </Setting>
+      <Setting name="Speed">
+        <Dropdown
+          :options="rateOptions"
+          :model-value="String(settings.ttsRate)"
+          @update:model-value="set('ttsRate', Number($event))"
+        />
+      </Setting>
+    </Section>
   </div>
 </template>
 
@@ -120,7 +140,7 @@
  * How books are laid out and lettered. Shown in the plugin's settings and, from a book's tab, in a
  * dialog over the book, which redraws as each choice is made. Every change is saved at once.
  */
-import { reactive, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import Setting from '../obsidian/Setting.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
@@ -130,6 +150,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   FONT_SIZES,
   PDF_ZOOMS,
+  TTS_RATES,
   LINE_HEIGHTS,
   MAX_WIDTHS,
   readerSettingsFrom,
@@ -184,6 +205,26 @@ const zoomOptions = PDF_ZOOMS.map((z) => ({
   display: zoomLabel[z] ?? `${Math.round(Number(z) * 100)}%`,
 }))
 const widthOptions = MAX_WIDTHS.map((n) => ({ value: String(n), display: `${n} px` }))
+
+const rateOptions = TTS_RATES.map((n) => ({ value: String(n), display: `${n}×` }))
+
+/** The device's voices; they arrive a moment after the page on some platforms. */
+const voices = ref<SpeechSynthesisVoice[]>([])
+const synth = activeWindow.speechSynthesis
+const loadVoices = () => (voices.value = synth?.getVoices() ?? [])
+loadVoices()
+synth?.addEventListener?.('voiceschanged', loadVoices)
+onBeforeUnmount(() => synth?.removeEventListener?.('voiceschanged', loadVoices))
+const voiceOptions = computed(() => [
+  { value: '', display: "The device's voice for the book's language" },
+  ...[...voices.value]
+    .sort((a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name))
+    .map((v) => ({ value: v.voiceURI, display: `${v.name} (${v.lang})` })),
+  // A voice chosen on another device stays chosen, named as what it is.
+  ...(settings.ttsVoice && !voices.value.some((v) => v.voiceURI === settings.ttsVoice)
+    ? [{ value: settings.ttsVoice, display: 'A voice from another device' }]
+    : []),
+])
 
 const set = <K extends keyof ReaderSettings>(key: K, value: ReaderSettings[K] | string) => {
   ;(settings as Record<string, unknown>)[key] = value

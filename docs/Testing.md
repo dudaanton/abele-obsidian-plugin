@@ -245,6 +245,13 @@ Three files, three concerns:
   opens. The comic's pages come in numeric order; a Kindle book whose header says it is encrypted
   says it is protected by DRM; words on a fixed page are highlighted with boxes; `book_read` and
   `book_search` read the Mobipocket and FictionBook files.
+- `bookSpeech.e2e.test.ts` — **reading aloud**, with the platform's speech swapped for a stand-in
+  (`window.__abeleTest.reader.hooks.speech`) that records each sentence and ends it a moment later,
+  so nothing is heard. With the rich book and the plain PDF: the header's button reads from the
+  page on screen, the sentence marked, and goes on into the next chapter; pause, go on, skip and
+  back do what they say; closing the tab stops it; **Read aloud from here** starts at the selected
+  words in the chosen voice and speed; a PDF is read a page at a time with a box over the sentence,
+  turning to the next page. Last, it checks the app has platform voices, English among them.
 - `bookReading.e2e.test.ts` — **reading**, on the desktop, with the book of
   `tests/fixtures/books/richBook.ts`: a note marked as one and a note marked only by a superscript
   open in the dialog; a link to another chapter is followed and the way back works; the contents

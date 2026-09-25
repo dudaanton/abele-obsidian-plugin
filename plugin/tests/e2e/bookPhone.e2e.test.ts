@@ -157,6 +157,7 @@ describe.skipIf(!available)('a book on a phone', () => {
     dialog?: { left: number; right: number; width: number } | null
     search?: { hits: number; over: number }
     bar?: { over: number; height: number } | null
+    speech?: { over: number; bottom: number; height: number; rows: number } | null
   } = {}
 
   beforeAll(async () => {
@@ -261,6 +262,25 @@ describe.skipIf(!available)('a book on a phone', () => {
       report.bar = bar ? { over: edge('.abele-book-selection'), height: Math.round(bar.height) } : null
       await shoot('rich-selection')
       view.reading.clearSelection()
+      await wait(300)
+
+      // Reading aloud, with a silent stand-in for speech that never finishes its sentence: the
+      // bar under the page fits, and the sentence is marked.
+      const hooks = window.__abeleTest.reader.hooks
+      hooks.speech = {
+        speech: { speak() {}, cancel() {}, pause() {}, resume() {}, getVoices: () => [] },
+        make: (text) => ({ text }),
+      }
+      view.reading.speech.stop()
+      view.reading.speech.toggle()
+      await wait(900)
+      const speaking = view.contentEl.querySelector('.abele-book-speech')?.getBoundingClientRect()
+      report.speech = speaking
+        ? { over: edge('.abele-book-speech'), bottom: Math.round(speaking.bottom), height: window.innerHeight, rows: Math.round(speaking.height) }
+        : null
+      await shoot('rich-speech')
+      view.reading.speech.stop()
+      hooks.speech = null
       return report
     })()`)
     console.info(`\n  ${JSON.stringify(overlays)}\n`)
@@ -330,5 +350,12 @@ describe.skipIf(!available)('a book on a phone', () => {
     expect(overlays.bar!.over).toBeLessThanOrEqual(0)
     // Two rows at most: the colours, and what can be done.
     expect(overlays.bar!.height).toBeLessThan(110)
+  })
+
+  it('the bar for reading aloud fits the screen, on one row', () => {
+    expect(overlays.speech).toBeTruthy()
+    expect(overlays.speech!.over).toBeLessThanOrEqual(0)
+    expect(overlays.speech!.bottom).toBeLessThanOrEqual(overlays.speech!.height)
+    expect(overlays.speech!.rows).toBeLessThan(60)
   })
 })

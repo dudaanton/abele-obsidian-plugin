@@ -45,6 +45,7 @@
         :highlight="model.active"
         :can-ask="model.canAsk"
         @ask="emit('ask', quoteTarget())"
+        @read-aloud="emit('read-aloud')"
         @color="onColor"
         @comment="onComment"
         @copy-link="emit('copy-link', target())"
@@ -52,6 +53,11 @@
         @open-note="emit('open-note', model.active ?? undefined)"
         @delete="model.active && emit('delete-highlight', model.active)"
         @close="model.active ? emit('close-active') : emit('clear-selection')"
+      />
+      <BookSpeechBar
+        v-if="model.status === 'ready' && model.speech !== 'idle'"
+        :state="model.speech === 'paused' ? 'paused' : 'playing'"
+        @action="emit('speech', $event)"
       />
       <div v-if="model.status === 'ready'" class="abele-book-reader__footer">
         <Icon
@@ -125,6 +131,7 @@ import BookSearch from './BookSearch.vue'
 import BookHighlights from './BookHighlights.vue'
 import BookSelectionBar from './BookSelectionBar.vue'
 import BookComment from './BookComment.vue'
+import BookSpeechBar from './BookSpeechBar.vue'
 import Tabs from '../obsidian/Tabs.vue'
 import type { Highlight, HighlightColor } from '@/reader/highlights'
 import ReaderSettingsForm from './ReaderSettingsForm.vue'
@@ -159,6 +166,8 @@ const emit = defineEmits<{
   (e: 'quote', target: { cfi: string; label: string; text: string }): void
   (e: 'clear-selection'): void
   (e: 'ask', target: { cfi: string; label: string; text: string }): void
+  (e: 'read-aloud'): void
+  (e: 'speech', action: 'toggle' | 'stop' | 'next' | 'prev' | 'settings'): void
   (e: 'recolor', h: Highlight, color: HighlightColor): void
   (e: 'edit-comment', h: Highlight): void
   (e: 'save-comment', h: Highlight, comment: string): void

@@ -95,6 +95,8 @@ export interface BookModel {
   search: BookSearch
   /** The AI side is on, so "Ask here" is offered. */
   canAsk: boolean
+  /** Reading aloud: playing, paused, or not at all. */
+  speech: 'idle' | 'playing' | 'paused'
 }
 
 export const emptyBookModel = (): BookModel => ({
@@ -117,6 +119,7 @@ export const emptyBookModel = (): BookModel => ({
   commenting: null,
   search: emptySearch(),
   canAsk: false,
+  speech: 'idle',
 })
 
 /** The engine's contents as the tree the panel draws. */

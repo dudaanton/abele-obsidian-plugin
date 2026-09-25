@@ -130,6 +130,7 @@ export class BookView extends FileView {
     this.vue = createApp(BookReader, { model: this.model, ...bookCallbacks(this.actions()) })
     this.vue.mount(mount)
 
+    this.addAction('audio-lines', 'Read aloud', () => this.reading?.speech.toggle())
     this.addAction('search', 'Search in the book', () => this.openSearch())
     this.addAction('list', 'Contents', () => this.showPanel('contents'))
     this.addAction('a-large-small', 'Text and layout', () => (this.model.settingsOpen = true))
@@ -263,6 +264,7 @@ export class BookView extends FileView {
     this.loadToken++
     this.closeFootnote()
     this.reading?.stopSearch()
+    this.reading?.speech.stop()
     this.reading = null
     void bookPlaces()?.flush()
     this.reader?.close()

@@ -13,7 +13,14 @@ export const READER_EXTENSIONS = [...BOOK_EXTENSIONS, 'pdf']
  * For the e2e tier only: a sandbox to use instead of the platform's, so the desktop app can be
  * made to draw pages the way the iPhone does and prove the policy holds without the sandbox.
  */
-export const readerTestHooks: { sandbox: string | null } = { sandbox: null }
+export const readerTestHooks: {
+  sandbox: string | null
+  /** A stand-in for the platform's speech, so reading aloud can be followed without sound. */
+  speech: {
+    speech: import('./narrator').SpeechLike
+    make: (text: string) => SpeechSynthesisUtterance
+  } | null
+} = { sandbox: null, speech: null }
 
 /** What a page frame reported, kept for the e2e tier and the diagnostics of a blanked page. */
 export interface PageReport {

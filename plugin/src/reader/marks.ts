@@ -12,6 +12,61 @@ import type { Highlight, HighlightColor } from './highlights'
 
 export const MARKS_CLASS = 'abele-marks'
 
+interface Box {
+  range: Range
+  color: string
+  cfi?: string
+}
+
+const XHTML = 'http://www.w3.org/1999/xhtml'
+
+/**
+ * Boxes over ranges of a page, in a layer of their own after its body — so the body's place,
+ * which every CFI in the page goes through, is kept. Styled on the elements themselves: a page
+ * of a book carries none of the reader's styles. A page drawn scaled down by the screen's pixel
+ * ratio (a PDF's) has its boxes scaled with it.
+ */
+export function drawBoxes(doc: Document, layerClass: string, items: Box[], opacity = 0.35): void {
+  const root = doc.documentElement
+  root.querySelector(`:scope > .${layerClass}`)?.remove()
+  if (!items.length) return
+  const layer = doc.createElementNS(XHTML, 'div')
+  layer.className = layerClass
+  layer.setAttribute('aria-hidden', 'true')
+  for (const [k, v] of Object.entries({
+    position: 'absolute',
+    left: '0',
+    top: '0',
+    width: '0',
+    height: '0',
+    'pointer-events': 'none',
+  }))
+    layer.style.setProperty(k, v)
+  root.appendChild(layer)
+  const base = root.getBoundingClientRect()
+  const scale = base.width ? root.offsetWidth / base.width : 1
+  for (const item of items) {
+    for (const rect of Array.from(item.range.getClientRects())) {
+      const box = doc.createElementNS(XHTML, 'div')
+      box.className = `${layerClass}__box`
+      if (item.cfi) box.dataset.cfi = item.cfi
+      for (const [k, v] of Object.entries({
+        position: 'absolute',
+        left: `${(rect.left - base.left) * scale}px`,
+        top: `${(rect.top - base.top) * scale}px`,
+        width: `${rect.width * scale}px`,
+        height: `${rect.height * scale}px`,
+        'background-color': item.color,
+        opacity: String(opacity),
+        'mix-blend-mode': 'multiply',
+        'border-radius': '2px',
+      }))
+        box.style.setProperty(k, v)
+      layer.appendChild(box)
+    }
+  }
+}
+
 interface Resolved {
   index: number
   anchor?: (doc: Document) => Range | Element | null
@@ -114,37 +169,17 @@ export class BookMarks {
     this.set(list)
   }
 
-  /** A PDF page was drawn: its highlights go over its fresh text layer. */
+  /** A page of fixed size was drawn: its highlights go over it, over its fresh text layer. */
   drawPdf(doc: Document, index: number): void {
     this.pdfDocs.set(index, doc)
     for (const [i, d] of this.pdfDocs) if (!d.defaultView) this.pdfDocs.delete(i)
-    const root = doc.documentElement
-    root.querySelector(`.${MARKS_CLASS}`)?.remove()
     const mine = this.list.filter((h) => this.indexOf(h.cfi) === index)
-    if (!mine.length) return
-    // After the body, so the body's place — which every CFI in the page goes through — is kept.
-    const layer = doc.createElementNS('http://www.w3.org/1999/xhtml', 'div')
-    layer.className = MARKS_CLASS
-    layer.setAttribute('aria-hidden', 'true')
-    root.appendChild(layer)
-    const base = root.getBoundingClientRect()
-    // The page's root is scaled down by the screen's pixel ratio; boxes inside it are scaled with it.
-    const scale = base.width ? root.offsetWidth / base.width : 1
+    const items: Box[] = []
     for (const h of mine) {
       const range = this.rangeIn(doc, h.cfi)
-      if (!range) continue
-      for (const rect of Array.from(range.getClientRects())) {
-        const box = doc.createElementNS('http://www.w3.org/1999/xhtml', 'div')
-        box.className = `${MARKS_CLASS}__box`
-        box.dataset.cfi = h.cfi
-        box.style.setProperty('left', `${(rect.left - base.left) * scale}px`)
-        box.style.setProperty('top', `${(rect.top - base.top) * scale}px`)
-        box.style.setProperty('width', `${rect.width * scale}px`)
-        box.style.setProperty('height', `${rect.height * scale}px`)
-        box.style.setProperty('background-color', markColor(this.themeEl, h.color))
-        layer.appendChild(box)
-      }
+      if (range) items.push({ range, color: markColor(this.themeEl, h.color), cfi: h.cfi })
     }
+    drawBoxes(doc, MARKS_CLASS, items)
   }
 
   private rangeIn(doc: Document, cfi: string): Range | null {

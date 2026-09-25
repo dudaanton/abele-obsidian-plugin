@@ -46,6 +46,14 @@ export function bookCallbacks(a: BookActions): Record<string, unknown> {
     onQuote: (target: Place & { text: string }): void => void a.reading()?.quoteIntoNote(target),
     onClearSelection: (): void => a.reading()?.clearSelection(),
     onAsk: (target?: Place & { text: string }): void => void a.reading()?.ask(target),
+    onReadAloud: (): void => a.reading()?.readFromSelection(),
+    onSpeech: (action: 'toggle' | 'stop' | 'next' | 'prev' | 'settings'): void => {
+      const speech = a.reading()?.speech
+      if (action === 'settings') model.settingsOpen = true
+      else if (action === 'toggle') speech?.toggle()
+      else if (action === 'stop') speech?.stop()
+      else void speech?.narrator?.skip(action === 'next' ? 1 : -1)
+    },
     onRecolor: (h: Highlight, color: HighlightColor): void =>
       void a.reading()?.save({ ...h, color }),
     onEditComment: (h: Highlight): void => {

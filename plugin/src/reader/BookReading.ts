@@ -13,6 +13,9 @@ import { linkToPlace, quoteWithLink, type BookPlace } from './bookLinks'
 import { deleteHighlight, findCompanion, readHighlights, saveHighlight } from './companion'
 import type { Highlight, HighlightColor } from './highlights'
 import { BookMarks } from './marks'
+import { ReadAloud } from './readAloud'
+import { readerSettingsFrom } from './settings'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import { Overlayer } from '@/vendor/foliate-js/overlayer.js'
 import { emptySearch, type BookModel, type SearchGroup } from './model'
 import type { PdfBookExtras, PdfPageDrawn } from './pdfBook'
@@ -27,7 +30,10 @@ interface Engine extends FoliateView {
 
 export class BookReading {
   readonly marks: BookMarks
+  readonly speech: ReadAloud
   private docIndex = new WeakMap<Document, number>()
+  /** The words last selected, where reading aloud can start. */
+  private selectedRange: Range | null = null
   private searchToken = 0
   /** A PDF search match to select once its page is drawn. */
   private pendingMatch: { index: number; occurrence: number; query: string } | null = null
@@ -48,6 +54,16 @@ export class BookReading {
     // engine: the reader marks them itself.
     this.marks = new BookMarks(engine, themeEl, !!pdf || engine.isFixedLayout, (h) =>
       this.activate(h)
+    )
+    this.speech = new ReadAloud(
+      engine as unknown as ConstructorParameters<typeof ReadAloud>[0],
+      (doc) => this.docIndex.get(doc),
+      themeEl,
+      () => {
+        const s = readerSettingsFrom(AbeleConfig.getInstance().reader)
+        return { voice: s.ttsVoice, rate: s.ttsRate }
+      },
+      (state) => (this.model.speech = state)
     )
     pdf?.pageEvents.addEventListener('drawn', (e) => {
       const { doc, index } = (e as CustomEvent<PdfPageDrawn>).detail
@@ -150,6 +166,7 @@ export class BookReading {
       return
     }
     const range = sel.getRangeAt(0)
+    this.selectedRange = range.cloneRange()
     const text = sel.toString().trim()
     const index = this.docIndex.get(doc)
     if (!text || index === undefined) return
@@ -176,6 +193,13 @@ export class BookReading {
     } catch {
       return ''
     }
+  }
+
+  /** Reads aloud from the words selected, the selection let go. */
+  readFromSelection(): void {
+    const from = this.selectedRange
+    this.clearSelection()
+    this.speech.toggle(from)
   }
 
   clearSelection(): void {

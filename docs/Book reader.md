@@ -111,6 +111,28 @@ again. The agent answers with links to places, which open the book there.
 Both let that chat read this one book, if its scope did not already reach it — the grant **Chat
 about this** gives a note. They are offered only while the AI agent is on.
 
+## Reading aloud
+
+The speaker button in a book's header reads the book aloud from the page on screen, with the
+device's own speech — on an iPhone or iPad the voices of its Spoken Content settings, on a Mac the
+system voices. **Read aloud from here** on the bar under selected words starts at those words.
+
+- It reads a sentence at a time and marks the one being read: a highlight in a book, a box over the
+  words on a PDF page or a fixed page. The page turns to follow it.
+- At the end of a chapter or a PDF page it goes on into the next one, to the end of the book.
+- A bar under the page, while it reads, pauses and goes on, reads the last sentence again, skips to
+  the next, opens the voice and speed settings and stops.
+- Closing the tab, or the book, stops it.
+
+Two settings, with the others under **Aa** and in **Settings → Abele → Books**, travel with the
+settings transfer: **Voice** — the device's voice for the book's language by default, or a
+chosen one (a voice chosen on another device and missing on this one falls back to the default)
+— and **Speed**, 0.75× to 2×.
+
+Hidden text is not read: notes that open in a dialog, what the cleaning removed. Where the
+platform has no speech the button says so. An iPhone starts speech only from a tap, which is how
+both ways of starting it work.
+
 ## Text and layout
 
 The **Aa** button in a book's header opens the text and layout settings over the page; the same
@@ -127,6 +149,8 @@ and travels with the settings transfer.
 | Column width | The widest a column of text may grow. |
 | Two columns | Two pages side by side when the tab is wide enough. |
 | Theme colours | On: the book in the theme's text, link and background colours, dark mode included. Off: the book's own colours on a light page. |
+| Voice | The voice reading aloud: the device's own for the book's language, or one chosen. |
+| Speed | How fast it reads aloud, 0.75× to 2×. |
 
 On a phone the text starts just under Obsidian's header and the line under the page sits above its
 navigation bar.

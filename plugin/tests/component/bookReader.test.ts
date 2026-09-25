@@ -107,7 +107,8 @@ describe('the text and layout settings', () => {
   it('save each choice at once, within range', async () => {
     const form = mount(ReaderSettingsForm, { props: { kind: 'epub' } })
     const selects = form.findAll('select')
-    expect(selects).toHaveLength(6)
+    // Six for the text, two for reading aloud.
+    expect(selects).toHaveLength(8)
     await selects[2].setValue('150')
     const config = AbeleConfig.getInstance()
     expect(config.reader.fontSize).toBe(150)
@@ -132,7 +133,7 @@ describe('the PDF settings', () => {
 
   it("show only a PDF's own in a PDF's tab, and the switch to open PDFs here in Settings", () => {
     const pdf = names(mount(ReaderSettingsForm, { props: { kind: 'pdf' } }))
-    expect(pdf).toEqual(['Layout', 'Page size', 'Dark pages in a dark theme'])
+    expect(pdf).toEqual(['Layout', 'Page size', 'Dark pages in a dark theme', 'Voice', 'Speed'])
     // Two pages side by side is a choice of the page-at-a-time layout only.
     AbeleConfig.getInstance().reader = { ...DEFAULT_READER_SETTINGS, pdfLayout: 'paginated' }
     expect(names(mount(ReaderSettingsForm, { props: { kind: 'pdf' } }))).toEqual([
@@ -140,6 +141,8 @@ describe('the PDF settings', () => {
       'Page size',
       'Two pages side by side',
       'Dark pages in a dark theme',
+      'Voice',
+      'Speed',
     ])
     const all = names(mount(ReaderSettingsForm, { props: { kind: 'all' } }))
     expect(all).toContain('Open PDF files in the Abele reader')
@@ -151,8 +154,9 @@ describe('the PDF settings', () => {
     AbeleConfig.getInstance().reader = { ...DEFAULT_READER_SETTINGS, pdfLayout: 'paginated' }
     const form = mount(ReaderSettingsForm, { props: { kind: 'all' } })
     const config = AbeleConfig.getInstance()
-    const pdfSelect = form.findAll('select').at(-1)!
-    await pdfSelect.setValue('fit-width')
+    const rowOf = (name: string) =>
+      form.findAll('.setting-item').find((r) => r.find('.setting-item-name').text() === name)!
+    await rowOf('Page size').find('select').setValue('fit-width')
     expect(config.reader.pdfZoom).toBe('fit-width')
     const rows = form.findAll('.setting-item')
     const toggle = (name: string) =>
@@ -272,12 +276,16 @@ describe('highlights', () => {
     const icons = bar.findAll('.abele-obsidian-icon')
     await icons[2].trigger('click') // the third colour, blue
     expect(view.emitted('highlight')).toEqual([['blue']])
-    const actions = bar.findAll('.abele-book-selection__actions .abele-obsidian-icon')
-    await actions[1].trigger('click')
+    const action = (label: string) =>
+      bar
+        .findAll('.abele-book-selection__actions .abele-obsidian-icon')
+        .find((el) => el.attributes('aria-label') === label)!
+    await action('Copy a link to this place').trigger('click')
     expect(view.emitted('copy-link')).toEqual([[selection]])
-    await actions[2].trigger('click')
+    await action('Quote these words with a link into the note you were last in').trigger('click')
     expect(view.emitted('quote')).toEqual([[{ cfi: 'c', label: 'Chapter 1', text: 'Words' }]])
-    expect(bar.findAll('.abele-book-selection__actions .abele-obsidian-icon')).toHaveLength(4)
+    await action('Read aloud from here').trigger('click')
+    expect(view.emitted('read-aloud')).toHaveLength(1)
   })
 
   it('once tapped, can be recoloured, commented, removed and closed', async () => {
@@ -293,5 +301,36 @@ describe('highlights', () => {
     expect(view.emitted('delete-highlight')).toEqual([[h]])
     await actions[5].trigger('click')
     expect(view.emitted('close-active')).toHaveLength(1)
+  })
+})
+
+describe('reading aloud', () => {
+  it('shows its bar while reading, and each control says what it does', async () => {
+    const model = readyModel()
+    const view = mount(BookReader, { props: { model } })
+    expect(view.find('.abele-book-speech').exists()).toBe(false)
+    model.speech = 'playing'
+    await flushPromises()
+    const icons = view.findAll('.abele-book-speech .abele-obsidian-icon')
+    expect(icons.map((i) => i.attributes('aria-label'))).toEqual([
+      'Read the last sentence again',
+      'Pause',
+      'Skip to the next sentence',
+      'Voice and speed',
+      'Stop reading aloud',
+    ])
+    for (const icon of icons) await icon.trigger('click')
+    expect(view.emitted('speech')).toEqual([['prev'], ['toggle'], ['next'], ['settings'], ['stop']])
+    model.speech = 'paused'
+    await flushPromises()
+    expect(view.find('.abele-book-speech__label').text()).toBe('Paused')
+  })
+
+  it('saves the voice and the speed', async () => {
+    const form = mount(ReaderSettingsForm, { props: { kind: 'epub' } })
+    const row = (name: string) =>
+      form.findAll('.setting-item').find((r) => r.find('.setting-item-name').text() === name)!
+    await row('Speed').find('select').setValue('1.5')
+    expect(AbeleConfig.getInstance().reader.ttsRate).toBe(1.5)
   })
 })

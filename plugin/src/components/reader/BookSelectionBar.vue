@@ -28,6 +28,12 @@
         tooltip="Ask the agent about these words: a new chat with them quoted"
         @click="emit('ask')"
       />
+      <Icon
+        v-if="!highlight"
+        icon="audio-lines"
+        tooltip="Read aloud from here"
+        @click="emit('read-aloud')"
+      />
       <Icon icon="link" tooltip="Copy a link to this place" @click="emit('copy-link')" />
       <Icon
         icon="text-quote"
@@ -67,6 +73,7 @@ const emit = defineEmits<{
   (e: 'color', color: HighlightColor): void
   (e: 'comment'): void
   (e: 'ask'): void
+  (e: 'read-aloud'): void
   (e: 'copy-link'): void
   (e: 'quote'): void
   (e: 'open-note'): void

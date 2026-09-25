@@ -47,7 +47,13 @@ export interface ReaderSettings {
   pdfTwoPages: boolean
   /** In a dark theme, PDF pages are shown with their light and dark swapped. */
   pdfDarkPages: boolean
+  /** The voice books are read aloud in, by its `voiceURI`; empty for the device's own for the book. */
+  ttsVoice: string
+  /** How fast books are read aloud: 1 is the voice's own pace. */
+  ttsRate: number
 }
+
+export const TTS_RATES = [0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   flow: 'paginated',
@@ -63,6 +69,8 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   pdfZoom: 'auto',
   pdfTwoPages: false,
   pdfDarkPages: true,
+  ttsVoice: '',
+  ttsRate: 1,
 }
 
 export const FONT_SIZES = [70, 80, 90, 100, 110, 120, 135, 150, 175, 200]
@@ -93,6 +101,8 @@ export function readerSettingsFrom(stored?: Partial<ReaderSettings> | null): Rea
     pdfZoom: oneOf(s.pdfZoom, PDF_ZOOMS, d.pdfZoom),
     pdfTwoPages: typeof s.pdfTwoPages === 'boolean' ? s.pdfTwoPages : d.pdfTwoPages,
     pdfDarkPages: typeof s.pdfDarkPages === 'boolean' ? s.pdfDarkPages : d.pdfDarkPages,
+    ttsVoice: typeof s.ttsVoice === 'string' ? s.ttsVoice : d.ttsVoice,
+    ttsRate: clamp(s.ttsRate, 0.5, 3, d.ttsRate),
   }
 }
 
