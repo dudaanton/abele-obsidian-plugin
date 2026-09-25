@@ -33,6 +33,11 @@ export interface GithubSettings {
   pageWidth: 'readable' | 'custom' | 'full'
   /** The width in pixels when `pageWidth` is `custom`. */
   pageWidthPx: number
+  /**
+   * How a markdown file opens: rendered — a link to its lines marks the blocks holding them — or
+   * as its source. The switch in the tab overrides it for that tab.
+   */
+  markdownView: 'preview' | 'code'
 }
 
 export const GITHUB_TOKEN_KEY_ID = 'abele-github-token'
@@ -47,6 +52,7 @@ export const DEFAULT_GITHUB_SETTINGS: GithubSettings = {
   userDisplay: 'name',
   pageWidth: 'custom',
   pageWidthPx: 1000,
+  markdownView: 'preview',
 }
 
 export const githubSettingsFrom = (stored?: Partial<GithubSettings>): GithubSettings => ({

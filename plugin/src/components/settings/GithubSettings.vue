@@ -114,6 +114,16 @@
             @update:model-value="updatePageWidthPx"
           />
         </Setting>
+        <Setting
+          name="Markdown files open as"
+          desc="Preview: rendered, and a link to lines of the file marks the paragraphs, lists or code blocks that hold them. Code: the file as it is written, line by line. The switch above a file changes it for that tab."
+        >
+          <Dropdown
+            :options="markdownOptions"
+            :model-value="settings.markdownView"
+            @update:model-value="updateMarkdownView"
+          />
+        </Setting>
       </Section>
 
       <Section
@@ -239,6 +249,16 @@ const updatePageWidthPx = (value: string) => {
   if (!Number.isFinite(px) || px < PAGE_WIDTH_MIN || px > PAGE_WIDTH_MAX) return
   settings.pageWidthPx = Math.round(px)
   saveServer()
+}
+
+const markdownOptions = [
+  { value: 'preview', display: 'Preview' },
+  { value: 'code', display: 'Code' },
+]
+
+const updateMarkdownView = (value: string) => {
+  settings.markdownView = value === 'code' ? 'code' : 'preview'
+  void save()
 }
 
 const displayOptions = [

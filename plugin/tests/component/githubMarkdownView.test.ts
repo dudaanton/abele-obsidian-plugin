@@ -89,17 +89,38 @@ describe('a markdown file', () => {
     expect(blocks(wrapper)[0].attributes('data-anchor')).toBe('widgets')
   })
 
-  it('a link naming lines opens the code at them; Preview then marks their blocks', async () => {
+  it('a link naming lines opens rendered with their blocks marked; Code then marks the lines', async () => {
     const { wrapper, model } = open(`${BASE}#L4-L6`, ROUTES)
-    await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
-    expect(activeMode(wrapper)).toBe('Code')
-    expect(markedLines(wrapper)).toEqual(['second line', '', '- one'])
-
-    await switchTo(wrapper, 'Preview')
     await vi.waitFor(() => expect(blocks(wrapper)).toHaveLength(6))
+    expect(activeMode(wrapper)).toBe('Preview')
     expect(marked(wrapper)).toEqual(['3', '6'])
+    expect(wrapper.find('.abele-github-blob__range').text()).toContain('Lines 4–6')
+
+    await switchTo(wrapper, 'Code')
+    await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
+    expect(markedLines(wrapper)).toEqual(['second line', '', '- one'])
     // The tab remembers the switch, for back, forward and a restart.
-    expect(model.mode).toBe('preview')
+    expect(model.mode).toBe('code')
+  })
+
+  it("the plugin's own link to lines, with ?plain=1, opens rendered too", async () => {
+    const { wrapper } = open(`${BASE}?plain=1#L6-L7`, ROUTES)
+    await vi.waitFor(() => expect(blocks(wrapper)).toHaveLength(6))
+    expect(marked(wrapper)).toEqual(['6', '7'])
+  })
+
+  it('with Code as the setting a link naming lines opens the code at them', async () => {
+    const { AbeleConfig } = await import('@/services/AbeleConfig')
+    const { DEFAULT_GITHUB_SETTINGS } = await import('@/github/settings')
+    AbeleConfig.getInstance().github = { ...DEFAULT_GITHUB_SETTINGS, markdownView: 'code' }
+    try {
+      const { wrapper } = open(`${BASE}#L4-L6`, ROUTES)
+      await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
+      expect(activeMode(wrapper)).toBe('Code')
+      expect(markedLines(wrapper)).toEqual(['second line', '', '- one'])
+    } finally {
+      AbeleConfig.getInstance().github = { ...DEFAULT_GITHUB_SETTINGS }
+    }
   })
 
   it('?plain=1 opens the code', async () => {
@@ -163,7 +184,7 @@ describe('selecting lines from the rendered file', () => {
   })
 
   it('lines selected in the code show in the rendered file', async () => {
-    const { wrapper } = open(`${BASE}#L1`, ROUTES)
+    const { wrapper } = open(`${BASE}?plain=1`, ROUTES)
     await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
     // A click on line 10's number, where CodeMirror's 14 px estimate puts it.
     wrapper

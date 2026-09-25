@@ -22,7 +22,8 @@ GitHub**.
 | `…/owner/repo/discussions/3` | The discussion: body, comments, replies, and which answer was chosen. |
 | `…/owner/repo/blob/<ref>/<path>#L10-L20` | The file at that branch, tag or commit, with those lines marked. |
 | `…/blob/<ref>/README.md`, `…/docs/guide.md#install` | A markdown file, rendered — scrolled to that heading when the link names one. |
-| `…/blob/<ref>/README.md?plain=1`, `…README.md#L10-L20` | A markdown file as code, as GitHub shows it for these links. |
+| `…/blob/<ref>/README.md#L10-L20`, `…README.md?plain=1#L10-L20` | A markdown file, rendered, with the paragraphs, list items or code blocks holding those lines marked — or as code with the lines marked, when **Markdown files open as** is set to Code. |
+| `…/blob/<ref>/README.md?plain=1` | A markdown file as code, as GitHub shows it for this link. |
 | `…/owner/repo/tree/<ref>/<path>`, `…/tree/<ref>` | A folder at that branch, tag or commit — the repository's root without a path: its folders, its files and its README. |
 
 `#issuecomment-…`, `#discussioncomment-…` and `#pullrequestreview-…` scroll to that comment. A
@@ -152,11 +153,14 @@ can confirm one — and only a signed-in request can then show it.
 ### Markdown files
 
 A markdown file — `.md`, `.markdown`, `.mdown`, `.mkd`, `.mkdn`, and `.mdx`, whose components
-render as plain HTML — opens rendered, with **Preview** and **Code** above it. A link naming
-lines or carrying `?plain=1` opens the code instead. The switch is the tab's: back, forward and
-a restart come back to the view it was left in, and a link followed in the tab opens the way
-that link asks. Switching keeps the place — the selected or linked lines when they are in sight,
-otherwise whatever was at the top of the tab.
+render as plain HTML — opens as **Settings → GitHub → Markdown files open as** says, with
+**Preview** and **Code** above it to switch. Preview, the default, renders it — a link naming
+lines too: the pieces of the file holding them are marked and scrolled to, and one click on
+Code shows the same lines marked in the source. Code opens every markdown file as its source.
+`?plain=1` alone, with no lines, opens the code either way, as GitHub does. The switch is the
+tab's: back, forward and a restart come back to the view it was left in, and a link followed in
+the tab opens the way that link and the setting ask. Switching keeps the place — the selected or
+linked lines when they are in sight, otherwise whatever was at the top of the tab.
 
 The file is rendered by Obsidian, piece by piece: every heading, paragraph, list item, table,
 code block, quote and HTML block is rendered on its own and knows which lines of the file it
@@ -187,8 +191,7 @@ the file at the commit the diff is of (the pull
 request's head commit, or the commit itself), and a file the change deleted as it was before it
 (the base commit, or the commit's parent). It opens at the first selected line of the diff; with
 nothing selected, at the line at the top of the tab when the tab is scrolled into that diff;
-otherwise at the top of the file — where a markdown file opens rendered, and at a line as code,
-by the rule above. The clicks are those of any link here: plain follows the tab rule, Mod opens a
+otherwise at the top of the file — a markdown file the way the setting above says. The clicks are those of any link here: plain follows the tab rule, Mod opens a
 new tab, Alt the browser.
 
 ## Folders and the file tree
@@ -394,8 +397,8 @@ read it as a regular expression. The second field narrows to files matching a gl
 folder. Results are grouped by file, with each line's number and its text, the match marked. A
 click opens the place: a line of the change in the pull request's files or the commit, a line of
 the repository as the file at that commit (so the link cannot drift as a branch moves). A line of
-a markdown file opens its code at that line (`?plain=1`, as GitHub writes it); the file's own
-name opens it rendered. The tab
+a markdown file opens at that line the way **Markdown files open as** says — rendered with its
+piece marked, or as code; the file's own name opens it rendered. The tab
 rules above apply — the result usually opens in the same tab, whose back arrow returns to the
 search's item — and Mod-click opens it in a new tab. The panel stays open, with its results, while
 the tab follows them, so the next result is one click away; a search from there searches the

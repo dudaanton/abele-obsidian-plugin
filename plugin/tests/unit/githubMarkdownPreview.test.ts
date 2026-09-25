@@ -52,14 +52,32 @@ describe('which mode a file opens in', () => {
     expect(blobMode({ path: 'src/a.ts', stored: 'preview' })).toBe('code')
   })
 
-  it('a link naming lines, or asking for the source, opens the code', () => {
+  it('a link naming lines opens rendered, its blocks marked, while Preview is the setting', () => {
     const t = parseGithubUrl('https://github.com/o/r/blob/main/README.md#L10-L20', ['github.com'])
-    expect(t?.kind === 'blob' && blobMode({ path: 'README.md', lines: t.lines })).toBe('code')
+    expect(t?.kind === 'blob' && blobMode({ path: 'README.md', lines: t.lines })).toBe('preview')
+    // The plugin's own links to lines carry ?plain=1, as GitHub needs them to: still rendered.
+    const own = parseGithubUrl('https://github.com/o/r/blob/main/README.md?plain=1#L3-L7', [
+      'github.com',
+    ])
+    expect(
+      own?.kind === 'blob' && blobMode({ path: 'README.md', lines: own.lines, plain: own.plain })
+    ).toBe('preview')
+  })
+
+  it('asking for the source alone opens the code', () => {
     const plain = parseGithubUrl('https://github.com/o/r/blob/main/README.md?plain=1', [
       'github.com',
     ])
     expect(plain?.kind === 'blob' && plain.plain).toBe(true)
     expect(blobMode({ path: 'README.md', plain: true })).toBe('code')
+  })
+
+  it('with Code as the setting a markdown file opens as code, lines or not', () => {
+    expect(blobMode({ path: 'README.md', setting: 'code' })).toBe('code')
+    expect(blobMode({ path: 'README.md', lines: { start: 1, end: 2 }, setting: 'code' })).toBe(
+      'code'
+    )
+    expect(blobMode({ path: 'README.md', stored: 'preview', setting: 'code' })).toBe('preview')
   })
 
   it('what the tab was switched to wins over the link', () => {

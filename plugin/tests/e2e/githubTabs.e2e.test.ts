@@ -6,8 +6,11 @@
  * - Lines selected by their numbers are copied as a link, written into the note last worked in as
  *   a link, and as a card holding the code, which the note then draws.
  * - A comparison opens on its files at the line a link names, lists its commits and swaps its sides.
- * - A markdown file opens rendered, switches to its code, and opens as code from `?plain=1` or a
- *   link to its lines.
+ * - A markdown file opens rendered — a link to its lines too, with the block holding them marked —
+ *   switches to its code at the same lines, and opens as code from `?plain=1` alone or when the
+ *   setting says Code.
+ * - The same link followed again, and a link to other lines of the same file, leave those lines
+ *   drawn and on screen, in the code and in the rendered file.
  * - A changed file of a pull request opens whole: a deleted one at the base, at the line selected
  *   in the diff, and from its path, which is a link.
  * - Text is selected by a mouse drag — in a comment, a file's code and a diff — and Mod+C copies
@@ -281,20 +284,64 @@ describe.skipIf(!available)('a GitHub tab', () => {
       expect(r).toEqual({ rendered: true, heading: 'Install', code: true })
     })
 
-    it('opens as code from ?plain=1, and from a link to its lines', () => {
-      const r = evalAsync<{ plain?: boolean; lines?: string; error?: string }>(`(async () => {
+    it('opens as code from ?plain=1', () => {
+      const r = evalAsync<{ plain?: boolean; error?: string }>(`(async () => {
         ${PRELUDE}
         ${opening(`${gh.web}/blob/main/README.md?plain=1`, 'README.md')}
         const report = {}
         report.plain = !!(await until(() => root.querySelector('.abele-github-blob .cm-editor'), 10000)) && !root.querySelector('.abele-github-md')
         leaf.detach()
-        const next = await openTab(${JSON.stringify(`${gh.web}/blob/main/README.md#L10`)})
-        const marked = await until(() => next.view.containerEl.querySelector('.abele-github-code__line_target'), 15000)
-        report.lines = marked ? marked.textContent : ''
-        next.detach()
         return report
       })()`)
-      expect(r).toEqual({ plain: true, lines: 'npm install acme-widgets' })
+      expect(r).toEqual({ plain: true })
+    })
+
+    it('opens a link to its lines rendered, the block holding them marked; Code shows the same lines', () => {
+      const r = evalAsync<{
+        error?: string
+        block?: string
+        inView?: boolean
+        line?: string
+        lineInView?: boolean
+      }>(`(async () => {
+        ${PRELUDE}
+        ${opening(`${gh.web}/blob/main/README.md#L10`, 'README.md')}
+        const block = await until(() => root.querySelector('.abele-github-md__block_marked'), 15000)
+        if (!block) return { error: 'no marked block' }
+        await wait(2500)
+        const report = { block: block.textContent.trim(), inView: placeInView(block).inView }
+        const tab = [...root.querySelectorAll('.abele-github-blob__modes .abele-tabs__tab')].find((t) => t.textContent.includes('Code'))
+        tab.click()
+        const line = await until(() => root.querySelector('.abele-github-code__line_target'), 15000)
+        await wait(2500)
+        report.line = line?.textContent
+        report.lineInView = line ? placeInView(line).inView : false
+        leaf.detach()
+        return report
+      })()`)
+      expect(r.error).toBeUndefined()
+      expect(r.block).toContain('npm install acme-widgets')
+      expect(r.inView).toBe(true)
+      expect(r.line).toBe('npm install acme-widgets')
+      expect(r.lineInView).toBe(true)
+    })
+
+    it('opens a link to its lines as code when that is the setting', () => {
+      const r = evalAsync<{ line?: string; md?: boolean }>(`(async () => {
+        ${PRELUDE}
+        const config = window.__abeleTest.AbeleConfig.getInstance()
+        config.github = { ...config.github, markdownView: 'code' }
+        try {
+          ${opening(`${gh.web}/blob/main/README.md#L10`, 'README.md')}
+          const line = await until(() => root.querySelector('.abele-github-code__line_target'), 15000)
+          const report = { line: line?.textContent, md: !!root.querySelector('.abele-github-md') }
+          leaf.detach()
+          return report
+        } finally {
+          config.github = { ...config.github, markdownView: 'preview' }
+        }
+      })()`)
+      expect(r).toEqual({ line: 'npm install acme-widgets', md: false })
     })
   })
 

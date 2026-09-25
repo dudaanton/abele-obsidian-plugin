@@ -227,18 +227,20 @@ describe("searching a pull request's changes", () => {
 })
 
 describe('where a result opens', () => {
-  it('opens a line of a markdown file as its code, and the file itself rendered', async () => {
+  it('opens a line of a markdown file the way the setting says, and the file itself rendered', async () => {
     const { blobUrl } = await import('@/github/search/tabCode')
     const { parseGithubUrl } = await import('@/github/urls')
     const { blobMode } = await import('@/github/markdownPreview')
-    const mode = (url: string) => {
+    const mode = (url: string, setting?: 'preview' | 'code') => {
       const t = parseGithubUrl(url, ['github.com'])
       if (t?.kind !== 'blob') throw new Error('not a file')
-      return blobMode({ path: t.rest.slice(1).join('/'), lines: t.lines, plain: t.plain })
+      return blobMode({ path: t.rest.slice(1).join('/'), lines: t.lines, plain: t.plain, setting })
     }
     const line = blobUrl(REPO, SHA, 'docs/guide.md', 12)
     expect(line).toBe(`https://github.com/acme/widgets/blob/${SHA}/docs/guide.md?plain=1#L12`)
-    expect(mode(line)).toBe('code')
+    // Rendered, the block holding the line marked; as code when Code is the setting.
+    expect(mode(line)).toBe('preview')
+    expect(mode(line, 'code')).toBe('code')
     expect(mode(blobUrl(REPO, SHA, 'docs/guide.md'))).toBe('preview')
     expect(blobUrl(REPO, SHA, 'src/app.ts', 3)).toBe(
       `https://github.com/acme/widgets/blob/${SHA}/src/app.ts#L3`

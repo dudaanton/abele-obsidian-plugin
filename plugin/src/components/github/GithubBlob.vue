@@ -81,9 +81,12 @@ import type { GithubClient } from '@/github/client'
 import type { RepoFile } from '@/github/markdownLinks'
 import { LINE_CONTEXT } from '@/github/scrollTo'
 import { blobMode, isMarkdownPath, linesLabel, type BlobMode } from '@/github/markdownPreview'
+import { githubSettings } from '@/github/GithubService'
+import { AbeleConfig } from '@/services/AbeleConfig'
 
 /**
- * A file at a ref. Markdown opens rendered, with a switch to its source; anything else is code.
+ * A file at a ref. Markdown opens rendered or as its source, as the settings say, with a switch
+ * between the two; anything else is code.
  * Lines selected in either view are the same selection, shown in both, with the same bar for
  * linking to them.
  */
@@ -108,9 +111,18 @@ const emit = defineEmits<{
 }>()
 
 const markdown = computed(() => isMarkdownPath(props.file.path))
-const mode = computed(() =>
-  blobMode({ path: props.file.path, lines: props.range, plain: props.plain, stored: props.mode })
-)
+const config = AbeleConfig.getInstance()
+const mode = computed(() => {
+  // Followed at once when the setting changes.
+  void config.version.value
+  return blobMode({
+    path: props.file.path,
+    lines: props.range,
+    plain: props.plain,
+    stored: props.mode,
+    setting: githubSettings().markdownView,
+  })
+})
 const modes = [
   {
     id: 'preview',

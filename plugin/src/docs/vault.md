@@ -262,7 +262,9 @@ on it opens a GitHub tab scrolled to that line or comment. The label is only tex
 file is pinned to a commit, not a branch, so it keeps pointing at the lines it was made from.
 Lines of a markdown file — selected in its rendered view or in its code — are linked to the
 source with `?plain=1` before the anchor (`…/README.md?plain=1#L3-L7`), which is how GitHub
-itself shows a markdown file's lines; a snippet of them carries `lang: md`.
+itself shows a markdown file's lines; a snippet of them carries `lang: md`. In a GitHub tab such
+a link opens the file rendered, with the pieces holding those lines marked, unless the GitHub
+setting "Markdown files open as" is Code (`github.markdownView` in the plugin's settings).
 
 ## GitHub people
 

@@ -22,19 +22,25 @@ export function isMarkdownPath(path: string): boolean {
 export type BlobMode = 'preview' | 'code'
 
 /**
- * How a file opens. Only markdown has a preview, and it opens in it — unless the link names lines
- * (`#L10-L20`) or asks for the source (`?plain=1`), which GitHub shows as code too. What the tab
- * was last switched to wins over both: that is how back, forward and a restart keep it.
+ * How a file opens. Only markdown has a preview. What the tab was last switched to wins — that is
+ * how back, forward and a restart keep it. Then the setting: Preview opens a markdown file
+ * rendered even when the link names lines (`#L10-L20`, which marks the blocks holding them, and
+ * which the plugin's own links write as `?plain=1#L10-L20`, the way GitHub needs them); only
+ * `?plain=1` with no lines, a plain ask for the source, opens the code. Code opens every markdown
+ * file as code.
  */
 export function blobMode(o: {
   path: string
   lines?: LineRange
   plain?: boolean
   stored?: BlobMode
+  /** The GitHub setting "Markdown files open as"; Preview when unset. */
+  setting?: BlobMode
 }): BlobMode {
   if (!isMarkdownPath(o.path)) return 'code'
   if (o.stored) return o.stored
-  return o.lines || o.plain ? 'code' : 'preview'
+  if (o.setting === 'code') return 'code'
+  return o.plain && !o.lines ? 'code' : 'preview'
 }
 
 /** The block holding `line`; for a line between blocks, the next one; -1 for none. */
