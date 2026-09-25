@@ -43,7 +43,8 @@ device syncs**:
 | Everything else | Attachments of no listed type, and the scripts folder. |
 
 **Largest file** skips anything bigger, in megabytes; empty takes everything. It takes effect when
-you leave the field or press Enter, not while you type. The vault has a cap
+you leave the field or press Enter, not while you type; a number typed and left there when the
+settings close is kept too, and an emptied field is kept only by leaving it. The vault has a cap
 of its own too, set on the server and shown under **Vault policy**.
 
 **Obsidian settings** decides how much of the configuration folder travels: **App settings**,

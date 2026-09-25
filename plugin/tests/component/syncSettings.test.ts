@@ -542,6 +542,40 @@ describe('what this device takes', () => {
     expect((field.element as HTMLInputElement).value).toBe('50')
     expect(service.onSettingsSaved).not.toHaveBeenCalled()
   })
+
+  /**
+   * Escape closes the settings with the cap field still focused, and a field taken out of the
+   * page fires no `change`. What was typed is kept if it is a cap — and an empty field never
+   * is: saved on the way out, it would be no cap at all and a rescan nobody asked for.
+   */
+  it('keeps a cap typed into a field the settings closed on', async () => {
+    AbeleConfig.getInstance().sync.selective.maxFileBytes = 50 * 1024 * 1024
+    const screen = open(SelectiveSync)
+
+    await type(screen.findAll('input')[0], '20')
+    screen.unmount()
+    await flushPromises()
+
+    expect(AbeleConfig.getInstance().sync.selective.maxFileBytes).toBe(20 * 1024 * 1024)
+    expect(service.onSettingsSaved).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['empty', ''],
+    ['not a number', 'abc'],
+    ['zero', '0'],
+    ['unchanged', '50'],
+  ])('saves nothing on the way out when the field is %s', async (_what, text) => {
+    AbeleConfig.getInstance().sync.selective.maxFileBytes = 50 * 1024 * 1024
+    const screen = open(SelectiveSync)
+
+    await type(screen.findAll('input')[0], text)
+    screen.unmount()
+    await flushPromises()
+
+    expect(AbeleConfig.getInstance().sync.selective.maxFileBytes).toBe(50 * 1024 * 1024)
+    expect(service.onSettingsSaved).not.toHaveBeenCalled()
+  })
 })
 
 describe('the vault policy', () => {

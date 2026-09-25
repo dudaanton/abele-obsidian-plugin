@@ -690,6 +690,16 @@ describe('Input', () => {
     await field.trigger('change')
     expect(view.emitted('commit')?.at(-1)).toEqual(['150'])
   })
+
+  /** The Enter that picks a word in an input method is the composition's, not the field's. */
+  it('does not commit on the Enter that ends a composition', async () => {
+    const view = mount(Input, { props: { modelValue: '' } })
+    const field = view.find('input')
+
+    await field.trigger('keydown', { key: 'Enter', isComposing: true })
+
+    expect(view.emitted('commit')).toBeUndefined()
+  })
 })
 
 describe('Input as a textarea', () => {

@@ -45,7 +45,8 @@ const emit = defineEmits<{
 }>()
 
 function onEnter(e: KeyboardEvent): void {
-  if (props.asTextArea) return
+  // The Enter that picks a word in an input method ends the composition, not the value.
+  if (props.asTextArea || e.isComposing) return
   emit('commit', (e.target as HTMLInputElement).value)
 }
 </script>

@@ -95,7 +95,7 @@
  * field is committed, not as it is typed: every save that moves it rebuilds the engine and
  * walks the manifest, and editing 50 into 100 passes through an empty field on the way.
  */
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { SelectiveSettings } from '@abele/sync-core'
 import Section from '../../obsidian/Section.vue'
 import Setting from '../../obsidian/Setting.vue'
@@ -259,26 +259,48 @@ function toggleSetting(key: SettingsKey): void {
   save()
 }
 
-/**
- * The field was left or Enter was pressed. An empty field, committed, is no cap; anything that
- * is not a positive number puts back what was saved rather than guessing. A commit that moves
- * nothing saves nothing, which is also what makes Enter followed by the blur one save.
- */
-function commitCap(value: string): void {
+/** A positive number of megabytes, in bytes; undefined for anything else, an empty field included. */
+function capOf(value: string): number | undefined {
   const trimmed = value.trim()
-  let cap: number | null = null
-  if (trimmed !== '') {
-    const megabytes = Number(trimmed)
-    if (!Number.isFinite(megabytes) || megabytes <= 0) {
-      capDraft.value = maxMegabytes.value
-      return
-    }
-    cap = Math.round(megabytes * 1024 * 1024)
-  }
+  if (trimmed === '') return undefined
+  const megabytes = Number(trimmed)
+  if (!Number.isFinite(megabytes) || megabytes <= 0) return undefined
+  return Math.round(megabytes * 1024 * 1024)
+}
+
+/** Saves a cap unless it is the one already saved, which is what makes Enter and blur one save. */
+function saveCap(cap: number | null): void {
   if (cap === selective.value.maxFileBytes) return
   selective.value.maxFileBytes = cap
   save()
 }
+
+/**
+ * The field was left or Enter was pressed. An empty field, committed, is no cap; anything that
+ * is not a positive number puts back what was saved rather than guessing.
+ */
+function commitCap(value: string): void {
+  if (value.trim() === '') {
+    saveCap(null)
+    return
+  }
+  const cap = capOf(value)
+  if (cap === undefined) {
+    capDraft.value = maxMegabytes.value
+    return
+  }
+  saveCap(cap)
+}
+
+/**
+ * The settings closed with the field still focused — Escape does that — and a field taken out
+ * of the page fires no `change`. A cap that was typed is kept. An empty field is not: that would
+ * be no cap at all, a wider scope and a rescan, and nobody leaving by Escape asked for either.
+ */
+onBeforeUnmount(() => {
+  const cap = capOf(capDraft.value)
+  if (cap !== undefined) saveCap(cap)
+})
 
 function addFolder(): void {
   const folder = folderToAdd.value.trim()
