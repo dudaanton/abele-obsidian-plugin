@@ -90,7 +90,7 @@ export class BookReading {
   // ————— Highlights —————
 
   /** Where this book's highlights go, as the settings say now. */
-  private where(): NotesPlace {
+  where(): NotesPlace {
     const { key, title, author } = this.book()
     const settings = readerSettingsFrom(AbeleConfig.getInstance().reader)
     return { title, author, target: notesTargetFor(settings, key) }

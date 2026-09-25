@@ -13,6 +13,7 @@ import { openEpub } from '@/reader/openBook'
 import { watchPage, type PageHost } from '@/reader/pageInput'
 import { emptyBookModel } from '@/reader/model'
 import { layoutAttributes, pageStyles, readerSettingsFrom } from '@/reader/settings'
+import { inkLab } from './inkLab'
 
 type Entry = Record<string, unknown>
 const queue: Entry[] = []
@@ -26,6 +27,7 @@ setInterval(() => {
 
 async function main() {
   const params = new URLSearchParams(location.search)
+  if (params.get('ink')) return inkLab(log, params.get('finger') === '1')
   const flow = params.get('flow') === 'scrolled' ? 'scrolled' : 'paginated'
   const data = new Uint8Array(await (await fetch(params.get('book') ?? '/book.epub')).arrayBuffer())
   const opened = await openEpub(data)

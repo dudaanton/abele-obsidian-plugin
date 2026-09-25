@@ -8,11 +8,15 @@ import type { BookModel, PanelTab, SearchHit } from './model'
 import type { BookReading } from './BookReading'
 import type { Bookmark } from './bookmarks'
 import type { PageBookmarks } from './pageBookmarks'
+import type { PdfInk } from './ink/PdfInk'
+import type { InkToolName } from './ink/inkModel'
+import type { InkColor } from './ink/stroke'
 
 export interface BookActions {
   model: BookModel
   reader(): FoliateView | null
   reading(): BookReading | null
+  ink(): PdfInk | null
   setStage(el: HTMLElement): void
   setPanel(open: boolean): void
   closeFootnote(): void
@@ -87,6 +91,12 @@ export function bookCallbacks(a: BookActions): Record<string, unknown> {
       model.panelTab = tab
     },
     onSearch: (query: string): void => void a.reading()?.search(query),
+    onInk: (on: boolean): void => (on ? a.ink()?.start() : a.ink()?.stop()),
+    onInkTool: (tool: InkToolName): void => a.ink()?.setTool(tool),
+    onInkColor: (color: InkColor): void => a.ink()?.setColor(color),
+    onInkFinger: (on: boolean): void => a.ink()?.setFinger(on),
+    onInkUndo: (): void => a.ink()?.undo(),
+    onInkRedo: (): void => a.ink()?.redo(),
     onSearchHit: (hit: SearchHit, fromPanel: boolean): void => {
       if (fromPanel) model.panel = false
       void a.reading()?.goToHit(hit)

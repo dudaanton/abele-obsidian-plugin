@@ -8,6 +8,7 @@ import type { Highlight } from './highlights'
 import type { BookFigure } from './figures'
 import type { BookProgress } from './readingProgress'
 import type { Bookmark } from './bookmarks'
+import { emptyInk, type InkModel } from './ink/inkModel'
 
 /** Words selected on the page. */
 export interface BookSelection {
@@ -112,6 +113,8 @@ export interface BookModel {
   bookmarks: Bookmark[]
   /** The ids of the bookmarks on the page on screen; empty when it has none. */
   bookmarksHere: string[]
+  /** Drawing on a PDF's pages. */
+  ink: InkModel
 }
 
 export const emptyBookModel = (): BookModel => ({
@@ -141,6 +144,7 @@ export const emptyBookModel = (): BookModel => ({
   selecting: false,
   bookmarks: [],
   bookmarksHere: [],
+  ink: emptyInk(),
 })
 
 /** The engine's contents as the tree the panel draws. */

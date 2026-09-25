@@ -15,6 +15,7 @@ import { readerSettingsFrom, renamedBookNotes } from './settings'
 import { setPdfTakeover } from './pdfTakeover'
 import { registerPlaceLinks } from './placeLinks'
 import { forgetBookTexts } from './bookText'
+import { moveInk } from './ink/inkStore'
 
 export function registerReader(plugin: Plugin): void {
   const { app } = plugin
@@ -46,6 +47,8 @@ export function registerReader(plugin: Plugin): void {
       if (!(file instanceof TFile) || !READER_EXTENSIONS.includes(file.extension)) return
       void places.renamed(oldPath, file.path)
       void bookmarks.renamed(oldPath, file.path)
+      // A PDF's ink goes with it.
+      if (file.extension === 'pdf') void moveInk(app, oldPath, file.path)
       // Its own choice of where its highlights go, too.
       const config = AbeleConfig.getInstance()
       const reader = readerSettingsFrom(config.reader)

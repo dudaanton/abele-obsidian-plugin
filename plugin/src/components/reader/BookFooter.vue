@@ -6,6 +6,13 @@
       tooltip="Back to where you were before the link"
       @click="emit('back')"
     />
+    <Icon
+      v-if="model.kind === 'pdf'"
+      icon="pen-line"
+      tooltip="Draw on the pages"
+      class="abele-book-reader__draw"
+      @click="emit('draw')"
+    />
     <span class="abele-book-reader__chapter">{{ model.chapter }}</span>
     <Slider
       class="abele-book-reader__progress"
@@ -36,8 +43,8 @@
 
 <script setup lang="ts">
 /**
- * The line under a book's page: the way back from a link, the chapter, a slider through the
- * whole book, and a measure of how far into it the page is. In a reflowing book a tap on the
+ * The line under a book's page: the way back from a link, under a PDF the pen that turns drawing
+ * on, the chapter, a slider through the whole book, and a measure of how far into it the page is. In a reflowing book a tap on the
  * measure goes round its ways — the page of the chapter, the pages left in it, the place in the
  * whole book, the percentage — and the one chosen is kept, on every device the settings reach.
  * While the slider is held the measure shows where it would go, as a percentage. At the end, the
@@ -57,6 +64,7 @@ const emit = defineEmits<{
   (e: 'back'): void
   (e: 'seek', fraction: number): void
   (e: 'bookmark'): void
+  (e: 'draw'): void
 }>()
 
 const marked = computed(() => props.model.bookmarksHere.length > 0)

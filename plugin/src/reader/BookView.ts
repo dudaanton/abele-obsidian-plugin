@@ -40,6 +40,7 @@ import { nameOf } from './bookText'
 import { fillBookMenu, fillZoomMenu } from './bookMenu'
 import { bookScope, zoomStep } from './zoom'
 import { PDF_SCROLL_TAG, definePdfScroll } from './pdfScroll'
+import { inkFor, type PdfInk } from './ink/PdfInk'
 
 /** The settings a PDF's layout is decided by when it opens. */
 const pdfLayoutKey = (s: { pdfLayout: string; pdfTwoPages: boolean }) =>
@@ -75,6 +76,8 @@ export class BookView extends FileView {
   reading: BookReading | null = null
   /** The book's bookmarks, once it is showing. */
   bookmarks: PageBookmarks | null = null
+  /** Drawing on a PDF's pages. */
+  ink: PdfInk | null = null
   /** A place a link asked for, gone to once the book is open. */
   private pendingPlace: BookPlace | null = null
   /** Every page loaded so far in this tab, newest last. */
@@ -196,6 +199,8 @@ export class BookView extends FileView {
       showHighlights: () => this.showPanel('highlights'),
       showBookmarks: () => this.showPanel('bookmarks'),
       openSettings: () => (this.model.settingsOpen = true),
+      draw: this.ink ? () => this.ink?.toggle() : undefined,
+      drawing: this.model.ink.on,
     })
     if (this.fixed) fillZoomMenu(menu, (way) => this.zoom(way))
   }
@@ -206,6 +211,7 @@ export class BookView extends FileView {
       model: this.model,
       reader: () => this.reader,
       reading: () => this.reading,
+      ink: () => this.ink,
       setStage: (el) => {
         this.stage = el
         this.resolveStage(el)
@@ -280,6 +286,8 @@ export class BookView extends FileView {
     this.reading = null
     this.bookmarks?.stop()
     this.bookmarks = null
+    this.ink?.destroy()
+    this.ink = null
     void bookPlaces()?.flush()
     this.reader?.close()
     this.reader?.remove()
@@ -409,6 +417,8 @@ export class BookView extends FileView {
       )
       void this.reading.loadHighlights()
       this.bookmarks = bookmarksFor(this.key, this.model, reader, this.isPdf ? opened.book : null)
+      this.ink = this.isPdf ? inkFor(this, file, reader, opened.book, () => this.stage) : null
+      void this.ink?.load()
       if (!this.isPdf && reader.isFixedLayout) this.model.kind = 'fixed'
       this.model.toc = tocEntries(opened.book.toc)
       const place = await bookPlaces()?.get(this.key)

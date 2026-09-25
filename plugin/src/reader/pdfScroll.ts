@@ -328,6 +328,11 @@ export class PdfScroll extends HTMLElement {
     this.#update()
   }
 
+  /** Moves the pages by a distance, as a finger dragging them would: drawing mode's own finger. */
+  panBy(dx: number, dy: number): void {
+    this.#scroller.scrollBy({ left: dx, top: dy, behavior: 'instant' })
+  }
+
   /** The pages drawn now, the one being read first. */
   getContents(): { doc: Document; index: number }[] {
     const drawn = this.#slots.map((slot, index) => ({ doc: slot.doc, index })).filter((c) => c.doc)

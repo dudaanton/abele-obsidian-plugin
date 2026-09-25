@@ -387,7 +387,7 @@ or `path:<path>` for a book without one; each place is `{ cfi, fraction, path, a
 when it was read, in milliseconds. Every device writes that file and keeps the latest `at` for each
 book. A copy, `book-places.backup.json`, is written just before it in the plugin's own folder, on
 this device only. Obsidian's file list does not show a `.json` file; Obsidian Sync carries it with
-"Sync all other types" on. The only note written beside a book is its highlights note.
+"Sync all other types" on. The only note written beside a book is its highlights note; a PDF with ink also has its ink folder.
 
 Bookmarks — pages the person marked to come back to — are kept the same way, in
 `abele-book-bookmarks.json` in the same folder as the places file, under the same book keys: each
@@ -456,3 +456,21 @@ Removing a highlight removes the lines its body wrote around it while they still
 The open book redraws whatever the note holds as soon as it changes, so adding, recolouring or
 removing a highlight by editing the note is fine; keep the shape above or the reader will not see
 it.
+
+### Ink on PDF pages
+
+What is drawn on a PDF's pages (the pen under the page) is kept in the vault, never in the PDF:
+one SVG per page in a folder beside the book, `<book name> ink/<book name> page <N>.svg` (N from 1).
+Each file is the page's size on white paper, one `<path>` per stroke; the reader reads back only
+each path's `data-tool` (`pen` or `marker`), `data-color`, `data-size` and `data-points` (`x y
+pressure`, repeated, in the page's units at 100%). The page's first stroke also puts a callout into
+the book's highlights note, the picture embedded, so it shows without the plugin:
+
+```markdown
+> [!ink] [[Papers/Paper.pdf#page=4|Page 4]]
+> ![[Papers/Paper ink/Paper page 4.svg]]
+```
+
+A page whose last stroke is erased has its file and its callout removed. Renaming or moving the
+PDF renames its ink folder and files. A change to a file from another device is drawn when it
+arrives.

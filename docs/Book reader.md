@@ -358,6 +358,31 @@ PDF.js itself drops `javascript:`, `file:` and launch actions before that. The h
 `tests/fixtures/books/pdfFixture.ts` carries all of those and is opened by the e2e tier with both
 sandboxes.
 
+### Drawing on the pages
+
+The pen at the start of the line under a PDF's page (or **Draw on the pages** in the tab's ⋯ menu)
+turns drawing on. While it is on, a sheet lies over the pages and takes every touch: the reader's
+own taps, swipes and selection, and Obsidian's — a swipe from the edge that opens a sidebar, a long
+press that opens a menu — hear nothing; the page neither scrolls by itself nor selects text, and
+iOS shows no magnifier. The line under the page becomes the drawing bar: **pen** (its width
+follows the pressure), **marker**, **eraser** (takes away the whole stroke it touches), four
+colours for each, **draw with a finger** (a touch screen only), **undo**, **redo**, and **✓** to stop.
+Esc stops too, Mod+Z undoes and Mod+Shift+Z redoes.
+
+Who draws: a pen always; the mouse; a finger only when drawing with a finger is on — on by default
+on a phone, off on a tablet. Otherwise a finger moves the pages (in the scroll, gliding on when let
+go; with pages turned one at a time, a swipe turns them), and the mouse wheel scrolls. The first
+touch of a pen turns drawing with a finger off, and while a pen is down no finger does anything, so
+the hand resting on the screen draws nothing.
+
+Every stroke is kept in the page's units, so it keeps its place at any zoom and in either layout,
+and turns dark with the page. It is written to the vault a moment after drawing stops — one SVG per
+page beside the book, and a callout per page in the book's highlights note with the picture in it
+(see the vault reference for the format). The PDF is never written.
+
+Not yet: selecting words by drawing over them, notes pinned to a point or an area of a page,
+fixed-layout books, and a copy of the PDF with the ink written into it.
+
 The layer styles PDF.js needs (`text_layer_builder.css`, `annotation_layer_builder.css`, Apache
 2.0) are carried in `plugin/src/vendor/pdfjs-css/`.
 

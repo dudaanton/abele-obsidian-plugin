@@ -278,6 +278,15 @@ Three files, three concerns:
   returns to the setting; switching to pages and back keeps the page. On a phone at 390×844 the page
   fills the width, keeps clear of the bars and scrolls; picture in `/tmp/abele-phone/`.
   `bookPdf.e2e.test.ts` and the phone file run with pages turned one at a time.
+- `bookPdfInk.e2e.test.ts` — **drawing on a PDF's pages**: a pen sent through the app's own input
+  (`Input.dispatchMouseEvent` with `pointerType: 'pen'` and a pressure) draws on the page it is
+  over, with more than one width; the page's SVG appears beside the book and its callout in the
+  book's note; undo, redo, the eraser (file and callout go, and come back with undo), the mouse and
+  the marker; a finger moves the pages and draws nothing; listeners on the document and the window
+  — where Obsidian's are — hear nothing while drawing; stopping hands the row back. Opened again
+  the ink is there, and a change to the file (another device) is drawn. Pages turned one at a
+  time: the pen draws and a finger's swipe turns. At 390×844 the bar fits its row and a finger
+  draws; at 820×1180 (a tablet) a finger moves the pages. Pictures `/tmp/abele-phone/ink-*.png`.
 - `bookFormats.e2e.test.ts` — **the other formats**, with files written byte by byte in
   `tests/fixtures/books/otherFormats.ts` and `richBook.ts`: a Mobipocket book, a FictionBook bare
   and zipped, a comic archive and a fixed-layout EPUB, each carrying scripts, handlers or runnable
@@ -318,6 +327,12 @@ Three files, three concerns:
   With it the reader's hold at the foot of the page was checked for real: a long press, the end
   handle dragged down and held, the page turning with the selection carried on and the handle
   dragged further on the new page; and a tap on the page's edge with words selected.
+  `?ink=1` (with `&finger=1` to let a finger draw) opens the drawing sheet over four page frames
+  instead: it logs every touch it routes, each stroke's points, any event that reached the
+  document, and any scroll. What it showed on a Simulator iPad: a finger stroke arrives as a full
+  stream of points and is drawn inside the page frame; a long press draws a dot and opens nothing;
+  nothing reaches the document; with the finger moving the pages, the scroll follows and glides.
+  The Simulator has no Apple Pencil, so pen, pressure, the palm and Scribble are the iPad's to show.
 - `bookPhoneControls.e2e.test.ts` — **the reader's controls on a phone**: the progress slider
   dragged does not open the side panel; the text and layout dialog scrolls to its last row and the
   note and comment dialogs show their buttons; a dialog with a search field keeps its size under a

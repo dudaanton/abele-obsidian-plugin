@@ -55,8 +55,18 @@
            slider. Nothing stands over the text, and the page is never laid out anew for a bar —
            which would move the words under a selection. -->
       <div v-if="model.status === 'ready'" class="abele-book-reader__foot">
+        <BookInkBar
+          v-if="model.ink.on"
+          :ink="model.ink"
+          @tool="emit('ink-tool', $event)"
+          @color="emit('ink-color', $event)"
+          @finger="emit('ink-finger', $event)"
+          @undo="emit('ink-undo')"
+          @redo="emit('ink-redo')"
+          @done="emit('ink', false)"
+        />
         <BookSelectionBar
-          v-if="(model.selection || model.active) && !model.selecting"
+          v-else-if="(model.selection || model.active) && !model.selecting"
           :highlight="model.active"
           :can-ask="model.canAsk"
           @ask="emit('ask', quoteTarget())"
@@ -80,6 +90,7 @@
           @back="emit('back')"
           @seek="emit('seek', $event)"
           @bookmark="emit('bookmark')"
+          @draw="emit('ink', true)"
         />
       </div>
     </div>
@@ -141,6 +152,9 @@ import BookBookmarks from './BookBookmarks.vue'
 import BookSelectionBar from './BookSelectionBar.vue'
 import BookComment from './BookComment.vue'
 import BookSpeechBar from './BookSpeechBar.vue'
+import BookInkBar from './BookInkBar.vue'
+import type { InkToolName } from '@/reader/ink/inkModel'
+import type { InkColor } from '@/reader/ink/stroke'
 import Tabs from '../obsidian/Tabs.vue'
 import type { Highlight, HighlightColor } from '@/reader/highlights'
 import ReaderSettingsForm from './ReaderSettingsForm.vue'
@@ -185,6 +199,12 @@ const emit = defineEmits<{
   (e: 'bookmark'): void
   (e: 'go-bookmark', b: Bookmark, fromPanel: boolean): void
   (e: 'remove-bookmark', b: Bookmark): void
+  (e: 'ink', on: boolean): void
+  (e: 'ink-tool', tool: InkToolName): void
+  (e: 'ink-color', color: InkColor): void
+  (e: 'ink-finger', on: boolean): void
+  (e: 'ink-undo'): void
+  (e: 'ink-redo'): void
 }>()
 
 const panelTabs = [

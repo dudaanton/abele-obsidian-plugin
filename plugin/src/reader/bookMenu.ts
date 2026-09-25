@@ -17,6 +17,9 @@ export interface BookMenuHost {
   showHighlights(): void
   showBookmarks(): void
   openSettings(): void
+  /** Drawing on the pages turned on or off; a PDF only. */
+  draw?: () => void
+  drawing?: boolean
 }
 
 /** A PDF's zoom, from its tab's menu. */
@@ -81,6 +84,15 @@ export function fillBookMenu(menu: Menu, host: BookMenuHost): void {
           .onClick(() => host.ask())
       )
   }
+  const draw = host.draw
+  if (draw)
+    menu.addItem((item) =>
+      item
+        .setTitle(host.drawing ? 'Stop drawing' : 'Draw on the pages')
+        .setIcon(host.drawing ? 'pen-off' : 'pen-line')
+        .setSection('action')
+        .onClick(() => draw())
+    )
   menu.addItem((item) =>
     item
       .setTitle('Search in the book')
