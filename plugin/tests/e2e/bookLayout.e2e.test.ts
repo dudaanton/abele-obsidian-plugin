@@ -133,6 +133,8 @@ interface Checked {
   scrolled: boolean
   onPage: number
   overlaps: unknown[]
+  moved?: boolean
+  relaid?: boolean
 }
 
 const run = <T>(body: string): T =>
@@ -148,6 +150,8 @@ const expectClean = (results: Checked[]): void => {
   for (const r of results) {
     expect(r.onPage, `${r.name}: paragraphs on the page`).toBeGreaterThan(0)
     expect(r.overlaps, `${r.name}: paragraphs over each other`).toEqual([])
+    expect(r.moved ?? false, `${r.name}: the page moved`).toBe(false)
+    expect(r.relaid ?? true, `${r.name}: the columns laid out again`).toBe(true)
   }
 }
 
@@ -248,6 +252,17 @@ describe.skipIf(!available)('paragraphs are never drawn over each other', () => 
       await shoot('desktop-wide')
       for (let i = 0; i < 3; i++) { await r.next(); await wait(300) }
       await check(view, 'three pages on')
+      // Fonts arriving lay the columns out again; a page that was right does not move.
+      const first = () => { const b = anchor(view).getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.height)] }
+      const before = [r.start, ...first()]
+      const nudges = []
+      const watcher = new MutationObserver((m) => nudges.push(...m))
+      watcher.observe(docOf(view).documentElement, { attributes: true, attributeFilter: ['style'] })
+      docOf(view).fonts.dispatchEvent(new Event('loadingdone'))
+      await check(view, 'fonts arrived', 600)
+      watcher.disconnect()
+      results[results.length - 1].moved = JSON.stringify([r.start, ...first()]) !== JSON.stringify(before)
+      results[results.length - 1].relaid = nudges.length >= 2
       win.setContentSize(1300, 860); await check(view, 'narrower')
       win.setContentSize(1700, 1040); await check(view, 'wider')
       win.setContentSize(1512, 982); await check(view, 'back')

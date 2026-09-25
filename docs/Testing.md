@@ -283,7 +283,8 @@ Three files, three concerns:
   says it is protected by DRM; words on a fixed page are highlighted with boxes; `book_read` and
   `book_search` read the Mobipocket and FictionBook files.
 - `bookSelecting.e2e.test.ts` — **selecting on pages turned one at a time**: with the mouse on the
-  desktop, then under `emulateMobile` at 390×844 with touches sent through the app's own input
+  desktop — at 1280×800 with both side panels closed, so the page has the two columns its steps
+  assume — then under `emulateMobile` at 390×844 with touches sent through the app's own input
   pipeline (`Input.dispatchTouchEvent`, from inside the app so a long press lasts as long as it
   says). Only a clean tap at an edge or a swipe turns the page; a long press, a finger held and
   moved, a swipe or tap over a selection, a tap on a highlight, a tap beside an open bar and taps
@@ -333,7 +334,9 @@ Three files, three concerns:
   when the app starts — every line of every paragraph in the chapter is compared with the lines of
   the paragraphs after it. The probe is first shown paragraphs made too short on purpose, so a pass
   means something. It also opens the book with a saved place the book does not have (another
-  edition under the same identifier), which opens it at its start instead of failing.
+  edition under the same identifier), which opens it at its start instead of failing, and has
+  the page's fonts arrive (`loadingdone`): the columns are laid out again and nothing on the page
+  moves.
 - `bookNotesFile.e2e.test.ts` — **where highlights go**: with one note for every book and a
   template set, the first highlight makes the note from the whole template and the second adds
   only its body; the book's Aa dialog sends the book to a note of its own, the next highlight is
@@ -518,6 +521,11 @@ Screenshots are for the person doing the work. They are never committed.
 - **The link index is waited for.** `emulateMobile` reloads the app, and after a reload
   Obsidian fills `resolvedLinks` in over several seconds; a file running straight after one
   saw a group of 442 notes as 6.
+- **A window that is not drawn is refused.** Throttling off keeps timers running, but a window
+  nobody can see — the screen locked, above all — is drawn once or twice a second, and every
+  input sent through the DevTools protocol waits for a frame: a 60 ms tap reaches the page as a
+  one-second long press. The file stops at once, saying so, when the window draws fewer than 15
+  frames a second, rather than failing its gesture tests as if the reader were broken.
 
 The CLI calls themselves are killed with `SIGKILL` at their timeout — a CLI call that never
 gets its answer ignores `SIGTERM` — and a call answered with `Error: Command "…" not found`

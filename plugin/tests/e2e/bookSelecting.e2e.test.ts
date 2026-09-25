@@ -27,6 +27,7 @@ const BOOK = `${DIR}/rich.epub`
 const PDF = `${DIR}/plain.pdf`
 const NOTE = `${DIR}/rich highlights.md`
 const PHONE = { width: 390, height: 844 }
+const DESKTOP = { width: 1280, height: 800 }
 const SHOTS = '/tmp/abele-phone'
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -191,13 +192,28 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
       })()`,
       60_000
     )
-    if (evalJson<boolean>('app.isMobile')) {
-      if (size[0]) await setWindowSize(size[0], size[1])
-      await reload('app.emulateMobile(false)')
-    }
+    // Back to the desktop first, then the size: leaving phone emulation keeps the phone's size.
+    if (evalJson<boolean>('app.isMobile')) await reload('app.emulateMobile(false)')
+    if (size[0]) await setWindowSize(size[0], size[1])
   }, 180_000)
 
   describe('with the mouse, on the desktop', () => {
+    // Two columns side by side, as these steps assume: a window as wide as the tests were written
+    // for, whatever the file before left, and neither side panel narrowing the tab.
+    let panels: [boolean, boolean] = [true, true]
+    beforeAll(async () => {
+      await setWindowSize(DESKTOP.width, DESKTOP.height)
+      panels = evalJson<[boolean, boolean]>(
+        `(() => { const w = app.workspace, was = [w.leftSplit.collapsed, w.rightSplit.collapsed]; w.leftSplit.collapse(); w.rightSplit.collapse(); return was })()`
+      )
+      await pause(800)
+    }, 60_000)
+    afterAll(() => {
+      evalRaw(
+        `(() => { const w = app.workspace; if (!${panels[0]}) w.leftSplit.expand(); if (!${panels[1]}) w.rightSplit.expand(); return 'ok' })()`
+      )
+    })
+
     it('a click at the edge turns the page; with words selected only one on the very edge moves it, by a column', () => {
       const r = run<{
         error?: string

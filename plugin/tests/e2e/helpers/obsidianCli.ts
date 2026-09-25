@@ -178,6 +178,42 @@ export function setBackgroundThrottling(on: boolean): void {
 }
 
 /**
+ * How many frames a second the driven window draws. Throttling off keeps its timers running, but
+ * a window nobody can see — the Mac's screen locked, above all — is drawn once or twice a second,
+ * and every input sent through the DevTools protocol waits for a frame: a tap held 60 ms reaches
+ * the page as a one-second long press, a mouse held at the page's edge moves once a second. The
+ * tests that time gestures then fail in ways that look like bugs (2026-09-26: six book tests).
+ */
+export function framesPerSecond(): number {
+  const raw = evalRaw(
+    `(async () => {
+      let frames = 0
+      const start = performance.now()
+      await Promise.race([
+        new Promise((done) => {
+          const tick = () => { frames++; if (performance.now() - start < 500) requestAnimationFrame(tick); else done() }
+          requestAnimationFrame(tick)
+        }),
+        new Promise((done) => setTimeout(done, 1500)),
+      ])
+      return String(Math.round(frames * 1000 / Math.max(500, performance.now() - start)))
+    })()`,
+    30_000
+  )
+  return Number(raw.replace(/^['"]|['"]$/g, ''))
+}
+
+/** Stops the run with the reason when the window is not being drawn: see `framesPerSecond`. */
+export function assertWindowDrawn(): void {
+  const fps = framesPerSecond()
+  if (fps < 15)
+    throw new Error(
+      `The Obsidian window draws ${fps} frames a second: the screen is locked or the window is ` +
+        'hidden, and gestures sent to it arrive a second late. Unlock the screen and run again.'
+    )
+}
+
+/**
  * Closes settings windows this vault's window left open. A probe that failed half way, or an
  * app reload under `emulateMobile`, leaves one behind; the next probe then finds two windows
  * called "Settings" and measures whichever comes first. Only popouts of the driven window are
