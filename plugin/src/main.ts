@@ -105,6 +105,8 @@ import { secrets, setSecrets } from '@/secrets/SecretStore'
 import { createPluginSecrets } from '@/secrets/host'
 import { markLoad } from '@/helpers/loadMarks'
 import { claimVueSetters } from '@/helpers/vueGlobals'
+import { openChat } from '@/ai/openChat'
+import { keepChatFilesOutOfLeaves } from '@/ai/chatFileLeaves'
 
 // Every module imported above has run its top-level code by now. See `helpers/loadMarks.ts`.
 markLoad('evalEnd')
@@ -232,6 +234,9 @@ export default class AbelePlugin extends Plugin {
       ['json', 'css', 'js', 'ts', 'html', 'xml', 'yaml', 'yml', 'csv', 'txt', 'abchat'],
       CODE_VIEW_TYPE
     )
+    // A chat file opened from anywhere — file explorer, quick switcher, a link, search — goes
+    // to the chat panel instead of replacing the note in front.
+    this.register(keepChatFilesOutOfLeaves(openChat))
 
     // GitHub issues, pull requests, discussions and files in tabs of their own; off by default.
     registerGithub(this)
@@ -373,12 +378,13 @@ export default class AbelePlugin extends Plugin {
           return
         }
 
-        // Intercept .abchat files: open in AI sidebar instead of editor
+        // A chat file already in a leaf — a layout saved before chats were kept out of leaves
+        // (`keepChatFilesOutOfLeaves`) — goes to the chat panel, and its leaf with it.
         if (leaf && viewType === CODE_VIEW_TYPE) {
           const file = (leaf.view as any).file as TFile | undefined
           if (file?.extension === 'abchat') {
             leaf.detach()
-            void this.openAbchatFile(file)
+            void openChat(file)
             return
           }
         }
@@ -1247,18 +1253,6 @@ export default class AbelePlugin extends Plugin {
    * the route rather than `openChatFile` because `CommentService` may already have a session
    * writing that file, and two writers on one log interleave records.
    */
-  private async openAbchatFile(file: TFile): Promise<void> {
-    const comments = CommentService.getInstance()
-    if (comments.isCommentFile(file)) {
-      await comments.openFile(file)
-      return
-    }
-
-    const chatService = ChatService.getInstance()
-    await chatService.openChatFile(file)
-    await chatService.revealSidebar()
-  }
-
   async activateView(viewType: string) {
     await revealSidebarView(this.app, viewType)
   }

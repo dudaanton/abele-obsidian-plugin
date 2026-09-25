@@ -12,9 +12,9 @@ import { reliableScrollTo } from '@/helpers/scrollUtils'
  * Opens a chat file the way opening it anywhere else does: a comment as a comment, any other
  * chat as a tab in the sidebar.
  *
- * Never in a leaf. A chat file that lands in one is taken straight out of it for the sidebar
- * (`main.ts`, on active-leaf-change) and the leaf is detached — so a chat opened in the leaf
- * that held a note closes that note. Everything that can open a chat comes through here.
+ * Never in a leaf: a chat opened into the leaf that holds a note would replace the note. Obsidian's
+ * own ways of opening a file are routed here by `keepChatFilesOutOfLeaves`; everything of ours
+ * that can open a chat calls this directly.
  */
 export async function openChat(file: TFile): Promise<void> {
   const comments = CommentService.getInstance()
