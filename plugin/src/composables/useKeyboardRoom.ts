@@ -1,7 +1,17 @@
 import { onBeforeUnmount, onMounted, type Ref } from 'vue'
 
-/** On the dialog's container while it is fitted to the room; the rule is in `styles.css`. */
+/**
+ * On the dialog's container while it is moved into the room the keyboard leaves, whole; the
+ * rules are in `styles.css`.
+ */
 const FITTED = 'abele-keyboard-room'
+/**
+ * On the container while its dialog, taller than that room, keeps its size at the room's top and
+ * reaches under the keyboard; on the element that scrolls the field, the room to scroll what the
+ * keyboard covers up above it.
+ */
+const COVERED = 'abele-keyboard-cover'
+const SCROLLER = 'abele-keyboard-scroller'
 
 /** Obsidian's own: the height of the on-screen keyboard, written by the mobile app. */
 export const KEYBOARD_VAR = '--keyboard-height'
@@ -111,6 +121,7 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
   let observer: MutationObserver | null = null
   // The container carrying a fit of ours, if any: only then is there anything of ours to undo.
   let fitted: HTMLElement | null = null
+  let scroller: HTMLElement | null = null
   // What a keyboard event said the height was, until one says the keyboard has gone.
   let announced = 0
   const timers: number[] = []
@@ -121,11 +132,40 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
   const container = () => root.value?.closest<HTMLElement>('.modal-container') ?? null
 
   const release = () => {
+    scroller?.classList.remove(SCROLLER)
+    scroller?.style.removeProperty('--abele-keyboard-cover')
+    scroller?.style.removeProperty('--abele-keyboard-keep')
+    scroller = null
     if (!fitted) return
-    fitted.classList.remove(FITTED)
+    fitted.classList.remove(FITTED, COVERED)
     fitted.style.removeProperty('--abele-room-top')
     fitted.style.removeProperty('--abele-room-height')
     fitted = null
+  }
+
+  /**
+   * What scrolls under the keyboard: the box the field scrolls in; failing that — a search field
+   * above its list of results — the dialog's largest box that scrolls; failing that, the dialog.
+   */
+  const scrollerOf = (from: Element | null, box: HTMLElement): HTMLElement => {
+    const view = box.ownerDocument.defaultView
+    const scrolls = (el: Element) => {
+      const overflow = view?.getComputedStyle(el).overflowY
+      return overflow === 'auto' || overflow === 'scroll'
+    }
+    for (let el = from?.parentElement ?? null; el && el !== box; el = el.parentElement)
+      if (scrolls(el)) return el
+    // Walked from the top, never into a box that scrolls: a list of a thousand icons is one box.
+    let largest: HTMLElement | null = null
+    const walk = (el: Element) => {
+      for (const child of Array.from(el.children)) {
+        if (scrolls(child)) {
+          if (child.clientHeight > (largest?.clientHeight ?? 0)) largest = child as HTMLElement
+        } else if (child.childElementCount < 40) walk(child)
+      }
+    }
+    walk(box)
+    return largest ?? box
   }
 
   /** The dialog's element that has focus, if any. */
@@ -170,11 +210,25 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
 
     const covered = top > rect.top + 1 || bottom < rect.bottom - 1
     const room: [number, number] | null = covered && bottom - top > 0 ? [top, bottom - top] : null
-    if (room) {
+    const panel = dialog()
+    if (room && panel) {
       box.style.setProperty('--abele-room-top', `${room[0]}px`)
       box.style.setProperty('--abele-room-height', `${room[1]}px`)
-      box.classList.add(FITTED)
       fitted = box
+      // A dialog keeps its size. One that fits the room moves into it; one that does not stands
+      // at the room's top as tall as it was, and what the keyboard covers of it scrolls up above
+      // the keyboard — a dialog squeezed into the room was a squashed one (the search, 1.36).
+      if (panel.getBoundingClientRect().height <= room[1] + 1) box.classList.add(FITTED)
+      else {
+        box.classList.add(COVERED)
+        const under = Math.max(0, panel.getBoundingClientRect().bottom - bottom)
+        scroller = scrollerOf(focused(), panel)
+        // Held at the height it has, so the room added at its end scrolls rather than grows it.
+        const held = scroller.getBoundingClientRect().height
+        scroller.style.setProperty('--abele-keyboard-cover', `${Math.ceil(under)}px`)
+        scroller.style.setProperty('--abele-keyboard-keep', `${Math.floor(held)}px`)
+        scroller.classList.add(SCROLLER)
+      }
     }
 
     keyboardRoomReport.last = {

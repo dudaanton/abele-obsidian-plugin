@@ -3,8 +3,10 @@
  *
  * The keyboard that came up for the time field covered the lower half of the dialog — the
  * field itself, the preset times and the buttons — and nothing could be scrolled to bring them
- * back. The dialog now stands in the part of the screen the keyboard leaves and scrolls inside
- * it, with the field being typed into scrolled into sight.
+ * back. The dialog now keeps its size, and what the keyboard covers of it can be scrolled up
+ * above the keyboard, with the field being typed into scrolled into sight. (1.30 to 1.36 fitted it
+ * into the room above the keyboard instead, which squashed every tall dialog.) Where the page
+ * itself shrinks for the keyboard the dialog still stands in the smaller page.
  *
  * No emulator shows a keyboard, so each of the two ways a platform makes room for one is
  * mimicked separately, in a phone-sized window (390×844) in the layout Obsidian gives a phone:
@@ -48,6 +50,10 @@ interface Screen {
   field: [number, number]
   /** The dialog's scrolling content: everything it holds, and what it shows. */
   content: { scrollHeight: number; clientHeight: number }
+  /** The box given room to scroll what the keyboard covers, when the dialog keeps its size. */
+  scroller: { scrollHeight: number; clientHeight: number } | null
+  /** The lowest button's bottom edge once everything is scrolled up. */
+  buttons: number
   /** The container's classes and inline style, and the viewport height it was fitted to. */
   container?: string
   shot: string
@@ -141,6 +147,16 @@ const probeScript = `(async () => {
       entry.dialog = [Math.round(d.top), Math.round(d.bottom)]
       entry.field = [Math.round(f.top), Math.round(f.bottom)]
       entry.content = { scrollHeight: content.scrollHeight, clientHeight: content.clientHeight }
+      // What scrolls what the keyboard covers, when the dialog keeps its size over it.
+      const scroller = dialog.classList.contains('abele-keyboard-scroller') ? dialog : dialog.querySelector('.abele-keyboard-scroller')
+      entry.scroller = scroller ? { scrollHeight: scroller.scrollHeight, clientHeight: scroller.clientHeight } : null
+      // The buttons, scrolled to: where they stand then.
+      if (scroller) { scroller.scrollTop = scroller.scrollHeight; await wait(100) }
+      const buttons = [...dialog.querySelectorAll('button')].map((b) => b.getBoundingClientRect())
+      entry.buttons = buttons.length ? Math.round(Math.max(...buttons.map((b) => b.bottom))) : 0
+      if (scroller) { scroller.scrollTop = 0; field().scrollIntoView({ block: 'center' }); await wait(100) }
+      const f2 = field().getBoundingClientRect()
+      entry.field = [Math.round(f2.top), Math.round(f2.bottom)]
       entry.container = document.querySelector('.modal-container').className + ' | ' + document.querySelector('.modal-container').style.cssText + ' | vv ' + (window.visualViewport && window.visualViewport.height)
       entry.shot = await shoot(label)
     } catch (e) {
@@ -309,16 +325,33 @@ describe.skipIf(!available)("the task's date dialog on a phone, keyboard up", ()
     expect(s.content.scrollHeight).toBeLessThanOrEqual(s.content.clientHeight + 1)
   })
 
-  it.each(keyboardUp)('%s: the dialog stands in the room the keyboard leaves', (label) => {
-    const s = report[label]
+  // Where the page itself shrinks for the keyboard, the dialog has only the smaller page to
+  // stand in, and fits it. Where the keyboard is drawn over the page, the dialog keeps its size
+  // (a dialog squeezed into the room above the keyboard was a squashed one, 1.36): it stands on
+  // the screen as tall as it was, and what the keyboard covers is scrolled up above it.
+  it('page-shrinks: the dialog stands in the room the keyboard leaves, and scrolls in it', () => {
+    const s = report['page-shrinks']
     expect(s.dialog[0]).toBeGreaterThanOrEqual(0)
     expect(s.dialog[1]).toBeLessThanOrEqual(ROOM)
-  })
-
-  it.each(keyboardUp)('%s: what does not fit scrolls inside the dialog', (label) => {
-    const s = report[label]
     expect(s.content.scrollHeight).toBeGreaterThan(s.content.clientHeight)
   })
+
+  it.each(['viewport-shrinks', 'keyboard-height'])(
+    '%s: the dialog keeps its size, and what the keyboard covers scrolls up above it',
+    (label) => {
+      const s = report[label]
+      const whole = report['no-keyboard']
+      expect(s.dialog[0]).toBeGreaterThanOrEqual(0)
+      // Its size to the pixel (the edges are rounded where they are measured).
+      expect(
+        Math.abs(s.dialog[1] - s.dialog[0] - (whole.dialog[1] - whole.dialog[0]))
+      ).toBeLessThanOrEqual(1)
+      expect(s.scroller).not.toBeNull()
+      expect(s.scroller!.scrollHeight).toBeGreaterThan(s.scroller!.clientHeight)
+      // Scrolled up, the buttons stand above the keyboard.
+      expect(s.buttons).toBeLessThanOrEqual(ROOM)
+    }
+  )
 
   it.each(keyboardUp)('%s: the time field is in sight', (label) => {
     const s = report[label]

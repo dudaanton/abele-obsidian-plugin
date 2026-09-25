@@ -668,8 +668,11 @@ body.is-mobile .abele-comment-marker_pending::after {
 }
 
 /*
- * A dialog's container fitted to the part of the screen the on-screen keyboard leaves free —
- * see `useKeyboardRoom`. Only while the keyboard covers some of it.
+ * A dialog and the on-screen keyboard — see `useKeyboardRoom`. Only while the keyboard covers
+ * some of the dialog. A dialog keeps its size either way.
+ *
+ * One that fits the part of the screen the keyboard leaves free moves into it: its container is
+ * fitted to that room, and the dialog stands in it as it would on the whole screen.
  */
 .modal-container.abele-keyboard-room {
   top: var(--abele-room-top);
@@ -678,18 +681,31 @@ body.is-mobile .abele-comment-marker_pending::after {
 }
 
 /*
- * Inside that room a dialog is never taller than the room, so it scrolls rather than reaching
- * under the keyboard: Obsidian's caps are written in `vh`, which keep the whole screen. A
- * centred dialog keeps an inset at both ends so its top edge stays below the notch; a sheet
- * standing on the bottom edge (`mod-lg`, the kit's tall dialogs) needs it at the top only.
+ * One taller than the room stands at the room's top, below the notch, as tall as it was; the
+ * keyboard covers its lower part. The box that scrolls the field being typed into gets that
+ * much more room at its end, so everything under the keyboard can be scrolled up above it, and
+ * a field scrolled into sight stops above the keyboard, not behind it.
  */
-.modal-container.abele-keyboard-room > .modal {
-  max-height: calc(100% - 2 * var(--safe-area-inset-top, 0px));
+.modal-container.abele-keyboard-cover {
+  align-items: flex-start;
+  padding-top: max(var(--abele-room-top), var(--safe-area-inset-top, 0px));
 }
 
-.modal-container.abele-keyboard-room > .modal.mod-lg {
-  height: calc(100% - var(--safe-area-inset-top, 0px));
-  max-height: calc(100% - var(--safe-area-inset-top, 0px));
+.modal-container.abele-keyboard-cover > .modal {
+  margin-top: 0;
+  margin-bottom: auto;
+  align-self: flex-start;
+}
+
+/* Under the container's class, so a scroller's own padding (a component's) does not win. */
+.modal-container.abele-keyboard-cover .abele-keyboard-scroller {
+  box-sizing: border-box;
+  height: var(--abele-keyboard-keep);
+  max-height: var(--abele-keyboard-keep);
+  flex: 0 0 auto;
+  overflow-y: auto;
+  padding-bottom: var(--abele-keyboard-cover);
+  scroll-padding-bottom: var(--abele-keyboard-cover);
 }
 
 /*

@@ -191,3 +191,62 @@ describe('a dialog under the iPhone keyboard', () => {
     expect(roomHeight()).toBe(`${SCREEN - KEYBOARD}px`)
   })
 })
+
+describe('a dialog taller than the room the keyboard leaves', () => {
+  /** A dialog 700 high standing on the bottom of the screen, as a tall sheet does. */
+  const DIALOG = 700
+
+  beforeEach(() => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement
+    ) {
+      const container = this.classList.contains('modal-container')
+      const dialog = this.classList.contains('modal')
+      const height = container ? page : dialog ? DIALOG : 0
+      // At the room's top once it is kept there, on the bottom of the screen before.
+      const covered = this.parentElement?.classList.contains('abele-keyboard-cover')
+      const top = dialog ? (covered ? 0 : SCREEN - DIALOG) : 0
+      return {
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 390,
+        width: 390,
+        height,
+        x: 0,
+        y: top,
+      } as DOMRect
+    })
+  })
+
+  it('keeps its size at the top of the screen, and what the keyboard covers scrolls up above it', async () => {
+    const Tall = defineComponent({
+      setup: () => () =>
+        h(ObsidianModal, { title: 'Tall', size: 'tall' }, () =>
+          h('div', { class: 'list', style: 'overflow-y: auto' }, [h('input', { class: 'search' })])
+        ),
+    })
+    wrapper = mount(Tall, { attachTo: document.body })
+    await nextTick()
+    document.querySelector<HTMLInputElement>('input.search')!.focus()
+    setKeyboardVar(KEYBOARD)
+    await settle()
+
+    // Not squeezed into the room: no fit, and no height of the room given to it.
+    expect(fitted()).toBe(false)
+    expect(container()?.classList.contains('abele-keyboard-cover')).toBe(true)
+    // The list the field is in gets the keyboard's share of the dialog as room to scroll.
+    const list = document.querySelector<HTMLElement>('.list')!
+    expect(list.classList.contains('abele-keyboard-scroller')).toBe(true)
+    expect(list.style.getPropertyValue('--abele-keyboard-cover')).toBe(
+      `${DIALOG - (SCREEN - KEYBOARD)}px`
+    )
+
+    // The keyboard gone, nothing of it is left behind.
+    setKeyboardVar(0)
+    document.querySelector<HTMLInputElement>('input.search')!.blur()
+    await settle()
+    expect(container()?.classList.contains('abele-keyboard-cover')).toBe(false)
+    expect(list.classList.contains('abele-keyboard-scroller')).toBe(false)
+  })
+})
