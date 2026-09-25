@@ -18,9 +18,10 @@
       desc="Files bigger than this are skipped, in megabytes. Leave it empty to take everything."
     >
       <Input
-        :model-value="maxMegabytes"
+        :model-value="capDraft"
         placeholder="No limit"
-        @update:model-value="setMaxMegabytes"
+        @update:model-value="capDraft = $event"
+        @commit="commitCap"
       />
     </Setting>
   </Section>
@@ -90,9 +91,11 @@
  *
  * The cap is offered in megabytes because that is the unit a person thinks in about a video,
  * and stored in bytes because that is what the engine compares a file against. An empty field
- * is `null` — no cap — which is a different thing from a cap of zero.
+ * is `null` — no cap — which is a different thing from a cap of zero. It is saved when the
+ * field is committed, not as it is typed: every save that moves it rebuilds the engine and
+ * walks the manifest, and editing 50 into 100 passes through an empty field on the way.
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { SelectiveSettings } from '@abele/sync-core'
 import Section from '../../obsidian/Section.vue'
 import Setting from '../../obsidian/Setting.vue'
@@ -240,6 +243,12 @@ const maxMegabytes = computed(() => {
   return cap === null ? '' : String(Math.round(cap / (1024 * 1024)))
 })
 
+/** What the field holds while it is being edited; nothing reads it until it is committed. */
+const capDraft = ref(maxMegabytes.value)
+
+// A cap that changed under the field — a transfer, another screen — is what it shows next.
+watch(maxMegabytes, (shown) => (capDraft.value = shown))
+
 function toggleKind(key: KindKey): void {
   selective.value[key] = !selective.value[key]
   save()
@@ -250,17 +259,24 @@ function toggleSetting(key: SettingsKey): void {
   save()
 }
 
-function setMaxMegabytes(value: string): void {
+/**
+ * The field was left or Enter was pressed. An empty field, committed, is no cap; anything that
+ * is not a positive number puts back what was saved rather than guessing. A commit that moves
+ * nothing saves nothing, which is also what makes Enter followed by the blur one save.
+ */
+function commitCap(value: string): void {
   const trimmed = value.trim()
-  if (trimmed === '') {
-    selective.value.maxFileBytes = null
-    save()
-    return
+  let cap: number | null = null
+  if (trimmed !== '') {
+    const megabytes = Number(trimmed)
+    if (!Number.isFinite(megabytes) || megabytes <= 0) {
+      capDraft.value = maxMegabytes.value
+      return
+    }
+    cap = Math.round(megabytes * 1024 * 1024)
   }
-  const megabytes = Number(trimmed)
-  // A field halfway through being typed is not a cap: nothing is saved until it is a number.
-  if (!Number.isFinite(megabytes) || megabytes <= 0) return
-  selective.value.maxFileBytes = Math.round(megabytes * 1024 * 1024)
+  if (cap === selective.value.maxFileBytes) return
+  selective.value.maxFileBytes = cap
   save()
 }
 

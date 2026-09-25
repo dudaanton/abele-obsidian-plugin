@@ -94,6 +94,13 @@ const badgeTexts = (screen: Screen): string[] =>
 const buttonNamed = (screen: Screen, text: string) =>
   screen.findAllComponents(Button).find((b) => b.props('text') === text)
 
+/** Text typed into a field, which fires `input` alone; `setValue` would fire `change` too. */
+async function type(field: ReturnType<Screen['find']>, text: string): Promise<void> {
+  ;(field.element as HTMLInputElement).value = text
+  await field.trigger('input')
+  await flushPromises()
+}
+
 /** The checkbox of one selective row, found by the key its setting names. */
 const switchFor = (screen: Screen, key: string) =>
   screen.find(`[data-selective="${key}"]`).findComponent(Checkbox)
@@ -391,20 +398,61 @@ describe('what this device takes', () => {
     const screen = open(SelectiveSync)
 
     await screen.findAll('input')[0].setValue('50')
+    await screen.findAll('input')[0].trigger('change')
     await flushPromises()
 
     expect(AbeleConfig.getInstance().sync.selective.maxFileBytes).toBe(50 * 1024 * 1024)
   })
 
   /** No cap is a different answer from a cap of zero, and an empty field means the first. */
-  it('reads an empty cap as no cap at all', async () => {
+  it('reads an empty cap as no cap at all, once it is committed', async () => {
     AbeleConfig.getInstance().sync.selective.maxFileBytes = 1024
     const screen = open(SelectiveSync)
 
     await screen.findAll('input')[0].setValue('')
+    await screen.findAll('input')[0].trigger('change')
     await flushPromises()
 
     expect(AbeleConfig.getInstance().sync.selective.maxFileBytes).toBeNull()
+  })
+
+  /**
+   * Every save that moves the cap rebuilds the engine and walks the manifest, and on a phone
+   * editing 50 into 100 passes through an empty field — which, saved, is no cap at all, and a
+   * rescan that starts downloading every video. Nothing is saved until the field is left.
+   */
+  it('saves nothing while the cap is being typed, an empty field included', async () => {
+    AbeleConfig.getInstance().sync.selective.maxFileBytes = 50 * 1024 * 1024
+    const screen = open(SelectiveSync)
+    const field = screen.findAll('input')[0]
+
+    await type(field, '')
+    await type(field, '1')
+    await type(field, '10')
+
+    expect(AbeleConfig.getInstance().sync.selective.maxFileBytes).toBe(50 * 1024 * 1024)
+    expect(service.onSettingsSaved).not.toHaveBeenCalled()
+
+    await type(field, '100')
+    await field.trigger('change')
+    await flushPromises()
+
+    expect(AbeleConfig.getInstance().sync.selective.maxFileBytes).toBe(100 * 1024 * 1024)
+    expect(service.onSettingsSaved).toHaveBeenCalledTimes(1)
+  })
+
+  it('puts back what was saved when the field is left holding no number', async () => {
+    AbeleConfig.getInstance().sync.selective.maxFileBytes = 50 * 1024 * 1024
+    const screen = open(SelectiveSync)
+    const field = screen.findAll('input')[0]
+
+    await type(field, 'abc')
+    await field.trigger('change')
+    await flushPromises()
+
+    expect(AbeleConfig.getInstance().sync.selective.maxFileBytes).toBe(50 * 1024 * 1024)
+    expect((field.element as HTMLInputElement).value).toBe('50')
+    expect(service.onSettingsSaved).not.toHaveBeenCalled()
   })
 })
 

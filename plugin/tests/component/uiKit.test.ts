@@ -665,6 +665,31 @@ describe('Input', () => {
     const plain = mount(Input, { props: { modelValue: 'x' } })
     expect(plain.attributes('type')).toBe('text')
   })
+
+  /**
+   * A field whose every save costs something — a rebuild, a rescan — wants the value once it is
+   * finished, not a keystroke at a time: `commit` is that, on Enter or on leaving the field.
+   */
+  it('commits the value on Enter and on leaving the field, and not while it is typed', async () => {
+    const view = mount(Input, { props: { modelValue: '' } })
+    const field = view.find('input')
+    // Typed, which fires `input` alone; `setValue` would fire `change` as well.
+    const type = async (text: string): Promise<void> => {
+      ;(field.element as HTMLInputElement).value = text
+      await field.trigger('input')
+    }
+
+    await type('15')
+    expect(view.emitted('commit')).toBeUndefined()
+    expect(view.emitted('update:model-value')?.at(-1)).toEqual(['15'])
+
+    await field.trigger('keydown', { key: 'Enter' })
+    expect(view.emitted('commit')?.at(-1)).toEqual(['15'])
+
+    await type('150')
+    await field.trigger('change')
+    expect(view.emitted('commit')?.at(-1)).toEqual(['150'])
+  })
 })
 
 describe('Input as a textarea', () => {

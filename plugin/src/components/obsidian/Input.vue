@@ -13,11 +13,13 @@
     :placeholder="placeholder"
     :disabled="disabled"
     @input="(e: InputEvent) => emit('update:model-value', (e.target as HTMLInputElement).value)"
+    @change="(e: Event) => emit('commit', (e.target as HTMLInputElement).value)"
+    @keydown.enter="(e: KeyboardEvent) => onEnter(e)"
   />
 </template>
 
 <script setup lang="ts">
-defineProps<{
+const props = defineProps<{
   modelValue?: string
   disabled?: boolean
   placeholder?: string
@@ -31,9 +33,21 @@ defineProps<{
   rows?: number
 }>()
 
+/**
+ * `update:model-value` on every keystroke; `commit` once the value is finished — on Enter in a
+ * single-line field, and on leaving a field whose value changed. A caller whose every save
+ * costs something listens to the second. Both can fire for one edit, Enter and then the blur,
+ * so a caller treats a commit of the value it already holds as nothing.
+ */
 const emit = defineEmits<{
   (e: 'update:model-value', value: string): void
+  (e: 'commit', value: string): void
 }>()
+
+function onEnter(e: KeyboardEvent): void {
+  if (props.asTextArea) return
+  emit('commit', (e.target as HTMLInputElement).value)
+}
 </script>
 
 <style lang="scss">
