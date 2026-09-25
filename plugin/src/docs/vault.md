@@ -1128,7 +1128,8 @@ twice, once as each device wrote it, for the same reason.
 
 `.abele-sync-ignore` at the vault root lists, in gitignore patterns, what this device does not
 sync; it never syncs itself, so each device has its own. If it is there but cannot be read, sync
-stops with an error rather than running without it. Other hidden files and folders — `.git/`,
+stops with an error rather than running without it, until **Sync now** or a settings change tries
+again. Other hidden files and folders — `.git/`,
 `.DS_Store`, `.trash/` — are neither fetched nor sent by the plugin, nor is a config folder renamed
 from `.obsidian`. The daemon's `.abele-sync/` folder, when
 a vault is synced by the command-line client, is its state and never syncs either. Leave both

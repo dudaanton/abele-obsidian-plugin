@@ -330,11 +330,25 @@ export class SyncService {
 
   /* -- The verbs -------------------------------------------------------- */
 
-  /** Sync now, whatever the triggers are doing. A failure is already in the status and the log. */
+  /**
+   * Sync now, whatever the triggers are doing. A failure is already in the status and the log.
+   *
+   * A device that is set up but has no engine was stopped by an error — an ignore file that
+   * would not read, a ledger another window closed — and nothing else will try again: the
+   * watcher that would notice went with the engine. So this is the retry, and the first run of
+   * the engine it builds is the sync that was asked for.
+   */
   async syncNow(): Promise<void> {
     const engine = this.engine
     if (engine === null) {
-      this.note('nothing to sync: this device is not connected to a server')
+      // The token is not read here: a keychain that throws is `reconcile`'s to report.
+      const settings = this.settings
+      if (settings.serverUrl === '' || settings.vaultId === '') {
+        this.note('nothing to sync: this device is not connected to a server')
+        return
+      }
+      this.note('sync now: nothing is running, so trying to start again')
+      await this.serialise(() => this.reconcile())
       return
     }
     try {

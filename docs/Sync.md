@@ -21,7 +21,8 @@ signs in to one, it does not create one.
 The device is then enrolled and the tab shows **This device**: its status, the server, the vault
 and its name, with **Sync now**, **Pause** (or **Resume**) and **Rescan**. **Rescan** walks the
 whole vault again and fetches whatever this device is missing — for when something looks absent
-that should not be.
+that should not be. When sync has stopped on an error, **Sync now** is also what tries to start it
+again, once the cause is fixed.
 
 To stop, **Disconnect** forgets the server and the device's token and keeps everything else: your
 files, and what this device syncs. **Forget** does the same and also throws away this device's

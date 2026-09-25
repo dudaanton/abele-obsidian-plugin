@@ -963,6 +963,19 @@ describe('SyncService — a ledger closed under it', () => {
     // Let through, rather than blocked by a connection the engine kept.
     await waitFor('the delete to go through', () => deleting.readyState === 'done')
   })
+
+  it('starts again on Sync now once the ledger is gone', async () => {
+    await connect()
+    await synced()
+    const deleting = indexedDB.deleteDatabase(stateDatabaseName(ledgerOf().stateId))
+    await waitFor('the engine to stop', () => !service.isConnected())
+    await waitFor('the delete to go through', () => deleting.readyState === 'done')
+
+    await service.syncNow()
+    await synced()
+
+    expect(service.isConnected()).toBe(true)
+  })
 })
 
 describe('SyncService — a settings save', () => {
@@ -1193,6 +1206,48 @@ describe('SyncService — what this device syncs, driven from the settings', () 
     expect(service.status.value.lastError).toContain(IGNORE_FILE)
     expect(service.isConnected()).toBe(false)
     expect(await serverPaths(other)).not.toContain('Private/diary.md')
+  })
+
+  /** Nothing else would try again: the watcher that notices the file went with the engine. */
+  it('tries to start again on Sync now once the ignore file reads', async () => {
+    await write(IGNORE_FILE, 'Private/\n')
+    await write('Private/diary.md', 'not for the server')
+    await write('Public.md', 'for the server')
+    const { accountToken } = await server.account(EMAIL)
+    const { vaultId } = await server.vault(accountToken, 'Home')
+    const { deviceToken } = await server.device(accountToken, vaultId, 'scenario')
+    const other = server.clientFor(deviceToken, vaultId)
+    const readBinary = app.vault.adapter.readBinary.bind(app.vault.adapter)
+    let locked = true
+    app.vault.adapter.readBinary = (path: string) =>
+      locked && path === IGNORE_FILE
+        ? Promise.reject(new Error('EBUSY: the file is locked'))
+        : readBinary(path)
+
+    start()
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+    await service.chooseVault(vaultId, 'Laptop')
+    await tick()
+    expect(service.status.value.state).toBe('error')
+
+    locked = false
+    await service.syncNow()
+    await synced()
+
+    expect(service.isConnected()).toBe(true)
+    const paths = await serverPaths(other)
+    expect(paths).toContain('Public.md')
+    expect(paths).not.toContain('Private/diary.md')
+  })
+
+  it('does nothing on Sync now on a device nobody set up', async () => {
+    start()
+    await tick()
+    await service.syncNow()
+    await tick()
+
+    expect(service.status.value.state).toBe('disconnected')
+    expect(service.log.value.join('\n')).toContain('not connected')
   })
 
   it('reads the ignore file again when it is edited in the vault', async () => {
