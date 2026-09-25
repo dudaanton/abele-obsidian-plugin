@@ -620,7 +620,15 @@ export class SyncService {
 
       const ignoreText = await readIgnore(app)
       const scope = await scopeKey(settings.selective, ignoreText)
-      const built = [settings.serverUrl, settings.vaultId, settings.deviceTokenId, scope].join(' ')
+      // The scripts folder too: the engine's filter reads it once, when it is built.
+      const scriptsFolder = AbeleConfig.getInstance().ai.scriptsFolder
+      const built = [
+        settings.serverUrl,
+        settings.vaultId,
+        settings.deviceTokenId,
+        scope,
+        scriptsFolder,
+      ].join(' ')
       if (this.engine !== null && built === this.built && token === this.builtToken) {
         this.applyPause(settings.paused)
         return

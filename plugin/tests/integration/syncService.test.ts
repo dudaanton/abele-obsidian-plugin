@@ -921,6 +921,21 @@ describe('SyncService — a settings save', () => {
     expect(builds()).toBe(before + 1)
   })
 
+  /** The scripts folder feeds the engine's filter, which is read once, when it is built. */
+  it('builds another engine when the scripts folder moves', async () => {
+    await connect()
+    await synced()
+    const builds = (): number =>
+      service.log.value.filter((line) => line.includes('syncing vault')).length
+    const before = builds()
+
+    const config = AbeleConfig.getInstance()
+    config.ai = { ...config.ai, scriptsFolder: 'Automation' }
+    await config.saveSettings()
+
+    await waitFor('the engine to be rebuilt', () => builds() === before + 1)
+  })
+
   /**
    * The walk looks at every file in the config folder, and nothing of Abele's is in it to find:
    * its own `data.json` is excluded. A save that walked it anyway would cost a `stat` per file
