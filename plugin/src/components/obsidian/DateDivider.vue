@@ -46,11 +46,19 @@ const label = computed(() => {
 
 .abele-date-divider__line {
   flex: 1;
+  min-width: var(--size-4-4);
   height: 1px;
   background-color: var(--background-modifier-border);
 }
 
+// Several totals — one per currency — each kept whole, spaced apart, and wrapped onto a second
+// line when the day's label leaves no room for them: on one line they ran past the edge.
 .abele-date-divider__summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  column-gap: var(--size-4-2);
+  min-width: 0;
   font-size: var(--font-ui-smaller);
   color: var(--text-faint);
   white-space: nowrap;

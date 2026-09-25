@@ -27,7 +27,10 @@
         </div>
         <!-- Both directions share one row, told apart by sign and colour; the words for each
              are on hover. The net is only worth a row when it differs from the balance. -->
-        <div v-if="card.debt > 0 || card.owed > 0" class="abele-finance-sidebar__card-details">
+        <div
+          v-if="card.debt > 0 || card.owed > 0"
+          class="abele-finance-sidebar__card-details abele-finance-sidebar__dashed"
+        >
           <div class="abele-finance-sidebar__card-row">
             <span class="abele-finance-sidebar__summary-label">Debts</span>
             <span class="abele-finance-sidebar__card-debts">
@@ -55,17 +58,13 @@
 
     <!-- Period Summary -->
     <section class="abele-finance-sidebar__section">
-      <div v-if="periodCurrencies.length > 1" class="abele-finance-sidebar__currency-tabs">
-        <div
-          v-for="cur in periodCurrencies"
-          :key="cur"
-          class="abele-finance-sidebar__currency-tab"
-          :class="{ 'abele-finance-sidebar__currency-tab--active': selectedPeriodCurrency === cur }"
-          @click="selectedPeriodCurrency = cur"
-        >
-          {{ cur }}
-        </div>
-      </div>
+      <Tabs
+        v-if="periodCurrencies.length > 1"
+        v-model="selectedPeriodCurrency"
+        :tabs="currencyTabs"
+        level="secondary"
+        class="abele-finance-sidebar__currency-tabs"
+      />
       <div class="abele-finance-sidebar__summary">
         <div class="abele-finance-sidebar__summary-row">
           <span class="abele-finance-sidebar__summary-label">Income</span>
@@ -98,7 +97,7 @@
       </div>
       <div
         v-if="periodLent > 0 || periodReturned > 0"
-        class="abele-finance-sidebar__summary abele-finance-sidebar__summary--debt"
+        class="abele-finance-sidebar__summary abele-finance-sidebar__summary--debt abele-finance-sidebar__dashed"
       >
         <div v-if="periodLent > 0" class="abele-finance-sidebar__summary-row">
           <span class="abele-finance-sidebar__summary-label">Lent</span>
@@ -117,7 +116,12 @@
           </span>
         </div>
       </div>
-      <Tabs v-model="chartTab" :tabs="chartTabs" level="secondary" />
+      <Tabs
+        v-model="chartTab"
+        :tabs="chartTabs"
+        level="secondary"
+        class="abele-finance-sidebar__chart-tabs"
+      />
       <template v-if="chartTab === 'expenses' || chartTab === 'income'">
         <div v-if="pieData.length" ref="pieChartEl" class="abele-finance-sidebar__pie-chart" />
         <div v-else class="abele-finance-sidebar__pie-empty">No data</div>
@@ -136,12 +140,7 @@
       <div v-if="visibleTransactions.length" class="abele-finance-sidebar__transactions">
         <template v-for="(entry, idx) in visibleTransactions" :key="entry.id">
           <DateDivider v-if="showTxDateBefore(idx)" :date="entry.date">
-            <span
-              v-for="s in dayTotals.get(entry.date) ?? []"
-              :key="s"
-              style="margin-left: 0.5em"
-              >{{ s }}</span
-            >
+            <span v-for="s in dayTotals.get(entry.date) ?? []" :key="s">{{ s }}</span>
           </DateDivider>
           <TransactionItem :transaction="entry.tx" :tx-type="transactionType(entry)" />
         </template>
@@ -390,6 +389,8 @@ const selectedPeriodCurrency = ref(
   AbeleConfig.getInstance().pinnedCurrencies.split(',')[0]?.trim().toUpperCase() || 'EUR'
 )
 
+const currencyTabs = computed(() => periodCurrencies.value.map((c) => ({ id: c, label: c })))
+
 // Auto-select first available currency if current selection has no data
 watch(periodCurrencies, (currencies) => {
   if (
@@ -508,7 +509,7 @@ function renderPieChart() {
       series: [
         {
           type: 'pie',
-          radius: ['35%', '60%'],
+          radius: ['32%', '52%'],
           center: ['50%', '50%'],
           itemStyle: {
             borderWidth: 2,
@@ -517,10 +518,16 @@ function renderPieChart() {
               .trim(),
           },
           emphasis: { disabled: true },
+          // The labels stand against the chart's edges rather than at the end of a fixed-length
+          // line, so a category's name has all the room beside the ring. Left free, a label
+          // was cut wherever the line happened to end — to "Ho..." at a sidebar's width.
           label: {
             color: colors.text,
             formatter: '{b}',
+            alignTo: 'edge',
+            edgeDistance: 0,
           },
+          labelLine: { length: 8, length2: 0 },
           data,
         },
       ],
@@ -875,7 +882,7 @@ const dayTotals = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--p-spacing);
+  margin-bottom: var(--size-4-2);
 }
 
 .abele-finance-sidebar__header-left {
@@ -888,19 +895,31 @@ const dayTotals = computed(() => {
   font-weight: bold;
 }
 
+// Three distances, used the same way all through the sidebar: --size-4-1 between rows that
+// belong together, --size-4-4 between one currency's card and the next, and --size-4-6
+// between the blocks — the cards, the period summary, the transactions.
+
 // --- Currency Cards ---
 
 .abele-finance-sidebar__cards {
   display: flex;
   flex-direction: column;
-  gap: var(--size-4-2);
-  margin-bottom: calc(var(--p-spacing) * 2);
+  gap: var(--size-4-4);
+  margin-top: var(--size-4-2);
+  margin-bottom: var(--size-4-6);
 }
 
 .abele-finance-sidebar__card {
   display: flex;
   flex-direction: column;
-  gap: var(--size-4-1);
+}
+
+// A rule over rows that qualify the figure above them: the debts under a balance, the money
+// lent and returned under the period's savings. Solid is kept for the total it closes.
+.abele-finance-sidebar__dashed {
+  margin-top: var(--size-4-1);
+  padding-top: var(--size-4-1);
+  border-top: 1px dashed var(--background-modifier-border);
 }
 
 .abele-finance-sidebar__card-balance {
@@ -921,6 +940,7 @@ const dayTotals = computed(() => {
 .abele-finance-sidebar__card-details {
   display: flex;
   flex-direction: column;
+  gap: var(--size-2-1);
   font-size: var(--font-ui-smaller);
   font-variant-numeric: tabular-nums;
 }
@@ -946,7 +966,7 @@ const dayTotals = computed(() => {
 // --- Section ---
 
 .abele-finance-sidebar__section {
-  margin-bottom: calc(var(--p-spacing) * 2);
+  margin-bottom: var(--size-4-6);
 }
 
 .abele-finance-sidebar__section-title {
@@ -958,31 +978,14 @@ const dayTotals = computed(() => {
   margin: 0 0 var(--size-4-2) 0;
 }
 
-// --- Currency Tabs ---
+// --- Tabs ---
 
 .abele-finance-sidebar__currency-tabs {
-  display: flex;
-  gap: var(--size-4-1);
   margin-bottom: var(--size-4-2);
 }
 
-.abele-finance-sidebar__currency-tab {
-  font-size: var(--font-ui-smaller);
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: var(--size-2-1) var(--size-4-2);
-  border-radius: var(--radius-s);
-
-  &:hover {
-    color: var(--text-normal);
-    background-color: var(--background-modifier-hover);
-  }
-
-  &--active {
-    color: var(--text-normal);
-    font-weight: var(--font-semibold);
-    background-color: var(--background-modifier-hover);
-  }
+.abele-finance-sidebar__chart-tabs {
+  margin-top: var(--size-4-4);
 }
 
 // --- Summary ---
@@ -991,12 +994,6 @@ const dayTotals = computed(() => {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-1);
-}
-
-.abele-finance-sidebar__summary--debt {
-  margin-top: var(--size-4-2);
-  padding-top: var(--size-4-1);
-  border-top: 1px dashed var(--background-modifier-border);
 }
 
 .abele-finance-sidebar__summary-row {
@@ -1046,7 +1043,7 @@ const dayTotals = computed(() => {
   width: 100%;
   max-width: 100%;
   height: 220px;
-  margin-top: var(--size-4-1);
+  margin-top: var(--size-4-2);
 
   canvas {
     max-width: 100% !important;

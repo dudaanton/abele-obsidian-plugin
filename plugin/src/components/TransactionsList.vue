@@ -7,9 +7,7 @@
     <div v-if="visible.length" class="abele-transactions-list__items">
       <template v-for="(tx, idx) in visible" :key="tx.id">
         <DateDivider v-if="showDateBefore(idx)" :date="txDate(tx)">
-          <span v-for="s in dayTotals(txDate(tx))" :key="s" style="margin-left: 0.5em">{{
-            s
-          }}</span>
+          <span v-for="s in dayTotals(txDate(tx))" :key="s">{{ s }}</span>
         </DateDivider>
         <TransactionItem :transaction="tx" :tx-type="getType(tx)" />
       </template>
@@ -128,8 +126,7 @@ const dayTotals = (date: string): string[] => {
     byCurrency.set(cur, (byCurrency.get(cur) || 0) + sign * (tx.amount || 0))
   }
   return Array.from(byCurrency.entries()).map(
-    ([cur, amount]) =>
-      `${amount >= 0 ? '+' : ''}${formatAmount(amount)} ${cur}`
+    ([cur, amount]) => `${amount >= 0 ? '+' : ''}${formatAmount(amount)} ${cur}`
   )
 }
 

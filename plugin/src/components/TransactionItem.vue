@@ -127,9 +127,9 @@ onMounted(() => {
 .abele-transaction-view {
   display: flex;
   align-items: center;
-  gap: 0.5em;
-  margin-bottom: 0.25em;
-  padding: 0.25em 0;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-1);
+  padding: var(--size-4-1) 0;
   cursor: pointer;
   border-radius: var(--radius-s);
 
@@ -153,7 +153,7 @@ onMounted(() => {
 .abele-transaction-view__main {
   display: flex;
   align-items: flex-start;
-  gap: 0.5em;
+  gap: var(--size-4-2);
 }
 
 /*
@@ -203,16 +203,16 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  margin-top: 0.25em;
-  font-size: 0.85em;
-  gap: 0.25em;
+  margin-top: var(--size-4-1);
+  font-size: var(--font-ui-small);
+  gap: var(--size-4-1);
   color: var(--text-muted);
 }
 
 .abele-transaction-view__accounts {
   display: inline-flex;
   align-items: center;
-  gap: 0.2em;
+  gap: var(--size-2-1);
 }
 
 .abele-transaction-view__link {

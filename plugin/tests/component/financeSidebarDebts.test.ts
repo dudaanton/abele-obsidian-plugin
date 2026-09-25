@@ -160,6 +160,14 @@ describe('finance sidebar — debts on a currency card', () => {
     expect(net(chf)).toBeUndefined()
   })
 
+  it('sets the debts off from the balance with the dashed rule the lent rows have', () => {
+    for (const cur of ['EUR', 'USD', 'GBP']) {
+      expect(card(cur).find('.abele-finance-sidebar__card-details').classes()).toContain(
+        'abele-finance-sidebar__dashed'
+      )
+    }
+  })
+
   it('labels the rows in muted words, the way the period summary does', () => {
     const labels = card('EUR')
       .findAll('.abele-finance-sidebar__card-row .abele-finance-sidebar__summary-label')
