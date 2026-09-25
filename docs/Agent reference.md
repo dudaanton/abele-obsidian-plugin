@@ -38,3 +38,18 @@ for people.
   to do, not as something to do.
 - The tests also hold the shape: every section needs a summary and at least two topics, and
   topic ids must be unique within their section.
+
+## The other documentation, for people
+
+`src/userdocs/` is the documentation a person reads inside the plugin — **Open documentation**
+in the command palette, the **Documentation** button at the top of the settings, and on the
+first start in a vault. It is written for them: what the plugin can do and where to find it,
+in plain words, with no property the person never has to type. One markdown file per page,
+registered in `src/userdocs/index.ts` in the order of the contents; links between pages are
+markdown links to a page id, `[Footer](groups#the-footer)`.
+
+`tests/unit/userDocs.test.ts` holds it to the code as far as a test can: every page file is in
+the contents, every link resolves to a page and a heading, every command registered with a fixed
+name and every settings tab is named somewhere in the pages. A new command or settings tab fails
+there until the pages say a word about it. What no test can see is a feature that changed how it
+behaves — that is on whoever changes it.

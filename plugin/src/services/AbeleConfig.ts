@@ -290,6 +290,11 @@ export class AbeleConfig {
   public reader: ReaderSettings
   /** Carried through untouched; `SecretStore` is the only thing that reads or writes it. */
   public secretStore: unknown = undefined
+  /**
+   * The plugin found no settings file when it loaded: its first start in this vault, which is
+   * when the documentation opens by itself. Not a setting — nothing saves it.
+   */
+  public freshInstall = false
 
   /**
    * Moves on every save and every reload from disk. The fields above are plain, so anything
@@ -389,6 +394,7 @@ export class AbeleConfig {
     // `null` is no file at all — a fresh install. `undefined` is a file Obsidian could not
     // parse, and that is still somebody's settings.
     const stored = await this.plugin.loadData()
+    this.freshInstall = stored === null
     this.unreadable = stored === undefined
     this.unreadableTold = false
     if (this.unreadable) console.error('[Abele] data.json could not be read; not writing to it')

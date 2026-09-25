@@ -67,6 +67,7 @@ import {
   TimeTrackingSidebarView,
 } from './views/TimeTrackingSidebarView'
 import { SCRIPT_RUNS_VIEW_TYPE, ScriptRunsView } from './views/ScriptRunsView'
+import { USER_DOCS_VIEW_TYPE, UserDocsView, openUserDocs } from './views/UserDocsView'
 import { SCRIPT_VIEW_TYPE, ScriptView } from './views/ScriptView'
 import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
@@ -233,6 +234,8 @@ export default class AbelePlugin extends Plugin {
     )
 
     this.registerView(CODE_VIEW_TYPE, (leaf) => new CodeView(leaf))
+    // The documentation for people, opened by a command, from the settings and on first start.
+    this.registerView(USER_DOCS_VIEW_TYPE, (leaf) => new UserDocsView(leaf))
     this.registerExtensions(
       ['json', 'css', 'js', 'ts', 'html', 'xml', 'yaml', 'yml', 'csv', 'txt', 'abchat'],
       CODE_VIEW_TYPE
@@ -1197,6 +1200,22 @@ export default class AbelePlugin extends Plugin {
         void this.activateView(SCRIPT_RUNS_VIEW_TYPE)
       },
     })
+
+    this.addCommand({
+      id: 'open-documentation',
+      name: 'Open documentation',
+      icon: UserDocsView.getIcon(),
+      callback: () => void openUserDocs(this.app),
+    })
+
+    // The first start in a vault: no settings file yet. The documentation is the way in, and it
+    // is shown once — the settings are written straight after, so the next start is not a first.
+    if (AbeleConfig.getInstance().freshInstall) {
+      this.app.workspace.onLayoutReady(() => {
+        void openUserDocs(this.app)
+        void AbeleConfig.getInstance().saveSettings()
+      })
+    }
 
     this.addCommand({
       id: 'show-script-api',

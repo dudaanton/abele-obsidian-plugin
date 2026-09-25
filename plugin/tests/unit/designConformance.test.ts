@@ -28,6 +28,7 @@ const COVERED_DIRS = [
   join(ROOT, 'github'),
   join(ROOT, 'mermaid'),
   join(ROOT, 'reader'),
+  join(ROOT, 'docs'),
 ]
 const COVERED_FILES = [
   'AiAgentSelector.vue',

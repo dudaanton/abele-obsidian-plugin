@@ -3,6 +3,20 @@
     <!-- Desktop and tablet: Title -->
     <div v-if="!isPhone" class="abele-settings__title">
       <h1>Abele</h1>
+      <Button
+        text="Documentation"
+        icon="life-buoy"
+        tooltip="Close the settings and read what this tab is for"
+        @click="openDocs"
+      />
+    </div>
+    <div v-else-if="isMenuOpen" class="abele-settings__docs">
+      <Button
+        text="Documentation"
+        icon="life-buoy"
+        tooltip="Close the settings and read about Abele"
+        @click="openDocs"
+      />
     </div>
 
     <!-- Tab navigation -->
@@ -28,6 +42,9 @@ import { ref, computed, onMounted, watch, markRaw, type Component } from 'vue'
 import { Platform } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import Tabs from '../obsidian/Tabs.vue'
+import Button from '../obsidian/Button.vue'
+import { openUserDocs } from '@/views/UserDocsView'
+import { pageForSettingsTab } from '@/userdocs'
 import TasksSettings from './TasksSettings.vue'
 import LogsSettings from './LogsSettings.vue'
 import JournalsSettings from './JournalsSettings.vue'
@@ -83,6 +100,12 @@ const activeComponent = computed(
 )
 const activeLabel = computed(() => (tabs.find((t) => t.id === activeTab.value) ?? tabs[0]).label)
 
+/** The documentation opens in a tab behind the settings, so the settings step aside first. */
+const openDocs = () => {
+  ;(app as unknown as { setting?: { close?: () => void } }).setting?.close?.()
+  void openUserDocs(app, pageForSettingsTab(activeTab.value))
+}
+
 const onSelect = () => {
   if (isPhone.value) {
     isMenuOpen.value = false
@@ -137,6 +160,10 @@ watch(
 }
 
 .abele-settings__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-2);
   padding: var(--size-4-4) var(--size-4-4) 0;
 
   h1 {
@@ -144,6 +171,11 @@ watch(
     font-size: var(--h1-size);
     font-weight: var(--h1-weight);
   }
+}
+
+.abele-settings__docs {
+  display: flex;
+  padding: var(--size-4-2) 0;
 }
 
 .abele-settings__nav {

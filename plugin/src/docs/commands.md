@@ -69,6 +69,9 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 ## Other
 
+- Open documentation — the plugin's own documentation for people, page by page with a search
+  over it; also the **Documentation** button at the top of the plugin's settings. Send a person
+  there for a walk-through rather than retelling it
 - Create script · Create CSS snippet · Reload CSS snippets
 - Dictate into the note — records, transcribes, and puts the words at the cursor
 
