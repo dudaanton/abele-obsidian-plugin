@@ -163,7 +163,9 @@ describe('the GitHub settings', () => {
 
   it('choose what people are shown by', async () => {
     const wrapper = open()
-    const select = wrapper.find('.abele-settings__github select')
+    const select = wrapper
+      .findAll('.abele-settings__github select')
+      .find((s) => s.findAll('option').some((o) => o.element.value === 'login'))!
     await select.setValue('login')
     expect(AbeleConfig.getInstance().github.userDisplay).toBe('login')
   })

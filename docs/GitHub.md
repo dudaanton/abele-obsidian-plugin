@@ -33,6 +33,19 @@ above it for context. It keeps it there while the tab settles: comments above it
 their images, and diffs above it measure their lines, after the first scroll. Scrolling, clicking
 or typing in the tab stops that at once.
 
+## Page width
+
+**Settings → GitHub → Page width** is how wide a tab's text runs: an issue's, a pull request's
+or a discussion's conversation, a commit's message, a rendered markdown file and a folder's page.
+**Width in pixels** (1000 unless changed) is the default: the notes' own readable line width left
+a wide pane mostly empty, with the conversation a narrow column down its middle. **Readable line
+width, like notes** is that line width, and **Full width** lets the text run across the whole
+tab. A tab narrower than the width uses what it has, so on a phone none of this changes anything.
+
+Diffs and code are not held to it: a pull request's files, a commit's changes and a file shown as
+code always take the whole tab, because a line of code wants the room and wrapping it or hiding
+its end helps nobody. A change shows in open tabs at once, without reopening them.
+
 ## People
 
 Whoever wrote the item, a comment, a reply, a review or a review comment, and whoever made a

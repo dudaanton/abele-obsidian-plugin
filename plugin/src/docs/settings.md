@@ -103,6 +103,10 @@ commit's author — is shown by: `name` (the default), the name on their GitHub 
 picture, or `login`. The other one is in the tooltip, and a click on the person swaps the two in
 place; someone whose profile has no name shows their login either way. Names and pictures are
 kept on the device for a week (see the vault reference, GitHub people), not in these settings.
+`github.pageWidth` is how wide a GitHub tab's text runs — conversations, commit messages,
+rendered markdown, folder pages: `readable` (the notes' own line width), `custom` (the default,
+`github.pageWidthPx` pixels, 1000 unless changed, from 400 to 4000) or `full` (the whole tab).
+Diffs and code always take the whole tab. A change shows in open tabs at once.
 
 ## Everything else
 

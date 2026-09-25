@@ -256,6 +256,9 @@ import { LINKER, createLinker } from '@/github/linking'
 import { SCREEN, chatSubject } from '@/github/screen'
 import { GITHUB_REPO } from '@/github/repoContext'
 import { GITHUB_PEOPLE } from '@/github/users'
+import { pageWidthCss } from '@/github/pageWidth'
+import { githubSettings } from '@/github/GithubService'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import { repoWeb } from '@/github/origin'
 import { bodyLink, type GithubLink } from '@/github/permalinks'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -288,6 +291,16 @@ const props = defineProps<{
 }>()
 
 const root = ref<HTMLElement>()
+
+// How wide the text runs, from the settings, followed at once when they change.
+const config = AbeleConfig.getInstance()
+const pageWidth = computed(() => {
+  void config.version.value
+  return pageWidthCss(githubSettings())
+})
+watch([root, pageWidth], ([el, width]) => el?.style.setProperty('--abele-github-width', width), {
+  immediate: true,
+})
 const target = computed(() => props.model.target)
 
 /**
@@ -580,7 +593,8 @@ watch(
   // The bar over selected words is placed inside it, and scrolls with the text it is over.
   position: relative;
   padding: var(--size-4-4);
-  max-width: var(--file-line-width);
+  // Set from the GitHub settings (`pageWidth.ts`): the notes' line width, pixels, or the pane.
+  max-width: var(--abele-github-width, var(--file-line-width));
   margin: 0 auto;
   display: flex;
   flex-direction: column;

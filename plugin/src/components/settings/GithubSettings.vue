@@ -92,6 +92,30 @@
         <GithubAccessReport v-if="report" :report="report" />
       </Section>
 
+      <Section title="Pages" desc="How a GitHub tab lays out what it shows.">
+        <Setting
+          name="Page width"
+          desc="How wide the text of a tab runs: conversations, commit messages, rendered markdown and folder pages. Diffs and code always take the whole tab."
+        >
+          <Dropdown
+            :options="widthOptions"
+            :model-value="settings.pageWidth"
+            @update:model-value="updatePageWidth"
+          />
+        </Setting>
+        <Setting
+          v-if="settings.pageWidth === 'custom'"
+          name="Width in pixels"
+          :desc="`From ${PAGE_WIDTH_MIN} to ${PAGE_WIDTH_MAX}. A tab narrower than this uses what it has.`"
+        >
+          <Input
+            :model-value="String(settings.pageWidthPx)"
+            placeholder="1000"
+            @update:model-value="updatePageWidthPx"
+          />
+        </Setting>
+      </Section>
+
       <Section
         title="People"
         desc="Who wrote an issue, a comment, a review or a commit, with their picture. Names and pictures are asked of GitHub once and kept on this device for a week."
@@ -168,6 +192,7 @@ import { GITHUB_TOKEN_KEY_ID, githubSettingsFrom, type GithubSettings } from '@/
 import { checkGithubAccess, resetGithubClients } from '@/github/GithubService'
 import type { AccessReport } from '@/github/accessCheck'
 import { githubUsers } from '@/github/users'
+import { PAGE_WIDTH_MAX, PAGE_WIDTH_MIN } from '@/github/pageWidth'
 
 const config = AbeleConfig.getInstance()
 const { app } = GlobalStore.getInstance()
@@ -197,6 +222,24 @@ const save = async () => {
   checkResult.value = ''
   report.value = null
   await config.saveSettings()
+}
+
+const widthOptions = [
+  { value: 'readable', display: 'Readable line width, like notes' },
+  { value: 'custom', display: 'Width in pixels' },
+  { value: 'full', display: 'Full width' },
+]
+
+const updatePageWidth = (value: string) => {
+  settings.pageWidth = value === 'readable' || value === 'full' ? value : 'custom'
+  void save()
+}
+
+const updatePageWidthPx = (value: string) => {
+  const px = Number(value.trim())
+  if (!Number.isFinite(px) || px < PAGE_WIDTH_MIN || px > PAGE_WIDTH_MAX) return
+  settings.pageWidthPx = Math.round(px)
+  saveServer()
 }
 
 const displayOptions = [

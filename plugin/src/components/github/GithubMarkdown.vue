@@ -283,7 +283,8 @@ defineExpose({
 <style lang="scss">
 .abele-github-md {
   width: 100%;
-  max-width: calc(var(--file-line-width) + var(--size-4-8));
+  // The tab's width setting, with room for the handles in the margin.
+  max-width: calc(var(--abele-github-width, var(--file-line-width)) + var(--size-4-8));
   margin-inline: auto;
 
   &__block {

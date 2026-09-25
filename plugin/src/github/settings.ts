@@ -26,6 +26,13 @@ export interface GithubSettings {
    * in the tooltip, and a click on the person swaps the two in place.
    */
   userDisplay: 'name' | 'login'
+  /**
+   * How wide a tab's text runs — conversations, rendered markdown, folder pages: the notes'
+   * readable line width, `pageWidthPx`, or the whole pane. Diffs and code always take the pane.
+   */
+  pageWidth: 'readable' | 'custom' | 'full'
+  /** The width in pixels when `pageWidth` is `custom`. */
+  pageWidthPx: number
 }
 
 export const GITHUB_TOKEN_KEY_ID = 'abele-github-token'
@@ -38,6 +45,8 @@ export const DEFAULT_GITHUB_SETTINGS: GithubSettings = {
   searchLimitMb: 100,
   defaultRepo: '',
   userDisplay: 'name',
+  pageWidth: 'custom',
+  pageWidthPx: 1000,
 }
 
 export const githubSettingsFrom = (stored?: Partial<GithubSettings>): GithubSettings => ({

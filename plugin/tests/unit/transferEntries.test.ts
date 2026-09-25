@@ -128,6 +128,8 @@ describe('settings that arrived later than the transfer did', () => {
       openLinks: false,
       defaultRepo: 'octo-org/octo-repo',
       userDisplay: 'login' as const,
+      pageWidth: 'custom' as const,
+      pageWidthPx: 1280,
     }
     const entries = collectEntries(settings({ github }))
     const entry = find(entries, 'github', 'github')
