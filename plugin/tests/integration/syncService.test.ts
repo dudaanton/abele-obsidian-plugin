@@ -1070,6 +1070,33 @@ describe('SyncService — what this device syncs, driven from the settings', () 
     expect(await meta('scope')).toBe(daemonScopeKey(settings().selective, null))
   })
 
+  /**
+   * A locked file, an iCloud placeholder, a permissions slip: an ignore file that is there and
+   * cannot be read is not an ignore file that is absent. Syncing as if it were would upload
+   * the very folders it keeps off the server.
+   */
+  it('stops with an error when the ignore file is there and cannot be read', async () => {
+    await write(IGNORE_FILE, 'Private/\n')
+    await write('Private/diary.md', 'not for the server')
+    const { accountToken } = await server.account(EMAIL)
+    const { vaultId } = await server.vault(accountToken, 'Home')
+    const { deviceToken } = await server.device(accountToken, vaultId, 'scenario')
+    const other = server.clientFor(deviceToken, vaultId)
+    const readBinary = app.vault.adapter.readBinary.bind(app.vault.adapter)
+    app.vault.adapter.readBinary = (path: string) =>
+      path === IGNORE_FILE ? Promise.reject(new Error('EBUSY: the file is locked')) : readBinary(path)
+
+    start()
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+    await service.chooseVault(vaultId, 'Laptop')
+    await tick()
+
+    expect(service.status.value.state).toBe('error')
+    expect(service.status.value.lastError).toContain(IGNORE_FILE)
+    expect(service.isConnected()).toBe(false)
+    expect(await serverPaths(other)).not.toContain('Private/diary.md')
+  })
+
   it('reads the ignore file again when it is edited in the vault', async () => {
     const { other } = await connect({ pollMs: 20 })
     await synced()

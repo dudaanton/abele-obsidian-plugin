@@ -966,6 +966,11 @@ async function scopeKey(selective: SelectiveSettings, ignoreText: string | null)
  *
  * Through the adapter and as bytes: the file is at the vault root, but Obsidian's file index
  * hides a leading dot, so `vault.read` would never find it.
+ *
+ * Null only when the file is not there. One that is there and will not be read — locked, an
+ * iCloud placeholder, a permissions slip — throws: syncing as if it were absent would upload
+ * exactly what it keeps off the server, and `reconcile` turns the throw into an error status
+ * with nothing running.
  */
 async function readIgnore(app: App): Promise<string | null> {
   try {
@@ -973,7 +978,7 @@ async function readIgnore(app: App): Promise<string | null> {
     return new TextDecoder().decode(await app.vault.adapter.readBinary(IGNORE_FILE))
   } catch (error) {
     console.debug('[abele-sync] cannot read the ignore file', error)
-    return null
+    throw new Error(`${IGNORE_FILE} is there but could not be read: ${messageOf(error)}`)
   }
 }
 
