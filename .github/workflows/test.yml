@@ -54,3 +54,9 @@ jobs:
       - name: Unit and integration tests
         working-directory: plugin
         run: npm test
+
+      # Builds the production bundle and holds main.js and the stylesheet to the budget in
+      # plugin/tests/size/budget.json. Every byte of main.js is read and compiled at every start.
+      - name: Bundle size
+        working-directory: plugin
+        run: npm run test:size

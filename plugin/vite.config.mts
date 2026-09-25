@@ -5,6 +5,7 @@ import vue from '@vitejs/plugin-vue'
 import replace from '@rollup/plugin-replace'
 import { build as esbuild } from 'esbuild'
 import { createRequire } from 'node:module'
+import { EVAL_START_INTRO } from './src/helpers/loadMarks'
 
 /**
  * MapLibre's worker, bundled into a string the plugin can carry.
@@ -76,6 +77,9 @@ export default defineConfig(async ({ mode }) => {
            * way. See docs/Testing.md.
            */
           inlineDynamicImports: true,
+          // The first statement of the file: the load-time probe tells Obsidian reading and
+          // compiling `main.js` apart from the modules running. See `src/helpers/loadMarks.ts`.
+          intro: EVAL_START_INTRO,
           assetFileNames: (assetInfo) => {
             if (assetInfo.name && assetInfo.name.endsWith('.css')) {
               return 'main.css'

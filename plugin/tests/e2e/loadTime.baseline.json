@@ -1,0 +1,74 @@
+{
+  "tolerance": {
+    "readCompileMs": {
+      "factor": 1.5,
+      "slackMs": 40
+    },
+    "modulesMs": {
+      "factor": 1.5,
+      "slackMs": 30
+    },
+    "onloadMs": {
+      "factor": 1.5,
+      "slackMs": 40
+    },
+    "layoutMs": {
+      "factor": 1.5,
+      "slackMs": 40
+    },
+    "enableMs": {
+      "factor": 1.5,
+      "slackMs": 60
+    },
+    "settledMs": {
+      "factor": 2,
+      "slackMs": 300
+    }
+  },
+  "builds": {
+    "development": {
+      "recorded": "2026-09-25",
+      "mainJsBytes": 24384047,
+      "bare": {
+        "readCompileMs": 50.7,
+        "modulesMs": 5.6,
+        "onloadMs": 128.2,
+        "layoutMs": 128.2,
+        "enableMs": 189.5,
+        "firstFrameMs": 202.7,
+        "settledMs": 202.7
+      },
+      "workspace": {
+        "readCompileMs": 46.5,
+        "modulesMs": 6.7,
+        "onloadMs": 89.8,
+        "layoutMs": 89.8,
+        "enableMs": 434.7,
+        "firstFrameMs": 457.8,
+        "settledMs": 457.8
+      }
+    },
+    "production": {
+      "recorded": "2026-09-25",
+      "mainJsBytes": 4429380,
+      "bare": {
+        "readCompileMs": 21,
+        "modulesMs": 9.2,
+        "onloadMs": 136.1,
+        "layoutMs": 136.1,
+        "enableMs": 169.8,
+        "firstFrameMs": 174.5,
+        "settledMs": 174.5
+      },
+      "workspace": {
+        "readCompileMs": 21.7,
+        "modulesMs": 9.9,
+        "onloadMs": 97.6,
+        "layoutMs": 97.6,
+        "enableMs": 446.4,
+        "firstFrameMs": 465.1,
+        "settledMs": 465.1
+      }
+    }
+  }
+}

@@ -103,11 +103,13 @@ import { registerLineLinks } from './lineLinks/register'
 import { registerGithub } from '@/github/register'
 import { secrets, setSecrets } from '@/secrets/SecretStore'
 import { createPluginSecrets } from '@/secrets/host'
+import { markLoad } from '@/helpers/loadMarks'
 import { claimVueSetters } from '@/helpers/vueGlobals'
 
-// Every module imported above has run its top-level code by now, Vue included, so the last of
-// its global setters are this bundle's. Taken back on unload, or every reload keeps the whole
-// previous bundle alive. See `helpers/vueGlobals.ts`.
+// Every module imported above has run its top-level code by now. See `helpers/loadMarks.ts`.
+markLoad('evalEnd')
+// Vue has registered its global setters, so the last ones are this bundle's. Taken back on
+// unload, or every reload keeps the whole previous bundle alive. See `helpers/vueGlobals.ts`.
 const releaseVueSetters = claimVueSetters()
 
 export default class AbelePlugin extends Plugin {
@@ -144,6 +146,9 @@ export default class AbelePlugin extends Plugin {
   }
 
   async onload() {
+    markLoad('onloadStart')
+    // First, so it runs before every other layout-ready callback registered below.
+    this.app.workspace.onLayoutReady(() => markLoad('layoutStart'))
     dayjs.extend(weekday)
     dayjs.extend(updateLocale)
     dayjs.extend(dayOfYear)
@@ -1188,6 +1193,10 @@ export default class AbelePlugin extends Plugin {
         void showMarkdown(SCRIPT_API_DOCS + '\n\n---\n\n' + SCRIPT_VIEW_DOCS)
       },
     })
+
+    // Last, so it runs after every other layout-ready callback registered above.
+    this.app.workspace.onLayoutReady(() => markLoad('layoutEnd'))
+    markLoad('onloadEnd')
   }
 
   onunload() {

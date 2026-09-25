@@ -5,6 +5,7 @@ Three tiers, each with its own command. All commands run from `plugin/`.
 | Command | Tier | Needs Obsidian | Runs on commit | Runs in CI |
 |---|---|---|---|---|
 | `npm test` | unit + integration + component | no | yes | yes |
+| `npm run test:size` | bundle size | no | no | yes |
 | `npm run test:perf` | complexity | no | no | no |
 | `npm run test:e2e` | end-to-end | yes | no | no |
 | `npm run test:all` | everything | yes | no | no |
@@ -100,6 +101,27 @@ global: {
 happy-dom has no `ResizeObserver`. A component that adapts to its own width needs a stub whose
 callback the test fires with a chosen width — which is also how the narrow layout is driven,
 rather than by faking a window size.
+
+## Bundle size — `tests/size/`
+
+`npm run test:size` builds the production bundle in memory (about 6 s, nothing is written to
+`build/`) and fails when `main.js` or the stylesheet is over its budget in
+`tests/size/budget.json`. Obsidian reads and compiles the whole of `main.js` on every start,
+phones included, so every byte is paid for at load whether the feature behind it is used or
+not. Raising the budget is a decision, made in the same diff as whatever needed the room.
+
+The run also says where the bytes go — the heaviest packages in the console, all of them in
+`/tmp/abele-bundle-size.json`. `node scripts/bundle-size.mjs` prints the same table without
+the test. The split counts each module as Rollup rendered it, before minification, scaled to
+the minified total: right about which package is heavy, not to the kilobyte.
+
+The build runs in a process of its own. Built inside Vitest, whose environment leaks into Vite
+and the Vue plugin, the same bundle came out 10–130 KB larger than the one `npm run build`
+ships.
+
+A dynamic `import()` does not make a dependency cheaper here: `inlineDynamicImports` keeps it in
+`main.js` (see *The test hook* below), so its bytes are still read and compiled at every start —
+only its top-level code waits until first use.
 
 ## Complexity tier — `tests/**/*.perf.test.ts`
 
@@ -332,6 +354,42 @@ window that no longer exists.
 
 The suite skips itself when Obsidian is not running or the build lacks the test hook, so
 `npm run test:all` stays usable with Obsidian closed.
+
+### Load time
+
+`loadTime.e2e.test.ts` switches the plugin off and on again inside the running app seven
+times — Obsidian's own `disablePlugin` / `enablePlugin`, which re-reads `main.js` and evaluates
+it afresh — and compares the median of each phase with `tests/e2e/loadTime.baseline.json`.
+The phases come from performance marks the plugin leaves as it starts
+(`src/helpers/loadMarks.ts`; the first one is prepended to `main.js` by the build): reading and
+compiling the file, the bundled modules running, `onload()`, the layout-ready work, the whole
+enable call, the next painted frame, and the moment the main thread has gone half a second
+without a 50 ms stall. The marks are in production builds too — they cost microseconds.
+
+- **In two fixed workspaces.** What is open decides most of a reload: registering the editor
+  extensions redraws every open note, footer and all, and every open Abele view is mounted
+  again. So the probe replaces the whole workspace with a known layout before measuring and puts
+  the old one back after: `bare` (nothing open, the plugin's own cost) and `workspace` (a
+  fixture note, the agent chat and the timeline — about four times as long). Each has its own
+  baseline.
+- **Per build.** A development build carries the test hook and a 20 MB inline source map that
+  Obsidian strips before evaluating, so its numbers are kept apart from the shipped build's.
+  The test reads which one is installed and compares against that baseline.
+- **Tolerance** is per phase in the baseline file: a median fails when it is over both
+  `factor` × baseline and baseline + `slackMs`. Loose on purpose — it is there to catch a
+  load that doubled, not a 10 ms drift.
+- `ABELE_LOAD_BASELINE=update` rewrites the baseline for the installed build instead of
+  comparing. Do it deliberately, in the diff that made loading slower or faster.
+- `ABELE_LOAD_COLD=1` also restarts the window three times and reports where the marks fall
+  during a real app start, in ms from the window opening. Reported, not compared: an app start
+  also indexes the vault and loads every other plugin.
+- `ABELE_LOAD_RUNS` changes the number of reloads. Numbers land in `/tmp/abele-load-time.json`.
+
+On a reload the layout is already there, so the layout-ready work runs inside `onload` and is
+nearly all of it — against the 12,000-note fixture 90–140 ms of indexing tasks, finance and
+time entries, growing as the rest of the tier leaves notes and chats behind in the fixture. On
+an app start `onload` itself takes a few milliseconds and that work runs once Obsidian has
+restored the workspace.
 
 ### A reload must not keep the previous load alive
 
