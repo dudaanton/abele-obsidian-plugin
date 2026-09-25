@@ -598,6 +598,15 @@ contracts, not an exhaustive inventory; `tests/e2e/*.e2e.test.ts` is the current
   two fingers zoom. The canvas keeps what it drew on `canvas.abeleHits`, which is how the test
   finds a bar by name. Pictures in `/tmp/abele-phone/timeline-*.png`.
 
+- `sync.e2e.test.ts` — **sync, with nothing stubbed**. Starts the sibling repository's sync
+  server and daemon, opens a vault of its own in the running Obsidian with this branch's build in
+  it, and pairs it the way the Sync tab does. Then: a note made in Obsidian reaches the daemon
+  folder; an edit on each side merges into both; in conflict-file mode the second edit lands as a
+  copy, in Obsidian too; a PNG arrives byte for byte; an older version comes back through the file
+  menu's version history, read off the editor; a deleted note comes back through the deleted-files
+  command; and the plugin logged no error throughout. Needs more than the rest — see
+  [The sync suite](#the-sync-suite).
+
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
 "mega group" to expose work that grows with the transitive closure. The former multi-minute
 rescan is not the current performance baseline.
@@ -856,6 +865,61 @@ console capture — throws `DesktopOnlyError`, and a test that fails with nothin
 as skipped with what it needed. Where the desktop mimics something a phone has for real — the
 keyboard's height, a finger's long press, turning the phone — the phone file does the real thing
 instead: `taskDatePhone` taps the time field and measures the system keyboard.
+
+### The sync suite
+
+`sync.e2e.test.ts` does not drive the vault the rest of the tier drives. It pairs a device with a
+server and writes files, which is not something to do to anyone's notes, so it makes a vault for
+the run and takes it away again.
+
+What it needs, and what it says when something is missing:
+
+- **Obsidian running with a vault open.** That window is only used to send the message that opens
+  the test vault; nothing is written to it. It is `OBSIDIAN_TEST_VAULT` when set, else the window
+  in front. Without one the suite skips.
+- **The sync repository, built.** The server, its admin CLI and the daemon are taken from
+  `abele-sync`'s own `dist`, never built here. It is looked for five directories up from
+  `tests/e2e/helpers` — beside the repository in a plain checkout, beside the worktree's folder in
+  a worktree, where a symlink to the real checkout does — or wherever `ABELE_SYNC_DIR` points.
+  Run `npm run build` there first. Without it the suite skips, naming the path it looked at.
+- **This plugin, built for testing.** `npm run build:test`, newer than `src/` and than the sync
+  repository's `core` and `protocol` `dist`, which the bundle inlines. A missing, stale or
+  production build fails the suite at once, saying so; it is not built for you, because a build
+  takes longer than a test worker may stay silent.
+
+```bash
+npm run build:test
+OBSIDIAN_TEST_VAULT=<vault> npm run test:e2e -- tests/e2e/sync.e2e.test.ts
+```
+
+It takes well under a minute. What it makes, and takes away at the end:
+
+- a folder in the system's temp directory holding the server's database and blobs and the daemon's
+  folder, and a server on a free port on `127.0.0.1`, killed at the end;
+- a throwaway account on that server, with a made-up password;
+- a vault, `~/obsidian/abele-sync-e2e-<8 hex>`, holding the build, an `.abele-sync-ignore` that
+  keeps its config folder out of the sync, and two settings the suite needs: menus drawn by the
+  page (a native macOS menu cannot be clicked from a script) and Obsidian's own Sync switched off
+  (it adds a second **Open version history** to the same menu). It opens in a window of its own
+  behind whatever is in front, with the vault's Restricted Mode turned off so the plugin loads.
+
+At the end the device is forgotten, which drops its ledger and its keychain entry; the window is
+closed; the folder is deleted; and the vault is taken off Obsidian's vault list, through the same
+message the vault switcher's **Remove from list** sends. A window that will not close is left open
+with its folder, and a warning names the path: close the window, remove the vault from the
+switcher, then delete the folder.
+
+Two things are left behind on purpose, as not worth the machinery that would avoid them:
+
+- **The account's password is briefly visible in the process list.** It is an argument to the
+  admin CLI's `create-account` and to the `obsidian eval` that signs the plugin in, for as long as
+  each of those runs. It is a made-up password for an account on a server that lives only for the
+  run.
+- **Obsidian's profile can keep a trace of the device.** Where Obsidian's keychain cannot delete an
+  entry, the token's entry (`abele-sync-device-…`) is emptied rather than removed. If forgetting
+  the device fails — the suite warns `could not disconnect the test device` — the token stays in
+  that entry and the ledger stays in Obsidian's IndexedDB as `abele-sync-<id>`. The token is for a
+  server that no longer exists.
 
 ### The test hook
 

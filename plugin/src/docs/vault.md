@@ -1117,6 +1117,25 @@ list offered in the model request. The destination is the JSON pair `["http", fu
 Approval and execution require the current alias to select the same tool and exact endpoint. Missing tool or destination identities in older pending calls, removed tools, reassigned
 aliases and changed endpoint URLs are refused with a request for a fresh call; they never select a replacement server.
 
+## Sync
+
+When the person syncs the vault with Abele Sync, a few files in it are the sync's. A note whose
+name ends in `(Conflicted copy <device> <YYYYMMDDHHMM>)` — `Plan (Conflicted copy laptop
+202609041530).md` — is another device's version of the note beside it, written when both changed
+it and the vault's policy says to keep both rather than merge. It is an ordinary note: read both
+when asked, and leave choosing between them to the person. A merged note may hold one passage
+twice, once as each device wrote it, for the same reason.
+
+`.abele-sync-ignore` at the vault root lists, in gitignore patterns, what this device does not
+sync; it never syncs itself, so each device has its own. The daemon's `.abele-sync/` folder, when
+a vault is synced by the command-line client, is its state and never syncs either. Leave both
+alone unless asked.
+
+What the device has synced is recorded outside the vault, in Obsidian's IndexedDB, as a database
+named `abele-sync-<stateId>`; the device token is in the keychain, under the id in
+`sync.deviceTokenId`. Neither is a file an agent can see. Version history and deleted files are
+kept on the server and shown in dialogs the person opens (the `commands` section).
+
 ## Screenshots
 
 Every picture the `screenshot` tool takes — of a note, or of the visible part of a script view —

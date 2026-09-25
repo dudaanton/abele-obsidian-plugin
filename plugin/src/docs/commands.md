@@ -135,6 +135,15 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   tab, grouped by note or rule, with fixes; also **Lint this note** / **Lint this folder** in the
   file menus. The `lint` and `lint_fix` tools do the same for an agent
 
+## Sync
+
+- Sync now · Pause or resume sync
+- Open sync log — also a click on the sync item in the status bar
+- Open deleted files — what was deleted anywhere in the vault, each with a Restore
+- *Open version history* when a file is right-clicked, while the device is connected
+
+Connecting, disconnecting and choosing what a device syncs are on the Sync tab of the settings.
+
 ## Other
 
 - Open changelog — every plugin version in a tab, newest first, with dated changes grouped as new features, fixes and improvements; also **Settings → Other → Changelog**. Works with AI off and without a network

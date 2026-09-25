@@ -129,6 +129,7 @@ A find-and-replace tool for note contents, which I built for vault migration. Mo
 - Comment chats anchored to a passage of a note, or of an agent's answer inside a chat
 - Mermaid diagrams drawn the way GitHub draws them — the width of the note, with zoom, drag, full screen and copy as source, SVG or picture ([how](docs/Mermaid.md))
 - CSS snippets loaded and hot-reloaded from a folder in the vault
+- Sync between devices through an Abele Sync server — chosen per device, with version history, deleted files and notes merged when two devices change one ([how](docs/Sync.md))
 - Settings transfer to another device — QR codes, a line of text, or a file — scripts, skills and prompts included
 - GitHub issues, pull requests with their diffs, discussions, comparisons and files opened from links in notes, in tabs of their own — read only, off by default ([how](docs/GitHub.md))
 

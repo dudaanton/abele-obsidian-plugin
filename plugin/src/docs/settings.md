@@ -234,6 +234,25 @@ they are read again while Obsidian is open; they are also read at startup and wh
 settings change. What was last read is kept on the device (see the vault reference, Calendar
 cache), so the lists show it without a network.
 
+## Sync
+
+`sync` is this device's side of Abele Sync, and it never leaves the device: the plugin's own
+`data.json` is kept out of the sync by name. `sync.serverUrl`, `sync.vaultId`, `sync.deviceId`,
+`sync.deviceName`, `sync.deviceTokenId`, `sync.stateId` and `sync.stateVaultId` are this device's
+enrolment — which server, which vault, what the device is called there, the keychain slot its
+token is in, and the local ledger of what it has synced. They are set by signing in on the Sync
+tab and cleared by **Disconnect** and **Forget** there. Never write them: the running sync is
+rebuilt from them on every save, so a changed address sends this device's token to that address.
+All of them empty means the device is not connected.
+
+`sync.selective` is what this device takes — `images`, `audio`, `video`, `pdf` and `other`
+(true/false each; notes and canvases always sync), `excludedFolders` (folders this device skips),
+`maxFileBytes` (a size cap in bytes, `null` for none; a phone starts at 50 MB) and `settings`,
+which parts of the config folder travel: `main`, `appearance`, `hotkeys`, `corePlugins`,
+`communityPlugins`, `pluginSettings`. `sync.paused` holds syncing without disconnecting.
+`sync.keySignature` is stored but not yet applied. The vault-wide policy — merge or conflict file,
+the server's size cap, how long history is kept — is on the server, not here.
+
 ## Synced keys
 
 Keys and tokens live in each device's own keychain, and a setting only names the slot. With
