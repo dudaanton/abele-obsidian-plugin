@@ -401,6 +401,65 @@ describe('SyncService — what this device syncs', () => {
   })
 })
 
+/**
+ * Obsidian never indexes a path with a dot-segment, so a hidden file this device pulled would
+ * be missing from the very next scan — and a missing file with a ledger entry is a delete. A
+ * daemon on a git or Syncthing folder sends exactly such files, and would get them deleted.
+ */
+describe('SyncService — hidden paths', () => {
+  const HIDDEN = ['.gitignore', '.git/HEAD', '.DS_Store', '.stfolder', '.trash/x.md']
+
+  it('neither takes nor deletes a hidden file another device sent', async () => {
+    const { accountToken } = await server.account(EMAIL)
+    const { vaultId } = await server.vault(accountToken, 'Home')
+    const { deviceToken } = await server.device(accountToken, vaultId, 'scenario')
+    const other = server.clientFor(deviceToken, vaultId)
+    const ops = []
+    for (const path of HIDDEN) ops.push(await create(other, path, `the daemon's ${path}`))
+    await seed(other, ops)
+
+    start()
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+    await service.chooseVault(vaultId, 'Laptop')
+    await synced()
+    // The scan after the pull is where a pulled hidden file would turn into a delete.
+    await service.syncNow()
+    await service.syncNow()
+
+    const paths = await serverPaths(other)
+    for (const path of HIDDEN) {
+      expect(paths).toContain(path)
+      expect(await app.vault.adapter.exists(path)).toBe(false)
+    }
+  })
+
+  it('keeps an overridden config folder out, and leaves the one on the server alone', async () => {
+    app = buildFakeVault([
+      { path: 'Existing.md', content: 'already here', mtime: 1000, ctime: 1000 },
+      { path: '.obsidian-mobile/app.json', content: '{"m":1}', mtime: 1000, ctime: 1000 },
+    ])
+    app.vault.configDir = '.obsidian-mobile'
+    const { accountToken } = await server.account(EMAIL)
+    const { vaultId } = await server.vault(accountToken, 'Home')
+    const { deviceToken } = await server.device(accountToken, vaultId, 'scenario')
+    const other = server.clientFor(deviceToken, vaultId)
+    await seed(other, [await create(other, '.obsidian/app.json', '{"desktop":1}')])
+
+    start()
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+    await service.chooseVault(vaultId, 'Phone')
+    await synced()
+    await service.syncNow()
+
+    const paths = await serverPaths(other)
+    expect(paths).toContain('.obsidian/app.json')
+    expect(paths).toContain('Existing.md')
+    expect(paths).not.toContain('.obsidian-mobile/app.json')
+    expect(await app.vault.adapter.exists('.obsidian/app.json')).toBe(false)
+    expect(service.log.value.join('\n')).toContain('.obsidian-mobile')
+  })
+})
+
 describe('SyncService — disconnecting', () => {
   it('forgets the token and says nothing is connected', async () => {
     await connect()

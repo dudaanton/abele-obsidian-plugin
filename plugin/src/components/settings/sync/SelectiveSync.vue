@@ -25,12 +25,9 @@
     </Setting>
   </Section>
 
-  <Section
-    title="Obsidian settings"
-    desc="How much of the configuration folder travels. The workspace, the graph and every plugin cache stay where they are, on every device."
-  >
+  <Section title="Obsidian settings" :desc="settingsDesc">
     <Setting
-      v-for="entry in SETTINGS_KINDS"
+      v-for="entry in renamedConfig ? [] : SETTINGS_KINDS"
       :key="entry.key"
       :name="entry.name"
       :desc="entry.desc"
@@ -107,6 +104,8 @@ import Search from '../../obsidian/Search.vue'
 import EmptyState from '../../obsidian/EmptyState.vue'
 import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { isWireConfigDir } from '@/sync/SyncService'
 
 /** What one switch says on the screen. */
 interface Described {
@@ -163,6 +162,19 @@ const SETTINGS_KINDS = (
 ).map((key) => ({ key, ...SETTINGS_TEXT[key] }))
 
 const config = AbeleConfig.getInstance()
+
+/**
+ * This vault's config folder, when it is not the `.obsidian` the sync knows. Obsidian lets a
+ * device rename it, and the engine's settings switches recognise only the one name, so such a
+ * device keeps its config folder out of the sync altogether rather than send it as plain
+ * files. The switches would do nothing here, so they are not offered.
+ */
+const configDir = GlobalStore.getInstance().app.vault.configDir
+const renamedConfig = !isWireConfigDir(configDir)
+
+const settingsDesc = renamedConfig
+  ? `This device keeps its settings in a renamed config folder, ${configDir}, and sync does not carry one yet: Obsidian settings stay on this device, and those on the server are left alone.`
+  : 'How much of the configuration folder travels. The workspace, the graph and every plugin cache stay where they are, on every device.'
 
 /**
  * A copy of the settings, edited here and written back on every change.

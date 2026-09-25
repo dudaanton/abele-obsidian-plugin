@@ -5,6 +5,7 @@ import {
   SyncClient,
   SyncEngine,
   encodeText,
+  settingsCategory,
   sha256,
   type PathMatcher,
   type SelectiveSettings,
@@ -79,6 +80,17 @@ const IGNORE_FILE = '.abele-sync-ignore'
 
 /** Every secret this plugin mints for a device token is named this way. */
 const SECRET_PREFIX = 'abele-sync-device-'
+
+/**
+ * Whether this vault's config folder is the one the wire knows.
+ *
+ * Core's settings switches recognise a single name for it, and core is what is asked rather
+ * than the name being spelled out here: a device whose config folder is called something else
+ * keeps it out of the sync altogether (`isHidden`).
+ */
+export function isWireConfigDir(configDir: string): boolean {
+  return settingsCategory(`${configDir}/app.json`) !== null
+}
 
 /**
  * What the user has to do about a token the server no longer takes. The client's own message
@@ -659,6 +671,7 @@ export class SyncService {
     this.publish({ ...statusOf(engine.status), state: settings.paused ? 'paused' : 'syncing' })
     this.note(`syncing vault ${settings.vaultId} with ${settings.serverUrl}`)
     this.note(ignoreLine(ignoreText))
+    if (!isWireConfigDir(app.vault.configDir)) this.note(configLine(app.vault.configDir))
     await this.first(engine, store, settings)
   }
 
@@ -743,13 +756,22 @@ export class SyncService {
    * categories, and the category here (`pluginSettings`) covers every plugin at once — so it
    * is ignored by name. Case-folded, because a case-insensitive disk hands the same file back
    * under any spelling.
+   *
+   * And every hidden path but the config folder. Obsidian indexes nothing with a dot-segment,
+   * so a `.git/HEAD` or a `.DS_Store` this device pulled would be missing from the very next
+   * scan, and a missing file the ledger knows is a delete — a daemon on a git or Syncthing
+   * folder would lose them. Ignored here, they are neither taken nor deleted.
    */
   private ignore(app: App, ignoreText: string | null): PathMatcher {
     const rules = ignoreText === null ? null : IgnoreRules.parse(ignoreText)
     const id = this.plugin?.manifest.id ?? 'abele'
     const own = caseKey(`${app.vault.configDir}/plugins/${id}/data.json`)
+    const configDir = app.vault.configDir
     return {
-      ignores: (wirePath) => caseKey(wirePath) === own || (rules?.ignores(wirePath) ?? false),
+      ignores: (wirePath) =>
+        isHidden(wirePath, configDir) ||
+        caseKey(wirePath) === own ||
+        (rules?.ignores(wirePath) ?? false),
     }
   }
 
@@ -870,6 +892,24 @@ function newStateId(): string {
 
 function randomStem(): string {
   return Math.random().toString(36).slice(2, 10).padEnd(8, '0')
+}
+
+/**
+ * Whether a wire path is one this device leaves alone because Obsidian cannot see it: any path
+ * with a segment that starts with a dot, except the config folder when it is the one the wire
+ * knows. Inside that folder the engine's own settings switches decide.
+ */
+function isHidden(wirePath: string, configDir: string): boolean {
+  if (!wirePath.split('/').some((segment) => segment.startsWith('.'))) return false
+  return !(isWireConfigDir(configDir) && wirePath.startsWith(`${configDir}/`))
+}
+
+/** What the log says on a device whose config folder the sync does not carry. */
+function configLine(configDir: string): string {
+  return (
+    `the config folder here is ${configDir}, which sync does not know: ` +
+    'Obsidian settings do not sync on this device, and nothing in either folder is touched'
+  )
 }
 
 /** What the log says about the rules the engine was just built on. */

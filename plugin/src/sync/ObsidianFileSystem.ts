@@ -89,9 +89,9 @@ export class ObsidianFileSystem implements FileSystem {
    * The config folder's real name.
    *
    * It is `.obsidian` in every vault nobody has renamed it in, and the engine's selective
-   * filter only knows that name — a vault with a renamed config folder syncs its settings as
-   * ordinary files rather than under the settings switches. Read from the vault all the same:
-   * the wrong folder walked here is a folder not synced at all.
+   * filter only knows that name — so the service keeps a renamed config folder out of the
+   * sync altogether, rather than let it travel as ordinary files. Read from the vault all the
+   * same: this is the folder that is really on the disk.
    */
   private get configDir(): string {
     return this.app.vault.configDir

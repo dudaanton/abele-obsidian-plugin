@@ -374,6 +374,19 @@ describe('what this device takes', () => {
     expect(service.onSettingsSaved).toHaveBeenCalled()
   })
 
+  /**
+   * Core knows the config folder as `.obsidian` and nothing else, so a device whose folder was
+   * renamed keeps it out of the sync. The switches would do nothing there; the screen says why.
+   */
+  it('says the settings stay put on a device whose config folder was renamed', async () => {
+    const app = useVault([])
+    app.vault.configDir = '.obsidian-mobile'
+    const screen = open(SelectiveSync)
+
+    expect(screen.text()).toContain('.obsidian-mobile')
+    expect(screen.find('[data-selective-settings="hotkeys"]').exists()).toBe(false)
+  })
+
   it('takes a cap in megabytes and keeps it in bytes', async () => {
     const screen = open(SelectiveSync)
 
