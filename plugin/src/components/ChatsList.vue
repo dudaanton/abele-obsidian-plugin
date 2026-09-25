@@ -17,6 +17,16 @@
         <template v-if="chat.agentName" #badges>
           <Badge :text="chat.agentName" />
         </template>
+        <!-- Visible rather than behind a right-click, which a phone does not have. Detaching
+             takes the card away and nothing else: the chat itself is untouched. -->
+        <template #actions>
+          <Icon
+            class="abele-chats-list__detach"
+            icon="unlink"
+            tooltip="Detach this chat from the note"
+            @click="detach(chat)"
+          />
+        </template>
       </Card>
       <div v-if="hasMore" ref="sentinel" class="abele-chats-list__sentinel" />
     </div>
@@ -28,6 +38,8 @@ import { computed } from 'vue'
 import type { ChatLink } from '@/entities/ChatLink'
 import Card from './obsidian/Card.vue'
 import Badge from './obsidian/Badge.vue'
+import Icon from './obsidian/Icon.vue'
+import { detachNote } from '@/ai/chatNoteLinks'
 import { usePagedList } from '@/composables/usePagedList'
 import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
 
@@ -40,6 +52,12 @@ const sorted = computed(() => props.chats)
 
 const metaOf = (chat: ChatLink): string[] =>
   chat.touchedAt ? [chat.touchedAt.format(DISPLAY_DATE_FORMAT)] : []
+
+const detach = (chat: ChatLink) => {
+  void detachNote(chat.path, chat.notePath).catch((e: unknown) => {
+    console.error('[Abele] Could not detach the chat:', e)
+  })
+}
 
 const { visible, hasMore, sentinel } = usePagedList(() => sorted.value)
 </script>

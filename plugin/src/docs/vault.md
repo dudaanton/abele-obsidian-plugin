@@ -143,11 +143,14 @@ for the person to insert into a chat. Both are ordinary notes and can be edited 
 
 Chats are `.abchat` files under the chat folder, one JSON record per line. Besides the
 conversation, a chat's metadata record remembers what it *did*: `touched` lists the notes it
-wrote to — created, edited, replaced, moved or copied into place, never merely read — each with
-the time it was last written, and `recap` is a one-sentence summary of the work, written by the
-background model after a turn that wrote something. Both are copied into the chat index in the
-plugin's settings, which is what draws the **Chats** list under a note: one card per chat that
-changed it, with its title, its recap and the date it was changed. `summary` is a sentence or two on
+is linked to — the ones it wrote to (created, edited, replaced, moved or copied into place,
+never merely read), each with the time it was last written, and the ones the person attached it
+to by hand, each with the time it was attached. The two are the same entry and look the same;
+detaching a chat from a note removes its entry either way, and a later write links it again.
+`recap` is a one-sentence summary of the work, written by the background model after a turn
+that wrote something. Both are copied into the chat index in the plugin's settings, which is
+what draws the **Chats** list under a note: one card per linked chat, with its title, its recap
+(or, for a chat that never wrote, its summary) and the date of the link. `summary` is a sentence or two on
 what the chat is about, shown under its title in the chat history; the background model writes
 it from the text the person and the agent exchanged — never from what a tool returned — after
 the first turn and again as the chat grows, and for an older chat when its card first comes on

@@ -3,7 +3,7 @@ import { ChatStorage } from '@/ai/ChatStorage'
 import type { AiChatHistoryEntry } from '@/ai/types'
 
 /**
- * Picks one of the agent chats in the history, to attach to another.
+ * Picks one of the agent chats in the history — to attach to another, or to a note.
  *
  * The history rather than the vault's files: it is the list a person already knows their chats
  * by — titled, newest first — and it leaves out comments and delegated runs, which are logs
@@ -15,16 +15,19 @@ class ChatModal extends FuzzySuggestModal<AiChatHistoryEntry> {
 
   constructor(
     app: App,
-    private readonly exclude: string | undefined
+    private readonly exclude: string | undefined,
+    private readonly options: ChatPickerOptions
   ) {
     super(app)
-    this.setPlaceholder('Search for a chat...')
+    this.setPlaceholder(options.placeholder ?? 'Search for a chat...')
   }
 
   getItems(): AiChatHistoryEntry[] {
+    const hide = this.options.hide
     return ChatStorage.getInstance()
       .getHistory()
       .filter((entry) => entry.path !== this.exclude)
+      .filter((entry) => !hide?.(entry))
       .filter((entry) => this.app.vault.getAbstractFileByPath(entry.path) instanceof TFile)
   }
 
@@ -52,7 +55,17 @@ class ChatModal extends FuzzySuggestModal<AiChatHistoryEntry> {
   }
 }
 
+export interface ChatPickerOptions {
+  /** Chats not worth offering — the ones already attached to the note asking. */
+  hide?: (entry: AiChatHistoryEntry) => boolean
+  placeholder?: string
+}
+
 /** @param exclude the chat doing the attaching, which has no use for itself */
-export function pickChat(app: App, exclude?: string): Promise<TFile | null> {
-  return new ChatModal(app, exclude).pick()
+export function pickChat(
+  app: App,
+  exclude?: string,
+  options: ChatPickerOptions = {}
+): Promise<TFile | null> {
+  return new ChatModal(app, exclude, options).pick()
 }

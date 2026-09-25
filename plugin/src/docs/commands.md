@@ -27,6 +27,11 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   to it if the agent had none; *Chat about this* when a note is right-clicked does the same.
   With text selected in that note, the link points at the selected lines and the text is
   quoted under it
+- Attach a chat to current note — picks a chat from the history and links it to the note, the
+  same link a chat makes by writing to it, so it appears in the note's **Chats** list; *Attach a
+  chat…* when a note is right-clicked does the same. From a chat, the link button in its header
+  attaches it to the note in front or to one picked, and detaches it; under the note, the unlink
+  button on a chat's card detaches it. An agent cannot attach chats itself
 - Show script runs · Show script API reference
 - Open GitHub link or item — the GitHub link under the cursor opens straight away; otherwise a
   picker takes a pasted link (github.com or the configured server), or `#123`, `owner/repo#123`,

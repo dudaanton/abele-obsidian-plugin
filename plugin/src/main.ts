@@ -24,6 +24,7 @@ import { createTimeEntry, stopActiveTimeEntry } from './commands/createTimeEntry
 import { createNoteInGroup } from './commands/createNoteInGroup'
 import { commentHereInView } from './commands/commentCommands'
 import { registerChatAbout } from './commands/chatAboutNote'
+import { registerAttachChat } from './commands/attachChat'
 import { useInAgentText } from './ai/quoteSelection'
 import {
   createNoteFromTemplate,
@@ -484,6 +485,7 @@ export default class AbelePlugin extends Plugin {
     )
 
     registerChatAbout(this)
+    registerAttachChat(this)
 
     // "Use selection in AI Agent" on right-click in editor
     if (AbeleConfig.getInstance().ai.enabled) {

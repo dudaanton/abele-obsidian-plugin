@@ -53,6 +53,22 @@
             tooltip="Scope, skills, prompts, permissions and settings"
             @click="openSetup()"
           />
+          <!-- The notes this chat is attached to, by hand or by writing to them: attach it to
+               another, or detach it. Not over a comment, which lives on its note's margin. -->
+          <Icon
+            v-if="!commentSession"
+            class="abele-ai-chat__notes"
+            icon="link"
+            with-bg
+            :text-right="linkedCount ? String(linkedCount) : undefined"
+            :disabled="!hasChatFile"
+            :tooltip="
+              hasChatFile
+                ? 'Attach this chat to a note, or detach it'
+                : 'Attach this chat to a note — once it has a message'
+            "
+            @click="openNotesMenu"
+          />
           <Icon icon="plus" with-bg tooltip="Start a new chat" @click="handleNewChat" />
           <Icon
             icon="history"
@@ -301,6 +317,7 @@ import { discoverSkills } from '@/ai/tools/SkillTool'
 import { getChildren } from '@/ai/chatTree'
 import { isChatLog } from '@/ai/chatText'
 import { insertMessageCard } from '@/ai/messageCards'
+import { chatNotesMenu } from '@/commands/attachChat'
 
 const chatService = ChatService.getInstance()
 chatService.ensureInitialized()
@@ -673,6 +690,16 @@ const setupTab = ref('scope')
 const openSetup = (tab = 'scope') => {
   setupTab.value = tab
   setupOpen.value = true
+}
+
+/** Whether the chat has a file yet — the place a link to a note is written. */
+const hasChatFile = computed(() => !!session.value?.currentChatFile?.value)
+/** How many notes the chat is attached to, beside the link button. */
+const linkedCount = computed(() => session.value?.touched?.value.length ?? 0)
+
+const openNotesMenu = (evt: MouseEvent) => {
+  if (!session.value) return
+  chatNotesMenu(session.value).showAtMouseEvent(evt)
 }
 const variablesModalOpen = ref(false)
 const pendingPromptContent = ref('')

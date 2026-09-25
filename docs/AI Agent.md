@@ -140,6 +140,22 @@ If the agent cannot see that note, this chat is given access to it — to that o
 nothing else, the same as attaching it would. The access is saved with the chat, so it is still
 there when the chat is reopened. The agent's own scope is not changed.
 
+### Chats under a note
+
+A chat that writes to a note — creates, edits, moves or copies it — shows up in the **Chats**
+list at the bottom of that note, one card per chat. A chat can be put there by hand as well:
+
+- **From the note** — right-click it and choose **Attach a chat…**, or run **Attach a chat to
+  current note**, then pick a chat from your history.
+- **From the chat** — the link button in the chat's header attaches it to the note in front, or
+  to any note you pick; the number beside it is how many notes it is attached to.
+
+A chat can sit under several notes, and a note can list several chats. A chat attached by hand
+looks the same as one that wrote to the note; with nothing written, its card shows what the chat
+is about instead of what it did. To take one away, use the unlink button on its card, or the
+chat's link button. The chat itself is not touched, and if it writes to that note again it
+comes back. Agents cannot attach chats themselves.
+
 ### Attachments
 
 Click the paperclip icon to attach files:

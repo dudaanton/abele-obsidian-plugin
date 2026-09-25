@@ -15,6 +15,7 @@ import ChatsList from '@/components/ChatsList.vue'
 import { ChatLink } from '@/entities/ChatLink'
 import { useChatLinks } from '@/composables/useChatLinks'
 import { ChatService } from '@/ai/ChatService'
+import * as chatNoteLinks from '@/ai/chatNoteLinks'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -191,6 +192,38 @@ describe('a card in the list', () => {
 
     expect(open).toHaveBeenCalledOnce()
     expect(reveal).toHaveBeenCalledOnce()
+  })
+})
+
+describe('a chat attached by hand', () => {
+  /** It may never have written anything, so there is no recap; what it is about stands in. */
+  it('shows what the chat is about when there is no recap', () => {
+    seedHistory([entry({ recap: undefined, summary: 'Planning the trip.' })])
+
+    const view = render(links())
+
+    expect(view.find('.abele-card__description').text()).toBe('Planning the trip.')
+  })
+
+  it('prefers the recap, which says what was done to this note', () => {
+    seedHistory([entry({ summary: 'Planning the trip.' })])
+
+    expect(links()[0].recap).toBe('Tidied the note and checked its links.')
+  })
+})
+
+describe('detaching a chat from the note', () => {
+  it('unlinks that chat from this note, and does not open it', async () => {
+    const detach = vi.spyOn(chatNoteLinks, 'detachNote').mockResolvedValue(true)
+    const open = vi.spyOn(ChatService.getInstance(), 'openChatFile').mockResolvedValue(undefined)
+    seedHistory([entry()])
+
+    const view = render(links())
+    await view.find('.abele-chats-list__detach').trigger('click')
+    await nextTick()
+
+    expect(detach).toHaveBeenCalledWith('AI/Chats/One.abchat', NOTE)
+    expect(open).not.toHaveBeenCalled()
   })
 })
 

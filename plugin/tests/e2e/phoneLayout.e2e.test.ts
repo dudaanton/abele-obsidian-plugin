@@ -183,13 +183,14 @@ const probeScript = `(async () => {
     report[label] = entry
   }
 
-  // Obsidian draws no .modal-close-button on a phone; Escape closes a dialog everywhere.
+  // Obsidian draws no .modal-close-button on a phone; Escape closes a dialog everywhere. A
+  // picker is a \`.prompt\` in a modal container rather than a \`.modal\`, and a menu neither.
   const closeDialog = async () => {
-    if (!document.querySelector('.modal')) return
+    if (!document.querySelector('.modal, .modal-container .prompt, .menu')) return
     document.body.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true })
     )
-    await until(() => !document.querySelector('.modal'), 3000)
+    await until(() => !document.querySelector('.modal, .modal-container .prompt, .menu'), 3000)
   }
 
   // Lists worth measuring: a vault with two skills shows nothing about how a list of twenty
@@ -381,6 +382,52 @@ const probeScript = `(async () => {
       await screen('nested comment opened', deep, deep)
       await comments.hideFromSidebar('pnest3')
     }
+    // Attaching a chat to a note: the link button's menu, and the two pickers — a note for a
+    // chat, and a chat for a note. Obsidian's own menu and prompt, with the plugin's items in
+    // them; pictured so a person can see they read right on a phone.
+    const probeChat = app.vault.getAbstractFileByPath(SEEDED.find((p) => p.endsWith('.abchat')))
+    const chats = window.__abeleTest.ChatService.getInstance()
+    await window.__abeleTest.ChatStorage.getInstance().refreshHistory()
+    await chats.openChatFile(probeChat)
+    const link = () => document.querySelector('.abele-ai-chat .abele-ai-chat__notes')
+    await until(() => link() && !link().classList.contains('abele-obsidian-icon_disabled'), 5000)
+    if (link()) {
+      link().click()
+      await until(() => document.querySelector('.menu'), 3000)
+      await wait(300)
+      const menu = document.querySelector('.menu')
+      await screen('chat notes menu', menu, menu)
+      const pick = [...document.querySelectorAll('.menu .menu-item')].find(
+        (el) => el.textContent.trim() === 'Attach to a note…'
+      )
+      if (pick) pick.click()
+      else document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      if (await until(() => document.querySelector('.modal-container .prompt'), 3000)) {
+        await wait(300)
+        const prompt = document.querySelector('.modal-container .prompt')
+        await screen('note picker', prompt, prompt)
+      } else {
+        report['note picker'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'note picker did not open' }
+      }
+      await closeDialog()
+    } else {
+      report['chat notes menu'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'no link button' }
+    }
+    // From a note's end: the command for the note in front, which picks a chat.
+    const probeNote = app.vault.getAbstractFileByPath(SEEDED[0])
+    await app.workspace.getLeaf(false).openFile(probeNote)
+    await wait(500)
+    app.commands.executeCommandById('abele:attach-chat-to-current-note')
+    if (await until(() => document.querySelector('.modal-container .prompt'), 3000)) {
+      await wait(300)
+      const prompt = document.querySelector('.modal-container .prompt')
+      await screen('chat picker', prompt, prompt)
+    } else {
+      report['chat picker'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'chat picker did not open' }
+    }
+    await closeDialog()
+    const probeSession = chats.getSessionByFile(probeChat.path)
+    if (probeSession) chats.closeTab(probeSession.id)
 
     // The icon picker of a header button's form: a grid of every icon, a search field above.
     // Pictured before its fields are focused one by one: focusing the button at the foot of
@@ -492,6 +539,9 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'nested comment',
     'nested comment folded',
     'nested comment opened',
+    'chat notes menu',
+    'note picker',
+    'chat picker',
     'icon picker',
     'icon picker search',
   ]
@@ -511,9 +561,17 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     expect(report[label]?.over ?? ['no report']).toEqual([])
   })
 
+  /**
+   * Obsidian's own prompt, which the pickers are: on a phone it puts the search field *under*
+   * the list, so its list stops a field's height above the bottom by design. Only the count of
+   * scrollers is asked of it.
+   */
+  const prompts = new Set(['note picker', 'chat picker'])
+
   it.each(screens)('%s: one thing scrolls inside the body, and it reaches the bottom', (label) => {
     const scrollers = report[label]?.scrollers ?? []
     expect(scrollers.length, JSON.stringify(scrollers)).toBeLessThanOrEqual(1)
+    if (prompts.has(label)) return
     for (const s of scrollers)
       expect(s.spare, `${s.name} leaves ${s.spare}px blank under it`).toBeLessThanOrEqual(24)
   })
