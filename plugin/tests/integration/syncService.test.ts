@@ -7,6 +7,7 @@ import type { SelectiveSettings, VaultClient } from '@abele/sync-core'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { SyncService, type SyncServiceDeps } from '@/sync/SyncService'
 import { IndexedDbStateStore, stateDatabaseName } from '@/sync/IndexedDbStateStore'
+import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { runAfterSync } from '@/helpers/runAfterSync'
 import { setSecrets, type SecretStore } from '@/secrets/SecretStore'
 import { createPluginSecrets } from '@/secrets/host'
@@ -918,6 +919,23 @@ describe('SyncService — a settings save', () => {
     await waitFor('the engine to be rebuilt once', () => builds() === before + 1)
     await tick()
     expect(builds()).toBe(before + 1)
+  })
+
+  /**
+   * The walk looks at every file in the config folder, and nothing of Abele's is in it to find:
+   * its own `data.json` is excluded. A save that walked it anyway would cost a `stat` per file
+   * every time any setting in the plugin was changed.
+   */
+  it('does not walk the config folder on a save', async () => {
+    await connect()
+    await synced()
+    const kicked = vi.spyOn(ObsidianFileSystem.prototype, 'kick')
+
+    await AbeleConfig.getInstance().saveSettings()
+    await tick()
+
+    expect(kicked).not.toHaveBeenCalled()
+    kicked.mockRestore()
   })
 
   it('honours a save that lands while the service is saving one of its own', async () => {

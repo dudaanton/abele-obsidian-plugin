@@ -155,7 +155,6 @@ export class SyncService {
 
   private engine: SyncEngine | null = null
   private store: IndexedDbStateStore | null = null
-  private fs: ObsidianFileSystem | null = null
   private vault: VaultClient | null = null
   private unwatchStatus: (() => void) | null = null
 
@@ -529,20 +528,21 @@ export class SyncService {
   }
 
   /**
-   * The settings were saved: look at the configuration folder now rather than on the next
-   * tick, and put the engine back in step with what was saved.
+   * The settings were saved: put the engine back in step with what was saved.
    *
-   * Obsidian writes `data.json` itself and tells no plugin about it, so without the kick a
-   * setting changed here would be noticed up to a poll later.
+   * The config folder is not walked here. It used to be, on the idea that a save wrote a file
+   * worth noticing at once — but the one file an Abele save writes is its own `data.json`, which
+   * never syncs, so every save paid a `stat` per config file to find nothing. What Obsidian
+   * writes there is found by the poll, as ever.
    *
    * Subscribed to `AbeleConfig` at `init`, so every screen that saves reaches it — this
-   * service's own saves included — and so does a `data.json` reloaded from disk. Nothing filters them: `reconcile` compares what the engine
-   * was built on against what the settings now say and does nothing when they agree, which
-   * costs one file `stat` and one hash. A filter would have to guess which save was whose, and
-   * would drop somebody else's save that happened to land inside the window.
+   * service's own saves included — and so does a `data.json` reloaded from disk. Nothing
+   * filters them: `reconcile` compares what the engine was built on against what the settings
+   * now say and does nothing when they agree, which costs one file `stat` and one hash. A filter
+   * would have to guess which save was whose, and would drop somebody else's save that happened
+   * to land inside the window.
    */
   onSettingsSaved(): void {
-    this.fs?.kick()
     void this.serialise(() => this.reconcile())
   }
 
@@ -701,7 +701,6 @@ export class SyncService {
       throw error
     }
 
-    this.fs = fs
     this.store = store
     this.vault = vault
     this.engine = engine
@@ -765,7 +764,6 @@ export class SyncService {
     this.unwatchStatus = null
     this.engine = null
     this.store = null
-    this.fs = null
     this.vault = null
     this.built = ''
     this.builtToken = ''
