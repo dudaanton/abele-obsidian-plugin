@@ -31,8 +31,14 @@ and front matter are skipped when the book says where the text starts).
 - **Links.** A link to another place in the book goes there; the arrow at the start of the line
   under the page goes back to where the link was followed from. Links to the web open in the
   browser.
-- **Progress.** The line under the page names the chapter and says how far into the book the
-  page is. Its slider goes anywhere in the book; on a phone dragging it never opens Obsidian's
+- **Progress.** The line under the page names the chapter, and beside its slider a measure of
+  where the page is: **Page 3 of 12** in the chapter, **9 pages left in chapter**, **Loc 120 of
+  830** in the whole book, or the percentage. A tap on it goes to the next of these, and the one
+  chosen is kept (it travels with the settings). A page is what is on screen at once — two side
+  by side count as one, and in a scrolled chapter a screen's height — so pages change with the
+  text's size; a location does not: there is one for every 1500 bytes of the book's text, the
+  measure Foliate itself shows. A PDF shows its own page numbers in the chapter's place. The
+  slider goes anywhere in the book; on a phone dragging it never opens Obsidian's
   side panel.
 - **Where it was left** is kept for each book under its identifier, so renaming or moving the file
   keeps it. It is written a moment after the last page turn, and at once when the app is hidden
@@ -183,6 +189,7 @@ and travels with the settings transfer.
 | Theme colours | On: the book in the theme's text, link and background colours, dark mode included. Off: the book's own colours on a light page. |
 | Voice | The voice reading aloud: the device's own for the book's language, or one chosen. |
 | Speed | How fast it reads aloud, 0.75× to 2×. |
+| (the measure under the page) | Page of the chapter, pages left, location in the book, or percent — changed by tapping it. |
 
 On a phone the text starts just under Obsidian's header and the line under the page sits above its
 navigation bar.

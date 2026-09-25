@@ -6,6 +6,7 @@ import type { FoliateTocItem } from '@/vendor/foliate-js/view.js'
 import type { SearchExcerpt } from '@/vendor/foliate-js/search.js'
 import type { Highlight } from './highlights'
 import type { BookFigure } from './figures'
+import type { BookProgress } from './readingProgress'
 
 /** Words selected on the page. */
 export interface BookSelection {
@@ -77,6 +78,8 @@ export interface BookModel {
   chapter: string
   /** How far into the book, 0 to 1. */
   fraction: number
+  /** The page of the chapter and the place in the book; null for a PDF, which has its pages. */
+  progress: BookProgress | null
   /** Whether the contents panel is open. */
   panel: boolean
   /** A link was followed inside the book, and there is a way back. */
@@ -113,6 +116,7 @@ export const emptyBookModel = (): BookModel => ({
   currentHref: null,
   chapter: '',
   fraction: 0,
+  progress: null,
   panel: false,
   canGoBack: false,
   footnote: null,

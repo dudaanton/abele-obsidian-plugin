@@ -4,6 +4,7 @@
  *
  * Everything here is pure, so the translation from a setting to a page is tested without a book.
  */
+import { PROGRESS_SHOWS, type ProgressShow } from './readingProgress'
 
 export type ReaderFlow = 'paginated' | 'scrolled'
 export type ReaderFont = 'theme' | 'serif' | 'sans' | 'book'
@@ -51,6 +52,8 @@ export interface ReaderSettings {
   ttsVoice: string
   /** How fast books are read aloud: 1 is the voice's own pace. */
   ttsRate: number
+  /** What the measure beside the progress line shows; a tap on it goes to the next. */
+  progressShow: ProgressShow
 }
 
 export const TTS_RATES = [0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
@@ -71,6 +74,7 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   pdfDarkPages: true,
   ttsVoice: '',
   ttsRate: 1,
+  progressShow: 'page',
 }
 
 export const FONT_SIZES = [70, 80, 90, 100, 110, 120, 135, 150, 175, 200]
@@ -103,6 +107,7 @@ export function readerSettingsFrom(stored?: Partial<ReaderSettings> | null): Rea
     pdfDarkPages: typeof s.pdfDarkPages === 'boolean' ? s.pdfDarkPages : d.pdfDarkPages,
     ttsVoice: typeof s.ttsVoice === 'string' ? s.ttsVoice : d.ttsVoice,
     ttsRate: clamp(s.ttsRate, 0.5, 3, d.ttsRate),
+    progressShow: oneOf(s.progressShow, PROGRESS_SHOWS, d.progressShow),
   }
 }
 

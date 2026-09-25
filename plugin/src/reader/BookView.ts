@@ -33,6 +33,7 @@ import { onExternalLink, onKey, pinchZoom, watchPage, type PageHost } from './pa
 import { bookCallbacks, type BookActions } from './bookCallbacks'
 import { bookKey } from './positions'
 import { bookPlaces } from './places'
+import { progressOf } from './readingProgress'
 import { fillBookMenu, fillZoomMenu } from './bookMenu'
 import { bookScope, zoomStep } from './zoom'
 import { PDF_SCROLL_TAG, definePdfScroll } from './pdfScroll'
@@ -414,20 +415,15 @@ export class BookView extends FileView {
     const index = (detail as { index?: number }).index ?? detail.section?.current
     if (typeof index === 'number') this.reading?.relocated(index)
     this.model.fraction = detail.fraction ?? 0
+    this.model.progress = this.isPdf ? null : progressOf(detail, this.reader?.renderer as never)
     const label = detail.tocItem?.label?.trim() ?? ''
     // A PDF's pages are its own measure: the page number first, the outline entry after it.
-    const page = detail.section
-      ? `Page ${detail.section.current + 1} of ${detail.section.total}`
-      : ''
+    const page = detail.section ? `Page ${detail.section.current + 1} of ${detail.section.total}` : ''
     this.model.chapter = this.isPdf && page ? [page, label].filter(Boolean).join(' · ') : label
     this.model.currentHref = detail.tocItem?.href ?? null
     const file = this.file
     if (detail.cfi && file && this.key && this.model.status === 'ready')
-      void bookPlaces()?.set(this.key, {
-        cfi: detail.cfi,
-        fraction: detail.fraction ?? 0,
-        path: file.path,
-      })
+      void bookPlaces()?.set(this.key, { cfi: detail.cfi, fraction: detail.fraction ?? 0, path: file.path })
   }
 
   /** A link inside the book: a note opens in its dialog, anything else is followed. */

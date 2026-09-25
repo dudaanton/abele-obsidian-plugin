@@ -52,6 +52,36 @@ describe('the line under the page', () => {
     expect(view.emitted('seek')).toEqual([[0.8]])
   })
 
+  it('shows the page of the chapter, and a tap goes round pages left, the place in the book and percent, kept', async () => {
+    const config = AbeleConfig.getInstance()
+    const progress = { page: 3, pages: 12, location: 120, locations: 830 }
+    const view = mount(BookReader, { props: { model: readyModel({ progress }) } })
+    const measure = () => view.find('.abele-book-reader__measure')
+    expect(measure().text()).toBe('Page 3 of 12')
+    await measure().trigger('click')
+    expect(measure().text()).toBe('9 pages left in chapter')
+    expect(config.reader?.progressShow).toBe('left')
+    expect(config.saveSettings).toHaveBeenCalled()
+    await measure().trigger('click')
+    expect(measure().text()).toBe('Loc 120 of 830')
+    await measure().trigger('click')
+    expect(measure().text()).toBe('42%')
+    await measure().trigger('click')
+    expect(measure().text()).toBe('Page 3 of 12')
+    // Held, the slider shows where it would go, as a percentage.
+    const slider = view.find('input.slider')
+    ;(slider.element as HTMLInputElement).value = '800'
+    await slider.trigger('input')
+    expect(measure().text()).toBe('80%')
+  })
+
+  it('opens a book with the way the measure was last shown', () => {
+    AbeleConfig.getInstance().reader = { ...DEFAULT_READER_SETTINGS, progressShow: 'location' }
+    const progress = { page: 3, pages: 12, location: 120, locations: 830 }
+    const view = mount(BookReader, { props: { model: readyModel({ progress }) } })
+    expect(view.find('.abele-book-reader__measure').text()).toBe('Loc 120 of 830')
+  })
+
   it('offers the way back only after a link was followed', async () => {
     const model = readyModel()
     const view = mount(BookReader, { props: { model } })

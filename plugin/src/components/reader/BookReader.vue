@@ -86,31 +86,12 @@
         :state="model.speech === 'paused' ? 'paused' : 'playing'"
         @action="emit('speech', $event)"
       />
-      <div
+      <BookFooter
         v-if="model.status === 'ready'"
-        class="abele-book-reader__footer"
-        data-ignore-swipe="true"
-      >
-        <Icon
-          v-if="model.canGoBack"
-          icon="undo-2"
-          tooltip="Back to where you were before the link"
-          @click="emit('back')"
-        />
-        <span class="abele-book-reader__chapter">{{ model.chapter }}</span>
-        <Slider
-          class="abele-book-reader__progress"
-          :model-value="Math.round(dragging ?? model.fraction * 1000)"
-          :min="0"
-          :max="1000"
-          label="Go to a place in the book"
-          @input="dragging = $event"
-          @update:model-value="seek"
-        />
-        <span class="abele-book-reader__percent">{{
-          percent((dragging ?? model.fraction * 1000) / 1000)
-        }}</span>
-      </div>
+        :model="model"
+        @back="emit('back')"
+        @seek="emit('seek', $event)"
+      />
     </div>
 
     <ObsidianModal
@@ -159,7 +140,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
-import Slider from '../obsidian/Slider.vue'
+import BookFooter from './BookFooter.vue'
 import BookFigureViewer from './BookFigureViewer.vue'
 import ObsidianModal from '../obsidian/Modal.vue'
 import BookContents from './BookContents.vue'
@@ -171,13 +152,7 @@ import BookSpeechBar from './BookSpeechBar.vue'
 import Tabs from '../obsidian/Tabs.vue'
 import type { Highlight, HighlightColor } from '@/reader/highlights'
 import ReaderSettingsForm from './ReaderSettingsForm.vue'
-import {
-  percent,
-  type BookModel,
-  type PanelTab,
-  type SearchHit,
-  type TocEntry,
-} from '@/reader/model'
+import { type BookModel, type PanelTab, type SearchHit, type TocEntry } from '@/reader/model'
 
 const props = defineProps<{
   model: BookModel
@@ -240,17 +215,10 @@ const onComment = () => {
 
 const stage = ref<HTMLElement>()
 const noteStage = ref<HTMLElement>()
-/** The slider while its thumb is held, in thousandths; null otherwise. */
-const dragging = ref<number | null>(null)
 
 onMounted(() => {
   if (stage.value) emit('stage', stage.value)
 })
-
-const seek = (value: number) => {
-  dragging.value = null
-  emit('seek', value / 1000)
-}
 
 /** A narrow tab shows the panel over the page; picking a chapter there gets it out of the way. */
 const narrow = () => (stage.value?.closest('.abele-book-reader')?.clientWidth ?? 0) <= 640
@@ -378,36 +346,6 @@ watch(
     color: var(--text-muted);
     text-align: center;
     background-color: var(--background-primary);
-  }
-
-  &__footer {
-    display: flex;
-    align-items: center;
-    gap: var(--size-4-2);
-    flex: 0 0 auto;
-    padding: var(--size-4-1) var(--size-4-3) var(--size-4-2);
-    font-size: var(--font-ui-smaller);
-    color: var(--text-muted);
-  }
-
-  &__chapter {
-    flex: 0 1 auto;
-    min-width: 0;
-    max-width: 40%;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  &__progress {
-    flex: 1 1 auto;
-  }
-
-  &__percent {
-    flex: 0 0 auto;
-    min-width: 3ch;
-    text-align: end;
-    font-variant-numeric: tabular-nums;
   }
 
   &__panel {

@@ -191,6 +191,59 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
     expect(r.fraction![1]).toBeGreaterThan(r.fraction![0] + 0.2)
   })
 
+  it('the line under the page shows the page of the chapter, and a tap goes round its other ways', () => {
+    const r = run<{
+      error?: string
+      shown?: string[]
+      turned?: string
+      fits?: boolean
+      scrolled?: string
+    }>(`
+      const cfg = window.__abeleTest.AbeleConfig.getInstance()
+      cfg.reader = { ...cfg.reader, progressShow: 'page', flow: 'paginated' }
+      await cfg.saveSettings()
+      const { leaf, view } = await open(${JSON.stringify(RICH)})
+      await view.engine.goTo(view.model.toc[0].href); await wait(600)
+      const measure = () => view.contentEl.querySelector('.abele-book-reader__measure')
+      await until(() => measure(), 3000)
+      const first = measure().textContent.trim()
+      await R(view).next(); await wait(600)
+      const turned = measure().textContent.trim()
+      await shoot('footer-page')
+      const shown = [first]
+      for (let i = 0; i < 4; i++) {
+        const b = measure().getBoundingClientRect()
+        await tap(b.left + b.width / 2, b.top + b.height / 2)
+        shown.push(measure().textContent.trim())
+        if (i === 1) await shoot('footer-location')
+      }
+      const footer = view.contentEl.querySelector('.abele-book-reader__footer').getBoundingClientRect()
+      const m = measure().getBoundingClientRect()
+      const fits = m.right <= footer.right + 1 && m.left >= footer.left - 1
+      // A chapter scrolled through counts its screens.
+      cfg.reader = { ...cfg.reader, flow: 'scrolled' }
+      await cfg.saveSettings()
+      await wait(1200)
+      await R(view).next(); await wait(800)
+      const scrolled = measure().textContent.trim()
+      await shoot('footer-scrolled')
+      cfg.reader = { ...cfg.reader, flow: 'paginated' }
+      await cfg.saveSettings()
+      leaf.detach()
+      return { shown, turned, fits, scrolled }
+    `)
+    expect(r.error).toBeUndefined()
+    const [page, left, loc, pct, back] = r.shown!
+    expect(page).toMatch(/^Page 1 of \d+$/)
+    expect(r.turned).toMatch(/^Page 2 of \d+$/)
+    expect(left).toMatch(/^\d+ pages? left in chapter$|^Last page in chapter$/)
+    expect(loc).toMatch(/^Loc \d+ of \d+$/)
+    expect(pct).toMatch(/^\d+%$/)
+    expect(back).toMatch(/^Page 2 of \d+$/)
+    expect(r.fits).toBe(true)
+    expect(r.scrolled).toMatch(/^Page 2 of \d+$/)
+  })
+
   it('the text and layout dialog scrolls to its last row; the note and comment dialogs show their buttons', () => {
     const r = run<{
       error?: string
