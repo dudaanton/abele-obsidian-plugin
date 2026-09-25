@@ -54,7 +54,11 @@ describe.skipIf(!available)('a PDF in the reader', () => {
     }
     evalRaw(
       `(async () => {
-        window.__abeleReaderSaved = { ...window.__abeleTest.AbeleConfig.getInstance().reader }
+        const cfg = window.__abeleTest.AbeleConfig.getInstance()
+        window.__abeleReaderSaved = { ...cfg.reader }
+        // Pages turned one at a time: the continuous scroll has a file of its own.
+        cfg.reader = { ...cfg.reader, pdfLayout: 'paginated' }
+        await cfg.saveSettings()
         if (!app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})) await app.vault.createFolder(${JSON.stringify(DIR)})
         for (const [name, data] of Object.entries(${JSON.stringify(files)})) {
           const path = ${JSON.stringify(DIR)} + '/' + name
@@ -224,7 +228,7 @@ describe.skipIf(!available)('a PDF in the reader', () => {
       await wait(600)
       const rows = [...document.querySelectorAll('.modal .abele-reader-settings .setting-item-name')].map((n) => n.textContent.trim())
       document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-      cfg.reader = { ...window.__abeleReaderSaved }
+      cfg.reader = { ...window.__abeleReaderSaved, pdfLayout: 'paginated' }
       await cfg.saveSettings()
       leaf.detach()
       return { zoom, dark, light, filter, rows }
@@ -234,7 +238,12 @@ describe.skipIf(!available)('a PDF in the reader', () => {
     expect(r.dark).toBe(true)
     expect(r.filter).toContain('invert')
     expect(r.light).toBe(false)
-    expect(r.rows).toEqual(['Page size', 'Two pages side by side', 'Dark pages in a dark theme'])
+    expect(r.rows).toEqual([
+      'Layout',
+      'Page size',
+      'Two pages side by side',
+      'Dark pages in a dark theme',
+    ])
   })
 
   it('opens PDFs here instead of in Obsidian’s viewer only while the setting is on, and offers Open in Abele reader', () => {

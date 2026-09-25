@@ -6,15 +6,7 @@
  * page is audited as it arrives, and one that fails is emptied before it is shown. Around the
  * page, a Vue side (`BookReader.vue`) shows the contents, the progress and the dialogs.
  */
-import {
-  FileView,
-  Platform,
-  Scope,
-  TFile,
-  loadPdfJs,
-  type Menu,
-  type WorkspaceLeaf,
-} from 'obsidian'
+import { FileView, Platform, TFile, loadPdfJs, type Menu, type WorkspaceLeaf } from 'obsidian'
 import { createApp, reactive, watch, type App as VueApp, type WatchStopHandle } from 'vue'
 import { frameOptions } from '@/vendor/foliate-js/frame-options.js'
 import type { FoliateLocation, View as FoliateView } from '@/vendor/foliate-js/view.js'
@@ -34,27 +26,21 @@ import {
 import { openPdf, type PdfBookExtras } from './pdfBook'
 import { BookReading } from './BookReading'
 import { parsePlaceSubpath, type BookPlace } from './bookLinks'
-import { onExternalLink, onKey, watchPage, type PageHost } from './pageInput'
+import { onExternalLink, onKey, pinchZoom, watchPage, type PageHost } from './pageInput'
 import { bookCallbacks, type BookActions } from './bookCallbacks'
 import { bookKey } from './positions'
 import { bookPlaces } from './places'
-import { fillBookMenu } from './bookMenu'
+import { fillBookMenu, fillZoomMenu } from './bookMenu'
+import { bookScope, zoomStep } from './zoom'
+import { PDF_SCROLL_TAG, definePdfScroll } from './pdfScroll'
 
-export { BOOK_VIEW_TYPE, BOOK_EXTENSIONS, READER_EXTENSIONS } from './viewType'
-import { BOOK_VIEW_TYPE, READER_EXTENSIONS } from './viewType'
+/** The settings a PDF's layout is decided by when it opens. */
+const pdfLayoutKey = (s: { pdfLayout: string; pdfTwoPages: boolean }) =>
+  `${s.pdfLayout}:${s.pdfTwoPages}`
 
-/**
- * For the e2e tier only: a sandbox to use instead of the platform's, so the desktop app can be
- * made to draw pages the way the iPhone does and prove the policy holds without the sandbox.
- */
-export const readerTestHooks: { sandbox: string | null } = { sandbox: null }
-
-/** What a page frame reported, kept for the e2e tier and the diagnostics of a blanked page. */
-export interface PageReport {
-  index: number
-  findings: string[]
-  sandbox: string | null
-}
+export { BOOK_VIEW_TYPE, BOOK_EXTENSIONS, READER_EXTENSIONS, readerTestHooks } from './viewType'
+export type { PageReport } from './viewType'
+import { BOOK_VIEW_TYPE, READER_EXTENSIONS, readerTestHooks, type PageReport } from './viewType'
 
 const PANEL_KEY = 'abele-book-panel'
 
@@ -72,7 +58,10 @@ export class BookView extends FileView {
   private key = ''
   private footnotes = new FootnoteHandler()
   private footnoteHref = ''
-  private openedTwoPages = false
+  /** How a PDF was laid out when it opened: a change to either opens it again. */
+  private openedPdfLayout = ''
+  /** A zoom chosen in this tab — keys, a pinch — over the setting's; not saved. */
+  private zoomOverride: string | null = null
   /** Selections, highlights, links and search, once a book is showing. */
   reading: BookReading | null = null
   /** A place a link asked for, gone to once the book is open. */
@@ -153,11 +142,10 @@ export class BookView extends FileView {
     // Read once its properties are parsed: they are what say whose note it is.
     this.registerEvent(this.app.metadataCache.on('changed', noteChanged))
     this.registerEvent(this.app.vault.on('delete', noteChanged))
-    // Mod+F searches the book, as it searches a note.
-    this.scope = new Scope(this.app.scope)
-    this.scope.register(['Mod'], 'f', () => {
-      this.openSearch()
-      return false
+    this.scope = bookScope(this.app.scope, {
+      search: () => this.openSearch(),
+      pdf: () => this.isPdf,
+      zoom: (way) => this.zoom(way),
     })
   }
 
@@ -191,6 +179,7 @@ export class BookView extends FileView {
       showHighlights: () => this.showPanel('highlights'),
       openSettings: () => (this.model.settingsOpen = true),
     })
+    if (this.isPdf) fillZoomMenu(menu, (way) => this.zoom(way))
   }
 
   /** What the tab's Vue side can ask of it. */
@@ -208,6 +197,15 @@ export class BookView extends FileView {
       footnoteHref: () => this.footnoteHref,
       commentOnSelection: () => this.commentOnSelection(),
     }
+  }
+
+  /** A PDF zoomed a step in or out, or back to the setting's zoom. */
+  zoom(way: 'in' | 'out' | 'reset'): void {
+    if (!this.isPdf || !this.reader) return
+    const renderer = this.reader.renderer as unknown as HTMLElement & { scale?: number }
+    const now = renderer.scale ?? (Number(renderer.getAttribute('zoom')) || 1)
+    this.zoomOverride = way === 'reset' ? null : String(zoomStep(now, way === 'in'))
+    this.applyTo(this.reader)
   }
 
   /** Opens the side panel on a list, or closes it when that list is already showing. */
@@ -282,8 +280,8 @@ export class BookView extends FileView {
     }
     if (!renderer) return
     if (view.isFixedLayout) {
-      if (renderer.getAttribute('zoom') !== settings.pdfZoom)
-        renderer.setAttribute('zoom', settings.pdfZoom)
+      const zoom = this.zoomOverride ?? settings.pdfZoom
+      if (renderer.getAttribute('zoom') !== zoom) renderer.setAttribute('zoom', zoom)
       view.toggleClass(
         'abele-book__engine_dark-pages',
         darkPdfPages(settings, themeValues(this.contentEl).dark)
@@ -304,9 +302,9 @@ export class BookView extends FileView {
 
   private applySettings(): void {
     this.model.canAsk = !!AbeleConfig.getInstance().ai?.enabled
-    // Pages side by side are decided when a PDF opens; a change opens it again, at the same page.
-    const twoPages = readerSettingsFrom(AbeleConfig.getInstance().reader).pdfTwoPages
-    if (this.isPdf && this.opened && this.file && twoPages !== this.openedTwoPages) {
+    // A PDF's layout is decided when it opens; a change opens it again, at the same page.
+    const layout = pdfLayoutKey(readerSettingsFrom(AbeleConfig.getInstance().reader))
+    if (this.isPdf && this.opened && this.file && layout !== this.openedPdfLayout) {
       void bookPlaces()
         ?.flush()
         .then(() => this.file && this.show(this.file))
@@ -331,9 +329,13 @@ export class BookView extends FileView {
       const settings = readerSettingsFrom(AbeleConfig.getInstance().reader)
       const opened = this.isPdf ? await openPdf(await loadPdfJs(), data) : await openEpub(data)
       if (this.isPdf) {
-        this.openedTwoPages = settings.pdfTwoPages
+        this.openedPdfLayout = pdfLayoutKey(settings)
         const rendition = (opened.book.rendition ??= {})
         if (!settings.pdfTwoPages) rendition.spread = 'none'
+        if (settings.pdfLayout === 'scrolled') {
+          definePdfScroll(stage.win)
+          opened.book.fixedLayoutRenderer = PDF_SCROLL_TAG
+        }
       }
       if (token !== this.loadToken) {
         opened.destroy()
@@ -355,6 +357,9 @@ export class BookView extends FileView {
       reader.addEventListener('load', (e) => this.onPage((e as CustomEvent).detail))
       reader.addEventListener('external-link', (e) => onExternalLink(e as CustomEvent))
       reader.addEventListener('link', (e) => this.onLink(e))
+      // A pinch over the gaps between a PDF's pages, which no page frame hears.
+      if (this.isPdf)
+        reader.addEventListener('wheel', pinchZoom(this.pageHost()), { passive: false })
       reader.addEventListener('relocate', (e) =>
         this.onRelocate((e as CustomEvent<FoliateLocation>).detail)
       )
@@ -458,6 +463,7 @@ export class BookView extends FileView {
       reading: () => this.reading,
       model: this.model,
       pdf: this.isPdf,
+      zoom: (way) => this.zoom(way),
     }
   }
 

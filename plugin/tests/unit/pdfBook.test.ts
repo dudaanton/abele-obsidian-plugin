@@ -133,3 +133,38 @@ describe('the hostile test PDF', () => {
     expect(text).toContain('/Names << /JavaScript')
   })
 })
+
+describe('zooming a PDF', () => {
+  it('steps up and down through the scales, from whatever a fitted page was', async () => {
+    const { zoomStep } = await import('@/reader/zoom')
+    expect(zoomStep(1, true)).toBe(1.1)
+    expect(zoomStep(1, false)).toBe(0.9)
+    expect(zoomStep(1.37, true)).toBe(1.5)
+    expect(zoomStep(1.37, false)).toBe(1.25)
+    expect(zoomStep(4, true)).toBe(4)
+    expect(zoomStep(0.25, false)).toBe(0.25)
+  })
+})
+
+describe('a PDF as one scroll', () => {
+  it('fits a page to the column or the screen, or takes a fixed zoom', async () => {
+    const { pageScale } = await import('@/reader/pdfScroll')
+    const page = { width: 600, height: 800 }
+    // Column 1224 wide less the gaps: 2×; the screen 824 tall less the gaps: 1×.
+    expect(pageScale('fit-width', page, 1224, 824)).toBe(2)
+    expect(pageScale('fit-page', page, 1224, 824)).toBe(1)
+    expect(pageScale('1.5', page, 1224, 824)).toBe(1.5)
+    // Never blown up past three times on a wide screen.
+    expect(pageScale('fit-width', page, 3000, 824)).toBe(3)
+  })
+
+  it('reads which page a place in the scroll is in, and how far down it', async () => {
+    const { pageAt } = await import('@/reader/pdfScroll')
+    const tops = [12, 824, 1636]
+    const heights = [800, 800, 800]
+    expect(pageAt(tops, heights, 0)).toEqual({ index: 0, fraction: 0 })
+    expect(pageAt(tops, heights, 412)).toEqual({ index: 0, fraction: 0.5 })
+    expect(pageAt(tops, heights, 1636 + 200)).toEqual({ index: 2, fraction: 0.25 })
+    expect(pageAt(tops, heights, 9999).index).toBe(2)
+  })
+})

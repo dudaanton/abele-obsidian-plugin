@@ -229,6 +229,14 @@ Three files, three concerns:
   own tab with the words selected; a PDF is read by its pages; a scope without the book refuses
   it and `book_views` counts its tab as outside; **Ask here** on selected words opens a chat whose
   input is the link and the quote. The scope and the AI switch are put back after.
+- `bookPdfScroll.e2e.test.ts` — **a PDF as one continuous scroll**, with a forty-page PDF written
+  for the run: the scroll renderer is the one in use, only pages near the screen have frames (and
+  the first is dropped once far away), the page being read follows the scroll into the progress
+  line; links and the outline go to their page and the page is kept across closing the tab; zoom
+  by the keys and by a pinch (Ctrl+wheel) grows the pages and keeps the page, and Mod+0's reset
+  returns to the setting; switching to pages and back keeps the page. On a phone at 390×844 the page
+  fills the width, keeps clear of the bars and scrolls; picture in `/tmp/abele-phone/`.
+  `bookPdf.e2e.test.ts` and the phone file run with pages turned one at a time.
 - `bookReading.e2e.test.ts` — **reading**, on the desktop, with the book of
   `tests/fixtures/books/richBook.ts`: a note marked as one and a note marked only by a superscript
   open in the dialog; a link to another chapter is followed and the way back works; the contents

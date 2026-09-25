@@ -31,6 +31,8 @@ export interface ReaderSettings {
   themeColors: boolean
   /** PDF files open in the book reader rather than in Obsidian's own PDF viewer. */
   openPdf: boolean
+  /** A PDF as one continuous scroll, page under page, or as pages turned one at a time. */
+  pdfLayout: ReaderFlow
   /** How a PDF page is sized. */
   pdfZoom: PdfZoom
   /** Two PDF pages side by side when the tab is wide enough. */
@@ -49,6 +51,7 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   columns: 2,
   themeColors: true,
   openPdf: false,
+  pdfLayout: 'scrolled',
   pdfZoom: 'fit-page',
   pdfTwoPages: false,
   pdfDarkPages: true,
@@ -78,6 +81,7 @@ export function readerSettingsFrom(stored?: Partial<ReaderSettings> | null): Rea
     columns: s.columns === 1 ? 1 : 2,
     themeColors: typeof s.themeColors === 'boolean' ? s.themeColors : d.themeColors,
     openPdf: typeof s.openPdf === 'boolean' ? s.openPdf : d.openPdf,
+    pdfLayout: oneOf(s.pdfLayout, ['paginated', 'scrolled'] as const, d.pdfLayout),
     pdfZoom: oneOf(s.pdfZoom, PDF_ZOOMS, d.pdfZoom),
     pdfTwoPages: typeof s.pdfTwoPages === 'boolean' ? s.pdfTwoPages : d.pdfTwoPages,
     pdfDarkPages: typeof s.pdfDarkPages === 'boolean' ? s.pdfDarkPages : d.pdfDarkPages,

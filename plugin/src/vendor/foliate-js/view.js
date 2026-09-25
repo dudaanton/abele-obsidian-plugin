@@ -255,7 +255,9 @@ export class View extends HTMLElement {
         this.isFixedLayout = this.book.rendition?.layout === 'pre-paginated'
         if (this.isFixedLayout) {
             await import('./fixed-layout.js')
-            this.renderer = document.createElement('foliate-fxl')
+            // ABELE PATCH: a book may name the renderer its fixed-layout pages go into — a PDF
+            // read as one continuous scroll uses Abele's own.
+            this.renderer = document.createElement(this.book.fixedLayoutRenderer ?? 'foliate-fxl')
         } else {
             await import('./paginator.js')
             this.renderer = document.createElement('foliate-paginator')

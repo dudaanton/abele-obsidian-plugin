@@ -132,7 +132,15 @@ describe('the PDF settings', () => {
 
   it("show only a PDF's own in a PDF's tab, and the switch to open PDFs here in Settings", () => {
     const pdf = names(mount(ReaderSettingsForm, { props: { kind: 'pdf' } }))
-    expect(pdf).toEqual(['Page size', 'Two pages side by side', 'Dark pages in a dark theme'])
+    expect(pdf).toEqual(['Layout', 'Page size', 'Dark pages in a dark theme'])
+    // Two pages side by side is a choice of the page-at-a-time layout only.
+    AbeleConfig.getInstance().reader = { ...DEFAULT_READER_SETTINGS, pdfLayout: 'paginated' }
+    expect(names(mount(ReaderSettingsForm, { props: { kind: 'pdf' } }))).toEqual([
+      'Layout',
+      'Page size',
+      'Two pages side by side',
+      'Dark pages in a dark theme',
+    ])
     const all = names(mount(ReaderSettingsForm, { props: { kind: 'all' } }))
     expect(all).toContain('Open PDF files in the Abele reader')
     expect(all).toContain('Font')
@@ -140,6 +148,7 @@ describe('the PDF settings', () => {
   })
 
   it('save the page size and the switches', async () => {
+    AbeleConfig.getInstance().reader = { ...DEFAULT_READER_SETTINGS, pdfLayout: 'paginated' }
     const form = mount(ReaderSettingsForm, { props: { kind: 'all' } })
     const config = AbeleConfig.getInstance()
     const pdfSelect = form.findAll('select').at(-1)!

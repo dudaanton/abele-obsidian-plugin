@@ -69,6 +69,16 @@
         <Checkbox :is-enabled="settings.openPdf" @toggle="set('openPdf', !settings.openPdf)" />
       </Setting>
       <Setting
+        name="Layout"
+        desc="One continuous scroll, page under page, or pages turned one at a time."
+      >
+        <Dropdown
+          :options="pdfLayoutOptions"
+          :model-value="settings.pdfLayout"
+          @update:model-value="set('pdfLayout', $event)"
+        />
+      </Setting>
+      <Setting
         name="Page size"
         desc="Fit the whole page in the tab, fit its width, or a fixed zoom."
       >
@@ -79,6 +89,7 @@
         />
       </Setting>
       <Setting
+        v-if="settings.pdfLayout === 'paginated'"
         name="Two pages side by side"
         desc="When the tab is wide enough, as a printed book lies open."
       >
@@ -153,6 +164,10 @@ const marginOptions = [
   { value: 'narrow', display: 'Narrow' },
   { value: 'normal', display: 'Normal' },
   { value: 'wide', display: 'Wide' },
+]
+const pdfLayoutOptions = [
+  { value: 'scrolled', display: 'Continuous scroll' },
+  { value: 'paginated', display: 'Pages' },
 ]
 const zoomLabel: Record<string, string> = {
   'fit-page': 'Whole page',

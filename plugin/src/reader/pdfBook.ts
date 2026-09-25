@@ -42,6 +42,8 @@ export interface PdfBookExtras {
   ): AsyncGenerator<PdfSearchPage | { progress: number }>
   /** A page's words, lines as the PDF breaks them. */
   pageText(index: number): Promise<string>
+  /** A page's size at 100%, in CSS pixels. */
+  pageSize(index: number): Promise<{ width: number; height: number }>
 }
 
 /* The parts of PDF.js this uses, typed loosely: it is Obsidian's copy, of Obsidian's version. */
@@ -271,6 +273,13 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
     }
   }
 
+  /** A page's size at 100%, in CSS pixels. */
+  async function pageSize(index: number): Promise<{ width: number; height: number }> {
+    const page: PdfPage = await pdf.getPage(index + 1)
+    const { width, height } = page.getViewport({ scale: 1 })
+    return { width, height }
+  }
+
   /** A page's words, lines as the PDF breaks them. */
   async function pageText(index: number): Promise<string> {
     const page: PdfPage = await pdf.getPage(index + 1)
@@ -287,6 +296,7 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
     pageEvents,
     searchPages,
     pageText,
+    pageSize,
     rendition: { layout: 'pre-paginated' },
     metadata: {
       title: get('dc:title') ?? meta.info?.Title,

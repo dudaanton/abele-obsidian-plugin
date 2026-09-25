@@ -149,6 +149,7 @@ const measure = (name: string) =>
 
 describe.skipIf(!available)('a book on a phone', () => {
   let size: [number, number] = [0, 0]
+  let savedReader: unknown = null
   const screens: Record<string, Screen> = {}
   let overlays: {
     drawer?: { left: number; right: number; rows: number } | null
@@ -180,6 +181,17 @@ describe.skipIf(!available)('a book on a phone', () => {
         return 'ok'
       })()`,
       60_000
+    )
+    // The PDF is measured with pages to turn; its continuous scroll has a file of its own.
+    savedReader = evalJson<unknown>('window.__abeleTest.AbeleConfig.getInstance().reader')
+    evalRaw(
+      `(async () => {
+        const cfg = window.__abeleTest.AbeleConfig.getInstance()
+        cfg.reader = { ...cfg.reader, pdfLayout: 'paginated' }
+        await cfg.saveSettings()
+        return 'ok'
+      })()`,
+      30_000
     )
     size = windowSize()
     await reload('app.emulateMobile(true)')
@@ -260,6 +272,10 @@ describe.skipIf(!available)('a book on a phone', () => {
     evalRaw(
       `(async () => {
         for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
+        // Kept on this side: the app is reloaded in between, and the page's memory with it.
+        const cfg = window.__abeleTest.AbeleConfig.getInstance()
+        cfg.reader = ${JSON.stringify(savedReader)}
+        await cfg.saveSettings()
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
         return 'ok'

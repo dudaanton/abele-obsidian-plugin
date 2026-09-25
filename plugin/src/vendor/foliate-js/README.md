@@ -37,6 +37,10 @@ Every change is marked `ABELE PATCH` at its site.
    from npm instead of upstream's vendored copy. Abele builds the book object itself and passes
    it to `open()`, so `makeBook` is only reached for formats that need neither.
 
+3. **A book may name its fixed-layout renderer** (`view.js`, `open`). A book object carrying
+   `fixedLayoutRenderer` gets that element instead of `foliate-fxl`: Abele's continuous scroll
+   for PDFs (`src/reader/pdfScroll.ts`) is one.
+
 ## Additions
 
 `view.d.ts`, `epub.d.ts` and `frame-options.d.ts` type the parts of the modules beside them that

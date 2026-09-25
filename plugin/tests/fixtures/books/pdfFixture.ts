@@ -116,6 +116,14 @@ export function buildPlainPdf(): Uint8Array {
   return writePdf(pages, { outline: true })
 }
 
+/** A long PDF of plain pages, for scrolling. */
+export function buildLongPdf(pages: number): Uint8Array {
+  return writePdf(
+    Array.from({ length: pages }, (_, i) => ({ text: pageText(i + 1) })),
+    {}
+  )
+}
+
 /** Two pages carrying every kind of PDF script and dangerous action, all on page one. */
 export function buildHostilePdf(): Uint8Array {
   const pages: Page[] = [1, 2].map((n) => ({ text: pageText(n) }))

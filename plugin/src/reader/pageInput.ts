@@ -14,14 +14,19 @@ export interface PageHost {
   reading(): BookReading | null
   model: BookModel
   pdf: boolean
+  zoom(way: 'in' | 'out' | 'reset'): void
 }
 
 /** Wires one page, as it arrives in its frame, for keys, taps and swipes. */
 export function watchPage(host: PageHost, doc: Document): void {
   doc.addEventListener('keydown', (e) => onKey(host.reader(), e))
+  if (host.pdf) doc.addEventListener('wheel', pinchZoom(host), { passive: false })
   doc.addEventListener('click', (e) => onTap(host, e, doc))
-  // The engine turns a reflowing book's pages under a finger itself; a PDF's it does not.
-  if (host.reader()?.isFixedLayout) watchSwipes(host, doc)
+  // The engine turns a reflowing book's pages under a finger itself; a PDF's it does not — and a
+  // PDF in one long scroll is moved by the finger as it is, not turned.
+  const reader = host.reader()
+  if (reader?.isFixedLayout && reader.renderer?.localName !== 'abele-pdf-scroll')
+    watchSwipes(host, doc)
 }
 
 function watchSwipes(host: PageHost, doc: Document): void {
@@ -43,6 +48,21 @@ function watchSwipes(host: PageHost, doc: Document): void {
     if (way === 'left') void reader.goRight()
     else if (way === 'right') void reader.goLeft()
   })
+}
+
+/**
+ * Ctrl with the wheel — what a trackpad's pinch sends too — zooms a PDF a step at a time, one
+ * step per burst of wheel events rather than one per event.
+ */
+export function pinchZoom(host: Pick<PageHost, 'zoom'>): (e: WheelEvent) => void {
+  let last = 0
+  return (e) => {
+    if (!e.ctrlKey && !e.metaKey) return
+    e.preventDefault()
+    if (e.timeStamp - last < 120 || !e.deltaY) return
+    last = e.timeStamp
+    host.zoom(e.deltaY < 0 ? 'in' : 'out')
+  }
 }
 
 /** A link out of the book: to the browser if it is to the web or mail, nowhere otherwise. */

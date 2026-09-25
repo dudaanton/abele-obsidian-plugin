@@ -143,18 +143,28 @@ still opens in Obsidian's own viewer; there are two ways to read one here:
   plugin API); if a future Obsidian changes it, the setting does nothing and the menu item still
   works.
 
-What a PDF gets here that Obsidian's viewer does not: pages turned one at a time — keys, a tap at
-the edge, a swipe on a phone — rather than a long scroll; the place it was left on kept per file,
-across renames; the outline in the same contents panel as a book's; the page number and the
-outline entry under the page with a slider through the document; and, in a dark theme, pages with
-light and dark swapped (**Dark pages in a dark theme**, on by default; pictures come out as
-negatives). Text on the page can be selected and copied, links inside the document go to their
-page, and links to the web open in the browser.
+A PDF is read as **one continuous scroll**, page under page, by default, or as **pages turned one
+at a time** — keys, a tap at the edge, a swipe on a phone. **Layout** in the settings, or the tab's
+⋯ menu, switches between the two at the same page. In the scroll only the pages near the screen
+are drawn, so a long PDF costs what a few pages cost; each page keeps its own size.
+
+Around either: the place it was left on kept per file, across renames; the outline in the same
+contents panel as a book's; the page number and the outline entry under the page with a slider
+through the document; highlights, links to places and search, as in a book; and, in a dark theme,
+pages with light and dark swapped (**Dark pages in a dark theme**, on by default; pictures come
+out as negatives). Text on the page can be selected and copied, links inside the document go to
+their page, and links to the web open in the browser.
+
+**Zoom** — Mod and plus or minus, Ctrl with the mouse wheel or a trackpad pinch, or **Zoom in**,
+**Zoom out** and **Zoom as set** in the tab's ⋯ menu — changes the size of the pages in that tab,
+keeping the page being read; Mod+0 goes back to the **Page size** setting. A zoom chosen this way
+is not saved.
 
 | Setting | What it does |
 |---|---|
-| Page size | The whole page fitted in the tab, the page's width fitted (scroll down the page), or 100%, 125%, 150% or 200%. |
-| Two pages side by side | Two pages at once when the tab is wide enough, as a printed book lies open. Off by default. |
+| Layout | Continuous scroll (the default), or pages turned one at a time. |
+| Page size | The whole page fitted in the tab, the page's width fitted, or 100%, 125%, 150% or 200%. |
+| Two pages side by side | With pages turned one at a time: two at once when the tab is wide enough, as a printed book lies open. Off by default. |
 | Dark pages in a dark theme | See above. |
 
 The text settings (font, size, spacing, margins, columns) do not apply to a PDF, whose pages are
