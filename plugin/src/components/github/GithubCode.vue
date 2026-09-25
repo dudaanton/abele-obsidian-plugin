@@ -9,7 +9,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import type { LineSpan } from '@/github/permalinks'
 import type { LineRange } from '@/github/urls'
-import { mountCode, type Viewer } from '@/github/codeViewer'
+import { mountCode, type CodeViewer } from '@/github/codeViewer'
 import { LINE_CONTEXT, pinIntoView } from '@/github/scrollTo'
 
 /**
@@ -36,7 +36,7 @@ const emit = defineEmits<{
 }>()
 
 const editorEl = ref<HTMLElement>()
-let viewer: Viewer | null = null
+let viewer: CodeViewer | null = null
 let unpin = () => {}
 
 /** Where CodeMirror draws the selection's bar just now, and whether there is one. */
@@ -83,10 +83,24 @@ const draw = async (focus: { line: number; context: number } | null) => {
 }
 
 onMounted((): void => void draw(props.focus))
-// A link to the same lines again is a new range object: it scrolls back to them.
 watch(
-  () => [props.text, props.range],
+  () => props.text,
   (): void => void draw(null)
+)
+// A link to lines of the same file — the same lines again, a new range object, or others — marks
+// them in the editor already drawn and scrolls back to them. Drawn afresh, the editor would be
+// gone for a moment, the tab's scroll cut short to what was left, and the new one would open on
+// lines it had not drawn.
+watch(
+  () => props.range,
+  (range): void => {
+    if (!viewer || !range || !editorEl.value) return void draw(null)
+    unpin()
+    hasBar.value = false
+    viewer.mark(range)
+    const drawn = viewer
+    unpin = pinIntoView(editorEl.value, () => drawn.targetTop(), LINE_CONTEXT)
+  }
 )
 onBeforeUnmount(() => {
   unpin()

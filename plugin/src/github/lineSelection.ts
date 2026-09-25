@@ -97,6 +97,8 @@ export function lineSelection(hooks: SelectionHooks): {
   extension: Extension
   /** For every gutter that shows line numbers: its clicks select. */
   gutterHandlers: Record<string, (view: EditorView, line: BlockInfo, event: Event) => boolean>
+  /** Marks other lines a link named, in place of what was marked or selected: no bar. */
+  mark: (view: EditorView, lines: number[]) => void
 } {
   const field = StateField.define<{ selected: Selected; decorations: DecorationSet }>({
     create: (state) => {
@@ -155,7 +157,10 @@ export function lineSelection(hooks: SelectionHooks): {
     return true
   }
 
-  return { extension: field, gutterHandlers: { mousedown: onNumber } }
+  const mark = (view: EditorView, lines: number[]) =>
+    view.dispatch({ effects: select.of({ lines, anchor: lines[0] ?? null, bar: false }) })
+
+  return { extension: field, gutterHandlers: { mousedown: onNumber }, mark }
 }
 
 function build(state: EditorState, value: Selected, hooks: SelectionHooks): DecorationSet {

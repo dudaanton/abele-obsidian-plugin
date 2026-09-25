@@ -132,6 +132,83 @@ describe.skipIf(!available)('a GitHub tab', () => {
       expect(r.inView).toBe(true)
     })
 
+    /**
+     * The tab a link is followed in again — the same lines, then others of the same file — has
+     * those lines drawn and on screen, not an empty stretch of the editor that a scroll fills in.
+     */
+    const again = (
+      url: string,
+      first: string,
+      title: string,
+      target: string,
+      content: string,
+      texts: [string, string]
+    ) =>
+      evalAsync<{ error?: string; steps?: { inView?: boolean; text?: string; drawn?: number }[] }>(
+        `(async () => {
+        ${PRELUDE}
+        ${opening(first, title)}
+        const look = async (text) => {
+          const el = await until(() => [...root.querySelectorAll(${JSON.stringify(target)})]
+            .find((e) => e.textContent.includes(text)), 15000)
+          await wait(2500)
+          if (!el || !el.isConnected) return { error: 'nothing marked' }
+          const box = scroller(el).getBoundingClientRect()
+          // What is drawn inside the visible area: a blank editor draws nothing there.
+          const drawn = [...root.querySelectorAll(${JSON.stringify(content)})].filter((l) => {
+            const r = l.getBoundingClientRect()
+            return r.height > 0 && r.bottom > box.top && r.top < box.bottom
+          }).length
+          return { inView: placeInView(el).inView, text: el.textContent.trim().slice(0, 60), drawn }
+        }
+        const steps = [await look(${JSON.stringify(texts[0])})]
+        for (const [next, text] of [[${JSON.stringify(first)}, ${JSON.stringify(texts[0])}], [${JSON.stringify(url)}, ${JSON.stringify(texts[1])}]]) {
+          await leaf.setViewState({ type: 'abele-github', state: { url: next }, active: true })
+          await wait(100)
+          steps.push(await look(text))
+        }
+        leaf.detach()
+        return { steps }
+      })()`,
+        120_000
+      )
+
+    it('lines of a long file, the same link again and then other lines', () => {
+      const r = again(
+        `${gh.web}/blob/main/src/long.ts#L120-L121`,
+        `${gh.web}/blob/main/src/long.ts#L350-L352`,
+        'src/long.ts',
+        '.abele-github-code__line_target',
+        '.abele-github-blob .cm-line',
+        ['setting350', 'setting120']
+      )
+      expect(r.error).toBeUndefined()
+      for (const step of r.steps!) {
+        expect(step.inView).toBe(true)
+        expect(step.drawn).toBeGreaterThan(10)
+      }
+      expect(r.steps![0].text).toContain('setting350')
+      expect(r.steps![1].text).toContain('setting350')
+      expect(r.steps![2].text).toContain('setting120')
+    })
+
+    it('lines of a markdown file, rendered, the same link again and then other lines', () => {
+      const r = again(
+        `${gh.web}/blob/main/README.md?plain=1#L3`,
+        `${gh.web}/blob/main/README.md#L10`,
+        'README.md',
+        '.abele-github-md__block_marked',
+        '.abele-github-md__block',
+        ['npm install acme-widgets', 'Widgets loads']
+      )
+      expect(r.error).toBeUndefined()
+      for (const step of r.steps!) {
+        expect(step.inView).toBe(true)
+        expect(step.drawn).toBeGreaterThan(0)
+      }
+      expect(r.steps![0].text).toContain('npm install acme-widgets')
+    })
+
     it('a comment late in the conversation', () => {
       const r = place(
         `${gh.web}/pull/42#issuecomment-${LATE_COMMENT}`,

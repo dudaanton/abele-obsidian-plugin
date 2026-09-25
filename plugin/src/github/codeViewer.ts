@@ -43,6 +43,12 @@ export interface Viewer {
   destroy(): void
 }
 
+/** A file's code view, which can be pointed at other lines of the same file without redrawing. */
+export interface CodeViewer extends Viewer {
+  /** Marks `range` instead, and makes its first line the one `targetTop` finds. */
+  mark(range: LineRange): void
+}
+
 class NumberMarker extends GutterMarker {
   constructor(private readonly n: string) {
     super()
@@ -81,7 +87,7 @@ function mount(
   extensions: Extension[],
   firstHighlighted: number | null,
   wrap = true
-): Viewer {
+): Viewer & { view: EditorView; retarget(line: number | null): void } {
   const view = new EditorView({
     parent,
     state: EditorState.create({
@@ -104,6 +110,11 @@ function mount(
     const drawn = from >= view.viewport.from && from <= view.viewport.to
     const rect = drawn ? view.coordsAtPos(from) : null
     if (rect) return rect.top
+    // Not drawn where it is being scrolled to: the editor hears of a scroll of the tab only once
+    // it has seen itself on screen, and one mounted just now — or scrolled to before it looked —
+    // would go on drawing the lines it drew first, leaving the place scrolled to blank. Asked to
+    // measure, it reads where the tab is scrolled and draws what is there.
+    view.requestMeasure()
     return { estimate: view.documentTop + view.lineBlockAt(from).top }
   }
   /** The tab's scrolling box, in viewport pixels. */
@@ -112,6 +123,10 @@ function mount(
     return container ? container.getBoundingClientRect() : null
   }
   return {
+    view,
+    retarget(line) {
+      firstHighlighted = line
+    },
     targetTop: () => lineTop(firstHighlighted),
     lineTop,
     topLine() {
@@ -240,12 +255,15 @@ export function mountCode(
   range?: LineRange,
   hooks: SelectionHooks = {},
   focus?: number
-): Viewer {
-  const initial: number[] = []
-  if (range) for (let n = range.start; n <= range.end; n++) initial.push(n)
-  const selection = lineSelection({ ...hooks, initial })
+): CodeViewer {
+  const lines = (r?: LineRange) => {
+    const out: number[] = []
+    if (r) for (let n = r.start; n <= r.end; n++) out.push(n)
+    return out
+  }
+  const selection = lineSelection({ ...hooks, initial: lines(range) })
 
-  return mount(
+  const viewer = mount(
     parent,
     text,
     [
@@ -255,4 +273,11 @@ export function mountCode(
     ],
     focus ?? (range ? range.start : null)
   )
+  return {
+    ...viewer,
+    mark(next) {
+      viewer.retarget(next.start)
+      selection.mark(viewer.view, lines(next))
+    },
+  }
 }

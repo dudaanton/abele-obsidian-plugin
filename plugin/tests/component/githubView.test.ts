@@ -350,6 +350,37 @@ describe('a file at a ref', () => {
   })
 })
 
+describe('a file followed to its lines again', () => {
+  it('marks the new lines in the editor already drawn, never drawing it afresh', async () => {
+    const url = 'https://github.com/o/r/blob/main/src/a.ts#L2-L3'
+    const { wrapper, model } = open(url, {
+      '/repos/o/r/contents/src/a.ts': { text: 'one\ntwo\nthree\nfour' },
+    })
+    await vi.waitFor(() =>
+      expect(wrapper.findAll('.abele-github-code__line_target').map((l) => l.text())).toEqual([
+        'two',
+        'three',
+      ])
+    )
+    const editor = wrapper.find('.cm-editor').element
+
+    const follow = async (next: string) => {
+      model.url = next
+      model.target = parseGithubUrl(next, ['github.com'])
+      model.nonce++
+      await flushPromises()
+    }
+    await follow(url)
+    expect(wrapper.find('.cm-editor').element).toBe(editor)
+    await follow('https://github.com/o/r/blob/main/src/a.ts#L4')
+    expect(wrapper.find('.cm-editor').element).toBe(editor)
+    expect(wrapper.findAll('.abele-github-code__line_target').map((l) => l.text())).toEqual([
+      'four',
+    ])
+    expect(wrapper.find('.abele-github-blob__range').text()).toContain('Line 4')
+  })
+})
+
 describe('switched off', () => {
   it('says so and asks GitHub nothing', async () => {
     const { wrapper } = open('https://github.com/o/r/issues/5', {}, false)

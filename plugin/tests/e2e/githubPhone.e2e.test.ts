@@ -416,4 +416,45 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     expect(r.opened).toMatch(/\/blob\/main\/src\/app\.ts$/)
     expect(r.closedAfter).toBe(true)
   })
+
+  it('a link to lines followed again, then to other lines, leaves them drawn on screen', () => {
+    const r = evalAsync<{ error?: string; steps?: { inView?: boolean; drawn?: number }[] }>(
+      `(async () => {
+      ${PRELUDE}
+      const leaf = githubLeaves()[0] ?? app.workspace.getLeaf(false)
+      const root = leaf.view.containerEl
+      const look = async (text) => {
+        const el = await until(() => [...root.querySelectorAll('.abele-github-code__line_target, .abele-github-md__block_marked')]
+          .find((e) => e.textContent.includes(text)), 15000)
+        await wait(2500)
+        if (!el || !el.isConnected) return { error: 'nothing marked' }
+        const box = scroller(el).getBoundingClientRect()
+        const drawn = [...root.querySelectorAll('.abele-github-blob .cm-line, .abele-github-md__block')].filter((l) => {
+          const b = l.getBoundingClientRect()
+          return b.height > 0 && b.bottom > box.top && b.top < box.bottom
+        }).length
+        return { inView: placeInView(el).inView, drawn }
+      }
+      const steps = []
+      for (const [url, text] of [
+        ['/blob/main/src/long.ts#L350-L352', 'setting350'],
+        ['/blob/main/src/long.ts#L350-L352', 'setting350'],
+        ['/blob/main/src/long.ts#L120', 'setting120'],
+        ['/blob/main/README.md#L10', 'npm install acme-widgets'],
+        ['/blob/main/README.md#L10', 'npm install acme-widgets'],
+      ]) {
+        await leaf.setViewState({ type: 'abele-github', state: { url: ${JSON.stringify(gh.web)} + url }, active: true })
+        await wait(100)
+        steps.push(await look(text))
+      }
+      return { steps }
+    })()`,
+      150_000
+    )
+    expect(r.error).toBeUndefined()
+    for (const step of r.steps!) {
+      expect(step.inView).toBe(true)
+      expect(step.drawn).toBeGreaterThan(0)
+    }
+  })
 })

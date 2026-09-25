@@ -162,6 +162,9 @@ tab's: back, forward and a restart come back to the view it was left in, and a l
 the tab opens the way that link and the setting ask. Switching keeps the place — the selected or
 linked lines when they are in sight, otherwise whatever was at the top of the tab.
 
+A link followed again in the tab already showing that file — the same lines, or others — marks
+them and scrolls back to them in what is on screen, without drawing the file again.
+
 The file is rendered by Obsidian, piece by piece: every heading, paragraph, list item, table,
 code block, quote and HTML block is rendered on its own and knows which lines of the file it
 came from. That is what lets lines be linked from the rendered view (below). Front matter is
