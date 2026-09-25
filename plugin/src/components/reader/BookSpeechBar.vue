@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-book-speech" role="toolbar" aria-label="Reading aloud">
+  <div class="abele-book-speech" role="toolbar" aria-label="Reading aloud" data-ignore-swipe="true">
     <span class="abele-book-speech__label">{{
       state === 'paused' ? 'Paused' : 'Reading aloud'
     }}</span>

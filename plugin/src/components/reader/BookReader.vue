@@ -59,7 +59,11 @@
         :state="model.speech === 'paused' ? 'paused' : 'playing'"
         @action="emit('speech', $event)"
       />
-      <div v-if="model.status === 'ready'" class="abele-book-reader__footer">
+      <div
+        v-if="model.status === 'ready'"
+        class="abele-book-reader__footer"
+        data-ignore-swipe="true"
+      >
         <Icon
           v-if="model.canGoBack"
           icon="undo-2"
@@ -88,7 +92,9 @@
       size="tall"
       @close="emit('settings', false)"
     >
-      <ReaderSettingsForm :kind="model.kind" />
+      <div class="abele-book-reader__settings">
+        <ReaderSettingsForm :kind="model.kind" />
+      </div>
     </ObsidianModal>
 
     <BookComment
@@ -347,6 +353,16 @@ watch(
     display: flex;
     flex-direction: column;
     gap: var(--size-4-3);
+  }
+
+  /* The text and layout settings scroll inside their tall dialog: the dialog is as tall as a
+     dialog may be and clips, so a form that only grew had its last rows cut off on a phone,
+     with nothing to scroll. */
+  &__settings {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   &__note-stage {

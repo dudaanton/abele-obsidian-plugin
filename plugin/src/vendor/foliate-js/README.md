@@ -53,6 +53,16 @@ Every change is marked `ABELE PATCH` at its site.
    until the app restarted. Each load now registers `<name>-<six letters>` of its own, and
    creates its elements by those names.
 
+6. **A finger that is selecting never moves the page** (`paginator.js`, the touch handlers).
+   Upstream scrolled the page under every finger that moved and cancelled the move, which took a
+   long press's small movements away from the platform's selection and turned the page under
+   words being selected; and it turned the page by itself whenever a selection reached past the
+   page while a pointer was down — a touch's pointer is cancelled, not lifted, once a long press
+   selects, so that flag stayed set. Now a touch is a swipe only once it has moved past a small
+   slop soon after it began, with nothing selected and nothing the host holds the page for
+   (`holdPages`, a bar open); and the host turns pages under a selection held at the edge
+   (`src/reader/selectionPaging.ts`).
+
 ## Additions
 
 `view.d.ts`, `epub.d.ts` and `frame-options.d.ts` type the parts of the modules beside them that

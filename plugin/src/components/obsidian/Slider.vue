@@ -3,6 +3,7 @@
     ref="el"
     class="slider abele-slider"
     type="range"
+    data-ignore-swipe="true"
     :min="min"
     :max="max"
     :step="step"
@@ -17,7 +18,9 @@
 <script setup lang="ts">
 /**
  * A slider, in Obsidian's own `slider` class so the track and thumb are the theme's. `input`
- * follows the thumb while it is dragged; the model changes when it is let go.
+ * follows the thumb while it is dragged; the model changes when it is let go. On a phone the
+ * drag is its own: `data-ignore-swipe` is what Obsidian's own sliders carry so that its swipe
+ * for the side panels leaves them alone — without it, dragging the thumb opened a side panel.
  */
 import { onMounted, ref, watch } from 'vue'
 import { setTooltip } from 'obsidian'

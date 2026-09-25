@@ -607,9 +607,12 @@ export class Paginator extends HTMLElement {
                 if (!range) return
                 const sel = doc.getSelection()
                 if (!sel.rangeCount) return
-                if (isPointerSelecting && sel.type === 'Range')
-                    checkPointerSelection(range, sel)
-                else if (isKeyboardSelecting) {
+                            // ABELE PATCH: a selection made with a pointer is no longer followed onto the next
+            // page here. A touch's pointer is cancelled, not lifted, when a long press begins to
+            // select, so the flag stayed set and later selections turned the page by themselves;
+            // the host turns pages under a selection held at the edge (selectionPaging.ts).
+            if (isPointerSelecting && sel.type === 'Range') void checkPointerSelection
+            else if (isKeyboardSelecting) {
                     const selRange = sel.getRangeAt(0).cloneRange()
                     const backward = selectionIsBackward(sel)
                     if (!backward) selRange.collapse()
@@ -822,16 +825,47 @@ export class Paginator extends HTMLElement {
             })
         })
     }
+    // ABELE PATCH: a finger that is selecting words never moves the page. Upstream scrolled the
+    // page under every finger that moved and called `preventDefault` on it, which took a long
+    // press's small movements away from the platform's selection and turned the page under words
+    // being selected. Now a touch is a swipe only once it has moved past a small slop, soon after
+    // it began (a finger held still first is a long press), with no words selected and nothing
+    // the host holds the page for (`holdPages`: a
+    // selection's or a highlight's bar open). Anything else is left to the platform.
+    #selectionActive() {
+        const sel = this.#view?.document?.getSelection?.()
+        return !!(sel && sel.rangeCount && !sel.isCollapsed) || !!this.holdPages?.()
+    }
     #onTouchStart(e) {
         const touch = e.changedTouches[0]
         this.#touchState = {
             x: touch?.screenX, y: touch?.screenY,
             t: e.timeStamp,
             vx: 0, xy: 0,
+            // ABELE PATCH: where and when it began, and whether it is selecting.
+            x0: touch?.screenX, y0: touch?.screenY, t0: e.timeStamp,
+            selecting: this.#selectionActive(), swiping: false,
         }
     }
     #onTouchMove(e) {
         const state = this.#touchState
+        if (!state) return
+        // ABELE PATCH: see #selectionActive.
+        if (state.selecting) return
+        if (!state.swiping && e.touches.length === 1) {
+            const touch = e.changedTouches[0]
+            const moved = Math.hypot(touch.screenX - state.x0, touch.screenY - state.y0)
+            if (moved < 10 && e.timeStamp - state.t0 <= 350) return
+            // Held before it moved: a long press, which selects, not a swipe.
+            if (this.#selectionActive() || e.timeStamp - state.t0 > 350) {
+                state.selecting = true
+                return
+            }
+            state.swiping = true
+            state.x = touch.screenX
+            state.y = touch.screenY
+            state.t = e.timeStamp
+        }
         if (state.pinched) return
         state.pinched = globalThis.visualViewport.scale > 1
         if (this.scrolled || state.pinched) return
@@ -853,8 +887,16 @@ export class Paginator extends HTMLElement {
         this.scrollBy(dx, dy)
     }
     #onTouchEnd() {
+        const scrolled = this.#touchScrolled
         this.#touchScrolled = false
         if (this.scrolled) return
+        // ABELE PATCH: a touch that selected, or never became a swipe, turns nothing; what a
+        // swipe moved before it turned out to be selecting goes back to its page.
+        const state = this.#touchState
+        if (state && (state.selecting || !state.swiping)) {
+            if (scrolled) requestAnimationFrame(() => this.snap(0, 0))
+            return
+        }
 
         // XXX: Firefox seems to report scale as 1... sometimes...?
         // at this point I'm basically throwing `requestAnimationFrame` at

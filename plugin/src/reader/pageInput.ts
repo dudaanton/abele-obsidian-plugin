@@ -2,10 +2,12 @@
  * What a page of a book answers to: keys, a tap at its edges, a swipe, a tap on a highlight, and
  * a link out of the book.
  */
+import { Platform } from 'obsidian'
 import type { View as FoliateView } from '@/vendor/foliate-js/view.js'
 import { isOpenableExternal } from './bookSafety'
 import { swipeDirection } from './swipe'
 import { PDF_SCROLL_TAG } from './pdfScroll'
+import { PageGesture, SelectionPager } from './selectionPaging'
 import type { BookModel } from './model'
 import type { BookReading } from './BookReading'
 
@@ -20,19 +22,39 @@ export interface PageHost {
   zoom(way: 'in' | 'out' | 'reset'): void
 }
 
+/** Whether a selection's or a highlight's bar is open: the page is held while it is. */
+const barOpen = (host: PageHost) => () => !!(host.model.selection || host.model.active)
+
 /** Wires one page, as it arrives in its frame, for keys, taps and swipes. */
 export function watchPage(host: PageHost, doc: Document): void {
   doc.addEventListener('keydown', (e) => onKey(host.reader(), e))
   if (host.fixed()) doc.addEventListener('wheel', pinchZoom(host), { passive: false })
-  doc.addEventListener('click', (e) => onTap(host, e, doc))
+  const gesture = new PageGesture(doc, barOpen(host))
+  doc.addEventListener('click', (e) => onTap(host, e, doc, gesture))
+  const reader = host.reader()
+  const renderer = reader?.renderer as
+    | (NonNullable<FoliateView['renderer']> & { holdPages?: () => boolean })
+    | undefined
+  // The engine's own swipes wait while words are selected or a bar is open.
+  if (renderer) renderer.holdPages = barOpen(host)
+  new SelectionPager(doc, {
+    // A PDF in one long scroll has no pages to turn under a selection.
+    renderer: () => {
+      const r = host.reader()?.renderer
+      return r && r.localName !== PDF_SCROLL_TAG ? r : null
+    },
+    stage: () => host.stage(),
+    fixed: () => host.fixed(),
+    visible: () => host.reader()?.lastLocation?.range ?? null,
+    touch: () => Platform.isMobile || !!doc.defaultView?.matchMedia?.('(pointer: coarse)').matches,
+  })
   // The engine turns a reflowing book's pages under a finger itself; a PDF's it does not — and a
   // PDF in one long scroll is moved by the finger as it is, not turned.
-  const reader = host.reader()
-  if (reader?.isFixedLayout && reader.renderer?.localName !== PDF_SCROLL_TAG)
-    watchSwipes(host, doc)
+  if (reader?.isFixedLayout && renderer?.localName !== PDF_SCROLL_TAG)
+    watchSwipes(host, doc, gesture)
 }
 
-function watchSwipes(host: PageHost, doc: Document): void {
+function watchSwipes(host: PageHost, doc: Document, gesture: PageGesture): void {
   let start: { x: number; y: number; t: number } | null = null
   doc.addEventListener(
     'touchstart',
@@ -48,6 +70,8 @@ function watchSwipes(host: PageHost, doc: Document): void {
     if (!start || !t || !reader) return
     const way = swipeDirection(start, { x: t.screenX, y: t.screenY, t: e.timeStamp })
     start = null
+    // A finger that selected, or began over a selection or an open bar, turns nothing.
+    if (gesture.selecting) return
     if (way === 'left') void reader.goRight()
     else if (way === 'right') void reader.goLeft()
   })
@@ -86,8 +110,12 @@ export function onKey(reader: FoliateView | null, e: KeyboardEvent): void {
   }
 }
 
-/** A tap near the left or right edge turns the page; one on a highlight opens what it offers. */
-function onTap(host: PageHost, e: MouseEvent, doc: Document): void {
+/**
+ * A tap near the left or right edge turns the page; one on a highlight opens what it offers. Only
+ * a clean tap turns it: one beside an open bar closes the bar, and one that had anything to do
+ * with a selection does nothing else.
+ */
+function onTap(host: PageHost, e: MouseEvent, doc: Document, gesture: PageGesture): void {
   const reader = host.reader()
   if (!reader || e.defaultPrevented) return
   if ((e.target as Element | null)?.closest?.('a, area')) return
@@ -108,6 +136,7 @@ function onTap(host: PageHost, e: MouseEvent, doc: Document): void {
     host.model.active = null
     return
   }
+  if (!gesture.cleanTap) return
   const stage = host.stage()
   const width = stage?.clientWidth ?? 0
   if (!stage || !width) return

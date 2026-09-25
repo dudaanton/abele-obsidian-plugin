@@ -2,6 +2,7 @@
   <div
     class="abele-book-selection"
     role="toolbar"
+    data-ignore-swipe="true"
     :aria-label="highlight ? 'Highlight' : 'Selection'"
   >
     <div class="abele-book-selection__colors">
