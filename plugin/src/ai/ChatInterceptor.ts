@@ -1,9 +1,19 @@
-import { ref, type Ref } from 'vue'
+import { computed, ref, type Ref, type WritableComputedRef } from 'vue'
 import { nanoid } from 'nanoid'
 import { OpenAIClient } from './client/OpenAIClient'
 import type { Message } from './client'
 import { AgentRegistry } from './agents/AgentRegistry'
 import type { ChatMessage, InterceptorChatMessage } from './types'
+
+/** Which agent reviews drafts and how much of the conversation it is shown. */
+export interface InterceptorChoice {
+  /** Empty means no review. */
+  agentId: string
+  /** 0 sends only the draft, -1 the whole visible history, N the last N messages. */
+  contextDepth: number
+}
+
+export const NO_INTERCEPTOR: InterceptorChoice = { agentId: '', contextDepth: 0 }
 
 /** The slice of a chat the interceptor touches. */
 export interface InterceptorHost {
@@ -11,21 +21,69 @@ export interface InterceptorHost {
   findMessage(id: string): ChatMessage | undefined
   updateVisibleMessages(): void
   save(): Promise<void>
+  /**
+   * What the chat's agent says about review, read on every access so that switching the agent
+   * or editing it reaches the chat. Absent, or answering none, means no default.
+   */
+  defaultInterceptor?(): InterceptorChoice
 }
 
 /**
  * Reviews a message before it is sent to the main agent.
  *
  * The reviewer is an ordinary agent — it gets its model and its composed system prompt from
- * `AgentRegistry` like any other. What is *not* on the agent is `contextDepth`: how much of the
- * conversation a reviewer is shown describes this use of it, not what the agent is, so it lives
- * on the chat alongside the choice of reviewer.
+ * `AgentRegistry` like any other. Which one reviews, and how much it sees, comes from the chat's
+ * agent (`interceptorAgentId` on it) unless this chat chose otherwise: the same sparse rule as
+ * every other per-chat override, kept here rather than in `SessionOverrides` because switching
+ * the chat's agent drops those and must not drop this one.
+ *
+ * Interceptors never chain. The reviewer's reply is one bare completion streamed from here; it
+ * never runs as a chat, so the reviewing agent's own interceptor is never consulted.
  */
 export class ChatInterceptor {
-  /** Empty means no review; the message goes straight to the main agent. */
-  public readonly agentId = ref('')
+  /**
+   * What this chat deliberately chose. Null follows the agent; an empty `agentId` inside is an
+   * explicit Off, which is a choice too and must survive the agent gaining a reviewer later.
+   */
+  public readonly override = ref<InterceptorChoice | null>(null)
+
+  /** What the chat's agent would use, whether or not the chat currently follows it. */
+  public readonly agentDefault = computed<InterceptorChoice>(
+    () => this.host.defaultInterceptor?.() ?? NO_INTERCEPTOR
+  )
+
+  /** The choice in force. */
+  public readonly choice = computed<InterceptorChoice>(
+    () => this.override.value ?? this.agentDefault.value
+  )
+
+  /**
+   * Empty means no review; the message goes straight to the main agent. Assigning records an
+   * override, which is what every caller that assigns — the chat settings picker — means.
+   */
+  public readonly agentId: WritableComputedRef<string> = computed({
+    get: () => this.choice.value.agentId,
+    set: (agentId) => {
+      this.override.value = { agentId, contextDepth: this.choice.value.contextDepth }
+    },
+  })
+
   /** 0 sends only the draft, -1 the whole visible history, N the last N messages. */
-  public readonly contextDepth = ref(0)
+  public readonly contextDepth: WritableComputedRef<number> = computed({
+    get: () => this.choice.value.contextDepth,
+    set: (contextDepth) => {
+      this.override.value = { agentId: this.choice.value.agentId, contextDepth }
+    },
+  })
+
+  get followsAgent(): boolean {
+    return this.override.value === null
+  }
+
+  /** Drops this chat's choice, so review follows the agent again. */
+  followAgent(): void {
+    this.override.value = null
+  }
 
   public readonly streaming = ref(false)
   public readonly streamingContent = ref('')

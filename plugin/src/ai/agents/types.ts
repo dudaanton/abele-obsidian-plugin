@@ -40,6 +40,15 @@ export interface AgentDefinition {
   auxiliaryProviderId?: string
   auxiliaryModelId?: string
 
+  /**
+   * The agent that reviews a draft before it reaches this one, in every chat that runs on it.
+   * Empty means none. A chat can override it either way; delegated runs and scripts never use
+   * it — nobody is there to read the review. Never this agent itself.
+   */
+  interceptorAgentId: string
+  /** How much of the conversation the interceptor sees: 0 the draft, -1 all of it, N the last N. */
+  interceptorContextDepth: number
+
   /** Concatenated in order, blank line between blocks. */
   prompts: AgentPrompt[]
 
@@ -62,6 +71,19 @@ export interface AgentDefinition {
    */
   memory?: AgentMemoryItem[]
 }
+
+/** The context depths an interceptor accepts; anything else read from a file is taken as the draft. */
+export function normaliseContextDepth(value: unknown): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= -1 ? value : 0
+}
+
+/** The context depths an interceptor can be given, as both pickers offer them. */
+export const INTERCEPTOR_CONTEXT_OPTIONS = [
+  { value: '0', display: 'Draft only' },
+  { value: '4', display: 'Last 4 messages' },
+  { value: '10', display: 'Last 10 messages' },
+  { value: '-1', display: 'Whole conversation' },
+]
 
 /**
  * Builds a complete agent. Every field gets a value so that consumers never have to guard
@@ -88,6 +110,8 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
     skills: [],
     maxDelegateDepth: 2,
     memory: [],
+    interceptorAgentId: '',
+    interceptorContextDepth: 0,
   }
 
   // Duplication spreads a source agent in and clears `id` to ask for a fresh one. Spreading an

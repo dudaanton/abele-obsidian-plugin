@@ -336,6 +336,33 @@ describe('settings that arrived later than the transfer did', () => {
     expect(next.ai?.prompts?.memoryTemplate).toBe('Known:\n{{memory}}')
   })
 
+  /** The agent's reviewer is part of the agent, so it lands with it. */
+  it("carries an agent's interceptor and the context it is shown", () => {
+    const source = settings({
+      ai: {
+        ...settings().ai!,
+        agents: [
+          { id: 'r1', name: 'Reviewer', description: '', utility: true },
+          {
+            id: 'a1',
+            name: 'Writer',
+            description: '',
+            utility: false,
+            interceptorAgentId: 'r1',
+            interceptorContextDepth: 10,
+          },
+        ],
+      } as unknown as AiSettings,
+    })
+
+    const arriving = collectEntries(source).filter((e) => e.section === 'ai-agents')
+    const next = applyEntries(arriving, settings())
+    const writer = next.ai?.agents.find((a) => a.id === 'a1')
+
+    expect(writer?.interceptorAgentId).toBe('r1')
+    expect(writer?.interceptorContextDepth).toBe(10)
+  })
+
   /** An agent id is not a key. Adding one must not add a slot to the keychain list. */
   it('asks the keychain for nothing extra on account of them', () => {
     const entries = collectEntries(

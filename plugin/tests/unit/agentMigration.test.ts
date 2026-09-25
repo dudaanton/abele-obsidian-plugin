@@ -377,3 +377,64 @@ describe('the GitHub tools', () => {
       for (const tool of GITHUB_TOOLS) expect(agent.toolModes[tool]).toBe('auto')
   })
 })
+
+/**
+ * The agent's own reviewer. Hand-edited files and settings from another device can say
+ * anything, and a reviewer that is the agent itself would review its own drafts.
+ */
+describe('the interceptor an agent carries', () => {
+  /** Settled first, so only the interceptor step is left to report anything. */
+  const withAgent = (fields: Record<string, unknown>) => {
+    const ai = {
+      ...DEFAULT_AI_SETTINGS,
+      agents: [createAgent({ id: 'a1', name: 'A' })],
+      defaultAgentId: 'a1',
+      commentAgentId: 'a1',
+    } as AiSettings
+    migrateAgents(ai)
+    Object.assign(ai.agents[0], fields)
+    return ai
+  }
+
+  it('is filled in as none for agents saved before it existed, without a rewrite', () => {
+    const ai = withAgent({})
+    const raw = ai.agents[0] as unknown as Record<string, unknown>
+    delete raw.interceptorAgentId
+    delete raw.interceptorContextDepth
+
+    expect(migrateAgents(ai)).toBe(false)
+    expect(ai.agents[0].interceptorAgentId).toBe('')
+    expect(ai.agents[0].interceptorContextDepth).toBe(0)
+  })
+
+  it('keeps a valid choice as it is', () => {
+    const ai = withAgent({ interceptorAgentId: 'r1', interceptorContextDepth: -1 })
+
+    expect(migrateAgents(ai)).toBe(false)
+    expect(ai.agents[0].interceptorAgentId).toBe('r1')
+    expect(ai.agents[0].interceptorContextDepth).toBe(-1)
+  })
+
+  it('drops the agent reviewing itself', () => {
+    const ai = withAgent({ interceptorAgentId: 'a1' })
+
+    expect(migrateAgents(ai)).toBe(true)
+    expect(ai.agents[0].interceptorAgentId).toBe('')
+  })
+
+  it('drops values of the wrong shape', () => {
+    const ai = withAgent({ interceptorAgentId: 42, interceptorContextDepth: 'lots' })
+
+    expect(migrateAgents(ai)).toBe(true)
+    expect(ai.agents[0].interceptorAgentId).toBe('')
+    expect(ai.agents[0].interceptorContextDepth).toBe(0)
+  })
+
+  it('takes an impossible depth as the draft only', () => {
+    const ai = withAgent({ interceptorAgentId: 'r1', interceptorContextDepth: -5 })
+
+    migrateAgents(ai)
+
+    expect(ai.agents[0].interceptorContextDepth).toBe(0)
+  })
+})

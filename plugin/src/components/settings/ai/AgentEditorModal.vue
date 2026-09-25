@@ -61,6 +61,30 @@
               @update:model-value="selectBackground($event)"
             />
           </Setting>
+
+          <Setting
+            name="Interceptor"
+            desc="Reads each message in this agent's chats before it is sent, and says what it
+              thinks. A chat can pick another one or turn it off."
+          >
+            <Dropdown
+              :model-value="agent.interceptorAgentId ?? ''"
+              :options="interceptorOptions"
+              @update:model-value="patch({ interceptorAgentId: $event })"
+            />
+          </Setting>
+
+          <Setting
+            v-if="agent.interceptorAgentId"
+            name="Interceptor context"
+            desc="How much of the conversation the interceptor sees."
+          >
+            <Dropdown
+              :model-value="String(agent.interceptorContextDepth ?? 0)"
+              :options="CONTEXT_OPTIONS"
+              @update:model-value="patch({ interceptorContextDepth: Number($event) })"
+            />
+          </Setting>
         </template>
 
         <!-- Prompts -->
@@ -235,7 +259,7 @@ import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { discoverSkills } from '@/ai/tools/SkillTool'
-import type { AgentDefinition } from '@/ai/agents/types'
+import { INTERCEPTOR_CONTEXT_OPTIONS, type AgentDefinition } from '@/ai/agents/types'
 import type { PermissionMode, ToolMode } from '@/ai/types'
 
 type SkillsMode = AgentDefinition['skillsMode']
@@ -271,6 +295,9 @@ const SKILL_MODES = [
   { value: 'none', display: 'No skills' },
   { value: 'selected', display: 'Only selected' },
 ]
+
+/** Shared with the chat's own picker, so both offer the same four. */
+const CONTEXT_OPTIONS = INTERCEPTOR_CONTEXT_OPTIONS
 
 const DEPTH_OPTIONS = [
   { value: '0', display: 'Cannot delegate' },
@@ -343,6 +370,21 @@ function selectBackground(key: string): void {
   const [providerId, modelId] = key.split('::')
   patch({ auxiliaryProviderId: providerId || '', auxiliaryModelId: modelId || '' })
 }
+
+// ── Interceptor ──
+
+/**
+ * Every other agent, utility ones included — reviewing is what most of them are for. Not this
+ * one: an agent reviewing its own drafts is a loop with extra steps. A reviewer that was
+ * deleted is not offered, so the picker shows "No review", which is what the chat will do.
+ */
+const interceptorOptions = computed(() => [
+  { value: '', display: 'No review' },
+  ...registry
+    .list({ includeUtility: true })
+    .filter((a) => a.id !== props.agentId)
+    .map((a) => ({ value: a.id, display: a.utility ? `${a.name} · utility` : a.name })),
+])
 
 function selectFallback(key: string): void {
   if (!key) {

@@ -233,6 +233,24 @@ function parseValue(raw: string): unknown {
   }
 }
 
+/**
+ * An agent's interceptor has to be another agent that exists. The type check alone would let
+ * any string through, and an agent named as its own reviewer is exactly the loop the rest of
+ * the plugin refuses — better said here than silently dropped at the next load.
+ */
+function refuseInterceptor(path: string, next: unknown): string | null {
+  const match = /^ai\.agents\.(\d+)\.interceptorAgentId$/.exec(path)
+  if (!match || next === '') return null
+
+  const agents = AbeleConfig.getInstance().ai.agents || []
+  const self = agents[Number(match[1])]
+  if (typeof next !== 'string' || !agents.some((a) => a.id === next)) {
+    return `${JSON.stringify(next)} is not an agent id. Read \`ai.agents\` for the ids there are, or write "" for no interceptor.`
+  }
+  if (self?.id === next) return 'An agent cannot be its own interceptor.'
+  return null
+}
+
 async function write(path: string, raw: string): Promise<string> {
   if (!path) return 'No setting named. Give `path`, as `read_settings` lists it.'
   if (isHidden(path)) return `"${path}" holds a secret or a cache and is not writable.`
@@ -258,6 +276,9 @@ async function write(path: string, raw: string): Promise<string> {
   if (was !== 'empty' && was !== now) {
     return `"${path}" is ${was}; ${JSON.stringify(next)} is ${now}. The type has to match.`
   }
+
+  const refused = refuseInterceptor(path, next)
+  if (refused) return refused
 
   const before = JSON.stringify(redact(found.value, found.key))
   found.parent[found.key] = next

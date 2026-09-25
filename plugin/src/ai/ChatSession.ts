@@ -30,9 +30,20 @@ import type {
 import { ChatStorage } from './ChatStorage'
 import { ChatLogWriter, type ChatSnapshot } from './ChatLog'
 import { ChatSummarizer, type SummarizerHost } from './ChatSummarizer'
-import { ChatInterceptor, type InterceptorHost } from './ChatInterceptor'
+import {
+  ChatInterceptor,
+  NO_INTERCEPTOR,
+  type InterceptorChoice,
+  type InterceptorHost,
+} from './ChatInterceptor'
 import { AgentRegistry } from './agents/AgentRegistry'
-import type { AgentDefinition, OverrideKey, ScopeEntry, SessionOverrides } from './agents/types'
+import {
+  normaliseContextDepth,
+  type AgentDefinition,
+  type OverrideKey,
+  type ScopeEntry,
+  type SessionOverrides,
+} from './agents/types'
 import {
   ChatMessage,
   ChatMetadata,
@@ -450,6 +461,20 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   }
 
   // ── Agent binding ──────────────────────────────────────────────
+
+  /**
+   * The reviewer this chat's agent asks for. A delegated run has none whatever its agent says:
+   * nobody is there to read a draft, and a run that waited for one would never finish.
+   */
+  defaultInterceptor(): InterceptorChoice {
+    if (this.kind === 'run') return NO_INTERCEPTOR
+    const agent = this.agent.value
+    if (!agent?.interceptorAgentId || agent.interceptorAgentId === agent.id) return NO_INTERCEPTOR
+    return {
+      agentId: agent.interceptorAgentId,
+      contextDepth: normaliseContextDepth(agent.interceptorContextDepth),
+    }
+  }
 
   private setOverride<K extends OverrideKey>(key: K, value: SessionOverrides[K]): void {
     this.overrides.value = { ...this.overrides.value, [key]: value }
@@ -1483,8 +1508,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       return
     }
 
-    // Draft mode: interceptor is active → create draft, don't send to main AI
-    if (this.interceptor.isActive) {
+    // Draft mode: interceptor is active → create draft, don't send to main AI. Never in a run,
+    // where nobody is there to send the draft on.
+    if (this.kind !== 'run' && this.interceptor.isActive) {
       return this.sendDraftMessage(content, attachments)
     }
 
@@ -1802,8 +1828,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.customSystemPrompt.value = ''
     this.customSystemPromptNotePath.value = ''
     this.interceptor.abort()
-    this.interceptor.agentId.value = ''
-    this.interceptor.contextDepth.value = 0
+    this.interceptor.followAgent()
     this.interceptor.error.value = null
     this.agentId.value = AgentRegistry.getInstance().defaultAgent()?.id ?? ''
     this.overrides.value = {}
@@ -1848,6 +1873,26 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     this.overrides.value = metadata ? this.legacyOverrides(metadata, config) : {}
     this.syncScopeFromAgent()
+  }
+
+  /**
+   * A chat that saved a reviewer keeps it as its own choice — that is what it was saved as,
+   * before agents had one to offer. A chat that saved none follows its agent: nothing was ever
+   * chosen there, and before this build no agent had a reviewer to follow.
+   *
+   * `activeInterceptorId` is what pre-agent chats stored. Migration reuses each interceptor's
+   * own id as its agent id, so the old value maps across unchanged.
+   */
+  private restoreInterceptor(metadata: ChatMetadata | null | undefined): void {
+    const stored = metadata?.interceptorAgentId ?? (metadata?.activeInterceptorId || undefined)
+    if (typeof stored !== 'string') {
+      this.interceptor.followAgent()
+      return
+    }
+    this.interceptor.override.value = {
+      agentId: stored,
+      contextDepth: normaliseContextDepth(metadata?.interceptorContextDepth),
+    }
   }
 
   /** Converts a pre-agent chat's stored snapshot into overrides. */
@@ -1970,10 +2015,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       activeLeafId: this.activeLeafId || undefined,
       customSystemPrompt: this.customSystemPrompt.value || undefined,
       customSystemPromptNotePath: this.customSystemPromptNotePath.value || undefined,
-      interceptorAgentId: this.interceptor.agentId.value || undefined,
-      interceptorContextDepth: this.interceptor.agentId.value
-        ? this.interceptor.contextDepth.value
-        : undefined,
+      // Only a choice this chat made; a chat following its agent says nothing, and picks up
+      // whatever the agent's reviewer is the next time it is opened. An empty id is Off.
+      interceptorAgentId: this.interceptor.override.value?.agentId,
+      interceptorContextDepth: this.interceptor.override.value?.contextDepth,
     }
 
     return {
@@ -2099,11 +2144,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     this.customSystemPrompt.value = result.metadata?.customSystemPrompt || ''
     this.customSystemPromptNotePath.value = result.metadata?.customSystemPromptNotePath || ''
-    // `activeInterceptorId` is what pre-agent chats stored. Migration reuses each
-    // interceptor's own id as its agent id, so the old value maps across unchanged.
-    this.interceptor.agentId.value =
-      result.metadata?.interceptorAgentId || result.metadata?.activeInterceptorId || ''
-    this.interceptor.contextDepth.value = result.metadata?.interceptorContextDepth ?? 0
+    this.restoreInterceptor(result.metadata)
 
     // Restore pending tool calls
     if (result.metadata?.pendingToolCalls?.length) {

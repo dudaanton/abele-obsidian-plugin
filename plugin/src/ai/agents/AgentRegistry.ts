@@ -138,6 +138,11 @@ export class AgentRegistry {
     this.agents.splice(index, 1)
     this.version.value++
 
+    // An agent that reviewed for others stops doing so, rather than leaving them naming a gap.
+    for (const other of this.agents) {
+      if (other.interceptorAgentId === id) other.interceptorAgentId = ''
+    }
+
     const ai = AbeleConfig.getInstance().ai
     if (ai.defaultAgentId === id) ai.defaultAgentId = this.agents[0].id
     return true

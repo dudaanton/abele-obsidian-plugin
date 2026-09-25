@@ -4,16 +4,13 @@
       <Checkbox :is-enabled="hideReasoning" @toggle="toggleHideReasoning" />
     </Setting>
 
-    <Setting
-      v-if="interceptorOptions.length"
-      name="Interceptor"
-      desc="Review messages before sending to the main AI."
-    >
+    <Setting v-if="interceptorOptions.length" name="Interceptor" :desc="interceptorDesc">
       <select
         class="dropdown"
-        :value="activeInterceptorId"
+        :value="interceptorKey"
         @change="setInterceptor(($event.target as HTMLSelectElement).value)"
       >
+        <option :value="FOLLOW_AGENT">{{ agentDefaultLabel }}</option>
         <option value="">Off</option>
         <option v-for="opt in interceptorOptions" :key="opt.id" :value="opt.id">
           {{ opt.name }}
@@ -47,10 +44,9 @@
         :value="String(interceptorContextDepth)"
         @change="setInterceptorContextDepth(($event.target as HTMLSelectElement).value)"
       >
-        <option value="0">Draft only</option>
-        <option value="4">Last 4 messages</option>
-        <option value="10">Last 10 messages</option>
-        <option value="-1">Whole conversation</option>
+        <option v-for="opt in INTERCEPTOR_CONTEXT_OPTIONS" :key="opt.value" :value="opt.value">
+          {{ opt.display }}
+        </option>
       </select>
     </Setting>
 
@@ -143,6 +139,7 @@ import Search from './obsidian/Search.vue'
 import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { INTERCEPTOR_CONTEXT_OPTIONS } from '@/ai/agents/types'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import Dropdown from './obsidian/Dropdown.vue'
 import Icon from './obsidian/Icon.vue'
@@ -225,11 +222,33 @@ const interceptorOptions = computed(() =>
 const activeInterceptorId = computed(() => session.value?.interceptor.agentId.value ?? '')
 const interceptorContextDepth = computed(() => session.value?.interceptor.contextDepth.value ?? 0)
 
-function setInterceptor(id: string) {
+/** Not an agent id — nanoid never produces a colon — so it cannot collide with one. */
+const FOLLOW_AGENT = ':agent'
+
+const followsAgent = computed(() => session.value?.interceptor.followsAgent ?? true)
+const interceptorKey = computed(() =>
+  followsAgent.value ? FOLLOW_AGENT : activeInterceptorId.value
+)
+
+/** Names what "the agent's" means right now, so following it is not a blind choice. */
+const agentDefaultLabel = computed(() => {
+  const id = session.value?.interceptor.agentDefault.value.agentId ?? ''
+  const name = id ? AgentRegistry.getInstance().get(id)?.name : ''
+  return `Agent default (${name || 'off'})`
+})
+
+const interceptorDesc = computed(() =>
+  followsAgent.value
+    ? "Reviews messages before they reach the main AI. Follows the agent's choice."
+    : "Reviews messages before they reach the main AI. Chosen for this chat; the agent's choice no longer applies here."
+)
+
+function setInterceptor(value: string) {
   const s = session.value
   if (!s) return
-  s.interceptor.agentId.value = id
-  s.save()
+  if (value === FOLLOW_AGENT) s.interceptor.followAgent()
+  else s.interceptor.agentId.value = value
+  void s.save()
 }
 
 function setInterceptorContextDepth(value: string) {

@@ -13,6 +13,7 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
 import Input from '@/components/obsidian/Input.vue'
+import Dropdown from '@/components/obsidian/Dropdown.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import { useVault } from '../helpers/testEnv'
 
@@ -273,6 +274,51 @@ describe('the agent editor', () => {
     await secondCardActions.findAll('.abele-obsidian-icon')[0].trigger('click')
 
     expect(registry.get(agent.id)?.prompts.map((p) => p.value)).toEqual(['second', 'first'])
+  })
+})
+
+/**
+ * The agent's own reviewer, chosen beside its background model. Any agent may review — utility
+ * ones are what most reviewers are — except the agent itself.
+ */
+describe("the agent's interceptor", () => {
+  type Options = { value: string; display: string }[]
+  const dropdowns = (view: ReturnType<typeof mountEditor>) => view.findAllComponents(Dropdown)
+  const interceptorPicker = (view: ReturnType<typeof mountEditor>) =>
+    dropdowns(view).find((d) => (d.props('options') as Options)[0]?.display === 'No review')
+  const contextPicker = (view: ReturnType<typeof mountEditor>) =>
+    dropdowns(view).find((d) =>
+      (d.props('options') as Options).some((o) => o.display === 'Draft only')
+    )
+
+  it('offers every other agent, utility ones included, and not the agent itself', () => {
+    const { main, helper } = seedAgents()
+    const options = interceptorPicker(mountEditor(main.id))!.props('options') as Options
+
+    expect(options.map((o) => o.value)).toEqual(['', helper.id])
+  })
+
+  it('stores the choice on the agent, and only then asks how much it sees', async () => {
+    const { main, helper } = seedAgents()
+    const view = mountEditor(main.id)
+    expect(contextPicker(view)).toBeUndefined()
+
+    await interceptorPicker(view)!.vm.$emit('update:model-value', helper.id)
+    await contextPicker(view)!.vm.$emit('update:model-value', '-1')
+
+    const stored = AgentRegistry.getInstance().get(main.id)
+    expect(stored?.interceptorAgentId).toBe(helper.id)
+    expect(stored?.interceptorContextDepth).toBe(-1)
+  })
+
+  it('turns review off again', async () => {
+    const { main, helper } = seedAgents()
+    AgentRegistry.getInstance().update(main.id, { interceptorAgentId: helper.id })
+    const view = mountEditor(main.id)
+
+    await interceptorPicker(view)!.vm.$emit('update:model-value', '')
+
+    expect(AgentRegistry.getInstance().get(main.id)?.interceptorAgentId).toBe('')
   })
 })
 

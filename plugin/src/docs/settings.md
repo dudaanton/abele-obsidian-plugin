@@ -54,7 +54,9 @@ Everything under `ai.`. `ai.enabled` is the whole feature. `ai.providers` are th
 providers with their models; `ai.activeProviderId` and `ai.activeModelId` are the ones a new
 chat starts on, and `ai.auxiliaryModelId` is the background model that writes titles, recaps,
 summaries and compactions. `ai.agents` are the agents themselves — each with its own prompt, scope, tools
-and model — and `ai.defaultAgentId` is the one a new chat opens with. `ai.commentAgentId` is
+and model, its own background model (`auxiliaryProviderId`, `auxiliaryModelId`) and its own
+interceptor (`interceptorAgentId`, another agent's id or empty, and `interceptorContextDepth`) —
+and `ai.defaultAgentId` is the one a new chat opens with. `ai.commentAgentId` is
 the agent a comment starts on, and `ai.commentFolder` and `ai.chatFolder` are where comments
 and chats are written.
 

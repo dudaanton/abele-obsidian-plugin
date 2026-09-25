@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createReadSettingsTool, createWriteSettingsTool } from '@/ai/tools/SettingsTools'
 import { AbeleConfig, DEFAULT_SETTINGS } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
+import { createAgent } from '@/ai/agents/types'
 import { useVault } from '../helpers/testEnv'
 
 const read = createReadSettingsTool()
@@ -176,6 +177,32 @@ describe('changing a setting', () => {
   })
 
   /** A typo that wrote would leave a key the plugin never reads sitting in the file for good. */
+  /** Set by path like the background model, but only ever to another agent that exists. */
+  it("sets an agent's interceptor, and refuses one that is not another agent", async () => {
+    const config = AbeleConfig.getInstance()
+    config.ai.agents = [
+      createAgent({ id: 'a1', name: 'Writer' }),
+      createAgent({ id: 'r1', name: 'Reviewer', utility: true }),
+    ]
+
+    expect(await answer(read, { path: 'ai.agents.0.interceptorAgentId' })).toContain('""')
+    await answer(write, { path: 'ai.agents.0.interceptorAgentId', value: 'r1' })
+    await answer(write, { path: 'ai.agents.0.interceptorContextDepth', value: '-1' })
+    expect(config.ai.agents[0].interceptorAgentId).toBe('r1')
+    expect(config.ai.agents[0].interceptorContextDepth).toBe(-1)
+
+    expect(await answer(write, { path: 'ai.agents.0.interceptorAgentId', value: 'a1' })).toMatch(
+      /own interceptor/
+    )
+    expect(
+      await answer(write, { path: 'ai.agents.0.interceptorAgentId', value: 'nobody' })
+    ).toMatch(/not an agent id/)
+    expect(config.ai.agents[0].interceptorAgentId).toBe('r1')
+
+    await answer(write, { path: 'ai.agents.0.interceptorAgentId', value: '""' })
+    expect(config.ai.agents[0].interceptorAgentId).toBe('')
+  })
+
   it('refuses a setting that does not exist rather than inventing it', async () => {
     const text = await answer(write, { path: 'ai.temperatur', value: '0.5' })
 

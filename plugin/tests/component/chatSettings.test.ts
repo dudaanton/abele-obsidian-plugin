@@ -14,6 +14,7 @@ import AiChatSettings from '@/components/AiChatSettings.vue'
 import Button from '@/components/obsidian/Button.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import { ChatService } from '@/ai/ChatService'
+import { ChatInterceptor } from '@/ai/ChatInterceptor'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
@@ -22,13 +23,24 @@ import { useVault } from '../helpers/testEnv'
 
 const deleteChat = vi.fn()
 
+/** A real interceptor over a stand-in chat whose agent asks for `defaultId`. */
+function interceptorFor(defaultId: string) {
+  return new ChatInterceptor({
+    messages: ref([]),
+    findMessage: () => undefined,
+    updateVisibleMessages: () => {},
+    save: async () => {},
+    defaultInterceptor: () => ({ agentId: defaultId, contextDepth: 0 }),
+  })
+}
+
 /** A session with a file behind it, which is what makes the chat something to delete. */
 function seed(overrides: Record<string, unknown> = {}) {
   const session = fakeChatSession({
     overrides: {
       currentChatFile: ref({ path: 'AI/Chats/Talk.abchat' }),
       // What this dialog reads and the margin's card never does.
-      interceptor: { agentId: ref(''), contextDepth: ref(0) },
+      interceptor: interceptorFor(''),
       customSystemPrompt: ref(''),
       customSystemPromptNotePath: ref(''),
       activeProviderId: ref(''),
@@ -111,5 +123,59 @@ describe('throwing a chat away', () => {
     seed({ currentChatFile: ref(null) })
 
     expect(deleteButton(mountSettings())?.props('disabled')).toBe(true)
+  })
+})
+
+/**
+ * The chat's reviewer: its agent's unless this chat picked another, or Off. The first option
+ * names the agent's reviewer so following it is not a choice made blind.
+ */
+describe('the interceptor picker', () => {
+  const picker = (view: ReturnType<typeof mountSettings>) =>
+    view.findAll('select').find((one) => one.text().includes('Agent default'))!
+
+  function withReviewer() {
+    const registry = AgentRegistry.getInstance()
+    const reviewer = registry.create({ name: 'Reviewer', utility: true })
+    const other = registry.create({ name: 'Other', utility: true })
+    const interceptor = interceptorFor(reviewer.id)
+    const session = seed({ interceptor, save: vi.fn(async () => {}) })
+    return { reviewer, other, interceptor, session }
+  }
+
+  it("names the agent's reviewer as the default, and starts on it", () => {
+    withReviewer()
+    const select = picker(mountSettings())
+
+    expect(select.findAll('option')[0].text()).toBe('Agent default (Reviewer)')
+    expect((select.element as HTMLSelectElement).selectedIndex).toBe(0)
+  })
+
+  it('says off when the agent has no reviewer', () => {
+    seed({ interceptor: interceptorFor(''), save: vi.fn(async () => {}) })
+    AgentRegistry.getInstance().create({ name: 'Reviewer' })
+
+    expect(picker(mountSettings()).findAll('option')[0].text()).toBe('Agent default (off)')
+  })
+
+  it('turns review off for this chat only', async () => {
+    const { interceptor } = withReviewer()
+
+    await picker(mountSettings()).setValue('')
+
+    expect(interceptor.isActive).toBe(false)
+    expect(interceptor.followsAgent).toBe(false)
+  })
+
+  it('picks another reviewer, and goes back to the agent', async () => {
+    const { interceptor, other, reviewer } = withReviewer()
+    const view = mountSettings()
+
+    await picker(view).setValue(other.id)
+    expect(interceptor.agentId.value).toBe(other.id)
+
+    await picker(view).setValue(':agent')
+    expect(interceptor.followsAgent).toBe(true)
+    expect(interceptor.agentId.value).toBe(reviewer.id)
   })
 })

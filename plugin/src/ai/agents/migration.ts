@@ -1,4 +1,4 @@
-import { createAgent, type AgentDefinition } from './types'
+import { createAgent, normaliseContextDepth, type AgentDefinition } from './types'
 import { REMEMBER_TOOL } from './memory'
 import {
   DEFAULT_AI_SETTINGS,
@@ -190,6 +190,44 @@ function enableGithubTools(ai: AiSettings): boolean {
   return changed
 }
 
+/**
+ * Gives every agent a well-formed interceptor pair.
+ *
+ * Filling in the missing fields is not reported as a change: agents saved before the field
+ * existed mean "no interceptor", and that is what the blank says. What is reported is a value
+ * that was wrong — a non-string, an agent reviewing itself, a depth no picker offers — because
+ * that one is corrected and the file should stop saying it.
+ *
+ * A reference to an agent that does not exist is left alone: settings arriving from another
+ * device can name one that is imported a moment later, and until then it simply reviews nothing.
+ */
+function normaliseInterceptors(ai: AiSettings): boolean {
+  let changed = false
+
+  for (const agent of ai.agents || []) {
+    const raw = agent as { interceptorAgentId?: unknown; interceptorContextDepth?: unknown }
+
+    if (raw.interceptorAgentId === undefined) {
+      agent.interceptorAgentId = ''
+    } else if (typeof raw.interceptorAgentId !== 'string' || raw.interceptorAgentId === agent.id) {
+      agent.interceptorAgentId = ''
+      changed = true
+    }
+
+    if (raw.interceptorContextDepth === undefined) {
+      agent.interceptorContextDepth = 0
+    } else {
+      const depth = normaliseContextDepth(raw.interceptorContextDepth)
+      if (depth !== raw.interceptorContextDepth) {
+        agent.interceptorContextDepth = depth
+        changed = true
+      }
+    }
+  }
+
+  return changed
+}
+
 export function migrateAgents(ai: AiSettings): boolean {
   const legacy = migrateLegacyAgents(ai)
   // Outside the legacy migration on purpose: that one is a no-op the moment any agent exists,
@@ -198,6 +236,7 @@ export function migrateAgents(ai: AiSettings): boolean {
   const maps = enableMapTools(ai)
   const memory = enableMemoryTool(ai)
   const github = enableGithubTools(ai)
+  const interceptors = normaliseInterceptors(ai)
 
-  return legacy || comment || maps || memory || github
+  return legacy || comment || maps || memory || github || interceptors
 }

@@ -28,6 +28,23 @@ When a request fails on something transient — 429, a 5xx, a dropped connection
 retry on its own with a growing delay, if that is switched on. A rejected key or a malformed
 request is not retried.
 
+## Interceptor
+
+An agent can name another agent as its **interceptor**: a reviewer that reads each message the
+person writes in that agent's chats before it is sent, and answers it in a side conversation.
+The person then sends the draft on, edits it, or talks it over with the reviewer first. Any agent
+can be one, utility agents included, except the agent itself. **Interceptor context** says how
+much of the conversation the reviewer sees: the draft only, the last few messages, or all of it.
+
+A chat follows its agent's interceptor until the person picks another one or Off in the chat's
+settings; that choice is the chat's own, and switching the chat to a different agent keeps it.
+A chat that never chose follows whichever agent it is on now. Interceptors never chain: the
+reviewer answers as one plain reply, so the reviewer's own interceptor is never asked. Delegated
+runs and scripts never use one — nobody is there to read the review.
+
+The setting is `interceptorAgentId` (an agent id, or empty for none) and
+`interceptorContextDepth` (0 the draft, -1 everything, N the last N messages) on the agent.
+
 ## Permissions
 
 `confirm-all` asks before every action. `allow-edit` lets file edits through and asks about the
