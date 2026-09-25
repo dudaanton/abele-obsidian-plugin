@@ -1052,3 +1052,55 @@ describe('a discussion in a book', () => {
     expect(await app.vault.read(book)).toBe('PK-not-a-real-book')
   })
 })
+
+describe('a discussion in a book, read further and asked inside', () => {
+  const BOOK = 'Books/Dune.epub'
+  const CFI = 'epubcfi(/6/8!/4/2,/1:0,/1:22)'
+  const BOOK_TOOLS = ['book_views', 'book_contents', 'book_read', 'book_search', 'book_open']
+
+  beforeEach(async () => {
+    await app.vault.create(BOOK, 'PK-not-a-real-book')
+  })
+
+  it('comes with the read-only book tools, whatever its agent allows, and needs no approval for them', async () => {
+    const service = CommentService.getInstance()
+    const book = app.vault.getAbstractFileByPath(BOOK) as TFile
+    const id = (await service.createOnBook(book, CFI, 'Fear is the mind-killer.'))!
+    const session = service.sessionFor(id)!
+    // The comment agent here has no tool modes at all.
+    const names = (session as unknown as { getTools(): { name: string }[] })
+      .getTools()
+      .map((t) => t.name)
+    for (const tool of BOOK_TOOLS) expect(names).toContain(tool)
+    for (const tool of BOOK_TOOLS) expect(session.needsApproval(tool, { book: BOOK })).toBe(false)
+    // A note comment does not get them.
+    const note = await service.create(noteFile(), SELECTION_END, 'The selected passage')
+    const noteTools = (note as unknown as { getTools(): { name: string }[] })
+      .getTools()
+      .map((t) => t.name)
+    expect(noteTools).not.toContain('book_read')
+  })
+
+  it('takes an Ask here inside its chat as a nested comment, with the book at the root of the trail', async () => {
+    const service = CommentService.getInstance()
+    const book = app.vault.getAbstractFileByPath(BOOK) as TFile
+    const id = (await service.createOnBook(book, CFI, 'Fear is the mind-killer.'))!
+    const parent = service.sessionFor(id)!
+    // A question and an answer in the discussion, the way a turn leaves them.
+    parent.messages.value = [
+      { id: 'u1', role: 'user', content: 'What does it mean?', timestamp: 1 },
+      { id: 'a1', role: 'assistant', content: 'Fear stops thought.', timestamp: 2, parentId: 'u1' },
+    ] as never
+    await parent.save()
+    const child = (await service.createOnMessage(parent, 'a1', 'stops thought', 5))!
+    expect(child.anchor.value).toEqual({
+      note: service.commentPath(id),
+      quote: 'stops thought',
+      message: 'a1',
+    })
+    const trail = await service.trail(child)
+    expect(trail.map((s) => s.kind)).toEqual(['note', 'comment', 'comment'])
+    expect(trail[0].path).toBe(BOOK)
+    expect(trail[1].anchor?.cfi).toBe(CFI)
+  })
+})

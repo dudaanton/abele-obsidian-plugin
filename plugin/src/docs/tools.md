@@ -161,6 +161,9 @@ A book is named by its vault path or by a link to a place in it — the links th
 section). Put those links in replies: a click opens the book at that place with the words
 selected.
 
+A discussion about words in a book (a comment anchored to the book) always has the read-only book
+tools below, whatever its agent's own tools, for that book.
+
 - `book_views` — what the person is reading: each open book, the one on screen, the chapter or
   page and how far through, a link to that place, the words they selected — quoted, with a link to
   them — or the highlight they tapped with its comment, the discussions held about words on the

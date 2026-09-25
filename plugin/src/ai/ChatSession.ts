@@ -48,6 +48,7 @@ import {
   ChatMessage,
   ChatMetadata,
   CORE_TOOLS,
+  BOOK_READ_TOOLS,
   EDIT_SELECTION_TOOL,
   TOUCHING_TOOLS,
   type TouchedNote,
@@ -851,8 +852,26 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       (this.toolModes.value[EDIT_SELECTION_TOOL] ?? 'ask') !== 'off'
     const withSelection = offered ? [...filtered, createEditSelectionTool(this)] : filtered
 
+    // A discussion about words in a book reads that book, whatever its agent's own tools: the
+    // read-only book tools come with the anchor, as the note comes into a note comment's scope.
+    // The scope holds the book, and they answer only for books in scope.
+    const withBook = this.bookAnchored()
+      ? [
+          ...withSelection,
+          ...allTools.filter(
+            (tool) =>
+              BOOK_READ_TOOLS.has(tool.name) && !withSelection.some((t) => t.name === tool.name)
+          ),
+        ]
+      : withSelection
+
     // Every agent can read on in a result it was sent only the start of.
-    return this.wrapToolsForSession([...withSelection, createReadResultTool(this.results)])
+    return this.wrapToolsForSession([...withBook, createReadResultTool(this.results)])
+  }
+
+  /** Whether this is a discussion about words in a book: its anchor names a place in one. */
+  private bookAnchored(): boolean {
+    return !!this.anchor.value?.cfi && !this.anchor.value.message
   }
 
   /**
@@ -935,6 +954,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
 
     // Core read tools: never need approval
     if (ChatSession.READ_TOOLS.includes(toolName)) return false
+    // The book tools a discussion in a book comes with only read, and only that book.
+    if (this.bookAnchored() && BOOK_READ_TOOLS.has(toolName)) return false
     if (toolName === 'read_image' || toolName === 'questions') return false
 
     // The one write with a mode of its own. It touches a single passage the person pointed

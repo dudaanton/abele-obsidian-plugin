@@ -299,6 +299,18 @@ export const CORE_TOOLS = new Set([
   'read_result',
 ])
 
+/**
+ * The book tools that only read. A discussion about words in a book (`CommentAnchor.cfi`) is
+ * given them whatever its agent's tool modes say, scoped to the book.
+ */
+export const BOOK_READ_TOOLS = new Set([
+  'book_views',
+  'book_contents',
+  'book_read',
+  'book_search',
+  'book_open',
+])
+
 export const DEFAULT_AI_SETTINGS: AiSettings = {
   enabled: false,
   providers: [],

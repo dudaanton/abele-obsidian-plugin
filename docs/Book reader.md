@@ -148,7 +148,10 @@ again. The agent answers with links to places, which open the book there.
   in the highlights note with a link to the chat. A tap on the marked words — or Ask here on them
   again — opens the same chat, after a restart or on another device as well. The chat is the
   comment agent's, told the book, the place, the words and the text around them every turn, with
-  the book in its scope; its "back to the passage" opens the book at the words. The highlights
+  the book in its scope and the book tools that only read (`book_views`, `book_contents`,
+  `book_read`, `book_search`, `book_open`) whatever its agent's own tools, needing no approval.
+  Ask here inside its chat asks a nested question like in any comment, the book at the root of the
+  trail. Its "back to the passage" opens the book at the words. The highlights
   panel lists discussions with the rest, a way into each chat, and can show only discussions or
   only highlights. Removing the mark asks what becomes of the chat: kept as an ordinary chat in
   the history, or deleted. PDFs and fixed-layout books work the same, the mark drawn over the
