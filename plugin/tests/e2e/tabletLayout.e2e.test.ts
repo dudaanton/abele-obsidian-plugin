@@ -14,6 +14,8 @@
  * A picture of each screen goes to `/tmp/abele-tablet/`. Requires Obsidian running on a vault
  * with the development build — see docs/Testing.md.
  */
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalRaw, evalJson } from './helpers/obsidianCli'
 
@@ -181,8 +183,15 @@ const reload = async (): Promise<void> => {
   }
 }
 
-/** One per page in `Settings.vue`. GitHub made it eleven. */
-const SETTINGS_TABS = 11
+/**
+ * One per page in `Settings.vue`, counted from its list rather than written down here: a fixed
+ * number went stale the day Books added a twelfth page, and failed a layout that was fine.
+ */
+const SETTINGS_TABS = (
+  readFileSync(path.join(__dirname, '../../src/components/settings/Settings.vue'), 'utf8').match(
+    /^\s*\{ id: '[^']+', label: '[^']+', component:/gm
+  ) ?? []
+).length
 
 const available = isObsidianRunning() && hasTestApi()
 

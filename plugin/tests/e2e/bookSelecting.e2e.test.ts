@@ -279,8 +279,13 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         const p0 = R(view).index
         await mouse('mouseMoved', x, y, 0); await mouse('mousePressed', x, y)
         await mouse('mouseMoved', x + 40, y)
-        const deadline = Date.now() + 1500
-        while (Date.now() < deadline) { await mouse('mouseMoved', s.right - 3 - (Date.now() % 2), y); await wait(80) }
+        // Held until the app has answered, not for a fixed time: the answer comes from a timer
+        // in the app, and a stall there (a collection on a full heap) let the release land first
+        // and take the hold away, so the notice never came.
+        const deadline = Date.now() + 5000
+        while (Date.now() < deadline && !notices().some((t) => /own page/.test(t))) {
+          await mouse('mouseMoved', s.right - 3 - (Date.now() % 2), y); await wait(80)
+        }
         await mouse('mouseReleased', s.right - 3, y, 0)
         await wait(300)
         const told = notices()
