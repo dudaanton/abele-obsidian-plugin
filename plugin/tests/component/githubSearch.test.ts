@@ -146,6 +146,8 @@ describe('the code search panel', () => {
     const { wrapper, onOpen } = await openPanel()
     await search(wrapper, 'formatName')
 
+    // The diffs are read before the answer shows; a loaded run takes more turns than settle() gives.
+    await vi.waitFor(() => expect(wrapper.findAll('.abele-github-search__line')).toHaveLength(2))
     const lines = wrapper.findAll('.abele-github-search__line')
     expect(lines.map((l) => l.find('.abele-github-search__number').text())).toEqual([
       '2 before',
@@ -210,6 +212,9 @@ describe('the code search panel', () => {
       'File names at fix',
     ])
     await search(tab.wrapper, 'formatName')
+    await vi.waitFor(() =>
+      expect(tab.wrapper.findAll('.abele-github-search__line').length).toBeGreaterThan(1)
+    )
     const lines = tab.wrapper.findAll('.abele-github-search__line')
     await lines[1].trigger('click')
     expect(tab.onOpen.mock.calls[0][0]).toMatch(/\/compare\/main\.\.\.fix#diff-[0-9a-f]{64}R2$/)
