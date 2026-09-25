@@ -172,7 +172,7 @@ export class SecretStore {
   readonly device: DeviceSecrets = {
     get: (id) => (isDeviceSecretId(id) ? (this.host.keychain().getSecret(id) ?? '') : ''),
     set: (id, value) => {
-      if (!isDeviceSecretId(id)) throw new Error(`not a device secret: ${id}`)
+      if (!isDeviceSecretId(id)) throw new Error('not the id of a device secret')
       if (value) this.host.keychain().setSecret(id, value)
       else this.forget(id)
     },

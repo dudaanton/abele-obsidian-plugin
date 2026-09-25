@@ -101,8 +101,8 @@ function middle(before: string[], after: string[]): Change[] {
     for (let j = after.length - 1; j >= 0; j--) {
       lcs[i * width + j] =
         before[i] === after[j]
-          ? lcs[(i + 1) * width + j + 1]! + 1
-          : Math.max(lcs[(i + 1) * width + j]!, lcs[i * width + j + 1]!)
+          ? lcs[(i + 1) * width + j + 1] + 1
+          : Math.max(lcs[(i + 1) * width + j], lcs[i * width + j + 1])
     }
   }
 
@@ -111,19 +111,19 @@ function middle(before: string[], after: string[]): Change[] {
   let j = 0
   while (i < before.length && j < after.length) {
     if (before[i] === after[j]) {
-      changes.push({ sign: ' ', text: before[i]! })
+      changes.push({ sign: ' ', text: before[i] })
       i++
       j++
-    } else if (lcs[(i + 1) * width + j]! >= lcs[i * width + j + 1]!) {
-      changes.push({ sign: '-', text: before[i]! })
+    } else if (lcs[(i + 1) * width + j] >= lcs[i * width + j + 1]) {
+      changes.push({ sign: '-', text: before[i] })
       i++
     } else {
-      changes.push({ sign: '+', text: after[j]! })
+      changes.push({ sign: '+', text: after[j] })
       j++
     }
   }
-  for (; i < before.length; i++) changes.push({ sign: '-', text: before[i]! })
-  for (; j < after.length; j++) changes.push({ sign: '+', text: after[j]! })
+  for (; i < before.length; i++) changes.push({ sign: '-', text: before[i] })
+  for (; j < after.length; j++) changes.push({ sign: '+', text: after[j] })
   return changes
 }
 
@@ -136,13 +136,13 @@ function hunksOf(changes: Change[]): string[] {
   const lines: string[] = []
   let cut = 0
   while (cut < interesting.length) {
-    const first = interesting[cut]!
+    const first = interesting[cut]
     let last = first
     let next = cut + 1
     // A run ends where the gap to the next change is wider than the context on both sides,
     // which is where a reader would rather see two hunks than one long one.
-    while (next < interesting.length && interesting[next]! - last <= CONTEXT * 2 + 1) {
-      last = interesting[next]!
+    while (next < interesting.length && interesting[next] - last <= CONTEXT * 2 + 1) {
+      last = interesting[next]
       next++
     }
     const from = Math.max(0, first - CONTEXT)
@@ -158,7 +158,7 @@ function renderHunk(changes: Change[], from: number, to: number): string[] {
   let beforeStart = 1
   let afterStart = 1
   for (let index = 0; index < from; index++) {
-    const sign = changes[index]!.sign
+    const sign = changes[index].sign
     if (sign !== '+') beforeStart++
     if (sign !== '-') afterStart++
   }
@@ -166,7 +166,7 @@ function renderHunk(changes: Change[], from: number, to: number): string[] {
   let afterCount = 0
   const body: string[] = []
   for (let index = from; index <= to; index++) {
-    const { sign, text } = changes[index]!
+    const { sign, text } = changes[index]
     if (sign !== '+') beforeCount++
     if (sign !== '-') afterCount++
     body.push(`${sign}${text}`)

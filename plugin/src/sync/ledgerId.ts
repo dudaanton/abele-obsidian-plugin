@@ -36,7 +36,7 @@ export interface LocalStorage {
  * none at all: a record was written, so the migration has had its turn.
  */
 export function readLedgerId(storage: LocalStorage): LedgerId | null {
-  const raw = storage.loadLocalStorage(LEDGER_KEY) as unknown
+  const raw = storage.loadLocalStorage(LEDGER_KEY)
   if (raw === null || raw === undefined) return null
   if (typeof raw !== 'object') return { ...NO_LEDGER }
   const o = raw as Record<string, unknown>

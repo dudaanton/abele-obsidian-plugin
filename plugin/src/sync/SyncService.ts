@@ -102,8 +102,16 @@ const USER_AGENT = 'abele-obsidian-plugin'
 
 const noop = (): void => undefined
 
-const messageOf = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
+/** What a failure says. A thrown value that is neither an error nor text is shown as JSON. */
+const messageOf = (error: unknown): string => {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  try {
+    return JSON.stringify(error) ?? 'an unknown failure'
+  } catch {
+    return 'an unknown failure'
+  }
+}
 
 /**
  * What a test replaces to run the service against a server in its own process.
