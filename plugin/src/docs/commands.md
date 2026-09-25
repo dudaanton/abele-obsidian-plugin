@@ -6,7 +6,9 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 ## Tasks and notes
 
-- Create new task — and *Create new task and insert into current note*, which leaves a link behind
+- Create new task — opens the task dialog: title, date, due date, repeat, and the description in
+  the same editor a note is written in. *Open as note* saves and goes to the note. *Create new
+  task and insert into current note* still creates the note directly and leaves a link behind
 - Create note from template · Insert template at cursor · Replace current note with template
 - Create note in group
 - Open today's daily note
@@ -16,7 +18,11 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 ## Finance and time
 
-- Create new transaction — and *…and insert into current note*
+- Create new transaction — opens the transaction dialog: the amount (it takes a sum, `3.50 + 2×1.20`),
+  the accounts on both sides with their balances, a second amount and the rate when the accounts
+  are in different currencies, category, groups, description. *Next* saves and starts another on
+  the same day between the same accounts. *…and insert into current note* still creates the note
+  directly
 - Start timer for current note · Stop active timer
 - Show finance sidebar · Show accounts sidebar · Show time tracking sidebar
 
