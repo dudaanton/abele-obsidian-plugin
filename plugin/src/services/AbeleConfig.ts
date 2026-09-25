@@ -15,11 +15,7 @@ import {
   normalizeAccountsList,
   type AccountsListSettings,
 } from '@/helpers/accountRows'
-import {
-  defaultSyncSettings,
-  migrateSyncSettings,
-  type SyncSettings,
-} from '@/sync/settings'
+import { defaultSyncSettings, migrateSyncSettings, type SyncSettings } from '@/sync/settings'
 import AbelePlugin from '@/main'
 import { isKitColor } from '@/constants/colors'
 import { DEFAULT_LABEL_PROPERTY, type LabelColor } from '@/helpers/taskMeta'
