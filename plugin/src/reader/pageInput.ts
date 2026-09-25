@@ -8,6 +8,7 @@ import { swipeDirection } from './swipe'
 import { PDF_SCROLL_TAG } from './pdfScroll'
 import { PageGesture, pagerFor } from './selectionPaging'
 import { figureAt, fitFigures } from './figures'
+import { barAtTop } from './barPlace'
 import type { BookModel } from './model'
 import type { BookReading } from './BookReading'
 
@@ -128,14 +129,22 @@ function onTap(host: PageHost, e: MouseEvent, doc: Document, gesture: PageGestur
   if (!doc.getSelection()?.isCollapsed) return
   const marks = host.reading()?.marks
   if (marks) {
+    // A highlight tapped: its bar at the head of the page when the tap was in its lower part.
+    const stage = host.stage()?.getBoundingClientRect()
+    const y = e.clientY + (doc.defaultView?.frameElement?.getBoundingClientRect().top ?? 0)
+    const place = () => stage && (host.model.barTop = barAtTop(y, stage))
     if (host.fixed()) {
       const h = marks.hitPdf(doc, e.clientX, e.clientY)
       if (h) {
+        place()
         host.model.selection = null
         host.model.active = h
         return
       }
-    } else if (marks.hitEpub(e)) return
+    } else if (marks.hitEpub(e)) {
+      place()
+      return
+    }
   }
   // A tap beside an open highlight's bar closes it, rather than turning the page as well.
   if (host.model.active) {

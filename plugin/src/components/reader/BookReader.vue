@@ -60,7 +60,10 @@
             @click="emit('extend', 1)"
           />
         </template>
-        <div class="abele-book-reader__bars">
+        <div
+          class="abele-book-reader__bars"
+          :class="{ 'abele-book-reader__bars_top': model.barTop }"
+        >
           <BookSelectionBar
             v-if="model.status === 'ready' && (model.selection || model.active)"
             :highlight="model.active"
@@ -75,13 +78,14 @@
             @delete="model.active && emit('delete-highlight', model.active)"
             @close="model.active ? emit('close-active') : emit('clear-selection')"
           />
-          <BookSpeechBar
-            v-if="model.status === 'ready' && model.speech !== 'idle'"
-            :state="model.speech === 'paused' ? 'paused' : 'playing'"
-            @action="emit('speech', $event)"
-          />
         </div>
       </div>
+      <!-- Reading aloud goes down the whole page: its bar takes room of its own, below it. -->
+      <BookSpeechBar
+        v-if="model.status === 'ready' && model.speech !== 'idle'"
+        :state="model.speech === 'paused' ? 'paused' : 'playing'"
+        @action="emit('speech', $event)"
+      />
       <div
         v-if="model.status === 'ready'"
         class="abele-book-reader__footer"
@@ -331,6 +335,17 @@ watch(
     z-index: 4;
     display: flex;
     flex-direction: column;
+  }
+
+  /* At the head of the page, over words in the lower part of it: the bar keeps off them. */
+  &__bars_top {
+    top: 0;
+    bottom: auto;
+  }
+
+  &__bars_top .abele-book-selection {
+    border-top: none;
+    border-bottom: 1px solid var(--background-modifier-border);
   }
 
   /* Beside the page, halfway down, over its margin: small enough to leave the text alone. */

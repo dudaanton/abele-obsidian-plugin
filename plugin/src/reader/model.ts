@@ -98,6 +98,8 @@ export interface BookModel {
   canAsk: boolean
   /** Reading aloud: playing, paused, or not at all. */
   speech: 'idle' | 'playing' | 'paused'
+  /** The bar for the selection or a highlight stands at the head of the page, not its foot. */
+  barTop: boolean
   /** A picture or a table opened full screen from the page. */
   figure: BookFigure | null
 }
@@ -124,6 +126,7 @@ export const emptyBookModel = (): BookModel => ({
   canAsk: false,
   speech: 'idle',
   figure: null,
+  barTop: false,
 })
 
 /** The engine's contents as the tree the panel draws. */

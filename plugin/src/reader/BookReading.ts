@@ -4,6 +4,7 @@
  * tab makes it once the book is showing and drops it when the book closes.
  */
 import { Notice, type App, type TFile } from 'obsidian'
+import { barAtTop, bottomOnScreen } from './barPlace'
 import type { View as FoliateView } from '@/vendor/foliate-js/view.js'
 import { insertOnOwnLine } from '@/helpers/editorHelpers'
 import { recentNoteView } from '@/github/linking'
@@ -180,10 +181,17 @@ export class BookReading {
         return
       }
       this.model.active = null
+      this.placeBar(range)
       this.model.selection = { cfi, text, label: this.labelOf(index, range) }
     } catch (e) {
       console.debug('[Abele] no place for the selection', e)
     }
+  }
+
+  /** The bar for these words at the head of the page when they are in its lower part. */
+  placeBar(range: Range): void {
+    const stage = this.themeEl.querySelector('.abele-book-reader__stage')?.getBoundingClientRect()
+    if (stage) this.model.barTop = barAtTop(bottomOnScreen(range, stage), stage)
   }
 
   private labelOf(index: number, range?: Range): string {

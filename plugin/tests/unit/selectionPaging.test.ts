@@ -303,6 +303,24 @@ describe('a selection on pages turned one at a time', () => {
     expect(selected()).toBe('beta gamma delta.Epsilon')
   })
 
+  it('is drawn again after every turn, and still covers the pages it had', async () => {
+    // WebKit stops drawing a selection once the page has scrolled; set again, it shows.
+    const { a, b, renderer, handle, selected, doc } = pager()
+    handle([a, 6], [a, 10])
+    const sel = doc.getSelection()!
+    const set = vi.spyOn(sel, 'setBaseAndExtent')
+    await renderer.next()
+    vi.advanceTimersByTime(40)
+    expect(set).toHaveBeenCalledTimes(1)
+    expect(selected()).toBe('beta')
+    await renderer.prev()
+    vi.advanceTimersByTime(40)
+    expect(set).toHaveBeenCalledTimes(2)
+    // Both pages still open to it: its end dragged onto the second one is not held back.
+    handle([a, 6], [b, 7])
+    expect(selected()).toBe('beta gamma delta.Epsilon')
+  })
+
   it('stops at the end of the chapter and says so, once', async () => {
     const { a, renderer, told, pager: p, handle } = pager({ page: 6, pages: 8 })
     handle([a, 6], [a, 10])

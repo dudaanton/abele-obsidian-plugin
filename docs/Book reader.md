@@ -66,6 +66,13 @@ move back and forth over a long selection. It works a screen at a time in a scro
 With a mouse (or wherever the page hears the finger move) the selection held at the left or right
 edge of the page for a moment turns the page by itself and goes on growing, a page a second.
 
+The selection is kept through every page turn and shown again, with its handles, on any page it
+reaches — iOS keeps a selection through a turn but stops drawing it, so the reader sets it again.
+The bar for the selected words stands at the foot of the page, or at its head when the words are
+in the lower part of the page, so it never covers them and the last line can be selected. It
+stands over the page rather than beside it: making room for it would lay the page out anew under
+the finger. The bar for reading aloud takes a place of its own under the page.
+
 A selection stays on the pages it has been shown on: a handle dragged off the text stops at the
 page's last word instead of running to the end of the chapter, and the page never turns under it
 by itself. The selection is one range of the chapter and is highlighted, linked and quoted as

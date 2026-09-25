@@ -224,8 +224,12 @@ export class SelectionPager {
     doc.addEventListener('mouseup', release, true)
     doc.addEventListener('touchend', release, true)
     doc.addEventListener('selectionchange', () => this.selectionChanged())
-    // Every page shown while words are selected joins what the selection may cover.
-    host.renderer()?.addEventListener('relocate', () => this.grow())
+    // Every page shown while words are selected joins what the selection may cover, and the
+    // selection is shown again on it.
+    host.renderer()?.addEventListener('relocate', () => {
+      this.grow()
+      window.setTimeout(() => this.repaint(), 30)
+    })
   }
 
   private selection(): Range | null {
@@ -336,6 +340,8 @@ export class SelectionPager {
   private selectionChanged(): void {
     const range = this.selection()
     if (!range) {
+      // Let go for a moment while it is drawn again: it is still the same selection.
+      if (this.moving) return
       this.span = null
       this.holding = null
       return
@@ -357,6 +363,23 @@ export class SelectionPager {
     // The way it was made, kept: the end the finger holds stays the moving one.
     const backward = sel.anchorNode === range.endContainer && sel.anchorOffset === range.endOffset
     this.set(backward ? newEnd : newStart, backward ? newStart : newEnd)
+  }
+
+  /**
+   * The selection drawn again, handles and all. WebKit keeps a selection through a page turn but
+   * stops drawing it once the page has scrolled (seen in the iOS lab): turned away and back, the
+   * words were selected and nothing showed it, so the next touch let them go. Setting the same
+   * selection again, with the page's frame focused, brings it back.
+   */
+  private repaint(): void {
+    const sel = this.doc.getSelection()
+    if (!sel || !sel.rangeCount || sel.isCollapsed || !sel.anchorNode || !sel.focusNode) return
+    const anchor: Point = [sel.anchorNode, sel.anchorOffset]
+    const focus: Point = [sel.focusNode, sel.focusOffset]
+    this.doc.defaultView?.focus()
+    this.moving = true
+    sel.removeAllRanges()
+    this.set(anchor, focus)
   }
 
   private set(anchor: Point, focus: Point): void {

@@ -536,6 +536,40 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
       expect(r.back).toEqual({ page: r.pages![0], kept: true })
     })
 
+    it('words on the last line are not covered: their bar stands at the head of the page', () => {
+      const r = run<{
+        error?: string
+        low?: { top: boolean; bar: number[]; words: number[] }
+        high?: { top: boolean; bar: number[]; words: number[] }
+      }>(`
+        const { leaf, view } = await open(${JSON.stringify(BOOK)})
+        await fresh(view)
+        const list = words(view)
+        const place = async (w) => {
+          view.reading.clearSelection(); await wait(400)
+          select(view, w.range)
+          await until(() => view.model.selection, 3000)
+          await wait(400)
+          const bar = view.contentEl.querySelector('.abele-book-selection').getBoundingClientRect()
+          return { top: view.model.barTop, bar: [Math.round(bar.top), Math.round(bar.bottom)], words: [Math.round(w.y - 8), Math.round(w.y + 8)] }
+        }
+        const low = await place(list[list.length - 1])
+        await shoot('phone-bar-top')
+        const high = await place(list[2])
+        await shoot('phone-bar-bottom')
+        view.reading.clearSelection()
+        leaf.detach()
+        return { low, high }
+      `)
+      expect(r.error).toBeUndefined()
+      const apart = (s: { bar: number[]; words: number[] }) =>
+        s.bar[1] <= s.words[0] || s.bar[0] >= s.words[1]
+      expect(r.low!.top).toBe(true)
+      expect(apart(r.low!)).toBe(true)
+      expect(r.high!.top).toBe(false)
+      expect(apart(r.high!)).toBe(true)
+    })
+
     it('stops at the end of the chapter, and says so', () => {
       const r = run<{
         error?: string
