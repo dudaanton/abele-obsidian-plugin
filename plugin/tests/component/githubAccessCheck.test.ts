@@ -23,7 +23,7 @@ vi.mock('obsidian', async (importOriginal) => ({
   requestUrl: vi.fn(),
 }))
 
-const TOKEN = 'github_pat_SECRETVALUE0123456789'
+const TOKEN = 'github_pat_SECRETVALUE0123456789' // made up — repo-guard: allow
 
 type Reply = { status?: number; json?: unknown; headers?: Record<string, string> }
 

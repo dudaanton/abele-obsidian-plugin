@@ -7,8 +7,8 @@
  * journals, tasks, finance accounts/transactions/categories, time entries and AI chats.
  *
  * Usage:
- *   node scripts/generate-vault.mjs --out ~/obsidian-scale-test
- *   node scripts/generate-vault.mjs --out ~/obsidian-scale-test --files 20000 --seed 7 --force
+ *   node scripts/generate-vault.mjs --out /path/to/scale-test-vault
+ *   node scripts/generate-vault.mjs --out /path/to/scale-test-vault --files 20000 --seed 7 --force
  *
  * The group graph is shaped deliberately: a few ordinary groups plus one deliberately huge
  * "mega group" whose transitive closure covers a large share of the vault. Group scope
