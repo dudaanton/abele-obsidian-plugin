@@ -997,6 +997,34 @@ describe('SyncService — a settings save', () => {
     expect(builds()).toBe(before + 1)
   })
 
+  /**
+   * The Sync tab shows the sign-in card for `disconnected`. A rebuild that said so between the
+   * old engine and the new one would swap the whole tab out under the person editing it — and a
+   * switch clicked right after the cap was committed would be gone before the click landed.
+   */
+  it('never says disconnected while it rebuilds for a change to what it syncs', async () => {
+    await connect()
+    await synced()
+    const seen: string[] = []
+    const off = service.onStatusChange((status) => seen.push(status.state))
+
+    // The cap committed on blur, and the switch the blur was on its way to, one after the other.
+    settings().selective.maxFileBytes = 10 * 1024 * 1024
+    await AbeleConfig.getInstance().saveSettings()
+    settings().selective.pdf = false
+    await AbeleConfig.getInstance().saveSettings()
+
+    const scope = daemonScopeKey(settings().selective, null)
+    await waitFor('the engine to run on both changes', async () => {
+      if (!service.isConnected() || service.status.value.state !== 'idle') return false
+      return (await meta('scope')) === scope
+    })
+    off()
+
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen).not.toContain('disconnected')
+  })
+
   /** The scripts folder feeds the engine's filter, which is read once, when it is built. */
   it('builds another engine when the scripts folder moves', async () => {
     await connect()

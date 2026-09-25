@@ -665,7 +665,9 @@ export class SyncService {
         return
       }
 
-      await this.teardown()
+      // Quietly: the build says `syncing` next, and `disconnected` in between would swap the
+      // Sync tab for the sign-in card under whoever just ticked a switch there.
+      await this.teardown({ publish: false })
       this.built = built
       this.builtToken = token
       this.scope = scope
@@ -812,8 +814,12 @@ export class SyncService {
     })
   }
 
-  /** Stop the engine, close the state database, and go back to saying nothing is connected. */
-  private async teardown(): Promise<void> {
+  /**
+   * Stop the engine, close the state database, and go back to saying nothing is connected —
+   * unless `publish` is false, for a stop that a build follows at once: the status the old
+   * engine left stands until the new one says `syncing`.
+   */
+  private async teardown({ publish = true }: { publish?: boolean } = {}): Promise<void> {
     const engine = this.engine
     const store = this.store
     this.unwatchStatus?.()
@@ -834,7 +840,7 @@ export class SyncService {
       // says; a throw from here would escape into whichever verb asked for the teardown.
       console.debug('[abele-sync] the state database would not close', error)
     }
-    this.publish({ ...DISCONNECTED_STATUS })
+    if (publish) this.publish({ ...DISCONNECTED_STATUS })
   }
 
   /* -- The pieces the engine is given ----------------------------------- */

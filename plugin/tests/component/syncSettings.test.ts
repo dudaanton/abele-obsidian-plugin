@@ -267,6 +267,37 @@ describe('a device that is set up', () => {
     expect(screen.findComponent(ConnectCard).exists()).toBe(true)
   })
 
+  /**
+   * A save that moves what the device syncs rebuilds the engine, which says `syncing` and then
+   * settles — never `disconnected` (the service's own test holds it to that). The tab stays put
+   * through it, so a switch clicked as the cap field loses focus still lands.
+   */
+  it('stays put through a rebuild, so a switch clicked after the cap still lands', async () => {
+    connect()
+    service.onSettingsSaved.mockImplementation(() => {
+      service.status.value = { ...service.status.value, state: 'syncing' }
+    })
+    const screen = open(SyncSettings)
+    await flushPromises()
+    const selective = screen.findComponent(SelectiveSync)
+    const mounted = selective.vm.$.uid
+
+    const field = selective.findAll('input')[0]
+    await type(field, '10')
+    await field.trigger('change')
+    await flushPromises()
+    service.status.value = { ...service.status.value, state: 'idle' }
+    await switchFor(screen, 'pdf').trigger('click')
+    await flushPromises()
+
+    expect(screen.findComponent(ConnectCard).exists()).toBe(false)
+    // The same instance, not one mounted again after the sign-in card came and went.
+    expect(screen.findComponent(SelectiveSync).vm.$.uid).toBe(mounted)
+    const held = AbeleConfig.getInstance().sync.selective
+    expect(held.maxFileBytes).toBe(10 * 1024 * 1024)
+    expect(held.pdf).toBe(false)
+  })
+
   it('shows the server a data.json reloaded from disk names', async () => {
     connect()
     const screen = open(SyncSettings)
