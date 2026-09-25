@@ -11,6 +11,8 @@ import {
   DEFAULT_SYNC_SETTINGS,
   MOBILE_MAX_FILE_BYTES,
   defaultSyncSettings,
+  holdsLegacyLedger,
+  legacyLedgerOf,
   migrateSyncSettings,
 } from '@/sync/settings'
 
@@ -89,29 +91,30 @@ describe('migrateSyncSettings', () => {
       'paused',
       'selective',
       'serverUrl',
-      'stateId',
-      'stateVaultId',
       'vaultId',
     ])
     expect((settings as Record<string, unknown>).deviceToken).toBeUndefined()
   })
 
-  it('leaves the state id empty for a settings file written before it existed', () => {
-    // Empty rather than the vault id: reusing that would put two local vaults syncing one
-    // server vault back on a single ledger, which is the collision the field exists to stop.
-    // The next enrolment mints one.
-    const settings = migrateSyncSettings({ serverUrl: 'https://sync.example', vaultId: 'v1' })
+  /**
+   * The ledger id lives in the vault's local storage, where no file can carry it to another
+   * vault. One an older version wrote into the file is read once, to be moved there.
+   */
+  it('drops a ledger id from the settings, and reads it back only as a legacy one', () => {
+    const raw = { stateId: 'abc123', stateVaultId: 'v1' }
 
-    expect(settings.stateId).toBe('')
+    expect(migrateSyncSettings(raw)).not.toHaveProperty('stateId')
+    expect(migrateSyncSettings(raw)).not.toHaveProperty('stateVaultId')
+    expect(legacyLedgerOf(raw)).toEqual({ stateId: 'abc123', vaultId: 'v1' })
+    expect(holdsLegacyLedger(raw)).toBe(true)
   })
 
-  it('keeps a state id it was given, and the vault that ledger describes', () => {
-    const settings = migrateSyncSettings({ stateId: 'abc123', stateVaultId: 'v1' })
-
-    expect(settings.stateId).toBe('abc123')
-    expect(settings.stateVaultId).toBe('v1')
-    expect(migrateSyncSettings({ stateId: 7, stateVaultId: 7 }).stateId).toBe('')
-    expect(migrateSyncSettings({ stateId: 7, stateVaultId: 7 }).stateVaultId).toBe('')
+  it('finds no legacy ledger where the file names none', () => {
+    expect(legacyLedgerOf({ serverUrl: 'https://sync.example' })).toBeNull()
+    expect(legacyLedgerOf({ stateId: '' })).toBeNull()
+    expect(legacyLedgerOf({ stateId: 7 })).toBeNull()
+    expect(legacyLedgerOf(null)).toBeNull()
+    expect(holdsLegacyLedger({ serverUrl: 'https://sync.example' })).toBe(false)
   })
 
   it('falls back to the default for a field of the wrong type', () => {

@@ -20,6 +20,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { secrets } from '@/secrets/SecretStore'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { ObsidianFileSystem } from './ObsidianFileSystem'
+import { NO_LEDGER, migrateLedgerId, readLedgerId, writeLedgerId, type LedgerId } from './ledgerId'
 import type { SyncSettings } from './settings'
 import { DISCONNECTED_STATUS, statusOf, type SyncStatus } from './status'
 import { fetchViaRequestUrl, wsFor } from './transport'
@@ -208,6 +209,10 @@ export class SyncService {
     this.app = app
     this.plugin = plugin
     this.deps = deps
+    // Once per vault: a ledger id an older version left in `data.json` moves to local storage.
+    const config = AbeleConfig.getInstance()
+    migrateLedgerId(app, config.legacyLedger)
+    config.legacyLedger = null
     // A settings save is the one road every change to what this device syncs takes.
     this.unhookSettings?.()
     this.unhookSettings = AbeleConfig.getInstance().onSaved(() => this.onSettingsSaved())
@@ -397,11 +402,11 @@ export class SyncService {
    * id it is filed under is saved with the settings. Enrolling again over an existing setup
    * reuses that id, so the keychain never fills with tokens no device holds any more.
    *
-   * The `stateId` is minted here, once, and again whenever the chosen vault is not the one the
-   * ledger describes — which is why `stateVaultId` is asked and not `vaultId`: a disconnect
-   * empties the latter, so a device that left vault A and joined vault B would otherwise open
-   * A's ledger, find every entry accounted for, and send deletes carrying A's file ids. The
-   * ledger left behind is deleted once the old engine has let go of it. The account client is
+   * The ledger id is minted here, once, and again whenever the chosen vault is not the one the
+   * ledger describes — which is why the ledger's own vault is asked and not `vaultId`: a
+   * disconnect empties the latter, so a device that left vault A and joined vault B would
+   * otherwise open A's ledger, find every entry accounted for, and send deletes carrying A's
+   * file ids. The ledger left behind is deleted once the old engine has let go of it. The account client is
    * dropped on the way out either way: it is on a token this flow has no further use for.
    */
   async chooseVault(choice: VaultChoice, deviceName: string): Promise<void> {
@@ -428,10 +433,10 @@ export class SyncService {
         ? settings.deviceTokenId
         : newSecretId()
       secrets().device.set(tokenId, enrolled.device_token)
-      if (settings.stateId === '' || settings.stateVaultId !== vaultId) {
-        dropped = settings.stateId === '' ? null : settings.stateId
-        settings.stateId = newStateId()
-        settings.stateVaultId = vaultId
+      const ledger = this.ledger(app)
+      if (ledger.stateId === '' || ledger.vaultId !== vaultId) {
+        dropped = ledger.stateId === '' ? null : ledger.stateId
+        writeLedgerId(app, { stateId: newStateId(), vaultId })
       }
       settings.serverUrl = this.accountUrl
       settings.vaultId = vaultId
@@ -500,15 +505,15 @@ export class SyncService {
 
   /** Disconnect and throw away what this device remembered: the ledger and the keychain name. */
   async forget(): Promise<void> {
-    const stateId = this.settings.stateId
+    const app = this.app
+    const stateId = app === null ? '' : this.ledger(app).stateId
     await this.disconnect()
     const settings = this.settings
     if (settings.deviceTokenId !== '') {
       secrets().device.remove(settings.deviceTokenId)
       settings.deviceTokenId = ''
     }
-    settings.stateId = ''
-    settings.stateVaultId = ''
+    if (app !== null) writeLedgerId(app, NO_LEDGER)
     await this.saveSettings()
     if (stateId === '') return
     await IndexedDbStateStore.delete(this.factory(), stateDatabaseName(stateId))
@@ -542,6 +547,29 @@ export class SyncService {
 
   private async saveSettings(): Promise<void> {
     await AbeleConfig.getInstance().saveSettings()
+  }
+
+  /** The ledger this local vault syncs on, from its own local storage (`ledgerId.ts`). */
+  private ledger(app: App): LedgerId {
+    return readLedgerId(app) ?? NO_LEDGER
+  }
+
+  /**
+   * The ledger the engine is about to be built on, minted when this vault has none for the
+   * vault the settings name.
+   *
+   * `chooseVault` mints one as it enrols. This is for settings that arrived some other way — a
+   * transfer, a copied or synced `data.json` — which name a server vault and carry no ledger
+   * id at all: a fresh one is what makes the first run a walk of the manifest rather than a
+   * delete of everything this disk does not hold.
+   */
+  private ledgerFor(app: App, vaultId: string): LedgerId {
+    const held = this.ledger(app)
+    if (held.stateId !== '' && held.vaultId === vaultId) return held
+    const minted = { stateId: newStateId(), vaultId }
+    writeLedgerId(app, minted)
+    this.note('a fresh ledger for this vault: the first sync walks the whole manifest')
+    return minted
   }
 
   /** The device token, or null when the settings name one the keychain does not hold. */
@@ -630,7 +658,7 @@ export class SyncService {
     })
     const store = await IndexedDbStateStore.open(
       this.factory(),
-      stateDatabaseName(settings.stateId)
+      stateDatabaseName(this.ledgerFor(app, settings.vaultId).stateId)
     )
     let engine: SyncEngine
     let vault: VaultClient

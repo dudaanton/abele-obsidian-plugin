@@ -26,7 +26,8 @@ const own = (key: string): string => `plugin:${key}`
  *
  * Named after the `stateId` the plugin mints when it enrols, not after the server's vault id:
  * Obsidian's IndexedDB belongs to the app rather than to the vault, so two local vaults syncing
- * the same server vault would otherwise share one ledger.
+ * the same server vault would otherwise share one ledger. The id is kept in the vault's local
+ * storage and in no file, for the same reason (`ledgerId.ts`).
  */
 export const stateDatabaseName = (stateId: string): string => `abele-sync-${stateId}`
 

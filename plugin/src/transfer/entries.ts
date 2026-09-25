@@ -400,10 +400,11 @@ export const SECTIONS: Section[] = [
    * other device, on purpose and once, while the synced secret store would hand it to every
    * device the settings reach, for good.
    *
-   * `stateId` and `stateVaultId` ride along inside the block and are meaningless on the other
-   * device; they name a ledger in *this* device's IndexedDB, which is the app's and not the
-   * vault's. The receiving device finds no such database, opens an empty one under that name,
-   * and its first run is a scan of the manifest — the same thing a fresh enrolment does.
+   * The ledger id does not ride along: it names a database in the app's IndexedDB, which every
+   * local vault on a machine shares, and one carried into another vault on the same machine
+   * would open this vault's ledger there. It is kept in local storage, out of the block, and the
+   * receiving vault mints its own — its first run is a scan of the manifest, the same thing a
+   * fresh enrolment does.
    */
   rootBlock('sync', 'Sync', ['sync'], {
     secretsOf: (settings) => {

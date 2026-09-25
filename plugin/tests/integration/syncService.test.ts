@@ -132,7 +132,7 @@ const daemonScopeKey = (selective: SelectiveSettings, ignoreText: string | null)
 
 /** What the service filed in its own ledger, read through a second connection. */
 async function meta(key: string): Promise<string | null> {
-  const store = await IndexedDbStateStore.open(indexedDB, stateDatabaseName(settings().stateId))
+  const store = await IndexedDbStateStore.open(indexedDB, stateDatabaseName(ledgerOf().stateId))
   try {
     return await store.getMeta(key)
   } finally {
@@ -155,6 +155,13 @@ const write = async (path: string, text: string): Promise<void> => {
 }
 
 const settings = () => AbeleConfig.getInstance().sync
+
+/** The ledger this vault syncs on, as its local storage holds it. */
+const ledgerOf = (): { stateId: string; vaultId: string } =>
+  (app.loadLocalStorage('abele-sync-ledger') as { stateId: string; vaultId: string } | null) ?? {
+    stateId: '',
+    vaultId: '',
+  }
 
 /* -- Waiting ------------------------------------------------------------- */
 
@@ -493,7 +500,7 @@ describe('SyncService — disconnecting', () => {
     const { vaultId } = await connect()
     await synced()
     const tokenId = settings().deviceTokenId
-    const stateId = settings().stateId
+    const stateId = ledgerOf().stateId
 
     await service.disconnect()
     await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
@@ -503,18 +510,18 @@ describe('SyncService — disconnecting', () => {
     expect(settings().deviceTokenId).toBe(tokenId)
     expect(app.secretStorage.getSecret(tokenId)).toMatch(/^absd_/)
     // The same vault, so the same ledger: reconnecting costs a scan, not a download.
-    expect(settings().stateId).toBe(stateId)
+    expect(ledgerOf().stateId).toBe(stateId)
   })
 
   it('forget drops the ledger and the keychain name as well', async () => {
     await connect()
     await synced()
     const tokenId = settings().deviceTokenId
-    const stateId = settings().stateId
+    const stateId = ledgerOf().stateId
 
     await service.forget()
 
-    expect(settings().stateId).toBe('')
+    expect(ledgerOf().stateId).toBe('')
     expect(settings().deviceTokenId).toBe('')
     expect(app.secretStorage.getSecret(tokenId)).toBe('')
     // The database is gone: a fresh one opens with nothing filed in it.
@@ -585,7 +592,7 @@ describe('SyncService — one ledger per local vault', () => {
   it("does not let a second local vault read the first one's ledger", async () => {
     const { vaultId, other } = await connect()
     await synced()
-    const first = settings().stateId
+    const first = ledgerOf().stateId
     expect(first).not.toBe('')
     expect(await serverPaths(other)).toContain('Existing.md')
 
@@ -602,7 +609,7 @@ describe('SyncService — one ledger per local vault', () => {
     await service.chooseVault(vaultId, 'Desktop')
     await synced()
 
-    expect(settings().stateId).not.toBe(first)
+    expect(ledgerOf().stateId).not.toBe(first)
     expect(await serverPaths(other)).toContain('Existing.md')
     expect(await read('Existing.md')).toBe('already here')
   })
@@ -610,15 +617,15 @@ describe('SyncService — one ledger per local vault', () => {
   it('starts a fresh ledger when the device is pointed at another vault', async () => {
     const { accountToken } = await connect()
     await synced()
-    const first = settings().stateId
+    const first = ledgerOf().stateId
 
     const { vaultId: second } = await server.vault(accountToken, 'Work')
     await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
     await service.chooseVault(second, 'Laptop')
     await synced()
 
-    expect(settings().stateId).not.toBe(first)
-    expect(settings().stateVaultId).toBe(second)
+    expect(ledgerOf().stateId).not.toBe(first)
+    expect(ledgerOf().vaultId).toBe(second)
     // And the one it replaced is gone rather than left behind for the life of the vault.
     expect(service.log.value.join('\n')).toContain('dropped the ledger')
     const store = await IndexedDbStateStore.open(indexedDB, stateDatabaseName(first))
@@ -632,8 +639,8 @@ describe('SyncService — one ledger per local vault', () => {
   it('starts a fresh ledger when a disconnected device joins another vault', async () => {
     const { accountToken, vaultId: first } = await connect()
     await synced()
-    const firstState = settings().stateId
-    expect(settings().stateVaultId).toBe(first)
+    const firstState = ledgerOf().stateId
+    expect(ledgerOf().vaultId).toBe(first)
 
     // A disconnect empties `vaultId`, so only `stateVaultId` still knows which vault the
     // ledger describes. Without it this device would open the first vault's ledger against the
@@ -649,9 +656,141 @@ describe('SyncService — one ledger per local vault', () => {
     await service.chooseVault(second, 'Laptop')
     await synced()
 
-    expect(settings().stateId).not.toBe(firstState)
-    expect(settings().stateVaultId).toBe(second)
+    expect(ledgerOf().stateId).not.toBe(firstState)
+    expect(ledgerOf().vaultId).toBe(second)
     expect(await serverPaths(otherB)).toContain('Existing.md')
+  })
+})
+
+/**
+ * IndexedDB is one namespace for every vault in the app, so the name a ledger is filed under
+ * must be something no file can carry: a transfer or a copied `data.json` that brought it along
+ * would open another vault's ledger, find none of its files on this disk, and delete them all.
+ */
+describe('SyncService — a ledger no file can carry', () => {
+  /** Where the ledger id is kept: this vault's own local storage. */
+  const ledger = (): unknown => app.loadLocalStorage('abele-sync-ledger')
+
+  /**
+   * A second local vault on this machine: its own disk, keychain and local storage, and the
+   * same IndexedDB as the first. The device token is in its keychain, as "Include keys" puts it.
+   */
+  function secondVault(tokenId: string, token: string): void {
+    app = buildFakeVault([])
+    app.secretStorage.setSecret(tokenId, token)
+    secretStore = createPluginSecrets({ ...plugin, app } as unknown as AbelePlugin)
+    setSecrets(secretStore)
+  }
+
+  it('opens a fresh ledger in a vault a transfer set up on the same machine', async () => {
+    const { other } = await connect()
+    await synced()
+    const tokenId = settings().deviceTokenId
+    const token = app.secretStorage.getSecret(tokenId)
+    // The sync block exactly as the transfer reads it off this device.
+    const block: unknown = JSON.parse(
+      JSON.stringify(AbeleConfig.getInstance().exportSettings().sync)
+    )
+    await service.destroy()
+
+    secondVault(tokenId, token)
+    AbeleConfig.getInstance().applySettings({ sync: block } as never)
+    service = SyncService.getInstance()
+    start()
+    await synced()
+
+    // A first run on an empty ledger walks the manifest and takes the vault down.
+    expect(await read('Existing.md')).toBe('already here')
+    expect(await serverPaths(other)).toContain('Existing.md')
+  })
+
+  it('opens a fresh ledger in a vault whose data.json was copied from another', async () => {
+    const { other } = await connect()
+    await synced()
+    const tokenId = settings().deviceTokenId
+    const token = app.secretStorage.getSecret(tokenId)
+    const copied: unknown = JSON.parse(JSON.stringify(AbeleConfig.getInstance().exportSettings()))
+    await service.destroy()
+
+    secondVault(tokenId, token)
+    const loading = vi.spyOn(plugin, 'loadData').mockResolvedValue(copied)
+    await AbeleConfig.getInstance().loadSettings()
+    loading.mockRestore()
+    service = SyncService.getInstance()
+    start()
+    await synced()
+
+    expect(await read('Existing.md')).toBe('already here')
+    expect(await serverPaths(other)).toContain('Existing.md')
+  })
+
+  it('writes no ledger id into the settings file', async () => {
+    await connect()
+    await synced()
+
+    const written = JSON.stringify(AbeleConfig.getInstance().exportSettings())
+    expect(ledger()).toMatchObject({ stateId: expect.any(String) as string })
+    const { stateId } = ledger() as { stateId: string }
+    expect(stateId).not.toBe('')
+    expect(written).not.toContain(stateId)
+    expect(written).not.toContain('stateId')
+  })
+
+  it('moves the ledger id an older data.json holds into local storage, once', async () => {
+    const { vaultId } = await connect()
+    await synced()
+    const { stateId } = ledger() as { stateId: string }
+    await service.destroy()
+
+    // The next launch of a vault an older version of the plugin wrote.
+    app.saveLocalStorage('abele-sync-ledger', null)
+    const stored = AbeleConfig.getInstance().exportSettings() as unknown as {
+      sync: Record<string, unknown>
+    }
+    stored.sync = { ...stored.sync, stateId, stateVaultId: vaultId }
+    const written: unknown[] = []
+    const loading = vi.spyOn(plugin, 'loadData').mockResolvedValue(stored)
+    const saving = vi.spyOn(plugin, 'saveData').mockImplementation((data: unknown) => {
+      written.push(JSON.parse(JSON.stringify(data)))
+      return Promise.resolve()
+    })
+    try {
+      await AbeleConfig.getInstance().loadSettings()
+      service = SyncService.getInstance()
+      start()
+      await synced()
+
+      expect(ledger()).toEqual({ stateId, vaultId })
+      // The file is written again without it, so it can never travel from here.
+      expect(written.length).toBeGreaterThan(0)
+      expect(JSON.stringify(written[written.length - 1])).not.toContain(stateId)
+    } finally {
+      loading.mockRestore()
+      saving.mockRestore()
+    }
+  })
+
+  it('keeps the ledger id local storage already holds over one data.json brings', async () => {
+    const { vaultId } = await connect()
+    await synced()
+    const held = ledger()
+    await service.destroy()
+
+    const stored = AbeleConfig.getInstance().exportSettings() as unknown as {
+      sync: Record<string, unknown>
+    }
+    stored.sync = { ...stored.sync, stateId: 'someoneelse', stateVaultId: vaultId }
+    const loading = vi.spyOn(plugin, 'loadData').mockResolvedValue(stored)
+    try {
+      await AbeleConfig.getInstance().loadSettings()
+      service = SyncService.getInstance()
+      start()
+      await synced()
+
+      expect(ledger()).toEqual(held)
+    } finally {
+      loading.mockRestore()
+    }
   })
 })
 
@@ -694,7 +833,7 @@ describe('SyncService — when it cannot start at all', () => {
     expect(service.client()).toBeNull()
     // The store was let go too, so deleting the database is not blocked by a live connection.
     await service.forget()
-    expect(settings().stateId).toBe('')
+    expect(ledgerOf().stateId).toBe('')
   })
 
   it('reports a failure that happens before the engine is even built', async () => {

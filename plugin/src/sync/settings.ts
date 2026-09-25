@@ -13,25 +13,6 @@ export interface SyncSettings {
   serverUrl: string
   vaultId: string
   deviceId: string
-  /**
-   * What this device's own ledger is filed under, minted here and never sent anywhere.
-   *
-   * Not the vault id, though the two look alike. Obsidian's IndexedDB belongs to the app and
-   * not to the vault, so two local vaults on one machine share a database namespace — and two
-   * of them connected to the same server vault would open one ledger, each find every entry
-   * missing from its own disk, and push a delete for every file in the vault. The id is minted
-   * when this device enrols, so no two local vaults can collide; `forget` is what drops it.
-   */
-  stateId: string
-  /**
-   * Which server vault the ledger under `stateId` describes.
-   *
-   * Not the same field as `vaultId`, which is emptied by a disconnect: without this, a device
-   * that disconnected from one vault and connected to another would open the first vault's
-   * ledger, find every entry accounted for, and send deletes carrying the *other* vault's file
-   * ids. A chosen vault that is not this one mints a new `stateId`.
-   */
-  stateVaultId: string
   /** The key the device token is stored under, not the token. */
   deviceTokenId: string
   /** What this device calls itself in the vault's device list. */
@@ -67,8 +48,6 @@ export function defaultSyncSettings(isMobile = false): SyncSettings {
     serverUrl: '',
     vaultId: '',
     deviceId: '',
-    stateId: '',
-    stateVaultId: '',
     deviceTokenId: '',
     deviceName: '',
     selective,
@@ -100,16 +79,32 @@ export function migrateSyncSettings(raw: unknown, isMobile = false): SyncSetting
     serverUrl: stringOr(o.serverUrl, defaults.serverUrl),
     vaultId: stringOr(o.vaultId, defaults.vaultId),
     deviceId: stringOr(o.deviceId, defaults.deviceId),
-    // Empty for a settings file written before this field existed: the next enrolment mints
-    // one. Reusing the vault id here instead would recreate the collision it exists to stop.
-    stateId: stringOr(o.stateId, defaults.stateId),
-    stateVaultId: stringOr(o.stateVaultId, defaults.stateVaultId),
     deviceTokenId: stringOr(o.deviceTokenId, defaults.deviceTokenId),
     deviceName: stringOr(o.deviceName, defaults.deviceName),
     selective: migrateSelective(o.selective, defaults.selective),
     paused: typeof o.paused === 'boolean' ? o.paused : defaults.paused,
     keySignature: migrateKeySignature(o.keySignature),
   }
+}
+
+/**
+ * The ledger id an older version of the plugin kept in `data.json`, or null when the block
+ * holds none.
+ *
+ * Read once, to move it into the vault's local storage (`ledgerId.ts`), and never written back:
+ * a file is exactly what a transfer, a copied vault or a file sync carries to another local
+ * vault, and a ledger id that travels opens the other vault's ledger.
+ */
+export function legacyLedgerOf(raw: unknown): { stateId: string; vaultId: string } | null {
+  const o = objectOf(raw)
+  if (o === null || typeof o.stateId !== 'string' || o.stateId === '') return null
+  return { stateId: o.stateId, vaultId: typeof o.stateVaultId === 'string' ? o.stateVaultId : '' }
+}
+
+/** Whether a stored block still names a ledger, so the file is due to be written without it. */
+export function holdsLegacyLedger(raw: unknown): boolean {
+  const o = objectOf(raw)
+  return o !== null && ('stateId' in o || 'stateVaultId' in o)
 }
 
 /** The selective settings, filled out from the defaults switch by switch. */
