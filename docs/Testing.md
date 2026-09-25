@@ -318,6 +318,14 @@ Three files, three concerns:
   the file of places in the vault still holds them; then a later place written into that file on
   disk, as a sync from another device would, moves the open book on to it, and it stays in the
   file. The file is removed afterwards, so the fixture vault holds only what it did.
+- `bookNotesFile.e2e.test.ts` — **where highlights go**: with one note for every book and a
+  template set, the first highlight makes the note from the whole template and the second adds
+  only its body; the book's Aa dialog sends the book to a note of its own, the next highlight is
+  written there (still marked as the book's), the book shows all three, and removing one from the
+  shared note takes the heading its body wrote. The reader settings are put back and the folder
+  removed afterwards. The rules themselves — the choice for every book and for one, a template's
+  parts, a note several books share — are unit tests (`bookNotes.test.ts`,
+  `bookNotesVault.test.ts`, `bookNotesSettings.test.ts`).
 - `bookSpeech.e2e.test.ts` — **reading aloud**, with the platform's speech swapped for a stand-in
   (`window.__abeleTest.reader.hooks.speech`) that records each sentence and ends it a moment later,
   so nothing is heard. With the rich book and the plain PDF: the header's button reads from the

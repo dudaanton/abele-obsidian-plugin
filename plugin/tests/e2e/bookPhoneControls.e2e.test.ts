@@ -296,7 +296,7 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
     `)
     expect(r.error).toBeUndefined()
     expect(r.settings!.scrolls).toBe(true)
-    expect(r.settings!.last).toBe('Speed')
+    expect(r.settings!.last).toBe('Template')
     expect(r.settings!.lastBottom).toBeLessThanOrEqual(r.settings!.boxBottom)
     expect(r.settings!.boxBottom).toBeLessThanOrEqual(r.settings!.height)
     expect(r.note!.length).toBe(3)

@@ -34,6 +34,7 @@ import { bookCallbacks, type BookActions } from './bookCallbacks'
 import { bookKey } from './positions'
 import { bookPlaces, followPlace } from './places'
 import { progressOf } from './readingProgress'
+import { nameOf } from './bookText'
 import { fillBookMenu, fillZoomMenu } from './bookMenu'
 import { bookScope, zoomStep } from './zoom'
 import { PDF_SCROLL_TAG, definePdfScroll } from './pdfScroll'
@@ -325,6 +326,7 @@ export class BookView extends FileView {
       return
     }
     if (this.reader) this.applyTo(this.reader)
+    this.reading?.settingsChanged()
     const note = this.model.footnote?.view as FoliateView | undefined
     if (note?.renderer) this.applyTo(note, true)
   }
@@ -385,18 +387,21 @@ export class BookView extends FileView {
       await reader.open(opened.book)
       if (token !== this.loadToken) return
       this.applyTo(reader)
+      this.key = bookKey(opened.book.metadata?.identifier, file.path)
+      this.model.key = this.key
+      const meta = opened.book.metadata
       this.reading = new BookReading(
         this.app,
         file,
         reader as unknown as ConstructorParameters<typeof BookReading>[2],
         this.model,
         this.contentEl,
-        this.isPdf ? (opened.book as unknown as PdfBookExtras) : null
+        this.isPdf ? (opened.book as unknown as PdfBookExtras) : null,
+        () => ({ key: this.key, title: nameOf(meta?.title), author: nameOf(meta?.author) })
       )
       void this.reading.loadHighlights()
       if (!this.isPdf && reader.isFixedLayout) this.model.kind = 'fixed'
       this.model.toc = tocEntries(opened.book.toc)
-      this.key = bookKey(opened.book.metadata?.identifier, file.path)
       const place = await bookPlaces()?.get(this.key)
       if (token !== this.loadToken) return
       await reader.init({ lastLocation: place?.cfi ?? null, showTextStart: true })

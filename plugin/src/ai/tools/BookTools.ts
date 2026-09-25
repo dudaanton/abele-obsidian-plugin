@@ -12,7 +12,6 @@ import { BOOK_VIEW_TYPE, READER_EXTENSIONS } from '@/reader/viewType'
 import type { BookView } from '@/reader/BookView'
 import { linkToPlace, parsePlaceSubpath, type BookPlace } from '@/reader/bookLinks'
 import { loadBookText, offsetOf, searchBookText, sectionText } from '@/reader/bookText'
-import { findCompanion } from '@/reader/companion'
 import { percent } from '@/reader/model'
 
 /** The most text one call hands back. */
@@ -155,10 +154,10 @@ export function createBookViewsTool(): AgentTool {
             out.push(quoted(t.text.slice(0, 600)).replace(/^ {3}/gm, '     '))
           }
         }
-        const note = findCompanion(app(), file)
+        const notes = view.reading?.notes().map((n) => n.path) ?? []
         out.push(
-          note
-            ? `   Highlights: ${m.highlights.length}, kept in ${note.path}`
+          notes.length
+            ? `   Highlights: ${m.highlights.length}, kept in ${notes.join(' and ')}`
             : '   Highlights: none yet'
         )
         out.push('')

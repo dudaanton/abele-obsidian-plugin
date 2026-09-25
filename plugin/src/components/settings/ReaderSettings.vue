@@ -5,10 +5,12 @@
     >
       <ReaderSettingsForm />
     </Section>
+    <BookNotesSettings />
   </div>
 </template>
 
 <script setup lang="ts">
 import Section from '../obsidian/Section.vue'
 import ReaderSettingsForm from '../reader/ReaderSettingsForm.vue'
+import BookNotesSettings from '../reader/BookNotesSettings.vue'
 </script>

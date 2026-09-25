@@ -59,7 +59,41 @@ export interface ReaderSettings {
    * As typed; `placesPathOf` is the path in use.
    */
   placesPath: string
+  /** Where highlights go: a note of each book's own beside it, or one note, `notesPath`. */
+  notesTo: NotesTo
+  /** The note highlights go to when they go to one note, as typed. */
+  notesPath: string
+  /** A note that new highlights notes are made from, as typed; empty for none. */
+  notesTemplate: string
+  /** A book's own choice of the three above, by its key (`bookKey`); what it leaves out is as above. */
+  bookNotes: Record<string, BookNotesChoice>
 }
+
+export type NotesTo = 'book' | 'note'
+
+/** One book's choice of where its highlights go: a field left out is the choice for every book. */
+export interface BookNotesChoice {
+  notesTo?: NotesTo
+  notesPath?: string
+  notesTemplate?: string
+}
+
+/** Where one book's highlights go, all said: the note's path and the template's are tidied. */
+export interface BookNotesTarget {
+  to: NotesTo
+  /** The note, when they go to one note. */
+  path: string
+  /** The template note; empty for none. */
+  template: string
+  /**
+   * The other notes the settings name — the one for every book, and the book's own — where its
+   * highlights may be from before the choice changed; they are still read.
+   */
+  alsoIn: string[]
+}
+
+/** The one note highlights go to unless another is named. */
+export const DEFAULT_NOTES_PATH = 'Book notes.md'
 
 /**
  * Where the places of books are kept unless said otherwise: a JSON file at the root of the vault.
@@ -89,6 +123,10 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   ttsRate: 1,
   progressShow: 'page',
   placesPath: DEFAULT_PLACES_PATH,
+  notesTo: 'book',
+  notesPath: DEFAULT_NOTES_PATH,
+  notesTemplate: '',
+  bookNotes: {},
 }
 
 export const FONT_SIZES = [70, 80, 90, 100, 110, 120, 135, 150, 175, 200]
@@ -123,7 +161,88 @@ export function readerSettingsFrom(stored?: Partial<ReaderSettings> | null): Rea
     ttsRate: clamp(s.ttsRate, 0.5, 3, d.ttsRate),
     progressShow: oneOf(s.progressShow, PROGRESS_SHOWS, d.progressShow),
     placesPath: typeof s.placesPath === 'string' ? s.placesPath : d.placesPath,
+    notesTo: oneOf(s.notesTo, NOTES_TO, d.notesTo),
+    notesPath: typeof s.notesPath === 'string' ? s.notesPath : d.notesPath,
+    notesTemplate: typeof s.notesTemplate === 'string' ? s.notesTemplate : d.notesTemplate,
+    bookNotes: bookNotesFrom(s.bookNotes),
   }
+}
+
+const NOTES_TO = ['book', 'note'] as const
+
+/** One book's choice as stored, without what is no choice; null when nothing is left. */
+function choiceFrom(value: unknown): BookNotesChoice | null {
+  if (!value || typeof value !== 'object') return null
+  const v = value as Record<string, unknown>
+  const out: BookNotesChoice = {}
+  if ((NOTES_TO as readonly unknown[]).includes(v.notesTo)) out.notesTo = v.notesTo as NotesTo
+  if (typeof v.notesPath === 'string') out.notesPath = v.notesPath
+  if (typeof v.notesTemplate === 'string') out.notesTemplate = v.notesTemplate
+  return Object.keys(out).length ? out : null
+}
+
+function bookNotesFrom(value: unknown): Record<string, BookNotesChoice> {
+  const out: Record<string, BookNotesChoice> = {}
+  if (!value || typeof value !== 'object') return out
+  for (const [key, choice] of Object.entries(value as Record<string, unknown>)) {
+    const kept = choiceFrom(choice)
+    if (kept) out[key] = kept
+  }
+  return out
+}
+
+/**
+ * A note's path as typed, tidied: `.md` added when it does not end so, and empty when it is no
+ * note Obsidian Sync would carry — a part of it hidden, the vault's settings folder included.
+ */
+export function notePathOf(typed: string): string {
+  const path = typed.trim().replace(/\\/g, '/').split('/').filter(Boolean).join('/')
+  if (!path || path.split('/').some((p) => p.startsWith('.'))) return ''
+  return /\.md$/i.test(path) ? path : `${path}.md`
+}
+
+/** Where the highlights of the book kept under `key` go: its own choice over everyone's. */
+export function notesTargetFor(settings: ReaderSettings, key: string): BookNotesTarget {
+  const own = settings.bookNotes[key] ?? {}
+  const typedPath = own.notesPath?.trim() ? own.notesPath : settings.notesPath
+  const typedTemplate = own.notesTemplate?.trim() ? own.notesTemplate : settings.notesTemplate
+  const to = own.notesTo ?? settings.notesTo
+  const path = notePathOf(typedPath) || notePathOf(settings.notesPath) || DEFAULT_NOTES_PATH
+  const named = [
+    notePathOf(settings.notesPath) || DEFAULT_NOTES_PATH,
+    notePathOf(own.notesPath ?? ''),
+  ]
+  const alsoIn = named.filter(
+    (p, i) => p && named.indexOf(p) === i && !(to === 'note' && p === path)
+  )
+  return { to, path, template: notePathOf(typedTemplate), alsoIn }
+}
+
+/** The books' choices with one book's set anew; a choice of nothing forgets the book. */
+export function withBookNotes(
+  all: Record<string, BookNotesChoice>,
+  key: string,
+  choice: BookNotesChoice
+): Record<string, BookNotesChoice> {
+  const out = { ...all }
+  const kept = choiceFrom(choice)
+  if (kept) out[key] = kept
+  else delete out[key]
+  return out
+}
+
+/** The choices with a book kept by its path moved to its new path; null when there is none. */
+export function renamedBookNotes(
+  all: Record<string, BookNotesChoice>,
+  oldPath: string,
+  newPath: string
+): Record<string, BookNotesChoice> | null {
+  const from = `path:${oldPath}`
+  if (!(from in all)) return null
+  const out: Record<string, BookNotesChoice> = {}
+  for (const [key, choice] of Object.entries(all))
+    out[key === from ? `path:${newPath}` : key] = choice
+  return out
 }
 
 /**

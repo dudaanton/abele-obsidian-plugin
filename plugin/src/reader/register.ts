@@ -10,7 +10,7 @@ import { watch } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { BOOK_EXTENSIONS, BOOK_VIEW_TYPE, BookView, READER_EXTENSIONS } from './BookView'
 import { initBookPlaces } from './places'
-import { readerSettingsFrom } from './settings'
+import { readerSettingsFrom, renamedBookNotes } from './settings'
 import { setPdfTakeover } from './pdfTakeover'
 import { registerPlaceLinks } from './placeLinks'
 import { forgetBookTexts } from './bookText'
@@ -38,8 +38,15 @@ export function registerReader(plugin: Plugin): void {
   // A book kept by its path follows the file when it is renamed or moved.
   plugin.registerEvent(
     app.vault.on('rename', (file, oldPath) => {
-      if (file instanceof TFile && READER_EXTENSIONS.includes(file.extension))
-        void places.renamed(oldPath, file.path)
+      if (!(file instanceof TFile) || !READER_EXTENSIONS.includes(file.extension)) return
+      void places.renamed(oldPath, file.path)
+      // Its own choice of where its highlights go, too.
+      const config = AbeleConfig.getInstance()
+      const reader = readerSettingsFrom(config.reader)
+      const moved = renamedBookNotes(reader.bookNotes, oldPath, file.path)
+      if (!moved) return
+      config.reader = { ...reader, bookNotes: moved }
+      void config.saveSettings()
     })
   )
 

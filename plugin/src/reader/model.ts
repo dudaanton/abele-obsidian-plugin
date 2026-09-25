@@ -71,6 +71,8 @@ export interface BookModel {
   status: 'loading' | 'ready' | 'error'
   message: string
   title: string
+  /** The key the book's place and its own settings are kept under; empty until it opens. */
+  key: string
   toc: TocEntry[]
   /** The contents entry of the page on screen. */
   currentHref: string | null
@@ -112,6 +114,7 @@ export const emptyBookModel = (): BookModel => ({
   status: 'loading',
   message: 'Opening the book…',
   title: '',
+  key: '',
   toc: [],
   currentHref: null,
   chapter: '',

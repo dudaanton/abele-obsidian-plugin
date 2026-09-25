@@ -36,7 +36,8 @@ const KEEP_MS = 5 * 60_000
 const KEEP_BOOKS = 3
 const cache = new Map<string, { at: number; mtime: number; loaded: Promise<LoadedBook> }>()
 
-const nameOf = (value: unknown): string => {
+/** A name out of a book's metadata, which may be a string, a list, or a name in several languages. */
+export const nameOf = (value: unknown): string => {
   if (!value) return ''
   if (typeof value === 'string') return value
   if (Array.isArray(value)) return value.map(nameOf).filter(Boolean).join(', ')

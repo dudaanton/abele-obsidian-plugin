@@ -118,7 +118,7 @@ chapter and is highlighted, linked and quoted as one. It stops at the end of its
 so; in a PDF or a book of fixed pages each page is a document of its own, and a selection stays on
 its page.
 
-**Highlights live in a note beside the book**, `<book> highlights.md`, made with the first one:
+**Highlights live in a note beside the book** unless the settings send them elsewhere (see **Where highlights go** below), `<book> highlights.md`, made with the first one:
 
 ```markdown
 ---
@@ -247,6 +247,57 @@ merged with it.
 
 On a phone the text starts just under Obsidian's header and the line under the page sits above its
 navigation bar.
+
+## Where highlights go
+
+**Settings → Abele → Books → Highlights** says it for every book; a book's own **Aa** dialog, under
+**Highlights of this book**, for that book alone, where **As in settings** and empty fields follow
+Settings. Both are plugin settings, so they reach every device the settings do, and travel with
+the settings transfer; a book is known by its identifier, as for its place, or by its path, which
+follows a rename.
+
+| Setting | What it does |
+|---|---|
+| Where they go | **A note of the book's own**, beside it (as above), or **one note for every book** — a book's own dialog calls it **a note you name**. |
+| Note | The note they go to when it is one note: `Book notes.md` at the vault's root by default. Made, folders too, with the first highlight. |
+| Template | A note new highlights notes are made from; empty for none. |
+
+**A shared note** holds the highlights of several books; each book shows the callouts whose link
+goes to it, so two books never mix even at the same place. New ones are added at the end, like a
+journal, and without a template their link reads `Dune · Chapter 3`, so it says which book.
+
+**A template** is an ordinary note, in the plugin's template language:
+
+```markdown
+---
+tags: [reading]
+book: "{{ book }}"
+---
+# {{ title }}, {{ author }}
+
+{{#body}}
+## {{ chapter }} · {{ date }}
+{{ highlight }}
+{{/body}}
+```
+
+The first highlight makes the note from all of it, the body written for that highlight where the
+body stands. After that only the body is added, at the end of the note. `{{ highlight }}` is the
+callout the reader reads back, on a line of its own; a body without it gets the callout at its end,
+and a line right after it gets a blank line in between, or it would join the quote. Filled in:
+`{{ title }}`, `{{ author }}`, `{{ book }}` (a link to the book), `{{ chapter }}`, `{{ color }}`,
+`{{ link }}` (to the place), `{{ date }}` and `{{ date.format('D MMMM YYYY') }}`; anything else is
+left as written. A template without `{{#body}}` is written once and each highlight is added at the
+end. A book's own note made from a template still gets `type: book-highlights` and `book:` if the
+template does not set them, so it is found again after either file moves. A template that is not
+there is said, and the highlight is written without it.
+
+Recolouring, a comment, or removing a highlight happens where the highlight is. Removing one takes
+the lines its body wrote around it too, while they still read as the template wrote them — a
+heading changed by hand stays. Changing where highlights go leaves the ones written before where
+they are: the book keeps showing the ones in its own note and in the notes the settings name (the
+one for every book and its own), and changes them there. A note that is no longer named anywhere
+is not read.
 
 ## PDF
 

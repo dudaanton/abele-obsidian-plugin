@@ -79,6 +79,7 @@
     >
       <div class="abele-book-reader__settings">
         <ReaderSettingsForm :kind="model.kind" />
+        <BookNotesSettings v-if="model.key && model.kind !== 'fixed'" :book-key="model.key" />
       </div>
     </ObsidianModal>
 
@@ -129,6 +130,7 @@ import BookSpeechBar from './BookSpeechBar.vue'
 import Tabs from '../obsidian/Tabs.vue'
 import type { Highlight, HighlightColor } from '@/reader/highlights'
 import ReaderSettingsForm from './ReaderSettingsForm.vue'
+import BookNotesSettings from './BookNotesSettings.vue'
 import { type BookModel, type PanelTab, type SearchHit, type TocEntry } from '@/reader/model'
 
 const props = defineProps<{

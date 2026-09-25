@@ -10,11 +10,18 @@ import { recentNoteView } from '@/github/linking'
 import { textWalker } from '@/vendor/foliate-js/text-walker.js'
 import { searchMatcher } from '@/vendor/foliate-js/search.js'
 import { linkToPlace, quoteWithLink, type BookPlace } from './bookLinks'
-import { deleteHighlight, findCompanion, readHighlights, saveHighlight } from './companion'
+import {
+  deleteHighlight,
+  noteFor,
+  notesOf,
+  readHighlights,
+  saveHighlight,
+  type NotesPlace,
+} from './companion'
 import type { Highlight, HighlightColor } from './highlights'
 import { BookMarks } from './marks'
 import { ReadAloud } from './readAloud'
-import { readerSettingsFrom } from './settings'
+import { notesTargetFor, readerSettingsFrom } from './settings'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { Overlayer } from '@/vendor/foliate-js/overlayer.js'
 import { emptySearch, type BookModel, type SearchGroup } from './model'
@@ -39,8 +46,10 @@ export class BookReading {
   private pendingMatch: { index: number; occurrence: number; query: string } | null = null
   /** A place in a PDF a link named, to select once its page is drawn. */
   private pendingCfi: string | null = null
-  /** The highlights note as last read, so its deletion is noticed too. */
-  private notePath: string | null = null
+  /** The notes the highlights were last read from, so their deletion is noticed too. */
+  private notePaths: string[] = []
+  /** Where new highlights went when they were last read, to notice the choice change. */
+  private targetSeen = ''
 
   constructor(
     private readonly app: App,
@@ -48,7 +57,9 @@ export class BookReading {
     private readonly engine: Engine,
     private readonly model: BookModel,
     private readonly themeEl: HTMLElement,
-    private readonly pdf: (PdfBookExtras & object) | null
+    private readonly pdf: (PdfBookExtras & object) | null,
+    /** The book's key, title and author, which say where its highlights go. */
+    private readonly book: () => { key: string; title: string; author: string }
   ) {
     // Pages of a fixed size — a PDF, a comic, a fixed-layout book — have no overlay in the
     // engine: the reader marks them itself.
@@ -78,19 +89,38 @@ export class BookReading {
 
   // ————— Highlights —————
 
-  /** Reads the book's highlights note and shows what it holds. */
+  /** Where this book's highlights go, as the settings say now. */
+  private where(): NotesPlace {
+    const { key, title, author } = this.book()
+    const settings = readerSettingsFrom(AbeleConfig.getInstance().reader)
+    return { title, author, target: notesTargetFor(settings, key) }
+  }
+
+  /** The notes this book's highlights may be in, as the settings say now. */
+  notes(): TFile[] {
+    return notesOf(this.app, this.file, this.where())
+  }
+
+  /** Reads the book's highlights notes and shows what they hold. */
   async loadHighlights(): Promise<void> {
-    this.notePath = findCompanion(this.app, this.file)?.path ?? null
-    const list = await readHighlights(this.app, this.file)
+    const where = this.where()
+    this.targetSeen = JSON.stringify(where.target)
+    this.notePaths = this.notes().map((n) => n.path)
+    const list = await readHighlights(this.app, this.file, where)
     this.model.highlights = list
     this.marks.set(list)
     if (this.model.active)
       this.model.active = list.find((h) => h.cfi === this.model.active?.cfi) ?? null
   }
 
-  /** Whether a changed file is this book's highlights note, which is then read again. */
+  /** The settings changed: the highlights are read again if where they go did. */
+  settingsChanged(): void {
+    if (JSON.stringify(this.where().target) !== this.targetSeen) void this.loadHighlights()
+  }
+
+  /** Whether a changed file is one of this book's highlights notes, which are then read again. */
   noteChanged(path: string): boolean {
-    if (path !== this.notePath && findCompanion(this.app, this.file)?.path !== path) return false
+    if (!this.notePaths.includes(path) && !this.notes().some((n) => n.path === path)) return false
     void this.loadHighlights()
     return true
   }
@@ -126,7 +156,7 @@ export class BookReading {
       const chat = h.discussion
         ? (await import('./bookDiscussions')).discussionPath(h.discussion)
         : undefined
-      await saveHighlight(this.app, this.file, h, chat)
+      await saveHighlight(this.app, this.file, this.where(), h, chat)
       await this.loadHighlights()
       if (this.model.active?.cfi === h.cfi) this.model.active = { ...h }
     } catch (e) {
@@ -145,13 +175,13 @@ export class BookReading {
       if (!choice) return
       await releaseDiscussion(h.discussion, choice)
     }
-    await deleteHighlight(this.app, this.file, h.cfi)
+    await deleteHighlight(this.app, this.file, this.where(), h.cfi)
     this.model.active = null
     await this.loadHighlights()
   }
 
   async openNote(h?: Highlight): Promise<void> {
-    const note = findCompanion(this.app, this.file)
+    const note = await noteFor(this.app, this.file, this.where(), h?.cfi)
     if (!note) return
     const leaf = this.app.workspace.getLeaf('tab')
     await leaf.openFile(note)

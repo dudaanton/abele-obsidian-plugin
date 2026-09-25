@@ -383,9 +383,9 @@ label saying what is there, usually the chapter.
 
 ### Book highlights
 
-A book's highlights are kept in `<book name> highlights.md` beside it, with `type: book-highlights`
-and `book: "[[<the book file>]]"` (a wikilink, extension included). It is found by that property,
-not its name. Each highlight is one callout, in the order of the book:
+A book's highlights are kept, by default, in `<book name> highlights.md` beside it, with
+`type: book-highlights` and `book: "[[<the book file>]]"` (a wikilink, extension included). It is
+found by that property, not its name. Each highlight is one callout, in the order of the book:
 
 ```markdown
 > [!quote|green] [[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]]
@@ -413,6 +413,22 @@ not its name. Each highlight is one callout, in the order of the book:
   book is never written to. The link is how the reader finds the chat again, so leave it as it is;
   removing the callout takes the mark off the words and leaves the chat where it is.
 - Other callouts, headings and paragraphs in the note are the person's and are left as they are.
+
+**Where highlights go is a setting** (`reader.notesTo`, `notesPath`, `notesTemplate` in the
+plugin's settings, and per book `reader.bookNotes[<key>]`, the key as for places): a note of the
+book's own as above, or one named note several books share. In a shared note a book's highlights
+are the callouts whose place link resolves to that book; a new one is added at the end, its link
+labelled `<title> · <chapter>` unless a template says whose it is. Highlights written before the
+choice changed stay where they are and still count while their note is the book's own or named in
+the settings.
+
+A **template** is an ordinary note in the plugin's template language. The first highlight makes
+the note from all of it; after that only the part between `{{#body}}` and `{{/body}}` is added,
+at the end, for each highlight. In it `{{ highlight }}` is the callout above (on a line of its
+own); `{{ title }}`, `{{ author }}`, `{{ book }}` (a link to the book), `{{ chapter }}`,
+`{{ color }}`, `{{ link }}` (to the place) and `{{ date }}` / `{{ date.format('…') }}` are filled in,
+anything else is left as written. A template without a body gets each highlight at the end.
+Removing a highlight removes the lines its body wrote around it while they still read as written.
 
 The open book redraws whatever the note holds as soon as it changes, so adding, recolouring or
 removing a highlight by editing the note is fine; keep the shape above or the reader will not see

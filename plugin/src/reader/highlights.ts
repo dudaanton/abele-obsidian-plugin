@@ -76,8 +76,11 @@ function discussionIn(title: string): string | undefined {
     : undefined
 }
 
-/** The place a callout title links to, and its label; null when the title is no place. */
-function placeIn(title: string): { place: BookPlace; label: string } | null {
+/**
+ * The place a callout title links to, its label, and the file the link names, as written; null when
+ * the title is no place.
+ */
+function placeIn(title: string): { place: BookPlace; label: string; target: string } | null {
   const wiki = WIKI.exec(title)
   const md = wiki ? null : MD.exec(title)
   const target = wiki ? wiki[1] : md?.[2]
@@ -86,8 +89,23 @@ function placeIn(title: string): { place: BookPlace; label: string } | null {
   const hash = target.indexOf('#')
   if (hash < 0) return null
   const place = parsePlaceSubpath(target.slice(hash))
-  return place ? { place, label: label.trim() } : null
+  return place ? { place, label: label.trim(), target: decoded(target.slice(0, hash)) } : null
 }
+
+const decoded = (target: string): string => {
+  try {
+    return decodeURIComponent(target.trim())
+  } catch {
+    return target.trim()
+  }
+}
+
+/**
+ * Which book a note's callouts are asked about, by the file their place links to, as written: a
+ * note several books share holds places in each. Without one, every callout is the book's, as in
+ * a book's own note.
+ */
+export type OfBook = (target: string) => boolean
 
 interface Block {
   highlight: Highlight
@@ -96,14 +114,14 @@ interface Block {
   end: number
 }
 
-function blocks(markdown: string): { lines: string[]; blocks: Block[] } {
+function blocks(markdown: string, ofBook?: OfBook): { lines: string[]; blocks: Block[] } {
   const lines = markdown.replace(/\r\n?/g, '\n').split('\n')
   const found: Block[] = []
   for (let i = 0; i < lines.length; i++) {
     const header = HEADER.exec(lines[i])
     if (!header) continue
     const at = placeIn(header[3].replace(CHAT_LINK, ''))
-    if (!at || !('cfi' in at.place)) continue
+    if (!at || !('cfi' in at.place) || (ofBook && !ofBook(at.target))) continue
     let end = i + 1
     const body: string[] = []
     while (end < lines.length && /^>/.test(lines[end])) {
@@ -139,9 +157,9 @@ function blocks(markdown: string): { lines: string[]; blocks: Block[] } {
   return { lines, blocks: found }
 }
 
-/** Every highlight in the note, in the order it has them. */
-export function parseHighlights(markdown: string): Highlight[] {
-  return blocks(markdown).blocks.map((b) => b.highlight)
+/** Every highlight in the note — of the book asked about, if one is — in the order it has them. */
+export function parseHighlights(markdown: string, ofBook?: OfBook): Highlight[] {
+  return blocks(markdown, ofBook).blocks.map((b) => b.highlight)
 }
 
 /** One highlight as its callout, the links — to the place, to its chat — already made. */
@@ -160,26 +178,56 @@ export function newHighlightsNote(bookLink: string, title: string): string {
   return `---\ntype: ${HIGHLIGHTS_TYPE}\nbook: "${bookLink.replace(/"/g, '\\"')}"\n---\n\n# ${title}\n`
 }
 
+/**
+ * A book's own note, made from a template, with what says whose it is: `type` and `book` added to
+ * its properties when the template does not set them, so it is found again after either file moves.
+ */
+export function withCompanionProps(markdown: string, bookLink: string): string {
+  const book = `book: "${bookLink.replace(/"/g, '\\"')}"`
+  const fm = /^---\n([\s\S]*?)\n?---(\n|$)/.exec(markdown)
+  if (!fm) return `---\ntype: ${HIGHLIGHTS_TYPE}\n${book}\n---\n\n${markdown.replace(/^\n+/, '')}`
+  const props = fm[1] ? fm[1].split('\n') : []
+  const has = (key: string) => props.some((line) => line.startsWith(`${key}:`))
+  const added = [
+    ...(has('type') ? [] : [`type: ${HIGHLIGHTS_TYPE}`]),
+    ...(has('book') ? [] : [book]),
+  ]
+  if (!added.length) return markdown
+  return `---\n${[...props, ...added].join('\n')}\n---${fm[2]}${markdown.slice(fm[0].length)}`
+}
+
 type Compare = (a: string, b: string) => number
 
+/** How a note is written to: which book's callouts are asked about, and how a new one goes in. */
+export interface WriteOptions {
+  ofBook?: OfBook
+  /**
+   * What a new highlight adds, its callout in it, put at the end of the note; without it the
+   * callout goes in the order of the book.
+   */
+  entry?: string
+}
+
 /**
- * The note with the highlight written in: replacing the one at the same place, or put before the
- * first one that comes after it in the book, or at the end.
+ * The note with the highlight written in: replacing the one at the same place, or — a new one —
+ * added at the end as `entry`, or put before the first one that comes after it in the book.
  */
 export function upsertHighlight(
   markdown: string,
   h: Highlight,
   link: string,
   compare: Compare,
-  chatLink?: string
+  chatLink?: string,
+  options: WriteOptions = {}
 ): string {
-  const { lines, blocks: found } = blocks(markdown)
+  const { lines, blocks: found } = blocks(markdown, options.ofBook)
   const block = highlightBlock(h, link, chatLink).split('\n')
   const same = found.find((b) => b.highlight.cfi === h.cfi)
   if (same) {
     lines.splice(same.start, same.end - same.start, ...block)
     return lines.join('\n')
   }
+  if (options.entry !== undefined) return atEnd(lines, options.entry.split('\n'))
   const after = found.find((b) => {
     try {
       return compare(b.highlight.cfi, h.cfi) > 0
@@ -191,20 +239,46 @@ export function upsertHighlight(
     lines.splice(after.start, 0, ...block, '')
     return lines.join('\n')
   }
-  // At the end, after one blank line.
+  return atEnd(lines, block)
+}
+
+/** The note's lines with `added` at the end, after one blank line. */
+function atEnd(lines: string[], added: string[]): string {
   while (lines.length && !lines[lines.length - 1].trim()) lines.pop()
-  lines.push('', ...block, '')
+  if (lines.length) lines.push('')
+  lines.push(...added, '')
   return lines.join('\n')
 }
 
-/** The note without the highlight at `cfi`, and without the blank line it leaves behind. */
-export function removeHighlight(markdown: string, cfi: string): string {
-  const { lines, blocks: found } = blocks(markdown)
+/** The lines a template's body writes around a highlight, as `entryFrame` gives them. */
+export interface EntryFrame {
+  before: RegExp[]
+  after: RegExp[]
+}
+
+/**
+ * The note without the highlight at `cfi`, and without the blank line it leaves behind. With a
+ * `frame`, the lines the template wrote around it go too, when they still read as written.
+ */
+export function removeHighlight(
+  markdown: string,
+  cfi: string,
+  options: { ofBook?: OfBook; frame?: EntryFrame } = {}
+): string {
+  const { lines, blocks: found } = blocks(markdown, options.ofBook)
   const block = found.find((b) => b.highlight.cfi === cfi)
   if (!block) return markdown
-  let end = block.end
-  if (end < lines.length && !lines[end].trim() && block.start > 0 && !lines[block.start - 1].trim())
-    end++
-  lines.splice(block.start, end - block.start)
+  let { start, end } = block
+  const { before = [], after = [] } = options.frame ?? {}
+  const fits = (from: number, patterns: RegExp[]) =>
+    from >= 0 &&
+    from + patterns.length <= lines.length &&
+    patterns.every((p, i) => p.test(lines[from + i]))
+  if ((before.length || after.length) && fits(start - before.length, before) && fits(end, after)) {
+    start -= before.length
+    end += after.length
+  }
+  if (end < lines.length && !lines[end].trim() && start > 0 && !lines[start - 1].trim()) end++
+  lines.splice(start, end - start)
   return lines.join('\n')
 }
