@@ -175,4 +175,30 @@ describe.skipIf(!available)('entry dialogs', () => {
     expect(r.raw).toMatch(/date: '?2026-09-26'?/)
     expect(r.raw).toContain('Entry form probe task\nDetails with [[ScaleTest]]')
   })
+
+  it('saves a transaction and starts the next one on the same day', () => {
+    const r = run<{ paths: string[]; raw: string; stillOpen: boolean; date: string }>(`
+      await window.__abeleTest.openTransactionForm({ defaults: { date: '2026-09-20' } })
+      await until(() => document.querySelector('.modal .abele-transaction-form .cm-editor'), 5000)
+      const modal = document.querySelector('.modal')
+      const set = (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })) }
+      set(modal.querySelector('.abele-entry-form__title'), 'Entry form probe coffee')
+      set(modal.querySelector('.abele-amount-field__input'), '3 + 0.5')
+      await wait(100)
+      const next = [...modal.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Next')
+      next.click()
+      await wait(1000)
+      const stillOpen = !!document.querySelector('.modal .abele-transaction-form')
+      const date = [...modal.querySelectorAll('button')].map((b) => b.textContent.trim()).find((t) => /\\d\\d\\.\\d\\d\\.\\d{4}/.test(t)) || ''
+      const files = app.vault.getMarkdownFiles().filter((x) => x.basename.startsWith('Entry form probe'))
+      const raw = files[0] ? await app.vault.read(files[0]) : ''
+      return JSON.stringify({ paths: files.map((f) => f.path), raw, stillOpen, date })
+    `)
+    written.push(...r.paths)
+    expect(r.paths.length).toBe(1)
+    expect(r.raw).toContain('type: transaction')
+    expect(r.raw).toContain('amount: 3.5')
+    expect(r.stillOpen).toBe(true)
+    expect(r.date).toBe('20.09.2026')
+  })
 })

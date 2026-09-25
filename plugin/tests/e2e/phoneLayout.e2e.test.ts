@@ -578,6 +578,11 @@ const probeScript = `(async () => {
       () => window.__abeleTest.openTaskForm({ defaults: { date: '2026-09-26', time: '14:30', due: '2026-09-30', recurrence: 'every week' } }),
       '.modal .abele-entry-form .cm-editor'
     )
+    await entryDialog(
+      'transaction form',
+      () => window.__abeleTest.openTransactionForm({ defaults: { date: '2026-09-26', amount: 100, currency: 'EUR', foreignCurrency: 'USD', foreignAmount: 108.5 } }),
+      '.modal .abele-transaction-form .cm-editor'
+    )
   } catch (e) {
     report['run'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
   } finally {
@@ -667,6 +672,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'settings ai keys',
     'settings finance keys',
     'task form',
+    'transaction form',
   ]
 
   /** Dialogs with fields, whose focus rings are measured, and which stand as a full sheet. */
@@ -675,7 +681,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       s.startsWith('setup') ||
       s === 'icon picker' ||
       s === 'secrets list' ||
-      s === 'task form'
+      s === 'task form' ||
+      s === 'transaction form'
   )
 
   it('reaches every screen', () => {
@@ -698,7 +705,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
   const prompts = new Set(['note picker', 'chat picker'])
 
   /** The entry dialogs keep their buttons under the fields that scroll, by design. */
-  const entryForms = new Set(['task form'])
+  const entryForms = new Set(['task form', 'transaction form'])
 
   it.each([...entryForms])(
     '%s: the fields scroll down to the buttons, which keep one row',

@@ -45,6 +45,10 @@ const COVERED_FILES = [
   'AiCommentTrail.vue',
   'NoteEditorField.vue',
   'TaskFormModal.vue',
+  'TransactionFormModal.vue',
+  'LinkField.vue',
+  'AmountField.vue',
+  'PropertyListField.vue',
 ].map((name) => join(ROOT, name))
 
 /** The one component allowed to be a `<button>`: everything else goes through it. */

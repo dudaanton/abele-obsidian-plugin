@@ -1,8 +1,9 @@
 <template>
-  <ObsidianModal :title="title" @close="emit('cancel')">
+  <ObsidianModal :title="heading || title" @close="emit('cancel')">
     <DateTimePicker
       :initial-date="initialDate"
       :initial-time="initialTime"
+      :date-only="dateOnly"
       @confirm="emit('confirm', $event)"
       @clear="emit('clear')"
       @cancel="emit('cancel')"
@@ -20,6 +21,9 @@ const props = defineProps<{
   mode: 'event' | 'due'
   initialDate?: dayjs.Dayjs
   initialTime?: string | null
+  /** The dialog's title, where "Event Date" and "Due Date" are not what is being chosen. */
+  heading?: string
+  dateOnly?: boolean
 }>()
 
 const title = computed(() => (props.mode === 'event' ? 'Event Date' : 'Due Date'))

@@ -133,6 +133,11 @@ const script = `(async () => {
     await closeDialog()
   }
   await entry('task form', () => window.__abeleTest.openTaskForm({ defaults: { date: '2026-09-26' } }), '.modal .abele-entry-form .cm-editor')
+  await entry(
+    'transaction form',
+    () => window.__abeleTest.openTransactionForm({ defaults: { amount: 100, currency: 'EUR', foreignCurrency: 'USD', foreignAmount: 108.5 } }),
+    '.modal .abele-transaction-form .cm-editor'
+  )
 
   return JSON.stringify(cuts)
 })()`

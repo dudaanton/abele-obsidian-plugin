@@ -45,6 +45,33 @@ function getNewTransactionPath(params?: {
   return rendered
 }
 
+/**
+ * The currencies a transaction between two accounts is in, read off the accounts: one, when
+ * they agree or only one of them has a currency; the one it leaves and the one it arrives in,
+ * when they differ. The transaction dialog shows the same answer the note is written with.
+ */
+export function walletCurrencies(
+  from?: string | null,
+  to?: string | null
+): { currency: string | null; foreignCurrency: string | null } {
+  const al = GlobalStore.getInstance().accountsList.value
+  if (!al) return { currency: null, foreignCurrency: null }
+  const resolveAccountCurrency = (wl?: string | null) => {
+    if (!wl) return null
+    const path = wikilinkToPath(wl)
+    if (!path) return null
+    const { app } = GlobalStore.getInstance()
+    const file = app.metadataCache.getFirstLinkpathDest(path.replace(/\.md$/, ''), '')
+    return file ? al.accounts.get(normalizePath(file.path))?.currency || null : null
+  }
+  const fromCur = resolveAccountCurrency(from)
+  const toCur = resolveAccountCurrency(to)
+  if (fromCur && toCur && fromCur !== toCur) {
+    return { currency: fromCur, foreignCurrency: toCur }
+  }
+  return { currency: fromCur || toCur || null, foreignCurrency: null }
+}
+
 export const createTransaction = async (
   data?: TransactionCreateDTO,
   focus = true
@@ -70,26 +97,9 @@ export const createTransaction = async (
   let resolvedCurrency = data?.currency
   let resolvedForeignCurrency = data?.foreignCurrency
   if (!resolvedCurrency) {
-    const al = GlobalStore.getInstance().accountsList.value
-    if (al) {
-      const resolveAccountCurrency = (wl?: string) => {
-        if (!wl) return null
-        const path = wikilinkToPath(wl)
-        if (!path) return null
-        const { app } = GlobalStore.getInstance()
-        const file = app.metadataCache.getFirstLinkpathDest(path.replace(/\.md$/, ''), '')
-        return file ? al.accounts.get(normalizePath(file.path))?.currency || null : null
-      }
-      const fromCur = resolveAccountCurrency(data?.from)
-      const toCur = resolveAccountCurrency(data?.to)
-
-      if (fromCur && toCur && fromCur !== toCur) {
-        resolvedCurrency = fromCur
-        resolvedForeignCurrency = toCur
-      } else {
-        resolvedCurrency = fromCur || toCur || undefined
-      }
-    }
+    const wallets = walletCurrencies(data?.from, data?.to)
+    resolvedCurrency = wallets.currency ?? undefined
+    if (wallets.foreignCurrency) resolvedForeignCurrency = wallets.foreignCurrency
   }
 
   const config = AbeleConfig.getInstance()

@@ -20,7 +20,8 @@ import { AbeleConfig } from './services/AbeleConfig'
 import { AgentRegistry } from './ai/agents/AgentRegistry'
 import { createTaskAndInsert } from './commands/createTask'
 import { openTaskForm } from './commands/taskForm'
-import { createTransaction, createTransactionAndInsert } from './commands/createTransaction'
+import { createTransactionAndInsert } from './commands/createTransaction'
+import { openTransactionForm } from './commands/transactionForm'
 import { createTimeEntry, stopActiveTimeEntry } from './commands/createTimeEntry'
 import { createNoteInGroup } from './commands/createNoteInGroup'
 import { commentHereInView } from './commands/commentCommands'
@@ -687,7 +688,7 @@ export default class AbelePlugin extends Plugin {
       name: 'Create new transaction',
       icon: 'receipt',
       callback: () => {
-        void createTransaction()
+        void openTransactionForm()
       },
     })
 
