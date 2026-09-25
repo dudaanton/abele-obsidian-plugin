@@ -17,13 +17,23 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { tmpdir, homedir } from 'node:os'
 import { join } from 'node:path'
 import { onPhone, desktopOnly } from './target'
 import { phoneEval, installPhoneHost, assertPhoneTransport } from './phone'
 import { confirmReload, type ReloadWitness } from './reloadWitness'
 
-const CLI = process.env.OBSIDIAN_CLI ?? '/usr/local/bin/obsidian'
+/**
+ * Where the CLI is: `OBSIDIAN_CLI` when it is set, else the first of the places an install
+ * puts it, else whatever `obsidian` the PATH finds. A fixed default that did not exist on the
+ * machine read as "Obsidian is not running", and a suite skipped for that reason passes.
+ */
+const CLI =
+  process.env.OBSIDIAN_CLI ??
+  ['/usr/local/bin/obsidian', join(homedir(), '.local/bin/obsidian')].find((path) =>
+    existsSync(path)
+  ) ??
+  'obsidian'
 
 /**
  * Which vault to drive. Obsidian can have several windows open at once and the CLI
@@ -59,7 +69,7 @@ const CALL_CEILING_MS = 45_000
 class CliNoAnswerError extends Error {}
 
 /** Opt-in only: arbitrary evals, reloads and native input must never be replayed. */
-function run(args: string[], timeoutMs = CALL_CEILING_MS, idempotent = false): string {
+function run(args: string[], timeoutMs = CALL_CEILING_MS, idempotent = false, vault = TARGET_VAULT): string {
   timeoutMs = Math.min(timeoutMs, CALL_CEILING_MS)
   if (onPhone()) return runOnPhone(args, timeoutMs)
   const attempts = idempotent ? 3 : 1
@@ -67,7 +77,7 @@ function run(args: string[], timeoutMs = CALL_CEILING_MS, idempotent = false): s
     // Even all three lost answers must leave the synchronous worker below its 60 s ceiling.
     const allowance = idempotent ? Math.min(timeoutMs, attempt === 1 ? 30_000 : 10_000) : timeoutMs
     try {
-      return runReady(args, allowance)
+      return runReady(args, allowance, vault)
     } catch (error) {
       if (!(error instanceof CliNoAnswerError)) throw error
       if (attempt === attempts)
@@ -79,11 +89,11 @@ function run(args: string[], timeoutMs = CALL_CEILING_MS, idempotent = false): s
   throw new Error('unreachable CLI attempt')
 }
 
-function runReady(args: string[], timeoutMs: number): string {
+function runReady(args: string[], timeoutMs: number, vault: string): string {
   const deadline = Date.now() + timeoutMs
   for (;;) {
     // What is left of the one allowance: waiting for the app to get ready counts against it.
-    const output = runOnce(args, Math.max(1_000, deadline - Date.now()))
+    const output = runOnce(args, Math.max(1_000, deadline - Date.now()), vault)
     if (!NOT_READY.test(output)) return output
     if (Date.now() > deadline)
       throw new Error(`obsidian ${args[0]}: the app never got ready: ${output}`)
@@ -91,11 +101,11 @@ function runReady(args: string[], timeoutMs: number): string {
   }
 }
 
-function runOnce(args: string[], timeoutMs: number): string {
+function runOnce(args: string[], timeoutMs: number, vault: string): string {
   // `vault=` MUST precede the command. Passed after it the CLI ignores it without an error
   // and runs against whichever window is frontmost, so the tests would silently measure
   // whatever vault the user happened to be looking at.
-  const fullArgs = TARGET_VAULT ? [`vault=${TARGET_VAULT}`, ...args] : args
+  const fullArgs = vault ? [`vault=${vault}`, ...args] : args
   try {
     // SIGKILL, not the default SIGTERM: a CLI call that never gets its answer from the app
     // ignores SIGTERM, and the timeout then stopped nothing — the whole run hung on it.
@@ -151,16 +161,80 @@ function runOnPhone(args: string[], timeoutMs: number): string {
   }
 }
 
+/**
+ * The CLI quotes some answers and not others, so the text is tried as it came and then with
+ * the quotes taken off. The order matters for a string: `"one"` is already JSON, and stripped
+ * it is not.
+ */
+function parseJson<T>(raw: string): T {
+  const candidates = [raw, raw.replace(/^'(.*)'$/s, '$1'), raw.replace(/^"(.*)"$/s, '$1')]
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate) as T
+    } catch {
+      /* try the next spelling */
+    }
+  }
+  throw new Error(`Could not parse eval result as JSON: ${raw.slice(0, 400)}`)
+}
+
+/** The `=> …` payload of an eval, without the arrow. */
+function payloadOf(output: string): string {
+  const marker = output.indexOf('=>')
+  return marker === -1 ? output : output.slice(marker + 2).trim()
+}
+
+/** The CLI pinned to one vault's window, by name, whatever `OBSIDIAN_TEST_VAULT` says. */
+export interface VaultCli {
+  /** The vault every call goes to, which is what `vault=` takes. */
+  readonly name: string
+  /** A command with its arguments, `vault=` put where it belongs. */
+  run(args: string[], timeoutMs?: number): string
+  /** Evaluates an expression and returns its `=> …` payload as text. */
+  evalRaw(code: string, timeoutMs?: number): string
+  /**
+   * Evaluates an expression, awaits it, and parses the result as JSON.
+   *
+   * Everything is awaited, promise or not: much of what a test asks the app for is
+   * asynchronous, and a promise stringifies to `{}`.
+   */
+  evalAwait<T>(expression: string, timeoutMs?: number): T
+}
+
+/**
+ * The same calls as the rest of this module, against a vault named here rather than in the
+ * environment — for a suite that opens a vault of its own beside the one the tier drives.
+ * Every call keeps the tier's ceiling and its "not ready yet" retry.
+ */
+export function vaultCli(name: string): VaultCli {
+  const cli: VaultCli = {
+    name,
+    run: (args, timeoutMs) => run(args, timeoutMs, false, name),
+    evalRaw: (code, timeoutMs) => payloadOf(run(['eval', `code=${code}`], timeoutMs, false, name)),
+    evalAwait: <T>(expression: string, timeoutMs?: number): T =>
+      parseJson<T>(cli.evalRaw(`(async () => JSON.stringify(await (${expression})))()`, timeoutMs)),
+  }
+  return cli
+}
+
 /** A CLI command with its arguments, as they are passed — `dev:cdp`, say. */
 export const runCli = (args: string[], timeoutMs?: number): string => run(args, timeoutMs)
 
 /** True when the CLI exists and a vault is currently open. */
 export function isObsidianRunning(): boolean {
+  return obsidianUnavailableReason() === null
+}
+
+/**
+ * Why there is no Obsidian to drive, or null when there is — for a skip message that says
+ * what to fix rather than guessing at it.
+ */
+export function obsidianUnavailableReason(): string | null {
   try {
     run(['vault'], 15_000, true)
-    return true
-  } catch {
-    return false
+    return null
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
   }
 }
 

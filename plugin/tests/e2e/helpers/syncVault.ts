@@ -18,11 +18,10 @@
  *   of this vault?". That one is an ordinary in-app modal, so the CLI still answers, and
  *   `plugins:restrict off` takes it away and reloads the vault with the plugin running.
  *
- * `vault=` goes first in every call. The CLI reads it as an option, and after the command it
- * is taken for one of the command's own arguments — a test that did that would drive whatever
- * window the developer last clicked on.
+ * Every call goes through `vaultCli`, which puts `vault=` first — after the command the CLI
+ * takes it for one of the command's own arguments, and a test that did that would drive
+ * whatever window the developer last clicked on — and keeps the tier's per-call ceiling.
  */
-import { execFileSync, spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import {
   copyFileSync,
@@ -30,69 +29,118 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { activeVaultName, obsidianUnavailableReason, vaultCli, type VaultCli } from './obsidianCli'
+import { delay, siblingPath } from './syncServer'
 
-/** Thrown when there is no Obsidian to drive; the suite skips on it. */
-export class ObsidianUnavailableError extends Error {}
-
-const CLI = process.env.OBSIDIAN_CLI ?? '/usr/local/bin/obsidian'
 /** `plugin/`, four levels up from `plugin/tests/e2e/helpers`. */
 const PLUGIN_DIR = fileURLToPath(new URL('../../..', import.meta.url))
 const BUILD_DIR = join(PLUGIN_DIR, 'build')
 const MANIFEST = join(PLUGIN_DIR, '..', 'manifest.json')
-/** How long a build of the plugin may take when there is nothing in `build/` to use. */
-const BUILD_MS = 10 * 60_000
+/**
+ * Where test vaults live on this machine, one folder each, the folder's name being the vault's.
+ * Only folders this module made — `abele-sync-e2e-` and a random suffix — are ever removed.
+ */
+const VAULTS_DIR = join(homedir(), 'obsidian')
+const PREFIX = 'abele-sync-e2e-'
 /** How long a window has to appear, load the plugin, and answer for itself. */
 const OPEN_MS = 90_000
-
-export interface TestVault {
-  /** What Obsidian calls it, which is what `vault=` takes: the folder's name. */
-  name: string
-  /** Where it is on disk. */
-  path: string
-  /** One CLI call against this vault, with `vault=` where it belongs. */
-  cli(args: string[], timeoutMs?: number): string
-  /** Evaluates an expression in the vault's window and returns its `=> …` payload as text. */
-  evalRaw(code: string, timeoutMs?: number): string
-  /**
-   * Evaluates an expression, awaits it, and parses the result as JSON.
-   *
-   * Everything is awaited, promise or not, because most of what this suite asks the plugin
-   * for is asynchronous and a promise stringifies to `{}`.
-   */
-  evalJson<T>(expression: string, timeoutMs?: number): T
-  /** Closes the window and takes the vault off disk and out of Obsidian's vault list. */
-  dispose(): void
+/** How long a closed window has to be gone from the app's window list. */
+const CLOSE_MS = 15_000
+/** The core plugins a new vault gets in Obsidian 1.12, with Obsidian Sync switched off. */
+const CORE_PLUGINS: Record<string, boolean> = {
+  'file-explorer': true,
+  'global-search': true,
+  switcher: true,
+  graph: true,
+  backlink: true,
+  canvas: true,
+  'outgoing-link': true,
+  'tag-pane': true,
+  footnotes: false,
+  properties: true,
+  'page-preview': true,
+  'daily-notes': true,
+  templates: true,
+  'note-composer': true,
+  'command-palette': true,
+  'slash-command': false,
+  'editor-status': true,
+  bookmarks: true,
+  'markdown-importer': false,
+  'zk-prefixer': false,
+  'random-note': false,
+  outline: true,
+  'word-count': true,
+  slides: false,
+  'audio-recorder': false,
+  workspaces: false,
+  'file-recovery': true,
+  publish: false,
+  sync: false,
+  bases: true,
+  webviewer: false,
 }
 
-/** True when the CLI is there and some vault window answers for itself. */
-export function obsidianRunning(): boolean {
-  try {
-    hostVaultName()
-    return true
-  } catch {
-    return false
-  }
+export interface TestVault extends VaultCli {
+  /** Where it is on disk. */
+  path: string
+  /** Closes the window and takes the vault off disk and out of Obsidian's vault list. */
+  dispose(): Promise<void>
+}
+
+/** Why there is no Obsidian to open a vault in, or null when there is. */
+export function obsidianMissing(): string | null {
+  const reason = obsidianUnavailableReason()
+  if (reason !== null) return `Obsidian is not answering its CLI: ${reason}`
+  return hostVaultName() === '' ? 'Obsidian has no vault open to open another from' : null
 }
 
 /**
  * The name of a vault that is open right now, to send the `vault-open` message from.
  *
  * A window is needed because the message is one a renderer sends; which window it is does not
- * matter, and nothing is written to whatever vault it holds.
+ * matter, and nothing is written to whatever vault it holds. It is `OBSIDIAN_TEST_VAULT` when
+ * that is set, and otherwise whichever window is in front.
  */
-export function hostVaultName(): string {
-  const output = run([], ['vault'], 20_000)
-  const line = output.split('\n').find((l) => l.startsWith('name'))
-  const name = line ? line.split('\t').slice(1).join('\t').trim() : ''
-  if (name === '') throw new ObsidianUnavailableError('no vault is open in Obsidian')
-  return name
+function hostVaultName(): string {
+  try {
+    return activeVaultName()
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * What is wrong with `build/` for this suite, or null when it can be installed as it is.
+ *
+ * The suite installs what is in `build/`, so a stale bundle would be a test of last week's
+ * plugin. Three ways it can be stale: older than `src/`; older than the sibling's `core` or
+ * `protocol` `dist`, which the bundle inlines; or a production build, which shares the output
+ * folder and has no test API — installed, it looks exactly like a plugin that never loaded.
+ * Nothing is built here: a build takes minutes, and a test worker silent for one is killed.
+ */
+export function buildProblem(): string | null {
+  const main = join(BUILD_DIR, 'main.js')
+  const fix = 'run `npm run build:test` in plugin/ first'
+  if (!existsSync(main)) return `there is no ${main}; ${fix}`
+  const built = statSync(main).mtimeMs
+  const newest = Math.max(
+    newestMs(join(PLUGIN_DIR, 'src')),
+    newestMs(join(siblingPath, 'packages/core/dist')),
+    newestMs(join(siblingPath, 'packages/protocol/dist'))
+  )
+  if (built < newest) return `${main} is older than the source it is built from; ${fix}`
+  if (!readFileSync(main, 'utf8').includes('__abeleTest'))
+    return `${main} is a production build, with no test API in it; ${fix}`
+  return null
 }
 
 /**
@@ -102,12 +150,13 @@ export function hostVaultName(): string {
  * megabytes of `main.js` this very function copied in, and a device that synced that would
  * spend the suite's whole budget uploading the plugin to itself.
  */
-export function openTestVault(): TestVault {
-  const host = hostVaultName()
-  buildIfStale()
+export async function openTestVault(): Promise<TestVault> {
+  const problem = buildProblem()
+  if (problem !== null) throw new Error(problem)
+  const host = vaultCli(hostVaultName())
+  if (host.name === '') throw new Error('Obsidian has no vault open to open another from')
 
-  const path = join(homedir(), `abele-sync-e2e-${randomBytes(4).toString('hex')}`)
-  const name = basename(path)
+  const path = join(VAULTS_DIR, `${PREFIX}${randomBytes(4).toString('hex')}`)
   const pluginDir = join(path, '.obsidian/plugins/abele')
   mkdirSync(pluginDir, { recursive: true })
   copyFileSync(join(BUILD_DIR, 'main.js'), join(pluginDir, 'main.js'))
@@ -115,62 +164,87 @@ export function openTestVault(): TestVault {
   copyFileSync(MANIFEST, join(pluginDir, 'manifest.json'))
   writeFileSync(join(path, '.obsidian/community-plugins.json'), '["abele"]\n')
   writeFileSync(join(path, '.abele-sync-ignore'), '.obsidian/\n')
+  // Menus drawn in the page rather than by macOS: a native menu is nothing the page can see
+  // or click, and the history dialog is opened from the file list's context menu.
+  writeFileSync(join(path, '.obsidian/app.json'), '{ "nativeMenus": false }\n')
+  // Obsidian's own Sync off. It puts an item called "Open version history" in the same menu,
+  // and the suite must press the plugin's. The rest is what a new vault gets by default — the
+  // file is read whole, so a core plugin left out of it would be switched off too.
+  writeFileSync(join(path, '.obsidian/core-plugins.json'), JSON.stringify(CORE_PLUGINS, null, 2))
 
-  const opened = run(
-    [`vault=${host}`],
-    [
-      'eval',
-      `code=window.electron.ipcRenderer.sendSync("vault-open", ${JSON.stringify(path)}, false)`,
-    ]
-  )
-  if (!opened.includes('true')) {
-    rmSync(path, { recursive: true, force: true })
+  let windowId: number | null = null
+  const vault: TestVault = {
+    ...vaultCli(basename(path)),
+    path,
+    dispose: () => dispose(host, vault, windowId),
+  }
+
+  let opened = ''
+  try {
+    opened = host.evalRaw(
+      `window.electron.ipcRenderer.sendSync("vault-open", ${JSON.stringify(path)}, false)`,
+      20_000
+    )
+  } catch (error) {
+    opened = String(error)
+  }
+  if (opened !== 'true') {
+    // It may have been registered even so; the folder and the entry go either way.
+    removeFolder(path)
+    forgetVault(host, path)
     throw new Error(`Obsidian would not open ${path}: ${opened}`)
   }
 
-  const vault: TestVault = {
-    name,
-    path,
-    cli: (args, timeoutMs) => run([`vault=${name}`], args, timeoutMs),
-    evalRaw: (code, timeoutMs) => {
-      const output = run([`vault=${name}`], ['eval', `code=${code}`], timeoutMs)
-      const marker = output.indexOf('=>')
-      return marker === -1 ? output : output.slice(marker + 2).trim()
-    },
-    evalJson: <T>(expression: string, timeoutMs?: number): T => {
-      const raw = vault.evalRaw(`(async () => JSON.stringify(await (${expression})))()`, timeoutMs)
-      return parseJson<T>(raw)
-    },
-    dispose: () => dispose(vault),
-  }
+  // From here on the vault is in the app, and a failure that did not take it away again would
+  // leave a window, sixteen megabytes and a vault-list entry behind with nobody to dispose of
+  // them — the caller never got the vault to do it with.
+  try {
+    // Evaluated, not asked: `vault info=name` is answered from the vault list the moment the
+    // folder is registered, which is well before there is a window to run anything in. An
+    // expression that comes back with its own answer is the only proof the renderer is up.
+    await waitFor('the vault window to answer', () => alive(vault))
 
-  // Evaluated, not asked: `vault info=name` is answered from the vault list the moment the
-  // folder is registered, which is well before there is a window to run anything in. An
-  // expression that comes back with its own answer is the only proof the renderer is up.
-  waitFor('the vault window to answer', () => alive(vault))
-
-  // A vault holding community plugins opens in Restricted Mode, behind "Do you trust the
-  // author of this vault?". Turning it off loads the plugins into the window that is up and
-  // *then* reloads that window — so the test API appears for a second on a renderer that is
-  // about to be thrown away. The mark is what tells the two windows apart: it is gone only
-  // once the reload has happened, and waiting for the plugin without it hands the suite a
-  // window that stops answering a moment later.
-  if (vault.cli(['plugins:restrict'], 20_000).trim() === 'on') {
-    vault.evalRaw('window.__abeleReloadMark = 1', 20_000)
-    vault.cli(['plugins:restrict', 'off'], 60_000)
-  }
-  waitFor('the vault to reload with the plugin running', () => {
-    try {
-      return (
-        vault.evalRaw(
-          'String(typeof window.__abeleReloadMark === "undefined" && typeof window.__abeleTest === "object")',
-          20_000
-        ) === 'true'
-      )
-    } catch {
-      return false
+    // A vault holding community plugins opens in Restricted Mode, behind "Do you trust the
+    // author of this vault?". Turning it off loads the plugins into the window that is up and
+    // *then* reloads that window — so the test API appears for a second on a renderer that is
+    // about to be thrown away. The mark is what tells the two windows apart: it is gone only
+    // once the reload has happened, and waiting for the plugin without it hands the suite a
+    // window that stops answering a moment later.
+    if (vault.run(['plugins:restrict'], 20_000).trim() === 'on') {
+      vault.evalRaw('window.__abeleReloadMark = 1', 20_000)
+      vault.run(['plugins:restrict', 'off'], 30_000)
     }
-  })
+    await waitFor('the vault to reload with the plugin running', () => {
+      try {
+        return (
+          vault.evalRaw(
+            'String(typeof window.__abeleReloadMark === "undefined" && typeof window.__abeleTest === "object")',
+            10_000
+          ) === 'true'
+        )
+      } catch {
+        return false
+      }
+    })
+
+    // The window's id, which a reload keeps, so the close can be asked for from outside it.
+    // And throttling off: this window opens behind whatever the person is working in, and a
+    // background renderer runs its timers late — the engine's debounce and the dialogs' own
+    // timers included.
+    windowId = Number(
+      vault.evalRaw(
+        `(() => {
+          const remote = require('@electron/remote')
+          remote.getCurrentWebContents().setBackgroundThrottling(false)
+          return String(remote.getCurrentWindow().id)
+        })()`,
+        10_000
+      )
+    )
+  } catch (error) {
+    await dispose(host, vault, windowId)
+    throw error
+  }
 
   return vault
 }
@@ -178,15 +252,24 @@ export function openTestVault(): TestVault {
 /**
  * Waits for something to become true, or says what it was waiting for when it never did.
  *
- * Polled rather than awaited: everything here is a separate process answering a separate
- * question, and there is no event to subscribe to from outside the app.
+ * Polled rather than awaited — everything here is a separate process answering a separate
+ * question, and there is no event to subscribe to from outside the app — but polled with an
+ * `await` between tries, so the test worker answers the runner while it waits. `what` may be a
+ * function, for a message that says what was seen last rather than what was seen first.
  */
-export function waitFor(what: string, done: () => boolean, timeoutMs = OPEN_MS): void {
+export async function waitFor(
+  what: string | (() => string),
+  done: () => boolean,
+  timeoutMs = OPEN_MS
+): Promise<void> {
   const deadline = Date.now() + timeoutMs
   for (;;) {
     if (done()) return
-    if (Date.now() > deadline) throw new Error(`timed out after ${timeoutMs}ms waiting for ${what}`)
-    sleepSync(500)
+    if (Date.now() > deadline) {
+      const said = typeof what === 'string' ? what : what()
+      throw new Error(`timed out after ${timeoutMs}ms waiting for ${said}`)
+    }
+    await delay(500)
   }
 }
 
@@ -196,7 +279,7 @@ export function waitFor(what: string, done: () => boolean, timeoutMs = OPEN_MS):
  * The CLI answers an unroutable command with a message on standard output and an exit code of
  * zero, so a call that "worked" proves nothing; the value coming back is what proves it.
  */
-function alive(vault: TestVault): boolean {
+function alive(vault: VaultCli): boolean {
   try {
     return vault.evalRaw('1 + 1', 10_000) === '2'
   } catch {
@@ -207,61 +290,86 @@ function alive(vault: TestVault): boolean {
 /**
  * Closes the window, forgets the vault, and removes the folder.
  *
- * Closing is asked for more than once and confirmed by silence held: a window reloading —
- * which is what turning Restricted Mode off does — stops answering for a second or two and
- * would otherwise be taken for one that had gone. Removing the folder under a window that is
- * still up is the failure this guards against: Obsidian writes its `.obsidian` back out and
- * the directory is there again a moment after it was deleted.
+ * The close is asked for from the host window, not from inside the test one: evaluated in
+ * the window that is closing, `window.close()` tears the context down while the CLI is still
+ * waiting on that very request, and on a timer it waits on a background renderer's timers.
+ * From outside there is nothing in flight in the closing renderer, and "gone" is read from the
+ * app's own window list rather than inferred from silence. Popouts of the vault — a settings
+ * window, say — are told by the vault's random name in their title and go with it.
+ *
+ * Never `destroy()`: Obsidian 1.12.7 segfaults in the main process on it and the whole
+ * application goes down, which is a great deal worse for whoever is using this machine than
+ * one window they can close themselves.
  */
-function dispose(vault: TestVault): void {
+async function dispose(host: VaultCli, vault: TestVault, windowId: number | null): Promise<void> {
+  const windows = `(() => {
+    const remote = require('@electron/remote')
+    return remote.BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() &&
+      (w.id === ${JSON.stringify(windowId)} || w.getTitle().includes(${JSON.stringify(vault.name)})))
+  })()`
+  const open = (): number => {
+    try {
+      return Number(host.evalRaw(`String(${windows}.length)`, 10_000))
+    } catch {
+      return -1
+    }
+  }
   let closed = false
   for (let attempt = 0; attempt < 3 && !closed; attempt++) {
     try {
-      // Closed on a timer, not in the call itself. `eval code=window.close()` tears the
-      // context down while the CLI is still waiting on that very request, and the window
-      // then hangs half closed with nothing to answer for it. Asking for the close a moment
-      // after the call has been answered leaves nothing in flight to deadlock on.
-      vault.evalRaw('setTimeout(() => window.close(), 250), "closing"', 15_000)
+      host.evalRaw(`${windows}.forEach((w) => w.close()), "closing"`, 10_000)
     } catch {
-      /* already closed, or closing */
+      /* the host is busy; the next attempt asks again */
     }
-    closed = goneFor(vault, 3)
+    try {
+      await waitFor('the window to close', () => open() === 0, CLOSE_MS)
+      closed = true
+    } catch {
+      /* asked again below */
+    }
   }
-  // Left open rather than destroyed: `electronWindow.destroy()` takes the whole application
-  // down with it — Obsidian 1.12.7 segfaults in the main process — which is a great deal
-  // worse for whoever is using this machine than one window they can close themselves.
   if (!closed) console.warn(`the window on ${vault.name} would not close`)
-  // Three goes, in case a window that is still up writes its config out after the first.
+  // Removed only once the window is gone, or Obsidian writes `.obsidian` back out a moment
+  // after the folder was deleted. Three goes, in case one did anyway.
   for (let attempt = 0; attempt < 3 && existsSync(vault.path); attempt++) {
-    rmSync(vault.path, { recursive: true, force: true })
-    sleepSync(1_000)
+    removeFolder(vault.path)
+    await delay(1_000)
   }
   // Last, because a window that is still open has Obsidian writing the vault list out again.
-  forgetVault(vault.path)
+  forgetVault(host, vault.path)
 }
 
-/**
- * True when the window has failed to answer `rounds` times in a row, a second apart.
- *
- * The wait comes first: the close is asked for on a timer, and a window looked at the
- * instant after has not had the chance to go yet.
- */
-function goneFor(vault: TestVault, rounds: number): boolean {
-  for (let round = 0; round < rounds; round++) {
-    sleepSync(1_000)
-    if (alive(vault)) return false
+/** Removes a vault folder this module made, and refuses anything else. */
+function removeFolder(path: string): void {
+  if (dirname(path) !== VAULTS_DIR || !basename(path).startsWith(PREFIX)) {
+    throw new Error(`refusing to remove ${path}: not a vault this suite made`)
   }
-  return true
+  rmSync(path, { recursive: true, force: true })
 }
 
 /**
- * Takes the vault out of `obsidian.json`, so no switcher offers a folder that is gone.
+ * Takes the vault out of Obsidian's vault list, so no switcher offers a folder that is gone.
  *
- * Read, change, write — which is what Obsidian itself does to that file, and only this
- * vault's own entry is touched. Obsidian keeps the list in memory as well and may write it
- * back out; a stale entry is harmless, so a failure here is not worth a test.
+ * Asked of the app first, with the message the vault switcher's "Remove from list" sends: the
+ * list lives in the main process's memory and is written out on every vault event, so an entry
+ * taken out of `obsidian.json` alone came back the next time any vault opened. The app refuses
+ * while the vault's window is open, which is why this runs last.
+ *
+ * The file is then checked on its own, in case the app could not be asked. Only this vault's
+ * entry is touched, and the write goes to a file beside it that is renamed into place, so the
+ * app never reads a half-written list of the person's vaults.
  */
-function forgetVault(path: string): void {
+function forgetVault(host: VaultCli, path: string): void {
+  if (host.name !== '') {
+    try {
+      host.evalRaw(
+        `window.electron.ipcRenderer.sendSync("vault-remove", ${JSON.stringify(path)})`,
+        10_000
+      )
+    } catch {
+      /* the file below still gets its entry taken out */
+    }
+  }
   const file = join(homedir(), 'Library/Application Support/obsidian/obsidian.json')
   try {
     const registry = JSON.parse(readFileSync(file, 'utf8')) as {
@@ -274,83 +382,26 @@ function forgetVault(path: string): void {
         changed = true
       }
     }
-    if (changed) writeFileSync(file, JSON.stringify(registry))
+    if (!changed) return
+    const temporary = `${file}.${randomBytes(4).toString('hex')}.tmp`
+    writeFileSync(temporary, JSON.stringify(registry))
+    renameSync(temporary, file)
   } catch {
     /* another platform, or Obsidian writing at the same moment */
   }
 }
 
-/**
- * Builds the plugin when `build/` is missing or older than the source it came from.
- *
- * The suite installs what is in `build/`, so a stale bundle would be a test of last week's
- * plugin — and the surest way to spend an hour on a failure that was fixed already.
- */
-function buildIfStale(): void {
-  const main = join(BUILD_DIR, 'main.js')
-  const built = existsSync(main) ? statSync(main).mtimeMs : 0
-  if (built > newestSourceMs()) return
-  const done = spawnSync('npm', ['run', 'build:test'], {
-    cwd: PLUGIN_DIR,
-    encoding: 'utf8',
-    timeout: BUILD_MS,
-  })
-  if (done.status !== 0) throw new Error(`npm run build:test failed: ${done.stderr || done.stdout}`)
-  if (!existsSync(main)) throw new Error(`the build left no ${main}`)
-}
-
-function newestSourceMs(): number {
+/** The newest modification time under a folder, or 0 when there is no such folder. */
+function newestMs(dir: string): number {
+  if (!existsSync(dir)) return 0
   let newest = 0
-  const walk = (dir: string): void => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name)
+  const walk = (at: string): void => {
+    for (const entry of readdirSync(at, { withFileTypes: true })) {
+      const full = join(at, entry.name)
       if (entry.isDirectory()) walk(full)
       else newest = Math.max(newest, statSync(full).mtimeMs)
     }
   }
-  walk(join(PLUGIN_DIR, 'src'))
+  walk(dir)
   return newest
-}
-
-function run(prefix: string[], args: string[], timeoutMs = 120_000): string {
-  const fullArgs = [...prefix, ...args]
-  try {
-    return execFileSync(CLI, fullArgs, {
-      encoding: 'utf8',
-      timeout: timeoutMs,
-      // SIGTERM leaves the CLI alive and the suite waiting for ever: the binary does not
-      // stop on it, and a timeout that cannot kill what it timed out on is not a timeout.
-      killSignal: 'SIGKILL',
-      maxBuffer: 64 * 1024 * 1024,
-    }).trim()
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException & { stderr?: string; stdout?: string }
-    if (err.code === 'ENOENT')
-      throw new ObsidianUnavailableError(`Obsidian CLI not found at ${CLI}`)
-    const detail = (err.stderr || err.stdout || err.message || '').toString().trim()
-    throw new Error(`obsidian ${fullArgs.join(' ')} failed: ${detail}`)
-  }
-}
-
-/** The CLI quotes some answers and not others, so both spellings are tried. */
-function parseJson<T>(raw: string): T {
-  const candidates = [raw, raw.replace(/^'(.*)'$/s, '$1'), raw.replace(/^"(.*)"$/s, '$1')]
-  for (const candidate of candidates) {
-    try {
-      return JSON.parse(candidate) as T
-    } catch {
-      /* try the next spelling */
-    }
-  }
-  throw new Error(`could not parse eval result as JSON: ${raw.slice(0, 400)}`)
-}
-
-/**
- * Sleeps without yielding, so a poll loop can be written as a plain function.
- *
- * Every wait here is on another process, and the alternative — making the whole helper
- * asynchronous for the sake of a 500ms pause — would buy the suite nothing.
- */
-function sleepSync(ms: number): void {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 }
