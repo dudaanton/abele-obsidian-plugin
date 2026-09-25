@@ -219,6 +219,46 @@ export default class AbelePlugin extends Plugin {
     }
     paint(sync.status.value)
     this.register(sync.onStatusChange(paint))
+
+    // Here, with the rest of sync, and not beside the agent's commands: those are registered
+    // only once the agent is switched on, and sync has nothing to do with it — on a vault
+    // without the agent these four were simply missing from the palette.
+    this.addCommand({
+      id: 'sync-now',
+      name: 'Sync now',
+      icon: 'refresh-cw',
+      callback: () => {
+        void sync.syncNow()
+      },
+    })
+
+    this.addCommand({
+      id: 'sync-pause-resume',
+      name: 'Pause or resume sync',
+      icon: 'pause-circle',
+      callback: () => {
+        if (sync.status.value.state === 'paused') sync.resume()
+        else sync.pause()
+      },
+    })
+
+    this.addCommand({
+      id: 'sync-log',
+      name: 'Open sync log',
+      icon: 'scroll-text',
+      callback: () => {
+        GlobalStore.getInstance().syncLogModalOpened.value = true
+      },
+    })
+
+    this.addCommand({
+      id: 'sync-deleted-files',
+      name: 'Open deleted files',
+      icon: 'trash-2',
+      callback: () => {
+        GlobalStore.getInstance().deletedFilesModalOpened.value = true
+      },
+    })
   }
 
   async onload() {
@@ -1438,45 +1478,6 @@ export default class AbelePlugin extends Plugin {
       })
     }
 
-    this.addCommand({
-      id: 'sync-now',
-      name: 'Sync now',
-      icon: 'refresh-cw',
-      callback: () => {
-        void SyncService.getInstance().syncNow()
-      },
-    })
-
-    this.addCommand({
-      id: 'sync-pause-resume',
-      name: 'Pause or resume sync',
-      icon: 'pause-circle',
-      callback: () => {
-        const sync = SyncService.getInstance()
-        if (sync.status.value.state === 'paused') sync.resume()
-        else sync.pause()
-      },
-    })
-
-    this.addCommand({
-      id: 'sync-log',
-      name: 'Open sync log',
-      icon: 'scroll-text',
-      callback: () => {
-        GlobalStore.getInstance().syncLogModalOpened.value = true
-      },
-    })
-
-    this.addCommand({
-      id: 'sync-deleted-files',
-      name: 'Open deleted files',
-      icon: 'trash-2',
-      callback: () => {
-        GlobalStore.getInstance().deletedFilesModalOpened.value = true
-      },
-    })
-
-    this.addCommand({
       id: 'show-script-api',
       name: 'Show script API reference',
       icon: 'book-open',
