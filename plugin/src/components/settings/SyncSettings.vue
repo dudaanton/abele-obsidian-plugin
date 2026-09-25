@@ -1,6 +1,6 @@
 <template>
   <div class="abele-sync-settings">
-    <ConnectCard v-if="!connected" :server-url="device.serverUrl" @connected="onConnected" />
+    <ConnectCard v-if="!connected" :server-url="device.serverUrl" />
 
     <template v-else>
       <Section
@@ -118,11 +118,11 @@
  * policy, and how much room that vault is using.
  *
  * The status is the service's own ref, so this screen redraws as the engine moves without
- * polling anything. `connected` is a ref rather than a computed over `isConnected()`: that is
- * a method on a service, not reactive state, so it is read when the screen opens and again
- * whenever something here changes it.
+ * polling anything — and which of the two screens shows is read off it too. Anything but
+ * `disconnected` is a device somebody set up: an engine that failed to build is `error`, and
+ * that screen is the one that says why, where the sign-in card would only ask again.
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
 import Badge from '../obsidian/Badge.vue'
@@ -148,8 +148,9 @@ const config = AbeleConfig.getInstance()
  * only ever redraw by accident. `paused` is the one that shows: the engine does not publish the
  * `paused` state until a run in flight has finished, so a Pause pressed mid-sync would leave
  * the button saying "Pause" for as long as the run takes. What the person pressed is true the
- * moment they press it, so that is what the button is driven from — and `onSaved` puts it back
- * in step with the settings for every other way it can change.
+ * moment they press it, so that is what the button is driven from — and the settings version,
+ * which a save and a reload from disk both move, puts it back in step for every other way it
+ * can change.
  */
 const snapshot = (): {
   serverUrl: string
@@ -168,21 +169,11 @@ const snapshot = (): {
 
 const status = sync.status
 const device = ref(snapshot())
-const connected = ref(sync.isConnected())
+const connected = computed(() => status.value.state !== 'disconnected')
 const confirming = ref<'disconnect' | 'forget' | null>(null)
 
-let unhook: (() => void) | null = null
-
-onMounted(() => {
-  unhook = config.onSaved(() => {
-    device.value = snapshot()
-    connected.value = sync.isConnected()
-  })
-})
-
-onUnmounted(() => {
-  unhook?.()
-  unhook = null
+watch(config.version, () => {
+  device.value = snapshot()
 })
 
 const statusLabel = computed(() => STATUS_LABEL[status.value.state])
@@ -194,10 +185,6 @@ const pendingDesc = computed(() =>
     ? 'Nothing is waiting to be sent.'
     : `${status.value.pending} ${status.value.pending === 1 ? 'change is' : 'changes are'} waiting to be sent.`
 )
-
-function onConnected(): void {
-  connected.value = sync.isConnected()
-}
 
 const syncNow = (): void => {
   void sync.syncNow()
@@ -219,12 +206,10 @@ function resume(): void {
 
 async function disconnect(): Promise<void> {
   await sync.disconnect()
-  connected.value = sync.isConnected()
 }
 
 async function forget(): Promise<void> {
   await sync.forget()
-  connected.value = sync.isConnected()
 }
 </script>
 

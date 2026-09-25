@@ -223,6 +223,50 @@ describe('a device that is set up', () => {
     )
   })
 
+  /**
+   * A build that failed leaves no engine, and the reason is in the status. A screen that read
+   * "no engine" as "nobody set this up" would offer the sign-in card and never say why.
+   */
+  it('says why sync could not start, rather than offering to sign in again', async () => {
+    connect()
+    service.connected = false
+    service.status.value = {
+      ...DISCONNECTED_STATUS,
+      state: 'error',
+      lastError: 'the state database would not open',
+    }
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    expect(screen.findComponent(ConnectCard).exists()).toBe(false)
+    expect(screen.text()).toContain('the state database would not open')
+  })
+
+  it('follows the service when it stops, without anything on this screen asking', async () => {
+    connect()
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    service.connected = false
+    service.status.value = { ...DISCONNECTED_STATUS }
+    await flushPromises()
+
+    expect(screen.findComponent(ConnectCard).exists()).toBe(true)
+  })
+
+  it('shows the server a data.json reloaded from disk names', async () => {
+    connect()
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    const config = AbeleConfig.getInstance()
+    config.sync = { ...config.sync, serverUrl: 'https://elsewhere.example.com' }
+    config.version.value++
+    await flushPromises()
+
+    expect(screen.text()).toContain('https://elsewhere.example.com')
+  })
+
   it('offers no connect card once there is nothing left to connect', async () => {
     connect()
     const screen = open(SyncSettings)

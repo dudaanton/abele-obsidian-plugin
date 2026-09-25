@@ -1084,7 +1084,9 @@ describe('SyncService — what this device syncs, driven from the settings', () 
     const other = server.clientFor(deviceToken, vaultId)
     const readBinary = app.vault.adapter.readBinary.bind(app.vault.adapter)
     app.vault.adapter.readBinary = (path: string) =>
-      path === IGNORE_FILE ? Promise.reject(new Error('EBUSY: the file is locked')) : readBinary(path)
+      path === IGNORE_FILE
+        ? Promise.reject(new Error('EBUSY: the file is locked'))
+        : readBinary(path)
 
     start()
     await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
