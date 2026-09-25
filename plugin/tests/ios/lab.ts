@@ -11,7 +11,6 @@ import { tagName } from '@/vendor/foliate-js/elements.js'
 import type { View as FoliateView } from '@/vendor/foliate-js/view.js'
 import { openEpub } from '@/reader/openBook'
 import { watchPage, type PageHost } from '@/reader/pageInput'
-import { extendSelection } from '@/reader/selectionPaging'
 import { emptyBookModel } from '@/reader/model'
 import { layoutAttributes, pageStyles, readerSettingsFrom } from '@/reader/settings'
 
@@ -98,26 +97,15 @@ async function main() {
       scroll: scrollOf(),
     })
   })
-  // The extend buttons beside the page, as the reader shows them while words are selected.
-  for (const [id, dir] of [
-    ['prev', -1],
-    ['next', 1],
-  ] as const) {
-    const b = document.getElementById(id)!
-    b.addEventListener('click', () => {
-      log({ extend: dir })
-      void extendSelection(
-        reader.renderer.getContents().map((c) => c.doc),
-        dir
-      ).then((ok) =>
-        log({ extended: ok, page: (reader.renderer as unknown as { page?: number }).page })
-      )
-    })
-  }
+  // The bar under the page, as the reader shows it: for words selected, and not while they are
+  // still being selected.
+  let barShown = false
   setInterval(() => {
-    for (const id of ['prev', 'next'])
-      document.getElementById(id)!.style.display = model.selection ? 'block' : 'none'
-  }, 100)
+    const show = !!model.selection && !model.selecting
+    document.getElementById('bar')!.style.display = show ? 'block' : 'none'
+    if (show !== barShown) log({ bar: show })
+    barShown = show
+  }, 50)
   await reader.open(opened.book)
   const settings = readerSettingsFrom({ flow })
   for (const [k, v] of Object.entries(layoutAttributes(settings, true)))
@@ -165,7 +153,7 @@ async function main() {
         page: (reader.renderer as unknown as { page?: number }).page,
         scroll: scrollOf(),
         selection: sel?.toString() ?? '',
-        bar: !!model.selection,
+        bar: !!model.selection && !model.selecting,
       })
     }
   }, 150)

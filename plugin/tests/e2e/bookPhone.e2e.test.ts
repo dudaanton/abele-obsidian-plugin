@@ -262,7 +262,9 @@ describe.skipIf(!available)('a book on a phone', () => {
       const range = doc.createRange(); range.setStart(p.firstChild, 0); range.setEnd(p.firstChild, 5)
       doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
       for (let i = 0; i < 30 && !view.model.selection; i++) await wait(100)
-      await wait(300)
+      // The bar comes once the words have rested: it stays hidden while they are being selected.
+      for (let i = 0; i < 30 && !view.contentEl.querySelector('.abele-book-selection'); i++) await wait(100)
+      await wait(200)
       const bar = view.contentEl.querySelector('.abele-book-selection')?.getBoundingClientRect()
       report.bar = bar ? { over: edge('.abele-book-selection'), height: Math.round(bar.height) } : null
       await shoot('rich-selection')

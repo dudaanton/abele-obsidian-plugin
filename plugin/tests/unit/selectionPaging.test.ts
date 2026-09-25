@@ -4,7 +4,8 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { watchPage, type PageHost } from '@/reader/pageInput'
-import { EDGE_HOLD_MS, LONG_PRESS_MS, SelectionPager } from '@/reader/selectionPaging'
+import { EDGE_HOLD_MS, QUIET_MS, SelectionPager } from '@/reader/selectionPaging'
+import { LONG_PRESS_MS } from '@/reader/pageGesture'
 
 // The page is the test's own document: happy-dom collapses every range set in a document made
 // apart from its window, so a selection could never be made in one.
@@ -19,7 +20,8 @@ const page = () => {
 const stageOf = (width = 400) => {
   const stage = document.createElement('div')
   Object.defineProperty(stage, 'clientWidth', { value: width })
-  stage.getBoundingClientRect = () => ({ left: 0, top: 0, right: width, bottom: 800 }) as DOMRect
+  stage.getBoundingClientRect = () =>
+    ({ left: 0, top: 0, right: width, bottom: 800, width, height: 800 }) as DOMRect
   return stage
 }
 
@@ -105,12 +107,36 @@ describe('a tap on a page turned one at a time', () => {
 
   it('does not turn it when words were selected as the tap began, even if the tap let them go', () => {
     const { doc, reader, down, up, click } = setup()
+    const turned = vi.spyOn(SelectionPager.prototype, 'tapTurn').mockResolvedValue(true)
     select(doc)
     down()
     unselect(doc) // the platform lets the selection go before the click arrives
     up()
+    click(300)
+    expect(reader.goRight).not.toHaveBeenCalled()
+    expect(turned).not.toHaveBeenCalled()
+    turned.mockRestore()
+  })
+
+  it('with words selected, a tap on the very edge turns the page and carries the selection on', () => {
+    const { doc, reader, down, up, click } = setup()
+    const turned = vi.spyOn(SelectionPager.prototype, 'tapTurn').mockResolvedValue(true)
+    select(doc)
+    down()
+    unselect(doc) // let go by the platform on the tap: the pager is handed what it began with
+    up()
     click(390)
     expect(reader.goRight).not.toHaveBeenCalled()
+    // Every page the test file has wired listens to this one document: the last call is this page's.
+    expect(turned).toHaveBeenCalled()
+    expect(turned.mock.lastCall?.[0]).toBe(1)
+    expect(turned.mock.lastCall?.[1]?.focus[1]).toBe(5)
+    select(doc)
+    down()
+    up()
+    click(8)
+    expect(turned.mock.lastCall?.[0]).toBe(-1)
+    turned.mockRestore()
   })
 
   it('does not turn it when the selection bar is open, and a tap beside the highlight bar only closes it', () => {
@@ -153,8 +179,11 @@ describe('a tap on a page turned one at a time', () => {
 })
 
 describe('a selection on pages turned one at a time', () => {
+  /** The pagers made by a test: all listen to the one document, so each goes when its test does. */
+  const made: SelectionPager[] = []
   beforeEach(() => vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] }))
   afterEach(() => {
+    for (const p of made.splice(0)) p.dispose()
     vi.useRealTimers()
     vi.restoreAllMocks()
   })
@@ -198,6 +227,8 @@ describe('a selection on pages turned one at a time', () => {
       }),
     })
     const told: string[] = []
+    const adjusted: boolean[] = []
+    const moved = vi.fn()
     const pager = new SelectionPager(
       doc,
       {
@@ -205,11 +236,15 @@ describe('a selection on pages turned one at a time', () => {
         stage: () => stageOf(400),
         fixed: () => !!opts.fixed,
         visible: () => visible,
+        adjusting: (on) => adjusted.push(on),
+        moved,
       },
       (m) => told.push(m)
     )
-    const move = (x: number) =>
-      doc.dispatchEvent(new MouseEvent('mousemove', { clientX: x, buttons: 1 }))
+    made.push(pager)
+    // Half way down the page unless said otherwise: the top and bottom are edges too.
+    const move = (x: number, y = 400) =>
+      doc.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y, buttons: 1 }))
     const press = () => doc.dispatchEvent(new Event('mousedown'))
     const release = () => doc.dispatchEvent(new Event('mouseup'))
     const sel = doc.getSelection()!
@@ -220,8 +255,32 @@ describe('a selection on pages turned one at a time', () => {
       vi.advanceTimersByTime(1)
     }
     const selected = () => sel.getRangeAt(0).cloneContents().textContent
-    return { doc, a, b, renderer, told, pager, move, press, release, handle, selected }
+    return {
+      doc,
+      a,
+      b,
+      renderer,
+      told,
+      adjusted,
+      moved,
+      pager,
+      move,
+      press,
+      release,
+      handle,
+      selected,
+    }
   }
+
+  it('tells the host once the page has turned under a selection, so its bar is placed anew', async () => {
+    const { a, renderer, moved, pager: p, handle } = pager()
+    handle([a, 0], [a, 5])
+    const turned = p.tapTurn(1, null)
+    await vi.advanceTimersByTimeAsync(100)
+    await turned
+    expect(renderer.next).toHaveBeenCalledTimes(1)
+    expect(moved).toHaveBeenCalled()
+  })
 
   it('turns forward once a pointer has held it at the right edge, and again while it stays there', () => {
     const { a, renderer, move, press, handle } = pager()
@@ -250,12 +309,81 @@ describe('a selection on pages turned one at a time', () => {
     expect(renderer.prev).toHaveBeenCalledTimes(1)
   })
 
-  it('never turns on its own when no pointer is followed, as under iOS’s handles', () => {
+  it('with no pointer to follow, turns for an end brought onto the page’s last word and held there, not for one made there', () => {
     const { a, renderer, handle } = pager()
-    handle([a, 0], [a, 5])
-    handle([a, 0], [a, a.length])
-    vi.advanceTimersByTime(EDGE_HOLD_MS * 5)
+    // Made by a long press on the last word: no turn, however long it rests.
+    handle([a, 17], [a, a.length])
+    vi.advanceTimersByTime(EDGE_HOLD_MS * 3)
     expect(renderer.next).not.toHaveBeenCalled()
+    // Its end taken back and brought down onto the last word again, and held: the page turns.
+    handle([a, 17], [a, 20])
+    handle([a, 17], [a, a.length])
+    vi.advanceTimersByTime(EDGE_HOLD_MS + 50)
+    expect(renderer.next).toHaveBeenCalledTimes(1)
+  })
+
+  it('turns forward when a handle is held past the foot of the text, as under iOS, and goes on dragging there', async () => {
+    // Past the text WebKit selects on to the end of the chapter; the reader stops the end at the
+    // page's last word and, held there, turns the page with it.
+    const { a, b, renderer, handle, selected } = pager()
+    handle([a, 6], [a, 10])
+    handle([a, 6], [b, 20])
+    expect(selected()).toBe('beta gamma delta.')
+    // Still held there: WebKit keeps putting it past the text, and the hold goes on.
+    vi.advanceTimersByTime(EDGE_HOLD_MS - 200)
+    handle([a, 6], [b, 25])
+    expect(renderer.next).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(300)
+    expect(renderer.next).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(20)
+    // Its end on the new page's first word, to be dragged on from there.
+    expect(selected()).toBe('beta gamma delta.Epsilon')
+    handle([a, 6], [b, 20])
+    expect(selected()).toBe('beta gamma delta.Epsilon zeta eta the')
+  })
+
+  it('turns back when the start is held past the head of the text', async () => {
+    const { a, b, renderer, handle, selected } = pager({ page: 3 })
+    await renderer.next() // the second paragraph's page on screen, the first one before it
+    await vi.advanceTimersByTimeAsync(50)
+    handle([b, 20], [b, 8])
+    handle([b, 20], [a, 0])
+    expect(selected()).toBe('Epsilon zeta eta the')
+    await vi.advanceTimersByTimeAsync(EDGE_HOLD_MS + 50)
+    expect(renderer.prev).toHaveBeenCalledTimes(1)
+  })
+
+  it('turns when a pointer holds it at the bottom of the page, and not half way down', () => {
+    const { a, renderer, move, press, handle } = pager()
+    press()
+    handle([a, 0], [a, 5])
+    move(200, 400)
+    vi.advanceTimersByTime(EDGE_HOLD_MS * 2)
+    expect(renderer.next).not.toHaveBeenCalled()
+    move(200, 790)
+    vi.advanceTimersByTime(EDGE_HOLD_MS + 50)
+    expect(renderer.next).toHaveBeenCalledTimes(1)
+  })
+
+  it('tells the host while words are being selected, and again once they have rested', () => {
+    const { a, adjusted, handle, press, release, move } = pager()
+    handle([a, 0], [a, 5])
+    handle([a, 0], [a, 8])
+    expect(adjusted).toEqual([true])
+    vi.advanceTimersByTime(QUIET_MS - 100)
+    handle([a, 0], [a, 10])
+    vi.advanceTimersByTime(QUIET_MS - 100)
+    expect(adjusted).toEqual([true])
+    vi.advanceTimersByTime(200)
+    expect(adjusted).toEqual([true, false])
+    // A mouse button held keeps it hidden however long the mouse rests.
+    press()
+    move(200)
+    vi.advanceTimersByTime(QUIET_MS * 4)
+    expect(adjusted).toEqual([true, false, true])
+    release()
+    vi.advanceTimersByTime(QUIET_MS + 50)
+    expect(adjusted).toEqual([true, false, true, false])
   })
 
   it('stays on the pages it has been shown on: a handle dragged off the text stops at the page’s end', () => {

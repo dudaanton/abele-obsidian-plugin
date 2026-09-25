@@ -225,6 +225,8 @@ describe.skipIf(!available)('reading a book aloud', () => {
       const range = doc.createRange(); range.setStart(p.firstChild, 6); range.setEnd(p.firstChild, 10)
       doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
       await until(() => view.model.selection, 3000)
+      // The bar comes once the words have rested: it stays hidden while they are being selected.
+      await until(() => view.contentEl.querySelector('.abele-book-selection'), 3000)
       const icon = [...view.contentEl.querySelectorAll('.abele-book-selection .abele-obsidian-icon')]
         .find((i) => i.getAttribute('aria-label') === 'Read aloud from here')
       icon.click()
@@ -274,7 +276,10 @@ describe.skipIf(!available)('reading a book aloud', () => {
     expect(r.error).toBeUndefined()
     expect(r.first).toMatch(/^Page 1 of the test document/)
     expect(r.boxes).toHaveLength(3)
-    expect(r.boxes!.every((n) => n > 0), String(r.boxes)).toBe(true)
+    expect(
+      r.boxes!.every((n) => n > 0),
+      String(r.boxes)
+    ).toBe(true)
     expect(r.page).toBe(1)
   })
 

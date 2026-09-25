@@ -6,7 +6,8 @@ import type { View as FoliateView } from '@/vendor/foliate-js/view.js'
 import { isOpenableExternal } from './bookSafety'
 import { swipeDirection } from './swipe'
 import { PDF_SCROLL_TAG } from './pdfScroll'
-import { PageGesture, pagerFor } from './selectionPaging'
+import { PageGesture } from './pageGesture'
+import { TAP_EDGE, pagerFor, pagerOf } from './selectionPaging'
 import { figureAt, fitFigures } from './figures'
 import { barAtTop } from './barPlace'
 import type { BookModel } from './model'
@@ -41,8 +42,16 @@ export function watchPage(host: PageHost, doc: Document): void {
   doc.addEventListener('click', (e) => onTap(host, e, doc, gesture))
   const reader = host.reader()
   const renderer = reader?.renderer as
-    | (NonNullable<FoliateView['renderer']> & { holdPages?: () => boolean })
+    | (NonNullable<FoliateView['renderer']> & {
+        holdPages?: () => boolean
+        abeleMargins?: boolean
+      })
     | undefined
+  // The page's margins are the engine's, outside the page's frame: a tap there is heard there.
+  if (renderer && !renderer.abeleMargins) {
+    renderer.abeleMargins = true
+    renderer.addEventListener('click', (e) => onMarginTap(host, e))
+  }
   // The engine's own swipes wait while words are selected or a bar is open.
   if (renderer) renderer.holdPages = barOpen(host)
   pagerFor(doc, {
@@ -54,11 +63,23 @@ export function watchPage(host: PageHost, doc: Document): void {
     stage: () => host.stage(),
     fixed: () => host.fixed(),
     visible: () => host.reader()?.lastLocation?.range ?? null,
+    // The bars stay out of the way while words are being selected, and come back beside them —
+    // at the foot of the page unless they are in its lower part — where they are once it rests.
+    adjusting: (on) => {
+      host.model.selecting = on
+      if (!on) placeBar(host, doc)
+    },
+    moved: () => placeBar(host, doc),
   })
   // The engine turns a reflowing book's pages under a finger itself; a PDF's it does not — and a
   // PDF in one long scroll is moved by the finger as it is, not turned.
   if (reader?.isFixedLayout && renderer?.localName !== PDF_SCROLL_TAG)
     watchSwipes(host, doc, gesture)
+}
+
+function placeBar(host: PageHost, doc: Document): void {
+  const sel = doc.getSelection()
+  if (sel?.rangeCount && !sel.isCollapsed) host.reading()?.placeBar(sel.getRangeAt(0))
 }
 
 function watchSwipes(host: PageHost, doc: Document, gesture: PageGesture): void {
@@ -126,7 +147,13 @@ function onTap(host: PageHost, e: MouseEvent, doc: Document, gesture: PageGestur
   const reader = host.reader()
   if (!reader || e.defaultPrevented) return
   if ((e.target as Element | null)?.closest?.('a, area')) return
-  if (!doc.getSelection()?.isCollapsed) return
+  // Words selected, and a tap on the very edge of the page: it turns, the selection going on.
+  const started = gesture.startedWith
+  if (started || !doc.getSelection()?.isCollapsed) {
+    const edge = edgeOf(host, e, doc, TAP_EDGE)
+    if (edge) void pagerOf(doc)?.tapTurn(edge, started)
+    return
+  }
   const marks = host.reading()?.marks
   if (marks) {
     // A highlight tapped: its bar at the head of the page when the tap was in its lower part.
@@ -157,12 +184,48 @@ function onTap(host: PageHost, e: MouseEvent, doc: Document, gesture: PageGestur
     host.model.figure = figure
     return
   }
+  const edge = edgeOf(host, e, doc, 0.25)
+  if (edge === -1) void reader.goLeft()
+  else if (edge === 1) void reader.goRight()
+}
+
+/**
+ * A tap on the margin beside the page's text, which the page's frame does not cover: a turn,
+ * as a tap on the edge of the text would be — carrying words selected on — and nothing else.
+ */
+function onMarginTap(host: PageHost, e: MouseEvent): void {
+  const reader = host.reader()
+  const doc = (reader?.renderer?.getContents() ?? [])[0]?.doc
+  if (!reader || !doc || e.defaultPrevented) return
   const stage = host.stage()
   const width = stage?.clientWidth ?? 0
   if (!stage || !width) return
+  const x = e.clientX - stage.getBoundingClientRect().left
+  const edge = (share: number): 1 | -1 | null =>
+    x < width * share ? -1 : x > width * (1 - share) ? 1 : null
+  if (!doc.getSelection()?.isCollapsed) {
+    const dir = edge(TAP_EDGE)
+    if (dir) void pagerOf(doc)?.tapTurn(dir, null)
+    return
+  }
+  if (host.model.active || host.model.selection) {
+    host.model.active = null
+    return
+  }
+  const dir = edge(0.25)
+  if (dir === -1) void reader.goLeft()
+  else if (dir === 1) void reader.goRight()
+}
+
+/** The edge of the page a tap was on, within `share` of its width either side: -1 left, 1 right. */
+function edgeOf(host: PageHost, e: MouseEvent, doc: Document, share: number): 1 | -1 | null {
+  const stage = host.stage()
+  const width = stage?.clientWidth ?? 0
+  if (!stage || !width) return null
   const frame = doc.defaultView?.frameElement
   const x =
     e.clientX + (frame?.getBoundingClientRect().left ?? 0) - stage.getBoundingClientRect().left
-  if (x < width * 0.25) void reader.goLeft()
-  else if (x > width * 0.75) void reader.goRight()
+  if (x < width * share) return -1
+  if (x > width * (1 - share)) return 1
+  return null
 }

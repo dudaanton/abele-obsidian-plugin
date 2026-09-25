@@ -31,4 +31,15 @@ describe('where the bar for selected words stands', () => {
     expect(bottomOnScreen(range, stage)).toBe(650)
     expect(bottomOnScreen(rangeWith([{ left: 500, bottom: 300 }]), stage)).toBeNull()
   })
+
+  it('leaves out a line of the page before that ends right on the edge of this one', () => {
+    // A whole line of the last page, its right end touching the page's left edge — after a turn
+    // under words selected across the two, it sent the bar over the head of the new page.
+    const range = rangeWith([
+      { left: -335, width: 335, bottom: 600 },
+      { left: 400, width: 30, bottom: 650 },
+      { left: 20, bottom: 150 },
+    ])
+    expect(bottomOnScreen(range, stage)).toBe(150)
+  })
 })

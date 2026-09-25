@@ -193,8 +193,14 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
   }, 180_000)
 
   describe('with the mouse, on the desktop', () => {
-    it('a click at the edge turns the page, one that lets a selection go does not', () => {
-      const r = run<{ error?: string; clicked?: number[]; withSelection?: number[] }>(`
+    it('a click at the edge turns the page; with words selected only one on the very edge does, carrying them on', () => {
+      const r = run<{
+        error?: string
+        clicked?: number[]
+        withSelection?: number[]
+        atEdge?: number
+        kept?: boolean
+      }>(`
         const { leaf, view } = await open(${JSON.stringify(BOOK)})
         await fresh(view)
         // On the page's own text near its right edge: the margins beside the columns on a wide
@@ -206,16 +212,27 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         await click(edge.right - 2)
         const clicked = [p0, R(view).page]
         const w = words(view)[5]
-        select(view, w.range); await wait(400)
+        select(view, w.range); await wait(700)
         const p1 = R(view).page
-        await click(edge.right - 2)
+        // Two thirds across: a clean click there turns; with words selected, only the very edge.
+        const s = box(view)
+        await click(s.left + s.width * 0.8)
         const withSelection = [p1, R(view).page]
+        // That click let the words go, as a click beside a selection does: selected again.
+        select(view, words(view)[5].range); await wait(700)
+        const p2 = R(view).page
+        await click(s.right - 4)
+        const atEdge = R(view).page
+        const kept = !docOf(view).getSelection().isCollapsed
+        view.reading.clearSelection()
         leaf.detach()
-        return { clicked, withSelection }
+        return { clicked, withSelection, atEdge: atEdge - p2, kept }
       `)
       expect(r.error).toBeUndefined()
       expect(r.clicked![1]).toBe(r.clicked![0] + 1)
       expect(r.withSelection![1]).toBe(r.withSelection![0])
+      expect(r.atEdge).toBe(1)
+      expect(r.kept).toBe(true)
     })
 
     it('a selection dragged to the edge turns the page, grows onto the next, and is highlighted as one', () => {
@@ -261,7 +278,8 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
       expect(r.text!.startsWith(r.first!)).toBe(true)
       // The highlight is one callout holding the words of both pages.
       expect(r.note).toContain('> [!quote|yellow]')
-      expect(r.note!.replace(/\s+/g, ' ')).toContain(r.text!.replace(/\s+/g, ' ').slice(-40))
+      // The words of both pages, the last of them as the note quotes them.
+      expect(r.note!.replace(/\s+/g, ' ')).toContain(r.text!.split('\n').pop()!.trim().slice(-30))
     })
 
     it('stays on its page of a PDF, and says why', () => {
@@ -356,17 +374,18 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
         const s = box(view), y = s.top + s.height / 2
         const p0 = R(view).page
         const list = words(view)
-        // A word in the right edge's zone, where a clean tap would turn the page.
-        const edgeWord = list.find((w) => w.left > s.left + s.width * 0.78) ?? list[list.length - 1]
+        // A word in the right edge's zone, where a clean tap would turn the page, short of the very
+        // edge, where a tap with words selected carries them on to the next page.
+        const edgeWord =
+          list.find((w) => w.x > s.left + s.width * 0.76 && w.x < s.left + s.width * 0.84) ??
+          list[list.length - 1]
         select(view, edgeWord.range)
         await until(() => view.model.selection, 3000)
         await tap(edgeWord.x, edgeWord.y)
-        select(view, edgeWord.range)
-        await until(() => view.model.selection, 3000)
-        await tap(s.right - 15, y + 80)
         select(view, list[3].range)
-        await until(() => view.model.selection, 3000)
-        const bar = !!(await until(() => view.contentEl.querySelector('.abele-book-selection'), 3000))
+        await until(() => view.model.selection?.text === list[3].range.toString(), 3000)
+        // Once the words have rested: the bar stays hidden while they are being selected.
+        const bar = !!(await until(() => !view.model.selecting && view.contentEl.querySelector('.abele-book-selection'), 3000))
         await shoot('phone-selection-bar')
         // The bar's own buttons: a colour highlights, and nothing turns.
         const swatch = view.contentEl.querySelector('.abele-book-selection__swatch').getBoundingClientRect()
@@ -478,69 +497,127 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
       expect(r.text!.startsWith(r.first!)).toBe(true)
     })
 
-    it('with no finger to follow, as under iOS’s handles, the selection stays on its page and the buttons beside it carry it on', () => {
+    it('while words are being selected their bar is hidden, and comes back once they have rested', () => {
+      const r = run<{ error?: string; during?: boolean[]; after?: boolean }>(`
+        const { leaf, view } = await open(${JSON.stringify(BOOK)})
+        await fresh(view)
+        const list = words(view)
+        const first = list[Math.floor(list.length / 3)]
+        const sel = docOf(view).getSelection()
+        const bar = () => !!view.contentEl.querySelector('.abele-book-selection')
+        // A handle dragged down the page, the way WebKit moves the selection under it.
+        const during = []
+        for (let i = 1; i <= 6; i++) {
+          const w = list[Math.floor(list.length / 3) + i * 3]
+          sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, w.range.endContainer, w.range.endOffset)
+          await wait(150)
+          during.push(bar())
+        }
+        await shoot('phone-selecting')
+        const after = !!(await until(bar, 3000))
+        view.reading.clearSelection()
+        leaf.detach()
+        return { during, after }
+      `)
+      expect(r.error).toBeUndefined()
+      expect(r.during).toEqual([false, false, false, false, false, false])
+      expect(r.after).toBe(true)
+    })
+
+    it('with words selected, a tap on the very edge turns the page and carries them on, and back', () => {
       const r = run<{
         error?: string
         pages?: number[]
-        clamped?: boolean
-        buttons?: boolean
-        carried?: { page: number; spans: boolean; ends: string; debug?: string[] }
+        spans?: boolean
+        kept?: boolean
+        firstWord?: string
+        ends?: string
+        barTop?: boolean
+      }>(`
+        const { leaf, view } = await open(${JSON.stringify(BOOK)})
+        await fresh(view)
+        const s = box(view), y = s.top + s.height / 2
+        const visible = view.engine.lastLocation.range
+        const list = words(view)
+        const first = list[Math.floor(list.length / 2)]
+        select(view, first.range)
+        await until(() => view.model.selection, 3000)
+        await wait(700)
+        const p0 = R(view).page
+        await tap(s.right - 10, y)
+        await wait(400)
+        const p1 = R(view).page
+        const sel = docOf(view).getSelection()
+        const range = sel.getRangeAt(0)
+        const spans = visible.comparePoint(range.endContainer, range.endOffset) > 0
+        const firstWord = words(view)[0]?.range.toString()
+        const ends = sel.toString().trim().split(/\\s+/).pop()
+        await until(() => view.model.selection && !view.model.selecting, 3000)
+        await wait(400)
+        // Its end now on the page's first line: the bar at the foot, clear of it.
+        const barTop = view.model.barTop
+        await shoot('phone-edge-tap')
+        await tap(s.left + 10, y)
+        await wait(400)
+        const p2 = R(view).page
+        const kept = !sel.isCollapsed && sel.toString().startsWith(first.range.toString())
+        view.reading.clearSelection()
+        leaf.detach()
+        return { pages: [p0, p1, p2], spans, kept, firstWord, ends, barTop }
+      `)
+      expect(r.error).toBeUndefined()
+      expect(r.pages).toEqual([r.pages![0], r.pages![0] + 1, r.pages![0]])
+      expect(r.spans).toBe(true)
+      expect(r.ends).toBe(r.firstWord)
+      expect(r.kept).toBe(true)
+      expect(r.barTop).toBe(false)
+    })
+
+    it('with no finger to follow, as under iOS’s handles, an end brought to the foot and held turns the page, the top left free', () => {
+      const r = run<{
+        error?: string
+        pages?: number[]
+        spans?: boolean
+        barDuring?: boolean
         grown?: boolean
-        back?: { page: number; kept: boolean }
       }>(`
         const { leaf, view } = await open(${JSON.stringify(BOOK)})
         await fresh(view)
         const visible = view.engine.lastLocation.range
         const list = words(view)
         const first = list[Math.floor(list.length / 2)]
-        const doc = docOf(view)
-        const sel = doc.getSelection()
+        const last = list[list.length - 1]
+        const sel = docOf(view).getSelection()
         select(view, first.range)
-        await until(() => view.model.selection, 3000)
+        await wait(300)
         const p0 = R(view).page
-        // What WebKit does with a handle dragged below a page's text: the end of the chapter.
-        const body = doc.body
-        sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, body, body.childNodes.length)
-        await wait(1500)
+        // Dragged down to the foot of the page, and held there.
+        const mid = list[Math.floor(list.length * 0.75)]
+        sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, mid.range.endContainer, mid.range.endOffset)
+        await wait(150)
+        sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, last.range.endContainer, last.range.endOffset)
+        await until(() => R(view).page !== p0, 3000)
+        const p1 = R(view).page
+        await wait(100)
+        const barDuring = !!view.contentEl.querySelector('.abele-book-selection')
+        await shoot('phone-held-at-foot')
         const range = sel.getRangeAt(0)
-        const clamped = R(view).page === p0 && visible.comparePoint(range.endContainer, range.endOffset) === 0
-        // The buttons beside the page, tapped.
-        const next = await until(() => view.contentEl.querySelector('.abele-book-reader__extend_next'), 3000)
-        const buttons = !!next && !!view.contentEl.querySelector('.abele-book-reader__extend_prev')
-        await shoot('phone-extend-buttons')
-        const b = next.getBoundingClientRect()
-        await tap(b.left + b.width / 2, b.top + b.height / 2)
-        await wait(400)
-        const after = sel.getRangeAt(0)
-        const carried = {
-          debug: [after.toString().slice(-40), words(view)[0]?.range.toString(), visible.toString().slice(-30)],
-          page: R(view).page,
-          spans: visible.comparePoint(after.endContainer, after.endOffset) > 0,
-          ends: after.toString().trim().split(/\\s+/).pop(),
-        }
+        const spans = visible.comparePoint(range.endContainer, range.endOffset) > 0
+        // Taken on down the new page from its top.
         const onPage = words(view)
-        await shoot('phone-extended')
-        // Its end taken on further down the new page.
         const further = onPage[Math.floor(onPage.length / 2)]
         sel.setBaseAndExtent(first.range.startContainer, first.range.startOffset, further.range.endContainer, further.range.endOffset)
         await wait(300)
         const grown = sel.toString().trim().endsWith(further.range.toString())
-        // Back a page: its start is already there, so the page only turns.
-        const prev = view.contentEl.querySelector('.abele-book-reader__extend_prev').getBoundingClientRect()
-        await tap(prev.left + prev.width / 2, prev.top + prev.height / 2)
-        await wait(400)
-        const back = { page: R(view).page, kept: sel.toString().startsWith(first.range.toString()) && sel.toString().trim().endsWith(further.range.toString()) }
         view.reading.clearSelection()
         leaf.detach()
-        return { pages: [p0], clamped, buttons, carried, grown, back, firstWord: onPage[0]?.range.toString() }
+        return { pages: [p0, p1], spans, barDuring, grown }
       `)
       expect(r.error).toBeUndefined()
-      expect(r.clamped).toBe(true)
-      expect(r.buttons).toBe(true)
-      expect(r.carried!.page).toBe(r.pages![0] + 1)
-      expect(r.carried!.spans, JSON.stringify(r.carried)).toBe(true)
+      expect(r.pages![1]).toBe(r.pages![0] + 1)
+      expect(r.spans).toBe(true)
+      expect(r.barDuring).toBe(false)
       expect(r.grown).toBe(true)
-      expect(r.back).toEqual({ page: r.pages![0], kept: true })
     })
 
     it('words on the last line are not covered: their bar stands at the head of the page', () => {
@@ -556,7 +633,9 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
           view.reading.clearSelection(); await wait(400)
           select(view, w.range)
           await until(() => view.model.selection, 3000)
-          await wait(400)
+          // Once the words have rested: the bar stays hidden while they are being selected.
+          await until(() => view.contentEl.querySelector('.abele-book-selection'), 3000)
+          await wait(200)
           const bar = view.contentEl.querySelector('.abele-book-selection').getBoundingClientRect()
           return { top: view.model.barTop, bar: [Math.round(bar.top), Math.round(bar.bottom)], words: [Math.round(w.y - 8), Math.round(w.y + 8)] }
         }

@@ -15,8 +15,8 @@ and front matter are skipped when the book says where the text starts).
 
 - **Turning pages.** The arrow keys, Page Up and Page Down, the space bar, a tap near the left or
   right edge of the page, or on a touch screen a swipe. Only a clean tap or swipe turns: not a
-  long press, not a finger held and then moved, not a tap while words are selected or a bar is
-  open (that tap only closes the bar), not a tap on a highlight, a picture or a table.
+  long press, not a finger held and then moved, not a tap while words are selected (except on the very edge,
+  which carries them on — see below) or a bar is open (that tap only closes the bar), not a tap on a highlight, a picture or a table.
 - **Pages or scrolling.** The pages can be turned one at a time or scrolled through a chapter at a
   time. The tab's menu (⋯) switches between the two at once, keeping the place; so does
   **Layout** in the text and layout settings.
@@ -64,26 +64,37 @@ under the page:
 A **tap on a highlight** brings up the same bar for it: another colour, the comment, a link, the
 quote, the highlights note, or remove it. A tap beside the bar closes it.
 
-**A selection can run over several pages.** While words are selected, two small buttons stand
-beside the page, halfway down: **›** turns the page and carries the selection's end onto the first
-word of the next page, where its handle can be dragged on; **‹** does the same backwards with its
-start. An end already on that page is left alone and the page only turns, so the buttons also
-move back and forth over a long selection. It works a screen at a time in a scrolled chapter too.
-With a mouse (or wherever the page hears the finger move) the selection held at the left or right
-edge of the page for a moment turns the page by itself and goes on growing, a page a second.
+**A selection can run over several pages.** While words are selected:
+
+- **A tap on the very edge of the page** — its outer sixth, left or right — turns the page and
+  carries the selection on: going forward its end moves to the first word of the new page, going
+  back its start to the last word of the page before, drawn again with its handles to drag on
+  from there. An end already on that page is left alone and the page only turns. A tap anywhere
+  else still turns nothing.
+- **A handle dragged to the foot of the page and held there** for a moment — its end on the
+  page's last word, or past the text — turns the page forward the same way, and again while it
+  stays there; the start dragged to the head of the page (its first word) and held goes back.
+  With a mouse, or wherever the page hears the finger move, the pointer held at the bottom or
+  right edge does the same, and at the top or left edge goes back. A selection just made by a long
+  press on the last word does not turn the page: only an end that was dragged there does.
+
+While the selection is being made — a finger or the mouse still at it — **the bar for the words
+is hidden**, so nothing covers the page, its top included, where the handle goes on from after a
+turn. It comes back once the selection has rested for half a second (and the mouse button is up):
+iOS tells a page nothing while a handle is dragged, so resting is the only sign a finger has
+stopped. It stands at the foot of the page, or at its head when the words are in the lower part
+of the page, so its buttons never cover a handle — measured again after every turn, by the
+words on the new page alone. It stands over the page rather than beside it:
+making room for it would lay the page out anew under the finger. The bar for reading aloud takes
+a place of its own under the page.
 
 The selection is kept through every page turn and shown again, with its handles, on any page it
 reaches — iOS keeps a selection through a turn but stops drawing it, so the reader sets it again.
-The bar for the selected words stands at the foot of the page, or at its head when the words are
-in the lower part of the page, so it never covers them and the last line can be selected. It
-stands over the page rather than beside it: making room for it would lay the page out anew under
-the finger. The bar for reading aloud takes a place of its own under the page.
-
 A selection stays on the pages it has been shown on: a handle dragged off the text stops at the
-page's last word instead of running to the end of the chapter, and the page never turns under it
-by itself. The selection is one range of the chapter and is highlighted, linked and quoted as
-one. It stops at the end of its chapter, and says so; in a PDF or a book of fixed pages each page
-is a document of its own, and a selection stays on its page.
+page's last word instead of running to the end of the chapter. The selection is one range of the
+chapter and is highlighted, linked and quoted as one. It stops at the end of its chapter, and says
+so; in a PDF or a book of fixed pages each page is a document of its own, and a selection stays on
+its page.
 
 **Highlights live in a note beside the book**, `<book> highlights.md`, made with the first one:
 

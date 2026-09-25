@@ -85,7 +85,9 @@ const PRELUDE = `
     const range = doc.createRange(); range.setStart(p.firstChild, from); range.setEnd(p.firstChild, to)
     doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
     await until(() => view.model.selection, 3000)
-    await wait(200)
+    // The bar comes once the words have rested: it stays hidden while they are being selected.
+    await until(() => view.contentEl.querySelector('.abele-book-selection'), 3000)
+    await wait(100)
     return range
   }
   const askIcon = (view) => [...view.contentEl.querySelectorAll('.abele-book-selection .abele-obsidian-icon')]
@@ -281,7 +283,7 @@ describe.skipIf(!available)('discussions in books', () => {
       const h0 = view.model.highlights.find((h) => h.color === 'green')
       // A tap on the highlight opens its bar; Ask here there asks about it.
       view.model.active = h0
-      await wait(300)
+      await until(() => askIcon(view), 3000)
       askIcon(view).click()
       const h = await until(() => view.model.highlights.find((x) => x.color === 'green' && x.discussion), 8000)
       const tools = Object.fromEntries(window.__abeleTest.createBookTools().map((t) => [t.name, t]))
@@ -392,10 +394,13 @@ describe.skipIf(!available)('discussions in books', () => {
       try {
         return f()
       } catch (e) {
-        throw new Error(`${(e as Error).message}, at ${evalRaw('String(window.__abeleDiscussionStep)')}`)
+        throw new Error(
+          `${(e as Error).message}, at ${evalRaw('String(window.__abeleDiscussionStep)')}`
+        )
       }
     }
-    const asked = where(() => run<{ error?: string; id?: string; bubble?: boolean }>(`
+    const asked = where(() =>
+      run<{ error?: string; id?: string; bubble?: boolean }>(`
       // Where it got to, kept on the window: a call that runs out of time says nothing itself.
       const step = (s) => (window.__abeleDiscussionStep = s)
       step('close'); await closeChat()
@@ -417,6 +422,8 @@ describe.skipIf(!available)('discussions in books', () => {
       doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
       await until(() => view.model.selection, 3000)
       await wait(200)
+      // The bar comes once the words have rested: it stays hidden while they are being selected.
+      await until(() => askIcon(view), 3000)
       step('ask'); askIcon(view).click()
       const id = await until(() => view.model.highlights.find((h) => h.discussion)?.discussion, 8000)
       step('asked')
@@ -424,7 +431,8 @@ describe.skipIf(!available)('discussions in books', () => {
       step('drawn')
       await closeChat()
       return { id, bubble }
-    `))
+    `)
+    )
     expect(asked.error).toBeUndefined()
     expect(asked.bubble).toBe(true)
     const tapped = run<{ error?: string; tapped?: string | null; note?: string }>(`

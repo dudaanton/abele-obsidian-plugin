@@ -6,7 +6,6 @@ import type { View as FoliateView } from '@/vendor/foliate-js/view.js'
 import type { Highlight, HighlightColor } from './highlights'
 import type { BookModel, PanelTab, SearchHit } from './model'
 import type { BookReading } from './BookReading'
-import { extendSelection } from './selectionPaging'
 
 export interface BookActions {
   model: BookModel
@@ -36,14 +35,6 @@ export function bookCallbacks(a: BookActions): Record<string, unknown> {
       model.settingsOpen = open
     },
     onFootnoteClose: (): void => a.closeFootnote(),
-    onExtend: (dir: 1 | -1): void =>
-      void extendSelection(
-        a
-          .reader()
-          ?.renderer?.getContents()
-          .map((c) => c.doc) ?? [],
-        dir
-      ),
     onDiscuss: (h: Highlight): void => void a.reading()?.discuss(h),
     onFigureClose: (): void => {
       model.figure = null

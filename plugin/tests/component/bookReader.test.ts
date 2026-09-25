@@ -364,3 +364,21 @@ describe('reading aloud', () => {
     expect(AbeleConfig.getInstance().reader.ttsRate).toBe(1.5)
   })
 })
+
+describe('the bar for selected words while they are being selected', () => {
+  it('is hidden while a finger or the mouse is still at it, and comes back once they are made', async () => {
+    const model = readyModel({ selection: { cfi: 'x', text: 'Words', label: '' }, selecting: true })
+    const view = mount(BookReader, { props: { model } })
+    expect(view.find('.abele-book-selection').exists()).toBe(false)
+    model.selecting = false
+    await view.vm.$nextTick()
+    expect(view.find('.abele-book-selection').exists()).toBe(true)
+  })
+
+  it('offers no buttons beside the page to carry the selection over: the page’s edges do that', () => {
+    const view = mount(BookReader, {
+      props: { model: readyModel({ selection: { cfi: 'x', text: 'Words', label: '' } }) },
+    })
+    expect(view.find('.abele-book-reader__extend').exists()).toBe(false)
+  })
+})

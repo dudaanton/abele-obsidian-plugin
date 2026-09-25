@@ -282,10 +282,12 @@ Three files, three concerns:
   moved, a swipe or tap over a selection, a tap on a highlight, a tap beside an open bar and taps
   on the bars' buttons do not. A selection held at the edge turns the page and grows onto the
   next — with the mouse, with a finger, and with only its end moved, as iOS's handles do — and is
-  highlighted as one. With nothing but the selection to go by, as under iOS's handles, it never turns
-  by itself, stays on its page when WebKit runs it to the end of the chapter, and the buttons beside
-  the page carry it on and back. It stops at the end of the chapter and in a PDF at its page, and
-  says so.
+  highlighted as one. With nothing but the selection to go by, as under iOS's handles, an end
+  brought onto the page's last word and held turns the page, the bar hidden throughout so the top
+  of the new page is free, and the selection is dragged on there. The bar is hidden while words
+  are being selected and comes back once they rest. A tap on the very edge with words selected
+  turns the page and carries them on, and back. It stops at the end of the chapter and in a PDF at
+  its page, and says so.
 - **The iOS lab** (`plugin/tests/ios/`) — the reader's engine and page wiring in a plain page, run
   in Safari in the iOS Simulator: the real WebKit, with its own long press, selection handles and
   scrolling, which Chromium's emulation does not have. No emulator runs Obsidian, but this is the
@@ -299,7 +301,10 @@ Three files, three concerns:
   built once into `/tmp`), prints the log and pictures the screen. It needs Xcode and an iOS
   Simulator runtime, nothing else. What it showed: while a selection
   handle is dragged WebKit sends the page a touchstart and nothing else, and a handle dragged
-  below a page's text selects to the end of the chapter.
+  below a page's text selects to the end of the chapter — or, as often, to the page's last line.
+  With it the reader's hold at the foot of the page was checked for real: a long press, the end
+  handle dragged down and held, the page turning with the selection carried on and the handle
+  dragged further on the new page; and a tap on the page's edge with words selected.
 - `bookPhoneControls.e2e.test.ts` — **the reader's controls on a phone**: the progress slider
   dragged does not open the side panel; the text and layout dialog scrolls to its last row and the
   note and comment dialogs show their buttons; a dialog with a search field keeps its size under a

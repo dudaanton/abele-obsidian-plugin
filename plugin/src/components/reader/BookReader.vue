@@ -44,29 +44,12 @@
         <div v-if="model.status !== 'ready'" class="abele-book-reader__message">
           {{ model.message }}
         </div>
-        <!-- Words selected in a reflowing book: carried onto the next or last page on purpose. -->
-        <template v-if="model.status === 'ready' && model.selection && model.kind === 'epub'">
-          <Icon
-            class="abele-book-reader__extend abele-book-reader__extend_prev"
-            icon="chevron-left"
-            tooltip="Carry the selection onto the page before"
-            data-ignore-swipe="true"
-            @click="emit('extend', -1)"
-          />
-          <Icon
-            class="abele-book-reader__extend abele-book-reader__extend_next"
-            icon="chevron-right"
-            tooltip="Carry the selection onto the next page"
-            data-ignore-swipe="true"
-            @click="emit('extend', 1)"
-          />
-        </template>
         <div
           class="abele-book-reader__bars"
           :class="{ 'abele-book-reader__bars_top': model.barTop }"
         >
           <BookSelectionBar
-            v-if="model.status === 'ready' && (model.selection || model.active)"
+            v-if="model.status === 'ready' && (model.selection || model.active) && !model.selecting"
             :highlight="model.active"
             :can-ask="model.canAsk"
             @ask="emit('ask', quoteTarget())"
@@ -169,7 +152,6 @@ const emit = defineEmits<{
   (e: 'footnote-close'): void
   (e: 'figure-close'): void
   (e: 'discuss', h: Highlight): void
-  (e: 'extend', dir: 1 | -1): void
   (e: 'footnote-go'): void
   (e: 'panel-tab', tab: PanelTab): void
   (e: 'search', query: string): void
@@ -316,29 +298,6 @@ watch(
   &__bars_top .abele-book-selection {
     border-top: none;
     border-bottom: 1px solid var(--background-modifier-border);
-  }
-
-  /* Beside the page, halfway down, over its margin: small enough to leave the text alone. */
-  &__extend {
-    position: absolute;
-    top: 45%;
-    z-index: 3;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--size-4-6);
-    height: var(--size-4-12);
-    border-radius: var(--radius-l);
-    background-color: var(--background-modifier-hover);
-    color: var(--text-accent);
-  }
-
-  &__extend_prev {
-    left: var(--size-2-1);
-  }
-
-  &__extend_next {
-    right: var(--size-2-1);
   }
 
   &__message {

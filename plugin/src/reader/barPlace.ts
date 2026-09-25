@@ -19,7 +19,9 @@ export function bottomOnScreen(range: Range, stage: DOMRect): number | null {
   let bottom: number | null = null
   for (const r of Array.from(range.getClientRects())) {
     const left = r.left + dx
-    if (!r.width || left + r.width < stage.left || left > stage.right) continue
+    // On the page only where it overlaps it: a line of a page either side may end, or begin,
+    // right on its edge.
+    if (!r.width || left + r.width <= stage.left + 1 || left >= stage.right - 1) continue
     bottom = Math.max(bottom ?? -Infinity, r.bottom + dy)
   }
   return bottom
