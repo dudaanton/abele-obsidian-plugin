@@ -799,13 +799,18 @@ describe('SyncService — a ledger no file can carry', () => {
     expect(written).not.toContain('stateId')
   })
 
-  it('moves the ledger id an older data.json holds into local storage, once', async () => {
-    const { vaultId } = await connect()
+  /**
+   * A build of this branch that kept the ledger id in `data.json` was never released, so
+   * nothing moves it out: an id the file still names is ignored, and the vault starts a ledger
+   * of its own — a walk of the manifest that deletes nothing.
+   */
+  it('never opens the ledger an id left in data.json names', async () => {
+    const { vaultId, other } = await connect()
     await synced()
     const { stateId } = ledger() as { stateId: string }
     await service.destroy()
 
-    // The next launch of a vault an older version of the plugin wrote.
+    // The next launch of a vault whose file still holds an id, and whose local storage has none.
     app.saveLocalStorage('abele-sync-ledger', null)
     const stored = AbeleConfig.getInstance().exportSettings() as unknown as {
       sync: Record<string, unknown>
@@ -823,10 +828,17 @@ describe('SyncService — a ledger no file can carry', () => {
       start()
       await synced()
 
-      expect(ledger()).toEqual({ stateId, vaultId })
-      // The file is written again without it, so it can never travel from here.
+      const fresh = ledger() as { stateId: string; vaultId: string }
+      expect(fresh.stateId).not.toBe('')
+      expect(fresh.stateId).not.toBe(stateId)
+      expect(fresh.vaultId).toBe(vaultId)
+      expect(await serverPaths(other)).toContain('Existing.md')
+      expect(await read('Existing.md')).toBe('already here')
+
+      // Not written back either: the next save leaves it out.
+      await AbeleConfig.getInstance().saveSettings()
       expect(written.length).toBeGreaterThan(0)
-      expect(JSON.stringify(written[written.length - 1])).not.toContain(stateId)
+      expect(JSON.stringify(written[written.length - 1])).not.toContain('stateId')
     } finally {
       loading.mockRestore()
       saving.mockRestore()

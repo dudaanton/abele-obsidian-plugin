@@ -20,7 +20,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEVICE_SECRET_PREFIX, isDeviceSecretId, secrets } from '@/secrets/SecretStore'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { ObsidianFileSystem } from './ObsidianFileSystem'
-import { NO_LEDGER, migrateLedgerId, readLedgerId, writeLedgerId, type LedgerId } from './ledgerId'
+import { NO_LEDGER, readLedgerId, writeLedgerId, type LedgerId } from './ledgerId'
 import type { SyncSettings } from './settings'
 import { DISCONNECTED_STATUS, statusOf, type SyncStatus } from './status'
 import { fetchViaRequestUrl, wsFor } from './transport'
@@ -213,10 +213,6 @@ export class SyncService {
     this.app = app
     this.plugin = plugin
     this.deps = deps
-    // Once per vault: a ledger id an older version left in `data.json` moves to local storage.
-    const config = AbeleConfig.getInstance()
-    migrateLedgerId(app, config.legacyLedger)
-    config.legacyLedger = null
     // A settings save is the one road every change to what this device syncs takes.
     this.unhookSettings?.()
     this.unhookSettings = AbeleConfig.getInstance().onSaved(() => this.onSettingsSaved())
@@ -577,7 +573,7 @@ export class SyncService {
 
   /** The ledger this local vault syncs on, from its own local storage (`ledgerId.ts`). */
   private ledger(app: App): LedgerId {
-    return readLedgerId(app) ?? NO_LEDGER
+    return readLedgerId(app)
   }
 
   /**

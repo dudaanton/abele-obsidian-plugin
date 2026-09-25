@@ -17,8 +17,6 @@ import {
 } from '@/helpers/accountRows'
 import {
   defaultSyncSettings,
-  holdsLegacyLedger,
-  legacyLedgerOf,
   migrateSyncSettings,
   type SyncSettings,
 } from '@/sync/settings'
@@ -374,12 +372,6 @@ export class AbeleConfig {
   public journals: Journal[]
   public ai: AiSettings
   public sync: SyncSettings
-  /**
-   * The ledger id an older version kept in `data.json`, as it was read off the disk, for the
-   * sync service to move into local storage once. Never written back, and never taken from a
-   * transfer: only `loadSettings` sets it.
-   */
-  public legacyLedger: { stateId: string; vaultId: string } | null = null
   public transactionPathTemplate: string
   public transactionTemplatePath: string
   public accountsFolder: string
@@ -570,7 +562,6 @@ export class AbeleConfig {
       this.unreadableTold = false
       if (this.unreadable) console.error('[Abele] data.json could not be read; not writing to it')
 
-      this.legacyLedger = legacyLedgerOf((stored as { sync?: unknown } | null)?.sync)
       // Fresh/current settings have no copied descriptions; historical shipped defaults are
       // already recognised by the lightweight migration. Only possible custom/current copies
       // need the executable catalog to distinguish an override from today's tool description.
@@ -791,8 +782,6 @@ export class AbeleConfig {
     // The platform is read here and nowhere else: it decides only what a vault with no sync
     // settings yet starts with, which on a phone is a cap on how large a file it takes.
     this.sync = migrateSyncSettings(settings?.sync, Platform.isMobile)
-    // A ledger id in the file is dropped from it: it lives in the vault's local storage now.
-    if (holdsLegacyLedger(settings?.sync)) migrated = true
     this.transactionPathTemplate =
       settings?.transactionPathTemplate ?? DEFAULT_SETTINGS.transactionPathTemplate
     this.transactionTemplatePath =

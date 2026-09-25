@@ -31,14 +31,13 @@ export interface LocalStorage {
 }
 
 /**
- * The record as it stands, or null when this vault has none — which is what tells the one-time
- * migration from `data.json` it may run. Anything malformed reads as no ledger rather than as
- * none at all: a record was written, so the migration has had its turn.
+ * The record as it stands. None at all, or one that is malformed, reads as no ledger, and the
+ * next build mints one: a ledger is a cache of what the server holds, so a fresh one costs a walk
+ * of the manifest and deletes nothing.
  */
-export function readLedgerId(storage: LocalStorage): LedgerId | null {
+export function readLedgerId(storage: LocalStorage): LedgerId {
   const raw = storage.loadLocalStorage(LEDGER_KEY)
-  if (raw === null || raw === undefined) return null
-  if (typeof raw !== 'object') return { ...NO_LEDGER }
+  if (raw === null || typeof raw !== 'object') return { ...NO_LEDGER }
   const o = raw as Record<string, unknown>
   return {
     stateId: typeof o.stateId === 'string' ? o.stateId : '',
@@ -48,14 +47,4 @@ export function readLedgerId(storage: LocalStorage): LedgerId | null {
 
 export function writeLedgerId(storage: LocalStorage, ledger: LedgerId): void {
   storage.saveLocalStorage(LEDGER_KEY, { stateId: ledger.stateId, vaultId: ledger.vaultId })
-}
-
-/**
- * Moves a ledger id an older version kept in `data.json` into local storage — once, and only
- * when local storage holds no record yet. A record is written either way, so a `data.json`
- * that turns up later with an id in it is never taken at its word.
- */
-export function migrateLedgerId(storage: LocalStorage, legacy: LedgerId | null): void {
-  if (readLedgerId(storage) !== null) return
-  writeLedgerId(storage, legacy ?? NO_LEDGER)
 }

@@ -11,8 +11,6 @@ import {
   DEFAULT_SYNC_SETTINGS,
   MOBILE_MAX_FILE_BYTES,
   defaultSyncSettings,
-  holdsLegacyLedger,
-  legacyLedgerOf,
   migrateSyncSettings,
 } from '@/sync/settings'
 
@@ -98,23 +96,13 @@ describe('migrateSyncSettings', () => {
 
   /**
    * The ledger id lives in the vault's local storage, where no file can carry it to another
-   * vault. One an older version wrote into the file is read once, to be moved there.
+   * vault. One a file still holds is dropped on the way in, and so never written back.
    */
-  it('drops a ledger id from the settings, and reads it back only as a legacy one', () => {
+  it('drops a ledger id the file still holds', () => {
     const raw = { stateId: 'abc123', stateVaultId: 'v1' }
 
     expect(migrateSyncSettings(raw)).not.toHaveProperty('stateId')
     expect(migrateSyncSettings(raw)).not.toHaveProperty('stateVaultId')
-    expect(legacyLedgerOf(raw)).toEqual({ stateId: 'abc123', vaultId: 'v1' })
-    expect(holdsLegacyLedger(raw)).toBe(true)
-  })
-
-  it('finds no legacy ledger where the file names none', () => {
-    expect(legacyLedgerOf({ serverUrl: 'https://sync.example' })).toBeNull()
-    expect(legacyLedgerOf({ stateId: '' })).toBeNull()
-    expect(legacyLedgerOf({ stateId: 7 })).toBeNull()
-    expect(legacyLedgerOf(null)).toBeNull()
-    expect(holdsLegacyLedger({ serverUrl: 'https://sync.example' })).toBe(false)
   })
 
   it('falls back to the default for a field of the wrong type', () => {

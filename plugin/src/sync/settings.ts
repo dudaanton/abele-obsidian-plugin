@@ -87,26 +87,6 @@ export function migrateSyncSettings(raw: unknown, isMobile = false): SyncSetting
   }
 }
 
-/**
- * The ledger id an older version of the plugin kept in `data.json`, or null when the block
- * holds none.
- *
- * Read once, to move it into the vault's local storage (`ledgerId.ts`), and never written back:
- * a file is exactly what a transfer, a copied vault or a file sync carries to another local
- * vault, and a ledger id that travels opens the other vault's ledger.
- */
-export function legacyLedgerOf(raw: unknown): { stateId: string; vaultId: string } | null {
-  const o = objectOf(raw)
-  if (o === null || typeof o.stateId !== 'string' || o.stateId === '') return null
-  return { stateId: o.stateId, vaultId: typeof o.stateVaultId === 'string' ? o.stateVaultId : '' }
-}
-
-/** Whether a stored block still names a ledger, so the file is due to be written without it. */
-export function holdsLegacyLedger(raw: unknown): boolean {
-  const o = objectOf(raw)
-  return o !== null && ('stateId' in o || 'stateVaultId' in o)
-}
-
 /** The selective settings, filled out from the defaults switch by switch. */
 function migrateSelective(raw: unknown, defaults: SelectiveSettings): SelectiveSettings {
   const o = objectOf(raw)
