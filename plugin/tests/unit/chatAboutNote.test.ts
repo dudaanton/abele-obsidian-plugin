@@ -16,7 +16,7 @@ import {
   canChatAbout,
   registerChatAbout,
 } from '@/commands/chatAboutNote'
-import { ChatService } from '@/ai/ChatService'
+import { ChatService, MAX_TABS } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
@@ -123,7 +123,7 @@ describe('opening the chat', () => {
 
   it('says so, and opens nothing, when every tab is taken', async () => {
     seedAgent([], true)
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < MAX_TABS; i++) {
       service.createTab()
       service.activeSession.value!.allMessages.value = [
         { id: `m${i}`, role: 'user', content: 'hi', timestamp: 1 } as ChatMessage,

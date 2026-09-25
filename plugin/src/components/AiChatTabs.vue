@@ -1,6 +1,6 @@
 <template>
   <div v-if="tabs.length > 1 || canCreate" class="abele-chat-tabs">
-    <div ref="strip" class="abele-chat-tabs__list">
+    <div ref="strip" class="abele-chat-tabs__list" @wheel="onWheel">
       <div
         v-for="tab in tabs"
         :key="tab.id"
@@ -66,6 +66,22 @@ const revealActive = () => {
   const right = bounds.right - pad - FADE_PX
   if (rect.left < left) el.scrollLeft += rect.left - left
   else if (rect.right > right) el.scrollLeft += rect.right - right
+}
+
+/**
+ * A mouse wheel scrolls the strip sideways.
+ *
+ * Its scrollbar is hidden, so a trackpad's sideways swipe was the only way along it, and with
+ * twenty chats open most of them sat out of reach of a mouse. Only an upright turn of the wheel
+ * is taken, and only when the strip has somewhere to go: a sideways swipe already scrolls it by
+ * itself, and a wheel over a strip that fits is left to whatever is behind it.
+ */
+const onWheel = (event: WheelEvent) => {
+  const el = strip.value
+  if (!el || el.scrollWidth <= el.clientWidth) return
+  if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+  event.preventDefault()
+  el.scrollLeft += event.deltaY
 }
 
 watch(

@@ -10,7 +10,7 @@ import { nextTick } from 'vue'
 import { Notice, TFile } from 'obsidian'
 import { CommentService } from '@/ai/CommentService'
 import { dispatchCommentsChanged } from '@/editor/CommentPlugin'
-import { ChatService } from '@/ai/ChatService'
+import { ChatService, MAX_TABS } from '@/ai/ChatService'
 import { ChatSession } from '@/ai/ChatSession'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { parseChatMetadata, serializeChat } from '@/ai/ChatLog'
@@ -390,7 +390,7 @@ describe('a comment promoted with no room left in the tab bar', () => {
     const session = await answeredComment()
     const id = session.commentId!
     const chats = ChatService.getInstance()
-    for (let i = 0; i < 8; i++) chats.createTab()
+    for (let i = 0; i < MAX_TABS; i++) chats.createTab()
     Notice.shown.length = 0
     return { service, session, id }
   }
@@ -400,7 +400,7 @@ describe('a comment promoted with no room left in the tab bar', () => {
 
     expect(await service.expand(id)).toBe('no-room')
 
-    expect(Notice.shown.join(' ')).toContain('8 open tabs')
+    expect(Notice.shown.join(' ')).toContain(`${MAX_TABS} open tabs`)
   })
 
   it('leaves it a comment: the file, the maps and the history all untouched', async () => {

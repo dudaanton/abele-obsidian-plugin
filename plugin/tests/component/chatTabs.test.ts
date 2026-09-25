@@ -70,4 +70,46 @@ describe('the strip of chat tabs', () => {
 
     expect(strip.scrollLeft).toBe(0)
   })
+
+  it('keeps the twentieth tab in view when it is the one opened', async () => {
+    const ids = Array.from({ length: 20 }, (_, i) => `t${i}`)
+    const view = mount(AiChatTabs, { props: { tabs: ids.map((id) => tab(id)), canCreate: false } })
+    const strip = stripOf(view)
+
+    await view.setProps({ tabs: ids.map((id, i) => tab(id, i === 19)) })
+    await nextTick()
+
+    // The last chip ends at 2000; the visible part is 300 wide, less the 12px fade.
+    expect(strip.scrollLeft).toBe(2000 - 288)
+  })
+
+  it('turns a mouse wheel into sideways scrolling, so the middle of a full strip is reachable', () => {
+    const ids = Array.from({ length: 20 }, (_, i) => `t${i}`)
+    const view = mount(AiChatTabs, { props: { tabs: ids.map((id, i) => tab(id, i === 0)), canCreate: false } })
+    const strip = stripOf(view)
+    Object.defineProperty(strip, 'scrollWidth', { value: 2000, configurable: true })
+    Object.defineProperty(strip, 'clientWidth', { value: 300, configurable: true })
+
+    const wheel = new WheelEvent('wheel', { deltaY: 120, cancelable: true })
+    strip.dispatchEvent(wheel)
+
+    expect(strip.scrollLeft).toBe(120)
+    expect(wheel.defaultPrevented).toBe(true)
+  })
+
+  it('leaves a sideways swipe to the trackpad, and a wheel alone when nothing overflows', () => {
+    const view = mount(AiChatTabs, { props: { tabs: [tab('a', true), tab('b')], canCreate: true } })
+    const strip = stripOf(view)
+    Object.defineProperty(strip, 'scrollWidth', { value: 200, configurable: true })
+    Object.defineProperty(strip, 'clientWidth', { value: 300, configurable: true })
+
+    const wheel = new WheelEvent('wheel', { deltaY: 120, cancelable: true })
+    strip.dispatchEvent(wheel)
+    expect(wheel.defaultPrevented).toBe(false)
+
+    Object.defineProperty(strip, 'scrollWidth', { value: 2000, configurable: true })
+    const swipe = new WheelEvent('wheel', { deltaX: 40, deltaY: 5, cancelable: true })
+    strip.dispatchEvent(swipe)
+    expect(swipe.defaultPrevented).toBe(false)
+  })
 })

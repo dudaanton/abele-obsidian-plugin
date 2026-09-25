@@ -16,7 +16,8 @@ import { AI_SIDEBAR_VIEW_TYPE } from '@/constants/views'
 import { buildCommentContext } from './commentContext'
 import { buildMessageCommentContext } from './messageComments'
 
-const MAX_TABS = 8
+/** How many chats the sidebar holds open at once. */
+export const MAX_TABS = 20
 const STORAGE_KEY = 'abele-agent-tabs'
 
 export interface PendingInput {
