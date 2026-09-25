@@ -16,6 +16,7 @@ import { ChatStorage } from '@/ai/ChatStorage'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { secrets } from '@/secrets/SecretStore'
 import { NoteRelations } from '@/entities/NoteRelations'
 import { ScriptService } from '@/scripting/ScriptService'
 import { ScriptRuns } from '@/scripting/ScriptRuns'
@@ -101,6 +102,8 @@ interface AbeleTestApi {
   AgentRegistry: typeof AgentRegistry
   GlobalStore: typeof GlobalStore
   AbeleConfig: typeof AbeleConfig
+  /** The synced secret store: status, lock, unlock — driven live. */
+  secrets: typeof secrets
   ScriptService: typeof ScriptService
   ScriptViewService: typeof ScriptViewService
   ScriptRuns: typeof ScriptRuns
@@ -507,6 +510,7 @@ export function exposeTestApi(plugin: Plugin): void {
     AgentRegistry,
     GlobalStore,
     AbeleConfig,
+    secrets,
     ScriptService,
     ScriptViewService,
     ScriptRuns,
