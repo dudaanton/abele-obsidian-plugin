@@ -5,6 +5,7 @@
 import type { View as FoliateView } from '@/vendor/foliate-js/view.js'
 import { isOpenableExternal } from './bookSafety'
 import { swipeDirection } from './swipe'
+import { PDF_SCROLL_TAG } from './pdfScroll'
 import type { BookModel } from './model'
 import type { BookReading } from './BookReading'
 
@@ -27,7 +28,7 @@ export function watchPage(host: PageHost, doc: Document): void {
   // The engine turns a reflowing book's pages under a finger itself; a PDF's it does not — and a
   // PDF in one long scroll is moved by the finger as it is, not turned.
   const reader = host.reader()
-  if (reader?.isFixedLayout && reader.renderer?.localName !== 'abele-pdf-scroll')
+  if (reader?.isFixedLayout && reader.renderer?.localName !== PDF_SCROLL_TAG)
     watchSwipes(host, doc)
 }
 

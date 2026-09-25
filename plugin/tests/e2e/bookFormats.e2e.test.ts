@@ -69,7 +69,7 @@ const visit = (name: string, sandbox: string | null) =>
       const { leaf, view } = await open(${JSON.stringify(name)})
       const out = { type: view.getViewType(), status: view.model.status, message: view.model.message }
       if (view.model.status !== 'ready') { leaf.detach(); return out }
-      out.renderer = view.engine.renderer.localName
+      out.renderer = view.engine.renderer.localName.replace(/-[a-z]{6}$/, '')
       out.sections = view.engine.book.sections.length
       let text = '', images = 0, scripts = 0
       for (let i = 0; i < out.sections; i++) {
@@ -193,7 +193,7 @@ describe.skipIf(!available)('books in the other formats', () => {
       kind?: string
     }>(`
       const { leaf, view } = await open('comic.cbz')
-      const renderer = view.engine.renderer.localName
+      const renderer = view.engine.renderer.localName.replace(/-[a-z]{6}$/, '')
       const order = view.engine.book.sections.map((s) => s.id)
       await view.engine.goTo(0)
       await wait(600)

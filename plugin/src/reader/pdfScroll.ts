@@ -10,8 +10,10 @@
  * Each page frame is the same sandboxed page as in the page-at-a-time view (`pdfBook.ts`).
  */
 import { frameOptions } from '@/vendor/foliate-js/frame-options.js'
+import { defineElement, tagName } from '@/vendor/foliate-js/elements.js'
 
-export const PDF_SCROLL_TAG = 'abele-pdf-scroll'
+/** The element's name in this load of the plugin, as the engine's own are (`elements.js`). */
+export const PDF_SCROLL_TAG = tagName('abele-pdf-scroll')
 
 interface PageSource {
   src: string
@@ -363,5 +365,5 @@ export class PdfScroll extends HTMLElement {
  * engine does not define either, is not offered books.
  */
 export function definePdfScroll(win: Window): void {
-  if (!win.customElements.get(PDF_SCROLL_TAG)) win.customElements.define(PDF_SCROLL_TAG, PdfScroll)
+  defineElement('abele-pdf-scroll', PdfScroll, win.customElements)
 }

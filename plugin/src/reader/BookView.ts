@@ -9,6 +9,7 @@
 import { FileView, Platform, TFile, type Menu, type WorkspaceLeaf } from 'obsidian'
 import { createApp, reactive, watch, type App as VueApp, type WatchStopHandle } from 'vue'
 import { frameOptions } from '@/vendor/foliate-js/frame-options.js'
+import { tagName } from '@/vendor/foliate-js/elements.js'
 import type { FoliateLocation, View as FoliateView } from '@/vendor/foliate-js/view.js'
 import { FootnoteHandler } from '@/vendor/foliate-js/footnotes.js'
 import BookReader from '@/components/reader/BookReader.vue'
@@ -350,7 +351,7 @@ export class BookView extends FileView {
       await import('@/vendor/foliate-js/view.js')
       frameOptions.sandbox = readerTestHooks.sandbox ?? frameSandbox(Platform)
       stage.empty()
-      const reader = stage.createEl('foliate-view', {
+      const reader = stage.createEl(tagName('foliate-view') as 'foliate-view', {
         cls: this.isPdf ? 'abele-book__engine abele-book__engine_pdf' : 'abele-book__engine',
       })
       // A custom element is defined per window: in a pop-out window the tag stays a plain element.

@@ -104,7 +104,7 @@ describe.skipIf(!available)('a PDF as one continuous scroll', () => {
       await wait(600)
       const r = view.engine.renderer
       const drawn = () => r.getContents().map((c) => c.index).sort((a, b) => a - b)
-      const out = { tag: r.localName, drawn: drawn(), findings: view.pages.flatMap((p) => p.findings), sandbox: view.pages[0]?.sandbox }
+      const out = { tag: r.localName.replace(/-[a-z]{6}$/, ''), drawn: drawn(), findings: view.pages.flatMap((p) => p.findings), sandbox: view.pages[0]?.sandbox }
       // Scrolled by hand, the way a person scrolls: the page being read follows.
       for (let i = 0; i < 12; i++) { await r.next(); await wait(120) }
       await wait(800)
@@ -202,14 +202,14 @@ describe.skipIf(!available)('a PDF as one continuous scroll', () => {
       await view.engine.goTo(7)
       await wait(2000)
       await settings({ pdfLayout: 'paginated' })
-      await until(() => view.engine?.renderer?.localName === 'foliate-fxl' && view.model.status === 'ready', 10000)
+      await until(() => view.engine?.renderer?.localName.startsWith('foliate-fxl-') && view.model.status === 'ready', 10000)
       await wait(800)
-      const paged = view.engine.renderer.localName
+      const paged = view.engine.renderer.localName.replace(/-[a-z]{6}$/, '')
       const pagedIndex = view.engine.renderer.index
       await settings({ pdfLayout: 'scrolled' })
-      await until(() => view.engine?.renderer?.localName === 'abele-pdf-scroll' && view.model.status === 'ready', 10000)
+      await until(() => view.engine?.renderer?.localName.startsWith('abele-pdf-scroll-') && view.model.status === 'ready', 10000)
       await wait(800)
-      const out = { paged, pagedIndex, back: view.engine.renderer.localName, backIndex: view.engine.renderer.index }
+      const out = { paged, pagedIndex, back: view.engine.renderer.localName.replace(/-[a-z]{6}$/, ''), backIndex: view.engine.renderer.index }
       leaf.detach()
       return out
     `)

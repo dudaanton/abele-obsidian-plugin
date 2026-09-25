@@ -46,6 +46,13 @@ Every change is marked `ABELE PATCH` at its site.
    document; a crafted value can end the textarea and leave an element that loads and runs there.
    Abele makes the textarea in a document from `DOMParser`, where nothing loads or runs.
 
+5. **The engine's elements are named per load of the plugin** (`elements.js`, new; `view.js`,
+   `paginator.js`, `fixed-layout.js`, `footnotes.js`). Upstream registers `foliate-view`,
+   `foliate-paginator` and `foliate-fxl` once for the page. A name cannot be registered twice or
+   taken back, so the plugin could not load again after being turned off and on, or updated,
+   until the app restarted. Each load now registers `<name>-<six letters>` of its own, and
+   creates its elements by those names.
+
 ## Additions
 
 `view.d.ts`, `epub.d.ts` and `frame-options.d.ts` type the parts of the modules beside them that

@@ -1,3 +1,4 @@
+import { tagName } from './elements.js' // ABELE PATCH
 const getTypes = el => new Set(el?.getAttributeNS?.('http://www.idpf.org/2007/ops', 'type')?.split(' '))
 const getRoles = el => new Set(el?.getAttribute?.('role')?.split(' '))
 
@@ -53,7 +54,8 @@ const extractFootnote = (doc, anchor) => {
 export class FootnoteHandler extends EventTarget {
     detectFootnotes = true
     #showFragment(book, { index, anchor }, href) {
-        const view = document.createElement('foliate-view')
+        // ABELE PATCH: this load's element name (elements.js).
+        const view = document.createElement(tagName('foliate-view'))
         return new Promise((resolve, reject) => {
             view.addEventListener('load', e => {
                 try {

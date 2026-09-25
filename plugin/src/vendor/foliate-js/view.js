@@ -2,6 +2,7 @@ import * as CFI from './epubcfi.js'
 import { TOCProgress, SectionProgress } from './progress.js'
 import { Overlayer } from './overlayer.js'
 import { textWalker } from './text-walker.js'
+import { tagName, defineElement } from './elements.js'
 
 const SEARCH_PREFIX = 'foliate-search:'
 
@@ -257,10 +258,11 @@ export class View extends HTMLElement {
             await import('./fixed-layout.js')
             // ABELE PATCH: a book may name the renderer its fixed-layout pages go into — a PDF
             // read as one continuous scroll uses Abele's own.
-            this.renderer = document.createElement(this.book.fixedLayoutRenderer ?? 'foliate-fxl')
+            // ABELE PATCH: element names of this load (elements.js).
+            this.renderer = document.createElement(this.book.fixedLayoutRenderer ?? tagName('foliate-fxl'))
         } else {
             await import('./paginator.js')
-            this.renderer = document.createElement('foliate-paginator')
+            this.renderer = document.createElement(tagName('foliate-paginator'))
         }
         this.renderer.setAttribute('exportparts', 'head,foot,filter')
         this.renderer.addEventListener('load', e => this.#onLoad(e.detail))
@@ -598,4 +600,5 @@ export class View extends HTMLElement {
     }
 }
 
-customElements.define('foliate-view', View)
+// ABELE PATCH: registered under this load's name (elements.js).
+defineElement('foliate-view', View)
