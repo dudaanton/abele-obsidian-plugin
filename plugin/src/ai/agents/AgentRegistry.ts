@@ -1,3 +1,4 @@
+import { secrets } from '@/secrets/SecretStore'
 import { reactive, ref, isReactive } from 'vue'
 import { TFile } from 'obsidian'
 import dayjs from 'dayjs'
@@ -176,7 +177,7 @@ export class AgentRegistry {
       id: found.model.id,
       name: found.model.name,
       baseUrl: found.provider.baseUrl,
-      apiKey: GlobalStore.getInstance().app.secretStorage.getSecret(found.provider.apiKeyId) || '',
+      apiKey: secrets().get(found.provider.apiKeyId) || '',
       contextWindow: found.model.contextWindow,
       maxTokens: found.model.maxTokens,
       supportsReasoning: found.model.supportsReasoning,

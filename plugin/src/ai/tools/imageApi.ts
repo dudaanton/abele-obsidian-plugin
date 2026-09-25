@@ -1,5 +1,5 @@
+import { secrets } from '@/secrets/SecretStore'
 import { requestUrl } from 'obsidian'
-import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { IMAGE_API_DEFAULTS, ImageProvider, ImageModelConfig2, resolveImageModel } from '../types'
 
@@ -36,7 +36,7 @@ async function getApiKey(provider: ImageProvider): Promise<string> {
   if (!provider.apiKeyId)
     throw new Error(`API key not configured for image provider "${provider.name}"`)
   // `getSecret` reads from the OS keychain synchronously; there is nothing to await.
-  const key = GlobalStore.getInstance().app.secretStorage.getSecret(provider.apiKeyId)
+  const key = secrets().get(provider.apiKeyId)
   if (!key) throw new Error(`API key not found in keychain for image provider "${provider.name}"`)
   return key
 }

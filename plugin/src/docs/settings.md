@@ -14,8 +14,9 @@ Three rules hold for every write. The setting has to exist already: this changes
 than inventing them, and a key the plugin never reads would otherwise sit in the file for good.
 The type has to match, so a folder name cannot become a list by accident. And keys and their
 keychain ids are neither readable nor writable — `ai.secrets`, anything named `apiKeyId` or
-`token`, and the search key. The chat index, `ai.chatHistory`, is a cache rebuilt from the
-vault and is out of reach for the same reason a cache always is.
+`token`, the search key, and `secretStore`, the synced keys (below). The chat index,
+`ai.chatHistory`, is a cache rebuilt from the vault and is out of reach for the same reason a
+cache always is.
 
 Say what changed afterwards. A setting is the person's, and a change they did not notice is a
 change they cannot undo.
@@ -107,6 +108,21 @@ kept on the device for a week (see the vault reference, GitHub people), not in t
 rendered markdown, folder pages: `readable` (the notes' own line width), `custom` (the default,
 `github.pageWidthPx` pixels, 1000 unless changed, from 400 to 4000) or `full` (the whole tab).
 Diffs and code always take the whole tab. A change shows in open tabs at once.
+
+## Synced keys
+
+Keys and tokens live in each device's own keychain, and a setting only names the slot. With
+**Settings → Transfer → Synced keys** turned on, every key the plugin holds is also kept in one
+encrypted store inside the plugin's settings file, `secretStore`, so it reaches the person's
+other devices with the settings: each device is unlocked once with a passphrase and then has
+every key, and a key added or changed on any device reaches the rest. Keys are still put into
+each unlocked device's keychain, so turning the store off leaves them where they are.
+
+`secretStore` is not a setting: it is neither readable nor writable here, it is not carried by
+a settings transfer, and nothing in it can be read without the passphrase. Status, unlocking,
+changing the passphrase, removing the keys from one device and turning it off are all on that
+screen and nowhere else. When a key the person expects is missing on a device, the answer may
+be that synced keys are locked there — say so rather than asking for the key again.
 
 ## Everything else
 

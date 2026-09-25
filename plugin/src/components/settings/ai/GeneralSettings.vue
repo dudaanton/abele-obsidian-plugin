@@ -646,6 +646,7 @@
 </template>
 
 <script setup lang="ts">
+import { secrets as secretStore } from '@/secrets/SecretStore'
 import { MEMORY_PLACEHOLDER } from '@/ai/agents/memory'
 import { ref, computed, reactive } from 'vue'
 import { Notice, debounce } from 'obsidian'
@@ -666,7 +667,6 @@ import ModelEditModal from '../ModelEditModal.vue'
 import ImageModelEditModal from '../ImageModelEditModal.vue'
 import Icon from '../../obsidian/Icon.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { GlobalStore } from '@/stores/GlobalStore'
 import { TRANSCRIPTION_MODELS } from '@/ai/transcription'
 import { DEFAULT_RETRY, type RetrySettings } from '@/ai/retry'
 import { DEFAULT_VOICE_SETTINGS, voiceKeyId, type VoiceSettings } from '@/ai/transcriptionSettings'
@@ -703,7 +703,6 @@ const DEFAULT_CONTEXT_WINDOW = 128000
 const DEFAULT_MAX_TOKENS = 4096
 
 const config = AbeleConfig.getInstance()
-const { app } = GlobalStore.getInstance()
 const client = new OpenAIClient()
 const migrating = ref(false)
 
@@ -835,7 +834,7 @@ const toggleSequentialAuxiliary = () => {
 
 const getSecretDisplay = (secretId: string): string => {
   if (!secretId) return ''
-  const secret = app.secretStorage.getSecret(secretId)
+  const secret = secretStore().get(secretId)
   if (!secret) return ''
   if (secret.length <= 8) return '••••••••'
   return secret.slice(0, 4) + '••••' + secret.slice(-4)
@@ -851,7 +850,7 @@ const applyProviderSecret = (pIdx: number) => {
   if (!provider.apiKeyId || !provider.apiKeyId.startsWith('abele-')) {
     provider.apiKeyId = `abele-provider-${provider.id.toLowerCase().replace(/[^a-z0-9-]/g, '')}`
   }
-  app.secretStorage.setSecret(provider.apiKeyId, value)
+  secretStore().set(provider.apiKeyId, value)
   secretInputs[provider.id] = ''
   save()
 }
@@ -859,7 +858,7 @@ const applyProviderSecret = (pIdx: number) => {
 const applyBraveSecret = () => {
   if (!braveSecretInput.value) return
   braveSearchApiKey.value = 'abele-brave-search'
-  app.secretStorage.setSecret('abele-brave-search', braveSecretInput.value)
+  secretStore().set('abele-brave-search', braveSecretInput.value)
   braveSecretInput.value = ''
   save()
 }
@@ -920,7 +919,7 @@ const chooseVoiceModel = (value: string) => {
 
 const applyVoiceSecret = () => {
   if (!voiceSecretInput.value) return
-  app.secretStorage.setSecret(voiceKeyName.value, voiceSecretInput.value)
+  secretStore().set(voiceKeyName.value, voiceSecretInput.value)
   voiceSecretInput.value = ''
   saveVoice()
 }
@@ -987,7 +986,7 @@ const applyImageProviderSecret = (idx: number) => {
   if (!val) return
   const keyId = `abele-img-${provider.id.toLowerCase().replace(/[^a-z0-9-]/g, '')}`
   provider.apiKeyId = keyId
-  app.secretStorage.setSecret(keyId, val)
+  secretStore().set(keyId, val)
   imgSecretInputs[provider.id] = ''
   save()
 }
@@ -1050,7 +1049,7 @@ let secretIsNew = false
 
 const getSecretFullValue = (secretId: string): string => {
   if (!secretId) return ''
-  return app.secretStorage.getSecret(secretId) || ''
+  return secretStore().get(secretId) || ''
 }
 
 const revealedInputs = reactive<Record<number, boolean>>({})
@@ -1101,7 +1100,7 @@ const removeSecret = (idx: number) => {
   const secret = secrets.value[idx]
   if (secret.keyId) {
     try {
-      app.secretStorage.setSecret(secret.keyId, '')
+      secretStore().set(secret.keyId, '')
     } catch {
       // Invalid keyId from older version — skip keychain cleanup
     }
@@ -1125,7 +1124,7 @@ const applySecretValue = (idx: number) => {
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '0')}`
   }
-  app.secretStorage.setSecret(secret.keyId, value)
+  secretStore().set(secret.keyId, value)
   secretValueInputs[idx] = ''
   editingSecretIdx.value = -1
   secretIsNew = false
@@ -1163,7 +1162,7 @@ const removeProvider = (idx: number) => {
   const provider = providers.value[idx]
   if (provider.apiKeyId?.startsWith('abele-')) {
     // deleteSecret exists at runtime but is missing from obsidian.d.ts (as of 1.12.3)
-    ;(app.secretStorage as any).deleteSecret(provider.apiKeyId)
+    secretStore().remove(provider.apiKeyId)
   }
   providers.value.splice(idx, 1)
   delete remoteModels[provider.id]
@@ -1179,7 +1178,7 @@ const updateProvider = (idx: number, field: keyof AiProvider, value: string) => 
 const fetchModels = async (pIdx: number) => {
   const provider = providers.value[pIdx]
   if (!provider.baseUrl || !provider.apiKeyId) return
-  const apiKey = app.secretStorage.getSecret(provider.apiKeyId)
+  const apiKey = secretStore().get(provider.apiKeyId)
   if (!apiKey) return
 
   fetchingModels.value = pIdx

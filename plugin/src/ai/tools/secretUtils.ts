@@ -1,5 +1,5 @@
+import { secrets } from '@/secrets/SecretStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { GlobalStore } from '@/stores/GlobalStore'
 
 const SECRET_REGEX = /\$\{abele_key:([^}]+)\}/g
 
@@ -8,12 +8,11 @@ const SECRET_REGEX = /\$\{abele_key:([^}]+)\}/g
  * Unknown keys are replaced with empty string.
  */
 export function substituteSecrets(text: string): string {
-  const { app } = GlobalStore.getInstance()
-  const secrets = AbeleConfig.getInstance().ai.secrets || []
+  const named = AbeleConfig.getInstance().ai.secrets || []
 
   return text.replace(SECRET_REGEX, (_, name) => {
-    const secret = secrets.find((s) => s.name === name)
+    const secret = named.find((s) => s.name === name)
     if (!secret?.keyId) return ''
-    return app.secretStorage.getSecret(secret.keyId) || ''
+    return secrets().get(secret.keyId) || ''
   })
 }

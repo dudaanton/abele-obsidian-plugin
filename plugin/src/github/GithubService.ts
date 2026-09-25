@@ -2,9 +2,9 @@
  * The GitHub integration's shared state: the client for the configured server and token, and
  * the one road by which a URL becomes an open tab.
  */
+import { secrets } from '@/secrets/SecretStore'
 import type { App, PaneType, WorkspaceLeaf } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { GlobalStore } from '@/stores/GlobalStore'
 import { GithubClient } from './client'
 import { checkAccess, parseRepoInput, type AccessReport } from './accessCheck'
 import { endpoints, normaliseHost, parseGithubUrl, targetKey, type GithubTarget } from './urls'
@@ -38,14 +38,13 @@ export function githubClient(host?: string): GithubClient {
   const useConfigured = !host || normaliseHost(host) === configured.webHost
   const ends = useConfigured ? configured : endpoints('')
 
-  const { app } = GlobalStore.getInstance()
-  const stored = settings.keyId ? (app.secretStorage.getSecret(settings.keyId) ?? '').trim() : ''
+  const stored = settings.keyId ? (secrets().get(settings.keyId) ?? '').trim() : ''
   const token = useConfigured ? stored : ''
   const noTokenReason =
     stored && !useConfigured
       ? `the token is set for ${configured.webHost} (the Server setting), and this is on ${normaliseHost(host ?? '')}.`
       : !stored && settings.keyId
-        ? 'a token is set, but the keychain on this device has nothing under it. Paste the token again in Abele settings → GitHub.'
+        ? 'a token is set, but the keychain on this device has nothing under it. Paste the token again in Abele settings → GitHub, or, if keys are synced, unlock them in Abele settings → Transfer → Synced keys.'
         : undefined
 
   const key = `${ends.api}\n${token}\n${noTokenReason ?? ''}`

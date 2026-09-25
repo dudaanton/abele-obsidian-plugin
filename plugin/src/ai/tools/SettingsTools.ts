@@ -37,6 +37,8 @@ function knownRoots(): Set<string> {
  * every other setting put together while saying nothing about how anything is configured.
  */
 const HIDDEN = [
+  // The synced secret store: every key, encrypted. Not a setting, and never an agent's.
+  'secretStore',
   'ai.secrets',
   'ai.chatHistory',
   'ai.braveSearchApiKey',
@@ -45,11 +47,14 @@ const HIDDEN = [
 ]
 
 /** Key names that hold a secret wherever they turn up, however deep. */
-const SECRET_KEYS = /^(apiKeyId|keyId|apiKey|token|secret|password)$/i
+const SECRET_KEYS = /^(apiKeyId|keyId|apiKey|token|secret|password|secretStore)$/i
 
 function isHidden(path: string): boolean {
   const lower = path.toLowerCase()
+  // A hidden setting hides everything under it too: `secretStore.entries` is as much the
+  // store as `secretStore` is.
   if (HIDDEN.some((hidden) => lower === hidden.toLowerCase())) return true
+  if (HIDDEN.some((hidden) => lower.startsWith(`${hidden.toLowerCase()}.`))) return true
   return path.split('.').some((segment) => SECRET_KEYS.test(segment))
 }
 

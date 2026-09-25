@@ -107,6 +107,7 @@
 </template>
 
 <script setup lang="ts">
+import { secrets } from '@/secrets/SecretStore'
 import { computed, onBeforeUnmount, ref, useTemplateRef } from 'vue'
 import ObsidianModal from '../../obsidian/Modal.vue'
 import Button from '../../obsidian/Button.vue'
@@ -334,7 +335,6 @@ const apply = async () => {
   const config = AbeleConfig.getInstance()
   config.applySettings(applyEntries(chosen, config.exportSettings(), mode.value))
 
-  const { app } = GlobalStore.getInstance()
   let keysRefused = 0
 
   for (const entry of chosen) {
@@ -344,7 +344,7 @@ const apply = async () => {
       if (!value) continue
 
       try {
-        app.secretStorage.setSecret(secretId, value)
+        secrets().set(secretId, value)
       } catch {
         // Obsidian takes only lowercase letters, digits and dashes for a key's name, and a
         // transfer can carry any name at all — one it refuses must not abandon the rest of

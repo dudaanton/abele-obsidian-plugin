@@ -78,7 +78,7 @@ Each provider needs:
 |-------|-------------|
 | Name | Display name (e.g., "OpenRouter", "Local Ollama") |
 | Base URL | API endpoint (e.g., `https://openrouter.ai/api/v1`) |
-| API Key | Stored securely in Obsidian's keychain, never in plugin data |
+| API Key | Stored securely in Obsidian's keychain, never in plugin data in the clear. With [synced keys](Synced%20keys.md) on, it also travels to your other devices, encrypted |
 
 ### Adding Models
 

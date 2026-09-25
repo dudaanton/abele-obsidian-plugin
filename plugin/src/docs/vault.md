@@ -318,6 +318,22 @@ Transfer tab, compressed and — if a key went with them — encrypted. They are
 are not content, and nothing reads them except the Transfer tab on the receiving device. Leave
 them alone; the person deletes them when the transfer has landed.
 
+## Synced keys
+
+The plugin's settings file (`data.json` in its folder under the config directory) holds, when
+the person has turned synced keys on, a `secretStore`: every API key and token the plugin
+holds, encrypted with AES-GCM under a key derived from a passphrase (PBKDF2-SHA-256, the salt
+and iteration count stored beside it), with a check value that tells a wrong passphrase from a
+damaged file. It lives in the settings file rather than a file of its own because Obsidian
+Sync carries only `data.json`, `main.js`, `manifest.json` and `styles.css` out of a plugin's
+folder. Without the passphrase it is unreadable. Each device keeps only the derived key, in its
+own keychain.
+
+Two devices changing keys at once are merged key by key, the later change winning, and the
+store out of a Syncthing conflict copy of the settings file (`data.sync-conflict-….json`) is
+merged the same way; the copy itself is left for the person to delete. Never edit the store
+by hand: a single changed character makes it undecryptable on every device.
+
 ## Screenshots
 
 Every picture the `screenshot` tool takes — of a note, or of the visible part of a script view —

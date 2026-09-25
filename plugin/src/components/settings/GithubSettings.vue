@@ -174,6 +174,7 @@
 </template>
 
 <script setup lang="ts">
+import { secrets } from '@/secrets/SecretStore'
 import { computed, reactive, ref, watch } from 'vue'
 import { debounce } from 'obsidian'
 import Setting from '../obsidian/Setting.vue'
@@ -187,7 +188,6 @@ import EmptyState from '../obsidian/EmptyState.vue'
 import Dropdown from '../obsidian/Dropdown.vue'
 import GithubAccessReport from './GithubAccessReport.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { GlobalStore } from '@/stores/GlobalStore'
 import { GITHUB_TOKEN_KEY_ID, githubSettingsFrom, type GithubSettings } from '@/github/settings'
 import { checkGithubAccess, resetGithubClients } from '@/github/GithubService'
 import type { AccessReport } from '@/github/accessCheck'
@@ -195,7 +195,6 @@ import { githubUsers } from '@/github/users'
 import { PAGE_WIDTH_MAX, PAGE_WIDTH_MIN } from '@/github/pageWidth'
 
 const config = AbeleConfig.getInstance()
-const { app } = GlobalStore.getInstance()
 
 const settings = reactive<GithubSettings>(githubSettingsFrom(config.github))
 const tokenInput = ref('')
@@ -211,7 +210,7 @@ watch(config.version, () => Object.assign(settings, githubSettingsFrom(config.gi
 
 const masked = computed(() => {
   void secretVersion.value
-  const secret = settings.keyId ? app.secretStorage.getSecret(settings.keyId) : ''
+  const secret = settings.keyId ? secrets().get(settings.keyId) : ''
   if (!secret) return ''
   return secret.length <= 8 ? '••••••••' : `${secret.slice(0, 4)}••••${secret.slice(-4)}`
 })
@@ -294,14 +293,14 @@ const saveToken = () => {
   const value = tokenInput.value.trim()
   if (!value) return
   settings.keyId = GITHUB_TOKEN_KEY_ID
-  app.secretStorage.setSecret(GITHUB_TOKEN_KEY_ID, value)
+  secrets().set(GITHUB_TOKEN_KEY_ID, value)
   tokenInput.value = ''
   secretVersion.value++
   void save()
 }
 
 const forgetToken = () => {
-  if (settings.keyId) app.secretStorage.setSecret(settings.keyId, '')
+  if (settings.keyId) secrets().set(settings.keyId, '')
   settings.keyId = ''
   secretVersion.value++
   void save()

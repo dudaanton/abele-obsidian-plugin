@@ -1,6 +1,6 @@
+import { secrets } from '@/secrets/SecretStore'
 import type { AgentTool } from '../client'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { GlobalStore } from '@/stores/GlobalStore'
 import { requestUrl } from 'obsidian'
 
 export function createWebSearchTool(): AgentTool {
@@ -22,7 +22,7 @@ export function createWebSearchTool(): AgentTool {
       const count = Math.min((params.count as number) || 5, 20)
       const secretId = AbeleConfig.getInstance().ai.braveSearchApiKey
       if (!secretId) throw new Error('Brave Search API key is not configured in settings')
-      const apiKey = GlobalStore.getInstance().app.secretStorage.getSecret(secretId)
+      const apiKey = secrets().get(secretId)
       if (!apiKey) throw new Error('Brave Search API key not found in keychain')
 
       const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}`

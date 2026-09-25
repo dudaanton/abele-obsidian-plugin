@@ -75,6 +75,12 @@ export interface AbeleSettings {
   github?: GithubSettings
   // The book reader: page layout, text and colours
   reader?: ReaderSettings
+  /**
+   * The synced secret store, encrypted — see `src/secrets/`. Kept as whatever the file holds:
+   * it is opened and checked by the store, never by the settings, and never shown to an agent
+   * nor carried by a settings transfer.
+   */
+  secretStore?: unknown
 }
 
 export interface LinkDefinition {
@@ -237,6 +243,8 @@ export class AbeleConfig {
   public keyboardDiagnostics: boolean
   public github: GithubSettings
   public reader: ReaderSettings
+  /** Carried through untouched; `SecretStore` is the only thing that reads or writes it. */
+  public secretStore: unknown = undefined
 
   /**
    * Moves on every save and every reload from disk. The fields above are plain, so anything
@@ -551,6 +559,7 @@ export class AbeleConfig {
     this.keyboardDiagnostics = settings?.keyboardDiagnostics ?? false
     this.github = githubSettingsFrom(settings?.github)
     this.reader = readerSettingsFrom(settings?.reader)
+    this.secretStore = settings?.secretStore
 
     return migrated
   }
@@ -599,6 +608,7 @@ export class AbeleConfig {
       keyboardDiagnostics: this.keyboardDiagnostics,
       github: { ...this.github },
       reader: { ...this.reader },
+      ...(this.secretStore ? { secretStore: this.secretStore } : {}),
     }
   }
 }

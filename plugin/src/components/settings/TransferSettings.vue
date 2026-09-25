@@ -1,5 +1,7 @@
 <template>
   <div class="abele-transfer">
+    <SecretStoreSettings />
+
     <Section
       title="Send to another device"
       desc="Tick what should travel. What you pick can go as a QR code, as text to paste, or as a file to send."
@@ -96,6 +98,7 @@
 </template>
 
 <script setup lang="ts">
+import { secrets } from '@/secrets/SecretStore'
 import { computed, onMounted, ref, watch } from 'vue'
 import { Notice } from 'obsidian'
 import Section from '../obsidian/Section.vue'
@@ -107,6 +110,7 @@ import Button from '../obsidian/Button.vue'
 import Badge from '../obsidian/Badge.vue'
 import Icon from '../obsidian/Icon.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
+import SecretStoreSettings from './SecretStoreSettings.vue'
 import TransferPreviewModal from './transfer/TransferPreviewModal.vue'
 import TransferSendModal from './transfer/TransferSendModal.vue'
 import TransferScanModal, { type Applied } from './transfer/TransferScanModal.vue'
@@ -253,8 +257,7 @@ const codesSummary = computed(() => {
 
 const reader = () => {
   if (!withKeys.value) return null
-  const { app } = GlobalStore.getInstance()
-  return (id: string) => app.secretStorage.getSecret(id) || ''
+  return (id: string) => secrets().get(id) || ''
 }
 
 const previewing = ref(false)

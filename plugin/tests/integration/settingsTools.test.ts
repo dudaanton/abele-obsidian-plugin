@@ -101,6 +101,52 @@ describe('reading the settings', () => {
   })
 })
 
+/**
+ * The synced secret store holds every key there is, encrypted, and this device's key to it
+ * sits in the keychain. Neither is a setting an agent reads or writes, by any path: a model
+ * that could replace the store could wipe every key on every device at once.
+ */
+describe('the synced secret store', () => {
+  const STORE = {
+    format: 'abele-secrets',
+    v: 1,
+    id: 'abcdef123456',
+    kdf: { name: 'PBKDF2', hash: 'SHA-256', iterations: 600000, salt: 'c2FsdA==' },
+    check: { iv: 'aXY=', data: 'Y2hlY2s=' },
+    entries: { iv: 'aXY=', data: 'ZW50cmllcw==' },
+  }
+
+  beforeEach(() => {
+    AbeleConfig.getInstance().secretStore = STORE
+  })
+
+  it('is neither listed nor readable, whole or in part', async () => {
+    const listed = await answer(read, {})
+    expect(listed).not.toContain('secretStore')
+    expect(listed).not.toContain('abcdef123456')
+
+    for (const path of [
+      'secretStore',
+      'secretStore.kdf',
+      'secretStore.entries.data',
+      'SecretStore',
+    ]) {
+      const text = await answer(read, { path })
+      expect(text).toContain('not readable')
+      expect(text).not.toContain('ZW50cmllcw==')
+    }
+  })
+
+  it('cannot be written, replaced or emptied', async () => {
+    for (const path of ['secretStore', 'secretStore.id', 'secretStore.entries.data']) {
+      expect(await answer(write, { path, value: '"x"' })).toContain('not writable')
+    }
+    expect(await answer(write, { path: 'secretStore', value: 'null' })).toContain('not writable')
+    expect(AbeleConfig.getInstance().secretStore).toEqual(STORE)
+    expect(saved).toBe(0)
+  })
+})
+
 describe('changing a setting', () => {
   it('changes exactly the one it was given, and saves', async () => {
     const text = await answer(write, { path: 'tasksFolder', value: 'Work/Tasks' })

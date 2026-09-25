@@ -613,3 +613,26 @@ describe('applying what was accepted', () => {
     expect(before.ai?.providers).toHaveLength(1)
   })
 })
+
+/**
+ * The synced secret store travels by sync, never by transfer. A transfer is a QR code on a
+ * screen or a file sent over a chat; the store's passphrase is typed once on each device and
+ * never leaves it, and the store itself is useless without it — so there is nothing in it a
+ * transfer could usefully carry, and every reason to keep it off screens and out of files.
+ */
+describe('the synced secret store', () => {
+  const store = { format: 'abele-secrets', v: 1, id: 'abcdef123456', entries: { data: 'ZZZ' } }
+
+  it('is not something a transfer can carry', () => {
+    const entries = collectEntries(settings({ secretStore: store }))
+    expect(JSON.stringify(entries)).not.toContain('abcdef123456')
+    expect(JSON.stringify(buildPayload(entries, () => 'value'))).not.toContain('ZZZ')
+  })
+
+  it('is left as it was by a transfer arriving, merged or replacing', () => {
+    const here = settings({ secretStore: store })
+    const arriving = collectEntries(settings())
+    expect(applyEntries(arriving, here, 'merge').secretStore).toEqual(store)
+    expect(applyEntries(arriving, here, 'replace').secretStore).toEqual(store)
+  })
+})

@@ -7,7 +7,8 @@
       'abele-obsidian-input_sized': asTextArea && rows !== undefined,
     }"
     :value="modelValue"
-    type="text"
+    :type="password ? 'password' : 'text'"
+    :autocomplete="password ? 'off' : undefined"
     :rows="asTextArea ? rows : undefined"
     :placeholder="placeholder"
     :disabled="disabled"
@@ -21,6 +22,8 @@ defineProps<{
   disabled?: boolean
   placeholder?: string
   asTextArea?: boolean
+  /** Typed characters shown as dots: a passphrase, a key. Single-line only. */
+  password?: boolean
   /**
    * How many lines tall the field stands, for a caller that grows it with its content.
    * Ignored on a single-line input, which has no such attribute.

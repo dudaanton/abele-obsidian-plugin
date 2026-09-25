@@ -100,6 +100,8 @@ import { SnippetService } from './services/SnippetService'
 import { dictate } from '@/audio/voiceModal'
 import { registerLineLinks } from './lineLinks/register'
 import { registerGithub } from '@/github/register'
+import { secrets, setSecrets } from '@/secrets/SecretStore'
+import { createPluginSecrets } from '@/secrets/host'
 
 export default class AbelePlugin extends Plugin {
   private vueApp: VueApp | null = null
@@ -147,6 +149,14 @@ export default class AbelePlugin extends Plugin {
     await AbeleConfig.getInstance().loadSettings()
     // Settings were just replaced wholesale; anything resolving an agent must see the new set.
     AgentRegistry.getInstance().notifyConfigReloaded()
+
+    // Before anything asks for a key. Opening costs one decryption: the passphrase was turned
+    // into a key when this device was unlocked, not now.
+    const secretStore = createPluginSecrets(this)
+    setSecrets(secretStore)
+    await secretStore.load().catch((e) => {
+      console.error('[Abele] the synced secrets could not be opened', (e as Error)?.message)
+    })
 
     // Apply body classes from settings
     if (AbeleConfig.getInstance().fullWidthSidebars) {
@@ -1171,6 +1181,7 @@ export default class AbelePlugin extends Plugin {
   }
 
   onunload() {
+    setSecrets(null)
     document.body.classList.remove('abele-full-width-sidebars', 'abele-half-width-sidebars')
     setKeyboardDiagnostics(false)
     // Unmount Vue BEFORE store cleanup so Teleport components unmount cleanly
@@ -1237,6 +1248,13 @@ export default class AbelePlugin extends Plugin {
    */
   async onExternalSettingsChange() {
     await AbeleConfig.getInstance().reloadSettings()
+    // What arrived may hold another device's secrets, or have dropped this one's newest:
+    // opening it again merges the two and writes back whatever the file is missing.
+    await secrets()
+      .load()
+      .catch((e) =>
+        console.error('[Abele] the synced secrets could not be reopened', (e as Error)?.message)
+      )
     AgentRegistry.getInstance().notifyConfigReloaded()
     this.syncAiFeatures()
   }

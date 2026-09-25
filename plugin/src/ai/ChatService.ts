@@ -1,3 +1,4 @@
+import { secrets } from '@/secrets/SecretStore'
 import { ref, computed } from 'vue'
 import { App, Notice, TFile } from 'obsidian'
 import dayjs from 'dayjs'
@@ -593,7 +594,7 @@ export class ChatService {
       id: model.id,
       name: model.name,
       baseUrl: provider.baseUrl,
-      apiKey: GlobalStore.getInstance().app.secretStorage.getSecret(provider.apiKeyId) || '',
+      apiKey: secrets().get(provider.apiKeyId) || '',
       contextWindow: model.contextWindow,
       maxTokens: model.maxTokens,
       supportsReasoning: model.supportsReasoning,
@@ -628,7 +629,7 @@ export class ChatService {
           id: model.id,
           name: model.name,
           baseUrl: provider.baseUrl,
-          apiKey: GlobalStore.getInstance().app.secretStorage.getSecret(provider.apiKeyId) || '',
+          apiKey: secrets().get(provider.apiKeyId) || '',
           contextWindow: model.contextWindow,
           maxTokens: model.maxTokens,
           supportsReasoning: model.supportsReasoning,
@@ -739,7 +740,7 @@ export class ChatService {
       id: model.id,
       name: model.name,
       baseUrl: provider.baseUrl,
-      apiKey: GlobalStore.getInstance().app.secretStorage.getSecret(provider.apiKeyId) || '',
+      apiKey: secrets().get(provider.apiKeyId) || '',
       contextWindow: model.contextWindow,
       maxTokens: model.maxTokens,
       supportsReasoning: model.supportsReasoning,

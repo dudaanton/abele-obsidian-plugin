@@ -511,6 +511,15 @@ describe('Input', () => {
     expect(view.element.tagName).toBe('TEXTAREA')
     expect(view.classes()).toContain('abele-obsidian-input_multiline')
   })
+
+  it('hides what is typed into a passphrase, and asks nothing to remember it', () => {
+    const hidden = mount(Input, { props: { modelValue: 'x', password: true } })
+    expect(hidden.attributes('type')).toBe('password')
+    expect(hidden.attributes('autocomplete')).toBe('off')
+
+    const plain = mount(Input, { props: { modelValue: 'x' } })
+    expect(plain.attributes('type')).toBe('text')
+  })
 })
 
 describe('Input as a textarea', () => {
