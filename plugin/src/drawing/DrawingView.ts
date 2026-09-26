@@ -126,9 +126,9 @@ export class DrawingView extends TextFileView {
   private place(): void {
     const session = this.session
     if (!session) return
-    // A tab just made has no size yet; the camera waits for one.
+    // A tab just made, or opened behind another, has no size yet; the camera waits for one.
     if (!session.surface.width) {
-      window.requestAnimationFrame(() => this.place())
+      session.whenSized(() => this.place())
       return
     }
     this.placed = true

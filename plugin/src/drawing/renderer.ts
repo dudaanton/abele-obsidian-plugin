@@ -9,7 +9,7 @@
  * frame.
  */
 import { MARKER_OPACITY, inkLiteral, strokePath } from '@/reader/ink/stroke'
-import { arrowHeadPath, baselineOf } from './drawingFile'
+import { arrowHeadPath, baselineOf, writtenPaths } from './drawingFile'
 import { paintNoteCard } from './noteCard'
 import {
   TEXT_FONT,
@@ -29,7 +29,7 @@ function pathOf(item: DrawingItem): Path2D | null {
   const known = paths.get(item)
   if (known) return known
   let d: string
-  if (item.type === 'stroke') d = strokePath(item)
+  if (item.type === 'stroke') d = writtenPaths.get(item) ?? strokePath(item)
   else {
     const { x1, y1, x2, y2 } = item
     if (item.kind === 'rect') d = `M${x1} ${y1}L${x2} ${y1}L${x2} ${y2}L${x1} ${y2}Z`

@@ -72,9 +72,11 @@ export class DrawingItems {
   /** Items changed in place: each new one takes the place of the one with its id. */
   replace(items: DrawingItem[]): ItemChange[] {
     const changes: ItemChange[] = []
+    // Where each item stands, found once: a thousand picked strokes moved are one pass.
+    const place = new Map(this.list.map((item, at) => [item.id, at]))
     for (const after of items) {
-      const at = this.list.findIndex((i) => i.id === after.id)
-      if (at >= 0) changes.push({ id: after.id, before: this.list[at], after, at })
+      const at = place.get(after.id)
+      if (at !== undefined) changes.push({ id: after.id, before: this.list[at], after, at })
     }
     return this.commit(changes)
   }
@@ -124,12 +126,13 @@ export class DrawingItems {
     const outgoing = forward ? changes.filter((c) => !c.after) : changes.filter((c) => !c.before)
     const ids = new Set(outgoing.map((c) => c.id))
     if (ids.size) this.list = this.list.filter((i) => !ids.has(i.id))
-    for (const c of changes) {
-      const now = forward ? c.after : c.before
-      const was = forward ? c.before : c.after
-      if (now && was) {
-        const i = this.list.findIndex((x) => x.id === c.id)
-        if (i >= 0) this.list[i] = now
+    const swaps = changes.filter((c) => c.before && c.after)
+    if (swaps.length) {
+      const place = new Map(this.list.map((item, at) => [item.id, at]))
+      for (const c of swaps) {
+        const i = place.get(c.id)
+        const now = forward ? c.after : c.before
+        if (i !== undefined && now) this.list[i] = now
       }
     }
     // Each `at` was where the item stood when its change was made: forward they go in the order

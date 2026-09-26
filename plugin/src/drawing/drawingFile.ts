@@ -31,6 +31,7 @@ import {
   type ShapeItem,
 } from './items'
 import { noteCardSvg } from './noteCard'
+import { compactPath } from './compactPath'
 
 /** Room left round what is drawn, in the picture a note shows. */
 export const MARGIN = 24
@@ -71,6 +72,12 @@ export function arrowHeadPath(s: ShapeItem): string {
 
 const elementCache = new WeakMap<DrawingItem, string>()
 
+/**
+ * The outline a stroke read from a file was written with — the painter's to reuse, so a drawing
+ * of thousands of strokes opens without working every outline out again.
+ */
+export const writtenPaths = new WeakMap<DrawingItem, string>()
+
 /** An item as the markup that shows it. */
 export function itemElement(item: DrawingItem): string {
   const known = elementCache.get(item)
@@ -87,7 +94,7 @@ export function itemElement(item: DrawingItem): string {
       item.tool === 'marker'
         ? `fill="none" stroke="${color}" stroke-opacity="${MARKER_OPACITY}" stroke-width="${item.size}" stroke-linecap="round" stroke-linejoin="round" style="mix-blend-mode:multiply"`
         : `fill="${color}"`
-    out = `<path d="${esc(strokePath(item))}" ${paint}/>`
+    out = `<path d="${compactPath(strokePath(item))}" ${paint}/>`
   } else if (item.type === 'shape') {
     const line = `fill="none" stroke="${color}" stroke-width="${item.size}" stroke-linecap="round" stroke-linejoin="round"`
     const { x1, y1, x2, y2 } = item
@@ -113,8 +120,58 @@ export function itemElement(item: DrawingItem): string {
 }
 
 /** The JSON kept in the file, safe inside XML. */
+const r1 = (n: number) => Math.round(n * 10) / 10
+
+/**
+ * A stroke's points as the file keeps them: the first `x, y, pressure` as they are, every one
+ * after it as the step from the one before, pressure in hundredths — about half the size.
+ */
+export function packPoints(points: readonly number[]): number[] {
+  const out: number[] = []
+  let x = 0
+  let y = 0
+  let p = 0
+  for (let i = 0; i + 2 < points.length; i += 3) {
+    const nx = r1(points[i])
+    const ny = r1(points[i + 1])
+    const np = Math.round(points[i + 2] * 100)
+    if (i === 0) out.push(nx, ny, np)
+    else out.push(r1(nx - x), r1(ny - y), np - p)
+    x = nx
+    y = ny
+    p = np
+  }
+  return out
+}
+
+/** A stroke's points back from how the file keeps them; null for anything that is not that. */
+export function unpackPoints(packed: unknown): number[] | null {
+  if (!Array.isArray(packed) || packed.length < 3 || packed.length % 3) return null
+  if (!packed.every((v) => typeof v === 'number' && Number.isFinite(v))) return null
+  const nums = packed as number[]
+  const out: number[] = []
+  let x = 0
+  let y = 0
+  let p = 0
+  for (let i = 0; i < nums.length; i += 3) {
+    x = i ? r1(x + nums[i]) : nums[i]
+    y = i ? r1(y + nums[i + 1]) : nums[i + 1]
+    p = i ? p + nums[i + 2] : nums[i + 2]
+    out.push(x, y, Math.min(1, Math.max(0, p / 100)))
+  }
+  return out
+}
+
+/** Items as the file keeps them: a stroke's points packed as `d`. */
+const packed = (items: readonly DrawingItem[]) =>
+  items.map((item) => {
+    if (item.type !== 'stroke') return item
+    const { points, ...rest } = item
+    return { ...rest, d: packPoints(points) }
+  })
+
 const metadataJson = (data: DrawingData): string =>
-  JSON.stringify({ v: 1, items: data.items }).replace(
+  JSON.stringify({ v: 1, items: packed(data.items) }).replace(
     /[<>&]/g,
     (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`
   )
@@ -166,12 +223,40 @@ export function parseDrawingSvg(text: string): DrawingData | null {
   const seen = new Set<string>()
   const items: DrawingItem[] = []
   for (const one of list) {
-    const item = itemFrom(one)
+    // A stroke keeps its points packed (`packPoints`); one written out whole is read as well.
+    const raw = one as { type?: unknown; d?: unknown; points?: unknown } | null
+    const pts = raw?.type === 'stroke' && raw.d !== undefined ? unpackPoints(raw.d) : undefined
+    const item = itemFrom(pts ? { ...raw, points: pts } : one)
     if (!item) continue
     // Two items with one id, from a file put together by hand: the second gets its own.
     if (seen.has(item.id)) item.id = newId()
     seen.add(item.id)
     items.push(item)
   }
+  if (items.length === list.length) remember(text, m.index + m[0].length, items)
   return { items }
+}
+
+/**
+ * The markup the file already holds for each item — one line each, in the items' order, after the
+ * paper — kept for writing the file again and for painting, when there is exactly one line per
+ * item. The picture's markup is never put into a page: it goes back into the file as it came, and
+ * only its outline is handed to a canvas, which draws a path and nothing else.
+ */
+function remember(text: string, from: number, items: DrawingItem[]): void {
+  const lines = text.slice(from).split('\n')
+  const start = lines.findIndex((l) => l.startsWith('<rect data-abele-paper='))
+  if (start < 0) return
+  const body = lines.slice(start + 1)
+  const end = body.findIndex((l) => l.startsWith('</svg>'))
+  if (end !== items.length) return
+  items.forEach((item, i) => {
+    const line = body[i]
+    if (!line.startsWith('<') || !line.endsWith('>')) return
+    elementCache.set(item, line)
+    if (item.type === 'stroke') {
+      const d = /^<path d="([^"]*)"/.exec(line)?.[1]
+      if (d && /^[Mmlqaz\d\s.,-]*$/.test(d)) writtenPaths.set(item, d)
+    }
+  })
 }

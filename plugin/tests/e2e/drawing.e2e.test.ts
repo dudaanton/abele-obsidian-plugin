@@ -166,7 +166,7 @@ describe.skipIf(!available)('the drawing canvas', () => {
       fresh?: boolean
       count?: number
       heard?: string[]
-      saved?: { tool: string; points: number[] }[] | null
+      saved?: { tool: string; d: number[] }[] | null
       pressures?: number
       svg?: boolean
     }>(`
@@ -182,7 +182,7 @@ describe.skipIf(!available)('the drawing canvas', () => {
       // Drawing goes off: what is waiting is written now.
       click(view, '.abele-drawing-bar__mode')
       const saved = await until(async () => { const d = await data(view.file.path); return d?.length ? d : null }, 5000)
-      const pressures = new Set((saved?.[0]?.points ?? []).filter((_, i) => i % 3 === 2)).size
+      const pressures = new Set((items(view)[0]?.points ?? []).filter((_, i) => i % 3 === 2)).size
       const svg = (await read(view.file.path)).includes('<path d="M')
       window.__drawingPath = view.file.path
       return { on, fresh, count, heard: ears.heard, saved, pressures, svg }
@@ -193,6 +193,7 @@ describe.skipIf(!available)('the drawing canvas', () => {
     expect(r.count).toBe(1)
     expect(r.heard).toEqual([])
     expect(r.saved?.[0].tool).toBe('pen')
+    expect(r.saved?.[0].d.length).toBeGreaterThan(9)
     expect(r.pressures).toBeGreaterThan(3)
     expect(r.svg).toBe(true)
   })

@@ -12,6 +12,9 @@ import {
   paperOf,
   parseDrawingSvg,
   MARGIN,
+  packPoints,
+  unpackPoints,
+  writtenPaths,
 } from '@/drawing/drawingFile'
 import {
   boundsOf,
@@ -135,6 +138,27 @@ describe('the file a drawing is kept in', () => {
     expect(items).toHaveLength(2)
     expect(items[0].id).toBe('a')
     expect(items[1].id).not.toBe('a')
+  })
+
+  it('writes a drawing read back exactly as it was, reusing what the file holds', () => {
+    const items: DrawingItem[] = [line('a', 0, 0), shape(), text()]
+    const svg = drawingSvg({ items })
+    const back = parseDrawingSvg(svg)!
+    expect(drawingSvg(back)).toBe(svg)
+    expect(writtenPaths.get(back.items[0])).toMatch(/^M/)
+    // A file whose picture has been changed by hand is drawn from its data, not its lines.
+    const edited = svg.replace(/\n<rect x="10"[^\n]*/, '')
+    const fromData = parseDrawingSvg(edited)!
+    expect(writtenPaths.get(fromData.items[0])).toBeUndefined()
+    expect(drawingSvg(fromData)).toBe(svg)
+  })
+
+  it('packs a stroke’s points to about half, and unpacks them as they were', () => {
+    const pts = [1000.1, 500.2, 0.53, 1001.3, 499.9, 0.6, 1003, 499.5, 0.61]
+    expect(packPoints(pts)).toEqual([1000.1, 500.2, 53, 1.2, -0.3, 7, 1.7, -0.4, 1])
+    expect(unpackPoints(packPoints(pts))).toEqual(pts)
+    expect(unpackPoints([1, 2])).toBeNull()
+    expect(unpackPoints([1, 2, 'x'])).toBeNull()
   })
 
   it('checks every field of an item it reads', () => {

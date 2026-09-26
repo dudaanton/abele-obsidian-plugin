@@ -114,18 +114,13 @@ export class ImageInkView extends ItemView {
     this.image = image
     session.load([])
     // A tab just made has no size yet: the picture is fitted once it has one.
-    const place = () => {
-      if (!session.surface.width) {
-        window.requestAnimationFrame(place)
-        return
-      }
+    session.whenSized(() => {
       session.setBackdrop({
         image,
         rect: { x: 0, y: 0, w: image.naturalWidth, h: image.naturalHeight },
       })
       session.start()
-    }
-    place()
+    })
     ;(this.leaf as unknown as { updateHeader?: () => void }).updateHeader?.()
   }
 

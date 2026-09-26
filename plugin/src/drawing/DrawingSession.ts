@@ -96,7 +96,11 @@ export class DrawingSession {
       },
       changed: () => this.edited(),
     })
-    this.surface.onResize = () => this.paint()
+    this.surface.onResize = () => {
+      this.paint()
+      if (!this.surface.width) return
+      for (const fn of this.waiting.splice(0)) fn()
+    }
     this.model.touch = Platform.isMobile
   }
 
@@ -106,6 +110,15 @@ export class DrawingSession {
     if (this.frame) this.win.cancelAnimationFrame(this.frame)
     this.notes.destroy()
     this.surface.destroy()
+  }
+
+  /** What waits for the surface to have a size — a tab opened behind another has none. */
+  private readonly waiting: (() => void)[] = []
+
+  /** Runs once the surface has a size: now, or when it gets one. */
+  whenSized(fn: () => void): void {
+    if (this.surface.width) fn()
+    else this.waiting.push(fn)
   }
 
   get camera(): Camera {

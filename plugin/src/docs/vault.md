@@ -500,8 +500,9 @@ margin, one element per item — so `![[Sketch.svg]]` shows it in a note without
 the plugin reads back is only the JSON in `<metadata id="abele-drawing">`: `{ "v": 1, "items": [...] }`,
 the items oldest (lowest) first, each with an `id` and a `type`:
 
-- `stroke` — `tool` (`pen` or `marker`), `color`, `size`, `points` as `x, y, pressure` one after
-  the other;
+- `stroke` — `tool` (`pen` or `marker`), `color`, `size`, and `d`, its points packed: the first
+  `x, y, pressure` as they are (pressure in hundredths), every one after it as the step from the
+  one before;
 - `shape` — `kind` (`rect`, `ellipse`, `line`, `arrow`), the two corners or ends `x1 y1 x2 y2`,
   `color`, `size`;
 - `text` — `x`, `y` (the top left), `text` (lines split by `\n`), `size`, `color`.
