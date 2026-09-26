@@ -194,7 +194,7 @@ const editModeFiles = new Set<string>()
 </script>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Notice, TFile } from 'obsidian'
 import { Gallery } from '@/entities/Gallery'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -225,8 +225,25 @@ watch(editMode, (val) => {
   else editModeFiles.delete(props.gallery.filePath)
 })
 
+/**
+ * Bumped when a picture this gallery could not find appears in the vault. On a phone the note
+ * often arrives from sync before its attachments do, and the link was resolved once, when the
+ * gallery was drawn — so the picture stayed missing until the note was opened again.
+ */
+const vaultTick = ref(0)
+const unresolved = () => resolvedImages.value.some((image) => image.type === 'local' && !image.url)
+const onVaultChange = (file: unknown) => {
+  if (file instanceof TFile && isMediaPath(file.path) && unresolved()) vaultTick.value++
+}
+{
+  const { vault } = GlobalStore.getInstance().app
+  const refs = [vault.on('create', onVaultChange), vault.on('rename', onVaultChange)]
+  onBeforeUnmount(() => refs.forEach((r) => vault.offref(r)))
+}
+
 const resolvedImages = computed(() => {
   const _v = imageVersion.value
+  void vaultTick.value
   return props.gallery.images.map((image) => ({
     url: props.gallery.resolveImageUrl(image, _v),
     alt: image.alt,

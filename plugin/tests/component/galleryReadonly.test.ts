@@ -87,3 +87,26 @@ describe('dropping files from the system onto an editable gallery', () => {
     expect(addImages).toHaveBeenCalledWith(['Notes/Media/summer.jpg', 'Notes/Media/walk.mp4'])
   })
 })
+
+describe('a picture that is not in the vault yet', () => {
+  it('shows up as soon as it arrives, without the note being opened again', async () => {
+    // On a phone the note often arrives from sync before its attachment does.
+    const item = gallery(true)
+    const app = GlobalStore.getInstance().app as unknown as ReturnType<typeof useVault>
+    const arrived = app.vault.getAbstractFileByPath('Attachments/a.jpg')
+    const resolve = app.metadataCache.getFirstLinkpathDest.bind(app.metadataCache)
+    let there = false
+    app.metadataCache.getFirstLinkpathDest = (link, source) =>
+      there ? resolve(link, source) : null
+
+    const w = mount(GalleryView, { props: { gallery: item } })
+    expect(w.find('.abele-gallery__image-error').exists()).toBe(true)
+
+    there = true
+    app.emit('vault', 'create', arrived)
+    await flushPromises()
+
+    expect(w.find('.abele-gallery__image-error').exists()).toBe(false)
+    expect(w.find('.abele-gallery__image').attributes('src')).toBe('app://vault/Attachments/a.jpg')
+  })
+})
