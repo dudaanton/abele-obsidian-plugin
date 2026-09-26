@@ -452,7 +452,8 @@ found by that property, not its name. Each highlight is one callout, in the orde
 plugin's settings, and per book `reader.bookNotes[<key>]`, the key as for places): a note of the
 book's own as above, or one named note several books share. In a shared note a book's highlights
 are the callouts whose place link resolves to that book; a new one is added at the end, its link
-labelled `<title> · <chapter>` unless a template says whose it is. Highlights written before the
+labelled `<title> · <chapter>` unless a template says whose it is. A place no chapter of the
+contents comes before is labelled with the book's title. Highlights written before the
 choice changed stay where they are and still count while their note is the book's own or named in
 the settings.
 

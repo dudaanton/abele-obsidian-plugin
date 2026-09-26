@@ -76,7 +76,10 @@ function before(doc: Document, node: Node, range: Range): boolean {
 
 /**
  * The chapter a range is in, as the reader names the place a highlight is made: the last entry of
- * the contents in that part starting before it, else the part's own name; `Page N` in a PDF.
+ * the contents starting before it — in its own part, else the last one of an earlier part, the way
+ * foliate's own progress carries a chapter over parts the contents does not list (notes, a
+ * bibliography) — else the book's title; `Page N` in a PDF. Never empty: an empty label leaves a
+ * highlight's title a bare link.
  */
 export async function labelAt(
   loaded: LoadedBook,
@@ -85,9 +88,9 @@ export async function labelAt(
   range: Range
 ): Promise<string> {
   if (loaded.pdf) return `Page ${index + 1}`
-  let label = loaded.sections[index]?.label ?? ''
+  let label = earlierChapter(loaded, index)
   for (const entry of loaded.toc) {
-    if (entry.index !== index) continue
+    if (entry.index !== index || !entry.label) continue
     const hash = entry.href.indexOf('#')
     if (hash < 0) {
       label = entry.label
@@ -102,7 +105,17 @@ export async function labelAt(
     const el = (loaded.book as TocBook).getTOCFragment?.(doc, id) ?? doc.getElementById(id)
     if (el && before(doc, el, range)) label = entry.label
   }
-  return label
+  return label || loaded.title || loaded.file?.basename || ''
+}
+
+/** The last entry of the contents in the nearest earlier part that has one; '' when none has. */
+function earlierChapter(loaded: LoadedBook, index: number): string {
+  let best: { index: number; label: string } | null = null
+  for (const entry of loaded.toc) {
+    if (!entry.label || entry.index < 0 || entry.index >= index) continue
+    if (!best || entry.index >= best.index) best = entry
+  }
+  return best?.label ?? ''
 }
 
 /** How far into the book a place is, 0 to 1, by the parts' sizes: a bookmark's order. */

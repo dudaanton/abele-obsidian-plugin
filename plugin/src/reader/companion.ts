@@ -171,18 +171,21 @@ export async function saveHighlight(
   h: Highlight,
   chatPath?: string
 ): Promise<TFile> {
+  // In a note several books share, and no template to say whose it is, the link says.
+  const title = where.title || book.basename
+  const chapter = h.label.trim()
   const held = await holding(app, book, where, h.cfi)
   if (held) {
-    // The label as the note has it: in a shared note it names the book too.
-    const kept = { ...h, label: held.found.label || h.label }
+    // The label as the note has it: in a shared note it names the book too. Never none — a link
+    // with no label reads as the book's file name and its place.
+    const kept = { ...h, label: held.found.label || chapter || title }
     await write(app, book, held.note, held.ofBook, kept, chatPath)
     return held.note
   }
   const template = await templateOf(app, where)
   const own = where.target.to === 'book'
-  // In a note several books share, and no template to say whose it is, the link says.
-  const title = where.title || book.basename
-  const fresh = { ...h, label: !own && !template ? `${title} · ${h.label}` : h.label }
+  const label = !chapter ? title : !own && !template ? `${title} · ${chapter}` : chapter
+  const fresh = { ...h, label }
   const existing = targetNote(app, book, where)
   const path = existing?.path ?? (own ? companionPath(book) : normalizePath(where.target.path))
   const link = linkToPlace(app, book, { cfi: h.cfi }, fresh.label, path)

@@ -109,6 +109,16 @@ beforeEach(() => {
 })
 
 describe("a book's highlights, where the settings send them", () => {
+  it('never leave a highlight without a readable title: no chapter gives the book title', async () => {
+    const dune = v.file('Books/Dune.epub')
+    await saveHighlight(v.app, dune, place(own), hl(A, { label: '' }))
+    expect(v.text('Books/Dune highlights.md')).toContain(`[[Books/Dune.epub#cfi=`)
+    expect(v.text('Books/Dune highlights.md')).toMatch(/\|Dune\]\]/)
+    await saveHighlight(v.app, dune, place(shared()), hl(B, { label: ' ' }))
+    expect(v.text('Reading/Notes.md')).toMatch(/\|Dune\]\]/)
+    expect(v.text('Reading/Notes.md')).not.toContain('Dune · ')
+  })
+
   it('go to a note of their own beside the book, as they always did', async () => {
     const dune = v.file('Books/Dune.epub')
     await saveHighlight(v.app, dune, place(own), hl(A))
