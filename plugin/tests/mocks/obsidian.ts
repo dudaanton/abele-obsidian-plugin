@@ -71,6 +71,7 @@ export class MenuItem {
   icon = ''
   checked: boolean | null = null
   handler: (() => void) | null = null
+  section = ''
   setChecked(checked: boolean | null): this {
     this.checked = checked
     return this
@@ -86,7 +87,8 @@ export class MenuItem {
   setDisabled(): this {
     return this
   }
-  setSection(): this {
+  setSection(section: string): this {
+    this.section = section
     return this
   }
   onClick(handler: () => void): this {
@@ -115,7 +117,12 @@ export class Menu {
   showAtMouseEvent(): this {
     return this
   }
+  hideCallbacks: (() => void)[] = []
+  onHide(callback: () => void): void {
+    this.hideCallbacks.push(callback)
+  }
   hide(): this {
+    for (const callback of this.hideCallbacks.splice(0)) callback()
     return this
   }
 }

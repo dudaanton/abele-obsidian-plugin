@@ -117,6 +117,11 @@ export class GithubView extends ItemView {
 
   onPaneMenu(menu: Menu, source: string): void {
     super.onPaneMenu(menu, source)
+    this.fillQuickMenu(menu)
+  }
+
+  /** The tab's own items: its ⋯ menu, and the quick button's menu over it. */
+  fillQuickMenu(menu: Menu): void {
     menu.addItem((item) =>
       item
         .setTitle('Open another GitHub item…')

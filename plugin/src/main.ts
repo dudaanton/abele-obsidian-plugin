@@ -112,6 +112,8 @@ import { markLoad } from '@/helpers/loadMarks'
 import { claimVueSetters } from '@/helpers/vueGlobals'
 import { openChat } from '@/ai/openChat'
 import { keepChatFilesOutOfLeaves } from '@/ai/chatFileLeaves'
+import { applyQuickButton, setQuickButton } from '@/quickButton/mount'
+import { openQuickMenu } from '@/quickButton/open'
 
 // Every module imported above has run its top-level code by now. See `helpers/loadMarks.ts`.
 markLoad('evalEnd')
@@ -1212,6 +1214,20 @@ export default class AbelePlugin extends Plugin {
       callback: () => void openUserDocs(this.app),
     })
 
+    // The quick button's menu without the button: bound to a key, or from the palette.
+    this.addCommand({
+      id: 'open-quick-menu',
+      name: 'Open quick menu',
+      icon: 'zap',
+      callback: () =>
+        void openQuickMenu(this.app, {
+          x: window.innerWidth / 2,
+          y: window.innerHeight / 2,
+        }),
+    })
+    // Over the workspace, so only once there is one to be over.
+    this.app.workspace.onLayoutReady(() => applyQuickButton())
+
     // The first start in a vault: no settings file yet. The documentation is the way in, and it
     // is shown once — the settings are written straight after, so the next start is not a first.
     if (AbeleConfig.getInstance().freshInstall) {
@@ -1242,6 +1258,7 @@ export default class AbelePlugin extends Plugin {
     setSecrets(null)
     document.body.classList.remove('abele-full-width-sidebars', 'abele-half-width-sidebars')
     setKeyboardDiagnostics(false)
+    setQuickButton(false)
     // Unmount Vue BEFORE store cleanup so Teleport components unmount cleanly
     if (this.vueApp) {
       this.vueApp.unmount()
@@ -1305,5 +1322,6 @@ export default class AbelePlugin extends Plugin {
     await AbeleConfig.getInstance().moveLegacySecrets()
     AgentRegistry.getInstance().notifyConfigReloaded()
     this.syncAiFeatures()
+    applyQuickButton()
   }
 }

@@ -261,6 +261,7 @@ export const SECTIONS: Section[] = [
       (settings.calendars?.feeds ?? []).map((feed) => feed.keyId).filter(Boolean),
   }),
   rootBlock('reader', 'Book reader', ['reader']),
+  rootBlock('quick-button', 'Quick button', ['quickButton']),
   rootBlock('other', 'Other', [
     'refreshDelay',
     'logsNotesTypes',

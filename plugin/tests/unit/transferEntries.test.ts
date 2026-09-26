@@ -194,6 +194,31 @@ describe('settings that arrived later than the transfer did', () => {
     expect(applyEntries([entry!], settings()).reader).toEqual(reader)
   })
 
+  it('carries the quick button, the actions of its menu with it', () => {
+    const quickButton = {
+      enabled: true,
+      tablet: false,
+      side: 'left' as const,
+      lift: 120,
+      actions: [
+        {
+          id: 'a1',
+          type: 'command' as const,
+          commandId: 'daily-notes',
+          scriptName: '',
+          name: 'Today',
+          icon: 'calendar',
+        },
+      ],
+    }
+    const entries = collectEntries(settings({ quickButton }))
+    const entry = find(entries, 'quick-button', 'quick-button')
+
+    expect(entry?.label).toBe('Quick button')
+    expect(entry?.data).toEqual({ quickButton })
+    expect(applyEntries([entry!], settings()).quickButton).toEqual(quickButton)
+  })
+
   /**
    * The section lists the keys it carries by name, so anything added to the settings after it
    * was written is silently left behind. Voice input was exactly that.

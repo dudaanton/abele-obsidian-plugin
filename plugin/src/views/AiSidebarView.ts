@@ -1,6 +1,6 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nanoid } from 'nanoid'
-import { ItemView, WorkspaceLeaf, App } from 'obsidian'
+import { ItemView, WorkspaceLeaf, App, type Menu } from 'obsidian'
 import { forgetPanel, registerPanelElement } from './panelVisibility'
 import { AI_SIDEBAR_VIEW_TYPE, AI_SIDEBAR_ID_ATTR } from '@/constants/views'
 
@@ -29,6 +29,18 @@ export class AiSidebarView extends ItemView {
 
   getIcon() {
     return AiSidebarView.getIcon()
+  }
+
+  /** What the quick button offers over the chat: a new one. The rest is the chat's own header. */
+  fillQuickMenu(menu: Menu): void {
+    menu.addItem((item) =>
+      item
+        .setTitle('Start a new chat')
+        .setIcon('plus')
+        .onClick(
+          () => void import('@/ai/ChatService').then((m) => m.ChatService.getInstance().newTab())
+        )
+    )
   }
 
   async onOpen() {

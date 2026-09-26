@@ -272,6 +272,7 @@ describe('what the pages must at least mention', () => {
     'books',
     'writing',
     'transfer',
+    'quick-button',
     'settings',
   ]
 

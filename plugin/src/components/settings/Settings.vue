@@ -58,6 +58,8 @@ import TransferSettings from './TransferSettings.vue'
 import GithubSettings from './GithubSettings.vue'
 import ReaderSettings from './ReaderSettings.vue'
 import CalendarsSettings from './CalendarsSettings.vue'
+import QuickButtonSettings from './QuickButtonSettings.vue'
+import { takePendingTab } from './settingsTab'
 
 interface SettingsTab {
   id: string
@@ -77,12 +79,17 @@ const tabs: SettingsTab[] = [
   { id: 'links', label: 'Links', component: markRaw(LinksSettings) },
   { id: 'github', label: 'GitHub', component: markRaw(GithubSettings) },
   { id: 'reader', label: 'Books', component: markRaw(ReaderSettings) },
+  { id: 'quick-button', label: 'Quick button', component: markRaw(QuickButtonSettings) },
   { id: 'transfer', label: 'Transfer', component: markRaw(TransferSettings) },
   { id: 'other', label: 'Other', component: markRaw(OtherSettings) },
 ]
 
-const activeTab = ref(tabs[0].id)
-const isMenuOpen = ref(true)
+// Opened on a tab from elsewhere — the quick menu's "Choose what this menu holds…" — it starts
+// there, and on a phone with that page open rather than the list of pages.
+const asked = takePendingTab()
+const initialTab = tabs.find((t) => t.id === asked)?.id
+const activeTab = ref(initialTab ?? tabs[0].id)
+const isMenuOpen = ref(!initialTab)
 /**
  * A phone, not merely a mobile device. Obsidian lays its settings out like the desktop on a
  * tablet — the list of pages beside the page, no back button — so a tablet gets the desktop
@@ -121,7 +128,7 @@ onMounted(() => {
     if (backBtn) {
       const newBackBtn = backBtn.cloneNode(true) as HTMLElement
       backBtn.parentNode?.replaceChild(newBackBtn, backBtn)
-      isMenuOpen.value = true
+      isMenuOpen.value = !initialTab
     }
   }
 })

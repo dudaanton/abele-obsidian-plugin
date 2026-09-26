@@ -192,6 +192,12 @@ a phone and `halfWidthSidebarsOnTablet` to half of it on a tablet, `mermaidViewe
 default) draws mermaid blocks with the plugin's zoomable viewer instead of Obsidian's own, and
 `refreshDelay` is how long the plugin waits before rebuilding what a note shows.
 
+`quickButton` is the floating button on a phone: `enabled` (off by default, it is a concept),
+`tablet` (a tablet too), `side` (`right` or `left`), `lift` (pixels above where it rests,
+dragged there by hand) and `actions`, the person's own entries at the top of its menu — each
+`{ id, type, commandId, scriptName, name, icon }`, `type` being `command` or `script`. A command
+entry is left out of the menu wherever the command cannot run. It travels in a transfer.
+
 `keyboardDiagnostics` shows a panel at the top of the screen with what the app reports about
 the on-screen keyboard — page and viewport sizes, Obsidian's keyboard height, the open dialog
 and the focused field, the last keyboard events. It is a troubleshooting aid, off by default,

@@ -29,6 +29,7 @@ not invent its own.
 | `Image` | A picture by vault path or URL. |
 | `Avatar` | A person's picture, round, the height of a line of small text, beside their name. Decoration: the name says who it is. Without a picture, or with one that fails to load, it shows the name's first letter, drawn by CSS so it is never copied or found as text. |
 | `TreeItem` | One row of a tree — a file list, a folder listing — in Obsidian's own `tree-item` classes, so hover, the active row, indentation and the fold arrow are the theme's. `collapsible` draws the arrow and shows the children slot while open; `flair` puts muted text at the end. |
+| `FloatingButton` | The one thing that floats over the screen on a phone: a round button at an edge, in Obsidian's own `mod-raised` surface (their phone navigation bar's), their touch size and icon size. `tucked` slides it past its edge leaving a sliver in the accent colour, still pressable. Its host places it by `--abele-floating-button-top`. The quick button is it. |
 | `Breadcrumbs` | The way down to where you are, outermost first: every level but the last pressed to go back to it, each with a tooltip saying what it opens. Wraps rather than scrolls, each level cut to one line. Deeper than three levels it folds to the root, `…`, the parent and where you are, on one row; `…` opens the whole trail. The trail over a comment asked inside a chat. |
 
 If a screen needs something the kit does not have, the change belongs in the kit — with a

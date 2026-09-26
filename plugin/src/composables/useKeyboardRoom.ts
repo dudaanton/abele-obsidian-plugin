@@ -35,7 +35,7 @@ export const KEYBOARD_EVENTS = [
 ] as const
 
 /** A field the on-screen keyboard comes up for. */
-const TYPED =
+export const TYPED =
   'textarea, [contenteditable="true"], input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="range"]):not([type="color"]):not([type="file"])'
 
 /** What the last measurement decided, for the keyboard diagnostics panel. */

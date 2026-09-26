@@ -7,6 +7,31 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { createTimeEntry, stopActiveTimeEntry } from '@/commands/createTimeEntry'
 import { pathToWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
 
+/** Whether one of the running time entries is for this note — has it among its groups. */
+export function timerActiveFor(filePath: string, entries: readonly TimeEntry[]): boolean {
+  return !!entryFor(filePath, entries)
+}
+
+function entryFor(filePath: string, entries: readonly TimeEntry[]): TimeEntry | undefined {
+  const basename = filePath.replace(/\.md$/, '').split('/').pop() || ''
+  const pathNoExt = filePath.replace(/\.md$/, '')
+  return entries.find((entry) =>
+    entry.groups.some((g) => {
+      const linkPath = wikilinkToPath(g)
+      return linkPath === basename || linkPath === pathNoExt
+    })
+  )
+}
+
+/** Starts a timer for this note, or stops the running one. */
+export function toggleTimerFor(filePath: string, active: boolean): void {
+  if (active) {
+    void stopActiveTimeEntry()
+  } else {
+    void createTimeEntry({ groups: [pathToWikilink(filePath)] }, false)
+  }
+}
+
 /**
  * Provides state and handlers for a Start/Stop Timer button bound to the given file path.
  * The button is "active" when the global active time entry has this file in its groups.
@@ -28,17 +53,7 @@ export function useTimerButton(
     () => (timeEntryList.value?.activeEntries ?? []) as unknown as TimeEntry[]
   )
 
-  const isTimerActiveForNote = computed(() => {
-    if (!activeEntries.value.length) return false
-    const basename = filePath.value.replace(/\.md$/, '').split('/').pop() || ''
-    const pathNoExt = filePath.value.replace(/\.md$/, '')
-    return activeEntries.value.some((entry) =>
-      entry.groups.some((g) => {
-        const linkPath = wikilinkToPath(g)
-        return linkPath === basename || linkPath === pathNoExt
-      })
-    )
-  })
+  const isTimerActiveForNote = computed(() => timerActiveFor(filePath.value, activeEntries.value))
 
   const timerElapsed = ref(0)
   let timerInterval: number | null = null
@@ -48,14 +63,7 @@ export function useTimerButton(
       timerElapsed.value = 0
       return
     }
-    const basename = filePath.value.replace(/\.md$/, '').split('/').pop() || ''
-    const pathNoExt = filePath.value.replace(/\.md$/, '')
-    const match = activeEntries.value.find((entry) =>
-      entry.groups.some((g) => {
-        const linkPath = wikilinkToPath(g)
-        return linkPath === basename || linkPath === pathNoExt
-      })
-    )
+    const match = entryFor(filePath.value, activeEntries.value)
     if (match?.start) {
       timerElapsed.value = dayjs().diff(match.start, 'second')
     } else {
@@ -94,14 +102,7 @@ export function useTimerButton(
     { immediate: true }
   )
 
-  const toggleTimer = () => {
-    if (isTimerActiveForNote.value) {
-      stopActiveTimeEntry()
-    } else {
-      const wikilink = pathToWikilink(filePath.value)
-      createTimeEntry({ groups: [wikilink] }, false)
-    }
-  }
+  const toggleTimer = () => toggleTimerFor(filePath.value, isTimerActiveForNote.value)
 
   onUnmounted(() => {
     stopElapsedTimer()

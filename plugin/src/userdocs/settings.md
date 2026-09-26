@@ -59,6 +59,11 @@ See [GitHub](github).
 The reader's text and layout, reading aloud, where reading places are kept, and where highlights
 go. See [Books](books).
 
+## Quick button
+
+Turning the floating button on for a phone, and for a tablet, the side it stands at, putting it
+back down, and the commands and scripts at the top of its menu. See [Quick button](quick-button).
+
 ## Transfer
 
 Sending settings to another device, receiving them, synced keys and the list of all keys. See

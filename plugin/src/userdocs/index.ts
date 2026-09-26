@@ -13,6 +13,7 @@ import books from './books.md?raw'
 import writing from './writing.md?raw'
 import transfer from './transfer.md?raw'
 import settings from './settings.md?raw'
+import quickButton from './quick-button.md?raw'
 import { slug } from '@/docs'
 
 /**
@@ -64,6 +65,7 @@ const FILES: [id: string, source: string][] = [
   ['books', books],
   ['writing', writing],
   ['transfer', transfer],
+  ['quick-button', quickButton],
   ['settings', settings],
 ]
 
@@ -204,6 +206,7 @@ const SETTINGS_TAB_PAGES: Record<string, string> = {
   github: 'github',
   reader: 'books',
   transfer: 'transfer',
+  'quick-button': 'quick-button',
   other: 'settings',
 }
 

@@ -716,13 +716,15 @@ body.is-mobile .abele-comment-marker_pending::after {
   top: calc(-1 * var(--abele-keyboard-lift));
 }
 
-/* Measures the top safe-area inset for `keyboardLift.ts`; never seen. */
+/* Measures the safe-area insets for `keyboardLift.ts`; never seen. The bottom one through
+   Obsidian's own variable first, which its phone emulation sets as well. */
 .abele-safe-area-probe {
   position: fixed;
   visibility: hidden;
   pointer-events: none;
   height: 0;
   padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
 
 /* Under the container's class, so a scroller's own padding (a component's) does not win. */

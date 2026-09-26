@@ -60,11 +60,20 @@ export function revealDelta(
 
 /** The top safe-area inset — the status bar — as the page resolves it. */
 export function safeAreaTop(doc: Document): number {
+  return safeArea(doc, 'paddingTop')
+}
+
+/** The bottom safe-area inset — the home indicator — as the page resolves it. */
+export function safeAreaBottom(doc: Document): number {
+  return safeArea(doc, 'paddingBottom')
+}
+
+function safeArea(doc: Document, side: 'paddingTop' | 'paddingBottom'): number {
   const view = doc.defaultView
   if (!view || !doc.body) return 0
   // Resolved through an element: the variable itself reads back as the unresolved `env()`.
   const probe = doc.body.createDiv({ cls: 'abele-safe-area-probe' })
-  const value = parseFloat(view.getComputedStyle(probe).paddingTop)
+  const value = parseFloat(view.getComputedStyle(probe)[side])
   probe.remove()
   return Number.isFinite(value) && value > 0 ? value : 0
 }

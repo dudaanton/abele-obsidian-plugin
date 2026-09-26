@@ -189,6 +189,12 @@ export class BookView extends FileView {
 
   onPaneMenu(menu: Menu, source: string): void {
     super.onPaneMenu(menu, source)
+    this.fillQuickMenu(menu)
+    if (this.fixed) fillZoomMenu(menu, (way) => this.zoom(way))
+  }
+
+  /** The book's own items: its ⋯ menu, and the quick button's menu over it. */
+  fillQuickMenu(menu: Menu): void {
     fillBookMenu(menu, {
       ready: !!this.reading && this.model.status === 'ready',
       pdf: this.isPdf,
@@ -202,7 +208,38 @@ export class BookView extends FileView {
       draw: this.ink ? () => this.ink?.toggle() : undefined,
       drawing: this.model.ink.on,
     })
-    if (this.fixed) fillZoomMenu(menu, (way) => this.zoom(way))
+  }
+
+  /**
+   * Busy with something the quick button would be in the way of: drawing, words selected or a
+   * highlight's bar, a picture full screen, the contents panel over the page, a dialog of its own.
+   */
+  quickButtonBusy(): boolean {
+    const m = this.model
+    return (
+      m.ink.on ||
+      !!m.figure ||
+      m.panel ||
+      !!m.selection ||
+      !!m.active ||
+      m.selecting ||
+      !!m.commenting ||
+      m.settingsOpen ||
+      !!m.footnote
+    )
+  }
+
+  /**
+   * A page is text to the edges of the screen, so the quick button rests tucked at the edge, a
+   * sliver still there to tap, rather than over the ends of the last lines.
+   */
+  quickButtonTucked(): boolean {
+    return true
+  }
+
+  /** How far into the book: going forward is reading, and the quick button tucks itself away. */
+  quickButtonProgress(): number | null {
+    return this.model.status === 'ready' ? this.model.fraction : null
   }
 
   /** What the tab's Vue side can ask of it. */
