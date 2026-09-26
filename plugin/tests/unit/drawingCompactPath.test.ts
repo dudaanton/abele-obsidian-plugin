@@ -13,6 +13,8 @@ function absolute(d: string): { cmd: string; args: number[] }[] {
   const out: { cmd: string; args: number[] }[] = []
   let x = 0
   let y = 0
+  let sx = 0
+  let sy = 0
   let i = 0
   while (i < tokens.length) {
     const c = tokens[i++]
@@ -32,6 +34,15 @@ function absolute(d: string): { cmd: string; args: number[] }[] {
       x = abs[abs.length - 2]
       y = abs[abs.length - 1]
     }
+    if (lower === 'm') {
+      sx = x
+      sy = y
+    }
+    // As SVG has it: after a close, the pen is back where the outline began.
+    if (lower === 'z') {
+      x = sx
+      y = sy
+    }
     out.push({ cmd: lower, args: abs })
   }
   return out
@@ -44,7 +55,7 @@ describe('a stroke outline written small', () => {
       points.push(1000 + k * 1.37, 500 + Math.sin(k / 7) * 30, 0.2 + (k % 10) / 20)
     const d = strokePath({ tool: 'pen', color: 'black', size: 2.4, points })
     const small = compactPath(d)
-    const a = absolute(d.replace(/([MLQA])/g, ' $1 '))
+    const a = absolute(d.replace(/([MLQAZ])/g, ' $1 '))
     const b = absolute(small)
     expect(b.map((c) => c.cmd)).toEqual(a.map((c) => c.cmd.toLowerCase()))
     let worst = 0

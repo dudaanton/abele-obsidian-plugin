@@ -38,6 +38,7 @@ export function compactPath(d: string): string {
   const tokens = d.match(/[MLQCAZ]|-?\d*\.?\d+(?:e-?\d+)?/gi) ?? []
   let out = ''
   let i = 0
+  // Where the outline began as written: a close takes the pen back there, as SVG reads it.
   let sx = 0
   let sy = 0
   // Where the pen is as written, rounded, so errors do not add up along a long outline.
@@ -50,8 +51,8 @@ export function compactPath(d: string): string {
     if (!spec) continue
     if (cmd === 'Z') {
       out += 'z'
-      wx = Math.round(sx * 10) / 10
-      wy = Math.round(sy * 10) / 10
+      wx = sx
+      wy = sy
       continue
     }
     const args = tokens.slice(i, i + spec.n).map(Number)
@@ -62,8 +63,8 @@ export function compactPath(d: string): string {
       wx = Math.round(args[0] * 10) / 10
       wy = Math.round(args[1] * 10) / 10
       out += `M${join([num(wx), num(wy)])}`
-      sx = args[0]
-      sy = args[1]
+      sx = wx
+      sy = wy
       continue
     }
     const rel = args.map((v, k) => {
@@ -75,8 +76,8 @@ export function compactPath(d: string): string {
     wx = Math.round((wx + Number(rel[spec.n - 2])) * 10) / 10
     wy = Math.round((wy + Number(rel[spec.n - 1])) * 10) / 10
     if (cmd === 'M') {
-      sx = args[0]
-      sy = args[1]
+      sx = wx
+      sy = wy
     }
     out += cmd.toLowerCase() + join(rel)
   }
