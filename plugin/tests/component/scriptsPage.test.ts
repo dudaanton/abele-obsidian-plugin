@@ -192,6 +192,40 @@ describe('the library', () => {
     expect(wrapper.emitted('added')).toEqual([[config.headerButtons[0].id]])
   })
 
+  const pinOf = (wrapper: VueWrapper, title: string) =>
+    cardTitled(wrapper, title).find('.abele-script-toolbar-toggle')
+
+  it('puts a script on the toolbar from its card, and takes it off again', async () => {
+    config.ai = { ...config.ai, toolbarScripts: [] }
+    // The real save is what tells the screens the settings changed.
+    vi.mocked(config.saveSettings).mockImplementation(async () => {
+      config.version.value++
+    })
+    const wrapper = open()
+
+    await pinOf(wrapper, 'Archive').trigger('click')
+    await nextTick()
+    expect(config.ai.toolbarScripts).toEqual(['Archive'])
+    expect(cardTitled(wrapper, 'Archive').text()).toContain('Toolbar')
+    expect(pinOf(wrapper, 'Archive').attributes('aria-pressed')).toBe('true')
+
+    await pinOf(wrapper, 'Archive').trigger('click')
+    await nextTick()
+    expect(config.ai.toolbarScripts).toEqual([])
+    expect(cardTitled(wrapper, 'Archive').text()).not.toContain('Toolbar')
+  })
+
+  it('shows one put on the toolbar by its header as there, and leaves the pin alone', async () => {
+    config.ai = { ...config.ai, toolbarScripts: [] }
+    const headed = { ...archive, meta: { ...archive.meta, toolbar: true } }
+    ScriptService.getInstance().scriptList.value = [fetchDetails, headed, legacy]
+    const wrapper = open()
+
+    expect(cardTitled(wrapper, 'Archive').text()).toContain('Toolbar')
+    await pinOf(wrapper, 'Archive').trigger('click')
+    expect(config.ai.toolbarScripts).toEqual([])
+  })
+
   it('says scripts are off, and where to turn them on, when they are', () => {
     config.ai = { ...config.ai, scriptsEnabled: false }
 

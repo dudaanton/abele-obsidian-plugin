@@ -111,6 +111,16 @@ describe('settings that arrived later than the transfer did', () => {
     expect(find(entries, 'ai-general', 'ai-general')?.data).toMatchObject({ rewindLimitMb: 250 })
   })
 
+  it('carries the scripts put on the toolbar with the script settings', () => {
+    const base = settings()
+    base.ai = { ...base.ai, scriptsEnabled: true, toolbarScripts: ['Translate', 'Plain'] }
+    const entries = collectEntries(base)
+
+    expect(find(entries, 'scripts', 'scripts')?.data).toMatchObject({
+      toolbarScripts: ['Translate', 'Plain'],
+    })
+  })
+
   it('carries both map settings', () => {
     const entries = collectEntries(
       settings({

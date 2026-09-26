@@ -186,6 +186,12 @@ export interface AiSettings {
   toolModes: Record<string, ToolMode>
   scriptsEnabled: boolean
   scriptsFolder: string
+  /**
+   * Scripts put on the toolbar from the script library, by name: a button in every note's
+   * toolbar on a computer, and a place on the phone's toolbar above the keyboard. A script's
+   * own `// @toolbar` header line does the same without being listed here.
+   */
+  toolbarScripts: string[]
   defaultScope: Array<{ type: 'file' | 'folder' | 'pattern' | 'group'; path: string }>
   defaultFullVaultAccess: boolean
   chatFolder: string
@@ -370,6 +376,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   },
   scriptsEnabled: false,
   scriptsFolder: '',
+  toolbarScripts: [],
   defaultScope: [],
   defaultFullVaultAccess: false,
   chatFolder: 'AI/Chats/{{name}}',

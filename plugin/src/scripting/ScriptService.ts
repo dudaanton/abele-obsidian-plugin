@@ -17,6 +17,7 @@ import { buildScriptContext, type ScriptContext } from './ScriptContext'
 import { VIEW_GLOBALS } from './view/components'
 import { showFormModal } from './formModal'
 import { ScriptRuns, type RunSource } from './ScriptRuns'
+import { ScriptToolbar } from './toolbarButtons'
 import type { ParsedScript, FormField } from './types'
 import type { BookScriptContext } from './bookContext'
 import type { RestoreInfo } from './view/View'
@@ -192,6 +193,9 @@ export class ScriptService {
   private createEventRef: EventRef | null = null
   private statusBarEl: HTMLElement | null = null
 
+  /** The scripts on the toolbar, drawn into the notes and the phone's toolbar; see `toolbarButtons.ts`. */
+  toolbar: ScriptToolbar | null = null
+
   /** The index as a reactive list, for anything on screen that shows it. */
   public readonly scriptList = ref<ParsedScript[]>([])
 
@@ -234,6 +238,9 @@ export class ScriptService {
     // first discovery threw.
     void this.discover().finally(() => this.markReady())
     this.startWatching()
+    this.toolbar?.stop()
+    this.toolbar = new ScriptToolbar(this)
+    this.toolbar.start()
   }
 
   async createScript(): Promise<void> {
@@ -299,6 +306,8 @@ export class ScriptService {
   }
 
   private cleanup() {
+    this.toolbar?.stop()
+    this.toolbar = null
     if (this.watcherCallbackId) {
       VaultWatcherWrapper.getInstance().removeCallback(this.watcherCallbackId)
       this.watcherCallbackId = null

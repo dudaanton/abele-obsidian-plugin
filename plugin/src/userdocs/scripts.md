@@ -34,6 +34,7 @@ and `agent()` to hand the fuzzy part of a job to a model. An AI agent can write 
 - From the command palette: every script is a command, **Script: <name>**.
 - From **Settings → Abele → Scripts → Library**, which lists every script with its description.
 - From a button in a note's header, which runs it on that note.
+- From the toolbar: see below.
 - On words selected in a book, from the bar under the page: see [Books](books).
 - From a link, inside or outside Obsidian.
 - By an AI agent, which sees your scripts as tools.
@@ -44,6 +45,20 @@ and `agent()` to hand the fuzzy part of a job to a model. An AI agent can write 
 **Show script runs** lists every run of this session: its status, its log lines, what it returned
 or why it failed. A run can be stopped, run again, or run again with changed values. While a
 script runs, the status bar says so.
+
+## The toolbar
+
+Pin a script in **Settings → Abele → Scripts → Library** (the pin on its card), or add a
+`// @toolbar` line to its header, and it is on the toolbar:
+
+- on a computer, a button with the script's icon at the top right of every note, beside
+  Obsidian's own. It runs the script on that note and on the words selected in it.
+- on a phone, a button at the start of the toolbar above the keyboard. Move it or take it off in
+  Obsidian's **Settings → Toolbar**, like any other; one you took off stays off until you pin it
+  again.
+
+Unpin it and it goes from both. Every script is also a command, so you can give it a hotkey or put
+it on the phone's toolbar yourself without pinning it.
 
 ## Header buttons
 

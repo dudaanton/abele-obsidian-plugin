@@ -102,7 +102,8 @@ that differs; to go back to the default, remove the entry. `memoryTemplate` lays
 its system prompt, with `{{memory}}` standing for the list of items; an agent with no memory gets
 nothing. The memory itself is `ai.agents.N.memory` — a list of `{ id, text, created }`, one
 agent's own, added to and changed by `remember`, pruned by `forget`, and edited in that agent's
-settings. `ai.scriptsEnabled` and `ai.scriptsFolder` are the script feature; `ai.voice` is
+settings. `ai.scriptsEnabled` and `ai.scriptsFolder` are the script feature, and `ai.toolbarScripts`
+the names of the scripts pinned to the toolbar (see the scripts section); `ai.voice` is
 dictation — which model transcribes and where its key lives.
 
 `ai.mcpServers` are the MCP servers the person connected, each `{ id, name, url, enabled, keyId,

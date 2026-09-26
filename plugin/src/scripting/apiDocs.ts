@@ -29,6 +29,7 @@ Every script must start with a comment block declaring its metadata:
 // @param limit number? "Max results" = 50
 // @param verbose boolean? "Verbose output" = true
 // @book
+// @toolbar
 \`\`\`
 
 - \`@icon\`: Lucide icon name for toolbar display (e.g. \`scroll-text\`, \`sparkles\`, \`wand\`). Defaults to \`scroll-text\` if omitted. See https://lucide.dev for available icons.
@@ -39,6 +40,7 @@ Every script must start with a comment block declaring its metadata:
 - Defaults pre-fill the form UI and are used as fallback when the param is not provided (e.g. via link URL)
 - Add \`selection\` after description/default to auto-fill from editor selection: \`// @param text string "Input text" selection\`. Run on words in a book, it is filled with those words
 - \`@book\`: the script is on the book menu, offered first on the book reader's selection bar (so can any script chosen in Settings → Books, and any script can be picked there from the list); see \`book\` below
+- \`@toolbar\`: the script is on the toolbar — a button with its icon at the top right of every note on a computer, run on that note and its selection, and a place on the phone's toolbar above the keyboard (so can any script pinned from the script library)
 - Parameters are available via the \`params\` object (e.g. \`params.paramName\`)
 
 ---

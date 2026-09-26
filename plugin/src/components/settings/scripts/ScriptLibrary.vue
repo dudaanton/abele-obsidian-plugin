@@ -3,7 +3,9 @@
     <template #desc>
       Every script in the scripts folder. A script describes itself in the comment block at the top
       of its file: <code>@name</code>, <code>@description</code>, <code>@icon</code> and a
-      <code>@param</code> line per value it takes.
+      <code>@param</code> line per value it takes. The pin puts a script on the toolbar: a button at
+      the top right of every note on a computer, and a place on the toolbar above the keyboard on a
+      phone — <code>@toolbar</code> in its header does the same.
     </template>
 
     <EmptyState v-if="!scriptsEnabled">
@@ -32,6 +34,7 @@
           <template #badges>
             <Badge v-if="script.meta.enabled === false" text="Off" />
             <Badge v-if="buttonCount(script)" :text="buttonLabel(script)" />
+            <Badge v-if="placeOf(script)" text="Toolbar" />
           </template>
           <template #actions>
             <Icon icon="play" tooltip="Run this script now" @click="run(script)" />
@@ -40,6 +43,14 @@
               icon="panel-top"
               tooltip="Add a header button that runs this script"
               @click="addButton(script)"
+            />
+            <Icon
+              class="abele-script-toolbar-toggle"
+              icon="pin"
+              :active="placeOf(script) !== null"
+              :disabled="placeOf(script) === 'header'"
+              :tooltip="toolbarTooltip(script)"
+              @click="toggleToolbar(script)"
             />
           </template>
         </Card>
@@ -62,6 +73,8 @@ import EmptyState from '../../obsidian/EmptyState.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ScriptService } from '@/scripting/ScriptService'
 import type { ParsedScript } from '@/scripting/types'
+import { toolbarPlace, toolbarScriptsFrom } from '@/scripting/scriptToolbar'
+import { setOnToolbar } from '@/scripting/toolbarButtons'
 
 const emit = defineEmits<{
   /** A header button was made from a card; its id, so the page can show where it is set up. */
@@ -138,5 +151,24 @@ const addButton = (script: ParsedScript) => {
   ]
   void config.saveSettings()
   emit('added', id)
+}
+
+/** Whether the script is on the toolbar, and whether the list or its own header put it there. */
+const placeOf = (script: ParsedScript) => {
+  void config.version.value
+  return toolbarPlace(script, toolbarScriptsFrom(config.ai.toolbarScripts))
+}
+
+const toolbarTooltip = (script: ParsedScript): string => {
+  const place = placeOf(script)
+  if (place === 'header') return 'On the toolbar by its // @toolbar header line'
+  if (place === 'setting') return 'Take it off the toolbar'
+  return 'Put it on the toolbar: at the top right of every note, and above the keyboard on a phone'
+}
+
+const toggleToolbar = (script: ParsedScript) => {
+  const place = placeOf(script)
+  if (place === 'header') return
+  void setOnToolbar(ScriptService.getInstance(), script, place === null)
 }
 </script>

@@ -182,7 +182,7 @@ export const SECTIONS: Section[] = [
       return { prompts: { ...prompts, toolDescriptions: kept } }
     },
   }),
-  aiBlock('scripts', 'Script settings', ['scriptsEnabled', 'scriptsFolder']),
+  aiBlock('scripts', 'Script settings', ['scriptsEnabled', 'scriptsFolder', 'toolbarScripts']),
   {
     kind: 'list',
     id: 'links',

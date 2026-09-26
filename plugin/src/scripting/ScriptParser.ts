@@ -7,6 +7,7 @@ import type { ScriptMeta, ScriptParam } from './types'
  *   // @param path string "Vault path"
  *   // @param style string? "Optional style"
  *   // @book
+ *   // @toolbar
  *
  * Returns null if @name is missing.
  */
@@ -19,6 +20,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
 
   let icon: string | undefined
   let book = false
+  let toolbar = false
 
   for (const line of lines) {
     const trimmed = line.trim()
@@ -36,6 +38,8 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
       enabled = content.slice(9).trim() !== 'false'
     } else if (content === '@book' || content.startsWith('@book ')) {
       book = true
+    } else if (content === '@toolbar' || content.startsWith('@toolbar ')) {
+      toolbar = true
     } else if (content.startsWith('@param ')) {
       const param = parseParam(content.slice(7).trim())
       if (param) params.push(param)
@@ -44,7 +48,15 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
 
   if (!name) return null
 
-  return { name, description, icon, params, enabled, ...(book ? { book } : {}) }
+  return {
+    name,
+    description,
+    icon,
+    params,
+    enabled,
+    ...(book ? { book } : {}),
+    ...(toolbar ? { toolbar } : {}),
+  }
 }
 
 /**

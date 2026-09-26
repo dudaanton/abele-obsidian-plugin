@@ -49,9 +49,19 @@ Settings → Books (`reader.selectionScripts`) or pinned from its script list, t
 whose header has `// @book`. Up to three are a button each, more fold into one menu, and any other
 script is picked from the list. A script can call another with `runScript`.
 
+The toolbar is the same idea for notes. A script whose header has `// @toolbar`, or which the
+person pinned from the script library (`ai.toolbarScripts`, by name), is a button with its icon
+among the icons at the top right of every note on a computer — pressed, it runs on that note and
+whatever is selected in it, as from the command palette — and is put at the start of the phone's
+toolbar above the keyboard, Obsidian's own `mobileToolbarCommands`. That list belongs to the person
+as much as to the plugin: only what the plugin put there is taken off again, and a script the
+person took off by hand is not put back unless it is pinned again. Every script is a command
+(`Script: <name>`) whether or not it is on the toolbar, so it can have a hotkey and be put on the
+phone's toolbar by hand too.
+
 The **Scripts** page of the plugin's settings lists every script as a card — its `@icon`,
-`@name`, `@description` and parameters, straight from the header above — and runs one or
-makes a header button for it from there. That header is therefore also how a script presents
+`@name`, `@description` and parameters, straight from the header above — and runs one,
+makes a header button for it, or pins it to the toolbar from there. That header is therefore also how a script presents
 itself to the person: a script without `@description` shows up saying it has none.
 
 ## Automations

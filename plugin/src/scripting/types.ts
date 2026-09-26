@@ -15,6 +15,8 @@ export interface ScriptMeta {
   enabled?: boolean
   /** `@book`: offered as its own button on words selected in a book. */
   book?: boolean
+  /** `@toolbar`: a button on every note's toolbar on a computer, and on the phone's toolbar. */
+  toolbar?: boolean
 }
 
 export interface ParsedScript {
