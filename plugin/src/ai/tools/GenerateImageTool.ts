@@ -1,7 +1,7 @@
 import type { AgentTool } from '../client'
 import { ScopeResolver } from '../ScopeResolver'
 import { saveImageToVault } from './imageUtils'
-import { callImageApi, listImageModelKeys } from './imageApi'
+import { callImageApi, imageModelParameter } from './imageApi'
 
 export function createGenerateImageTool(): AgentTool {
   return {
@@ -13,12 +13,7 @@ export function createGenerateImageTool(): AgentTool {
       type: 'object',
       properties: {
         prompt: { type: 'string', description: 'Text description of the image to generate' },
-        model: {
-          type: 'string',
-          description:
-            'Optional image model key (provider::model). If omitted, uses the default image model. Available models: ' +
-            (listImageModelKeys().join(', ') || 'none configured'),
-        },
+        model: imageModelParameter(),
       },
       required: ['prompt'],
     },

@@ -261,3 +261,20 @@ export function listImageModelKeys(): string[] {
   }
   return keys
 }
+
+/**
+ * The `model` parameter of the image tools. Its description lists the configured models and is
+ * read when the parameters are, not when the tool is made: the tools are made while the
+ * settings are still being loaded, to learn what each says of itself.
+ */
+export function imageModelParameter(): { type: 'string'; description: string } {
+  return {
+    type: 'string',
+    get description() {
+      return (
+        'Optional image model key (provider::model). If omitted, uses the default image model. Available models: ' +
+        (listImageModelKeys().join(', ') || 'none configured')
+      )
+    },
+  }
+}

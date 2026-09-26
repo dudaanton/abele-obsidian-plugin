@@ -1,7 +1,7 @@
 import type { AgentTool } from '../client'
 import { ScopeResolver } from '../ScopeResolver'
 import { readImageAsDataUrl, saveImageToVault } from './imageUtils'
-import { callImageApi, listImageModelKeys } from './imageApi'
+import { callImageApi, imageModelParameter } from './imageApi'
 
 export function createEditImageTool(): AgentTool {
   return {
@@ -24,12 +24,7 @@ export function createEditImageTool(): AgentTool {
           description: 'One or more vault paths of source images to edit',
         },
         prompt: { type: 'string', description: 'Instructions for how to edit the image(s)' },
-        model: {
-          type: 'string',
-          description:
-            'Optional image model key (provider::model). If omitted, uses the default image model. Available models: ' +
-            (listImageModelKeys().join(', ') || 'none configured'),
-        },
+        model: imageModelParameter(),
       },
       required: ['source', 'prompt'],
     },

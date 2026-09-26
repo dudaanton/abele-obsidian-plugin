@@ -56,6 +56,9 @@ export class AgentRegistry {
     void this.version.value
 
     const ai = AbeleConfig.getInstance().ai
+    // Before the settings are loaded there are no agents yet — the tools ask, to describe
+    // themselves, while the settings are being read.
+    if (!ai) return []
     if (!ai.agents) ai.agents = []
     if (!isReactive(ai.agents)) ai.agents = reactive(ai.agents)
     return ai.agents

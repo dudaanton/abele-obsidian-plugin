@@ -292,12 +292,13 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
   // Read-only, and only while the integration is on: with it off there is no GitHub to read.
   if (everything || githubSettings().enabled) tools.push(...createGithubTools())
 
+  // Absent while the settings are being loaded — `codeToolDescriptions` asks then.
   const config = AbeleConfig.getInstance().ai
 
   // Each server's tools as the person last fetched them; which agent gets them is its modes.
-  tools.push(...createMcpTools(config.mcpServers))
+  tools.push(...createMcpTools(config?.mcpServers))
 
-  if (everything || config.scriptsEnabled) {
+  if (everything || config?.scriptsEnabled) {
     if (!everything) tools.push(...createScriptTools())
     tools.push(createAnswerFormTool())
     tools.push(createScriptApiDocsTool())

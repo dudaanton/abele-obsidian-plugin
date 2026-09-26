@@ -1,6 +1,7 @@
 import type { AgentTool } from '../client'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TFile } from 'obsidian'
+import { describedLazily } from './lazyDescription'
 
 export interface SkillInfo {
   path: string
@@ -56,12 +57,9 @@ ${list}`
 }
 
 export function createSkillTool(): AgentTool {
-  const skills = discoverSkills()
-
-  return {
+  const tool: Omit<AgentTool, 'description'> = {
     name: 'skill',
     label: 'Skill',
-    description: buildDescription(skills),
     parameters: {
       type: 'object',
       properties: {
@@ -84,4 +82,10 @@ export function createSkillTool(): AgentTool {
       return { content: [{ type: 'text', text: content }] }
     },
   }
+  return describedLazily(tool, describe)
+}
+
+/** The skills in the vault — none yet while the settings load, before the app is handed over. */
+function describe(): string {
+  return buildDescription(GlobalStore.getInstance().app ? discoverSkills() : [])
 }

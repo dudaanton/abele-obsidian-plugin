@@ -20,6 +20,7 @@ import {
 import { codeToolDescriptions, createAgentTools, getToolRegistry } from '@/ai/tools'
 import { collectEntries } from '@/transfer/entries'
 import { useVault } from '../helpers/testEnv'
+import { GlobalStore } from '@/stores/GlobalStore'
 
 const OLD_READ =
   'Read the content of a file. Only files within the current workspace scope are accessible.'
@@ -102,6 +103,34 @@ describe('the settings on load', () => {
     const ls = codeToolDescriptions().ls
     await load(settingsWith({ ls }))
     expect(AbeleConfig.getInstance().ai.prompts.toolDescriptions).toEqual({})
+  })
+
+  it('know every tool’s own description while the settings are still being read', async () => {
+    const names = getToolRegistry().map((t) => t.name)
+    // At startup the tools are asked what they say of themselves before any settings exist.
+    // Nor the app: the plugin hands it to the store only after the settings are read.
+    const config = AbeleConfig.getInstance() as unknown as Record<string, unknown>
+    const store = GlobalStore.getInstance() as unknown as Record<string, unknown>
+    const app = store._app
+    config.ai = undefined
+    config.github = undefined
+    store._app = undefined
+    let own: Record<string, string>
+    try {
+      own = codeToolDescriptions()
+    } finally {
+      store._app = app
+    }
+    for (const name of names) expect(own[name], name).toBeTruthy()
+
+    config.ai = undefined
+    config.github = undefined
+    const debug = vi.spyOn(console, 'debug')
+    const ls = own.ls
+    await load(settingsWith({ ls, find: 'Mine' }))
+    expect(AbeleConfig.getInstance().ai.prompts.toolDescriptions).toEqual({ find: 'Mine' })
+    expect(debug.mock.calls.flat().join(' ')).not.toContain('tool descriptions unavailable')
+    debug.mockRestore()
   })
 
   it('never write over a settings file that could not be read', async () => {

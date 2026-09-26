@@ -4,6 +4,7 @@ import { ChatService } from '../ChatService'
 import { AgentRegistry } from '../agents/AgentRegistry'
 import { DelegateRun, canDelegate, resolveTargetAgent } from '../DelegateRun'
 import type { RunBranch } from '../RunStorage'
+import { describedLazily } from './lazyDescription'
 
 const DEFAULT_BATCH_SIZE = 5
 const MAX_BATCH_SIZE = 10
@@ -33,10 +34,9 @@ function buildDescription(): string {
 }
 
 export function createDelegateTool(): AgentTool {
-  return {
+  const tool: Omit<AgentTool, 'description'> = {
     name: 'delegate',
     label: 'Delegate to agent',
-    description: buildDescription(),
     parameters: {
       type: 'object',
       properties: {
@@ -133,6 +133,7 @@ export function createDelegateTool(): AgentTool {
       return { content: [{ type: 'text', text: summarise(target.name, result.branches) }] }
     },
   }
+  return describedLazily(tool, buildDescription)
 }
 
 function summarise(agentName: string, branches: RunBranch[]): string {

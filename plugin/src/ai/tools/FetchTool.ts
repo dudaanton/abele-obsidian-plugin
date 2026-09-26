@@ -2,6 +2,7 @@ import type { AgentTool } from '../client'
 import { requestUrl } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { substituteSecrets } from './secretUtils'
+import { describedLazily } from './lazyDescription'
 
 const MAX_RESPONSE_SIZE = 100 * 1024 // 100 KB
 
@@ -13,21 +14,21 @@ function substituteInHeaders(headers: Record<string, string>): Record<string, st
   return result
 }
 
+const FETCH_DESCRIPTION =
+  'Send an HTTP request to any URL. Supports GET, POST, PUT, PATCH, DELETE. Returns status code, headers, and response body. You can pass custom headers (e.g. Authorization, Content-Type) as key-value pairs. Use this to interact with APIs, fetch web pages, or download data.'
+
+/** The description, with the secrets the person named listed for the agent. */
+function describe(): string {
+  const secrets = AbeleConfig.getInstance().ai?.secrets ?? []
+  const names = secrets.map((s) => s.name).filter(Boolean)
+  if (names.length === 0) return FETCH_DESCRIPTION
+  return `${FETCH_DESCRIPTION}\n\nAvailable secrets for authentication (use as \${abele_key:name} in url, headers, or body — they will be substituted with actual values): ${names.join(', ')}`
+}
+
 export function createFetchTool(): AgentTool {
-  const secrets = AbeleConfig.getInstance().ai.secrets || []
-  const secretNames = secrets.map((s) => s.name).filter(Boolean)
-
-  let description =
-    'Send an HTTP request to any URL. Supports GET, POST, PUT, PATCH, DELETE. Returns status code, headers, and response body. You can pass custom headers (e.g. Authorization, Content-Type) as key-value pairs. Use this to interact with APIs, fetch web pages, or download data.'
-
-  if (secretNames.length > 0) {
-    description += `\n\nAvailable secrets for authentication (use as \${abele_key:name} in url, headers, or body — they will be substituted with actual values): ${secretNames.join(', ')}`
-  }
-
-  return {
+  const tool: Omit<AgentTool, 'description'> = {
     name: 'fetch',
     label: 'Fetch URL',
-    description,
     parameters: {
       type: 'object',
       properties: {
@@ -89,4 +90,5 @@ export function createFetchTool(): AgentTool {
       return { content: [{ type: 'text', text: result }] }
     },
   }
+  return describedLazily(tool, describe)
 }
