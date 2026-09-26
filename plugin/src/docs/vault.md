@@ -1135,11 +1135,15 @@ from `.obsidian`. The daemon's `.abele-sync/` folder, when
 a vault is synced by the command-line client, is its state and never syncs either. Leave both
 alone unless asked.
 
-What the device has synced is recorded outside the vault, in Obsidian's IndexedDB, as a database
-named `abele-sync-<id>`, the id kept in Obsidian's local storage for this vault and in no file, so
-a copied or transferred `data.json` never points another vault at it; the device token is in the
-keychain, under the id in `sync.deviceTokenId`. Neither is a file an agent can see. Version history and deleted files are
-kept on the server and shown in dialogs the person opens (the `commands` section).
+Two records are kept in Obsidian's local storage for this vault, which no file carries: under
+`abele-sync-connection`, this device's connection — the server, the vault, the device it enrolled
+as, the keychain name of its token, whether it is paused, and what of the vault it takes; under
+`abele-sync-ledger`, the id of the record of what it has synced. That record is outside the vault,
+in Obsidian's IndexedDB, as a database named `abele-sync-<id>`. The device token itself is in the
+keychain. So a copy of the vault, a synced `data.json` or a transfer never makes another vault
+sync as this device or read its record. None of it is a file an agent can see. Version history and
+deleted files are kept on the server and shown in dialogs the person opens (the `commands`
+section).
 
 ## Screenshots
 

@@ -43,7 +43,8 @@ by redirecting to plain http is not caught by it.
 ## What syncs
 
 Notes and canvases always travel. Everything else is each device's own choice, under **What this
-device syncs**:
+device syncs**, and it is kept on that device alone — changing it on a phone changes nothing on the
+laptop:
 
 | Switch | What it covers |
 |---|---|
@@ -75,10 +76,11 @@ device passed over arrives.
 
 These never travel, whatever the switches say:
 
-- **Abele's own `data.json`.** It holds this device's identity — the vault, the device id, and
-  the name of the keychain entry the device token is in — and a vault is exactly what gets copied
-  to another machine. So Abele's settings, the synced keys among them, do not reach your other
-  devices through Abele Sync; the Transfer tab, or whatever else syncs your settings, carries them.
+- **Abele's own `data.json`**, for now. It no longer names this device — the connection is kept
+  in Obsidian's own storage for the vault (see below) — but a device still on an older version of
+  Abele writes its connection into it. So Abele's settings, the synced keys among them, do not
+  reach your other devices through Abele Sync yet; the Transfer tab, or whatever else syncs your
+  settings, carries them.
 - **Hidden files and folders**, anything with a name starting with a dot — `.git/`, `.gitignore`,
   `.DS_Store`, `.stfolder`, `.trash/` — except the configuration folder. Obsidian does not show
   them to plugins, so the plugin neither fetches nor sends them, and never deletes them on the
@@ -161,11 +163,10 @@ the app the moment it leaves the screen. It syncs when Obsidian starts and every
 back to the front, and whenever **Sync now** is pressed. A change made on a laptop reaches the phone
 the next time the phone is opened, not while it sits in a pocket.
 
-On a phone whose settings hold no sync section yet, **Largest file** starts at 50 MB, so the
-vault's video and big scans stay off it while every note arrives. Settings that arrived with a sync
-section already in them — sent from a laptop with **Transfer**, or brought in by whatever syncs
-Abele's `data.json` — keep the cap they came with, which on a laptop is usually none. Set it to
-anything else, or empty, like on any device.
+On a phone **Largest file** starts at 50 MB, so the vault's video and big scans stay off it while
+every note arrives. The cap is always the phone's own: nothing that arrives from a laptop — a
+transfer, a copied or synced `data.json` — sets it, so a laptop's "no cap" never fills a phone. Set
+it to anything else, or empty, like on any device; the laptop does not see the change.
 
 ## The device token
 
@@ -173,15 +174,36 @@ Signing in gives this device a token of its own, and that token is what it syncs
 on. It is kept in Obsidian's keychain on this device only. It is never put in the synced keys, not
 even with those turned on: a device holding another's token would sync as that device.
 
-The one way it leaves the device is on purpose. **Transfer → Send to another device** with the
-**Sync** section and **Include keys** ticked carries the token, behind the one-time code, so the
-other device arrives connected without the password being typed on a phone. The two devices then
-share one identity — the vault's device list shows one device where there are two — until either
-of them connects again, which enrols it afresh with a token of its own. Without **Include keys**
-the other device receives the settings but no token, and shows as not connected until it signs in.
+Where the device syncs — the server, the vault, the device it enrolled as, the name its token is
+filed under, whether it is paused, and what it takes — is kept beside the keychain, in Obsidian's
+own storage for this vault, and not in Abele's `data.json`. Pausing is per device too: pausing the
+phone does not pause the laptop.
 
-What the transfer never carries is the record of what this device has already synced. That record
-belongs to one vault on one machine, and is kept in Obsidian's storage for that vault rather than in
-any file; the receiving vault starts a record of its own, so its first sync reads the whole vault
-from the server and deletes nothing. The same holds for a vault copied in Finder, or a `data.json`
-carried over by another sync tool.
+The **Sync** section of **Transfer → Send to another device** carries only what every device shares.
+It carries no token and no connection, so the other device signs in itself. A transfer made by an
+older version of Abele still holds the sender's connection and token; the receiving device takes
+neither.
+
+What a transfer never carries either is the record of what this device has already synced. That
+record belongs to one vault on one machine, and is kept in Obsidian's storage for that vault; a
+device that connects starts a record of its own, so its first sync reads the whole vault from the
+server and deletes nothing.
+
+## What a copied vault does
+
+A vault copied in Finder, a `data.json` carried over by another sync tool, or a vault opened on a
+new machine is not connected: Obsidian keeps the connection and the keychain under its own id for
+that vault, which a copy does not share. Sign in on the copy to give it a device of its own. The
+same happens to a vault folder renamed outside Obsidian — it gets a new id, and loses both the
+connection and the keychain; connect it again.
+
+The first time this version of Abele starts on a device, it moves the connection an older version
+kept in `data.json` into that storage, and writes `data.json` again without it. It takes the
+connection only if this device's keychain holds the token it names — the proof that the file is
+this device's own. A `data.json` that came from another device fails that check: the device is
+then not connected, and keeps the other device's switches for what to sync as a starting point, but
+not its size cap. The log says which of the two happened.
+
+Every device on a vault should run this version or none: an older version still writes its own
+connection into `data.json`, which this one ignores, and it reads the one it finds there as its
+own.
