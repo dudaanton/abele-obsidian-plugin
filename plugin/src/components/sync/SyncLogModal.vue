@@ -152,8 +152,15 @@ watch(
   color: var(--text-muted);
 }
 
+/**
+ * A hanging indent: a line of the log wraps to three or four rows on a phone, and flush with
+ * the next line's timestamp its tail read as a line of its own. Indented, each entry is the
+ * block that starts at the margin.
+ */
 .abele-sync-log__line {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  padding-inline-start: var(--size-4-4);
+  text-indent: calc(-1 * var(--size-4-4));
 }
 </style>
