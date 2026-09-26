@@ -140,7 +140,7 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 - Sync now · Pause or resume sync
 - Open sync log — also a click on the sync item in the status bar
 - Open deleted files — what was deleted anywhere in the vault, each with a Restore
-- *Open version history* when a file is right-clicked, while the device is connected
+- *Open version history (Abele)* when a file is right-clicked, while the device is connected
 
 Connecting, disconnecting and choosing what a device syncs are on the Sync tab of the settings.
 

@@ -659,12 +659,14 @@ export default class AbelePlugin extends Plugin {
 
         if (!(file instanceof TFile)) return
 
-        // "Open version history" for a file the server holds versions of. Shown only on a
-        // device that is connected: on every other one the dialog could only say so.
+        // "Open version history (Abele)" for a file the server holds versions of. Named after
+        // the plugin because Obsidian's own Sync puts an "Open version history" in this same
+        // menu. Shown only on a device that is connected: on every other one the dialog could
+        // only say so.
         if (SyncService.getInstance().isConnected()) {
           menu.addItem((item) => {
             item
-              .setTitle('Open version history')
+              .setTitle('Open version history (Abele)')
               .setIcon('history')
               .onClick(() => {
                 GlobalStore.getInstance().versionHistoryPath.value = file.path

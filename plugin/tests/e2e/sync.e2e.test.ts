@@ -308,7 +308,7 @@ describe.skipIf(why !== null)('sync between Obsidian and a daemon folder', () =>
     openInEditor(NOTE)
     expect(editorText(NOTE)).toContain('five')
 
-    // The file list's context menu, where a person finds "Open version history".
+    // The file list's context menu, where a person finds "Open version history (Abele)".
     let menu = ''
     await waitFor(
       () => `the file menu to offer version history (${menu})`,
@@ -323,9 +323,9 @@ describe.skipIf(why !== null)('sync between Obsidian and a daemon folder', () =>
             }))
           }
           const item = [...document.querySelectorAll('.menu .menu-item')].find(
-            (el) => el.querySelector('.menu-item-title')?.textContent.trim() === 'Open version history'
+            (el) => el.querySelector('.menu-item-title')?.textContent.trim() === 'Open version history (Abele)'
           )
-          if (!item) return 'the menu has no "Open version history"'
+          if (!item) return 'the menu has no "Open version history (Abele)"'
           item.click()
           return 'clicked'
         `)) === 'clicked',
