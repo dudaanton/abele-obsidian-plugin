@@ -300,6 +300,29 @@ describe.skipIf(!available)('properties drawn by the plugin', () => {
     expect(r.stored).toEqual(['[[paper.pdf]]'])
   })
 
+  it('reads the balance of the wallet beside the transaction when two wallets share a name', () => {
+    const r = run<{ error?: string; here?: string | null; there?: string | null }>(`
+      const other = ${JSON.stringify(DIR)} + '/Elsewhere'
+      await app.vault.createFolder(other)
+      await app.vault.create(other + '/Wallet.md', '---\\ntype: account\\naccountType: asset\\ncurrency: EUR\\nstartingBalance: 500\\n---\\n')
+      await app.vault.create(other + '/Taxi.md', '---\\ntype: transaction\\ndate: 2026-01-03\\nfrom: "[[Wallet]]"\\nto: "[[Food]]"\\namount: 12\\n---\\n')
+      const badge = (leaf) => row(leaf.view.containerEl, 'from')?.querySelector('.abele-property-balance')?.textContent ?? null
+      try {
+        let leaf = await open(other + '/Taxi.md')
+        const there = await until(() => badge(leaf) === '488.00 EUR' && badge(leaf), 5000) || badge(leaf)
+        leaf = await open(${JSON.stringify(TX)})
+        const here = await until(() => badge(leaf) === '70.00 EUR' && badge(leaf), 5000) || badge(leaf)
+        return { here, there }
+      } finally {
+        await app.vault.delete(app.vault.getAbstractFileByPath(other), true)
+        await wait(800)
+      }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.there).toBe('488.00 EUR')
+    expect(r.here).toBe('70.00 EUR')
+  })
+
   it('works out a sum typed into a number property and keeps the answer', () => {
     const r = run<{ error?: string; type?: string; stored?: unknown }>(`
       const leaf = await open(${JSON.stringify(NOTE)})

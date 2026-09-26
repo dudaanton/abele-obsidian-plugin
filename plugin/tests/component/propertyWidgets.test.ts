@@ -122,6 +122,8 @@ beforeEach(() => {
     { path: 'Books/Dune.epub', content: '' },
     { path: 'Media/poster.png', content: '' },
     { path: 'Wallet.md', content: '' },
+    { path: 'Work/Wallet.md', content: '' },
+    { path: 'Work/Taxi.md', content: '' },
     { path: 'Card.md', content: '' },
     { path: 'Food.md', content: '' },
   ])
@@ -284,6 +286,7 @@ describe('a wallet’s balance beside a link to it', () => {
   const financeReady = () => {
     const accounts = new Map([
       ['Wallet.md', { accountType: 'asset', currency: 'EUR' }],
+      ['Work/Wallet.md', { accountType: 'asset', currency: 'EUR' }],
       ['Card.md', { accountType: 'liability', currency: 'EUR' }],
       ['Food.md', { accountType: 'expense', currency: 'EUR' }],
     ])
@@ -309,6 +312,7 @@ describe('a wallet’s balance beside a link to it', () => {
 
   beforeEach(() => {
     balances['Wallet.md'] = 70
+    balances['Work/Wallet.md'] = 488
     balances['Card.md'] = -20
     widgets.load()
     widgets.apply(true)
@@ -366,5 +370,40 @@ describe('a wallet’s balance beside a link to it', () => {
     ;(store().balanceIndex.value as unknown as { version: number }).version++
     await nextTick()
     expect(badge(el)).toBe('55.00 EUR')
+  })
+  it('reads the wallet from the note on screen when the panel moves the row to another note', async () => {
+    financeReady()
+    const el = host.createDiv({ cls: 'metadata-property-value' })
+    // The panel keeps one context per row and changes its note in place when another opens.
+    const c = ctx('from')
+    const widget = table.text.render(el, '[[Wallet]]', c) as unknown as StockText
+    expect(badge(el)).toBe('70.00 EUR')
+    c.sourcePath = 'Work/Taxi.md'
+    widget.setValue('[[Wallet]]')
+    await flush()
+    expect(badge(el)).toBe('488.00 EUR')
+  })
+  it('reads the wallet from the note now open in the tab, when the same link stays in the row', async () => {
+    financeReady()
+    // A tab showing a note, and the workspace telling of notes opened in it.
+    const view = { containerEl: host, file: { path: 'Note.md' } }
+    const handlers: (() => void)[] = []
+    const fake = GlobalStore.getInstance().app as unknown as Record<string, unknown>
+    fake.workspace = {
+      iterateAllLeaves: (fn: (leaf: unknown) => void) => fn({ view }),
+      on: (_name: string, fn: () => void) => (handlers.push(fn), { fn }),
+      offref: () => {},
+    }
+    try {
+      const { el } = drawText('[[Wallet]]')
+      expect(badge(el)).toBe('70.00 EUR')
+      // Another note opens in the tab with the same link; the panel keeps the row as it is.
+      view.file = { path: 'Work/Taxi.md' }
+      for (const h of handlers) h()
+      await new Promise((r) => setTimeout(r, 20))
+      expect(badge(el)).toBe('488.00 EUR')
+    } finally {
+      delete fake.workspace
+    }
   })
 })

@@ -175,7 +175,8 @@ interface Badge {
   cell: HTMLElement
   widget: unknown
   value: unknown
-  sourcePath: string
+  /** The panel keeps it for the row and changes its note in place when another note opens. */
+  ctx: WidgetContext
   el: HTMLElement | null
   observer: MutationObserver | null
 }
@@ -201,10 +202,28 @@ function badgeValue(badge: Badge): unknown {
   return widget && typeof widget === 'object' && 'value' in widget ? widget.value : badge.value
 }
 
+/**
+ * The note the row belongs to now. A tab that opens another note keeps a row whose value is the
+ * same as it was, and leaves the row's context naming the note it was drawn for; the tab itself
+ * knows. Outside a tab — a hover preview — the context is all there is.
+ */
+function rowSourcePath(badge: Badge): string {
+  let path: string | null = null
+  try {
+    GlobalStore.getInstance().app.workspace?.iterateAllLeaves((leaf) => {
+      const view = leaf.view as { containerEl?: HTMLElement; file?: { path: string } | null }
+      if (!path && view?.file && view.containerEl?.contains(badge.cell)) path = view.file.path
+    })
+  } catch (err) {
+    log('could not tell which note a row belongs to', err)
+  }
+  return path ?? badge.ctx.sourcePath
+}
+
 function drawBadge(badge: Badge): void {
   const value = badgeValue(badge)
   const source = walletSource()
-  const balance = source ? walletBalance(value, badge.sourcePath, source) : null
+  const balance = source ? walletBalance(value, rowSourcePath(badge), source) : null
   // While the field is being typed into there is no link to stand beside.
   const editing = !!badge.cell.querySelector('.metadata-input-longtext')
   if (!balance && !badge.el) return
@@ -226,15 +245,25 @@ function sweepBadges(all = false): void {
   for (const cell of [...badges.keys()]) if (all || !cell.isConnected) forgetBadge(cell)
 }
 
+function drawBadges(): void {
+  for (const badge of badges.values()) drawBadge(badge)
+}
+
 function watchBadges(): void {
   if (stopBadges) return
   const store = GlobalStore.getInstance()
-  stopBadges = watch(
+  const stopIndex = watch(
     () => [store.balanceIndex.value?.version, store.accountsList.value?.accounts.size],
-    () => {
-      for (const badge of badges.values()) drawBadge(badge)
-    }
+    drawBadges
   )
+  // Another note opened in a tab: a row holding the same link now stands for another note, and
+  // a wallet of that name beside it is another wallet. Drawn once the tab has shown the note.
+  const workspace = store.app.workspace
+  const opened = workspace?.on('file-open', () => window.setTimeout(drawBadges, 0))
+  stopBadges = () => {
+    stopIndex()
+    if (opened) workspace.offref(opened)
+  }
 }
 
 function addBadge(el: HTMLElement, widget: unknown, value: unknown, ctx: WidgetContext): void {
@@ -243,7 +272,7 @@ function addBadge(el: HTMLElement, widget: unknown, value: unknown, ctx: WidgetC
     cell: el,
     widget,
     value,
-    sourcePath: ctx.sourcePath,
+    ctx,
     el: null,
     observer: null,
   }
