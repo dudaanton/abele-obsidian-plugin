@@ -4,6 +4,10 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { Footer } from '@/entities/Footer'
 import { reactive } from 'vue'
 import { TFile } from 'obsidian'
+import { keepScrollOnShrink } from './keepScrollOnShrink'
+
+/** Kept by the DOM, not the widget: CodeMirror hands a kept DOM over to an equal new widget. */
+const scrollKeepers = new WeakMap<HTMLElement, () => void>()
 
 export class FooterWidget extends WidgetType {
   private id: string
@@ -20,7 +24,11 @@ export class FooterWidget extends WidgetType {
     container.id = this.id
     container.classList.add('abele-footer-widget-container')
 
-    container.createDiv({ attr: { 'data-footer-id': this.id }, cls: 'abele-vue-mount' })
+    const mount = container.createDiv({
+      attr: { 'data-footer-id': this.id },
+      cls: 'abele-vue-mount',
+    })
+    scrollKeepers.set(container, keepScrollOnShrink(container, mount))
 
     const store = GlobalStore.getInstance()
     store.footersContainers.value.push(
@@ -38,7 +46,9 @@ export class FooterWidget extends WidgetType {
     return container
   }
 
-  destroy() {
+  destroy(dom: HTMLElement) {
+    scrollKeepers.get(dom)?.()
+    scrollKeepers.delete(dom)
     const store = GlobalStore.getInstance()
     const index = store.footersContainers.value.findIndex((t) => t.id === this.id)
     if (index !== -1) {
