@@ -200,13 +200,16 @@ describe('a day lists', () => {
     expect(days.get('2026-09-01')![0].fromBefore).toBe(true)
   })
 
-  it('places hundreds of notes over a month quickly', () => {
-    const many = Array.from({ length: 2000 }, (_, i) =>
+  // A shared CI runner stalls for tens of milliseconds at random, so a tight bound on a small
+  // input fails for no reason. Twenty thousand notes with a loose bound still fails loudly on
+  // anything quadratic, which is what this is here to catch.
+  it('places thousands of notes over a month without going quadratic', () => {
+    const many = Array.from({ length: 20000 }, (_, i) =>
       item({ title: `n${i}`, start: addDays('2026-01-01', i % 365), startMinute: (i * 7) % 1440 })
     )
     const t = performance.now()
     const days = placeByDay(many, '2026-08-31', '2026-10-11')
-    expect(performance.now() - t).toBeLessThan(100)
+    expect(performance.now() - t).toBeLessThan(1000)
     expect(days.get('2026-09-26')!.length).toBeGreaterThan(0)
   })
 })
