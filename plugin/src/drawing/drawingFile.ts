@@ -30,6 +30,7 @@ import {
   type Rect,
   type ShapeItem,
 } from './items'
+import { noteCardSvg } from './noteCard'
 
 /** Room left round what is drawn, in the picture a note shows. */
 export const MARGIN = 24
@@ -74,6 +75,11 @@ const elementCache = new WeakMap<DrawingItem, string>()
 export function itemElement(item: DrawingItem): string {
   const known = elementCache.get(item)
   if (known !== undefined) return known
+  if (item.type === 'note') {
+    const card = noteCardSvg(item)
+    elementCache.set(item, card)
+    return card
+  }
   const color = inkLiteral(item.color)
   let out: string
   if (item.type === 'stroke') {

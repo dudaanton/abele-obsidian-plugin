@@ -45,6 +45,14 @@ The **text** button: tap where the text goes and type. On an iPad you can write 
 pen and it turns into text. Tap a text already there to change it; empty it to take it away. The
 thickness picks the size of new text.
 
+## Notes on a drawing
+
+**Add a note to the drawing** in the menu at the end of the bar, or drag a note from the file
+explorer onto the drawing, and the note shows there as a card — the note itself, as it reads,
+kept up to date as it changes. Draw over it, pick it with the lasso to move it or make it larger
+(its text grows with it), or take it off the drawing. With drawing off, a tap on a card opens the
+note. Anywhere without the plugin the card shows as a box with the note's name.
+
 ## Moving around
 
 A finger, the mouse or the wheel moves the drawing; two fingers, a trackpad's pinch or Ctrl or ⌘

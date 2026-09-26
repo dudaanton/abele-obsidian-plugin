@@ -9,7 +9,8 @@
  * frame.
  */
 import { MARKER_OPACITY, inkLiteral, strokePath } from '@/reader/ink/stroke'
-import { PAPER, arrowHeadPath, baselineOf } from './drawingFile'
+import { arrowHeadPath, baselineOf } from './drawingFile'
+import { paintNoteCard } from './noteCard'
 import {
   TEXT_FONT,
   boundsOf,
@@ -24,7 +25,7 @@ import { visibleRect, type Camera } from './camera'
 const paths = new WeakMap<DrawingItem, Path2D>()
 
 function pathOf(item: DrawingItem): Path2D | null {
-  if (item.type === 'text') return null
+  if (item.type === 'text' || item.type === 'note') return null
   const known = paths.get(item)
   if (known) return known
   let d: string
@@ -45,8 +46,15 @@ function pathOf(item: DrawingItem): Path2D | null {
   return path
 }
 
-/** One item painted, the context already set to the drawing's units. */
-export function paintItem(ctx: CanvasRenderingContext2D, item: DrawingItem): void {
+/**
+ * One item painted, the context already set to the drawing's units. A note is painted as its
+ * card only when asked (`notes`): in the drawing's tab the note itself shows under the canvas.
+ */
+export function paintItem(ctx: CanvasRenderingContext2D, item: DrawingItem, notes = false): void {
+  if (item.type === 'note') {
+    if (notes) paintNoteCard(ctx, item)
+    return
+  }
   const color = inkLiteral(item.color)
   if (item.type === 'text') {
     ctx.globalAlpha = 1
@@ -84,7 +92,8 @@ export function paintItems(
   items: readonly DrawingItem[],
   area: Rect,
   zoom: number,
-  skip?: ReadonlySet<string>
+  skip?: ReadonlySet<string>,
+  notes = false
 ): number {
   let n = 0
   // Smaller than this on screen, an item is a speck nobody can see: it is left out.
@@ -93,7 +102,7 @@ export function paintItems(
     if (skip?.has(item.id)) continue
     const b = boundsOf(item)
     if (!intersects(b, area) || (b.w < speck && b.h < speck)) continue
-    paintItem(ctx, item)
+    paintItem(ctx, item, notes)
     n++
   }
   ctx.globalAlpha = 1
@@ -181,8 +190,7 @@ export class DrawingRenderer {
     ctx.beginPath()
     ctx.rect(area.x, area.y, area.w, area.h)
     ctx.clip()
-    ctx.fillStyle = PAPER
-    ctx.fillRect(area.x, area.y, area.w, area.h)
+    ctx.clearRect(area.x, area.y, area.w, area.h)
     paintItems(ctx, items, area, camera.zoom)
     ctx.restore()
     this.keep(camera)
@@ -211,14 +219,16 @@ export class DrawingRenderer {
     return true
   }
 
-  /** The whole canvas, paper and nothing on it. */
+  /**
+   * The whole canvas, clear: the paper is the surface's, under it, and so are the notes shown on
+   * the drawing, which the ink goes over.
+   */
   private blank(): void {
     const { ctx } = this
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.globalAlpha = 1
     ctx.globalCompositeOperation = 'source-over'
-    ctx.fillStyle = PAPER
-    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
   }
 
   private keep(camera: Camera): void {

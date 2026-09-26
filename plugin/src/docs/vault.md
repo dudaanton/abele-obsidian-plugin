@@ -505,6 +505,10 @@ the items oldest (lowest) first, each with an `id` and a `type`:
 - `shape` — `kind` (`rect`, `ellipse`, `line`, `arrow`), the two corners or ends `x1 y1 x2 y2`,
   `color`, `size`;
 - `text` — `x`, `y` (the top left), `text` (lines split by `\n`), `size`, `color`.
+- `note` — a note shown on the drawing: `path` (the note's vault path), its box `x`, `y`, `w`, `h`,
+  and `scale`, the drawing's units per pixel of the note's text. The file's picture shows it as a
+  card with the note's name; the drawing's tab shows the note itself. A note renamed or moved in
+  Obsidian is followed there.
 
 Colours are names: `black`, `red`, `blue`, `green`, `yellow`, `pink`. Units are CSS pixels at
 100%.

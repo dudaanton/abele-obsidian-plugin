@@ -258,6 +258,49 @@ const zoomText = computed(() => `${Math.round(props.model.zoom * 100)}%`)
   }
 }
 
+/* Notes shown on a drawing (`noteLayer.ts`): under the ink, each a card laid out at its note's
+   own size and scaled with the drawing. Their touches are the surface's. */
+.abele-drawing-notes {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.abele-drawing-note {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid;
+  border-radius: var(--radius-m);
+  transform-origin: 0 0;
+  color: var(--text-normal);
+}
+
+.abele-drawing-note__title {
+  flex: 0 0 auto;
+  padding: var(--size-4-2) var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border);
+  overflow: hidden;
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.abele-drawing-note__body {
+  flex: 1 1 auto;
+  padding: 0 var(--size-4-3);
+  overflow: hidden;
+}
+
+.abele-drawing-note__missing {
+  color: var(--text-muted);
+}
+
 .abele-drawing-surface__canvas {
   position: absolute;
   inset: 0;

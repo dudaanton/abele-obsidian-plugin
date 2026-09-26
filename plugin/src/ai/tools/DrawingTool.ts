@@ -70,11 +70,17 @@ export function createLookAtDrawingTool(): AgentTool {
       const texts = data.items
         .filter((i) => i.type === 'text' && intersects(boundsOf(i), shown))
         .map((i) => (i.type === 'text' ? i.text.replace(/\n/g, ' / ') : ''))
+      const notes = data.items
+        .filter((i) => i.type === 'note' && intersects(boundsOf(i), shown))
+        .map((i) => (i.type === 'note' ? i.path : ''))
       const count = data.items.filter((i) => intersects(boundsOf(i), shown)).length
       const about =
         `Drawing ${path}: the whole of it is ${formatView(whole)}; ` +
         `shown: ${area ? formatView(area) : 'all of it'}, ${count} item(s), ${canvas.width}×${canvas.height} px.` +
-        (texts.length ? ` Typed text in it: ${texts.map((t) => `“${t}”`).join('; ')}.` : '')
+        (texts.length ? ` Typed text in it: ${texts.map((t) => `“${t}”`).join('; ')}.` : '') +
+        (notes.length
+          ? ` Notes shown on it (read them with \`read\`): ${notes.map((p) => `[[${p}]]`).join(', ')}.`
+          : '')
       const image: UserContentPart[] = [
         { type: 'text', text: `[Drawing: ${path}]` },
         { type: 'image_url', image_url: { url: canvas.toDataURL('image/png') } },

@@ -35,6 +35,8 @@ function samples(item: DrawingItem): [number, number][] {
   const b = boundsOf(item)
   const mid: [number, number] = [b.x + b.w / 2, b.y + b.h / 2]
   if (item.type === 'text') return [mid]
+  if (item.type === 'note')
+    return [mid, [b.x, b.y], [b.x + b.w, b.y], [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]]
   return [mid, [item.x1, item.y1], [item.x2, item.y2], [item.x1, item.y2], [item.x2, item.y1]]
 }
 

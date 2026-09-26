@@ -9,7 +9,7 @@
  */
 import type { InkColor } from '@/reader/ink/stroke'
 import type { DrawingItems } from './history'
-import { LINE_HEIGHT, newId, type DrawingItem, type TextItem } from './items'
+import { LINE_HEIGHT, hasColor, newId, type DrawingItem, type TextItem } from './items'
 import type { Camera } from './camera'
 import { floatedBox, type Float } from './editTools'
 import { HANDLE_RADIUS, pickedBounds } from './selection'
@@ -62,6 +62,11 @@ export class DrawingPick {
     return this.ids.size ? pickedBounds(this.items.items, this.ids) : null
   }
 
+  /** What is being dragged, and how; null while nothing is. */
+  get drag(): { ids: ReadonlySet<string>; float: Float } | null {
+    return this.floating ? { ids: this.ids, float: this.floating } : null
+  }
+
   /** What the canvas leaves out: what is dragged, the text being typed. */
   hidden(): ReadonlySet<string> | undefined {
     if (this.floating) return this.ids
@@ -108,7 +113,7 @@ export class DrawingPick {
   /** What is picked, in another colour. */
   recolor(color: InkColor): void {
     const changed = this.items.items
-      .filter((i) => this.ids.has(i.id) && i.color !== color)
+      .filter((i) => this.ids.has(i.id) && hasColor(i) && i.color !== color)
       .map((i) => ({ ...i, color }))
     if (!changed.length) return
     this.items.replace(changed)

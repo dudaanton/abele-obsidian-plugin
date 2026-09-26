@@ -38,7 +38,8 @@ export function drawingCanvas(
   ctx.fillStyle = PAPER
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   ctx.setTransform(k, 0, 0, k, -part.x * k, -part.y * k)
-  paintItems(ctx, items, part, k)
+  // Notes as their cards: a picture cannot hold the note itself.
+  paintItems(ctx, items, part, k, undefined, true)
   return canvas
 }
 

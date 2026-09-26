@@ -19,6 +19,7 @@ import { guardSurface } from '@/reader/ink/inkGuard'
 import type { InkRoute } from '@/reader/ink/inkRoute'
 import { panBy, toWorld, zoomAt, type Camera } from './camera'
 import { DrawingRenderer } from './renderer'
+import { PAPER } from './drawingFile'
 
 export interface WorldPoint {
   x: number
@@ -49,13 +50,17 @@ export interface SurfaceHost {
   overlay?(ctx: CanvasRenderingContext2D, zoom: number): void
   /** A touch landed: whatever was being typed is kept first. */
   touched?(): void
+  /** A touch that moved the drawing hardly moved at all: a tap, at a point of the drawing. */
+  tap?(x: number, y: number): void
+  /** Something dragged in from elsewhere — a note from the file list — let go at a point. */
+  drop?(text: string, x: number, y: number): void
 }
 
 const XHTML = 'http://www.w3.org/1999/xhtml'
 
 type Touch =
   | { kind: 'tool'; gesture: ToolGesture; touch: boolean }
-  | { kind: 'pan'; x: number; y: number }
+  | { kind: 'pan'; x: number; y: number; x0: number; y0: number; moved: boolean }
 
 export class DrawingSurface {
   readonly el: HTMLElement
@@ -77,6 +82,8 @@ export class DrawingSurface {
     this.win = doc.defaultView ?? window
     this.el = doc.createElementNS(XHTML, 'div')
     this.el.className = 'abele-drawing-surface'
+    // The paper, under the notes shown on the drawing and under the ink.
+    this.el.setCssStyles({ backgroundColor: PAPER })
     const main = doc.createElementNS(XHTML, 'canvas') as HTMLCanvasElement
     main.className = 'abele-drawing-surface__canvas'
     this.live = doc.createElementNS(XHTML, 'canvas') as HTMLCanvasElement
@@ -101,6 +108,20 @@ export class DrawingSurface {
     on('pointerup', (e) => this.up(e, false))
     on('pointercancel', (e) => this.up(e, true))
     on('wheel', (e) => this.wheel(e), { passive: false })
+    // A note dragged in from the file list lands where it is let go.
+    on('dragover', (e) => {
+      if (!this.host.drop) return
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'link'
+    })
+    on('drop', (e) => {
+      const text = e.dataTransfer?.getData('text/plain') ?? ''
+      if (!this.host.drop || !text) return
+      e.preventDefault()
+      e.stopPropagation()
+      const [x, y] = this.worldAt(e)
+      this.host.drop(text, x, y)
+    })
     this.off.push(guardSurface(this.el))
   }
 
@@ -193,7 +214,14 @@ export class DrawingSurface {
       // A pointer the page no longer has: it is not captured, and is followed while it lasts.
     }
     if (route === 'pan') {
-      this.touches.set(e.pointerId, { kind: 'pan', x: e.clientX, y: e.clientY })
+      this.touches.set(e.pointerId, {
+        kind: 'pan',
+        x: e.clientX,
+        y: e.clientY,
+        x0: e.clientX,
+        y0: e.clientY,
+        moved: false,
+      })
       return
     }
     const gesture = this.host.begin(route, this.point(e), e)
@@ -238,6 +266,7 @@ export class DrawingSurface {
     }
     t.x = e.clientX
     t.y = e.clientY
+    if (Math.hypot(t.x - t.x0, t.y - t.y0) > 6 || pans.length > 1) t.moved = true
   }
 
   private up(e: PointerEvent, cancelled: boolean): void {
@@ -246,6 +275,10 @@ export class DrawingSurface {
     this.touches.delete(e.pointerId)
     if (e.pointerType === 'pen' && this.host.drawing()) this.host.pen(false)
     if (t?.kind === 'tool') t.gesture.end(cancelled)
+    else if (t?.kind === 'pan' && !t.moved && !cancelled && !this.touches.size) {
+      const [x, y] = this.worldAt(e)
+      this.host.tap?.(x, y)
+    }
     this.paintLive()
   }
 

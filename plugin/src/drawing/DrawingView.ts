@@ -26,6 +26,7 @@ import { visibleRect } from './camera'
 import { drawingPng, withMargin } from './rasterize'
 import { askAboutDrawing } from './askAgent'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { pickNote } from '@/helpers/suggesters/NotePicker'
 import { SHAPE_KINDS, type Rect, type ShapeKind } from './items'
 
 export { DRAWING_VIEW_TYPE }
@@ -96,6 +97,9 @@ export class DrawingView extends TextFileView {
     const bar = this.contentEl.createDiv({ cls: 'abele-drawing-view__bar' })
     const stage = this.contentEl.createDiv({ cls: 'abele-drawing-view__stage' })
     this.session = new DrawingSession(stage, this.model, {
+      app: this.app,
+      path: () => this.file?.path ?? '',
+      openNote: (path) => void this.app.workspace.openLinkText(path, this.file?.path ?? '', 'tab'),
       changed: () => this.requestSave(),
       stopped: () => void this.save(),
     })
@@ -114,6 +118,12 @@ export class DrawingView extends TextFileView {
       onMore: (e: MouseEvent) => this.moreMenu(e),
     })
     this.vue.mount(bar)
+    // A note shown on the drawing follows its changes.
+    this.registerEvent(
+      this.app.vault.on('modify', (file) => {
+        if (file.path.endsWith('.md')) this.session?.noteChanged(file.path)
+      })
+    )
   }
 
   async onClose(): Promise<void> {
@@ -262,6 +272,15 @@ export class DrawingView extends TextFileView {
           .onClick(() => {
             const { width, height } = session.surface
             void copyEmbed(`![[${file.path}]]`, visibleRect(session.camera, width, height))
+          })
+      )
+      menu.addItem((item) =>
+        item
+          .setTitle('Add a note to the drawing')
+          .setIcon('sticky-note')
+          .onClick(async () => {
+            const note = await pickNote(this.app, { placeholder: 'A note to show on the drawing…' })
+            if (note) this.session?.addNote(note.path)
           })
       )
       // What is picked, when something is; else the whole drawing.

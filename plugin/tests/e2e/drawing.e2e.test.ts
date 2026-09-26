@@ -505,6 +505,49 @@ describe.skipIf(!available)('the drawing canvas', () => {
     expect(r.read).toBe('data:image/png;base64,')
   })
 
+  it('shows a note on the drawing as it reads, under the ink, opens it on a tap and follows its rename', () => {
+    const r = run<{
+      error?: string
+      card?: { text: string; inView: boolean; under: boolean }
+      opened?: string
+      renamed?: string
+      svg?: boolean
+    }>(`
+      await closeAll()
+      const NOTE = DIR + '/Card note.md'
+      for (const p of [NOTE, DIR + '/Card note moved.md']) { const f = app.vault.getAbstractFileByPath(p); if (f) await app.vault.delete(f) }
+      await app.vault.create(NOTE, '# Shopping\n\n- milk\n- bread\n')
+      const view = await newOne()
+      view.session.stop()
+      view.session.addNote(NOTE)
+      const el = await until(() => q(view, '.abele-drawing-note .abele-drawing-note__body li'), 5000)
+      const cardEl = q(view, '.abele-drawing-note')
+      const cr = cardEl.getBoundingClientRect(), sr = box(view)
+      const card = {
+        text: cardEl.textContent,
+        inView: cr.left >= sr.left && cr.right <= sr.right,
+        under: [...view.session.surface.el.children].indexOf(q(view, '.abele-drawing-notes')) === 0,
+      }
+      // A tap on it, drawing off: the note opens.
+      await tap(cr.left + cr.width / 2, cr.top + cr.height / 2, 'mouse')
+      const opened = await until(() => app.workspace.getActiveFile()?.path === NOTE && NOTE, 5000)
+      const noteLeaf = app.workspace.getLeavesOfType('markdown').find((l) => l.view.file?.path === NOTE)
+      noteLeaf?.detach()
+      await app.fileManager.renameFile(app.vault.getAbstractFileByPath(NOTE), DIR + '/Card note moved.md')
+      const renamed = await until(() => items(view).find((i) => i.type === 'note')?.path.endsWith('moved.md') && items(view).find((i) => i.type === 'note').path, 5000)
+      await view.save()
+      const svg = (await read(view.file.path)).includes('>Card note moved</text>')
+      return { card, opened, renamed, svg }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.card?.text).toContain('milk')
+    expect(r.card?.inView).toBe(true)
+    expect(r.card?.under).toBe(true)
+    expect(r.opened).toContain('Card note.md')
+    expect(r.renamed).toContain('Card note moved.md')
+    expect(r.svg).toBe(true)
+  })
+
   it('fits its bar on a phone, where a finger draws, and on a tablet, where it moves the drawing', async () => {
     await reload('app.emulateMobile(true)')
     await setWindowSize(390, 844)

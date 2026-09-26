@@ -82,7 +82,10 @@ export function eraseGesture(ctx: ToolContext, start: WorldPoint): ToolGesture {
   let at = start
   const eraseAt = (pt: WorldPoint) => {
     const radius = ERASER_RADIUS / ctx.zoom()
-    const hit = ctx.items.items.filter((item) => hitItem(item, pt.x, pt.y, radius))
+    // A note on the drawing is not ink: the lasso takes it away, the eraser passes over it.
+    const hit = ctx.items.items.filter(
+      (item) => item.type !== 'note' && hitItem(item, pt.x, pt.y, radius)
+    )
     if (!hit.length) return
     // Places counted as if taken one after the other, as the steps of undo are put back.
     const changes = hit.map(

@@ -50,7 +50,28 @@ export interface TextItem {
   color: InkColor
 }
 
-export type DrawingItem = StrokeItem | ShapeItem | TextItem
+/**
+ * A note shown on the drawing: its box on the drawing, and how large the note's own text is in
+ * it — a card scaled up shows the same lines larger, as a picture of the note would.
+ */
+export interface NoteItem {
+  id: string
+  type: 'note'
+  x: number
+  y: number
+  w: number
+  h: number
+  /** The drawing's units per pixel of the note's text: 1 shows it as a note shows it at 100%. */
+  scale: number
+  /** The note, by its path in the vault. */
+  path: string
+}
+
+export type DrawingItem = StrokeItem | ShapeItem | TextItem | NoteItem
+
+/** The items that carry a colour of their own. */
+export type ColoredItem = StrokeItem | ShapeItem | TextItem
+export const hasColor = (item: DrawingItem): item is ColoredItem => item.type !== 'note'
 
 export interface Rect {
   x: number
@@ -121,10 +142,10 @@ export function boundsOf(item: DrawingItem): Rect {
       },
       reach
     )
-  } else {
+  } else if (item.type === 'text') {
     const { w, h } = textSize(item)
     out = { x: item.x, y: item.y, w, h }
-  }
+  } else out = { x: item.x, y: item.y, w: item.w, h: item.h }
   boundsCache.set(item, out)
   return out
 }
@@ -206,7 +227,7 @@ export function hitItem(item: DrawingItem, x: number, y: number, radius: number)
   if (x < b.x - radius || x > b.x + b.w + radius || y < b.y - radius || y > b.y + b.h + radius)
     return false
   if (item.type === 'stroke') return hitStroke(item, x, y, radius)
-  if (item.type === 'text') return true
+  if (item.type === 'text' || item.type === 'note') return true
   const reach = (radius + item.size / 2) ** 2
   return shapeSegments(item).some(([ax, ay, bx, by]) => distSq(x, y, ax, ay, bx, by) <= reach)
 }
@@ -230,17 +251,28 @@ export function moveItem<T extends DrawingItem>(item: T, dx: number, dy: number)
   return { ...item, x: r1(item.x + dx), y: r1(item.y + dy) }
 }
 
+const r3 = (n: number) => Math.round(n * 1000) / 1000
+
 /** The item scaled by `k` about a point, its width and its letters with it. */
 export function scaleItem<T extends DrawingItem>(item: T, ox: number, oy: number, k: number): T {
   const sx = (x: number) => r1(ox + (x - ox) * k)
   const sy = (y: number) => r1(oy + (y - oy) * k)
-  const size = Math.round(item.size * k * 100) / 100
+  const size = hasColor(item) ? Math.round(item.size * k * 100) / 100 : 0
   if (item.type === 'stroke') {
     const points = item.points.map((v, i) => (i % 3 === 2 ? v : i % 3 === 0 ? sx(v) : sy(v)))
     return { ...item, points, size }
   }
   if (item.type === 'shape')
     return { ...item, x1: sx(item.x1), y1: sy(item.y1), x2: sx(item.x2), y2: sy(item.y2), size }
+  if (item.type === 'note')
+    return {
+      ...item,
+      x: sx(item.x),
+      y: sy(item.y),
+      w: r1(item.w * k),
+      h: r1(item.h * k),
+      scale: r3(item.scale * k),
+    }
   return { ...item, x: sx(item.x), y: sy(item.y), size }
 }
 
@@ -272,6 +304,23 @@ export function itemFrom(raw: unknown): DrawingItem | null {
     const [x1, y1, x2, y2] = [o.x1, o.y1, o.x2, o.y2].map(coord)
     if (x1 === null || y1 === null || x2 === null || y2 === null) return null
     return { id, type: 'shape', kind: o.kind as ShapeKind, x1, y1, x2, y2, color, size: size ?? 2 }
+  }
+  if (o.type === 'note') {
+    const x = coord(o.x)
+    const y = coord(o.y)
+    const w = num(o.w, 1, 1e6)
+    const h = num(o.h, 1, 1e6)
+    const scale = num(o.scale, 0.001, 1000) ?? 1
+    // A vault path: no control characters, nothing that climbs out of the vault.
+    const path = typeof o.path === 'string' ? o.path : ''
+    const okPath =
+      path.length > 0 &&
+      path.length < 1000 &&
+      // eslint-disable-next-line no-control-regex -- control characters are exactly what is refused
+      !/[\u0000-\u001f]/.test(path) &&
+      !path.split('/').includes('..')
+    if (x === null || y === null || w === null || h === null || !okPath) return null
+    return { id, type: 'note', x, y, w, h, scale, path }
   }
   if (o.type === 'text') {
     const x = coord(o.x)

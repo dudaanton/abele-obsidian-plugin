@@ -6,12 +6,21 @@
  * surface answers the tools; while it is off, every touch moves the drawing. Either way nothing
  * that lands on the surface reaches Obsidian.
  */
-import { Platform } from 'obsidian'
+import { Platform, type App } from 'obsidian'
 import { routePointer } from '@/reader/ink/inkRoute'
 import type { InkColor } from '@/reader/ink/stroke'
 import { DrawingItems } from './history'
-import { contentBounds, type DrawingItem, type Rect, type ShapeKind } from './items'
-import { fitRect, zoomAt, type Camera } from './camera'
+import {
+  boundsOf,
+  contentBounds,
+  newId,
+  type DrawingItem,
+  type NoteItem,
+  type Rect,
+  type ShapeKind,
+} from './items'
+import { NoteLayer } from './noteLayer'
+import { fitRect, toWorld, zoomAt, type Camera } from './camera'
 import { DrawingSurface, type ToolGesture, type WorldPoint } from './surface'
 import { eraseGesture, strokeGesture, type ToolContext } from './tools'
 import { dragGesture, lassoGesture, shapeGesture, textGesture, type EditContext } from './editTools'
@@ -23,6 +32,11 @@ import { WIDTHS, type DrawingModel, type DrawingTool, type Thickness } from './m
 const SETTLE_MS = 140
 
 export interface SessionHost {
+  app: App
+  /** The drawing's own path, for the notes on it to resolve their links from. */
+  path(): string
+  /** A note on the drawing was tapped with drawing off. */
+  openNote(path: string): void
   /** The drawing changed and is to be written. */
   changed(): void
   /** Drawing mode went off: what is waiting is written now. */
@@ -40,6 +54,8 @@ export class DrawingSession {
   private readonly win: Window
   /** What the lasso picked, a text block being typed, and how they are shown. */
   readonly pick: DrawingPick
+  /** The notes shown on the drawing, under the ink. */
+  readonly notes: NoteLayer
 
   constructor(
     parent: HTMLElement,
@@ -63,11 +79,20 @@ export class DrawingSession {
       setCamera: (c) => this.setCamera(c),
       overlay: (ctx, zoom) => this.pick.paint(ctx, zoom),
       touched: () => this.pick.closeText(),
+      tap: (x, y) => this.tapped(x, y),
+      drop: (text, x, y) => this.dropped(text, x, y),
     })
+    this.notes = new NoteLayer(this.surface.el, host.app, () => host.path())
     this.pick = new DrawingPick(parent, this.items, model, {
       camera: () => this.cam,
-      paint: (skip) => this.surface.renderer.paint(this.items.items, this.cam, skip),
-      paintLive: () => this.surface.paintLive(),
+      paint: (skip) => {
+        this.surface.renderer.paint(this.items.items, this.cam, skip)
+        this.layoutNotes()
+      },
+      paintLive: () => {
+        this.surface.paintLive()
+        this.layoutNotes()
+      },
       changed: () => this.edited(),
     })
     this.surface.onResize = () => this.paint()
@@ -78,6 +103,7 @@ export class DrawingSession {
     this.pick.closeText()
     this.win.clearTimeout(this.settle)
     if (this.frame) this.win.cancelAnimationFrame(this.frame)
+    this.notes.destroy()
     this.surface.destroy()
   }
 
@@ -248,6 +274,7 @@ export class DrawingSession {
       this.settle = this.win.setTimeout(() => this.paint(), SETTLE_MS)
     }
     this.surface.paintLive()
+    this.layoutNotes()
   }
 
   /** Zoomed by a factor about the middle of the view. */
@@ -275,5 +302,76 @@ export class DrawingSession {
 
   paint(): void {
     this.surface.renderer.paint(this.items.items, this.cam, this.pick.hidden())
+    this.layoutNotes()
+  }
+
+  private layoutNotes(): void {
+    const { width, height } = this.surface
+    this.notes.sync(this.items.items, this.cam, width, height, this.pick.drag)
+  }
+
+  // ————— Notes on the drawing —————
+
+  /** A note put on the drawing: at a point, or in the middle of the view, its text at 100%. */
+  addNote(path: string, at?: { x: number; y: number }): void {
+    const z = this.cam.zoom
+    const w = 360 / z
+    const h = 280 / z
+    const mid = toWorld(this.cam, this.surface.width / 2, this.surface.height / 2)
+    const [x, y] = at ? [at.x, at.y] : [mid[0] - w / 2, mid[1] - h / 2]
+    const r1 = (n: number) => Math.round(n * 10) / 10
+    const item: NoteItem = {
+      id: newId(),
+      type: 'note',
+      x: r1(x),
+      y: r1(y),
+      w: r1(w),
+      h: r1(h),
+      scale: Math.round((1 / z) * 1000) / 1000,
+      path,
+    }
+    this.items.add([item])
+    this.edited()
+  }
+
+  /** A tap with drawing off: on a note, the note opens. */
+  private tapped(x: number, y: number): void {
+    if (this.model.on) return
+    const items = this.items.items
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i]
+      if (item.type !== 'note') continue
+      const b = boundsOf(item)
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+        this.host.openNote(item.path)
+        return
+      }
+    }
+  }
+
+  /** A note dragged in from the file list: put on the drawing where it was let go. */
+  private dropped(text: string, x: number, y: number): void {
+    const { app } = this.host
+    const link = /\[\[([^\]|#]+)/.exec(text)?.[1] ?? /\]\(([^)#]+)/.exec(text)?.[1] ?? text.trim()
+    let target = ''
+    try {
+      target = decodeURIComponent(link)
+    } catch {
+      target = link
+    }
+    const file = app.metadataCache.getFirstLinkpathDest(target, this.host.path())
+    if (file?.extension === 'md') this.addNote(file.path, { x, y })
+  }
+
+  /** Items changed from outside the tools — a note renamed — as one step of undo. */
+  replaceItems(items: DrawingItem[]): void {
+    if (!items.length) return
+    this.items.replace(items)
+    this.edited()
+  }
+
+  /** A note changed: the cards of it show it as it is now. */
+  noteChanged(path: string): void {
+    this.notes.refresh(path)
   }
 }

@@ -13,6 +13,7 @@ import {
   newDrawing,
 } from './files'
 import { drawingEmbedProcessor } from './embed'
+import { followNoteRename } from './noteRenames'
 
 export function registerDrawing(plugin: Plugin): void {
   const { app } = plugin
@@ -28,6 +29,13 @@ export function registerDrawing(plugin: Plugin): void {
   plugin.registerEvent(app.workspace.on('layout-change', adopt))
   plugin.register(() => window.clearTimeout(pending))
   plugin.registerEvent(app.vault.on('delete', (file) => known.delete(file.path)))
+  // A note shown on drawings follows its renames there.
+  plugin.registerEvent(
+    app.vault.on('rename', (file, oldPath) => {
+      if (file instanceof TFile && file.extension === 'md')
+        void followNoteRename(app, oldPath, file.path)
+    })
+  )
 
   // A drawing's callout in a note shows the part of it the callout names.
   plugin.registerMarkdownPostProcessor(drawingEmbedProcessor(app))
