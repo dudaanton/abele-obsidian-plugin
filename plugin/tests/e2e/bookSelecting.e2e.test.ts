@@ -374,7 +374,9 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
           await until(() => view.model.selection, 3000)
           await wait(700)
           const s0 = at(view)
-          const x = s.right - 4, y = s.top + s.height / 2
+          // On the page's edge, not on the scrolled chapter's scrollbar beside it: a click on its
+          // track is the platform's own page down, a screen less 40 px, and never reaches the page.
+          const x = s.right - s.width * 0.08, y = s.top + s.height / 2
           await mouse('mouseMoved', x, y, 0); await mouse('mousePressed', x, y); await mouse('mouseReleased', x, y, 0)
           await wait(900)
           const step = at(view).start - s0.start
