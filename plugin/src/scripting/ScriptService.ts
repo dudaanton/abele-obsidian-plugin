@@ -18,6 +18,7 @@ import { VIEW_GLOBALS } from './view/components'
 import { showFormModal } from './formModal'
 import { ScriptRuns, type RunSource } from './ScriptRuns'
 import type { ParsedScript, FormField } from './types'
+import type { BookScriptContext } from './bookContext'
 import type { RestoreInfo } from './view/View'
 import type { AutomationEvent } from '@/automations/types'
 import { ref } from 'vue'
@@ -48,6 +49,8 @@ export interface ExecuteOptions {
   onWrite?: (path: string) => void
   /** What started the run, in words, for the list of runs: "Task completed · Tasks/Milk.md". */
   trigger?: string
+  /** The words in a book the run was asked for from; the script reads it as `book`. */
+  book?: BookScriptContext
 }
 
 /**
@@ -99,16 +102,16 @@ const REDECLARED = /Identifier '(\w+)' has already been declared/
 /**
  * The script as a function of its context. Throws what the engine threw, said better.
  *
- * `event` is given in the scope around the script rather than beside the reserved names: it
- * arrived after scripts had been written for years, and `event` is an ordinary name for a
- * variable. Declared out there, a script's own `const event` simply shadows it.
+ * `event` and `book` are given in the scope around the script rather than beside the reserved
+ * names: they arrived after scripts had been written for years, and both are ordinary names for
+ * a variable. Declared out there, a script's own `const event` simply shadows it.
  */
 function compile(code: string): (ctx: ScriptContext) => Promise<unknown> {
   try {
     return new Function(
       'ctx',
       `"use strict";
-      const { event } = ctx;
+      const { event, book } = ctx;
       return (async () => {
         const { ${SCRIPT_GLOBALS.join(', ')} } = ctx;
         ${code}
@@ -614,6 +617,7 @@ export class ScriptService {
       source: opts.source ?? 'agent',
       stop: () => combinedController.abort(),
       trigger: opts.trigger,
+      book: opts.book,
     })
     this.renderStatusBar()
 
@@ -638,6 +642,7 @@ export class ScriptService {
         scriptName: script.meta.name,
         restore: opts.restore,
         event: opts.event,
+        book: opts.book,
         onWrite: opts.onWrite,
       })
 
@@ -713,8 +718,14 @@ export class ScriptService {
     return view?.editor?.getSelection() || ''
   }
 
-  private async showParamForm(script: ParsedScript): Promise<Record<string, unknown> | null> {
-    const selection = this.getEditorSelection()
+  /**
+   * Asks for a script's parameters; one marked `selection` starts out as the words selected —
+   * in the note in front, or the ones given (a book's).
+   */
+  async showParamForm(
+    script: ParsedScript,
+    selection = this.getEditorSelection()
+  ): Promise<Record<string, unknown> | null> {
     const fields: FormField[] = script.meta.params.map((p) => ({
       name: p.name,
       label: p.description || p.name,

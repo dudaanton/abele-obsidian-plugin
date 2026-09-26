@@ -140,6 +140,7 @@ const SOURCE_WORD: Record<ScriptRun['source'], string> = {
   script: 'script',
   view: 'view',
   automation: 'automation',
+  book: 'book',
 }
 
 const store = ScriptRuns.getInstance()
@@ -218,6 +219,7 @@ const start = async (run: ScriptRun, params: Record<string, unknown>) => {
       formHandler: showFormModal,
       // Run again by hand, an agent's or an automation's run is the person's own.
       source: run.source === 'agent' || run.source === 'automation' ? 'command' : run.source,
+      book: run.book,
     })
     if (result.trim()) new Notice(result.length > 500 ? result.slice(0, 500) + '…' : result, 10000)
   } catch (err) {

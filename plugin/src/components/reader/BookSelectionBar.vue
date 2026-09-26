@@ -45,6 +45,22 @@
         tooltip="Quote these words with a link into the note you were last in"
         @click="emit('quote')"
       />
+      <Icon
+        v-for="s in scripts ?? []"
+        :key="s.name"
+        :icon="s.icon || 'scroll-text'"
+        :tooltip="`Run ${s.name} on these words`"
+        class="abele-book-selection__script"
+        :data-script="s.name"
+        @click="emit('script', s.name)"
+      />
+      <Icon
+        v-if="canRunScripts"
+        icon="terminal"
+        tooltip="Run a script on these words…"
+        class="abele-book-selection__run-script"
+        @click="emit('script')"
+      />
       <template v-if="highlight">
         <Icon icon="file-text" tooltip="Open the highlights note" @click="emit('open-note')" />
         <Icon icon="trash-2" tooltip="Remove the highlight" @click="emit('delete')" />
@@ -61,7 +77,7 @@
 <script setup lang="ts">
 /**
  * What can be done to words selected on the page — highlight them in a colour, comment, link to
- * them, quote them into a note — or to a highlight that was tapped: recolour it, comment, link,
+ * them, quote them into a note, run a script on them — or to a highlight that was tapped: recolour it, comment, link,
  * open its note, remove it. A row of glyphs, so it fits a phone.
  */
 import Icon from '../obsidian/Icon.vue'
@@ -72,6 +88,10 @@ defineProps<{
   highlight?: Highlight | null
   /** The AI side is on, so a chat can be asked from here. */
   canAsk?: boolean
+  /** Scripts whose header says `@book`: a button each. */
+  scripts?: { name: string; icon?: string }[]
+  /** There are scripts to pick one from. */
+  canRunScripts?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -81,6 +101,7 @@ const emit = defineEmits<{
   (e: 'read-aloud'): void
   (e: 'copy-link'): void
   (e: 'quote'): void
+  (e: 'script', name?: string): void
   (e: 'open-note'): void
   (e: 'delete'): void
   (e: 'close'): void

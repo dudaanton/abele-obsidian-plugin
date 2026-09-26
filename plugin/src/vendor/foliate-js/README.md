@@ -81,6 +81,10 @@ Every change is marked `ABELE PATCH` at its site.
    width, and said so as a relocation. Now nothing is rendered or measured while the tab has no
    size; its size coming back renders it once, at the place it had.
 
+9. **An annotation's key and its place can differ** (`view.js`, `addAnnotation`). An annotation
+   carrying `cfi` is drawn there and kept under its `value`, so the marks of notes linking to
+   words (`abele-link:<cfi>`) live beside a highlight on the same words instead of replacing it.
+
 ## Additions
 
 `view.d.ts`, `epub.d.ts` and `frame-options.d.ts` type the parts of the modules beside them that

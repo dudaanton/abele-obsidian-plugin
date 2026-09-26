@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { nanoid } from 'nanoid'
+import type { BookScriptContext } from './bookContext'
 
 /**
  * Every script run of this session, and what became of it.
@@ -12,7 +13,15 @@ import { nanoid } from 'nanoid'
 export type RunStatus = 'running' | 'done' | 'failed' | 'stopped'
 
 /** Who asked for the run. A script failing on its own is not the same as one an agent called. */
-export type RunSource = 'command' | 'note' | 'link' | 'agent' | 'script' | 'view' | 'automation'
+export type RunSource =
+  | 'command'
+  | 'note'
+  | 'link'
+  | 'agent'
+  | 'script'
+  | 'view'
+  | 'automation'
+  | 'book'
 
 export interface RunLogLine {
   at: number
@@ -35,6 +44,8 @@ export interface ScriptRun {
   error: string
   /** What started it, in words, when that is more than its source: the automation's event. */
   trigger?: string
+  /** The words in a book it was run on, given again when it is run again from the list. */
+  book?: BookScriptContext
 }
 
 /**
@@ -70,6 +81,7 @@ export class ScriptRuns {
     source: RunSource
     stop: () => void
     trigger?: string
+    book?: BookScriptContext
   }): string {
     const id = nanoid(8)
     this.stoppers.set(id, run.stop)
@@ -88,6 +100,7 @@ export class ScriptRuns {
       result: '',
       error: '',
       ...(run.trigger ? { trigger: run.trigger } : {}),
+      ...(run.book ? { book: run.book } : {}),
     })
     this.trim()
     return id

@@ -49,6 +49,56 @@ as it changes. In **Settings → Abele → Books** you can send highlights to on
 choose per book, and give the note a template.
 
 A link to a place in a book opens the book there, just like a link to a heading opens a note.
+And it works the other way too: words that any of your notes link to get a dotted underline in
+the book. Tap them to open the note; when several notes link there, pick one from a menu.
+
+## Running a script on words
+
+With [scripts](scripts) turned on, the bar on selected words (and on a highlight) has a
+**Run a script on these words** button, which lists your scripts. A script whose header has the
+line `// @book` gets a button of its own on the bar, with its icon, so the one you use most is a
+single tap. The script is given the words, the whole sentence they are in, a link to this place,
+the book and the chapter, as `book`; a parameter marked `selection` is filled with the words.
+
+For example, this script translates a word with the AI agent and makes a card for learning it,
+with the sentence and a link back to the page. The card links to the book, so the word is marked
+there, and tapping it opens the card.
+
+```js
+// @name Word card
+// @description Translate the word and make a card
+// @icon languages
+// @book
+// @param word string "Word" selection
+// @param into string "Translate into" = "English"
+
+if (!book) return 'Select a word in a book and run this from the bar'
+const translation = (await agent(
+  `Translate "${params.word}" into ${params.into} as it is used in this sentence. ` +
+  `Answer with the translation only.\n\n${book.sentence}`
+)).trim()
+const name = params.word.replace(/[\\/:*?"<>|#^[\]]/g, ' ').trim()
+const path = `Cards/${name}.md`
+const card = [
+  '---',
+  'type: card',
+  `translation: "${translation.replace(/"/g, "'")}"`,
+  '---',
+  '',
+  `**${params.word}** — ${translation}`,
+  '',
+  `> ${book.sentence}`,
+  `> — ${book.link}`,
+  '',
+].join('\n')
+// A word met again gets the new sentence added to its card.
+const old = await read(path).catch(() => null)
+if (old === null) await create(path, card)
+else await write(path, `${old}\n> ${book.sentence}\n> — ${book.link}\n`)
+return `${params.word}: ${translation}`
+```
+
+Without the AI agent, `fetch` can ask a translation service instead.
 
 ## Asking about a passage
 

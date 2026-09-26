@@ -28,6 +28,7 @@ Every script must start with a comment block declaring its metadata:
 // @param style string "CSS style" = "bold"
 // @param limit number? "Max results" = 50
 // @param verbose boolean? "Verbose output" = true
+// @book
 \`\`\`
 
 - \`@icon\`: Lucide icon name for toolbar display (e.g. \`scroll-text\`, \`sparkles\`, \`wand\`). Defaults to \`scroll-text\` if omitted. See https://lucide.dev for available icons.
@@ -36,7 +37,8 @@ Every script must start with a comment block declaring its metadata:
 - Boolean params are rendered as toggles, not text inputs
 - Default values: add \`= value\` after description. Use quotes for strings with spaces: \`= "my value"\`
 - Defaults pre-fill the form UI and are used as fallback when the param is not provided (e.g. via link URL)
-- Add \`selection\` after description/default to auto-fill from editor selection: \`// @param text string "Input text" selection\`
+- Add \`selection\` after description/default to auto-fill from editor selection: \`// @param text string "Input text" selection\`. Run on words in a book, it is filled with those words
+- \`@book\`: the script gets a button of its own on the book reader's selection bar (any script can be run there through "Run a script on these words"); see \`book\` below
 - Parameters are available via the \`params\` object (e.g. \`params.paramName\`)
 
 ---
@@ -272,6 +274,7 @@ await v.open()
 |------|------|-------------|
 | \`params\` | \`object\` | Resolved parameter values from the script header |
 | \`event\` | \`object \\| null\` | What happened, when an automation started the run (see above) |
+| \`book\` | \`object \\| null\` | The words in a book the script was run on from the reader (see below) |
 | \`signal\` | \`AbortSignal\` | Cancellation signal — check \`signal.aborted\` in long loops |
 | \`dayjs\` | \`function\` | [Day.js](https://day.js.org) date library — \`dayjs()\`, \`dayjs('2026-01-01').add(7, 'day')\`, \`.format('YYYY-MM-DD')\`, etc. |
 | \`log(...args)\` | — | Append to script output. Objects are JSON-stringified |
@@ -316,6 +319,36 @@ run for is therefore safe; one that writes to every note of the type it waits fo
 only run once per note per the automation's interval, and more than 30 runs in a minute pause
 every automation until one is edited. \`event\` is not a reserved name: a script with its own
 \`const event\` simply has its own.
+
+### book — when run on words in a book
+
+Select words in the book reader (or tap a highlight) and the bar under the page runs a script on
+them: a script whose header has \`// @book\` has a button of its own there, and "Run a script on
+these words" picks any other. Such a run finds the words in \`book\`; any other run finds \`null\`.
+Parameters marked \`selection\` start out as the words, and the form is shown only when a
+required one is still empty.
+
+\`\`\`js
+book.text      // the words selected, or the highlight's
+book.sentence  // the whole sentence they are in (several, when the words run across them)
+book.link      // a link to the place, as "Copy link" makes it: [[Dune.epub#cfi=…|Chapter 3]]
+book.path      // the book's path in the vault
+book.title     // the book's title
+book.chapter   // the chapter — "Page N" in a PDF
+book.cfi       // the place itself
+\`\`\`
+
+A note that holds \`book.link\` — in its text or in a property — is marked in the book: the words
+get a dotted underline, and tapping them opens the note.
+
+\`\`\`js
+// @name Word card
+// @book
+// @param word string "Word" selection
+if (!book) return 'Run it on words selected in a book'
+const translation = (await agent('Translate "' + params.word + '" into English as used here, answer with the translation only:\\n' + book.sentence)).trim()
+await create('Cards/' + params.word + '.md', '**' + params.word + '** — ' + translation + '\\n\\n> ' + book.sentence + '\\n> — ' + book.link + '\\n')
+\`\`\`
 
 Every function and global in this reference, and \`view\` with the component classes of the
 view reference, is already declared in a script's scope: a script that declares one of those

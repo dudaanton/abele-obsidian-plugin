@@ -23,7 +23,8 @@ log(`Found ${tasks.length} tasks`)
 return 'Done'
 ```
 
-`@param` lines become a form when you run the script yourself, and arguments when an agent or
+`@param` lines become a form when you run the script yourself (a parameter ending in
+`selection` starts out as the words you have selected), and arguments when an agent or
 another script calls it. **Create script** starts a new one. **Show script API reference** lists
 everything a script can use: notes and search, templates, forms and dialogs, web requests, dates,
 and `agent()` to hand the fuzzy part of a job to a model. An AI agent can write scripts for you.
@@ -33,6 +34,7 @@ and `agent()` to hand the fuzzy part of a job to a model. An AI agent can write 
 - From the command palette: every script is a command, **Script: <name>**.
 - From **Settings → Abele → Scripts → Library**, which lists every script with its description.
 - From a button in a note's header, which runs it on that note.
+- On words selected in a book, from the bar under the page: see [Books](books).
 - From a link, inside or outside Obsidian.
 - By an AI agent, which sees your scripts as tools.
 - By itself, through an automation.

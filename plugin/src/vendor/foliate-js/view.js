@@ -388,7 +388,9 @@ export class View extends HTMLElement {
             }
             return
         }
-        const { index, anchor } = await this.resolveNavigation(value)
+        // ABELE PATCH: an annotation may carry its place apart from its key (`cfi`), so one
+        // place can hold two marks — a highlight and a note's link to the same words.
+        const { index, anchor } = await this.resolveNavigation(annotation.cfi ?? value)
         const obj = this.#getOverlayer(index)
         if (obj) {
             const { overlayer, doc } = obj

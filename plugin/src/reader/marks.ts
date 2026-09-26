@@ -13,6 +13,7 @@
 import { Overlayer } from '@/vendor/foliate-js/overlayer.js'
 import type { View as FoliateView } from '@/vendor/foliate-js/view.js'
 import type { Highlight, HighlightColor } from './highlights'
+import { LINK_KEY, linkMark, pointInWindow, shortenPlace } from './linkMarks'
 
 export const MARKS_CLASS = 'abele-marks'
 
@@ -22,6 +23,8 @@ interface Box {
   cfi?: string
   /** A discussion's mark: `under` for words only asked about, `over` for a highlight. */
   discussion?: 'under' | 'over'
+  /** Words a note links to: a dotted underline, tested apart from highlights. */
+  link?: string
 }
 
 const SVG = 'http://www.w3.org/2000/svg'
@@ -89,20 +92,24 @@ export function drawBoxes(doc: Document, layerClass: string, items: Box[], opaci
       const box = doc.createElementNS(XHTML, 'div')
       box.className = `${layerClass}__box`
       if (item.cfi) box.dataset.cfi = item.cfi
+      if (item.link) box.dataset.link = item.link
       for (const [k, v] of Object.entries({
         position: 'absolute',
         left: `${(rect.left - base.left) * scale}px`,
         top: `${(rect.top - base.top) * scale}px`,
         width: `${rect.width * scale}px`,
         height: `${rect.height * scale}px`,
-        // Words only asked about are underlined, not filled: they are not a highlight.
-        ...(under
-          ? { 'border-bottom': `2px solid ${item.color}`, 'box-sizing': 'border-box' }
-          : {
-              'background-color': item.color,
-              opacity: String(opacity),
-              'mix-blend-mode': 'multiply',
-            }),
+        // Words only asked about are underlined, not filled: they are not a highlight. Words a
+        // note links to are dotted.
+        ...(item.link
+          ? { 'border-bottom': `2px dotted ${item.color}`, 'box-sizing': 'border-box' }
+          : under
+            ? { 'border-bottom': `2px solid ${item.color}`, 'box-sizing': 'border-box' }
+            : {
+                'background-color': item.color,
+                opacity: String(opacity),
+                'mix-blend-mode': 'multiply',
+              }),
         'border-radius': '2px',
       }))
         box.style.setProperty(k, v)
@@ -146,6 +153,11 @@ export class BookMarks {
   private drawn = new Set<string>()
   /** The page documents of a PDF on screen, by their index. */
   private pdfDocs = new Map<number, Document>()
+  /** The places notes link to (`linkedNotes.ts`), and the ones drawn in a book's chapters. */
+  private links: string[] = []
+  private linksDrawn = new Set<string>()
+  /** Words a note links to tapped, with where on the screen, for a menu of the notes. */
+  onLink: (cfi: string, at: { x: number; y: number }) => void = () => {}
 
   constructor(
     private readonly engine: FoliateView,
@@ -159,6 +171,12 @@ export class BookMarks {
         draw: (fn: unknown, opts: unknown) => void
         annotation: { value: string }
       }
+      if (annotation.value.startsWith(LINK_KEY)) {
+        const { range } = (e as CustomEvent).detail as { range?: Range }
+        if (range && 'setStart' in range) shortenPlace(range)
+        draw(linkMark, { color: this.accent() })
+        return
+      }
       const h = this.list.find((x) => x.cfi === annotation.value)
       if (!h) return
       if (h.discussion)
@@ -170,10 +188,18 @@ export class BookMarks {
     // A chapter's page is made anew on every visit: its highlights go back on.
     engine.addEventListener('create-overlay', (e) => {
       const index = (e as CustomEvent<{ index: number }>).detail.index
+      for (const cfi of this.links) if (this.indexOf(cfi) === index) void this.addLink(cfi)
       for (const h of this.list) if (this.indexOf(h.cfi) === index) void this.addEpub(h)
     })
     engine.addEventListener('show-annotation', (e) => {
-      const value = (e as CustomEvent<{ value: string }>).detail.value
+      const { value, range } = (e as CustomEvent<{ value: string; range?: Range }>).detail
+      if (value.startsWith(LINK_KEY)) {
+        const rect = range?.getBoundingClientRect?.()
+        const doc = range?.startContainer.ownerDocument
+        const at = doc && rect ? pointInWindow(doc, rect.left, rect.bottom) : { x: 0, y: 0 }
+        this.onLink(value.slice(LINK_KEY.length), at)
+        return
+      }
       const h = this.list.find((x) => x.cfi === value)
       if (h) this.onTap(h)
     })
@@ -220,6 +246,51 @@ export class BookMarks {
       ?.catch?.(() => {})
   }
 
+  private async addLink(cfi: string): Promise<void> {
+    try {
+      await (
+        this.engine as unknown as {
+          addAnnotation(a: { value: string; cfi: string }): Promise<unknown>
+        }
+      ).addAnnotation({ value: LINK_KEY + cfi, cfi })
+      this.linksDrawn.add(cfi)
+    } catch (e) {
+      console.debug('[Abele] a linked place could not be marked', cfi, e)
+    }
+  }
+
+  /**
+   * The places notes link to, as they are now. In a book only the chapters showing are marked:
+   * the rest are when their page is made (`create-overlay`).
+   */
+  setLinks(places: string[]): void {
+    const before = new Set(this.links)
+    this.links = [...places]
+    if (this.pdf) {
+      for (const [index, doc] of this.pdfDocs) this.drawPdf(doc, index)
+      return
+    }
+    const now = new Set(places)
+    for (const cfi of before)
+      if (!now.has(cfi)) {
+        this.linksDrawn.delete(cfi)
+        void (
+          this.engine as unknown as {
+            deleteAnnotation(a: { value: string; cfi: string }): Promise<unknown>
+          }
+        )
+          .deleteAnnotation({ value: LINK_KEY + cfi, cfi })
+          ?.catch?.(() => {})
+      }
+    const showing = new Set(
+      (this.engine.renderer as unknown as { getContents(): { index: number }[] })
+        .getContents()
+        .map((c) => c.index)
+    )
+    for (const cfi of places)
+      if (!before.has(cfi) && showing.has(this.indexOf(cfi))) void this.addLink(cfi)
+  }
+
   /** The highlights to show, as the book's note has them now. */
   set(list: Highlight[]): void {
     const before = new Map(this.list.map((h) => [h.cfi, h]))
@@ -249,6 +320,9 @@ export class BookMarks {
     this.list = []
     for (const cfi of [...this.drawn]) this.removeEpub(cfi)
     this.set(list)
+    const links = this.links
+    this.setLinks([])
+    this.setLinks(links)
   }
 
   /** A page of fixed size was drawn: its highlights go over it, over its fresh text layer. */
@@ -267,6 +341,11 @@ export class BookMarks {
         ...(h.discussion ? { discussion: h.plain ? ('under' as const) : ('over' as const) } : {}),
       })
     }
+    for (const cfi of this.links) {
+      if (this.indexOf(cfi) !== index) continue
+      const range = this.rangeIn(doc, cfi)
+      if (range) items.push({ range: shortenPlace(range), color: this.accent(), link: cfi })
+    }
     drawBoxes(doc, MARKS_CLASS, items)
   }
 
@@ -281,12 +360,28 @@ export class BookMarks {
 
   /** The highlight under a point of a PDF page, in the page's own coordinates. */
   hitPdf(doc: Document, x: number, y: number): Highlight | null {
-    for (const box of Array.from(doc.querySelectorAll<HTMLElement>(`.${MARKS_CLASS}__box`))) {
+    for (const box of Array.from(
+      doc.querySelectorAll<HTMLElement>(`.${MARKS_CLASS}__box[data-cfi]`)
+    )) {
       const r = box.getBoundingClientRect()
       if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom)
         return this.list.find((h) => h.cfi === box.dataset.cfi) ?? null
     }
     return null
+  }
+
+  /** Words a note links to under a point of a fixed page, opened as a tap on them in a book is. */
+  openLinkAt(doc: Document, x: number, y: number): boolean {
+    for (const box of Array.from(
+      doc.querySelectorAll<HTMLElement>(`.${MARKS_CLASS}__box[data-link]`)
+    )) {
+      const r = box.getBoundingClientRect()
+      if (x >= r.left && x <= r.right && y >= r.top - 4 && y <= r.bottom + 4) {
+        this.onLink(box.dataset.link ?? '', pointInWindow(doc, r.left, r.bottom))
+        return true
+      }
+    }
+    return false
   }
 
   /** Whether a tap on a book's page landed on a highlight, which then answers it instead. */

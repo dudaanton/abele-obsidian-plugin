@@ -13,6 +13,8 @@ export interface ScriptMeta {
   icon?: string
   params: ScriptParam[]
   enabled?: boolean
+  /** `@book`: offered as its own button on words selected in a book. */
+  book?: boolean
 }
 
 export interface ParsedScript {

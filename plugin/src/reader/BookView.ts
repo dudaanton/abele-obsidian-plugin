@@ -28,6 +28,8 @@ import {
 } from './settings'
 import type { PdfBookExtras } from './pdfBook'
 import { BookReading } from './BookReading'
+import { linkedNotesFor } from './bookLinkedNotes'
+import type { LinkedNotes } from './linkedNotes'
 import { parsePlaceSubpath, type BookPlace } from './bookLinks'
 import { onExternalLink, onKey, pinchZoom, watchPage, type PageHost } from './pageInput'
 import { redrawOver, relayoutOnFonts } from './pageLayout'
@@ -77,6 +79,8 @@ export class BookView extends FileView {
   reading: BookReading | null = null
   /** The book's bookmarks, once it is showing. */
   bookmarks: PageBookmarks | null = null
+  /** The notes linking to places in the book, marked on its pages. */
+  linked: LinkedNotes | null = null
   /** Drawing on a PDF's pages. */
   ink: PdfInk | null = null
   /** A place a link asked for, gone to once the book is open. */
@@ -324,6 +328,8 @@ export class BookView extends FileView {
     this.reading?.stopSearch()
     this.reading?.speech.stop()
     this.reading = null
+    this.linked?.stop()
+    this.linked = null
     this.bookmarks?.stop()
     this.bookmarks = null
     this.ink?.destroy()
@@ -456,6 +462,7 @@ export class BookView extends FileView {
         () => ({ key: this.key, title: nameOf(meta?.title), author: nameOf(meta?.author) })
       )
       void this.reading.loadHighlights()
+      this.linked = linkedNotesFor(this.app, file, this.reading)
       this.bookmarks = bookmarksFor(this.key, this.model, reader, this.isPdf ? opened.book : null)
       this.ink = this.isPdf ? inkFor(this, file, reader, opened.book, () => this.stage) : null
       void this.ink?.load()

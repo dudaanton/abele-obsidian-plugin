@@ -29,6 +29,7 @@ import { defaultViewHost } from './view/host'
 import { showFormModal } from './formModal'
 import { noteInfo as readNoteInfo, type NoteInfo } from './noteInfo'
 import type { AutomationEvent } from '@/automations/types'
+import type { BookScriptContext } from './bookContext'
 
 /** Extract first text content from tool result */
 function text(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -120,6 +121,8 @@ export function buildScriptContext(opts: {
   viewHost?: ViewHost
   /** What set the run off, when an automation did. The script reads it as `event`. */
   event?: AutomationEvent
+  /** The words in a book the run was asked for from. The script reads it as `book`. */
+  book?: BookScriptContext
   /**
    * Told the path of every note the script is about to write, before it is written. An
    * automation marks those paths with its own id, which is how the change the script makes
@@ -171,6 +174,8 @@ export function buildScriptContext(opts: {
     dayjs,
     /** What set this run off, when an automation did; `null` for every other run. */
     event: opts.event ?? null,
+    /** The words in a book the run was asked for from; `null` for every other run. */
+    book: opts.book ? { ...opts.book } : null,
 
     // ── Logging ──
 

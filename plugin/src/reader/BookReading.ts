@@ -22,6 +22,7 @@ import {
 } from './companion'
 import type { Highlight, HighlightColor } from './highlights'
 import { BookMarks } from './marks'
+import { bookScriptContext, rangeOnScreen } from './bookScriptTarget'
 import { ReadAloud } from './readAloud'
 import { notesTargetFor, readerSettingsFrom } from './settings'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -295,7 +296,23 @@ export class BookReading {
     return true
   }
 
-  /** A new chat with a link to the words, or to the page on screen, and the words quoted. */
+  /** Runs a script on the words — the one named, or one picked from a list. */
+  async runScript(target: { cfi: string; label: string; text: string }, name?: string) {
+    const known = this.model.selection?.cfi === target.cfi ? this.selectedRange : null
+    const range = known ?? rangeOnScreen(this.engine, target.cfi)
+    const lang = [this.engine.book.metadata?.language].flat()[0]
+    const book = bookScriptContext({
+      file: this.file,
+      title: this.book().title,
+      target,
+      link: this.linkTo(target),
+      range,
+      lang: typeof lang === 'string' ? lang : '',
+    })
+    const { runOnBook } = await import('@/scripting/runFromBook')
+    runOnBook(this.app, book, name)
+  }
+
   /**
    * "Ask here". On words — selected, or a highlight — a discussion kept with them: the one
    * already held about them, opened again, or a new one, listed in the highlights note and

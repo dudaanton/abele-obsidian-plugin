@@ -74,7 +74,9 @@ under the page, in the place of the line with the slider:
 - a colour highlights them (yellow, green, blue, pink, purple, orange);
 - the speech bubble highlights them and opens a box for a comment;
 - the link copies a link to the words;
-- the quote writes the words, with a link to them, into the note last worked in.
+- the quote writes the words, with a link to them, into the note last worked in;
+- with scripts on, a button for each script whose header has `// @book`, and **Run a script on
+  these words**, which picks any script (see **Scripts on words** below).
 
 A **tap on a highlight** brings up the same bar for it: another colour, the comment, a link, the
 quote, the highlights note, or remove it. A tap beside the bar closes it.
@@ -167,6 +169,24 @@ carry are percent-encoded. `#page=N` is what Obsidian's own PDF viewer reads too
 opens a PDF on its page wherever PDFs open; a link to words in a PDF always opens in the reader,
 which is the only one that knows the place. Without the plugin every one of these links still opens
 the file. **Copy link to this place** (or **to this page** in a PDF) is in the tab's ⋯ menu.
+
+**Notes linking to a place are marked there.** Any note whose text or properties link to words
+in the book (`#cfi=…`) has those words drawn with a dotted underline in the theme's accent — not a
+highlight's fill, not a discussion's solid line and bubble. A tap on them opens the note in a new
+tab, flashing the line the link is on; when several notes link there, a menu names them. The
+book's highlights notes and its discussions are left out: they have marks of their own. A link to
+a page as a whole (copied with nothing selected) is marked by its first word only, so the page can
+still be tapped to turn. Which notes link to a book is read once from Obsidian's link index when
+it opens and kept up to date note by note as Obsidian re-reads one; a place is resolved only for
+the chapter on screen. Links to a page of a PDF (`#page=N`) name no words and are not marked.
+
+**Scripts on words.** The script is run with `book` in its scope — the words, the whole sentence
+they are in (the same sentence rules reading aloud uses), a link to the place as **Copy link**
+makes it, the book's path and title, the chapter, the CFI — and a parameter marked `selection`
+starts out as the words. Its form shows only when a required parameter is still empty, so a
+script needing nothing more runs at one tap. The run is listed with the source *book*, and
+running it again from the list gives it the same words. A script that makes a note holding
+`book.link` — a card for a word, say — is then marked in the book as above.
 
 **Search** — the magnifier in the header, Mod+F, or the ⋯ menu — opens a search in the side panel.
 It goes through the whole book or PDF a moment after typing stops, listing what it finds chapter by

@@ -69,6 +69,9 @@
           v-else-if="(model.selection || model.active) && !model.selecting"
           :highlight="model.active"
           :can-ask="model.canAsk"
+          :scripts="pinnedScripts"
+          :can-run-scripts="hasScripts"
+          @script="emit('run-script', quoteTarget(), $event)"
           @ask="emit('ask', quoteTarget())"
           @read-aloud="emit('read-aloud')"
           @color="onColor"
@@ -161,6 +164,8 @@ import ReaderSettingsForm from './ReaderSettingsForm.vue'
 import BookNotesSettings from './BookNotesSettings.vue'
 import { type BookModel, type PanelTab, type SearchHit, type TocEntry } from '@/reader/model'
 import type { Bookmark } from '@/reader/bookmarks'
+import { ScriptService } from '@/scripting/ScriptService'
+import { bookScripts } from '@/scripting/runFromBook'
 
 const props = defineProps<{
   model: BookModel
@@ -185,6 +190,7 @@ const emit = defineEmits<{
   (e: 'comment'): void
   (e: 'copy-link', target?: { cfi: string; label: string }): void
   (e: 'quote', target: { cfi: string; label: string; text: string }): void
+  (e: 'run-script', target: { cfi: string; label: string; text: string }, name?: string): void
   (e: 'clear-selection'): void
   (e: 'ask', target: { cfi: string; label: string; text: string }): void
   (e: 'read-aloud'): void
@@ -220,6 +226,13 @@ const quoteTarget = () => {
   const t = props.model.active ?? props.model.selection
   return { cfi: t.cfi, label: t.label, text: t.text }
 }
+
+// Scripts to run on the words: the ones whose header says `@book` have a button each.
+const scriptList = ScriptService.getInstance().scriptList
+const hasScripts = computed(() => scriptList.value.length > 0)
+const pinnedScripts = computed(() =>
+  bookScripts(scriptList.value).map((s) => ({ name: s.meta.name, icon: s.meta.icon }))
+)
 
 const onColor = (color: HighlightColor) => {
   if (props.model.active) emit('recolor', props.model.active, color)

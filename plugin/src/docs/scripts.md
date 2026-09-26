@@ -41,8 +41,11 @@ note they were looking for when it is not there yet.
 
 ## Running one
 
-Five ways in: the command palette, a button in a note's header, an `abele://` link, an
-agent calling the `script_<name>` tool, or an automation when something happens to a note. A script can call another with `runScript`.
+Six ways in: the command palette, a button in a note's header, an `abele://` link, an
+agent calling the `script_<name>` tool, an automation when something happens to a note, or the
+book reader's bar on selected words — where a script with `// @book` in its header has a button
+of its own, and gets the words, their sentence and a link to their place as `book`. A script can
+call another with `runScript`.
 
 The **Scripts** page of the plugin's settings lists every script as a card — its `@icon`,
 `@name`, `@description` and parameters, straight from the header above — and runs one or

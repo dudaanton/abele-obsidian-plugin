@@ -55,6 +55,8 @@ export function bookCallbacks(a: BookActions): Record<string, unknown> {
     onComment: (): void => void a.commentOnSelection(),
     onCopyLink: (target?: Place): void => void a.reading()?.copyLink(target),
     onQuote: (target: Place & { text: string }): void => void a.reading()?.quoteIntoNote(target),
+    onRunScript: (target: Place & { text: string }, name?: string): void =>
+      void a.reading()?.runScript(target, name),
     onClearSelection: (): void => a.reading()?.clearSelection(),
     onAsk: (target?: Place & { text: string }): void => void a.reading()?.ask(target),
     onReadAloud: (): void => a.reading()?.readFromSelection(),

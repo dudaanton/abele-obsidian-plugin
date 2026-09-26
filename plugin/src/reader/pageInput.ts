@@ -153,6 +153,7 @@ function onTap(host: PageHost, e: MouseEvent, doc: Document, gesture: PageGestur
         marks.open(h)
         return
       }
+      if (marks.openLinkAt(doc, e.clientX, e.clientY)) return
     } else if (marks.hitEpub(e)) return
   }
   // A tap beside an open highlight's bar closes it, rather than turning the page as well.

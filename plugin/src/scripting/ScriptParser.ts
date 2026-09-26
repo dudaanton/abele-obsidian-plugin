@@ -6,6 +6,7 @@ import type { ScriptMeta, ScriptParam } from './types'
  *   // @description Does something
  *   // @param path string "Vault path"
  *   // @param style string? "Optional style"
+ *   // @book
  *
  * Returns null if @name is missing.
  */
@@ -17,6 +18,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
   const params: ScriptParam[] = []
 
   let icon: string | undefined
+  let book = false
 
   for (const line of lines) {
     const trimmed = line.trim()
@@ -32,6 +34,8 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
       icon = content.slice(6).trim()
     } else if (content.startsWith('@enabled ')) {
       enabled = content.slice(9).trim() !== 'false'
+    } else if (content === '@book' || content.startsWith('@book ')) {
+      book = true
     } else if (content.startsWith('@param ')) {
       const param = parseParam(content.slice(7).trim())
       if (param) params.push(param)
@@ -40,7 +44,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
 
   if (!name) return null
 
-  return { name, description, icon, params, enabled }
+  return { name, description, icon, params, enabled, ...(book ? { book } : {}) }
 }
 
 /**
