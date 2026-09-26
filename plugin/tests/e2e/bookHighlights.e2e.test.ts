@@ -190,6 +190,56 @@ describe.skipIf(!available)('highlights, links and search', () => {
     expect(r.after).toBeGreaterThan(0)
   })
 
+  it('opens the highlights note at the highlight asked about, found by its place, and flashes it there', () => {
+    type Seen = { flashed: string[]; visible: boolean; cursor: number | null }
+    const r = run<{ error?: string; preview?: Seen; source?: Seen }>(`
+      const note = app.vault.getAbstractFileByPath(${JSON.stringify(BOOK_NOTE)})
+      // A decoy with the same words at another place above, and enough text to scroll past.
+      const filler = Array.from({ length: 80 }, (_, i) => 'Paragraph ' + (i + 1) + ' of my own notes.').join('\\n\\n')
+      await app.vault.process(note, (md) => md.replace('\\n---\\n', '\\n---\\n\\n> [!quote|yellow] [[rich.epub#cfi=/6/2!/4/2,/1:0,/1:3|Chapter 1]]\\n> claim\\n\\n' + filler + '\\n'))
+      const { leaf, view } = await open(${JSON.stringify(BOOK)})
+      await until(() => view.model.highlights.some((h) => h.color === 'blue'), 8000)
+      const h = view.model.highlights.find((h) => h.color === 'blue')
+      const mode = app.vault.getConfig('defaultViewMode')
+      const out = {}
+      try {
+        for (const m of ['preview', 'source']) {
+          app.vault.setConfig('defaultViewMode', m)
+          await view.reading.openNote(h)
+          const noteLeaf = app.workspace.getLeavesOfType('markdown').filter((l) => l.view.file?.path === ${JSON.stringify(BOOK_NOTE)}).pop()
+          const nv = noteLeaf.view
+          await wait(200)
+          const els = [...nv.containerEl.querySelectorAll('.abele-line-flash')]
+          const colour = (el) => (el.matches('[data-callout-metadata]') ? el : el.querySelector('[data-callout-metadata]'))?.getAttribute('data-callout-metadata') ?? 'none'
+          const scroller = m === 'preview' ? nv.containerEl.querySelector('.markdown-reading-view .markdown-preview-view') : nv.containerEl.querySelector('.cm-scroller')
+          const s = scroller.getBoundingClientRect()
+          const b = els[0]?.getBoundingClientRect()
+          out[m] = {
+            flashed: els.map((el) => colour(el) + ':' + el.textContent.trim().slice(0, 40)),
+            visible: !!b && b.top >= s.top && b.bottom <= s.bottom && scroller.scrollTop > 0,
+            cursor: m === 'source' ? nv.editor.getCursor().line : null,
+          }
+          noteLeaf.detach()
+        }
+      } finally {
+        app.vault.setConfig('defaultViewMode', mode)
+      }
+      leaf.detach()
+      return out
+    `)
+    expect(r.error).toBeUndefined()
+    for (const m of ['preview', 'source'] as const) {
+      expect(r[m]?.flashed.length, m).toBeGreaterThan(0)
+      expect(
+        r[m]?.flashed.every((f) => f.startsWith('blue:') && f.includes('claim')),
+        m
+      ).toBe(true)
+      expect(r[m]?.visible, m).toBe(true)
+    }
+    // The cursor stays out of the callout, so live preview keeps drawing it.
+    expect(r.source?.cursor).toBe(0)
+  })
+
   it('makes a link to the words selected, and a link like it opens the book there with them selected', () => {
     const r = run<{
       error?: string

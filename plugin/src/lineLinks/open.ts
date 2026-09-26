@@ -79,13 +79,60 @@ async function flashInPreview(view: MarkdownView, range: LineRange): Promise<voi
   for (const section of previewSections(view)) {
     if (!section.el || !section.start || !section.end) continue
     if (section.start.line > range.to - 1 || section.end.line < range.from - 1) continue
-    const el = section.el
-    el.removeClass('abele-line-flash')
-    // A reflow between the two, so a second click on the same link flashes again.
-    void el.offsetWidth
-    el.addClass('abele-line-flash')
-    window.setTimeout(() => el.removeClass('abele-line-flash'), FLASH_MS)
+    flash(section.el)
   }
+}
+
+function flash(el: HTMLElement): void {
+  el.removeClass('abele-line-flash')
+  // A reflow between the two, so a second click on the same link flashes again.
+  void el.offsetWidth
+  el.addClass('abele-line-flash')
+  window.setTimeout(() => el.removeClass('abele-line-flash'), FLASH_MS)
+}
+
+/** The part of CodeMirror's view this needs; `editor.cm` is not in the published API. */
+interface EditorDom {
+  contentDOM: HTMLElement
+  state: { doc: { line(n: number): { from: number; to: number } } }
+  posAtDOM(node: Node): number
+}
+
+/**
+ * The editor scrolled so the range is in the middle, and what shows those lines flashed — each
+ * line in source mode, the rendered block in live preview. The cursor is not moved into them: in
+ * live preview that would turn a rendered callout back into its markdown.
+ */
+async function flashInEditor(view: MarkdownView, range: LineRange): Promise<void> {
+  const from = { line: range.from - 1, ch: 0 }
+  view.editor.scrollIntoView({ from, to: { line: range.to - 1, ch: 0 } }, true)
+  const cm = (view.editor as unknown as { cm?: EditorDom }).cm
+  if (!cm) return
+  const start = cm.state.doc.line(range.from).from
+  const end = cm.state.doc.line(range.to).to
+  const within = (): HTMLElement[] =>
+    Array.from(cm.contentDOM.children).filter((el): el is HTMLElement => {
+      if (!el.instanceOf(HTMLElement)) return false
+      const at = cm.posAtDOM(el)
+      return at >= start && at <= end
+    })
+  let els = within()
+  // The lines are drawn once the scroll has been measured, a frame or two later.
+  for (let waited = 0; !els.length && waited < RENDER_WAIT_MS; waited += RENDER_POLL_MS) {
+    await new Promise((resolve) => window.setTimeout(resolve, RENDER_POLL_MS))
+    els = within()
+  }
+  for (const el of els) flash(el)
+}
+
+/**
+ * Brings an open note to a range of its lines and flashes them, in whichever mode it is showing,
+ * leaving the cursor where it was.
+ */
+export async function flashLines(view: MarkdownView, lines: LineRange): Promise<void> {
+  const range = clampRange(lines, lineCountOf(view))
+  if (view.getMode() === 'preview') await flashInPreview(view, range)
+  else await flashInEditor(view, range)
 }
 
 /** Brings an open note to a range of its lines, in whichever mode it is showing. */

@@ -162,6 +162,19 @@ export function parseHighlights(markdown: string, ofBook?: OfBook): Highlight[] 
   return blocks(markdown, ofBook).blocks.map((b) => b.highlight)
 }
 
+/**
+ * The lines the highlight at `cfi` takes in the note, 1-based and inclusive — found by the place its
+ * callout links to, not by its words, which the person may have edited. Null when it is not there.
+ */
+export function highlightLines(
+  markdown: string,
+  cfi: string,
+  ofBook?: OfBook
+): { from: number; to: number } | null {
+  const block = blocks(markdown, ofBook).blocks.find((b) => b.highlight.cfi === cfi)
+  return block ? { from: block.start + 1, to: block.end } : null
+}
+
 /** One highlight as its callout, the links — to the place, to its chat — already made. */
 export function highlightBlock(h: Highlight, link: string, chatLink?: string): string {
   const quote = h.text.replace(/\r\n?/g, '\n').trim()

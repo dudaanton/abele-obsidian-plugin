@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest'
 import { encodeCfi, parsePlaceSubpath, placeSubpath, quoteWithLink } from '@/reader/bookLinks'
 import {
   highlightBlock,
+  highlightLines,
   newHighlightsNote,
   parseHighlights,
   removeHighlight,
@@ -131,6 +132,38 @@ describe('the highlights note', () => {
     expect(parseHighlights(md)).toEqual([
       hl(B, { color: 'yellow', text: 'Words', label: 'Part two' }),
     ])
+  })
+
+  it('finds the lines of a highlight by the place it links to, not by its words', () => {
+    let md = note
+    for (const cfi of [A, B])
+      md = upsertHighlight(md, hl(cfi, { text: 'Same words' }), LINK(cfi), compare)
+    md = upsertHighlight(md, hl(B, { text: 'Same words', comment: 'Mine' }), LINK(B), compare)
+    const lines = md.split('\n')
+    const at = highlightLines(md, B)
+    expect(at).not.toBeNull()
+    expect(lines[at!.from - 1]).toBe(`> [!quote|yellow] ${LINK(B)}`)
+    expect(lines.slice(at!.from - 1, at!.to)).toEqual([
+      `> [!quote|yellow] ${LINK(B)}`,
+      '> Same words',
+      '>',
+      '> Mine',
+    ])
+    expect(highlightLines(md, C)).toBeNull()
+  })
+
+  it("finds a highlight in a shared note only among the book's own callouts", () => {
+    const md = [
+      '# Reading',
+      '',
+      `> [!quote] [[Books/Other.epub${placeSubpath({ cfi: A })}|Other]]`,
+      '> theirs',
+      '',
+      `> [!quote] [[Books/Dune.epub${placeSubpath({ cfi: A })}|Dune]]`,
+      '> ours',
+    ].join('\n')
+    expect(highlightLines(md, A, (t) => t === 'Books/Dune.epub')).toEqual({ from: 6, to: 7 })
+    expect(highlightLines(md, A, (t) => t === 'Books/Missing.epub')).toBeNull()
   })
 
   it('forgets a highlight that is not there without touching the note', () => {

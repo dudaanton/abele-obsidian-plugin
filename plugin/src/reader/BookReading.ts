@@ -3,7 +3,8 @@
  * them, linking to a place, going to a place a link names, and searching. One per open book; the
  * tab makes it once the book is showing and drops it when the book closes.
  */
-import { Notice, type App, type TFile } from 'obsidian'
+import { MarkdownView, Notice, type App, type TFile } from 'obsidian'
+import { flashLines } from '@/lineLinks/open'
 import type { View as FoliateView } from '@/vendor/foliate-js/view.js'
 import { insertOnOwnLine } from '@/helpers/editorHelpers'
 import { recentNoteView } from '@/github/linking'
@@ -12,6 +13,7 @@ import { searchMatcher } from '@/vendor/foliate-js/search.js'
 import { linkToPlace, quoteWithLink, type BookPlace } from './bookLinks'
 import {
   deleteHighlight,
+  highlightAt,
   noteFor,
   notesOf,
   readHighlights,
@@ -180,12 +182,15 @@ export class BookReading {
     await this.loadHighlights()
   }
 
+  /** Opens the highlights note — at the highlight `h`, flashed, when it is one of its callouts. */
   async openNote(h?: Highlight): Promise<void> {
-    const note = await noteFor(this.app, this.file, this.where(), h?.cfi)
+    const at = h ? await highlightAt(this.app, this.file, this.where(), h.cfi) : null
+    const note = at?.note ?? (await noteFor(this.app, this.file, this.where(), h?.cfi))
     if (!note) return
     const leaf = this.app.workspace.getLeaf('tab')
     await leaf.openFile(note)
     if (h) this.model.active = null
+    if (at && leaf.view instanceof MarkdownView) await flashLines(leaf.view, at.lines)
   }
 
   // ————— Selection —————

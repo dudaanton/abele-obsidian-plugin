@@ -18,6 +18,7 @@ import { linkToPlace } from './bookLinks'
 import {
   HIGHLIGHTS_TYPE,
   highlightBlock,
+  highlightLines,
   newHighlightsNote,
   parseHighlights,
   removeHighlight,
@@ -145,6 +146,20 @@ export async function noteFor(
 ): Promise<TFile | null> {
   const held = cfi ? await holding(app, book, where, cfi) : null
   return held?.note ?? notesOf(app, book, where)[0] ?? null
+}
+
+/** The note holding the highlight at `cfi` and the lines its callout takes there; null if none. */
+export async function highlightAt(
+  app: App,
+  book: TFile,
+  where: NotesPlace,
+  cfi: string
+): Promise<{ note: TFile; lines: { from: number; to: number } } | null> {
+  for (const { note, ofBook } of sources(app, book, where)) {
+    const lines = highlightLines(await app.vault.cachedRead(note), cfi, ofBook)
+    if (lines) return { note, lines }
+  }
+  return null
 }
 
 /** The template set, read; null when there is none, or it is not there — which is said. */
