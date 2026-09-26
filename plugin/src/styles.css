@@ -727,7 +727,7 @@ body.is-mobile .abele-comment-marker_pending::after {
   padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
 
-/* Under the container's class, so a scroller's own padding (a component's) does not win. */
+/* Under the container's class, so a scroller's own rules (a component's) do not win. */
 .modal-container.abele-keyboard-cover .abele-keyboard-scroller,
 .modal-container.abele-keyboard-lift .abele-keyboard-scroller {
   box-sizing: border-box;
@@ -735,8 +735,27 @@ body.is-mobile .abele-comment-marker_pending::after {
   max-height: var(--abele-keyboard-keep);
   flex: 0 0 auto;
   overflow-y: auto;
-  padding-bottom: var(--abele-keyboard-cover);
   scroll-padding-bottom: var(--abele-keyboard-cover);
+}
+
+/*
+ * The room at the scroller's end is a box of its own, not padding: WebKit leaves a flex
+ * container's end padding out of what it scrolls, so on an iPhone the room was there and could
+ * not be scrolled into — the date dialog's buttons stayed under the keyboard. And what the
+ * scroller holds keeps its height rather than shrinking to make room, which is what hid the
+ * icon picker's grid.
+ */
+.modal-container.abele-keyboard-cover .abele-keyboard-scroller::after,
+.modal-container.abele-keyboard-lift .abele-keyboard-scroller::after {
+  content: '';
+  display: block;
+  flex: 0 0 auto;
+  height: var(--abele-keyboard-cover);
+}
+
+.modal-container.abele-keyboard-cover .abele-keyboard-scroller > *,
+.modal-container.abele-keyboard-lift .abele-keyboard-scroller > * {
+  flex-shrink: 0;
 }
 
 /*
