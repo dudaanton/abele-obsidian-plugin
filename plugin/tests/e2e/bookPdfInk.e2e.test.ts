@@ -328,14 +328,18 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       seen?: unknown
     }>(`
       for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
-      await settings({ pdfLayout: 'paginated' })
+      // The whole page on screen: at the width of the tab a page may run past the bottom of a short
+      // window — as the window is after the files before this one — and the stroke with it.
+      await settings({ pdfLayout: 'paginated', pdfZoom: 'fit-page' })
       const { view } = await open(${JSON.stringify(PDF)})
       await view.engine.goTo(1); await wait(800)
       click(view, '.abele-book-reader__draw')
       await until(() => q(view, '.abele-ink-overlay'))
       const doc = await until(() => R(view).getContents().map((c) => c.doc).find((d) => d?.querySelector('#canvas img') && frame(d).width > 0))
       const f = frame(doc)
-      await draw(f.left + f.width * 0.3, f.top + f.height * 0.6, f.left + f.width * 0.6, f.top + f.height * 0.7, 'pen')
+      const o = q(view, '.abele-ink-overlay').getBoundingClientRect()
+      const y0 = Math.min(f.top + f.height * 0.6, o.bottom - 60), y1 = Math.min(f.top + f.height * 0.7, o.bottom - 20)
+      await draw(f.left + f.width * 0.3, y0, f.left + f.width * 0.6, y1, 'pen')
       const paths = inked(doc)
       const file = await until(() => app.vault.getAbstractFileByPath(${JSON.stringify(DIR)} + '/long ink/long page 2.svg'), 5000)
       const seen = { idx: R(view).getContents().map((c) => view.ink.docIndex.get(c.doc)), loc: view.engine.lastLocation?.section?.current, paths, pages: [...view.ink.pages.keys()], frames: R(view).getContents().map((c) => ({ index: c.index, w: c.doc ? frame(c.doc).width : null })), f: [f.left, f.top, f.width, f.height], overlay: q(view, '.abele-ink-overlay')?.getBoundingClientRect().toJSON() }
@@ -345,7 +349,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       await wait(800)
       const after = view.engine.lastLocation?.section?.current
       click(view, '.abele-book-ink__done')
-      await settings({ pdfLayout: 'scrolled' })
+      await settings({ pdfLayout: 'scrolled', pdfZoom: 'fit-width' })
       return { paths: file ? paths : -1, before, after, seen }
     `)
     expect(r.error).toBeUndefined()
