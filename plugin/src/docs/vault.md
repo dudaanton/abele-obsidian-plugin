@@ -1140,8 +1140,10 @@ Two records are kept in Obsidian's local storage for this vault, which no file c
 as, the keychain name of its token, whether it is paused, and what of the vault it takes; under
 `abele-sync-ledger`, the id of the record of what it has synced. That record is outside the vault,
 in Obsidian's IndexedDB, as a database named `abele-sync-<id>`. The device token itself is in the
-keychain. So a copy of the vault, a synced `data.json` or a transfer never makes another vault
-sync as this device or read its record. None of it is a file an agent can see. Version history and
+keychain — one per vault on a desktop, one for the whole app on a phone. So a copy of the vault, a
+synced `data.json` or a transfer never makes another vault sync as this device or read its record;
+a device set up by a transfer from an older version is the exception, and syncs as the sender
+until it is connected again. None of it is a file an agent can see. Version history and
 deleted files are kept on the server and shown in dialogs the person opens (the `commands`
 section).
 

@@ -175,14 +175,22 @@ on. It is kept in Obsidian's keychain on this device only. It is never put in th
 even with those turned on: a device holding another's token would sync as that device.
 
 Where the device syncs — the server, the vault, the device it enrolled as, the name its token is
-filed under, whether it is paused, and what it takes — is kept beside the keychain, in Obsidian's
-own storage for this vault, and not in Abele's `data.json`. Pausing is per device too: pausing the
-phone does not pause the laptop.
+filed under, whether it is paused, and what it takes — is kept in Obsidian's own storage for this
+vault, and not in Abele's `data.json`. Pausing is per device too: pausing the phone does not pause
+the laptop.
+
+That storage is per vault everywhere. The keychain is not: on a desktop Obsidian keeps one per
+vault, but on a phone it is the system's secure storage, one for the whole app and read by every
+vault on it. So on a phone two vaults can see the same token; what they cannot share is the
+connection and the record of what was synced.
 
 The **Sync** section of **Transfer → Send to another device** carries only what every device shares.
 It carries no token and no connection, so the other device signs in itself. A transfer made by an
 older version of Abele still holds the sender's connection and token; the receiving device takes
-neither.
+neither. A device that was set up by such a transfer before this version, though, took both at
+the time: it syncs as the sender — one device on the server, not two — and keeps doing so after
+the upgrade, because the connection in its `data.json` and the token in its keychain are really
+there. Disconnect it and connect it again to give it a device of its own.
 
 What a transfer never carries either is the record of what this device has already synced. That
 record belongs to one vault on one machine, and is kept in Obsidian's storage for that vault; a
@@ -192,17 +200,25 @@ server and deletes nothing.
 ## What a copied vault does
 
 A vault copied in Finder, a `data.json` carried over by another sync tool, or a vault opened on a
-new machine is not connected: Obsidian keeps the connection and the keychain under its own id for
-that vault, which a copy does not share. Sign in on the copy to give it a device of its own. The
-same happens to a vault folder renamed outside Obsidian — it gets a new id, and loses both the
-connection and the keychain; connect it again.
+new machine is not connected: Obsidian keeps the connection under its own id for that vault, which
+a copy does not share. Sign in on the copy to give it a device of its own. The same happens to a
+vault folder renamed outside Obsidian — it gets a new id, and loses the connection (and, on a
+desktop, the keychain); connect it again.
 
 The first time this version of Abele starts on a device, it moves the connection an older version
 kept in `data.json` into that storage, and writes `data.json` again without it. It takes the
-connection only if this device's keychain holds the token it names — the proof that the file is
-this device's own. A `data.json` that came from another device fails that check: the device is
-then not connected, and keeps the other device's switches for what to sync as a starting point, but
-not its size cap. The log says which of the two happened.
+connection only if this vault's own storage holds the record of what was synced for the vault the
+file names, and the keychain holds the token it names — together, the proof that the file is this
+vault's own on this device. The record is the half a copy never has, on a phone too, where the
+keychain alone would not tell a copy apart. A `data.json` that came from another vault or device
+fails the check: the device is then not connected, and keeps the other device's switches for what
+to sync as a starting point, but not its size cap. The log says which of the two happened.
+
+The move waits for a `data.json` it can read. If the file is missing when this version first
+starts — a phone that has not downloaded it yet — or will not parse, nothing is moved and nothing
+is marked as done; the next start that reads the file moves it. Nor is the file written again
+until the connection is safely stored: if Obsidian's storage refused it, the file is left as it
+was and the move is tried at the next start.
 
 Every device on a vault should run this version or none: an older version still writes its own
 connection into `data.json`, which this one ignores, and it reads the one it finds there as its
