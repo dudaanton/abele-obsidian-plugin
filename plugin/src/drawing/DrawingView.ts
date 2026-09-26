@@ -12,9 +12,12 @@ import { drawingSvg, parseDrawingSvg } from './drawingFile'
 import { cameraFrom, type Camera } from './camera'
 import { DrawingSession } from './DrawingSession'
 import { THICKNESSES, emptyDrawingModel, type DrawingModel } from './model'
+import { DRAWING_VIEW_TYPE } from './viewType'
+import { copyEmbed } from './files'
+import { visibleRect } from './camera'
 import { SHAPE_KINDS, type Rect, type ShapeKind } from './items'
 
-export const DRAWING_VIEW_TYPE = 'abele-drawing'
+export { DRAWING_VIEW_TYPE }
 
 export class DrawingView extends TextFileView {
   readonly model: DrawingModel = reactive(emptyDrawingModel())
@@ -238,6 +241,18 @@ export class DrawingView extends TextFileView {
   /** What else can be done with the drawing; later stages add to it. */
   protected moreMenu(e: MouseEvent): void {
     const menu = new Menu()
+    const file = this.file
+    const session = this.session
+    if (file && session)
+      menu.addItem((item) =>
+        item
+          .setTitle('Copy embed of what shows')
+          .setIcon('clipboard-copy')
+          .onClick(() => {
+            const { width, height } = session.surface
+            void copyEmbed(`![[${file.path}]]`, visibleRect(session.camera, width, height))
+          })
+      )
     this.app.workspace.trigger('file-menu', menu, this.file, 'more-options', this.leaf)
     menu.showAtMouseEvent(e)
   }

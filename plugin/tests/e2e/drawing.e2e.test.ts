@@ -382,6 +382,89 @@ describe.skipIf(!available)('the drawing canvas', () => {
     expect(r.saved).toEqual(['stroke', 'stroke', 'shape', 'shape', 'text'])
   })
 
+  it('shows the part of a drawing a note names, changes it and keeps it, and opens the drawing there', () => {
+    const r = run<{
+      error?: string
+      reading?: { embed: boolean; hidden: boolean; height: number; width: number; img: number }
+      live?: boolean
+      kept?: string
+      opened?: { type?: string; zoom?: number; on?: boolean }
+    }>(`
+      await closeAll()
+      const path = window.__drawingPath
+      const NOTE = DIR + '/Embed note.md'
+      const old = app.vault.getAbstractFileByPath(NOTE)
+      if (old) await app.vault.delete(old)
+      await app.vault.create(NOTE, '# Plan\n\n> [!drawing|100 80 300 150]\n> ![[' + path + ']]\n\nAfter.\n')
+      const leaf = app.workspace.getLeaf('tab')
+      await leaf.openFile(app.vault.getAbstractFileByPath(NOTE), { state: { mode: 'preview' } })
+      const embedEl = await until(() => leaf.view.containerEl.querySelector('.markdown-reading-view .abele-drawing-embed img[src]'), 8000)
+      const box = embedEl?.parentElement
+      await wait(300)
+      const reading = box ? {
+        embed: true,
+        hidden: getComputedStyle(leaf.view.containerEl.querySelector('.markdown-reading-view .internal-embed.abele-drawing-embed__source')).display === 'none',
+        height: box.clientHeight,
+        width: box.clientWidth,
+        img: embedEl.getBoundingClientRect().width,
+      } : null
+      // Changed: zoomed in with Ctrl and the wheel over it, kept.
+      box.querySelector('.abele-drawing-embed__adjust').click(); await wait(100)
+      const br = box.getBoundingClientRect()
+      await wheel(br.left + br.width / 2, br.top + br.height / 2, -50, 2); await wait(200)
+      box.querySelector('.abele-drawing-embed__keep').click()
+      const kept = await until(async () => { const t = await read(NOTE); return !t.includes('[!drawing|100 80 300 150]') && t.split('\n')[2] }, 5000)
+      // Live preview draws it too.
+      await leaf.setViewState({ type: 'markdown', state: { file: NOTE, mode: 'source', source: false } })
+      const live = !!(await until(() => leaf.view.containerEl.querySelector('.markdown-source-view .abele-drawing-embed img[src]'), 8000))
+      await leaf.setViewState({ type: 'markdown', state: { file: NOTE, mode: 'preview' } })
+      const again = await until(() => leaf.view.containerEl.querySelector('.markdown-reading-view .abele-drawing-embed__open'), 8000)
+      again.click()
+      const view = await until(() => views().find((v) => v.file?.path === path && v.session?.surface.width), 8000)
+      await wait(400)
+      const opened = { type: view?.getViewType(), zoom: view?.session.camera.zoom, on: view?.model.on }
+      leaf.detach()
+      return { reading, live, kept, opened }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.reading?.embed).toBe(true)
+    expect(r.reading?.hidden).toBe(true)
+    // The part is twice as wide as tall, filling the note's width.
+    expect(Math.abs(r.reading!.height - r.reading!.width / 2)).toBeLessThan(3)
+    expect(r.reading!.img).toBeGreaterThan(r.reading!.width)
+    expect(r.kept).toMatch(/^> \[!drawing\|\d+ \d+ \d+ \d+\]$/)
+    expect(r.live).toBe(true)
+    expect(r.opened?.type).toBe('abele-drawing')
+    expect(r.opened?.on).toBe(true)
+    expect(r.opened?.zoom).toBeGreaterThan(1)
+  })
+
+  it('inserts a new drawing into a note at the cursor and opens it beside the note', () => {
+    const r = run<{ error?: string; text?: string; opened?: boolean; file?: boolean }>(`
+      await closeAll()
+      const NOTE = DIR + '/Insert note.md'
+      const old = app.vault.getAbstractFileByPath(NOTE)
+      if (old) await app.vault.delete(old)
+      const note = await app.vault.create(NOTE, 'Before\n')
+      const leaf = app.workspace.getLeaf('tab')
+      await leaf.openFile(note, { state: { mode: 'source' } })
+      app.workspace.setActiveLeaf(leaf, { focus: true })
+      leaf.view.editor.setCursor({ line: 1, ch: 0 })
+      app.commands.executeCommandById('abele:insert-drawing')
+      const view = await until(() => views().find((v) => v.session?.surface.width && v.model.on), 8000)
+      const text = await until(async () => { const t = await read(NOTE); return t.includes('[!drawing]') && t }, 5000)
+      const file = !!view?.file && !!app.vault.getAbstractFileByPath(view.file.path)
+      const opened = !!view
+      if (view) await app.vault.delete(view.file)
+      leaf.detach()
+      return { text, opened, file }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.opened).toBe(true)
+    expect(r.file).toBe(true)
+    expect(r.text).toMatch(/^Before\n> \[!drawing\]\n> !\[\[.*Drawing .*\.svg\]\]/)
+  })
+
   it('fits its bar on a phone, where a finger draws, and on a tablet, where it moves the drawing', async () => {
     await reload('app.emulateMobile(true)')
     await setWindowSize(390, 844)

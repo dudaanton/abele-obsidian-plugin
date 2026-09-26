@@ -51,6 +51,27 @@ A finger, the mouse or the wheel moves the drawing; two fingers, a trackpad's pi
 with the wheel zoom it. While drawing is on, the middle mouse button drags. The percentage in the
 bar opens the zoom: in, out, actual size, or the whole drawing.
 
+## In a note
+
+**Insert a new drawing** — in the command palette or the editor's right-click menu — makes a
+drawing beside the note's attachments, shows it in the note where the cursor is, and opens it
+beside the note to draw on. It goes into the note as a callout with the picture in it:
+
+```markdown
+> [!drawing|120 40 800 500]
+> ![[Sketch.svg]]
+```
+
+The numbers after the bar are the part of the drawing the note shows; without them it shows all
+of it. Two buttons sit in the corner of the picture. The pen opens the drawing at that part to
+draw on. The other one changes the part: drag to move it, pinch, use the wheel with Ctrl or ⌘, or
+the trackpad to zoom, then the tick to keep it (the cross leaves it as it was). Without the plugin,
+the note still shows the whole drawing.
+
+To show a part of a drawing in another note, move to it in the drawing's tab and choose **Copy
+embed of what shows** from the menu at the end of the bar; paste it into the note. A drawing's
+menu in the file explorer copies one that shows all of it.
+
 ## Where it is kept
 
 The drawing is saved a moment after you stop, when drawing is turned off and when the tab
