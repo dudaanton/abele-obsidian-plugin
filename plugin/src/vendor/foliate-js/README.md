@@ -73,6 +73,14 @@ Every change is marked `ABELE PATCH` at its site.
    as wide as on its page and a line shown at the top as on a page, so going over to it and back
    moves no line. `showAnchor` puts a place on screen without selecting it.
 
+8. **A hidden page is not laid out** (`paginator.js`, `Paginator.render`, `View.expand`). A tab
+   put behind another has no size, and its resize observer fired a render at none: the chapter
+   poured into columns of no height, a column per line, which the app had to lay out first when
+   the tab was shown again — most of a second for a short chapter, seconds for a long one, and
+   a frozen app for a reader's own book. It also moved to a place worked out from a page of no
+   width, and said so as a relocation. Now nothing is rendered or measured while the tab has no
+   size; its size coming back renders it once, at the place it had.
+
 ## Additions
 
 `view.d.ts`, `epub.d.ts` and `frame-options.d.ts` type the parts of the modules beside them that

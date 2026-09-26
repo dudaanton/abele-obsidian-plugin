@@ -373,6 +373,9 @@ class View {
         }
     }
     expand() {
+        // ABELE PATCH: not measured in a hidden tab, where everything measures nothing; shown
+        // again, the page is measured anew.
+        if (!this.#element.getClientRects().length) return
         const { documentElement } = this.document
         if (this.#column) {
             const side = this.#vertical ? 'height' : 'width'
@@ -784,6 +787,10 @@ export class Paginator extends HTMLElement {
     }
     render() {
         if (!this.#view) return
+        // ABELE PATCH: a hidden tab has no size. Laid out at none, a chapter is poured into
+        // columns of no height — a column per line — and shown again it is laid out that way
+        // first; its size coming back renders it anew.
+        if (!this.size) return
         this.#view.render(this.#beforeRender({
             vertical: this.#vertical,
             rtl: this.#rtl,
