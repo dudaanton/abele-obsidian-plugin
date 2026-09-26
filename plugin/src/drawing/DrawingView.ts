@@ -96,12 +96,16 @@ export class DrawingView extends TextFileView {
   async onClose(): Promise<void> {
     this.vue?.unmount()
     this.vue = null
+    // What is drawn now is what a save still waiting writes once the surface is gone.
+    if (this.session) this.getViewData()
     this.session?.destroy()
     this.session = null
   }
 
   getViewData(): string {
-    const text = drawingSvg({ items: [...(this.session?.items.items ?? [])] })
+    // Closed: the drawing as it was last, never an empty one written over it.
+    if (!this.session) return this.known
+    const text = drawingSvg({ items: [...this.session.items.items] })
     this.known = text
     return text
   }
