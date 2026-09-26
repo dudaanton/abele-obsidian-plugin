@@ -131,6 +131,15 @@ export interface Migration {
   rewrite: boolean
 }
 
+/** What the log says about each outcome of the move. */
+export const MIGRATION_LINE: Record<Migration['outcome'], string> = {
+  moved: "moved this device's connection out of data.json into the vault's local storage",
+  dropped:
+    'data.json named a connection whose token this device does not hold; it was not adopted, ' +
+    'and this device is not connected',
+  fresh: 'data.json named no connection; nothing to move',
+}
+
 /**
  * Moves this device's connection out of the `sync` block `data.json` held, once.
  *
@@ -186,8 +195,8 @@ export function migrateConnection(
 /**
  * Selective settings from whatever held them, filled out from the defaults switch by switch.
  *
- * `null` is a cap of its own — no cap — so it is kept where a missing field is not: a person who
- * turned the cap off on a phone is not given it back on the next launch.
+ * `null` is a cap of its own — no cap — so it is kept where a missing field is not: a person
+ * who turned the cap off on a phone is not given it back on the next launch.
  */
 export function selectiveFrom(raw: unknown, isMobile = false): SelectiveSettings {
   const defaults = defaultSelective(isMobile)

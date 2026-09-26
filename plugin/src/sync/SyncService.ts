@@ -4,40 +4,48 @@ import {
   IgnoreRules,
   SyncClient,
   SyncEngine,
-  encodeText,
-  settingsCategory,
-  sha256,
   type PathMatcher,
-  type SelectiveSettings,
   type StateEntry,
   type SyncFailure,
-  type SyncReport,
   type VaultClient,
 } from '@abele/sync-core'
 import { caseKey, PLAIN_HTTP_REFUSED, serverUrlProblem, type VaultInfo } from '@abele/sync-protocol'
 import type AbelePlugin from '@/main'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { DEVICE_SECRET_PREFIX, isDeviceSecretId, secrets } from '@/secrets/SecretStore'
+import { isDeviceSecretId, secrets } from '@/secrets/SecretStore'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { ObsidianFileSystem } from './ObsidianFileSystem'
 import {
   connectionProblem,
   emptyConnection,
+  MIGRATION_LINE,
   migrateConnection,
   readConnection,
   writeConnection,
   type DeviceConnection,
-  type Migration,
 } from './connection'
+import { Enrolment, type ConnectionPatch, type VaultChoice } from './enrolment'
+import { readLedgerId, writeLedgerId, type LedgerId, type LocalStorage } from './ledgerId'
 import {
-  NO_LEDGER,
-  readLedgerId,
-  writeLedgerId,
-  type LedgerId,
-  type LocalStorage,
-} from './ledgerId'
+  IGNORE_FILE,
+  SCOPE_KEY,
+  USER_AGENT,
+  configLine,
+  ignoreLine,
+  isHidden,
+  isWireConfigDir,
+  messageOf,
+  newStateId,
+  noop,
+  readIgnore,
+  scopeKey,
+  summarise,
+} from './pieces'
 import { DISCONNECTED_STATUS, statusOf, type SyncStatus } from './status'
 import { fetchViaRequestUrl, wsFor } from './transport'
+
+export { isWireConfigDir } from './pieces'
+export type { ConnectionPatch, VaultChoice } from './enrolment'
 
 /**
  * One engine per plugin, and everything Obsidian has to know about it.
@@ -54,7 +62,8 @@ import { fetchViaRequestUrl, wsFor } from './transport'
  * adds `disconnected` above them for a vault nobody has set up. There is an engine exactly
  * when the connection names a server, a vault and a device token the keychain really holds;
  * with no engine the status is `disconnected` and every verb is a no-op that says so in the log.
- * `connect` and `chooseVault` build one, `disconnect` takes it away, and `updateConnection` and
+ * `connect` and `chooseVault` build one, `disconnect` takes it away — those verbs are in
+ * `enrolment.ts`, since none of them is the engine's business — and `updateConnection` and
  * `onSettingsSaved` build another when what the running one was built on has changed.
  *
  * ## The connection
@@ -94,23 +103,6 @@ import { fetchViaRequestUrl, wsFor } from './transport'
 /** How many lines the log keeps. Older ones fall off the front. */
 const LOG_LINES = 500
 
-/** The meta key the scope is filed under, the same one the daemon uses. */
-const SCOPE_KEY = 'scope'
-
-/** The vault's ignore file, read from its root. */
-const IGNORE_FILE = '.abele-sync-ignore'
-
-/**
- * Whether this vault's config folder is the one the wire knows.
- *
- * Core's settings switches recognise a single name for it, and core is what is asked rather
- * than the name being spelled out here: a device whose config folder is called something else
- * keeps it out of the sync altogether (`isHidden`).
- */
-export function isWireConfigDir(configDir: string): boolean {
-  return settingsCategory(`${configDir}/app.json`) !== null
-}
-
 /**
  * What the user has to do about a token the server no longer takes. The client's own message
  * says the request was refused, which is true and no help at all.
@@ -124,22 +116,6 @@ const REVOKED_HINT =
  */
 export const PLAIN_HTTP_CONNECTION =
   'this connection uses plain http to another machine; connect again with an https address'
-
-/** What this plugin calls itself to a sync server. */
-const USER_AGENT = 'abele-obsidian-plugin'
-
-const noop = (): void => undefined
-
-/** What a failure says. A thrown value that is neither an error nor text is shown as JSON. */
-const messageOf = (error: unknown): string => {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  try {
-    return JSON.stringify(error) ?? 'an unknown failure'
-  } catch {
-    return 'an unknown failure'
-  }
-}
 
 /**
  * What a test replaces to run the service against a server in its own process.
@@ -157,21 +133,6 @@ export interface SyncServiceDeps {
   fallbackMs?: number
   /** How often the configuration folder is walked. */
   pollMs?: number
-}
-
-/** Which vault `chooseVault` was asked for: one that exists, or one to make. */
-export type VaultChoice = string | { create: string }
-
-/** What a connection may be changed by: anything but the record's own bookkeeping. */
-export type ConnectionPatch = Partial<Omit<DeviceConnection, 'migrated'>>
-
-/** What the log says about the one-time move of the connection out of `data.json`. */
-const MIGRATION_LINE: Record<Migration['outcome'], string> = {
-  moved: "moved this device's connection out of data.json into the vault's local storage",
-  dropped:
-    'data.json named a connection whose token this device does not hold; it was not adopted, ' +
-    'and this device is not connected',
-  fresh: 'data.json named no connection; nothing to move',
 }
 
 export class SyncService {
@@ -203,7 +164,7 @@ export class SyncService {
    */
   readonly connection: Ref<DeviceConnection> = ref(emptyConnection(Platform.isMobile))
 
-  /** Where the connection is filed: the vault's local storage, once `openConnection` or `init` ran. */
+  /** Where the connection is filed: the vault's local storage, from `openConnection` or `init`. */
   private storage: LocalStorage | null = null
 
   private app: App | null = null
@@ -215,11 +176,6 @@ export class SyncService {
   private vault: VaultClient | null = null
   private unwatchStatus: (() => void) | null = null
 
-  /** The account client of a connect flow, on a token that is never written down. */
-  private account: SyncClient | null = null
-  /** The server that account signed in to, so `chooseVault` files the one it enrolled against. */
-  private accountUrl = ''
-
   /** What the running engine was built on; a change to any of it means building another. */
   private built = ''
   /**
@@ -230,6 +186,19 @@ export class SyncService {
   private builtToken = ''
   /** The scope key the running engine's settings and ignore file hash to. */
   private scope = ''
+
+  /** Setting this device up and taking it down again (`enrolment.ts`). */
+  private readonly enrolment = new Enrolment({
+    app: () => this.app,
+    transport: () => this.transport(),
+    factory: () => this.factory(),
+    note: (text) => this.note(text),
+    connection: () => this.connection.value,
+    saveConnection: (patch) => this.saveConnection(patch),
+    serialise: <T>(fn: () => Promise<T>) => this.serialise(fn),
+    teardown: () => this.teardown(),
+    reconcile: () => this.reconcile(),
+  })
 
   private readonly listeners = new Set<(status: SyncStatus) => void>()
   /** Whether the phone's visibility listener has been registered; it is registered once. */
@@ -362,8 +331,7 @@ export class SyncService {
     this.listeners.clear()
     this.app = null
     this.plugin = null
-    this.account = null
-    this.accountUrl = ''
+    this.enrolment.endConnect()
   }
 
   /* -- What the screens and the status bar read ------------------------- */
@@ -497,168 +465,29 @@ export class SyncService {
 
   /* -- Setting the device up -------------------------------------------- */
 
-  /**
-   * Sign in and list the vaults this account can enrol a device on.
-   *
-   * The password is used for this one request and kept nowhere; the account token it answers
-   * with is held in memory until `chooseVault` has enrolled, or `endConnect` lets it go. Neither is ever written to the
-   * log or to `data.json`.
-   */
-  async connect(serverUrl: string, email: string, password: string): Promise<VaultInfo[]> {
-    const baseUrl = serverUrl.trim().replace(/\/+$/, '')
-    if (baseUrl === '') throw new Error('a server address is needed to connect')
-    // Before the password goes anywhere: over plain http it would cross the network readable.
-    const problem = serverUrlProblem(baseUrl)
-    if (problem !== null) throw new Error(problem)
-    this.note(`connecting to ${baseUrl}`)
-    const { account_token } = await SyncClient.login(baseUrl, this.transport(), email, password)
-    const account = new SyncClient({
-      baseUrl,
-      fetch: this.transport(),
-      token: account_token,
-      userAgent: USER_AGENT,
-    })
-    const vaults = await account.listVaults()
-    this.account = account
-    this.accountUrl = baseUrl
-    this.note(`signed in; the account has ${vaults.length} vault(s)`)
-    return vaults
+  /** Sign in and list the vaults this account can enrol a device on: see `Enrolment.connect`. */
+  connect(serverUrl: string, email: string, password: string): Promise<VaultInfo[]> {
+    return this.enrolment.connect(serverUrl, email, password)
   }
 
-  /**
-   * Let a connect flow go without finishing it: the account token `connect` holds for
-   * `chooseVault` is dropped. The Sync tab calls this when it closes, so a sign-in nobody
-   * followed with a vault does not keep a token that can enrol devices for the whole session.
-   */
+  /** Let a connect flow go without finishing it: see `Enrolment.endConnect`. */
   endConnect(): void {
-    this.account = null
-    this.accountUrl = ''
+    this.enrolment.endConnect()
   }
 
-  /**
-   * Enrol this device on a vault — an existing one, or one made for it — and start syncing.
-   *
-   * The device token the server answers with goes straight into Obsidian's keychain; only the
-   * id it is filed under is saved with the connection. Enrolling again over an existing setup
-   * reuses that id, so the keychain never fills with tokens no device holds any more.
-   *
-   * The ledger id is minted here, once, and again whenever the chosen vault is not the one the
-   * ledger describes — which is why the ledger's own vault is asked and not `vaultId`: a
-   * disconnect empties the latter, so a device that left vault A and joined vault B would
-   * otherwise open A's ledger, find every entry accounted for, and send deletes carrying A's
-   * file ids. The ledger left behind is deleted once the old engine has let go of it. The account client is
-   * dropped on the way out either way: it is on a token this flow has no further use for.
-   */
-  async chooseVault(choice: VaultChoice, deviceName: string): Promise<void> {
-    const account = this.account
-    // Read with the account, not after the awaits: the tab closing mid-enrolment calls
-    // `endConnect`, and the device the server enrols meanwhile must still be filed against it.
-    const accountUrl = this.accountUrl
-    const app = this.app
-    if (account === null) throw new Error('sign in to the server before choosing a vault')
-    if (app === null) throw new Error('the sync service has not been started yet')
-    const name = deviceName.trim()
-    if (name === '') throw new Error('this device needs a name to enrol under')
-
-    /** The ledger this enrolment replaces, to be deleted once nothing is holding it. */
-    let dropped: string | null = null
-    try {
-      const vaultId =
-        typeof choice === 'string' ? choice : (await account.createVault(choice.create)).id
-      const enrolled = await account.enrolDevice(
-        vaultId,
-        name,
-        Platform.isMobile ? 'mobile' : 'desktop'
-      )
-
-      const held = this.connection.value.deviceTokenId
-      const tokenId = isDeviceSecretId(held) ? held : newSecretId()
-      secrets().device.set(tokenId, enrolled.device_token)
-      const ledger = this.ledger(app)
-      if (ledger.stateId === '' || ledger.vaultId !== vaultId) {
-        dropped = ledger.stateId === '' ? null : ledger.stateId
-        writeLedgerId(app, { stateId: newStateId(), vaultId })
-      }
-      this.saveConnection({
-        serverUrl: accountUrl,
-        vaultId,
-        deviceId: enrolled.device_id,
-        deviceTokenId: tokenId,
-        deviceName: name,
-        paused: false,
-      })
-      this.note(`enrolled as ${name} on vault ${vaultId}`)
-    } finally {
-      this.account = null
-    }
-
-    // `reconcile` sees the new token even behind an unchanged keychain id, so it builds another
-    // engine of its own accord. Only once that has stopped the old engine is the ledger it held
-    // free to delete.
-    await this.serialise(() => this.reconcile())
-    if (dropped !== null) await this.dropLedger(dropped)
+  /** Enrol this device on a vault and start syncing: see `Enrolment.chooseVault`. */
+  chooseVault(choice: VaultChoice, deviceName: string): Promise<void> {
+    return this.enrolment.chooseVault(choice, deviceName)
   }
 
-  /**
-   * Deletes a ledger this device has no further use for.
-   *
-   * Never fatal. A ledger is a cache of what the server already holds, so the worst a database
-   * that will not go is a little storage left behind — and refusing a connect over it would be
-   * far worse than saying so in the log.
-   */
-  private async dropLedger(stateId: string): Promise<void> {
-    try {
-      await IndexedDbStateStore.delete(this.factory(), stateDatabaseName(stateId))
-      this.note('dropped the ledger of the vault this device used to sync')
-    } catch (error) {
-      this.note(`the ledger of the previous vault could not be dropped: ${messageOf(error)}`)
-    }
+  /** Stop syncing and forget how to reach the server: see `Enrolment.disconnect`. */
+  disconnect(): Promise<void> {
+    return this.enrolment.disconnect()
   }
 
-  /**
-   * Stop syncing and forget how to reach the server.
-   *
-   * The device token is cleared from the keychain and the identity fields from the connection.
-   * What is kept is everything that is not a credential: what this device syncs, which is the
-   * user's preference and should not have to be given twice; the
-   * `deviceTokenId`, which is a keychain *name* and whose reuse is what stops that keychain
-   * filling with an entry per connect; and the state database, so reconnecting the same vault
-   * costs a scan rather than a download of everything. `forget` is what throws those away.
-   */
-  async disconnect(): Promise<void> {
-    await this.serialise(async () => {
-      await this.teardown()
-      // The secret goes and the id stays: `token()` reads a missing secret as no device, which
-      // is exactly the truth.
-      const tokenId = this.connection.value.deviceTokenId
-      if (tokenId !== '') secrets().device.remove(tokenId)
-      this.saveConnection({
-        serverUrl: '',
-        vaultId: '',
-        deviceId: '',
-        deviceName: '',
-        paused: false,
-      })
-      this.account = null
-      this.accountUrl = ''
-      this.note('disconnected; the device token is forgotten')
-    })
-  }
-
-  /** Disconnect and throw away what this device remembered: the ledger and the keychain name. */
-  async forget(): Promise<void> {
-    const app = this.app
-    const stateId = app === null ? '' : this.ledger(app).stateId
-    await this.disconnect()
-    const tokenId = this.connection.value.deviceTokenId
-    if (tokenId !== '') {
-      secrets().device.remove(tokenId)
-      this.saveConnection({ deviceTokenId: '' })
-    }
-    if (app !== null) writeLedgerId(app, NO_LEDGER)
-    if (stateId === '') return
-    await IndexedDbStateStore.delete(this.factory(), stateDatabaseName(stateId))
-    this.note("forgot this device's ledger; the next connect starts from the manifest")
+  /** Disconnect and throw away the ledger and the keychain name: see `Enrolment.forget`. */
+  forget(): Promise<void> {
+    return this.enrolment.forget()
   }
 
   /**
@@ -1096,88 +925,4 @@ export class SyncService {
     this.queue = next.then(noop, noop)
     return next
   }
-}
-
-/** A keychain id: lowercase letters, digits and dashes, which is all Obsidian accepts. */
-function newSecretId(): string {
-  return `${DEVICE_SECRET_PREFIX}${randomStem()}`
-}
-
-/** The name this device's ledger is filed under. Local to this vault and shown to nobody. */
-function newStateId(): string {
-  return `${randomStem()}${randomStem()}`
-}
-
-function randomStem(): string {
-  return Math.random().toString(36).slice(2, 10).padEnd(8, '0')
-}
-
-/**
- * Whether a wire path is one this device leaves alone because Obsidian cannot see it: any path
- * with a segment that starts with a dot, except the config folder when it is the one the wire
- * knows. Inside that folder the engine's own settings switches decide.
- */
-function isHidden(wirePath: string, configDir: string): boolean {
-  if (!wirePath.split('/').some((segment) => segment.startsWith('.'))) return false
-  return !(isWireConfigDir(configDir) && wirePath.startsWith(`${configDir}/`))
-}
-
-/** What the log says on a device whose config folder the sync does not carry. */
-function configLine(configDir: string): string {
-  return (
-    `the config folder here is ${configDir}, which sync does not know: ` +
-    'Obsidian settings do not sync on this device, and nothing in either folder is touched'
-  )
-}
-
-/** What the log says about the rules the engine was just built on. */
-function ignoreLine(ignoreText: string | null): string {
-  if (ignoreText === null) return `no ${IGNORE_FILE} in this vault`
-  const rules = ignoreText
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line !== '' && !line.startsWith('#')).length
-  return `${IGNORE_FILE}: ${rules} rule(s) in force`
-}
-
-/**
- * What this device syncs, as one short string: the selective settings and the ignore file
- * together, since a pattern dropped from `.abele-sync-ignore` widens the scope exactly as a
- * type switched on does. The daemon's key, computed the same way — through WebCrypto rather
- * than Node's, because this runs in a WebView.
- */
-async function scopeKey(selective: SelectiveSettings, ignoreText: string | null): Promise<string> {
-  return sha256(encodeText(JSON.stringify({ selective, ignore: ignoreText })))
-}
-
-/**
- * The vault's `.abele-sync-ignore` as it reads, or null when it has none.
- *
- * Through the adapter and as bytes: the file is at the vault root, but Obsidian's file index
- * hides a leading dot, so `vault.read` would never find it.
- *
- * Null only when the file is not there. One that is there and will not be read — locked, an
- * iCloud placeholder, a permissions slip — throws: syncing as if it were absent would upload
- * exactly what it keeps off the server, and `reconcile` turns the throw into an error status
- * with nothing running.
- */
-async function readIgnore(app: App): Promise<string | null> {
-  try {
-    if (!(await app.vault.adapter.exists(IGNORE_FILE))) return null
-    return new TextDecoder().decode(await app.vault.adapter.readBinary(IGNORE_FILE))
-  } catch (error) {
-    console.debug('[abele-sync] cannot read the ignore file', error)
-    throw new Error(`${IGNORE_FILE} is there but could not be read: ${messageOf(error)}`)
-  }
-}
-
-/** What one sync did, in the line the log keeps — the same one the daemon writes. */
-function summarise(report: SyncReport): string {
-  const pulled = report.pull.applied + (report.secondPull?.applied ?? 0)
-  const held = (report.secondPull ?? report.pull).held.length
-  return (
-    `sync: done (pulled ${pulled}, pushed ${report.push.applied}, ` +
-    `merged ${report.push.merged}, conflicts ${report.push.conflicts}, ` +
-    `rejected ${report.push.rejected.length}, held ${held})`
-  )
 }
