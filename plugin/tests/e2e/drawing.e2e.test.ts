@@ -93,6 +93,14 @@ const PRELUDE = `
   const views = () => app.workspace.getLeavesOfType('abele-drawing').map((l) => l.view)
   const q = (view, sel) => view.contentEl.querySelector(sel)
   const click = (view, sel) => q(view, sel).click()
+  /** Picks an item of the Obsidian menu open now by its title; false when there is none. */
+  const pickMenu = async (title) => {
+    const item = await until(() => [...document.querySelectorAll('.menu .menu-item')].find((el) => el.querySelector('.menu-item-title')?.textContent.trim() === title), 3000)
+    if (!item) { document.querySelector('.menu')?.remove(); return false }
+    item.click()
+    await wait(150)
+    return true
+  }
   const box = (view) => view.session.surface.el.getBoundingClientRect()
   const items = (view) => view.session.items.items
   const read = async (path) => { const f = app.vault.getAbstractFileByPath(path); return f ? app.vault.read(f) : null }
@@ -328,6 +336,7 @@ describe.skipIf(!available)('the drawing canvas', () => {
       scaled?: number
       deleted?: number
       undone?: number
+      menu?: boolean
       shapes?: string[]
       field?: boolean
       typed?: string
@@ -361,7 +370,9 @@ describe.skipIf(!available)('the drawing canvas', () => {
       const undone = items(view).length
       click(view, '.abele-drawing-bar__tool_shape'); await wait(100)
       await draw(...at(30, 470), ...at(130, 540), 'pen')
-      view.session.setShape('arrow')
+      // The shape button again, the tool in hand: its menu chooses what it draws.
+      click(view, '.abele-drawing-bar__tool_shape')
+      const menu = await pickMenu('Arrow')
       await draw(...at(180, 470), ...at(300, 540), 'mouse')
       const shapes = items(view).filter((i) => i.type === 'shape').map((i) => i.kind)
       click(view, '.abele-drawing-bar__tool_text'); await wait(100)
@@ -374,7 +385,7 @@ describe.skipIf(!available)('the drawing canvas', () => {
       const typed = items(view).find((i) => i.type === 'text')?.text
       click(view, '.abele-drawing-bar__mode')
       const saved = (await until(async () => { const d = await data(view.file.path); return d?.some((i) => i.type === 'text') && d }, 5000) || []).map((i) => i.type)
-      return { picked, moved, scaled, deleted, undone, shapes, field, typed, saved }
+      return { picked, moved, scaled, deleted, undone, menu, shapes, field, typed, saved }
     `)
     expect(r.error).toBeUndefined()
     expect(r.picked).toBe(1)
@@ -383,6 +394,7 @@ describe.skipIf(!available)('the drawing canvas', () => {
     expect(r.scaled).toBeGreaterThan(1.5)
     expect(r.deleted).toBe(1)
     expect(r.undone).toBe(2)
+    expect(r.menu).toBe(true)
     expect(r.shapes).toEqual(['rect', 'arrow'])
     expect(r.field).toBe(true)
     expect(r.typed).toBe('Hello there')
@@ -436,10 +448,13 @@ describe.skipIf(!available)('the drawing canvas', () => {
     expect(r.error).toBeUndefined()
     expect(r.reading?.embed).toBe(true)
     expect(r.reading?.hidden).toBe(true)
-    // The part is twice as wide as tall, shown at its own size, not blown up to the note's width.
+    // The part is twice as wide as tall, shown at its own size, never blown up to the note's
+    // width. The picture covers the part at least; its width is measured to a fraction of a pixel,
+    // and in a narrow window comes out a hair under the box's.
     expect(Math.abs(r.reading!.height - r.reading!.width / 2)).toBeLessThan(3)
-    expect(r.reading!.width).toBe(300)
-    expect(r.reading!.img).toBeGreaterThanOrEqual(r.reading!.width)
+    expect(r.reading!.width).toBeLessThanOrEqual(300)
+    expect(r.reading!.width).toBeGreaterThan(299)
+    expect(r.reading!.img).toBeGreaterThan(r.reading!.width - 0.5)
     expect(r.kept).toMatch(/^> \[!drawing\|\d+ \d+ \d+ \d+\]$/)
     expect(r.live).toBe(true)
     expect(r.opened?.type).toBe('abele-drawing')

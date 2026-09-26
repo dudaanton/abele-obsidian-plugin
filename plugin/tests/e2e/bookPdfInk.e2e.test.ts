@@ -97,6 +97,14 @@ const PRELUDE = `
   const inked = (doc) => doc?.querySelectorAll(':scope > svg.abele-ink path').length ?? 0
   const q = (view, sel) => view.contentEl.querySelector(sel)
   const click = (view, sel) => q(view, sel).click()
+  /** Picks an item of the Obsidian menu open now by its title; false when there is none. */
+  const pickMenu = async (title) => {
+    const item = await until(() => [...document.querySelectorAll('.menu .menu-item')].find((el) => el.querySelector('.menu-item-title')?.textContent.trim() === title), 3000)
+    if (!item) { document.querySelector('.menu')?.remove(); return false }
+    item.click()
+    await wait(150)
+    return true
+  }
   const read = async (path) => { const f = app.vault.getAbstractFileByPath(path); return f ? app.vault.read(f) : null }
   /** What reaches the document and the window: where Obsidian's own listeners are. */
   const listen = () => {
@@ -291,17 +299,18 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
         for (let i = 3; i < d.length; i += 4) most = Math.max(most, d[i])
         return most
       }
-      const tip = alpha(x1), behind = alpha(x1 - 3), past = alpha(x1 + 15)
+      // Past it by more than the few points Chromium predicts ahead of the pen, which are drawn too.
+      const tip = alpha(x1), behind = alpha(x1 - 3), past = alpha(x1 + 40)
       await input('mouseReleased', x1, y, 'pen', 0, 0)
       await wait(150)
-      // Bold, as the menu of the button beside the colours chooses it. (The menu itself does not
-      // open in the test window, Obsidian's zoom menu neither: it is chosen as its item does.)
-      const button = !!q(view, '.abele-book-ink__thickness')
-      view.ink.setThickness('bold')
-      await wait(150)
+      // Bold, from the menu of the button beside the colours.
+      click(view, '.abele-book-ink__thickness')
+      const button = await pickMenu('Bold')
       const chosen = view.model.ink.thickness
       const saved = window.__abeleTest.AbeleConfig.getInstance().reader.pdfInkThickness
-      await draw(f.left + f.width * 0.2, f.top + f.height * 0.8, f.left + f.width * 0.6, f.top + f.height * 0.8, 'pen')
+      // Above the bar under the page: in a window 800 high the page's lower part lies under it.
+      const yb = Math.min(f.top + f.height * 0.8, q(view, '.abele-book-ink').getBoundingClientRect().top - 30)
+      await draw(f.left + f.width * 0.2, yb, f.left + f.width * 0.6, yb, 'pen')
       await until(async () => (await read(${JSON.stringify(INK)}))?.includes('data-size="4"'), 5000)
       const sizes = [...((await read(${JSON.stringify(INK)})) ?? '').matchAll(/data-size="([^"]*)"/g)].map((m) => m[1])
       // Both taken back, and the thickness as it was: what comes next counts the strokes before.

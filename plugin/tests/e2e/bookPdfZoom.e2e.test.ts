@@ -67,6 +67,14 @@ const PRELUDE = `
   const page = (view, index) => R(view).getContents().find((c) => c.index === index || (c.index === undefined && c.doc?.querySelector('#canvas img')))?.doc
   const frame = (doc) => doc.defaultView.frameElement.getBoundingClientRect()
   const q = (view, sel) => view.contentEl.querySelector(sel)
+  /** Picks an item of the Obsidian menu open now by its title; false when there is none. */
+  const pickMenu = async (title) => {
+    const item = await until(() => [...document.querySelectorAll('.menu .menu-item')].find((el) => el.querySelector('.menu-item-title')?.textContent.trim() === title), 3000)
+    if (!item) { document.querySelector('.menu')?.remove(); return false }
+    item.click()
+    await wait(150)
+    return true
+  }
   /** Where a point of the screen is on a page, as fractions of the page. */
   const onPage = (doc, x, y) => { const f = frame(doc); return { fx: (x - f.left) / f.width, fy: (y - f.top) / f.height } }
   /** A box inside a page — measured in the page's own frame, whose origin is the page's corner — as fractions of the page. */
@@ -191,6 +199,7 @@ describe.skipIf(!available)('zooming a PDF', () => {
       at?: { fx: number; fy: number }
       still?: { fx: number; fy: number }
       stepped?: number
+      menu?: boolean
       fitPage?: boolean
       kept?: number
       afterReset?: number
@@ -208,7 +217,9 @@ describe.skipIf(!available)('zooming a PDF', () => {
       const still = onPage(page(view, 1), cx, cy)
       q(view, '.abele-book-reader__zoom-in').click(); await wait(600)
       const stepped = R(view).scale
-      view.zoom('fit-page'); await wait(600)
+      // Fit the page, from the menu of the zoom shown between the buttons.
+      q(view, '.abele-book-reader__zoom').click()
+      const menu = await pickMenu('Fit the page'); await wait(600)
       const box = R(view).getBoundingClientRect()
       const fitPage = frame(page(view, R(view).index)).height <= box.height
       view.zoom('in'); await wait(600)
@@ -220,7 +231,7 @@ describe.skipIf(!available)('zooming a PDF', () => {
       again.view.zoom('reset'); await wait(600)
       const afterReset = R(again.view).scale - before
       const forgotten = !JSON.parse(app.loadLocalStorage('abele-pdf-zoom') || '{}')[again.view.key]
-      return { before, pinched, at, still, stepped, fitPage, kept, afterReset, forgotten }
+      return { before, pinched, at, still, stepped, menu, fitPage, kept, afterReset, forgotten }
     `)
     expect(r.error).toBeUndefined()
     expect(r.pinched! / r.before!).toBeGreaterThan(1.7)
@@ -228,6 +239,7 @@ describe.skipIf(!available)('zooming a PDF', () => {
     expect(Math.abs(r.still!.fx - r.at!.fx)).toBeLessThan(0.02)
     expect(Math.abs(r.still!.fy - r.at!.fy)).toBeLessThan(0.02)
     expect(r.stepped!).toBeGreaterThan(r.pinched!)
+    expect(r.menu).toBe(true)
     expect(r.fitPage).toBe(true)
     expect(Math.abs(r.kept!)).toBeLessThan(0.001)
     expect(Math.abs(r.afterReset!)).toBeLessThan(0.001)

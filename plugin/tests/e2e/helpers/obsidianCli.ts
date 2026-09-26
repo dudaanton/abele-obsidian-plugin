@@ -217,6 +217,20 @@ export function setFocusEmulation(on: boolean): void {
   run(['dev:cdp', 'method=Emulation.setFocusEmulationEnabled', `params={"enabled":${on}}`], 30_000)
 }
 
+/**
+ * Obsidian's menus drawn in the page, as on Windows, Linux and a phone, rather than by macOS.
+ * On a Mac Obsidian takes an unset "Native menus" for on, and every `Menu` then opens as the
+ * system's own popup: nothing of it is in the page, so a test can neither see nor pick its items,
+ * and a window that is not in front (a pool vault's, always) does not show it at all. The
+ * setting is the vault's own, so only the driven window is touched; it is kept in the fixture.
+ */
+export function useDomMenus(): void {
+  evalRaw(
+    `(() => { if (app.vault.getConfig('nativeMenus') !== false) app.vault.setConfig('nativeMenus', false); return 'ok' })()`,
+    30_000
+  )
+}
+
 /** Stops the run with the reason when the window is not being drawn: see `framesPerSecond`. */
 export function assertWindowDrawn(): void {
   const fps = framesPerSecond()
