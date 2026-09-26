@@ -37,6 +37,7 @@ import { openMcpServer } from './openMcpServer'
 import { showFormModal } from '@/scripting/formModal'
 import { embeddedViews, isEmbeddedEditorAvailable } from '@/editor/embeddedEditor'
 import { TFile } from 'obsidian'
+import { newDrawing } from '@/drawing/register'
 import * as bookSafety from '@/reader/bookSafety'
 import { BOOK_VIEW_TYPE, bookViews, readerTestHooks } from '@/reader/BookView'
 import { openEpub } from '@/reader/openBook'
@@ -111,6 +112,8 @@ interface AbeleTestApi {
   AbeleConfig: typeof AbeleConfig
   /** The synced secret store: status, lock, unlock — driven live. */
   secrets: typeof secrets
+  /** A new drawing in a folder, opened ready to draw on. */
+  newDrawing: typeof newDrawing
   ScriptService: typeof ScriptService
   ScriptViewService: typeof ScriptViewService
   ScriptRuns: typeof ScriptRuns
@@ -533,6 +536,7 @@ export function exposeTestApi(plugin: Plugin): void {
     GlobalStore,
     AbeleConfig,
     secrets,
+    newDrawing,
     ScriptService,
     ScriptViewService,
     ScriptRuns,

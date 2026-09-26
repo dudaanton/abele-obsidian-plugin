@@ -490,3 +490,22 @@ the book's highlights note, the picture embedded, so it shows without the plugin
 A page whose last stroke is erased has its file and its callout removed. Renaming or moving the
 PDF renames its ink folder and files. A change to a file from another device is drawn when it
 arrives.
+
+## Drawings
+
+A drawing is an `.svg` file anywhere in the vault whose root element carries
+`data-abele-drawing="1"`; it opens in the plugin's drawing tab, while every other SVG stays in
+Obsidian's picture view. It is an ordinary picture — white paper sized to what is drawn plus a
+margin, one element per item — so `![[Sketch.svg]]` shows it in a note without the plugin. What
+the plugin reads back is only the JSON in `<metadata id="abele-drawing">`: `{ "v": 1, "items": [...] }`,
+the items oldest (lowest) first, each with an `id` and a `type`:
+
+- `stroke` — `tool` (`pen` or `marker`), `color`, `size`, `points` as `x, y, pressure` one after
+  the other;
+- `shape` — `kind` (`rect`, `ellipse`, `line`, `arrow`), the two corners or ends `x1 y1 x2 y2`,
+  `color`, `size`;
+- `text` — `x`, `y` (the top left), `text` (lines split by `\n`), `size`, `color`.
+
+Colours are names: `black`, `red`, `blue`, `green`, `yellow`, `pink`. Units are CSS pixels at
+100%. Do not write a drawing's file yourself — the picture and the data must agree, and only the
+drawing tab keeps them so.

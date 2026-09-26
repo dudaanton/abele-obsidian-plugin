@@ -70,6 +70,7 @@ import { SCRIPT_VIEW_TYPE, ScriptView } from './views/ScriptView'
 import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
 import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
+import { registerDrawing } from './drawing/register'
 import { registerReader } from './reader/register'
 import { ChatService } from './ai/ChatService'
 import { CommentService } from './ai/CommentService'
@@ -253,6 +254,9 @@ export default class AbelePlugin extends Plugin {
 
     // Books from the vault — `.epub` — in a reader tab of their own.
     registerReader(this)
+
+    // Drawings: an SVG made by the plugin opens in a tab to draw on, pen, marker and eraser.
+    registerDrawing(this)
 
     // Links to lines of a note — `[[Note#L10-L12]]` — open at those lines; and a way to copy one.
     registerLineLinks(this)

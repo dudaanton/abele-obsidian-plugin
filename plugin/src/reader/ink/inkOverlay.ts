@@ -13,6 +13,7 @@
 import { strokePath, MARKER_OPACITY, inkLiteral, roundPoint, type InkStroke } from './stroke'
 import type { InkRoute } from './inkRoute'
 import { swipeDirection } from '../swipe'
+import { guardSurface } from './inkGuard'
 
 /** A page under a point: which one, where it is on screen, and its size at 100%. */
 export interface InkPageHit {
@@ -82,8 +83,6 @@ export class InkOverlay {
     this.win = doc.defaultView ?? window
     this.el = doc.createElementNS(XHTML, 'div')
     this.el.className = dark ? 'abele-ink-overlay abele-ink-overlay_dark' : 'abele-ink-overlay'
-    // Obsidian's own mark for a surface whose touches are not its swipes.
-    this.el.setAttribute('data-ignore-swipe', 'true')
     this.canvas = doc.createElementNS(XHTML, 'canvas') as HTMLCanvasElement
     this.canvas.className = 'abele-ink-overlay__canvas'
     this.el.append(this.canvas)
@@ -105,25 +104,7 @@ export class InkOverlay {
     on('pointerup', (e) => this.up(e, false))
     on('pointercancel', (e) => this.up(e, true))
     // Nothing that lands here goes further: not to the page, not to Obsidian.
-    const stop = (e: Event) => {
-      e.stopPropagation()
-      if (e.cancelable) e.preventDefault()
-    }
-    for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel'] as const)
-      on(type, stop, { passive: false })
-    for (const type of [
-      'mousedown',
-      'mouseup',
-      'click',
-      'dblclick',
-      'contextmenu',
-      'selectstart',
-      'dragstart',
-    ] as const)
-      on(type, stop)
-    // Safari's own pinch.
-    this.el.addEventListener('gesturestart', stop)
-    this.off.push(() => this.el.removeEventListener('gesturestart', stop))
+    this.off.push(guardSurface(this.el))
     on('wheel', (e) => this.wheel(e), { passive: false })
   }
 

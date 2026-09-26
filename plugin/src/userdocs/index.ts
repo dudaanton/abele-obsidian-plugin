@@ -10,6 +10,7 @@ import comments from './comments.md?raw'
 import scripts from './scripts.md?raw'
 import github from './github.md?raw'
 import books from './books.md?raw'
+import drawing from './drawing.md?raw'
 import writing from './writing.md?raw'
 import transfer from './transfer.md?raw'
 import settings from './settings.md?raw'
@@ -63,6 +64,7 @@ const FILES: [id: string, source: string][] = [
   ['scripts', scripts],
   ['github', github],
   ['books', books],
+  ['drawing', drawing],
   ['writing', writing],
   ['transfer', transfer],
   ['quick-button', quickButton],
