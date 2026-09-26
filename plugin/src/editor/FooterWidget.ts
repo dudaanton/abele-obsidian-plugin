@@ -1,6 +1,7 @@
 import { WidgetType } from '@codemirror/view'
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { setWidgetMount } from '@/helpers/widgetMounts'
 import { Footer } from '@/entities/Footer'
 import { reactive } from 'vue'
 import { TFile } from 'obsidian'
@@ -31,14 +32,13 @@ export class FooterWidget extends WidgetType {
     scrollKeepers.set(container, keepScrollOnShrink(container, mount))
 
     const store = GlobalStore.getInstance()
-    store.footersContainers.value.push(
-      reactive(
-        new Footer({
-          id: this.id,
-          filePath: this.file.path,
-        })
-      )
-    )
+    const footer = new Footer({
+      id: this.id,
+      filePath: this.file.path,
+    })
+    // Before the store hears of it: the component is drawn into this element, not looked for.
+    setWidgetMount(footer, mount)
+    store.footersContainers.value.push(reactive(footer))
     console.debug(
       `[FooterWidget] toDOM id=${this.id} file=${this.file.path} | total: ${store.footersContainers.value.length}`
     )

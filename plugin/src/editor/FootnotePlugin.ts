@@ -4,6 +4,7 @@ import { editorLivePreviewField, editorInfoField } from 'obsidian'
 import { Footnote } from '@/entities/Footnote'
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { setWidgetMount } from '@/helpers/widgetMounts'
 import { reliableScrollTo } from '@/helpers/scrollUtils'
 import { marginOverlayFor, marginOverlayIfAny, type MarginEntry } from './MarginOverlay'
 
@@ -341,21 +342,23 @@ export class FootnoteProvider {
     const el = createDiv()
     el.classList.add('abele-footnote-widget-container')
     el.id = id
-    el.createDiv({ attr: { 'data-footnote-id': id }, cls: 'abele-vue-mount' })
+    const mount = el.createDiv({ attr: { 'data-footnote-id': id }, cls: 'abele-vue-mount' })
 
     el.addEventListener('mouseenter', () => this.highlightRef(fn))
     el.addEventListener('mouseleave', () => this.clearHighlight())
 
-    store.footnotesContainers.value.push(
-      new Footnote({
-        id,
-        label: fn.label,
-        content: fn.content,
-        filePath: fn.filePath,
-        definitionFrom: fn.definitionFrom,
-        refFrom: fn.refFrom,
-      })
-    )
+    const footnote = new Footnote({
+      id,
+      label: fn.label,
+      content: fn.content,
+      filePath: fn.filePath,
+      definitionFrom: fn.definitionFrom,
+      refFrom: fn.refFrom,
+    })
+    // Before the store hears of it: the component is drawn into this element, not looked for —
+    // the margin overlay puts it into the page only after this.
+    setWidgetMount(footnote, mount)
+    store.footnotesContainers.value.push(footnote)
 
     this.entries.set(fn.label, { id, el, footnote: fn })
   }

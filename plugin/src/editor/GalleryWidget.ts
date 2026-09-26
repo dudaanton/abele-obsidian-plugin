@@ -3,6 +3,7 @@ import { Gallery } from '@/entities/Gallery'
 import { GalleryImageEntry } from '@/helpers/galleryUtils'
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { setWidgetMount } from '@/helpers/widgetMounts'
 import { TFile } from 'obsidian'
 
 export class GalleryWidget extends WidgetType {
@@ -34,18 +35,23 @@ export class GalleryWidget extends WidgetType {
     container.id = this.id
     container.classList.add('abele-gallery-widget-container')
 
-    container.createDiv({ attr: { 'data-gallery-id': this.id }, cls: 'abele-vue-mount' })
+    const mount = container.createDiv({
+      attr: { 'data-gallery-id': this.id },
+      cls: 'abele-vue-mount',
+    })
 
-    GlobalStore.getInstance().galleriesContainers.value.push(
-      new Gallery({
-        id: this.id,
-        file: this.file,
-        images: [...this.images],
-        layout: this.layout,
-        height: this.height,
-        bg: this.bg,
-      })
-    )
+    const gallery = new Gallery({
+      id: this.id,
+      file: this.file,
+      images: [...this.images],
+      layout: this.layout,
+      height: this.height,
+      bg: this.bg,
+    })
+    // Before the store hears of it: the component is drawn into this element, not looked for.
+    // Not `mountEl`, which also tells the orphan sweep to leave the gallery alone.
+    setWidgetMount(gallery, mount)
+    GlobalStore.getInstance().galleriesContainers.value.push(gallery)
 
     return container
   }

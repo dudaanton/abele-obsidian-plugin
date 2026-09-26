@@ -1,46 +1,6 @@
 <template>
-  <Teleport
-    v-for="task in tasksContainers"
-    :key="task.id"
-    :to="inAnyWindow(`[data-task-id='${task.id}']`)"
-  >
-    <TaskView :task="task as Task" />
-  </Teleport>
-  <Teleport
-    v-for="gallery in galleriesContainers"
-    :key="gallery.id"
-    :to="gallery.mountEl ?? inAnyWindow(`[data-gallery-id='${gallery.id}']`)"
-  >
-    <GalleryView :gallery="gallery as Gallery" />
-  </Teleport>
-  <Teleport
-    v-for="taskHeader in tasksHeadersContainers"
-    :key="taskHeader.id"
-    :to="inAnyWindow(`[data-task-header-id='${taskHeader.id}']`)"
-  >
-    <TaskHeaderView :task="taskHeader as TaskHeader" />
-  </Teleport>
-  <Teleport
-    v-for="header in headersContainers"
-    :key="header.id"
-    :to="inAnyWindow(`[data-header-id='${header.id}']`)"
-  >
-    <HeaderView :header="header as Header" />
-  </Teleport>
-  <Teleport
-    v-for="footer in footersContainers"
-    :key="footer.id"
-    :to="inAnyWindow(`[data-footer-id='${footer.id}']`)"
-  >
-    <FooterView :footer="footer as Footer" />
-  </Teleport>
-  <Teleport
-    v-for="footnote in footnotesContainers"
-    :key="footnote.id"
-    :to="inAnyWindow(`[data-footnote-id='${footnote.id}']`)"
-  >
-    <FootnoteView :footnote="footnote as Footnote" />
-  </Teleport>
+  <!-- Before the panels, as the widgets were; their own component, see there. -->
+  <NoteWidgets />
   <Teleport
     v-for="id in timelineSidebarIds"
     :key="id"
@@ -150,18 +110,7 @@
 import { computed } from 'vue'
 import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
-import TaskView from './Task.vue'
-import GalleryView from './Gallery.vue'
-import TaskHeaderView from './TaskHeader.vue'
-import HeaderView from './Header.vue'
-import FooterView from './Footer.vue'
-import FootnoteView from './FootnoteView.vue'
-import { Task } from '@/entities/Task'
-import { Gallery } from '@/entities/Gallery'
-import { TaskHeader } from '@/entities/TaskHeader'
-import { Header } from '@/entities/Header'
-import { Footer } from '@/entities/Footer'
-import { Footnote } from '@/entities/Footnote'
+import NoteWidgets from './NoteWidgets.vue'
 import TimelineSidebarView from './TimelineSidebar.vue'
 import TodoSidebarView from './TodoSidebar.vue'
 import FindAndReplaceBases from './FindAndReplaceBases.vue'
@@ -191,23 +140,9 @@ import TimeTrackingSidebarView from './TimeTrackingSidebar.vue'
 import ScriptRunsView from './ScriptRuns.vue'
 import ScriptView from './ScriptView.vue'
 import SettingsView from './settings/Settings.vue'
-import { findInAnyWindow } from '@/helpers/windowDocuments'
 import { vaultUrl } from '@/helpers/vaultUrl'
 
-/**
- * A note widget's mount element, looked up in every open window. A selector string handed to
- * Teleport is resolved in the main window's document only, so a note opened in a popout had
- * its gallery, tasks, header and footer drawn as empty boxes.
- */
-const inAnyWindow = (selector: string) => findInAnyWindow(selector) ?? selector
-
 const {
-  tasksContainers,
-  galleriesContainers,
-  tasksHeadersContainers,
-  headersContainers,
-  footersContainers,
-  footnotesContainers,
   findAndReplaceModalOpened,
   migrateFromDataviewModalOpened,
   saveMediaModalOpened,

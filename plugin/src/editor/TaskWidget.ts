@@ -2,6 +2,7 @@ import { WidgetType } from '@codemirror/view'
 import { Task } from '@/entities/Task'
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { setWidgetMount } from '@/helpers/widgetMounts'
 
 export class TaskWidget extends WidgetType {
   private id: string
@@ -20,15 +21,16 @@ export class TaskWidget extends WidgetType {
     container.id = this.id
     container.classList.add('abele-task-widget-container')
 
-    container.createDiv({ attr: { 'data-task-id': this.id }, cls: 'abele-vue-mount' })
+    const mount = container.createDiv({ attr: { 'data-task-id': this.id }, cls: 'abele-vue-mount' })
 
-    GlobalStore.getInstance().tasksContainers.value.push(
-      new Task({
-        id: this.id,
-        filePath: this.filePath,
-        wikilink: this.wikilink,
-      })
-    )
+    const task = new Task({
+      id: this.id,
+      filePath: this.filePath,
+      wikilink: this.wikilink,
+    })
+    // Before the store hears of it: the component is drawn into this element, not looked for.
+    setWidgetMount(task, mount)
+    GlobalStore.getInstance().tasksContainers.value.push(task)
 
     return container
   }

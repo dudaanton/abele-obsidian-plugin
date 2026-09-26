@@ -1,6 +1,7 @@
 import { WidgetType } from '@codemirror/view'
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { setWidgetMount } from '@/helpers/widgetMounts'
 import { TaskHeader } from '@/entities/TaskHeader'
 
 export class TaskHeaderWidget extends WidgetType {
@@ -18,14 +19,18 @@ export class TaskHeaderWidget extends WidgetType {
     container.id = this.id
     container.classList.add('abele-task-header-widget-container')
 
-    container.createDiv({ attr: { 'data-task-header-id': this.id }, cls: 'abele-vue-mount' })
+    const mount = container.createDiv({
+      attr: { 'data-task-header-id': this.id },
+      cls: 'abele-vue-mount',
+    })
 
-    GlobalStore.getInstance().tasksHeadersContainers.value.push(
-      new TaskHeader({
-        id: this.id,
-        filePath: this.filePath,
-      })
-    )
+    const header = new TaskHeader({
+      id: this.id,
+      filePath: this.filePath,
+    })
+    // Before the store hears of it: the component is drawn into this element, not looked for.
+    setWidgetMount(header, mount)
+    GlobalStore.getInstance().tasksHeadersContainers.value.push(header)
 
     return container
   }

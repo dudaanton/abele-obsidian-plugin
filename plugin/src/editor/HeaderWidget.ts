@@ -1,6 +1,7 @@
 import { WidgetType } from '@codemirror/view'
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { setWidgetMount } from '@/helpers/widgetMounts'
 import { Header } from '@/entities/Header'
 
 export class HeaderWidget extends WidgetType {
@@ -18,14 +19,18 @@ export class HeaderWidget extends WidgetType {
     container.id = this.id
     container.classList.add('abele-header-widget-container')
 
-    container.createDiv({ attr: { 'data-header-id': this.id }, cls: 'abele-vue-mount' })
+    const mount = container.createDiv({
+      attr: { 'data-header-id': this.id },
+      cls: 'abele-vue-mount',
+    })
 
-    GlobalStore.getInstance().headersContainers.value.push(
-      new Header({
-        id: this.id,
-        filePath: this.filePath,
-      })
-    )
+    const header = new Header({
+      id: this.id,
+      filePath: this.filePath,
+    })
+    // Before the store hears of it: the component is drawn into this element, not looked for.
+    setWidgetMount(header, mount)
+    GlobalStore.getInstance().headersContainers.value.push(header)
 
     return container
   }
