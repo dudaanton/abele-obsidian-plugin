@@ -33,6 +33,7 @@ import { createBookTools } from '@/ai/tools/BookTools'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { openIconPicker } from './openIconPicker'
 import { openSecretsList } from './openSecretsList'
+import { openMcpServer } from './openMcpServer'
 import { showFormModal } from '@/scripting/formModal'
 import { embeddedViews, isEmbeddedEditorAvailable } from '@/editor/embeddedEditor'
 import { TFile } from 'obsidian'
@@ -168,6 +169,8 @@ interface AbeleTestApi {
   openIconPicker(current?: string): void
   /** Opens the list of keys (Settings → Transfer → Synced keys → All keys), for the layout probes. */
   openSecretsList(): void
+  /** Opens Add MCP server with a URL filled in, for the layout probes; nothing is saved. */
+  openMcpServer(url?: string): void
   /** A script's form, as `form(fields)` shows it; resolves with the answers, or null. */
   showFormModal: typeof showFormModal
   /** Whether Obsidian's note editor can still be borrowed for the note fields. */
@@ -566,6 +569,7 @@ export function exposeTestApi(plugin: Plugin): void {
     chatHistoryPaths,
     openIconPicker,
     openSecretsList,
+    openMcpServer,
     showFormModal,
     embeddedEditorAvailable: () => isEmbeddedEditorAvailable(GlobalStore.getInstance().app),
     noteFieldView: (el: HTMLElement) => embeddedViews.get(el) ?? null,

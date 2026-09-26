@@ -519,6 +519,13 @@ const probeScript = `(async () => {
           }
         }
         if (report['mcp server']) report['mcp server'].clipped = clipped
+        // Save stands under the body, on screen before anything is scrolled.
+        const footer = dialog && dialog.querySelector('.abele-modal__footer')
+        if (report['mcp server']) report['mcp server'].onScreen = footer
+          ? [...footer.querySelectorAll('button')]
+              .filter((b) => { const r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight })
+              .map((b) => b.textContent.trim())
+          : []
       }
     } finally {
       await closeDialog()
@@ -752,6 +759,10 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 
   it('history: every card keeps its delete icon on the row of its title', () => {
     expect(report['history']?.stranded ?? ['no report']).toEqual([])
+  })
+
+  it('mcp server: Save stands on screen without scrolling', () => {
+    expect((report['mcp server'] as Screen & { onScreen?: string[] })?.onScreen).toContain('Save')
   })
 
   it('secrets list: every key keeps its show and copy icons on the row of its name', () => {

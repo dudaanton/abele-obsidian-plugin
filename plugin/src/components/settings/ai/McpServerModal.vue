@@ -79,24 +79,24 @@
           :desc="tool.description"
         />
       </Section>
-
-      <div class="abele-mcp-server__actions">
-        <Button
-          text="Save"
-          accent
-          :disabled="!canSave"
-          :tooltip="canSave ? 'Keep this server and close' : 'Needs a name of its own and a URL'"
-          @click="onSave"
-        />
-        <Button
-          v-if="!isNew"
-          text="Delete"
-          warning
-          tooltip="Remove this server; agents lose its tools"
-          @click="confirming = true"
-        />
-      </div>
     </div>
+
+    <template #footer>
+      <Button
+        text="Save"
+        accent
+        :disabled="!canSave"
+        :tooltip="canSave ? 'Keep this server and close' : 'Needs a name of its own and a URL'"
+        @click="onSave"
+      />
+      <Button
+        v-if="!isNew"
+        text="Delete"
+        warning
+        tooltip="Remove this server; agents lose its tools"
+        @click="confirming = true"
+      />
+    </template>
 
     <ConfirmModal
       v-if="confirming"
@@ -235,14 +235,5 @@ const onDelete = () => {
   font-size: var(--font-ui-small);
   padding-bottom: var(--size-4-2);
   overflow-wrap: anywhere;
-}
-
-.abele-mcp-server__actions {
-  display: flex;
-  gap: var(--size-4-2);
-  justify-content: flex-end;
-  padding-top: var(--size-4-3);
-  border-top: 1px solid var(--background-modifier-border);
-  margin-top: var(--size-4-2);
 }
 </style>

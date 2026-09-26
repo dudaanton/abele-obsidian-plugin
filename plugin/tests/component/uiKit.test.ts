@@ -402,6 +402,37 @@ describe('Modal', () => {
 
     expect(modalEl.querySelector('.abele-modal__body')).not.toBeNull()
   })
+
+  /**
+   * A form's buttons stand under its body, not at the end of it: the body scrolls and the row
+   * with Save stays in sight. The MCP server dialog kept its Save at the end of a list of tools
+   * and cut both off in a window shorter than itself (2026-09-26).
+   */
+  it('puts the footer after the body, outside what scrolls', async () => {
+    const view = mount(ObsidianModal, {
+      slots: {
+        default: '<p class="the-body">body</p>',
+        footer: '<button class="the-save">Save</button>',
+      },
+    })
+    await view.vm.$nextTick()
+    const modalEl = (view.vm as unknown as { modal: { modalEl: HTMLElement } }).modal.modalEl
+    const body = modalEl.querySelector('.abele-modal__body')!
+    const footer = modalEl.querySelector('.abele-modal__footer')!
+
+    expect(classOf(view)).toContain('abele-modal_footed')
+    expect(footer.querySelector('.the-save')).not.toBeNull()
+    expect(body.querySelector('.the-save')).toBeNull()
+    expect(body.nextElementSibling).toBe(footer)
+  })
+
+  it('has no footer when none is given', () => {
+    const view = mount(ObsidianModal)
+    const modalEl = (view.vm as unknown as { modal: { modalEl: HTMLElement } }).modal.modalEl
+
+    expect(modalEl.querySelector('.abele-modal__footer')).toBeNull()
+    expect(classOf(view)).not.toContain('abele-modal_footed')
+  })
 })
 
 describe('ConfirmModal', () => {

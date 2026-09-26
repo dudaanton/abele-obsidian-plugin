@@ -2,13 +2,16 @@
   <Teleport v-if="wrapper" :to="wrapper">
     <slot :id="id" class="abele-modal" />
   </Teleport>
+  <Teleport v-if="footer" :to="footer">
+    <slot name="footer" />
+  </Teleport>
 </template>
 
 <script setup lang="ts">
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { App, Modal } from 'obsidian'
-import { onBeforeMount, onMounted, onUnmounted, ref, shallowRef } from 'vue'
+import { onBeforeMount, onMounted, onUnmounted, ref, shallowRef, useSlots } from 'vue'
 import { useKeyboardRoom } from '@/composables/useKeyboardRoom'
 
 const props = defineProps<{
@@ -28,6 +31,12 @@ const id = ref(genid())
 // Teleport by element, not by selector: a modal opened from the settings window
 // lives in that window's document, which `document.querySelector` never sees.
 const wrapper = shallowRef<HTMLElement | null>(null)
+/**
+ * The row under the body, for a form's buttons: the body scrolls and this stays in sight. Given
+ * as the `footer` slot; a dialog without one has no row and scrolls the way it always did.
+ */
+const footer = shallowRef<HTMLElement | null>(null)
+const slots = useSlots()
 
 // Every dialog of the plugin stands above the on-screen keyboard while one of its fields is
 // being typed into — the date dialog was the one reported, the script forms and chat setup
@@ -78,6 +87,13 @@ onBeforeMount(() => {
   el.addClass('abele-modal__body')
   contentEl.appendChild(el)
   wrapper.value = el
+  if (slots.footer) {
+    const row = contentEl.doc.win.createDiv()
+    row.addClass('abele-modal__footer')
+    contentEl.appendChild(row)
+    footer.value = row
+    modal.value.modalEl.addClass('abele-modal_footed')
+  }
   if (props.title) {
     modal.value.setTitle(props.title)
   }
@@ -134,17 +150,28 @@ const emit = defineEmits<{
 }
 
 /**
- * Neither the content element nor the mount point clips anything. Both stand exactly where
- * the content does — on the desktop the content element has no padding of its own — so
- * anything that reaches past the content by design, the focus ring a field draws outside its
- * box, was cut at their edge: 2px off each side of the search field, on the phone from the
- * mount point and on the desktop from the content element (2026-09-05, twice). `min-height:
- * 0` is what keeps a scrolling child from growing the dialog; the dialog itself still clips,
- * at its own padding, which is room enough for a ring.
+ * The content element clips nothing: it stands exactly where the content does — on the desktop
+ * it has no padding of its own — so anything that reaches past the content by design, the focus
+ * ring a field draws outside its box, was cut at its edge (2026-09-05, twice).
  */
-.abele-modal_tall .modal-content,
-.abele-modal_tall .abele-modal__body {
+.abele-modal_tall .modal-content {
   overflow: visible;
+}
+
+/**
+ * The body is what scrolls, when what it holds is taller than the dialog. A body that fills it
+ * — a list under a search field, tabs over a panel — scrolls inside itself and this never has
+ * anything to scroll; a form that simply runs long, the MCP server with its fetched tools, was
+ * cut off at the dialog's edge instead, Save and all, with nothing to scroll it (2026-09-26).
+ *
+ * A scrolling box clips at its padding edge, so the padding is room for a field's focus ring,
+ * pulled back by the same margin so the content stands where it would.
+ */
+.abele-modal_tall .abele-modal__body,
+.abele-modal_footed .abele-modal__body {
+  overflow-y: auto;
+  padding: var(--size-2-2);
+  margin: calc(-1 * var(--size-2-2));
 }
 
 /**
@@ -177,6 +204,38 @@ const emit = defineEmits<{
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+/**
+ * A dialog with buttons under its body: the body scrolls between the title and the buttons, and
+ * the dialog itself no longer does, so the buttons never scroll away with what is above them.
+ */
+.modal.abele-modal_footed {
+  overflow: hidden;
+}
+
+.abele-modal_footed .modal-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.abele-modal_footed .abele-modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.abele-modal__footer {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  justify-content: flex-end;
+  padding-top: var(--size-4-3);
+  margin-top: var(--size-4-2);
+  border-top: 1px solid var(--background-modifier-border);
 }
 
 body.is-phone .modal.abele-modal_full,

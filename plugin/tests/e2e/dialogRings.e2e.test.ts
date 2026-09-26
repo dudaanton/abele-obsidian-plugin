@@ -5,8 +5,8 @@
  * for it. Twice on 2026-09-05 one did not — the dialog's mount point on a phone, its content
  * element on the desktop — and the search field lost 2px off each side: «задолбала меня
  * обрезка содержимого в модалках». This focuses every focusable thing in every tab of the
- * setup dialog and in the history dialog, and measures its ring against every clipping
- * ancestor. The phone probe does the same at 390×844.
+ * setup dialog, the history, the icon picker, the MCP server form and the list of keys, and
+ * measures its ring against every clipping ancestor. The phone probe does the same at 390×844.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalRaw } from './helpers/obsidianCli'
@@ -114,6 +114,37 @@ const script = `(async () => {
     cuts.push({ screen: 'icon picker', field: '-', by: ['dialog did not open'] })
   }
 
+  // The MCP server's form with its tools fetched, from a stub: fields above a body that scrolls,
+  // and Save in the row under it.
+  const service = window.__abeleTest.McpService.getInstance()
+  const fetchTools = service.fetchTools
+  try {
+    service.fetchTools = async () =>
+      Array.from({ length: 12 }, (_, i) => ({ name: 'tool-' + i, description: 'A tool.', inputSchema: { type: 'object', properties: {} } }))
+    window.__abeleTest.openMcpServer()
+    if (await until(() => document.querySelector('.modal .abele-mcp-server'), 5000)) {
+      const modal = document.querySelector('.modal .abele-mcp-server').closest('.modal')
+      ;[...modal.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Fetch tools').click()
+      await until(() => modal.querySelectorAll('.abele-mcp-server .setting-item').length > 12, 5000)
+      await wait(400)
+      measureAll('mcp server', modal)
+      await closeDialog()
+    } else {
+      cuts.push({ screen: 'mcp server', field: '-', by: ['dialog did not open'] })
+    }
+  } finally {
+    service.fetchTools = fetchTools
+  }
+
+  window.__abeleTest.openSecretsList()
+  if (await until(() => document.querySelector('.modal .abele-secrets-list'), 5000)) {
+    await wait(400)
+    measureAll('secrets list', document.querySelector('.modal'))
+    await closeDialog()
+  } else {
+    cuts.push({ screen: 'secrets list', field: '-', by: ['dialog did not open'] })
+  }
+
   return JSON.stringify(cuts)
 })()`
 
@@ -126,7 +157,7 @@ describe.skipIf(!available)('focus rings in the chat dialogs on the desktop', ()
     cuts = JSON.parse(evalRaw(script, 120_000)) as Cut[]
   }, 150_000)
 
-  it('no box in the setup dialog, the history or the icon picker cuts the ring off a focused field', () => {
+  it('no box in the setup dialog, the history, the icon picker, the MCP server or the list of keys cuts the ring off a focused field', () => {
     expect(cuts.map((c) => `${c.screen}: ${c.field} — ${c.by.join(', ')}`)).toEqual([])
   })
 })

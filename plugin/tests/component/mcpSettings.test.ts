@@ -35,7 +35,7 @@ afterEach(() => {
 })
 
 const STUBS = {
-  ObsidianModal: { template: '<div class="modal-stub"><slot /></div>' },
+  ObsidianModal: { template: '<div class="modal-stub"><slot /><slot name="footer" /></div>' },
   ConfirmModal: {
     props: ['title', 'message'],
     emits: ['confirm', 'close'],
