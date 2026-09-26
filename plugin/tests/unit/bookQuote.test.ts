@@ -5,7 +5,7 @@
  */
 import { pageOf } from '../helpers/pageDocument'
 import { describe, it, expect } from 'vitest'
-import { findQuote, nearest, quoteKey, wordsOf } from '@/reader/bookQuote'
+import { aroundOf, findQuote, nearest, quoteKey, wordsOf } from '@/reader/bookQuote'
 import { fromRange, parse, toRange } from '@/vendor/foliate-js/epubcfi.js'
 
 const page = (body: string): Document =>
@@ -26,6 +26,18 @@ describe('words quoted from a page', () => {
       'He said,\n   “It’s   a trap” — and'
     )
     expect(findQuote(doc, 'hyphenated word')[0]?.toString()).toBe('Hyphen­ated word')
+  })
+
+  it('come with the words of their paragraph before and after them, not its opening', () => {
+    const doc = page(
+      '<h1>Title</h1><p>Opening words of the paragraph. Then <em>the mind</em>-killer comes, and more.</p><p>Next.</p>'
+    )
+    const [range] = findQuote(doc, 'the mind-killer')
+    expect(aroundOf(range)).toEqual({
+      pre: 'Opening words of the paragraph. Then ',
+      match: 'the mind-killer',
+      post: ' comes, and more.',
+    })
   })
 
   it('run over paragraphs, and read back with a line between them', () => {

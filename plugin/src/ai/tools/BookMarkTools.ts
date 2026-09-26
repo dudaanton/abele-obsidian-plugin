@@ -7,9 +7,9 @@
  */
 import type { TFile } from 'obsidian'
 import type { AgentTool } from '../client'
-import { answer, app, link, namedBook, quoted } from './bookToolKit'
+import { answer, app, link, namedBook, quoted, snippetOf } from './bookToolKit'
 import { loadBookText, type LoadedBook } from '@/reader/bookText'
-import { findQuote, MIN_QUOTE, nearest, quoteKey, wordsOf } from '@/reader/bookQuote'
+import { aroundOf, findQuote, MIN_QUOTE, nearest, quoteKey, wordsOf } from '@/reader/bookQuote'
 import {
   baseCfi,
   cfiOf,
@@ -36,8 +36,9 @@ import { collapse, compare } from '@/vendor/foliate-js/epubcfi.js'
 
 /** The longest quote a highlight is made of: a few paragraphs. */
 const MAX_QUOTE = 5000
-/** Places listed when a quote is found in several. */
+/** Places listed when a quote is found in several, and the characters shown each side of one. */
 const SHOW_CANDIDATES = 5
+const CANDIDATE_SIDE = 60
 const LIST_LIMIT = 30
 
 /** Text on one line, cut to `max` characters. */
@@ -231,13 +232,20 @@ export function createBookHighlightTool(): AgentTool {
         const lines = [
           `These words are in ${found.length > 20 ? 'more than 20' : found.length} places in ${within}. Give one of these links as \`book\`, or quote more words:`,
         ]
+        const snippets = new Set<string>()
         for (const f of found.slice(0, SHOW_CANDIDATES)) {
           const label = await labelAt(loaded, f.index, f.doc, f.range)
-          const around = f.range.startContainer.parentElement?.textContent ?? ''
+          const { pre, match, post } = aroundOf(f.range)
+          const around = snippetOf(pre, match, post, CANDIDATE_SIDE)
+          snippets.add(around)
           lines.push(
-            `- part ${f.index + 1} ${link(file, { cfi: cfiOf(loaded, f.index, f.range) }, label)} — ${short(around, 120)}`
+            `- part ${f.index + 1} ${link(file, { cfi: cfiOf(loaded, f.index, f.range) }, label)} — ${around}`
           )
         }
+        if (snippets.size === 1)
+          lines.push(
+            'They have the same words around them: choose by link, as more words will not tell them apart.'
+          )
         throw new Error(lines.join('\n'))
       }
       const { index, doc, range } = chosen

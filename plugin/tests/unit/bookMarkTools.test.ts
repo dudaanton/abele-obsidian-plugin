@@ -10,7 +10,8 @@ import type { TFile } from 'obsidian'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { useVault } from '../helpers/testEnv'
 import type { LoadedBook } from '@/reader/bookText'
-import { partsFrom, snippetOf } from '@/ai/tools/BookTools'
+import { partsFrom } from '@/ai/tools/BookTools'
+import { snippetOf } from '@/ai/tools/bookToolKit'
 import {
   createBookHighlightEditTool,
   createBookHighlightRemoveTool,
@@ -29,10 +30,10 @@ vi.mock('@/reader/bookText', async (original) => ({
 
 /** Chapter one: a heading, a section heading further on, and words said twice. */
 const CHAPTER_ONE = `<h1 id="c1">Chapter 1</h1>
-<p>Plain text of the chapter.</p>
+<p>A long opening sentence that tells the two places apart. Plain text of the chapter.</p>
 <h2 id="c1-s2">Chapter 1, part two</h2>
 <p>Fear is the <em>mind</em>-killer.</p>
-<p>Plain text of the chapter.</p>`
+<p>Another opening, nothing like the first. Plain text of the chapter.</p>`
 
 const page = (body: string): Document => pageOf(body, '<title>c1</title>')
 
@@ -128,6 +129,10 @@ describe('an agent highlighting words', () => {
     const links = refused.match(/\[\[[^\]]+\]\]/g) ?? []
     expect(links).toHaveLength(2)
     expect(links[1]).toContain('Chapter 1, part two')
+    // Each place shows the words around the find, not the opening of its paragraph.
+    expect(refused).toContain('tells the two places apart. **Plain text of the chapter**.')
+    expect(refused).toContain('nothing like the first. **Plain text of the chapter**.')
+    expect(refused).not.toContain('the same words around them')
     // The second place, as a search would give it, chooses the second.
     const answer = await call(createBookHighlightTool(), {
       book: links[1],
@@ -135,6 +140,20 @@ describe('an agent highlighting words', () => {
     })
     expect(answer).toContain('Chapter 1, part two')
     expect(await note()).toMatch(/\|Chapter 1, part two\]\]\n> Plain text of the chapter\./)
+  })
+
+  it('says so when the places read the same, so the agent chooses by link', async () => {
+    const book = books.get('Books/Dune.epub') as unknown as {
+      book: { sections: { createDocument?: () => Document }[] }
+    }
+    book.book.sections[0].createDocument = () =>
+      page('<h1 id="c1">Chapter 1</h1><p>Same words here.</p><p>Same words here.</p>')
+    const refused = await failure(createBookHighlightTool(), {
+      book: 'Books/Dune.epub',
+      text: 'same words',
+    })
+    expect(refused).toContain('**Same words** here.')
+    expect(refused).toContain('the same words around them')
   })
 
   it('says so when the words are not in the book, or too few to find', async () => {

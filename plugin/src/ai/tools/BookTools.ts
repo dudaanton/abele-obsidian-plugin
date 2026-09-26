@@ -20,6 +20,7 @@ import {
   link,
   namedBook,
   quoted,
+  snippetOf,
 } from './bookToolKit'
 import { loadBookText, offsetOf, searchBookText, sectionText } from '@/reader/bookText'
 import { percent } from '@/reader/model'
@@ -253,8 +254,6 @@ export function createBookReadTool(): AgentTool {
 /** Finds one search lists when no number is asked for, and the most it lists. */
 const SEARCH_LIMIT = 15
 const SEARCH_MAX = 40
-/** Characters of text kept on each side of a find: a snippet of about 200 in all. */
-const SIDE = 90
 
 /**
  * Part numbers written as a person would — `3`, `2-4`, `1, 5-7` — as indices from 0; refused
@@ -274,16 +273,6 @@ export function partsFrom(spec: unknown, count: number): Set<number> | undefined
     for (let n = from; n <= to; n++) out.add(n - 1)
   }
   return out
-}
-
-/** The words around a find, on one line, cut to about `SIDE` characters each side at a word. */
-export function snippetOf(pre: string, match: string, post: string): string {
-  const flat = (t: string) => t.replace(/\s+/g, ' ')
-  let before = flat(pre)
-  let after = flat(post)
-  if (before.length > SIDE) before = '…' + before.slice(-SIDE).replace(/^\S*\s/, '')
-  if (after.length > SIDE) after = after.slice(0, SIDE).replace(/\s\S*$/, '') + '…'
-  return `${before}**${flat(match)}**${after}`.trim()
 }
 
 export function createBookSearchTool(): AgentTool {

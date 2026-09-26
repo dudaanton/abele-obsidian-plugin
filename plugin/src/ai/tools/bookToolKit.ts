@@ -69,3 +69,19 @@ export const quoted = (text: string) =>
     .split('\n')
     .map((line) => (line.trim() ? `   > ${line}` : '   >'))
     .join('\n')
+
+/** Characters of text kept on each side of a find: a snippet of about 200 in all. */
+const SIDE = 90
+
+/**
+ * The words around a find, on one line, the find in bold, cut to about `side` characters each
+ * side at a word.
+ */
+export function snippetOf(pre: string, match: string, post: string, side = SIDE): string {
+  const flat = (t: string) => t.replace(/\s+/g, ' ')
+  let before = flat(pre)
+  let after = flat(post)
+  if (before.length > side) before = '…' + before.slice(-side).replace(/^\S*\s/, '')
+  if (after.length > side) after = after.slice(0, side).replace(/\s\S*$/, '') + '…'
+  return `${before}**${flat(match)}**${after}`.trim()
+}

@@ -202,7 +202,8 @@ Marking — each asks first:
   gives them — spacing, case and quote marks may differ, nothing else. Pass `book` as a link to
   the place (a find of `book_search`) to highlight the occurrence nearest it; with a bare path it
   looks through the whole book (or `part`) and refuses words that are in several places, listing
-  their links to choose from. Highlighting the same words again changes that highlight. On a PDF
+  each with its link and the words around it; when those read the same everywhere, choose by link
+  rather than quoting more. Highlighting the same words again changes that highlight. On a PDF
   it needs the page's text layer: a scanned page has no words.
 - `book_highlight_edit` — a highlight's `color` or `note`, named by its link; an empty note
   removes it.

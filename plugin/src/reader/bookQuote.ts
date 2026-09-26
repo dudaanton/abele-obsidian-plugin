@@ -151,6 +151,36 @@ export function wordsOf(range: Range): string {
   return tidy(out)
 }
 
+/** The block a boundary of a range sits in: its paragraph, else the page. */
+function blockOf(node: Node): Node {
+  const doc = node.ownerDocument ?? (node as Document)
+  for (let at: Node | null = node; at; at = at.parentNode) {
+    if (
+      at.nodeType === 1 &&
+      BLOCK.test((at as Element).localName) &&
+      !/^(br|hr)$/i.test((at as Element).localName)
+    )
+      return at
+  }
+  return doc.body ?? doc.documentElement
+}
+
+/**
+ * A find with the words of its paragraph on either side — what tells two finds of the same words
+ * apart. A find running over paragraphs takes the text before it from the first and after it
+ * from the last.
+ */
+export function aroundOf(range: Range): { pre: string; match: string; post: string } {
+  const doc = range.startContainer.ownerDocument ?? (range.startContainer as Document)
+  const before = doc.createRange()
+  before.selectNodeContents(blockOf(range.startContainer))
+  before.setEnd(range.startContainer, range.startOffset)
+  const after = doc.createRange()
+  after.selectNodeContents(blockOf(range.endContainer))
+  after.setStart(range.endContainer, range.endOffset)
+  return { pre: before.toString(), match: wordsOf(range), post: after.toString() }
+}
+
 const tidy = (text: string) =>
   text
     .replace(/[^\S\n]+/g, ' ')
