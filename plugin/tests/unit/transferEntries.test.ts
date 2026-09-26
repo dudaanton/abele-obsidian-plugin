@@ -201,6 +201,8 @@ describe('settings that arrived later than the transfer did', () => {
       ],
       // And how thick the pen draws on a PDF.
       pdfInkThickness: 'bold' as const,
+      // And on a drawing, chosen apart.
+      drawingInkThickness: 'fine' as const,
     }
     const entries = collectEntries(settings({ reader }))
     const entry = find(entries, 'reader', 'reader')

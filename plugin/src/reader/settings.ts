@@ -56,6 +56,11 @@ export interface ReaderSettings {
   pdfDarkPages: boolean
   /** How thick the pen and the marker draw on a PDF, as last chosen under the page. */
   pdfInkThickness: Thickness
+  /**
+   * How thick the pen and the marker draw on a drawing or a picture drawn on, as last chosen on
+   * its bar. Kept here beside the PDF's so it travels with it; chosen apart from it.
+   */
+  drawingInkThickness: Thickness
   /** The voice books are read aloud in, by its `voiceURI`; empty for the device's own for the book. */
   ttsVoice: string
   /** How fast books are read aloud: 1 is the voice's own pace. */
@@ -133,6 +138,7 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   pdfTwoPages: false,
   pdfDarkPages: true,
   pdfInkThickness: 'medium',
+  drawingInkThickness: 'medium',
   ttsVoice: '',
   ttsRate: 1,
   progressShow: 'page',
@@ -173,6 +179,7 @@ export function readerSettingsFrom(stored?: Partial<ReaderSettings> | null): Rea
     pdfTwoPages: typeof s.pdfTwoPages === 'boolean' ? s.pdfTwoPages : d.pdfTwoPages,
     pdfDarkPages: typeof s.pdfDarkPages === 'boolean' ? s.pdfDarkPages : d.pdfDarkPages,
     pdfInkThickness: oneOf(s.pdfInkThickness, THICKNESSES, d.pdfInkThickness),
+    drawingInkThickness: oneOf(s.drawingInkThickness, THICKNESSES, d.drawingInkThickness),
     ttsVoice: typeof s.ttsVoice === 'string' ? s.ttsVoice : d.ttsVoice,
     ttsRate: clamp(s.ttsRate, 0.5, 3, d.ttsRate),
     progressShow: oneOf(s.progressShow, PROGRESS_SHOWS, d.progressShow),

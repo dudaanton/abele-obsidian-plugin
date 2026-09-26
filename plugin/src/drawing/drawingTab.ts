@@ -8,6 +8,7 @@ import DrawingBar from '@/components/drawing/DrawingBar.vue'
 import type { DrawingSession } from './DrawingSession'
 import { THICKNESSES, type DrawingModel } from './model'
 import { SHAPE_KINDS, type ShapeKind } from './items'
+import { keepDrawingThickness } from './penThickness'
 
 /**
  * Esc, undo, redo and delete. While text is typed on the drawing its keys are the field's: Esc
@@ -68,6 +69,7 @@ export function mountDrawingBar(
   return app
 }
 
+/** Fine, medium or bold, kept for every drawing from now on. */
 function thicknessMenu(e: MouseEvent, model: DrawingModel, session: DrawingSession | null): void {
   const menu = new Menu()
   for (const t of THICKNESSES)
@@ -75,7 +77,10 @@ function thicknessMenu(e: MouseEvent, model: DrawingModel, session: DrawingSessi
       item
         .setTitle(t[0].toUpperCase() + t.slice(1))
         .setChecked(model.thickness === t)
-        .onClick(() => session?.setThickness(t))
+        .onClick(() => {
+          session?.setThickness(t)
+          keepDrawingThickness(t)
+        })
     )
   menu.showAtMouseEvent(e)
 }

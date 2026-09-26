@@ -20,6 +20,7 @@ import { drawingSvg, parseDrawingSvg } from './drawingFile'
 import { cameraFrom, type Camera } from './camera'
 import { DrawingSession } from './DrawingSession'
 import { emptyDrawingModel, type DrawingModel } from './model'
+import { keptDrawingThickness } from './penThickness'
 import { DRAWING_VIEW_TYPE } from './viewType'
 import { copyEmbed } from './files'
 import { visibleRect } from './camera'
@@ -32,7 +33,10 @@ import type { Rect } from './items'
 export { DRAWING_VIEW_TYPE }
 
 export class DrawingView extends TextFileView {
-  readonly model: DrawingModel = reactive(emptyDrawingModel())
+  readonly model: DrawingModel = reactive({
+    ...emptyDrawingModel(),
+    thickness: keptDrawingThickness(),
+  })
   session: DrawingSession | null = null
   private vue: VueApp | null = null
   /** What was last read or written, so the vault's news of our own write is not a change. */

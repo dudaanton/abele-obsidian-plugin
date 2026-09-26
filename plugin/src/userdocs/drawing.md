@@ -19,7 +19,9 @@ presses do not answer there.
 - **Pen** — the harder a pen presses, the wider the line.
 - **Marker** — a wide see-through line, like a highlighter.
 - **Eraser** — takes away every whole line it touches. The eraser end of a pen erases too.
-- The dots pick the colour, the wavy line how thick the pen and the marker draw.
+- The dots pick the colour, the wavy line how thick the pen and the marker draw: fine, medium or
+  bold. The thickness is kept for every drawing, and is also under **Pen thickness on drawings** in
+  **Settings → Abele → Books**.
 - Undo and redo take back and bring again one line, or one whole pass of the eraser;
   Ctrl or ⌘+Z and Ctrl or ⌘+Shift+Z do the same.
 - Esc turns drawing off.

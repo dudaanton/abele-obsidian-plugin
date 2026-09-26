@@ -219,6 +219,8 @@ describe('the PDF settings', () => {
     const all = names(mount(ReaderSettingsForm, { props: { kind: 'all' } }))
     expect(all).toContain('Open PDF files in the Abele reader')
     expect(all).toContain('Font')
+    // The drawings' pen beside the PDF's, in Settings only: a PDF's tab has nothing of drawings.
+    expect(all.indexOf('Pen thickness on drawings')).toBe(all.indexOf('Pen thickness') + 1)
     expect(names(mount(ReaderSettingsForm, { props: { kind: 'epub' } }))).not.toContain('Page size')
   })
 

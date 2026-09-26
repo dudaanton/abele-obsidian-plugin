@@ -22,6 +22,7 @@ import { DrawingSession } from './DrawingSession'
 import { drawingKeys, mountDrawingBar } from './drawingTab'
 import { drawnPath, flatten, formatOf } from './imageInk'
 import { emptyDrawingModel, type DrawingModel } from './model'
+import { keptDrawingThickness } from './penThickness'
 import { DRAWABLE_PICTURES, IMAGE_INK_VIEW_TYPE } from './viewType'
 
 export { IMAGE_INK_VIEW_TYPE }
@@ -29,7 +30,10 @@ export { IMAGE_INK_VIEW_TYPE }
 export { DRAWABLE_PICTURES }
 
 export class ImageInkView extends ItemView {
-  readonly model: DrawingModel = reactive(emptyDrawingModel())
+  readonly model: DrawingModel = reactive({
+    ...emptyDrawingModel(),
+    thickness: keptDrawingThickness(),
+  })
   session: DrawingSession | null = null
   private vue: VueApp | null = null
   private path = ''

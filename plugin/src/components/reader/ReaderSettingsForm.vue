@@ -124,6 +124,17 @@
           @update:model-value="set('pdfInkThickness', $event)"
         />
       </Setting>
+      <Setting
+        v-if="kind === 'all'"
+        name="Pen thickness on drawings"
+        desc="How thick the pen and the marker draw on a drawing or a picture drawn on. The button beside the colours on its bar changes it too."
+      >
+        <Dropdown
+          :options="thicknessOptions"
+          :model-value="settings.drawingInkThickness"
+          @update:model-value="set('drawingInkThickness', $event)"
+        />
+      </Setting>
     </Section>
 
     <Section title="Reading aloud">

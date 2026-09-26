@@ -401,6 +401,42 @@ describe.skipIf(!available)('the drawing canvas', () => {
     expect(r.saved).toEqual(['stroke', 'stroke', 'shape', 'shape', 'text'])
   })
 
+  it('keeps the thickness chosen from the bar for the next drawing, apart from the PDF pen', () => {
+    const r = run<{
+      error?: string
+      menu?: boolean
+      chosen?: string
+      saved?: string
+      next?: string
+      pdf?: string
+    }>(`
+      await closeAll()
+      const cfg = window.__abeleTest.AbeleConfig.getInstance()
+      const pdfBefore = cfg.reader.pdfInkThickness
+      const view = await newOne()
+      click(view, '.abele-drawing-bar__thickness')
+      const menu = await pickMenu('Bold')
+      const chosen = view.model.thickness
+      const saved = cfg.reader.drawingInkThickness
+      await closeAll()
+      const next = (await newOne()).model.thickness
+      const pdf = cfg.reader.pdfInkThickness === pdfBefore ? 'unchanged' : cfg.reader.pdfInkThickness
+      // Back as it was for whatever runs next.
+      click(views()[0], '.abele-drawing-bar__thickness')
+      await pickMenu('Medium')
+      await closeAll()
+      return { menu, chosen, saved, next, pdf }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r).toMatchObject({
+      menu: true,
+      chosen: 'bold',
+      saved: 'bold',
+      next: 'bold',
+      pdf: 'unchanged',
+    })
+  })
+
   it('shows the part of a drawing a note names, changes it and keeps it, and opens the drawing there', () => {
     const r = run<{
       error?: string
