@@ -38,7 +38,7 @@ Every script must start with a comment block declaring its metadata:
 - Default values: add \`= value\` after description. Use quotes for strings with spaces: \`= "my value"\`
 - Defaults pre-fill the form UI and are used as fallback when the param is not provided (e.g. via link URL)
 - Add \`selection\` after description/default to auto-fill from editor selection: \`// @param text string "Input text" selection\`. Run on words in a book, it is filled with those words
-- \`@book\`: the script gets a button of its own on the book reader's selection bar (any script can be run there through "Run a script on these words"); see \`book\` below
+- \`@book\`: the script is on the book menu, offered first on the book reader's selection bar (so can any script chosen in Settings → Books, and any script can be picked there from the list); see \`book\` below
 - Parameters are available via the \`params\` object (e.g. \`params.paramName\`)
 
 ---
@@ -323,8 +323,9 @@ every automation until one is edited. \`event\` is not a reserved name: a script
 ### book — when run on words in a book
 
 Select words in the book reader (or tap a highlight) and the bar under the page runs a script on
-them: a script whose header has \`// @book\` has a button of its own there, and "Run a script on
-these words" picks any other. Such a run finds the words in \`book\`; any other run finds \`null\`.
+them: the scripts on the book menu — chosen in Settings → Books, pinned from the script
+list, or with \`// @book\` in their header — are offered there first, and "Other script…" picks any
+other. Such a run finds the words in \`book\`; any other run finds \`null\`.
 Parameters marked \`selection\` start out as the words, and the form is shown only when a
 required one is still empty.
 

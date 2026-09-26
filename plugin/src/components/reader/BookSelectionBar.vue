@@ -45,22 +45,32 @@
         tooltip="Quote these words with a link into the note you were last in"
         @click="emit('quote')"
       />
-      <Icon
-        v-for="s in scripts ?? []"
-        :key="s.name"
-        :icon="s.icon || 'scroll-text'"
-        :tooltip="`Run ${s.name} on these words`"
-        class="abele-book-selection__script"
-        :data-script="s.name"
-        @click="emit('script', s.name)"
-      />
-      <Icon
-        v-if="canRunScripts"
-        icon="terminal"
-        tooltip="Run a script on these words…"
-        class="abele-book-selection__run-script"
-        @click="emit('script')"
-      />
+      <template v-if="folded">
+        <Icon
+          icon="scroll-text"
+          tooltip="Scripts for these words…"
+          class="abele-book-selection__scripts"
+          @click="openScripts"
+        />
+      </template>
+      <template v-else>
+        <Icon
+          v-for="s in scripts ?? []"
+          :key="s.script"
+          :icon="s.icon"
+          :tooltip="`Run ${s.label} on these words`"
+          class="abele-book-selection__script"
+          :data-script="s.script"
+          @click="emit('script', s.script)"
+        />
+        <Icon
+          v-if="canRunScripts"
+          icon="terminal"
+          tooltip="Run a script on these words…"
+          class="abele-book-selection__run-script"
+          @click="emit('script')"
+        />
+      </template>
       <template v-if="highlight">
         <Icon icon="file-text" tooltip="Open the highlights note" @click="emit('open-note', $event)" />
         <Icon icon="trash-2" tooltip="Remove the highlight" @click="emit('delete')" />
@@ -78,18 +88,25 @@
 /**
  * What can be done to words selected on the page — highlight them in a colour, comment, link to
  * them, quote them into a note, run a script on them — or to a highlight that was tapped: recolour it, comment, link,
- * open its note, remove it. A row of glyphs, so it fits a phone.
+ * open its note, remove it. A row of glyphs, so it fits a phone: past three scripts they fold
+ * into one button with a menu.
  */
+import { computed } from 'vue'
+import { Menu } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import { HIGHLIGHT_COLORS, type Highlight, type HighlightColor } from '@/reader/highlights'
+import { BOOK_BAR_BUTTONS } from '@/scripting/bookMenuScripts'
 
-defineProps<{
+const props = defineProps<{
   /** The highlight tapped; unset for a fresh selection. */
   highlight?: Highlight | null
   /** The AI side is on, so a chat can be asked from here. */
   canAsk?: boolean
-  /** Scripts whose header says `@book`: a button each. */
-  scripts?: { name: string; icon?: string }[]
+  /**
+   * The book menu's scripts, chosen in the settings or by their header: a button each while
+   * they are few, one button with a menu of them once they are more.
+   */
+  scripts?: { script: string; label: string; icon: string }[]
   /** There are scripts to pick one from. */
   canRunScripts?: boolean
 }>()
@@ -106,6 +123,30 @@ const emit = defineEmits<{
   (e: 'delete'): void
   (e: 'close'): void
 }>()
+
+/** More scripts than the bar has room for on a phone: one button, and a menu of them. */
+const folded = computed(() => (props.scripts?.length ?? 0) > BOOK_BAR_BUTTONS)
+
+/** The menu of the book menu's scripts, with any other script to pick at its end. */
+const openScripts = (event: MouseEvent) => {
+  const menu = new Menu()
+  for (const s of props.scripts ?? []) {
+    menu.addItem((item) =>
+      item
+        .setTitle(s.label)
+        .setIcon(s.icon)
+        .onClick(() => emit('script', s.script))
+    )
+  }
+  menu.addSeparator()
+  menu.addItem((item) =>
+    item
+      .setTitle('Other script…')
+      .setIcon('terminal')
+      .onClick(() => emit('script'))
+  )
+  menu.showAtMouseEvent(event)
+}
 </script>
 
 <style lang="scss">

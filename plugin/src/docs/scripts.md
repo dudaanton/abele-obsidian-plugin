@@ -43,9 +43,11 @@ note they were looking for when it is not there yet.
 
 Six ways in: the command palette, a button in a note's header, an `abele://` link, an
 agent calling the `script_<name>` tool, an automation when something happens to a note, or the
-book reader's bar on selected words — where a script with `// @book` in its header has a button
-of its own, and gets the words, their sentence and a link to their place as `book`. A script can
-call another with `runScript`.
+book reader's bar on selected words, which gets the words, their sentence and a link to their
+place as `book`. What that bar offers first is the book menu: the scripts the person chose in
+Settings → Books (`reader.selectionScripts`) or pinned from its script list, then those
+whose header has `// @book`. Up to three are a button each, more fold into one menu, and any other
+script is picked from the list. A script can call another with `runScript`.
 
 The **Scripts** page of the plugin's settings lists every script as a card — its `@icon`,
 `@name`, `@description` and parameters, straight from the header above — and runs one or

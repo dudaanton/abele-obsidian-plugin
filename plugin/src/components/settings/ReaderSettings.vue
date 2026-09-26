@@ -6,6 +6,7 @@
       <ReaderSettingsForm />
     </Section>
     <BookNotesSettings />
+    <BookScriptsSettings />
   </div>
 </template>
 
@@ -13,4 +14,5 @@
 import Section from '../obsidian/Section.vue'
 import ReaderSettingsForm from '../reader/ReaderSettingsForm.vue'
 import BookNotesSettings from '../reader/BookNotesSettings.vue'
+import BookScriptsSettings from '../reader/BookScriptsSettings.vue'
 </script>

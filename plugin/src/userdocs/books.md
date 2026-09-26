@@ -58,11 +58,20 @@ the book. Tap them to open the note; when several notes link there, pick one fro
 
 ## Running a script on words
 
-With [scripts](scripts) turned on, the bar on selected words (and on a highlight) has a
-**Run a script on these words** button, which lists your scripts. A script whose header has the
-line `// @book` gets a button of its own on the bar, with its icon, so the one you use most is a
-single tap. The script is given the words, the whole sentence they are in, a link to this place,
-the book and the chapter, as `book`; a parameter marked `selection` is filled with the words.
+With [scripts](scripts) turned on, the bar on selected words (and on a highlight) offers the
+scripts of your **book menu**, so the ones you use most are a single tap. Up to three are a button
+each, with their icons; with more, one button opens a menu of them. The last button (or the last
+line of that menu, **Other script…**) lists all your scripts to pick any other.
+
+The book menu is set up in **Settings → Books → Scripts on selected words**: add a script
+from a search, give it a shorter name or another icon, move it up or down, take it off. Or set it
+up in place: in the list of all scripts each has a pin at the end of its row, and tapping the pin
+puts the script on the menu (or takes it off) without running it. A script whose header has the
+line `// @book` is on the menu too, after the ones you chose; add it to the list to give it a
+place of its own.
+
+The script is given the words, the whole sentence they are in, a link to this place, the book and
+the chapter, as `book`; a parameter marked `selection` is filled with the words.
 
 For example, this script translates a word with the AI agent and makes a card for learning it,
 with the sentence and a link back to the page. The card links to the book, so the word is marked

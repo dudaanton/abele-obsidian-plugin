@@ -200,6 +200,12 @@ dragged there by hand) and `actions`, the person's own entries at the top of its
 `{ id, type, commandId, scriptName, name, icon }`, `type` being `command` or `script`. A command
 entry is left out of the menu wherever the command cannot run. It travels in a transfer.
 
+`reader` holds the book reader's settings. Among them `selectionScripts` is the book menu, the
+scripts offered first on words selected in a book, in order: each `{ script, name, icon }`,
+`script` being the script's `@name` and an empty `name` or `icon` meaning the script's own.
+Scripts whose header says `@book` follow them without being listed; listing one gives it a place
+and a name. It travels in a transfer with the rest of `reader`.
+
 `keyboardDiagnostics` shows a panel at the top of the screen with what the app reports about
 the on-screen keyboard — page and viewport sizes, Obsidian's keyboard height, the open dialog
 and the focused field, the last keyboard events. It is a troubleshooting aid, off by default,

@@ -169,7 +169,9 @@ import BookNotesSettings from './BookNotesSettings.vue'
 import { type BookModel, type PanelTab, type SearchHit, type TocEntry } from '@/reader/model'
 import type { Bookmark } from '@/reader/bookmarks'
 import { ScriptService } from '@/scripting/ScriptService'
-import { bookScripts } from '@/scripting/runFromBook'
+import { bookMenu } from '@/scripting/bookMenuScripts'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { readerSettingsFrom } from '@/reader/settings'
 
 const props = defineProps<{
   model: BookModel
@@ -233,12 +235,15 @@ const quoteTarget = () => {
   return { cfi: t.cfi, label: t.label, text: t.text }
 }
 
-// Scripts to run on the words: the ones whose header says `@book` have a button each.
+// Scripts to run on the words: the book menu — the ones chosen in the settings, then those whose
+// header says `@book` — offered first, and any other picked from a list.
 const scriptList = ScriptService.getInstance().scriptList
 const hasScripts = computed(() => scriptList.value.length > 0)
-const pinnedScripts = computed(() =>
-  bookScripts(scriptList.value).map((s) => ({ name: s.meta.name, icon: s.meta.icon }))
-)
+const config = AbeleConfig.getInstance()
+const pinnedScripts = computed(() => {
+  void config.version.value
+  return bookMenu(scriptList.value, readerSettingsFrom(config.reader).selectionScripts)
+})
 
 const onColor = (color: HighlightColor) => {
   if (props.model.active) emit('recolor', props.model.active, color)

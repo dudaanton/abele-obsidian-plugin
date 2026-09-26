@@ -11,12 +11,16 @@
  *   a second note linking to the same place makes the tap a menu of both; deleting the notes
  *   takes the mark away;
  * - "Run a script on these words" lists every script;
+ * - the book menu: a pin in that list puts a script on the bar without running it, before the
+ *   book header's; past three they fold into one button whose menu runs the one tapped, in an
+ *   EPUB and in a PDF;
  * - in a PDF the same card is marked over the page, and a tap opens it;
  * - on a phone (390×844, `emulateMobile`) the bar with the script's button is one row, pictured to
- *   `/tmp/abele-phone/book-scripts-bar.png`.
+ *   `/tmp/abele-phone/book-scripts-bar.png`; so are the folded button, its menu, the list with its
+ *   pins and the book menu's settings, none reaching past the screen's edge.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, evalJson } from './helpers/obsidianCli'
+import { hasTestApi, isObsidianRunning, evalRaw, evalJson, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
@@ -38,15 +42,16 @@ const path = ${JSON.stringify(CARDS)} + '/' + params.word.replace(/[^\\p{L}\\p{N
 await create(path, '**' + params.word + '**\\n\\n> ' + book.sentence + '\\n> — ' + book.link + '\\n\\n' + book.title + ' / ' + book.chapter + '\\n')
 return path`
 
+/** Plain scripts for the book menu: each says what it was given. */
+const ECHO = (n: string) => `// @name E2E echo ${n}
+// @param w string "W" selection
+return '${n} ' + params.w`
+const ECHOES = ['one', 'two', 'three']
+
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+// Through the tier's own reload, so phone emulation stays this window's alone.
 const reload = async (how: string): Promise<void> => {
-  evalRaw(`(() => { setTimeout(() => { ${how} }, 50); return 'ok' })()`, 30_000)
-  await pause(4000)
-  const deadline = Date.now() + 60_000
-  while (!hasTestApi() && Date.now() < deadline) await pause(1000)
-  evalRaw(
-    `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(false); return 'ok' })()`
-  )
+  await reloadApp(how)
 }
 const setWindowSize = async (width: number, height: number): Promise<void> => {
   evalRaw(
@@ -144,9 +149,13 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
           await app.vault.createBinary(${JSON.stringify(DIR)} + '/' + name, bytes.buffer)
         }
         await app.vault.create(${JSON.stringify(`${SCRIPTS}/card.js`)}, ${JSON.stringify(SCRIPT)})
+        for (const n of ${JSON.stringify(ECHOES)}) {
+          const code = ${JSON.stringify(ECHO('@@'))}.split('@@').join(n)
+          await app.vault.create(${JSON.stringify(SCRIPTS)} + '/echo-' + n + '.js', code)
+        }
         const config = window.__abeleTest.AbeleConfig.getInstance()
         config.ai.scriptsFolder = ${JSON.stringify(SCRIPTS)}
-        config.reader = { ...config.reader, flow: 'paginated', pdfLayout: 'paginated' }
+        config.reader = { ...config.reader, flow: 'paginated', pdfLayout: 'paginated', selectionScripts: [] }
         await config.saveSettings()
         await window.__abeleTest.ScriptService.getInstance().discover()
         // A menu drawn by the page, not the system's: the system's cannot be read from here.
@@ -275,6 +284,89 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
     expect(r.after).toBe(0)
   })
 
+  it('the book menu: pinned from the list without running, then folded into one menu past three', () => {
+    const r = run<{
+      error?: string
+      stillOpen?: boolean
+      ranOnPin?: number
+      order?: string[]
+      menu?: string[] | null
+      ran?: { source?: string; result?: string } | null
+      pdfFolded?: boolean
+    }>(`
+      const config = window.__abeleTest.AbeleConfig.getInstance()
+      const runs = () => window.__abeleTest.ScriptRuns.getInstance().runs.value
+      const bar = () => bookLeaf().view.contentEl.querySelector('.abele-book-selection')
+      const titles = (sel) => { const t = [...document.querySelectorAll(sel)].map((e) => e.textContent); return t.length ? t : null }
+      const { view } = await open(${JSON.stringify(BOOK)})
+      if (view.model.panel) { view.model.panel = false; await wait(300) }
+      await selectIn(view, 2, 0, 5)
+
+      // A pin in the list of every script puts one on the bar, and runs nothing.
+      bar().querySelector('.abele-book-selection__run-script').click()
+      const rows = await until(() => { const r = [...document.querySelectorAll('.prompt .suggestion-item')]; return r.length ? r : null }, 3000)
+      const row = rows.find((r) => r.querySelector('.suggestion-title')?.textContent === 'E2E echo one')
+      const before = runs().length
+      row.querySelector('.abele-book-script-pin').click()
+      await until(() => config.reader.selectionScripts.some((c) => c.script === 'E2E echo one'), 3000)
+      await wait(300)
+      const stillOpen = !!document.querySelector('.prompt')
+      const ranOnPin = runs().length - before
+      document.querySelector('.prompt input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await until(() => !document.querySelector('.prompt'), 2000)
+      if (!bar()) await selectIn(view, 2, 0, 5)
+      await until(() => bar()?.querySelector('[data-script="E2E echo one"]'), 3000)
+      const order = [...bar().querySelectorAll('.abele-book-selection__script')].map((b) => b.dataset.script)
+
+      // Four on the menu: one button, whose menu runs the one tapped.
+      config.reader = { ...config.reader, selectionScripts: [
+        { script: 'E2E echo one', name: '', icon: '' },
+        { script: 'E2E echo two', name: '', icon: '' },
+        { script: 'E2E echo three', name: 'Third', icon: 'star' },
+      ] }
+      await config.saveSettings()
+      const folded = await until(() => bar()?.querySelector('.abele-book-selection__scripts'), 3000)
+      if (!folded) return { stillOpen, ranOnPin, order, menu: null }
+      folded.click()
+      const menu = await until(() => titles('.menu .menu-item-title'), 3000)
+      ;[...document.querySelectorAll('.menu .menu-item')].find((i) => i.textContent.trim() === 'Third')?.click()
+      const done = await until(() => runs().find((x) => x.name === 'E2E echo three' && x.status !== 'running'), 8000)
+      view.reading.clearSelection()
+
+      // The same in a PDF.
+      const pdf = (await open(${JSON.stringify(PDF)})).view
+      await Promise.race([pdf.engine.goTo(0), wait(5000)])
+      const doc = await until(() => pdf.engine.renderer.getContents().map((c) => c.doc).find((d) => d?.querySelector('.textLayer span')), 10000)
+      let pdfFolded = false
+      if (doc) {
+        await wait(500)
+        const span = doc.querySelector('.textLayer span')
+        const range = doc.createRange(); range.setStart(span.firstChild, 0); range.setEnd(span.firstChild, 5)
+        doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
+        await until(() => pdf.model.selection, 3000)
+        pdfFolded = !!(await until(() => pdf.contentEl.querySelector('.abele-book-selection .abele-book-selection__scripts'), 3000))
+        pdf.reading.clearSelection()
+      }
+      bookLeaf()?.detach()
+      config.reader = { ...config.reader, selectionScripts: [] }
+      await config.saveSettings()
+      return { stillOpen, ranOnPin, order, menu, ran: done ? { source: done.source, result: done.result } : null, pdfFolded }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.stillOpen).toBe(true)
+    expect(r.ranOnPin).toBe(0)
+    expect(r.order).toEqual(['E2E echo one', 'E2E word card'])
+    expect(r.menu).toEqual([
+      'E2E echo one',
+      'E2E echo two',
+      'Third',
+      'E2E word card',
+      'Other script…',
+    ])
+    expect(r.ran).toEqual({ source: 'book', result: 'three Plain' })
+    expect(r.pdfFolded).toBe(true)
+  })
+
   it('in a PDF the card is marked over the page, and a tap on it opens the card', () => {
     const r = run<{ error?: string; card?: string; marked?: boolean; opened?: string | null }>(`
       const { view } = await open(${JSON.stringify(PDF)})
@@ -314,8 +406,20 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
   it('on a phone the bar with the script is one row', async () => {
     await reload('app.emulateMobile(true)')
     await setWindowSize(390, 844)
-    await reload('window.location.reload()')
-    const r = run<{ error?: string; bar?: number; foot?: number; button?: boolean }>(`
+    await reload('location.reload()')
+    const r = run<{
+      error?: string
+      bar?: number
+      foot?: number
+      button?: boolean
+      pins?: number
+      pickerOver?: string[]
+      folded?: boolean
+      foldedRow?: number
+      menuOver?: string[]
+      settingsOver?: string[]
+      entries?: number
+    }>(`
       // Scripts may be off in this vault: the run's folder is read by hand, as at the start.
       await window.__abeleTest.ScriptService.getInstance().discover()
       const { view } = await open(${JSON.stringify(BOOK)})
@@ -327,11 +431,78 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       const img = await require('@electron/remote').getCurrentWebContents().capturePage()
       require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
       require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/book-scripts-bar.png', img.toPNG())
+      const shot = async (name) => {
+        await wait(400)
+        const img = await require('@electron/remote').getCurrentWebContents().capturePage()
+        require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/' + name + '.png', img.toPNG())
+      }
+      // Whatever reaches past the right edge of the screen, by its class.
+      const over = (root) => [...root.querySelectorAll('*')]
+        .filter((e) => { const b = e.getBoundingClientRect(); return b.width > 0 && b.right > window.innerWidth + 1 })
+        .map((e) => e.className && String(e.className).slice(0, 60))
+      const config = window.__abeleTest.AbeleConfig.getInstance()
+      const barRow = bar.getBoundingClientRect().height
+
+      // The list of every script, a pin at the end of each row.
+      bar.querySelector('.abele-book-selection__run-script').click()
+      const prompt = await until(() => document.querySelector('.prompt .suggestion-item') && document.querySelector('.prompt'), 3000)
+      await shot('book-scripts-picker')
+      const pickerOver = prompt ? over(prompt) : ['no list']
+      const pins = prompt ? prompt.querySelectorAll('.abele-book-script-pin').length : 0
+      document.querySelector('.prompt input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await until(() => !document.querySelector('.prompt'), 2000)
+
+      // Four on the menu: one button, and its menu.
+      config.reader = { ...config.reader, selectionScripts: [
+        { script: 'E2E echo one', name: '', icon: '' },
+        { script: 'E2E echo two', name: 'Second one', icon: 'star' },
+        { script: 'E2E echo three', name: '', icon: '' },
+      ] }
+      await config.saveSettings()
+      if (!view.contentEl.querySelector('.abele-book-selection')) await selectIn(view, 2, 0, 5)
+      const folded = await until(() => view.contentEl.querySelector('.abele-book-selection__scripts'), 3000)
+      const bar2 = view.contentEl.querySelector('.abele-book-selection')
+      const foldedRow = bar2 ? bar2.getBoundingClientRect().height : 0
+      await shot('book-scripts-folded')
+      folded?.click()
+      const menuEl = await until(() => document.querySelector('.menu'), 3000)
+      await shot('book-scripts-menu')
+      const menuOver = menuEl ? over(menuEl) : ['no menu']
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      document.querySelector('.menu')?.remove()
       view.reading.clearSelection()
-      return { bar: bar.getBoundingClientRect().height, foot: foot.getBoundingClientRect().height, button }
+
+      // The book menu's settings, as a phone shows them.
+      app.setting.open()
+      app.setting.openTabById('abele')
+      await until(() => document.querySelector('.abele-settings__nav .abele-tabs__tab'), 5000)
+      ;[...document.querySelectorAll('.abele-settings__nav .abele-tabs__tab')].find((t) => t.textContent.trim() === 'Books')?.click()
+      const section = await until(() => document.querySelector('.abele-book-scripts-settings'), 5000)
+      let settingsOver = ['no section']
+      let entries = 0
+      if (section) {
+        section.scrollIntoView({ block: 'start' })
+        await shot('book-scripts-settings')
+        settingsOver = over(section)
+        entries = section.querySelectorAll('.abele-book-scripts-settings__entry').length
+      }
+      app.setting.close()
+      config.reader = { ...config.reader, selectionScripts: [] }
+      await config.saveSettings()
+      return {
+        bar: barRow, foot: foot.getBoundingClientRect().height, button,
+        pins, pickerOver, folded: !!folded, foldedRow, menuOver, settingsOver, entries,
+      }
     `)
     expect(r.error).toBeUndefined()
     expect(r.button).toBe(true)
     expect(Math.abs((r.bar ?? 0) - (r.foot ?? 0))).toBeLessThanOrEqual(1)
+    expect(r.pins).toBeGreaterThan(3)
+    expect(r.pickerOver).toEqual([])
+    expect(r.folded).toBe(true)
+    expect(Math.abs((r.foldedRow ?? 0) - (r.foot ?? 0))).toBeLessThanOrEqual(1)
+    expect(r.menuOver).toEqual([])
+    expect(r.entries).toBe(3)
+    expect(r.settingsOver).toEqual([])
   }, 120_000)
 })

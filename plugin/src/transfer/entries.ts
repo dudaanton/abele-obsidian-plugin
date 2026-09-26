@@ -261,6 +261,7 @@ export const SECTIONS: Section[] = [
     secretsOf: (settings) =>
       (settings.calendars?.feeds ?? []).map((feed) => feed.keyId).filter(Boolean),
   }),
+  // Whole, so the scripts chosen for words selected in a book (`selectionScripts`) go with it.
   rootBlock('reader', 'Book reader', ['reader']),
   rootBlock('quick-button', 'Quick button', ['quickButton']),
   rootBlock('other', 'Other', [

@@ -5,6 +5,7 @@
  * Everything here is pure, so the translation from a setting to a page is tested without a book.
  */
 import { PROGRESS_SHOWS, type ProgressShow } from './readingProgress'
+import { bookMenuScriptsFrom, type BookMenuScript } from '@/scripting/bookMenuScripts'
 
 export type ReaderFlow = 'paginated' | 'scrolled'
 export type ReaderFont = 'theme' | 'serif' | 'sans' | 'book'
@@ -71,6 +72,11 @@ export interface ReaderSettings {
   notesTemplate: string
   /** A book's own choice of the three above, by its key (`bookKey`); what it leaves out is as above. */
   bookNotes: Record<string, BookNotesChoice>
+  /**
+   * The scripts offered on words selected in a book, in this order, besides those whose header
+   * says `@book`. Empty by default.
+   */
+  selectionScripts: BookMenuScript[]
 }
 
 export type NotesTo = 'book' | 'note'
@@ -131,6 +137,7 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   notesPath: DEFAULT_NOTES_PATH,
   notesTemplate: '',
   bookNotes: {},
+  selectionScripts: [],
 }
 
 export const FONT_SIZES = [70, 80, 90, 100, 110, 120, 135, 150, 175, 200]
@@ -169,6 +176,7 @@ export function readerSettingsFrom(stored?: Partial<ReaderSettings> | null): Rea
     notesPath: typeof s.notesPath === 'string' ? s.notesPath : d.notesPath,
     notesTemplate: typeof s.notesTemplate === 'string' ? s.notesTemplate : d.notesTemplate,
     bookNotes: bookNotesFrom(s.bookNotes),
+    selectionScripts: bookMenuScriptsFrom(s.selectionScripts),
   }
 }
 

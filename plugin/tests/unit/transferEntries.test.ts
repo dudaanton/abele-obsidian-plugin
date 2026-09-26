@@ -194,6 +194,11 @@ describe('settings that arrived later than the transfer did', () => {
       flow: 'scrolled' as const,
       // Where the places of books are kept travels too: every device reads the same file.
       placesPath: 'Books/places.json',
+      // And the scripts chosen for words selected in a book, in their order.
+      selectionScripts: [
+        { script: 'Word card', name: 'Card', icon: 'star' },
+        { script: 'Translate', name: '', icon: '' },
+      ],
     }
     const entries = collectEntries(settings({ reader }))
     const entry = find(entries, 'reader', 'reader')

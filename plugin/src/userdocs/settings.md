@@ -56,8 +56,8 @@ See [GitHub](github).
 
 ## Books
 
-The reader's text and layout, reading aloud, where reading places are kept, and where highlights
-go. See [Books](books).
+The reader's text and layout, reading aloud, where reading places are kept, where highlights go,
+and the scripts offered on selected words. See [Books](books).
 
 ## Quick button
 
