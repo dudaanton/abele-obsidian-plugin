@@ -518,6 +518,56 @@ describe('SyncService — syncing', () => {
   })
 })
 
+/**
+ * The engine is torn down and built again after a change to what this device syncs, and at
+ * startup it is built for the first time. A Pause or a Resume pressed in that gap finds no
+ * engine to act on, and the one being built read the switch before it was pressed: the engine
+ * must still end up where the Sync tab — which reads the connection — says it is.
+ */
+describe('SyncService — pause and resume while an engine is being built', () => {
+  /** Runs `press` the moment the next build opens its state database, before it has an engine. */
+  function duringNextBuild(press: () => void): void {
+    const open = IndexedDbStateStore.open.bind(IndexedDbStateStore)
+    vi.spyOn(IndexedDbStateStore, 'open').mockImplementationOnce((factory, name) => {
+      press()
+      return open(factory, name)
+    })
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('pauses the engine that was being built when Pause was pressed', async () => {
+    await connect()
+    await synced()
+
+    duringNextBuild(() => service.pause())
+    await service.updateConnection({ selective: { ...conn().selective, pdf: false } })
+
+    await waitFor('the rebuilt engine to be paused', () => service.status.value.state === 'paused')
+    await tick()
+    expect(conn().paused).toBe(true)
+    expect(service.status.value.state).toBe('paused')
+  })
+
+  it('resumes the engine that was being built when Resume was pressed', async () => {
+    const { other } = await connect()
+    await synced()
+    service.pause()
+    await waitFor('the pause', () => service.status.value.state === 'paused')
+
+    duringNextBuild(() => service.resume())
+    await service.updateConnection({ selective: { ...conn().selective, pdf: false } })
+
+    await synced()
+    expect(conn().paused).toBe(false)
+    await seed(other, [await create(other, 'Moving.md', 'not paused')])
+    await service.syncNow()
+    expect(await read('Moving.md')).toBe('not paused')
+  })
+})
+
 describe('SyncService — what this device syncs', () => {
   it('walks the manifest again when the selective settings change', async () => {
     await connect()

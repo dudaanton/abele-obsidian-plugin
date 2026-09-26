@@ -449,11 +449,17 @@ export class SyncService {
   /**
    * Stop syncing until `resume`. Remembered in the connection, so it survives a restart — and
    * stays this device's: pausing a phone does not pause the laptop.
+   *
+   * The running engine is paused at once, and a reconcile is queued as well: pressed while an
+   * engine is being built — at startup, or after a change to what this device syncs — there is
+   * no engine yet to pause, and the one being built read the switch before it was pressed. The
+   * reconcile runs after that build and puts the engine where the tab says it is.
    */
   pause(): void {
     this.saveConnection({ paused: true })
     this.engine?.pause()
     this.note('paused')
+    void this.serialise(() => this.reconcile())
   }
 
   /** Sync again, and forget a token failure so the triggers are taken back. */
@@ -461,6 +467,7 @@ export class SyncService {
     this.saveConnection({ paused: false })
     this.engine?.resume()
     this.note('resumed')
+    void this.serialise(() => this.reconcile())
   }
 
   /* -- Setting the device up -------------------------------------------- */
