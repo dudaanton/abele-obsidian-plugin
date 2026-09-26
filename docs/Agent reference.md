@@ -42,7 +42,7 @@ for people.
 ## The other documentation, for people
 
 `src/userdocs/` is the documentation a person reads inside the plugin — **Open documentation**
-in the command palette, the **Documentation** button at the top of the settings, and on the
+in the command palette, **Documentation** at the top of each settings tab, and on the
 first start in a vault. It is written for them: what the plugin can do and where to find it,
 in plain words, with no property the person never has to type. One markdown file per page,
 registered in `src/userdocs/index.ts` in the order of the contents; links between pages are

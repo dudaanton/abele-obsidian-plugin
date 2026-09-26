@@ -157,7 +157,7 @@ It's in very active development, so bugs are expected, and I haven't written det
 ## Documentation
 
 The documentation for people using the plugin is inside it: **Open documentation** in the
-command palette, or **Documentation** at the top of its settings. Notes for anyone working on the
+command palette, or **Documentation** at the top of any settings tab. Notes for anyone working on the
 plugin live in [`docs/`](docs):
 
 - [Design](docs/Design.md) — the shared UI kit and the rules every screen follows.

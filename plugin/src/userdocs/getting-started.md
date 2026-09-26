@@ -54,7 +54,7 @@ width of a phone or half of a tablet.
 ## This documentation
 
 Run **Open documentation** from the command palette, or press **Documentation** at the top
-of Abele's settings. The search box finds a word anywhere in these pages.
+right of any tab in Abele's settings. The search box finds a word anywhere in these pages.
 
 This documentation is for people. AI agents in the plugin have their own reference, which
 they read by themselves.

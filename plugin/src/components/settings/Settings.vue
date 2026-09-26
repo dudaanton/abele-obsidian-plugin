@@ -3,20 +3,6 @@
     <!-- Desktop and tablet: Title -->
     <div v-if="!isPhone" class="abele-settings__title">
       <h1>Abele</h1>
-      <Button
-        text="Documentation"
-        icon="life-buoy"
-        tooltip="Close the settings and read what this tab is for"
-        @click="openDocs"
-      />
-    </div>
-    <div v-else-if="isMenuOpen" class="abele-settings__docs">
-      <Button
-        text="Documentation"
-        icon="life-buoy"
-        tooltip="Close the settings and read about Abele"
-        @click="openDocs"
-      />
     </div>
 
     <!-- Tab navigation -->
@@ -31,6 +17,15 @@
     <!-- Tab content -->
     <div class="abele-settings__content" :class="{ 'abele-settings__content_phone': isPhone }">
       <template v-if="!isPhone || !isMenuOpen">
+        <!-- Small and inside the page it documents, not a button above the tab strip. -->
+        <div class="abele-settings__docs">
+          <Icon
+            icon="life-buoy"
+            text-right="Documentation"
+            tooltip="Close the settings and read what this tab is for"
+            @click="openDocs"
+          />
+        </div>
         <component :is="activeComponent" />
       </template>
     </div>
@@ -42,7 +37,7 @@ import { ref, computed, onMounted, watch, markRaw, type Component } from 'vue'
 import { Platform } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import Tabs from '../obsidian/Tabs.vue'
-import Button from '../obsidian/Button.vue'
+import Icon from '../obsidian/Icon.vue'
 import { openUserDocs } from '@/views/UserDocsView'
 import { pageForSettingsTab } from '@/userdocs'
 import TasksSettings from './TasksSettings.vue'
@@ -184,7 +179,8 @@ watch(
 
 .abele-settings__docs {
   display: flex;
-  padding: var(--size-4-2) 0;
+  justify-content: flex-end;
+  margin-bottom: var(--size-4-2);
 }
 
 .abele-settings__nav {

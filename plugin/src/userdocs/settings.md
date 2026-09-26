@@ -1,7 +1,7 @@
 # Settings
 
-What each tab of **Settings → Abele** holds. The **Documentation** button at the top of the
-settings opens the page for the tab you are on.
+What each tab of **Settings → Abele** holds. **Documentation**, at the top right of each tab,
+opens the page for that tab.
 
 ## Tasks
 
