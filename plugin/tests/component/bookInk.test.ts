@@ -87,6 +87,16 @@ describe('the drawing bar', () => {
     expect(marker.emitted('color')).toEqual([['pink']])
   })
 
+  it('offers the thickness beside the colours, saying which it is, and asks for its menu', async () => {
+    const bar = mount(BookInkBar, { props: { ink: ink({ thickness: 'bold' }) } })
+    const button = bar.find('.abele-book-ink__thickness')
+    expect(button.exists()).toBe(true)
+    expect(button.attributes('aria-label')).toBe('Thickness: bold')
+    await button.trigger('click')
+    expect(bar.emitted('thickness')).toHaveLength(1)
+    expect(bar.emitted('thickness')![0][0]).toEqual({ x: expect.any(Number), y: expect.any(Number) })
+  })
+
   it('offers drawing with a finger only on a touch screen', async () => {
     expect(
       mount(BookInkBar, { props: { ink: ink() } })

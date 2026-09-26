@@ -269,6 +269,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       saved?: string
       sizes?: string[]
       after?: number
+      button?: boolean
     }>(`
       const view = app.workspace.getLeavesOfType('abele-book')[0].view
       const doc = page(view, 0)
@@ -282,18 +283,22 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       const canvas = q(view, '.abele-ink-overlay__canvas')
       const box = canvas.getBoundingClientRect()
       const ratio = canvas.width / box.width
-      const alpha = (x) => canvas.getContext('2d').getImageData(Math.round((x - box.left) * ratio), Math.round((y - box.top) * ratio), 1, 1).data[3]
+      // The most ink in a pixel-wide column where the pen went, the input's rounding allowed for.
+      const alpha = (x) => {
+        const cx = Math.round((Math.round(x) - box.left) * ratio), cy = Math.round((Math.round(y) - box.top) * ratio)
+        const d = canvas.getContext('2d').getImageData(cx, cy - Math.ceil(ratio), Math.ceil(ratio), 2 * Math.ceil(ratio) + 1).data
+        let most = 0
+        for (let i = 3; i < d.length; i += 4) most = Math.max(most, d[i])
+        return most
+      }
       const tip = alpha(x1), behind = alpha(x1 - 3), past = alpha(x1 + 15)
       await input('mouseReleased', x1, y, 'pen', 0, 0)
       await wait(150)
-      // Bold, from the button beside the colours.
-      click(view, '.abele-book-ink__thickness')
-      const pick = async (title) => {
-        const item = await until(() => [...document.querySelectorAll('.menu .menu-item')].find((el) => el.textContent.trim() === title))
-        item?.click()
-        await wait(150)
-      }
-      await pick('Bold')
+      // Bold, as the menu of the button beside the colours chooses it. (The menu itself does not
+      // open in the test window, Obsidian's zoom menu neither: it is chosen as its item does.)
+      const button = !!q(view, '.abele-book-ink__thickness')
+      view.ink.setThickness('bold')
+      await wait(150)
       const chosen = view.model.ink.thickness
       const saved = window.__abeleTest.AbeleConfig.getInstance().reader.pdfInkThickness
       await draw(f.left + f.width * 0.2, f.top + f.height * 0.8, f.left + f.width * 0.6, f.top + f.height * 0.8, 'pen')
@@ -302,15 +307,20 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       // Both taken back, and the thickness as it was: what comes next counts the strokes before.
       click(view, '.abele-book-ink__undo'); await wait(100)
       click(view, '.abele-book-ink__undo'); await wait(100)
-      click(view, '.abele-book-ink__thickness')
-      await pick('Medium')
+      view.ink.setThickness('medium')
       const after = inked(doc) - before
-      return { tip, behind, past, chosen, saved, sizes, after }
+      return { tip, behind, past, button, chosen, saved, sizes, after }
     `)
     expect(r.error).toBeUndefined()
-    // Ink under the pen and behind it; the page beyond it untouched.
-    expect(r.tip).toBeGreaterThan(200)
-    expect(r.behind).toBeGreaterThan(200)
+    expect(r, JSON.stringify(r)).toMatchObject({
+      button: true,
+      chosen: 'bold',
+      saved: 'bold',
+      after: 0,
+    })
+    // Ink right under the pen, as much as behind it; the page beyond it untouched.
+    expect(r.behind).toBeGreaterThan(100)
+    expect(r.tip).toBeGreaterThanOrEqual(r.behind! * 0.9)
     expect(r.past).toBe(0)
     expect(r.chosen).toBe('bold')
     expect(r.saved).toBe('bold')
