@@ -1,17 +1,17 @@
 /**
- * Obsidian's own note editor, standing in a field of one of our dialogs.
+ * Obsidian's own note editor, standing in a field of one of our forms.
  *
  * The editor a note is written in — live preview, the `[[` suggester, link highlighting, the
- * formatting commands, undo — is not offered to plugins. It is reached the way the Kanban
- * plugin and many others have reached it for years: ask Obsidian for the embed it makes for
- * `![[note]]`, let that embed build its editor, and take the class of that editor. From there
- * the class is ours to construct anywhere.
+ * formatting commands, undo, and on a phone the toolbar above the keyboard — is not offered to
+ * plugins. It is reached the way the Kanban plugin and many others have reached it for years:
+ * ask Obsidian for the embed it makes for `![[note]]`, let that embed build its editor, and
+ * take the class of that editor. From there the class is ours to construct anywhere.
  *
  * All of it is Obsidian's insides, undocumented and free to change with any update. So every
- * step is guarded and the answer is `null` when anything is not where it was: a caller that
- * gets `null` does what the plugin did before there were forms — it opens the note. The e2e
- * tier asks for the class on every run, so a change on their side shows up as a red test here
- * rather than as a form that quietly stopped opening on the owner's phone.
+ * step is guarded and the answer is `null` when anything is not where it was: the field that
+ * gets `null` is a plain text box instead. The e2e tier asks for the class on every run
+ * (`noteField.e2e.test.ts`), so a change on their side shows up as a red test here rather than
+ * as a field that quietly lost its editor on the owner's phone.
  *
  * What stands in the field has no file. That is on purpose: our own editor extensions — the
  * task header, galleries, footnotes, comment markers — each look the file up and do nothing
@@ -61,6 +61,8 @@ interface EmbedRegistry {
 
 interface Workspace {
   activeEditor: unknown
+  on(name: 'active-leaf-change', callback: () => void): unknown
+  offref(ref: unknown): void
 }
 
 interface KeymapWithScopes {
@@ -121,6 +123,8 @@ export interface EmbeddedEditorOptions {
   onChange?: (value: string) => void
   /** Mod+Enter: what a form does with it is save. */
   onSubmit?: () => void
+  /** Focus left the field — where a text box would say `change`. */
+  onBlur?: () => void
   placeholder?: string
 }
 
@@ -196,6 +200,7 @@ export function createEmbeddedEditor(
             },
             blur: () => {
               deactivate()
+              options.onBlur?.()
               return false
             },
           })
@@ -222,6 +227,30 @@ export function createEmbeddedEditor(
     return null
   }
 
+  const toolbar = () =>
+    (app as unknown as { mobileToolbar?: { update(): void } | null }).mobileToolbar ?? null
+
+  /**
+   * Makes this field the editor Obsidian's phone toolbar works on. The toolbar shows while
+   * `workspace.activeEditor.editor.hasFocus()` — nothing more — and its buttons run the
+   * editor commands against that same `activeEditor`. The borrowed editor's own focus handler
+   * already sets it; this says it again whenever something may have taken it away while the
+   * field kept its focus: a leaf becoming active clears it, and the keyboard coming up is when
+   * the toolbar is placed.
+   */
+  function claimToolbar(): void {
+    if (!controller.editor.cm.hasFocus) return
+    if (workspace.activeEditor !== controller.owner) {
+      previousActive = workspace.activeEditor
+      workspace.activeEditor = controller.owner
+    }
+    toolbar()?.update()
+  }
+
+  const KEYBOARD_EVENTS = ['keyboardWillShow', 'keyboardDidShow'] as const
+  let leafRef: unknown = null
+  let listenWin: Window | null = null
+
   function activate(): void {
     if (workspace.activeEditor !== controller.owner) {
       previousActive = workspace.activeEditor
@@ -231,13 +260,24 @@ export function createEmbeddedEditor(
       keys.pushScope(controller.scope)
       scopePushed = true
     }
-    ;(app as unknown as { mobileToolbar?: { update(): void } }).mobileToolbar?.update()
+    if (!leafRef) {
+      leafRef = workspace.on('active-leaf-change', () => claimToolbar())
+      listenWin = host.ownerDocument.defaultView
+      for (const name of KEYBOARD_EVENTS) listenWin?.addEventListener(name, claimToolbar)
+    }
+    toolbar()?.update()
   }
 
   function deactivate(): void {
     if (scopePushed) {
       keys.popScope(controller.scope)
       scopePushed = false
+    }
+    if (leafRef) {
+      workspace.offref(leafRef)
+      leafRef = null
+      for (const name of KEYBOARD_EVENTS) listenWin?.removeEventListener(name, claimToolbar)
+      listenWin = null
     }
   }
 

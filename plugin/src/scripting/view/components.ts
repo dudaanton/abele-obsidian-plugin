@@ -30,6 +30,7 @@ export type NodeType =
   | 'button'
   | 'icon'
   | 'input'
+  | 'note'
   | 'select'
   | 'checkbox'
   | 'search'
@@ -430,6 +431,30 @@ export class Input extends ViewNode {
   }
 }
 
+/**
+ * A field written in Obsidian's own note editor: live preview, `[[` offering notes, the
+ * formatting commands and, on a phone, Obsidian's toolbar above the keyboard. `value` is the
+ * markdown in it. The events are `Input`'s: `input` as it changes, `change` when it loses focus,
+ * `enter` on Mod+Enter — a plain Enter is a new line, as in a note.
+ */
+export class NoteInput extends ViewNode {
+  readonly type = 'note' as const
+  value = ''
+  placeholder?: string
+  constructor(
+    props: BaseProps & {
+      value?: string
+      placeholder?: string
+      onInput?: Handler
+      onChange?: Handler
+      onEnter?: Handler
+    } = {}
+  ) {
+    super()
+    this.assign(props)
+  }
+}
+
 export interface SelectOption {
   value: string
   label: string
@@ -586,6 +611,7 @@ export const VIEW_GLOBALS = {
   Button,
   Icon,
   Input,
+  NoteInput,
   Select,
   Checkbox,
   Search,

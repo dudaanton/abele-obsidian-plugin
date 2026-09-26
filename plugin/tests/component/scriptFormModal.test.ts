@@ -14,6 +14,9 @@ import Markdown from '@/components/obsidian/Markdown.vue'
 import ObsidianModal from '@/components/obsidian/Modal.vue'
 import type { FormField } from '@/scripting/types'
 import { useVault } from '../helpers/testEnv'
+import { fakeNoteEditors, resetFakeNoteEditors } from '../helpers/fakeNoteEditor'
+
+vi.mock('@/editor/embeddedEditor', () => import('../helpers/fakeNoteEditor'))
 
 let resolved: Record<string, string> | null | undefined
 
@@ -53,6 +56,7 @@ const prose: FormField = {
 
 beforeEach(() => {
   useVault([])
+  resetFakeNoteEditors()
 })
 
 afterEach(() => {
@@ -237,5 +241,54 @@ describe('a document', () => {
     openWith([question])
 
     expect(inDocument('.abele-script-form__actions_sticky')).toBeNull()
+  })
+})
+
+/**
+ * A `note` field is written in Obsidian's own note editor — links, formatting, the phone's
+ * toolbar — and answers with the markdown it holds, like a text box answers with its text.
+ */
+describe('a note field', () => {
+  const body: FormField = { name: 'body', label: 'Body', type: 'note', default: 'Start with [[A]]' }
+
+  it('is the note editor, not a text box', () => {
+    openWith([body])
+
+    expect(fakeNoteEditors).toHaveLength(1)
+    expect(inDocument('textarea')).toBeNull()
+    expect(inDocument('.abele-script-form__input')).toBeNull()
+  })
+
+  it('starts from its default', () => {
+    openWith([body])
+
+    expect(fakeNoteEditors[0].value).toBe('Start with [[A]]')
+  })
+
+  it('answers with what was written in it', () => {
+    openWith([question, body])
+
+    fakeNoteEditors[0].type('- [ ] call [[Anna]]\n**soon**')
+    submitForm()
+
+    expect(resolved).toEqual({ query: '', body: '- [ ] call [[Anna]]\n**soon**' })
+  })
+
+  it('runs the form on Mod+Enter, as Enter does in a text field', () => {
+    openWith([body])
+
+    fakeNoteEditors[0].type('done')
+    fakeNoteEditors[0].submit()
+
+    expect(resolved).toEqual({ body: 'done' })
+  })
+
+  it('lets the editor go with the dialog', () => {
+    const wrapper = openWith([body])
+
+    buttonSaying('Cancel')?.click()
+    wrapper.unmount()
+
+    expect(fakeNoteEditors[0].destroyed).toBe(true)
   })
 })

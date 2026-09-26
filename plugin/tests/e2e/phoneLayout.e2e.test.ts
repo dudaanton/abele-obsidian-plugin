@@ -442,6 +442,21 @@ const probeScript = `(async () => {
     const probeSession = chats.getSessionByFile(probeChat.path)
     if (probeSession) chats.closeTab(probeSession.id)
 
+    // A script's form with a note field, Obsidian's editor in it, beside a plain question.
+    window.__abeleTest.showFormModal([
+      { name: 'title', label: 'Title', type: 'text' },
+      { name: 'body', label: 'Description', type: 'note', default: 'A [[link]] and a list:\\n- one\\n- two' },
+    ])
+    if (await until(() => document.querySelector('.modal .abele-note-editor-field .cm-editor'), 5000)) {
+      await wait(300)
+      const modal = document.querySelector('.modal')
+      await screen('script form', modal, modal.querySelector('.abele-modal__body'))
+      await closeDialog()
+    } else {
+      report['script form'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'the script form did not open with its note field' }
+      await closeDialog()
+    }
+
     // The icon picker of a header button's form: a grid of every icon, a search field above.
     // Pictured before its fields are focused one by one: focusing the button at the foot of
     // the grid scrolls the grid down to it, away from the current icon.
@@ -688,15 +703,13 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'settings finance keys',
     'settings mcp',
     'mcp server',
+    'script form',
   ]
 
   /** Dialogs with fields, whose focus rings are measured, and which stand as a full sheet. */
   const sheets = screens.filter(
     (s) =>
-      s.startsWith('setup') ||
-      s === 'icon picker' ||
-      s === 'secrets list' ||
-      s === 'mcp server'
+      s.startsWith('setup') || s === 'icon picker' || s === 'secrets list' || s === 'mcp server'
   )
 
   it('reaches every screen', () => {

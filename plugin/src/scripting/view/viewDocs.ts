@@ -164,7 +164,7 @@ Inside a script, \`Text\` and \`Image\` are these classes: they shadow the brows
 same name.
 
 Reserved names: \`view\`, \`Stack\`, \`Row\`, \`Grid\`, \`Section\`, \`Tabs\`, \`Setting\`, \`Markdown\`,
-\`Text\`, \`Image\`, \`Table\`, \`Badge\`, \`EmptyState\`, \`Button\`, \`Icon\`, \`Input\`, \`Select\`,
+\`Text\`, \`Image\`, \`Table\`, \`Badge\`, \`EmptyState\`, \`Button\`, \`Icon\`, \`Input\`, \`NoteInput\`, \`Select\`,
 \`Checkbox\`, \`Search\`, \`Card\` and \`Html\` are already declared in every script — a script that
 declares one of them itself (\`const view = …\`) fails to start with a message naming it.
 
@@ -175,6 +175,7 @@ declares one of them itself (\`const view = …\`) fails to start with a message
 | \`Button({ text, icon?, accent?, warning?, disabled?, tooltip?, onClick? })\` | | \`click\` |
 | \`Icon({ icon, tooltip, disabled?, onClick? })\` | \`tooltip\` is required — an icon with no name is a guess. | \`click\` |
 | \`Input({ value?, placeholder?, textarea?, rows?, disabled?, onInput?, onChange?, onEnter? })\` | \`value\` is reactive both ways. | \`input\` (every keystroke), \`change\` (blur or enter), \`enter\` |
+| \`NoteInput({ value?, placeholder?, onInput?, onChange?, onEnter? })\` | Obsidian's own note editor as a field: live preview, \`[[\` offering notes, the formatting commands and, on a phone, Obsidian's toolbar above the keyboard. \`value\` is the markdown in it, reactive both ways. Enter is a new line; \`enter\` fires on Mod+Enter. Links are written relative to the vault's root. | \`input\` (every change), \`change\` (blur), \`enter\` |
 | \`Select({ options, value?, onChange? })\` | \`options: string[] \\| { value, label }[]\`; \`value\` defaults to the first. | \`change\` |
 | \`Checkbox({ checked?, label?, onChange? })\` | | \`change\` |
 | \`Search({ value?, placeholder?, suggest?, onChange? })\` | \`suggest\`: \`file\` \`folder\` — Obsidian's own suggester. | \`change\` |

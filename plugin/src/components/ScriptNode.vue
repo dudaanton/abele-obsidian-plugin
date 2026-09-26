@@ -132,6 +132,21 @@
       @keydown.enter="!n.textarea && fire('enter', n.value)"
     />
 
+    <NoteEditorField
+      v-else-if="n.type === 'note'"
+      :model-value="n.value"
+      :placeholder="n.placeholder"
+      :class="n.cls"
+      @update:model-value="
+        (v: string) => {
+          n.value = v
+          fire('input', v)
+        }
+      "
+      @blur="fire('change', n.value)"
+      @submit="fire('enter', n.value)"
+    />
+
     <Dropdown
       v-else-if="n.type === 'select'"
       :options="options"
@@ -221,6 +236,7 @@ import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import Input from './obsidian/Input.vue'
 import Dropdown from './obsidian/Dropdown.vue'
+import NoteEditorField from './NoteEditorField.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Search from './obsidian/Search.vue'
 import Card from './obsidian/Card.vue'

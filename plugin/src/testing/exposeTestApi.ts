@@ -33,6 +33,8 @@ import { createBookTools } from '@/ai/tools/BookTools'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { openIconPicker } from './openIconPicker'
 import { openSecretsList } from './openSecretsList'
+import { showFormModal } from '@/scripting/formModal'
+import { embeddedViews, isEmbeddedEditorAvailable } from '@/editor/embeddedEditor'
 import { TFile } from 'obsidian'
 import * as bookSafety from '@/reader/bookSafety'
 import { BOOK_VIEW_TYPE, bookViews, readerTestHooks } from '@/reader/BookView'
@@ -166,6 +168,12 @@ interface AbeleTestApi {
   openIconPicker(current?: string): void
   /** Opens the list of keys (Settings → Transfer → Synced keys → All keys), for the layout probes. */
   openSecretsList(): void
+  /** A script's form, as `form(fields)` shows it; resolves with the answers, or null. */
+  showFormModal: typeof showFormModal
+  /** Whether Obsidian's note editor can still be borrowed for the note fields. */
+  embeddedEditorAvailable(): boolean
+  /** The note editor's view inside a note field, found by the field's element. */
+  noteFieldView(el: HTMLElement): unknown
 }
 
 export interface AgentsSnapshot {
@@ -558,6 +566,9 @@ export function exposeTestApi(plugin: Plugin): void {
     chatHistoryPaths,
     openIconPicker,
     openSecretsList,
+    showFormModal,
+    embeddedEditorAvailable: () => isEmbeddedEditorAvailable(GlobalStore.getInstance().app),
+    noteFieldView: (el: HTMLElement) => embeddedViews.get(el) ?? null,
   }
   console.debug('[Abele] test API exposed on window.__abeleTest (development build)')
 }

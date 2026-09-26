@@ -243,6 +243,7 @@ describe('constructors', () => {
       'Image',
       'Input',
       'Markdown',
+      'NoteInput',
       'Row',
       'Search',
       'Section',

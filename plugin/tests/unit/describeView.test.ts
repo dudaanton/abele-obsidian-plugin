@@ -16,6 +16,7 @@ import {
   Tabs,
   Text,
   Input,
+  NoteInput,
   Select,
   Checkbox,
   Table,
@@ -55,6 +56,7 @@ describe('describeView', () => {
         active: 'b',
       }),
       new Input({ value: 'typed', placeholder: 'Search' }),
+      new NoteInput({ value: 'a [[link]]', placeholder: 'Notes' }),
       new Select({ options: ['x', 'y'], value: 'y' }),
       new Checkbox({ checked: true, label: 'Done' }),
       new Table({
@@ -83,6 +85,7 @@ Row
 Tabs active=b [a "A", b "B"]
   [a] Text "in a"
 Input value="typed" placeholder="Search"
+NoteInput value="a [[link]]" placeholder="Notes"
 Select value=y options=[x, y]
 Checkbox checked "Done"
 Table columns=[k, v] rows=2

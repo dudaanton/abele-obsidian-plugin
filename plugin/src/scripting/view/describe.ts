@@ -137,6 +137,10 @@ export function describeNode(node: ViewNode, depth = 0, seen: Set<ViewNode> = ne
       return line(
         `Input value=${q(n.value)}${n.placeholder ? ` placeholder=${q(n.placeholder)}` : ''}${n.textarea ? ' textarea' : ''}${n.disabled ? ' disabled' : ''}`
       )
+    case 'note':
+      return line(
+        `NoteInput value=${q(n.value)}${n.placeholder ? ` placeholder=${q(n.placeholder)}` : ''}`
+      )
     case 'select':
       return line(
         `Select value=${n.value} options=[${n.options.map((o: { value: string }) => o.value).join(', ')}]`

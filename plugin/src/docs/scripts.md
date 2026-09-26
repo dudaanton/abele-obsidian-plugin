@@ -26,6 +26,12 @@ file operations, `find`, templates, `agent`, `fetch`, forms, `show` — and none
 guessable. A script is an async body: `return` a string and that is its result; `log()` as it
 goes and those lines are its output.
 
+Where a script asks a person for something longer than a word — a description, an entry, a
+list — the field can be Obsidian's own note editor rather than a text box: `type: "note"` in a
+`form()`, `NoteInput` in a view. Links with `[[`, formatting and checklists work in it, and on a
+phone Obsidian's toolbar stands above the keyboard while it is typed in, as in a note. What it
+gives back is the markdown written in it.
+
 ## Running one
 
 Five ways in: the command palette, a button in a note's header, an `abele://` link, an

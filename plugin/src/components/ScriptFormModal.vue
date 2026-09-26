@@ -20,6 +20,11 @@
         >
           <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
         </select>
+        <NoteEditorField
+          v-else-if="field.type === 'note'"
+          v-model="values[field.name]"
+          @submit="onSubmit"
+        />
         <textarea
           v-else-if="field.type === 'textarea'"
           v-model="values[field.name]"
@@ -50,6 +55,7 @@ import { computed, reactive, onMounted, onBeforeUnmount, useTemplateRef } from '
 import ObsidianModal from './obsidian/Modal.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Markdown from './obsidian/Markdown.vue'
+import NoteEditorField from './NoteEditorField.vue'
 import type { FormField } from '@/scripting/types'
 
 const props = defineProps<{

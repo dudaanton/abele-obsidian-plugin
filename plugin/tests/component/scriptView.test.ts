@@ -32,6 +32,7 @@ import {
   Button,
   Icon,
   Input,
+  NoteInput,
   Select,
   Checkbox,
   Search,
@@ -39,6 +40,9 @@ import {
 } from '@/scripting/view/components'
 import type { ScriptViewModel } from '@/views/ScriptView'
 import { useVault } from '../helpers/testEnv'
+import { fakeNoteEditors, resetFakeNoteEditors } from '../helpers/fakeNoteEditor'
+
+vi.mock('@/editor/embeddedEditor', () => import('../helpers/fakeNoteEditor'))
 import type { FakeApp } from '../helpers/fakeVault'
 
 const host: ViewHost = {
@@ -296,6 +300,43 @@ describe('nodes', () => {
     await flushPromises()
     expect(i.value).toBe('abc')
     expect(events).toEqual(['input', 'change', 'enter'])
+  })
+
+  it('writes a NoteInput in the note editor, back into its value, firing input, change and enter', async () => {
+    resetFakeNoteEditors()
+    const v = make()
+    const events: string[] = []
+    const n = new NoteInput({
+      value: 'first',
+      placeholder: 'Notes',
+      onInput: (value: string) => events.push('input ' + value),
+      onChange: (value: string) => events.push('change ' + value),
+      onEnter: (value: string) => events.push('enter ' + value),
+    })
+    v.body = [n]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+    await flushPromises()
+    expect(fakeNoteEditors).toHaveLength(1)
+    const editor = fakeNoteEditors[0]
+    expect(editor.value).toBe('first')
+    expect(editor.placeholder).toBe('Notes')
+    expect(w.find('textarea').exists()).toBe(false)
+
+    editor.type('[[A]] and **b**')
+    editor.blur()
+    editor.submit()
+    await flushPromises()
+    expect(n.value).toBe('[[A]] and **b**')
+    expect(events).toEqual([
+      'input [[A]] and **b**',
+      'change [[A]] and **b**',
+      'enter [[A]] and **b**',
+    ])
+
+    // And the other way: the script assigns, the editor shows it.
+    n.value = 'from the script'
+    await nextTick()
+    expect(editor.value).toBe('from the script')
   })
 
   it('renders the options of a Select and reports a pick', async () => {

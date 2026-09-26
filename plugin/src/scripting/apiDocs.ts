@@ -222,7 +222,11 @@ const each = await agent("Extract the date", { items: paths })
 | \`show(markdown, title?)\` | — | Show rendered markdown to read when a person runs the script or it has a view open |
 
 \`form\` fields: \`[{ name, label, type?, options?, default?, required?, text? }]\`
-Types: \`"text"\` (default), \`"textarea"\`, \`"select"\`, \`"boolean"\`, \`"markdown"\`
+Types: \`"text"\` (default), \`"textarea"\`, \`"note"\`, \`"select"\`, \`"boolean"\`, \`"markdown"\`
+
+A \`"note"\` field is Obsidian's own note editor: links with \`[[\`, formatting, checklists and, on
+a phone, Obsidian's toolbar above the keyboard. Its value is the markdown written in it. Use it
+where the answer is a piece of a note — a description, a journal entry — rather than a word.
 
 A \`"markdown"\` field asks for nothing: it renders \`text\` as markdown for the person to read
 and select, and returns no value. Use it to explain a form, or to put a result beside the

@@ -12,6 +12,7 @@
       :model-value="modelValue"
       :placeholder="placeholder"
       @update:model-value="emit('update:modelValue', $event)"
+      @blur="emit('blur')"
     />
   </div>
 </template>
@@ -19,9 +20,9 @@
 <script setup lang="ts">
 /**
  * A field that is Obsidian's note editor: live preview, the `[[` suggester, formatting, undo —
- * written exactly as the note will be. Should the editor not be there to borrow after all, the
- * field is a plain text box rather than nothing; the dialogs that use it check for the editor
- * before they open, so that is a fallback for a fallback.
+ * written exactly as the note will be, with Obsidian's toolbar above the keyboard on a phone.
+ * Should the editor not be there to borrow after all, the field is a plain text box rather
+ * than nothing. Scripts put it in their forms (`type: "note"`) and their views (`NoteInput`).
  */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ObsidianInput from './obsidian/Input.vue'
@@ -36,6 +37,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'submit'): void
+  (e: 'blur'): void
 }>()
 
 const host = ref<HTMLElement | null>(null)
@@ -55,6 +57,7 @@ onMounted(() => {
       emit('update:modelValue', value)
     },
     onSubmit: () => emit('submit'),
+    onBlur: () => emit('blur'),
   })
   if (!editor) fallback.value = true
 })
