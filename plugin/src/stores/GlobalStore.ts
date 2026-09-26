@@ -278,13 +278,20 @@ export class GlobalStore {
   /**
    * Remove widgets whose DOM containers no longer exist in the document.
    * This catches cases where CodeMirror doesn't call WidgetType.destroy().
+   *
+   * Only editor widgets are swept. A gallery that carries its own mount element was drawn by
+   * the markdown renderer, and reading mode takes such a section out of the page while it is
+   * far from the screen and puts the same element back later, without rendering it anew — so
+   * being out of the document says nothing about it being gone. Its render child drops it
+   * from the store when the section is really unloaded.
    */
   public cleanupOrphanedWidgets(): void {
-    const cleanupArray = <T extends { id: string; cleanup: () => void }>(
+    const cleanupArray = <T extends { id: string; cleanup: () => void; mountEl?: unknown }>(
       arr: Array<T>,
       attr: string
     ) => {
       for (let i = arr.length - 1; i >= 0; i--) {
+        if (arr[i].mountEl) continue
         const el = document.querySelector(`[${attr}='${arr[i].id}']`)
         if (!el || !document.body.contains(el)) {
           arr[i].cleanup()

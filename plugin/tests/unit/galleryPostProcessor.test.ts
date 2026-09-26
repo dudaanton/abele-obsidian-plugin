@@ -116,6 +116,22 @@ describe('a whole document, as MarkdownRenderer hands it over', () => {
     expect(galleries()).toHaveLength(0)
   })
 
+  it('keeps the gallery while its section is out of the document, as reading mode does on scroll', () => {
+    // Reading mode takes sections far from the screen out of the page and puts the same
+    // elements back when they come near again, without rendering them anew. Switching notes
+    // in between used to sweep the gallery out of the store as an orphan, and the section
+    // came back as an empty box.
+    const el = render(`<p>::abele-gallery::<br>${EMBED('Attachments/a.png')}</p>`)
+    galleryPostProcessor(el, context())
+    expect(el.isConnected).toBe(false)
+
+    GlobalStore.getInstance().cleanupOrphanedWidgets()
+
+    expect(galleries()).toHaveLength(1)
+    children[0].onunload()
+    expect(galleries()).toHaveLength(0)
+  })
+
   it('works for markdown that is not a file, resolving against the path it was given', () => {
     galleryPostProcessor(
       render(`<p>::abele-gallery::<br>${EMBED('a.jpg')}</p>`),
