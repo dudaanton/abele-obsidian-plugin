@@ -54,6 +54,9 @@ is grey. The property can be renamed there too.
 - **Under a note**: the tasks linked to it. See [The footer](groups#the-footer).
 - **In your daily note**: the tasks for that day.
 
+Events from other calendars can show among them, read only. See
+[Other calendars](logs-and-journals#other-calendars).
+
 ## Moving from Dataview
 
 **Migrate tasks from Dataview** turns Dataview checklist tasks into task notes.

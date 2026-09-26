@@ -40,6 +40,30 @@ are marked. Click a day to open its daily note, which is created if it does not 
 Right-click a day to create a task planned for it, or due on it.
 Choose whether the week starts on Monday in **Settings → Abele → Tasks**.
 
+## Other calendars
+
+Events from Google, iCloud, Outlook or any CalDAV calendar can show beside your tasks. They are
+only read: nothing is written to those calendars, and no note is made unless you ask for one.
+Add them in **Settings → Abele → Calendars**, each with a name and a colour, in one of two ways:
+
+- **Secret link.** Google: the calendar's settings on the web, **Integrate calendar**, **Secret
+  address in iCal format**. iCloud: share the calendar as a public calendar and copy its link;
+  a `webcal://` link can be pasted as it is. Outlook: publish the calendar and copy the ICS link.
+  Anyone with the link can read the calendar, so it is kept in the device's keychain.
+- **CalDAV account.** The server, the username and a password. For iCloud the server is
+  `https://caldav.icloud.com`, the username is your Apple Account email, and the password is an
+  app-specific password made at account.apple.com. **Find calendars** lists the account's
+  calendars; pick one or keep them all.
+
+Events show in the month calendar as a short bar in the calendar's colour, in the timeline from
+today on among the tasks of each day, and in a daily note beside that day's tasks. An event has
+no checkbox. Click it for **Create meeting note**, which makes a note about it tied to that day
+and opens it; choosing it again opens the same note.
+
+Calendars are read when Obsidian starts, every half hour by default, and with **Read now**. The
+last copy is kept on the device, so the events still show without a network. The link and the
+password travel to another device with your other keys, see [Transfer and keys](transfer).
+
 ## Adding to a journal from outside
 
 Another app can add text to today's note through a link:

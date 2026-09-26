@@ -195,6 +195,7 @@ const SETTINGS_TAB_PAGES: Record<string, string> = {
   tasks: 'tasks',
   logs: 'logs-and-journals',
   journals: 'logs-and-journals',
+  calendars: 'logs-and-journals',
   finance: 'finance',
   'time-tracking': 'time-tracking',
   ai: 'ai-chat',

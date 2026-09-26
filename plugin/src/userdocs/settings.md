@@ -17,6 +17,12 @@ Which note types make their paragraphs into logs. See [Logs](logs-and-journals#l
 Your journals: their names, path templates, templates, repeat period, and which one is the
 default daily journal. See [Journals](logs-and-journals#journals).
 
+## Calendars
+
+Other calendars shown beside the tasks: each one's name, colour and secret link or CalDAV
+account, how often they are read, and **Read now**. See
+[Other calendars](logs-and-journals#other-calendars).
+
 ## Finance
 
 Where transactions and accounts are saved, the transaction template, default and pinned
