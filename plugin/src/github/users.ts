@@ -350,8 +350,10 @@ export class GithubUsers {
     }, SAVE_MS)
   }
 
-  /** Writes the cache now. */
+  /** Writes the cache now, and drops the write that was waiting: this one carries it. */
   async save(): Promise<void> {
+    if (this.saveTimer) window.clearTimeout(this.saveTimer)
+    this.saveTimer = null
     if (!this.storage) return
     const stored: Stored = { version: 1, people: Object.fromEntries(this.people) }
     try {
@@ -366,8 +368,6 @@ export class GithubUsers {
     await this.loaded
     this.people.clear()
     this.failed.clear()
-    if (this.saveTimer) window.clearTimeout(this.saveTimer)
-    this.saveTimer = null
     await this.save()
   }
 }

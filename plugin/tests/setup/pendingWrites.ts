@@ -14,7 +14,14 @@
 import { afterEach, beforeEach } from 'vitest'
 
 /** Stack frames that mark a timer as a write waiting to happen. */
-const WRITE_BEHIND = [/useSettingsSave/, /ChatSession\.markDirty/]
+const WRITE_BEHIND = [
+  /useSettingsSave/,
+  /ChatSession\.markDirty/,
+  /BookBookmarks\.schedule/,
+  /BookPlaces\.schedule/,
+  /PdfInk\.changed/,
+  /GithubUsers\.scheduleSave/,
+]
 
 const pending = new Map<unknown, string>()
 const realSet = globalThis.setTimeout
@@ -69,6 +76,6 @@ afterEach(() => {
   const where = stacks.map((s) => s.split('\n').slice(2, 8).join('\n')).join('\n---\n')
   throw new Error(
     `The test ended with ${stacks.length} delayed write(s) still waiting. Unmount the ` +
-      `component or destroy/flush the chat session before the test ends.\n${where}`
+      `component, or destroy or flush the chat session or store, before the test ends.\n${where}`
   )
 })

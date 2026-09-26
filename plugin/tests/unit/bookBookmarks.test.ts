@@ -9,7 +9,7 @@ import { TFile } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_READER_SETTINGS } from '@/reader/settings'
 import {
-  BookBookmarks,
+  BookBookmarks as Store,
   FORGET_REMOVED_MS,
   onPage,
   parseBookmarks,
@@ -50,7 +50,24 @@ const mark = (id: string, cfi: string, at: number, over: Partial<Bookmark> = {})
 
 const PAGE_TWO = 'epubcfi(/6/4!/4,/2/1:5,/10/1:30)'
 
-afterEach(() => vi.useRealTimers())
+/**
+ * Every store a test makes, flushed once it ends the way the plugin flushes on unload: a write
+ * still waiting on a timer would otherwise fire after the test file is gone, where there is no
+ * window left to fire in.
+ */
+const made = new Set<Store>()
+class BookBookmarks extends Store {
+  constructor(...args: ConstructorParameters<typeof Store>) {
+    super(...args)
+    made.add(this)
+  }
+}
+
+afterEach(async () => {
+  for (const store of made) await store.flush().catch((): void => {})
+  made.clear()
+  vi.useRealTimers()
+})
 
 describe('a book’s bookmarks', () => {
   it('keeps one made and writes it a moment later, in both copies', async () => {

@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
-  BookPlaces,
+  BookPlaces as Store,
   MAX_PLACES,
   bookKey,
   type BookPlace,
@@ -26,7 +26,24 @@ const memory = (initial: string | null = null, backup: string | null = initial) 
   return { store, storage }
 }
 
-afterEach(() => vi.useRealTimers())
+/**
+ * Every store a test makes, flushed once it ends the way the plugin flushes on unload: a write
+ * still waiting on a timer would otherwise fire after the test file is gone, where there is no
+ * window left to fire in.
+ */
+const made = new Set<Store>()
+class BookPlaces extends Store {
+  constructor(...args: ConstructorParameters<typeof Store>) {
+    super(...args)
+    made.add(this)
+  }
+}
+
+afterEach(async () => {
+  for (const store of made) await store.flush().catch((): void => {})
+  made.clear()
+  vi.useRealTimers()
+})
 
 describe('the key of a book', () => {
   it('is its identifier when it has one, whatever its path', () => {

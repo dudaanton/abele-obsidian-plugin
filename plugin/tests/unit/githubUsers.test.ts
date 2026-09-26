@@ -271,6 +271,8 @@ describe('kept for a week', () => {
     expect(JSON.parse(storage.text!)).toEqual({ version: 1, people: {} })
     await users.lookup(clientFor(request), ['octocat'])
     expect(graphqlCalls(calls)).toHaveLength(2)
+    // What the plugin does on the way out: the write still waiting goes now, not after the test.
+    await users.save()
   })
 })
 
