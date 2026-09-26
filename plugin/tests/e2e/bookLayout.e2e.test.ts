@@ -7,6 +7,8 @@
  * page's edge (two columns) — every line of every paragraph in the chapter is compared with the
  * lines of the paragraphs after it; a line of one standing on a line of another fails.
  *
+ * A highlight drawn before a late font arrives is drawn again over where its words then are.
+ *
  * The probe is checked first against paragraphs made too short on purpose, so a pass means
  * something. Pictures go to `/tmp/abele-phone/layout-*.png`.
  */
@@ -238,6 +240,43 @@ describe.skipIf(!available)('paragraphs are never drawn over each other', () => 
     `)
     expect(r.error).toBeUndefined()
     expect(r.found).toBeGreaterThan(0)
+  })
+
+  it('a highlight stays on its words when a font arrives after it was drawn', () => {
+    // The page keeps its size — one line, its height fixed by the line spacing — so only the
+    // font's arrival can tell the highlight its words have moved.
+    const r = run<{ error?: string; moved: number; drawn: number[][]; words: number[][] }>(`
+      const view = await open()
+      const c = R(view).getContents()[0]
+      const doc = c.doc
+      const h = doc.querySelector('h2')
+      const fixed = doc.createElementNS('http://www.w3.org/1999/xhtml', 'style')
+      fixed.textContent = 'h2 { line-height: 40px !important; font-size: 24px !important; white-space: nowrap; }'
+      doc.head.append(fixed)
+      await wait(600)
+      const range = doc.createRange()
+      range.setStart(h.firstChild, 0); range.setEnd(h.firstChild, h.firstChild.length)
+      view.reading.marks.set([{ cfi: view.engine.getCFI(c.index, range), color: 'yellow' }])
+      await until(() => c.overlayer.element.querySelector('rect'))
+      const before = range.getBoundingClientRect().width
+      const font = require('fs').readFileSync('/System/Library/Fonts/Supplemental/Arial Black.ttf').toString('base64')
+      const late = doc.createElementNS('http://www.w3.org/1999/xhtml', 'style')
+      late.textContent = '@font-face { font-family: AbeleLateFace; src: url(data:font/ttf;base64,' + font + '); } h2 { font-family: AbeleLateFace !important; }'
+      doc.head.append(late)
+      await until(() => [...doc.fonts].some((f) => f.family.includes('AbeleLateFace') && f.status === 'loaded'))
+      await wait(600)
+      const box = (x) => [x.left, x.top, x.width, x.height].map((n) => Math.round(n * 10) / 10)
+      const drawn = [...c.overlayer.element.querySelectorAll('rect')].map((e) =>
+        box({ left: +e.getAttribute('x'), top: +e.getAttribute('y'), width: +e.getAttribute('width'), height: +e.getAttribute('height') }))
+      const words = [...range.getClientRects()].map(box)
+      const moved = Math.abs(range.getBoundingClientRect().width - before)
+      view.reading.marks.set([]); fixed.remove(); late.remove()
+      await wait(400)
+      return { moved, drawn, words }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.moved, 'the font changed where the words are').toBeGreaterThan(5)
+    expect(r.drawn).toEqual(r.words)
   })
 
   it('on the desktop, in two columns and one, whatever lays the pages out again', async () => {

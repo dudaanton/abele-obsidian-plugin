@@ -1,9 +1,10 @@
 /**
  * A page laid out anew once its fonts arrive (`src/reader/pageLayout.ts`): the columns' width
- * nudged and put back as it was, important and all, and nothing done to a page not in columns.
+ * nudged and put back as it was, important and all, and nothing done to a page not in columns;
+ * and what is drawn over the words — highlights — drawn again over where the words now are.
  */
 import { describe, it, expect } from 'vitest'
-import { relayoutColumns, relayoutOnFonts } from '@/reader/pageLayout'
+import { redrawOver, relayoutColumns, relayoutOnFonts } from '@/reader/pageLayout'
 
 function page(width?: string): Document {
   const doc = document.implementation.createHTMLDocument('page')
@@ -41,5 +42,34 @@ describe('laying a page out again', () => {
     expect(layouts).toBe(2)
     fonts.dispatchEvent(new Event('loadingdone'))
     expect(layouts).toBe(4)
+  })
+
+  it('draws what is over the words again each time, on a scrolled page too', async () => {
+    const doc = page('auto')
+    const fonts = Object.assign(new EventTarget(), { ready: Promise.resolve() })
+    Object.defineProperty(doc, 'fonts', { value: fonts })
+    Object.defineProperty(doc, 'defaultView', { value: window })
+    let redraws = 0
+    relayoutOnFonts(doc, () => redraws++)
+    await Promise.resolve()
+    expect(redraws).toBe(1)
+    fonts.dispatchEvent(new Event('loadingdone'))
+    expect(redraws).toBe(2)
+  })
+
+  it("redraws only the overlay of the page whose fonts arrived", () => {
+    const doc = page()
+    const other = page()
+    const drawn: string[] = []
+    const renderer = {
+      getContents: () => [
+        { doc: other, overlayer: { redraw: () => drawn.push('other') } },
+        { doc, overlayer: { redraw: () => drawn.push('this') } },
+        { doc },
+      ],
+    }
+    redrawOver(renderer, doc)
+    redrawOver(undefined, doc)
+    expect(drawn).toEqual(['this'])
   })
 })

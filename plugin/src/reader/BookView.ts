@@ -30,7 +30,7 @@ import type { PdfBookExtras } from './pdfBook'
 import { BookReading } from './BookReading'
 import { parsePlaceSubpath, type BookPlace } from './bookLinks'
 import { onExternalLink, onKey, pinchZoom, watchPage, type PageHost } from './pageInput'
-import { relayoutOnFonts } from './pageLayout'
+import { redrawOver, relayoutOnFonts } from './pageLayout'
 import { bookCallbacks, type BookActions } from './bookCallbacks'
 import { bookKey } from './positions'
 import { bookPlaces, followPlace } from './places'
@@ -545,7 +545,7 @@ export class BookView extends FileView {
       if (link && !(link.localName === 'a' && link.hasAttribute('href'))) e.preventDefault()
     })
     if (!main) return
-    relayoutOnFonts(doc)
+    relayoutOnFonts(doc, () => redrawOver(this.reader?.renderer, doc))
     this.reading?.watchSelection(doc, index)
     // A PDF's pages say when they are drawn; another book's fixed pages are drawn as they load.
     if (this.fixed && !this.isPdf) this.reading?.marks.drawPdf(doc, index)
