@@ -167,6 +167,8 @@ describe('the links people paste', () => {
     }
     expect(calendarKeyId('f1')).toBe('abele-calendar-f1')
     expect(calendarKeyId('aB')).not.toBe(calendarKeyId('ab'))
+    // Obsidian's limit; a nanoid of capitals, dashes and underscores still fits under it.
+    expect(calendarKeyId('A-_B-_C_').length).toBeLessThanOrEqual(64)
   })
 })
 

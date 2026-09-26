@@ -1,9 +1,9 @@
 /**
  * Obsidian's keychain takes an id of lowercase letters, digits and dashes and throws on
- * anything else. Ids made by `nanoid` carry capitals and underscores, so a slot named after
+ * anything else, or on more than 64 characters. Ids made by `nanoid` carry capitals and underscores, so a slot named after
  * one has to be spelled out first — or saving the secret throws and nothing is kept.
  */
-const VALID = /^[a-z0-9-]+$/
+const VALID = /^[a-z0-9-]{1,64}$/
 
 export const isKeychainId = (id: string): boolean => VALID.test(id)
 
@@ -20,6 +20,7 @@ export function keychainId(prefix: string, part: string): string {
     if (/[a-z0-9]/.test(ch)) out += ch
     else if (/[A-Z]/.test(ch)) out += `-${ch.toLowerCase()}`
     else if (ch === '-') out += '--'
+    else if (ch === '_') out += '-1'
     else out += `-0${(ch.codePointAt(0) ?? 0).toString(16).padStart(4, '0')}`
   }
   return `${prefix}-${out}`
