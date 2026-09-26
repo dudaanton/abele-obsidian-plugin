@@ -118,7 +118,7 @@ describe.skipIf(!available)('highlights, links and search', () => {
     expect(r.error).toBeUndefined()
     expect(r.selection).toMatchObject({ text: 'claim', label: 'Chapter 1' })
     expect(r.note).toContain('type: book-highlights')
-    expect(r.note).toContain('book: "[[rich.epub]]"')
+    expect(r.note).toContain('file: "[[rich.epub]]"')
     expect(r.note).toMatch(
       /> \[!quote\|green\] \[\[rich\.epub#cfi=\/6\/2!\/4\/4%5Bwith-note%5D,\/1:2,\/1:7\|Chapter 1\]\]\n> claim/
     )

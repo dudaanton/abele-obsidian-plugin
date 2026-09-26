@@ -343,21 +343,26 @@ export class PropertyWidgets {
  *
  * A panel redraws a row, whatever its value, when it hears that the row's property changed
  * type: that is the manager's `changed` event, which every panel — a note's, reading view's, the
- * file properties sidebar — listens to. Told for every property the vault knows, each panel
- * redraws its rows and nothing else in the note moves.
+ * file properties sidebar — listens to. Told only for the properties on screen, found in the
+ * leaves' own elements so a pop-out window counts too; with nothing open it costs nothing.
  */
 export function redrawProperties(app: App): void {
   const manager = (
-    app as unknown as {
-      metadataTypeManager?: {
-        properties?: Record<string, unknown>
-        trigger?: (name: string, key: string) => void
-      }
-    }
+    app as unknown as { metadataTypeManager?: { trigger?: (name: string, key: string) => void } }
   ).metadataTypeManager
-  if (!manager?.trigger || !manager.properties) return
+  if (!manager?.trigger) return
+  const keys = new Set<string>()
   try {
-    for (const key of Object.keys(manager.properties)) manager.trigger('changed', key)
+    app.workspace.iterateAllLeaves((leaf) => {
+      const rows = leaf.view?.containerEl?.querySelectorAll<HTMLElement>(
+        '.metadata-property[data-property-key]'
+      )
+      for (const row of Array.from(rows ?? [])) {
+        const key = row.dataset.propertyKey
+        if (key) keys.add(key.toLowerCase())
+      }
+    })
+    for (const key of keys) manager.trigger('changed', key)
   } catch (err) {
     log('could not redraw the properties on screen', err)
   }
