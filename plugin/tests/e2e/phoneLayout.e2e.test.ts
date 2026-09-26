@@ -536,6 +536,41 @@ const probeScript = `(async () => {
       await closeDialog()
     }
 
+    // The rewind dialog, over two changes made the way an agent's turn makes them: a skill note
+    // rewritten and a note made. The rewritten one is opened to its difference.
+    try {
+      const edited = SEEDED.find((p) => p.endsWith('/probe-skill-1.md'))
+      const made = 'Phone probe/Rewind probe new.md'
+      await window.__abeleTest.openRewind(edited, made)
+      SEEDED.push(made)
+      if (await until(() => document.querySelector('.modal .abele-rewind .tree-item-self'), 5000)) {
+        const row = document.querySelector('.modal .abele-rewind .tree-item-self[data-path="' + edited + '"]')
+        if (row) row.click()
+        await until(() => document.querySelector('.modal .abele-rewind .abele-diff .cm-editor'), 3000)
+        await wait(300)
+        const dialog = document.querySelector('.modal .abele-rewind').closest('.modal')
+        await screen('rewind', dialog, dialog.querySelector('.abele-modal__body'))
+        const clipped = []
+        for (const f of dialog.querySelectorAll('select, button, [tabindex="0"]')) {
+          if (f.getBoundingClientRect().width === 0) continue
+          f.focus()
+          for (const cut of ringClipped(f)) clipped.push(name(f) + ': ' + cut)
+          f.blur()
+        }
+        report['rewind'].clipped = clipped
+        const footer = dialog.querySelector('.abele-modal__footer')
+        report['rewind'].onScreen = footer
+          ? [...footer.querySelectorAll('button')]
+              .filter((b) => { const r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight })
+              .map((b) => b.textContent.trim())
+          : []
+      } else {
+        report['rewind'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'the rewind dialog did not open' }
+      }
+    } finally {
+      await closeDialog()
+    }
+
     // The list of keys, with two fake ones set so its rows carry their show and copy icons.
     // Whatever the keychain held under those ids is put back exactly, absent included.
     const keychain = app.secretStorage
@@ -762,6 +797,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'settings finance keys',
     'settings mcp',
     'mcp server',
+    'rewind',
     'script form',
     'docs page',
     'docs contents',
@@ -771,7 +807,11 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
   /** Dialogs with fields, whose focus rings are measured, and which stand as a full sheet. */
   const sheets = screens.filter(
     (s) =>
-      s.startsWith('setup') || s === 'icon picker' || s === 'secrets list' || s === 'mcp server'
+      s.startsWith('setup') ||
+      s === 'icon picker' ||
+      s === 'secrets list' ||
+      s === 'mcp server' ||
+      s === 'rewind'
   )
 
   it('reaches every screen', () => {
@@ -818,6 +858,14 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 
   it('mcp server: Save stands on screen without scrolling', () => {
     expect((report['mcp server'] as Screen & { onScreen?: string[] })?.onScreen).toContain('Save')
+  })
+
+  it('rewind: its three buttons stand on screen without scrolling', () => {
+    expect((report['rewind'] as Screen & { onScreen?: string[] })?.onScreen).toEqual([
+      'Conversation only',
+      'Files only',
+      'Files and conversation',
+    ])
   })
 
   it('secrets list: every key keeps its show and copy icons on the row of its name', () => {

@@ -174,6 +174,19 @@
         </Setting>
 
         <Setting
+          name="Rewind space (MB)"
+          desc="How much room, on this device, the copies may take that let a chat put back the
+            files its agent changed. Chats written to least recently lose theirs first. 0 keeps
+            nothing, and chats cannot rewind."
+        >
+          <Input
+            :model-value="String(rewindLimitMb)"
+            placeholder="100"
+            @update:model-value="updateField('rewindLimitMb', $event)"
+          />
+        </Setting>
+
+        <Setting
           name="Migrate chats"
           desc="Move existing chat files to match the current path template."
         >
@@ -583,6 +596,7 @@
 </template>
 
 <script setup lang="ts">
+import { DEFAULT_REWIND_LIMIT_MB } from '@/ai/rewind/ChatRewind'
 import { secrets as secretStore } from '@/secrets/SecretStore'
 import { MEMORY_PLACEHOLDER } from '@/ai/agents/memory'
 import { ref, computed, reactive } from 'vue'
@@ -660,6 +674,7 @@ const migrateChats = async () => {
 const enabled = ref(config.ai.enabled)
 const providers = ref<AiProvider[]>(JSON.parse(JSON.stringify(config.ai.providers)))
 const chatFolder = ref(config.ai.chatFolder)
+const rewindLimitMb = ref(config.ai.rewindLimitMb ?? DEFAULT_REWIND_LIMIT_MB)
 const commentAgentId = ref(config.ai.commentAgentId ?? '')
 const commentFolder = ref(config.ai.commentFolder ?? DEFAULT_AI_SETTINGS.commentFolder)
 
@@ -748,6 +763,7 @@ const save = debounce(async () => {
     auxiliaryModelId: auxiliaryModelId.value,
     sequentialAuxiliary: sequentialAuxiliary.value,
     chatFolder: chatFolder.value,
+    rewindLimitMb: rewindLimitMb.value,
     commentAgentId: commentAgentId.value,
     commentFolder: commentFolder.value,
     braveSearchApiKey: braveSearchApiKey.value,
@@ -1234,6 +1250,13 @@ const updateField = (field: string, value: string) => {
     case 'chatFolder':
       chatFolder.value = value
       break
+    case 'rewindLimitMb': {
+      const mb = Number(value.trim())
+      // Half-typed or nonsense: the last good number stays until the field reads as one.
+      if (value.trim() === '' || !Number.isFinite(mb) || mb < 0) return
+      rewindLimitMb.value = mb
+      break
+    }
     case 'commentAgentId':
       commentAgentId.value = value
       break

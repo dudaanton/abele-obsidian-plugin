@@ -103,6 +103,14 @@ describe('what the sending side offers', () => {
 })
 
 describe('settings that arrived later than the transfer did', () => {
+  it('carries the room a chat’s rewind copies may take', () => {
+    const base = settings()
+    base.ai = { ...base.ai, rewindLimitMb: 250 }
+    const entries = collectEntries(base)
+
+    expect(find(entries, 'ai-general', 'ai-general')?.data).toMatchObject({ rewindLimitMb: 250 })
+  })
+
   it('carries both map settings', () => {
     const entries = collectEntries(
       settings({

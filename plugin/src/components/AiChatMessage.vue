@@ -47,6 +47,20 @@
           <span class="abele-chat-msg__branch-action" @click="emit('edit-message', message.id)"
             >Edit</span
           >
+          <!-- Back to before this message: the files its agent changed from here on, the
+               conversation, or both. -->
+          <span
+            v-if="canRewind"
+            class="abele-chat-msg__branch-action"
+            @click="emit('rewind', message.id, 'since')"
+            >Rewind</span
+          >
+          <span
+            v-if="canRewind && changedFiles"
+            class="abele-chat-msg__branch-action"
+            @click="emit('rewind', message.id, 'turn')"
+            >Undo changes</span
+          >
         </div>
         <div
           v-if="message.role === 'assistant' || message.role === 'tool-call'"
@@ -340,6 +354,10 @@ const props = defineProps<{
   comments?: MessageComment[]
   /** Whether "Ask here" is offered: an ordinary chat that has a file to keep comments in. */
   canComment?: boolean
+  /** Whether "Rewind" is offered on a user message: a chat that keeps a rewind log. */
+  canRewind?: boolean
+  /** This user message's turn changed files that can still be put back. */
+  changedFiles?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -357,6 +375,8 @@ const emit = defineEmits<{
   (e: 'retry-interceptor'): void
   /** A comment on this answer: on the selected words, or on all of it when there are none. */
   (e: 'ask-here', messageId: string, quote?: string, start?: number): void
+  /** Take back file changes: everything from this message on, or this turn's alone. */
+  (e: 'rewind', messageId: string, mode: 'since' | 'turn'): void
 }>()
 
 const comments = useMessageComments(

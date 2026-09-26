@@ -73,6 +73,7 @@ import { loadSkillContent } from './tools/SkillTool'
 import { ScopeResolver } from './ScopeResolver'
 import { resolveAttachmentsForApi } from './attachments'
 import { ReadGuard } from './readGuard'
+import { ChatRewind } from './rewind/ChatRewind'
 import { ResultStore, createReadResultTool, READ_RESULT } from './resultStore'
 import { linkedNotesNote } from './linkedNotes'
 import {
@@ -213,6 +214,12 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
   })
   /** Keeps a result too big to send whole, for `read_result`. See `resultStore.ts`. */
   private readonly results = new ResultStore({ messages: () => this.allInternalMessages })
+  /**
+   * What this chat's agent changed in the vault, turn by turn, and the way back. See
+   * `rewind/ChatRewind.ts`. Built on first use: a session made before the app is known — a
+   * test's — has no vault to watch.
+   */
+  private rewindLog: ChatRewind | null = null
   private dirty = false
   private writing: Promise<void> | null = null
   private persistTimer: number | null = null
@@ -912,6 +919,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       ): Promise<AgentToolResult> => {
         ScopeResolver.setActiveInstance(this.scopeResolver)
         ChatSession._activeSession = this
+        // Everything the call changes in the vault is remembered, so the turn can be taken back.
+        // A delegated run records nothing of its own: the chat's `delegate` call is open for as
+        // long as the run lasts, so what the run changes lands in the chat that asked for it.
+        const endRecording = this.kind === 'run' ? null : this.rewind.begin(tool.name)
         try {
           // Before anything is written, so a refused call changes nothing at all.
           const refused = await this.readGuard.check(tool.name, params)
@@ -934,6 +945,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
           }
           return result
         } finally {
+          await endRecording?.()
           ScopeResolver.setActiveInstance(null)
           ChatSession._activeSession = null
         }
@@ -1875,6 +1887,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.generation++
     this.queuedMessages.value = []
     await this.save()
+    await this.rewindLog?.flush()
+    this.rewindLog = null
     this.log.forget()
     this.dirty = false
     this.readGuard.settle()
@@ -2125,6 +2139,28 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     this.chatService.saveTabs()
   }
 
+  /** This chat's rewind log: the vault changes its turns made, and the way back. */
+  get rewind(): ChatRewind {
+    if (!this.rewindLog) {
+      this.rewindLog = new ChatRewind(GlobalStore.getInstance().app, {
+        // The first message never goes — a repeat of it starts a second root beside it — so its
+        // id names the chat for as long as the chat exists, through renames and moves.
+        key: () => this.allChatMessages[0]?.id ?? null,
+        turn: () => this.currentTurnId(),
+      })
+    }
+    return this.rewindLog
+  }
+
+  /** The user message the running turn answers: the last one on the path shown. */
+  private currentTurnId(): string | null {
+    for (let i = this.messages.value.length - 1; i >= 0; i--) {
+      const m = this.messages.value[i]
+      if (m.role === 'user' && !m.draft) return m.id
+    }
+    return null
+  }
+
   /** The notes this chat has written to, for the recap prompt. Part of `SummarizerHost`. */
   touchedNotes(): string[] {
     return this.touched.value.map((note) => note.path)
@@ -2218,6 +2254,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       findDefaultLeaf(this.allChatMessages)?.id ||
       null
     this.updateVisibleMessages()
+    void this.rewind.load()
 
     this.userMessageCount = this.messages.value.filter((m) => m.role === 'user').length
 

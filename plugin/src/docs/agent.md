@@ -136,3 +136,25 @@ about and where — so the chain costs a line per level, however deep it goes.
 
 Writing to a note links this chat to it: the note shows a card for every chat that changed it,
 so what you do here is visible from there afterwards. Reading a note links nothing.
+
+## Rewind
+
+Everything a chat's tools change in the vault is remembered, so the person can take it back —
+there is no tool for it, and nothing an agent has to do. While any of the chat's tool calls runs,
+every change to a file is recorded under the user message whose turn it was: notes written,
+edited, created, deleted, renamed or moved, frontmatter changed, folders made or removed, and
+what other tools write on the way — highlights and bookmarks from the book tools, files a script
+run by the agent writes, tasks and transactions created, pictures and downloads, and the links
+Obsidian rewrites in other notes after a rename. A delegated run's changes are recorded in the
+chat that delegated it. Not recorded: the plugin's own settings, the trash and chat files.
+
+From a user message the person can **rewind**: every change made since that message, by any
+turn, is put back — files the agent made go to the trash, deleted ones come back, moved ones
+move back — and, if they choose, the conversation goes back to that message as well, with the
+message in the box to send again. **Undo changes** takes back one turn's changes alone. A file
+somebody changed after the agent last did is shown as such and left alone unless the person says
+to overwrite it. What the person types into a note *while* a tool is running cannot be told from
+the agent's change and is recorded with it.
+
+The copies live on this device only — see *Chats* in the vault section — so a chat opened on
+another device can be read but not rewound there.

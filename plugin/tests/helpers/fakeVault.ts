@@ -245,10 +245,21 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
   }
 
   const removeFile = (path: string): void => {
+    const folder = folders.get(path)
+    if (folder && path !== '') {
+      for (const child of [...folder.children]) removeFile(child.path)
+      folders.delete(path)
+      if (folder.parent) {
+        const idx = folder.parent.children.indexOf(folder)
+        if (idx !== -1) folder.parent.children.splice(idx, 1)
+      }
+      return
+    }
     const file = byPath.get(path)
     if (!file) return
     byPath.delete(path)
     rawByPath.delete(path)
+    binByPath.delete(path)
     const at = files.indexOf(file)
     if (at !== -1) files.splice(at, 1)
     if (file.parent) {
@@ -282,6 +293,8 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
   // Caches derived once, mirroring Obsidian's own precomputed metadata.
   const cacheByPath = new Map<string, FakeFileCache>()
   const rawByPath = new Map<string, string>()
+  /** Bytes of files written as binaries, for the tests that read them back. */
+  const binByPath = new Map<string, ArrayBuffer>()
   /** Files written through the adapter alone, which the vault index never lists. */
   const hidden = new Map<string, string>()
   const resolvedLinks: Record<string, Record<string, number>> = {}
@@ -338,7 +351,85 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
 
   const localStore = new Map<string, unknown>()
 
-  return {
+  /**
+   * Moves a file or folder in place, the way Obsidian does: the same `TFile` keeps working at
+   * its new path, and its metadata and links move with it.
+   */
+  const moveEntry = (entry: TAbstractFile, to: string): void => {
+    const from = entry.path
+    if (entry instanceof TFolder) {
+      const children = [...entry.children]
+      folders.delete(from)
+      if (entry.parent) {
+        const idx = entry.parent.children.indexOf(entry)
+        if (idx !== -1) entry.parent.children.splice(idx, 1)
+      }
+      entry.path = to
+      entry.name = to.split('/').pop() ?? to
+      const parent = ensureFolder(to.includes('/') ? to.slice(0, to.lastIndexOf('/')) : '')
+      parent.children.push(entry)
+      entry.parent = parent
+      folders.set(to, entry)
+      entry.children = []
+      for (const child of children) {
+        const childTo = `${to}/${child.name}`
+        child.parent = entry
+        entry.children.push(child)
+        if (child instanceof TFolder) {
+          entry.children.pop()
+          moveEntry(child, childTo)
+        } else {
+          entry.children.pop()
+          moveEntry(child, childTo)
+        }
+      }
+      return
+    }
+    const file = entry as TFile
+    const body = rawByPath.get(from)
+    const bytes = binByPath.get(from)
+    byPath.delete(from)
+    rawByPath.delete(from)
+    binByPath.delete(from)
+    if (file.parent) {
+      const idx = file.parent.children.indexOf(file)
+      if (idx !== -1) file.parent.children.splice(idx, 1)
+    }
+
+    file.path = to
+    file.name = to.split('/').pop() ?? to
+    const dot = file.name.lastIndexOf('.')
+    file.basename = dot > 0 ? file.name.slice(0, dot) : file.name
+    file.extension = dot > 0 ? file.name.slice(dot + 1) : ''
+
+    const parent = ensureFolder(to.includes('/') ? to.slice(0, to.lastIndexOf('/')) : '')
+    parent.children.push(file)
+    file.parent = parent
+
+    byPath.set(to, file)
+    if (body !== undefined) rawByPath.set(to, body)
+    if (bytes !== undefined) binByPath.set(to, bytes)
+
+    // Obsidian carries the file's metadata and its place in the link index along with it,
+    // so a question asked right after the rename is answered for the new path.
+    const cached = cacheByPath.get(from)
+    cacheByPath.delete(from)
+    if (cached) cacheByPath.set(to, cached)
+    if (resolvedLinks[from]) {
+      resolvedLinks[to] = resolvedLinks[from]
+      delete resolvedLinks[from]
+    }
+    for (const targets of Object.values(resolvedLinks)) {
+      if (targets[from] === undefined) continue
+      targets[to] = targets[from]
+      delete targets[from]
+    }
+  }
+
+  const bytesOf = (path: string): ArrayBuffer =>
+    binByPath.get(path) ?? new TextEncoder().encode(rawByPath.get(path) ?? hidden.get(path) ?? '').buffer
+
+  const self = {
     loadLocalStorage(key: string) {
       return localStore.has(key) ? localStore.get(key) : null
     },
@@ -402,7 +493,18 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         stats.written += data.byteLength
         const file = addFile(path)
         rawByPath.set(path, '')
+        binByPath.set(path, data.slice(0))
         return file
+      },
+      async readBinary(file: TFile) {
+        return bytesOf(file.path)
+      },
+      async modifyBinary(file: TFile, data: ArrayBuffer) {
+        stats.modify++
+        binByPath.set(file.path, data.slice(0))
+      },
+      async rename(file: TAbstractFile, to: string) {
+        moveEntry(file, to)
       },
       async modify(file: TFile, content: string) {
         stats.modify++
@@ -451,11 +553,49 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         async mkdir(path: string) {
           hidden.set(path, '')
         },
+        async readBinary(path: string) {
+          return bytesOf(path)
+        },
+        async writeBinary(path: string, data: ArrayBuffer) {
+          stats.written += data.byteLength
+          hidden.set(path, '')
+          binByPath.set(path, data.slice(0))
+        },
+        async stat(path: string) {
+          if (folders.has(path)) return { type: 'folder', size: 0, mtime: 0, ctime: 0 }
+          if (!byPath.has(path) && !hidden.has(path)) return null
+          const size = binByPath.get(path)?.byteLength ?? (hidden.get(path) ?? rawByPath.get(path) ?? '').length
+          return { type: 'file', size, mtime: 0, ctime: 0 }
+        },
+        /** Children of a folder among the files kept out of the index. */
+        async list(path: string) {
+          const prefix = `${path}/`
+          const files: string[] = []
+          const subfolders = new Set<string>()
+          for (const key of hidden.keys()) {
+            if (!key.startsWith(prefix)) continue
+            const rest = key.slice(prefix.length)
+            const cut = rest.indexOf('/')
+            if (cut === -1) {
+              if (hidden.get(key) !== '' || binByPath.has(key) || key.includes('.')) files.push(key)
+              else subfolders.add(key)
+            } else subfolders.add(prefix + rest.slice(0, cut))
+          }
+          return { files, folders: [...subfolders] }
+        },
+        async rmdir(path: string) {
+          for (const key of [...hidden.keys()]) {
+            if (key === path || key.startsWith(`${path}/`)) {
+              hidden.delete(key)
+              binByPath.delete(key)
+            }
+          }
+        },
       },
-      async delete(file: TFile) {
+      async delete(file: TAbstractFile) {
         removeFile(file.path)
       },
-      async trash(file: TFile) {
+      async trash(file: TAbstractFile) {
         removeFile(file.path)
       },
     },
@@ -482,7 +622,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     // preference. The fake has no preference to honour, so it just drops the file.
     fileManager: {
       async trashFile(file: TFile) {
-        removeFile(file.path)
+        await self.vault.trash(file)
       },
       /**
        * Obsidian's frontmatter editor: the properties parsed, handed to `fn` to change in place,
@@ -514,42 +654,9 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
        * made a new one instead would leave every existing reference pointing at a ghost.
        */
       async renameFile(file: TFile, to: string) {
-        const from = file.path
-        const body = rawByPath.get(file.path)
-        byPath.delete(file.path)
-        rawByPath.delete(file.path)
-        if (file.parent) {
-          const idx = file.parent.children.indexOf(file)
-          if (idx !== -1) file.parent.children.splice(idx, 1)
-        }
-
-        file.path = to
-        file.name = to.split('/').pop() ?? to
-        const dot = file.name.lastIndexOf('.')
-        file.basename = dot > 0 ? file.name.slice(0, dot) : file.name
-        file.extension = dot > 0 ? file.name.slice(dot + 1) : ''
-
-        const parent = ensureFolder(to.includes('/') ? to.slice(0, to.lastIndexOf('/')) : '')
-        parent.children.push(file)
-        file.parent = parent
-
-        byPath.set(to, file)
-        if (body !== undefined) rawByPath.set(to, body)
-
-        // Obsidian carries the file's metadata and its place in the link index along with it,
-        // so a question asked right after the rename is answered for the new path.
-        const cached = cacheByPath.get(from)
-        cacheByPath.delete(from)
-        if (cached) cacheByPath.set(to, cached)
-        if (resolvedLinks[from]) {
-          resolvedLinks[to] = resolvedLinks[from]
-          delete resolvedLinks[from]
-        }
-        for (const targets of Object.values(resolvedLinks)) {
-          if (targets[from] === undefined) continue
-          targets[to] = targets[from]
-          delete targets[from]
-        }
+        // Through the vault, as Obsidian's own does — which is also what a wrapper around the
+        // vault sees of it.
+        await self.vault.rename(file, to)
       },
     },
     secretStorage: (() => {
@@ -579,4 +686,5 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       stats.resolvedLinks = 0
     },
   }
+  return self
 }

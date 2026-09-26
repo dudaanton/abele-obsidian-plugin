@@ -1,3 +1,4 @@
+import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import {
   Editor,
   EventRef,
@@ -195,6 +196,8 @@ export default class AbelePlugin extends Plugin {
     })
 
     GlobalStore.getInstance().init(this.app)
+    // Under every tool that writes, so a chat can take back what its agent changed.
+    ChangeTracker.install(this.app)
 
     // External calendars: kept events at layout-ready, then read over the network on a timer.
     startCalendars(this)
@@ -1281,6 +1284,7 @@ export default class AbelePlugin extends Plugin {
     ScriptViewService.destroy()
     CommentService.getInstance().destroy()
     ChatService.getInstance().destroy()
+    ChangeTracker.get()?.uninstall()
     ScopeResolver.getInstance().destroy()
     ChatStorage.destroy()
     GlobalStore.getInstance().destroy()

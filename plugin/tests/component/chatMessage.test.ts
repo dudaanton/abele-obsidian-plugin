@@ -385,3 +385,47 @@ describe('comments on an answer', () => {
     unsaved.unmount()
   })
 })
+
+describe('rewinding from a user message', () => {
+  const actions = (props: Record<string, unknown>) => {
+    const wrapper = mount(AiChatMessage, {
+      props: {
+        message: { id: 'u1', role: 'user', content: 'do it', timestamp: 1 } as ChatMessage,
+        ...props,
+      },
+    })
+    return wrapper
+  }
+
+  it('offers "Rewind" where the chat keeps a log, and "Undo changes" when the turn changed files', async () => {
+    const wrapper = actions({ canRewind: true, changedFiles: true })
+    await wrapper.find('.abele-chat-msg__icon').trigger('click')
+    const labels = wrapper.findAll('.abele-chat-msg__branch-action').map((a) => a.text())
+    expect(labels).toContain('Rewind')
+    expect(labels).toContain('Undo changes')
+
+    await wrapper.findAll('.abele-chat-msg__branch-action').find((a) => a.text() === 'Rewind')!.trigger('click')
+    await wrapper
+      .findAll('.abele-chat-msg__branch-action')
+      .find((a) => a.text() === 'Undo changes')!
+      .trigger('click')
+    expect(wrapper.emitted('rewind')).toEqual([
+      ['u1', 'since'],
+      ['u1', 'turn'],
+    ])
+  })
+
+  it('offers no undo for a turn that changed nothing, and nothing at all without a log', async () => {
+    const quiet = actions({ canRewind: true, changedFiles: false })
+    await quiet.find('.abele-chat-msg__icon').trigger('click')
+    const labels = quiet.findAll('.abele-chat-msg__branch-action').map((a) => a.text())
+    expect(labels).toContain('Rewind')
+    expect(labels).not.toContain('Undo changes')
+
+    const none = actions({})
+    await none.find('.abele-chat-msg__icon').trigger('click')
+    expect(none.findAll('.abele-chat-msg__branch-action').map((a) => a.text())).not.toContain(
+      'Rewind'
+    )
+  })
+})

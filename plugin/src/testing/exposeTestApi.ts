@@ -35,6 +35,9 @@ import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { openIconPicker } from './openIconPicker'
 import { openSecretsList } from './openSecretsList'
 import { openMcpServer } from './openMcpServer'
+import { openRewind } from './openRewind'
+import { ChatRewind } from '@/ai/rewind/ChatRewind'
+import { memoryStore } from '@/ai/rewind/RewindStore'
 import { showFormModal } from '@/scripting/formModal'
 import { embeddedViews, isEmbeddedEditorAvailable } from '@/editor/embeddedEditor'
 import { TFile } from 'obsidian'
@@ -179,6 +182,10 @@ interface AbeleTestApi {
   openSecretsList(): void
   /** Opens Add MCP server with a URL filled in, for the layout probes; nothing is saved. */
   openMcpServer(url?: string): void
+  /** Makes two changes as an agent would and opens the rewind dialog over them. */
+  openRewind(edit: string, create: string): Promise<unknown>
+  /** A chat's rewind log, and an in-memory store for one, to drive the tracker in the app. */
+  rewind: { ChatRewind: typeof ChatRewind; memoryStore: typeof memoryStore }
   /** A script's form, as `form(fields)` shows it; resolves with the answers, or null. */
   showFormModal: typeof showFormModal
   /** Whether Obsidian's note editor can still be borrowed for the note fields. */
@@ -581,6 +588,8 @@ export function exposeTestApi(plugin: Plugin): void {
     openIconPicker,
     openSecretsList,
     openMcpServer,
+    openRewind,
+    rewind: { ChatRewind, memoryStore },
     showFormModal,
     embeddedEditorAvailable: () => isEmbeddedEditorAvailable(GlobalStore.getInstance().app),
     noteFieldView: (el: HTMLElement) => embeddedViews.get(el) ?? null,

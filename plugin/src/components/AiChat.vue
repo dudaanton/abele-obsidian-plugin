@@ -141,6 +141,9 @@
           :can-comment="canComment"
           @ask-here="onAskHere"
           @edit-message="onEditMessage"
+          :can-rewind="canRewind && msg.role === 'user' && !msg.draft"
+          :changed-files="changedTurns.has(msg.id)"
+          @rewind="onRewind"
           @confirm-draft="onConfirmDraft"
           @edit-draft="onEditDraft"
           @send-interceptor="onSendInterceptor"
@@ -270,6 +273,15 @@
 
     <!-- Modals -->
     <AiChatHistory v-if="historyOpen" @close="historyOpen = false" @select="onLoadChat" />
+    <AiRewindDialog
+      v-if="rewinding && session"
+      :rewind="session.rewind"
+      :mode="rewinding.mode"
+      :message-id="rewinding.messageId"
+      :since="rewinding.since"
+      @conversation="onEditMessage"
+      @close="rewinding = null"
+    />
     <AiChatSetup
       v-if="setupOpen"
       :open="setupTab"
@@ -301,6 +313,7 @@ import AiRunView from './AiRunView.vue'
 import AiToolApproval from './AiToolApproval.vue'
 import AiAgentSelector from './AiAgentSelector.vue'
 import AiChatHistory from './AiChatHistory.vue'
+import AiRewindDialog from './AiRewindDialog.vue'
 import AiChatSetup from './AiChatSetup.vue'
 import AiCommentTrail from './AiCommentTrail.vue'
 import { CommentService } from '@/ai/CommentService'
@@ -513,6 +526,30 @@ const onEditMessage = (messageId: string) => {
     s.createBranch(messageId)
   }
   chatInput.value?.setText(msg.content)
+}
+
+/**
+ * Rewind: in a chat or a comment, which keep a log of what their agent changed. A delegated
+ * run's changes are in the log of the chat that delegated it.
+ */
+const canRewind = computed(
+  () => session.value?.kind === 'chat' || session.value?.kind === 'comment'
+)
+
+/** User messages whose turns changed files that can still be put back. */
+const changedTurns = computed<Set<string>>(() => {
+  const s = session.value
+  // A stand-in session — a test's — may have no log at all.
+  const entries = canRewind.value ? s?.rewind?.entries.value : undefined
+  return new Set((entries ?? []).map((e) => e.turn))
+})
+
+const rewinding = ref<{ messageId: string; mode: 'since' | 'turn'; since: number } | null>(null)
+
+const onRewind = (messageId: string, mode: 'since' | 'turn') => {
+  const msg = session.value?.allMessages.value.find((m) => m.id === messageId)
+  if (!msg) return
+  rewinding.value = { messageId, mode, since: msg.timestamp }
 }
 
 // ── Interceptor handlers ──

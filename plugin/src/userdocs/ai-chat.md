@@ -35,6 +35,26 @@ chat grows too long for the model, it is compacted by itself.
 The chat's settings button opens one dialog with everything about this chat: its scope, skills,
 prompts, permissions, model and tools.
 
+## Rewind
+
+Everything an agent changes in your vault from a chat is remembered, so you can take it back.
+Press the icon beside one of your messages and pick:
+
+- **Rewind** — shows every file the agent changed from that message on, each with what will
+  happen to it: put back as it was, sent to the trash (a file the agent made), made again (one it
+  deleted) or moved back. Tap a file to see the difference. Then choose **Files only**, **Files
+  and conversation** — the chat goes back to that message too, with it in the box to send again,
+  and the rest of the conversation kept as a branch — or **Conversation only**.
+- **Undo changes** — takes back what that one message's turn changed and nothing else. Offered
+  only where the turn changed something.
+
+A file you changed yourself after the agent did is marked *changed since* and left alone, unless
+you choose to put it back anyway. The copies that make this possible are kept on this device
+only, in the plugin's folder, not in the chat — a chat opened on another device cannot be
+rewound there. How much room they may take is **Rewind space** in the AI settings, under Chat
+Storage; the least recently used chats lose theirs first, and 0 turns it off. Something you
+type into a note while the agent's tool is running is recorded along with the agent's change.
+
 ## Agents
 
 An agent is a named setup: a model and a fallback model, instructions built from text blocks and

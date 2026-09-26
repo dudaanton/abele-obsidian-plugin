@@ -127,6 +127,7 @@ export const SECTIONS: Section[] = [
       'defaultScope',
       'defaultFullVaultAccess',
       'chatFolder',
+      'rewindLimitMb',
       'commentAgentId',
       'commentFolder',
       'braveSearchApiKey',

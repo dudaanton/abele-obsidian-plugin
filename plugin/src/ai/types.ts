@@ -189,6 +189,11 @@ export interface AiSettings {
   defaultScope: Array<{ type: 'file' | 'folder' | 'pattern' | 'group'; path: string }>
   defaultFullVaultAccess: boolean
   chatFolder: string
+  /**
+   * How much room, in megabytes, the copies that let a chat be rewound may take on this device.
+   * Zero records nothing. See `rewind/ChatRewind.ts`.
+   */
+  rewindLimitMb: number
   /** Agent comment chats run on. The default agent when unset or pointing at a deleted one. */
   commentAgentId?: string
   /** Plain folder path — no template variables, so a marker's id is all a lookup needs. */
@@ -368,6 +373,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   defaultScope: [],
   defaultFullVaultAccess: false,
   chatFolder: 'AI/Chats/{{name}}',
+  rewindLimitMb: 100,
   commentFolder: 'AI/Comments',
   chatHistory: [],
   braveSearchApiKey: '',
