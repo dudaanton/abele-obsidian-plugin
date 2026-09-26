@@ -12,7 +12,7 @@ import { drawingSvg, parseDrawingSvg } from './drawingFile'
 import { cameraFrom, type Camera } from './camera'
 import { DrawingSession } from './DrawingSession'
 import { THICKNESSES, emptyDrawingModel, type DrawingModel } from './model'
-import type { Rect } from './items'
+import { SHAPE_KINDS, type Rect, type ShapeKind } from './items'
 
 export const DRAWING_VIEW_TYPE = 'abele-drawing'
 
@@ -33,19 +33,31 @@ export class DrawingView extends TextFileView {
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
     this.scope = new Scope(this.app.scope)
+    // While text is typed on the drawing, its keys are the field's: Esc closes it (the field's
+    // own handler), and undo and delete work in the text.
+    const typing = () => !!this.session?.pick.typing
     this.scope.register([], 'Escape', () => {
-      if (!this.model.on) return true
-      this.session?.stop()
+      if (typing() || !this.model.on) return true
+      if (this.model.picked) this.session?.pick.set([])
+      else this.session?.stop()
       return false
     })
     this.scope.register(['Mod'], 'z', () => {
+      if (typing()) return true
       this.session?.undo()
       return false
     })
     this.scope.register(['Mod', 'Shift'], 'z', () => {
+      if (typing()) return true
       this.session?.redo()
       return false
     })
+    for (const key of ['Delete', 'Backspace'])
+      this.scope.register([], key, () => {
+        if (typing() || !this.model.picked) return true
+        this.session?.deletePicked()
+        return false
+      })
   }
 
   getViewType(): string {
@@ -77,6 +89,8 @@ export class DrawingView extends TextFileView {
       model: this.model,
       onToggle: () => this.session?.toggle(),
       onTool: (tool: DrawingModel['tool']) => this.session?.setTool(tool),
+      onShape: (e: MouseEvent) => this.shapeMenu(e),
+      onDelete: () => this.session?.deletePicked(),
       onColor: (color: DrawingModel['penColor']) => this.session?.setColor(color),
       onThickness: (e: MouseEvent) => this.thicknessMenu(e),
       onFinger: (on: boolean) => this.session?.setFinger(on),
@@ -164,6 +178,30 @@ export class DrawingView extends TextFileView {
           .setTitle(t[0].toUpperCase() + t.slice(1))
           .setChecked(this.model.thickness === t)
           .onClick(() => this.session?.setThickness(t))
+      )
+    menu.showAtMouseEvent(e)
+  }
+
+  /** The shape tool: taken up, or — when it is in hand already — which shape it draws. */
+  private shapeMenu(e: MouseEvent): void {
+    if (this.model.tool !== 'shape') {
+      this.session?.setTool('shape')
+      return
+    }
+    const menu = new Menu()
+    const names: Record<ShapeKind, [string, string]> = {
+      rect: ['Box', 'square'],
+      ellipse: ['Ellipse', 'circle'],
+      line: ['Line', 'minus'],
+      arrow: ['Arrow', 'move-up-right'],
+    }
+    for (const kind of SHAPE_KINDS)
+      menu.addItem((item) =>
+        item
+          .setTitle(names[kind][0])
+          .setIcon(names[kind][1])
+          .setChecked(this.model.shape === kind)
+          .onClick(() => this.session?.setShape(kind))
       )
     menu.showAtMouseEvent(e)
   }

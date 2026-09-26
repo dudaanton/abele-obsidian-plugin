@@ -28,6 +28,23 @@ On a tablet the pen draws and a finger moves the drawing; a hand resting on the 
 pen draws is ignored. On a phone, which has no pen, a finger draws — the hand button switches
 that.
 
+## Picking out, moving and resizing
+
+The **lasso** picks what you draw round — a line when most of it is inside the loop. A tap picks
+the one thing under it. What is picked gets a box: drag inside it to move it, drag the dot at its
+corner to make it larger or smaller, lines and letters with it. While something is picked, a
+colour recolours it and the bin, Delete or Backspace take it away. Esc lets go of it.
+
+## Shapes and text
+
+The **shape** button draws a box, an ellipse, a line or an arrow by dragging from one corner to
+the other; tap the button again to choose which. The shapes take the pen's colour and
+thickness.
+
+The **text** button: tap where the text goes and type. On an iPad you can write into it with the
+pen and it turns into text. Tap a text already there to change it; empty it to take it away. The
+thickness picks the size of new text.
+
 ## Moving around
 
 A finger, the mouse or the wheel moves the drawing; two fingers, a trackpad's pinch or Ctrl or ⌘

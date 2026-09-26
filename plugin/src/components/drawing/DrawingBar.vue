@@ -19,6 +19,24 @@
           :class="`abele-drawing-bar__tool_${t.id}`"
           @click="emit('tool', t.id)"
         />
+        <Icon
+          :icon="SHAPE_ICONS[model.shape]"
+          :tooltip="
+            model.tool === 'shape'
+              ? 'Which shape: a box, an ellipse, a line or an arrow'
+              : 'Shapes: drag to draw a box, an ellipse, a line or an arrow'
+          "
+          :active="model.tool === 'shape'"
+          class="abele-drawing-bar__tool abele-drawing-bar__tool_shape"
+          @click="emit('shape', $event)"
+        />
+        <Icon
+          icon="type"
+          tooltip="Text: tap where it goes, or on text to change it"
+          :active="model.tool === 'text'"
+          class="abele-drawing-bar__tool abele-drawing-bar__tool_text"
+          @click="emit('tool', 'text')"
+        />
       </div>
       <div class="abele-drawing-bar__group">
         <Icon
@@ -40,6 +58,13 @@
         />
       </div>
       <div class="abele-drawing-bar__group">
+        <Icon
+          v-if="model.picked"
+          icon="trash-2"
+          tooltip="Delete what is picked"
+          class="abele-drawing-bar__delete"
+          @click="emit('delete')"
+        />
         <Icon
           v-if="model.touch"
           icon="pointer"
@@ -96,6 +121,7 @@
 import { computed } from 'vue'
 import Icon from '../obsidian/Icon.vue'
 import type { DrawingModel, DrawingTool } from '@/drawing/model'
+import type { ShapeKind } from '@/drawing/items'
 import { INK_COLORS, type InkColor } from '@/reader/ink/stroke'
 
 const props = defineProps<{ model: DrawingModel }>()
@@ -103,6 +129,8 @@ const props = defineProps<{ model: DrawingModel }>()
 const emit = defineEmits<{
   (e: 'toggle'): void
   (e: 'tool', tool: DrawingTool): void
+  (e: 'shape', event: MouseEvent): void
+  (e: 'delete'): void
   (e: 'color', color: InkColor): void
   (e: 'thickness', event: MouseEvent): void
   (e: 'finger', on: boolean): void
@@ -116,7 +144,19 @@ const TOOLS: { id: DrawingTool; icon: string; tooltip: string }[] = [
   { id: 'pen', icon: 'pen-line', tooltip: 'Pen: the harder it presses, the wider the line' },
   { id: 'marker', icon: 'highlighter', tooltip: 'Marker' },
   { id: 'eraser', icon: 'eraser', tooltip: 'Eraser: takes away the whole stroke it touches' },
+  {
+    id: 'lasso',
+    icon: 'lasso',
+    tooltip: 'Lasso: draw round what to pick, then drag it to move, or by its corner to resize',
+  },
 ]
+
+const SHAPE_ICONS: Record<ShapeKind, string> = {
+  rect: 'square',
+  ellipse: 'circle',
+  line: 'minus',
+  arrow: 'move-up-right',
+}
 
 const colors = computed<readonly InkColor[]>(() =>
   props.model.tool === 'marker' ? INK_COLORS.marker : INK_COLORS.pen
@@ -169,6 +209,23 @@ const zoomText = computed(() => `${Math.round(props.model.zoom * 100)}%`)
   &__swatch_ink.abele-obsidian-icon {
     color: var(--text-normal);
   }
+}
+
+/* The field text is typed into on a drawing, over it where the text goes: no box of its own
+   beyond a faint outline, so the letters sit where they will stay. */
+.abele-drawing-text {
+  position: absolute;
+  z-index: 1;
+  margin: 0;
+  padding: 0;
+  border: 1px dashed var(--interactive-accent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  resize: none;
+  overflow: hidden;
+  white-space: pre;
+  outline: none;
 }
 
 .abele-drawing-view {

@@ -45,6 +45,10 @@ export interface SurfaceHost {
   begin(route: 'ink' | 'erase', at: WorldPoint, e: PointerEvent): ToolGesture | null
   camera(): Camera
   setCamera(camera: Camera): void
+  /** What else the live layer shows — what is picked, and its box — the context as for a tool. */
+  overlay?(ctx: CanvasRenderingContext2D, zoom: number): void
+  /** A touch landed: whatever was being typed is kept first. */
+  touched?(): void
 }
 
 const XHTML = 'http://www.w3.org/1999/xhtml'
@@ -143,6 +147,7 @@ export class DrawingSurface {
     const c = this.host.camera()
     const r = this.win.devicePixelRatio || 1
     ctx.setTransform(r * c.zoom, 0, 0, r * c.zoom, -c.x * r * c.zoom, -c.y * r * c.zoom)
+    this.host.overlay?.(ctx, c.zoom)
     for (const t of this.touches.values()) if (t.kind === 'tool') t.gesture.paint?.(ctx, c.zoom)
     ctx.globalAlpha = 1
     ctx.globalCompositeOperation = 'source-over'
@@ -170,6 +175,7 @@ export class DrawingSurface {
 
   private down(e: PointerEvent): void {
     e.stopPropagation()
+    this.host.touched?.()
     const route = this.routeOf(e)
     if (route === 'ignore') return
     if (e.pointerType === 'pen' && this.host.drawing()) {

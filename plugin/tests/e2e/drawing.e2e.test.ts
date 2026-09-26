@@ -60,6 +60,18 @@ const PRELUDE = `
     await input('mouseReleased', x1, y1, kind, 0, 0)
     await wait(150)
   }
+  /** A line through several points, pressed all the way. */
+  const path = async (pts, kind = 'pen') => {
+    await input('mousePressed', pts[0][0], pts[0][1], kind, 0.5, 1)
+    for (let i = 1; i < pts.length; i++) {
+      const [ax, ay] = pts[i - 1], [bx, by] = pts[i]
+      for (let j = 1; j <= 6; j++) { await input('mouseMoved', ax + (bx - ax) * j / 6, ay + (by - ay) * j / 6, kind, 0.5, 1); await wait(6) }
+    }
+    const [lx, ly] = pts[pts.length - 1]
+    await input('mouseReleased', lx, ly, kind, 0, 0)
+    await wait(150)
+  }
+  const tap = async (x, y, kind = 'pen') => { await input('mousePressed', x, y, kind, 0.5, 1); await input('mouseReleased', x, y, kind, 0, 0); await wait(200) }
   const touch = (type, points) =>
     cdp.sendCommand('Input.dispatchTouchEvent', { type, touchPoints: points.map(([x, y], id) => ({ x: Math.round(x), y: Math.round(y), id })) })
   const drag = async (x0, y0, x1, y1) => {
@@ -301,6 +313,73 @@ describe.skipIf(!available)('the drawing canvas', () => {
     expect(r.count).toBe(3)
     expect(r.plain).toBe('image')
     expect(r.arrived).toBe(4)
+  })
+
+  it('picks with the lasso, moves, scales and deletes what is picked, draws shapes and types text', () => {
+    const r = run<{
+      error?: string
+      picked?: number
+      moved?: number[]
+      scaled?: number
+      deleted?: number
+      undone?: number
+      shapes?: string[]
+      field?: boolean
+      typed?: string
+      saved?: string[]
+    }>(`
+      await closeAll()
+      const view = await newOne()
+      const b = box(view)
+      const at = (x, y) => [b.left + x, b.top + y]
+      await draw(...at(100, 100), ...at(300, 100), 'pen')
+      await draw(...at(100, 300), ...at(300, 300), 'pen')
+      const first = items(view)[0]
+      click(view, '.abele-drawing-bar__tool_lasso'); await wait(100)
+      await path([at(80, 60), at(330, 60), at(330, 150), at(80, 150), at(80, 60)])
+      const picked = view.model.picked
+      const x0 = view.session.items.get(first.id).points[0]
+      const y0 = view.session.items.get(first.id).points[1]
+      await path([at(200, 100), at(250, 180)])
+      const now = view.session.items.get(first.id)
+      const moved = [now.points[0] - x0, now.points[1] - y0]
+      const bx = view.session.pick.box()
+      const z = view.session.camera
+      const hx = (bx.x + bx.w - z.x) * z.zoom, hy = (bx.y + bx.h - z.y) * z.zoom
+      await path([at(hx, hy), at(hx + (bx.w * z.zoom), hy + (bx.h * z.zoom))])
+      const scaled = view.session.items.get(first.id).size / first.size
+      click(view, '.abele-drawing-bar__delete'); await wait(100)
+      const deleted = items(view).length
+      click(view, '.abele-drawing-bar__undo'); await wait(100)
+      const undone = items(view).length
+      click(view, '.abele-drawing-bar__tool_shape'); await wait(100)
+      await draw(...at(400, 100), ...at(500, 180), 'pen')
+      view.session.setShape('arrow')
+      await draw(...at(400, 250), ...at(520, 320), 'mouse')
+      const shapes = items(view).filter((i) => i.type === 'shape').map((i) => i.kind)
+      click(view, '.abele-drawing-bar__tool_text'); await wait(100)
+      await tap(...at(150, 420))
+      const field = !!(await until(() => document.activeElement?.classList.contains('abele-drawing-text')))
+      await cdp.sendCommand('Input.insertText', { text: 'Hello there' })
+      await wait(100)
+      await tap(...at(600, 500))
+      await wait(200)
+      const typed = items(view).find((i) => i.type === 'text')?.text
+      click(view, '.abele-drawing-bar__mode')
+      const saved = (await until(async () => { const d = await data(view.file.path); return d?.some((i) => i.type === 'text') && d }, 5000) || []).map((i) => i.type)
+      return { picked, moved, scaled, deleted, undone, shapes, field, typed, saved }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.picked).toBe(1)
+    expect(r.moved![0]).toBeGreaterThan(30)
+    expect(r.moved![1]).toBeGreaterThan(50)
+    expect(r.scaled).toBeGreaterThan(1.5)
+    expect(r.deleted).toBe(1)
+    expect(r.undone).toBe(2)
+    expect(r.shapes).toEqual(['rect', 'arrow'])
+    expect(r.field).toBe(true)
+    expect(r.typed).toBe('Hello there')
+    expect(r.saved).toEqual(['stroke', 'stroke', 'shape', 'shape', 'text'])
   })
 
   it('fits its bar on a phone, where a finger draws, and on a tablet, where it moves the drawing', async () => {

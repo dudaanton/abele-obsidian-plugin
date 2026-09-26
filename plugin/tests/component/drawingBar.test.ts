@@ -27,7 +27,7 @@ describe('the drawing bar', () => {
     expect(off.emitted('toggle')).toHaveLength(1)
     const on = mount(DrawingBar, { props: { model: model({ on: true }) } })
     expect(on.find('.abele-obsidian-icon').classes()).toContain('abele-drawing-bar__mode')
-    expect(on.findAll('.abele-drawing-bar__tool')).toHaveLength(3)
+    expect(on.findAll('.abele-drawing-bar__tool')).toHaveLength(6)
   })
 
   it('shows the tool in hand pressed and its colours, and says which tool was picked', async () => {
@@ -65,5 +65,26 @@ describe('the drawing bar', () => {
     const can = mount(DrawingBar, { props: { model: model({ on: true, canUndo: true }) } })
     await can.find('.abele-drawing-bar__undo').trigger('click')
     expect(can.emitted('undo')).toHaveLength(1)
+  })
+  it('offers the shapes by the shape in hand, and the text tool', async () => {
+    const bar = mount(DrawingBar, { props: { model: model({ on: true, shape: 'arrow' }) } })
+    const shape = bar.find('.abele-drawing-bar__tool_shape')
+    await shape.trigger('click')
+    expect(bar.emitted('shape')).toHaveLength(1)
+    await bar.find('.abele-drawing-bar__tool_text').trigger('click')
+    expect(bar.emitted('tool')?.[0]).toEqual(['text'])
+  })
+
+  it('offers to delete only while something is picked', async () => {
+    expect(
+      mount(DrawingBar, { props: { model: model({ on: true }) } })
+        .find('.abele-drawing-bar__delete')
+        .exists()
+    ).toBe(false)
+    const bar = mount(DrawingBar, {
+      props: { model: model({ on: true, tool: 'lasso', picked: 2 }) },
+    })
+    await bar.find('.abele-drawing-bar__delete').trigger('click')
+    expect(bar.emitted('delete')).toHaveLength(1)
   })
 })

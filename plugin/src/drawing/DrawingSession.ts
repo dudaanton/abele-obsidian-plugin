@@ -10,10 +10,13 @@ import { Platform } from 'obsidian'
 import { routePointer } from '@/reader/ink/inkRoute'
 import type { InkColor } from '@/reader/ink/stroke'
 import { DrawingItems } from './history'
-import { contentBounds, type DrawingItem, type Rect } from './items'
+import { contentBounds, type DrawingItem, type Rect, type ShapeKind } from './items'
 import { fitRect, zoomAt, type Camera } from './camera'
 import { DrawingSurface, type ToolGesture, type WorldPoint } from './surface'
 import { eraseGesture, strokeGesture, type ToolContext } from './tools'
+import { dragGesture, lassoGesture, shapeGesture, textGesture, type EditContext } from './editTools'
+import { boxPart } from './selection'
+import { DrawingPick } from './pick'
 import { WIDTHS, type DrawingModel, type DrawingTool, type Thickness } from './model'
 
 /** How long after the view stops moving a drawing too slow to paint every frame is painted. */
@@ -35,6 +38,8 @@ export class DrawingSession {
   private settle = 0
   private frame = 0
   private readonly win: Window
+  /** What the lasso picked, a text block being typed, and how they are shown. */
+  readonly pick: DrawingPick
 
   constructor(
     parent: HTMLElement,
@@ -56,12 +61,21 @@ export class DrawingSession {
       begin: (route, at) => this.begin(route, at),
       camera: () => this.cam,
       setCamera: (c) => this.setCamera(c),
+      overlay: (ctx, zoom) => this.pick.paint(ctx, zoom),
+      touched: () => this.pick.closeText(),
+    })
+    this.pick = new DrawingPick(parent, this.items, model, {
+      camera: () => this.cam,
+      paint: (skip) => this.surface.renderer.paint(this.items.items, this.cam, skip),
+      paintLive: () => this.surface.paintLive(),
+      changed: () => this.edited(),
     })
     this.surface.onResize = () => this.paint()
     this.model.touch = Platform.isMobile
   }
 
   destroy(): void {
+    this.pick.closeText()
     this.win.clearTimeout(this.settle)
     if (this.frame) this.win.cancelAnimationFrame(this.frame)
     this.surface.destroy()
@@ -74,7 +88,9 @@ export class DrawingSession {
   /** Items read in from the file: undo starts afresh. */
   load(items: DrawingItem[]): void {
     this.surface.cancelAll()
+    this.pick.closeText()
     this.items.load(items)
+    this.pick.set([])
     this.sync()
     this.paint()
   }
@@ -91,6 +107,8 @@ export class DrawingSession {
 
   stop(): void {
     if (!this.model.on) return
+    this.pick.closeText()
+    this.pick.set([])
     this.surface.cancelAll()
     this.penDown = false
     this.model.on = false
@@ -104,16 +122,32 @@ export class DrawingSession {
   }
 
   setTool(tool: DrawingTool): void {
+    this.pick.closeText()
+    if (tool !== 'lasso') this.pick.set([])
     this.model.tool = tool
   }
 
-  /** A colour for the tool in hand; the eraser has none, and the pen is taken up with it. */
+  setShape(kind: ShapeKind): void {
+    this.model.shape = kind
+    this.setTool('shape')
+  }
+
+  /**
+   * A colour: for what is picked, when something is; else for the tool in hand — the eraser has
+   * none, and the pen is taken up with it.
+   */
   setColor(color: InkColor): void {
+    if (this.model.picked) this.pick.recolor(color)
     if (this.model.tool === 'marker') this.model.markerColor = color
     else {
       this.model.penColor = color
       if (this.model.tool === 'eraser') this.model.tool = 'pen'
     }
+  }
+
+  /** What the lasso picked, taken away. */
+  deletePicked(): void {
+    this.pick.remove()
   }
 
   setThickness(thickness: Thickness): void {
@@ -125,14 +159,17 @@ export class DrawingSession {
   }
 
   undo(): void {
+    this.pick.closeText()
     if (this.items.undo()) this.edited()
   }
 
   redo(): void {
+    this.pick.closeText()
     if (this.items.redo()) this.edited()
   }
 
   private edited(): void {
+    this.pick.prune()
     this.sync()
     this.paint()
     this.host.changed()
@@ -156,12 +193,40 @@ export class DrawingSession {
     }
   }
 
+  private editContext(): EditContext {
+    return {
+      ...this.toolContext(),
+      picked: () => this.pick.ids,
+      pick: (ids) => this.pick.set(ids),
+      float: (f) => this.pick.float(f),
+      editText: (at, item) => this.pick.editText(at, item),
+    }
+  }
+
   private begin(route: 'ink' | 'erase', at: WorldPoint): ToolGesture | null {
-    const ctx = this.toolContext()
     const tool = this.model.tool
-    if (route === 'erase' || tool === 'eraser') return eraseGesture(ctx, at)
-    const color = tool === 'marker' ? this.model.markerColor : this.model.penColor
-    return strokeGesture(ctx, { tool, color, size: WIDTHS[tool][this.model.thickness] }, at)
+    if (route === 'erase' || tool === 'eraser') {
+      this.pick.set([])
+      return eraseGesture(this.toolContext(), at)
+    }
+    const thick = this.model.thickness
+    if (tool === 'pen' || tool === 'marker') {
+      const color = tool === 'marker' ? this.model.markerColor : this.model.penColor
+      return strokeGesture(this.toolContext(), { tool, color, size: WIDTHS[tool][thick] }, at)
+    }
+    const ctx = this.editContext()
+    if (tool === 'shape') {
+      const size = WIDTHS.shape[thick]
+      return shapeGesture(ctx, this.model.shape, { color: this.model.penColor, size }, at)
+    }
+    if (tool === 'text') return textGesture(ctx, at)
+    // The lasso: on what is picked it drags it, from the corner it scales it, elsewhere it loops.
+    const box = this.pick.box()
+    const part = box ? boxPart(box, at.x, at.y, this.cam.zoom) : 'outside'
+    if (box && part !== 'outside')
+      return dragGesture(ctx, at, box, part === 'handle' ? 'scale' : 'move')
+    this.pick.set([])
+    return lassoGesture(ctx, at)
   }
 
   // ————— The camera —————
@@ -169,6 +234,7 @@ export class DrawingSession {
   setCamera(c: Camera): void {
     this.cam = c
     this.model.zoom = c.zoom
+    this.pick.follow(c)
     const r = this.surface.renderer
     if (r.quick) {
       if (!this.frame)
@@ -208,6 +274,6 @@ export class DrawingSession {
   }
 
   paint(): void {
-    this.surface.renderer.paint(this.items.items, this.cam)
+    this.surface.renderer.paint(this.items.items, this.cam, this.pick.hidden())
   }
 }

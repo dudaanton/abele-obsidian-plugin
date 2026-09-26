@@ -3,17 +3,22 @@
  * width, and what can be undone.
  */
 import type { InkColor } from '@/reader/ink/stroke'
+import type { ShapeKind } from './items'
 
-export type DrawingTool = 'pen' | 'marker' | 'eraser'
+export type DrawingTool = 'pen' | 'marker' | 'eraser' | 'lasso' | 'shape' | 'text'
 
 export type Thickness = 'fine' | 'medium' | 'bold'
 export const THICKNESSES: readonly Thickness[] = ['fine', 'medium', 'bold']
 
 /** The pen's and the marker's width at each thickness, in the drawing's units at 100%. */
-export const WIDTHS: Record<'pen' | 'marker', Record<Thickness, number>> = {
+export const WIDTHS: Record<'pen' | 'marker' | 'shape', Record<Thickness, number>> = {
   pen: { fine: 1.4, medium: 2.4, bold: 5 },
   marker: { fine: 8, medium: 14, bold: 24 },
+  shape: { fine: 1.5, medium: 2.5, bold: 5 },
 }
+
+/** The letters' height of new text at each thickness, on screen, whatever the zoom. */
+export const TEXT_SIZES: Record<Thickness, number> = { fine: 16, medium: 24, bold: 40 }
 
 export interface DrawingModel {
   /** Drawing is on: the surface answers the tools, and nothing of it reaches Obsidian. */
@@ -22,6 +27,10 @@ export interface DrawingModel {
   penColor: InkColor
   markerColor: InkColor
   thickness: Thickness
+  /** What the shape tool draws. */
+  shape: ShapeKind
+  /** How many items the lasso has picked. */
+  picked: number
   /** A finger draws rather than moving the drawing. */
   finger: boolean
   /** The screen is touched rather than clicked, so drawing with a finger is offered at all. */
@@ -38,6 +47,8 @@ export const emptyDrawingModel = (): DrawingModel => ({
   penColor: 'black',
   markerColor: 'yellow',
   thickness: 'medium',
+  shape: 'rect',
+  picked: 0,
   finger: false,
   touch: false,
   canUndo: false,
