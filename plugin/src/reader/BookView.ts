@@ -32,6 +32,7 @@ import { linkedNotesFor } from './bookLinkedNotes'
 import type { LinkedNotes } from './linkedNotes'
 import { parsePlaceSubpath, type BookPlace } from './bookLinks'
 import { onExternalLink, onKey, watchPage, type PageHost } from './pageInput'
+import { showBookStyles } from './bookStyles'
 import { keepMarksOnText, redrawOver, relayoutOnFonts, relayoutOnPictures } from './pageLayout'
 import { bookCallbacks, type BookActions } from './bookCallbacks'
 import { bookKey } from './positions'
@@ -385,6 +386,8 @@ export class BookView extends FileView {
     for (const [name, value] of Object.entries(attrs))
       if (renderer.getAttribute(name) !== value) renderer.setAttribute(name, value)
     renderer.setStyles?.(pageStyles(settings, themeValues(this.contentEl)))
+    const pages = (renderer as { getContents?: () => { doc?: Document }[] }).getContents?.() ?? []
+    for (const { doc } of pages) if (doc) showBookStyles(doc, settings.bookStyles)
   }
 
   private applySettings(): void {
@@ -569,6 +572,7 @@ export class BookView extends FileView {
       const link = target?.closest?.('a, area')
       if (link && !(link.localName === 'a' && link.hasAttribute('href'))) e.preventDefault()
     })
+    showBookStyles(doc, readerSettingsFrom(AbeleConfig.getInstance().reader).bookStyles)
     if (!main) return
     relayoutOnFonts(doc, () => redrawOver(this.reader?.renderer, doc, 'fonts arrived'))
     relayoutOnPictures(doc, () => redrawOver(this.reader?.renderer, doc, 'a picture arrived'))

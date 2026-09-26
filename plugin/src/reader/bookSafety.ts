@@ -22,6 +22,8 @@
  * element positions EPUB CFIs count stay the same as in the book's own file.
  */
 
+import { inlineBookStyles } from './bookStyles'
+
 export const XHTML_NS = 'http://www.w3.org/1999/xhtml'
 export const SVG_NS = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink'
@@ -309,12 +311,32 @@ export function resourcePolicy(type: string | null | undefined): ResourcePolicy 
  * A page that is not well-formed after that shows a parse error — never a script.
  */
 export function sanitizePage(source: string, type: string): { data: string; type: string } {
+  const doc = cleanPage(source, type)
+  injectPolicy(doc)
+  return { data: new XMLSerializer().serializeToString(doc), type: MIME.XHTML }
+}
+
+/** A page parsed and cleaned, without its policy yet. */
+function cleanPage(source: string, type: string): Document {
   const html = resourcePolicy(type) === 'page' && type.toLowerCase().startsWith(MIME.HTML)
   let doc = new DOMParser().parseFromString(source, html ? MIME.HTML : MIME.XHTML)
   if (!html && (doc.querySelector('parsererror') || !doc.documentElement?.namespaceURI))
     doc = new DOMParser().parseFromString(source, MIME.HTML)
   cleanDocument(doc)
   dropNonXmlAttributes(doc)
+  return doc
+}
+
+/**
+ * A page of the book as `sanitizePage` makes it, with the book's own stylesheets put into it,
+ * cleaned (`bookStyles.ts`): a stylesheet linked from `blob:` is refused by Obsidian's own policy.
+ */
+export async function sanitizePageWithStyles(
+  source: string,
+  type: string
+): Promise<{ data: string; type: string }> {
+  const doc = cleanPage(source, type)
+  await inlineBookStyles(doc)
   injectPolicy(doc)
   return { data: new XMLSerializer().serializeToString(doc), type: MIME.XHTML }
 }
@@ -401,7 +423,7 @@ export async function sanitizeResource(
 ): Promise<{ data: string | Blob; type: string }> {
   switch (resourcePolicy(type)) {
     case 'page':
-      return sanitizePage(await asText(data), type)
+      return sanitizePageWithStyles(await asText(data), type)
     case 'svg':
       return sanitizeSvg(await asText(data))
     case 'style':

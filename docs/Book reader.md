@@ -283,6 +283,7 @@ and travels with the settings transfer.
 | Column width | The widest a column of text may grow. |
 | Two columns | Two pages side by side when the tab is wide enough. |
 | Theme colours | On: the book in the theme's text, link and background colours, dark mode included — in a dark theme pictures sit on white paper, so diagrams drawn as dark lines on transparency still show. Off: the book's own colours on a light page. |
+| Book's own styles | On (default): the book's own stylesheets — tables, indents, alignment, drop caps, headings. The reader's text size, spacing, font and theme colours still win; a size the book fixes in pixels follows the reader's size. Off: the book is laid out as if it had no stylesheet, at once. Nothing outside the book is ever fetched either way (see **A book's own styles** below). |
 | Voice | The voice reading aloud: the device's own for the book's language, or one chosen. |
 | Speed | How fast it reads aloud, 0.75× to 2×. |
 | (the measure under the page) | Page of the chapter, pages left, location in the book, or percent — changed by tapping it. |
@@ -521,3 +522,24 @@ Archives are unpacked with `fflate`, one entry at a time as the engine asks for 
 - Books open in the main window; pop-out windows are not supported yet.
 - Scrolling runs through one chapter at a time; the next chapter follows when the end is reached.
 - Protected (DRM) books cannot be opened; the reader says so instead of showing scrambled text.
+
+## A book's own styles
+
+A book links its stylesheets from its pages. Obsidian's own security policy refuses a stylesheet
+linked from the reader's page frame, so they are put into each page as it loads, cleaned
+(`src/reader/bookStyles.ts`):
+
+- nothing outside the book is fetched: `url()` keeps only the book's own files, pictures and fonts
+  carried inline, and `#fragment` references; web, `file:`, `app:` and other `data:` URLs become
+  `none`; `@import` is followed only to another stylesheet of the book; `image-set()` and `src()`
+  are dropped with their declaration;
+- nothing that ever ran code survives (`expression()`, `behavior`, `-moz-binding`,
+  `javascript:`/`vbscript:` URLs);
+- the book's `!important` is taken out and its text sizes in `px`/`pt` become `rem`, so the
+  reader's size, spacing, font and colours, and the engine's column layout, always win;
+- the result is checked again with CSS escapes decoded, and a stylesheet that still reaches
+  outside the book is dropped whole.
+
+The page's own `<style>` elements are cleaned the same way. Every book stylesheet is marked
+`data-abele-book-style`; the setting turns them off and on in pages already open. The page's own
+policy (no network) stays the first layer; this is the second.

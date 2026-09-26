@@ -62,6 +62,15 @@
           @toggle="set('themeColors', !settings.themeColors)"
         />
       </Setting>
+      <Setting
+        name="Book's own styles"
+        desc="The book's own layout: tables, indents, alignment, drop caps. Your text size, spacing, font and colours still win. Nothing outside the book is ever loaded."
+      >
+        <Checkbox
+          :is-enabled="settings.bookStyles"
+          @toggle="set('bookStyles', !settings.bookStyles)"
+        />
+      </Setting>
     </template>
 
     <Section v-if="kind === 'pdf' || kind === 'all'" :title="kind === 'all' ? 'PDF' : undefined">

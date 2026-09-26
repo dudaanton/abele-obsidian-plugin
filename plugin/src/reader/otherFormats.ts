@@ -15,7 +15,7 @@ import { MOBI } from '@/vendor/foliate-js/mobi.js'
 import { makeFB2 } from '@/vendor/foliate-js/fb2.js'
 import { makeComicBook } from '@/vendor/foliate-js/comic-book.js'
 import type { FoliateBook } from '@/vendor/foliate-js/view.js'
-import { MIME, cleanDocument, guardBook, injectPolicy, sanitizePage } from './bookSafety'
+import { MIME, cleanDocument, guardBook, injectPolicy, sanitizePageWithStyles } from './bookSafety'
 import { isZip, openZip } from './zipLoader'
 import { BookFormatError, type OpenedBook } from './openBook'
 
@@ -67,7 +67,7 @@ export function cleanSections(book: FoliateBook): () => void {
       if (typeof made !== 'string' || !made) return made
       const response = await window.fetch(made)
       const type = response.headers.get('content-type') || MIME.HTML
-      const clean = sanitizePage(await response.text(), type)
+      const clean = await sanitizePageWithStyles(await response.text(), type)
       const url = URL.createObjectURL(new Blob([clean.data], { type: clean.type }))
       urls.set(index, url)
       return url

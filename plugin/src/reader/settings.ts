@@ -41,6 +41,12 @@ export interface ReaderSettings {
   /** Draw the book in the theme's text and background colours instead of its own. */
   themeColors: boolean
   /**
+   * The book's own stylesheets — its tables, indents, alignment, drop caps — cleaned so nothing
+   * outside the book is fetched (`bookStyles.ts`). The reader's size, spacing, font and theme
+   * colours win over them.
+   */
+  bookStyles: boolean
+  /**
    * PDF files open in the book reader rather than in Obsidian's own PDF viewer. On by default. It
    * was `openPdf`, off by default, before; every setting is saved whole, so a stored `openPdf:
    * false` is mostly that default rather than a choice, and is not read.
@@ -132,6 +138,7 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   maxWidth: 720,
   columns: 2,
   themeColors: true,
+  bookStyles: true,
   pdfInReader: true,
   pdfLayout: 'scrolled',
   pdfZoom: 'auto',
@@ -173,6 +180,7 @@ export function readerSettingsFrom(stored?: Partial<ReaderSettings> | null): Rea
     maxWidth: clamp(s.maxWidth, 300, 3000, d.maxWidth),
     columns: s.columns === 1 ? 1 : 2,
     themeColors: typeof s.themeColors === 'boolean' ? s.themeColors : d.themeColors,
+    bookStyles: typeof s.bookStyles === 'boolean' ? s.bookStyles : d.bookStyles,
     pdfInReader: typeof s.pdfInReader === 'boolean' ? s.pdfInReader : d.pdfInReader,
     pdfLayout: oneOf(s.pdfLayout, ['paginated', 'scrolled'] as const, d.pdfLayout),
     pdfZoom: oneOf(s.pdfZoom, PDF_ZOOMS, d.pdfZoom),
