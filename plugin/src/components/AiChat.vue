@@ -307,6 +307,7 @@ import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import AiChatMessage from './AiChatMessage.vue'
 import { useTailPagedList } from '@/composables/useTailPagedList'
+import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
 import AiChatInput from './AiChatInput.vue'
 import AiChatTabs from './AiChatTabs.vue'
 import AiRunView from './AiRunView.vue'
@@ -1149,21 +1150,12 @@ function consumePendingInput() {
 
 watch(() => chatService.pendingInput.value, consumePendingInput)
 
+// On a phone the chat shrinks to sit above the keyboard; see `useChatKeyboardGap`.
+const { measure: measureBottomGap } = useChatKeyboardGap(chatContainer)
+
 onMounted(() => {
   // The sidebar may have been opened for this very text.
   consumePendingInput()
-  if (Platform.isMobile && chatContainer.value) {
-    nextTick(() => {
-      const el = chatContainer.value
-      const safeArea =
-        parseInt(
-          getComputedStyle(document.documentElement).getPropertyValue('--safe-area-inset-bottom')
-        ) || 0
-      const fullGap = window.innerHeight - el.getBoundingClientRect().bottom
-      const uiGap = Math.max(0, fullGap - safeArea)
-      el.style.setProperty('--abele-bottom-gap', `${uiGap}px`)
-    })
-  }
 })
 
 /**
@@ -1319,6 +1311,7 @@ const onSend = async (content: string, attachments: string[] = []) => {
 }
 
 const onInputFocus = (focused: boolean) => {
+  if (focused) measureBottomGap()
   chatContainer.value?.classList.toggle('abele-keyboard-open', focused)
 }
 
@@ -1629,9 +1622,7 @@ const showDebug = () => {
     // When keyboard is open, shrink by the keyboard portion not covered by bottom UI
     &.abele-keyboard-open {
       padding-bottom: 0;
-      height: calc(
-        100% - max(0px, var(--safe-area-inset-bottom, 0px) - var(--abele-bottom-gap, 0px))
-      );
+      height: calc(100% - max(0px, var(--keyboard-height, 0px) - var(--abele-bottom-gap, 0px)));
     }
   }
 }
