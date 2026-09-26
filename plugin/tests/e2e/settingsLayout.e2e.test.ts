@@ -226,7 +226,11 @@ const probeFor = (phone: boolean) =>
   if (settingsWindow) settingsWindow.close()
 
   window.__abeleLayoutProbe = report
-})(); return 'started' })()`
+})().catch((e) => {
+  // A step that throws — a tab or a card not where the probe expects it — says so, instead of
+  // leaving the result unset and the test waiting out its whole timeout for nothing.
+  window.__abeleLayoutProbe = { __error: String((e && e.stack) || e).slice(0, 600) }
+}); return 'started' })()`
 
 const resize = (width: number) =>
   `(() => {
@@ -246,11 +250,14 @@ async function runProbe(phone: boolean): Promise<Report> {
   const deadline = Date.now() + 120_000
   while (Date.now() < deadline) {
     if (evalJson<boolean>('window.__abeleLayoutProbe !== null', 60_000)) {
-      return evalJson<Report>('window.__abeleLayoutProbe', 60_000)
+      const report = evalJson<Report | { __error: string }>('window.__abeleLayoutProbe', 60_000)
+      if ('__error' in report && typeof report.__error === 'string')
+        throw new Error(`The layout probe failed: ${report.__error}`)
+      return report as Report
     }
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }
-  throw new Error('The layout probe did not finish in time')
+  throw new Error('The layout probe did not finish in time — it is still running, not failed')
 }
 
 const available = isObsidianRunning()
