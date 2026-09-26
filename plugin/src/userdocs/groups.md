@@ -38,6 +38,11 @@ in it:
 The task, transaction and log lists have a search box, which looks through everything in that
 list, and tasks can be filtered by label.
 
+Each list folds away to its title: click or tap the title, or focus it and press Enter or Space.
+A folded list shows how many entries it holds, so a long list of transactions no longer keeps
+the logs under it out of reach. Every list starts open, and a fold is remembered for that note on
+this device, also after the note is renamed.
+
 ## Cards: description and cover
 
 A backlink card shows two optional properties of the note it stands for:

@@ -1,27 +1,40 @@
 <template>
   <div class="abele-notes-list">
     <div class="abele-notes-list__header">
-      <div class="abele-notes-list__header-text">Backlinks</div>
-      <button class="abele-notes-list__sort-btn clickable-icon" @click="toggleSort">
+      <FoldHeading
+        class="abele-notes-list__header-text"
+        text="Backlinks"
+        :count="fold.enabled ? notes.length : undefined"
+        :collapsible="fold.enabled"
+        :collapsed="fold.collapsed.value"
+        @toggle="fold.toggle"
+      />
+      <button
+        v-if="!fold.collapsed.value"
+        class="abele-notes-list__sort-btn clickable-icon"
+        @click="toggleSort"
+      >
         {{ sortBy === 'created' ? 'created' : 'updated' }}
       </button>
     </div>
-    <div class="abele-notes-list__notes">
-      <Card
-        v-for="note in visible"
-        :key="note.filePath"
-        class="abele-notes-list__item"
-        :title="note.name"
-        :description="note.description ?? undefined"
-        :thumbnail="thumbnailOf(note)"
-        :meta="metaOf(note)"
-        clamp-description
-        clickable
-        @click="openNote(note)"
-      />
-      <div v-if="hasMore" ref="sentinel" class="abele-notes-list__sentinel" />
-    </div>
-    <div v-if="!props.notes.length" class="abele-notes-list__no-notes">No notes to show.</div>
+    <template v-if="!fold.collapsed.value">
+      <div class="abele-notes-list__notes">
+        <Card
+          v-for="note in visible"
+          :key="note.filePath"
+          class="abele-notes-list__item"
+          :title="note.name"
+          :description="note.description ?? undefined"
+          :thumbnail="thumbnailOf(note)"
+          :meta="metaOf(note)"
+          clamp-description
+          clickable
+          @click="openNote(note)"
+        />
+        <div v-if="hasMore" ref="sentinel" class="abele-notes-list__sentinel" />
+      </div>
+      <div v-if="!props.notes.length" class="abele-notes-list__no-notes">No notes to show.</div>
+    </template>
   </div>
 </template>
 
@@ -32,6 +45,8 @@ import { openFile } from '@/helpers/vaultUtils'
 import { compactDate } from '@/helpers/datesHelper'
 import { resourceUrl } from '@/helpers/resourceUrl'
 import Card from './obsidian/Card.vue'
+import FoldHeading from './obsidian/FoldHeading.vue'
+import { useFooterFold } from '@/composables/useFooterFold'
 import { usePagedList } from '@/composables/usePagedList'
 
 /**
@@ -44,6 +59,8 @@ const PAGE_SIZE = 50
 const props = defineProps<{
   notes: Note[]
 }>()
+
+const fold = useFooterFold('backlinks')
 
 type SortBy = 'created' | 'updated'
 const sortBy = ref<SortBy>('created')

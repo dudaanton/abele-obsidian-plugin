@@ -1,21 +1,30 @@
 <template>
   <div class="abele-time-entries-list">
     <div class="abele-time-entries-list__header">
-      <div class="abele-time-entries-list__header-text">Time Entries</div>
+      <FoldHeading
+        class="abele-time-entries-list__header-text"
+        text="Time Entries"
+        :count="fold.enabled ? timeEntries.length : undefined"
+        :collapsible="fold.enabled"
+        :collapsed="fold.collapsed.value"
+        @toggle="fold.toggle"
+      />
       <div class="abele-time-entries-list__header-total">{{ totalText }}</div>
     </div>
-    <PeriodSelector v-model:start="periodStart" v-model:end="periodEnd" />
-    <div v-if="dailyChartData.length" ref="chartEl" class="abele-time-entries-list__chart" />
-    <div v-if="visible.length" class="abele-time-entries-list__items">
-      <template v-for="(entry, idx) in visible" :key="entry.id">
-        <DateDivider v-if="showDateBefore(idx)" :date="entryDate(entry)">
-          {{ dayDuration(entryDate(entry)) }}
-        </DateDivider>
-        <TimeEntryItem :entry="entry" />
-      </template>
-      <div ref="scrollSentinel" class="abele-time-entries-list__sentinel" />
-    </div>
-    <div v-if="!filtered.length" class="abele-time-entries-list__empty">No time entries.</div>
+    <template v-if="!fold.collapsed.value">
+      <PeriodSelector v-model:start="periodStart" v-model:end="periodEnd" />
+      <div v-if="dailyChartData.length" ref="chartEl" class="abele-time-entries-list__chart" />
+      <div v-if="visible.length" class="abele-time-entries-list__items">
+        <template v-for="(entry, idx) in visible" :key="entry.id">
+          <DateDivider v-if="showDateBefore(idx)" :date="entryDate(entry)">
+            {{ dayDuration(entryDate(entry)) }}
+          </DateDivider>
+          <TimeEntryItem :entry="entry" />
+        </template>
+        <div ref="scrollSentinel" class="abele-time-entries-list__sentinel" />
+      </div>
+      <div v-if="!filtered.length" class="abele-time-entries-list__empty">No time entries.</div>
+    </template>
   </div>
 </template>
 
@@ -27,6 +36,8 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import TimeEntryItem from './TimeEntryItem.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
+import FoldHeading from './obsidian/FoldHeading.vue'
+import { useFooterFold } from '@/composables/useFooterFold'
 import { computed, ref, watch, nextTick, onUnmounted } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import dayjs from 'dayjs'
@@ -36,6 +47,8 @@ const PAGE_SIZE = 20
 const props = defineProps<{
   timeEntries: TimeEntry[]
 }>()
+
+const fold = useFooterFold('time')
 
 const periodStart = ref<dayjs.Dayjs>(dayjs().startOf('month'))
 const periodEnd = ref<dayjs.Dayjs>(dayjs().endOf('month'))

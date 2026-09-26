@@ -2,10 +2,18 @@
   <div class="abele-transactions-list">
     <div class="abele-transactions-list__header">
       <div class="abele-transactions-list__header-left">
-        <div class="abele-transactions-list__header-text">Transactions</div>
+        <FoldHeading
+          class="abele-transactions-list__header-text"
+          text="Transactions"
+          :count="fold.enabled ? transactions.length : undefined"
+          :collapsible="fold.enabled"
+          :collapsed="fold.collapsed.value"
+          @toggle="fold.toggle"
+        />
         <ObsidianIcon icon="banknote-arrow-down" @click="addTransaction()" />
       </div>
       <ObsidianIcon
+        v-if="!fold.collapsed.value"
         class="abele-transactions-list__search-toggle"
         icon="search"
         :active="search.open.value"
@@ -13,26 +21,28 @@
         @click="search.toggle"
       />
     </div>
-    <ObsidianSearch
-      v-if="search.open.value"
-      v-model="search.query.value"
-      class="abele-transactions-list__search"
-      placeholder="Search transactions…"
-      autofocus
-      @keydown.escape.stop.prevent="search.close"
-    />
-    <div v-if="visible.length" ref="itemsEl" class="abele-transactions-list__items">
-      <template v-for="(tx, idx) in visible" :key="tx.id">
-        <DateDivider v-if="showDateBefore(idx)" :date="txDate(tx)">
-          <span v-for="s in dayTotals(txDate(tx))" :key="s">{{ s }}</span>
-        </DateDivider>
-        <TransactionItem :transaction="tx" :tx-type="getType(tx)" />
-      </template>
-      <div ref="scrollSentinel" class="abele-transactions-list__sentinel" />
-    </div>
-    <div v-if="!sorted.length" class="abele-transactions-list__empty">
-      {{ search.terms.value.length ? 'Nothing matches the search.' : 'No transactions.' }}
-    </div>
+    <template v-if="!fold.collapsed.value">
+      <ObsidianSearch
+        v-if="search.open.value"
+        v-model="search.query.value"
+        class="abele-transactions-list__search"
+        placeholder="Search transactions…"
+        autofocus
+        @keydown.escape.stop.prevent="search.close"
+      />
+      <div v-if="visible.length" ref="itemsEl" class="abele-transactions-list__items">
+        <template v-for="(tx, idx) in visible" :key="tx.id">
+          <DateDivider v-if="showDateBefore(idx)" :date="txDate(tx)">
+            <span v-for="s in dayTotals(txDate(tx))" :key="s">{{ s }}</span>
+          </DateDivider>
+          <TransactionItem :transaction="tx" :tx-type="getType(tx)" />
+        </template>
+        <div ref="scrollSentinel" class="abele-transactions-list__sentinel" />
+      </div>
+      <div v-if="!sorted.length" class="abele-transactions-list__empty">
+        {{ search.terms.value.length ? 'Nothing matches the search.' : 'No transactions.' }}
+      </div>
+    </template>
   </div>
 </template>
 
@@ -45,6 +55,7 @@ import TransactionItem from './TransactionItem.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianSearch from './obsidian/Search.vue'
+import FoldHeading from './obsidian/FoldHeading.vue'
 import { createTransaction } from '@/commands/createTransaction'
 import { DATE_FORMAT } from '@/constants/dates'
 import { computed, ref, unref, watch } from 'vue'
@@ -53,6 +64,7 @@ import dayjs from 'dayjs'
 import { formatAmount } from '@/helpers/moneyFormat'
 import { transactionSearch, useListSearch } from '@/composables/useListSearch'
 import { useSearchHighlight } from '@/composables/useSearchHighlight'
+import { useFooterFold } from '@/composables/useFooterFold'
 
 const PAGE_SIZE = 20
 
@@ -63,6 +75,7 @@ const props = defineProps<{
 }>()
 
 const store = GlobalStore.getInstance()
+const fold = useFooterFold('transactions')
 
 const accountTypeSets = computed(() => {
   const al = unref(store.accountsList) as AccountsList | null

@@ -40,10 +40,16 @@ import ChatsList from './ChatsList.vue'
 import { useChatLinks } from '@/composables/useChatLinks'
 import { useCalendarDays } from '@/composables/useCalendarDays'
 import { DATE_FORMAT } from '@/constants/dates'
+import { provideFooterFold } from '@/composables/useFooterFold'
 
 const props = defineProps<{
   footer: Footer
 }>()
+
+// Each list below folds to its heading, remembered for this note: a long one would otherwise
+// keep every list under it out of reach, growing a page each time the scroll reaches its end.
+// A getter, for the same reason as the chats below: a rename rewrites the path in place.
+provideFooterFold(() => props.footer.filePath)
 
 const tasks = computed(() => {
   return Array.from(props.footer.noteRelations.tasks.values()).sort(
@@ -120,6 +126,12 @@ onMounted(() => {
 
   p {
     margin: 0;
+  }
+
+  // A folded list is its header row alone; the gap under the header belongs to the entries.
+  [class$='__header']:has(> .abele-fold-heading.is-collapsed),
+  [class$='__header']:has(> [class$='__header-left'] > .abele-fold-heading.is-collapsed) {
+    margin-bottom: 0;
   }
 }
 </style>

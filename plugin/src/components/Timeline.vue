@@ -2,10 +2,17 @@
   <div class="abele-timeline">
     <div class="abele-timeline__header">
       <div class="abele-timeline__header-left">
-        <div class="abele-timeline__header-text">{{ title ?? 'Timeline' }}</div>
+        <FoldHeading
+          class="abele-timeline__header-text"
+          :text="title ?? 'Timeline'"
+          :count="fold.enabled ? shownTasks.length : undefined"
+          :collapsible="fold.enabled"
+          :collapsed="fold.collapsed.value"
+          @toggle="fold.toggle"
+        />
         <ObsidianIcon v-if="showAddButton" icon="calendar-plus" @click="createTask()" />
       </div>
-      <div class="abele-timeline__header-right">
+      <div v-if="!fold.collapsed.value" class="abele-timeline__header-right">
         <ObsidianIcon
           class="abele-timeline__search-toggle"
           icon="search"
@@ -30,48 +37,50 @@
         />
       </div>
     </div>
-    <ObsidianSearch
-      v-if="search.open.value"
-      v-model="search.query.value"
-      class="abele-timeline__search"
-      placeholder="Search tasks…"
-      autofocus
-      @keydown.escape.stop.prevent="search.close"
-    />
-    <div ref="itemsEl" class="abele-timeline__blocks">
-      <div v-for="[date, dateItems] in visible" :key="date" class="abele-timeline__date-block">
-        <div
-          class="abele-timeline__date-indicator"
-          :class="{ 'abele-timeline__date-indicator_overdue': dayjs(date).isBefore(now, 'day') }"
-        >
-          <div class="abele-timeline__date-icon abele-timeline__date-icon_overdue">
-            <ObsidianIcon icon="flame" no-hover />
+    <template v-if="!fold.collapsed.value">
+      <ObsidianSearch
+        v-if="search.open.value"
+        v-model="search.query.value"
+        class="abele-timeline__search"
+        placeholder="Search tasks…"
+        autofocus
+        @keydown.escape.stop.prevent="search.close"
+      />
+      <div ref="itemsEl" class="abele-timeline__blocks">
+        <div v-for="[date, dateItems] in visible" :key="date" class="abele-timeline__date-block">
+          <div
+            class="abele-timeline__date-indicator"
+            :class="{ 'abele-timeline__date-indicator_overdue': dayjs(date).isBefore(now, 'day') }"
+          >
+            <div class="abele-timeline__date-icon abele-timeline__date-icon_overdue">
+              <ObsidianIcon icon="flame" no-hover />
+            </div>
+            <div class="abele-timeline__date-icon abele-timeline__date-icon_upcoming">
+              <ObsidianIcon icon="calendar" no-hover />
+            </div>
+            <div class="abele-timeline__date-line" />
           </div>
-          <div class="abele-timeline__date-icon abele-timeline__date-icon_upcoming">
-            <ObsidianIcon icon="calendar" no-hover />
-          </div>
-          <div class="abele-timeline__date-line" />
-        </div>
-        <div class="abele-timeline__block-content">
-          <ObsidianMarkdown class="timeline__date" :text="getDateWikilink(date)" />
-          <div class="abele-timeline__tasks">
-            <template v-for="item in dateItems" :key="item.key">
-              <CalendarEventView
-                v-if="item.shown"
-                :event="item.shown.event"
-                :feed="item.shown.feed"
-                :day="date"
-              />
-              <TaskView v-else class="abele-timeline__task" :task="item.task!" at-timeline />
-            </template>
+          <div class="abele-timeline__block-content">
+            <ObsidianMarkdown class="timeline__date" :text="getDateWikilink(date)" />
+            <div class="abele-timeline__tasks">
+              <template v-for="item in dateItems" :key="item.key">
+                <CalendarEventView
+                  v-if="item.shown"
+                  :event="item.shown.event"
+                  :feed="item.shown.feed"
+                  :day="date"
+                />
+                <TaskView v-else class="abele-timeline__task" :task="item.task!" at-timeline />
+              </template>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-    <div v-if="hasMore" ref="sentinel" class="abele-timeline__sentinel" />
-    <div v-if="!dates.length" class="abele-timeline__no-tasks">
-      {{ search.terms.value.length ? 'Nothing matches the search.' : 'No tasks to show.' }}
-    </div>
+      <div v-if="hasMore" ref="sentinel" class="abele-timeline__sentinel" />
+      <div v-if="!dates.length" class="abele-timeline__no-tasks">
+        {{ search.terms.value.length ? 'Nothing matches the search.' : 'No tasks to show.' }}
+      </div>
+    </template>
   </div>
 </template>
 
@@ -85,6 +94,7 @@ import { computed, ref, watch } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import ObsidianSearch from './obsidian/Search.vue'
+import FoldHeading from './obsidian/FoldHeading.vue'
 import dayjs from 'dayjs'
 import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { useDate } from '@/composables/useDate'
@@ -93,6 +103,7 @@ import { createTask } from '@/commands/createTask'
 import { useLabelFilter } from '@/composables/useLabelFilter'
 import { taskSearch, useListSearch } from '@/composables/useListSearch'
 import { useSearchHighlight } from '@/composables/useSearchHighlight'
+import { useFooterFold } from '@/composables/useFooterFold'
 
 /**
  * Pages by date block rather than by task: a task that spans several days is deliberately
@@ -112,6 +123,8 @@ const props = defineProps<{
 }>()
 
 const { now } = useDate()
+
+const fold = useFooterFold('calendar')
 
 const hideCompleted = ref(true)
 

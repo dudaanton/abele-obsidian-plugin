@@ -116,6 +116,7 @@ import { openChat } from '@/ai/openChat'
 import { keepChatFilesOutOfLeaves } from '@/ai/chatFileLeaves'
 import { applyQuickButton, setQuickButton } from '@/quickButton/mount'
 import { openQuickMenu } from '@/quickButton/open'
+import { moveFooterFolds } from '@/composables/useFooterFold'
 
 // Every module imported above has run its top-level code by now. See `helpers/loadMarks.ts`.
 markLoad('evalEnd')
@@ -1139,6 +1140,8 @@ export default class AbelePlugin extends Plugin {
           return
         }
         if (file.extension !== 'md') return
+        // The lists folded under it stay folded.
+        moveFooterFolds(oldPath, file.path)
         void CommentService.getInstance().handleRename(oldPath, file.path)
         // The chats that wrote this note name it by path, in the index and in their files.
         void ChatStorage.getInstance().handleNoteRename(oldPath, file.path)

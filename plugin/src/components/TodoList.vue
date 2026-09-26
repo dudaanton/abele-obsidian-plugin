@@ -2,10 +2,17 @@
   <div class="abele-todo-list">
     <div class="abele-todo-list__header">
       <div class="abele-todo-list__header-left">
-        <div class="abele-todo-list__header-text">Tasks</div>
+        <FoldHeading
+          class="abele-todo-list__header-text"
+          text="Tasks"
+          :count="fold.enabled ? tasksWithoutDates.length : undefined"
+          :collapsible="fold.enabled"
+          :collapsed="fold.collapsed.value"
+          @toggle="fold.toggle"
+        />
         <ObsidianIcon v-if="showAddButton" icon="square-plus" @click="createTask()" />
       </div>
-      <div class="abele-todo-list__header-right">
+      <div v-if="!fold.collapsed.value" class="abele-todo-list__header-right">
         <ObsidianIcon
           class="abele-todo-list__search-toggle"
           icon="search"
@@ -30,21 +37,28 @@
         />
       </div>
     </div>
-    <ObsidianSearch
-      v-if="search.open.value"
-      v-model="search.query.value"
-      class="abele-todo-list__search"
-      placeholder="Search tasks…"
-      autofocus
-      @keydown.escape.stop.prevent="search.close"
-    />
-    <div ref="itemsEl" class="abele-todo-list__tasks">
-      <TaskView v-for="task in visible" :key="task.id" :task="task" class="abele-todo-list__task" />
-      <div v-if="hasMore" ref="sentinel" class="abele-todo-list__sentinel" />
-    </div>
-    <div v-if="!shown.length" class="abele-todo-list__no-tasks">
-      {{ search.terms.value.length ? 'Nothing matches the search.' : 'No tasks to show.' }}
-    </div>
+    <template v-if="!fold.collapsed.value">
+      <ObsidianSearch
+        v-if="search.open.value"
+        v-model="search.query.value"
+        class="abele-todo-list__search"
+        placeholder="Search tasks…"
+        autofocus
+        @keydown.escape.stop.prevent="search.close"
+      />
+      <div ref="itemsEl" class="abele-todo-list__tasks">
+        <TaskView
+          v-for="task in visible"
+          :key="task.id"
+          :task="task"
+          class="abele-todo-list__task"
+        />
+        <div v-if="hasMore" ref="sentinel" class="abele-todo-list__sentinel" />
+      </div>
+      <div v-if="!shown.length" class="abele-todo-list__no-tasks">
+        {{ search.terms.value.length ? 'Nothing matches the search.' : 'No tasks to show.' }}
+      </div>
+    </template>
   </div>
 </template>
 
@@ -53,6 +67,7 @@ import { Task } from '@/entities/Task'
 import TaskView from './Task.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianSearch from './obsidian/Search.vue'
+import FoldHeading from './obsidian/FoldHeading.vue'
 import { computed, ref, watch } from 'vue'
 import { createTask } from '@/commands/createTask'
 import { usePagedList } from '@/composables/usePagedList'
@@ -60,11 +75,14 @@ import { useLabelFilter } from '@/composables/useLabelFilter'
 import { sortByPriority } from '@/helpers/taskMeta'
 import { taskSearch, useListSearch } from '@/composables/useListSearch'
 import { useSearchHighlight } from '@/composables/useSearchHighlight'
+import { useFooterFold } from '@/composables/useFooterFold'
 
 const props = defineProps<{
   showAddButton?: boolean
   tasks: Task[]
 }>()
+
+const fold = useFooterFold('tasks')
 
 const hideCompleted = ref(true)
 

@@ -1,8 +1,16 @@
 <template>
   <div class="abele-logs-list">
     <div class="abele-logs-list__header">
-      <div class="abele-logs-list__header-text">Logs</div>
+      <FoldHeading
+        class="abele-logs-list__header-text"
+        text="Logs"
+        :count="fold.enabled ? logs.length : undefined"
+        :collapsible="fold.enabled"
+        :collapsed="fold.collapsed.value"
+        @toggle="fold.toggle"
+      />
       <ObsidianIcon
+        v-if="!fold.collapsed.value"
         class="abele-logs-list__search-toggle"
         icon="search"
         :active="search.open.value"
@@ -10,26 +18,28 @@
         @click="search.toggle"
       />
     </div>
-    <ObsidianSearch
-      v-if="search.open.value"
-      v-model="search.query.value"
-      class="abele-logs-list__search"
-      placeholder="Search logs…"
-      autofocus
-      @keydown.escape.stop.prevent="search.close"
-    />
-    <div ref="itemsEl" class="abele-logs-list__logs">
-      <LogView
-        v-for="log in visible"
-        :key="log.filePath"
-        class="abele-logs-list__note"
-        :log="log"
+    <template v-if="!fold.collapsed.value">
+      <ObsidianSearch
+        v-if="search.open.value"
+        v-model="search.query.value"
+        class="abele-logs-list__search"
+        placeholder="Search logs…"
+        autofocus
+        @keydown.escape.stop.prevent="search.close"
       />
-      <div v-if="hasMore" ref="sentinel" class="abele-logs-list__sentinel" />
-    </div>
-    <div v-if="!sortedLogs.length" class="abele-logs-list__no-logs">
-      Nothing matches the search.
-    </div>
+      <div ref="itemsEl" class="abele-logs-list__logs">
+        <LogView
+          v-for="log in visible"
+          :key="log.filePath"
+          class="abele-logs-list__note"
+          :log="log"
+        />
+        <div v-if="hasMore" ref="sentinel" class="abele-logs-list__sentinel" />
+      </div>
+      <div v-if="!sortedLogs.length" class="abele-logs-list__no-logs">
+        Nothing matches the search.
+      </div>
+    </template>
   </div>
 </template>
 
@@ -38,14 +48,18 @@ import { Log } from '@/entities/Log'
 import LogView from './Log.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianSearch from './obsidian/Search.vue'
+import FoldHeading from './obsidian/FoldHeading.vue'
 import { computed, ref, watch } from 'vue'
 import { usePagedList } from '@/composables/usePagedList'
 import { logSearch, useListSearch } from '@/composables/useListSearch'
 import { useSearchHighlight } from '@/composables/useSearchHighlight'
+import { useFooterFold } from '@/composables/useFooterFold'
 
 const props = defineProps<{
   logs: Log[]
 }>()
+
+const fold = useFooterFold('logs')
 
 const search = useListSearch(() => props.logs, logSearch)
 

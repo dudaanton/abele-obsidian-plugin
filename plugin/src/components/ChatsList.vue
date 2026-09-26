@@ -1,9 +1,16 @@
 <template>
   <div class="abele-chats-list">
     <div class="abele-chats-list__header">
-      <div class="abele-chats-list__header-text">Chats</div>
+      <FoldHeading
+        class="abele-chats-list__header-text"
+        text="Chats"
+        :count="fold.enabled ? chats.length : undefined"
+        :collapsible="fold.enabled"
+        :collapsed="fold.collapsed.value"
+        @toggle="fold.toggle"
+      />
     </div>
-    <div class="abele-chats-list__chats">
+    <div v-if="!fold.collapsed.value" class="abele-chats-list__chats">
       <Card
         v-for="chat in visible"
         :key="chat.path"
@@ -37,6 +44,8 @@
 import { computed } from 'vue'
 import type { ChatLink } from '@/entities/ChatLink'
 import Card from './obsidian/Card.vue'
+import FoldHeading from './obsidian/FoldHeading.vue'
+import { useFooterFold } from '@/composables/useFooterFold'
 import Badge from './obsidian/Badge.vue'
 import Icon from './obsidian/Icon.vue'
 import { detachNote } from '@/ai/chatNoteLinks'
@@ -51,6 +60,8 @@ const props = withDefaults(
   }>(),
   { subject: 'note' }
 )
+
+const fold = useFooterFold('chats')
 
 /** Already ordered by `useChatLinks`; kept as a getter so paging follows a refiltered list. */
 const sorted = computed(() => props.chats)
