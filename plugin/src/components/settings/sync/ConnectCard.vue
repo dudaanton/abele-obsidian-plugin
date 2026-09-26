@@ -3,7 +3,7 @@
     title="Connect to a server"
     desc="Sign in once. This device then holds a token of its own, and the password is never stored."
   >
-    <Setting name="Server address" desc="Scheme and host, with no path.">
+    <Setting name="Server address" :desc="urlProblem ?? ADDRESS_HINT">
       <Input
         :model-value="serverUrl"
         placeholder="https://sync.example.com"
@@ -41,7 +41,9 @@
         :tooltip="
           canSignIn
             ? 'Sign in and list the vaults on this server'
-            : 'Fill in all three fields first'
+            : urlProblem !== null
+              ? 'Fix the server address first'
+              : 'Fill in all three fields first'
         "
         @click="signIn"
       />
@@ -121,7 +123,7 @@
  */
 import { computed, ref } from 'vue'
 import { Platform } from 'obsidian'
-import type { VaultInfo } from '@abele/sync-protocol'
+import { serverUrlProblem, type VaultInfo } from '@abele/sync-protocol'
 import Section from '../../obsidian/Section.vue'
 import Setting from '../../obsidian/Setting.vue'
 import Input from '../../obsidian/Input.vue'
@@ -157,8 +159,24 @@ const nameEdited = ref(false)
 const busy = ref(false)
 const error = ref<string | null>(null)
 
+/** What the address row says while nothing is wrong with it. */
+const ADDRESS_HINT = 'An https address. Plain http only reaches a server on this device.'
+
+/**
+ * Why the typed address will not be signed in to, said under the field as it is typed: the
+ * password and every later request would cross the network readable over plain http. Nothing
+ * is said about an empty field, which is only not filled in yet.
+ */
+const urlProblem = computed(() =>
+  serverUrl.value.trim() === '' ? null : serverUrlProblem(serverUrl.value.trim())
+)
+
 const canSignIn = computed(
-  () => serverUrl.value.trim() !== '' && email.value.trim() !== '' && password.value !== ''
+  () =>
+    serverUrl.value.trim() !== '' &&
+    urlProblem.value === null &&
+    email.value.trim() !== '' &&
+    password.value !== ''
 )
 
 /** The heading of the sign-in row doubles as where a failure is reported. */

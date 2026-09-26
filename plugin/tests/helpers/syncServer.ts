@@ -1,6 +1,5 @@
 import {
   serverHarness,
-  BASE_URL,
   TEST_PASSWORD,
   type Harness,
 } from '../../../../abele-sync/packages/core/tests/helpers/harness.js'
@@ -20,6 +19,14 @@ import { wsFor } from '../../../../abele-sync/packages/core/tests/helpers/server
  * is happy-dom, and the server will not load in it.
  */
 export type { Harness }
+
+/**
+ * The address the service is told to connect to. The harness's own `http://abele.test` is plain
+ * http to another machine, which the plugin refuses; a server on this device is the one plain
+ * http address it takes. The host is never resolved either way: every request is injected and
+ * the socket is rebound to the app's port.
+ */
+const BASE_URL = 'http://localhost'
 
 export interface SyncServer extends Harness {
   /** The base url the harness's clients are built with; only its shape matters. */

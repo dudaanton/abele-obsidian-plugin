@@ -29,6 +29,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { SyncService } from '@/sync/SyncService'
 import { DISCONNECTED_STATUS, type SyncStatus } from '@/sync/status'
 import { defaultSyncSettings } from '@/sync/settings'
+import { PLAIN_HTTP_REFUSED } from '@abele/sync-protocol'
 import { useVault } from '../helpers/testEnv'
 
 /** Obsidian's own widgets need a real app to construct; what they hold is tested elsewhere. */
@@ -184,6 +185,27 @@ describe('a device nobody has set up', () => {
     await password?.setValue('hunter2')
 
     expect(JSON.stringify(AbeleConfig.getInstance().sync)).not.toContain('hunter2')
+  })
+
+  /**
+   * The device token travels in every request, so plain http to another machine hands it to
+   * anyone on the way. Said under the field as it is typed, not after a sign-in that failed.
+   */
+  it('refuses plain http to another machine before anyone presses Sign in', async () => {
+    const screen = open(ConnectCard, { serverUrl: '' })
+    const [address, email] = screen.findAll('input')
+    await type(email!, 'me@example.com')
+    await type(screen.find('input[type="password"]'), 'hunter2')
+
+    await type(address!, 'http://192.168.1.5:8787')
+
+    expect(screen.text()).toContain(PLAIN_HTTP_REFUSED)
+    expect(buttonNamed(screen, 'Sign in')?.props('disabled')).toBe(true)
+
+    await type(address!, 'http://localhost:8787')
+
+    expect(screen.text()).not.toContain(PLAIN_HTTP_REFUSED)
+    expect(buttonNamed(screen, 'Sign in')?.props('disabled')).toBe(false)
   })
 })
 

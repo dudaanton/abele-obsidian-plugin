@@ -14,7 +14,7 @@ import {
   type SyncReport,
   type VaultClient,
 } from '@abele/sync-core'
-import { caseKey, type VaultInfo } from '@abele/sync-protocol'
+import { caseKey, PLAIN_HTTP_REFUSED, serverUrlProblem, type VaultInfo } from '@abele/sync-protocol'
 import type AbelePlugin from '@/main'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEVICE_SECRET_PREFIX, isDeviceSecretId, secrets } from '@/secrets/SecretStore'
@@ -96,6 +96,13 @@ export function isWireConfigDir(configDir: string): boolean {
  */
 const REVOKED_HINT =
   'this device was revoked or its token is no longer taken; connect again from the Sync settings'
+
+/**
+ * Why a saved connection to plain http on another machine builds nothing. Said differently from
+ * the sign-in refusal: this device was set up before the rule, and what it needs is a new sign-in.
+ */
+export const PLAIN_HTTP_CONNECTION =
+  'this connection uses plain http to another machine; connect again with an https address'
 
 /** What this plugin calls itself to a sync server. */
 const USER_AGENT = 'abele-obsidian-plugin'
@@ -232,7 +239,8 @@ export class SyncService {
 
   /**
    * Say a pull is coming, before anything is opened: `syncing` (or `paused`) when the settings
-   * name a server, a vault and a device token the keychain holds, and nothing otherwise.
+   * name a server the address rule allows, a vault and a device token the keychain holds, and
+   * nothing otherwise — a refused address pulls nothing, and `reconcile` says why.
    *
    * Called from `onload` as soon as the settings and the keychain are read, and again by
    * `init`. `runAfterSync` can be asked before the layout is ready — an `abele://` link that
@@ -241,7 +249,12 @@ export class SyncService {
    */
   announce(): void {
     const settings = this.settings
-    if (settings.serverUrl !== '' && settings.vaultId !== '' && this.token() !== null) {
+    if (
+      settings.serverUrl !== '' &&
+      settings.vaultId !== '' &&
+      serverUrlProblem(settings.serverUrl) === null &&
+      this.token() !== null
+    ) {
       this.publish({ ...DISCONNECTED_STATUS, state: settings.paused ? 'paused' : 'syncing' })
     }
   }
@@ -405,6 +418,9 @@ export class SyncService {
   async connect(serverUrl: string, email: string, password: string): Promise<VaultInfo[]> {
     const baseUrl = serverUrl.trim().replace(/\/+$/, '')
     if (baseUrl === '') throw new Error('a server address is needed to connect')
+    // Before the password goes anywhere: over plain http it would cross the network readable.
+    const problem = serverUrlProblem(baseUrl)
+    if (problem !== null) throw new Error(problem)
     this.note(`connecting to ${baseUrl}`)
     const { account_token } = await SyncClient.login(baseUrl, this.transport(), email, password)
     const account = new SyncClient({
@@ -647,6 +663,11 @@ export class SyncService {
         }
         await this.teardown()
         return
+      }
+      // Refused, not forgotten: the Sync tab still shows the connection and offers Disconnect.
+      const problem = serverUrlProblem(settings.serverUrl)
+      if (problem !== null) {
+        throw new Error(problem === PLAIN_HTTP_REFUSED ? PLAIN_HTTP_CONNECTION : problem)
       }
 
       const ignoreText = await readIgnore(app)

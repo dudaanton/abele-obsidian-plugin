@@ -5,7 +5,8 @@ import { IDBFactory } from 'fake-indexeddb'
 import { Platform, type App } from 'obsidian'
 import type { SelectiveSettings, VaultClient } from '@abele/sync-core'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { SyncService, type SyncServiceDeps } from '@/sync/SyncService'
+import { PLAIN_HTTP_REFUSED } from '@abele/sync-protocol'
+import { PLAIN_HTTP_CONNECTION, SyncService, type SyncServiceDeps } from '@/sync/SyncService'
 import { IndexedDbStateStore, stateDatabaseName } from '@/sync/IndexedDbStateStore'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { runAfterSync } from '@/helpers/runAfterSync'
@@ -321,6 +322,61 @@ describe('SyncService — a sign-in left unfinished', () => {
     expect(settings().vaultId).toBe(vaultId)
     await synced()
     expect(service.isConnected()).toBe(true)
+  })
+})
+
+/**
+ * The device token travels in every request, so plain http to another machine hands it to
+ * anyone on the way. Only a server on this device may be reached without TLS.
+ */
+describe('SyncService — plain http', () => {
+  it('refuses to sign in over plain http to another machine, before anything is sent', async () => {
+    await server.account(EMAIL)
+    let requests = 0
+    start({
+      fetch: (input, init) => {
+        requests++
+        return transport(input, init)
+      },
+    })
+
+    await expect(
+      service.connect('http://192.168.1.5:8787', EMAIL, server.TEST_PASSWORD)
+    ).rejects.toThrow(PLAIN_HTTP_REFUSED)
+    expect(requests).toBe(0)
+  })
+
+  it('signs in over plain http to a server on this device', async () => {
+    await server.account(EMAIL)
+    start()
+
+    await expect(
+      service.connect('http://localhost:8787', EMAIL, server.TEST_PASSWORD)
+    ).resolves.toEqual([])
+  })
+
+  /**
+   * A connection saved before the rule, or written into `data.json` by hand. It is not taken
+   * away — the person may want to read what it was — but nothing is built on it either.
+   */
+  it('builds nothing on a saved plain-http connection to another machine, and says why', async () => {
+    await connect()
+    await synced()
+    await service.destroy()
+
+    settings().serverUrl = 'http://192.168.1.5:8787'
+    bearers = []
+    service = SyncService.getInstance()
+    start()
+    await waitFor('the refusal to be reported', () => service.status.value.state === 'error')
+
+    expect(service.status.value.lastError).toBe(PLAIN_HTTP_CONNECTION)
+    expect(service.isConnected()).toBe(false)
+    expect(service.client()).toBeNull()
+    expect(bearers).toEqual([])
+    // Still set up: the connection is refused, not forgotten.
+    expect(settings().serverUrl).toBe('http://192.168.1.5:8787')
+    expect(settings().vaultId).not.toBe('')
   })
 })
 
