@@ -187,6 +187,7 @@
           :key="path"
           class="abele-chat-msg__attachment-chip"
           @click="openAttachment(path)"
+          @contextmenu.prevent="onAttachmentContextMenu($event, path)"
         >
           <Icon :icon="getAttachmentIcon(path)" />
           {{ attachmentName(path) }}
@@ -322,6 +323,9 @@ import type { ViewerImage } from './GalleryViewer.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { getAttachmentIcon, fileName as attachmentName } from '@/ai/attachments'
 import { openVaultFile } from '@/ai/openChat'
+import { ChatService } from '@/ai/ChatService'
+import { openImageInk } from '@/drawing/files'
+import { DRAWABLE_PICTURES } from '@/drawing/viewType'
 import type { ChatMessage, MessageComment } from '@/ai/types'
 import type { BranchInfo } from './AiChat.vue'
 import { useMessageComments } from '@/composables/useMessageComments'
@@ -506,8 +510,41 @@ const openImagePreview = () => {
   }
 }
 
+/** A picture of the chat that can be drawn on: a vault picture, not a drawing's SVG. */
+const drawable = (path: string) =>
+  DRAWABLE_PICTURES.includes(path.slice(path.lastIndexOf('.') + 1).toLowerCase())
+
+/** Opens the picture to draw on; sending it back comes to this chat. */
+const drawOn = (path: string): void =>
+  void openImageInk(
+    GlobalStore.getInstance().app,
+    path,
+    ChatService.getInstance().activeTabId.value ?? ''
+  )
+
+const onAttachmentContextMenu = (e: MouseEvent, path: string) => {
+  if (!drawable(path)) return
+  const menu = new Menu()
+  menu.addItem((item) =>
+    item
+      .setTitle('Draw on it')
+      .setIcon('pen-line')
+      .onClick(() => drawOn(path))
+  )
+  menu.showAtPosition({ x: e.clientX, y: e.clientY })
+}
+
 const onImageContextMenu = (e: MouseEvent) => {
   const menu = new Menu()
+  if (imagePath.value && drawable(imagePath.value)) {
+    const path = imagePath.value
+    menu.addItem((item) =>
+      item
+        .setTitle('Draw on it')
+        .setIcon('pen-line')
+        .onClick(() => drawOn(path))
+    )
+  }
   menu.addItem((item) => {
     item
       .setTitle('Preview')

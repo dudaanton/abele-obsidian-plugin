@@ -9,7 +9,7 @@
 import { Notice, TFile, TFolder, normalizePath, type App, type PaneType } from 'obsidian'
 import { emptyDrawingSvg, isDrawingSvg } from './drawingFile'
 import { drawingCallout } from './embedFormat'
-import { DRAWING_VIEW_TYPE } from './viewType'
+import { DRAWING_VIEW_TYPE, IMAGE_INK_VIEW_TYPE } from './viewType'
 import type { DrawingView } from './DrawingView'
 import type { Rect } from './items'
 
@@ -128,4 +128,11 @@ export async function insertDrawing(
 export async function copyEmbed(embed: string, view?: Rect | null): Promise<void> {
   await navigator.clipboard.writeText(drawingCallout(embed, view))
   new Notice('Copied: paste it into a note to show the drawing there')
+}
+
+/** Opens a picture to draw on, in a tab of its own; `chat` is the chat it came from. */
+export async function openImageInk(app: App, path: string, chat = ''): Promise<void> {
+  const leaf = app.workspace.getLeaf('tab')
+  await leaf.setViewState({ type: IMAGE_INK_VIEW_TYPE, state: { path, chat }, active: true })
+  await app.workspace.revealLeaf(leaf)
 }

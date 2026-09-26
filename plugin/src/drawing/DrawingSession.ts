@@ -22,6 +22,7 @@ import {
 import { NoteLayer } from './noteLayer'
 import { fitRect, toWorld, zoomAt, type Camera } from './camera'
 import { DrawingSurface, type ToolGesture, type WorldPoint } from './surface'
+import type { Backdrop } from './renderer'
 import { eraseGesture, strokeGesture, type ToolContext } from './tools'
 import { dragGesture, lassoGesture, shapeGesture, textGesture, type EditContext } from './editTools'
 import { boxPart } from './selection'
@@ -361,6 +362,17 @@ export class DrawingSession {
     }
     const file = app.metadataCache.getFirstLinkpathDest(target, this.host.path())
     if (file?.extension === 'md') this.addNote(file.path, { x, y })
+  }
+
+  /** A picture to draw on: under the ink, and what the whole drawing is fitted to. */
+  setBackdrop(backdrop: Backdrop | null): void {
+    this.surface.renderer.backdrop = backdrop
+    if (backdrop) this.show(backdrop.rect)
+    else this.paint()
+  }
+
+  get backdrop(): Backdrop | null {
+    return this.surface.renderer.backdrop
   }
 
   /** Items changed from outside the tools — a note renamed — as one step of undo. */

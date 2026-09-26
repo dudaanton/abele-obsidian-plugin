@@ -112,4 +112,24 @@ describe('text put into the composer from outside', () => {
     expect(textarea(wrapper).value).toBe('')
     expect(service.pendingInput.value).not.toBeNull()
   })
+
+  it('attaches a picture sent back beside what is typed, in front or with a tab switch', async () => {
+    useVault([
+      { path: 'Pics/cat drawn.png', raw: 'png' },
+      { path: 'Pics/dog drawn.png', raw: 'png' },
+    ])
+    const wrapper = open()
+    await wrapper.get('.abele-chat-input__textarea').setValue('look at this')
+    service.pendingInput.value = { text: '', tabId: 'tab-a', attachments: ['Pics/cat drawn.png'] }
+    await settle()
+    expect(textarea(wrapper).value).toBe('look at this')
+    const chips = () => wrapper.findAll('.abele-chat-input__attachment').map((c) => c.text())
+    expect(chips().join()).toContain('cat drawn.png')
+
+    service.activeTabId.value = 'tab-b'
+    service.pendingInput.value = { text: '', tabId: 'tab-b', attachments: ['Pics/dog drawn.png'] }
+    await settle()
+    expect(chips().join()).toContain('dog drawn.png')
+    expect(chips().join()).not.toContain('cat drawn.png')
+  })
 })

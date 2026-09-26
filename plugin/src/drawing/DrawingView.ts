@@ -14,12 +14,12 @@ import {
   type ViewStateResult,
   type WorkspaceLeaf,
 } from 'obsidian'
-import { createApp, reactive, type App as VueApp } from 'vue'
-import DrawingBar from '@/components/drawing/DrawingBar.vue'
+import { reactive, type App as VueApp } from 'vue'
+import { drawingKeys, mountDrawingBar } from './drawingTab'
 import { drawingSvg, parseDrawingSvg } from './drawingFile'
 import { cameraFrom, type Camera } from './camera'
 import { DrawingSession } from './DrawingSession'
-import { THICKNESSES, emptyDrawingModel, type DrawingModel } from './model'
+import { emptyDrawingModel, type DrawingModel } from './model'
 import { DRAWING_VIEW_TYPE } from './viewType'
 import { copyEmbed } from './files'
 import { visibleRect } from './camera'
@@ -27,7 +27,7 @@ import { drawingPng, withMargin } from './rasterize'
 import { askAboutDrawing } from './askAgent'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { pickNote } from '@/helpers/suggesters/NotePicker'
-import { SHAPE_KINDS, type Rect, type ShapeKind } from './items'
+import type { Rect } from './items'
 
 export { DRAWING_VIEW_TYPE }
 
@@ -48,31 +48,7 @@ export class DrawingView extends TextFileView {
   constructor(leaf: WorkspaceLeaf) {
     super(leaf)
     this.scope = new Scope(this.app.scope)
-    // While text is typed on the drawing, its keys are the field's: Esc closes it (the field's
-    // own handler), and undo and delete work in the text.
-    const typing = () => !!this.session?.pick.typing
-    this.scope.register([], 'Escape', () => {
-      if (typing() || !this.model.on) return true
-      if (this.model.picked) this.session?.pick.set([])
-      else this.session?.stop()
-      return false
-    })
-    this.scope.register(['Mod'], 'z', () => {
-      if (typing()) return true
-      this.session?.undo()
-      return false
-    })
-    this.scope.register(['Mod', 'Shift'], 'z', () => {
-      if (typing()) return true
-      this.session?.redo()
-      return false
-    })
-    for (const key of ['Delete', 'Backspace'])
-      this.scope.register([], key, () => {
-        if (typing() || !this.model.picked) return true
-        this.session?.deletePicked()
-        return false
-      })
+    drawingKeys(this.scope, this.model, () => this.session)
   }
 
   getViewType(): string {
@@ -103,21 +79,12 @@ export class DrawingView extends TextFileView {
       changed: () => this.requestSave(),
       stopped: () => void this.save(),
     })
-    this.vue = createApp(DrawingBar, {
-      model: this.model,
-      onToggle: () => this.session?.toggle(),
-      onTool: (tool: DrawingModel['tool']) => this.session?.setTool(tool),
-      onShape: (e: MouseEvent) => this.shapeMenu(e),
-      onDelete: () => this.session?.deletePicked(),
-      onColor: (color: DrawingModel['penColor']) => this.session?.setColor(color),
-      onThickness: (e: MouseEvent) => this.thicknessMenu(e),
-      onFinger: (on: boolean) => this.session?.setFinger(on),
-      onUndo: () => this.session?.undo(),
-      onRedo: () => this.session?.redo(),
-      onZoom: (e: MouseEvent) => this.zoomMenu(e),
-      onMore: (e: MouseEvent) => this.moreMenu(e),
-    })
-    this.vue.mount(bar)
+    this.vue = mountDrawingBar(
+      bar,
+      this.model,
+      () => this.session,
+      (e) => this.moreMenu(e)
+    )
     // A note shown on the drawing follows its changes.
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
@@ -193,71 +160,6 @@ export class DrawingView extends TextFileView {
   }
 
   // ————— Menus —————
-
-  private thicknessMenu(e: MouseEvent): void {
-    const menu = new Menu()
-    for (const t of THICKNESSES)
-      menu.addItem((item) =>
-        item
-          .setTitle(t[0].toUpperCase() + t.slice(1))
-          .setChecked(this.model.thickness === t)
-          .onClick(() => this.session?.setThickness(t))
-      )
-    menu.showAtMouseEvent(e)
-  }
-
-  /** The shape tool: taken up, or — when it is in hand already — which shape it draws. */
-  private shapeMenu(e: MouseEvent): void {
-    if (this.model.tool !== 'shape') {
-      this.session?.setTool('shape')
-      return
-    }
-    const menu = new Menu()
-    const names: Record<ShapeKind, [string, string]> = {
-      rect: ['Box', 'square'],
-      ellipse: ['Ellipse', 'circle'],
-      line: ['Line', 'minus'],
-      arrow: ['Arrow', 'move-up-right'],
-    }
-    for (const kind of SHAPE_KINDS)
-      menu.addItem((item) =>
-        item
-          .setTitle(names[kind][0])
-          .setIcon(names[kind][1])
-          .setChecked(this.model.shape === kind)
-          .onClick(() => this.session?.setShape(kind))
-      )
-    menu.showAtMouseEvent(e)
-  }
-
-  private zoomMenu(e: MouseEvent): void {
-    const menu = new Menu()
-    menu.addItem((item) =>
-      item
-        .setTitle('Zoom in')
-        .setIcon('zoom-in')
-        .onClick(() => this.session?.zoomBy(1.25))
-    )
-    menu.addItem((item) =>
-      item
-        .setTitle('Zoom out')
-        .setIcon('zoom-out')
-        .onClick(() => this.session?.zoomBy(0.8))
-    )
-    menu.addItem((item) =>
-      item
-        .setTitle('Actual size')
-        .setIcon('scan')
-        .onClick(() => this.session?.actualSize())
-    )
-    menu.addItem((item) =>
-      item
-        .setTitle('Show the whole drawing')
-        .setIcon('maximize')
-        .onClick(() => this.session?.fit())
-    )
-    menu.showAtMouseEvent(e)
-  }
 
   /** What else can be done with the drawing; later stages add to it. */
   protected moreMenu(e: MouseEvent): void {

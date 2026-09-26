@@ -38,7 +38,7 @@ import { openMcpServer } from './openMcpServer'
 import { showFormModal } from '@/scripting/formModal'
 import { embeddedViews, isEmbeddedEditorAvailable } from '@/editor/embeddedEditor'
 import { TFile } from 'obsidian'
-import { newDrawing } from '@/drawing/files'
+import { newDrawing, openImageInk } from '@/drawing/files'
 import * as bookSafety from '@/reader/bookSafety'
 import { BOOK_VIEW_TYPE, bookViews, readerTestHooks } from '@/reader/BookView'
 import { openEpub } from '@/reader/openBook'
@@ -115,6 +115,8 @@ interface AbeleTestApi {
   secrets: typeof secrets
   /** A new drawing in a folder, opened ready to draw on. */
   newDrawing: typeof newDrawing
+  /** A picture opened to draw on. */
+  openImageInk: typeof openImageInk
   ScriptService: typeof ScriptService
   ScriptViewService: typeof ScriptViewService
   ScriptRuns: typeof ScriptRuns
@@ -540,6 +542,7 @@ export function exposeTestApi(plugin: Plugin): void {
     AbeleConfig,
     secrets,
     newDrawing,
+    openImageInk,
     ScriptService,
     ScriptViewService,
     ScriptRuns,

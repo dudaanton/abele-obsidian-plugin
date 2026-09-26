@@ -91,6 +91,18 @@ Pick a part first to ask about only that part. Nothing is sent until you send it
 also look at a drawing whenever you ask it to in a chat, all of it or a part, and closer when
 the writing is small.
 
+## Drawing on pictures
+
+**Draw on this picture** in a picture's menu in the file explorer — PNG, JPEG, WebP, GIF or BMP —
+opens it in a tab with the same tools, the picture under the ink. In the chat, right-click a
+picture the agent made or showed, or one you attached, and choose **Draw on it**.
+
+The picture stays as it is until you choose, in the menu at the end of the bar, what becomes of
+it: **Save over the picture** (asked about first), **Save as a new picture** beside it, or **Send
+back to the chat**, which saves a new picture and attaches it to what you are writing there. A
+picture that cannot be written in its own kind — GIF, BMP — is saved as a new PNG. Closing the tab
+without saving keeps nothing.
+
 ## Where it is kept
 
 The drawing is saved a moment after you stop, when drawing is turned off and when the tab

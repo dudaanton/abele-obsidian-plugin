@@ -110,6 +110,12 @@ export function paintItems(
   return n
 }
 
+/** A picture the ink is drawn on — drawing on an image — and where it lies in the drawing. */
+export interface Backdrop {
+  image: CanvasImageSource
+  rect: Rect
+}
+
 /** How long a full paint may take before moving the view shows the kept picture instead. */
 const QUICK_MS = 8
 
@@ -120,6 +126,8 @@ export class DrawingRenderer {
   /** How long the last full paint took. */
   lastPaintMs = 0
   lastPainted = 0
+  /** The picture under everything, when the ink is drawn on one. */
+  backdrop: Backdrop | null = null
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -171,6 +179,7 @@ export class DrawingRenderer {
     const { ctx } = this
     this.blank()
     this.setCamera(ctx, camera)
+    this.paintBackdrop()
     this.lastPainted = paintItems(
       ctx,
       items,
@@ -191,9 +200,18 @@ export class DrawingRenderer {
     ctx.rect(area.x, area.y, area.w, area.h)
     ctx.clip()
     ctx.clearRect(area.x, area.y, area.w, area.h)
+    this.paintBackdrop()
     paintItems(ctx, items, area, camera.zoom)
     ctx.restore()
     this.keep(camera)
+  }
+
+  private paintBackdrop(): void {
+    const b = this.backdrop
+    if (!b) return
+    this.ctx.globalAlpha = 1
+    this.ctx.globalCompositeOperation = 'source-over'
+    this.ctx.drawImage(b.image, b.rect.x, b.rect.y, b.rect.w, b.rect.h)
   }
 
   /** Adds items on top of what is painted, without painting the rest again. */

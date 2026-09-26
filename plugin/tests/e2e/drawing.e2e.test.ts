@@ -548,6 +548,56 @@ describe.skipIf(!available)('the drawing canvas', () => {
     expect(r.svg).toBe(true)
   })
 
+  it('draws on a picture, and saves it as a new one, over the old one, or sends it to the chat', () => {
+    const r = run<{
+      error?: string
+      fresh?: { w: number; h: number; changed: boolean }
+      over?: boolean
+      chat?: string[] | string
+    }>(`
+      await closeAll()
+      const PIC = DIR + '/picture.png'
+      // A plain grey picture, 300×200.
+      const c = document.createElement('canvas'); c.width = 300; c.height = 200
+      const g = c.getContext('2d'); g.fillStyle = '#cccccc'; g.fillRect(0, 0, 300, 200)
+      const bytes = await new Promise((ok) => c.toBlob((b) => b.arrayBuffer().then(ok), 'image/png'))
+      const old = app.vault.getAbstractFileByPath(PIC); if (old) await app.vault.delete(old)
+      const pic = await app.vault.createBinary(PIC, bytes)
+      await window.__abeleTest.openImageInk(app, PIC, '')
+      const view = await until(() => app.workspace.getLeavesOfType('abele-image-ink')[0]?.view?.session?.backdrop && app.workspace.getLeavesOfType('abele-image-ink')[0].view, 8000)
+      await wait(300)
+      const b = view.session.surface.el.getBoundingClientRect()
+      const z = view.session.camera
+      const at = (x, y) => [b.left + (x - z.x) * z.zoom, b.top + (y - z.y) * z.zoom]
+      await draw(...at(40, 100), ...at(260, 100), 'pen', 0.9, 0.9)
+      const made = await view.saveNew(pic, false)
+      const pixels = async (file) => {
+        const img = new Image(); img.src = app.vault.getResourcePath(file); await img.decode()
+        const k = document.createElement('canvas'); k.width = img.naturalWidth; k.height = img.naturalHeight
+        const x = k.getContext('2d'); x.drawImage(img, 0, 0)
+        const mid = x.getImageData(150, 100, 1, 1).data
+        return { w: img.naturalWidth, h: img.naturalHeight, changed: mid[0] < 100 }
+      }
+      const fresh = await pixels(made)
+      await view.saveOver(pic, true)
+      const over = (await pixels(app.vault.getAbstractFileByPath(PIC))).changed
+      await app.vault.delete(made)
+      let chat = 'no chat'
+      if (window.__abeleTest.AbeleConfig.getInstance().ai.enabled) {
+        await view.sendToChat(pic)
+        const input = await until(() => [...document.querySelectorAll('.abele-chat-input__attachment')].map((e) => e.textContent.trim()).filter((t) => t.includes('picture drawn')), 8000)
+        chat = input || []
+        const sent = app.vault.getAbstractFileByPath(DIR + '/picture drawn.png'); if (sent) await app.vault.delete(sent)
+      }
+      app.workspace.getLeavesOfType('abele-image-ink').forEach((l) => l.detach())
+      return { fresh, over, chat }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.fresh).toEqual({ w: 300, h: 200, changed: true })
+    expect(r.over).toBe(true)
+    if (r.chat !== 'no chat') expect((r.chat as string[]).length).toBeGreaterThan(0)
+  })
+
   it('fits its bar on a phone, where a finger draws, and on a tablet, where it moves the drawing', async () => {
     await reload('app.emulateMobile(true)')
     await setWindowSize(390, 844)

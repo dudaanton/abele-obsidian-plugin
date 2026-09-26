@@ -62,7 +62,7 @@ export function fakeChatSession({
     },
     /** Set by `CommentService` for the length of a move; nothing here moves on its own. */
     moving: ref(false),
-    scopeResolver: { summary: ref('No files') },
+    scopeResolver: { summary: ref('No files'), addFile: () => {} },
     interceptor: { streaming: off, streamingContent: ref(''), error: ref(null) },
     // Comment sessions. A card reads the agent's name for its badge, the anchor for the quote
     // it is attached to, and `commentState` for the dot that has to agree with the marker.

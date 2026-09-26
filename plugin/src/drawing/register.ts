@@ -4,9 +4,11 @@
  */
 import { TFile, TFolder, type Editor, type MarkdownView, type Plugin } from 'obsidian'
 import { DRAWING_VIEW_TYPE, DrawingView } from './DrawingView'
+import { DRAWABLE_PICTURES, IMAGE_INK_VIEW_TYPE, ImageInkView } from './ImageInkView'
 import {
   adoptDrawingLeaves,
   copyEmbed,
+  openImageInk,
   insertDrawing,
   isDrawingFile,
   known,
@@ -18,6 +20,7 @@ import { followNoteRename } from './noteRenames'
 export function registerDrawing(plugin: Plugin): void {
   const { app } = plugin
   plugin.registerView(DRAWING_VIEW_TYPE, (leaf) => new DrawingView(leaf))
+  plugin.registerView(IMAGE_INK_VIEW_TYPE, (leaf) => new ImageInkView(leaf))
 
   let pending = 0
   const adopt = () => {
@@ -77,6 +80,16 @@ export function registerDrawing(plugin: Plugin): void {
             .setIcon('pen-line')
             .setSection('action-primary')
             .onClick(() => void newDrawing(app, file))
+        )
+        return
+      }
+      if (file instanceof TFile && DRAWABLE_PICTURES.includes(file.extension.toLowerCase())) {
+        menu.addItem((item) =>
+          item
+            .setTitle('Draw on this picture')
+            .setIcon('pen-line')
+            .setSection('action')
+            .onClick(() => void openImageInk(app, file.path))
         )
         return
       }

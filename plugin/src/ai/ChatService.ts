@@ -24,6 +24,8 @@ export interface PendingInput {
   text: string
   tabId?: string
   focus?: boolean
+  /** Vault files to attach to what is being written — a picture drawn on, sent back. */
+  attachments?: string[]
 }
 
 interface TabsState {

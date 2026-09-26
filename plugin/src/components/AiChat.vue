@@ -1058,17 +1058,30 @@ watch(
     // returned to is put back a tick later, once there is an input to put it in. Text sent to
     // this tab from outside comes with the switch, and is what goes back instead.
     const pending = pendingFor(tabId)
-    const draft = pending
-      ? { text: pending.text, attachments: [] }
-      : tabId
-        ? drafts.get(tabId)
-        : undefined
+    const saved = tabId ? drafts.get(tabId) : undefined
+    const draft = !pending
+      ? saved
+      : pending.text || !pending.attachments?.length
+        ? { text: pending.text, attachments: filesOf(pending.attachments) }
+        : // Files alone — a picture sent back — join what the tab had waiting.
+          {
+            text: saved?.text ?? '',
+            attachments: [...(saved?.attachments ?? []), ...filesOf(pending.attachments)],
+          }
     void nextTick(() => {
       chatInput.value?.putDraft(draft ?? NO_DRAFT)
       if (pending) takePending(pending)
     })
   }
 )
+
+/** The vault files a pending input attaches, those still there. */
+function filesOf(paths: string[] | undefined): TFile[] {
+  const { app } = GlobalStore.getInstance()
+  return (paths ?? [])
+    .map((p) => app.vault.getAbstractFileByPath(p))
+    .filter((f): f is TFile => f instanceof TFile)
+}
 
 /** The text waiting to go into this tab's input, if any. */
 function pendingFor(tabId: string | null | undefined): PendingInput | null {
@@ -1090,7 +1103,9 @@ function consumePendingInput() {
   void nextTick(() => {
     const pending = pendingFor(chatService.activeTabId.value)
     if (!pending || !chatInput.value) return
-    chatInput.value.setText(pending.text)
+    // Files alone — a picture sent back — go beside whatever is already typed.
+    if (pending.text || !pending.attachments?.length) chatInput.value.setText(pending.text)
+    for (const file of filesOf(pending.attachments)) chatInput.value.addAttachment(file)
     takePending(pending)
   })
 }
