@@ -10,7 +10,13 @@ signs in to one, it does not create one.
 
 ## Connecting a device
 
-1. **Server address** — scheme and host, with no path: `https://sync.example.com`.
+1. **Server address** — an https address: `https://sync.example.com`. A path after the host is
+   fine, for a server mounted under one behind a proxy. Plain `http://` is taken only for a
+   server on this same device — `localhost`, `127.0.0.1` or `[::1]` — since the password and the
+   device's token would otherwise cross the network readable by anyone on the way. Any other
+   plain-http address is refused under the field, and **Sign in** stays off until it is fixed.
+   A server on your home network needs a certificate too: a real one, since a phone will not
+   take a self-signed one.
 2. **Email** and **Password** of the account, then **Sign in**. The password is used for this one
    sign-in and is never stored — not in the settings, not in the log.
 3. **Choose a vault**: click one of the account's vaults, or name a new one under **Create a new
@@ -28,6 +34,11 @@ To stop, **Disconnect** forgets the server and the device's token and keeps ever
 files, and what this device syncs. **Forget** does the same and also throws away this device's
 record of what was already synced, so the next connect walks the whole vault again instead of
 picking up where it left off. Neither deletes a file, here or on the server.
+
+A device connected over plain http to another machine before this rule does not sync: the tab
+says the connection uses plain http and asks for a new sign-in with an https address. It is not
+disconnected for you. The rule reads the address you give; a server that answers an https address
+by redirecting to plain http is not caught by it.
 
 ## What syncs
 
@@ -104,8 +115,9 @@ other keep the edit, and the file comes back.
 
 ## Version history
 
-Right-click a file in the file list and choose **Open version history** (shown only while this
-device is connected). Every version the server keeps is listed with its number, what happened
+Right-click a file in the file list and choose **Open version history (Abele)** (shown only while
+this device is connected; Obsidian's own Sync, when it is on, adds an item of its own without the
+suffix). Every version the server keeps is listed with its number, what happened
 (created, edited, deleted…) and when. Clicking a version of a text file shows how it differs from
 the file as it is now. **Restore** makes that version the current one on every device, after a
 confirmation; nothing is lost, since what the file held becomes a version of its own. A restore
@@ -115,9 +127,6 @@ name.
 How long history is kept is the server's to decide, per kind of file, and **Vault policy → History
 kept** shows it. **What the vault holds** shows the room it takes: live files, history and trash,
 per kind, and the files with the heaviest histories.
-
-With Obsidian's own Sync switched on as well, the file menu shows two items called **Open
-version history**, Obsidian's and Abele's.
 
 ## Deleted files
 

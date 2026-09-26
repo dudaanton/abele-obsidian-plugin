@@ -244,7 +244,9 @@ enrolment — which server, which vault, what the device is called there, and th
 token is in (always named `abele-sync-device-…`; any other name is ignored, never read or sent).
 They are set by signing in on the Sync tab and cleared by **Disconnect** and **Forget** there.
 Never write them: the running sync is rebuilt from them on every save, so a changed address sends
-this device's token to that address. All of them empty means the device is not connected. The
+this device's token to that address. The address is an https one, or plain http to a server on
+this device (`localhost`, `127.0.0.1`, `[::1]`); any other plain-http address is refused, and a
+device saved with one does not sync until it signs in again. All of them empty means the device is not connected. The
 record of what this device has synced is not in the settings at all (see the vault reference).
 
 `sync.selective` is what this device takes — `images`, `audio`, `video`, `pdf` and `other`

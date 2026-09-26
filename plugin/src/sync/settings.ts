@@ -9,7 +9,10 @@ import { selectiveDefaults, type SelectiveSettings } from '@abele/sync-core'
  * vault is exactly what a sync sends to another machine.
  */
 export interface SyncSettings {
-  /** Scheme and host, no trailing path: `https://sync.example.com`. Empty means not set up. */
+  /**
+   * `https://sync.example.com`, with no trailing slash; plain http only to a server on this
+   * device (`serverUrlProblem`). Empty means not set up.
+   */
   serverUrl: string
   vaultId: string
   deviceId: string
