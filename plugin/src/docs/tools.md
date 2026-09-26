@@ -336,7 +336,10 @@ A script may stop partway and ask for more than its parameters — a form the pe
 in. Called from a chat there is nobody to show that form to, so it comes back instead: the
 script tool answers with the fields and a `run_id`, and the run stays alive holding the question
 open. Send the answers with `answer_form` — `values` is a JSON object keyed by field name, a
-`note` field's value being markdown — and the script goes on from where it stopped, and may finish or ask again. Anything in the form that
+`note` field's value being markdown — and the script goes on from where it stopped, and may finish or ask again. A
+`note-picker` field lists the notes it offers as `choices`; its value is one of them, or a JSON
+list of them where it takes several, and a note outside its filter comes back refused, the run
+still waiting. Anything in the form that
 is the person's to decide is worth asking them about first, with `questions`. `cancel` tells the
 script nobody is answering, which is what dismissing its dialog would have done.
 

@@ -11,6 +11,7 @@
  * every emit in `View.run`, which reports the error and keeps the view alive.
  */
 import { reactive } from 'vue'
+import { filterCriteria, type NoteFilter, type PickReturns } from '@/helpers/noteFilter'
 
 export type Handler = (...args: any[]) => unknown
 
@@ -34,6 +35,7 @@ export type NodeType =
   | 'select'
   | 'checkbox'
   | 'search'
+  | 'note-picker'
   | 'card'
   | 'html'
 
@@ -503,6 +505,40 @@ export class Search extends ViewNode {
   }
 }
 
+/**
+ * Choosing notes by typing, as in the quick switcher, out of the ones `filter` lets through —
+ * the vocabulary of `find()`: `name`, `folder`, `property`/`value`, `criteria`. `value` is the
+ * chosen note, or with `multiple` the list of them, as a path or with `returns: 'link'` a
+ * wikilink; a script may set it too, in either form. `create` offers to make a note of a name
+ * nothing matches, inside the filter.
+ */
+export class NotePicker extends ViewNode {
+  readonly type = 'note-picker' as const
+  value: string | string[] = ''
+  filter?: NoteFilter
+  multiple = false
+  returns: PickReturns = 'path'
+  create = false
+  placeholder?: string
+  constructor(
+    props: BaseProps & {
+      value?: string | string[]
+      filter?: NoteFilter
+      multiple?: boolean
+      returns?: PickReturns
+      create?: boolean
+      placeholder?: string
+      onChange?: Handler
+    } = {}
+  ) {
+    super()
+    // Refused as it is built, so the script learns of it where it wrote it.
+    filterCriteria(props.filter)
+    this.assign(props)
+    if (this.multiple && !Array.isArray(this.value)) this.value = this.value ? [this.value] : []
+  }
+}
+
 export class Card extends ViewNode {
   readonly type = 'card' as const
   title = ''
@@ -615,6 +651,7 @@ export const VIEW_GLOBALS = {
   Select,
   Checkbox,
   Search,
+  NotePicker,
   Card,
   Html,
 }

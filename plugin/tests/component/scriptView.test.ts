@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { nextTick, shallowReactive } from 'vue'
-import { TFile } from 'obsidian'
+import { AbstractInputSuggest, TFile } from 'obsidian'
 import ScriptViewComponent from '@/components/ScriptView.vue'
 import KitButton from '@/components/obsidian/Button.vue'
 import KitCard from '@/components/obsidian/Card.vue'
@@ -36,6 +36,7 @@ import {
   Select,
   Checkbox,
   Search,
+  NotePicker,
   Card,
 } from '@/scripting/view/components'
 import type { ScriptViewModel } from '@/views/ScriptView'
@@ -300,6 +301,53 @@ describe('nodes', () => {
     await flushPromises()
     expect(i.value).toBe('abc')
     expect(events).toEqual(['input', 'change', 'enter'])
+  })
+
+  it('keeps a NotePicker value as the script asked for it, links both ways', async () => {
+    useVault([
+      { path: 'Finance/Cash.md', frontmatter: { type: 'account' } },
+      { path: 'Finance/Card.md', frontmatter: { type: 'account' } },
+    ])
+    const v = make()
+    const changes: unknown[] = []
+    const n = new NotePicker({
+      value: '[[Cash]]',
+      filter: { property: 'type', value: 'account' },
+      multiple: true,
+      returns: 'link',
+      onChange: (value: unknown) => changes.push(value),
+    })
+    // A single note given to a field taking several is a list of one.
+    expect(n.value).toEqual(['[[Cash]]'])
+    v.body = [n]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+    await flushPromises()
+    const pills = () =>
+      w.findAll('.abele-note-picker__pill').map((p) => (p.element as HTMLElement).dataset.path)
+    expect(pills()).toEqual(['Finance/Cash.md'])
+
+    const input = w.find('.abele-note-picker input').element as HTMLInputElement
+    const suggest = (
+      AbstractInputSuggest as unknown as {
+        attachedTo: WeakMap<
+          HTMLInputElement,
+          { suggestionsNow(): unknown[]; selectSuggestion(p: unknown): void }
+        >
+      }
+    ).attachedTo.get(input)!
+    suggest.selectSuggestion(suggest.suggestionsNow()[0])
+    await flushPromises()
+    expect(n.value).toEqual(['[[Cash]]', '[[Card]]'])
+    expect(changes).toEqual([['[[Cash]]', '[[Card]]']])
+
+    // And the other way: the script assigns a path, the field shows it.
+    n.value = ['Finance/Card.md']
+    await nextTick()
+    expect(pills()).toEqual(['Finance/Card.md'])
+  })
+
+  it('refuses a NotePicker filtered by content where the script builds it', () => {
+    expect(() => new NotePicker({ filter: { content: 'x' } as never })).toThrow(/not by content/)
   })
 
   it('writes a NoteInput in the note editor, back into its value, firing input, change and enter', async () => {

@@ -170,3 +170,76 @@ describe('a script that asks for nothing', () => {
     expect(text(await createScriptTools()[0].execute('c1', {}))).toContain('done')
   })
 })
+
+/**
+ * A note picker from a chat: the agent is shown the notes it may choose, and one outside the
+ * filter goes back to it with the run still waiting, rather than into the script.
+ */
+describe('a form with a note picker', () => {
+  const PICKS = `
+    const r = await form([
+      { name: 'wallet', label: 'Wallet', type: 'note-picker', filter: { property: 'type', value: 'account' } },
+      { name: 'with', label: 'With', type: 'note-picker', filter: { folder: 'People' }, multiple: true, returns: 'link' },
+    ])
+    return JSON.stringify(r)
+  `
+
+  beforeEach(() => {
+    useVault([
+      { path: 'Finance/Cash.md', frontmatter: { type: 'account' } },
+      { path: 'Finance/Coffee.md', frontmatter: { type: 'transaction' } },
+      { path: 'People/Anna.md' },
+      { path: 'People/Boris.md' },
+    ])
+  })
+
+  async function ask() {
+    withScripts(script('Spend', PICKS))
+    const asked = text(await createScriptTools()[0].execute('c1', {}))
+    return { asked, runId: /run_id "([^"]+)"/.exec(asked)?.[1] ?? '' }
+  }
+
+  it('lists the notes each picker offers, and only those', async () => {
+    const { asked } = await ask()
+    expect(asked).toContain('Finance/Cash.md')
+    expect(asked).not.toContain('Finance/Coffee.md')
+    expect(asked).toContain('"multiple": true')
+  })
+
+  it('hands the script the notes in the shape each field asked for', async () => {
+    const { runId } = await ask()
+    const done = text(
+      await createAnswerFormTool().execute('c2', {
+        run_id: runId,
+        values: JSON.stringify({ wallet: '[[Cash]]', with: ['People/Anna.md', 'Boris'] }),
+      })
+    )
+    const r = JSON.parse(done)
+    expect(r.wallet).toBe('Finance/Cash.md')
+    expect(r.with).toHaveLength(2)
+    expect(r.with[0]).toMatch(/^\[\[.*Anna\]\]$/)
+  })
+
+  it('sends a note outside the filter back to the agent, the run still waiting', async () => {
+    const { runId } = await ask()
+    const said = text(
+      await createAnswerFormTool().execute('c2', {
+        run_id: runId,
+        values: JSON.stringify({ wallet: 'Finance/Coffee.md', with: [] }),
+      })
+    )
+    expect(said).toContain('not one of the notes')
+    expect(ScriptService.getInstance().pendingForm(runId)).not.toBeNull()
+  })
+
+  it('refuses two notes in a field that takes one', async () => {
+    const { runId } = await ask()
+    const said = text(
+      await createAnswerFormTool().execute('c2', {
+        run_id: runId,
+        values: JSON.stringify({ wallet: ['Finance/Cash.md', 'Finance/Cash.md'] }),
+      })
+    )
+    expect(said).toContain('takes one note')
+  })
+})

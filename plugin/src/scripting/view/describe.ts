@@ -151,6 +151,13 @@ export function describeNode(node: ViewNode, depth = 0, seen: Set<ViewNode> = ne
       )
     case 'search':
       return line(`Search value=${q(n.value)}${n.suggest ? ` suggest=${n.suggest}` : ''}`)
+    case 'note-picker': {
+      const value = Array.isArray(n.value) ? `[${n.value.map(q).join(', ')}]` : q(n.value)
+      const filter = n.filter ? ` filter=${JSON.stringify(n.filter)}` : ''
+      return line(
+        `NotePicker value=${value}${filter}${n.multiple ? ' multiple' : ''}${n.returns === 'link' ? ' returns=link' : ''}${n.create ? ' create' : ''}`
+      )
+    }
     case 'card':
       return [
         line(

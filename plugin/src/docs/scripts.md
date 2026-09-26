@@ -32,6 +32,13 @@ list — the field can be Obsidian's own note editor rather than a text box: `ty
 phone Obsidian's toolbar stands above the keyboard while it is typed in, as in a note. What it
 gives back is the markdown written in it.
 
+Where the answer is one of the person's notes — a wallet, a person, a project — the field is a
+note picker: `type: "note-picker"` in a `form()`, `NotePicker` in a view. It searches as the
+quick switcher does, only among the notes its `filter` lets through, written in `find()`'s words
+(`{ property: "type", value: "account" }` for the finance wallets). It gives back a path, or a
+wikilink with `returns: "link"`, and a list with `multiple`; `create` lets the person make the
+note they were looking for when it is not there yet.
+
 ## Running one
 
 Five ways in: the command palette, a button in a note's header, an `abele://` link, an

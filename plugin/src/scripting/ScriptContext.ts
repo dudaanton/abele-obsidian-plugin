@@ -20,7 +20,9 @@ import { runSubAgent } from '@/ai/SubAgentRunner'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { createAgentTools } from '@/ai/tools'
 import { substituteSecrets } from '@/ai/tools/secretUtils'
-import type { FormField } from './types'
+import type { FormAnswers, FormField } from './types'
+import { answerPickers } from './formPickers'
+import { filterCriteria } from '@/helpers/noteFilter'
 import { View, type RestoreInfo, type ViewHost, type ViewOptions } from './view/View'
 import { VIEW_GLOBALS } from './view/components'
 import { defaultViewHost } from './view/host'
@@ -235,6 +237,7 @@ export function buildScriptContext(opts: {
 
     async find(findOpts: {
       name?: string
+      folder?: string
       property?: string
       value?: string
       content?: string
@@ -251,6 +254,10 @@ export function buildScriptContext(opts: {
       const criteria = findOpts.criteria ? [...findOpts.criteria] : []
       if (findOpts.name) {
         criteria.push({ type: 'name', operator: 'contains', value: findOpts.name })
+      }
+      if (findOpts.folder) {
+        const folder = findOpts.folder.replace(/^\/+|\/+$/g, '')
+        if (folder) criteria.push({ type: 'path', operator: 'startsWith', value: folder + '/' })
       }
       if (findOpts.property) {
         criteria.push(
@@ -579,10 +586,14 @@ export function buildScriptContext(opts: {
       ScriptService.getInstance().setStatus(statusText)
     },
 
-    async form(fields: FormField[]): Promise<Record<string, string> | null> {
+    async form(fields: FormField[]): Promise<FormAnswers | null> {
       const handler = formHandlerNow()
       if (!handler) throw new Error(NO_FORM_HANDLER)
-      return handler(fields)
+      // A filter the picker cannot honour is the script's mistake, said before anyone is asked.
+      for (const field of fields) if (field.type === 'note-picker') filterCriteria(field.filter)
+      const answers = await handler(fields)
+      if (!answers) return null
+      return answerPickers(GlobalStore.getInstance().app, fields, answers)
     },
 
     /**

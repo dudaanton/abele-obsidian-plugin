@@ -20,6 +20,14 @@
         >
           <option v-for="opt in field.options" :key="opt" :value="opt">{{ opt }}</option>
         </select>
+        <NotePicker
+          v-else-if="field.type === 'note-picker'"
+          v-model="picks[field.name]"
+          :filter="field.filter"
+          :multiple="field.multiple"
+          :create="field.create"
+          :placeholder="field.placeholder"
+        />
         <NoteEditorField
           v-else-if="field.type === 'note'"
           v-model="values[field.name]"
@@ -56,7 +64,10 @@ import ObsidianModal from './obsidian/Modal.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Markdown from './obsidian/Markdown.vue'
 import NoteEditorField from './NoteEditorField.vue'
+import NotePicker from './obsidian/NotePicker.vue'
 import type { FormField } from '@/scripting/types'
+import { pickItems, resolveNote } from '@/helpers/noteFilter'
+import { GlobalStore } from '@/stores/GlobalStore'
 
 const props = defineProps<{
   fields: FormField[]
@@ -109,9 +120,19 @@ const bodyOf = (field: FormField): string => {
 }
 
 const values = reactive<Record<string, string>>({})
+/** A note picker's chosen paths, kept as a list until the form is sent. */
+const picks = reactive<Record<string, string[]>>({})
 for (const field of props.fields) {
   if (field.type === 'markdown') continue
-  values[field.name] = field.default ?? (field.type === 'boolean' ? 'false' : '')
+  if (field.type === 'note-picker') {
+    const { app } = GlobalStore.getInstance()
+    picks[field.name] = pickItems(field.default)
+      .map((item) => resolveNote(app, item)?.path)
+      .filter((p): p is string => !!p)
+    continue
+  }
+  const given = Array.isArray(field.default) ? field.default.join('\n') : field.default
+  values[field.name] = given ?? (field.type === 'boolean' ? 'false' : '')
 }
 
 /**
@@ -133,8 +154,18 @@ onMounted(() => {
 
 onBeforeUnmount(() => window.clearTimeout(focusTimer))
 
+/**
+ * A picker answers the way an agent would: one path, or a JSON list of them. The script's
+ * `form()` turns either into the note or notes in the shape the field asked for.
+ */
 function onSubmit() {
-  props.resolve({ ...values })
+  const answers: Record<string, string> = { ...values }
+  for (const field of props.fields) {
+    if (field.type !== 'note-picker') continue
+    const chosen = picks[field.name] ?? []
+    answers[field.name] = field.multiple ? JSON.stringify(chosen) : (chosen[0] ?? '')
+  }
+  props.resolve(answers)
   emit('close')
 }
 

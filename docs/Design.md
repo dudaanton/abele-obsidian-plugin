@@ -22,6 +22,7 @@ not invent its own.
 | `Input`, `Dropdown`, `Checkbox`, `Search`, `ColorPicker` | Form controls. `Input` takes `password` for a passphrase or a key: dots instead of characters, nothing offered to remember it. |
 | `Modal` | A dialog. `size="wide"` when a form needs more than the default column; `size="tall"` for a body that fills the height a dialog may have and scrolls inside it when it runs longer; `size="full"` for something that wants all the room a dialog may have, a diagram viewed full screen. A form's buttons go in the `footer` slot: a row under the body that stays in sight while the body scrolls. |
 | `Slider` | A value along a track — a place in a book. Obsidian's own `slider` class, its filled part kept in step; `input` follows the thumb, the model changes when it is let go. |
+| `NotePicker` | Choosing notes out of part of the vault — the wallets, the people of a folder — by typing, fuzzy-matched as in the quick switcher. `filter` is the script `find()` vocabulary; what is chosen stands above the field as Obsidian's own pills, title and folder, each with a way to take it out. `multiple` for several; `create` offers to make a note of a name nothing matches. |
 | `IconPicker` | Choosing an icon: every glyph Obsidian can draw as a grid to click, a search field that narrows it, arrow keys and Enter from that field. Emits the name without the `lucide-` prefix. |
 | `QrCode` | A QR code, drawn as SVG from whatever text it is given. |
 | `ConfirmModal` | The question asked before something is destroyed. |

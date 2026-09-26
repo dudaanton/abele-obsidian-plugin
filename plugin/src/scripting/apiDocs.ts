@@ -102,6 +102,7 @@ Supports both simple shorthand and advanced criteria:
 await find({ name: "daily" })                        // name contains "daily"
 await find({ property: "type", value: "task" })      // property equals value
 await find({ content: "TODO" })                      // body contains "TODO"
+await find({ folder: "Projects" })                   // anywhere under Projects/
 \`\`\`
 
 **Advanced criteria** — each criterion has \`type\`, \`operator\`, and optionally \`property\`/\`value\`:
@@ -221,8 +222,25 @@ const each = await agent("Extract the date", { items: paths })
 | \`form(fields)\` | \`object \\| null\` | Ask for values: a dialog when a person runs the script from a command, note button, link or open view; a form handed to the agent from a chat |
 | \`show(markdown, title?)\` | — | Show rendered markdown to read when a person runs the script or it has a view open |
 
-\`form\` fields: \`[{ name, label, type?, options?, default?, required?, text? }]\`
-Types: \`"text"\` (default), \`"textarea"\`, \`"note"\`, \`"select"\`, \`"boolean"\`, \`"markdown"\`
+\`form\` fields: \`[{ name, label, type?, options?, default?, required?, text?, filter?, multiple?, returns?, create?, placeholder? }]\`
+Types: \`"text"\` (default), \`"textarea"\`, \`"note"\`, \`"note-picker"\`, \`"select"\`, \`"boolean"\`, \`"markdown"\`
+
+A \`"note-picker"\` field chooses notes by typing, as in the quick switcher, out of the ones its
+\`filter\` lets through. The filter speaks \`find()\`'s shorthand and criteria — \`name\`,
+\`folder\`, \`property\`/\`value\`, \`criteria\` — except \`content\`, which it refuses. Its answer
+is the note's path, or with \`returns: "link"\` a wikilink; with \`multiple: true\` a list of
+them (an empty list when nothing is chosen). \`default\` takes the same. \`create: true\` offers
+to make a note of a name nothing matches, in the filter's folder and carrying its property; it
+is off unless asked. Asked from a chat, the agent is shown the notes it may choose from and a
+note outside the filter is sent back to it.
+
+\`\`\`js
+const r = await form([
+  { name: "wallet", label: "Wallet", type: "note-picker", filter: { property: "type", value: "account" } },
+  { name: "people", label: "With", type: "note-picker", filter: { folder: "People" }, multiple: true, returns: "link" },
+])
+// r.wallet → "Finance/Accounts/Cash.md"      r.people → ["[[Anna]]", "[[Boris]]"]
+\`\`\`
 
 A \`"note"\` field is Obsidian's own note editor: links with \`[[\`, formatting, checklists and, on
 a phone, Obsidian's toolbar above the keyboard. Its value is the markdown written in it. Use it

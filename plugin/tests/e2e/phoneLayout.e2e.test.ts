@@ -457,6 +457,28 @@ const probeScript = `(async () => {
       await closeDialog()
     }
 
+    // A script's form with note pickers: chosen notes as pills over the search field, one
+    // field taking several, one taking one, and the list open under the search.
+    window.__abeleTest.showFormModal([
+      { name: 'with', label: 'With', type: 'note-picker', multiple: true, default: SEEDED.slice(0, 3) },
+      { name: 'wallet', label: 'Wallet', type: 'note-picker', default: SEEDED[3] },
+    ])
+    if (await until(() => document.querySelector('.modal .abele-note-picker__pill'), 5000)) {
+      await wait(300)
+      const modal = document.querySelector('.modal')
+      const input = modal.querySelectorAll('.abele-note-picker input')[1]
+      input.focus()
+      input.value = ''
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      await until(() => document.querySelector('.suggestion-container .suggestion-item'), 2000)
+      await wait(300)
+      await screen('script form picker', modal, modal.querySelector('.abele-modal__body'))
+      await closeDialog()
+    } else {
+      report['script form picker'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'the note pickers did not show their notes' }
+      await closeDialog()
+    }
+
     // The icon picker of a header button's form: a grid of every icon, a search field above.
     // Pictured before its fields are focused one by one: focusing the button at the foot of
     // the grid scrolls the grid down to it, away from the current icon.
@@ -802,6 +824,7 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'docs page',
     'docs contents',
     'docs search result',
+    'script form picker',
   ]
 
   /** Dialogs with fields, whose focus rings are measured, and which stand as a full sheet. */

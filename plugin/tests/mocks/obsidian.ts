@@ -164,6 +164,28 @@ export function stringifyYaml(value: unknown): string {
 }
 
 /**
+ * Obsidian's fuzzy match, as far as a test needs it: the query's letters in order, ignoring
+ * case and spaces, anywhere in the text. A tighter match scores higher; no match is `null`.
+ */
+export function prepareFuzzySearch(
+  query: string
+): (text: string) => { score: number; matches: [number, number][] } | null {
+  const letters = query.toLowerCase().replace(/\s+/g, '')
+  return (text: string) => {
+    const hay = text.toLowerCase()
+    let at = -1
+    let first = -1
+    for (const ch of letters) {
+      at = hay.indexOf(ch, at + 1)
+      if (at < 0) return null
+      if (first < 0) first = at
+    }
+    const span = first < 0 ? 0 : at - first + 1
+    return { score: -(span - letters.length) - first / 100, matches: [] }
+  }
+}
+
+/**
  * Obsidian's debounce. Tests never exercise the timing behaviour — they call the units that
  * do the work directly — so this passes calls straight through rather than deferring them,
  * which would leave timers dangling after a test finishes.
@@ -421,10 +443,24 @@ if (typeof window !== 'undefined') {
 export abstract class AbstractInputSuggest<T> {
   limit = 100
 
+  /**
+   * Not part of Obsidian's API — the suggester attached to a field, for a test that has only the
+   * rendered field and wants to type into it and take a line of the list.
+   */
+  static readonly attachedTo = new WeakMap<HTMLInputElement, AbstractInputSuggest<unknown>>()
+
   constructor(
     public app: unknown,
     protected textInputEl: HTMLInputElement
-  ) {}
+  ) {
+    AbstractInputSuggest.attachedTo.set(textInputEl, this as AbstractInputSuggest<unknown>)
+  }
+
+  /** Not part of Obsidian's API — the list the field would show for what is typed in it. */
+  suggestionsNow(): T[] {
+    const self = this as unknown as { getSuggestions(q: string): T[] }
+    return self.getSuggestions(this.textInputEl.value)
+  }
 
   setValue(value: string): void {
     this.textInputEl.value = value

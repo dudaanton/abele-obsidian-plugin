@@ -13,6 +13,8 @@ const props = defineProps<{
   modelValue: string
   placeholder?: string
   suggester?: typeof FileSuggest | typeof FolderSuggest
+  /** A suggester that needs more than the field to be built — the note picker's filtered one. */
+  makeSuggest?: (inputEl: HTMLInputElement) => unknown
   disabled?: boolean
   /** Puts the cursor in the field as it appears — for a field opened by pressing something. */
   autofocus?: boolean
@@ -31,6 +33,7 @@ const initSearch = () => {
   search.value = new SearchComponent(el.value)
   // A field with nothing to suggest is still a field: a script's plain search box has none.
   if (props.suggester) new props.suggester(GlobalStore.getInstance().app, search.value.inputEl)
+  else if (props.makeSuggest) props.makeSuggest(search.value.inputEl)
   if (props.modelValue) {
     search.value.setValue(props.modelValue)
   }

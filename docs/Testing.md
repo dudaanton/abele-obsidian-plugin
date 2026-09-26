@@ -167,6 +167,11 @@ Three files, three concerns:
   attaches a scratch chat to it with the command, and checks the card is drawn under the code,
   that pressing it opens the chat in the sidebar while the script's tab stays, that a rename
   keeps the link, and that the card's unlink button detaches it. Removes both files after.
+- `notePicker.e2e.test.ts` — **a filtered note picker in a script's form**. Writes three notes and
+  a script asking for a wallet by `type`, runs it as a command, and checks that Obsidian's own
+  suggester comes up over the dialog offering only the notes the filter lets through, that a note
+  is found by its title, and that `form()` answers with a path and a list of links. Removes all of
+  it after.
 - `dialogRings.e2e.test.ts` — **focus rings in the chat dialogs, on the desktop**. Focuses every
   focusable thing in every tab of the setup dialog and in the history, and measures its ring
   against every ancestor that clips: a box standing flush with the content cuts the ring a field

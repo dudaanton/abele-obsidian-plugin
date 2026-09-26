@@ -2,6 +2,9 @@ import type { AgentTool } from '../client'
 import { scriptSlug } from '@/scripting/scriptSlug'
 import { ScriptService, type ScriptOutcome } from '@/scripting/ScriptService'
 import type { FormField, ScriptParam } from '@/scripting/types'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { checkPickerAnswers } from '@/scripting/formPickers'
+import { formatPick, notesMatching } from '@/helpers/noteFilter'
 
 export function createScriptTools(): AgentTool[] {
   const service = ScriptService.getInstance()
@@ -48,9 +51,36 @@ function describeField(field: FormField): Record<string, unknown> {
     name: field.name,
     label: field.label,
     type: field.type ?? 'text',
+    ...(field.type === 'note-picker' ? describePicker(field) : {}),
     ...(field.options ? { options: field.options } : {}),
     ...(field.default !== undefined ? { default: field.default } : {}),
     ...(field.required ? { required: true } : {}),
+  }
+}
+
+/** How many of a picker's notes are listed for the agent to choose from. */
+const CHOICES_SHOWN = 50
+
+/**
+ * A note picker as the agent needs it: which notes it may name, and in what shape. The notes are
+ * listed as the field would hand them back, so the agent can copy one; past fifty it is told how
+ * many more there are and that the filter is there to `find` them by.
+ */
+function describePicker(field: FormField): Record<string, unknown> {
+  const { app } = GlobalStore.getInstance()
+  const notes = notesMatching(app, field.filter)
+  const choices = notes.slice(0, CHOICES_SHOWN).map((f) => formatPick(app, f, field.returns))
+  return {
+    multiple: !!field.multiple,
+    ...(field.filter ? { filter: field.filter } : {}),
+    answer: field.multiple
+      ? 'a JSON array of notes from `choices` (paths or wikilinks)'
+      : 'one note from `choices` (a path or a wikilink)',
+    ...(field.create ? { create: 'a name no note has makes a new note of it' } : {}),
+    choices,
+    ...(notes.length > choices.length
+      ? { more: `${notes.length - choices.length} more match the filter — use find with it` }
+      : {}),
   }
 }
 
@@ -98,6 +128,18 @@ export function createAnswerFormTool(): AgentTool {
               type: 'text',
               text: '`values` has to be a JSON object keyed by field name, or `cancel` true.',
             },
+          ],
+        }
+      }
+
+      // A picker's answer is checked here, where the agent can still put it right.
+      const fields = values ? service.pendingForm(runId) : null
+      const refused =
+        fields && values && checkPickerAnswers(GlobalStore.getInstance().app, fields, values)
+      if (refused) {
+        return {
+          content: [
+            { type: 'text', text: `${refused} The script is still waiting; answer again.` },
           ],
         }
       }

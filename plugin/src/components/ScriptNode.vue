@@ -181,6 +181,17 @@
       "
     />
 
+    <NotePicker
+      v-else-if="n.type === 'note-picker'"
+      :model-value="pickedPaths"
+      :filter="n.filter"
+      :multiple="n.multiple"
+      :create="n.create"
+      :placeholder="n.placeholder"
+      :class="n.cls"
+      @update:model-value="pickNotes"
+    />
+
     <Card
       v-else-if="n.type === 'card'"
       :title="n.title ?? ''"
@@ -239,6 +250,8 @@ import Dropdown from './obsidian/Dropdown.vue'
 import NoteEditorField from './NoteEditorField.vue'
 import Checkbox from './obsidian/Checkbox.vue'
 import Search from './obsidian/Search.vue'
+import NotePicker from './obsidian/NotePicker.vue'
+import { formatPick, pickItems, resolveNote } from '@/helpers/noteFilter'
 import Card from './obsidian/Card.vue'
 import ScriptHtml from './ScriptHtml.vue'
 
@@ -353,6 +366,25 @@ const options = computed(() =>
 const suggester = computed(() =>
   n.suggest === 'file' ? FileSuggest : n.suggest === 'folder' ? FolderSuggest : undefined
 )
+
+// ── note picker ──
+/** The node holds notes as the script asked for them; the field works in paths. */
+const pickedPaths = computed<string[]>(() =>
+  n.type === 'note-picker'
+    ? pickItems(n.value)
+        .map((item) => resolveNote(GlobalStore.getInstance().app, item)?.path)
+        .filter((p): p is string => !!p)
+    : []
+)
+const pickNotes = (paths: string[]) => {
+  const { app } = GlobalStore.getInstance()
+  const notes = paths
+    .map((p) => app.vault.getAbstractFileByPath(p))
+    .filter((f): f is TFile => f instanceof TFile)
+    .map((f) => formatPick(app, f, n.returns))
+  n.value = n.multiple ? notes : (notes[0] ?? '')
+  fire('change', n.value)
+}
 
 // ── checkbox ──
 const toggle = () => {

@@ -244,6 +244,7 @@ describe('constructors', () => {
       'Input',
       'Markdown',
       'NoteInput',
+      'NotePicker',
       'Row',
       'Search',
       'Section',

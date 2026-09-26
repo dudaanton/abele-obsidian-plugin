@@ -165,7 +165,7 @@ same name.
 
 Reserved names: \`view\`, \`Stack\`, \`Row\`, \`Grid\`, \`Section\`, \`Tabs\`, \`Setting\`, \`Markdown\`,
 \`Text\`, \`Image\`, \`Table\`, \`Badge\`, \`EmptyState\`, \`Button\`, \`Icon\`, \`Input\`, \`NoteInput\`, \`Select\`,
-\`Checkbox\`, \`Search\`, \`Card\` and \`Html\` are already declared in every script — a script that
+\`Checkbox\`, \`Search\`, \`NotePicker\`, \`Card\` and \`Html\` are already declared in every script — a script that
 declares one of them itself (\`const view = …\`) fails to start with a message naming it.
 
 ### Controls
@@ -179,6 +179,7 @@ declares one of them itself (\`const view = …\`) fails to start with a message
 | \`Select({ options, value?, onChange? })\` | \`options: string[] \\| { value, label }[]\`; \`value\` defaults to the first. | \`change\` |
 | \`Checkbox({ checked?, label?, onChange? })\` | | \`change\` |
 | \`Search({ value?, placeholder?, suggest?, onChange? })\` | \`suggest\`: \`file\` \`folder\` — Obsidian's own suggester. | \`change\` |
+| \`NotePicker({ value?, filter?, multiple?, returns?, create?, placeholder?, onChange? })\` | Choosing notes by typing, as in the quick switcher, out of the ones \`filter\` lets through — \`find()\`'s words: \`{ property: 'type', value: 'account' }\`, \`{ folder: 'People' }\`, \`name\`, \`criteria\` (not \`content\`). \`value\` is the note as a path, or with \`returns: 'link'\` a wikilink; with \`multiple\` a list of them. Reactive both ways — a script may set it in either form. \`create\` offers to make a note of a name nothing matches, in the filter's folder with its property; off unless asked. | \`change\` (the new value) |
 | \`Card({ title?, cover?, large?, subtitle?, description?, meta?, badges?, actions?, children?, selected?, onClick? })\` | Clickable when it has a click handler. \`cover\` is a picture across the top (path, link name or URL); \`large\` makes the title a heading and the description body text — a post in a feed rather than a tile in a grid. \`badges\` are \`Badge\` nodes next to the title, \`actions\` are nodes in the top-right corner, \`children\` come after the description. | \`click\` |
 
 \`\`\`js
