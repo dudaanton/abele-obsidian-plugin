@@ -1,5 +1,7 @@
 <template>
   <div class="abele-book-ink" role="toolbar" aria-label="Drawing" data-ignore-swipe="true">
+    <!-- The way out sits on the left, where the pen that turned drawing on was. -->
+    <Icon icon="check" tooltip="Stop drawing" class="abele-book-ink__done" @click="emit('done')" />
     <div class="abele-book-ink__group">
       <Icon
         v-for="t in TOOLS"
@@ -49,12 +51,6 @@
         class="abele-book-ink__redo"
         @click="emit('redo')"
       />
-      <Icon
-        icon="check"
-        tooltip="Stop drawing"
-        class="abele-book-ink__done"
-        @click="emit('done')"
-      />
     </div>
   </div>
 </template>
@@ -62,9 +58,10 @@
 <script setup lang="ts">
 /**
  * The row under a PDF's page while drawing is on: the pen, the marker, the eraser, the tool's
- * colours, drawing with a finger (a touch screen only), undo, redo and the way out. It takes the
- * place of the line with the slider, as the bar for selected words does, so nothing covers the
- * page; and it is Obsidian's own mark that keeps its swipes off the row.
+ * colours, drawing with a finger (a touch screen only), undo and redo, and the way out on the
+ * left, where the pen that turned drawing on sat. It takes the place of the line with the slider,
+ * as the bar for selected words does, so nothing covers the page; and it is Obsidian's own mark
+ * that keeps its swipes off the row.
  */
 import { computed } from 'vue'
 import Icon from '../obsidian/Icon.vue'

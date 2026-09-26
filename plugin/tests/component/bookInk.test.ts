@@ -112,4 +112,10 @@ describe('the drawing bar', () => {
     await bar.find('.abele-book-ink__done').trigger('click')
     expect(bar.emitted('done')).toHaveLength(1)
   })
+
+  it('has the way out on the left, where the pen that turned drawing on sat', () => {
+    const bar = mount(BookInkBar, { props: { ink: ink() } })
+    const first = bar.find('.abele-obsidian-icon')
+    expect(first.classes()).toContain('abele-book-ink__done')
+  })
 })
