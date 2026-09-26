@@ -1,6 +1,6 @@
 /**
- * Once for the whole tier: background throttling goes back on when the run is over, whatever
- * the files in between did. See `setBackgroundThrottling`.
+ * Once for the whole tier: background throttling and focus emulation go back to normal when the
+ * run is over, whatever the files in between did. See `setBackgroundThrottling`.
  *
  * A book's highlights note gives the vault's `file` property Obsidian's File type the first time
  * one is made (`src/properties/types.ts`), and that lands in the fixture vault's `types.json`.
@@ -12,6 +12,7 @@ import {
   evalRaw,
   isObsidianRunning,
   setBackgroundThrottling,
+  setFocusEmulation,
 } from './obsidianCli'
 
 let fileTypeBefore: string | null | undefined
@@ -39,5 +40,6 @@ export function teardown(): void {
       )
   } finally {
     setBackgroundThrottling(true)
+    setFocusEmulation(false)
   }
 }

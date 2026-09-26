@@ -14,7 +14,14 @@
  * while the field keeps its focus.
  */
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
-import { isObsidianRunning, hasTestApi, evalRaw, evalJson, runCli } from './helpers/obsidianCli'
+import {
+  evalJson,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+  runCli,
+} from './helpers/obsidianCli'
 
 const available = isObsidianRunning() && hasTestApi()
 
@@ -59,10 +66,7 @@ const closeDialogs = () =>
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const reload = async (how: string): Promise<void> => {
-  evalRaw(`(() => { setTimeout(() => { ${how} }, 50); return 'ok' })()`, 30_000)
-  await pause(4000)
-  const deadline = Date.now() + 60_000
-  while (!hasTestApi() && Date.now() < deadline) await pause(1000)
+  await reloadApp(how)
   runCli(['dev:debug', 'on'], 30_000)
   evalRaw(
     `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(false); return 'ok' })()`

@@ -6,6 +6,9 @@
  * which is everything these tests need.
  */
 import { execFileSync } from 'node:child_process'
+import { mkdirSync, rmdirSync, statSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 const CLI = process.env.OBSIDIAN_CLI ?? '/usr/local/bin/obsidian'
 
@@ -203,6 +206,17 @@ export function framesPerSecond(): number {
   return Number(raw.replace(/^['"]|['"]$/g, ''))
 }
 
+/**
+ * Makes the driven window's page behave as if it had the keyboard focus, whichever window really
+ * has it. Only one window of the app can, and it is rarely this one: another vault's window, the
+ * person's own, a second run's. Without it a field focused in the page gets no `focus` event
+ * and a phone's toolbar for the field never comes up (2026-09-26, `noteField` on a phone,
+ * failing in every window but the one in front). Survives a reload; switched off after the run.
+ */
+export function setFocusEmulation(on: boolean): void {
+  run(['dev:cdp', 'method=Emulation.setFocusEmulationEnabled', `params={"enabled":${on}}`], 30_000)
+}
+
 /** Stops the run with the reason when the window is not being drawn: see `framesPerSecond`. */
 export function assertWindowDrawn(): void {
   const fps = framesPerSecond()
@@ -265,4 +279,79 @@ export function waitForLinkIndex(timeoutMs = 120_000): void {
     if (Date.now() > deadline) throw new Error('Obsidian did not finish resolving links in time')
     sleepSync(1000)
   }
+}
+
+/**
+ * Where Obsidian keeps "emulate a phone": one `localStorage` key, read once as a window starts.
+ * `localStorage` is shared by every window of the app, so a phone switched on in one vault's
+ * window came up as a phone in any other window that reloaded while it was set — another test
+ * run's, or the person's own — and switching it off anywhere turned a phone back into a desktop
+ * on its next reload (2026-09-26, two runs side by side in two vaults).
+ */
+const MOBILE_KEY = 'EmulateMobile'
+/** What this window wants, kept in its own `sessionStorage`, which survives a reload. */
+const MOBILE_WISH = 'abele-e2e-mobile'
+/** Held from writing the shared key until the reloaded window has read it: one reload at a time. */
+const RELOAD_LOCK = join(tmpdir(), 'abele-e2e-reload.lock')
+/** A lock older than this was left by a run that died half way, not held by a live one. */
+const RELOAD_LOCK_STALE_MS = 120_000
+
+const pauseAsync = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function takeReloadLock(): Promise<void> {
+  const deadline = Date.now() + 5 * 60_000
+  for (;;) {
+    try {
+      mkdirSync(RELOAD_LOCK)
+      return
+    } catch {
+      try {
+        if (Date.now() - statSync(RELOAD_LOCK).mtimeMs > RELOAD_LOCK_STALE_MS)
+          rmdirSync(RELOAD_LOCK)
+      } catch {
+        // Gone in between: the next attempt takes it.
+      }
+      if (Date.now() > deadline) throw new Error(`${RELOAD_LOCK} was not released in 5 minutes`)
+      await pauseAsync(250)
+    }
+  }
+}
+
+/**
+ * Reloads the driven window and waits for the plugin to be back, as a phone, a desktop, or —
+ * given anything else — whatever the window was. `how` takes what the tests used to evaluate
+ * themselves: `app.emulateMobile(true)`, `app.emulateMobile(false)`, `location.reload()`.
+ *
+ * Every reload in the tier comes through here, so the shared key is only ever set for the few
+ * seconds one window takes to start, under a lock across runs, and taken away again after: a
+ * window's phone or desktop is its own, whoever else reloads.
+ */
+export async function reloadApp(how = 'location.reload()'): Promise<void> {
+  const asked = /emulateMobile\((true|false)\)/.exec(how)?.[1]
+  await takeReloadLock()
+  try {
+    evalRaw(
+      `(() => {
+        const asked = ${asked === undefined ? 'null' : `'${asked === 'true' ? '1' : ''}'`}
+        if (asked !== null) sessionStorage.setItem('${MOBILE_WISH}', asked)
+        const wish = sessionStorage.getItem('${MOBILE_WISH}') ?? (app.isMobile ? '1' : '')
+        if (wish) localStorage.setItem('${MOBILE_KEY}', '1')
+        else localStorage.removeItem('${MOBILE_KEY}')
+        setTimeout(() => location.reload(), 50)
+        return 'ok'
+      })()`,
+      30_000
+    )
+    await pauseAsync(4000)
+    const deadline = Date.now() + 60_000
+    while (!hasTestApi() && Date.now() < deadline) await pauseAsync(1000)
+    evalRaw(`(() => { localStorage.removeItem('${MOBILE_KEY}'); return 'ok' })()`, 30_000)
+  } finally {
+    try {
+      rmdirSync(RELOAD_LOCK)
+    } catch {
+      // Taken away as stale by another run: nothing left to release.
+    }
+  }
+  setBackgroundThrottling(false)
 }

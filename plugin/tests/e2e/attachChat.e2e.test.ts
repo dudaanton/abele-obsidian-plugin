@@ -90,7 +90,12 @@ const script = `(async () => {
     count: (linkButton()?.textContent || '').trim(),
   })
   const openNote = async (file) => {
-    leaf = app.workspace.getLeaf('tab')
+    // A new tab goes beside the tab most recently active in the main area. There is none when
+    // the last one was just closed, or the one Obsidian put in its place has never been active
+    // ("No tab group found"): a tab is then made in the main area directly.
+    try { leaf = app.workspace.getLeaf('tab') } catch {
+      leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0)
+    }
     await leaf.openFile(file)
     app.workspace.setActiveLeaf(leaf, { focus: true })
     await until(() => leaf.view.containerEl.querySelector('.abele-footer-view'), 8000)

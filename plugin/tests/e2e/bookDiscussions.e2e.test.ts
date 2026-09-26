@@ -18,7 +18,7 @@
  * `/tmp/abele-phone/discussion-*.png`.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, evalJson } from './helpers/obsidianCli'
+import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
@@ -33,10 +33,7 @@ const SHOTS = '/tmp/abele-phone'
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const reload = async (how: string): Promise<void> => {
-  evalRaw(`(() => { setTimeout(() => { ${how} }, 50); return 'ok' })()`, 30_000)
-  await pause(4000)
-  const deadline = Date.now() + 60_000
-  while (!hasTestApi() && Date.now() < deadline) await pause(1000)
+  await reloadApp(how)
   evalRaw(
     `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(false); return 'ok' })()`
   )

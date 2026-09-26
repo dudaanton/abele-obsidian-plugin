@@ -9,7 +9,7 @@
  * Pictures go to `/tmp/abele-mermaid/` — look at them.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, evalJson } from './helpers/obsidianCli'
+import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 
 const available = isObsidianRunning() && hasTestApi()
@@ -81,10 +81,7 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
 }
 
 const reload = async (how: string): Promise<void> => {
-  evalRaw(`(() => { setTimeout(() => { ${how} }, 50); return 'ok' })()`, 30_000)
-  await pause(4000)
-  const deadline = Date.now() + 60_000
-  while (!hasTestApi() && Date.now() < deadline) await pause(1000)
+  await reloadApp(how)
 }
 
 describe.skipIf(!available)('the mermaid viewer', () => {

@@ -24,11 +24,12 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
-  isObsidianRunning,
-  hasTestApi,
-  evalRaw,
-  evalJson,
   activeVaultName,
+  evalJson,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
   setBackgroundThrottling,
 } from './helpers/obsidianCli'
 
@@ -292,8 +293,7 @@ const probeScript = (tag: string): string => `(async () => {
 })()`
 
 const setMobile = async (on: boolean): Promise<void> => {
-  evalRaw(`(() => { app.emulateMobile(${on}); return 'ok' })()`, 30_000)
-  await new Promise((resolve) => setTimeout(resolve, 4000))
+  await reloadApp(`app.emulateMobile(${on})`)
 }
 
 const windowSize = (): [number, number] =>
@@ -351,8 +351,7 @@ describe.skipIf(!available)('searching the task, log and transaction lists', () 
     await setMobile(true)
     await setWindowSize(PHONE.width, PHONE.height)
     // A resize leaves the viewport stale until the app reloads.
-    evalRaw(`(() => { location.reload(); return 'ok' })()`, 30_000)
-    await new Promise((resolve) => setTimeout(resolve, 6000))
+    await reloadApp()
     setBackgroundThrottling(false)
     phone = await run('phone')
 

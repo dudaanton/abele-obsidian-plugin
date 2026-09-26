@@ -21,7 +21,7 @@
  * build — see docs/Testing.md.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { isObsidianRunning, hasTestApi, evalRaw, evalJson } from './helpers/obsidianCli'
+import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 
 const LANDSCAPE = { width: 1180, height: 820, keyboard: 398 }
 const PORTRAIT = { width: 820, height: 1000, keyboard: 320 }
@@ -187,8 +187,7 @@ const probeScript = (label: string, keyboard: number): string => `(async () => {
 })()`
 
 const setMobile = async (on: boolean): Promise<void> => {
-  evalRaw(`(() => { app.emulateMobile(${on}); return 'ok' })()`, 30_000)
-  await new Promise((resolve) => setTimeout(resolve, 4000))
+  await reloadApp(`app.emulateMobile(${on})`)
 }
 
 const windowSize = (): [number, number] =>
@@ -207,12 +206,7 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
 
 /** A window behind others keeps its old viewport until it is reloaded. */
 const reload = async (): Promise<void> => {
-  evalRaw(`(() => { setTimeout(() => window.location.reload(), 50); return 'ok' })()`, 30_000)
-  await new Promise((resolve) => setTimeout(resolve, 4000))
-  const deadline = Date.now() + 60_000
-  while (!hasTestApi() && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-  }
+  await reloadApp()
 }
 
 const available = isObsidianRunning() && hasTestApi()

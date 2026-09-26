@@ -13,7 +13,14 @@
  * nothing stands in its way — the text is selectable, and the menu keeps to names.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, evalJson, runCli } from './helpers/obsidianCli'
+import {
+  evalJson,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+  runCli,
+} from './helpers/obsidianCli'
 import {
   PRELUDE,
   enableGithub,
@@ -77,10 +84,7 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
 
 /** Reloads the page and waits for the plugin to be back. */
 const reload = async (how: string): Promise<void> => {
-  evalRaw(`(() => { setTimeout(() => { ${how} }, 50); return 'ok' })()`, 30_000)
-  await pause(4000)
-  const deadline = Date.now() + 60_000
-  while (!hasTestApi() && Date.now() < deadline) await pause(1000)
+  await reloadApp(how)
 }
 
 /** Opens the pull request on `section` and measures what reaches past the screen's edge. */

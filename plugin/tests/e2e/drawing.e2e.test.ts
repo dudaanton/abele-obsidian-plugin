@@ -14,7 +14,14 @@
  * What cannot be checked here: an Apple Pencil on an iPad. The pen here is Chromium's.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, evalJson, runCli } from './helpers/obsidianCli'
+import {
+  evalJson,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+  runCli,
+} from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 
 const available = isObsidianRunning() && hasTestApi()
@@ -33,10 +40,7 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
 }
 const attachDebugger = (): void => void runCli(['dev:debug', 'on'], 30_000)
 const reload = async (how: string): Promise<void> => {
-  evalRaw(`(() => { setTimeout(() => { ${how} }, 50); return 'ok' })()`, 30_000)
-  await pause(4000)
-  const deadline = Date.now() + 60_000
-  while (!hasTestApi() && Date.now() < deadline) await pause(1000)
+  await reloadApp(how)
   attachDebugger()
   evalRaw(
     `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(false); return 'ok' })()`

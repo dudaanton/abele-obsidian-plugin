@@ -9,7 +9,7 @@
  * in the background is covered by the unit tests (`tests/unit/bookPlaces.test.ts`).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw } from './helpers/obsidianCli'
+import { evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub, RICH_BOOK_ID } from '../fixtures/books/richBook'
 import { buildLongPdf } from '../fixtures/books/pdfFixture'
@@ -18,8 +18,6 @@ const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader places e2e'
 const BOOK = `${DIR}/rich.epub`
 const PDF = `${DIR}/long.pdf`
-
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const PRELUDE = `
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -95,10 +93,7 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
         pdfCfi: Object.entries(places).find(([k, v]) => v.path === ${JSON.stringify(PDF)})?.[1]?.cfi,
       }
     `)
-    evalRaw(`(() => { setTimeout(() => window.location.reload(), 50); return 'ok' })()`, 30_000)
-    await pause(4000)
-    const deadline = Date.now() + 60_000
-    while (!hasTestApi() && Date.now() < deadline) await pause(1000)
+    await reloadApp()
     evalRaw(
       `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(false); return 'ok' })()`
     )

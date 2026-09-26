@@ -17,7 +17,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { isObsidianRunning, hasTestApi, evalRaw, evalJson } from './helpers/obsidianCli'
+import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 
 /** An iPad in landscape, in points. */
 const TABLET = { width: 1180, height: 820 }
@@ -152,8 +152,7 @@ const probeScript = `(async () => {${PRELUDE}
 })()`
 
 const setMobile = async (on: boolean): Promise<void> => {
-  evalRaw(`(() => { app.emulateMobile(${on}); return 'ok' })()`, 30_000)
-  await new Promise((resolve) => setTimeout(resolve, 4000))
+  await reloadApp(`app.emulateMobile(${on})`)
 }
 
 const windowSize = (): [number, number] =>
@@ -175,12 +174,7 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
  * reloaded — so a resize is followed by a reload before anything is measured.
  */
 const reload = async (): Promise<void> => {
-  evalRaw(`(() => { setTimeout(() => window.location.reload(), 50); return 'ok' })()`, 30_000)
-  await new Promise((resolve) => setTimeout(resolve, 4000))
-  const deadline = Date.now() + 60_000
-  while (!hasTestApi() && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-  }
+  await reloadApp()
 }
 
 /**

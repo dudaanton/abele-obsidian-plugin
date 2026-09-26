@@ -5,7 +5,7 @@
  * written for the run; the settings are put back after it. The same on a phone at 390×844.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, evalJson } from './helpers/obsidianCli'
+import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildLongPdf, buildPlainPdf } from '../fixtures/books/pdfFixture'
 
@@ -225,10 +225,7 @@ describe.skipIf(!available)('a PDF as one continuous scroll', () => {
     let size: [number, number] = [0, 0]
     const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
     const reload = async (how: string): Promise<void> => {
-      evalRaw(`(() => { setTimeout(() => { ${how} }, 50); return 'ok' })()`, 30_000)
-      await pause(4000)
-      const deadline = Date.now() + 60_000
-      while (!hasTestApi() && Date.now() < deadline) await pause(1000)
+      await reloadApp(how)
     }
     const setWindowSize = async (w: number, h: number) => {
       evalRaw(

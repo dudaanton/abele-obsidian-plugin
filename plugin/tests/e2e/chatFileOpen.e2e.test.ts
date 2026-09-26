@@ -78,9 +78,17 @@ const script = `(async () => {
     await wait(200)
   }
   const openNote = async (mode) => {
-    if (leaf) leaf.detach()
-    leaf = app.workspace.getLeaf('tab')
+    // The tab before is closed once the new one is there: closed first, the tab Obsidian puts in
+    // its place when it was the last has never been active, and leaves nothing to open beside.
+    const before = leaf
+    // A new tab goes beside the tab most recently active in the main area. There is none when
+    // the last one was just closed, or the one Obsidian put in its place has never been active
+    // ("No tab group found"): a tab is then made in the main area directly.
+    try { leaf = app.workspace.getLeaf('tab') } catch {
+      leaf = app.workspace.createLeafInParent(app.workspace.rootSplit, 0)
+    }
     await leaf.setViewState({ type: 'markdown', state: { file: notePath, mode }, active: true })
+    if (before && before !== leaf) before.detach()
     app.workspace.setActiveLeaf(leaf, { focus: true })
     await until(() => leaf.view?.file?.path === notePath, 5000)
     await wait(300)

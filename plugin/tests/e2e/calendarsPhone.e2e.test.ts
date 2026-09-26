@@ -15,7 +15,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildSync } from 'esbuild'
-import { hasTestApi, isObsidianRunning, evalRaw } from './helpers/obsidianCli'
+import { evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { LINK_TOKEN } from '../helpers/fakeCalendarServer'
 
 const PHONE = { width: 390, height: 844 }
@@ -125,10 +125,7 @@ function calendarAroundToday(): string {
 
 /** Reloads the page and waits for the plugin to be back. */
 const reload = async (how: string): Promise<void> => {
-  evalRaw(`(() => { setTimeout(() => { ${how} }, 50); return 'ok' })()`, 30_000)
-  await pause(4000)
-  const deadline = Date.now() + 60_000
-  while (!hasTestApi() && Date.now() < deadline) await pause(1000)
+  await reloadApp(how)
 }
 
 const windowSize = (): [number, number] =>

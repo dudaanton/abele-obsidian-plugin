@@ -30,7 +30,7 @@
  * Requires Obsidian running on the demo vault with the development build — see docs/Testing.md.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
-import { isObsidianRunning, hasTestApi, evalRaw, evalJson } from './helpers/obsidianCli'
+import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 
 /** `evalRaw` for a script that resolves to a JSON-serializable value, parsed directly. */
 const evalAsync = <T>(script: string, timeoutMs: number): T =>
@@ -289,12 +289,11 @@ const setMobile = async (on: boolean): Promise<void> => {
     `(() => {
       const close = document.querySelector('.modal-close-button')
       if (close) close.click()
-      app.emulateMobile(${on});
       return 'ok'
     })()`,
     30_000
   )
-  await new Promise((resolve) => setTimeout(resolve, 3000))
+  await reloadApp(`app.emulateMobile(${on})`)
 }
 
 /**

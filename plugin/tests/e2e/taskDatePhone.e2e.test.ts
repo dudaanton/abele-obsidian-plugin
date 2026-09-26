@@ -30,11 +30,12 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
-  isObsidianRunning,
-  hasTestApi,
-  evalRaw,
-  evalJson,
   activeVaultName,
+  evalJson,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
 } from './helpers/obsidianCli'
 
 const PHONE = { width: 390, height: 844 }
@@ -253,8 +254,7 @@ const probeScript = `(async () => {
 
 /** Closes anything standing over the note and switches emulation, letting the reload settle. */
 const setMobile = async (on: boolean): Promise<void> => {
-  evalRaw(`(() => { app.emulateMobile(${on}); return 'ok' })()`, 30_000)
-  await new Promise((resolve) => setTimeout(resolve, 4000))
+  await reloadApp(`app.emulateMobile(${on})`)
 }
 
 const windowSize = (): [number, number] =>

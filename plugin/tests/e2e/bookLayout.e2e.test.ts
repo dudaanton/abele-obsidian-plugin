@@ -13,7 +13,14 @@
  * something. Pictures go to `/tmp/abele-phone/layout-*.png`.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, evalJson, runCli } from './helpers/obsidianCli'
+import {
+  evalJson,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+  runCli,
+} from './helpers/obsidianCli'
 import { evalAsync } from './helpers/githubLive'
 import { buildProseEpub, PROSE_BOOK_ID } from '../fixtures/books/proseBook'
 
@@ -34,10 +41,7 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
   await pause(1500)
 }
 const reload = async (how: string): Promise<void> => {
-  evalRaw(`(() => { setTimeout(() => { ${how} }, 50); return 'ok' })()`, 30_000)
-  await pause(4000)
-  const deadline = Date.now() + 60_000
-  while (!hasTestApi() && Date.now() < deadline) await pause(1000)
+  await reloadApp(how)
   // The DevTools debugger the pictures are taken through, which a fresh start leaves detached.
   runCli(['dev:debug', 'on'], 30_000)
   evalRaw(

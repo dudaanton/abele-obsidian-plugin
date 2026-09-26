@@ -13,10 +13,11 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
-  isObsidianRunning,
-  hasTestApi,
-  evalRaw,
   evalJson,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
   setBackgroundThrottling,
 } from './helpers/obsidianCli'
 
@@ -222,12 +223,11 @@ const setMobile = async (on: boolean): Promise<void> => {
     `(() => {
       const close = document.querySelector('.modal-close-button')
       if (close) close.click()
-      app.emulateMobile(${on});
       return 'ok'
     })()`,
     30_000
   )
-  await new Promise((resolve) => setTimeout(resolve, 4000))
+  await reloadApp(`app.emulateMobile(${on})`)
 }
 
 const windowSize = (): [number, number] =>
@@ -260,8 +260,7 @@ describe.skipIf(!available)('the documentation', () => {
     // Wide enough for the contents and the page side by side between both sidebars: below
     // that the view hides its contents behind the menu button, as it does on a phone.
     await setWindowSize(DESKTOP.width, DESKTOP.height)
-    evalRaw(`(() => { setTimeout(() => location.reload(), 100); return 'ok' })()`, 30_000)
-    await new Promise((resolve) => setTimeout(resolve, 5000))
+    await reloadApp()
     setBackgroundThrottling(false)
     desktop = evalAsync<Report>(desktopProbe, 60_000)
 

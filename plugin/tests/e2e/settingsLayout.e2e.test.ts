@@ -169,7 +169,7 @@ const probeFor = (phone: boolean) =>
     const mcpBefore = config?.ai.mcpServers
     const shoot = async (name) => {
       const { remote } = require('electron')
-      const w = remote.BrowserWindow.getAllWindows().find((x) => x.getTitle().startsWith('Settings'))
+      const w = remote.BrowserWindow.getAllWindows().find((x) => x.getTitle().startsWith('Settings - ' + app.vault.getName() + ' - '))
       if (!w) return
       require('fs').mkdirSync('/tmp/abele-phone', { recursive: true })
       const image = await w.webContents.capturePage()
@@ -222,7 +222,7 @@ const probeFor = (phone: boolean) =>
 
   const { remote } = require('electron')
   const settingsWindow = remote.BrowserWindow.getAllWindows()
-    .find((w) => w.getTitle().startsWith('Settings'))
+    .find((w) => w.getTitle().startsWith('Settings - ' + app.vault.getName() + ' - '))
   if (settingsWindow) settingsWindow.close()
 
   window.__abeleLayoutProbe = report
@@ -232,8 +232,10 @@ const resize = (width: number) =>
   `(() => {
     const { remote } = require('electron')
     app.setting.open()
+    // This vault's own settings window, by its title "Settings - <vault> - Obsidian 1.x": other
+    // vaults open in the same app have theirs, and the first one found was often not ours.
     const w = remote.BrowserWindow.getAllWindows()
-      .find((x) => x.getTitle().startsWith('Settings'))
+      .find((x) => x.getTitle().startsWith('Settings - ' + app.vault.getName() + ' - '))
     if (w) w.setSize(${width}, 800)
     return w ? w.getSize()[0] : 0
   })()`
