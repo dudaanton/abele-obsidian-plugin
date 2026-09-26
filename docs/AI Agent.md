@@ -455,6 +455,21 @@ saves at least once per tool call.
 It also means a write cut short by a crash costs the last line rather than the file, and that
 the file can be read with `head`, searched with `grep`, and repaired by deleting a line.
 
+A crash is survived at any moment, not only between writes:
+
+- **An append** starts on a line of its own whenever the file may end in a torn line — one found
+  on opening, or left by a write that failed — so the first record after a crash is not glued
+  onto the torn one and lost with it.
+- **A rewrite** goes to a copy in the plugin's folder (`chat-backups/`) first, then to the file,
+  and the copy is removed once the file is whole. Obsidian empties a file and writes it a piece
+  at a time, so an app killed between pieces leaves it cut short; opening such a file finds the
+  whole copy beside it and puts it back. A copy that is itself cut short, or one older than the
+  file, is dropped.
+- **Reading** takes back a whole record found glued onto a torn one, and a message whose parent
+  is missing is hung onto the message written before it. A message is shown by walking up from
+  the newest, parent by parent, so one lost record used to hide the whole conversation before
+  it.
+
 ### Format Versions
 
 | Version | Written by | Shape |

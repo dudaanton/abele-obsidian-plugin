@@ -79,6 +79,7 @@ import {
   getPathToLeaf,
   findDeepestLeaf,
   findDefaultLeaf,
+  reattachOrphans,
   getInternalMessagesForPath,
   backfillParentIds,
   backfillChatMessageIds,
@@ -2034,6 +2035,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       // The change is still only in memory, so it stays pending rather than being dropped:
       // the next save retries it, and a flush at close gets one more chance.
       this.dirty = true
+      // A write that failed may have written part of itself; the retry starts on a new line.
+      this.log.interrupted()
       console.error('[Abele] Failed to save chat', err)
     } finally {
       this.writing = null
@@ -2201,8 +2204,17 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
       backfillChatMessageIds(this.allChatMessages, this.allInternalMessages)
     }
 
+    // After `adopt`, so the repaired links differ from what the file holds and are written back.
+    if (reattachOrphans(this.allChatMessages)) {
+      console.warn(`[Abele] ${file.path}: reconnected messages cut off by a damaged record`)
+    }
+
+    // The newest message it names may be the one a crash lost.
+    const leaf = result.metadata?.activeLeafId
     this.activeLeafId =
-      result.metadata?.activeLeafId || findDefaultLeaf(this.allChatMessages)?.id || null
+      (leaf && this.allChatMessages.some((m) => m.id === leaf) ? leaf : null) ||
+      findDefaultLeaf(this.allChatMessages)?.id ||
+      null
     this.updateVisibleMessages()
 
     this.userMessageCount = this.messages.value.filter((m) => m.role === 'user').length

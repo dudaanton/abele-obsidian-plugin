@@ -140,3 +140,23 @@ export function backfillChatMessageIds(
     }
   }
 }
+
+/**
+ * Hangs every message whose parent is missing onto the message written just before it.
+ *
+ * A message is shown by walking up from the newest one, parent by parent, so one missing
+ * message hides everything written before it — a file damaged by a crash showed only what came
+ * after the damage, with the start of the conversation still in the file and out of reach. The
+ * message before it in the file is the best stand-in there is: in a conversation that never
+ * branched it is the lost message's own parent. Returns how many were reattached.
+ */
+export function reattachOrphans(messages: ChatMessage[]): number {
+  const ids = new Set(messages.map((m) => m.id))
+  let reattached = 0
+  messages.forEach((message, i) => {
+    if (!message.parentId || ids.has(message.parentId)) return
+    message.parentId = i > 0 ? messages[i - 1].id : undefined
+    reattached++
+  })
+  return reattached
+}

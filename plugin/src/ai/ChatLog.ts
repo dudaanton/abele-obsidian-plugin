@@ -35,6 +35,12 @@ export interface ParsedChat {
   version: 1 | 2
   /** Lines that could not be parsed — a torn final write, or a bad hand-edit. */
   damaged: number
+  /**
+   * The file does not end with a line break: a write was cut short, most likely by the app
+   * being killed while it waited for the next piece of a long write. Whatever is appended next
+   * must start on a line of its own, or it is glued to the torn line and lost with it.
+   */
+  torn: boolean
 }
 
 export type ChatWritePlan =
@@ -146,9 +152,12 @@ function parseLog(content: string): ParsedChat {
       record = JSON.parse(line)
     } catch {
       // A write torn by a crash loses its last line and nothing else, which is the point of
-      // the format. Anything else here is a hand-edit that went wrong.
+      // the format. Anything else here is a hand-edit that went wrong — or a torn line that
+      // the next session's first append was glued onto, whose record is still whole at its end.
       damaged++
-      continue
+      const salvaged = salvageGlued(line)
+      if (!salvaged) continue
+      record = salvaged
     }
     records++
 
@@ -175,7 +184,42 @@ function parseLog(content: string): ParsedChat {
     }
   }
 
-  return { metadata, messages, internalMessages, records, version: 2, damaged }
+  return {
+    metadata,
+    messages,
+    internalMessages,
+    records,
+    version: 2,
+    damaged,
+    torn: isTorn(content),
+  }
+}
+
+const isTorn = (content: string): boolean => content.length > 0 && !content.endsWith('\n')
+
+/** Where a record can begin: every line the writer produces starts with one of these. */
+const RECORD_START = /\{"(?:k":"(?:msg|int)"|v":\d+,"k":"meta")/g
+
+/**
+ * The whole record at the end of a line that starts with a torn one.
+ *
+ * Builds before 1.46.1 appended straight after whatever the file ended with, so a line cut
+ * short by a crash took the first record of the next session's first append down with it. That
+ * record is intact from where it starts to the end of the line: inside a JSON string a quote is
+ * escaped, so the first unescaped record opening after the start of the line is where it
+ * begins.
+ */
+function salvageGlued(line: string): Record<string, unknown> | null {
+  for (const match of line.matchAll(RECORD_START)) {
+    if (match.index === 0) continue
+    try {
+      const record = JSON.parse(line.slice(match.index)) as unknown
+      if (record && typeof record === 'object') return record as Record<string, unknown>
+    } catch {
+      // A record opening inside the torn part, or one torn itself: try the next.
+    }
+  }
+  return null
 }
 
 function parseLegacy(content: string): ParsedChat {
@@ -192,6 +236,7 @@ function parseLegacy(content: string): ParsedChat {
       records: 0,
       version: 1,
       damaged: 0,
+      torn: false,
     }
   } catch {
     return {
@@ -201,6 +246,7 @@ function parseLegacy(content: string): ParsedChat {
       records: 0,
       version: 1,
       damaged: 0,
+      torn: isTorn(content),
     }
   }
 }
@@ -216,6 +262,8 @@ export class ChatLogWriter {
   private messageLines = new Map<string, string>()
   private internalCount = 0
   private records = 0
+  /** Whether the file is known to end with a whole line, so an append may start right there. */
+  private clean = true
 
   /** Seeds the writer from a file just read, so the next save appends rather than rewrites. */
   adopt(parsed: ParsedChat): void {
@@ -229,6 +277,15 @@ export class ChatLogWriter {
     this.messageLines = new Map(parsed.messages.map((m) => [m.id, messageLine(m)]))
     this.internalCount = parsed.internalMessages.length
     this.records = parsed.records
+    this.clean = !parsed.torn
+  }
+
+  /**
+   * A write failed part way, or may have: the file can end in a torn line now, so the next
+   * append starts with a line break of its own.
+   */
+  interrupted(): void {
+    this.clean = false
   }
 
   /** Forgets the file, so the next save writes the whole conversation. */
@@ -237,6 +294,7 @@ export class ChatLogWriter {
     this.messageLines = new Map()
     this.internalCount = 0
     this.records = 0
+    this.clean = true
   }
 
   /** What the next write should be. Pure: call `commit` once the write has happened. */
@@ -268,7 +326,9 @@ export class ChatLogWriter {
       return { kind: 'rewrite', content: serializeChat(snapshot), records: live }
     }
 
-    return { kind: 'append', data: lines.join('\n') + '\n', records }
+    // A blank line costs nothing to read back; a record glued to a torn one is lost with it.
+    const start = this.clean ? '' : '\n'
+    return { kind: 'append', data: start + lines.join('\n') + '\n', records }
   }
 
   /** Records that the planned write reached the file. */
@@ -279,5 +339,6 @@ export class ChatLogWriter {
     this.messageLines = new Map(snapshot.messages.map((m) => [m.id, messageLine(m)]))
     this.internalCount = snapshot.internalMessages.length
     this.records = plan.records
+    this.clean = true
   }
 }

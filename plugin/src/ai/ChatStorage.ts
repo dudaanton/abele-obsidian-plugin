@@ -7,6 +7,7 @@ import { renderTemplate } from '@/helpers/notesUtils'
 import { DATE_FORMAT } from '@/constants/dates'
 import { AiChatHistoryEntry, DEFAULT_AI_SETTINGS, type TouchedNote } from './types'
 import { RunStorage } from './RunStorage'
+import { readChat, rewriteChat } from './chatCopy'
 import { ChatService } from './ChatService'
 import {
   parseChat,
@@ -57,7 +58,7 @@ export class ChatStorage {
 
     if (existingFile) {
       if (plan.kind === 'append') await app.vault.append(existingFile, plan.data)
-      else await app.vault.modify(existingFile, plan.content)
+      else await rewriteChat(app, existingFile, plan.content)
       this.updateHistoryEntry(
         existingFile.path,
         metadata.title || existingFile.basename,
@@ -89,7 +90,7 @@ export class ChatStorage {
 
   async loadChat(file: TFile): Promise<ParsedChat> {
     const { app } = GlobalStore.getInstance()
-    const parsed = parseChat(await app.vault.read(file))
+    const parsed = await readChat(app, file)
 
     if (parsed.damaged) {
       console.warn(`[Abele] ${file.path}: skipped ${parsed.damaged} unreadable record(s)`)

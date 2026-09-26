@@ -141,7 +141,10 @@ for the person to insert into a chat. Both are ordinary notes and can be edited 
 
 ## Chats
 
-Chats are `.abchat` files under the chat folder, one JSON record per line. Besides the
+Chats are `.abchat` files under the chat folder, one JSON record per line. While one is being
+rewritten whole, a copy of the new content sits in the plugin's folder under `chat-backups/`, on
+this device only, and goes once the file is written; a file found cut short by a crash is put
+back from it. Besides the
 conversation, a chat's metadata record remembers what it *did*: `touched` lists the notes it
 is linked to — the ones it wrote to (created, edited, replaced, moved or copied into place,
 never merely read), each with the time it was last written, and the ones the person attached it

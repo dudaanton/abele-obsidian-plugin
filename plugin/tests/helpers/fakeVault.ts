@@ -282,6 +282,8 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
   // Caches derived once, mirroring Obsidian's own precomputed metadata.
   const cacheByPath = new Map<string, FakeFileCache>()
   const rawByPath = new Map<string, string>()
+  /** Files written through the adapter alone, which the vault index never lists. */
+  const hidden = new Map<string, string>()
   const resolvedLinks: Record<string, Record<string, number>> = {}
 
   for (const spec of specs) {
@@ -427,11 +429,27 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         return ensureFolder(path)
       },
 
-      // Obsidian's raw filesystem view. Only existence is modelled: code that picks a free
-      // path asks the adapter rather than the file index.
+      configDir: '.obsidian',
+      // Obsidian's raw filesystem view. Existence is what code picking a free path asks; the
+      // rest is for files kept out of the vault's index, in the plugin's folder.
       adapter: {
         async exists(path: string) {
-          return byPath.has(path) || folders.has(path)
+          return byPath.has(path) || folders.has(path) || hidden.has(path)
+        },
+        async read(path: string) {
+          const content = hidden.get(path) ?? rawByPath.get(path)
+          if (content === undefined) throw new Error(`ENOENT: ${path}`)
+          return content
+        },
+        async write(path: string, data: string) {
+          stats.written += data.length
+          hidden.set(path, data)
+        },
+        async remove(path: string) {
+          hidden.delete(path)
+        },
+        async mkdir(path: string) {
+          hidden.set(path, '')
         },
       },
       async delete(file: TFile) {
