@@ -23,6 +23,7 @@
           :key="day"
           class="abele-calendar-week__all-day-cell"
           :data-day="day"
+          :data-drop-day="day"
           @click="canCreate && emit('create', day, null)"
         >
           <CalendarChip
@@ -48,6 +49,8 @@
             class="abele-calendar-week__column"
             :class="{ 'abele-calendar-week__column_today': day === today }"
             :data-day="day"
+            :data-drop-day="day"
+            data-drop-hours
             @click="onColumnClick(day, $event)"
           >
             <div v-for="h in 24" :key="h" class="abele-calendar-week__slot" />
@@ -86,7 +89,8 @@
 /**
  * A week as seven columns: what has no time, or lasts several days, in a row at the top, and
  * the rest on the hours by when it starts and ends. Things at the same time share the width.
- * Pressing an empty hour makes a note at that hour.
+ * Pressing an empty hour makes a note at that hour; a note dragged onto the hours takes the one
+ * it is let go at, onto the row at the top keeps its time and only changes its day.
  */
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import dayjs from 'dayjs'

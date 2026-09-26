@@ -9,7 +9,7 @@
  * Everything made is removed afterwards: the fixture vault holds `ScaleTest/` and nothing else.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw } from './helpers/obsidianCli'
+import { hasTestApi, isObsidianRunning, evalRaw, reloadApp } from './helpers/obsidianCli'
 
 const PHONE = { width: 390, height: 844 }
 const SHOTS = '/tmp/abele-phone'
@@ -54,6 +54,9 @@ const BASE = `filters:
 views:
   - type: abele-calendar
     name: Calendar
+    sort:
+      - property: file.name
+        direction: DESC
 `
 
 /** Shared by every script: waiting, measuring what reaches past an edge, taking a picture. */
@@ -101,15 +104,34 @@ const PRELUDE = `
     await wait(600)
   }
   const chips = (el) => el ? [...el.querySelectorAll('.abele-calendar-chip__title')].map((c) => c.textContent.trim()) : []
+  const chipOf = (el, title) => [...(el?.querySelectorAll('.abele-calendar-chip') ?? [])].find((c) => c.querySelector('.abele-calendar-chip__title')?.textContent.trim() === title)
+  const pe = (type, x, y, kind) => new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 7, pointerType: kind || 'mouse', isPrimary: true, clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1 })
+  const center = (el) => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2] }
+  /** Drags a chip to a point the way a mouse or a finger would, a picture taken on the way. */
+  const drag = async (chip, x, y, kind, shot) => {
+    if (!chip) return 'no chip'
+    const [sx, sy] = center(chip)
+    chip.dispatchEvent(pe('pointerdown', sx, sy, kind))
+    if (kind === 'touch') await wait(600)
+    window.dispatchEvent(pe('pointermove', sx + 8, sy + 8, kind))
+    await wait(50)
+    window.dispatchEvent(pe('pointermove', x, y, kind))
+    await wait(150)
+    const under = document.querySelector('.abele-calendar-drop-target')?.dataset.dropDay ?? null
+    if (shot) await picture(shot)
+    window.dispatchEvent(pe('pointerup', x, y, kind))
+    chip.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    return under
+  }
+  const fm = async (name) => {
+    await wait(1500)
+    const file = app.vault.getAbstractFileByPath(${JSON.stringify(`${FOLDER}/Tasks/`)} + name + '.md')
+    return { ...(app.metadataCache.getFileCache(file)?.frontmatter ?? {}) }
+  }
 `
 
-/** Reloads the page and waits for the plugin to be back. */
-const reload = async (how: string): Promise<void> => {
-  evalRaw(`(() => { setTimeout(() => { ${how} }, 50); return 'ok' })()`, 30_000)
-  await pause(4000)
-  const deadline = Date.now() + 60_000
-  while (!hasTestApi() && Date.now() < deadline) await pause(1000)
-}
+/** Reloads the page, the phone emulation this window alone asked for kept or changed. */
+const reload = (how: string): Promise<void> => reloadApp(how)
 
 const windowSize = (): [number, number] =>
   JSON.parse(
@@ -134,6 +156,9 @@ interface Desktop {
   weekAllDay?: Record<string, string[]>
   heat?: string
   stored?: string
+  sorted?: string[]
+  panel?: { day?: string; items?: string[]; mode?: string }
+  moves?: Record<string, unknown>
 }
 
 interface Phone {
@@ -145,6 +170,9 @@ interface Phone {
   over?: Record<string, string[]>
   weekScrolls?: boolean
   shots?: string[]
+  touchOver?: string | null
+  touchMoved?: string
+  agendaAfter?: string
 }
 
 describe.skipIf(!available)('the calendar view of a base', () => {
@@ -178,7 +206,17 @@ describe.skipIf(!available)('the calendar view of a base', () => {
         report.more = cell(${JSON.stringify(busyDay)})?.querySelector('.abele-calendar-month__more')?.textContent.trim()
         report.undated = root.querySelector('.abele-calendar-base__undated')?.textContent.trim()
         report.done = !!cell(${JSON.stringify(today)})?.querySelector('.abele-calendar-chip_done')
+        report.sorted = chips(cell(${JSON.stringify(today)}))
+        cell(${JSON.stringify(plus(1))}).click()
+        await wait(400)
+        const agenda = root.querySelector('.abele-calendar-base__agenda')
+        report.panel = { day: agenda?.dataset.day, items: chips(agenda), mode: root.dataset.mode }
         await picture('calendar-base-desktop-month.png')
+        agenda?.scrollIntoView({ block: 'end' })
+        await wait(400)
+        await picture('calendar-base-desktop-day.png')
+        root.scrollIntoView({ block: 'start' })
+        await wait(300)
 
         await tab(root, 'Week')
         report.weekBlocks = {}
@@ -198,6 +236,33 @@ describe.skipIf(!available)('the calendar view of a base', () => {
         await picture('calendar-base-desktop-year.png')
         await wait(1500)
         report.stored = await app.vault.adapter.read(${JSON.stringify(`${FOLDER}/Calendar.base`)})
+        await tab(root, 'Month')
+
+        // Dragging: a deadline onto today, a span a day back, keeping its length.
+        report.moves = {}
+        const cellCenter = (d) => center(cell(d))
+        report.moves.deadlineOver = await drag(chipOf(cell(${JSON.stringify(plus(1))}), 'Only a deadline'), ...cellCenter(${JSON.stringify(today)}), 'mouse', 'calendar-base-desktop-drag.png')
+        report.moves.deadline = (await fm('Only a deadline')).due
+        await drag(chipOf(cell(${JSON.stringify(plus(2))}), 'Trip'), ...cellCenter(${JSON.stringify(plus(1))}), 'mouse')
+        const trip = await fm('Trip')
+        report.moves.trip = [trip.date, trip.due]
+        report.moves.opened = app.workspace.getActiveFile()?.path ?? null
+
+        // On the week's hours: the standup to two in the afternoon.
+        await tab(root, 'Week')
+        const column = root.querySelector('.abele-calendar-week__column[data-day="' + ${JSON.stringify(today)} + '"]')
+        const hours = root.querySelector('.abele-calendar-week__hours')
+        hours.scrollTop = column.offsetHeight * 12 / 24
+        await wait(300)
+        const box = column.getBoundingClientRect()
+        const standup = chipOf(column, 'Standup')
+        const grab = standup ? standup.getBoundingClientRect() : null
+        // Taken by its middle, let go where its top reaches 14:00.
+        const y = box.top + box.height * 14 / 24 + (grab ? grab.height / 2 : 0) + 2
+        report.moves.standupOver = await drag(chipOf(column, 'Standup'), box.left + box.width / 2, y, 'mouse', 'calendar-base-desktop-week-drag.png')
+        const moved = await fm('Standup')
+        report.moves.standup = [moved.date, moved.dateTime]
+        report.moves.created = app.vault.getFiles().filter((f) => f.path.startsWith(${JSON.stringify(`${FOLDER}/`)}) && f.path.includes('Untitled')).length
         await tab(root, 'Month')
       } catch (e) {
         report.error = String((e && e.message) || e)
@@ -247,6 +312,19 @@ describe.skipIf(!available)('the calendar view of a base', () => {
         report.over.year = overEdge(root)
         report.shots.push(await picture('calendar-base-year.png'))
         await tab(root, 'Month')
+
+        // A finger holds a note in the day's list and carries it onto another day.
+        root.querySelector('.abele-calendar-month__day[data-day="' + ${JSON.stringify(today)} + '"]')?.click()
+        await wait(400)
+        const target = root.querySelector('.abele-calendar-month__day[data-day="' + ${JSON.stringify(busyDay)} + '"]')
+        target?.scrollIntoView({ block: 'center' })
+        await wait(300)
+        const list = root.querySelector('.abele-calendar-base__agenda')
+        const [tx, ty] = center(target)
+        report.touchOver = await drag(chipOf(list, 'Standup'), tx, ty, 'touch', 'calendar-base-month-drag.png')
+        report.touchMoved = (await fm('Standup')).date
+        report.agendaAfter = root.querySelector('.abele-calendar-base__agenda')?.dataset.day
+        report.shots.push(await picture('calendar-base-month-dropped.png'))
       } catch (e) {
         report.error = String((e && e.message) || e)
       }
@@ -285,9 +363,38 @@ describe.skipIf(!available)('the calendar view of a base', () => {
   })
 
   it('folds a full day and counts the notes with no date', () => {
-    expect(desktop.month?.[busyDay]).toHaveLength(3)
     expect(desktop.more).toBe('+3 more')
     expect(desktop.undated).toBe('1 note has no date')
+  })
+
+  it("lists a day in the base's own sort, the done task last", () => {
+    expect(desktop.sorted).toEqual(['Standup', 'Done already'])
+    expect(desktop.month?.[busyDay]).toEqual(['Busy Two', 'Busy Three', 'Busy Six'])
+  })
+
+  it('shows a pressed day under the month instead of opening its week', () => {
+    expect(desktop.panel?.mode).toBe('month')
+    expect(desktop.panel?.day).toBe(plus(1))
+    expect(desktop.panel?.items).toEqual(expect.arrayContaining(['Dentist', 'Only a deadline']))
+  })
+
+  it('moves a dragged note to its new day, a span keeping its length, nothing opened', () => {
+    expect(desktop.moves?.deadlineOver).toBe(today)
+    expect(desktop.moves?.deadline).toBe(today)
+    expect(desktop.moves?.trip).toEqual([plus(1), plus(3)])
+    expect(String(desktop.moves?.opened ?? '')).not.toMatch(/Tasks\//)
+  })
+
+  it('moves a note dragged on the hours of the week to that hour', () => {
+    expect(desktop.moves?.standupOver).toBe(today)
+    expect(desktop.moves?.standup).toEqual([today, '14:00'])
+    expect(desktop.moves?.created).toBe(0)
+  })
+
+  it('on a phone: a note held in the day list and carried onto another day moves there', () => {
+    expect(phone.touchOver).toBe(busyDay)
+    expect(phone.touchMoved).toBe(busyDay)
+    expect(phone.agendaAfter).toBe(busyDay)
   })
 
   it('puts timed notes on the hours of the week and the rest at the top', () => {

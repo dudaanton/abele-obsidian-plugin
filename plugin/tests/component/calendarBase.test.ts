@@ -45,6 +45,7 @@ function makeInstance(items: CalendarItem[], mode: CalendarMode = 'month') {
     open: vi.fn(),
     hover: vi.fn(),
     create: vi.fn(),
+    move: vi.fn(),
   }
   return instance satisfies CalendarBaseInstance
 }
@@ -167,12 +168,27 @@ describe('a month', () => {
     expect(view.find('.abele-calendar-base__title').text()).toBe('September 2026')
   })
 
-  it('opens the week of a day whose number is pressed', async () => {
-    const instance = makeInstance([])
+  it('shows a pressed day under the month, and opens its week from there', async () => {
+    const instance = makeInstance([
+      item('Dentist'),
+      item('Pay rent', { start: '2026-09-09', end: '2026-09-09' }),
+    ])
     const view = render(instance)
-    await cell(view, '2026-09-09').find('.abele-calendar-month__day-number').trigger('click')
+    // Today is picked to begin with.
+    expect(titles(view.find('.abele-calendar-base__agenda'))).toEqual(['Dentist'])
+    await cell(view, '2026-09-09').trigger('click')
+    expect(instance.setMode).not.toHaveBeenCalled()
+    expect(cell(view, '2026-09-09').classes()).toContain('abele-calendar-month__day_selected')
+    expect(view.find('.abele-calendar-base__agenda').attributes('data-day')).toBe('2026-09-09')
+    expect(titles(view.find('.abele-calendar-base__agenda'))).toEqual(['Pay rent'])
+    await cell(view, '2026-09-26').find('.abele-calendar-month__day-number').trigger('click')
+    expect(titles(view.find('.abele-calendar-base__agenda'))).toEqual(['Dentist'])
+    await view.find('.abele-calendar-base__agenda-new').trigger('click')
+    expect(instance.create).toHaveBeenCalledWith('2026-09-26', null)
+
+    await view.find('.abele-calendar-base__agenda-week').trigger('click')
     expect(instance.setMode).toHaveBeenCalledWith('week')
-    expect(view.find('.abele-calendar-base__title').text()).toBe('September 7 – 13, 2026')
+    expect(view.find('.abele-calendar-base__title').text()).toBe('September 21 – 27, 2026')
   })
 
   it('shows the groups the base colours by, and how many notes have no date', () => {
@@ -207,7 +223,7 @@ describe('a narrow month', () => {
 
     await cell(view, '2026-09-27').trigger('click')
     expect(titles(view.find('.abele-calendar-base__agenda'))).toEqual(['Lunch'])
-    await view.find('.abele-calendar-base__agenda button').trigger('click')
+    await view.find('.abele-calendar-base__agenda-new').trigger('click')
     expect(instance.create).toHaveBeenCalledWith('2026-09-27', null)
 
     await cell(view, '2026-09-10').trigger('click')
@@ -270,7 +286,7 @@ describe('a week', () => {
 })
 
 describe('a year', () => {
-  it('tints each day by how much is on it, and opens a month or a week from it', async () => {
+  it('tints each day by how much is on it, lists a picked day, and opens a month', async () => {
     const instance = makeInstance(
       [item('a'), item('b'), item('c', { start: '2026-03-02', end: '2026-03-02' })],
       'year'
@@ -284,14 +300,139 @@ describe('a year', () => {
     expect(day('2026-03-03').classes()).toContain('abele-calendar-year__day_heat-0')
 
     await day('2026-03-02').trigger('click')
-    expect(instance.setMode).toHaveBeenLastCalledWith('week')
-    expect(view.find('.abele-calendar-base__title').text()).toBe('March 2 – 8, 2026')
+    expect(instance.setMode).not.toHaveBeenCalled()
+    expect(day('2026-03-02').classes()).toContain('abele-calendar-year__day_selected')
+    expect(titles(view.find('.abele-calendar-base__agenda'))).toEqual(['c'])
 
-    instance.mode.value = 'year'
-    await nextTick()
     await view.findAll('.abele-calendar-year__month-name')[4].trigger('click')
     expect(instance.setMode).toHaveBeenLastCalledWith('month')
     expect(view.find('.abele-calendar-base__title').text()).toBe('May 2026')
+  })
+})
+
+describe('dragging a note', () => {
+  /** A pointer event as jsdom can make one: it has no PointerEvent of its own. */
+  const pointer = (type: string, x: number, y: number, pointerType = 'mouse') => {
+    const event = new MouseEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: y,
+      button: 0,
+    })
+    Object.defineProperty(event, 'pointerId', { value: 1 })
+    Object.defineProperty(event, 'pointerType', { value: pointerType })
+    return event
+  }
+  let under: Element | null = null
+
+  beforeEach(() => {
+    under = null
+    document.elementFromPoint = () => under
+    vi.stubGlobal('requestAnimationFrame', () => 0)
+    vi.stubGlobal('cancelAnimationFrame', () => {})
+  })
+
+  // The guard against the click that follows a drop lasts one turn; let it go before the next.
+  afterEach(() => {
+    vi.useRealTimers()
+    return new Promise((resolve) => setTimeout(resolve, 0))
+  })
+
+  it('moves a note to the day it is let go on, and does not open it', async () => {
+    const instance = makeInstance([item('Dentist')])
+    const view = render(instance)
+    const chip = cell(view, '2026-09-26').find('.abele-calendar-chip').element
+    chip.dispatchEvent(pointer('pointerdown', 10, 10))
+    under = cell(view, '2026-09-29').element
+    window.dispatchEvent(pointer('pointermove', 60, 90))
+    expect(document.querySelector('.abele-calendar-drag-ghost')?.textContent).toBe('Dentist')
+    expect(cell(view, '2026-09-29').classes()).toContain('abele-calendar-drop-target')
+    window.dispatchEvent(pointer('pointerup', 60, 90))
+    chip.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(instance.move).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Dentist' }),
+      '2026-09-26',
+      '2026-09-29',
+      null
+    )
+    expect(instance.open).not.toHaveBeenCalled()
+    expect(document.querySelector('.abele-calendar-drag-ghost')).toBeNull()
+  })
+
+  it('a small wobble of the mouse is still a press', async () => {
+    const instance = makeInstance([item('Dentist')])
+    const view = render(instance)
+    const chip = cell(view, '2026-09-26').find('.abele-calendar-chip')
+    chip.element.dispatchEvent(pointer('pointerdown', 10, 10))
+    window.dispatchEvent(pointer('pointermove', 12, 11))
+    window.dispatchEvent(pointer('pointerup', 12, 11))
+    await chip.trigger('click')
+    expect(instance.move).not.toHaveBeenCalled()
+    expect(instance.open).toHaveBeenCalled()
+  })
+
+  it('takes a finger only once it has rested on the note, and lets a swipe scroll', async () => {
+    vi.useRealTimers()
+    vi.useFakeTimers({ now: new Date(2026, 8, 26, 10, 30) })
+    const instance = makeInstance([item('Dentist')])
+    const view = render(instance)
+    const chip = cell(view, '2026-09-26').find('.abele-calendar-chip').element
+    // A swipe: moved before the hold, nothing is picked up.
+    chip.dispatchEvent(pointer('pointerdown', 10, 10, 'touch'))
+    window.dispatchEvent(pointer('pointermove', 10, 60, 'touch'))
+    vi.advanceTimersByTime(600)
+    expect(document.querySelector('.abele-calendar-drag-ghost')).toBeNull()
+    window.dispatchEvent(pointer('pointerup', 10, 60, 'touch'))
+    // A hold, then a move.
+    chip.dispatchEvent(pointer('pointerdown', 10, 10, 'touch'))
+    vi.advanceTimersByTime(600)
+    under = cell(view, '2026-09-24').element
+    window.dispatchEvent(pointer('pointermove', 10, 60, 'touch'))
+    window.dispatchEvent(pointer('pointerup', 10, 60, 'touch'))
+    expect(instance.move).toHaveBeenCalledWith(expect.anything(), '2026-09-26', '2026-09-24', null)
+    vi.runOnlyPendingTimers()
+  })
+
+  it('puts a note on the hour of the week it is let go at, to the quarter', async () => {
+    const instance = makeInstance([item('Dentist', { startMinute: 540, endMinute: 600 })], 'week')
+    const view = render(instance)
+    const column = view.find('.abele-calendar-week__column[data-day="2026-09-24"]')
+    vi.spyOn(column.element, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      left: 0,
+      width: 100,
+      height: 1440,
+    } as DOMRect)
+    const chip = view.find(
+      '.abele-calendar-week__column[data-day="2026-09-26"] .abele-calendar-chip'
+    )
+    // Taken at its top edge, so where it is let go is where it starts.
+    vi.spyOn(chip.element, 'getBoundingClientRect').mockReturnValue({ top: 540 } as DOMRect)
+    chip.element.dispatchEvent(pointer('pointerdown', 10, 540))
+    under = column.element
+    window.dispatchEvent(pointer('pointermove', 50, 14 * 60 + 20))
+    expect(document.querySelector('.abele-calendar-drop-marker')?.textContent).toBe('14:15')
+    window.dispatchEvent(pointer('pointerup', 50, 14 * 60 + 20))
+    expect(instance.move).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Dentist' }),
+      '2026-09-26',
+      '2026-09-24',
+      14 * 60 + 15
+    )
+    expect(instance.create).not.toHaveBeenCalled()
+  })
+
+  it('leaves events and a formula date where they are', () => {
+    const instance = makeInstance([item('Dentist')])
+    instance.canCreate.value = false
+    const view = render(instance)
+    const chip = cell(view, '2026-09-26').find('.abele-calendar-chip').element
+    chip.dispatchEvent(pointer('pointerdown', 10, 10))
+    under = cell(view, '2026-09-29').element
+    window.dispatchEvent(pointer('pointermove', 60, 90))
+    window.dispatchEvent(pointer('pointerup', 60, 90))
+    expect(instance.move).not.toHaveBeenCalled()
   })
 })
 

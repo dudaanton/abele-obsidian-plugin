@@ -35,6 +35,11 @@ export interface CalendarItem {
   endMinute: number | null
   color: KitColor | null
   completed: boolean
+  /**
+   * Its place in the base's own sort, when the base has one: a day then lists its notes in
+   * that order instead of the calendar's. Unset for events and for a base with no sort.
+   */
+  order?: number | null
 }
 
 // ---- days ------------------------------------------------------------------------------------
@@ -143,6 +148,7 @@ export interface ItemSource {
   endTime?: unknown
   color?: KitColor | null
   completed?: boolean
+  order?: number | null
 }
 
 /**
@@ -162,9 +168,10 @@ export function toItem(source: ItemSource): CalendarItem | null {
     title: source.title,
     color: source.color ?? null,
     completed: !!source.completed,
+    order: source.order ?? null,
   }
   if (!s) {
-    const due = e as ReadDate
+    const due = e
     const minute = due.minute ?? readTime(source.endTime)
     return { ...base, start: due.day, end: due.day, startMinute: minute, endMinute: null }
   }
@@ -183,6 +190,22 @@ export function toItem(source: ItemSource): CalendarItem | null {
   return { ...base, start: s.day, end, startMinute, endMinute }
 }
 
+/**
+ * A note's `order` for the day lists: its row in the base when the base sorts, pushed past every
+ * row when it is done and done tasks go last. Null when neither applies, so the calendar's own
+ * order decides; notes with equal orders fall back to it too.
+ */
+export function dayOrder(row: {
+  index: number
+  count: number
+  sorted: boolean
+  doneLast: boolean
+  completed: boolean
+}): number | null {
+  if (!row.sorted && !row.doneLast) return null
+  return (row.doneLast && row.completed ? row.count : 0) + (row.sorted ? row.index : 0)
+}
+
 // ---- placing -------------------------------------------------------------------------------
 
 export const isMultiDay = (item: CalendarItem): boolean => item.end > item.start
@@ -198,8 +221,15 @@ export interface PlacedItem {
   goesOn: boolean
 }
 
-/** Longer spans first, then things with no time, then by time, then by title. */
+/**
+ * The base's own sort first, when it has one — a base that puts done tasks last gets them last
+ * on every day too; things it did not sort (events) come after its notes. Then the calendar's
+ * order: longer spans first, then things with no time, then by time, then by title.
+ */
 export function compareItems(a: CalendarItem, b: CalendarItem): number {
+  const orderA = a.order ?? Infinity
+  const orderB = b.order ?? Infinity
+  if (orderA !== orderB) return orderA < orderB ? -1 : 1
   const spanA = isMultiDay(a) ? 1 : 0
   const spanB = isMultiDay(b) ? 1 : 0
   if (spanA !== spanB) return spanB - spanA
@@ -292,7 +322,7 @@ export function layoutTimed(items: readonly CalendarItem[]): TimedBlock[] {
   const blocks: TimedBlock[] = items
     .filter(isTimed)
     .map((item) => {
-      const top = item.startMinute!
+      const top = item.startMinute
       const wanted = item.endMinute ?? top + DEFAULT_DURATION
       const bottom = Math.min(MINUTES_IN_DAY, Math.max(wanted, top + MIN_DRAWN_DURATION))
       return { item, top, bottom, column: 0, columns: 1 }
@@ -346,6 +376,96 @@ export function newNoteFrontmatter(
   if (minute === null) return { [target.dateKey]: day }
   if (target.timeKey) return { [target.dateKey]: day, [target.timeKey]: clock(minute) }
   return { [target.dateKey]: `${day}T${clock(minute)}` }
+}
+
+// ---- moving a note -------------------------------------------------------------------------
+
+export interface MoveKeys {
+  /** Frontmatter keys of the view's properties; null for one that is not a note property. */
+  dateKey: string | null
+  timeKey: string | null
+  endKey: string | null
+  endTimeKey: string | null
+}
+
+const LEADING_DAY_RE = /^(\d{4}-\d{2}-\d{2})([\s\S]*)$/
+const EMBEDDED_TIME_RE = /^([T ])\d{1,2}:\d{2}/
+
+/**
+ * A date value moved by `shift` days, written as it was found: the rest of the text after the
+ * day is kept, and its time replaced when `minute` is given and the value carries one. A list
+ * has its first element moved. Undefined when the value holds no date.
+ */
+function shiftValue(value: unknown, shift: number, minute: number | null): unknown {
+  if (Array.isArray(value)) {
+    const first = shiftValue(value[0], shift, minute)
+    return first === undefined ? undefined : [first, ...value.slice(1)]
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return addDays(value.toISOString().slice(0, 10), shift)
+  }
+  if (typeof value !== 'string') return undefined
+  const m = LEADING_DAY_RE.exec(value.trim())
+  if (!m || Number.isNaN(dayNumber(m[1]))) return undefined
+  let rest = m[2]
+  if (minute !== null)
+    rest = rest.replace(EMBEDDED_TIME_RE, (_, sep: string) => sep + clock(minute))
+  return addDays(m[1], shift) + rest
+}
+
+const hasEmbeddedTime = (value: unknown): boolean => {
+  const text = Array.isArray(value) ? value[0] : value
+  return typeof text === 'string' && EMBEDDED_TIME_RE.test(text.trim().slice(10))
+}
+
+/**
+ * Writes a note's move into its frontmatter, in place: every date it has shifted by `shift`
+ * days, so a span keeps its length, and — dropped on an hour of the week — its start put at
+ * `minute`, with a same-day end time moved along so it keeps its duration (held to the end of
+ * the day). A time goes where the note keeps it: in the date itself when it is written there,
+ * otherwise in the time property. Dropped on a day with no hour, its time is left as it was.
+ * False when there is nothing it could write.
+ */
+export function applyMove(
+  frontmatter: Record<string, unknown>,
+  keys: MoveKeys,
+  item: CalendarItem,
+  shift: number,
+  minute: number | null
+): boolean {
+  const { dateKey, timeKey, endKey, endTimeKey } = keys
+  const startValue = dateKey ? frontmatter[dateKey] : undefined
+  const endValue = endKey ? frontmatter[endKey] : undefined
+  const hasStart = !!dateKey && readDate(startValue) !== null
+  const hasEnd = !!endKey && readDate(endValue) !== null
+  if (!hasStart && !hasEnd) return false
+
+  /** Puts a time on the date under `key`, or in `timeKey` beside it. */
+  const writeTime = (key: string, tKey: string | null, at: number) => {
+    const value = frontmatter[key]
+    if (hasEmbeddedTime(value)) frontmatter[key] = shiftValue(value, 0, at)
+    else if (tKey) frontmatter[tKey] = clock(at)
+    else frontmatter[key] = `${String(shiftValue(value, 0, null)).slice(0, 10)}T${clock(at)}`
+  }
+
+  if (hasStart) {
+    frontmatter[dateKey] = shiftValue(startValue, shift, null)
+    if (hasEnd) frontmatter[endKey] = shiftValue(endValue, shift, null)
+    if (minute === null) return true
+    writeTime(dateKey, timeKey, minute)
+    const sameDayEnd =
+      hasEnd && item.start === item.end && item.startMinute !== null && item.endMinute !== null
+    if (sameDayEnd) {
+      const end = Math.min(MINUTES_IN_DAY - 1, minute + item.endMinute - item.startMinute)
+      writeTime(endKey, endTimeKey, end)
+    }
+    return true
+  }
+
+  // Only an end date — a task with nothing but `due` — is placed, and so moved, by that.
+  frontmatter[endKey] = shiftValue(endValue, shift, null)
+  if (minute !== null) writeTime(endKey, endTimeKey, minute)
+  return true
 }
 
 // ---- external calendars --------------------------------------------------------------------

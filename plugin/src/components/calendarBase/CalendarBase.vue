@@ -41,7 +41,6 @@
       @open="open"
       @hover="hover"
       @more="showMore"
-      @zoom="zoomToWeek"
       @create="(day) => instance.create(day, null)"
       @select="(day) => (selected = day)"
     />
@@ -63,24 +62,35 @@
       :monday-first="mondayFirst"
       :items="allItems"
       :today="today"
+      :selected="selected"
       @month="zoomToMonth"
-      @day="zoomToWeek"
+      @day="pickInYear"
     />
 
     <div
-      v-if="mode === 'month' && narrow && selected"
+      v-if="mode !== 'week' && selected"
       class="abele-calendar-base__agenda"
       :data-day="selected"
     >
       <div class="abele-calendar-base__agenda-head">
         <span class="abele-calendar-base__agenda-date">{{ agendaTitle }}</span>
-        <Button
-          v-if="canCreate"
-          text="New note"
-          icon="plus"
-          tooltip="Make a note on this day"
-          @click="instance.create(selected, null)"
-        />
+        <div class="abele-calendar-base__agenda-actions">
+          <Button
+            text="Week"
+            icon="calendar-range"
+            tooltip="Show the week of this day"
+            class="abele-calendar-base__agenda-week"
+            @click="zoomToWeek(selected)"
+          />
+          <Button
+            v-if="canCreate"
+            text="New note"
+            icon="plus"
+            tooltip="Make a note on this day"
+            class="abele-calendar-base__agenda-new"
+            @click="instance.create(selected, null)"
+          />
+        </div>
       </div>
       <div v-if="agenda.length" class="abele-calendar-base__agenda-list">
         <CalendarChip
@@ -107,7 +117,7 @@
  *
  * Narrow is the view's own width, not the window's: a base in a sidebar is as narrow as a phone.
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { Menu } from 'obsidian'
 import { useNow } from '@vueuse/core'
 import dayjs from 'dayjs'
@@ -120,6 +130,7 @@ import CalendarChip from './CalendarChip.vue'
 import CalendarMonth from './CalendarMonth.vue'
 import CalendarWeek from './CalendarWeek.vue'
 import CalendarYear from './CalendarYear.vue'
+import { CALENDAR_DRAG, createCalendarDrag } from './calendarDrag'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { calendars } from '@/calendars/CalendarService'
@@ -162,7 +173,7 @@ const nowMinute = computed(() => nowDate.value.getHours() * 60 + nowDate.value.g
 const anchor = ref(today.value)
 const anchorYear = computed(() => Number(anchor.value.slice(0, 4)))
 const anchorMonth = computed(() => Number(anchor.value.slice(5, 7)) - 1)
-/** The narrow month's picked day, whose items are listed under the grid. */
+/** The picked day of the month or the year, whose items are listed under it. */
 const selected = ref<string | null>(today.value)
 
 // ---- the external calendars' events --------------------------------------------------------
@@ -206,8 +217,10 @@ const title = computed(() => {
 const step = (by: number) => {
   const at = dayjs(anchor.value)
   if (mode.value === 'week') anchor.value = addDays(anchor.value, 7 * by)
-  else if (mode.value === 'year') anchor.value = at.add(by, 'year').format('YYYY-MM-DD')
-  else {
+  else if (mode.value === 'year') {
+    anchor.value = at.add(by, 'year').format('YYYY-MM-DD')
+    selected.value = null
+  } else {
     anchor.value = at.startOf('month').add(by, 'month').format('YYYY-MM-DD')
     selected.value = null
   }
@@ -223,13 +236,33 @@ const zoomToWeek = (day: string) => {
   props.instance.setMode('week')
 }
 
+/** A day of the year picked: listed under it, and the month that opens next is its month. */
+const pickInYear = (day: string) => {
+  anchor.value = day
+  selected.value = day
+}
+
 const zoomToMonth = (month: number) => {
   anchor.value = `${anchorYear.value}-${String(month + 1).padStart(2, '0')}-01`
   selected.value = null
   props.instance.setMode('month')
 }
 
-// ---- the narrow month's list ---------------------------------------------------------------
+// ---- dragging a note -----------------------------------------------------------------------
+
+provide(
+  CALENDAR_DRAG,
+  createCalendarDrag({
+    enabled: () => props.instance.canCreate.value,
+    drop: (placed, to) => {
+      props.instance.move(placed.item, placed.day, to.day, to.minute)
+      // The list under the month follows the note to where it went.
+      if (mode.value !== 'week' && selected.value) selected.value = to.day
+    },
+  })
+)
+
+// ---- the picked day's list -----------------------------------------------------------------
 
 const agenda = computed(() => {
   const day = selected.value
@@ -348,13 +381,22 @@ watch(anchorMonth, () => {
 
 .abele-calendar-base__agenda-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--size-4-2);
 }
 
 .abele-calendar-base__agenda-date {
+  flex: 1 1 auto;
   font-weight: bold;
+}
+
+// The buttons stay side by side; on a phone they drop under the date together.
+.abele-calendar-base__agenda-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--size-2-3);
 }
 
 .abele-calendar-base__agenda-list {
@@ -367,6 +409,46 @@ watch(anchorMonth, () => {
 .abele-calendar-base__agenda-item {
   padding-block: var(--size-4-1);
   font-size: var(--font-ui-small);
+}
+
+// Where a dragged note would land, and the note itself under the pointer.
+.abele-calendar-drop-target {
+  background-color: var(--background-modifier-hover);
+  box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+
+.abele-calendar-drag-ghost,
+.abele-calendar-drop-marker {
+  position: fixed;
+  z-index: var(--layer-dragged-item);
+  pointer-events: none;
+  font-size: var(--font-smaller);
+}
+
+.abele-calendar-drag-ghost {
+  max-width: 16em;
+  padding: var(--size-2-1) var(--size-4-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-inline-start: var(--size-2-1) solid var(--interactive-accent);
+  border-radius: var(--radius-s);
+  background-color: var(--background-primary);
+  box-shadow: var(--shadow-s);
+}
+
+.abele-calendar-drop-marker {
+  padding: 0 var(--size-2-2);
+  border-radius: var(--radius-s);
+  background-color: var(--background-modifier-active-hover);
+  border: 1px dashed var(--interactive-accent);
+  color: var(--text-normal);
+  font-variant-numeric: tabular-nums;
+}
+
+body.abele-calendar-dragging,
+body.abele-calendar-dragging * {
+  cursor: grabbing !important;
 }
 
 // Narrow, the title takes its own line and the controls and layouts share the next.

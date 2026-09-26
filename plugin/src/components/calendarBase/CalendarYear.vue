@@ -23,11 +23,15 @@
             day.startsWith(m.prefix)
               ? [
                   `abele-calendar-year__day_heat-${heatLevel(counts.get(day) ?? 0, max)}`,
-                  { 'abele-calendar-year__day_today': day === today },
+                  {
+                    'abele-calendar-year__day_today': day === today,
+                    'abele-calendar-year__day_selected': day === selected,
+                  },
                 ]
               : 'abele-calendar-year__day_outside'
           "
           :data-day="day.startsWith(m.prefix) ? day : undefined"
+          :data-drop-day="day.startsWith(m.prefix) ? day : undefined"
           :aria-label="day.startsWith(m.prefix) ? `${day}: ${counts.get(day) ?? 0}` : undefined"
         >
           {{ day.startsWith(m.prefix) ? Number(day.slice(8)) : '' }}
@@ -41,7 +45,7 @@
 /**
  * A year as twelve small months, each day tinted by how much is on it — relative to the
  * busiest day of the year, so a quiet year still shows its shape. A month's name opens the
- * month, a day opens its week.
+ * month, a day is picked for the list under the year.
  */
 import { computed } from 'vue'
 import dayjs from 'dayjs'
@@ -52,6 +56,7 @@ const props = defineProps<{
   mondayFirst: boolean
   items: readonly CalendarItem[]
   today: string
+  selected: string | null
 }>()
 
 const emit = defineEmits<{
@@ -169,5 +174,9 @@ $steps: (
 .abele-calendar-year__day_today {
   outline: 1px solid var(--text-accent);
   font-weight: bold;
+}
+
+.abele-calendar-year__day_selected {
+  box-shadow: inset 0 0 0 var(--size-2-1) var(--interactive-accent);
 }
 </style>

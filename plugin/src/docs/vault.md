@@ -77,14 +77,21 @@ views:
     endProperty: note.due    # the last day, for something that spans days
     endTimeProperty: note.dueTime
     showCalendarEvents: false  # true adds the external calendars' events
+    doneLast: true           # false lists done tasks where the sort puts them
 ```
 
 Left out, the four properties are the task's own, so a base over the tasks folder needs none of
 them. A note goes on its date, or on its end date when that is all it has; with both it spans
 the days between. A time comes from the time property or from a date written with one
 (`2026-09-26T10:00`). A note with `completed` set is struck out. The base's `groupBy` colours
-the notes, one colour per group. Nothing about a calendar view is stored anywhere but the
-`.base` file.
+the notes, one colour per group, and its `sort` orders the notes within each day, done tasks after the rest unless `doneLast`
+is false. Nothing about a
+calendar view is stored anywhere but the `.base` file.
+
+Dragging a note on the calendar writes into that note's frontmatter: every date property it
+has (start and end) moves by the same number of days, and dropped on an hour its time is set,
+an end time on the same day moving with it. A time goes where the note already keeps it, in
+the date value or in the time property. Formula dates are never written.
 
 ## Transactions
 

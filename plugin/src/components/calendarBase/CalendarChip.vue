@@ -14,6 +14,7 @@
     @click.stop="emit('open', placed, $event)"
     @keydown.enter.stop="emit('open', placed, $event)"
     @mouseover="emit('hover', placed, $event)"
+    @pointerdown="drag?.press(placed, $event)"
   >
     <span v-if="time" class="abele-calendar-chip__time">{{ time }}</span>
     <span class="abele-calendar-chip__title">{{ placed.item.title }}</span>
@@ -28,6 +29,7 @@
  */
 import { computed } from 'vue'
 import { clock, type PlacedItem } from '@/bases/calendarLayout'
+import { useCalendarDrag } from './calendarDrag'
 
 const props = defineProps<{
   placed: PlacedItem
@@ -39,6 +41,9 @@ const emit = defineEmits<{
   (e: 'open', placed: PlacedItem, event: MouseEvent | KeyboardEvent): void
   (e: 'hover', placed: PlacedItem, event: MouseEvent): void
 }>()
+
+/** The view's drag, which every chip starts from; none where the chip is drawn on its own. */
+const drag = useCalendarDrag()
 
 const time = computed(() => {
   const { item, fromBefore } = props.placed
@@ -67,11 +72,19 @@ const label = computed(() =>
   line-height: 1.6;
   cursor: var(--cursor-link);
   white-space: nowrap;
+  // Held to be picked up on a phone, a note is not text to select or a link to preview.
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 
   &:hover,
   &:focus-visible {
     background-color: var(--background-modifier-active-hover);
   }
+}
+
+.abele-calendar-chip_lifted {
+  opacity: 0.4;
 }
 
 .abele-calendar-chip_event {

@@ -16,6 +16,9 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { KIT_COLORS, type KitColor } from '@/constants/colors'
 import {
   CALENDAR_MODES,
+  applyMove,
+  dayNumber,
+  dayOrder,
   newNoteFrontmatter,
   toItem,
   type CalendarItem,
@@ -33,6 +36,7 @@ export const CALENDAR_OPTION = {
   end: 'endProperty',
   endTime: 'endTimeProperty',
   events: 'showCalendarEvents',
+  doneLast: 'doneLast',
 } as const
 
 /** The task model's own properties: a base over the tasks folder works with nothing set. */
@@ -69,6 +73,11 @@ export interface CalendarBaseInstance {
   open(item: CalendarItem, event: MouseEvent | KeyboardEvent): void
   hover(item: CalendarItem, event: MouseEvent): void
   create(day: string, minute: number | null): void
+  /**
+   * A note dragged from `from` — the day it was taken from, one of a span's — to another day,
+   * or to an hour of one.
+   */
+  move(item: CalendarItem, from: string, to: string, minute: number | null): void
 }
 
 export function calendarViewOptions(): BasesAllOptions[] {
@@ -96,6 +105,12 @@ export function calendarViewOptions(): BasesAllOptions[] {
       CALENDAR_DEFAULTS.endTime,
       'Optional — when it ends'
     ),
+    {
+      key: CALENDAR_OPTION.doneLast,
+      type: 'toggle' as const,
+      displayName: 'Done tasks last',
+      default: true,
+    },
     {
       key: CALENDAR_OPTION.events,
       type: 'toggle' as const,
@@ -174,6 +189,7 @@ export class CalendarView extends BasesView {
         })
       },
       create: (day, minute) => this.create(day, minute),
+      move: (item, from, to, minute) => void this.move(item, from, to, minute),
     }
     const store = GlobalStore.getInstance()
     const map = new Map(store.calendarBaseInstances.value)
@@ -207,9 +223,17 @@ export class CalendarView extends BasesView {
       })
     }
 
+    // The rows come in the base's sort; when it has one, each day keeps to it. Done tasks go
+    // after the rest unless the view says otherwise — the base alone cannot do that: it puts
+    // an empty `completed` last whichever way it sorts.
+    const sorted = config.getSort().length > 0
+    const doneLast = config.get(CALENDAR_OPTION.doneLast) !== false
+    const rows = this.data.data
     const items: CalendarItem[] = []
     let undated = 0
-    for (const entry of this.data.data) {
+    let index = 0
+    for (const entry of rows) {
+      const completed = raw(entry, COMPLETED) !== null
       const item = toItem({
         path: entry.file.path,
         title: entry.file.basename,
@@ -218,7 +242,8 @@ export class CalendarView extends BasesView {
         end: raw(entry, end),
         endTime: raw(entry, endTime),
         color: colorOf.get(entry) ?? null,
-        completed: raw(entry, COMPLETED) !== null,
+        completed,
+        order: dayOrder({ index: index++, count: rows.length, sorted, doneLast, completed }),
       })
       if (item) items.push(Object.freeze(item))
       else undated++
@@ -233,6 +258,35 @@ export class CalendarView extends BasesView {
     const map = new Map(store.calendarBaseInstances.value)
     map.delete(this.instance.id)
     store.calendarBaseInstances.value = map
+  }
+
+  /**
+   * Writes a drag into the note: its dates moved by as many days as it was carried, and the
+   * hour it was let go at, through `processFrontMatter` so nothing else in the note is touched.
+   * The base sees the change and draws the note on its new day by itself.
+   */
+  private async move(
+    item: CalendarItem,
+    from: string,
+    to: string,
+    minute: number | null
+  ): Promise<void> {
+    const shift = dayNumber(to) - dayNumber(from)
+    if (item.kind !== 'note' || (shift === 0 && (minute === null || minute === item.startMinute)))
+      return
+    const file = this.app.vault.getFileByPath(item.path)
+    if (!file) return
+    const key = (option: string, fallback: string) =>
+      noteKey(propertyOf(this.config, option, fallback))
+    const keys = {
+      dateKey: key(CALENDAR_OPTION.date, CALENDAR_DEFAULTS.date),
+      timeKey: key(CALENDAR_OPTION.time, CALENDAR_DEFAULTS.time),
+      endKey: key(CALENDAR_OPTION.end, CALENDAR_DEFAULTS.end),
+      endTimeKey: key(CALENDAR_OPTION.endTime, CALENDAR_DEFAULTS.endTime),
+    }
+    await this.app.fileManager.processFrontMatter(file, (frontmatter: Record<string, unknown>) => {
+      applyMove(frontmatter, keys, item, shift, minute)
+    })
   }
 
   /**

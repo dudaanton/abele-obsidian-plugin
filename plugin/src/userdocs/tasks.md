@@ -60,11 +60,21 @@ Events from other calendars can show among them, read only. See
 **Calendar** is a view type for Obsidian Bases. Add a view to a base and pick **Calendar**: the
 notes the base finds appear on a month, a week or a year, switched at the top of the view.
 
-- **Month** lists what is on each day. A full day ends in "+N more". Press a day's number for
-  its week, or the **+** beside it for a new note on that day.
+- **Month** lists what is on each day. A full day ends in "+N more". Press a day to see it whole
+  under the month, with **Week** to open its week and **New note** to add one to it. The **+**
+  beside a day's number makes a note on that day too.
 - **Week** puts notes with a time on the hours and the rest in a row at the top. Press an empty
   hour to make a note at that time.
-- **Year** tints each day by how much is on it. Press a month's name or a day to go there.
+- **Year** tints each day by how much is on it. Press a month's name to open it, or a day to see
+  it under the year.
+
+Within a day, notes follow the base's own sort when it has one; without a sort, longer notes
+come first, then by time. Done tasks go to the end of each day either way. Turn off **Done tasks
+last** in the view's options to leave them where the sort puts them.
+
+Drag a note to another day to move it there; drag it onto an hour of the week to give it that
+time. A note with an end date keeps its length, and one with an end time keeps its duration.
+On a phone or tablet, hold the note for a moment before dragging it, so a swipe still scrolls.
 
 A note opens when you press it, in a new tab with Cmd or Ctrl. Hover over one to preview it. A new
 note made from the calendar goes where the base's own **New** button would put it, with the date
@@ -75,7 +85,8 @@ base over your tasks needs no setup. For other notes, choose the properties in t
 options. If the base groups its notes, each group gets a colour. **Show calendar events** adds
 the events from [Other calendars](logs-and-journals#other-calendars).
 
-On a narrow screen, the month shows dots. Tap a day to list what is on it under the calendar.
+On a narrow screen, the month shows dots. Tap a day to list what is on it under the calendar,
+and drag a note from that list onto another day to move it.
 
 ## Moving from Dataview
 

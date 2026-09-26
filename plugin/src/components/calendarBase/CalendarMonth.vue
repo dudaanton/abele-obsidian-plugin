@@ -13,19 +13,20 @@
         :class="{
           'abele-calendar-month__day_other-month': !day.startsWith(monthPrefix),
           'abele-calendar-month__day_today': day === today,
-          'abele-calendar-month__day_selected': narrow && day === selected,
+          'abele-calendar-month__day_selected': day === selected,
         }"
         :data-day="day"
-        @click="narrow && emit('select', day)"
+        :data-drop-day="day"
+        @click="emit('select', day)"
       >
         <div class="abele-calendar-month__day-head">
           <div
             class="abele-calendar-month__day-number"
             role="button"
             tabindex="0"
-            :aria-label="`Week of ${day}`"
-            @click.stop="narrow ? emit('select', day) : emit('zoom', day)"
-            @keydown.enter.stop="emit('zoom', day)"
+            :aria-label="`Show ${day}`"
+            @click.stop="emit('select', day)"
+            @keydown.enter.stop="emit('select', day)"
           >
             {{ Number(day.slice(8)) }}
           </div>
@@ -78,8 +79,9 @@
 <script setup lang="ts">
 /**
  * A month as a grid of whole weeks, the mini calendar's layout grown up: each day lists what is
- * on it, three lines and then "+N more". Narrow, a day shows dots in its items' colours and a
- * tap picks it, for the list under the grid to say what they are.
+ * on it, three lines and then "+N more"; narrow, it shows dots in its items' colours instead.
+ * Pressing a day picks it, for the list under the grid to show it whole, and a day is where a
+ * dragged note can be let go.
  */
 import { computed } from 'vue'
 import dayjs from 'dayjs'
@@ -107,14 +109,13 @@ const emit = defineEmits<{
   (e: 'open', placed: PlacedItem, event: MouseEvent | KeyboardEvent): void
   (e: 'hover', placed: PlacedItem, event: MouseEvent): void
   (e: 'more', day: string, rest: PlacedItem[], event: MouseEvent | KeyboardEvent): void
-  (e: 'zoom', day: string): void
   (e: 'create', day: string): void
   (e: 'select', day: string): void
 }>()
 
 const days = computed(() => monthGrid(props.year, props.month, props.mondayFirst))
 const monthPrefix = computed(() => `${props.year}-${String(props.month + 1).padStart(2, '0')}`)
-const placed = computed(() => placeByDay(props.items, days.value[0], days.value.at(-1)!))
+const placed = computed(() => placeByDay(props.items, days.value[0], days.value.at(-1)))
 
 /** Three lines, or all four when the fourth would only have said "+1 more". */
 const shownIn = (day: string) => {
@@ -156,6 +157,7 @@ const weekdayNames = computed(() =>
   padding: var(--size-2-2);
   border-bottom: 1px solid var(--background-modifier-border);
   border-inline-end: 1px solid var(--background-modifier-border);
+  cursor: var(--cursor-link);
 
   &:hover .abele-calendar-month__add {
     opacity: 1;

@@ -5,6 +5,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   addDays,
+  applyMove,
+  dayOrder,
   countByDay,
   heatLevel,
   layoutTimed,
@@ -155,6 +157,42 @@ describe('a day lists', () => {
     expect(day[0]).toMatchObject({ fromBefore: true, goesOn: true })
   })
 
+  it("in the base's own sort when it has one, done tasks last if that is how it sorts", () => {
+    const items = [
+      item({ title: 'a done', completed: true, startMinute: 540, order: 2 }),
+      item({ title: 'lunch', startMinute: 780, order: 1 }),
+      item({ title: 'trip', start: '2026-09-25', end: '2026-09-28', order: 3 }),
+      item({ title: 'buy milk', order: 0 }),
+      item({ title: 'event', kind: 'event', startMinute: 600 }),
+    ]
+    const day = placeByDay(items, '2026-09-26', '2026-09-26').get('2026-09-26')!
+    expect(day.map((p) => p.item.title)).toEqual(['buy milk', 'lunch', 'a done', 'trip', 'event'])
+  })
+
+  it('with done tasks last, by default, whether the base sorts or not', () => {
+    const row = (index: number, completed: boolean, sorted: boolean, doneLast = true) =>
+      dayOrder({ index, count: 10, sorted, doneLast, completed })
+    const unsorted = [
+      item({ title: 'a done', completed: true, order: row(0, true, false) }),
+      item({ title: 'b', startMinute: 600, order: row(1, false, false) }),
+      item({ title: 'c', order: row(2, false, false) }),
+    ]
+    const day = (items: CalendarItem[]) =>
+      placeByDay(items, '2026-09-26', '2026-09-26')
+        .get('2026-09-26')!
+        .map((p) => p.item.title)
+    // The rest keep the calendar's own order: no time before a time.
+    expect(day(unsorted)).toEqual(['c', 'b', 'a done'])
+    const sorted = [
+      item({ title: 'a done', completed: true, order: row(0, true, true) }),
+      item({ title: 'b', order: row(1, false, true) }),
+      item({ title: 'c', order: row(2, false, true) }),
+    ]
+    expect(day(sorted)).toEqual(['b', 'c', 'a done'])
+    expect(row(0, true, false, false)).toBeNull()
+    expect(row(3, true, true, false)).toBe(3)
+  })
+
   it('clips a long span to the days drawn', () => {
     const long = item({ title: 'year', start: '2020-01-01', end: '2030-01-01' })
     const days = placeByDay([long], '2026-09-01', '2026-09-07')
@@ -249,6 +287,66 @@ describe('a note made on the calendar', () => {
 
   it('cannot be made when the date is a formula', () => {
     expect(newNoteFrontmatter({ dateKey: null, timeKey: null }, '2026-09-26', null)).toBe(false)
+  })
+})
+
+describe('a note moved on the calendar', () => {
+  const TASK = { dateKey: 'date', timeKey: 'dateTime', endKey: 'due', endTimeKey: 'dueTime' }
+
+  it('moves its day, and a span as a whole', () => {
+    const fm: Record<string, unknown> = { date: '2026-09-26', due: '2026-09-28', tags: ['x'] }
+    const trip = item({ start: '2026-09-26', end: '2026-09-28' })
+    expect(applyMove(fm, TASK, trip, 3, null)).toBe(true)
+    expect(fm).toEqual({ date: '2026-09-29', due: '2026-10-01', tags: ['x'] })
+  })
+
+  it('keeps its time when dropped on a day, and moves it when dropped on an hour', () => {
+    const fm: Record<string, unknown> = { date: '2026-09-26', dateTime: '09:00' }
+    const call = item({ startMinute: 540 })
+    applyMove(fm, TASK, call, 1, null)
+    expect(fm).toEqual({ date: '2026-09-27', dateTime: '09:00' })
+    applyMove(fm, TASK, call, 0, 14 * 60 + 15)
+    expect(fm).toEqual({ date: '2026-09-27', dateTime: '14:15' })
+  })
+
+  it('keeps how long it lasts', () => {
+    const fm: Record<string, unknown> = {
+      date: '2026-09-26',
+      dateTime: '15:00',
+      due: '2026-09-26',
+      dueTime: '16:30',
+    }
+    const dentist = item({ startMinute: 900, endMinute: 990 })
+    applyMove(fm, TASK, dentist, -1, 600)
+    expect(fm).toEqual({
+      date: '2026-09-25',
+      dateTime: '10:00',
+      due: '2026-09-25',
+      dueTime: '11:30',
+    })
+  })
+
+  it('writes the time where the note keeps it', () => {
+    const fm: Record<string, unknown> = { when: '2026-09-26T09:00' }
+    const keys = { dateKey: 'when', timeKey: null, endKey: null, endTimeKey: null }
+    applyMove(fm, keys, item({ startMinute: 540 }), 2, 780)
+    expect(fm).toEqual({ when: '2026-09-28T13:00' })
+    const bare: Record<string, unknown> = { when: '2026-09-26' }
+    applyMove(bare, keys, item({}), 0, 600)
+    expect(bare).toEqual({ when: '2026-09-26T10:00' })
+  })
+
+  it('moves a task with only a deadline by its deadline', () => {
+    const fm: Record<string, unknown> = { due: '2026-09-26' }
+    applyMove(fm, TASK, item({}), 1, 480)
+    expect(fm).toEqual({ due: '2026-09-27', dueTime: '08:00' })
+  })
+
+  it('writes nothing when the date is not a note property', () => {
+    const fm: Record<string, unknown> = { date: '2026-09-26' }
+    const keys = { dateKey: null, timeKey: null, endKey: null, endTimeKey: null }
+    expect(applyMove(fm, keys, item({}), 1, null)).toBe(false)
+    expect(fm).toEqual({ date: '2026-09-26' })
   })
 })
 
