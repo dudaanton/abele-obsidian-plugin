@@ -3,7 +3,7 @@
     <div class="abele-todo-list__header">
       <div class="abele-todo-list__header-left">
         <div class="abele-todo-list__header-text">Tasks</div>
-        <ObsidianIcon v-if="showAddButton" icon="square-plus" @click="openTaskForm()" />
+        <ObsidianIcon v-if="showAddButton" icon="square-plus" @click="createTask()" />
       </div>
       <div class="abele-todo-list__header-right">
         <ObsidianIcon
@@ -54,7 +54,7 @@ import TaskView from './Task.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianSearch from './obsidian/Search.vue'
 import { computed, ref, watch } from 'vue'
-import { openTaskForm } from '@/commands/taskForm'
+import { createTask } from '@/commands/createTask'
 import { usePagedList } from '@/composables/usePagedList'
 import { useLabelFilter } from '@/composables/useLabelFilter'
 import { sortByPriority } from '@/helpers/taskMeta'

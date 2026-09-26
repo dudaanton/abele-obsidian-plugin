@@ -69,8 +69,7 @@ import { computed, onMounted, ref } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { Choice, useMenu } from '@/composables/useMenu'
 import { useTimerButton } from '@/composables/useTimerButton'
-import { openTransactionForm } from '@/commands/transactionForm'
-import { DATE_FORMAT } from '@/constants/dates'
+import { createTransaction } from '@/commands/createTransaction'
 import { getFrontmatterFromCache } from '@/helpers/notesUtils'
 import { useScriptButtons } from '@/composables/useScriptButtons'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -148,16 +147,15 @@ const addNextTransaction = async () => {
   const fm = getFrontmatterFromCache(props.header.filePath)
   if (!fm) return
 
-  void openTransactionForm({
-    defaults: {
-      date: (parseDateOrNull(fm.date) || dayjs()).format(DATE_FORMAT),
-      from: fm.from || null,
-      to: fm.to || null,
-      currency: fm.currency || null,
-      foreignCurrency: fm.foreignCurrency || null,
-      category: fm.category || null,
-      groups: Array.isArray(fm.groups) ? fm.groups : [],
-    },
+  createTransaction({
+    date: parseDateOrNull(fm.date) || dayjs(),
+    from: fm.from || undefined,
+    to: fm.to || undefined,
+    amount: undefined,
+    currency: fm.currency || undefined,
+    foreignCurrency: fm.foreignCurrency || undefined,
+    category: fm.category || undefined,
+    groups: Array.isArray(fm.groups) ? fm.groups : undefined,
   })
 }
 

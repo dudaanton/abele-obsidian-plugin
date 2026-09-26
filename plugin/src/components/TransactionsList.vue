@@ -25,7 +25,7 @@ import { pathToWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
 import TransactionItem from './TransactionItem.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
-import { openTransactionForm } from '@/commands/transactionForm'
+import { createTransaction } from '@/commands/createTransaction'
 import { DATE_FORMAT } from '@/constants/dates'
 import { computed, ref, unref } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
@@ -146,12 +146,10 @@ function addTransaction() {
     }
   }
 
-  void openTransactionForm({
-    defaults: {
-      ...(props.date ? { date: props.date.format(DATE_FORMAT) } : {}),
-      from: from ?? null,
-      to: to ?? null,
-    },
+  createTransaction({
+    date: props.date ?? undefined,
+    from,
+    to,
   })
 }
 </script>

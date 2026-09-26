@@ -60,7 +60,6 @@ import { computed, onMounted, ref, watch } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import { openFile } from '@/helpers/vaultUtils'
-import { openTransactionForm } from '@/commands/transactionForm'
 import { useElementVisibility } from '@vueuse/core'
 import { Menu } from 'obsidian'
 import { formatAmount } from '@/helpers/moneyFormat'
@@ -101,28 +100,11 @@ const amountClass = computed(() => {
 const onCardClick = (e: MouseEvent) => {
   const target = e.target as HTMLElement
   if (target.closest('a.internal-link') || target.closest('.abele-obsidian-icon')) return
-  // The row opens the transaction's dialog; with Ctrl/Cmd held, the note itself, as it used to.
-  if (e.metaKey || e.ctrlKey) {
-    void openFile(props.transaction.transactionPath)
-    return
-  }
-  void openTransactionForm({ path: props.transaction.transactionPath })
+  openFile(props.transaction.transactionPath)
 }
 
 const onContextMenu = (e: MouseEvent) => {
   const menu = new Menu()
-  menu.addItem((item) => {
-    item
-      .setTitle('Edit')
-      .setIcon('pencil')
-      .onClick(() => void openTransactionForm({ path: props.transaction.transactionPath }))
-  })
-  menu.addItem((item) => {
-    item
-      .setTitle('Open note')
-      .setIcon('file-text')
-      .onClick(() => void openFile(props.transaction.transactionPath))
-  })
   menu.addItem((item) => {
     item
       .setTitle('Delete')

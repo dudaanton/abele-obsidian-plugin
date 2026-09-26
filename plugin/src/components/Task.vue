@@ -80,7 +80,6 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { labelColor, type TaskPriority } from '@/helpers/taskMeta'
 import type { KitColor } from '@/constants/colors'
 import { openFile } from '@/helpers/vaultUtils'
-import { openTaskForm } from '@/commands/taskForm'
 import { useElementVisibility, useIntervalFn } from '@vueuse/core'
 import { Menu } from 'obsidian'
 
@@ -235,28 +234,11 @@ const onCardClick = (e: MouseEvent) => {
     target.closest('label')
   )
     return
-  // The card opens the task's dialog; with Ctrl/Cmd held, the note itself, as it used to.
-  if (e.metaKey || e.ctrlKey) {
-    void openFile(props.task.taskPath)
-    return
-  }
-  void openTaskForm({ path: props.task.taskPath })
+  openFile(props.task.taskPath)
 }
 
 const onContextMenu = (e: MouseEvent) => {
   const menu = new Menu()
-  menu.addItem((item) => {
-    item
-      .setTitle('Edit')
-      .setIcon('pencil')
-      .onClick(() => void openTaskForm({ path: props.task.taskPath }))
-  })
-  menu.addItem((item) => {
-    item
-      .setTitle('Open note')
-      .setIcon('file-text')
-      .onClick(() => void openFile(props.task.taskPath))
-  })
   menu.addItem((item) => {
     item
       .setTitle('Delete')

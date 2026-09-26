@@ -3,7 +3,7 @@
     <div class="abele-finance-sidebar__header">
       <div class="abele-finance-sidebar__header-left">
         <div class="abele-finance-sidebar__header-text">Transactions</div>
-        <ObsidianIcon icon="banknote-arrow-down" @click="openTransactionForm()" />
+        <ObsidianIcon icon="banknote-arrow-down" @click="createTransaction()" />
         <ObsidianIcon
           icon="landmark"
           tooltip="Show every account and its balance"
@@ -157,7 +157,7 @@ import { useIntersectionObserver } from '@vueuse/core'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AccountsList } from '@/entities/AccountsList'
 import { BalanceIndex } from '@/entities/BalanceIndex'
-import { openTransactionForm } from '@/commands/transactionForm'
+import { createTransaction } from '@/commands/createTransaction'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DATE_FORMAT } from '@/constants/dates'
 import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'

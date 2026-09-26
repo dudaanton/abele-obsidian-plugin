@@ -114,31 +114,6 @@ const script = `(async () => {
     cuts.push({ screen: 'icon picker', field: '-', by: ['dialog did not open'] })
   }
 
-  // The entry dialogs: every field, the note editor's frame standing in for its content.
-  const entry = async (screen, open, ready) => {
-    await open()
-    if (!(await until(() => document.querySelector(ready), 5000))) {
-      cuts.push({ screen, field: '-', by: ['dialog did not open'] })
-      return
-    }
-    await wait(400)
-    const modal = document.querySelector('.modal')
-    measureAll(screen, modal)
-    for (const content of modal.querySelectorAll('.cm-content')) {
-      content.focus()
-      const by = ringClipped(content.closest('.abele-note-editor-field__editor'))
-      if (by.length) cuts.push({ screen, field: 'note editor', by })
-      content.blur()
-    }
-    await closeDialog()
-  }
-  await entry('task form', () => window.__abeleTest.openTaskForm({ defaults: { date: '2026-09-26' } }), '.modal .abele-entry-form .cm-editor')
-  await entry(
-    'transaction form',
-    () => window.__abeleTest.openTransactionForm({ defaults: { amount: 100, currency: 'EUR', foreignCurrency: 'USD', foreignAmount: 108.5 } }),
-    '.modal .abele-transaction-form .cm-editor'
-  )
-
   return JSON.stringify(cuts)
 })()`
 

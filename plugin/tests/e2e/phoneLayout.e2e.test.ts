@@ -598,45 +598,6 @@ const probeScript = `(async () => {
         else keychain.setSecret(id, '')
       }
     }
-
-    // The entry dialogs, as the add buttons open them: a task with its dates and repeat set,
-    // and a transaction in two currencies, so the second amount and the rate are on screen too.
-    // Each is measured as a sheet, with every field's ring, the note editor's included.
-    const entryDialog = async (label, open, ready) => {
-      await open()
-      if (!(await until(() => document.querySelector(ready), 5000))) {
-        report[label] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: label + ' did not open' }
-        return
-      }
-      await wait(400)
-      const modal = document.querySelector('.modal')
-      await screen(label, modal, modal.querySelector('.abele-modal__body'))
-      const clipped = []
-      for (const f of modal.querySelectorAll('input, button, .cm-content')) {
-        if (f.getBoundingClientRect().width === 0) continue
-        f.focus()
-        const target = f.classList.contains('cm-content') ? f.closest('.abele-note-editor-field__editor') : f
-        for (const cut of ringClipped(target)) clipped.push(name(f) + ': ' + cut)
-        f.blur()
-      }
-      report[label].clipped = clipped
-      // The fields scroll and the buttons stand under them; the scroller ends where they begin.
-      const fields = modal.querySelector('.abele-entry-form__body').getBoundingClientRect()
-      const buttons = modal.querySelector('.abele-entry-form__buttons').getBoundingClientRect()
-      report[label].footerGap = Math.round(buttons.top - fields.bottom)
-      report[label].buttonRows = Math.round(buttons.height / 30) >= 2 ? 2 : 1
-      await closeDialog()
-    }
-    await entryDialog(
-      'task form',
-      () => window.__abeleTest.openTaskForm({ defaults: { date: '2026-09-26', time: '14:30', due: '2026-09-30', recurrence: 'every week' } }),
-      '.modal .abele-entry-form .cm-editor'
-    )
-    await entryDialog(
-      'transaction form',
-      () => window.__abeleTest.openTransactionForm({ defaults: { date: '2026-09-26', amount: 100, currency: 'EUR', foreignCurrency: 'USD', foreignAmount: 108.5 } }),
-      '.modal .abele-transaction-form .cm-editor'
-    )
   } catch (e) {
     report['run'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
   } finally {
@@ -725,8 +686,6 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'secrets list',
     'settings ai keys',
     'settings finance keys',
-    'task form',
-    'transaction form',
     'settings mcp',
     'mcp server',
   ]
@@ -737,8 +696,6 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       s.startsWith('setup') ||
       s === 'icon picker' ||
       s === 'secrets list' ||
-      s === 'task form' ||
-      s === 'transaction form' ||
       s === 'mcp server'
   )
 
@@ -761,25 +718,13 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
    */
   const prompts = new Set(['note picker', 'chat picker'])
 
-  /** The entry dialogs keep their buttons under the fields that scroll, by design. */
-  const entryForms = new Set(['task form', 'transaction form'])
-
-  it.each([...entryForms])(
-    '%s: the fields scroll down to the buttons, which keep one row',
-    (label) => {
-      const entry = report[label] as Screen & { footerGap?: number; buttonRows?: number }
-      expect(entry?.footerGap ?? 99).toBeLessThanOrEqual(24)
-      expect(entry?.buttonRows).toBe(1)
-    }
-  )
-
   it.each(screens)('%s: one thing scrolls inside the body, and it reaches the bottom', (label) => {
     // A settings page's prompt editors are fields that scroll their own text, by design.
     const scrollers = (report[label]?.scrollers ?? []).filter(
       (s) => !(label.startsWith('settings') && s.name === 'abele-obsidian-input')
     )
     expect(scrollers.length, JSON.stringify(scrollers)).toBeLessThanOrEqual(1)
-    if (prompts.has(label) || entryForms.has(label)) return
+    if (prompts.has(label)) return
     for (const s of scrollers)
       expect(s.spare, `${s.name} leaves ${s.spare}px blank under it`).toBeLessThanOrEqual(24)
   })

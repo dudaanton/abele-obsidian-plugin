@@ -33,9 +33,6 @@ import { createBookTools } from '@/ai/tools/BookTools'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { openIconPicker } from './openIconPicker'
 import { openSecretsList } from './openSecretsList'
-import { openTaskForm } from '@/commands/taskForm'
-import { openTransactionForm } from '@/commands/transactionForm'
-import { embeddedViews, isEmbeddedEditorAvailable } from '@/editor/embeddedEditor'
 import { TFile } from 'obsidian'
 import * as bookSafety from '@/reader/bookSafety'
 import { BOOK_VIEW_TYPE, bookViews, readerTestHooks } from '@/reader/BookView'
@@ -169,14 +166,6 @@ interface AbeleTestApi {
   openIconPicker(current?: string): void
   /** Opens the list of keys (Settings → Transfer → Synced keys → All keys), for the layout probes. */
   openSecretsList(): void
-  /** The task dialog, as the add and edit buttons open it. */
-  openTaskForm: typeof openTaskForm
-  /** The transaction dialog, as the add and edit buttons open it. */
-  openTransactionForm: typeof openTransactionForm
-  /** Whether Obsidian's note editor can still be borrowed for the entry dialogs. */
-  embeddedEditorAvailable(): boolean
-  /** The note editor's view inside a dialog's field, found by the field's element. */
-  formEditorView(el: HTMLElement): unknown
 }
 
 export interface AgentsSnapshot {
@@ -569,10 +558,6 @@ export function exposeTestApi(plugin: Plugin): void {
     chatHistoryPaths,
     openIconPicker,
     openSecretsList,
-    openTaskForm,
-    openTransactionForm,
-    embeddedEditorAvailable: () => isEmbeddedEditorAvailable(GlobalStore.getInstance().app),
-    formEditorView: (el: HTMLElement) => embeddedViews.get(el) ?? null,
   }
   console.debug('[Abele] test API exposed on window.__abeleTest (development build)')
 }

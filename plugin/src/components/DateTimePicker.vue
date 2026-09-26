@@ -1,15 +1,8 @@
 <template>
   <div class="abele-datetime-picker">
-    <Calendar
-      :selected-date="selectedDate"
-      :show-tasks="!dateOnly"
-      @date-selected="onDateSelected"
-    />
+    <Calendar :selected-date="selectedDate" show-tasks @date-selected="onDateSelected" />
 
-    <div
-      v-if="!dateOnly && selectedDate && tasksForDay.length"
-      class="abele-datetime-picker__tasks-preview"
-    >
+    <div v-if="selectedDate && tasksForDay.length" class="abele-datetime-picker__tasks-preview">
       <div class="abele-datetime-picker__tasks-header">Scheduled tasks</div>
       <div v-for="task in tasksForDay" :key="task.id" class="abele-datetime-picker__task-item">
         <span v-if="getTaskTimeForDay(task)" class="abele-datetime-picker__task-time">
@@ -19,7 +12,7 @@
       </div>
     </div>
 
-    <div v-if="!dateOnly" class="abele-datetime-picker__time">
+    <div class="abele-datetime-picker__time">
       <div class="abele-datetime-picker__time-label">Time (optional)</div>
       <div class="abele-datetime-picker__time-input-row">
         <input
@@ -74,8 +67,6 @@ import { DATE_FORMAT } from '@/constants/dates'
 const props = defineProps<{
   initialDate?: dayjs.Dayjs
   initialTime?: string | null
-  /** A day and nothing else — a transaction's. No time, and no tasks of that day beside it. */
-  dateOnly?: boolean
 }>()
 
 const emit = defineEmits<{

@@ -4,15 +4,13 @@ Tasks are notes: one note per task, with its dates in properties and its descrip
 
 ## Creating a task
 
-Run **Create new task**. A dialog asks for the title, the date, the deadline, how it repeats, and
-a description, written in the same editor as a note. Saving creates a note in the tasks folder
-(`Tasks` unless changed in **Settings → Abele → Tasks**); **Open as note** saves and opens it.
-
-The first line of a task note's text is the task's title, and the note is renamed after it. The title can hold links, such as `Call [[Anna]] about [[Garden]]`, and the task
+Run **Create new task**. A new note appears in the tasks folder (`Tasks` unless changed in
+**Settings → Abele → Tasks**). The first line of its text is the task's title, and the note is
+renamed after it. The title can hold links, such as `Call [[Anna]] about [[Garden]]`, and the task
 then shows up under each of those notes.
 
-**Create new task and insert into current note** creates the note straight away and leaves a link
-to the task at the cursor. A link to a task in a note is drawn as the task itself, with its checkbox.
+**Create new task and insert into current note** does the same and leaves a link to the task at
+the cursor. A link to a task in a note is drawn as the task itself, with its checkbox.
 
 A task can also be created from the timeline sidebar, and a right-click on a day in the calendar
 creates one planned for that day or due on it.

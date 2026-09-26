@@ -150,8 +150,7 @@ export class Transaction {
 
   async writeTransactionToFile(focus = false, overwrite = true) {
     const { app } = GlobalStore.getInstance()
-    // Returned, so that a caller that has to find the file afterwards can wait for it.
-    return new TransactionNoteTemplate(app).createNoteWithTemplate(this, focus, overwrite)
+    new TransactionNoteTemplate(app).createNoteWithTemplate(this, focus, overwrite)
   }
 
   initWatcher() {

@@ -20,7 +20,7 @@ import { computed, unref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { Menu, Notice } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { openTaskForm } from '@/commands/taskForm'
+import { createTask } from '@/commands/createTask'
 import dayjs from 'dayjs'
 import { useCalendarDays } from '@/composables/useCalendarDays'
 import { useDate } from '@/composables/useDate'
@@ -63,12 +63,12 @@ const onDateRightClick = (date: dayjs.Dayjs, event: MouseEvent) => {
   menu.addItem((item) => {
     item.setTitle('Event date')
     item.setIcon('calendar-days')
-    item.onClick(() => openTaskForm({ defaults: { date: date.format(DATE_FORMAT) } }))
+    item.onClick(() => createTask({ date }))
   })
   menu.addItem((item) => {
     item.setTitle('Due date')
     item.setIcon('calendar-clock')
-    item.onClick(() => openTaskForm({ defaults: { due: date.format(DATE_FORMAT) } }))
+    item.onClick(() => createTask({ due: date }))
   })
   menu.showAtMouseEvent(event)
 }

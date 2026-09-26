@@ -46,11 +46,6 @@ const COVERED_FILES = [
   'AccountsSidebar.vue',
   'AiCommentTrail.vue',
   'NoteEditorField.vue',
-  'TaskFormModal.vue',
-  'TransactionFormModal.vue',
-  'LinkField.vue',
-  'AmountField.vue',
-  'PropertyListField.vue',
   'CalendarEvent.vue',
 ].map((name) => join(ROOT, name))
 
