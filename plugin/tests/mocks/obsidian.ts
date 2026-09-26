@@ -736,6 +736,15 @@ export class Component {
   }
   register(): void {}
   registerEvent(): void {}
+  /** Listened to for real, so a test can press what a component draws. */
+  registerDomEvent(
+    el: EventTarget,
+    type: string,
+    cb: (e: Event) => unknown,
+    options?: AddEventListenerOptions
+  ): void {
+    el.addEventListener(type, cb, options)
+  }
 }
 
 /** A component that owns an element; a post-processor hands one to `ctx.addChild`. */

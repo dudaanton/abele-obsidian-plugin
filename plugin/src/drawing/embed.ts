@@ -54,6 +54,17 @@ export function embeddedSvg(app: App, embed: HTMLElement, sourcePath: string): T
   return file && file.extension === 'svg' ? file : null
 }
 
+/**
+ * The address a picture of a file is loaded from, another one each time the file changes. On a
+ * desktop Obsidian's own address carries the file's time; on an iPhone or an iPad it is the same
+ * address for every version, and the browser, handed an address it already shows, shows the old
+ * picture — so the time is added there.
+ */
+export function versionedUrl(url: string, file: TFile): string {
+  if (url.includes('?')) return url
+  return `${url}?${file.stat.mtime}-${file.stat.size}`
+}
+
 /** Where an embed's text is in its note, for writing its part or its size back. */
 export interface EmbedPlace {
   /** The first line of the block it is in: its callout's header, or its paragraph's first line. */
@@ -267,7 +278,7 @@ export class DrawingEmbed extends MarkdownRenderChild {
       return
     }
     this.paper = paperOfSvg(await this.app.vault.cachedRead(this.file))
-    this.img.src = this.app.vault.getResourcePath(this.file)
+    this.img.src = versionedUrl(this.app.vault.getResourcePath(this.file), this.file)
     this.embed.addClass(HOST)
     if (this.box.parentElement !== this.embed) this.embed.append(this.box)
     this.layout()
@@ -312,8 +323,10 @@ export class DrawingEmbed extends MarkdownRenderChild {
     setTooltip(b, tooltip)
     b.setAttribute('role', 'button')
     b.setAttribute('aria-label', tooltip)
-    // Not the note's: a click here neither moves the cursor into the embed nor opens it.
-    for (const type of ['mousedown', 'pointerdown', 'touchstart'] as const)
+    // Not the note's: a click here neither moves the cursor into the embed nor opens it. Nor the
+    // box's, which while the part is changed cancels every touch it hears — and Safari makes no
+    // click out of a finger's lift that was cancelled, so the buttons would not answer a finger.
+    for (const type of ['mousedown', 'mouseup', 'pointerdown', 'touchstart', 'touchend'] as const)
       this.registerDomEvent(b, type, (e) => e.stopPropagation())
     this.registerDomEvent(b, 'click', (e) => {
       e.preventDefault()

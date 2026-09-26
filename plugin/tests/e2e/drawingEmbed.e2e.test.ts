@@ -305,4 +305,51 @@ describe.skipIf(!available)('a drawing in a note', () => {
     expect(phone.seen).toBe(true)
     expect(phone.opened).toBe(true)
   }, 180_000)
+
+  it('keeps a part moved with a finger in a callout on a phone, and the callout’s size dragged there', async () => {
+    if (!evalJson<boolean>('app.isMobile')) {
+      await reloadApp('app.emulateMobile(true)')
+      attachDebugger()
+    }
+    const r = run<{ error?: string; header?: string; open?: boolean; text?: string }>(`
+      await until(() => app.workspace.layoutReady, 15000)
+      await closeAll()
+      const file = app.vault.getAbstractFileByPath(window.__embedDrawing ?? app.vault.getFiles().find((f) => f.path.startsWith(DIR) && f.extension === 'svg').path)
+      const leaf = await note('Finger', 'Finger\\n\\n> [!drawing]\\n> ![[' + file.name + ']]\\n', 'source')
+      const box = await until(() => boxes(leaf).find((x) => x.clientWidth), 8000)
+      await wait(400)
+      const tap = async (el) => {
+        const r = el.getBoundingClientRect()
+        await touch('touchStart', [[r.left + r.width / 2, r.top + r.height / 2]])
+        await wait(30)
+        await touch('touchEnd', [])
+        await wait(200)
+      }
+      await tap(box.querySelector('.abele-drawing-embed__adjust'))
+      const b = box.getBoundingClientRect()
+      const x = b.left + b.width / 3, y = b.top + b.height / 2
+      await touch('touchStart', [[x, y]])
+      for (let i = 1; i <= 8; i++) { await touch('touchMove', [[x + i * 8, y + i * 4]]); await wait(16) }
+      await touch('touchEnd', [])
+      await wait(200)
+      await tap(box.querySelector('.abele-drawing-embed__keep'))
+      const kept = await until(async () => { const t = await read(leaf.view.file.path); return t.includes('[!drawing|') && t }, 5000)
+      const header = (kept || '').split('\\n').find((l) => l.startsWith('> [!drawing'))
+      const open = !!box.querySelector('.abele-drawing-embed__keep')
+      await wait(600)
+      const now = await until(() => boxes(leaf).find((x) => x.clientWidth && !x.matches('.abele-drawing-embed_adjusting')), 8000)
+      await shoot('phone-callout')
+      const h = now.querySelector('.abele-drawing-embed__resize').getBoundingClientRect()
+      const hx = h.left + h.width / 2, hy = h.top + h.height / 2
+      await touch('touchStart', [[hx, hy]])
+      for (let i = 1; i <= 8; i++) { await touch('touchMove', [[hx - i * 10, hy]]); await wait(16) }
+      await touch('touchEnd', [])
+      const text = await until(async () => { const t = await read(leaf.view.file.path); return /\\|\\d+\\]\\]\\n$/.test(t) && t }, 5000)
+      return { header, open, text }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.header).toMatch(/^> \[!drawing\|-?\d+ -?\d+ \d+ \d+\]$/)
+    expect(r.open).toBe(false)
+    expect(r.text).toMatch(/\|\d+\]\]\n$/)
+  }, 180_000)
 })
