@@ -148,7 +148,7 @@ describe('the file in the vault, as the plugin keeps it', () => {
     await places.get('id:a')
     let here = 'a-1'
     const go = vi.fn(async (cfi: string) => void (here = cfi))
-    const stop = followPlace('id:a', () => here, go)
+    const follow = followPlace('id:a', () => here, go)!
     // Another book's place: nothing moves.
     d.data.set('abele-book-places.json', JSON.stringify({ 'id:b': place('b-2', 9, 'b.epub') }))
     handlers.modify(fileAt('abele-book-places.json'))
@@ -160,7 +160,7 @@ describe('the file in the vault, as the plugin keeps it', () => {
     expect(go).toHaveBeenCalledWith('a-2')
     expect(Notice.shown.at(-1)).toMatch(/another device/)
     // Closed: no longer followed.
-    stop()
+    follow.stop()
     d.data.set('abele-book-places.json', JSON.stringify({ 'id:a': place('a-3', 20) }))
     handlers.modify(fileAt('abele-book-places.json'))
     await vi.advanceTimersByTimeAsync(0)

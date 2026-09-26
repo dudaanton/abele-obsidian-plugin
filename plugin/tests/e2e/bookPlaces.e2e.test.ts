@@ -2,8 +2,8 @@
  * Where a book was left, across a restart of the app: a book and a PDF are read to a place, the
  * app's window is reloaded with their tabs open, and the tabs Obsidian restores open them where
  * they were — and the file of places, in the vault, still holds those places afterwards. Then
- * another device's later place arrives in that file, written on disk as a sync would, and the
- * open book follows it.
+ * another device's later places arrive in that file, written on disk as a sync would: the open
+ * book, read just now, waits; looked at again it follows them, and says so once.
  *
  * A full quit and relaunch of the app was checked by hand the same way; a phone stopping the app
  * in the background is covered by the unit tests (`tests/unit/bookPlaces.test.ts`).
@@ -158,30 +158,70 @@ describe.skipIf(!available)('where a book was left, across a restart', () => {
     expect(r.pdfCfi).toBe(before.pdfCfi)
   })
 
-  it('follows a later place another device wrote into the file, and never writes an older one over it', () => {
-    const r = run<{ error?: string; chapter?: string; kept?: string; told?: boolean }>(`
+  it('waits while read here, follows another device once looked at again, and says so once', () => {
+    const r = run<{
+      error?: string
+      stayed?: string
+      followed?: string
+      next?: string
+      nextWant?: string
+      notices?: number
+      kept?: string
+    }>(`
       const bookLeaf = await until(() => leafOf(${JSON.stringify(BOOK)}), 15000)
+      const pdfLeaf = await until(() => leafOf(${JSON.stringify(PDF)}), 15000)
       // In front: the tab before showed the PDF.
       app.workspace.setActiveLeaf(bookLeaf, { focus: true })
       const book = await ready(bookLeaf)
       const key = 'id:' + ${JSON.stringify(RICH_BOOK_ID)}
-      // The start of chapter 1, read on another device just now, arriving as a sync
-      // writes it: on disk, beside the app.
-      await book.engine.goTo(book.model.toc[0].href); await wait(600)
-      const there = book.engine.lastLocation.cfi
-      await book.engine.goTo(book.model.toc[2].href); await wait(2500)
-      const places = await saved()
-      places[key] = { ...places[key], cfi: there, at: Date.now() }
       const full = require('path').join(app.vault.adapter.getBasePath(), placesFile)
-      require('fs').writeFileSync(full, JSON.stringify(places))
+      // Another device's place arriving as a sync writes it: on disk, beside the app.
+      const arrive = async (cfi) => {
+        const places = await saved()
+        places[key] = { ...places[key], cfi, at: Date.now() }
+        require('fs').writeFileSync(full, JSON.stringify(places))
+      }
+      // Each notice once: it can be heard both as itself and inside its container.
+      const told = new Set()
+      const seen = new MutationObserver((changes) => {
+        for (const c of changes) for (const n of c.addedNodes) {
+          if (n.nodeType !== 1) continue
+          for (const el of [n, ...n.querySelectorAll('.notice')])
+            if (el.classList.contains('notice') && /another device/.test(el.textContent)) told.add(el)
+        }
+      })
+      seen.observe(document.body, { childList: true, subtree: true })
+      await book.engine.goTo(book.model.toc[0].href); await wait(600)
+      const first = book.engine.lastLocation.cfi
+      await book.engine.goTo(book.model.toc[1].href); await wait(600)
+      const second = book.engine.lastLocation.cfi
+      const nextWant = book.model.chapter
+      // Read here just now: what arrives waits, and nothing is said.
+      await book.engine.goTo(book.model.toc[2].href); await wait(2500)
+      await arrive(first)
+      await wait(3000)
+      const stayed = book.model.chapter
+      // Another tab, then this one again: it goes where the other device got to, and says so.
+      app.workspace.setActiveLeaf(pdfLeaf, { focus: true }); await wait(300)
+      app.workspace.setActiveLeaf(bookLeaf, { focus: true })
       await until(() => book.model.chapter?.startsWith('Chapter 1'), 15000)
-      const told = [...document.querySelectorAll('.notice')].some((n) => /another device/.test(n.textContent))
+      const followed = book.model.chapter
+      // Not read here since: the next place follows at once, without another notice.
+      await wait(300)
+      await arrive(second)
+      await until(() => book.model.chapter === nextWant, 15000)
+      const next = book.model.chapter
       await wait(2500)
-      return { chapter: book.model.chapter, kept: (await saved())[key]?.cfi === there ? 'yes' : 'no', told }
+      seen.disconnect()
+      // Followed, not read: the other device's place stays in the file, not this tab's echo.
+      const kept = (await saved())[key]?.cfi === second ? 'yes' : 'no'
+      return { stayed, followed, next, nextWant, notices: told.size, kept }
     `)
     expect(r.error).toBeUndefined()
-    expect(r.chapter).toMatch(/^Chapter 1/)
-    expect(r.told).toBe(true)
+    expect(r.stayed).not.toMatch(/^Chapter 1/)
+    expect(r.followed).toMatch(/^Chapter 1/)
+    expect(r.next).toBe(r.nextWant)
+    expect(r.notices).toBe(1)
     expect(r.kept).toBe('yes')
   })
 })

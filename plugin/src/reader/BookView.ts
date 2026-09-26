@@ -34,6 +34,7 @@ import { redrawOver, relayoutOnFonts } from './pageLayout'
 import { bookCallbacks, type BookActions } from './bookCallbacks'
 import { bookKey } from './positions'
 import { bookPlaces, followPlace } from './places'
+import { onLookedAgain, type PlaceFollow } from './placeFollow'
 import { bookmarksFor, type PageBookmarks } from './pageBookmarks'
 import { progressOf } from './readingProgress'
 import { nameOf } from './bookText'
@@ -65,7 +66,7 @@ export class BookView extends FileView {
   private stopWatch: WatchStopHandle | null = null
   private key = ''
   /** Stops following the book's place as other devices move it. */
-  private stopNewer: (() => void) | null = null
+  private follow: PlaceFollow | null = null
   private footnotes = new FootnoteHandler()
   private footnoteHref = ''
   /** How a PDF was laid out when it opened: a change to either opens it again. */
@@ -162,6 +163,8 @@ export class BookView extends FileView {
     // Read once its properties are parsed: they are what say whose note it is.
     this.registerEvent(this.app.metadataCache.on('changed', noteChanged))
     this.registerEvent(this.app.vault.on('delete', noteChanged))
+    // Looked at again: where another device got to is gone to.
+    onLookedAgain(this, () => this.follow?.back())
     this.scope = bookScope(this.app.scope, {
       search: () => this.openSearch(),
       pdf: () => this.fixed,
@@ -315,8 +318,8 @@ export class BookView extends FileView {
 
   private teardown(): void {
     this.loadToken++
-    this.stopNewer?.()
-    this.stopNewer = null
+    this.follow?.stop()
+    this.follow = null
     this.closeFootnote()
     this.reading?.stopSearch()
     this.reading?.speech.stop()
@@ -469,9 +472,9 @@ export class BookView extends FileView {
         console.warn('[Abele] the book’s place was not found in it, opened at the start', e)
         await reader.init({ lastLocation: null, showTextStart: true })
       }
-      // Read further on another device while open here: the tab follows, rather than writing
-      // this older place back over it at the next page turn.
-      this.stopNewer = followPlace(
+      // Read further on another device while open here: the tab follows when it is not being read
+      // itself, rather than writing this older place back over it at the next page turn.
+      this.follow = followPlace(
         this.key,
         () => reader.lastLocation?.cfi,
         (cfi) => reader.goTo(cfi)
@@ -505,7 +508,8 @@ export class BookView extends FileView {
     this.model.currentHref = detail.tocItem?.href ?? null
     this.bookmarks?.relocated()
     const file = this.file
-    if (detail.cfi && file && this.key && this.model.status === 'ready')
+    const mine = this.model.status === 'ready' && (this.follow?.turned(detail.cfi) ?? true)
+    if (detail.cfi && file && this.key && mine)
       void bookPlaces()?.set(this.key, {
         cfi: detail.cfi,
         fraction: detail.fraction ?? 0,

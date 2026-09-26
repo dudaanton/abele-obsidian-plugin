@@ -178,8 +178,15 @@ export class BookPlaces {
     return out
   }
 
+  /**
+   * The book is at `place` now. The same page again — the view laid out anew, the tab gone where
+   * another device left it — keeps its time: stamped now, it would reach the other device as
+   * newer than where that one has read on to.
+   */
   async set(key: string, place: Omit<BookPlace, 'at'>): Promise<void> {
     await this.load()
+    const known = this.places[key]
+    if (known && known.cfi === place.cfi && known.path === place.path) return
     this.places[key] = { ...place, at: Date.now() }
     this.dirty = true
     this.schedule()

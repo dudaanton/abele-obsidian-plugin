@@ -15,6 +15,7 @@ import { Notice, normalizePath, TFile, type Plugin } from 'obsidian'
 import { watch } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { BookPlaces, type PlaceStorage } from './positions'
+import { PlaceFollow } from './placeFollow'
 import { placesPathOf, readerSettingsFrom } from './settings'
 
 /** What of Obsidian's file adapter the places need. */
@@ -91,25 +92,13 @@ export function initBookPlaces(plugin: Plugin): BookPlaces {
   return store
 }
 
-/**
- * An open book following its place as another device moves it on: a newer place arriving goes to
- * it, and says so. Returns what stops it.
- */
+/** An open book following its place as another device moves it on (`placeFollow.ts`). */
 export function followPlace(
   key: string,
   current: () => string | undefined,
   go: (cfi: string) => Promise<unknown>
-): () => void {
-  const store = places
-  if (!store) return () => {}
-  return store.onNewer((keys) => {
-    if (!keys.includes(key)) return
-    void store.get(key).then(async (place) => {
-      if (!place || place.cfi === current()) return
-      await go(place.cfi)
-      new Notice('Moved to where this book was left on another device.')
-    })
-  })
+): PlaceFollow | null {
+  return places ? new PlaceFollow(places, key, current, go) : null
 }
 
 /** The store, once the plugin has loaded; null before, and in tests that do not make one. */
