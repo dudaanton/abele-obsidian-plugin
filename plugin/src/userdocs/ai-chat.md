@@ -71,6 +71,18 @@ backlinks, tasks and transactions); search the web and read pages; look up addre
 on a map; read your books; read GitHub; make and edit pictures; ask you questions with a form;
 run your scripts; and delegate work to other agents.
 
+## MCP servers
+
+**Settings → Abele → AI Agent → MCP** connects MCP servers reached over HTTP; nothing is started on
+your device, so they work on a phone too. Give each a name, its address, and a token or headers if
+it needs them. **Fetch tools** reads its list of tools, and that saved list is what agents are
+told until you fetch again.
+
+A server's tools are off for every agent until you switch the server on in the agent's
+**Access** tab or a chat's permissions. They then ask before each call, unless you set a tool to
+automatic. Every tool description costs tokens in each request, so give a large server only to
+the agents that need it.
+
 ## Skills and prompts
 
 A **skill** is a note with `type: abele-skill` that teaches an agent how to do something. The
@@ -117,4 +129,4 @@ If the agent cannot see the note, this one chat is given access to it.
 A chat that changes a note is listed under that note, in the **Chats** list of its footer. You can
 also put one there yourself: **Attach a chat to current note**, **Attach a chat…** in a note's
 right-click menu, or the link button in the chat's header. The unlink button on a chat's card
-takes it away again.
+takes it away again. Scripts can have chats attached the same way.

@@ -5,7 +5,12 @@ else it relates to.
 
 ## Transactions
 
-Run **Create new transaction**. Its note carries:
+Run **Create new transaction**. A dialog asks for the amount, which can be a sum such as
+`3.50 + 2×1.20`, the accounts on both sides with their balances, a second amount and the rate
+when the accounts are in different currencies, the category, groups and a description. **Next**
+saves it and starts another on the same day between the same accounts.
+
+The note it creates carries:
 
 | Property | Meaning |
 |---|---|
@@ -16,7 +21,8 @@ Run **Create new transaction**. Its note carries:
 | `category` | A link to a category note |
 | `groups` | Anything it relates to: a trip, a project, a person |
 
-**Create new transaction and insert into current note** also leaves a link to it at the cursor.
+**Create new transaction and insert into current note** creates the note straight away and leaves
+a link to it at the cursor.
 Where new transactions go, and which template they are made from, is set in
 **Settings → Abele → Finance**.
 

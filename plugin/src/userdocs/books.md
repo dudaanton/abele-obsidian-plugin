@@ -22,6 +22,13 @@ tap on a picture or a table opens it full screen.
 The line under the page shows the chapter and how far you are. Tap it to switch between pages
 in the chapter, pages left, location and percentage.
 
+## Bookmarks
+
+The bookmark at the end of the line under the page marks the page on screen; tap it again to
+remove it. The **Bookmarks** tab beside the contents lists them in the book's order, with the
+chapter and the page's first words. A bookmark stays with the words at the top of its page when
+the text size changes, and reaches your other devices like your place does.
+
 ## Your place, on every device
 
 The reader remembers where you stopped in each book, and keeps it in a file in the vault

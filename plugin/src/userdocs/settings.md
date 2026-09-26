@@ -31,7 +31,8 @@ Where time entries are saved and which notes get a timer. See [Time tracking](ti
 The whole AI feature. **General** holds providers and models, the background model that names and
 summarises chats, the chat and comment folders, web search, image and voice models, and the
 background prompts. **Agents** holds your agents with their prompts, tools, scope, permissions,
-memory and interceptor. See [AI chat and agents](ai-chat).
+memory and interceptor. **MCP** connects MCP servers whose tools agents can use. See
+[AI chat and agents](ai-chat).
 
 ## Scripts
 
