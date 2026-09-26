@@ -219,6 +219,8 @@ describe.skipIf(!available)('the calendar view of a base', () => {
         const root = await openBase()
         if (!root) return { ...report, error: 'the calendar did not open' }
         await wait(1200)
+        // The base opens in whatever layout it was left in; the phone checks start on the month.
+        await tab(root, 'Month')
         report.narrow = root.classList.contains('abele-calendar-base_narrow')
         report.dots = root.querySelectorAll('.abele-calendar-month__dot').length
         report.agenda = chips(root.querySelector('.abele-calendar-base__agenda'))

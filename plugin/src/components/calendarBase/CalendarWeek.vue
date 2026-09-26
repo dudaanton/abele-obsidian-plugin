@@ -197,6 +197,14 @@ watch(() => props.days[0], scrollToStart)
   grid-template-columns: var(--abele-calendar-gutter) repeat(7, minmax(0, 1fr));
 }
 
+// The hours stay in view while a narrow week is moved sideways.
+.abele-calendar-week__gutter {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+  background-color: var(--background-primary);
+}
+
 .abele-calendar-week__day-head {
   display: flex;
   flex-direction: column;

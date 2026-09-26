@@ -91,8 +91,8 @@ const onDayClick = (event: MouseEvent) => {
 <style lang="scss">
 .abele-calendar-year {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(12em, 1fr));
-  gap: var(--size-4-4) var(--size-4-6);
+  grid-template-columns: repeat(auto-fill, minmax(10em, 1fr));
+  gap: var(--size-4-4) var(--size-4-5);
 }
 
 .abele-calendar-year__month-name {
