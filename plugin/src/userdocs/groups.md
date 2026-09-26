@@ -35,7 +35,8 @@ in it:
 - **Logs**: paragraphs written about this note elsewhere. See [Logs](logs-and-journals#logs).
 - **Chats**: AI chats that changed this note or were attached to it.
 
-The task and log lists have a search box, and tasks can be filtered by label.
+The task, transaction and log lists have a search box, which looks through everything in that
+list, and tasks can be filtered by label.
 
 ## Cards: description and cover
 

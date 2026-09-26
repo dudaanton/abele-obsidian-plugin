@@ -43,6 +43,9 @@ currency and the currencies shown first in **Settings → Abele → Finance**.
 where the money went, the transactions themselves, and debts: what you owe and what is owed to
 you.
 
+The search icon above its transactions looks through all of them, whatever the period; under a
+note it looks only through that note's transactions. What is found stays grouped by day.
+
 **Show accounts sidebar** lists every account with its balance. Its options sort the list, group
 it by account type, hide empty accounts and pick one currency.
 

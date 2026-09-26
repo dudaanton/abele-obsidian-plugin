@@ -5,6 +5,7 @@ import { getNoteBody } from '@/helpers/notesUtils'
 import { matchesTerms, searchTerms } from '@/helpers/listSearch'
 import type { Task } from '@/entities/Task'
 import type { Log } from '@/entities/Log'
+import type { Transaction } from '@/entities/Transaction'
 
 /** How long typing has to pause before the list is filtered again. */
 export const SEARCH_DELAY_MS = 200
@@ -151,4 +152,23 @@ export const logSearch: ListSearchOptions<Log> = {
   pathOf: (log) => log.filePath,
   textOf: (log, body) =>
     `${log.name}\n${body === null ? (log.content ?? '') : log.relatedText(body)}`,
+}
+
+/**
+ * A transaction is found by its note's name, its text, the accounts it went between, its
+ * category and its amount — what its card shows.
+ */
+export const transactionSearch: ListSearchOptions<Transaction> = {
+  pathOf: (tx) => tx.transactionPath,
+  textOf: (tx, body) =>
+    [
+      tx.transactionName,
+      tx.from,
+      tx.to,
+      tx.category,
+      tx.amount === null ? null : `${tx.amount} ${tx.currency ?? ''}`,
+      body ?? `${tx.title}\n${tx.description}`,
+    ]
+      .filter(Boolean)
+      .join('\n'),
 }

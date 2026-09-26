@@ -753,8 +753,8 @@ body.is-mobile .abele-comment-marker_pending::after {
   white-space: normal;
 }
 
-/* The words a task or log list was searched for, marked the way Obsidian marks a search match.
-   Drawn by the CSS Custom Highlight API — see useSearchHighlight — so the text is never wrapped. */
+/* The words a task, log or transaction list was searched for, marked the way Obsidian marks a
+   search match. Drawn by the CSS Custom Highlight API — see useSearchHighlight — so the text is never wrapped. */
 ::highlight(abele-list-search) {
   background-color: var(--text-highlight-bg);
   color: var(--text-normal);

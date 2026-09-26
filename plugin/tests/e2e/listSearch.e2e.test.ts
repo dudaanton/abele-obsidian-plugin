@@ -1,5 +1,5 @@
 /**
- * Search in the task and log lists, in the running app, on the scale vault.
+ * Search in the task, log and transaction lists, in the running app, on the scale vault.
  *
  * The component tier proves the search reaches entries far past the first page and reads each
  * note once. What it cannot show is how long that takes against a real vault — the group note
@@ -11,6 +11,9 @@
  *
  * - the search finds the last task in the calendar list and the oldest log, both far past the
  *   first page, and the time from typing to their showing is recorded;
+ * - under an account note, its chart's period widened back to its first transaction, it finds
+ *   that oldest transaction, and in the finance sidebar,
+ *   which lists every transaction up to the end of this month, it finds the oldest in the vault;
  * - every task left on screen carries the words searched for, and they are marked;
  * - Escape closes the field and the whole list comes back;
  * - on the phone, nothing in the list's header or field reaches past the edge of the screen.
@@ -30,6 +33,8 @@ import {
 } from './helpers/obsidianCli'
 
 const GROUP_NOTE = process.env.OBSIDIAN_TEST_GROUP ?? 'ScaleTest/Notes/Projects.md'
+/** An account with a hundred and more transactions, none of them this month. */
+const ACCOUNT_NOTE = 'ScaleTest/Finance/Accounts/Gifts.md'
 const PHONE = { width: 390, height: 844 }
 const SHOTS = '/tmp/abele-phone'
 
@@ -145,7 +150,7 @@ const probeScript = (tag: string): string => `(async () => {
     report[label] = entry
     window.__abeleListSearchStep = label
     try {
-      const list = footer().querySelector(listSel)
+      const list = typeof listSel === 'function' ? listSel() : footer().querySelector(listSel)
       list.scrollIntoView({ block: 'start' })
       const entries = () => [...list.querySelectorAll(entrySel)]
       entry.before = entries().length
@@ -229,6 +234,57 @@ const probeScript = (tag: string): string => `(async () => {
       () => true
     )
     report['logs'].query = oldest.name
+
+    // A transaction's title is the first line of its note.
+    const titleOf = async (tx) => (await body(tx.transactionPath)).split('\\n').find((l) => l.trim()).trim()
+    const byDate = (a, b) => (a.date && b.date ? a.date.valueOf() - b.date.valueOf() : 0)
+
+    await leaf.openFile(app.vault.getAbstractFileByPath(${JSON.stringify(ACCOUNT_NOTE)}))
+    const selector = () => footer() && footer().querySelector('.abele-period-selector')
+    if (!(await until(selector, 30000))) throw new Error('the account note shows no balance chart')
+    const account = store.footersContainers.value.find((f) => f.filePath === ${JSON.stringify(ACCOUNT_NOTE)})
+    if (!account) throw new Error('no footer for the account note')
+    const own = [...account.noteRelations.transactions.values()].filter((t) => !t.transactionNotFound && t.date)
+    own.sort(byDate)
+    if (!own[0]) throw new Error('the account holds no transaction')
+    // An account's list holds only its chart's period, this month by default, and the vault's
+    // transactions are all older. Widened back to the first one, the list runs to many pages.
+    selector().__vueParentComponent.emit('update:start', own[0].date.startOf('month'))
+    if (!(await until(() => footer().querySelector('.abele-transactions-list .abele-transaction-view'), 30000)))
+      throw new Error('the account note never listed its transactions')
+    await wait(1500)
+    const ownTitle = await titleOf(own[0])
+    await probe(
+      'transactions',
+      '.abele-transactions-list',
+      '.abele-transaction-view',
+      ownTitle,
+      (e) => e.textContent.includes(ownTitle),
+      () => true
+    )
+    report['transactions'].query = ownTitle
+
+    await app.commands.executeCommandById('abele:show-finance-sidebar')
+    const sidebarList = () => {
+      const header = document.querySelector('.abele-finance-sidebar__section-header')
+      return header && header.parentElement
+    }
+    if (!(await until(() => sidebarList() && sidebarList().querySelector('.abele-transaction-view'), 30000)))
+      throw new Error('the finance sidebar never listed a transaction')
+    await wait(1500)
+    const every = [...store.transactionsList.value.transactions.values()].filter((t) => t.loaded && t.date)
+    every.sort(byDate)
+    const allTitle = await titleOf(every[0])
+    await probe(
+      'finance',
+      sidebarList,
+      '.abele-transaction-view',
+      allTitle,
+      (e) => e.textContent.includes(allTitle),
+      () => true
+    )
+    report['finance'].query = allTitle
+    app.workspace.detachLeavesOfType('abele-finance-sidebar-view')
   } catch (e) {
     report['run'] = { error: String((e && e.message) || e) }
   }
@@ -282,7 +338,7 @@ const run = async (tag: string): Promise<Report> => {
 
 const available = isObsidianRunning() && hasTestApi()
 
-describe.skipIf(!available)('searching the task and log lists', () => {
+describe.skipIf(!available)('searching the task, log and transaction lists', () => {
   let desktop: Report = {}
   let phone: Report = {}
   let size: [number, number] = [0, 0]
@@ -323,7 +379,7 @@ describe.skipIf(!available)('searching the task and log lists', () => {
   it('runs through both lists on both layouts', () => {
     expect(desktop.run?.error ?? '').toBe('')
     expect(phone.run?.error ?? '').toBe('')
-    for (const key of ['tasks', 'logs']) {
+    for (const key of ['tasks', 'logs', 'transactions', 'finance']) {
       expect(desktop[key]?.error, key).toBe('')
       expect(phone[key]?.error, `phone ${key}`).toBe('')
     }
@@ -357,5 +413,7 @@ describe.skipIf(!available)('searching the task and log lists', () => {
   it('keeps the header and the field inside a phone screen', () => {
     expect(phone.tasks?.over ?? ['no report']).toEqual([])
     expect(phone.logs?.over ?? ['no report']).toEqual([])
+    expect(phone.transactions?.over ?? ['no report']).toEqual([])
+    expect(phone.finance?.over ?? ['no report']).toEqual([])
   })
 })

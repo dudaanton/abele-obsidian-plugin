@@ -1,6 +1,6 @@
 /**
- * Matching for the search in the task and log lists: a query is a handful of words, and an
- * entry matches when its text holds every one of them, in any order and any case.
+ * Matching for the search in the task, log and transaction lists: a query is a handful of words,
+ * and an entry matches when its text holds every one of them, in any order and any case.
  */
 
 /** The words a query is made of, lowercased. A blank query has none. */

@@ -1,10 +1,27 @@
 <template>
   <div class="abele-transactions-list">
     <div class="abele-transactions-list__header">
-      <div class="abele-transactions-list__header-text">Transactions</div>
-      <ObsidianIcon icon="banknote-arrow-down" @click="addTransaction()" />
+      <div class="abele-transactions-list__header-left">
+        <div class="abele-transactions-list__header-text">Transactions</div>
+        <ObsidianIcon icon="banknote-arrow-down" @click="addTransaction()" />
+      </div>
+      <ObsidianIcon
+        class="abele-transactions-list__search-toggle"
+        icon="search"
+        :active="search.open.value"
+        :tooltip="search.open.value ? 'Close the search' : 'Search transactions'"
+        @click="search.toggle"
+      />
     </div>
-    <div v-if="visible.length" class="abele-transactions-list__items">
+    <ObsidianSearch
+      v-if="search.open.value"
+      v-model="search.query.value"
+      class="abele-transactions-list__search"
+      placeholder="Search transactions…"
+      autofocus
+      @keydown.escape.stop.prevent="search.close"
+    />
+    <div v-if="visible.length" ref="itemsEl" class="abele-transactions-list__items">
       <template v-for="(tx, idx) in visible" :key="tx.id">
         <DateDivider v-if="showDateBefore(idx)" :date="txDate(tx)">
           <span v-for="s in dayTotals(txDate(tx))" :key="s">{{ s }}</span>
@@ -13,7 +30,9 @@
       </template>
       <div ref="scrollSentinel" class="abele-transactions-list__sentinel" />
     </div>
-    <div v-if="!sorted.length" class="abele-transactions-list__empty">No transactions.</div>
+    <div v-if="!sorted.length" class="abele-transactions-list__empty">
+      {{ search.terms.value.length ? 'Nothing matches the search.' : 'No transactions.' }}
+    </div>
   </div>
 </template>
 
@@ -25,12 +44,15 @@ import { pathToWikilink, wikilinkToPath } from '@/helpers/pathsHelpers'
 import TransactionItem from './TransactionItem.vue'
 import DateDivider from './obsidian/DateDivider.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
+import ObsidianSearch from './obsidian/Search.vue'
 import { createTransaction } from '@/commands/createTransaction'
 import { DATE_FORMAT } from '@/constants/dates'
-import { computed, ref, unref } from 'vue'
+import { computed, ref, unref, watch } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import dayjs from 'dayjs'
 import { formatAmount } from '@/helpers/moneyFormat'
+import { transactionSearch, useListSearch } from '@/composables/useListSearch'
+import { useSearchHighlight } from '@/composables/useSearchHighlight'
 
 const PAGE_SIZE = 20
 
@@ -74,9 +96,16 @@ function getType(tx: Transaction): 'income' | 'expense' | 'transfer' {
   return 'transfer'
 }
 
+// Over every transaction the list was handed — the note's own, not the vault's — however many
+// of them are on screen.
+const search = useListSearch(() => props.transactions, transactionSearch)
+
+const itemsEl = ref<HTMLElement | null>(null)
+useSearchHighlight(itemsEl, search.terms)
+
 const sorted = computed(() => {
   const { app } = store
-  return [...props.transactions].sort((a, b) => {
+  return [...search.results.value].sort((a, b) => {
     const da = a.date ? a.date.format('YYYY-MM-DD') : ''
     const db = b.date ? b.date.format('YYYY-MM-DD') : ''
     const dateCmp = db.localeCompare(da)
@@ -92,6 +121,11 @@ const sorted = computed(() => {
 
 const visibleCount = ref(PAGE_SIZE)
 const visible = computed(() => sorted.value.slice(0, visibleCount.value))
+
+// A new query is a different list; the window expanded over the old one means nothing here.
+watch(search.terms, () => {
+  visibleCount.value = PAGE_SIZE
+})
 
 const scrollSentinel = ref<HTMLElement | null>(null)
 useIntersectionObserver(scrollSentinel, ([entry]) => {
@@ -158,12 +192,23 @@ function addTransaction() {
 .abele-transactions-list__header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: calc(var(--p-spacing) / 2);
   margin-bottom: var(--p-spacing);
 
   .abele-transactions-list__header-text {
     font-weight: bold;
   }
+}
+
+.abele-transactions-list__header-left {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--p-spacing) / 2);
+}
+
+.abele-transactions-list__search {
+  margin-bottom: var(--p-spacing);
 }
 
 .abele-transactions-list__items {

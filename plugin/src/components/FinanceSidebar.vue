@@ -136,8 +136,29 @@
 
     <!-- Recent Transactions -->
     <section class="abele-finance-sidebar__section">
-      <h3 class="abele-finance-sidebar__section-title">Recent Transactions</h3>
-      <div v-if="visibleTransactions.length" class="abele-finance-sidebar__transactions">
+      <div class="abele-finance-sidebar__section-header">
+        <h3 class="abele-finance-sidebar__section-title">Recent Transactions</h3>
+        <ObsidianIcon
+          class="abele-finance-sidebar__search-toggle"
+          icon="search"
+          :active="search.open.value"
+          :tooltip="search.open.value ? 'Close the search' : 'Search all transactions'"
+          @click="search.toggle"
+        />
+      </div>
+      <ObsidianSearch
+        v-if="search.open.value"
+        v-model="search.query.value"
+        class="abele-finance-sidebar__search"
+        placeholder="Search transactions…"
+        autofocus
+        @keydown.escape.stop.prevent="search.close"
+      />
+      <div
+        v-if="visibleTransactions.length"
+        ref="transactionsEl"
+        class="abele-finance-sidebar__transactions"
+      >
         <template v-for="(entry, idx) in visibleTransactions" :key="entry.id">
           <DateDivider v-if="showTxDateBefore(idx)" :date="entry.date">
             <span v-for="s in dayTotals.get(entry.date) ?? []" :key="s">{{ s }}</span>
@@ -146,7 +167,9 @@
         </template>
         <div ref="scrollSentinel" class="abele-finance-sidebar__sentinel" />
       </div>
-      <div v-else class="abele-finance-sidebar__empty">No transactions found</div>
+      <div v-else class="abele-finance-sidebar__empty">
+        {{ search.terms.value.length ? 'Nothing matches the search.' : 'No transactions found' }}
+      </div>
     </section>
   </div>
 </template>
@@ -163,6 +186,7 @@ import { DATE_FORMAT } from '@/constants/dates'
 import { echartsInit, getThemeColors, EChartsType } from '@/bases/echarts'
 import { openFile } from '@/helpers/vaultUtils'
 import ObsidianIcon from './obsidian/Icon.vue'
+import ObsidianSearch from './obsidian/Search.vue'
 import Tabs from './obsidian/Tabs.vue'
 import PeriodSelector from './obsidian/PeriodSelector.vue'
 import DateDivider from './obsidian/DateDivider.vue'
@@ -173,6 +197,8 @@ import { formatAmount } from '@/helpers/moneyFormat'
 import { currencyCard, type CurrencyCard } from '@/helpers/financeTotals'
 import { useFinanceLedger, type LedgerEntry } from '@/composables/useFinanceLedger'
 import { pausedWhileHidden } from '@/helpers/pausedWhileHidden'
+import { transactionSearch, useListSearch } from '@/composables/useListSearch'
+import { useSearchHighlight } from '@/composables/useSearchHighlight'
 import { revealSidebarView } from '@/views/revealSidebarView'
 import { ACCOUNTS_SIDEBAR_VIEW_TYPE } from '@/views/AccountsSidebarView'
 
@@ -800,15 +826,31 @@ function transactionType(entry: LedgerEntry): 'income' | 'expense' | 'transfer' 
   return 'transfer'
 }
 
-watch(periodEnd, () => {
+/**
+ * The search covers every transaction in the vault, not only those up to the period's end: this
+ * is the general list, and what is searched for may be from any time. Results stay newest first.
+ */
+const ledgerTransactions = computed(() => ledger.value.map((entry) => entry.tx))
+const search = useListSearch(() => ledgerTransactions.value, transactionSearch)
+
+const transactionsEl = ref<HTMLElement | null>(null)
+useSearchHighlight(transactionsEl, search.terms)
+
+const listedTransactions = computed(() => {
+  if (!search.terms.value.length) return sortedTransactions.value
+  const found = new Set(search.results.value.map((tx) => toRaw(tx)))
+  return ledger.value.filter((entry) => found.has(toRaw(entry.tx)))
+})
+
+watch([periodEnd, search.terms], () => {
   visibleCount.value = PAGE_SIZE
 })
 
-const visibleTransactions = computed(() => sortedTransactions.value.slice(0, visibleCount.value))
+const visibleTransactions = computed(() => listedTransactions.value.slice(0, visibleCount.value))
 
 const scrollSentinel = ref<HTMLElement | null>(null)
 useIntersectionObserver(scrollSentinel, ([entry]) => {
-  if (entry?.isIntersecting && sortedTransactions.value.length > visibleCount.value) {
+  if (entry?.isIntersecting && listedTransactions.value.length > visibleCount.value) {
     visibleCount.value += PAGE_SIZE
   }
 })
@@ -835,7 +877,7 @@ const dayTotals = computed(() => {
 
   const lastDay = shown[shown.length - 1].date
   const byDay = new Map<string, Map<string, number>>()
-  for (const entry of sortedTransactions.value) {
+  for (const entry of listedTransactions.value) {
     if (entry.date < lastDay) break
     if (isAssetToAsset(entry)) continue
     let byCurrency = byDay.get(entry.date)
@@ -967,6 +1009,22 @@ const dayTotals = computed(() => {
 
 .abele-finance-sidebar__section {
   margin-bottom: var(--size-4-6);
+}
+
+.abele-finance-sidebar__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--p-spacing) / 2);
+  margin: 0 0 var(--size-4-2) 0;
+
+  .abele-finance-sidebar__section-title {
+    margin: 0;
+  }
+}
+
+.abele-finance-sidebar__search {
+  margin-bottom: var(--size-4-2);
 }
 
 .abele-finance-sidebar__section-title {
