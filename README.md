@@ -140,7 +140,7 @@ Nothing leaves the device unless a feature you set up sends it:
 - **MCP servers** you connect are sent the tool calls an agent makes to them — the arguments, which may hold text from your notes — along with the token and headers you gave that server. Only servers reached over HTTP are supported; the plugin never starts a program on your computer.
 - **GitHub** tabs, when switched on, read from GitHub or your GitHub Enterprise server with your token.
 - **Voice input** sends the recording to the transcription model you chose.
-- **Calendars** you add are read from their secret links or CalDAV servers, with the username and password you gave, when Obsidian starts and every half hour by default. Nothing is sent to them.
+- **Calendars** you add are read from their secret links or CalDAV servers, with the username and password you gave, when Obsidian starts and every half hour by default; the plugin only reads them and never writes to them.
 
 Keys, tokens, calendar links and passwords are kept in Obsidian's keychain, not in the settings file.
 
