@@ -84,19 +84,53 @@ export function emptyConnection(isMobile = false): DeviceConnection {
  * phone whose record names no cap gets the phone's.
  */
 export function readConnection(storage: LocalStorage, isMobile = false): DeviceConnection {
+  return inspectConnection(storage, isMobile).connection
+}
+
+/**
+ * The record, and which of its fields were there but could not be taken — `record` when what is
+ * stored is not a record at all. A missing field is not damage: it reads as its default, the way
+ * a record written before the field existed should.
+ *
+ * Kept apart so the service can say it: a record that lost its token id reads as a device nobody
+ * set up, and without a word the person would only see the sign-in card come back.
+ */
+export function inspectConnection(
+  storage: LocalStorage,
+  isMobile = false
+): { connection: DeviceConnection; damaged: string[] } {
   const empty = emptyConnection(isMobile)
-  const o = objectOf(storage.loadLocalStorage(CONNECTION_KEY))
-  if (o === null) return empty
-  const tokenId = stringOr(o.deviceTokenId, '')
+  const raw = storage.loadLocalStorage(CONNECTION_KEY)
+  const o = objectOf(raw)
+  if (o === null) return { connection: empty, damaged: raw === null ? [] : ['record'] }
+  const damaged: string[] = []
+  const text = (field: string): string => {
+    if (o[field] !== undefined && typeof o[field] !== 'string') damaged.push(field)
+    return stringOr(o[field], '')
+  }
+  const serverUrl = text('serverUrl')
+  const vaultId = text('vaultId')
+  const deviceId = text('deviceId')
+  let deviceTokenId = text('deviceTokenId')
+  if (deviceTokenId !== '' && !isDeviceSecretId(deviceTokenId)) {
+    damaged.push('deviceTokenId')
+    deviceTokenId = ''
+  }
+  const deviceName = text('deviceName')
+  if (o.paused !== undefined && typeof o.paused !== 'boolean') damaged.push('paused')
+  if (o.selective !== undefined && objectOf(o.selective) === null) damaged.push('selective')
   return {
-    serverUrl: stringOr(o.serverUrl, ''),
-    vaultId: stringOr(o.vaultId, ''),
-    deviceId: stringOr(o.deviceId, ''),
-    deviceTokenId: isDeviceSecretId(tokenId) ? tokenId : '',
-    deviceName: stringOr(o.deviceName, ''),
-    paused: boolOr(o.paused, false),
-    selective: selectiveFrom(o.selective, isMobile),
-    migrated: o.migrated === true,
+    connection: {
+      serverUrl,
+      vaultId,
+      deviceId,
+      deviceTokenId,
+      deviceName,
+      paused: boolOr(o.paused, false),
+      selective: selectiveFrom(o.selective, isMobile),
+      migrated: o.migrated === true,
+    },
+    damaged,
   }
 }
 

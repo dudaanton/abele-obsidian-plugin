@@ -13,6 +13,7 @@ import {
   MOBILE_MAX_FILE_BYTES,
   connectionProblem,
   emptyConnection,
+  inspectConnection,
   migrateConnection,
   readConnection,
   writeConnection,
@@ -105,6 +106,19 @@ describe('the connection record', () => {
     expect(selective.excludedFolders).toEqual(['Archive'])
     expect(selective.settings.hotkeys).toBe(false)
     expect(selective.settings.appearance).toBe(true)
+  })
+
+  /** Said rather than swallowed: a record that lost its token id is a device that stops syncing. */
+  it('names every field it had to discard', () => {
+    const local = storage({
+      [CONNECTION_KEY]: { ...connected(), deviceTokenId: 'abele-brave-search', paused: 'yes' },
+    })
+
+    expect(inspectConnection(local).damaged).toEqual(['deviceTokenId', 'paused'])
+    expect(inspectConnection(storage({ [CONNECTION_KEY]: 'nonsense' })).damaged).toEqual(['record'])
+    expect(inspectConnection(storage()).damaged).toEqual([])
+    writeConnection(local, connected())
+    expect(inspectConnection(local).damaged).toEqual([])
   })
 
   /** Whoever writes a record, the one-time move must never run over it. */

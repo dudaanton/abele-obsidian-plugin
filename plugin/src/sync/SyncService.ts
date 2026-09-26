@@ -19,10 +19,10 @@ import {
   CONNECTION_KEY,
   connectionProblem,
   emptyConnection,
+  inspectConnection,
   MIGRATION_LINE,
   MIGRATION_UNSTORED,
   migrateConnection,
-  readConnection,
   selectiveFrom,
   writeConnection,
   type DeviceConnection,
@@ -170,6 +170,14 @@ export class SyncService {
   /** Where the connection is filed: the vault's local storage, from `openConnection` or `init`. */
   private storage: LocalStorage | null = null
 
+  /**
+   * What was wrong with the record as it was read, or null. Said once in the log when it is
+   * read, and as the error status while it leaves the device with no token to sync with — the
+   * Sync tab would otherwise show only the sign-in card, and say nothing of why. Cleared by the
+   * next write, which replaces the record whole.
+   */
+  private damage: string | null = null
+
   private app: App | null = null
   private plugin: AbelePlugin | null = null
   private deps: SyncServiceDeps = {}
@@ -235,7 +243,7 @@ export class SyncService {
     this.plugin = plugin
     this.deps = deps
     this.storage = app
-    this.connection.value = readConnection(app, Platform.isMobile)
+    this.load(app)
     // A settings save moves the scripts folder, which the engine is built on too.
     this.unhookSettings?.()
     this.unhookSettings = AbeleConfig.getInstance().onSaved(() => this.onSettingsSaved())
@@ -302,7 +310,7 @@ export class SyncService {
             (id) => secrets().device.get(id) !== '',
             Platform.isMobile
           )
-    this.connection.value = readConnection(app, Platform.isMobile)
+    this.load(app)
     if (loaded === null) {
       if (app.loadLocalStorage(CONNECTION_KEY) === null) {
         this.note(
@@ -319,6 +327,22 @@ export class SyncService {
       return
     }
     if (migration.rewrite) await config.rewrite()
+  }
+
+  /**
+   * The record, into {@link SyncService.connection}, saying once in the log what of it was
+   * damaged — and keeping why, for `reconcile` to show instead of the sign-in card.
+   */
+  private load(storage: LocalStorage): void {
+    const { connection, damaged } = inspectConnection(storage, Platform.isMobile)
+    this.connection.value = connection
+    const damage =
+      damaged.length === 0
+        ? null
+        : `the saved connection is damaged (${damaged.join(', ')} could not be read); ` +
+          'disconnect and connect again'
+    if (damage !== null && damage !== this.damage) this.note(damage)
+    this.damage = damage
   }
 
   /**
@@ -566,6 +590,7 @@ export class SyncService {
     if (this.storage !== null) writeConnection(this.storage, next)
     else console.debug('[abele-sync] the connection changed before local storage was read')
     this.connection.value = next
+    this.damage = null
   }
 
   /** The ledger this local vault syncs on, from its own local storage (`ledgerId.ts`). */
@@ -621,6 +646,9 @@ export class SyncService {
     try {
       const connection = this.connection.value
       const token = this.token()
+      // A record that lost its token id reads as a device nobody set up; said as an error
+      // instead, so the Sync tab shows why and offers Disconnect rather than the sign-in card.
+      if (this.damage !== null && token === null) throw new Error(this.damage)
       if (connection.serverUrl === '' || connection.vaultId === '' || token === null) {
         if (this.engine !== null) {
           this.note('not connected: the connection names no vault to sync with')

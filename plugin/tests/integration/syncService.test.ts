@@ -751,7 +751,12 @@ describe('SyncService — a keychain id it did not mint', () => {
     expect(app.secretStorage.getSecret('abele-provider-x')).toBe('sk-provider')
   })
 
-  it('says nothing is connected at a launch whose connection names such an id', async () => {
+  /**
+   * Not connected, and not silently so: the Sync tab shows the sign-in card only for
+   * `disconnected`, and a device that lost its token id to a damaged record would drop to it
+   * with no word of why. The error says it, and Disconnect clears it.
+   */
+  it('says the connection is damaged at a launch whose connection names such an id', async () => {
     const { vaultId } = await connect()
     await synced()
     await service.destroy()
@@ -761,10 +766,16 @@ describe('SyncService — a keychain id it did not mint', () => {
 
     service = SyncService.getInstance()
     start()
-    await tick()
+    await waitFor('the damage to be said', () => service.status.value.state === 'error')
 
     expect(service.isConnected()).toBe(false)
+    expect(service.status.value.lastError).toContain('the saved connection is damaged')
+    expect(service.status.value.lastError).toContain('deviceTokenId')
+    expect(service.log.value.join('\n')).toContain('the saved connection is damaged')
     expect(bearers.join('\n')).not.toContain('sk-provider')
+
+    await service.disconnect()
+    expect(service.status.value.state).toBe('disconnected')
   })
 })
 
