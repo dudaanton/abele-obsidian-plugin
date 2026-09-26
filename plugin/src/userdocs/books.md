@@ -23,6 +23,10 @@ A PDF zooms with a pinch — two fingers on a touch screen, also while drawing, 
 mouse wheel — or with the zoom buttons under the page, which also fit the page or its width. Each
 PDF keeps its zoom on the device it was set on.
 
+While drawing on a PDF, the squiggle beside the colours under the page sets how thick the pen and
+the marker draw: fine, medium or bold. The choice is kept for every PDF, and is also under **Pen
+thickness** in **Settings → Abele → Books**.
+
 The line under the page shows the chapter and how far you are. Tap it to switch between pages
 in the chapter, pages left, location and percentage.
 

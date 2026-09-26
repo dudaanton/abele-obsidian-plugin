@@ -25,6 +25,12 @@
         :class="{ 'abele-book-ink__swatch_ink': c === 'black' }"
         @click="emit('color', c)"
       />
+      <Icon
+        icon="line-squiggle"
+        :tooltip="`Thickness: ${ink.thickness}`"
+        class="abele-book-ink__thickness"
+        @click="thickness"
+      />
     </div>
     <div class="abele-book-ink__group">
       <Icon
@@ -58,7 +64,7 @@
 <script setup lang="ts">
 /**
  * The row under a PDF's page while drawing is on: the pen, the marker, the eraser, the tool's
- * colours, drawing with a finger (a touch screen only), undo and redo, and the way out on the
+ * colours and thickness, drawing with a finger (a touch screen only), undo and redo, and the way out on the
  * left, where the pen that turned drawing on sat. It takes the place of the line with the slider,
  * as the bar for selected words does, so nothing covers the page; and it is Obsidian's own mark
  * that keeps its swipes off the row.
@@ -73,6 +79,7 @@ const props = defineProps<{ ink: InkModel }>()
 const emit = defineEmits<{
   (e: 'tool', tool: InkToolName): void
   (e: 'color', color: InkColor): void
+  (e: 'thickness', at: { x: number; y: number }): void
   (e: 'finger', on: boolean): void
   (e: 'undo'): void
   (e: 'redo'): void
@@ -84,6 +91,12 @@ const TOOLS: { id: InkToolName; icon: string; tooltip: string }[] = [
   { id: 'marker', icon: 'highlighter', tooltip: 'Marker' },
   { id: 'eraser', icon: 'eraser', tooltip: 'Eraser: takes away the whole stroke it touches' },
 ]
+
+/** The thickness menu, under the button that opened it. */
+const thickness = (e: Event) => {
+  const box = ((e.currentTarget ?? e.target) as HTMLElement | null)?.getBoundingClientRect()
+  emit('thickness', { x: box?.left ?? 0, y: box?.top ?? 0 })
+}
 
 /** The marker's colours with the marker in hand, the pen's otherwise. */
 const colors = computed<readonly InkColor[]>(() =>

@@ -199,6 +199,8 @@ describe('settings that arrived later than the transfer did', () => {
         { script: 'Word card', name: 'Card', icon: 'star' },
         { script: 'Translate', name: '', icon: '' },
       ],
+      // And how thick the pen draws on a PDF.
+      pdfInkThickness: 'bold' as const,
     }
     const entries = collectEntries(settings({ reader }))
     const entry = find(entries, 'reader', 'reader')

@@ -18,7 +18,10 @@ import { drawInk, pageSizeOf } from './inkLayer'
 import { routePointer } from './inkRoute'
 import { hitStroke, type InkColor, type InkStroke } from './stroke'
 import type { InkPage } from './inkFile'
-import type { InkToolName } from './inkModel'
+import { inkBrush, type InkToolName } from './inkModel'
+import type { Thickness } from '@/drawing/model'
+import { readerSettingsFrom } from '../settings'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import { zoomedPast, type PdfZoom } from '../pdfZoom'
 
 export interface PdfInkHost {
@@ -34,8 +37,6 @@ export interface PdfInkHost {
   zoomer?(): PdfZoom | null
 }
 
-/** The pen's width and the marker's, in page units: a fine nib, a highlighter's tip. */
-const SIZES = { pen: 2.2, marker: 12 }
 /** How long after the last stroke a page is written. */
 const WRITE_AFTER = 600
 
@@ -89,6 +90,8 @@ export class PdfInk {
     if (this.on || !stage) return
     const ink = this.h.model.ink
     ink.touch = Platform.isMobile
+    // As chosen last, on this device or another: it travels with the reader's settings.
+    ink.thickness = readerSettingsFrom(AbeleConfig.getInstance().reader).pdfInkThickness
     // A phone has no pen: its finger draws. A tablet's finger moves the pages, and the pen draws.
     if (!this.penSeen) ink.finger = Platform.isPhone
     // Words selected, a highlight's bar open: put away, the bar's row is the pen's now.
@@ -145,6 +148,14 @@ export class PdfInk {
     }
   }
 
+  /** How thick the pen and the marker draw, kept for every PDF from now on. */
+  setThickness(thickness: Thickness): void {
+    this.h.model.ink.thickness = thickness
+    const config = AbeleConfig.getInstance()
+    config.reader = readerSettingsFrom({ ...config.reader, pdfInkThickness: thickness })
+    void config.saveSettings()
+  }
+
   setFinger(on: boolean): void {
     this.h.model.ink.finger = on
   }
@@ -186,13 +197,7 @@ export class PdfInk {
     return {
       pageAt: (x, y) => this.pageAt(x, y),
       route: (e) => routePointer({ finger: this.h.model.ink.finger, penDown: this.penDown }, e),
-      brush: () => {
-        const ink = this.h.model.ink
-        if (ink.tool === 'eraser') return null
-        return ink.tool === 'marker'
-          ? { tool: 'marker', color: ink.markerColor, size: SIZES.marker }
-          : { tool: 'pen', color: ink.penColor, size: SIZES.pen }
-      },
+      brush: () => inkBrush(this.h.model.ink),
       pen: (down) => {
         this.penDown = down
         // The first touch of a pen: from now on a finger moves the pages, and the palm is ignored.

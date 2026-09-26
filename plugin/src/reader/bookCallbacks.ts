@@ -14,6 +14,7 @@ import type { InkColor } from './ink/stroke'
 import { Menu } from 'obsidian'
 import { fillZoomMenu, type ZoomWay } from './bookMenu'
 import { paneOf } from './bookLinkedNotes'
+import { THICKNESSES } from '@/drawing/model'
 
 export interface BookActions {
   model: BookModel
@@ -101,6 +102,17 @@ export function bookCallbacks(a: BookActions): Record<string, unknown> {
     onInk: (on: boolean): void => (on ? a.ink()?.start() : a.ink()?.stop()),
     onInkTool: (tool: InkToolName): void => a.ink()?.setTool(tool),
     onInkColor: (color: InkColor): void => a.ink()?.setColor(color),
+    onInkThickness: (at: { x: number; y: number }): void => {
+      const menu = new Menu()
+      for (const t of THICKNESSES)
+        menu.addItem((item) =>
+          item
+            .setTitle(t[0].toUpperCase() + t.slice(1))
+            .setChecked(model.ink.thickness === t)
+            .onClick(() => a.ink()?.setThickness(t))
+        )
+      menu.showAtPosition(at)
+    },
     onInkFinger: (on: boolean): void => a.ink()?.setFinger(on),
     onInkUndo: (): void => a.ink()?.undo(),
     onInkRedo: (): void => a.ink()?.redo(),

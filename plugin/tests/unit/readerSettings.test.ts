@@ -63,6 +63,12 @@ describe('reader settings as stored', () => {
     expect(readerSettingsFrom({ openPdf: false } as never)).not.toHaveProperty('openPdf')
   })
 
+  it('remember how thick the pen draws on a PDF, medium until chosen', () => {
+    expect(readerSettingsFrom({}).pdfInkThickness).toBe('medium')
+    expect(readerSettingsFrom({ pdfInkThickness: 'fine' }).pdfInkThickness).toBe('fine')
+    expect(readerSettingsFrom({ pdfInkThickness: 'huge' as never }).pdfInkThickness).toBe('medium')
+  })
+
   it("keep 0 as the book's own line spacing", () => {
     expect(readerSettingsFrom({ lineHeight: 0 }).lineHeight).toBe(0)
   })

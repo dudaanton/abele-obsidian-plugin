@@ -259,6 +259,66 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
     expect(r.withMouse).toBe(2)
   })
 
+  it('fills the line right to the pen while it is drawn, and draws as thick as chosen under the page', () => {
+    const r = run<{
+      error?: string
+      tip?: number
+      behind?: number
+      past?: number
+      chosen?: string
+      saved?: string
+      sizes?: string[]
+      after?: number
+    }>(`
+      const view = app.workspace.getLeavesOfType('abele-book')[0].view
+      const doc = page(view, 0)
+      const f = frame(doc)
+      const before = inked(doc)
+      // A line on its way, the pen still down: is there ink right under the pen?
+      const x0 = f.left + f.width * 0.2, x1 = f.left + f.width * 0.6, y = f.top + f.height * 0.75
+      await input('mousePressed', x0, y, 'pen', 0.5, 1)
+      for (let i = 1; i <= 12; i++) { await input('mouseMoved', x0 + (x1 - x0) * i / 12, y, 'pen', 0.5, 1); await wait(8) }
+      await wait(120)
+      const canvas = q(view, '.abele-ink-overlay__canvas')
+      const box = canvas.getBoundingClientRect()
+      const ratio = canvas.width / box.width
+      const alpha = (x) => canvas.getContext('2d').getImageData(Math.round((x - box.left) * ratio), Math.round((y - box.top) * ratio), 1, 1).data[3]
+      const tip = alpha(x1), behind = alpha(x1 - 3), past = alpha(x1 + 15)
+      await input('mouseReleased', x1, y, 'pen', 0, 0)
+      await wait(150)
+      // Bold, from the button beside the colours.
+      click(view, '.abele-book-ink__thickness')
+      const pick = async (title) => {
+        const item = await until(() => [...document.querySelectorAll('.menu .menu-item')].find((el) => el.textContent.trim() === title))
+        item?.click()
+        await wait(150)
+      }
+      await pick('Bold')
+      const chosen = view.model.ink.thickness
+      const saved = window.__abeleTest.AbeleConfig.getInstance().reader.pdfInkThickness
+      await draw(f.left + f.width * 0.2, f.top + f.height * 0.8, f.left + f.width * 0.6, f.top + f.height * 0.8, 'pen')
+      await until(async () => (await read(${JSON.stringify(INK)}))?.includes('data-size="4"'), 5000)
+      const sizes = [...((await read(${JSON.stringify(INK)})) ?? '').matchAll(/data-size="([^"]*)"/g)].map((m) => m[1])
+      // Both taken back, and the thickness as it was: what comes next counts the strokes before.
+      click(view, '.abele-book-ink__undo'); await wait(100)
+      click(view, '.abele-book-ink__undo'); await wait(100)
+      click(view, '.abele-book-ink__thickness')
+      await pick('Medium')
+      const after = inked(doc) - before
+      return { tip, behind, past, chosen, saved, sizes, after }
+    `)
+    expect(r.error).toBeUndefined()
+    // Ink under the pen and behind it; the page beyond it untouched.
+    expect(r.tip).toBeGreaterThan(200)
+    expect(r.behind).toBeGreaterThan(200)
+    expect(r.past).toBe(0)
+    expect(r.chosen).toBe('bold')
+    expect(r.saved).toBe('bold')
+    expect(r.sizes).toContain('2.2')
+    expect(r.sizes).toContain('4')
+    expect(r.after).toBe(0)
+  })
+
   it('lets a finger move the pages without drawing, and hands everything back when drawing stops', () => {
     const r = run<{
       error?: string

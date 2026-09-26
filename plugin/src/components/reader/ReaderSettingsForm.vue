@@ -114,6 +114,16 @@
           @toggle="set('pdfDarkPages', !settings.pdfDarkPages)"
         />
       </Setting>
+      <Setting
+        name="Pen thickness"
+        desc="How thick the pen and the marker draw on a PDF. The button beside the colours under the page changes it too."
+      >
+        <Dropdown
+          :options="thicknessOptions"
+          :model-value="settings.pdfInkThickness"
+          @update:model-value="set('pdfInkThickness', $event)"
+        />
+      </Setting>
     </Section>
 
     <Section title="Reading aloud">
@@ -164,6 +174,7 @@ import Section from '../obsidian/Section.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import Input from '../obsidian/Input.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { THICKNESSES } from '@/drawing/model'
 import {
   FONT_SIZES,
   PDF_ZOOMS,
@@ -221,6 +232,10 @@ const zoomLabel: Record<string, string> = {
 const zoomOptions = PDF_ZOOMS.map((z) => ({
   value: z,
   display: zoomLabel[z] ?? `${Math.round(Number(z) * 100)}%`,
+}))
+const thicknessOptions = THICKNESSES.map((t) => ({
+  value: t,
+  display: t[0].toUpperCase() + t.slice(1),
 }))
 const widthOptions = MAX_WIDTHS.map((n) => ({ value: String(n), display: `${n} px` }))
 

@@ -6,6 +6,7 @@
  */
 import { PROGRESS_SHOWS, type ProgressShow } from './readingProgress'
 import { bookMenuScriptsFrom, type BookMenuScript } from '@/scripting/bookMenuScripts'
+import { THICKNESSES, type Thickness } from '@/drawing/model'
 
 export type ReaderFlow = 'paginated' | 'scrolled'
 export type ReaderFont = 'theme' | 'serif' | 'sans' | 'book'
@@ -53,6 +54,8 @@ export interface ReaderSettings {
   pdfTwoPages: boolean
   /** In a dark theme, PDF pages are shown with their light and dark swapped. */
   pdfDarkPages: boolean
+  /** How thick the pen and the marker draw on a PDF, as last chosen under the page. */
+  pdfInkThickness: Thickness
   /** The voice books are read aloud in, by its `voiceURI`; empty for the device's own for the book. */
   ttsVoice: string
   /** How fast books are read aloud: 1 is the voice's own pace. */
@@ -129,6 +132,7 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   pdfZoom: 'auto',
   pdfTwoPages: false,
   pdfDarkPages: true,
+  pdfInkThickness: 'medium',
   ttsVoice: '',
   ttsRate: 1,
   progressShow: 'page',
@@ -168,6 +172,7 @@ export function readerSettingsFrom(stored?: Partial<ReaderSettings> | null): Rea
     pdfZoom: oneOf(s.pdfZoom, PDF_ZOOMS, d.pdfZoom),
     pdfTwoPages: typeof s.pdfTwoPages === 'boolean' ? s.pdfTwoPages : d.pdfTwoPages,
     pdfDarkPages: typeof s.pdfDarkPages === 'boolean' ? s.pdfDarkPages : d.pdfDarkPages,
+    pdfInkThickness: oneOf(s.pdfInkThickness, THICKNESSES, d.pdfInkThickness),
     ttsVoice: typeof s.ttsVoice === 'string' ? s.ttsVoice : d.ttsVoice,
     ttsRate: clamp(s.ttsRate, 0.5, 3, d.ttsRate),
     progressShow: oneOf(s.progressShow, PROGRESS_SHOWS, d.progressShow),

@@ -60,6 +60,7 @@
           :ink="model.ink"
           @tool="emit('ink-tool', $event)"
           @color="emit('ink-color', $event)"
+          @thickness="emit('ink-thickness', $event)"
           @finger="emit('ink-finger', $event)"
           @undo="emit('ink-undo')"
           @redo="emit('ink-redo')"
@@ -216,6 +217,7 @@ const emit = defineEmits<{
   (e: 'zoom-menu', at: { x: number; y: number }, steps: boolean): void
   (e: 'ink-tool', tool: InkToolName): void
   (e: 'ink-color', color: InkColor): void
+  (e: 'ink-thickness', at: { x: number; y: number }): void
   (e: 'ink-finger', on: boolean): void
   (e: 'ink-undo'): void
   (e: 'ink-redo'): void
