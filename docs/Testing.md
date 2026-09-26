@@ -435,6 +435,14 @@ carry the vault name in their title. A vault marked `"open": true` in `obsidian.
 window is actually gone cannot be reopened with `obsidian://open?vault=…`; the URL focuses a
 window that no longer exists.
 
+Several runs can go at once in one app, each pinned to its own copy of the fixture vault.
+What would leak between their windows is kept per window: phone emulation (Obsidian keeps it
+in one `localStorage` key every window reads when it starts — every reload goes through
+`reloadApp()`, which sets it only for the moment its own window starts), keyboard focus (only
+the frontmost window has it — each file turns on `Emulation.setFocusEmulationEnabled`), and
+the settings popout (found by its title, which names the vault). A test that reloads the app
+or switches emulation must do it through `reloadApp()`, never `app.emulateMobile()` itself.
+
 The suite skips itself when Obsidian is not running or the build lacks the test hook, so
 `npm run test:all` stays usable with Obsidian closed.
 
