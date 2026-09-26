@@ -458,20 +458,14 @@ const probeScript = `(async () => {
     }
 
     // A script's form with note pickers: chosen notes as pills over the search field, one
-    // field taking several, one taking one, and the list open under the search.
+    // field taking several, one taking one. The list itself is Obsidian's suggester.
     window.__abeleTest.showFormModal([
       { name: 'with', label: 'With', type: 'note-picker', multiple: true, default: SEEDED.slice(0, 3) },
-      { name: 'wallet', label: 'Wallet', type: 'note-picker', default: SEEDED[3] },
+      { name: 'wallet', label: 'Wallet', type: 'note-picker', default: SEEDED[8] },
     ])
     if (await until(() => document.querySelector('.modal .abele-note-picker__pill'), 5000)) {
       await wait(300)
       const modal = document.querySelector('.modal')
-      const input = modal.querySelectorAll('.abele-note-picker input')[1]
-      input.focus()
-      input.value = ''
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-      await until(() => document.querySelector('.suggestion-container .suggestion-item'), 2000)
-      await wait(300)
       await screen('script form picker', modal, modal.querySelector('.abele-modal__body'))
       await closeDialog()
     } else {
