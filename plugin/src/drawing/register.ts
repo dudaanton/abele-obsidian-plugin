@@ -2,7 +2,15 @@
  * The drawing's hooks into Obsidian: its tab, drawings opening in it, the ways to make one, and
  * drawings shown in notes.
  */
-import { TFile, TFolder, type Editor, type MarkdownView, type Plugin } from 'obsidian'
+import { ViewPlugin } from '@codemirror/view'
+import {
+  TFile,
+  TFolder,
+  editorInfoField,
+  type Editor,
+  type MarkdownView,
+  type Plugin,
+} from 'obsidian'
 import { DRAWING_VIEW_TYPE, DrawingView } from './DrawingView'
 import { DRAWABLE_PICTURES, IMAGE_INK_VIEW_TYPE, ImageInkView } from './ImageInkView'
 import {
@@ -14,7 +22,7 @@ import {
   known,
   newDrawing,
 } from './files'
-import { drawingEmbedProcessor } from './embed'
+import { drawingEmbedProcessor, drawingEmbedsInEditor } from './embed'
 import { followNoteRename } from './noteRenames'
 
 export function registerDrawing(plugin: Plugin): void {
@@ -42,6 +50,15 @@ export function registerDrawing(plugin: Plugin): void {
 
   // A drawing's callout in a note shows the part of it the callout names.
   plugin.registerMarkdownPostProcessor(drawingEmbedProcessor(app))
+  // A drawing embedded the plain way in live preview, which Obsidian draws outside any rendering.
+  plugin.registerEditorExtension(
+    ViewPlugin.define(
+      drawingEmbedsInEditor(
+        app,
+        (view) => view.state.field(editorInfoField, false)?.file?.path ?? ''
+      )
+    )
+  )
 
   plugin.addCommand({
     id: 'new-drawing',

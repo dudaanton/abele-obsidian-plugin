@@ -769,14 +769,23 @@ body.is-mobile .abele-comment-marker_pending::after {
   --callout-color: var(--callout-default);
 }
 
+/* The drawing's box sits in Obsidian's own embed of the file, whose own picture is hidden. */
 .internal-embed.abele-drawing-embed__source {
-  display: none;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+}
+
+.internal-embed.abele-drawing-embed__source > :not(.abele-drawing-embed) {
+  display: none !important;
 }
 
 .abele-drawing-embed {
   position: relative;
+  max-width: 100%;
   overflow: hidden;
   border-radius: var(--radius-s);
+  box-shadow: 0 0 0 1px var(--background-modifier-border);
 }
 
 .abele-drawing-embed__picture {
@@ -799,6 +808,29 @@ body.is-mobile .abele-comment-marker_pending::after {
   border-radius: var(--radius-s);
   background-color: var(--background-primary);
   box-shadow: var(--shadow-s);
+}
+
+/* The corner that makes the drawing bigger or smaller: a finger's size, and always there. */
+.abele-drawing-embed__resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background: linear-gradient(
+    135deg,
+    transparent 0 55%,
+    var(--text-faint) 55% 62%,
+    transparent 62% 72%,
+    var(--text-faint) 72% 79%,
+    transparent 79%
+  );
+}
+
+.abele-drawing-embed_adjusting .abele-drawing-embed__resize {
+  display: none;
 }
 
 /* While the part is being changed, the picture takes every touch: it is dragged, not scrolled. */

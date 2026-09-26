@@ -559,14 +559,18 @@ the items oldest (lowest) first, each with an `id` and a `type`:
 Colours are names: `black`, `red`, `blue`, `green`, `yellow`, `pink`. Units are CSS pixels at
 100%.
 
-A note shows a drawing through a callout of type `drawing` with the picture embedded in it; the
-callout's metadata is the part shown, `x y width height` in the drawing's units, and without it the
-whole drawing shows:
+A note shows a drawing by embedding it, `![[Drawings/Sketch.svg]]`, at the drawing's own size
+within the note's width and a modest height. A size is Obsidian's own for any picture, written in
+the embed: `![[Drawings/Sketch.svg|400]]` for a width, the height following the drawing, or
+`|400x300` for a box; the handle at the embed's corner writes it there. To show a part of it, put
+the embed in a callout of type `drawing` whose metadata is the part, `x y width height` in the
+drawing's units; without it the whole drawing shows:
 
 ```markdown
 > [!drawing|120 40 800 500]
-> ![[Drawings/Sketch.svg]]
+> ![[Drawings/Sketch.svg|600]]
 ```
 
-To put a drawing into a note, write that callout — the plain embed alone shows the whole picture. Do not write a drawing's file yourself — the picture and the data must agree, and only the
-drawing tab keeps them so.
+One drawing may be embedded several times in a note, each with its own part and size. Do not
+write a drawing's file yourself — the picture and the data must agree, and only the drawing tab
+keeps them so.

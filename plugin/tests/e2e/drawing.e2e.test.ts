@@ -408,7 +408,7 @@ describe.skipIf(!available)('the drawing canvas', () => {
       await wait(300)
       const reading = box ? {
         embed: true,
-        hidden: getComputedStyle(leaf.view.containerEl.querySelector('.markdown-reading-view .internal-embed.abele-drawing-embed__source')).display === 'none',
+        hidden: getComputedStyle(leaf.view.containerEl.querySelector('.markdown-reading-view .internal-embed.abele-drawing-embed__source > img')).display === 'none',
         height: box.clientHeight,
         width: box.clientWidth,
         img: embedEl.getBoundingClientRect().width,
@@ -434,9 +434,10 @@ describe.skipIf(!available)('the drawing canvas', () => {
     expect(r.error).toBeUndefined()
     expect(r.reading?.embed).toBe(true)
     expect(r.reading?.hidden).toBe(true)
-    // The part is twice as wide as tall, filling the note's width.
+    // The part is twice as wide as tall, shown at its own size, not blown up to the note's width.
     expect(Math.abs(r.reading!.height - r.reading!.width / 2)).toBeLessThan(3)
-    expect(r.reading!.img).toBeGreaterThan(r.reading!.width)
+    expect(r.reading!.width).toBe(300)
+    expect(r.reading!.img).toBeGreaterThanOrEqual(r.reading!.width)
     expect(r.kept).toMatch(/^> \[!drawing\|\d+ \d+ \d+ \d+\]$/)
     expect(r.live).toBe(true)
     expect(r.opened?.type).toBe('abele-drawing')
