@@ -79,6 +79,13 @@
         </div>
       </div>
 
+      <!-- "Ask here" over words selected on a touch screen, once the finger has let them go. -->
+      <ChatSelectionBar
+        v-if="messagesContainer && canComment"
+        :scroller="messagesContainer"
+        @ask="onAskHere"
+      />
+
       <!-- Over a comment on a message: the way down to it, every level a way back. -->
       <AiCommentTrail v-if="session" :session="session" />
 
@@ -306,6 +313,7 @@ import { Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import AiChatMessage from './AiChatMessage.vue'
+import ChatSelectionBar from './ChatSelectionBar.vue'
 import { useTailPagedList } from '@/composables/useTailPagedList'
 import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
 import AiChatInput from './AiChatInput.vue'

@@ -1,0 +1,133 @@
+/**
+ * "Ask here" over words selected in a chat on a phone. It used to be the menu of the long press,
+ * which a phone opens as the finger goes down to select: the menu jumped up over the words
+ * before they were chosen (Anton, 2026-09-27). Now a small bar under the words, once the
+ * finger has let them go and they have stopped moving.
+ */
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mount, type VueWrapper } from '@vue/test-utils'
+import { Platform } from 'obsidian'
+import ChatSelectionBar from '@/components/ChatSelectionBar.vue'
+import AiChatMessage from '@/components/AiChatMessage.vue'
+import type { ChatMessage } from '@/ai/types'
+import { SETTLE_MS } from '@/helpers/settledSelection'
+import { useVault } from '../helpers/testEnv'
+
+let scroller: HTMLElement
+let wrapper: VueWrapper
+
+const touch = (type: 'touchstart' | 'touchend', down: number) => {
+  const event = new Event(type, { bubbles: true })
+  Object.defineProperty(event, 'touches', { value: { length: down } })
+  scroller.dispatchEvent(event)
+}
+
+function select(words: string, message = 'm1') {
+  const text = scroller.querySelector(`[data-ask-message="${message}"] p`)!.firstChild as Text
+  const at = text.data.indexOf(words)
+  const range = document.createRange()
+  range.setStart(text, at)
+  range.setEnd(text, at + words.length)
+  const selection = document.getSelection()!
+  selection.removeAllRanges()
+  selection.addRange(range)
+  document.dispatchEvent(new Event('selectionchange'))
+}
+
+const bar = () => wrapper.find('.abele-chat-selection')
+
+beforeEach(() => {
+  useVault([])
+  vi.useFakeTimers()
+  Platform.isMobile = true
+  Platform.isPhone = true
+  const frame = document.createElement('div')
+  scroller = document.createElement('div')
+  scroller.innerHTML =
+    '<div data-ask-message="m1"><p>Take the night train.</p></div><div><p>Not a message.</p></div>'
+  frame.append(scroller)
+  document.body.append(frame)
+  wrapper = mount(ChatSelectionBar, { attachTo: frame, props: { scroller } })
+})
+
+afterEach(() => {
+  wrapper.unmount()
+  document.body.replaceChildren()
+  document.getSelection()?.removeAllRanges()
+  Platform.isMobile = false
+  Platform.isPhone = false
+  vi.useRealTimers()
+})
+
+describe('words selected in a chat on a phone', () => {
+  it('bring up nothing while the finger is still selecting', async () => {
+    touch('touchstart', 1)
+    select('night')
+    select('night train')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(bar().exists()).toBe(false)
+  })
+
+  it('bring up "Ask here" once the finger is lifted and the words have stopped', async () => {
+    touch('touchstart', 1)
+    select('night train')
+    touch('touchend', 0)
+    await vi.advanceTimersByTimeAsync(SETTLE_MS.touch + 20)
+    expect(bar().text()).toContain('Ask here')
+
+    await bar().find('button').trigger('click')
+    expect(wrapper.emitted('ask')?.[0]).toEqual(['m1', 'night train', 9])
+    expect(bar().exists()).toBe(false)
+  })
+
+  it('go away at once when the words are let go', async () => {
+    select('train')
+    await vi.advanceTimersByTimeAsync(SETTLE_MS.touch + 20)
+    expect(bar().exists()).toBe(true)
+    document.getSelection()!.removeAllRanges()
+    document.dispatchEvent(new Event('selectionchange'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(bar().exists()).toBe(false)
+  })
+
+  it('offer nothing outside a message a comment can be kept on', async () => {
+    const text = scroller.querySelectorAll('p')[1].firstChild as Text
+    const range = document.createRange()
+    range.setStart(text, 0)
+    range.setEnd(text, 3)
+    document.getSelection()!.addRange(range)
+    document.dispatchEvent(new Event('selectionchange'))
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(bar().exists()).toBe(false)
+  })
+})
+
+describe('the message on a phone', () => {
+  it('opens no menu of its own on the long press that starts a selection', async () => {
+    const obsidian = await import('obsidian')
+    const shown = vi.spyOn(obsidian.Menu.prototype, 'showAtMouseEvent')
+    const message = mount(AiChatMessage, {
+      attachTo: document.body,
+      props: {
+        message: {
+          id: 'm2',
+          role: 'assistant',
+          content: 'Go by bus.',
+          timestamp: 1,
+        } as ChatMessage,
+        canComment: true,
+      },
+    })
+    await vi.advanceTimersByTimeAsync(10)
+    const md = message.find('.abele-markdown')
+    expect(md.attributes('data-ask-message')).toBe('m2')
+    const text = md.element.firstChild as Text
+    const range = document.createRange()
+    range.setStart(text, 0)
+    range.setEnd(text, 2)
+    document.getSelection()!.addRange(range)
+    await md.trigger('contextmenu')
+    expect(shown).not.toHaveBeenCalled()
+    message.unmount()
+  })
+})

@@ -189,6 +189,7 @@
         v-else-if="(message.role === 'assistant' || message.role === 'user') && message.content"
         :ref="comments.content"
         :text="message.content"
+        :data-ask-message="canComment ? message.id : undefined"
         @rendered="comments.paint"
         @contextmenu="onContentMenu"
       />
@@ -325,7 +326,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import dayjs from 'dayjs'
-import { Menu, Notice, TFile } from 'obsidian'
+import { Menu, Notice, Platform, TFile } from 'obsidian'
 import Icon from './obsidian/Icon.vue'
 import Markdown from './obsidian/Markdown.vue'
 import AbeleMap from './AbeleMap.vue'
@@ -385,9 +386,11 @@ const comments = useMessageComments(
   (quote, start) => emit('ask-here', props.message.id, quote, start)
 )
 
-// Only where a comment can be kept: elsewhere a right-click stays the browser's own.
+// Only where a comment can be kept: elsewhere a right-click stays the browser's own. Not on a
+// touch screen, where the long press that fires it is the one selecting the words: the menu
+// jumped up before they were chosen. There `ChatSelectionBar` offers it once they are.
 const onContentMenu = (event: MouseEvent) => {
-  if (props.canComment) comments.onContentMenu(event)
+  if (props.canComment && !Platform.isMobile) comments.onContentMenu(event)
 }
 
 const interceptorText = ref('')

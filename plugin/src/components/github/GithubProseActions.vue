@@ -35,6 +35,8 @@ import Icon from '../obsidian/Icon.vue'
 import { LINKER } from '@/github/linking'
 import { SCREEN } from '@/github/screen'
 import { proseQuote, proseSnippet, readProse, type ProseSelection } from '@/github/proseSelection'
+import { SettledSelection } from '@/helpers/settledSelection'
+import { placeSelectionBar } from '@/helpers/selectionBarPlace'
 
 /**
  * The small bar over words selected in a GitHub tab's prose: ask about them in a new chat, copy a
@@ -89,19 +91,18 @@ async function position(range: Range) {
   if (!el) return
   const box = range.getBoundingClientRect()
   const frame = props.root.getBoundingClientRect()
-  const gap = 6
-  // A finger's selection has handles hanging under its last line and the system's menu over it.
-  const below = box.bottom - frame.top + (touch ? 36 : gap)
-  const above = box.top - frame.top - el.offsetHeight - gap
-  place.top = touch || above < 0 ? below : above
-  const room = Math.max(0, props.root.clientWidth - el.offsetWidth)
-  place.left = Math.min(Math.max(0, box.left - frame.left), room)
+  const at = placeSelectionBar(
+    { top: box.top - frame.top, bottom: box.bottom - frame.top, left: box.left - frame.left },
+    { width: el.offsetWidth, height: el.offsetHeight },
+    { width: props.root.clientWidth },
+    touch
+  )
+  place.top = at.top
+  place.left = at.left
   placed.value = true
 }
 
 let pressing = false
-let mouseDown = false
-let timer: number | undefined
 
 function update() {
   if (pressing) return
@@ -110,27 +111,6 @@ function update() {
   if (inside) screen.prose = prose
   shown.value = prose
   if (prose && range) void position(range)
-}
-
-/** Waits for a drag or the handles to stop before showing anything. */
-function onSelectionChange() {
-  const view = doc.defaultView
-  if (!view) return
-  if (timer !== undefined) view.clearTimeout(timer)
-  // Gone at once when the selection goes, so it never floats over nothing.
-  if (doc.getSelection()?.isCollapsed && !pressing) shown.value = null
-  if (mouseDown) return
-  timer = view.setTimeout(update, touch ? 350 : 120)
-}
-
-const onDocDown = (e: PointerEvent) => {
-  if (e.pointerType === 'mouse' && e.button === 0 && !bar.value?.contains(e.target as Node))
-    mouseDown = true
-}
-const onDocUp = (e: PointerEvent) => {
-  if (e.pointerType !== 'mouse' || !mouseDown) return
-  mouseDown = false
-  onSelectionChange()
 }
 
 /** A press on the bar must not count as the selection going: a finger's tap lets it go first. */
@@ -180,19 +160,28 @@ function onContextMenu(e: MouseEvent) {
   menu.showAtMouseEvent(e)
 }
 
+let watcher: SettledSelection | null = null
+
 onMounted(() => {
-  doc.addEventListener('selectionchange', onSelectionChange)
-  doc.addEventListener('pointerdown', onDocDown, true)
-  doc.addEventListener('pointerup', onDocUp, true)
+  // Waits for a drag, the mouse button or the handles to stop before showing anything; gone at
+  // once when the selection goes, so it never floats over nothing.
+  watcher = new SettledSelection(doc, {
+    settled: update,
+    cleared: () => {
+      if (pressing) return
+      shown.value = null
+      // A click back in the tab lets the words go for `github_views` too.
+      const { prose, inside } = read()
+      if (inside && !prose) screen.prose = null
+    },
+    ignore: (node) => !!bar.value?.contains(node),
+  })
   props.root.addEventListener('contextmenu', onContextMenu)
 })
 
 onBeforeUnmount(() => {
-  doc.removeEventListener('selectionchange', onSelectionChange)
-  doc.removeEventListener('pointerdown', onDocDown, true)
-  doc.removeEventListener('pointerup', onDocUp, true)
+  watcher?.destroy()
   props.root.removeEventListener('contextmenu', onContextMenu)
-  if (timer !== undefined) doc.defaultView?.clearTimeout(timer)
   screen.prose = null
 })
 

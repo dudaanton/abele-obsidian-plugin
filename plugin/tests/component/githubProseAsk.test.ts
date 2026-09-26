@@ -123,7 +123,7 @@ async function select(from: Text, fromAt: number, to: Text, toAt: number) {
   range.setEnd(to, toAt)
   selection.addRange(range)
   document.dispatchEvent(new Event('selectionchange'))
-  await new Promise((r) => setTimeout(r, 450))
+  await new Promise((r) => setTimeout(r, 600))
   await flushPromises()
 }
 
