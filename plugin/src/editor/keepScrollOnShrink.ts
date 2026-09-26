@@ -62,6 +62,10 @@ export function keepScrollOnShrink(container: HTMLElement, content: HTMLElement)
   let lastTop = 0
   let lastContainerHeight = 0
 
+  const setHeld = (px: string): void => {
+    if (px) container.style.setProperty('min-height', px)
+    else container.style.removeProperty('min-height')
+  }
   const held = (): number => parseFloat(container.style.minHeight) || 0
 
   const check = (): void => {
@@ -76,11 +80,11 @@ export function keepScrollOnShrink(container: HTMLElement, content: HTMLElement)
     }
     const hold = heightToHold(scroller, lastTop, container.offsetHeight, lastContainerHeight)
     if (hold !== null) {
-      container.setCssProps({ 'min-height': `${hold}px` })
+      setHeld(`${hold}px`)
       scroller.scrollTop = lastTop
     } else if (container.style.minHeight) {
       const keep = heightToKeep(scroller, held(), content.offsetHeight)
-      container.setCssProps({ 'min-height': keep === null ? '' : `${keep}px` })
+      setHeld(keep === null ? '' : `${keep}px`)
     }
     lastTop = scroller.scrollTop
     lastContainerHeight = container.offsetHeight
@@ -104,6 +108,6 @@ export function keepScrollOnShrink(container: HTMLElement, content: HTMLElement)
     resizes.disconnect()
     mutations.disconnect()
     editor?.removeEventListener('scroll', onScroll, { capture: true })
-    container.setCssProps({ 'min-height': '' })
+    setHeld('')
   }
 }
