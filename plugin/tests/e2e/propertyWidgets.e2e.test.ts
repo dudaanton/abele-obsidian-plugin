@@ -19,6 +19,7 @@ const DIR = 'Property widgets e2e'
 const SHOTS = '/tmp/abele-props'
 const NOTE = `${DIR}/Card note.md`
 const TX = `${DIR}/Lunch.md`
+const PLAIN = `${DIR}/Plain names.md`
 const TYPES = { 'pw-file': 'file', 'pw-files': 'files' }
 
 /** A book with a cover, the way publishers declare one. */
@@ -92,6 +93,8 @@ describe.skipIf(!available)('properties drawn by the plugin', () => {
       'Food.md': '---\ntype: account\naccountType: expense\ncurrency: EUR\n---\n',
       'Lunch.md':
         '---\ntype: transaction\ndate: 2026-01-02\nfrom: "[[Wallet]]"\nto: "[[Food]]"\namount: 30\n---\n',
+      // `file` and `files` with no type chosen; one written as a link, one as a bare path.
+      'Plain names.md': `---\nfile: ${DIR}/covered.epub\nfiles:\n  - "[[paper.pdf]]"\n  - ${DIR}/poster.png\n  - "[[Card note]]"\n---\n\nBody.\n`,
       'Card note.md': `---\ncover: "[[poster.png]]"\npw-file: "[[paper.pdf]]"\npw-files:\n  - "[[covered.epub]]"\n  - "[[poster.png]]"\npw-total: 5\n---\n\nBody.\n`,
     }
     evalRaw(
@@ -255,6 +258,46 @@ describe.skipIf(!available)('properties drawn by the plugin', () => {
     expect(r.back).toBe('70.00 EUR')
     expect(r.reopened).toBe('70.00 EUR')
     expect(r.amount).toBe('55.00 EUR')
+  })
+
+  it('draws file and files as cards without a type picked by hand, through edits', () => {
+    const r = run<{
+      error?: string
+      types?: Record<string, string | null>
+      file?: string[]
+      files?: string[]
+      afterEdit?: string[]
+      afterRemove?: string[]
+      stored?: unknown
+    }>(`
+      for (const k of ['file', 'files']) await app.metadataTypeManager.unsetType(k)
+      await wait(300)
+      // Switched on again, the plugin gives the two names their types, as it does at start.
+      await setOn(false)
+      await setOn(true)
+      const types = { file: app.metadataTypeManager.getAssignedWidget('file'), files: app.metadataTypeManager.getAssignedWidget('files') }
+      const leaf = await open(${JSON.stringify(PLAIN)})
+      const root = () => leaf.view.containerEl
+      const names = (k) => [...(row(root(), k)?.querySelectorAll('.abele-card__name') ?? [])].map((n) => n.textContent)
+      await until(() => names('files').length === 3 && names('file').length)
+      const file = names('file')
+      const files = names('files')
+      const note = app.vault.getAbstractFileByPath(${JSON.stringify(PLAIN)})
+      leaf.view.editor.replaceRange('More.\\n', { line: leaf.view.editor.lineCount(), ch: 0 })
+      await app.fileManager.processFrontMatter(note, (f) => { f.files = ['[[poster.png]]', '[[paper.pdf]]'] })
+      const afterEdit = await until(() => names('files').length === 2 && names('files'))
+      row(root(), 'files').querySelector('.abele-property-files__remove').click()
+      await until(() => app.metadataCache.getFileCache(note)?.frontmatter?.files?.length === 1)
+      await wait(500)
+      return { types, file, files, afterEdit, afterRemove: names('files'), stored: app.metadataCache.getFileCache(note)?.frontmatter?.files }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.types).toEqual({ file: 'file', files: 'files' })
+    expect(r.file).toEqual(['covered.epub'])
+    expect(r.files).toEqual(['paper.pdf', 'poster.png', 'Card note'])
+    expect(r.afterEdit).toEqual(['poster.png', 'paper.pdf'])
+    expect(r.afterRemove).toEqual(['paper.pdf'])
+    expect(r.stored).toEqual(['[[paper.pdf]]'])
   })
 
   it('works out a sum typed into a number property and keeps the answer', () => {

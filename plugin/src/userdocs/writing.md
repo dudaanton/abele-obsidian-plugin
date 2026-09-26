@@ -43,9 +43,10 @@ The properties at the top of a note are drawn by the plugin in a few places:
 - A number property works out a sum: type `120+35*2`, press Enter, and it keeps `190`. Plus,
   minus, times, divide and brackets.
 - A property of type **File** is a card with the file's name and, for a picture, a book or a
-  PDF, a small picture of it. **Files** is a list of such cards. Pick the type from the icon
-  beside the property name. Press a card to choose another file, the arrow to open it, the cross
-  to take it out.
+  PDF, a small picture of it. **Files** is a list of such cards. Properties named `file` and
+  `files` are these from the start; for any other name, pick the type from the icon beside the
+  property name. Press a card to choose another file, the arrow to open it, the cross to take it
+  out.
 - `cover` is a card too, with the picture on the right.
 
 Nothing about the note changes: it is still ordinary properties, and a device without the plugin

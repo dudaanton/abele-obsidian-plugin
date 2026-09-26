@@ -7,6 +7,7 @@ import { watch } from 'vue'
 import type { Plugin } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { forgetThumbnails } from './thumbnails'
+import { assignFileKeys } from './types'
 import { PropertyWidgets, redrawProperties } from './widgets'
 
 export function registerPropertyWidgets(plugin: Plugin): void {
@@ -18,13 +19,18 @@ export function registerPropertyWidgets(plugin: Plugin): void {
     const on = config.propertyWidgets
     if (on === widgets.active) return
     widgets.apply(on)
+    if (on && plugin.app.workspace.layoutReady) assignFileKeys(plugin.app)
     if (redraw) redrawProperties(plugin.app)
   }
 
   sync(false)
   // Drawn once the layout is there: panels already open from the last session were drawn
-  // before the plugin loaded.
-  plugin.app.workspace.onLayoutReady(() => redrawProperties(plugin.app))
+  // before the plugin loaded. `file` and `files` get their types then, when the vault's own
+  // are known, so notes that already have them show cards without a type picked by hand.
+  plugin.app.workspace.onLayoutReady(() => {
+    if (widgets.active) assignFileKeys(plugin.app)
+    redrawProperties(plugin.app)
+  })
   const stop = watch(
     () => config.version.value,
     () => sync(true)

@@ -161,7 +161,8 @@ list of backlinks says what each one is without opening it.
 
 A property can hold a file of the vault. Obsidian's **File** type is one file, and the plugin
 adds **Files**, a list of them; the type is chosen per property name, the way Obsidian keeps any
-type (`.obsidian/types.json`). Write the value as a wikilink with the extension, so Obsidian keeps
+type (`.obsidian/types.json`). While the plugin draws properties, `file` is a File and `files` a
+Files property unless another type was chosen for them, so those two names need no type picked. Write the value as a wikilink with the extension, so Obsidian keeps
 it up to date when the file moves: `file: "[[Books/Dune.epub]]"`, `files: ["[[a.pdf]]",
 "[[b.png]]"]`. A bare vault path is read too. The plugin draws these, and `cover`, as cards with
 the file's picture; the value stays plain frontmatter, and without the plugin a Files property
