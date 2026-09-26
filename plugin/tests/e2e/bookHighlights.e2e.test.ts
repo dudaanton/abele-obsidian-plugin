@@ -191,7 +191,7 @@ describe.skipIf(!available)('highlights, links and search', () => {
   })
 
   it('opens the highlights note at the highlight asked about, found by its place, and flashes it there', () => {
-    type Seen = { flashed: string[]; visible: boolean; cursor: number | null }
+    type Seen = { flashed: string[]; visible: boolean; cursor: number | null; callout: number }
     const r = run<{ error?: string; preview?: Seen; source?: Seen }>(`
       const note = app.vault.getAbstractFileByPath(${JSON.stringify(BOOK_NOTE)})
       // A decoy with the same words at another place above, and enough text to scroll past.
@@ -218,6 +218,7 @@ describe.skipIf(!available)('highlights, links and search', () => {
             flashed: els.map((el) => colour(el) + ':' + el.textContent.trim().slice(0, 40)),
             visible: !!b && b.top >= s.top && b.bottom <= s.bottom && scroller.scrollTop > 0,
             cursor: m === 'source' ? nv.editor.getCursor().line : null,
+            callout: nv.editor.getValue().split('\\n').findIndex((l) => l.startsWith('> [!quote|blue]')),
           }
           noteLeaf.detach()
         }
@@ -237,7 +238,8 @@ describe.skipIf(!available)('highlights, links and search', () => {
       expect(r[m]?.visible, m).toBe(true)
     }
     // The cursor stays out of the callout, so live preview keeps drawing it.
-    expect(r.source?.cursor).toBe(0)
+    expect(r.source?.callout).toBeGreaterThan(80)
+    expect(r.source?.cursor).toBeLessThan(r.source!.callout)
   })
 
   it('makes a link to the words selected, and a link like it opens the book there with them selected', () => {
