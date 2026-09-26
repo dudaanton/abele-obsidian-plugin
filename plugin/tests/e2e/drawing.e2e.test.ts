@@ -396,7 +396,7 @@ describe.skipIf(!available)('the drawing canvas', () => {
       const NOTE = DIR + '/Embed note.md'
       const old = app.vault.getAbstractFileByPath(NOTE)
       if (old) await app.vault.delete(old)
-      await app.vault.create(NOTE, '# Plan\n\n> [!drawing|100 80 300 150]\n> ![[' + path + ']]\n\nAfter.\n')
+      await app.vault.create(NOTE, '# Plan\\n\\n> [!drawing|100 80 300 150]\\n> ![[' + path + ']]\\n\\nAfter.\\n')
       const leaf = app.workspace.getLeaf('tab')
       await leaf.openFile(app.vault.getAbstractFileByPath(NOTE), { state: { mode: 'preview' } })
       const embedEl = await until(() => leaf.view.containerEl.querySelector('.markdown-reading-view .abele-drawing-embed img[src]'), 8000)
@@ -414,7 +414,7 @@ describe.skipIf(!available)('the drawing canvas', () => {
       const br = box.getBoundingClientRect()
       await wheel(br.left + br.width / 2, br.top + br.height / 2, -50, 2); await wait(200)
       box.querySelector('.abele-drawing-embed__keep').click()
-      const kept = await until(async () => { const t = await read(NOTE); return !t.includes('[!drawing|100 80 300 150]') && t.split('\n')[2] }, 5000)
+      const kept = await until(async () => { const t = await read(NOTE); return !t.includes('[!drawing|100 80 300 150]') && t.split('\\n')[2] }, 5000)
       // Live preview draws it too.
       await leaf.setViewState({ type: 'markdown', state: { file: NOTE, mode: 'source', source: false } })
       const live = !!(await until(() => leaf.view.containerEl.querySelector('.markdown-source-view .abele-drawing-embed img[src]'), 8000))
@@ -446,7 +446,7 @@ describe.skipIf(!available)('the drawing canvas', () => {
       const NOTE = DIR + '/Insert note.md'
       const old = app.vault.getAbstractFileByPath(NOTE)
       if (old) await app.vault.delete(old)
-      const note = await app.vault.create(NOTE, 'Before\n')
+      const note = await app.vault.create(NOTE, 'Before\\n')
       const leaf = app.workspace.getLeaf('tab')
       await leaf.openFile(note, { state: { mode: 'source' } })
       app.workspace.setActiveLeaf(leaf, { focus: true })
@@ -517,7 +517,7 @@ describe.skipIf(!available)('the drawing canvas', () => {
       await closeAll()
       const NOTE = DIR + '/Card note.md'
       for (const p of [NOTE, DIR + '/Card note moved.md']) { const f = app.vault.getAbstractFileByPath(p); if (f) await app.vault.delete(f) }
-      await app.vault.create(NOTE, '# Shopping\n\n- milk\n- bread\n')
+      await app.vault.create(NOTE, '# Shopping\\n\\n- milk\\n- bread\\n')
       const view = await newOne()
       view.session.stop()
       view.session.addNote(NOTE)
@@ -557,6 +557,7 @@ describe.skipIf(!available)('the drawing canvas', () => {
       chat?: string[] | string
     }>(`
       await closeAll()
+      app.workspace.getLeavesOfType('abele-image-ink').forEach((l) => l.detach())
       const PIC = DIR + '/picture.png'
       // A plain grey picture, 300×200.
       const c = document.createElement('canvas'); c.width = 300; c.height = 200
@@ -586,8 +587,8 @@ describe.skipIf(!available)('the drawing canvas', () => {
       let chat = 'no chat'
       if (window.__abeleTest.AbeleConfig.getInstance().ai.enabled) {
         await view.sendToChat(pic)
-        const input = await until(() => [...document.querySelectorAll('.abele-chat-input__attachment')].map((e) => e.textContent.trim()).filter((t) => t.includes('picture drawn')), 8000)
-        chat = input || []
+        const input = await until(() => [...document.querySelectorAll('.abele-chat-input__attachment')].map((e) => e.textContent.trim()).filter((t) => t.includes('picture drawn')).join() || null, 8000)
+        chat = input ? [input] : []
         const sent = app.vault.getAbstractFileByPath(DIR + '/picture drawn.png'); if (sent) await app.vault.delete(sent)
       }
       app.workspace.getLeavesOfType('abele-image-ink').forEach((l) => l.detach())
