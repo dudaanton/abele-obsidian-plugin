@@ -11,7 +11,7 @@ import type { InkColor } from '@/reader/ink/stroke'
 import type { DrawingItems } from './history'
 import { LINE_HEIGHT, hasColor, newId, type DrawingItem, type TextItem } from './items'
 import type { Camera } from './camera'
-import { floatedBox, type Float } from './editTools'
+import { floated, floatedBox, type Float } from './editTools'
 import { HANDLE_RADIUS, pickedBounds } from './selection'
 import { paintItem } from './renderer'
 import { TextEditor } from './textEditor'
@@ -89,10 +89,15 @@ export class DrawingPick {
     if (!box) return
     const f = this.floating
     if (f) {
+      const dragged = this.items.items.filter((i) => this.ids.has(i.id))
+      // An arrow's head does not grow with it in step — it has a least and a most length — so
+      // one being scaled is shown as it will be left, not as a picture of it made larger.
+      const exact = (i: DrawingItem) => f.k !== 1 && i.type === 'shape' && i.kind === 'arrow'
       ctx.save()
       ctx.transform(f.k, 0, 0, f.k, f.ox - f.ox * f.k + f.dx, f.oy - f.oy * f.k + f.dy)
-      for (const item of this.items.items) if (this.ids.has(item.id)) paintItem(ctx, item)
+      for (const item of dragged) if (!exact(item)) paintItem(ctx, item)
       ctx.restore()
+      for (const item of dragged) if (exact(item)) paintItem(ctx, floated(item, f))
     }
     const b = f ? floatedBox(box, f) : box
     const pad = 4 / zoom
