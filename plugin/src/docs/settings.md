@@ -53,7 +53,8 @@ change they cannot undo.
 the note types that count as logs — a note whose `type` is one of these is a log wherever it is
 found, which is what the **Logs** list under a note is built from. `journals` are the journals
 themselves, each with its own folder and note template. `weekStartsOnMonday` and
-`busyDayThreshold` are the calendar's; `excludedPathsForDefaultTemplate` is where the default
+`busyDayThreshold` are the calendar's; `birthDate` (`YYYY-MM-DD`, empty when unset) and
+`lifeExpectancy` (years, 80 by default) are what a calendar base's life in weeks is drawn from; `excludedPathsForDefaultTemplate` is where the default
 template is deliberately not applied. `taskLabelProperty` is the task property labels are read
 from (`labels` unless changed), and `taskLabelColors` gives a label a colour — a list of
 `{ value, color }`, `color` one of `red`, `orange`, `yellow`, `green`, `cyan`, `blue`,

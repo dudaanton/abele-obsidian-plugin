@@ -136,6 +136,15 @@ describe('settings that arrived later than the transfer did', () => {
     })
   })
 
+  it('carries the birth date and the expected age the life in weeks is drawn from', () => {
+    const entries = collectEntries(settings({ birthDate: '1990-05-17', lifeExpectancy: 85 }))
+
+    expect(find(entries, 'tasks', 'tasks')?.data).toMatchObject({
+      birthDate: '1990-05-17',
+      lifeExpectancy: 85,
+    })
+  })
+
   it('carries whether mermaid diagrams are drawn by the plugin', () => {
     const entries = collectEntries(settings({ mermaidViewer: false }))
 

@@ -8,9 +8,13 @@
     <div class="abele-calendar-base__header">
       <div class="abele-calendar-base__title">{{ title }}</div>
       <div class="abele-calendar-base__controls">
-        <Icon icon="chevron-left" :tooltip="`Previous ${mode}`" @click="step(-1)" />
-        <Button text="Today" tooltip="Go to today" @click="goToday" />
-        <Icon icon="chevron-right" :tooltip="`Next ${mode}`" @click="step(1)" />
+        <Icon icon="chevron-left" :tooltip="`Previous ${stepName}`" @click="step(-1)" />
+        <Button
+          text="Today"
+          :tooltip="mode === 'life' ? 'Go to this week' : 'Go to today'"
+          @click="goToday"
+        />
+        <Icon icon="chevron-right" :tooltip="`Next ${stepName}`" @click="step(1)" />
       </div>
       <Tabs
         class="abele-calendar-base__modes"
@@ -57,7 +61,7 @@
       @create="(day, minute) => instance.create(day, minute)"
     />
     <CalendarYear
-      v-else
+      v-else-if="mode === 'year'"
       :year="anchorYear"
       :monday-first="mondayFirst"
       :items="allItems"
@@ -66,9 +70,19 @@
       @month="zoomToMonth"
       @day="pickInYear"
     />
+    <CalendarLife
+      v-else-if="birth"
+      :items="allItems"
+      :today="today"
+      :birth="birth"
+      :years="lifeYearsShown"
+      :selected="lifeSelected"
+      @week="(index) => (pickedWeek = index)"
+    />
+    <CalendarBirthPrompt v-else />
 
     <div
-      v-if="mode !== 'week' && selected"
+      v-if="(mode === 'month' || mode === 'year') && selected"
       class="abele-calendar-base__agenda"
       :data-day="selected"
     >
@@ -105,6 +119,15 @@
       </div>
       <EmptyState v-else text="Nothing on this day." />
     </div>
+
+    <CalendarLifeWeek
+      v-if="mode === 'life' && lifeWeek"
+      :week="lifeWeek"
+      :items="allItems"
+      @open="open"
+      @hover="hover"
+      @zoom="zoomToWeek"
+    />
   </div>
 </template>
 
@@ -130,6 +153,9 @@ import CalendarChip from './CalendarChip.vue'
 import CalendarMonth from './CalendarMonth.vue'
 import CalendarWeek from './CalendarWeek.vue'
 import CalendarYear from './CalendarYear.vue'
+import CalendarLife from './CalendarLife.vue'
+import CalendarLifeWeek from './CalendarLifeWeek.vue'
+import CalendarBirthPrompt from './CalendarBirthPrompt.vue'
 import { CALENDAR_DRAG, createCalendarDrag } from './calendarDrag'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -137,6 +163,7 @@ import { calendars } from '@/calendars/CalendarService'
 import type { CalendarEvent } from '@/calendars/events'
 import { openEventMenu } from '@/calendars/eventMenu'
 import type { CalendarBaseInstance } from '@/bases/CalendarView'
+import { isBirthDate, lifeWeekAt, lifeWeekOf } from '@/bases/lifeWeeks'
 import {
   addDays,
   eventToItem,
@@ -155,6 +182,7 @@ const MODE_TABS: Tab[] = [
   { id: 'month', label: 'Month', tooltip: 'Show a month' },
   { id: 'week', label: 'Week', tooltip: 'Show a week, by the hour' },
   { id: 'year', label: 'Year', tooltip: 'Show the whole year' },
+  { id: 'life', label: 'Life', tooltip: 'Show your life in weeks' },
 ]
 
 const props = defineProps<{ instance: CalendarBaseInstance }>()
@@ -203,6 +231,7 @@ const allItems = computed<readonly CalendarItem[]>(() => {
 // ---- where the view is ---------------------------------------------------------------------
 
 const title = computed(() => {
+  if (mode.value === 'life') return 'Life in weeks'
   const at = dayjs(anchor.value)
   if (mode.value === 'year') return at.format('YYYY')
   if (mode.value === 'month') return at.format('MMMM YYYY')
@@ -214,7 +243,15 @@ const title = computed(() => {
   return `${first.format('MMM D, YYYY')} – ${last.format('MMM D, YYYY')}`
 })
 
+/** What the arrows move by: a life moves a week at a time. */
+const stepName = computed(() => (mode.value === 'life' ? 'week' : mode.value))
+
 const step = (by: number) => {
+  if (mode.value === 'life') {
+    const from = lifeSelected.value
+    if (from !== null) pickedWeek.value = Math.max(0, from + by)
+    return
+  }
   const at = dayjs(anchor.value)
   if (mode.value === 'week') anchor.value = addDays(anchor.value, 7 * by)
   else if (mode.value === 'year') {
@@ -229,6 +266,7 @@ const step = (by: number) => {
 const goToday = () => {
   anchor.value = today.value
   selected.value = today.value
+  pickedWeek.value = null
 }
 
 const zoomToWeek = (day: string) => {
@@ -247,6 +285,29 @@ const zoomToMonth = (month: number) => {
   selected.value = null
   props.instance.setMode('month')
 }
+
+// ---- a life in weeks ----------------------------------------------------------------------
+
+/** The birth date is the person's, not the base's: one setting, read by every calendar. */
+const birth = computed(() => {
+  void config.version.value
+  return isBirthDate(config.birthDate) ? config.birthDate : ''
+})
+
+const lifeYearsShown = computed(() => {
+  void config.version.value
+  return props.instance.lifeYears.value ?? config.lifeExpectancy
+})
+
+/** The week pressed; until one is, this week. */
+const pickedWeek = ref<number | null>(null)
+const lifeSelected = computed(
+  () =>
+    pickedWeek.value ?? (birth.value ? (lifeWeekOf(birth.value, today.value)?.index ?? 0) : null)
+)
+const lifeWeek = computed(() =>
+  birth.value && lifeSelected.value !== null ? lifeWeekAt(birth.value, lifeSelected.value) : null
+)
 
 // ---- dragging a note -----------------------------------------------------------------------
 

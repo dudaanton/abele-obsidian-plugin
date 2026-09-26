@@ -39,6 +39,7 @@ function makeInstance(items: CalendarItem[], mode: CalendarMode = 'month') {
     mode: ref<CalendarMode>(mode),
     showEvents: ref(false),
     canCreate: ref(true),
+    lifeYears: ref<number | null>(null),
     setMode: vi.fn((m: CalendarMode) => {
       instance.mode.value = m
     }),
@@ -441,7 +442,7 @@ describe('the layouts', () => {
     const instance = makeInstance([])
     const view = render(instance)
     const tabs = view.findAll('.abele-calendar-base__modes .abele-tabs__tab')
-    expect(tabs.map((t) => t.text())).toEqual(['Month', 'Week', 'Year'])
+    expect(tabs.map((t) => t.text())).toEqual(['Month', 'Week', 'Year', 'Life'])
     await tabs[2].trigger('click')
     expect(instance.setMode).toHaveBeenCalledWith('year')
     expect(view.find('.abele-calendar-year').exists()).toBe(true)

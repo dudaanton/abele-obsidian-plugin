@@ -27,6 +27,7 @@ import {
 } from '@/quickButton/settings'
 import { normalizeRule, type AutomationRule } from '@/automations/types'
 import { moveLegacySecrets, notePlainSecrets } from '@/secrets/legacy'
+import { DEFAULT_LIFE_YEARS, isBirthDate, lifeYears } from '@/bases/lifeWeeks'
 
 export interface AbeleSettings {
   refreshDelay: number // in milliseconds
@@ -36,6 +37,10 @@ export interface AbeleSettings {
   tasksDateChoices?: string[] // Optional array of date choices for tasks
   tasksRecurrenceChoices?: string[] // Optional array of recurrence choices for tasks
   weekStartsOnMonday?: boolean // Optional setting for week start day
+  /** The person's birth date, `YYYY-MM-DD`, for the calendar's life in weeks; empty when unset. */
+  birthDate?: string
+  /** The years the life in weeks is drawn to. */
+  lifeExpectancy?: number
   /** Frontmatter property a task's labels are read from. */
   taskLabelProperty?: string
   /** A colour per label value. A label with no entry here is grey. */
@@ -233,6 +238,8 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   tasksDateChoices: ['Today', 'Tomorrow', 'Next Week', 'Next Month'],
   tasksRecurrenceChoices: ['Daily', 'Weekly', 'Monthly', 'Yearly'],
   weekStartsOnMonday: true,
+  birthDate: '',
+  lifeExpectancy: DEFAULT_LIFE_YEARS,
   taskLabelProperty: DEFAULT_LABEL_PROPERTY,
   taskLabelColors: [],
   journals: [],
@@ -279,6 +286,8 @@ export class AbeleConfig {
   public tasksDateChoices: string[]
   public tasksRecurrenceChoices: string[]
   public weekStartsOnMonday: boolean
+  public birthDate: string
+  public lifeExpectancy: number
   public taskLabelProperty: string
   public taskLabelColors: LabelColor[]
   public busyDayThreshold: number
@@ -505,6 +514,9 @@ export class AbeleConfig {
       ...DEFAULT_SETTINGS.tasksRecurrenceChoices,
     ]
     this.weekStartsOnMonday = settings?.weekStartsOnMonday ?? DEFAULT_SETTINGS.weekStartsOnMonday
+    // Both can be edited by hand; anything that is not a day or a life is left unset.
+    this.birthDate = isBirthDate(settings?.birthDate) ? settings.birthDate : ''
+    this.lifeExpectancy = lifeYears(settings?.lifeExpectancy, DEFAULT_LIFE_YEARS)
     this.taskLabelProperty =
       settings?.taskLabelProperty?.trim() || DEFAULT_SETTINGS.taskLabelProperty
     // Cleaned on the way in: the file can be edited by hand, and a colour the kit has no class
@@ -647,6 +659,8 @@ export class AbeleConfig {
       tasksDateChoices: [...this.tasksDateChoices],
       tasksRecurrenceChoices: [...this.tasksRecurrenceChoices],
       weekStartsOnMonday: this.weekStartsOnMonday,
+      birthDate: this.birthDate,
+      lifeExpectancy: this.lifeExpectancy,
       taskLabelProperty: this.taskLabelProperty,
       taskLabelColors: this.taskLabelColors.map((c) => ({ ...c })),
       journals: this.journals.map((j) => j.toDTO()),

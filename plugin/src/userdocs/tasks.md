@@ -67,6 +67,12 @@ notes the base finds appear on a month, a week or a year, switched at the top of
   hour to make a note at that time.
 - **Year** tints each day by how much is on it. Press a month's name to open it, or a day to see
   it under the year.
+- **Life** shows your life in weeks: a row for each year of your age, 52 weeks to a row. Weeks
+  behind you are filled in, the ones ahead are empty, and this week is outlined. A week with notes
+  in it is tinted by how many there are, and shows the number when there is room. Above the grid:
+  how many weeks you have lived, how many are left, and how far along you are. Press a week to
+  list its notes under the grid, with **Week** to open it by the hour; the arrows move a week at
+  a time and **Today** comes back to this one.
 
 Within a day, notes follow the base's own sort when it has one; without a sort, longer notes
 come first, then by time. Done tasks go to the end of each day either way. Turn off **Done tasks
@@ -84,6 +90,11 @@ By default the calendar reads the task properties, `date`, `dateTime`, `due` and
 base over your tasks needs no setup. For other notes, choose the properties in the view's
 options. If the base groups its notes, each group gets a colour. **Show calendar events** adds
 the events from [Other calendars](logs-and-journals#other-calendars).
+
+The life in weeks counts from your birth date and runs to your life expectancy, 80 years unless
+you change it. Both are in **Settings → Abele → Tasks** and shared by every base; the first time
+you open **Life** without a birth date, it asks for one right there. **Life expectancy** in a
+view's options gives that one view its own number of years.
 
 On a narrow screen, the month shows dots. Tap a day to list what is on it under the calendar,
 and drag a note from that list onto another day to move it.

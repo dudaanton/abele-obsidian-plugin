@@ -24,6 +24,7 @@ import {
   type CalendarItem,
   type CalendarMode,
 } from './calendarLayout'
+import { lifeYears } from './lifeWeeks'
 
 export const CALENDAR_VIEW_ID = 'abele-calendar'
 export const CALENDAR_ID_ATTR = 'abele-calendar-base-id'
@@ -37,6 +38,7 @@ export const CALENDAR_OPTION = {
   endTime: 'endTimeProperty',
   events: 'showCalendarEvents',
   doneLast: 'doneLast',
+  lifeYears: 'lifeExpectancy',
 } as const
 
 /** The task model's own properties: a base over the tasks folder works with nothing set. */
@@ -69,6 +71,8 @@ export interface CalendarBaseInstance {
   showEvents: Ref<boolean>
   /** False when the date is a formula: nothing can be written into it. */
   canCreate: Ref<boolean>
+  /** The years the life in weeks is drawn to, when this view asks for its own; else null. */
+  lifeYears: Ref<number | null>
   setMode(mode: CalendarMode): void
   open(item: CalendarItem, event: MouseEvent | KeyboardEvent): void
   hover(item: CalendarItem, event: MouseEvent): void
@@ -94,7 +98,7 @@ export function calendarViewOptions(): BasesAllOptions[] {
       type: 'dropdown' as const,
       displayName: 'Layout',
       default: 'month',
-      options: { month: 'Month', week: 'Week', year: 'Year' },
+      options: { month: 'Month', week: 'Week', year: 'Year', life: 'Life in weeks' },
     },
     property(CALENDAR_OPTION.date, 'Date', CALENDAR_DEFAULTS.date, 'The day a note is on'),
     property(CALENDAR_OPTION.time, 'Time', CALENDAR_DEFAULTS.time, 'Optional — its time'),
@@ -116,6 +120,12 @@ export function calendarViewOptions(): BasesAllOptions[] {
       type: 'toggle' as const,
       displayName: 'Show calendar events',
       default: false,
+    },
+    {
+      key: CALENDAR_OPTION.lifeYears,
+      type: 'text' as const,
+      displayName: 'Life expectancy',
+      placeholder: 'Years — empty uses the plugin settings',
     },
   ]
 }
@@ -143,10 +153,10 @@ function noteKey(prop: BasesPropertyId | null): string | null {
 }
 
 /**
- * A calendar of the notes a base finds: month, week and year, placed by a date property. The
- * drawing is Vue's (`components/calendarBase`), reached through the store like the find and
- * replace view; this class only turns the base's rows into items and does what they ask of
- * Obsidian — open a note, preview one, make one.
+ * A calendar of the notes a base finds: month, week, year and a life in weeks, placed by a date
+ * property. The drawing is Vue's (`components/calendarBase`), reached through the store like
+ * the find and replace view; this class only turns the base's rows into items and does what
+ * they ask of Obsidian — open a note, preview one, make one.
  */
 export class CalendarView extends BasesView {
   type = CALENDAR_VIEW_ID
@@ -168,6 +178,7 @@ export class CalendarView extends BasesView {
       mode: ref('month'),
       showEvents: ref(false),
       canCreate: ref(true),
+      lifeYears: ref(null),
       setMode: (mode) => {
         this.instance.mode.value = mode
         if (this.config.get(CALENDAR_OPTION.mode) !== mode)
@@ -202,6 +213,8 @@ export class CalendarView extends BasesView {
     const mode = config.get(CALENDAR_OPTION.mode)
     if (isMode(mode)) this.instance.mode.value = mode
     this.instance.showEvents.value = !!config.get(CALENDAR_OPTION.events)
+    const years = lifeYears(config.get(CALENDAR_OPTION.lifeYears), 0)
+    this.instance.lifeYears.value = years || null
 
     const date = propertyOf(config, CALENDAR_OPTION.date, CALENDAR_DEFAULTS.date)
     const time = propertyOf(config, CALENDAR_OPTION.time, CALENDAR_DEFAULTS.time)

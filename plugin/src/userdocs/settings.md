@@ -6,7 +6,8 @@ opens the page for that tab.
 ## Tasks
 
 The tasks folder, the quick choices of dates, times and repeats in the task editor, the busy day
-threshold, whether the week starts on Monday, and label colours. See [Tasks](tasks).
+threshold, whether the week starts on Monday, your birth date and life expectancy for the
+calendar's life in weeks, and label colours. See [Tasks](tasks).
 
 ## Logs
 

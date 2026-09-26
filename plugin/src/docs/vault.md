@@ -71,13 +71,14 @@ Its options sit in the view's own entry and all of them may be left out:
 views:
   - type: abele-calendar
     name: Calendar
-    mode: month              # month, week or year — where it opens
+    mode: month              # month, week, year or life — where it opens
     dateProperty: note.date  # the day a note is on
     timeProperty: note.dateTime
     endProperty: note.due    # the last day, for something that spans days
     endTimeProperty: note.dueTime
     showCalendarEvents: false  # true adds the external calendars' events
     doneLast: true           # false lists done tasks where the sort puts them
+    lifeExpectancy: 90       # years the life layout draws; left out, the plugin setting
 ```
 
 Left out, the four properties are the task's own, so a base over the tasks folder needs none of
@@ -86,7 +87,12 @@ the days between. A time comes from the time property or from a date written wit
 (`2026-09-26T10:00`). A note with `completed` set is struck out. The base's `groupBy` colours
 the notes, one colour per group, and its `sort` orders the notes within each day, done tasks after the rest unless `doneLast`
 is false. Nothing about a
-calendar view is stored anywhere but the `.base` file.
+calendar view is stored anywhere but the `.base` file — except what the `life` layout counts
+from: a life in weeks, a row per year of age and 52 weeks to a row, starts at the person's
+`birthDate` in the plugin settings and runs to `lifeExpectancy` years, both shared by every base.
+A row starts on a birthday, so its weeks are counted from there, not from Monday; the last week
+of each row takes the day or two a year has over 52 weeks. Each week is tinted by how many of the
+base's notes fall in it.
 
 Dragging a note on the calendar writes into that note's frontmatter: every date property it
 has (start and end) moves by the same number of days, and dropped on an hour its time is set,

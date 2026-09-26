@@ -225,6 +225,8 @@ export const SECTIONS: Section[] = [
     'tasksDateChoices',
     'tasksRecurrenceChoices',
     'weekStartsOnMonday',
+    'birthDate',
+    'lifeExpectancy',
     'busyDayThreshold',
     'taskLabelProperty',
     'taskLabelColors',

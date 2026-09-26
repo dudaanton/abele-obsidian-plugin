@@ -58,6 +58,23 @@
     >
       <Checkbox :is-enabled="weekStartsOnMonday" @toggle="weekStartsOnMondayChanged" />
     </Setting>
+    <Setting
+      name="Birth date"
+      desc="Where the Life layout of a calendar base starts counting your weeks. Used by every base."
+    >
+      <Input type="date" :model-value="birthDate" @update:model-value="birthDateChanged" />
+    </Setting>
+    <Setting
+      name="Life expectancy"
+      desc="The years the Life layout draws. A calendar base can ask for its own in the view's options."
+    >
+      <Input
+        :model-value="lifeExpectancy"
+        type="number"
+        :placeholder="String(DEFAULT_LIFE_YEARS)"
+        @update:model-value="lifeExpectancyChanged"
+      />
+    </Setting>
     <TaskLabelsSettings />
   </div>
 </template>
@@ -74,6 +91,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { debounce } from 'obsidian'
 import dayjs from 'dayjs'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { DEFAULT_LIFE_YEARS, isBirthDate, lifeYears } from '@/bases/lifeWeeks'
 
 const tasksFolder = ref(AbeleConfig.getInstance().tasksFolder)
 const tasksTimeChoices = ref(AbeleConfig.getInstance().tasksTimeChoices.join(','))
@@ -81,6 +99,8 @@ const tasksDateChoices = ref(AbeleConfig.getInstance().tasksDateChoices.join(','
 const tasksRecurrenceChoices = ref(AbeleConfig.getInstance().tasksRecurrenceChoices.join(','))
 const busyDayThreshold = ref(AbeleConfig.getInstance().busyDayThreshold.toString())
 const weekStartsOnMonday = ref(AbeleConfig.getInstance().weekStartsOnMonday)
+const birthDate = ref(AbeleConfig.getInstance().birthDate)
+const lifeExpectancy = ref(String(AbeleConfig.getInstance().lifeExpectancy))
 
 const saveSettings = debounce(async () => {
   const config = AbeleConfig.getInstance()
@@ -143,5 +163,21 @@ const weekStartsOnMondayChanged = () => {
   GlobalStore.getInstance().weekStartsOnMonday.value = weekStartsOnMonday.value
 
   saveSettings()
+}
+
+/** A date the field has finished with, or none at all to take it away. */
+const birthDateChanged = async (value: string) => {
+  birthDate.value = value
+  if (value && !isBirthDate(value)) return
+  AbeleConfig.getInstance().birthDate = value
+  await AbeleConfig.getInstance().saveSettings()
+}
+
+const lifeExpectancyChanged = async (value: string) => {
+  lifeExpectancy.value = value
+  const years = lifeYears(value, 0)
+  if (!years) return
+  AbeleConfig.getInstance().lifeExpectancy = years
+  await AbeleConfig.getInstance().saveSettings()
 }
 </script>

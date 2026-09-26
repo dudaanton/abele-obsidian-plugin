@@ -9,8 +9,8 @@
 import type { KitColor } from '@/constants/colors'
 import { eventDays, type CalendarEvent } from '@/calendars/events'
 
-export type CalendarMode = 'month' | 'week' | 'year'
-export const CALENDAR_MODES: CalendarMode[] = ['month', 'week', 'year']
+export type CalendarMode = 'month' | 'week' | 'year' | 'life'
+export const CALENDAR_MODES: CalendarMode[] = ['month', 'week', 'year', 'life']
 
 export const MINUTES_IN_DAY = 24 * 60
 /** How long a timed item with no end is drawn. */
