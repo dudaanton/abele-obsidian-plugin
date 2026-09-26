@@ -9,7 +9,7 @@
  */
 import type { ShapeKind, ShapeItem, DrawingItem, Rect } from './items'
 import { moveItem, newId, scaleItem } from './items'
-import { itemAt, lassoPick } from './selection'
+import { itemAt, lassoPick, pickAt } from './selection'
 import { paintItem } from './renderer'
 import type { ToolGesture, WorldPoint } from './surface'
 import type { Brush, ToolContext } from './tools'
@@ -65,7 +65,7 @@ export function lassoGesture(ctx: EditContext, start: WorldPoint): ToolGesture {
     end(cancelled) {
       if (cancelled) return
       if (far < TAP) {
-        const id = itemAt(ctx.items.items, start.x, start.y, 8 / ctx.zoom())
+        const id = pickAt(ctx.items.items, start.x, start.y, 8 / ctx.zoom())
         ctx.pick(id ? [id] : [])
         return
       }
@@ -87,7 +87,12 @@ export function lassoGesture(ctx: EditContext, start: WorldPoint): ToolGesture {
   }
 }
 
-/** Drags what is picked by a distance, or — from the handle — scales it about the box's corner. */
+/**
+ * Drags what is picked by a distance, or — from the handle — scales it about the box's corner.
+ *
+ * Until it has gone further than a tap it stays put: a pen never lands without a quiver, and a
+ * tap inside the box picks out the one item it lands on instead.
+ */
 export function dragGesture(
   ctx: EditContext,
   start: WorldPoint,
@@ -95,27 +100,51 @@ export function dragGesture(
   mode: 'move' | 'scale'
 ): ToolGesture {
   let f = noFloat()
+  let started = false
+  // Along the box's diagonal from its top left corner, whatever way the finger strays — measured
+  // from where the handle was taken, which may be a little off the corner, so it does not jump.
+  const len = box.w * box.w + box.h * box.h || 1
+  const along = (p: { x: number; y: number }) => (p.x - box.x) * box.w + (p.y - box.y) * box.h
+  const grip = along(start)
+  // A box too small for its handle may be taken beside its corner, or even above it: then the
+  // size follows how far the finger goes, which is 1 where it was taken all the same.
+  const scaleAt = (p: { x: number; y: number }) =>
+    grip >= len / 2 ? along(p) / grip : 1 + (along(p) - grip) / len
   ctx.float(f)
   return {
     move(pts) {
       const p = pts[pts.length - 1]
       if (!p) return
+      if (!started) started = Math.hypot(p.x - start.x, p.y - start.y) * ctx.zoom() >= TAP
+      if (!started) return
       if (mode === 'move') f = { ...noFloat(), dx: p.x - start.x, dy: p.y - start.y }
       else {
-        // Along the box's diagonal from its top left corner, whatever way the finger strays.
-        const len = box.w * box.w + box.h * box.h || 1
-        const k = ((p.x - box.x) * box.w + (p.y - box.y) * box.h) / len
+        const k = scaleAt(p)
         f = { dx: 0, dy: 0, k: Math.max(0.05, Math.min(50, k)), ox: box.x, oy: box.y }
       }
       ctx.float(f)
     },
     end(cancelled) {
-      const moved = f.dx || f.dy || f.k !== 1
+      const moved = started && (f.dx || f.dy || f.k !== 1)
+      if (!cancelled && moved) {
+        // The items go where they were let go before the float is dropped: dropping it paints the
+        // canvas from them, and painted from where they were they would jump back there.
+        const picked = ctx.picked()
+        ctx.items.replace(ctx.items.items.filter((i) => picked.has(i.id)).map((i) => floated(i, f)))
+      }
       ctx.float(null)
-      if (cancelled || !moved) return
-      const picked = ctx.picked()
-      ctx.items.replace(ctx.items.items.filter((i) => picked.has(i.id)).map((i) => floated(i, f)))
-      ctx.changed()
+      if (cancelled) return
+      if (moved) {
+        ctx.changed()
+        return
+      }
+      // A tap inside the box: the item it lands on, alone — one of several picked, or one the
+      // box happens to cover.
+      if (!started && mode === 'move') {
+        const id = pickAt(ctx.items.items, start.x, start.y, 8 / ctx.zoom())
+        const picked = ctx.picked()
+        if (id && !(picked.size === 1 && picked.has(id))) ctx.pick([id])
+      }
     },
   }
 }

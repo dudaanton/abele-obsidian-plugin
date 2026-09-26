@@ -75,6 +75,36 @@ export function itemAt(
   return null
 }
 
+/** Whether a point is inside a box or a ring drawn with the shape tool. */
+function insideShape(item: DrawingItem, x: number, y: number): boolean {
+  if (item.type !== 'shape' || (item.kind !== 'rect' && item.kind !== 'ellipse')) return false
+  const x0 = Math.min(item.x1, item.x2)
+  const y0 = Math.min(item.y1, item.y2)
+  const w = Math.abs(item.x2 - item.x1)
+  const h = Math.abs(item.y2 - item.y1)
+  if (x < x0 || x > x0 + w || y < y0 || y > y0 + h) return false
+  if (item.kind === 'rect') return true
+  const nx = (x - x0 - w / 2) / (w / 2 || 1)
+  const ny = (y - y0 - h / 2) / (h / 2 || 1)
+  return nx * nx + ny * ny <= 1
+}
+
+/**
+ * What a tap of the lasso picks: the topmost item under it; else the topmost box or ring it
+ * lands inside — they are drawn hollow, but a tap in the middle of one means that one.
+ */
+export function pickAt(
+  items: readonly DrawingItem[],
+  x: number,
+  y: number,
+  radius: number
+): string | null {
+  const hit = itemAt(items, x, y, radius)
+  if (hit) return hit
+  for (let i = items.length - 1; i >= 0; i--) if (insideShape(items[i], x, y)) return items[i].id
+  return null
+}
+
 /** The box round the items picked; null when none is. */
 export function pickedBounds(
   items: readonly DrawingItem[],

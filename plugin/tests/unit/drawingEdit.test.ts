@@ -230,3 +230,133 @@ describe('shapes and text', () => {
     expect(log.texts).toHaveLength(2)
   })
 })
+
+describe('what goes wrong with a drag', () => {
+  const shape = (id: string, x1: number, y1: number, x2: number, y2: number): ShapeItem => ({
+    id,
+    type: 'shape',
+    kind: 'rect',
+    x1,
+    y1,
+    x2,
+    y2,
+    color: 'black',
+    size: 2,
+  })
+
+  it('has the items where they were let go by the time the canvas is painted again', () => {
+    // Dropping the float paints the canvas from the items: were they still where the drag began,
+    // what was dragged would be painted back there, and stay there until something else moved.
+    const items = new DrawingItems()
+    items.load([shape('s', 0, 0, 100, 50)])
+    const { ctx, setPicked } = context(items)
+    setPicked(['s'])
+    const seen: (number | null)[] = []
+    ctx.float = (f) => {
+      if (!f) seen.push((items.get('s') as ShapeItem).x1)
+    }
+    const box = pickedBounds(items.items, new Set(['s']))!
+    const g = dragGesture(ctx, { x: 50, y: 25, p: 0.5 }, box, 'move')
+    g.move([{ x: 250, y: 125, p: 0.5 }], [])
+    g.end(false)
+    expect(seen).toEqual([200])
+  })
+
+  it('does not jump when the handle is taken a little off the corner', () => {
+    const items = new DrawingItems()
+    items.load([shape('s', 0, 0, 40, 40)])
+    const { ctx, log, setPicked } = context(items)
+    setPicked(['s'])
+    const box = pickedBounds(items.items, new Set(['s']))!
+    // Taken 8 units past the corner, as the handle allows, and not moved yet.
+    const cx = box.x + box.w + 8
+    const cy = box.y + box.h + 8
+    const g = dragGesture(ctx, { x: cx, y: cy, p: 0.5 }, box, 'scale')
+    g.move([{ x: cx, y: cy, p: 0.5 }], [])
+    expect(log.floats.at(-1)?.k).toBeCloseTo(1, 5)
+    // Pulled as far again as the corner is from the box's top left: twice the size.
+    g.move([{ x: cx + (cx - box.x), y: cy + (cy - box.y), p: 0.5 }], [])
+    expect(log.floats.at(-1)?.k).toBeCloseTo(2, 5)
+  })
+
+  it('does not jump either when a box smaller than the handle is taken beside its corner', () => {
+    const items = new DrawingItems()
+    items.load([shape('s', 0, 0, 2, 2)])
+    const { ctx, log, setPicked } = context(items)
+    setPicked(['s'])
+    const box = pickedBounds(items.items, new Set(['s']))!
+    // Up and to the left of the corner, still on the handle, which is larger than the box.
+    const g = dragGesture(ctx, { x: box.x - 4, y: box.y - 4, p: 0.5 }, box, 'scale')
+    g.move([{ x: box.x - 4 + 6, y: box.y - 4 + 6, p: 0.5 }], [])
+    expect(log.floats.at(-1)?.k).toBeGreaterThan(1)
+    g.move([{ x: box.x - 4 + 0.1, y: box.y - 4, p: 0.5 }], [])
+    expect(log.floats.at(-1)?.k).toBeCloseTo(1, 1)
+  })
+
+  it('keeps what a pen tap inside the box barely moved where it was', () => {
+    const items = new DrawingItems()
+    items.load([shape('s', 0, 0, 100, 50)])
+    const { ctx, log, setPicked } = context(items)
+    setPicked(['s'])
+    const box = pickedBounds(items.items, new Set(['s']))!
+    const g = dragGesture(ctx, { x: 50, y: 25, p: 0.5 }, box, 'move')
+    g.move([{ x: 51.5, y: 24, p: 0.5 }], [])
+    g.end(false)
+    expect((items.get('s') as ShapeItem).x1).toBe(0)
+    expect(log.changed).toBe(0)
+    expect(items.canUndo).toBe(false)
+  })
+
+  it('moves the whole way once it moved further than a tap, not less by the tap', () => {
+    const items = new DrawingItems()
+    items.load([shape('s', 0, 0, 100, 50)])
+    const { ctx, setPicked } = context(items)
+    setPicked(['s'])
+    const box = pickedBounds(items.items, new Set(['s']))!
+    const g = dragGesture(ctx, { x: 50, y: 25, p: 0.5 }, box, 'move')
+    g.move([{ x: 60, y: 25, p: 0.5 }], [])
+    g.move([{ x: 53, y: 25, p: 0.5 }], [])
+    g.end(false)
+    expect((items.get('s') as ShapeItem).x1).toBe(3)
+  })
+
+  it('picks the one item a tap inside the box lands on, out of several', () => {
+    const items = new DrawingItems()
+    items.load([line('a', 0, 0), line('b', 0, 100)])
+    const { ctx, log, setPicked } = context(items)
+    setPicked(['a', 'b'])
+    const box = pickedBounds(items.items, new Set(['a', 'b']))!
+    dragGesture(ctx, { x: 40, y: 100, p: 0.5 }, box, 'move').end(false)
+    expect(log.picked.at(-1)).toEqual(['b'])
+    // A tap on nothing inside the box keeps what is picked.
+    dragGesture(ctx, { x: 40, y: 50, p: 0.5 }, box, 'move').end(false)
+    expect(log.picked).toHaveLength(1)
+  })
+
+  it('picks a box or a ring by a tap inside it, not only on its line', () => {
+    const items = new DrawingItems()
+    items.load([shape('s', 0, 0, 200, 100), { ...shape('e', 300, 0, 400, 100), kind: 'ellipse' }])
+    const { ctx, log } = context(items)
+    lassoGesture(ctx, { x: 100, y: 50, p: 0.5 }).end(false)
+    expect(log.picked.at(-1)).toEqual(['s'])
+    lassoGesture(ctx, { x: 350, y: 50, p: 0.5 }).end(false)
+    expect(log.picked.at(-1)).toEqual(['e'])
+    // The corner of the ring's box is outside the ring.
+    lassoGesture(ctx, { x: 305, y: 5, p: 0.5 }).end(false)
+    expect(log.picked.at(-1)).toEqual([])
+  })
+
+  it('works the same at another zoom: a tap is measured on the screen', () => {
+    const items = new DrawingItems()
+    items.load([shape('s', 0, 0, 100, 50)])
+    const { ctx, setPicked } = context(items)
+    ctx.zoom = () => 4
+    setPicked(['s'])
+    const box = pickedBounds(items.items, new Set(['s']))!
+    // 3 units at 400% is 12 pixels on screen: a move, not a tap.
+    const g = dragGesture(ctx, { x: 50, y: 25, p: 0.5 }, box, 'move')
+    g.move([{ x: 53, y: 25, p: 0.5 }], [])
+    g.end(false)
+    expect((items.get('s') as ShapeItem).x1).toBe(3)
+  })
+})
