@@ -23,6 +23,7 @@ import type { FormField } from '@/scripting/types'
 import { App, TFile } from 'obsidian'
 import { computed, ref, shallowRef, toRaw } from 'vue'
 import type { FindAndReplaceInstance } from '@/bases/FindAndReplaceView'
+import type { CalendarBaseInstance } from '@/bases/CalendarView'
 import type { ScriptViewModel } from '@/views/ScriptView'
 
 export class GlobalStore {
@@ -88,6 +89,8 @@ export class GlobalStore {
   public readonly findAndReplaceBasesInstances = shallowRef<Map<string, FindAndReplaceInstance>>(
     new Map()
   )
+  /** One per open calendar view of a base; the view puts it here and Vue draws from it. */
+  public readonly calendarBaseInstances = shallowRef<Map<string, CalendarBaseInstance>>(new Map())
 
   public readonly tasksList = ref<TasksList | null>(null)
   public readonly transactionsList = ref<TransactionsList | null>(null)

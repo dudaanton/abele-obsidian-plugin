@@ -69,6 +69,7 @@ import { USER_DOCS_VIEW_TYPE, UserDocsView, openUserDocs } from './views/UserDoc
 import { SCRIPT_VIEW_TYPE, ScriptView } from './views/ScriptView'
 import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
+import { CALENDAR_VIEW_ID, CalendarView, calendarViewOptions } from './bases/CalendarView'
 import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
 import { registerDrawing } from './drawing/register'
 import { registerReader } from './reader/register'
@@ -333,6 +334,14 @@ export default class AbelePlugin extends Plugin {
       name: 'Find and replace',
       icon: 'replace-all',
       factory: (controller, containerEl) => new FindAndReplaceView(controller, containerEl),
+    })
+
+    // The notes a base finds on a month, a week or a year, placed by a date property.
+    this.registerBasesView(CALENDAR_VIEW_ID, {
+      name: 'Calendar',
+      icon: 'calendar-days',
+      factory: (controller, containerEl) => new CalendarView(controller, containerEl),
+      options: calendarViewOptions,
     })
 
     this.initializeVue()

@@ -39,13 +39,13 @@
  * A click offers what can be done with it — a note about it, its link.
  */
 import { computed, ref } from 'vue'
-import { Menu, Notice } from 'obsidian'
 import ObsidianIcon from './obsidian/Icon.vue'
 import Badge from './obsidian/Badge.vue'
 import type { CalendarEvent } from '@/calendars/events'
 import { eventDays, localDay } from '@/calendars/events'
 import { feedLabel, type CalendarFeed } from '@/calendars/settings'
-import { clockTime, createMeetingNote, eventTimeText } from '@/calendars/meetingNote'
+import { clockTime, eventTimeText } from '@/calendars/meetingNote'
+import { openEventMenu } from '@/calendars/eventMenu'
 
 const props = defineProps<{
   event: CalendarEvent
@@ -72,32 +72,7 @@ const timeText = computed(() => {
   return 'All day'
 })
 
-const openMenu = (e: MouseEvent | KeyboardEvent) => {
-  const menu = new Menu()
-  menu.addItem((item) =>
-    item
-      .setTitle('Create meeting note')
-      .setIcon('file-plus')
-      .onClick(() => {
-        createMeetingNote(props.event, props.day).catch((err) => {
-          new Notice(`The meeting note could not be created: ${(err as Error).message}`)
-        })
-      })
-  )
-  if (props.event.url) {
-    menu.addItem((item) =>
-      item
-        .setTitle('Open the event link')
-        .setIcon('external-link')
-        .onClick(() => window.open(props.event.url, '_blank'))
-    )
-  }
-  if (e instanceof MouseEvent) menu.showAtMouseEvent(e)
-  else {
-    const box = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    menu.showAtPosition({ x: box.left, y: box.bottom })
-  }
-}
+const openMenu = (e: MouseEvent | KeyboardEvent) => openEventMenu(props.event, props.day, e)
 </script>
 
 <style lang="scss">

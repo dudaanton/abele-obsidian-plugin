@@ -55,6 +55,28 @@ is grey. The property can be renamed there too.
 Events from other calendars can show among them, read only. See
 [Other calendars](logs-and-journals#other-calendars).
 
+## A calendar in a base
+
+**Calendar** is a view type for Obsidian Bases. Add a view to a base and pick **Calendar**: the
+notes the base finds appear on a month, a week or a year, switched at the top of the view.
+
+- **Month** lists what is on each day. A full day ends in "+N more". Press a day's number for
+  its week, or the **+** beside it for a new note on that day.
+- **Week** puts notes with a time on the hours and the rest in a row at the top. Press an empty
+  hour to make a note at that time.
+- **Year** tints each day by how much is on it. Press a month's name or a day to go there.
+
+A note opens when you press it, in a new tab with Cmd or Ctrl. Hover over one to preview it. A new
+note made from the calendar goes where the base's own **New** button would put it, with the date
+already filled in.
+
+By default the calendar reads the task properties, `date`, `dateTime`, `due` and `dueTime`, so a
+base over your tasks needs no setup. For other notes, choose the properties in the view's
+options. If the base groups its notes, each group gets a colour. **Show calendar events** adds
+the events from [Other calendars](logs-and-journals#other-calendars).
+
+On a narrow screen, the month shows dots. Tap a day to list what is on it under the calendar.
+
 ## Moving from Dataview
 
 **Migrate tasks from Dataview** turns Dataview checklist tasks into task notes.

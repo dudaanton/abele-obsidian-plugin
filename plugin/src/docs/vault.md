@@ -62,6 +62,30 @@ settings, never on the task. There is no nesting: the task's own body is its des
 
 Completion is `completed` being set. Do not add a `done` or `status` property.
 
+## Calendar views in bases
+
+A `.base` file can show the notes it finds on a calendar: a view with `type: abele-calendar`.
+Its options sit in the view's own entry and all of them may be left out:
+
+```yaml
+views:
+  - type: abele-calendar
+    name: Calendar
+    mode: month              # month, week or year — where it opens
+    dateProperty: note.date  # the day a note is on
+    timeProperty: note.dateTime
+    endProperty: note.due    # the last day, for something that spans days
+    endTimeProperty: note.dueTime
+    showCalendarEvents: false  # true adds the external calendars' events
+```
+
+Left out, the four properties are the task's own, so a base over the tasks folder needs none of
+them. A note goes on its date, or on its end date when that is all it has; with both it spans
+the days between. A time comes from the time property or from a date written with one
+(`2026-09-26T10:00`). A note with `completed` set is struck out. The base's `groupBy` colours
+the notes, one colour per group. Nothing about a calendar view is stored anywhere but the
+`.base` file.
+
 ## Transactions
 
 `type: transaction`. One note per transaction.

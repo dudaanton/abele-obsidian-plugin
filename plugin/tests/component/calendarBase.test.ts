@@ -1,0 +1,308 @@
+/**
+ * The calendar view of a base, drawn: notes on their days in a month, on their hours in a week,
+ * as a tint in a year; the moves between them; what pressing a note, a day or an hour asks the
+ * base's view to do; and the narrow month that lists a picked day under the grid.
+ */
+process.env.TZ = 'Europe/Berlin'
+
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mount, type VueWrapper } from '@vue/test-utils'
+import { nextTick, ref, shallowRef } from 'vue'
+import { Menu } from 'obsidian'
+import CalendarBase from '@/components/calendarBase/CalendarBase.vue'
+import type { CalendarBaseInstance } from '@/bases/CalendarView'
+import type { CalendarItem, CalendarMode } from '@/bases/calendarLayout'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { useVault, configureAbele } from '../helpers/testEnv'
+
+const item = (title: string, over: Partial<CalendarItem> = {}): CalendarItem => ({
+  id: `Tasks/${title}.md`,
+  kind: 'note',
+  path: `Tasks/${title}.md`,
+  title,
+  start: '2026-09-26',
+  end: '2026-09-26',
+  startMinute: null,
+  endMinute: null,
+  color: null,
+  completed: false,
+  ...over,
+})
+
+function makeInstance(items: CalendarItem[], mode: CalendarMode = 'month') {
+  const instance = {
+    id: 'c1',
+    el: document.createElement('div'),
+    items: shallowRef(items),
+    groups: shallowRef([]),
+    undated: ref(0),
+    mode: ref<CalendarMode>(mode),
+    showEvents: ref(false),
+    canCreate: ref(true),
+    setMode: vi.fn((m: CalendarMode) => {
+      instance.mode.value = m
+    }),
+    open: vi.fn(),
+    hover: vi.fn(),
+    create: vi.fn(),
+  }
+  return instance satisfies CalendarBaseInstance
+}
+
+/** The one ResizeObserver the view makes, so a test can say how wide the view is. */
+let resize: ((width: number) => void) | null = null
+class FakeResizeObserver {
+  constructor(private callback: ResizeObserverCallback) {
+    resize = (width) =>
+      this.callback(
+        [{ contentRect: { width } } as ResizeObserverEntry],
+        this as unknown as ResizeObserver
+      )
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+let wrapper: VueWrapper | null = null
+const render = (instance: CalendarBaseInstance) => {
+  wrapper = mount(CalendarBase, { props: { instance }, attachTo: document.body })
+  return wrapper
+}
+
+const cell = (view: VueWrapper, day: string) =>
+  view.find(`.abele-calendar-month__day[data-day="${day}"]`)
+const titles = (el: ReturnType<VueWrapper['find']>) =>
+  el.findAll('.abele-calendar-chip__title').map((t) => t.text())
+
+beforeEach(() => {
+  vi.useFakeTimers({ now: new Date(2026, 8, 26, 10, 30), toFake: ['Date'] })
+  useVault([])
+  configureAbele()
+  GlobalStore.getInstance().weekStartsOnMonday.value = true
+  resize = null
+  vi.stubGlobal('ResizeObserver', FakeResizeObserver)
+  ;(window as unknown as { ResizeObserver: unknown }).ResizeObserver = FakeResizeObserver
+})
+
+afterEach(() => {
+  wrapper?.unmount()
+  wrapper = null
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
+
+describe('a month', () => {
+  it('opens on this month and puts each note on its day, with its time', () => {
+    const view = render(
+      makeInstance([
+        item('Dentist', { startMinute: 9 * 60 }),
+        item('Pay rent', { start: '2026-09-01', end: '2026-09-01' }),
+      ])
+    )
+    expect(view.find('.abele-calendar-base__title').text()).toBe('September 2026')
+    expect(titles(cell(view, '2026-09-26'))).toEqual(['Dentist'])
+    expect(cell(view, '2026-09-26').find('.abele-calendar-chip__time').text()).toBe('09:00')
+    expect(titles(cell(view, '2026-09-01'))).toEqual(['Pay rent'])
+    expect(cell(view, '2026-09-26').classes()).toContain('abele-calendar-month__day_today')
+  })
+
+  it('lists a span on every day it covers', () => {
+    const view = render(makeInstance([item('Trip', { start: '2026-09-28', end: '2026-09-30' })]))
+    for (const day of ['2026-09-28', '2026-09-29', '2026-09-30']) {
+      expect(titles(cell(view, day))).toEqual(['Trip'])
+    }
+    expect(cell(view, '2026-09-29').find('.abele-calendar-chip').classes()).toEqual(
+      expect.arrayContaining(['abele-calendar-chip_from-before', 'abele-calendar-chip_goes-on'])
+    )
+  })
+
+  it('folds a full day into "+N more", which lists the rest in a menu', async () => {
+    const shown = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    const instance = makeInstance(
+      ['a', 'b', 'c', 'd', 'e'].map((t, i) => item(t, { startMinute: 600 + i }))
+    )
+    const view = render(instance)
+    expect(titles(cell(view, '2026-09-26'))).toEqual(['a', 'b', 'c'])
+    await cell(view, '2026-09-26').find('.abele-calendar-month__more').trigger('click')
+    const menu = shown.mock.contexts[0] as unknown as Menu
+    expect(menu.items.map((i) => (i as unknown as { title: string }).title)).toEqual(['d', 'e'])
+  })
+
+  it('shows four in full rather than three and "+1 more"', () => {
+    const view = render(makeInstance(['a', 'b', 'c', 'd'].map((t) => item(t))))
+    expect(titles(cell(view, '2026-09-26'))).toEqual(['a', 'b', 'c', 'd'])
+    expect(cell(view, '2026-09-26').find('.abele-calendar-month__more').exists()).toBe(false)
+  })
+
+  it('opens a note when it is pressed, and asks for a new one on a day', async () => {
+    const instance = makeInstance([item('Dentist')])
+    const view = render(instance)
+    await cell(view, '2026-09-26').find('.abele-calendar-chip').trigger('click')
+    expect(instance.open).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'Tasks/Dentist.md' }),
+      expect.anything()
+    )
+    await cell(view, '2026-09-15').find('.abele-calendar-month__add').trigger('click')
+    expect(instance.create).toHaveBeenCalledWith('2026-09-15', null)
+  })
+
+  it('offers no new note when the date is a formula', () => {
+    const instance = makeInstance([])
+    instance.canCreate.value = false
+    const view = render(instance)
+    expect(view.find('.abele-calendar-month__add').exists()).toBe(false)
+  })
+
+  it('moves a month at a time, and back to today', async () => {
+    const view = render(makeInstance([]))
+    const [prev, next] = view.findAll('.abele-calendar-base__controls .abele-obsidian-icon')
+    await next.trigger('click')
+    expect(view.find('.abele-calendar-base__title').text()).toBe('October 2026')
+    await prev.trigger('click')
+    await prev.trigger('click')
+    expect(view.find('.abele-calendar-base__title').text()).toBe('August 2026')
+    await view.find('.abele-calendar-base__controls button').trigger('click')
+    expect(view.find('.abele-calendar-base__title').text()).toBe('September 2026')
+  })
+
+  it('opens the week of a day whose number is pressed', async () => {
+    const instance = makeInstance([])
+    const view = render(instance)
+    await cell(view, '2026-09-09').find('.abele-calendar-month__day-number').trigger('click')
+    expect(instance.setMode).toHaveBeenCalledWith('week')
+    expect(view.find('.abele-calendar-base__title').text()).toBe('September 7 – 13, 2026')
+  })
+
+  it('shows the groups the base colours by, and how many notes have no date', () => {
+    const instance = makeInstance([item('Dentist', { color: 'green' })])
+    instance.groups.value = [{ label: 'Health', color: 'green' }] as never
+    instance.undated.value = 2
+    const view = render(instance)
+    expect(view.find('.abele-calendar-base__legend .abele-badge').text()).toBe('Health')
+    expect(view.find('.abele-calendar-base__undated').text()).toBe('2 notes have no date')
+    expect(cell(view, '2026-09-26').find('.abele-calendar-chip').classes()).toContain(
+      'abele-calendar-chip_color-green'
+    )
+  })
+})
+
+describe('a narrow month', () => {
+  it('shows dots, and lists the picked day under the grid', async () => {
+    const instance = makeInstance([
+      item('Dentist', { startMinute: 540, color: 'red' }),
+      item('Lunch', { start: '2026-09-27', end: '2026-09-27' }),
+    ])
+    const view = render(instance)
+    resize!(390)
+    await nextTick()
+    expect(view.classes()).toContain('abele-calendar-base_narrow')
+    expect(cell(view, '2026-09-26').findAll('.abele-calendar-chip')).toHaveLength(0)
+    expect(cell(view, '2026-09-26').find('.abele-calendar-month__dot_color-red').exists()).toBe(
+      true
+    )
+    // Today is picked to begin with.
+    expect(titles(view.find('.abele-calendar-base__agenda'))).toEqual(['Dentist'])
+
+    await cell(view, '2026-09-27').trigger('click')
+    expect(titles(view.find('.abele-calendar-base__agenda'))).toEqual(['Lunch'])
+    await view.find('.abele-calendar-base__agenda button').trigger('click')
+    expect(instance.create).toHaveBeenCalledWith('2026-09-27', null)
+
+    await cell(view, '2026-09-10').trigger('click')
+    expect(view.find('.abele-calendar-base__agenda .abele-empty-state').exists()).toBe(true)
+  })
+})
+
+describe('a week', () => {
+  it('puts timed notes on the hours and the rest in the row at the top', () => {
+    const view = render(
+      makeInstance(
+        [
+          item('Standup', {
+            start: '2026-09-22',
+            end: '2026-09-22',
+            startMinute: 540,
+            endMinute: 570,
+          }),
+          item('Buy milk', { start: '2026-09-23', end: '2026-09-23' }),
+          item('Trip', { start: '2026-09-25', end: '2026-09-28', startMinute: 600 }),
+        ],
+        'week'
+      )
+    )
+    expect(view.find('.abele-calendar-base__title').text()).toBe('September 21 – 27, 2026')
+    const column = view.find('.abele-calendar-week__column[data-day="2026-09-22"]')
+    const block = column.find('.abele-calendar-week__block')
+    expect(block.text()).toContain('Standup')
+    expect(block.attributes('style')).toContain(`--abele-block-top: ${540 / 1440}`)
+    const allDay = (day: string) =>
+      titles(view.find(`.abele-calendar-week__all-day-cell[data-day="${day}"]`))
+    expect(allDay('2026-09-23')).toEqual(['Buy milk'])
+    // A span with a time still lasts days: it is in the top row, on each of its days here.
+    expect(allDay('2026-09-25')).toEqual(['Trip'])
+    expect(allDay('2026-09-27')).toEqual(['Trip'])
+    expect(
+      view
+        .find('.abele-calendar-week__column[data-day="2026-09-26"] .abele-calendar-week__now')
+        .exists()
+    ).toBe(true)
+  })
+
+  it('makes a note at the half hour that was pressed', async () => {
+    const instance = makeInstance([], 'week')
+    const view = render(instance)
+    const column = view.find('.abele-calendar-week__column[data-day="2026-09-24"]')
+    vi.spyOn(column.element, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      height: 1440,
+    } as DOMRect)
+    await column.trigger('click', { clientY: 14 * 60 + 40 })
+    expect(instance.create).toHaveBeenCalledWith('2026-09-24', 14 * 60 + 30)
+  })
+
+  it('steps a week at a time', async () => {
+    const view = render(makeInstance([], 'week'))
+    await view.findAll('.abele-calendar-base__controls .abele-obsidian-icon')[1].trigger('click')
+    expect(view.find('.abele-calendar-base__title').text()).toBe('Sep 28 – Oct 4, 2026')
+  })
+})
+
+describe('a year', () => {
+  it('tints each day by how much is on it, and opens a month or a week from it', async () => {
+    const instance = makeInstance(
+      [item('a'), item('b'), item('c', { start: '2026-03-02', end: '2026-03-02' })],
+      'year'
+    )
+    const view = render(instance)
+    expect(view.find('.abele-calendar-base__title').text()).toBe('2026')
+    expect(view.findAll('.abele-calendar-year__month')).toHaveLength(12)
+    const day = (d: string) => view.find(`.abele-calendar-year__day[data-day="${d}"]`)
+    expect(day('2026-09-26').classes()).toContain('abele-calendar-year__day_heat-4')
+    expect(day('2026-03-02').classes()).toContain('abele-calendar-year__day_heat-1')
+    expect(day('2026-03-03').classes()).toContain('abele-calendar-year__day_heat-0')
+
+    await day('2026-03-02').trigger('click')
+    expect(instance.setMode).toHaveBeenLastCalledWith('week')
+    expect(view.find('.abele-calendar-base__title').text()).toBe('March 2 – 8, 2026')
+
+    instance.mode.value = 'year'
+    await nextTick()
+    await view.findAll('.abele-calendar-year__month-name')[4].trigger('click')
+    expect(instance.setMode).toHaveBeenLastCalledWith('month')
+    expect(view.find('.abele-calendar-base__title').text()).toBe('May 2026')
+  })
+})
+
+describe('the layouts', () => {
+  it('are switched by the tabs, which the view stores in the base', async () => {
+    const instance = makeInstance([])
+    const view = render(instance)
+    const tabs = view.findAll('.abele-calendar-base__modes .abele-tabs__tab')
+    expect(tabs.map((t) => t.text())).toEqual(['Month', 'Week', 'Year'])
+    await tabs[2].trigger('click')
+    expect(instance.setMode).toHaveBeenCalledWith('year')
+    expect(view.find('.abele-calendar-year').exists()).toBe(true)
+  })
+})

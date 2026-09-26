@@ -94,6 +94,9 @@
   <Teleport v-for="[id, instance] in findAndReplaceBasesInstances" :key="id" :to="instance.el">
     <FindAndReplaceBases :files="instance.files" />
   </Teleport>
+  <Teleport v-for="[id, instance] in calendarBaseInstances" :key="id" :to="instance.el">
+    <CalendarBase :instance="instance" />
+  </Teleport>
   <FindAndReplaceModal
     v-if="findAndReplaceModalOpened"
     @close="findAndReplaceModalOpened = false"
@@ -158,6 +161,7 @@ import { Footnote } from '@/entities/Footnote'
 import TimelineSidebarView from './TimelineSidebar.vue'
 import TodoSidebarView from './TodoSidebar.vue'
 import FindAndReplaceBases from './FindAndReplaceBases.vue'
+import CalendarBase from './calendarBase/CalendarBase.vue'
 import FindAndReplaceModal from './FindAndReplaceModal.vue'
 import MigrateFromDataviewModal from './MigrateFromDataviewModal.vue'
 import SaveMediaModal from './SaveMediaModal.vue'
@@ -215,6 +219,7 @@ const {
   scriptRunsIds,
   scriptViews,
   findAndReplaceBasesInstances,
+  calendarBaseInstances,
   settingsContainer,
 } = GlobalStore.getInstance()
 

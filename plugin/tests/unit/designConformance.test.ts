@@ -31,6 +31,7 @@ const COVERED_DIRS = [
   join(ROOT, 'drawing'),
   join(ROOT, 'docs'),
   join(ROOT, 'quick'),
+  join(ROOT, 'calendarBase'),
 ]
 const COVERED_FILES = [
   'AiAgentSelector.vue',
