@@ -71,6 +71,33 @@ async function resizeImage(binary: ArrayBuffer, mime: string): Promise<string> {
   }
 }
 
+/** How large an SVG with no size of its own is drawn. */
+const SVG_DEFAULT = 1024
+
+/**
+ * An SVG drawn as the browser draws it, on white — an SVG is often see-through, and black lines
+ * on nothing read as black on black to a model — no larger than the API takes.
+ */
+async function svgToPng(binary: ArrayBuffer): Promise<string> {
+  const url = URL.createObjectURL(new Blob([binary], { type: 'image/svg+xml' }))
+  try {
+    const img = await loadImage(url)
+    const w0 = img.naturalWidth || SVG_DEFAULT
+    const h0 = img.naturalHeight || SVG_DEFAULT
+    const scale = Math.min(MAX_DIMENSION / Math.max(w0, h0), 4)
+    const canvas = createEl('canvas')
+    canvas.width = Math.max(1, Math.round(w0 * scale))
+    canvas.height = Math.max(1, Math.round(h0 * scale))
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+    return canvas.toDataURL('image/png')
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
 /**
  * Read a vault image and return a base64 data URL ready for the API.
  * Resizes large images to fit within API limits.
@@ -85,10 +112,8 @@ export async function prepareImageForApi(path: string): Promise<string | null> {
     const ext = file.extension.toLowerCase()
     const mime = getMime(ext)
 
-    // SVGs are text-based, send as-is (small)
-    if (ext === 'svg') {
-      return `data:${mime};base64,${arrayBufferToBase64(binary)}`
-    }
+    // Models take pictures, not SVG: an SVG — a drawing among them — goes as the PNG it shows.
+    if (ext === 'svg') return await svgToPng(binary)
 
     // Check if resize is needed
     const needsResize = binary.byteLength > MAX_BYTES

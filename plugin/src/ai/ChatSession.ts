@@ -179,6 +179,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     'mv',
     'cp',
     'read_image',
+    'look_at_drawing',
     'ls',
     'find',
   ]
@@ -979,7 +980,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost {
     if (ChatSession.READ_TOOLS.includes(toolName)) return false
     // The book tools a discussion in a book comes with only read, and only that book.
     if (this.bookAnchored() && BOOK_READ_TOOLS.has(toolName)) return false
-    if (toolName === 'read_image' || toolName === 'questions') return false
+    if (toolName === 'read_image' || toolName === 'look_at_drawing' || toolName === 'questions')
+      return false
 
     // The one write with a mode of its own. It touches a single passage the person pointed
     // at, so letting it run unattended is a reasonable thing to want without opening up

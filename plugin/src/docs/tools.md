@@ -6,7 +6,7 @@ easy to get wrong. Which of these an agent actually has depends on its own tool 
 ## Files
 
 `read`, `write`, `create`, `edit`, `replace`, `edit_selection`, `rm`, `mv`, `cp`, `ls`, `find`,
-`open`, `read_image`, `workspace`, `screenshot`, `inspect_view`, `read_result`.
+`open`, `read_image`, `look_at_drawing`, `workspace`, `screenshot`, `inspect_view`, `read_result`.
 
 - `edit` replaces one exact string in one file. `replace` applies a list of replacement actions
   and is the one for a bulk, rule-driven change. `write` overwrites the whole file — reach for
@@ -57,6 +57,11 @@ easy to get wrong. Which of these an agent actually has depends on its own tool 
   as `key: value; key: value` (a plain string bare, anything else as JSON), and says once, at the
   top, the properties every file shares. `read_transactions` names its columns in its first line
   and leaves an empty one empty.
+- `look_at_drawing` is how to see a drawing (an `.svg` the plugin made — see the vault section):
+  all of it, a part by `area` (`x y width height` in its units, as a `[!drawing|…]` callout names
+  one), or `picked: true` for what the person picked with the lasso in its open tab. Read
+  handwriting from it when asked to transcribe; the reply gives the whole drawing's bounds, so
+  ask again for a closer part when the writing is small. `read_image` on a drawing shows it whole.
 
 Every one of these is bounded by the agent's scope.
 

@@ -5,7 +5,15 @@
  * so saving waits for a pause, a change from another device is read in as it arrives, and closing
  * the tab writes what was waiting. Where the drawing was looked at from is kept with the tab.
  */
-import { Menu, Scope, TextFileView, type ViewStateResult, type WorkspaceLeaf } from 'obsidian'
+import {
+  Menu,
+  Notice,
+  Scope,
+  TextFileView,
+  type TFile,
+  type ViewStateResult,
+  type WorkspaceLeaf,
+} from 'obsidian'
 import { createApp, reactive, type App as VueApp } from 'vue'
 import DrawingBar from '@/components/drawing/DrawingBar.vue'
 import { drawingSvg, parseDrawingSvg } from './drawingFile'
@@ -15,6 +23,9 @@ import { THICKNESSES, emptyDrawingModel, type DrawingModel } from './model'
 import { DRAWING_VIEW_TYPE } from './viewType'
 import { copyEmbed } from './files'
 import { visibleRect } from './camera'
+import { drawingPng, withMargin } from './rasterize'
+import { askAboutDrawing } from './askAgent'
+import { AbeleConfig } from '@/services/AbeleConfig'
 import { SHAPE_KINDS, type Rect, type ShapeKind } from './items'
 
 export { DRAWING_VIEW_TYPE }
@@ -243,7 +254,7 @@ export class DrawingView extends TextFileView {
     const menu = new Menu()
     const file = this.file
     const session = this.session
-    if (file && session)
+    if (file && session) {
       menu.addItem((item) =>
         item
           .setTitle('Copy embed of what shows')
@@ -253,7 +264,71 @@ export class DrawingView extends TextFileView {
             void copyEmbed(`![[${file.path}]]`, visibleRect(session.camera, width, height))
           })
       )
+      // What is picked, when something is; else the whole drawing.
+      const box = session.pick.box()
+      const area = box ? withMargin(box) : null
+      const what = area ? 'what is picked' : 'the drawing'
+      menu.addItem((item) =>
+        item
+          .setTitle(`Export ${what} as PNG`)
+          .setIcon('image-down')
+          .onClick(() => void this.exportPng(area))
+      )
+      menu.addItem((item) =>
+        item
+          .setTitle(`Copy ${what} as a picture`)
+          .setIcon('copy')
+          .onClick(() => void this.copyPicture(area))
+      )
+      if (AbeleConfig.getInstance().ai.enabled) {
+        const link = `[[${file.path}]]`
+        menu.addItem((item) =>
+          item
+            .setTitle(`Ask the agent about ${what}`)
+            .setIcon('message-circle-question')
+            .onClick(() => void askAboutDrawing(file, link, area, 'ask'))
+        )
+        menu.addItem((item) =>
+          item
+            .setTitle(`Transcribe the handwriting in ${what}`)
+            .setIcon('text-cursor-input')
+            .onClick(() => void askAboutDrawing(file, link, area, 'transcribe'))
+        )
+      }
+    }
     this.app.workspace.trigger('file-menu', menu, this.file, 'more-options', this.leaf)
     menu.showAtMouseEvent(e)
+  }
+
+  /** A PNG of the drawing, or of a part, beside the drawing; says where. */
+  async exportPng(area: Rect | null): Promise<TFile | null> {
+    const file = this.file
+    const session = this.session
+    if (!file || !session) return null
+    try {
+      const blob = await drawingPng(this.contentEl.ownerDocument, session.items.items, area)
+      const dir = file.parent && file.parent.path !== '/' ? `${file.parent.path}/` : ''
+      let path = `${dir}${file.basename}.png`
+      for (let n = 2; this.app.vault.getAbstractFileByPath(path); n++)
+        path = `${dir}${file.basename} ${n}.png`
+      const png = await this.app.vault.createBinary(path, await blob.arrayBuffer())
+      new Notice(`Saved as ${png.path}`)
+      return png
+    } catch (e) {
+      new Notice(`The picture could not be saved: ${String(e)}`)
+      return null
+    }
+  }
+
+  private async copyPicture(area: Rect | null): Promise<void> {
+    const session = this.session
+    if (!session) return
+    try {
+      const blob = await drawingPng(this.contentEl.ownerDocument, session.items.items, area)
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+      new Notice('Copied as a picture')
+    } catch (e) {
+      new Notice(`The picture could not be copied: ${String(e)}`)
+    }
   }
 }

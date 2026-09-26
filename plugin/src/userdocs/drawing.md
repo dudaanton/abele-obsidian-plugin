@@ -72,6 +72,17 @@ To show a part of a drawing in another note, move to it in the drawing's tab and
 embed of what shows** from the menu at the end of the bar; paste it into the note. A drawing's
 menu in the file explorer copies one that shows all of it.
 
+## Pictures and the agent
+
+The menu at the end of the bar exports the drawing as a PNG beside it, or copies it as a
+picture to paste anywhere. With something picked by the lasso, only that part goes.
+
+The same menu hands the drawing to the AI agent: **Ask the agent about the drawing** opens a new
+chat with the question begun, and **Transcribe the handwriting** asks for what is written as text.
+Pick a part first to ask about only that part. Nothing is sent until you send it. The agent can
+also look at a drawing whenever you ask it to in a chat, all of it or a part, and closer when
+the writing is small.
+
 ## Where it is kept
 
 The drawing is saved a moment after you stop, when drawing is turned off and when the tab

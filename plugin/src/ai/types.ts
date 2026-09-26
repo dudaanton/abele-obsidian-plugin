@@ -300,6 +300,8 @@ export const CORE_TOOLS = new Set([
   'find',
   'workspace',
   'read_image',
+  // Reads a drawing as a picture, as `read_image` reads one.
+  'look_at_drawing',
   'skill',
   'list_templates',
   'apply_template',

@@ -415,6 +415,7 @@ const FILE_TOOLS = [
   'mv',
   'cp',
   'read_image',
+  'look_at_drawing',
   'apply_template',
 ]
 
@@ -471,12 +472,14 @@ const openToolFile = () => {
   void openVaultFile(toolFilePath.value)
 }
 
-const IMAGE_TOOLS = ['read_image', 'generate_image', 'edit_image', 'screenshot']
+const IMAGE_TOOLS = ['read_image', 'look_at_drawing', 'generate_image', 'edit_image', 'screenshot']
+/** The tools whose picture is the file they were given. */
+const PATH_IMAGE_TOOLS = ['read_image', 'look_at_drawing']
 
 const imagePath = computed(() => {
   const name = props.message.toolName
   if (!name || !IMAGE_TOOLS.includes(name)) return ''
-  if (name === 'read_image') return (props.message.toolParams?.path as string) || ''
+  if (PATH_IMAGE_TOOLS.includes(name)) return (props.message.toolParams?.path as string) || ''
   const result = props.message.toolResult
   if (!result) return ''
   const match = result.match(/(?:Image saved|Edited image saved|Screenshot saved): (.+)/)
@@ -538,7 +541,7 @@ const imageUrl = computed(() => {
   if (!name || !IMAGE_TOOLS.includes(name)) return ''
 
   // read_image: path is in toolParams
-  if (name === 'read_image') {
+  if (PATH_IMAGE_TOOLS.includes(name)) {
     const path = props.message.toolParams?.path as string
     if (!path) return ''
     const { app } = GlobalStore.getInstance()

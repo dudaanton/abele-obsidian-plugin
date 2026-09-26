@@ -26,6 +26,7 @@ import { createScreenshotTool } from '@/ai/tools/ScreenshotTool'
 import { createGeocodeTool, createPlacesTool, createRouteTool } from '@/ai/tools/GeoTools'
 import { createGithubTools } from '@/ai/tools/github'
 import { createAgentTools } from '@/ai/tools'
+import { prepareImageForApi } from '@/ai/imagePrep'
 import { McpService } from '@/ai/mcp/McpService'
 import { githubUsers } from '@/github/users'
 import { calendars } from '@/calendars/CalendarService'
@@ -128,6 +129,8 @@ interface AbeleTestApi {
   createGithubTools: typeof createGithubTools
   /** Every tool an agent could be handed now, MCP servers' included, to call as an agent would. */
   createAgentTools: typeof createAgentTools
+  /** A vault picture as it goes to a model. */
+  prepareImageForApi: typeof prepareImageForApi
   /** The connections to MCP servers, to fetch a server's tools the way the settings do. */
   McpService: typeof McpService
   githubUsers: typeof githubUsers
@@ -547,6 +550,7 @@ export function exposeTestApi(plugin: Plugin): void {
     createRouteTool,
     createGithubTools,
     createAgentTools,
+    prepareImageForApi,
     McpService,
     githubUsers,
     calendars,

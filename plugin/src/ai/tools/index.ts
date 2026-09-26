@@ -15,6 +15,7 @@ import { createCopyFileTool } from './CopyFileTool'
 import { createListWorkspaceTool } from './ListWorkspaceTool'
 import { createWebSearchTool } from './WebSearchTool'
 import { createReadImageTool } from './ReadImageTool'
+import { createLookAtDrawingTool } from './DrawingTool'
 import { createFetchTool } from './FetchTool'
 import { createSkillTool } from './SkillTool'
 import { createGenerateImageTool } from './GenerateImageTool'
@@ -92,6 +93,7 @@ export function getToolRegistry(): ToolInfo[] {
     find: { label: 'Find files', category: 'Files' },
     workspace: { label: 'Workspace', category: 'Files' },
     read_image: { label: 'Read image', category: 'Files' },
+    look_at_drawing: { label: 'Look at drawing', category: 'Files' },
     open: { label: 'Open file', category: 'Files' },
     screenshot: { label: 'Screenshot', category: 'Files' },
     inspect_view: { label: 'Inspect view', category: 'Files' },
@@ -250,6 +252,7 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createListWorkspaceTool(),
     createWebSearchTool(),
     createReadImageTool(),
+    createLookAtDrawingTool(),
     createFetchTool(),
     createSkillTool(),
     createGenerateImageTool(),

@@ -465,6 +465,46 @@ describe.skipIf(!available)('the drawing canvas', () => {
     expect(r.text).toMatch(/^Before\n> \[!drawing\]\n> !\[\[.*Drawing .*\.svg\]\]/)
   })
 
+  it('exports a PNG, and shows a drawing to the agent as a picture, all of it or a part', () => {
+    const r = run<{
+      error?: string
+      png?: { path: string; w: number; h: number }
+      tool?: { about: string; w: number; h: number }
+      part?: { about: string; w: number; h: number }
+      read?: string
+    }>(`
+      await closeAll()
+      const path = window.__drawingPath
+      const leaf = app.workspace.getLeaf('tab')
+      await leaf.openFile(app.vault.getAbstractFileByPath(path))
+      const view = await until(() => leaf.view.getViewType() === 'abele-drawing' && leaf.view.session?.surface.width && leaf.view, 8000)
+      const size = (url) => new Promise((ok) => { const i = new Image(); i.onload = () => ok([i.naturalWidth, i.naturalHeight]); i.onerror = () => ok([0, 0]); i.src = url })
+      const file = await view.exportPng(null)
+      const [pw, ph] = await size(app.vault.getResourcePath(file))
+      const png = { path: file.path, w: pw, h: ph }
+      await app.vault.delete(file)
+      const tools = window.__abeleTest.createAgentTools()
+      const look = tools.find((t) => t.name === 'look_at_drawing')
+      const whole = await look.execute('x', { path })
+      const [tw, th] = await size(whole.injectMessages[0].content[1].image_url.url)
+      const partR = await look.execute('x', { path, area: '100 80 120 60' })
+      const [qw, qh] = await size(partR.injectMessages[0].content[1].image_url.url)
+      const { prepareImageForApi } = window.__abeleTest
+      const read = prepareImageForApi ? (await prepareImageForApi(path))?.slice(0, 22) : 'no api'
+      leaf.detach()
+      return { png, tool: { about: whole.content[0].text, w: tw, h: th }, part: { about: partR.content[0].text, w: qw, h: qh }, read }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.png!.w).toBeGreaterThan(100)
+    expect(r.png!.h).toBeGreaterThan(50)
+    expect(r.tool!.about).toContain('shown: all of it')
+    expect(r.tool!.w).toBeGreaterThan(100)
+    // A small part is enlarged four times.
+    expect(r.part!.w).toBe(480)
+    expect(r.part!.h).toBe(240)
+    expect(r.read).toBe('data:image/png;base64,')
+  })
+
   it('fits its bar on a phone, where a finger draws, and on a tablet, where it moves the drawing', async () => {
     await reload('app.emulateMobile(true)')
     await setWindowSize(390, 844)

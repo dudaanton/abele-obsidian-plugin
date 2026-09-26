@@ -37,7 +37,7 @@ function isToolAllowed(
   if (toolName === 'delegate') return { allowed: false, reason: 'Sub-agents cannot delegate' }
 
   // Scope check for file tools
-  const SCOPED = ['read', 'edit', 'rm', 'mv', 'cp', 'read_image', 'ls', 'find']
+  const SCOPED = ['read', 'edit', 'rm', 'mv', 'cp', 'read_image', 'look_at_drawing', 'ls', 'find']
   if (args && SCOPED.includes(toolName)) {
     const path = (args.path || args.from) as string
     if (path && !scope.isInScope(path)) {
