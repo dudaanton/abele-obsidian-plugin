@@ -115,8 +115,8 @@ export class LinkedNotes {
   read(path: string): boolean {
     const before = JSON.stringify(this.byNote.get(path) ?? [])
     const file = this.app.vault.getAbstractFileByPath(path)
-    const places =
-      file instanceof TFile && !this.skip(path)
+    let places =
+      file instanceof TFile
         ? placesLinkedFrom(
             this.app.metadataCache.getFileCache(file),
             path,
@@ -125,6 +125,9 @@ export class LinkedNotes {
               this.app.metadataCache.getFirstLinkpathDest(linkpath, from)?.path ?? null
           )
         : []
+    // Asked only of a note that links into the book: what has marks of its own can take a
+    // look through the vault to say, and every edit anywhere comes through here.
+    if (places.length && this.skip(path)) places = []
     if (places.length) this.byNote.set(path, places)
     else this.byNote.delete(path)
     return JSON.stringify(places) !== before

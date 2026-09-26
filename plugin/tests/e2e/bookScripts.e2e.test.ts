@@ -118,7 +118,7 @@ const run = <T>(body: string, timeout = 90_000): T =>
   )
 
 describe.skipIf(!available)('scripts on words in a book, and notes linking into it', () => {
-  let saved: { folder?: string; reader?: unknown } = {}
+  let saved: { folder?: string; reader?: unknown; native?: boolean | null } = {}
   let size: [number, number] = [0, 0]
   let card = ''
 
@@ -131,7 +131,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       `require('@electron/remote').getCurrentWindow().getContentSize()`
     )
     saved = evalJson(
-      `({ folder: window.__abeleTest.AbeleConfig.getInstance().ai?.scriptsFolder ?? '', reader: window.__abeleTest.AbeleConfig.getInstance().reader })`
+      `({ folder: window.__abeleTest.AbeleConfig.getInstance().ai?.scriptsFolder ?? '', reader: window.__abeleTest.AbeleConfig.getInstance().reader, native: app.vault.getConfig('nativeMenus') ?? null })`
     )
     evalRaw(
       `(async () => {
@@ -149,6 +149,8 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
         config.reader = { ...config.reader, flow: 'paginated', pdfLayout: 'paginated' }
         await config.saveSettings()
         await window.__abeleTest.ScriptService.getInstance().discover()
+        // A menu drawn by the page, not the system's: the system's cannot be read from here.
+        app.vault.setConfig('nativeMenus', false)
         return 'ok'
       })()`,
       60_000
@@ -166,6 +168,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
         for (const leaf of app.workspace.getLeavesOfType('markdown')) {
           if (leaf.view.file?.path.startsWith(${JSON.stringify(DIR)})) leaf.detach()
         }
+        app.vault.setConfig('nativeMenus', ${JSON.stringify(saved.native ?? null)})
         const config = window.__abeleTest.AbeleConfig.getInstance()
         config.ai.scriptsFolder = ${JSON.stringify(saved.folder ?? '')}
         config.reader = ${JSON.stringify(saved.reader ?? {})}
@@ -189,6 +192,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       marked?: number
     }>(`
       const { view } = await open(${JSON.stringify(BOOK)})
+      if (view.model.panel) { view.model.panel = false; await wait(300) }
       await selectIn(view, 2, 0, 5)
       const button = await until(() => view.contentEl.querySelector('.abele-book-selection [data-script="E2E word card"]'), 5000)
       if (!button) return { button: false }
@@ -197,6 +201,10 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       const text = await read(card)
       view.reading.clearSelection()
       const marked = await until(() => marks(view), 5000)
+      await wait(300)
+      const img = await require('@electron/remote').getCurrentWebContents().capturePage()
+      require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
+      require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/book-scripts-mark.png', img.toPNG())
       const run = window.__abeleTest.ScriptRuns.getInstance().runs.value[0]
       return { button: true, card, text, source: run?.source, marked }
     `)
@@ -215,6 +223,7 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       error?: string
       opened?: string | null
       menu?: string[]
+      why?: unknown
       after?: number
       picker?: string[]
     }>(`
@@ -236,15 +245,20 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       const link = /\\[\\[[^\\]]*rich\\.epub#cfi=[^\\]]*\\]\\]/.exec(text)[0]
       await app.vault.create(${JSON.stringify(`${DIR}/Another note.md`)}, 'See ' + link + '\\n')
       await wait(1500)
-      tapOn(range)
-      const menu = await until(() => [...document.querySelectorAll('.menu .menu-item-title')].map((e) => e.textContent), 3000)
+      // The page is made again once its tab shows again: the words are found on it anew.
+      const p2 = paragraph(docOf(view))
+      const again = docOf(view).createRange(); again.setStart(p2.firstChild, 1); again.setEnd(p2.firstChild, 3)
+      tapOn(again)
+      const titles = (sel) => { const t = [...document.querySelectorAll(sel)].map((e) => e.textContent); return t.length ? t : null }
+      const menu = await until(() => titles('.menu .menu-item-title'), 3000)
+      const why = { at: view.linked.places().map((c) => view.linked.at(c).map((n) => n.path)) }
       document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       document.querySelector('.menu')?.remove()
 
       // Every script is offered by the picker.
       await selectIn(view, 2, 0, 5)
       view.contentEl.querySelector('.abele-book-selection__run-script').click()
-      const picker = await until(() => [...document.querySelectorAll('.prompt .suggestion-item')].map((e) => e.textContent), 3000)
+      const picker = await until(() => titles('.prompt .suggestion-item'), 3000)
       document.querySelector('.prompt')?.closest('.modal-container')?.querySelector('.modal-bg')?.click()
       document.querySelector('.prompt input')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
       view.reading.clearSelection()
@@ -252,11 +266,11 @@ describe.skipIf(!available)('scripts on words in a book, and notes linking into 
       for (const path of [${JSON.stringify(card)}, ${JSON.stringify(`${DIR}/Another note.md`)}])
         await app.vault.delete(app.vault.getAbstractFileByPath(path))
       const after = await until(() => marks(view) === 0 ? 'none' : null, 5000)
-      return { opened, menu, after: after ? 0 : marks(view), picker }
+      return { opened, menu, why, after: after ? 0 : marks(view), picker }
     `)
     expect(r.error).toBeUndefined()
     expect(r.opened).toBe(card)
-    expect(r.menu).toEqual(['Another note', 'Plain'])
+    expect(r.menu, JSON.stringify(r.why)).toEqual(['Another note', 'Plain'])
     expect(r.picker?.some((t) => t.startsWith('E2E word card'))).toBe(true)
     expect(r.after).toBe(0)
   })
