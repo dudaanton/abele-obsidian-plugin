@@ -4,7 +4,12 @@
  * and what is drawn over the words — highlights — drawn again over where the words now are.
  */
 import { describe, it, expect } from 'vitest'
-import { redrawOver, relayoutColumns, relayoutOnFonts } from '@/reader/pageLayout'
+import {
+  redrawOver,
+  relayoutColumns,
+  relayoutOnFonts,
+  relayoutOnPictures,
+} from '@/reader/pageLayout'
 
 function page(width?: string): Document {
   const doc = document.implementation.createHTMLDocument('page')
@@ -109,5 +114,26 @@ describe('laying a page out again', () => {
     } finally {
       console.debug = debug
     }
+  })
+
+  it('lays the page out again when a picture on it has loaded, and draws what is over it again', () => {
+    const doc = page('500px')
+    Object.defineProperty(doc, 'defaultView', { value: window })
+    let layouts = 0
+    Object.defineProperty(doc.documentElement, 'offsetHeight', { get: () => (layouts++, 0) })
+    const img = doc.createElement('img')
+    doc.body.append(img)
+    let redraws = 0
+    relayoutOnPictures(doc, () => redraws++)
+    img.dispatchEvent(new Event('load'))
+    expect(layouts).toBe(2)
+    expect(redraws).toBe(1)
+    // A picture that failed changes the page as much as one that came.
+    img.dispatchEvent(new Event('error'))
+    expect(layouts).toBe(4)
+    expect(redraws).toBe(2)
+    // Anything else loading on the page is not a picture.
+    doc.body.dispatchEvent(new Event('load'))
+    expect(layouts).toBe(4)
   })
 })

@@ -53,6 +53,26 @@ export function relayoutOnFonts(doc: Document, redraw?: () => void): void {
   void fonts.ready?.then(again)
 }
 
+/**
+ * Lays the page out again each time a picture on it has loaded (or failed to), and then has what
+ * is drawn over its words drawn again. A picture that arrives after the columns were laid out
+ * grows in place while what follows it can stay where the empty picture left room for it: a
+ * table drawn as a picture lying over the paragraphs after it, until the window was resized (a
+ * book on the desktop, 2026-09-27).
+ */
+export function relayoutOnPictures(doc: Document, redraw?: () => void): void {
+  const again = (e: Event) => {
+    if (!doc.defaultView) return
+    const target = e.target as Element | null
+    if (target?.localName !== 'img' && target?.localName !== 'image') return
+    relayoutColumns(doc)
+    redraw?.()
+  }
+  // Neither event bubbles: heard on the way down.
+  doc.addEventListener('load', again, true)
+  doc.addEventListener('error', again, true)
+}
+
 interface WithOverlays {
   getContents?(): { doc?: Document; overlayer?: { redraw(): void; element?: Element } }[]
 }

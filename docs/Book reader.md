@@ -86,6 +86,12 @@ font or style arriving late above them: they are measured again whenever a block
 changes size and whenever the view comes to rest on a new place. When that finds them moved, the
 console says so (`book marks moved with their words`, with the reason and how far).
 
+A page is laid out again when a picture on it finishes loading, as when a font does, so a picture
+that arrives late never lies over the text after it. An inline element wrapped around blocks —
+some converters put each note's number and paragraph inside one `span` — is laid out as a block,
+so highlights inside it are measured where their words are drawn; the book's own elements, and so
+every saved place, are unchanged.
+
 **A selection can run on past the page.** While words are selected, the page moves on under
 them by **half a page**, not a whole one, so the words just selected stay on screen beside the ones
 coming:

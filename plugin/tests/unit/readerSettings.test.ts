@@ -114,6 +114,22 @@ describe('the layout the engine is given', () => {
 })
 
 describe('the style every page is given', () => {
+  it('makes an inline element holding blocks a block, so its words are measured where they are drawn', () => {
+    const [before] = pageStyles(DEFAULT_READER_SETTINGS, theme)
+    const doc = document.implementation.createHTMLDocument('page')
+    const style = doc.createElement('style')
+    style.textContent = before
+    doc.head.append(style)
+    doc.body.innerHTML =
+      '<span id="note"><div>105</div><p>words</p></span><span id="word">a word</span>' +
+      '<a id="link" href="#x"><p>linked</p></a>'
+    expect(before).toMatch(/span[^{]*:has\(>[^{]*div[^{]*\{\s*display: block/)
+    const block = /(:is\([^{]+\):has\([^{]+\))\s*\{/.exec(before)?.[1]?.replace(/\s+/g, ' ') ?? ''
+    expect(doc.getElementById('note')?.matches(block)).toBe(true)
+    expect(doc.getElementById('link')?.matches(block)).toBe(true)
+    expect(doc.getElementById('word')?.matches(block)).toBe(false)
+  })
+
   it('sets size, spacing and the theme font after the book, so the book cannot undo them', () => {
     const [, after] = pageStyles({ ...DEFAULT_READER_SETTINGS, fontSize: 120 }, theme)
     expect(after).toContain('font-size: 120% !important')

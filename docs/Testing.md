@@ -373,6 +373,11 @@ Three files, three concerns:
   columns, a paragraph above a highlight grows by a couple of lines while the chapter keeps its
   page count (what a late picture, font or style does), and every box drawn over the page is
   compared with where its words now are; again after a page turned and back.
+- `bookNoteSpans.e2e.test.ts` — **notes wrapped in spans** (`tests/fixtures/books/notesBook.ts`,
+  made-up text): each note a `span` around its number's `div`, sometimes a superscript paragraph,
+  and its paragraph. The span is a block, the places saved name the book's own elements, and every
+  line of a highlighted note is under the paragraph (not its number) with a box drawn on it. A
+  picture loaded after the chapter lays the columns out again.
 - `bookBookmarks.e2e.test.ts` — **bookmarks**: the bookmark under the page marks the page and
   fills, turning on empties it, the Bookmarks tab lists it with its chapter and words and goes back
   to it, a text size of 150% keeps it on its words, the file in the vault holds it, `book_views`
