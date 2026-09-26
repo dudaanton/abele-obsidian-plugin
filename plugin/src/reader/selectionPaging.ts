@@ -361,20 +361,28 @@ export class SelectionPager {
    */
   private direction(): 1 | -1 | null {
     const range = this.selection()
-    if (!range || !this.host.renderer() || this.host.fixed()) return null
+    if (!range || !this.host.renderer()) return null
+    const pointer =
+      this.down && this.x !== null && this.y !== null ? { x: this.x, y: this.y } : null
+    // A page of fixed size — a PDF's — holds its selection: held at its edge by the pointer, the
+    // turn is tried only for it to say so.
+    if (this.host.fixed()) return pointer ? heldAt({ ...this.edgeOf(range, true), pointer }) : null
     const paged = this.paged()
     // A chapter scrolled for good scrolls under a selection the mouse drags past it by itself.
     if (!paged && this.mouseDown) return null
-    return heldAt({
+    return heldAt({ ...this.edgeOf(range, paged), pointer })
+  }
+
+  private edgeOf(range: Range, paged: boolean): Omit<Parameters<typeof heldAt>[0], 'pointer'> {
+    return {
       doc: this.doc,
       range,
       box: this.pageBox(),
       paged,
-      pointer: this.down && this.x !== null && this.y !== null ? { x: this.x, y: this.y } : null,
       stopped: this.stopped,
       moved: this.moved,
       page: () => this.page(),
-    })
+    }
   }
 
   /** Starts, keeps or drops the hold at the edge, and turns once it has lasted. */

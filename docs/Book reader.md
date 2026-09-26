@@ -15,7 +15,9 @@ and front matter are skipped when the book says where the text starts).
 
 - **Turning pages.** The arrow keys, Page Up and Page Down, the space bar, a tap near the left or
   right edge of the page, or on a touch screen a swipe. Only a clean tap or swipe turns: not a
-  long press, not a finger held and then moved, not a tap while words are selected (except on the very edge,
+  long press, not a finger held and then moved, not the mouse let go after a drag — words just
+  selected, wherever the button is released, the edge included; a press that wanders more than a
+  few pixels is a drag, not a click — not a tap while words are selected (except on the very edge,
   which carries them on — see below) or a bar is open (that tap only closes the bar), not a tap on a highlight, a picture or a table.
 - **Pages or scrolling.** The pages can be turned one at a time or scrolled through a chapter at a
   time. The tab's menu (⋯) switches between the two at once, keeping the place; so does
@@ -91,7 +93,8 @@ coming:
   again each time it is dragged back down there and held; the start held at the head of the page
   goes back. With a mouse, or wherever the page hears the finger move, the pointer held at the
   bottom or right edge does the same, and at the top or left edge goes back. A selection just made
-  by a long press does not move the page: only an end that was dragged there does.
+  by a long press does not move the page: only an end that was dragged there does. On a PDF page,
+  which a selection never leaves, the pointer held at the edge says so instead.
 
 How "half a page" looks depends on the page:
 

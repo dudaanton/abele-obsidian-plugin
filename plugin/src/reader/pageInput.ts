@@ -137,8 +137,10 @@ function onTap(host: PageHost, e: MouseEvent, doc: Document, gesture: PageGestur
   if (!reader || e.defaultPrevented) return
   if ((e.target as Element | null)?.closest?.('a, area')) return
   // Words selected, and a tap on the very edge of the page: it turns, the selection going on.
+  // Letting go of the mouse after selecting them is not a tap, wherever it is let go.
   const started = gesture.startedWith
   if (started || !doc.getSelection()?.isCollapsed) {
+    if (gesture.dragged) return
     const edge = edgeOf(host, e, doc, TAP_EDGE)
     if (edge) void pagerOf(doc)?.tapTurn(edge, started)
     return

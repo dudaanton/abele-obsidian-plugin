@@ -299,7 +299,8 @@ Three files, three concerns:
   desktop — at 1280×800 with both side panels closed, so the page has the two columns its steps
   assume — then under `emulateMobile` at 390×844 with touches sent through the app's own input
   pipeline (`Input.dispatchTouchEvent`, from inside the app so a long press lasts as long as it
-  says). Only a clean tap at an edge or a swipe turns the page; a long press, a finger held and
+  says). Only a clean tap at an edge or a swipe turns the page; the mouse let go at the very edge
+  after dragging a selection there turns nothing; a long press, a finger held and
   moved, a swipe or tap over a selection, a tap on a highlight, a tap beside an open bar and taps
   on the bars' buttons do not. A selection held at the edge or tapped on its edge moves the page on
   by half — one column of two on the desktop, a scroll of half the page, in the page's own box, on

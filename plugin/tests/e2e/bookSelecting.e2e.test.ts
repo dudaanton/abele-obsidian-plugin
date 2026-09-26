@@ -321,6 +321,39 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
       expect(r.note!.replace(/\s+/g, ' ')).toContain(r.text!.split('\n').pop()!.trim().slice(-30))
     })
 
+    it('letting go of the mouse at the edge after selecting words leaves the page where it is', () => {
+      const r = run<{
+        error?: string
+        before?: unknown
+        after?: unknown
+        text?: string
+        kept?: boolean
+      }>(`
+        const { leaf, view } = await open(${JSON.stringify(BOOK)})
+        await fresh(view)
+        const s = box(view)
+        const list = words(view).filter((w) => w.x > s.left + s.width / 2)
+        const start = list[Math.floor(list.length / 2)]
+        const before = at(view)
+        // A drag across the line to the very edge, let go there before a hold could move anything.
+        await mouse('mouseMoved', start.left + 1, start.y, 0)
+        await mouse('mousePressed', start.left + 1, start.y)
+        for (const t of [0.34, 0.67, 1]) { await mouse('mouseMoved', start.x + (s.right - 3 - start.x) * t, start.y); await wait(30) }
+        await mouse('mouseReleased', s.right - 3, start.y, 0)
+        await wait(1200)
+        const after = at(view)
+        const text = docOf(view).getSelection().toString()
+        const kept = !docOf(view).getSelection().isCollapsed
+        view.reading.clearSelection()
+        leaf.detach()
+        return { before, after, text, kept }
+      `)
+      expect(r.error).toBeUndefined()
+      expect(r.kept).toBe(true)
+      expect(r.text!.length).toBeGreaterThan(0)
+      expect(r.after).toEqual(r.before)
+    })
+
     it('in a chapter scrolled by the reader’s own choice, words selected move it half a screen', () => {
       const r = run<{ error?: string; step?: number; size?: number; still?: boolean }>(`
         const cfg = window.__abeleTest.AbeleConfig.getInstance()
@@ -330,6 +363,9 @@ describe.skipIf(!available)('selecting words on pages turned one at a time', () 
           const { leaf, view } = await open(${JSON.stringify(BOOK)})
           if (view.model.panel) { view.model.panel = false; await wait(400) }
           await until(() => R(view).scrolled, 3000)
+          // At the chapter's start, wherever the tests before left the book: at its end there is
+          // no half screen further to go.
+          await view.engine.goTo(view.model.toc[0].href)
           await wait(500)
           const s = box(view)
           const list = words(view)

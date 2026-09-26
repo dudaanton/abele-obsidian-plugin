@@ -502,6 +502,22 @@ describe('a selection on pages turned one at a time', () => {
     expect(told).toEqual(['The selection stops at the end of the chapter.'])
   })
 
+  it('on a PDF page, says why it stays there when the mouse is held at the edge, not only when let go', () => {
+    const { a, renderer, told, move, press, handle } = pager({ fixed: true })
+    press()
+    handle([a, 0], [a, 5])
+    move(200)
+    move(395)
+    vi.advanceTimersByTime(EDGE_HOLD_MS + 50)
+    expect(renderer.next).not.toHaveBeenCalled()
+    expect(told).toHaveLength(1)
+    expect(told[0]).toMatch(/own page/)
+    // Held on, it is said once.
+    move(396)
+    vi.advanceTimersByTime(EDGE_HOLD_MS + 50)
+    expect(told).toHaveLength(1)
+  })
+
   it('stays on its page of a PDF, and says why', async () => {
     const { a, renderer, told, pager: p, handle } = pager({ fixed: true })
     handle([a, 0], [a, 5])
