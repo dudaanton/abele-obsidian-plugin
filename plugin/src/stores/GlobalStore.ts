@@ -1,4 +1,5 @@
 import { Footer } from '@/entities/Footer'
+import { findInAnyWindow } from '@/helpers/windowDocuments'
 import { Footnote } from '@/entities/Footnote'
 import { Gallery } from '@/entities/Gallery'
 import { Header } from '@/entities/Header'
@@ -276,7 +277,7 @@ export class GlobalStore {
   }
 
   /**
-   * Remove widgets whose DOM containers no longer exist in the document.
+   * Remove widgets whose DOM containers no longer exist in any open window.
    * This catches cases where CodeMirror doesn't call WidgetType.destroy().
    *
    * Only editor widgets are swept. A gallery that carries its own mount element was drawn by
@@ -292,8 +293,9 @@ export class GlobalStore {
     ) => {
       for (let i = arr.length - 1; i >= 0; i--) {
         if (arr[i].mountEl) continue
-        const el = document.querySelector(`[${attr}='${arr[i].id}']`)
-        if (!el || !document.body.contains(el)) {
+        // Any window's document: a note open in a popout draws its widgets in that one.
+        const el = findInAnyWindow(`[${attr}='${arr[i].id}']`)
+        if (!el?.isConnected) {
           arr[i].cleanup()
           arr.splice(i, 1)
         }

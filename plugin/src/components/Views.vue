@@ -1,39 +1,43 @@
 <template>
-  <Teleport v-for="task in tasksContainers" :key="task.id" :to="`[data-task-id='${task.id}']`">
+  <Teleport
+    v-for="task in tasksContainers"
+    :key="task.id"
+    :to="inAnyWindow(`[data-task-id='${task.id}']`)"
+  >
     <TaskView :task="task as Task" />
   </Teleport>
   <Teleport
     v-for="gallery in galleriesContainers"
     :key="gallery.id"
-    :to="gallery.mountEl ?? `[data-gallery-id='${gallery.id}']`"
+    :to="gallery.mountEl ?? inAnyWindow(`[data-gallery-id='${gallery.id}']`)"
   >
     <GalleryView :gallery="gallery as Gallery" />
   </Teleport>
   <Teleport
     v-for="taskHeader in tasksHeadersContainers"
     :key="taskHeader.id"
-    :to="`[data-task-header-id='${taskHeader.id}']`"
+    :to="inAnyWindow(`[data-task-header-id='${taskHeader.id}']`)"
   >
     <TaskHeaderView :task="taskHeader as TaskHeader" />
   </Teleport>
   <Teleport
     v-for="header in headersContainers"
     :key="header.id"
-    :to="`[data-header-id='${header.id}']`"
+    :to="inAnyWindow(`[data-header-id='${header.id}']`)"
   >
     <HeaderView :header="header as Header" />
   </Teleport>
   <Teleport
     v-for="footer in footersContainers"
     :key="footer.id"
-    :to="`[data-footer-id='${footer.id}']`"
+    :to="inAnyWindow(`[data-footer-id='${footer.id}']`)"
   >
     <FooterView :footer="footer as Footer" />
   </Teleport>
   <Teleport
     v-for="footnote in footnotesContainers"
     :key="footnote.id"
-    :to="`[data-footnote-id='${footnote.id}']`"
+    :to="inAnyWindow(`[data-footnote-id='${footnote.id}']`)"
   >
     <FootnoteView :footnote="footnote as Footnote" />
   </Teleport>
@@ -187,6 +191,14 @@ import TimeTrackingSidebarView from './TimeTrackingSidebar.vue'
 import ScriptRunsView from './ScriptRuns.vue'
 import ScriptView from './ScriptView.vue'
 import SettingsView from './settings/Settings.vue'
+import { findInAnyWindow } from '@/helpers/windowDocuments'
+
+/**
+ * A note widget's mount element, looked up in every open window. A selector string handed to
+ * Teleport is resolved in the main window's document only, so a note opened in a popout had
+ * its gallery, tasks, header and footer drawn as empty boxes.
+ */
+const inAnyWindow = (selector: string) => findInAnyWindow(selector) ?? selector
 
 const {
   tasksContainers,
