@@ -83,11 +83,11 @@
 /**
  * Selective sync: what of the vault this one device takes.
  *
- * Every switch here is the device's own, kept in `data.json` beside the rest of the settings
- * and never sent to the server — two devices on one vault may each take a different half of
- * it. The engine hashes these into its scope key, so widening them makes the next run a
- * rescan rather than a read of the feed; that happens in `SyncService.reconcile`, which a
- * settings save is what reaches.
+ * Every switch here is the device's own, kept in its connection in the vault's local storage —
+ * not in `data.json`, which other devices can be handed — and never sent to the server: two
+ * devices on one vault may each take a different half of it. The engine hashes these into its
+ * scope key, so widening them makes the next run a rescan rather than a read of the feed; that
+ * happens in `SyncService.reconcile`, which `updateConnection` reaches.
  *
  * The cap is offered in megabytes because that is the unit a person thinks in about a video,
  * and stored in bytes because that is what the engine compares a file against. An empty field
@@ -95,7 +95,7 @@
  * field is committed, not as it is typed: every save that moves it rebuilds the engine and
  * walks the manifest, and editing 50 into 100 passes through an empty field on the way.
  */
-import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { SelectiveSettings } from '@abele/sync-core'
 import Section from '../../obsidian/Section.vue'
 import Setting from '../../obsidian/Setting.vue'
@@ -106,9 +106,8 @@ import Icon from '../../obsidian/Icon.vue'
 import Search from '../../obsidian/Search.vue'
 import EmptyState from '../../obsidian/EmptyState.vue'
 import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
-import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { isWireConfigDir } from '@/sync/SyncService'
+import { SyncService, isWireConfigDir } from '@/sync/SyncService'
 
 /** What one switch says on the screen. */
 interface Described {
@@ -164,7 +163,7 @@ const SETTINGS_KINDS = (
   ['main', 'appearance', 'hotkeys', 'corePlugins', 'communityPlugins', 'pluginSettings'] as const
 ).map((key) => ({ key, ...SETTINGS_TEXT[key] }))
 
-const config = AbeleConfig.getInstance()
+const sync = SyncService.getInstance()
 
 /**
  * This vault's config folder, when it is not the `.obsidian` the sync knows. Obsidian lets a
@@ -180,20 +179,19 @@ const settingsDesc = renamedConfig
   : 'How much of the configuration folder travels. The workspace, the graph and every plugin cache stay where they are, on every device.'
 
 /**
- * A copy of the settings, edited here and written back on every change.
+ * A copy of the connection's selective settings, edited here and written back on every change.
  *
- * Not a `computed` over `config.sync.selective`: `AbeleConfig` is a plain class, not reactive
- * state, so Vue has nothing to track and a ticked checkbox would sit there unmoved. Nor a
- * reference into that object, which `applySettings` replaces wholesale when a transfer lands —
- * edits would then be written into an object nothing reads any more.
+ * Not a reference into the connection: the service replaces that record whole on every change,
+ * so edits would be written into an object nothing reads any more — and they would bypass
+ * `updateConnection`, which is what puts the engine in step.
  *
- * Through JSON rather than `structuredClone`: the live settings may already be reactive
- * proxies, and cloning one of those throws `DataCloneError`. They are JSON on disk anyway.
+ * Through JSON rather than `structuredClone`: the connection is a reactive ref, and cloning one
+ * of those throws `DataCloneError`.
  */
 const copyOf = (settings: SelectiveSettings): SelectiveSettings =>
   JSON.parse(JSON.stringify(settings)) as SelectiveSettings
 
-const selective = ref<SelectiveSettings>(copyOf(config.sync.selective))
+const selective = ref<SelectiveSettings>(copyOf(sync.connection.value.selective))
 
 const folderToAdd = ref('')
 
@@ -204,38 +202,29 @@ const canAddFolder = computed(
 )
 
 /**
- * The one road out of this screen.
- *
- * `saveSettings` writes `data.json` and then tells everything that subscribed — the sync
- * service among them, which is what puts the running engine back in step with what was just
- * ticked. Nothing here calls the service directly: it would fire twice in the running app,
- * and once for a save this screen did not make.
+ * The one road out of this screen: the connection is written and the engine put in step with
+ * it. Nothing here can be refused — the rules `updateConnection` checks are about the server
+ * and the keychain — so a failure is only ever local storage's, and the log says so.
  */
 const save = (): void => {
-  config.sync.selective = copyOf(selective.value)
-  void config.saveSettings()
+  sync.updateConnection({ selective: copyOf(selective.value) }).catch((error: unknown) => {
+    console.debug('[abele-sync] what this device syncs could not be saved', error)
+  })
 }
 
 /**
- * Somebody else saved: take what they wrote.
+ * Somebody else changed it: take what they wrote.
  *
- * A transfer landing is the case that matters — it replaces the whole settings object, and a
- * screen still showing the old one would write the old one back over it on the next click. The
+ * The agent or a transfer can write the connection while this screen is open, and a screen
+ * still showing the old switches would write them back over it on the next click. The
  * comparison is what keeps this screen's own saves from re-seeding it mid-edit.
  */
-let unhook: (() => void) | null = null
-
-onMounted(() => {
-  unhook = config.onSaved(() => {
-    const held = config.sync.selective
+watch(
+  () => sync.connection.value.selective,
+  (held) => {
     if (JSON.stringify(held) !== JSON.stringify(selective.value)) selective.value = copyOf(held)
-  })
-})
-
-onUnmounted(() => {
-  unhook?.()
-  unhook = null
-})
+  }
+)
 
 /** Megabytes as the field shows them: empty when there is no cap at all. */
 const maxMegabytes = computed(() => {

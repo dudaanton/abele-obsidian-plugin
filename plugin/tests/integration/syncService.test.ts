@@ -9,6 +9,12 @@ import { PLAIN_HTTP_REFUSED } from '@abele/sync-protocol'
 import { PLAIN_HTTP_CONNECTION, SyncService, type SyncServiceDeps } from '@/sync/SyncService'
 import { IndexedDbStateStore, stateDatabaseName } from '@/sync/IndexedDbStateStore'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import {
+  CONNECTION_KEY,
+  MOBILE_MAX_FILE_BYTES,
+  readConnection,
+  type DeviceConnection,
+} from '@/sync/connection'
 import { runAfterSync } from '@/helpers/runAfterSync'
 import { setSecrets, type SecretStore } from '@/secrets/SecretStore'
 import { createPluginSecrets } from '@/secrets/host'
@@ -163,7 +169,15 @@ const write = async (path: string, text: string): Promise<void> => {
   await app.vault.adapter.writeBinary(path, new TextEncoder().encode(text).buffer as ArrayBuffer)
 }
 
-const settings = () => AbeleConfig.getInstance().sync
+/** This device's connection, as the service holds it. */
+const conn = (): DeviceConnection => service.connection.value
+
+/**
+ * A connection record put straight into this vault's local storage — what an older build, a
+ * hand in the console, or the next launch finds there — without going through the service.
+ */
+const storeConnection = (patch: Partial<DeviceConnection>): void =>
+  app.saveLocalStorage(CONNECTION_KEY, { ...readConnection(app), ...patch })
 
 /** The ledger this vault syncs on, as its local storage holds it. */
 const ledgerOf = (): { stateId: string; vaultId: string } =>
@@ -259,17 +273,33 @@ describe('SyncService — connecting', () => {
     expect(service.client()).not.toBeNull()
   })
 
-  it('files the device token in the keychain and only its id in the settings', async () => {
+  it('files the device token in the keychain and only its id in the connection', async () => {
     const { vaultId } = await connect()
     await synced()
 
-    expect(settings().vaultId).toBe(vaultId)
-    expect(settings().deviceId).not.toBe('')
-    expect(settings().deviceTokenId).toMatch(/^abele-sync-device-[a-z0-9]+$/)
-    const token = app.secretStorage.getSecret(settings().deviceTokenId)
+    expect(conn().vaultId).toBe(vaultId)
+    expect(conn().deviceId).not.toBe('')
+    expect(conn().deviceTokenId).toMatch(/^abele-sync-device-[a-z0-9]+$/)
+    const token = app.secretStorage.getSecret(conn().deviceTokenId)
     expect(token).toMatch(/^absd_/)
-    // The token itself is nowhere in what gets written to the vault.
-    expect(JSON.stringify(settings())).not.toContain(token)
+    // The token itself is nowhere in the connection, and nothing of it is in the settings.
+    expect(JSON.stringify(app.loadLocalStorage(CONNECTION_KEY))).not.toContain(token)
+    expect(readConnection(app)).toEqual(conn())
+  })
+
+  /**
+   * `data.json` is what a copy of the vault, a synced settings file or a transfer hands to
+   * another device. Nothing in it may say where this device syncs.
+   */
+  it('writes nothing of the connection into the settings file', async () => {
+    const { vaultId } = await connect()
+    await synced()
+
+    const written = JSON.stringify(AbeleConfig.getInstance().exportSettings())
+    expect(written).not.toContain(vaultId)
+    expect(written).not.toContain(conn().deviceTokenId)
+    expect(written).not.toContain(conn().deviceId)
+    expect(AbeleConfig.getInstance().exportSettings().sync).toEqual({ keySignature: null })
   })
 
   /**
@@ -281,7 +311,7 @@ describe('SyncService — connecting', () => {
     await secretStore.enable('passphrase', { iterations: 1000 })
     await connect()
     await synced()
-    const tokenId = settings().deviceTokenId
+    const tokenId = conn().deviceTokenId
 
     expect(app.secretStorage.getSecret(tokenId)).toMatch(/^absd_/)
     expect(secretStore.contents()!.map((c) => c.id)).not.toContain(tokenId)
@@ -318,8 +348,8 @@ describe('SyncService — a sign-in left unfinished', () => {
     service.endConnect()
     await choosing
 
-    expect(settings().serverUrl).toBe(server.BASE_URL)
-    expect(settings().vaultId).toBe(vaultId)
+    expect(conn().serverUrl).toBe(server.BASE_URL)
+    expect(conn().vaultId).toBe(vaultId)
     await synced()
     expect(service.isConnected()).toBe(true)
   })
@@ -364,7 +394,7 @@ describe('SyncService — plain http', () => {
     await synced()
     await service.destroy()
 
-    settings().serverUrl = 'http://192.168.1.5:8787'
+    storeConnection({ serverUrl: 'http://192.168.1.5:8787' })
     bearers = []
     service = SyncService.getInstance()
     start()
@@ -375,8 +405,22 @@ describe('SyncService — plain http', () => {
     expect(service.client()).toBeNull()
     expect(bearers).toEqual([])
     // Still set up: the connection is refused, not forgotten.
-    expect(settings().serverUrl).toBe('http://192.168.1.5:8787')
-    expect(settings().vaultId).not.toBe('')
+    expect(conn().serverUrl).toBe('http://192.168.1.5:8787')
+    expect(conn().vaultId).not.toBe('')
+  })
+
+  it('refuses to be pointed at plain http to another machine, and keeps what it had', async () => {
+    await connect()
+    await synced()
+    const held = conn().serverUrl
+
+    await expect(
+      service.updateConnection({ serverUrl: 'http://192.168.1.5:8787' })
+    ).rejects.toThrow(PLAIN_HTTP_REFUSED)
+
+    expect(conn().serverUrl).toBe(held)
+    expect(readConnection(app).serverUrl).toBe(held)
+    expect(service.isConnected()).toBe(true)
   })
 })
 
@@ -436,7 +480,7 @@ describe('SyncService — syncing', () => {
     const { accountToken, vaultId, other } = await connect()
     await synced()
 
-    await server.clientOn(accountToken).revokeDevice(settings().deviceId)
+    await server.clientOn(accountToken).revokeDevice(conn().deviceId)
     await service.syncNow()
     expect(service.status.value.state).toBe('error')
     // Not the client's "the request was refused", which says nothing a person can act on.
@@ -459,10 +503,13 @@ describe('SyncService — syncing', () => {
 
     service.pause()
     expect(service.status.value.state).toBe('paused')
-    expect(settings().paused).toBe(true)
+    expect(conn().paused).toBe(true)
+    // This device's own, so a pause here is never another device's.
+    expect(readConnection(app).paused).toBe(true)
+    expect(JSON.stringify(AbeleConfig.getInstance().exportSettings())).not.toContain('paused')
 
     service.resume()
-    expect(settings().paused).toBe(false)
+    expect(conn().paused).toBe(false)
     await synced()
 
     await seed(other, [await create(other, 'Resumed.md', 'moving again')])
@@ -477,8 +524,7 @@ describe('SyncService — what this device syncs', () => {
     await synced()
     expect(service.log.value.some((line) => line.includes('rescan:'))).toBe(false)
 
-    settings().selective.images = false
-    service.onSettingsSaved()
+    await service.updateConnection({ selective: { ...conn().selective, images: false } })
 
     await waitFor('the rescan to be announced', () =>
       service.log.value.some((line) =>
@@ -566,16 +612,17 @@ describe('SyncService — disconnecting', () => {
   it('forgets the token and says nothing is connected', async () => {
     await connect()
     await synced()
-    const tokenId = settings().deviceTokenId
+    const tokenId = conn().deviceTokenId
 
     await service.disconnect()
 
     expect(app.secretStorage.getSecret(tokenId)).toBe('')
-    expect(settings().serverUrl).toBe('')
-    expect(settings().vaultId).toBe('')
+    expect(conn().serverUrl).toBe('')
+    expect(conn().vaultId).toBe('')
+    expect(readConnection(app).vaultId).toBe('')
     // The id is a keychain name, not a credential: keeping it is what stops a reconnect
     // leaving an entry behind every time.
-    expect(settings().deviceTokenId).toBe(tokenId)
+    expect(conn().deviceTokenId).toBe(tokenId)
     expect(service.isConnected()).toBe(false)
     expect(service.status.value.state).toBe('disconnected')
     expect(service.client()).toBeNull()
@@ -584,17 +631,18 @@ describe('SyncService — disconnecting', () => {
   it('keeps what the user chose to sync, which is a preference and not a credential', async () => {
     await connect()
     await synced()
-    settings().selective.video = false
+    await service.updateConnection({ selective: { ...conn().selective, video: false } })
 
     await service.disconnect()
 
-    expect(settings().selective.video).toBe(false)
+    expect(conn().selective.video).toBe(false)
+    expect(readConnection(app).selective.video).toBe(false)
   })
 
   it('reuses the one keychain entry when the same device connects again', async () => {
     const { vaultId } = await connect()
     await synced()
-    const tokenId = settings().deviceTokenId
+    const tokenId = conn().deviceTokenId
     const stateId = ledgerOf().stateId
 
     await service.disconnect()
@@ -602,7 +650,7 @@ describe('SyncService — disconnecting', () => {
     await service.chooseVault(vaultId, 'Laptop')
     await synced()
 
-    expect(settings().deviceTokenId).toBe(tokenId)
+    expect(conn().deviceTokenId).toBe(tokenId)
     expect(app.secretStorage.getSecret(tokenId)).toMatch(/^absd_/)
     // The same vault, so the same ledger: reconnecting costs a scan, not a download.
     expect(ledgerOf().stateId).toBe(stateId)
@@ -611,13 +659,14 @@ describe('SyncService — disconnecting', () => {
   it('forget drops the ledger and the keychain name as well', async () => {
     await connect()
     await synced()
-    const tokenId = settings().deviceTokenId
+    const tokenId = conn().deviceTokenId
     const stateId = ledgerOf().stateId
 
     await service.forget()
 
     expect(ledgerOf().stateId).toBe('')
-    expect(settings().deviceTokenId).toBe('')
+    expect(conn().deviceTokenId).toBe('')
+    expect(readConnection(app).deviceTokenId).toBe('')
     expect(app.secretStorage.getSecret(tokenId)).toBe('')
     // The database is gone: a fresh one opens with nothing filed in it.
     const store = await IndexedDbStateStore.open(indexedDB, stateDatabaseName(stateId))
@@ -630,19 +679,19 @@ describe('SyncService — disconnecting', () => {
 })
 
 /**
- * The keychain id comes out of the settings, which an agent's `write_settings` or another
- * device's `data.json` can write. Pointed at a provider's key, it would send that key to the
- * server as a bearer token and delete it on Disconnect. Only an id this plugin mints is read.
+ * The keychain id comes out of the connection, which the agent can write and a hand in the
+ * console can edit. Pointed at a provider's key, it would send that key to the server as a
+ * bearer token and delete it on Disconnect. Only an id this plugin mints is read or taken.
  */
 describe('SyncService — a keychain id it did not mint', () => {
-  it('neither sends nor deletes a secret the settings name by another id', async () => {
+  it('refuses to be pointed at a secret by another id, and neither sends nor deletes it', async () => {
     await connect()
     await synced()
     app.secretStorage.setSecret('abele-provider-x', 'sk-provider')
 
-    settings().deviceTokenId = 'abele-provider-x'
-    await AbeleConfig.getInstance().saveSettings()
-    await waitFor('the engine to stop', () => !service.isConnected())
+    await expect(service.updateConnection({ deviceTokenId: 'abele-provider-x' })).rejects.toThrow(
+      'abele-sync-device-'
+    )
     bearers = []
     await service.syncNow()
     await service.disconnect()
@@ -652,13 +701,12 @@ describe('SyncService — a keychain id it did not mint', () => {
     expect(app.secretStorage.getSecret('abele-provider-x')).toBe('sk-provider')
   })
 
-  it('says nothing is connected at a launch whose settings name such an id', async () => {
+  it('says nothing is connected at a launch whose connection names such an id', async () => {
     const { vaultId } = await connect()
     await synced()
     await service.destroy()
     app.secretStorage.setSecret('abele-provider-x', 'sk-provider')
-    settings().deviceTokenId = 'abele-provider-x'
-    settings().vaultId = vaultId
+    storeConnection({ deviceTokenId: 'abele-provider-x', vaultId })
     bearers = []
 
     service = SyncService.getInstance()
@@ -798,6 +846,36 @@ describe('SyncService — one ledger per local vault', () => {
   })
 })
 
+/** A `data.json` as a build before the move wrote it: the connection inside the sync block. */
+const olderDataJson = (connection: DeviceConnection): Record<string, unknown> => {
+  const { migrated: _migrated, ...block } = connection
+  return {
+    ...AbeleConfig.getInstance().exportSettings(),
+    sync: { ...block, keySignature: null },
+  }
+}
+
+/**
+ * What `onload` does with the settings file: load it, then read the connection — which moves
+ * it out of the file the first time. `saveData` is recorded so a test can see what was written.
+ */
+async function launch(stored: unknown): Promise<unknown[]> {
+  const written: unknown[] = []
+  const loading = vi.spyOn(plugin, 'loadData').mockResolvedValue(stored)
+  const saving = vi.spyOn(plugin, 'saveData').mockImplementation((data: unknown) => {
+    written.push(JSON.parse(JSON.stringify(data)))
+    return Promise.resolve()
+  })
+  try {
+    await AbeleConfig.getInstance().loadSettings()
+    await service.openConnection(app as unknown as App)
+  } finally {
+    loading.mockRestore()
+    saving.mockRestore()
+  }
+  return written
+}
+
 /**
  * IndexedDB is one namespace for every vault in the app, so the name a ledger is filed under
  * must be something no file can carry: a transfer or a copied `data.json` that brought it along
@@ -818,19 +896,17 @@ describe('SyncService — a ledger no file can carry', () => {
     setSecrets(secretStore)
   }
 
-  it('opens a fresh ledger in a vault a transfer set up on the same machine', async () => {
+  it('opens a fresh ledger in a vault handed a connection on the same machine', async () => {
     const { other } = await connect()
     await synced()
-    const tokenId = settings().deviceTokenId
+    const tokenId = conn().deviceTokenId
     const token = app.secretStorage.getSecret(tokenId)
-    // The sync block exactly as the transfer reads it off this device.
-    const block: unknown = JSON.parse(
-      JSON.stringify(AbeleConfig.getInstance().exportSettings().sync)
-    )
+    // The connection exactly as this device holds it, set up in the second vault.
+    const handed = { ...conn() }
     await service.destroy()
 
     secondVault(tokenId, token)
-    AbeleConfig.getInstance().applySettings({ sync: block } as never)
+    storeConnection(handed)
     service = SyncService.getInstance()
     start()
     await synced()
@@ -840,19 +916,21 @@ describe('SyncService — a ledger no file can carry', () => {
     expect(await serverPaths(other)).toContain('Existing.md')
   })
 
-  it('opens a fresh ledger in a vault whose data.json was copied from another', async () => {
+  /**
+   * An older build kept the connection in `data.json`. A copy of such a file arriving with the
+   * token in the keychain too — the one case the move adopts it — still gets a ledger of its own.
+   */
+  it('opens a fresh ledger in a vault whose older data.json was copied from another', async () => {
     const { other } = await connect()
     await synced()
-    const tokenId = settings().deviceTokenId
+    const tokenId = conn().deviceTokenId
     const token = app.secretStorage.getSecret(tokenId)
-    const copied: unknown = JSON.parse(JSON.stringify(AbeleConfig.getInstance().exportSettings()))
+    const copied = olderDataJson(conn())
     await service.destroy()
 
     secondVault(tokenId, token)
-    const loading = vi.spyOn(plugin, 'loadData').mockResolvedValue(copied)
-    await AbeleConfig.getInstance().loadSettings()
-    loading.mockRestore()
     service = SyncService.getInstance()
+    await launch(copied)
     start()
     await synced()
 
@@ -942,6 +1020,127 @@ describe('SyncService — a ledger no file can carry', () => {
   })
 })
 
+/**
+ * A build before this one kept the connection in `data.json`. The first launch of this one
+ * moves it into local storage — but only when this device's keychain holds the token the file
+ * names, which is what says the file is this device's own and not a copy of another's.
+ */
+describe('SyncService — moving the connection out of data.json', () => {
+  /** A device set up by the older build: its connection in the file, none in local storage. */
+  async function olderDevice(): Promise<{ file: Record<string, unknown>; held: DeviceConnection }> {
+    await connect()
+    await synced()
+    const held = { ...conn() }
+    await service.destroy()
+    app.saveLocalStorage(CONNECTION_KEY, null)
+    service = SyncService.getInstance()
+    return { file: olderDataJson(held), held }
+  }
+
+  it('moves it when this keychain holds the token, strips the file, and stays connected', async () => {
+    const { file, held } = await olderDevice()
+
+    const written = await launch(file)
+    start()
+    await synced()
+
+    expect(conn()).toEqual({ ...held, migrated: true })
+    expect(readConnection(app)).toEqual({ ...held, migrated: true })
+    expect(written).toHaveLength(1)
+    expect((written[0] as { sync: unknown }).sync).toEqual({ keySignature: null })
+    expect(service.isConnected()).toBe(true)
+    expect(service.log.value.join('\n')).toContain("moved this device's connection")
+  })
+
+  it('drops it when this keychain has no such token, strips the file, and is not connected', async () => {
+    const { file, held } = await olderDevice()
+    app.secretStorage.setSecret(held.deviceTokenId, '')
+
+    const written = await launch(file)
+    start()
+    await tick()
+
+    expect(conn()).toMatchObject({ serverUrl: '', vaultId: '', deviceTokenId: '', migrated: true })
+    expect((written[0] as { sync: unknown }).sync).toEqual({ keySignature: null })
+    expect(service.isConnected()).toBe(false)
+    expect(service.status.value.state).toBe('disconnected')
+    expect(service.log.value.join('\n')).toContain('was not adopted')
+  })
+
+  it('does nothing at the next launch, whatever the file then says', async () => {
+    const { file, held } = await olderDevice()
+    await launch(file)
+    service.pause()
+    const lines = service.log.value.length
+
+    // The same older file arriving again — from a device still on the older build.
+    const written = await launch(olderDataJson({ ...held, vaultId: 'another-vault' }))
+
+    expect(conn()).toEqual({ ...held, paused: true, migrated: true })
+    expect(written).toEqual([])
+    expect(service.log.value.slice(lines).join('\n')).not.toContain('data.json')
+  })
+
+  /**
+   * Two local vaults on one machine share one IndexedDB. The second got the first one's older
+   * `data.json` — a Finder copy, a synced file — but not its keychain, so it is not connected.
+   */
+  it('connects only the vault whose own record says so, not one handed a copied file', async () => {
+    const { other } = await connect()
+    await synced()
+    const copied = olderDataJson(conn())
+    await service.destroy()
+
+    app = buildFakeVault([])
+    secretStore = createPluginSecrets({ ...plugin, app } as unknown as AbelePlugin)
+    setSecrets(secretStore)
+    service = SyncService.getInstance()
+    await launch(copied)
+    start()
+    await tick()
+
+    expect(service.isConnected()).toBe(false)
+    expect(conn().vaultId).toBe('')
+    expect(await serverPaths(other)).toContain('Existing.md')
+  })
+})
+
+/**
+ * The size cap is the phone's own: a desktop's "no cap" in a file the phone was handed must not
+ * fill the phone with video, and a cap chosen on the phone is written nowhere a desktop reads.
+ */
+describe('SyncService — the size cap on a phone', () => {
+  it("takes 50 MB over a desktop data.json's no cap, and keeps its own cap to itself", async () => {
+    Platform.isMobile = true
+    const desktop = {
+      ...AbeleConfig.getInstance().exportSettings(),
+      sync: {
+        serverUrl: 'https://desktop.example.com',
+        vaultId: 'desktop-vault',
+        deviceTokenId: 'abele-sync-device-desktop',
+        selective: { video: false, maxFileBytes: null },
+        keySignature: null,
+      },
+    }
+    service = SyncService.getInstance()
+    await launch(desktop)
+    expect(conn().selective.maxFileBytes).toBe(MOBILE_MAX_FILE_BYTES)
+    // What it syncs is taken as a starting point all the same.
+    expect(conn().selective.video).toBe(false)
+
+    await connect()
+    await waitFor('the first sync', async () => (await meta('scope')) !== null)
+    expect(await meta('scope')).toBe(daemonScopeKey(conn().selective, null))
+
+    const saving = vi.spyOn(plugin, 'saveData')
+    await service.updateConnection({ selective: { ...conn().selective, maxFileBytes: 1024 } })
+    expect(readConnection(app, true).selective.maxFileBytes).toBe(1024)
+    expect(saving).not.toHaveBeenCalled()
+    expect(JSON.stringify(AbeleConfig.getInstance().exportSettings())).not.toContain('maxFileBytes')
+    saving.mockRestore()
+  })
+})
+
 describe('SyncService — when it cannot start at all', () => {
   it('says so instead of looking like a device nobody set up', async () => {
     const { accountToken } = await server.account(EMAIL)
@@ -993,8 +1192,7 @@ describe('SyncService — when it cannot start at all', () => {
     app.secretStorage.getSecret = () => {
       throw new Error('the keychain is locked')
     }
-    settings().selective.images = false
-    await AbeleConfig.getInstance().saveSettings()
+    void service.updateConnection({ selective: { ...conn().selective, images: false } })
 
     await waitFor('the failure to be reported', () => service.status.value.state === 'error')
     expect(service.status.value.lastError).toContain('keychain is locked')
@@ -1035,7 +1233,7 @@ describe('SyncService — a ledger closed under it', () => {
 })
 
 describe('SyncService — a settings save', () => {
-  it('builds another engine only when the save moved what sync runs on', async () => {
+  it('builds another engine only when a change moved what sync runs on', async () => {
     await connect()
     await synced()
     const builds = (): number =>
@@ -1045,8 +1243,7 @@ describe('SyncService — a settings save', () => {
     // Nothing about sync moved, so this must not stop and restart the engine.
     await AbeleConfig.getInstance().saveSettings()
     // And this must, which is also what makes the assertion below deterministic.
-    settings().selective.pdf = false
-    await AbeleConfig.getInstance().saveSettings()
+    await service.updateConnection({ selective: { ...conn().selective, pdf: false } })
 
     await waitFor('the engine to be rebuilt once', () => builds() === before + 1)
     await tick()
@@ -1065,12 +1262,12 @@ describe('SyncService — a settings save', () => {
     const off = service.onStatusChange((status) => seen.push(status.state))
 
     // The cap committed on blur, and the switch the blur was on its way to, one after the other.
-    settings().selective.maxFileBytes = 10 * 1024 * 1024
-    await AbeleConfig.getInstance().saveSettings()
-    settings().selective.pdf = false
-    await AbeleConfig.getInstance().saveSettings()
+    void service.updateConnection({
+      selective: { ...conn().selective, maxFileBytes: 10 * 1024 * 1024 },
+    })
+    await service.updateConnection({ selective: { ...conn().selective, pdf: false } })
 
-    const scope = daemonScopeKey(settings().selective, null)
+    const scope = daemonScopeKey(conn().selective, null)
     await waitFor('the engine to run on both changes', async () => {
       if (!service.isConnected() || service.status.value.state !== 'idle') return false
       return (await meta('scope')) === scope
@@ -1113,25 +1310,25 @@ describe('SyncService — a settings save', () => {
     kicked.mockRestore()
   })
 
-  it('honours a save that lands while the service is saving one of its own', async () => {
+  it('honours a change to the connection that lands while a settings save is in hand', async () => {
     await connect()
     await synced()
     const builds = (): number =>
       service.log.value.filter((line) => line.includes('syncing vault')).length
     const before = builds()
 
-    // A screen widening the scope while the service is writing down a pause of its own. There
-    // is no filter on whose save this was — whether it lands inside the service's own save or
-    // after it, `reconcile` compares what the engine was built on and rebuilds because the
-    // scope moved.
+    // A screen narrowing the scope while a save of some other setting is being reconciled.
+    // Whichever lands first, `reconcile` compares what the engine was built on and rebuilds
+    // once because the scope moved.
     const off = AbeleConfig.getInstance().onSaved(() => {
       off()
-      settings().selective.pdf = false
-      void AbeleConfig.getInstance().saveSettings()
+      void service.updateConnection({ selective: { ...conn().selective, pdf: false } })
     })
-    service.pause()
+    await AbeleConfig.getInstance().saveSettings()
 
-    await waitFor('the widened scope to reach the engine', () => builds() === before + 1)
+    await waitFor('the narrowed scope to reach the engine', () => builds() === before + 1)
+    await tick()
+    expect(builds()).toBe(before + 1)
   })
 })
 
@@ -1143,16 +1340,56 @@ describe('SyncService — settings reloaded from disk', () => {
   it('puts the engine in step with a data.json that arrived', async () => {
     await connect()
     await synced()
+    const builds = (): number =>
+      service.log.value.filter((line) => line.includes('syncing vault')).length
+    const before = builds()
 
     const arrived = AbeleConfig.getInstance().exportSettings()
-    arrived.sync = { ...arrived.sync!, paused: true }
+    arrived.ai = { ...arrived.ai!, scriptsFolder: 'Automation' }
     const loading = vi.spyOn(plugin, 'loadData').mockResolvedValue(arrived)
     try {
       await AbeleConfig.getInstance().reloadSettings()
-      await waitFor('the engine to pause', () => service.status.value.state === 'paused')
+      await waitFor('the engine to be rebuilt', () => builds() === before + 1)
     } finally {
       loading.mockRestore()
     }
+  })
+
+  /**
+   * Another device's `data.json` from an older build still carries that device's connection.
+   * It used to replace this one's in memory, and the engine was torn down and rebuilt on it.
+   * Now nothing reads it: the connection, the pause and the engine all stay as they were.
+   */
+  it("keeps its own connection and engine through a data.json naming another device's", async () => {
+    await connect()
+    await synced()
+    const held = { ...conn() }
+    const vault = service.client()
+    const builds = (): number =>
+      service.log.value.filter((line) => line.includes('syncing vault')).length
+    const before = builds()
+
+    const arrived = olderDataJson({
+      ...held,
+      serverUrl: 'https://elsewhere.example.com',
+      vaultId: 'another-vault',
+      deviceId: 'another-device',
+      deviceTokenId: 'abele-sync-device-another',
+      paused: true,
+    })
+    const loading = vi.spyOn(plugin, 'loadData').mockResolvedValue(arrived)
+    try {
+      await AbeleConfig.getInstance().reloadSettings()
+      await tick()
+    } finally {
+      loading.mockRestore()
+    }
+
+    expect(conn()).toEqual(held)
+    expect(readConnection(app)).toEqual(held)
+    expect(service.client()).toBe(vault)
+    expect(builds()).toBe(before)
+    expect(service.status.value.state).not.toBe('paused')
   })
 })
 
@@ -1225,8 +1462,8 @@ describe('SyncService — a plugin reload', () => {
   })
 })
 
-describe('SyncService — what this device syncs, driven from the settings', () => {
-  it('rescans and fetches what the old scope skipped when a settings save widens it', async () => {
+describe('SyncService — what this device syncs, driven from the Sync tab', () => {
+  it('rescans and fetches what the old scope skipped when a change widens it', async () => {
     const { accountToken } = await server.account(EMAIL)
     const { vaultId } = await server.vault(accountToken, 'Home')
     const { deviceToken } = await server.device(accountToken, vaultId, 'scenario')
@@ -1234,16 +1471,17 @@ describe('SyncService — what this device syncs, driven from the settings', () 
     await seed(other, [await create(other, 'Archive/old.md', 'kept out at first')])
 
     // Narrow before the first sync, so the pull passes the folder over.
-    settings().selective.excludedFolders = ['Archive']
+    storeConnection({
+      selective: { ...readConnection(app).selective, excludedFolders: ['Archive'] },
+    })
     start()
     await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
     await service.chooseVault(vaultId, 'Laptop')
     await synced()
     expect(await app.vault.adapter.exists('Archive/old.md')).toBe(false)
 
-    // Widened through the one road every screen takes: a settings save.
-    settings().selective.excludedFolders = []
-    await AbeleConfig.getInstance().saveSettings()
+    // Widened through the one road every screen takes.
+    await service.updateConnection({ selective: { ...conn().selective, excludedFolders: [] } })
 
     await waitFor('the file the old scope skipped', () =>
       app.vault.adapter.exists('Archive/old.md')
@@ -1260,7 +1498,7 @@ describe('SyncService — what this device syncs, driven from the settings', () 
     await connect()
     await synced()
 
-    expect(await meta('scope')).toBe(daemonScopeKey(settings().selective, null))
+    expect(await meta('scope')).toBe(daemonScopeKey(conn().selective, null))
   })
 
   /**
@@ -1388,6 +1626,8 @@ describe('SyncService — runAfterSync before init', () => {
     await service.destroy()
     service = SyncService.getInstance()
 
+    // What `onload` does: the connection is read, then announced.
+    await service.openConnection(app as unknown as App)
     service.announce()
     const ran = vi.fn()
     runAfterSync(app as unknown as App, ran)

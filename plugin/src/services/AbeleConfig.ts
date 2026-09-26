@@ -5,7 +5,7 @@ import { savedKeysWithIds } from '@/ai/savedKeyIds'
 import { nanoid } from 'nanoid'
 import { migrateMcpPermissions } from '@/ai/mcp/permissions'
 import { notifyMcpPermissionReset } from '@/ai/mcp/settings'
-import { Notice, Platform } from 'obsidian'
+import { Notice } from 'obsidian'
 import { Journal, JournalDTO } from '@/entities/Journal'
 import { AiSettings, DEFAULT_AI_SETTINGS, ImageProvider, migrateOldPermissions } from '@/ai/types'
 import { migrateAgents } from '@/ai/agents/migration'
@@ -63,8 +63,8 @@ export interface AbeleSettings {
   excludedPathsForDefaultTemplate?: string[] // Paths where default template should not apply
   // AI Agent settings
   ai?: AiSettings
-  // Device sync: where the server is and what this device takes. The device token is not
-  // here — only the id it is filed under in Obsidian's secret storage.
+  // Device sync: only what every device on the vault shares. Where this device syncs and what
+  // it takes is in the vault's local storage (`src/sync/connection.ts`), not here.
   sync?: SyncSettings
   // Finance settings
   transactionPathTemplate?: string // Path template for new transactions
@@ -430,6 +430,13 @@ export class AbeleConfig {
   private unreadableTold = false
 
   /**
+   * The `sync` block exactly as the last load read it off disk, before the migration dropped
+   * what is no longer a setting. Kept for one reader: the one-time move of this device's
+   * connection out of `data.json` (`SyncService.openConnection`), which takes it.
+   */
+  private loadedSync: unknown = undefined
+
+  /**
    * Whether the settings file exists and could not be read. Anything that acts on its own —
    * automations — waits while it is: what is in memory then is defaults, not the person's.
    */
@@ -553,6 +560,7 @@ export class AbeleConfig {
       // `null` is no file at all — a fresh install. `undefined` is a file Obsidian could not
       // parse, and that is still somebody's settings.
       const stored = await this.plugin.loadData()
+      this.loadedSync = (stored as { sync?: unknown } | null | undefined)?.sync
       this.freshInstall = stored === null
       this.unreadable = stored === undefined
       this.unreadableTold = false
@@ -628,6 +636,21 @@ export class AbeleConfig {
    */
   async moveLegacySecrets(): Promise<void> {
     if (moveLegacySecrets(this)) await this.writeSettings()
+  }
+
+  /** The `sync` block the last load read off disk, handed over once: see `loadedSync`. */
+  takeLoadedSync(): unknown {
+    const block = this.loadedSync
+    this.loadedSync = undefined
+    return block
+  }
+
+  /**
+   * Writes the file again as the settings in memory have it, and does nothing else — for a
+   * startup step that moved something out of it, the way `moveLegacySecrets` does.
+   */
+  async rewrite(): Promise<void> {
+    await this.writeSettings()
   }
 
   /**
@@ -773,11 +796,9 @@ export class AbeleConfig {
         this.ai.defaultImageModel = `${provider.id}::${modelId}`
       }
     }
-    // Every field is checked on the way in, so a settings file written by an older plugin —
-    // or by another device's sync — cannot put something the engine cannot run on into memory.
-    // The platform is read here and nowhere else: it decides only what a vault with no sync
-    // settings yet starts with, which on a phone is a cap on how large a file it takes.
-    this.sync = migrateSyncSettings(settings?.sync, Platform.isMobile)
+    // Every field is checked on the way in, and a connection an older build wrote here is
+    // dropped: it is this device's alone and lives in local storage now.
+    this.sync = migrateSyncSettings(settings?.sync)
     this.transactionPathTemplate =
       settings?.transactionPathTemplate ?? DEFAULT_SETTINGS.transactionPathTemplate
     this.transactionTemplatePath =
@@ -873,8 +894,8 @@ export class AbeleConfig {
       busyDayThreshold: this.busyDayThreshold,
       excludedPathsForDefaultTemplate: [...this.excludedPathsForDefaultTemplate],
       ai: { ...this.ai },
-      // A copy all the way down rather than a spread: `selective` is a nested object, and
-      // the migration is what already knows how to build one field by field.
+      // A copy all the way down rather than a spread: the migration already knows how to build
+      // one field by field.
       sync: migrateSyncSettings(this.sync),
       transactionPathTemplate: this.transactionPathTemplate,
       transactionTemplatePath: this.transactionTemplatePath,

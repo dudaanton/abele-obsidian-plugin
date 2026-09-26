@@ -12,6 +12,8 @@ import type { Plugin } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { collectEntries, isDeviceOnly } from '@/transfer/entries'
 import { voiceKeyId } from '@/ai/transcriptionSettings'
+import { readConnection } from '@/sync/connection'
+import type { LocalStorage } from '@/sync/ledgerId'
 import { SecretStore, isDeviceSecretId, type StoreHost } from './SecretStore'
 import type { SecretStoreFile } from './storeFile'
 
@@ -34,16 +36,17 @@ export function pluginSecretIds(): string[] {
 }
 
 /**
- * The ids of every `deviceOnly` section: what the store must never hold (`StoreHost.deviceOnly`).
- * Only a device secret's name counts — an id the settings point elsewhere would otherwise have
- * the store drop somebody's provider key.
+ * What the store must never hold (`StoreHost.deviceOnly`): the sync device token this vault's
+ * connection names, read from local storage where the connection lives, and the ids of every
+ * `deviceOnly` section. Only a device secret's name counts — an id pointed elsewhere would
+ * otherwise have the store drop somebody's provider key.
  */
-export function deviceOnlySecretIds(): string[] {
+export function deviceOnlySecretIds(storage?: LocalStorage): string[] {
   const ids = collectEntries(AbeleConfig.getInstance().exportSettings())
     .filter((entry) => isDeviceOnly(entry.section))
     .flatMap((entry) => entry.secretIds ?? [])
-    .filter(isDeviceSecretId)
-  return [...new Set(ids)]
+  if (storage !== undefined) ids.push(readConnection(storage).deviceTokenId)
+  return [...new Set(ids.filter(isDeviceSecretId))]
 }
 
 /** Syncthing's name for the loser of a conflict: `data.sync-conflict-<date>-<time>-<device>.json`. */
@@ -62,7 +65,7 @@ export function pluginStoreHost(plugin: Plugin): StoreHost {
       await config.saveSettings()
     },
     ids: pluginSecretIds,
-    deviceOnly: deviceOnlySecretIds,
+    deviceOnly: () => deviceOnlySecretIds(plugin.app),
     conflictCopies: async () => {
       const listed = await adapter.list(dir)
       const copies: unknown[] = []

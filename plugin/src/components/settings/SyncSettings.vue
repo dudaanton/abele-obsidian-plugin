@@ -122,7 +122,7 @@
  * `disconnected` is a device somebody set up: an engine that failed to build is `error`, and
  * that screen is the one that says why, where the sign-in card would only ask again.
  */
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
 import Badge from '../obsidian/Badge.vue'
@@ -132,49 +132,22 @@ import ConnectCard from './sync/ConnectCard.vue'
 import SelectiveSync from './sync/SelectiveSync.vue'
 import VaultPolicy from './sync/VaultPolicy.vue'
 import UsageCard from './sync/UsageCard.vue'
-import { AbeleConfig } from '@/services/AbeleConfig'
 import { SyncService } from '@/sync/SyncService'
 import { STATUS_LABEL } from '@/sync/status'
 import { formatWhen } from '@/sync/format'
 
 const sync = SyncService.getInstance()
-const config = AbeleConfig.getInstance()
 
 /**
- * What this screen says about the device, copied out of the settings rather than read through
- * them.
- *
- * `AbeleConfig` is a plain class, so a `computed` over it tracks nothing and these rows would
- * only ever redraw by accident. `paused` is the one that shows: the engine does not publish the
- * `paused` state until a run in flight has finished, so a Pause pressed mid-sync would leave
- * the button saying "Pause" for as long as the run takes. What the person pressed is true the
- * moment they press it, so that is what the button is driven from — and the settings version,
- * which a save and a reload from disk both move, puts it back in step for every other way it
- * can change.
+ * What this screen says about the device: its connection, which the service holds as a ref and
+ * rewrites whole on every change. A Pause pressed mid-sync shows at once — the engine does not
+ * publish `paused` until the run in flight has finished, but the connection says it the moment
+ * the button is pressed.
  */
-const snapshot = (): {
-  serverUrl: string
-  vaultId: string
-  deviceName: string
-  paused: boolean
-} => {
-  const held = config.sync
-  return {
-    serverUrl: held.serverUrl,
-    vaultId: held.vaultId,
-    deviceName: held.deviceName,
-    paused: held.paused,
-  }
-}
-
+const device = sync.connection
 const status = sync.status
-const device = ref(snapshot())
 const connected = computed(() => status.value.state !== 'disconnected')
 const confirming = ref<'disconnect' | 'forget' | null>(null)
-
-watch(config.version, () => {
-  device.value = snapshot()
-})
 
 // A sign-in that was never followed by a vault holds an account token; closing the tab ends it.
 onUnmounted(() => sync.endConnect())
@@ -199,12 +172,10 @@ const rescan = (): void => {
 
 function pause(): void {
   sync.pause()
-  device.value.paused = true
 }
 
 function resume(): void {
   sync.resume()
-  device.value.paused = false
 }
 
 async function disconnect(): Promise<void> {

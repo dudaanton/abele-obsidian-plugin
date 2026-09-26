@@ -4,8 +4,8 @@
  * The engine itself is the sibling repo's and is tested there; what is asserted here is the
  * half a settings screen owes it. A device nobody has set up is offered a way to set it up and
  * nothing else. A device that is set up is shown what it is doing and what it is doing it to.
- * A switch that is ticked reaches `data.json` *and* the running engine — a save that never got
- * as far as the service would leave a person looking at a setting that is not in force.
+ * A switch that is ticked reaches the device's connection through the service — which is what
+ * puts the running engine in step — and never `data.json`, which other devices can be handed.
  *
  * The service is a stand-in: it owns an IndexedDB, a WebSocket and a real server connection,
  * none of which a component test has any business opening. Its shape is the shape the real one
@@ -29,6 +29,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { SyncService } from '@/sync/SyncService'
 import { DISCONNECTED_STATUS, type SyncStatus } from '@/sync/status'
 import { defaultSyncSettings } from '@/sync/settings'
+import { emptyConnection, type DeviceConnection } from '@/sync/connection'
 import { PLAIN_HTTP_REFUSED } from '@abele/sync-protocol'
 import { useVault } from '../helpers/testEnv'
 
@@ -64,6 +65,7 @@ const client = {
 const service = {
   status: ref<SyncStatus>({ ...DISCONNECTED_STATUS }),
   log: ref<string[]>([]),
+  connection: ref<DeviceConnection>(emptyConnection()),
   connected: false,
   isConnected: vi.fn(() => service.connected),
   client: vi.fn(() => (service.connected ? client : null)),
@@ -78,7 +80,16 @@ const service = {
   note: vi.fn(),
   onSettingsSaved: vi.fn(),
   endConnect: vi.fn(),
+  updateConnection: vi.fn(),
 }
+
+/** The connection the service holds, with these fields changed — what its verbs do. */
+const change = (patch: Partial<DeviceConnection>): void => {
+  service.connection.value = { ...service.connection.value, ...patch }
+}
+
+/** What this device syncs, as the service holds it. */
+const held = () => service.connection.value.selective
 
 /** What `init` does in the running plugin: the service hears about every settings save. */
 let unhook: () => void
@@ -119,6 +130,12 @@ beforeEach(() => {
 
   service.connected = false
   service.status.value = { ...DISCONNECTED_STATUS }
+  service.connection.value = emptyConnection()
+  service.updateConnection.mockImplementation(async (patch: Partial<DeviceConnection>) =>
+    change(patch)
+  )
+  service.pause.mockImplementation(() => change({ paused: true }))
+  service.resume.mockImplementation(() => change({ paused: false }))
   client.state.mockResolvedValue({ head_seq: 7, settings: VAULT_SETTINGS, usage: USAGE })
   client.usage.mockResolvedValue(USAGE)
   client.updateSettings.mockResolvedValue(VAULT_SETTINGS)
@@ -132,14 +149,16 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-/** Puts the settings and the service into the state of a device that has been set up. */
+/** Puts the service into the state of a device that has been set up. */
 function connect(): void {
-  const sync = AbeleConfig.getInstance().sync
-  sync.serverUrl = 'https://sync.example.com'
-  sync.vaultId = 'v1'
-  sync.deviceId = 'd1'
-  sync.deviceName = 'Desktop — Notes'
-  sync.deviceTokenId = 'abele-sync-device-1'
+  change({
+    serverUrl: 'https://sync.example.com',
+    vaultId: 'v1',
+    deviceId: 'd1',
+    deviceName: 'Desktop — Notes',
+    deviceTokenId: 'abele-sync-device-1',
+    migrated: true,
+  })
   service.connected = true
   service.status.value = {
     ...DISCONNECTED_STATUS,
@@ -184,7 +203,8 @@ describe('a device nobody has set up', () => {
     expect(password).toBeDefined()
     await password?.setValue('hunter2')
 
-    expect(JSON.stringify(AbeleConfig.getInstance().sync)).not.toContain('hunter2')
+    expect(JSON.stringify(AbeleConfig.getInstance().exportSettings())).not.toContain('hunter2')
+    expect(JSON.stringify(service.connection.value)).not.toContain('hunter2')
   })
 
   /**
@@ -296,7 +316,8 @@ describe('a device that is set up', () => {
    */
   it('stays put through a rebuild, so a switch clicked after the cap still lands', async () => {
     connect()
-    service.onSettingsSaved.mockImplementation(() => {
+    service.updateConnection.mockImplementation(async (patch: Partial<DeviceConnection>) => {
+      change(patch)
       service.status.value = { ...service.status.value, state: 'syncing' }
     })
     const screen = open(SyncSettings)
@@ -315,22 +336,37 @@ describe('a device that is set up', () => {
     expect(screen.findComponent(ConnectCard).exists()).toBe(false)
     // The same instance, not one mounted again after the sign-in card came and went.
     expect(screen.findComponent(SelectiveSync).vm.$.uid).toBe(mounted)
-    const held = AbeleConfig.getInstance().sync.selective
-    expect(held.maxFileBytes).toBe(10 * 1024 * 1024)
-    expect(held.pdf).toBe(false)
+    expect(held().maxFileBytes).toBe(10 * 1024 * 1024)
+    expect(held().pdf).toBe(false)
   })
 
-  it('shows the server a data.json reloaded from disk names', async () => {
+  it('shows a connection the service changed, whoever asked it to', async () => {
+    connect()
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    change({ serverUrl: 'https://elsewhere.example.com' })
+    await flushPromises()
+
+    expect(screen.text()).toContain('https://elsewhere.example.com')
+  })
+
+  /**
+   * Another device's `data.json`, arriving with an older build's connection in it, names no
+   * connection this device reads: the tab goes on showing its own.
+   */
+  it('shows its own server whatever a data.json reloaded from disk names', async () => {
     connect()
     const screen = open(SyncSettings)
     await flushPromises()
 
     const config = AbeleConfig.getInstance()
-    config.sync = { ...config.sync, serverUrl: 'https://elsewhere.example.com' }
+    config.applySettings({ sync: { serverUrl: 'https://elsewhere.example.com' } } as never)
     config.version.value++
     await flushPromises()
 
-    expect(screen.text()).toContain('https://elsewhere.example.com')
+    expect(screen.text()).toContain('https://sync.example.com')
+    expect(screen.text()).not.toContain('https://elsewhere.example.com')
   })
 
   it('offers no connect card once there is nothing left to connect', async () => {
@@ -387,7 +423,7 @@ describe('a device that is set up', () => {
 
   it('offers Resume rather than Pause once it is paused', async () => {
     connect()
-    AbeleConfig.getInstance().sync.paused = true
+    change({ paused: true })
     const screen = open(SyncSettings)
     await flushPromises()
 
@@ -417,15 +453,29 @@ describe('a device that is set up', () => {
 })
 
 describe('what this device takes', () => {
-  it('writes a switch to the settings and tells the engine about it', async () => {
+  it('writes a switch to the connection, which is what tells the engine', async () => {
     const screen = open(SelectiveSync)
 
     await switchFor(screen, 'video').trigger('click')
     await flushPromises()
 
-    expect(AbeleConfig.getInstance().sync.selective.video).toBe(false)
-    // The save is what reaches the engine; nothing here calls the service itself.
-    expect(service.onSettingsSaved).toHaveBeenCalled()
+    expect(held().video).toBe(false)
+    expect(service.updateConnection).toHaveBeenCalledWith({
+      selective: expect.objectContaining({ video: false }),
+    })
+  })
+
+  /** What a device syncs is its own; `data.json` is what other devices can be handed. */
+  it('writes nothing to data.json', async () => {
+    const config = AbeleConfig.getInstance()
+    const saveSettings = vi.spyOn(config, 'saveSettings')
+    const screen = open(SelectiveSync)
+
+    await switchFor(screen, 'video').trigger('click')
+    await flushPromises()
+
+    expect(saveSettings).not.toHaveBeenCalled()
+    expect(config.exportSettings().sync).toEqual({ keySignature: null })
   })
 
   /**
@@ -443,7 +493,7 @@ describe('what this device takes', () => {
   })
 
   it('takes a folder off the list the moment it is removed', async () => {
-    AbeleConfig.getInstance().sync.selective.excludedFolders = ['Archive/Video']
+    change({ selective: { ...held(), excludedFolders: ['Archive/Video'] } })
     const screen = open(SelectiveSync)
     expect(screen.text()).toContain('Archive/Video')
 
@@ -454,19 +504,17 @@ describe('what this device takes', () => {
     await flushPromises()
 
     expect(screen.text()).not.toContain('Archive/Video')
-    expect(AbeleConfig.getInstance().sync.selective.excludedFolders).toEqual([])
+    expect(held().excludedFolders).toEqual([])
   })
 
   /**
-   * A transfer landing replaces the whole settings object. A screen still holding the old one
-   * would write it back over what arrived on the very next click.
+   * The agent or a transfer can change the connection while this screen is open. A screen still
+   * holding the old switches would write them back over that on the very next click.
    */
-  it('takes up what a transfer wrote rather than writing over it', async () => {
-    const config = AbeleConfig.getInstance()
+  it('takes up a change made elsewhere rather than writing over it', async () => {
     const screen = open(SelectiveSync)
 
-    config.sync = { ...config.sync, selective: { ...config.sync.selective, images: false } }
-    await config.saveSettings()
+    change({ selective: { ...held(), images: false } })
     await flushPromises()
 
     expect(switchFor(screen, 'images').props('isEnabled')).toBe(false)
@@ -474,8 +522,8 @@ describe('what this device takes', () => {
     await switchFor(screen, 'video').trigger('click')
     await flushPromises()
 
-    expect(config.sync.selective.images).toBe(false)
-    expect(config.sync.selective.video).toBe(false)
+    expect(held().images).toBe(false)
+    expect(held().video).toBe(false)
   })
 
   it('does the same for a settings category', async () => {
@@ -487,8 +535,8 @@ describe('what this device takes', () => {
       .trigger('click')
     await flushPromises()
 
-    expect(AbeleConfig.getInstance().sync.selective.settings.hotkeys).toBe(false)
-    expect(service.onSettingsSaved).toHaveBeenCalled()
+    expect(held().settings.hotkeys).toBe(false)
+    expect(service.updateConnection).toHaveBeenCalled()
   })
 
   /**
@@ -511,19 +559,19 @@ describe('what this device takes', () => {
     await screen.findAll('input')[0].trigger('change')
     await flushPromises()
 
-    expect(AbeleConfig.getInstance().sync.selective.maxFileBytes).toBe(50 * 1024 * 1024)
+    expect(held().maxFileBytes).toBe(50 * 1024 * 1024)
   })
 
   /** No cap is a different answer from a cap of zero, and an empty field means the first. */
   it('reads an empty cap as no cap at all, once it is committed', async () => {
-    AbeleConfig.getInstance().sync.selective.maxFileBytes = 1024
+    change({ selective: { ...held(), maxFileBytes: 1024 } })
     const screen = open(SelectiveSync)
 
     await screen.findAll('input')[0].setValue('')
     await screen.findAll('input')[0].trigger('change')
     await flushPromises()
 
-    expect(AbeleConfig.getInstance().sync.selective.maxFileBytes).toBeNull()
+    expect(held().maxFileBytes).toBeNull()
   })
 
   /**
@@ -532,7 +580,7 @@ describe('what this device takes', () => {
    * rescan that starts downloading every video. Nothing is saved until the field is left.
    */
   it('saves nothing while the cap is being typed, an empty field included', async () => {
-    AbeleConfig.getInstance().sync.selective.maxFileBytes = 50 * 1024 * 1024
+    change({ selective: { ...held(), maxFileBytes: 50 * 1024 * 1024 } })
     const screen = open(SelectiveSync)
     const field = screen.findAll('input')[0]
 
@@ -540,19 +588,19 @@ describe('what this device takes', () => {
     await type(field, '1')
     await type(field, '10')
 
-    expect(AbeleConfig.getInstance().sync.selective.maxFileBytes).toBe(50 * 1024 * 1024)
-    expect(service.onSettingsSaved).not.toHaveBeenCalled()
+    expect(held().maxFileBytes).toBe(50 * 1024 * 1024)
+    expect(service.updateConnection).not.toHaveBeenCalled()
 
     await type(field, '100')
     await field.trigger('change')
     await flushPromises()
 
-    expect(AbeleConfig.getInstance().sync.selective.maxFileBytes).toBe(100 * 1024 * 1024)
-    expect(service.onSettingsSaved).toHaveBeenCalledTimes(1)
+    expect(held().maxFileBytes).toBe(100 * 1024 * 1024)
+    expect(service.updateConnection).toHaveBeenCalledTimes(1)
   })
 
   it('puts back what was saved when the field is left holding no number', async () => {
-    AbeleConfig.getInstance().sync.selective.maxFileBytes = 50 * 1024 * 1024
+    change({ selective: { ...held(), maxFileBytes: 50 * 1024 * 1024 } })
     const screen = open(SelectiveSync)
     const field = screen.findAll('input')[0]
 
@@ -560,9 +608,9 @@ describe('what this device takes', () => {
     await field.trigger('change')
     await flushPromises()
 
-    expect(AbeleConfig.getInstance().sync.selective.maxFileBytes).toBe(50 * 1024 * 1024)
+    expect(held().maxFileBytes).toBe(50 * 1024 * 1024)
     expect((field.element as HTMLInputElement).value).toBe('50')
-    expect(service.onSettingsSaved).not.toHaveBeenCalled()
+    expect(service.updateConnection).not.toHaveBeenCalled()
   })
 
   /**
@@ -571,15 +619,15 @@ describe('what this device takes', () => {
    * is: saved on the way out, it would be no cap at all and a rescan nobody asked for.
    */
   it('keeps a cap typed into a field the settings closed on', async () => {
-    AbeleConfig.getInstance().sync.selective.maxFileBytes = 50 * 1024 * 1024
+    change({ selective: { ...held(), maxFileBytes: 50 * 1024 * 1024 } })
     const screen = open(SelectiveSync)
 
     await type(screen.findAll('input')[0], '20')
     screen.unmount()
     await flushPromises()
 
-    expect(AbeleConfig.getInstance().sync.selective.maxFileBytes).toBe(20 * 1024 * 1024)
-    expect(service.onSettingsSaved).toHaveBeenCalledTimes(1)
+    expect(held().maxFileBytes).toBe(20 * 1024 * 1024)
+    expect(service.updateConnection).toHaveBeenCalledTimes(1)
   })
 
   it.each([
@@ -588,15 +636,15 @@ describe('what this device takes', () => {
     ['zero', '0'],
     ['unchanged', '50'],
   ])('saves nothing on the way out when the field is %s', async (_what, text) => {
-    AbeleConfig.getInstance().sync.selective.maxFileBytes = 50 * 1024 * 1024
+    change({ selective: { ...held(), maxFileBytes: 50 * 1024 * 1024 } })
     const screen = open(SelectiveSync)
 
     await type(screen.findAll('input')[0], text)
     screen.unmount()
     await flushPromises()
 
-    expect(AbeleConfig.getInstance().sync.selective.maxFileBytes).toBe(50 * 1024 * 1024)
-    expect(service.onSettingsSaved).not.toHaveBeenCalled()
+    expect(held().maxFileBytes).toBe(50 * 1024 * 1024)
+    expect(service.updateConnection).not.toHaveBeenCalled()
   })
 })
 

@@ -15,6 +15,16 @@ import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { DEFAULT_GITHUB_SETTINGS, GITHUB_TOKEN_KEY_ID } from '@/github/settings'
 import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
+import { CONNECTION_KEY, emptyConnection } from '@/sync/connection'
+
+/** Local storage holding a connection whose token is filed under this id. */
+const connectedUnder = (deviceTokenId: string, local = new Map<string, unknown>()) => {
+  local.set(CONNECTION_KEY, { ...emptyConnection(), deviceTokenId, migrated: true })
+  return {
+    loadLocalStorage: (key: string) => local.get(key) ?? null,
+    saveLocalStorage: (key: string, value: unknown) => void local.set(key, value),
+  }
+}
 
 beforeEach(() => {
   const config = AbeleConfig.getInstance()
@@ -68,27 +78,26 @@ describe('the plugin’s secrets', () => {
     )
   })
 
-  it('leave out the sync device token, which belongs to this device alone', () => {
-    const config = AbeleConfig.getInstance()
-    config.sync = { ...config.sync, deviceTokenId: 'abele-sync-device-1' }
+  it('leave out the sync device token, which the settings no longer name at all', () => {
+    const ids = pluginSecretIds()
 
-    expect(pluginSecretIds()).not.toContain('abele-sync-device-1')
+    expect(ids.some((id) => id.startsWith('abele-sync-device-'))).toBe(false)
   })
 
+  /** The connection lives in local storage, so that is where the host reads the token's name. */
   it('name the sync device token to the store as this device’s own, and nothing else', () => {
-    const config = AbeleConfig.getInstance()
-    config.sync = { ...config.sync, deviceTokenId: 'abele-sync-device-1' }
-
-    expect(deviceOnlySecretIds()).toEqual(['abele-sync-device-1'])
-    expect(pluginStoreHost(fakePlugin({})).deviceOnly?.()).toEqual(['abele-sync-device-1'])
+    expect(deviceOnlySecretIds(connectedUnder('abele-sync-device-1'))).toEqual([
+      'abele-sync-device-1',
+    ])
+    expect(deviceOnlySecretIds()).toEqual([])
+    expect(
+      pluginStoreHost(fakePlugin({}, connectedUnder('abele-sync-device-1'))).deviceOnly?.()
+    ).toEqual(['abele-sync-device-1'])
   })
 
   it('names no id to the store as this device’s own that is not a sync device token', () => {
-    const config = AbeleConfig.getInstance()
-    config.sync = { ...config.sync, deviceTokenId: 'abele-brave-search' }
-
     // Named as device-only, the store would drop the search key and no device would get it.
-    expect(deviceOnlySecretIds()).toEqual([])
+    expect(deviceOnlySecretIds(connectedUnder('abele-brave-search'))).toEqual([])
     expect(pluginSecretIds()).toContain('abele-brave-search')
   })
 })
@@ -142,10 +151,11 @@ describe('Syncthing’s conflict copies', () => {
   })
 })
 
-function fakePlugin(files: Record<string, string>): Plugin {
+function fakePlugin(files: Record<string, string>, local = connectedUnder('', new Map())): Plugin {
   return {
     manifest: { dir: '.obsidian/plugins/abele' },
     app: {
+      ...local,
       secretStorage: { getSecret: () => null, setSecret: () => {} },
       vault: {
         configDir: '.obsidian',
