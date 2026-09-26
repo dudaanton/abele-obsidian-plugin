@@ -19,7 +19,6 @@ import { savedKeysWithIds } from '@/ai/savedKeyIds'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
 import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
-import { isDeviceSecretId } from '@/secrets/deviceSecret'
 import {
   FILE_SECTION_LABELS,
   isFileSection,
@@ -388,34 +387,14 @@ export const SECTIONS: Section[] = [
   // Whole: the folders it skips and every rule's setup, script rules included by their names.
   rootBlock('linter', 'Linter', ['linter']),
   /**
-   * Sync, whole and with the device token behind it.
+   * Sync, the half every device on the vault shares.
    *
-   * The token is a credential, so the block is `sensitive` and the transfer is locked behind a
-   * one-time code either way. It travels on purpose: the point of sending it is that the other
-   * device is already enrolled when it arrives, rather than asking for the account password
-   * again on a phone. The two devices then share one identity in the vault's device list until
-   * either of them connects again — `chooseVault` enrols afresh and mints a token of its own,
-   * which is what separates them.
-   *
-   * That is also why the block is `deviceOnly`: a transfer hands this device's identity to one
-   * other device, on purpose and once, while the synced secret store would hand it to every
-   * device the settings reach, for good.
-   *
-   * The ledger id does not ride along: it names a database in the app's IndexedDB, which every
-   * local vault on a machine shares, and one carried into another vault on the same machine
-   * would open this vault's ledger there. It is kept in local storage, out of the block, and the
-   * receiving vault mints its own — its first run is a scan of the manifest, the same thing a
-   * fresh enrolment does.
+   * No connection and no device token: where a device syncs, the device it enrolled as and what
+   * of the vault it takes are that device's own, kept in its local storage, and a block that
+   * carried them made two devices one identity on the server. Nor the ledger id, which names a
+   * database in the app's IndexedDB that every local vault on a machine shares.
    */
-  rootBlock('sync', 'Sync', ['sync'], {
-    // Only an id the sync service minted: one pointed at another key would send that key.
-    secretsOf: (settings) => {
-      const id = settings.sync?.deviceTokenId
-      return isDeviceSecretId(id) ? [id] : []
-    },
-    sensitive: true,
-    deviceOnly: true,
-  }),
+  rootBlock('sync', 'Sync', ['sync']),
   rootBlock('other', 'Other', [
     'refreshDelay',
     'logsNotesTypes',

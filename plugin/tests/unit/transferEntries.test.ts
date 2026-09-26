@@ -55,14 +55,7 @@ const settings = (over: Partial<AbeleSettings> = {}): AbeleSettings =>
     } as unknown as AiSettings,
     links: [{ id: 'l1', name: 'Open', type: 'script', scriptName: 'open', commandId: '' }],
     fireflyToken: 'firefly-secret-token',
-    sync: {
-      ...defaultSyncSettings(),
-      serverUrl: 'https://sync.example.com',
-      vaultId: 'v1',
-      deviceId: 'd1',
-      deviceName: 'Desktop',
-      deviceTokenId: 'abele-sync-device-1',
-    },
+    sync: { keySignature: { property: 'secret', value: 'yes' } },
     ...over,
   }) as AbeleSettings
 
@@ -170,61 +163,33 @@ describe('what the sending side offers', () => {
 })
 
 /**
- * Sync, which is the one block whose whole point is to arrive already enrolled.
+ * Sync, the half every device on the vault shares.
  *
- * It carries the device token — deliberately, so a phone does not have to be handed the
- * account password to join a vault — which is what makes the block sensitive whether or not
- * keys were asked for. Until the receiving device connects again, both devices answer to the
- * one entry in the vault's device list.
+ * A device's connection — where it syncs, the device it enrolled as, the token behind it, what
+ * it takes — is its own and lives in its local storage. A block that carried it made two
+ * devices one identity on the server, so the block carries none of it any more.
  */
 describe('the sync settings', () => {
-  it('travels whole, so what a device syncs arrives with where it syncs', () => {
-    const entries = collectEntries(settings())
+  it('carries the key signature and nothing that names a device', () => {
+    const entry = find(collectEntries(settings()), 'sync', 'sync')
 
-    expect(find(entries, 'sync', 'sync')?.data).toMatchObject({
-      sync: expect.objectContaining({ serverUrl: 'https://sync.example.com', vaultId: 'v1' }),
-    })
+    expect(entry?.data).toEqual({ sync: { keySignature: { property: 'secret', value: 'yes' } } })
+    expect(entry?.secretIds).toEqual([])
+    expect(entry?.sensitive).toBeFalsy()
   })
 
-  it('takes the device token, which is the whole point of sending it', () => {
-    const entries = collectEntries(settings())
+  it('travels in the open', () => {
+    const chosen = [find(collectEntries(settings()), 'sync', 'sync')!]
 
-    expect(find(entries, 'sync', 'sync')?.secretIds).toEqual(['abele-sync-device-1'])
+    expect(needsCode(buildPayload(chosen, () => 'absd_token'))).toBe(false)
   })
 
-  it('cannot travel in the open, keys asked for or not', () => {
-    const entries = collectEntries(settings())
-    const chosen = [find(entries, 'sync', 'sync')!]
-
-    expect(find(entries, 'sync', 'sync')?.sensitive).toBe(true)
-    expect(needsCode(buildPayload(chosen, null))).toBe(true)
-  })
-
-  /**
-   * The id is read out of the settings, and an agent or a synced file can point it anywhere.
-   * Only a sync device token's id is asked of the keychain, so the block can never send, or
-   * write on arrival, a provider's key under the sync block's name.
-   */
-  it('takes no key whose id is not a sync device token', () => {
-    const sync = { ...defaultSyncSettings(), deviceTokenId: 'abele-brave-search' }
-    const entries = collectEntries(settings({ sync }))
-
-    expect(find(entries, 'sync', 'sync')?.secretIds).toEqual([])
-  })
-
-  it('asks the keychain for nothing when no device was ever enrolled', () => {
-    const entries = collectEntries(settings({ sync: defaultSyncSettings() }))
-
-    expect(find(entries, 'sync', 'sync')?.secretIds).toEqual([])
-  })
-
-  it('writes where to sync into the vault it lands in', () => {
+  it('writes the key signature into the vault it lands in', () => {
     const arriving = collectEntries(settings()).filter((e) => e.section === 'sync')
 
     const next = applyEntries(arriving, settings({ sync: defaultSyncSettings() }))
 
-    expect(next.sync?.serverUrl).toBe('https://sync.example.com')
-    expect(next.sync?.deviceTokenId).toBe('abele-sync-device-1')
+    expect(next.sync?.keySignature).toEqual({ property: 'secret', value: 'yes' })
   })
 
   it('leaves the rest of the settings where they were', () => {
@@ -1088,12 +1053,33 @@ describe('the synced secret store', () => {
 
 /**
  * The keys that arrived go where each one belongs. A provider's key is the user's, and with
- * the synced store open it enters the store like any key set by hand. The sync device token
- * travels only because the user asked for this transfer: it lands in this device's keychain
- * and never in the store, or every other device would be handed it too.
+ * the synced store open it enters the store like any key set by hand.
+ *
+ * A transfer made by an older build carries the sender's connection in the sync block, with
+ * its device token. The connection is dropped on arrival — it is the sender's identity, and
+ * the settings no longer hold one — so the token has nothing to go with and is put nowhere:
+ * not the keychain, where it would sit unused, and never the store, which would hand it to
+ * every other device.
  */
 describe('the keys that arrived', () => {
   afterEach(() => setSecrets(null))
+
+  /** The sync block as an older build sent it: the sender's connection and its token's name. */
+  const olderSyncEntry = (secretIds = ['abele-sync-device-1']): TransferEntry => ({
+    section: 'sync',
+    id: 'sync',
+    label: 'Sync',
+    data: {
+      sync: {
+        serverUrl: 'https://sync.example.com',
+        vaultId: 'v1',
+        deviceTokenId: secretIds[0],
+        keySignature: null,
+      },
+    },
+    secretIds,
+    sensitive: true,
+  })
 
   async function unlockedStore() {
     const keychain = new Map<string, string>()
@@ -1118,11 +1104,12 @@ describe('the keys that arrived', () => {
     return { store, keychain }
   }
 
-  it('puts the sync device token in the keychain alone, and every other key in the store', async () => {
+  it('puts an older transfer’s sync device token nowhere, and every other key in the store', async () => {
     const { store, keychain } = await unlockedStore()
-    const arriving = collectEntries(settings()).filter(
-      (e) => e.section === 'sync' || e.section === 'ai-providers'
-    )
+    const arriving = [
+      olderSyncEntry(),
+      ...collectEntries(settings()).filter((e) => e.section === 'ai-providers'),
+    ]
 
     const refused = storeReceivedKeys(arriving, {
       'abele-sync-device-1': 'absd_token',
@@ -1131,22 +1118,35 @@ describe('the keys that arrived', () => {
     await store.flush()
 
     expect(refused).toBe(0)
-    expect(keychain.get('abele-sync-device-1')).toBe('absd_token')
+    expect(keychain.has('abele-sync-device-1')).toBe(false)
     expect(store.contents()!.map((c) => c.id)).toEqual(['key-p1'])
   })
 
-  it('writes no key under the sync block that is not a sync device token', async () => {
-    const { keychain } = await unlockedStore()
+  it('writes no key at all under the sync block, whatever its name', async () => {
+    const { store, keychain } = await unlockedStore()
     keychain.set('abele-brave-search', 'BSA-mine')
-    const entry = {
-      ...collectEntries(settings()).find((e) => e.section === 'sync')!,
-      secretIds: ['abele-brave-search'],
-    }
 
-    const refused = storeReceivedKeys([entry], { 'abele-brave-search': 'absd_foreign' })
+    storeReceivedKeys([olderSyncEntry(['abele-brave-search'])], {
+      'abele-brave-search': 'absd_foreign',
+    })
+    await store.flush()
 
-    expect(refused).toBe(1)
     expect(keychain.get('abele-brave-search')).toBe('BSA-mine')
+    expect(store.contents()!.map((c) => c.id)).toEqual([])
+  })
+
+  /** A section of no device's own cannot slip a device token into the store either. */
+  it('never files a sync device token in the store, under any section', async () => {
+    const { store, keychain } = await unlockedStore()
+    const [entry] = collectEntries(settings()).filter((e) => e.section === 'ai-providers')
+
+    storeReceivedKeys([{ ...entry!, secretIds: ['abele-sync-device-9'] }], {
+      'abele-sync-device-9': 'absd_token',
+    })
+    await store.flush()
+
+    expect(store.contents()!.map((c) => c.id)).toEqual([])
+    expect(keychain.has('abele-sync-device-9')).toBe(false)
   })
 
   it('keeps the sync device token out of a store locked here, once it is unlocked', async () => {
@@ -1175,16 +1175,17 @@ describe('the keys that arrived', () => {
     await store.load()
     expect(store.status.value).toBe('locked')
     setSecrets(store)
-    const arriving = collectEntries(settings()).filter(
-      (e) => e.section === 'sync' || e.section === 'ai-providers'
-    )
+    const arriving = [
+      olderSyncEntry(),
+      ...collectEntries(settings()).filter((e) => e.section === 'ai-providers'),
+    ]
 
     storeReceivedKeys(arriving, { 'abele-sync-device-1': 'absd_token', 'key-p1': 'sk-provider' })
     expect(await store.unlock('passphrase')).toBe(true)
     await store.flush()
 
     expect(store.contents()!.map((c) => c.id)).toEqual(['key-p1'])
-    expect(keychain.get('abele-sync-device-1')).toBe('absd_token')
+    expect(keychain.has('abele-sync-device-1')).toBe(false)
   })
 
   it('leaves alone a key that did not travel, and counts one the keychain refuses', () => {
