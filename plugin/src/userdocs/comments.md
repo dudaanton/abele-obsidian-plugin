@@ -21,7 +21,9 @@ A comment can be a set of margin notes that no agent ever answered.
 
 ## Comments inside a chat
 
-Select words in any message of a chat, yours or the agent's, and choose **Ask here**. A comment
+Select words in any message of a chat, yours or the agent's, and choose **Ask here** — from the
+right-click menu on a computer, or on a phone from the small bar that comes up under the words
+once you lift your finger. A comment
 opens on that message, on the chat's own agent, and knows what was said before it. A message in a
 comment can be commented on in turn, to any depth. The trail at the top of a comment leads back
 up.
