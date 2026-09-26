@@ -47,6 +47,8 @@ const script = `(async () => {
 
     const log = new t.rewind.ChatRewind(app, { key: () => 'e2e', turn: () => 'e2e-turn' }, t.rewind.memoryStore())
     const end = log.begin('mv')
+    // Obsidian moves only into a folder that is there, so the agent makes it first.
+    await app.vault.createFolder(dir + '/Moved')
     await app.fileManager.renameFile(get(dir + '/Alpha.md'), dir + '/Moved/Alpha two.md')
     await app.fileManager.processFrontMatter(get(dir + '/Other.md'), (fm) => { fm.status = 'done' })
     await app.vault.createBinary(dir + '/pic.bin', new Uint8Array([1, 2, 3]).buffer)
