@@ -354,13 +354,20 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
       if (panel.getBoundingClientRect().height <= room[1] + 1) box.classList.add(FITTED)
       else {
         box.classList.add(COVERED)
-        const under = Math.max(0, panel.getBoundingClientRect().bottom - bottom)
-        scroller = scrollerOf(focused(), panel)
-        // Held at the height it has, so the room added at its end scrolls rather than grows it.
-        const held = scroller.getBoundingClientRect().height
-        scroller.style.setProperty('--abele-keyboard-cover', `${Math.ceil(under)}px`)
-        scroller.style.setProperty('--abele-keyboard-keep', `${Math.floor(held)}px`)
-        scroller.classList.add(SCROLLER)
+        const target = scrollerOf(focused(), panel)
+        const rect = target.getBoundingClientRect()
+        // What the keyboard covers of the box that scrolls, not of the dialog: on an iPhone
+        // Obsidian's own stylesheet already stops a dialog's content above the keyboard, and
+        // room added for it again squeezed the content into what was left — the icon picker's
+        // grid 8 px tall, the chat history's list gone.
+        const under = Math.max(0, rect.bottom - bottom)
+        if (under >= 1) {
+          scroller = target
+          // Held at the height it has, so the room added at its end scrolls rather than grows it.
+          scroller.style.setProperty('--abele-keyboard-cover', `${Math.ceil(under)}px`)
+          scroller.style.setProperty('--abele-keyboard-keep', `${Math.floor(rect.height)}px`)
+          scroller.classList.add(SCROLLER)
+        }
       }
     }
 

@@ -195,17 +195,25 @@ describe('a dialog under the iPhone keyboard', () => {
 describe('a dialog taller than the room the keyboard leaves', () => {
   /** A dialog 700 high standing on the bottom of the screen, as a tall sheet does. */
   const DIALOG = 700
+  let listEndsAboveKeyboard = false
 
   beforeEach(() => {
+    listEndsAboveKeyboard = false
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
       this: HTMLElement
     ) {
       const container = this.classList.contains('modal-container')
       const dialog = this.classList.contains('modal')
-      const height = container ? page : dialog ? DIALOG : 0
+      const list = this.classList.contains('list')
+      // The list fills the dialog down to its foot — or, where the app has already stopped
+      // the dialog's content above the keyboard, down to the keyboard's top.
+      const listBottom = listEndsAboveKeyboard ? SCREEN - KEYBOARD - 12 : DIALOG
+      const height = container ? page : dialog ? DIALOG : list ? listBottom - 60 : 0
       // At the room's top once it is kept there, on the bottom of the screen before.
-      const covered = this.parentElement?.classList.contains('abele-keyboard-cover')
-      const top = dialog ? (covered ? 0 : SCREEN - DIALOG) : 0
+      const covered = document
+        .querySelector('.modal-container')
+        ?.classList.contains('abele-keyboard-cover')
+      const top = dialog ? (covered ? 0 : SCREEN - DIALOG) : list ? 60 : 0
       return {
         top,
         bottom: top + height,
@@ -248,5 +256,30 @@ describe('a dialog taller than the room the keyboard leaves', () => {
     await settle()
     expect(container()?.classList.contains('abele-keyboard-cover')).toBe(false)
     expect(list.classList.contains('abele-keyboard-scroller')).toBe(false)
+  })
+
+  /**
+   * On a real iPhone Obsidian's own stylesheet already stops a dialog's content above the
+   * keyboard. Room for the keyboard added again inside that squeezed the content into what was
+   * left: the icon picker's grid came out 8 px tall, the chat history's list empty (2026-09-27,
+   * first run of the phone layout checks on the phone itself).
+   */
+  it('gives no room again to a box the app has already stopped above the keyboard', async () => {
+    listEndsAboveKeyboard = true
+    const Tall = defineComponent({
+      setup: () => () =>
+        h(ObsidianModal, { title: 'Tall', size: 'tall' }, () =>
+          h('div', { class: 'list', style: 'overflow-y: auto' }, [h('input', { class: 'search' })])
+        ),
+    })
+    wrapper = mount(Tall, { attachTo: document.body })
+    await nextTick()
+    document.querySelector<HTMLInputElement>('input.search')!.focus()
+    setKeyboardVar(KEYBOARD)
+    await settle()
+
+    const list = document.querySelector<HTMLElement>('.list')!
+    expect(list.classList.contains('abele-keyboard-scroller')).toBe(false)
+    expect(list.style.getPropertyValue('--abele-keyboard-cover')).toBe('')
   })
 })
