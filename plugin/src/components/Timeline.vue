@@ -39,7 +39,7 @@
       @keydown.escape.stop.prevent="search.close"
     />
     <div ref="itemsEl" class="abele-timeline__blocks">
-      <div v-for="[date, dateTasks] in visible" :key="date" class="abele-timeline__date-block">
+      <div v-for="[date, dateItems] in visible" :key="date" class="abele-timeline__date-block">
         <div
           class="abele-timeline__date-indicator"
           :class="{ 'abele-timeline__date-indicator_overdue': dayjs(date).isBefore(now, 'day') }"
@@ -55,13 +55,15 @@
         <div class="abele-timeline__block-content">
           <ObsidianMarkdown class="timeline__date" :text="getDateWikilink(date)" />
           <div class="abele-timeline__tasks">
-            <TaskView
-              v-for="task in dateTasks"
-              :key="task.id"
-              class="abele-timeline__task"
-              :task="task"
-              at-timeline
-            />
+            <template v-for="item in dateItems" :key="item.key">
+              <CalendarEventView
+                v-if="item.shown"
+                :event="item.shown.event"
+                :feed="item.shown.feed"
+                :day="date"
+              />
+              <TaskView v-else class="abele-timeline__task" :task="item.task!" at-timeline />
+            </template>
           </div>
         </div>
       </div>
@@ -76,6 +78,9 @@
 <script setup lang="ts">
 import { Task } from '@/entities/Task'
 import TaskView from './Task.vue'
+import CalendarEventView from './CalendarEvent.vue'
+import type { ShownEvent } from '@/calendars/CalendarService'
+import { matchesTerms } from '@/helpers/listSearch'
 import { computed, ref, watch } from 'vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
@@ -99,6 +104,11 @@ const props = defineProps<{
   showAddButton?: boolean
   tasks: Task[]
   title?: string
+  /**
+   * Events of the external calendars, by day, to show among the tasks. Read only; left out
+   * while the list is narrowed to a label, since an event has none.
+   */
+  events?: Map<string, ShownEvent[]>
 }>()
 
 const { now } = useDate()
@@ -124,21 +134,45 @@ const search = useListSearch(() => filtered.value, taskSearch)
 const itemsEl = ref<HTMLElement | null>(null)
 useSearchHighlight(itemsEl, search.terms)
 
+/** One row of a day: a task, or an event of an external calendar. */
+interface DayItem {
+  key: string
+  /** Milliseconds, for the order within the day. */
+  at: number
+  task?: Task
+  shown?: ShownEvent
+}
+
 const dates = computed(() => {
-  const datesSet = new Map<string, Task[]>()
+  const datesSet = new Map<string, DayItem[]>()
+  const itemsOf = (date: string) => {
+    let items = datesSet.get(date)
+    if (!items) datesSet.set(date, (items = []))
+    return items
+  }
 
   for (const task of search.results.value) {
     for (const date of task.dates) {
-      if (!datesSet.has(date)) {
-        datesSet.set(date, [])
-      }
-      datesSet.get(date)?.push(task)
+      // A task with no time sorts to the end of its day, as it always has.
+      itemsOf(date).push({ key: `task:${task.id}`, at: task.getSortTimestamp() * 1000, task })
     }
   }
 
-  for (const [, dayTasks] of datesSet) {
-    dayTasks.sort((a, b) => a.getSortTimestamp() - b.getSortTimestamp())
+  if (props.events && labelSelection.value.kind === 'all') {
+    const words = search.terms.value
+    for (const [date, shown] of props.events) {
+      for (const item of shown) {
+        const { event } = item
+        if (words.length && !matchesTerms(`${event.title} ${event.location}`.toLowerCase(), words))
+          continue
+        // A day-long event heads its day; a timed one that began earlier is there from its start.
+        const at = event.allDay ? 0 : Math.max(event.start, dayjs(date).valueOf())
+        itemsOf(date).push({ key: `event:${event.id}`, at, shown: item })
+      }
+    }
   }
+
+  for (const [, items] of datesSet) items.sort((a, b) => a.at - b.at)
 
   return Array.from(datesSet.entries()).sort((a, b) => (a[0] < b[0] ? -1 : 1))
 })

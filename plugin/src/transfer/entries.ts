@@ -255,6 +255,11 @@ export const SECTIONS: Section[] = [
     // The token itself is in the keychain; the setting holds only its id.
     secretsOf: (settings) => (settings.github?.keyId ? [settings.github.keyId] : []),
   }),
+  rootBlock('calendars', 'Calendars', ['calendars'], {
+    // Each calendar's link or password is in the keychain; the settings hold only where.
+    secretsOf: (settings) =>
+      (settings.calendars?.feeds ?? []).map((feed) => feed.keyId).filter(Boolean),
+  }),
   rootBlock('reader', 'Book reader', ['reader']),
   rootBlock('other', 'Other', [
     'refreshDelay',

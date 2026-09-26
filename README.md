@@ -52,6 +52,8 @@ Tasks being notes means a task can carry a long description and everything attac
 
 Besides daily notes I keep monthly and yearly ones, plus a separate daily health journal for data exported from Apple Health, which I don't want mixed into my main journal. Journals group the notes belonging to one journal, create them from a configurable path, switch between several journals for the same date, open from a calendar click, and mark which dates have notes and open tasks.
 
+Events from other calendars show there too, beside the tasks and read only: Google, iCloud or Outlook by their secret calendar link, or any CalDAV account such as iCloud, Fastmail or Nextcloud. Each calendar has its own colour, repeating events and time zones are handled the way the calendar wrote them, and the last copy is kept on the device so the list works offline. A click on an event makes a meeting note tied to that day ([how](docs/Calendars.md)).
+
 <img src="assets/screens/calendar.jpg" alt="The month calendar, marked with notes and open tasks" width="420">
 
 ### Financial Tracker
@@ -138,8 +140,9 @@ Nothing leaves the device unless a feature you set up sends it:
 - **MCP servers** you connect are sent the tool calls an agent makes to them — the arguments, which may hold text from your notes — along with the token and headers you gave that server. Only servers reached over HTTP are supported; the plugin never starts a program on your computer.
 - **GitHub** tabs, when switched on, read from GitHub or your GitHub Enterprise server with your token.
 - **Voice input** sends the recording to the transcription model you chose.
+- **Calendars** you add are read from their secret links or CalDAV servers, with the username and password you gave, when Obsidian starts and every half hour by default. Nothing is sent to them.
 
-Keys and tokens are kept in Obsidian's keychain, not in the settings file.
+Keys, tokens, calendar links and passwords are kept in Obsidian's keychain, not in the settings file.
 
 ## Roadmap
 
@@ -164,6 +167,7 @@ plugin live in [`docs/`](docs):
 - [Agent reference](docs/Agent%20reference.md) — the docs the agent itself reads, and the rules for keeping them true.
 - [Script views](docs/Script%20views.md) — the tab a script can open and fill with an interface.
 - [GitHub](docs/GitHub.md) — the links that open in tabs, and the token they need.
+- [Calendars](docs/Calendars.md) — other calendars beside the tasks, by link or CalDAV.
 - [Mermaid](docs/Mermaid.md) — the diagram viewer that replaces Obsidian's own.
 - [Templates](docs/Templates.md) and [URL Protocol](docs/URL%20Protocol.md).
 

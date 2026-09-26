@@ -57,6 +57,7 @@ import OtherSettings from './OtherSettings.vue'
 import TransferSettings from './TransferSettings.vue'
 import GithubSettings from './GithubSettings.vue'
 import ReaderSettings from './ReaderSettings.vue'
+import CalendarsSettings from './CalendarsSettings.vue'
 
 interface SettingsTab {
   id: string
@@ -68,6 +69,7 @@ const tabs: SettingsTab[] = [
   { id: 'tasks', label: 'Tasks', component: markRaw(TasksSettings) },
   { id: 'logs', label: 'Logs', component: markRaw(LogsSettings) },
   { id: 'journals', label: 'Journals', component: markRaw(JournalsSettings) },
+  { id: 'calendars', label: 'Calendars', component: markRaw(CalendarsSettings) },
   { id: 'finance', label: 'Finance', component: markRaw(FinanceSettings) },
   { id: 'time-tracking', label: 'Time Tracking', component: markRaw(TimeTrackingSettings) },
   { id: 'ai', label: 'AI Agent', component: markRaw(AiSettings) },

@@ -1,7 +1,12 @@
 <template>
   <div v-if="footer.loaded" class="abele-footer-view">
     <TodoList v-if="todoTasks.length" :tasks="todoTasks" />
-    <Timeline v-if="timelineTasks.length" :tasks="timelineTasks" title="Calendar tasks" />
+    <Timeline
+      v-if="timelineTasks.length || dayEvents.size"
+      :tasks="timelineTasks"
+      :events="dayEvents"
+      title="Calendar tasks"
+    />
     <AccountBalanceChart
       v-if="footer.type === 'account'"
       :account-path="footer.filePath"
@@ -33,6 +38,8 @@ import NotesList from './NotesList.vue'
 import LogsList from './LogsList.vue'
 import ChatsList from './ChatsList.vue'
 import { useChatLinks } from '@/composables/useChatLinks'
+import { useCalendarDays } from '@/composables/useCalendarDays'
+import { DATE_FORMAT } from '@/constants/dates'
 
 const props = defineProps<{
   footer: Footer
@@ -46,6 +53,14 @@ const tasks = computed(() => {
 
 const todoTasks = computed(() => tasks.value.filter((t) => !t.taskNotFound && !t.dates.length))
 const timelineTasks = computed(() => tasks.value.filter((t) => !t.taskNotFound && t.dates.length))
+
+/** A daily note shows that day's events from the external calendars beside its tasks. */
+const noteDay = computed(() => {
+  const relations = props.footer.noteRelations
+  if (relations.journal?.recurrence !== 'daily' || !relations.journalDate) return null
+  return relations.journalDate.format(DATE_FORMAT)
+})
+const dayEvents = useCalendarDays((day) => day === noteDay.value)
 
 const chartPeriodStart = ref<dayjs.Dayjs | null>(null)
 const chartPeriodEnd = ref<dayjs.Dayjs | null>(null)

@@ -8,7 +8,7 @@
       @date-selected="selectDate"
       @date-right-clicked="onDateRightClick"
     />
-    <Timeline :tasks="timelineTasks" show-add-button />
+    <Timeline :tasks="timelineTasks" :events="upcomingEvents" show-add-button />
   </div>
 </template>
 
@@ -22,6 +22,8 @@ import { Menu, Notice } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { openTaskForm } from '@/commands/taskForm'
 import dayjs from 'dayjs'
+import { useCalendarDays } from '@/composables/useCalendarDays'
+import { useDate } from '@/composables/useDate'
 import { DATE_FORMAT } from '@/constants/dates'
 
 const { selectedJournal } = GlobalStore.getInstance()
@@ -70,6 +72,10 @@ const onDateRightClick = (date: dayjs.Dayjs, event: MouseEvent) => {
   })
   menu.showAtMouseEvent(event)
 }
+
+const { now } = useDate()
+// Past events are history, not something to do: the list of what is coming starts today.
+const upcomingEvents = useCalendarDays((day) => day >= now.value.format(DATE_FORMAT))
 
 // const todoTasks = computed(() => tasks.value.filter((t) => !t.taskNotFound && !t.dates.length))
 const timelineTasks = computed(() => tasks.value.filter((t) => !t.taskNotFound && t.dates.length))

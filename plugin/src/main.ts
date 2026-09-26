@@ -102,6 +102,7 @@ import { registerChartCodeblock } from './editor/ChartCodeblock'
 import { registerMapCodeblock } from './editor/MapCodeblock'
 import { registerMessageCardBlock } from './ai/messageCards'
 import { SnippetService } from './services/SnippetService'
+import { startCalendars } from './calendars/start'
 import { dictate } from '@/audio/voiceModal'
 import { registerLineLinks } from './lineLinks/register'
 import { registerGithub } from '@/github/register'
@@ -192,6 +193,9 @@ export default class AbelePlugin extends Plugin {
     })
 
     GlobalStore.getInstance().init(this.app)
+
+    // External calendars: kept events at layout-ready, then read over the network on a timer.
+    startCalendars(this)
 
     // Development builds expose plugin internals to the e2e suite, which drives the app
     // through `obsidian eval`. Vite inlines NODE_ENV, so in a production build this folds to

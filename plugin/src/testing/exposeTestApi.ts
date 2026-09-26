@@ -28,6 +28,7 @@ import { createGithubTools } from '@/ai/tools/github'
 import { createAgentTools } from '@/ai/tools'
 import { McpService } from '@/ai/mcp/McpService'
 import { githubUsers } from '@/github/users'
+import { calendars } from '@/calendars/CalendarService'
 import { createBookTools } from '@/ai/tools/BookTools'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 import { openIconPicker } from './openIconPicker'
@@ -127,6 +128,7 @@ interface AbeleTestApi {
   /** The connections to MCP servers, to fetch a server's tools the way the settings do. */
   McpService: typeof McpService
   githubUsers: typeof githubUsers
+  calendars: typeof calendars
   createBookTools: typeof createBookTools
   /** The book reader: its open tabs, its cleaning, and the sandbox override for the e2e tier. */
   reader: {
@@ -543,6 +545,7 @@ export function exposeTestApi(plugin: Plugin): void {
     createAgentTools,
     McpService,
     githubUsers,
+    calendars,
     createBookTools,
     reader: {
       viewType: BOOK_VIEW_TYPE,

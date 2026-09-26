@@ -284,6 +284,16 @@ again after a week. Nothing in a note depends on it — links and snippets name 
 so the file can be deleted at any time; **Settings → GitHub → Kept names and pictures → Clear**
 does the same.
 
+## Calendar cache
+
+The events last read from each external calendar (**Settings → Calendars**) are kept in
+`calendars-cache.json` in the plugin's own folder, on this device only: per calendar, when it was
+read, the version tag its server gave, and every occurrence from a month back to half a year
+ahead — title, start and end, place, description, link and the people invited. It is what the
+lists show before the network answers and when it does not. Nothing in a note depends on it, so
+it can be deleted at any time; the next read writes it again. The links and passwords are not in
+it — they are keys, in the keychain.
+
 ## GitHub snippets
 
 "Insert with code" on lines selected in a GitHub tab, and "Insert as quote" on a comment, write a

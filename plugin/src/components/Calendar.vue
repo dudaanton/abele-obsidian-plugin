@@ -53,6 +53,15 @@
               <circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" stroke-width="1.5" />
             </svg>
             <svg
+              v-if="showTasks && eventColors.get(day.formatedDate)"
+              class="abele-calendar__day-dot abele-calendar__day-event"
+              :class="`abele-calendar__day-event_color-${eventColors.get(day.formatedDate)}`"
+              viewBox="0 0 10 10"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <rect x="0" y="3" width="10" height="4" rx="2" fill="currentColor" />
+            </svg>
+            <svg
               v-if="
                 showTasks &&
                 (tasksDateMap.get(day.formatedDate)?.length || 0) >
@@ -82,6 +91,8 @@ import { DATE_FORMAT } from '@/constants/dates'
 import { TasksList } from '@/entities/TasksList'
 import { Task } from '@/entities/Task'
 import { Journal } from '@/entities/Journal'
+import { useCalendarDays } from '@/composables/useCalendarDays'
+import type { KitColor } from '@/constants/colors'
 
 const { now: today } = useDate()
 const props = defineProps<{
@@ -242,6 +253,19 @@ const tasksDateMap = computed(() => {
   return map
 })
 
+const calendarDays = useCalendarDays()
+
+/**
+ * The colour of the first calendar with an event on each day: a short bar under the date, so a
+ * day with meetings reads apart from a day with tasks (rings) and one with a note (a dot).
+ */
+const eventColors = computed(() => {
+  const colors = new Map<string, KitColor>()
+  if (!props.showTasks) return colors
+  for (const [day, shown] of calendarDays.value) colors.set(day, shown[0].feed.color)
+  return colors
+})
+
 const emit = defineEmits<{
   (e: 'date-selected', date: dayjs.Dayjs): void
   (e: 'date-right-clicked', date: dayjs.Dayjs, event: MouseEvent): void
@@ -357,5 +381,18 @@ const emit = defineEmits<{
 
 .abele-calendar__day-dot {
   width: 4px;
+}
+
+// Twice as wide as a dot, so it reads as a different mark rather than one more dot.
+.abele-calendar__day-event {
+  width: calc(var(--size-2-1) * 4);
+  color: var(--text-faint);
+}
+
+$event-colors: red, orange, yellow, green, cyan, blue, purple, pink;
+@each $name in $event-colors {
+  .abele-calendar__day-event_color-#{$name} {
+    color: var(--color-#{$name});
+  }
 }
 </style>

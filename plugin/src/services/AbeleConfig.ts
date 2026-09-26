@@ -14,6 +14,11 @@ import AbelePlugin from '@/main'
 import { isKitColor } from '@/constants/colors'
 import { DEFAULT_LABEL_PROPERTY, type LabelColor } from '@/helpers/taskMeta'
 import { DEFAULT_GITHUB_SETTINGS, githubSettingsFrom, type GithubSettings } from '@/github/settings'
+import {
+  DEFAULT_CALENDAR_SETTINGS,
+  calendarSettingsFrom,
+  type CalendarSettings,
+} from '@/calendars/settings'
 import { DEFAULT_READER_SETTINGS, readerSettingsFrom, type ReaderSettings } from '@/reader/settings'
 import { normalizeRule, type AutomationRule } from '@/automations/types'
 import { moveLegacySecrets, notePlainSecrets } from '@/secrets/legacy'
@@ -82,6 +87,8 @@ export interface AbeleSettings {
   github?: GithubSettings
   // The book reader: page layout, text and colours
   reader?: ReaderSettings
+  /** External calendars shown beside the tasks, read only. Their links and passwords are keys. */
+  calendars?: CalendarSettings
   /**
    * The synced secret store, encrypted — see `src/secrets/`. Kept as whatever the file holds:
    * it is opened and checked by the store, never by the settings, and never shown to an agent
@@ -244,6 +251,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   keyboardDiagnostics: false,
   github: { ...DEFAULT_GITHUB_SETTINGS },
   reader: { ...DEFAULT_READER_SETTINGS },
+  calendars: { ...DEFAULT_CALENDAR_SETTINGS, feeds: [] },
 }
 
 export class AbeleConfig {
@@ -288,6 +296,7 @@ export class AbeleConfig {
   public keyboardDiagnostics: boolean
   public github: GithubSettings
   public reader: ReaderSettings
+  public calendars: CalendarSettings = calendarSettingsFrom()
   /** Carried through untouched; `SecretStore` is the only thing that reads or writes it. */
   public secretStore: unknown = undefined
   /**
@@ -605,6 +614,7 @@ export class AbeleConfig {
     this.keyboardDiagnostics = settings?.keyboardDiagnostics ?? false
     this.github = githubSettingsFrom(settings?.github)
     this.reader = readerSettingsFrom(settings?.reader)
+    this.calendars = calendarSettingsFrom(settings?.calendars)
     this.secretStore = settings?.secretStore
 
     return migrated
@@ -654,6 +664,10 @@ export class AbeleConfig {
       keyboardDiagnostics: this.keyboardDiagnostics,
       github: { ...this.github },
       reader: { ...this.reader },
+      calendars: {
+        ...this.calendars,
+        feeds: this.calendars.feeds.map((feed) => ({ ...feed })),
+      },
       ...(this.secretStore ? { secretStore: this.secretStore } : {}),
     }
   }

@@ -50,6 +50,7 @@ const COVERED_FILES = [
   'LinkField.vue',
   'AmountField.vue',
   'PropertyListField.vue',
+  'CalendarEvent.vue',
 ].map((name) => join(ROOT, name))
 
 /** The one component allowed to be a `<button>`: everything else goes through it. */

@@ -24,6 +24,7 @@ export const TRANSFER_SECTIONS = [
   'time-tracking',
   'maps',
   'github',
+  'calendars',
   'reader',
   'other',
 ] as const

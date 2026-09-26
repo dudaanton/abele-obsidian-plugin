@@ -147,6 +147,22 @@ rendered markdown, folder pages: `readable` (the notes' own line width), `custom
 `github.pageWidthPx` pixels, 1000 unless changed, from 400 to 4000) or `full` (the whole tab).
 Diffs and code always take the whole tab. A change shows in open tabs at once.
 
+## Calendars
+
+`calendars.feeds` are the external calendars whose events show beside the tasks — in the sidebar
+calendar, the sidebar timeline (today onward) and a daily note's footer (that day) — read only:
+nothing is written to them, and no note is made from an event unless the person picks *Create
+meeting note* on it. Each has an `id`, a `name`, a `color` (one of the named theme colours,
+`blue` … `pink`), `enabled`, and a `source`: `ics`, a secret calendar link from Google, iCloud
+or Outlook, or `caldav`, an account on a CalDAV server (`server`, `username`, and `calendarUrl`
+for one of its calendars — empty for all of them). `keyId` names the keychain slot holding the
+link or the CalDAV password; like every key it is out of reach of these tools, so a person adds
+or changes one in **Settings → Calendars** themselves. A calendar added here without its link
+shows nothing until they do. `calendars.refreshMinutes` (30 by default, 5 at least) is how often
+they are read again while Obsidian is open; they are also read at startup and when their
+settings change. What was last read is kept on the device (see the vault reference, Calendar
+cache), so the lists show it without a network.
+
 ## Synced keys
 
 Keys and tokens live in each device's own keychain, and a setting only names the slot. With

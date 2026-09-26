@@ -12,6 +12,7 @@
 import type { AbeleSettings } from '@/services/AbeleConfig'
 import type { AiSettings } from '@/ai/types'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
+import { feedLabel } from '@/calendars/settings'
 import { collectEntries, sectionLabel } from '@/transfer/entries'
 import type { SectionId } from '@/transfer/types'
 import type { StoreContent, StoreStatus } from './SecretStore'
@@ -67,6 +68,7 @@ const KINDS: Partial<Record<SectionId, string>> = {
   'ai-mcp-servers': 'MCP server',
   finance: 'Finance',
   github: 'GitHub',
+  calendars: 'Calendar',
 }
 
 /**
@@ -94,8 +96,17 @@ function usesOf(settings: AbeleSettings): Map<string, Use[]> {
     uses.set(id, list)
   }
 
+  // Every calendar's key is named after its calendar, not after the block they travel in.
+  const calendarNames = new Map(
+    (settings.calendars?.feeds ?? []).map((feed) => [feed.keyId, feedLabel(feed)])
+  )
+
   for (const entry of collectEntries(settings)) {
     for (const id of entry.secretIds ?? []) {
+      if (entry.section === 'calendars') {
+        add(id, { kind: 'Calendar', name: calendarNames.get(id) ?? 'Calendar' })
+        continue
+      }
       const block = entry.id === entry.section
       add(id, {
         kind: KINDS[entry.section] ?? sectionLabel(entry.section),
