@@ -251,13 +251,18 @@ const open = (event: Event) => {
  * leaves the actions on its row. Sized by its text it took the whole row, and a chat's delete
  * icon stood on a line of its own between the title and the summary. A card narrower than the
  * basis and the actions together still wraps them under it.
+ *
+ * Never more than half the row, though. A fixed 12em and a Restore button were wider together
+ * than a card on a 320px phone, so every card in the version history and the trash had its
+ * button on a row of its own there. Half the row leaves the actions beside the title for as long
+ * as they take no more than the other half.
  */
 .abele-card__title {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--size-2-2);
-  flex: 1 1 12em;
+  flex: 1 1 min(12em, 50%);
   min-width: 0;
 }
 
