@@ -137,7 +137,11 @@ const probeScript = (tag: string): string => `(async () => {
 
   const file = app.vault.getAbstractFileByPath(${JSON.stringify(GROUP_NOTE)})
   const leaf = app.workspace.getLeaf(false)
-  await leaf.openFile(file)
+  // The lists live under the note in the editor, not in reading view. A tab keeps the mode it
+  // was left in, and a file before this one may have left it reading: a reading tab keeps the
+  // editor it hides, with the lists of whatever note it showed last, and they are what was found.
+  const inEditor = { state: { mode: 'source', source: false } }
+  await leaf.openFile(file, inEditor)
   const footer = () => leaf.view.containerEl.querySelector('.abele-footer-view')
   await until(() => footer() && footer().querySelector('.abele-timeline') && footer().querySelector('.abele-logs-list'), 30000)
   await wait(1500)
@@ -240,7 +244,7 @@ const probeScript = (tag: string): string => `(async () => {
     const titleOf = async (tx) => (await body(tx.transactionPath)).split('\\n').find((l) => l.trim()).trim()
     const byDate = (a, b) => (a.date && b.date ? a.date.valueOf() - b.date.valueOf() : 0)
 
-    await leaf.openFile(app.vault.getAbstractFileByPath(${JSON.stringify(ACCOUNT_NOTE)}))
+    await leaf.openFile(app.vault.getAbstractFileByPath(${JSON.stringify(ACCOUNT_NOTE)}), inEditor)
     const selector = () => footer() && footer().querySelector('.abele-period-selector')
     if (!(await until(selector, 30000))) throw new Error('the account note shows no balance chart')
     const account = store.footersContainers.value.find((f) => f.filePath === ${JSON.stringify(ACCOUNT_NOTE)})
