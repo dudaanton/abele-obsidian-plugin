@@ -59,7 +59,7 @@ export interface SurfaceHost {
 const XHTML = 'http://www.w3.org/1999/xhtml'
 
 type Touch =
-  | { kind: 'tool'; gesture: ToolGesture; touch: boolean }
+  | { kind: 'tool'; gesture: ToolGesture; touch: boolean; x: number; y: number }
   | { kind: 'pan'; x: number; y: number; x0: number; y0: number; moved: boolean }
 
 export class DrawingSurface {
@@ -197,7 +197,7 @@ export class DrawingSurface {
   private down(e: PointerEvent): void {
     e.stopPropagation()
     this.host.touched?.()
-    const route = this.routeOf(e)
+    let route = this.routeOf(e)
     if (route === 'ignore') return
     if (e.pointerType === 'pen' && this.host.drawing()) {
       this.host.pen(true)
@@ -213,6 +213,18 @@ export class DrawingSurface {
     } catch {
       // A pointer the page no longer has: it is not captured, and is followed while it lasts.
     }
+    // A second finger while a finger draws: the two pinch, and what the first began is undone —
+    // on a phone, where a finger draws, it is how the drawing is zoomed; and two fingers each
+    // dragging what is picked would move it twice.
+    const fingers = [...this.touches].filter(([, t]) => t.kind === 'tool' && t.touch)
+    if (e.pointerType === 'touch' && route !== 'pan' && fingers.length) {
+      for (const [id, t] of fingers) {
+        if (t.kind !== 'tool') continue
+        t.gesture.end(true)
+        this.touches.set(id, { kind: 'pan', x: t.x, y: t.y, x0: t.x, y0: t.y, moved: true })
+      }
+      route = 'pan'
+    }
     if (route === 'pan') {
       this.touches.set(e.pointerId, {
         kind: 'pan',
@@ -226,7 +238,13 @@ export class DrawingSurface {
     }
     const gesture = this.host.begin(route, this.point(e), e)
     if (!gesture) return
-    this.touches.set(e.pointerId, { kind: 'tool', gesture, touch: e.pointerType === 'touch' })
+    this.touches.set(e.pointerId, {
+      kind: 'tool',
+      gesture,
+      touch: e.pointerType === 'touch',
+      x: e.clientX,
+      y: e.clientY,
+    })
     this.paintLive()
   }
 
@@ -235,6 +253,8 @@ export class DrawingSurface {
     const t = this.touches.get(e.pointerId)
     if (!t) return
     if (t.kind === 'tool') {
+      t.x = e.clientX
+      t.y = e.clientY
       const events = e.getCoalescedEvents?.() ?? []
       const all = (events.length ? events : [e]).map((one) => this.point(one))
       const ahead = (e.getPredictedEvents?.() ?? []).map((one) => this.point(one))
