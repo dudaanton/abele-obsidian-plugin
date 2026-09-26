@@ -99,6 +99,7 @@ import {
   type UserDocHit,
 } from '@/userdocs'
 import { slug } from '@/docs'
+import { flash } from '@/lineLinks/open'
 
 const props = defineProps<{ model: DocTarget }>()
 
@@ -137,8 +138,17 @@ function go(target: DocTarget, terms: string[] = []) {
   props.model.page = target.page
   props.model.heading = target.heading
   menuOpen.value = false
-  // Another page scrolls once it has rendered; on this one there is nothing to wait for.
-  if (samePage) void nextTick(() => place())
+  // Another page is marked and scrolled once it has rendered; this one is already there, so
+  // its marks are swapped for the new words here.
+  if (samePage) {
+    void nextTick(() => {
+      const el = article.value
+      if (!el) return
+      unmarkWords(el)
+      if (terms.length) markWords(el, terms)
+      place()
+    })
+  }
 }
 
 function openHit(hit: UserDocHit) {
@@ -169,7 +179,10 @@ function onRendered() {
   place()
 }
 
-/** Scrolls to the heading asked for, or to the first marked word under it, or to the top. */
+/**
+ * Scrolls to the heading asked for, or to the first marked word under it, or to the top — and
+ * flashes where it landed, the heading or the block holding the word, so the eye finds it.
+ */
 function place() {
   const el = article.value
   if (!el) return
@@ -182,7 +195,11 @@ function place() {
   }
   const top = target.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop
   el.scrollTop = Math.max(0, top - (mark ? el.clientHeight / 3 : 0))
+  flash(mark ? (mark.closest<HTMLElement>(BLOCKS) ?? mark) : target)
 }
+
+/** What a flash lights up around a marked word: the paragraph, item or cell it stands in. */
+const BLOCKS = 'p, li, h1, h2, h3, h4, h5, h6, td, th, dt, dd, blockquote'
 
 function findHeading(el: HTMLElement, id: string): HTMLElement | null {
   for (const h of el.querySelectorAll<HTMLElement>('h2, h3')) {
@@ -197,6 +214,15 @@ function firstMarkAfter(el: HTMLElement, heading: HTMLElement | null): HTMLEleme
     if (heading.compareDocumentPosition(mark) & Node.DOCUMENT_POSITION_FOLLOWING) return mark
   }
   return null
+}
+
+/** Takes the marks of an earlier result off, leaving their words where they were. */
+function unmarkWords(el: HTMLElement) {
+  for (const mark of el.querySelectorAll('mark.abele-user-docs__mark')) {
+    const parent = mark.parentNode
+    mark.replaceWith(...mark.childNodes)
+    parent?.normalize()
+  }
 }
 
 /** Wraps every occurrence of the words in the page's text in a mark, as the results show them. */
@@ -228,7 +254,14 @@ function markWords(el: HTMLElement, terms: string[]) {
 </script>
 
 <style lang="scss">
-/* The tab's own content box: the page scrolls inside the component, not the tab around it. */
+/*
+ * The tab's own content box: the page scrolls inside the component, not the tab around it.
+ *
+ * On a phone with the floating bar at the bottom, `--view-bottom-spacing` is how much of the
+ * view that bar and the home indicator cover — Obsidian's own figure, which it keeps up to date
+ * with the keyboard too; everywhere else it is 0. Each scroller below ends that far further
+ * down, so its last lines can be scrolled out from under the bar.
+ */
 .view-content.abele-user-docs-view {
   padding: 0;
   overflow: hidden;
@@ -252,7 +285,7 @@ function markWords(el: HTMLElement, terms: string[]) {
   display: flex;
   align-items: center;
   gap: var(--size-4-2);
-  padding: var(--size-4-2) var(--size-4-3);
+  padding: var(--size-4-2) var(--file-margins-x);
   border-bottom: 1px solid var(--background-modifier-border);
 }
 
@@ -271,6 +304,7 @@ function markWords(el: HTMLElement, terms: string[]) {
   flex: 0 0 18em;
   min-height: 0;
   padding: var(--size-4-3);
+  padding-bottom: calc(var(--size-4-3) + var(--view-bottom-spacing, 0px));
   border-right: 1px solid var(--background-modifier-border);
   overflow-y: auto;
 }
@@ -278,6 +312,7 @@ function markWords(el: HTMLElement, terms: string[]) {
 .abele-user-docs_narrow .abele-user-docs__nav {
   flex: 1 1 auto;
   border-right: none;
+  padding-inline: var(--file-margins-x);
 }
 
 .abele-user-docs__hit {
@@ -321,12 +356,10 @@ function markWords(el: HTMLElement, terms: string[]) {
 .abele-user-docs__page {
   max-width: var(--file-line-width);
   margin: 0 auto;
-  padding: var(--size-4-4) var(--size-4-8) var(--size-4-12);
+  /* A note's margins, which Obsidian narrows on a phone the same way. */
+  padding: var(--file-margins);
+  padding-bottom: calc(var(--size-4-12) + var(--view-bottom-spacing, 0px));
   user-select: text;
-}
-
-.abele-user-docs_narrow .abele-user-docs__page {
-  padding: var(--size-4-3) var(--size-4-4) var(--size-4-12);
 }
 
 .abele-user-docs__mark {

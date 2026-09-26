@@ -620,6 +620,58 @@ const probeScript = `(async () => {
         else keychain.setSecret(id, '')
       }
     }
+
+    // The documentation, a tab rather than a dialog: its text keeps a note's margins, and the
+    // end of a page and of the contents can be scrolled out from under the floating bottom bar.
+    // The last screen is a search result just opened, taken while its place still flashes.
+    app.commands.executeCommandById('abele:open-documentation')
+    const docsLeaf = () => app.workspace.getLeavesOfType('abele-user-docs')[0]
+    if (await until(() => docsLeaf() && docsLeaf().view.contentEl.querySelector('.abele-user-docs__page p'), 8000)) {
+      const content = docsLeaf().view.contentEl
+      const navbar = document.querySelector('.mobile-navbar')
+      // How far the last line of a scroller, scrolled to its end, still sits under the bar.
+      const covered = (scroller) => {
+        scroller.scrollTop = scroller.scrollHeight
+        const last = [...scroller.querySelectorAll('p, li, .abele-tree-item__self')].pop()
+        if (!last || !navbar || navbar.getBoundingClientRect().height === 0) return 0
+        return Math.max(0, Math.round(last.getBoundingClientRect().bottom - navbar.getBoundingClientRect().top))
+      }
+      const marginsOf = () => {
+        const text = content.querySelector('.abele-user-docs__page p').getBoundingClientRect()
+        return [Math.round(text.left), Math.round(window.innerWidth - text.right)]
+      }
+      const article = content.querySelector('.abele-user-docs__article')
+      const docsCovered = covered(article)
+      await wait(300)
+      await screen('docs page', content)
+      report['docs page'].covered = docsCovered
+      report['docs page'].margins = marginsOf()
+      report['docs page'].fileMargin = Math.round(parseFloat(getComputedStyle(content).getPropertyValue('--file-margins-x')) || 0)
+
+      content.querySelector('.abele-user-docs__menu').click()
+      await until(() => content.querySelector('.abele-user-docs__contents'), 3000)
+      const nav = content.querySelector('.abele-user-docs__nav')
+      const navCovered = covered(nav)
+      await wait(300)
+      await screen('docs contents', content)
+      report['docs contents'].covered = navCovered
+
+      nav.scrollTop = 0
+      const input = nav.querySelector('input')
+      input.value = 'passphrase'
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      await until(() => content.querySelector('.abele-user-docs__hit'), 3000)
+      content.querySelector('.abele-user-docs__hit').click()
+      await until(() => content.querySelector('.abele-line-flash'), 5000)
+      await screen('docs search result', content)
+      const lit = content.querySelector('.abele-line-flash')
+      const box = content.querySelector('.abele-user-docs__article').getBoundingClientRect()
+      const at = lit && lit.getBoundingClientRect()
+      report['docs search result'].landed = !!at && at.top >= box.top && at.bottom <= box.bottom
+      docsLeaf().detach()
+    } else {
+      report['docs page'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: 'the documentation did not open' }
+    }
   } catch (e) {
     report['run'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
   } finally {
@@ -711,6 +763,9 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     'settings mcp',
     'mcp server',
     'script form',
+    'docs page',
+    'docs contents',
+    'docs search result',
   ]
 
   /** Dialogs with fields, whose focus rings are measured, and which stand as a full sheet. */
@@ -776,6 +831,31 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
       expect(report[label]?.clipped ?? ['no report']).toEqual([])
     }
   )
+
+  type Docs = Screen & {
+    covered?: number
+    margins?: number[]
+    fileMargin?: number
+    landed?: boolean
+  }
+
+  it.each(['docs page', 'docs contents'])(
+    '%s: the last line scrolls out from under the bottom bar',
+    (label) => {
+      expect((report[label] as Docs)?.covered).toBe(0)
+    }
+  )
+
+  it("docs page: the text keeps a note's margins", () => {
+    const docs = report['docs page'] as Docs
+    expect(docs?.fileMargin).toBeGreaterThan(0)
+    for (const side of docs?.margins ?? [0, 0])
+      expect(side).toBeGreaterThanOrEqual(docs.fileMargin! - 1)
+  })
+
+  it('docs search result: lands on the place it found, lit up and in view', () => {
+    expect((report['docs search result'] as Docs)?.landed).toBe(true)
+  })
 
   it.each(screens)('%s: no box is capped below the height of the sheet', (label) => {
     expect(report[label]?.capped ?? ['no report']).toEqual([])

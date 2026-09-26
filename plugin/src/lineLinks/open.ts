@@ -83,7 +83,8 @@ async function flashInPreview(view: MarkdownView, range: LineRange): Promise<voi
   }
 }
 
-function flash(el: HTMLElement): void {
+/** Flashes an element the way a footnote flashes when it is jumped to. */
+export function flash(el: HTMLElement): void {
   el.removeClass('abele-line-flash')
   // A reflow between the two, so a second click on the same link flashes again.
   void el.offsetWidth

@@ -6,10 +6,10 @@
  * to ask which page is on screen. Links are built by hand where the test needs one, the way
  * Obsidian draws a link between notes: `a.internal-link` with the target in `data-href`.
  */
-import { describe, it, expect, afterEach, beforeEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { reactive } from 'vue'
-import { Platform } from 'obsidian'
+import { MarkdownRenderer, Platform } from 'obsidian'
 import UserDocs from '@/components/docs/UserDocs.vue'
 import { USER_DOCS, type DocTarget } from '@/userdocs'
 import { useVault } from '../helpers/testEnv'
@@ -158,6 +158,74 @@ describe('search', () => {
     await typeSearch('timer')
     await typeSearch('')
     expect(wrapper!.find('.abele-user-docs__contents').exists()).toBe(true)
+  })
+})
+
+describe('landing where it was sent', () => {
+  // Headings and paragraphs as Obsidian draws them, enough to say which block was landed on.
+  beforeEach(() => {
+    vi.spyOn(MarkdownRenderer, 'render').mockImplementation(async (_app, markdown, el) => {
+      el.replaceChildren()
+      for (const line of markdown.split('\n')) {
+        const heading = /^(#{1,3}) (.*)$/.exec(line)
+        if (!heading && !line.trim()) continue
+        const block = document.createElement(heading ? `h${heading[1].length}` : 'p')
+        block.textContent = heading ? heading[2] : line
+        el.appendChild(block)
+      }
+    })
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const flashing = () => article().findAll('.abele-line-flash')
+
+  it('flashes the heading of a section picked in the contents', async () => {
+    await open({ page: 'tasks' })
+    await contents()
+      .find((r) => r.text() === 'Priority and labels')!
+      .trigger('click')
+    await settle()
+
+    expect(flashing().map((el) => el.element.tagName)).toEqual(['H2'])
+    expect(flashing()[0].text()).toBe('Priority and labels')
+  })
+
+  it('flashes the block holding the first word a result found', async () => {
+    await open()
+    await typeSearch('passphrase')
+    await wrapper!.find('.abele-user-docs__hit').trigger('click')
+    await settle()
+
+    expect(flashing()).toHaveLength(1)
+    expect(flashing()[0].find('mark.abele-user-docs__mark').exists()).toBe(true)
+  })
+
+  it('marks and flashes a result on the page already open', async () => {
+    await open({ page: 'transfer' })
+    await typeSearch('passphrase')
+    await wrapper!.find('.abele-user-docs__hit').trigger('click')
+    await settle()
+
+    expect(article().findAll('mark.abele-user-docs__mark').length).toBeGreaterThan(0)
+    expect(flashing()).toHaveLength(1)
+  })
+
+  it('takes the marks of an earlier result off when another is opened on the same page', async () => {
+    await open({ page: 'transfer' })
+    await typeSearch('passphrase')
+    await wrapper!.find('.abele-user-docs__hit').trigger('click')
+    await settle()
+    await typeSearch('synced keys')
+    await wrapper!.find('.abele-user-docs__hit').trigger('click')
+    await settle()
+
+    const words = article()
+      .findAll('mark.abele-user-docs__mark')
+      .map((m) => m.text().toLowerCase())
+    expect(words).not.toContain('passphrase')
+    expect(words).toContain('synced')
   })
 })
 
