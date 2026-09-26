@@ -271,6 +271,7 @@ export const SECTIONS: Section[] = [
     'fullWidthSidebars',
     'halfWidthSidebarsOnTablet',
     'mermaidViewer',
+    'propertyWidgets',
   ]),
 ]
 

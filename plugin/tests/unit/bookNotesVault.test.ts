@@ -5,7 +5,13 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { load as yamlLoad } from 'js-yaml'
 import { TFile, TFolder, type App } from 'obsidian'
-import { deleteHighlight, notesOf, readHighlights, saveHighlight } from '@/reader/companion'
+import {
+  deleteHighlight,
+  findCompanion,
+  notesOf,
+  readHighlights,
+  saveHighlight,
+} from '@/reader/companion'
 import { DEFAULT_NOTES_PATH, type BookNotesTarget } from '@/reader/settings'
 import type { Highlight } from '@/reader/highlights'
 
@@ -162,13 +168,36 @@ describe("a book's highlights, where the settings send them", () => {
     expect(v.text('Reading/Notes.md')).not.toContain('## Chapter 4')
   })
 
+  it('link back to the book in a File property, and a note linking it the old way is still its own', async () => {
+    const types: Record<string, string> = {}
+    ;(v.app as unknown as Record<string, unknown>).metadataTypeManager = {
+      registeredTypeWidgets: { file: {} },
+      getAssignedWidget: (key: string) => types[key] ?? null,
+      setType: (key: string, type: string) => {
+        types[key] = type
+      },
+    }
+    const dune = v.file('Books/Dune.epub')
+    await saveHighlight(v.app, dune, place(own), hl(A))
+    expect(v.text('Books/Dune highlights.md')).toContain('file: "[[Books/Dune.epub]]"')
+    expect(types.file).toBe('file')
+
+    // Written before, under another name and with `book`: found by its link, not by its name.
+    const emma = v.file('Books/Emma.epub')
+    await v.app.vault.create(
+      'Reading.md',
+      '---\ntype: book-highlights\nbook: "[[Books/Emma.epub]]"\n---\n\n# Emma\n'
+    )
+    expect(findCompanion(v.app, emma)?.path).toBe('Reading.md')
+  })
+
   it("keep a book's own note made from a template findable", async () => {
     const dune = v.file('Books/Dune.epub')
     await saveHighlight(v.app, dune, place({ ...own, template: 'Templates/Book.md' }), hl(A))
     const md = v.text('Books/Dune highlights.md')!
     expect(md).toContain('tags: [reading]')
     expect(md).toContain('type: book-highlights')
-    expect(md).toContain('book: "[[Books/Dune.epub]]"')
+    expect(md).toContain('file: "[[Books/Dune.epub]]"')
   })
 
   it('stay where they were when the choice changes, still shown and changed there', async () => {

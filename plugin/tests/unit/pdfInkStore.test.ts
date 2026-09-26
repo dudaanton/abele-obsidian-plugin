@@ -58,7 +58,7 @@ describe("a PDF's ink in the vault", () => {
     await store.write(3, page())
     expect(await text(INK)).toBe(inkSvg(page()))
     const note = (await text(NOTE)) ?? ''
-    expect(note).toMatch(/^---\ntype: book-highlights\nbook: "\[\[Papers\/Paper.pdf\]\]"\n---/)
+    expect(note).toMatch(/^---\ntype: book-highlights\nfile: "\[\[Papers\/Paper.pdf\]\]"\n---/)
     expect(note).toContain(`> [!ink] [[Papers/Paper.pdf#page=4|Page 4]]\n> ![[${INK}]]`)
   })
 

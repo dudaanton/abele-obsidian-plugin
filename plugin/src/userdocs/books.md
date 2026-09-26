@@ -43,7 +43,8 @@ speech bubble adds a comment, the link copies a link to the words, and the quote
 the note you last worked in. Tap a highlight to change or remove it.
 
 Highlights are kept in a note, `<book name> highlights.md` beside the book by default, one
-callout per highlight with a link back to its place. Edit that note freely: the open book redraws
+callout per highlight with a link back to its place. The note's `file` property links back to
+the book and shows as a card with its cover. Edit that note freely: the open book redraws
 as it changes. In **Settings → Abele → Books** you can send highlights to one shared note instead,
 choose per book, and give the note a template.
 

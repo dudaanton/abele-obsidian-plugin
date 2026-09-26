@@ -77,7 +77,7 @@ describe('the highlights note', () => {
 
   it('starts with what it is and whose it is', () => {
     expect(note).toContain('type: book-highlights')
-    expect(note).toContain('book: "[[Books/Dune.epub]]"')
+    expect(note).toContain('file: "[[Books/Dune.epub]]"')
   })
 
   it('keeps a highlight as a quote callout: colour, link, text and comment', () => {

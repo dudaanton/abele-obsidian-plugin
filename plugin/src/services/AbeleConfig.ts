@@ -84,6 +84,11 @@ export interface AbeleSettings {
   /** ```mermaid blocks drawn by the plugin's viewer, with zoom and full screen, not Obsidian's. */
   mermaidViewer?: boolean
   /**
+   * The plugin's own drawing of some properties: a wallet's balance, arithmetic in numbers, file
+   * cards for File and Files properties and for `cover`. Off is Obsidian's own drawing.
+   */
+  propertyWidgets?: boolean
+  /**
    * A panel at the top of the screen showing what the page reports about the on-screen
    * keyboard. For finding out from a phone what no emulator shows; stays on its device.
    */
@@ -255,6 +260,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   fullWidthSidebars: false,
   halfWidthSidebarsOnTablet: false,
   mermaidViewer: true,
+  propertyWidgets: true,
   keyboardDiagnostics: false,
   github: { ...DEFAULT_GITHUB_SETTINGS },
   reader: { ...DEFAULT_READER_SETTINGS },
@@ -301,6 +307,7 @@ export class AbeleConfig {
   public fullWidthSidebars: boolean
   public halfWidthSidebarsOnTablet: boolean
   public mermaidViewer: boolean
+  public propertyWidgets: boolean
   public keyboardDiagnostics: boolean
   public github: GithubSettings
   public reader: ReaderSettings
@@ -620,6 +627,7 @@ export class AbeleConfig {
     this.halfWidthSidebarsOnTablet =
       settings?.halfWidthSidebarsOnTablet ?? DEFAULT_SETTINGS.halfWidthSidebarsOnTablet
     this.mermaidViewer = settings?.mermaidViewer ?? DEFAULT_SETTINGS.mermaidViewer ?? true
+    this.propertyWidgets = settings?.propertyWidgets ?? DEFAULT_SETTINGS.propertyWidgets ?? true
     this.keyboardDiagnostics = settings?.keyboardDiagnostics ?? false
     this.github = githubSettingsFrom(settings?.github)
     this.reader = readerSettingsFrom(settings?.reader)
@@ -671,6 +679,7 @@ export class AbeleConfig {
       fullWidthSidebars: this.fullWidthSidebars,
       halfWidthSidebarsOnTablet: this.halfWidthSidebarsOnTablet,
       mermaidViewer: this.mermaidViewer,
+      propertyWidgets: this.propertyWidgets,
       keyboardDiagnostics: this.keyboardDiagnostics,
       github: { ...this.github },
       reader: { ...this.reader },

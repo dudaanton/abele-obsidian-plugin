@@ -3,7 +3,7 @@
  * they say.
  *
  * A book's highlights go to a note of its own — `<book> highlights.md` beside it, marked
- * `type: book-highlights` with a `book` link back — or to one note named in the settings, which
+ * `type: book-highlights` with a `file` link back (`book` in notes made before) — or to one note named in the settings, which
  * several books may share; each book may choose for itself (`notesTargetFor`). A note of the book's
  * own is found by that link rather than by its name, so it stays the book's when either file is
  * renamed or moved. In a shared note a book's highlights are the callouts whose place links to it.
@@ -15,7 +15,10 @@
 import { Notice, TFile, normalizePath, type App } from 'obsidian'
 import { compare } from '@/vendor/foliate-js/epubcfi.js'
 import { linkToPlace } from './bookLinks'
+import { assignFileType } from '@/properties/types'
 import {
+  BOOK_LINK_KEY,
+  BOOK_LINK_KEYS,
   HIGHLIGHTS_TYPE,
   highlightBlock,
   highlightLines,
@@ -54,13 +57,18 @@ export function findCompanion(app: App, book: TFile): TFile | null {
   const byName = app.vault.getAbstractFileByPath(companionPath(book))
   const matches = (file: TFile): boolean => {
     const fm = app.metadataCache.getFileCache(file)?.frontmatter
-    if (!fm || fm.type !== HIGHLIGHTS_TYPE || typeof fm.book !== 'string') return false
-    const linkpath = fm.book
-      .replace(/^\[\[|\]\]$/g, '')
-      .split('|')[0]
-      .split('#')[0]
-      .trim()
-    return app.metadataCache.getFirstLinkpathDest(linkpath, file.path)?.path === book.path
+    if (!fm || fm.type !== HIGHLIGHTS_TYPE) return false
+    // `file` in notes made now, `book` in the ones made before: either says whose it is.
+    return BOOK_LINK_KEYS.some((key) => {
+      const value: unknown = fm[key]
+      if (typeof value !== 'string') return false
+      const linkpath = value
+        .replace(/^\[\[|\]\]$/g, '')
+        .split('|')[0]
+        .split('#')[0]
+        .trim()
+      return app.metadataCache.getFirstLinkpathDest(linkpath, file.path)?.path === book.path
+    })
   }
   if (byName instanceof TFile && matches(byName)) return byName
   for (const file of app.vault.getMarkdownFiles()) if (matches(file)) return file
@@ -232,6 +240,8 @@ export async function saveHighlight(
     return existing
   }
   await ensureFolder(app, path)
+  // The link back is a File property, drawn as the book's card.
+  if (own) assignFileType(app, BOOK_LINK_KEY)
   if (template) {
     const md = newNoteFrom(template, vars)
     return app.vault.create(path, own ? withCompanionProps(md, bookLink) : md)

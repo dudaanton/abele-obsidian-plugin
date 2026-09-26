@@ -10,7 +10,8 @@
 import { TFile, TFolder, normalizePath, type App } from 'obsidian'
 import { linkToPlace } from '../bookLinks'
 import { companionPath, noteFor, notesOf, type NotesPlace } from '../companion'
-import { newHighlightsNote } from '../highlights'
+import { BOOK_LINK_KEY, newHighlightsNote } from '../highlights'
+import { assignFileType } from '@/properties/types'
 import {
   inkCallout,
   inkFolderOf,
@@ -122,6 +123,7 @@ export class InkStore {
     await this.ensureFolder(path.split('/').slice(0, -1).join('/'))
     // A wikilink whatever the link format: a property keeps its link tracked only as one.
     const bookLink = `[[${this.app.metadataCache.fileToLinktext(this.book, path, false)}]]`
+    if (own) assignFileType(this.app, BOOK_LINK_KEY)
     return this.app.vault.create(path, own ? newHighlightsNote(bookLink, this.book.basename) : '')
   }
 

@@ -34,6 +34,25 @@ A ```` ```mermaid ```` block is drawn at the width of the note, with zoom and dr
 and copying as source, SVG or a picture. Turn this off in **Settings → Abele → Other** to get
 Obsidian's own drawing back.
 
+## Properties
+
+The properties at the top of a note are drawn by the plugin in a few places:
+
+- A property linking to a wallet, such as a transaction's `from` and `to`, shows what is in the
+  wallet today beside the link.
+- A number property works out a sum: type `120+35*2`, press Enter, and it keeps `190`. Plus,
+  minus, times, divide and brackets.
+- A property of type **File** is a card with the file's name and, for a picture, a book or a
+  PDF, a small picture of it. **Files** is a list of such cards. Pick the type from the icon
+  beside the property name. Press a card to choose another file, the arrow to open it, the cross
+  to take it out.
+- `cover` is a card too, with the picture on the right.
+
+Nothing about the note changes: it is still ordinary properties, and a device without the plugin
+shows them the way Obsidian does. Turn this off in **Settings → Abele → Other**. It rests on
+parts of Obsidian that are not meant for plugins; if an Obsidian update changes them, the
+properties simply go back to Obsidian's own drawing.
+
 ## Charts
 
 **Chart** is a view type for Obsidian Bases: it draws a line, bar or scatter chart from the

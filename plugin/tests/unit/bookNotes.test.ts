@@ -282,14 +282,17 @@ describe("a book's own note made from a template", () => {
   it('still says whose it is, so it is found when either file moves', () => {
     const md = withCompanionProps('---\ntags: [x]\n---\n# Dune\n', '[[Books/Dune.epub]]')
     expect(md).toContain('type: book-highlights')
-    expect(md).toContain('book: "[[Books/Dune.epub]]"')
+    expect(md).toContain('file: "[[Books/Dune.epub]]"')
     expect(md).toContain('tags: [x]')
     expect(md).toContain('# Dune')
     const bare = withCompanionProps('# Dune\n', '[[Books/Dune.epub]]')
-    expect(bare.startsWith('---\ntype: book-highlights\nbook: "[[Books/Dune.epub]]"\n---\n')).toBe(
+    expect(bare.startsWith('---\ntype: book-highlights\nfile: "[[Books/Dune.epub]]"\n---\n')).toBe(
       true
     )
+    // A template linking the book itself, the old way or the new, keeps its own link.
     const own = '---\ntype: reading\nbook: "[[Books/Dune.epub]]"\n---\n'
     expect(withCompanionProps(own, '[[Books/Dune.epub]]')).toBe(own)
+    const ownFile = '---\ntype: reading\nfile: "[[Books/Dune.epub]]"\n---\n'
+    expect(withCompanionProps(ownFile, '[[Books/Dune.epub]]')).toBe(ownFile)
   })
 })

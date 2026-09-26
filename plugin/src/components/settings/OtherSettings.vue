@@ -26,6 +26,12 @@
       <Checkbox :is-enabled="mermaidViewer" @toggle="toggleMermaidViewer" />
     </Setting>
     <Setting
+      name="Own drawing of properties"
+      desc="In a note's properties: a wallet's balance beside a link to it, sums worked out in number fields, and cards for File and Files properties and for the cover. Off is Obsidian's own drawing."
+    >
+      <Checkbox :is-enabled="propertyWidgets" @toggle="togglePropertyWidgets" />
+    </Setting>
+    <Setting
       name="Keyboard diagnostics"
       desc="Show, at the top of the screen, what the app reports about the on-screen keyboard — for a screenshot when a dialog ends up under it. Stays on this device."
     >
@@ -73,6 +79,7 @@ const keyboardDiagnostics = ref(config.keyboardDiagnostics)
 const mapCoordinatesProperty = ref(config.mapCoordinatesProperty)
 const mapStyleUrl = ref(config.mapStyleUrl)
 const mermaidViewer = ref(config.mermaidViewer)
+const propertyWidgets = ref(config.propertyWidgets)
 
 const applyClass = (enabled: boolean) => {
   document.body.classList.toggle('abele-full-width-sidebars', enabled)
@@ -137,6 +144,13 @@ const toggleMermaidViewer = async () => {
   config.mermaidViewer = mermaidViewer.value
   await config.saveSettings()
   GlobalStore.getInstance().app.workspace.trigger('post-processor-change')
+}
+
+// The properties on screen are redrawn by the plugin as the saved settings move.
+const togglePropertyWidgets = async () => {
+  propertyWidgets.value = !propertyWidgets.value
+  config.propertyWidgets = propertyWidgets.value
+  await config.saveSettings()
 }
 
 const toggleKeyboardDiagnostics = async () => {

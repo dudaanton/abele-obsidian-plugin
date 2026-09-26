@@ -4,7 +4,7 @@
  * ```markdown
  * ---
  * type: book-highlights
- * book: "[[Books/Dune.epub]]"
+ * file: "[[Books/Dune.epub]]"
  * ---
  *
  * > [!quote|yellow] [[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]]
@@ -50,6 +50,14 @@ export interface Highlight {
 }
 
 export const HIGHLIGHTS_TYPE = 'book-highlights'
+
+/**
+ * The property a highlights note links back to its book in: a File property, drawn as the book's
+ * card. Notes written before it used `book`, which is still read (`BOOK_LINK_KEYS`) and never
+ * rewritten.
+ */
+export const BOOK_LINK_KEY = 'file'
+export const BOOK_LINK_KEYS = [BOOK_LINK_KEY, 'book'] as const
 
 const HEADER = /^>\s*\[!(quote|chat)(?:\|([a-z]+))?\][+-]?\s*(.*)$/i
 /** A link to a chat file in a callout title, its basename being the discussion's id. */
@@ -188,22 +196,23 @@ export function highlightBlock(h: Highlight, link: string, chatLink?: string): s
 
 /** A new highlights note for a book. */
 export function newHighlightsNote(bookLink: string, title: string): string {
-  return `---\ntype: ${HIGHLIGHTS_TYPE}\nbook: "${bookLink.replace(/"/g, '\\"')}"\n---\n\n# ${title}\n`
+  return `---\ntype: ${HIGHLIGHTS_TYPE}\n${BOOK_LINK_KEY}: "${bookLink.replace(/"/g, '\\"')}"\n---\n\n# ${title}\n`
 }
 
 /**
- * A book's own note, made from a template, with what says whose it is: `type` and `book` added to
- * its properties when the template does not set them, so it is found again after either file moves.
+ * A book's own note, made from a template, with what says whose it is: `type` and the link back
+ * added to its properties when the template does not set them, so it is found again after either
+ * file moves. A template that links the book under the old `book` keeps it there.
  */
 export function withCompanionProps(markdown: string, bookLink: string): string {
-  const book = `book: "${bookLink.replace(/"/g, '\\"')}"`
+  const book = `${BOOK_LINK_KEY}: "${bookLink.replace(/"/g, '\\"')}"`
   const fm = /^---\n([\s\S]*?)\n?---(\n|$)/.exec(markdown)
   if (!fm) return `---\ntype: ${HIGHLIGHTS_TYPE}\n${book}\n---\n\n${markdown.replace(/^\n+/, '')}`
   const props = fm[1] ? fm[1].split('\n') : []
   const has = (key: string) => props.some((line) => line.startsWith(`${key}:`))
   const added = [
     ...(has('type') ? [] : [`type: ${HIGHLIGHTS_TYPE}`]),
-    ...(has('book') ? [] : [book]),
+    ...(BOOK_LINK_KEYS.some(has) ? [] : [book]),
   ]
   if (!added.length) return markdown
   return `---\n${[...props, ...added].join('\n')}\n---${fm[2]}${markdown.slice(fm[0].length)}`

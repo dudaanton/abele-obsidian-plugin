@@ -74,6 +74,7 @@ import { CALENDAR_VIEW_ID, CalendarView, calendarViewOptions } from './bases/Cal
 import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
 import { registerDrawing } from './drawing/register'
 import { registerReader } from './reader/register'
+import { registerPropertyWidgets } from './properties/register'
 import { ChatService } from './ai/ChatService'
 import { CommentService } from './ai/CommentService'
 import { useFilesInAgent } from './helpers/useFilesInAgent'
@@ -264,6 +265,9 @@ export default class AbelePlugin extends Plugin {
 
     // Links to lines of a note — `[[Note#L10-L12]]` — open at those lines; and a way to copy one.
     registerLineLinks(this)
+
+    // Some properties drawn by the plugin: wallet balances, sums in numbers, file cards.
+    registerPropertyWidgets(this)
 
     // AI sidebar is always registered so the view can be restored, but commands/ribbon are conditional
     this.registerView(AI_SIDEBAR_VIEW_TYPE, (leaf) => new AiSidebarView(leaf, this.app))

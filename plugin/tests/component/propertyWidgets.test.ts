@@ -1,0 +1,250 @@
+/**
+ * The plugin's drawing of properties is a swap of `render` on Obsidian's property types, and
+ * everything rests on putting the originals back: switched off, the types must be exactly
+ * Obsidian's again, and unloaded, the type the plugin added must be gone.
+ *
+ * The registry here is a stand-in shaped like Obsidian 1.13's (probed in the running app, see
+ * the plan): a number field that reads its input on Enter, a text field, the hidden File type.
+ */
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { nextTick } from 'vue'
+import type { App } from 'obsidian'
+import { FILES_TYPE, PropertyWidgets, type TypeWidget } from '@/properties/widgets'
+import { useVault } from '../helpers/testEnv'
+
+interface Ctx {
+  app: App
+  key: string
+  sourcePath: string
+  onChange: (v: unknown) => void
+  blur: () => void
+}
+
+function stockRegistry() {
+  const number: TypeWidget = {
+    type: 'number',
+    name: () => 'Number',
+    icon: 'lucide-binary',
+    validate: (v) => typeof v === 'number',
+    render(el, value, ctx) {
+      const input = el.ownerDocument.createElement('input')
+      input.className = 'metadata-input metadata-input-number'
+      input.type = 'number'
+      input.setAttribute('inputmode', 'decimal')
+      el.appendChild(input)
+      input.value = value == null ? '' : String(value)
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const n = +input.value
+          if (Number.isNaN(n)) el.addClass('stock-error')
+          else ctx.onChange(n)
+        }
+      })
+      return { containerEl: el, type: 'number', inputEl: input }
+    },
+  }
+  const text: TypeWidget = {
+    type: 'text',
+    name: () => 'Text',
+    icon: 'lucide-text',
+    validate: (v) => typeof v === 'string',
+    render(el, value) {
+      el.createDiv({ cls: 'stock-text', text: String(value ?? '') })
+      return { containerEl: el, type: 'text' }
+    },
+  }
+  const multitext: TypeWidget = {
+    type: 'multitext',
+    name: () => 'List',
+    icon: 'lucide-list',
+    validate: () => true,
+    render(el, value) {
+      el.createDiv({ cls: 'stock-list', text: JSON.stringify(value) })
+      return { containerEl: el, type: 'multitext' }
+    },
+  }
+  const file: TypeWidget = {
+    type: 'file',
+    name: () => 'File',
+    icon: 'lucide-file',
+    reservedKeys: [],
+    validate: (v) => typeof v === 'string',
+    render(el, value) {
+      el.createDiv({ cls: 'stock-file', text: String(value ?? '') })
+      return { containerEl: el, type: 'file' }
+    },
+  }
+  return { number, text, multitext, file } as Record<string, TypeWidget>
+}
+
+let table: Record<string, TypeWidget>
+let app: App
+let widgets: PropertyWidgets
+let host: HTMLElement
+
+const ctx = (key: string, changes: unknown[] = []): Ctx => ({
+  app,
+  key,
+  sourcePath: 'Note.md',
+  onChange: (v) => changes.push(v),
+  blur: () => {},
+})
+
+const draw = (type: string, value: unknown, c: Ctx) => {
+  const el = host.createDiv({ cls: 'metadata-property-value' })
+  table[type]!.render(el, value, c)
+  return el
+}
+
+beforeEach(() => {
+  const fake = useVault([
+    { path: 'Note.md', content: '' },
+    { path: 'Books/Dune.epub', content: '' },
+    { path: 'Media/poster.png', content: '' },
+  ])
+  ;(fake.vault as unknown as { getResourcePath: (f: { path: string }) => string }).getResourcePath =
+    (f) => `app://vault/${f.path}`
+  ;(fake.metadataCache as unknown as Record<string, unknown>).fileToLinktext = (f: {
+    path: string
+  }) => f.path.replace(/\.md$/, '')
+  table = stockRegistry()
+  ;(fake as unknown as Record<string, unknown>).metadataTypeManager = {
+    registeredTypeWidgets: table,
+  }
+  app = fake as unknown as App
+  widgets = new PropertyWidgets(app)
+  host = document.body.createDiv()
+})
+
+afterEach(() => {
+  widgets.destroy()
+  host.remove()
+})
+
+describe('putting Obsidian back', () => {
+  it('restores the very functions it replaced, and the hidden File type', () => {
+    const originals = Object.fromEntries(Object.entries(table).map(([k, w]) => [k, w.render]))
+    expect(widgets.load()).toBe(true)
+    widgets.apply(true)
+    expect(table.number.render).not.toBe(originals.number)
+    expect(table.text.render).not.toBe(originals.text)
+    expect(table.file.render).not.toBe(originals.file)
+    expect(table.file.reservedKeys).toBeUndefined()
+
+    widgets.apply(false)
+    for (const key of ['number', 'text', 'file', 'multitext'])
+      expect(table[key].render).toBe(originals[key])
+    expect(table.file.reservedKeys).toEqual([])
+  })
+
+  it('keeps Files registered while off, drawn as a list, and takes it out on unload', () => {
+    widgets.load()
+    expect(table[FILES_TYPE]).toBeDefined()
+    const el = draw(FILES_TYPE, ['[[a.pdf]]'], ctx('attachments'))
+    expect(el.querySelector('.stock-list')).not.toBeNull()
+
+    widgets.destroy()
+    expect(table[FILES_TYPE]).toBeUndefined()
+  })
+
+  it('patches nothing when this Obsidian keeps no table of types', () => {
+    const bare = new PropertyWidgets({ workspace: {} } as unknown as App)
+    expect(bare.load()).toBe(false)
+    expect(() => bare.apply(true)).not.toThrow()
+    bare.destroy()
+  })
+})
+
+describe('a number property', () => {
+  it('works out a sum on Enter, and the stock field stores the answer', () => {
+    widgets.load()
+    widgets.apply(true)
+    const changes: unknown[] = []
+    const el = draw('number', 5, ctx('amount', changes))
+    const input = el.querySelector('input')!
+    expect(input.type).toBe('text')
+    expect(input.hasAttribute('inputmode')).toBe(false)
+
+    input.value = '120+35*2'
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    expect(changes).toEqual([190])
+    expect(input.value).toBe('190')
+  })
+
+  it('leaves what is not a sum to the stock field, which calls it an error', () => {
+    widgets.load()
+    widgets.apply(true)
+    const changes: unknown[] = []
+    const el = draw('number', 5, ctx('amount', changes))
+    const input = el.querySelector('input')!
+    input.value = '12+'
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    expect(changes).toEqual([])
+    expect(el.classList.contains('stock-error')).toBe(true)
+  })
+
+  it('is Obsidian’s own field when switched off', () => {
+    widgets.load()
+    widgets.apply(true)
+    widgets.apply(false)
+    const el = draw('number', 5, ctx('amount'))
+    expect(el.querySelector('input')!.type).toBe('number')
+  })
+})
+
+describe('files as cards', () => {
+  it('draws a File property as a card named after the file', async () => {
+    widgets.load()
+    widgets.apply(true)
+    const el = draw('file', '[[Books/Dune.epub]]', ctx('book'))
+    await nextTick()
+    expect(el.querySelector('.stock-file')).toBeNull()
+    expect(el.querySelector('.abele-card__name')?.textContent).toBe('Dune.epub')
+  })
+
+  it('draws the cover as a card with its picture', async () => {
+    widgets.load()
+    widgets.apply(true)
+    const el = draw('text', '[[Media/poster.png]]', ctx('cover'))
+    await nextTick()
+    await nextTick()
+    expect(el.querySelector('.abele-card__name')?.textContent).toBe('poster.png')
+    expect(el.querySelector('img')?.getAttribute('src')).toBe('app://vault/Media/poster.png')
+  })
+
+  it('draws a Files list as a card each, and removing one writes the rest back', async () => {
+    widgets.load()
+    widgets.apply(true)
+    const changes: unknown[] = []
+    const el = draw(FILES_TYPE, ['[[Books/Dune.epub]]', '[[Media/poster.png]]'], ctx('f', changes))
+    await nextTick()
+    const cards = el.querySelectorAll('.abele-card')
+    expect(cards).toHaveLength(2)
+    ;(cards[0].querySelector('.abele-property-files__remove') as HTMLElement).click()
+    expect(changes).toEqual([['[[Media/poster.png]]']])
+  })
+
+  it('keeps every row drawn before the panel puts them on the page', async () => {
+    widgets.load()
+    widgets.apply(true)
+    // The panel draws each row into a cell of its own, off the page, and adds them after.
+    const cells = ['[[Books/Dune.epub]]', '[[Media/poster.png]]'].map((value) => {
+      const el = document.createElement('div')
+      table.file.render(el, value, ctx('pw'))
+      return el
+    })
+    for (const el of cells) host.appendChild(el)
+    await nextTick()
+    expect(cells.map((el) => el.querySelector('.abele-card__name')?.textContent)).toEqual([
+      'Dune.epub',
+      'poster.png',
+    ])
+  })
+
+  it('leaves an ordinary text property to Obsidian', () => {
+    widgets.load()
+    widgets.apply(true)
+    const el = draw('text', 'hello', ctx('title'))
+    expect(el.querySelector('.stock-text')?.textContent).toBe('hello')
+  })
+})

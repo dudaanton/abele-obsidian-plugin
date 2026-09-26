@@ -157,6 +157,16 @@ note that has these shows them on its card; a script's `noteInfo` returns the co
 Worth filling on notes that are linked from many places — a person, a place, a film — so the
 list of backlinks says what each one is without opening it.
 
+## Files in properties
+
+A property can hold a file of the vault. Obsidian's **File** type is one file, and the plugin
+adds **Files**, a list of them; the type is chosen per property name, the way Obsidian keeps any
+type (`.obsidian/types.json`). Write the value as a wikilink with the extension, so Obsidian keeps
+it up to date when the file moves: `file: "[[Books/Dune.epub]]"`, `files: ["[[a.pdf]]",
+"[[b.png]]"]`. A bare vault path is read too. The plugin draws these, and `cover`, as cards with
+the file's picture; the value stays plain frontmatter, and without the plugin a Files property
+shows as a raw list.
+
 ## Skills and prompts
 
 Notes with `type: abele-skill` or `type: abele-prompt`. A skill teaches an agent how to do
@@ -455,8 +465,9 @@ label saying what is there, usually the chapter.
 ### Book highlights
 
 A book's highlights are kept, by default, in `<book name> highlights.md` beside it, with
-`type: book-highlights` and `book: "[[<the book file>]]"` (a wikilink, extension included). It is
-found by that property, not its name. Each highlight is one callout, in the order of the book:
+`type: book-highlights` and `file: "[[<the book file>]]"` (a wikilink, extension included, in a
+File property). Notes made before this link it as `book:` instead, which is read the same way;
+leave either as it is. It is found by that property, not its name. Each highlight is one callout, in the order of the book:
 
 ```markdown
 > [!quote|green] [[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]]

@@ -189,7 +189,9 @@ every one of them has the same show and copy icons beside the stored key.
 `snippetsFolder` is where CSS snippets are written, `links` and `headerButtons` are the buttons
 and links added to note headers, `fullWidthSidebars` widens the sidebars to the whole screen on
 a phone and `halfWidthSidebarsOnTablet` to half of it on a tablet, `mermaidViewer` (on by
-default) draws mermaid blocks with the plugin's zoomable viewer instead of Obsidian's own, and
+default) draws mermaid blocks with the plugin's zoomable viewer instead of Obsidian's own,
+`propertyWidgets` (on by default) draws some properties itself — a wallet's balance, sums in
+number fields, file cards for File and Files properties and `cover` — and
 `refreshDelay` is how long the plugin waits before rebuilding what a note shows.
 
 `quickButton` is the floating button on a phone: `enabled` (off by default, it is a concept),

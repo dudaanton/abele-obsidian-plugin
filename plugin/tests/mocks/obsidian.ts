@@ -266,6 +266,17 @@ if (typeof HTMLElement !== 'undefined' && !('empty' in HTMLElement.prototype)) {
         return buildEl(this.ownerDocument, 'div', { ...normalizeElInfo(info), parent: this })
       },
     },
+    createSpan: {
+      value(this: HTMLElement, info?: ElInfo | string) {
+        return buildEl(this.ownerDocument, 'span', { ...normalizeElInfo(info), parent: this })
+      },
+    },
+    /** Shows or hides the element, the way Obsidian's does: `display: none` or nothing. */
+    toggle: {
+      value(this: HTMLElement, show: boolean) {
+        this.style.display = show ? '' : 'none'
+      },
+    },
     /** Obsidian's inline style helpers: plain properties, and custom properties by name. */
     setCssStyles: {
       value(this: HTMLElement, styles: Record<string, string>) {
@@ -804,6 +815,11 @@ export const mermaidStub = {
       svg: `<svg id="${id}" width="100%" viewBox="0 0 ${w} ${h}" style="max-width: ${w}px;"><defs><marker id="${id}_arrow"></marker></defs><g><path marker-end="url(#${id}_arrow)"></path></g></svg>`,
     }
   },
+}
+
+/** No PDF.js in a test: a PDF has no picture here. */
+export async function loadPdfJs(): Promise<unknown> {
+  return null
 }
 
 export async function loadMermaid(): Promise<unknown> {
