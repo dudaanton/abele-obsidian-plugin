@@ -253,10 +253,11 @@ function remember(text: string, from: number, items: DrawingItem[]): void {
   items.forEach((item, i) => {
     const line = body[i]
     if (!line.startsWith('<') || !line.endsWith('>')) return
+    const d = item.type === 'stroke' ? /^<path d="([^"]*)"/.exec(line)?.[1] : undefined
+    // A pen's outline as pens drew it at first, round both sides in curves, left gaps where
+    // the line turned: drawn again from the points, and written again with the next change.
+    if (item.type === 'stroke' && item.tool === 'pen' && d?.includes('q')) return
     elementCache.set(item, line)
-    if (item.type === 'stroke') {
-      const d = /^<path d="([^"]*)"/.exec(line)?.[1]
-      if (d && /^[Mmlqaz\d\s.,-]*$/.test(d)) writtenPaths.set(item, d)
-    }
+    if (d && /^[Mmlqaz\d\s.,-]*$/.test(d)) writtenPaths.set(item, d)
   })
 }

@@ -25,6 +25,7 @@ import {
 } from '@/reader/ink/inkFile'
 import { InkHistory } from '@/reader/ink/inkHistory'
 import { routePointer } from '@/reader/ink/inkRoute'
+import { filled, flatten } from '../helpers/pathWinding'
 
 const pen = (points: number[], over: Partial<InkStroke> = {}): InkStroke => ({
   tool: 'pen',
@@ -64,6 +65,87 @@ describe('a stroke', () => {
     const same = strokePath(pen([5, 5, 0.5, 5, 5, 0.5, 5, 5, 0.5]))
     expect(same).toMatch(/A/)
     expect(same).not.toMatch(/NaN/)
+  })
+
+  it('is round and full at both ends: where the pen came down, and where it is now', () => {
+    const pts: number[] = []
+    for (let x = 0; x <= 20; x++) pts.push(x, 0, 0.5)
+    const d = strokePath(pen(pts))
+    // Half pressure at size 2: one unit either side of the line, and round past each end.
+    for (let x = -0.9; x <= 20.9; x += 0.1) expect(filled(d, x, 0), `at ${x}`).toBe(true)
+    expect(filled(d, 20.5, 0.5)).toBe(true)
+    expect(filled(d, -0.5, -0.5)).toBe(true)
+    expect(filled(d, 21.2, 0)).toBe(false)
+    expect(filled(d, 10, 1.2)).toBe(false)
+  })
+
+  it('has no gap anywhere along it, however slowly and shakily the pen went', () => {
+    let seed = 7
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+    const strokes: number[][] = []
+    // A circle drawn slowly, the pen reporting every fraction of a unit.
+    const circle: number[] = []
+    for (let k = 0; k < 600; k++) {
+      const a = (k / 600) * Math.PI * 2
+      circle.push(
+        ...roundPoint(
+          20 + 15 * Math.cos(a) + (rnd() - 0.5) * 0.2,
+          20 + 15 * Math.sin(a) + (rnd() - 0.5) * 0.2,
+          0.4 + rnd() * 0.2
+        )
+      )
+    }
+    strokes.push(circle)
+    // Down and straight back up, as in writing an i.
+    const cusp: number[] = []
+    for (let k = 0; k <= 50; k++) cusp.push(...roundPoint(10 + k * 0.02, k * 0.3, 0.5))
+    for (let k = 50; k >= 0; k--) cusp.push(...roundPoint(10.5 + k * 0.02, k * 0.3, 0.5))
+    strokes.push(cusp)
+    // A hand that trembles, the pressure jumping about.
+    const tremor: number[] = []
+    let x = 0
+    let y = 0
+    for (let k = 0; k < 400; k++) {
+      x += 0.08 + (rnd() - 0.5) * 0.4
+      y += (rnd() - 0.5) * 0.4
+      tremor.push(...roundPoint(x, y, 0.2 + rnd() * 0.6))
+    }
+    strokes.push(tremor)
+    for (const size of [1, 2.2, 4])
+      for (const points of strokes) {
+        const polys = flatten(strokePath(pen(points, { size })))
+        // Every place close to the line the pen went along is ink.
+        const reach = (penWidth(size, 0) / 2) * 0.6
+        let gaps = 0
+        for (let i = 0; i + 5 < points.length; i += 3)
+          for (let t = 0; t < 1; t += 0.25) {
+            const px = points[i] + (points[i + 3] - points[i]) * t
+            const py = points[i + 1] + (points[i + 4] - points[i + 1]) * t
+            for (const [ox, oy] of [
+              [0, 0],
+              [reach, 0],
+              [-reach, 0],
+              [0, reach],
+              [0, -reach],
+            ])
+              if (!filled(polys, px + ox, py + oy)) gaps++
+          }
+        expect(gaps, `size ${size} stroke ${strokes.indexOf(points)}`).toBe(0)
+      }
+  })
+
+  it('follows a curve between points that came far apart, rather than cutting across', () => {
+    // A quick circle, the pen read eight times round it.
+    const pts: number[] = []
+    for (let k = 0; k <= 8; k++) {
+      const a = (k / 8) * Math.PI * 2
+      pts.push(...roundPoint(50 + 20 * Math.cos(a), 50 + 20 * Math.sin(a), 0.5))
+    }
+    const polys = flatten(strokePath(pen(pts)))
+    for (let k = 1; k < 7; k++) {
+      const a = ((k + 0.5) / 8) * Math.PI * 2
+      expect(filled(polys, 50 + 20 * Math.cos(a), 50 + 20 * Math.sin(a)), `arc ${k}`).toBe(true)
+    }
   })
 
   it('is hit by an eraser that comes within its reach, and not from further away', () => {

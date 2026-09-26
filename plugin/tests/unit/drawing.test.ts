@@ -153,6 +153,15 @@ describe('the file a drawing is kept in', () => {
     expect(drawingSvg(fromData)).toBe(svg)
   })
 
+  it('draws a pen stroke from its points again when the file holds the outline pens used to leave', () => {
+    const svg = drawingSvg({ items: [line('a', 0, 0)] })
+    // The outline before, traced round both sides in curves: it left gaps where the pen turned.
+    const old = svg.replace(/<path d="[^"]*"/, '<path d="M0 0q5 1 10 0q-5 1-10 0z"')
+    const back = parseDrawingSvg(old)!
+    expect(writtenPaths.get(back.items[0])).toBeUndefined()
+    expect(drawingSvg(back)).toBe(svg)
+  })
+
   it('packs a stroke’s points to about half, and unpacks them as they were', () => {
     const pts = [1000.1, 500.2, 0.53, 1001.3, 499.9, 0.6, 1003, 499.5, 0.61]
     expect(packPoints(pts)).toEqual([1000.1, 500.2, 53, 1.2, -0.3, 7, 1.7, -0.4, 1])

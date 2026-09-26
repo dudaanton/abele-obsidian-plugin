@@ -76,6 +76,7 @@ export class InkOverlay {
   private readonly gestures = new Map<number, Gesture>()
   private readonly observer: ResizeObserver
   private glide = 0
+  private frame = 0
   private wheelAt = 0
   private readonly off: (() => void)[] = []
 
@@ -115,6 +116,8 @@ export class InkOverlay {
 
   destroy(): void {
     this.stopGlide()
+    if (this.frame) this.win.cancelAnimationFrame(this.frame)
+    this.frame = 0
     for (const off of this.off) off()
     this.observer.disconnect()
     this.el.remove()
@@ -124,7 +127,7 @@ export class InkOverlay {
     const ratio = this.win.devicePixelRatio || 1
     this.canvas.width = Math.max(1, Math.round(this.el.clientWidth * ratio))
     this.canvas.height = Math.max(1, Math.round(this.el.clientHeight * ratio))
-    this.paint()
+    this.paintNow()
   }
 
   private down(e: PointerEvent): void {
@@ -226,7 +229,8 @@ export class InkOverlay {
       }
     } else if (g.kind === 'erase') this.host.eraseEnd()
     else if (!cancelled) this.release(g, e)
-    this.paint()
+    // At once: the page draws the stroke now, and it must not show twice for a frame.
+    this.paintNow()
   }
 
   /**
@@ -329,8 +333,21 @@ export class InkOverlay {
     )
   }
 
-  /** The strokes being drawn, and the eraser's ring, on the canvas over the pages. */
+  /**
+   * Paints on the next frame. A pen reports more often than the screen shows — twice as often,
+   * on an iPad — and painting the whole stroke at every report is work the screen never shows,
+   * which falls behind and makes the line come in jerks.
+   */
   private paint(): void {
+    if (this.frame) return
+    this.frame = this.win.requestAnimationFrame(() => {
+      this.frame = 0
+      this.paintNow()
+    })
+  }
+
+  /** The strokes being drawn, and the eraser's ring, on the canvas over the pages. */
+  private paintNow(): void {
     const ctx = this.canvas.getContext('2d')
     if (!ctx) return
     const ratio = this.win.devicePixelRatio || 1
