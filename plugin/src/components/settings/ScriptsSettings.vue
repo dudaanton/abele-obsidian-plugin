@@ -5,6 +5,7 @@
     <ScriptLibrary v-if="active === 'library'" @added="showButtons" />
     <HeaderButtonsEditor v-else-if="active === 'buttons'" />
     <AutomationsEditor v-else-if="active === 'automations'" />
+    <StartupScriptsEditor v-else-if="active === 'startup'" />
     <ScriptsGeneral v-else />
   </div>
 </template>
@@ -16,12 +17,13 @@ import ScriptLibrary from './scripts/ScriptLibrary.vue'
 import HeaderButtonsEditor from './scripts/HeaderButtonsEditor.vue'
 import ScriptsGeneral from './scripts/ScriptsGeneral.vue'
 import AutomationsEditor from './scripts/AutomationsEditor.vue'
+import StartupScriptsEditor from './scripts/StartupScriptsEditor.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 
 /**
- * Four pages under one tab, the way the AI settings are laid out: what scripts there are, the
- * buttons that run them from a note's header, the automations that run them by themselves,
- * and the switch and folder behind all of it.
+ * Five pages under one tab, the way the AI settings are laid out: what scripts there are, the
+ * buttons that run them from a note's header, the automations that run them by themselves, the
+ * ones that run when Obsidian starts, and the switch and folder behind all of it.
  */
 const TABS = [
   { id: 'library', label: 'Library', tooltip: 'Every script in the folder, and what it does' },
@@ -31,6 +33,7 @@ const TABS = [
     label: 'Automations',
     tooltip: 'Scripts that run by themselves when a task or a note changes',
   },
+  { id: 'startup', label: 'Startup', tooltip: 'Scripts that run each time Obsidian starts' },
   { id: 'general', label: 'General', tooltip: 'Turn scripts on and choose their folder' },
 ]
 

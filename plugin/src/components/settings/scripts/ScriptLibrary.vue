@@ -5,7 +5,9 @@
       of its file: <code>@name</code>, <code>@description</code>, <code>@icon</code> and a
       <code>@param</code> line per value it takes. The pin puts a script on the toolbar: a button at
       the top right of every note on a computer, and a place on the toolbar above the keyboard on a
-      phone — <code>@toolbar</code> in its header does the same.
+      phone — <code>@toolbar</code> in its header does the same. The power button runs a script each
+      time Obsidian starts; <code>@startup</code> in its header does the same, and the Startup tab
+      puts them in order.
     </template>
 
     <EmptyState v-if="!scriptsEnabled">
@@ -35,6 +37,7 @@
             <Badge v-if="script.meta.enabled === false" text="Off" />
             <Badge v-if="buttonCount(script)" :text="buttonLabel(script)" />
             <Badge v-if="placeOf(script)" text="Toolbar" />
+            <Badge v-if="startupOf(script)" text="Startup" />
           </template>
           <template #actions>
             <Icon icon="play" tooltip="Run this script now" @click="run(script)" />
@@ -51,6 +54,14 @@
               :disabled="placeOf(script) === 'header'"
               :tooltip="toolbarTooltip(script)"
               @click="toggleToolbar(script)"
+            />
+            <Icon
+              class="abele-script-startup-toggle"
+              icon="power"
+              :active="startupOf(script) !== null"
+              :disabled="startupOf(script) === 'header'"
+              :tooltip="startupTooltip(script)"
+              @click="toggleStartup(script)"
             />
           </template>
         </Card>
@@ -75,6 +86,12 @@ import { ScriptService } from '@/scripting/ScriptService'
 import type { ParsedScript } from '@/scripting/types'
 import { toolbarPlace, toolbarScriptsFrom } from '@/scripting/scriptToolbar'
 import { setOnToolbar } from '@/scripting/toolbarButtons'
+import {
+  startupPlace,
+  startupScriptsFrom,
+  withStartupScript,
+  withoutStartupScript,
+} from '@/scripting/startupScripts'
 
 const emit = defineEmits<{
   /** A header button was made from a card; its id, so the page can show where it is set up. */
@@ -170,5 +187,30 @@ const toggleToolbar = (script: ParsedScript) => {
   const place = placeOf(script)
   if (place === 'header') return
   void setOnToolbar(ScriptService.getInstance(), script, place === null)
+}
+
+/** Whether the script runs when Obsidian starts, and whether the list or its header says so. */
+const startupOf = (script: ParsedScript) => {
+  void config.version.value
+  return startupPlace(script, startupScriptsFrom(config.ai.startupScripts))
+}
+
+const startupTooltip = (script: ParsedScript): string => {
+  const place = startupOf(script)
+  if (place === 'header') return 'Runs at startup by its // @startup header line'
+  if (place === 'setting') return 'Stop running it when Obsidian starts'
+  return 'Run it each time Obsidian starts'
+}
+
+const toggleStartup = (script: ParsedScript) => {
+  const place = startupOf(script)
+  if (place === 'header') return
+  const chosen = startupScriptsFrom(config.ai.startupScripts)
+  const startupScripts =
+    place === null
+      ? withStartupScript(chosen, script.meta.name)
+      : withoutStartupScript(chosen, script.meta.name)
+  config.ai = { ...config.ai, startupScripts }
+  void config.saveSettings()
 }
 </script>

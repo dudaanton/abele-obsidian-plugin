@@ -17,6 +17,17 @@ export interface ScriptMeta {
   book?: boolean
   /** `@toolbar`: a button on every note's toolbar on a computer, and on the phone's toolbar. */
   toolbar?: boolean
+  /** `@startup`: run each time the plugin starts, on the devices named (`desktop`, `mobile`). */
+  startup?: StartupDevices
+}
+
+/** Which devices a startup script runs on. */
+export type StartupDevices = 'both' | 'desktop' | 'mobile'
+
+/** One script on the startup list in the settings (`ai.startupScripts`), by name. */
+export interface StartupScript {
+  script: string
+  devices: StartupDevices
 }
 
 export interface ParsedScript {

@@ -39,6 +39,7 @@ and `agent()` to hand the fuzzy part of a job to a model. An AI agent can write 
 - From a link, inside or outside Obsidian.
 - By an AI agent, which sees your scripts as tools.
 - By itself, through an automation.
+- Each time Obsidian starts: see below.
 
 ## Script runs
 
@@ -59,6 +60,25 @@ Pin a script in **Settings → Abele → Scripts → Library** (the pin on its c
 
 Unpin it and it goes from both. Every script is also a command, so you can give it a hotkey or put
 it on the phone's toolbar yourself without pinning it.
+
+## Startup scripts
+
+Press the power button on a script's card in **Settings → Abele → Scripts → Library**, or add a
+`// @startup` line to its header, and it runs each time Obsidian starts, once your vault is open.
+The **Startup** tab next to the library lists them: put them in the order they should run, and
+choose for each whether it runs on every device, only on computers, or only on phones and tablets
+(a header line can say `// @startup desktop` or `// @startup mobile`). Your scripts sync to every
+device, so this is how one stays off the phone.
+
+They run one after another. A script's parameters get their defaults, since nobody is asked
+anything at startup; one that needs a value without a default is skipped, and a notice says so. A
+script that fails does not stop the others, and one that takes longer than half a minute is left
+to go on in the background while the next starts. Turning the plugin off and on or updating it
+counts as a start too.
+
+If a startup script goes wrong, turn on **Don't run startup scripts** in the Startup tab, which
+skips all of them until you switch it back. A script that froze Obsidian is skipped by itself the
+next time Obsidian starts, with a notice naming it, so you can reach the settings — on a phone too.
 
 ## Header buttons
 

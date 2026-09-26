@@ -125,7 +125,15 @@ const probeFor = (phone: boolean) =>
       report[label] = measure('.abele-settings__content')
     }
 
-    // The scripts page is four pages under one tab. The header buttons and automations ones are
+    // The startup tab is measured with a script on its list, for the same reason; a name no
+    // script has still draws the whole row.
+    const cfg = window.__abeleTest?.AbeleConfig.getInstance()
+    const startupBefore = cfg?.ai.startupScripts
+    if (cfg) {
+      cfg.ai = { ...cfg.ai, startupScripts: [{ script: 'Layout probe', devices: 'both' }] }
+      await cfg.saveSettings()
+    }
+    // The scripts page is five pages under one tab. The header buttons and automations ones are
     // measured with an item in them — an empty list says nothing about the rows a real one
     // holds — and the item is deleted again through the page's own confirmation afterwards.
     topTabs().find((t) => t.textContent.trim() === 'Scripts').click()
@@ -152,6 +160,11 @@ const probeFor = (phone: boolean) =>
         qa('.modal button').find((b) => b.textContent.trim() === 'Delete')?.click()
         await wait(300)
       }
+    }
+
+    if (cfg) {
+      cfg.ai = { ...cfg.ai, startupScripts: startupBefore ?? [] }
+      await cfg.saveSettings()
     }
 
     topTabs().find((t) => t.textContent.includes('AI Agent')).click()
@@ -321,6 +334,7 @@ describe.skipIf(!available)('the settings pane', () => {
             'Scripts → Library',
             'Scripts → Header buttons',
             'Scripts → Automations',
+            'Scripts → Startup',
             'Scripts → General',
           ])
         )

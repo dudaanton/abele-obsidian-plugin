@@ -1,4 +1,4 @@
-import type { ScriptMeta, ScriptParam } from './types'
+import type { ScriptMeta, ScriptParam, StartupDevices } from './types'
 
 /**
  * Parse script header comments:
@@ -8,6 +8,7 @@ import type { ScriptMeta, ScriptParam } from './types'
  *   // @param style string? "Optional style"
  *   // @book
  *   // @toolbar
+ *   // @startup mobile
  *
  * Returns null if @name is missing.
  */
@@ -21,6 +22,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
   let icon: string | undefined
   let book = false
   let toolbar = false
+  let startup: StartupDevices | undefined
 
   for (const line of lines) {
     const trimmed = line.trim()
@@ -40,6 +42,9 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
       book = true
     } else if (content === '@toolbar' || content.startsWith('@toolbar ')) {
       toolbar = true
+    } else if (content === '@startup' || content.startsWith('@startup ')) {
+      const word = content.slice(8).trim()
+      startup = word === 'desktop' || word === 'mobile' ? word : 'both'
     } else if (content.startsWith('@param ')) {
       const param = parseParam(content.slice(7).trim())
       if (param) params.push(param)
@@ -56,6 +61,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
     enabled,
     ...(book ? { book } : {}),
     ...(toolbar ? { toolbar } : {}),
+    ...(startup ? { startup } : {}),
   }
 }
 

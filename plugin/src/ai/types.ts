@@ -3,6 +3,7 @@ import type { TFile } from 'obsidian'
 import type { AgentDefinition, SessionOverrides } from './agents/types'
 import type { MapBlock } from '@/helpers/mapConfig'
 import type { McpServer } from './mcp/types'
+import type { StartupScript } from '@/scripting/types'
 
 /**
  * What is typed into the chat but not sent yet.
@@ -192,6 +193,13 @@ export interface AiSettings {
    * own `// @toolbar` header line does the same without being listed here.
    */
   toolbarScripts: string[]
+  /**
+   * Scripts run each time the plugin starts, in this order, each on the devices it names. A
+   * script's own `// @startup` header line does the same without being listed here, after these.
+   */
+  startupScripts: StartupScript[]
+  /** Skips every startup script until switched back: the way out when one breaks the start. */
+  startupScriptsPaused: boolean
   defaultScope: Array<{ type: 'file' | 'folder' | 'pattern' | 'group'; path: string }>
   defaultFullVaultAccess: boolean
   chatFolder: string
@@ -377,6 +385,8 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   scriptsEnabled: false,
   scriptsFolder: '',
   toolbarScripts: [],
+  startupScripts: [],
+  startupScriptsPaused: false,
   defaultScope: [],
   defaultFullVaultAccess: false,
   chatFolder: 'AI/Chats/{{name}}',

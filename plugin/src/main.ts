@@ -112,6 +112,7 @@ import { secrets, setSecrets } from '@/secrets/SecretStore'
 import { createPluginSecrets } from '@/secrets/host'
 import { markLoad } from '@/helpers/loadMarks'
 import { beginStartup, startupStep, startupStepAsync } from '@/helpers/startupSteps'
+import { startStartupScripts } from '@/scripting/startupRunner'
 import { claimVueSetters } from '@/helpers/vueGlobals'
 import { openChat } from '@/ai/openChat'
 import { keepChatFilesOutOfLeaves } from '@/ai/chatFileLeaves'
@@ -283,6 +284,12 @@ export default class AbelePlugin extends Plugin {
     startupStep('agent', () => this.syncAiFeatures())
 
     startupStep('links', () => this.registerLinks())
+
+    // The very last layout-ready callback of the start: whatever reads `starting` after it is
+    // in a running session.
+    this.app.workspace.onLayoutReady(() => {
+      this.starting = false
+    })
   }
 
   /** The panes the plugin opens: the sidebars, the code and documentation tabs. */
@@ -1087,6 +1094,12 @@ export default class AbelePlugin extends Plugin {
   private scriptsStarted = false
 
   /**
+   * True until the last of this start's layout-ready callbacks: scripts switched on after that
+   * are switched on in a running session, which is no start, and run no startup scripts.
+   */
+  private starting = true
+
+  /**
    * Puts the agent's commands and ribbon icon up, once the setting says so.
    *
    * Called at load and again after every settings save, because turning the agent on is
@@ -1111,6 +1124,7 @@ export default class AbelePlugin extends Plugin {
     if (ai.scriptsEnabled && !this.scriptsStarted) {
       this.scriptsStarted = true
       this.app.workspace.onLayoutReady(() => {
+        const atStart = this.starting
         ScriptService.getInstance().init()
         // The host a script's `view()` reaches for; registered before any script can run.
         ScriptViewService.getInstance()
@@ -1121,6 +1135,12 @@ export default class AbelePlugin extends Plugin {
             AutomationService.getInstance().start(this.app)
           }
         })
+        // Every start of the plugin, a reload included; they wait for the index themselves.
+        if (atStart) {
+          void startStartupScripts(this.app, ScriptService.getInstance()).catch((e) =>
+            console.error('[Abele] startup scripts could not be run', e)
+          )
+        }
       })
     }
   }

@@ -59,9 +59,24 @@ person took off by hand is not put back unless it is pinned again. Every script 
 (`Script: <name>`) whether or not it is on the toolbar, so it can have a hotkey and be put on the
 phone's toolbar by hand too.
 
+A script can also run each time the plugin starts — Obsidian opening, and also the plugin being
+reloaded or updated, which is the same start from where the plugin stands; switching scripts on
+later in a session runs nothing. Those are the scripts on the startup list (`ai.startupScripts`,
+each `{ script, devices }` with `devices` one of `both`, `desktop`, `mobile`), in its order, then
+those whose header has `// @startup` (or `// @startup desktop`, `// @startup mobile`), by name.
+They start once the workspace is laid out, the script index is read and Obsidian has read the
+notes, and run one after another. A script's parameters are its defaults: one that needs a value
+with no default is skipped with a notice, and a `form()` inside a startup script is answered as
+if dismissed (`null`). One that throws is a failed run and a console warning naming it; one still
+running after 30 seconds is named in a warning and the next starts while it goes on in the
+background. `ai.startupScriptsPaused` skips them all. The script running at startup is also kept
+on the device while it runs, so one that froze the app is skipped, once, at the next start, with a
+notice. Runs started this way are listed as `startup` in the list of runs.
+
 The **Scripts** page of the plugin's settings lists every script as a card — its `@icon`,
 `@name`, `@description` and parameters, straight from the header above — and runs one,
-makes a header button for it, or pins it to the toolbar from there. That header is therefore also how a script presents
+makes a header button for it, pins it to the toolbar, or puts it on the startup list from there
+(its **Startup** tab orders that list and holds the switch that skips it). That header is therefore also how a script presents
 itself to the person: a script without `@description` shows up saying it has none.
 
 ## Automations

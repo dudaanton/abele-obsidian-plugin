@@ -22,6 +22,7 @@ export type RunSource =
   | 'view'
   | 'automation'
   | 'book'
+  | 'startup'
 
 export interface RunLogLine {
   at: number

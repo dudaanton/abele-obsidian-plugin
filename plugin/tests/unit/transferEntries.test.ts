@@ -121,6 +121,18 @@ describe('settings that arrived later than the transfer did', () => {
     })
   })
 
+  it('carries the startup scripts and their skip switch with the script settings', () => {
+    const base = settings()
+    const startupScripts = [{ script: 'Inbox', devices: 'mobile' as const }]
+    base.ai = { ...base.ai, scriptsEnabled: true, startupScripts, startupScriptsPaused: true }
+    const entries = collectEntries(base)
+
+    expect(find(entries, 'scripts', 'scripts')?.data).toMatchObject({
+      startupScripts,
+      startupScriptsPaused: true,
+    })
+  })
+
   it('carries both map settings', () => {
     const entries = collectEntries(
       settings({
