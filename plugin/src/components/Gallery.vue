@@ -242,10 +242,11 @@ const onVaultChange = (file: unknown) => {
 }
 
 const resolvedImages = computed(() => {
-  const _v = imageVersion.value
+  // A picture changed in place has a new address: this reads it again.
+  void imageVersion.value
   void vaultTick.value
   return props.gallery.images.map((image) => ({
-    url: props.gallery.resolveImageUrl(image, _v),
+    url: props.gallery.resolveImageUrl(image),
     alt: image.alt,
     type: image.type,
     path: image.path,

@@ -126,6 +126,7 @@ import { FileSuggest } from '@/helpers/suggesters/FileSuggester'
 import { pickImageFile } from '@/helpers/suggesters/ImagePicker'
 import { importExternalFile, importClipboardImage } from '@/ai/attachments'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { vaultUrl } from '@/helpers/vaultUrl'
 
 const props = defineProps<{
   variables: TemplateVariable[]
@@ -221,7 +222,7 @@ function resolveImageUrl(name: string, path: string) {
   const { app } = GlobalStore.getInstance()
   const file = app.vault.getAbstractFileByPath(path)
   if (file instanceof TFile) {
-    imageUrls.value.set(name, app.vault.getResourcePath(file))
+    imageUrls.value.set(name, vaultUrl(app, file))
   }
 }
 

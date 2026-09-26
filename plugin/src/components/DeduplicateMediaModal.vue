@@ -79,6 +79,7 @@ import ObsidianModal from './obsidian/Modal.vue'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { vaultUrl } from '@/helpers/vaultUrl'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -186,7 +187,7 @@ const scan = async () => {
       const dupFiles: DupFile[] = files.map((f) => ({
         path: f.path,
         mediaType: getMediaType(f.extension.toLowerCase()),
-        resourceUrl: app.vault.getResourcePath(f),
+        resourceUrl: vaultUrl(app, f),
         refCount: countRefs(f.path),
       }))
 

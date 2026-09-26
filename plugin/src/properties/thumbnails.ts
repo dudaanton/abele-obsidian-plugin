@@ -11,6 +11,7 @@ import { EPUB } from '@/vendor/foliate-js/epub.js'
 import { isZip, openZip } from '@/reader/zipLoader'
 import { coverLink, resourceUrl } from '@/helpers/resourceUrl'
 import { fileKind } from './values'
+import { vaultUrl } from '@/helpers/vaultUrl'
 
 /** Past this a file is not opened for its picture: a card is not worth reading 200 MB. */
 const MAX_BYTES = 150 * 1024 * 1024
@@ -23,7 +24,7 @@ const objectUrls = new Set<string>()
 /** A URL for the file's picture, or null when it has none. */
 export function thumbnailOf(app: App, file: TFile): Promise<string | null> {
   const kind = fileKind(file.extension)
-  if (kind === 'image') return Promise.resolve(app.vault.getResourcePath(file))
+  if (kind === 'image') return Promise.resolve(vaultUrl(app, file))
   if (kind === 'note') {
     const cover = coverLink(app.metadataCache.getFileCache(file)?.frontmatter?.cover)
     return Promise.resolve(cover ? (resourceUrl(cover, file.path) ?? null) : null)

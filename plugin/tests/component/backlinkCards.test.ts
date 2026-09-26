@@ -30,7 +30,7 @@ const loaded: Note[] = []
 function vault(specs: FakeFileSpec[]) {
   const app = useVault(specs)
   ;(app.vault as unknown as { getResourcePath: (f: { path: string }) => string }).getResourcePath =
-    (f) => `app://vault/${f.path}`
+    (f) => `app://vault/${f.path}?1`
   return app
 }
 
@@ -134,7 +134,7 @@ describe('NotesList — a backlink is a card', () => {
     expect(description.classes()).toContain('abele-card__description_clamped')
 
     const thumb = card.find('img.abele-card__thumbnail')
-    expect(thumb.attributes('src')).toBe('app://vault/Attachments/poster.jpg')
+    expect(thumb.attributes('src')).toBe('app://vault/Attachments/poster.jpg?1')
     // Pictures further down the list are not fetched until they are scrolled to.
     expect(thumb.attributes('loading')).toBe('lazy')
     expect(card.classes()).toContain('abele-card_thumbed')

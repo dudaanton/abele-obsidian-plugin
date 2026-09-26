@@ -343,6 +343,7 @@ import { DRAWABLE_PICTURES } from '@/drawing/viewType'
 import type { ChatMessage, MessageComment } from '@/ai/types'
 import type { BranchInfo } from './AiChat.vue'
 import { useMessageComments } from '@/composables/useMessageComments'
+import { vaultUrl } from '@/helpers/vaultUrl'
 
 const props = defineProps<{
   message: ChatMessage
@@ -604,7 +605,7 @@ const imageUrl = computed(() => {
     const { app } = GlobalStore.getInstance()
     const file = app.vault.getAbstractFileByPath(path)
     if (!(file instanceof TFile)) return ''
-    return app.vault.getResourcePath(file)
+    return vaultUrl(app, file)
   }
 
   // generate_image / edit_image: extract saved path from toolResult
@@ -616,7 +617,7 @@ const imageUrl = computed(() => {
   const { app } = GlobalStore.getInstance()
   const file = app.vault.getAbstractFileByPath(path)
   if (!(file instanceof TFile)) return ''
-  return app.vault.getResourcePath(file)
+  return vaultUrl(app, file)
 })
 
 // A chat attached here goes to the sidebar; opened in the editor it would close the note.

@@ -80,7 +80,7 @@ describe('a screenshot the agent took', () => {
     ])
     ;(
       app.vault as unknown as { getResourcePath: (f: { path: string }) => string }
-    ).getResourcePath = (f) => `app://vault/${f.path}`
+    ).getResourcePath = (f) => `app://vault/${f.path}?1`
 
     const wrapper = render({
       role: 'tool-call',
@@ -90,7 +90,7 @@ describe('a screenshot the agent took', () => {
     })
 
     expect(wrapper.find('.abele-chat-msg__image-preview').attributes('src')).toBe(
-      'app://vault/Attachments/Screenshot Feed 2026-09-05 12-00-00.png'
+      'app://vault/Attachments/Screenshot Feed 2026-09-05 12-00-00.png?1'
     )
   })
 })

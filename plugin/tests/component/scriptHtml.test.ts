@@ -176,7 +176,7 @@ describe('pictures in a script’s own markup', () => {
     const app = useVault([{ path: 'Attachments/poster.jpg', content: '' }])
     ;(
       app.vault as unknown as { getResourcePath: (f: { path: string }) => string }
-    ).getResourcePath = (f) => `app://vault/${f.path}`
+    ).getResourcePath = (f) => `app://vault/${f.path}?1`
     const v = make()
     v.body = [
       new Html({
@@ -188,8 +188,8 @@ describe('pictures in a script’s own markup', () => {
     const w = mount(ScriptViewComponent, { props: { model: live(v) } })
     await flushPromises()
 
-    expect(w.find('img.a').attributes('src')).toBe('app://vault/Attachments/poster.jpg')
-    expect(w.find('img.b').attributes('src')).toBe('app://vault/Attachments/poster.jpg')
+    expect(w.find('img.a').attributes('src')).toBe('app://vault/Attachments/poster.jpg?1')
+    expect(w.find('img.b').attributes('src')).toBe('app://vault/Attachments/poster.jpg?1')
     expect(w.find('img.c').attributes('src')).toBe('https://x/y.png')
     expect(w.find('img.d').attributes('src')).toBe('nowhere.jpg')
   })

@@ -33,6 +33,7 @@ import {
   withView,
   type EmbedSize,
 } from './embedFormat'
+import { vaultUrl } from '@/helpers/vaultUrl'
 import { isDrawingFile, openDrawing } from './files'
 import type { Rect } from './items'
 
@@ -52,17 +53,6 @@ export function embeddedSvg(app: App, embed: HTMLElement, sourcePath: string): T
   const linkpath = src.split('#')[0].split('|')[0]
   const file = app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath)
   return file && file.extension === 'svg' ? file : null
-}
-
-/**
- * The address a picture of a file is loaded from, another one each time the file changes. On a
- * desktop Obsidian's own address carries the file's time; on an iPhone or an iPad it is the same
- * address for every version, and the browser, handed an address it already shows, shows the old
- * picture — so the time is added there.
- */
-export function versionedUrl(url: string, file: TFile): string {
-  if (url.includes('?')) return url
-  return `${url}?${file.stat.mtime}-${file.stat.size}`
 }
 
 /** Where an embed's text is in its note, for writing its part or its size back. */
@@ -278,7 +268,7 @@ export class DrawingEmbed extends MarkdownRenderChild {
       return
     }
     this.paper = paperOfSvg(await this.app.vault.cachedRead(this.file))
-    this.img.src = versionedUrl(this.app.vault.getResourcePath(this.file), this.file)
+    this.img.src = vaultUrl(this.app, this.file)
     this.embed.addClass(HOST)
     if (this.box.parentElement !== this.embed) this.embed.append(this.box)
     this.layout()

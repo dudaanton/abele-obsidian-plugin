@@ -86,6 +86,7 @@ import { setCoverFromMedia } from '@/commands/setCover'
 import { reduceImageFile, formatBytes } from '@/helpers/reduceImage'
 import { useFilesInAgent } from '@/helpers/useFilesInAgent'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { vaultUrl } from '@/helpers/vaultUrl'
 
 export interface ViewerImage {
   url: string
@@ -263,7 +264,7 @@ async function rotateImage() {
     await app.vault.modifyBinary(file, rotatedBuffer)
 
     // Force image reload in viewer and gallery grid
-    urlOverride.value = app.vault.getResourcePath(file) + '#t=' + Date.now()
+    urlOverride.value = vaultUrl(app, file)
     emit('image-changed')
     new Notice('Image rotated')
   } finally {
@@ -298,7 +299,7 @@ async function stripMetadata() {
     const original = buffer.byteLength
     await app.vault.modifyBinary(file, cleanBuffer)
 
-    urlOverride.value = app.vault.getResourcePath(file) + '#t=' + Date.now()
+    urlOverride.value = vaultUrl(app, file)
     emit('image-changed')
     const diff = original - saved
     new Notice(
@@ -323,7 +324,7 @@ async function reduceSize() {
   }
 
   const { app } = GlobalStore.getInstance()
-  urlOverride.value = app.vault.getResourcePath(file) + '#t=' + Date.now()
+  urlOverride.value = vaultUrl(app, file)
   emit('image-changed')
   new Notice(`Reduced: ${formatBytes(result.originalSize)} → ${formatBytes(result.newSize)}`)
 }

@@ -24,6 +24,7 @@ import { drawnPath, flatten, formatOf } from './imageInk'
 import { emptyDrawingModel, type DrawingModel } from './model'
 import { keptDrawingThickness } from './penThickness'
 import { DRAWABLE_PICTURES, IMAGE_INK_VIEW_TYPE } from './viewType'
+import { vaultUrl } from '@/helpers/vaultUrl'
 
 export { IMAGE_INK_VIEW_TYPE }
 
@@ -108,7 +109,7 @@ export class ImageInkView extends ItemView {
     const session = this.session
     if (!(file instanceof TFile) || !session) return
     const image = new Image()
-    image.src = this.app.vault.getResourcePath(file)
+    image.src = vaultUrl(this.app, file)
     try {
       await image.decode()
     } catch {

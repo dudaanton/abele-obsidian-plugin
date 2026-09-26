@@ -8,6 +8,7 @@
  */
 import { TFile } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { vaultUrl } from './vaultUrl'
 
 /** Anything with a scheme, a leading slash or a data URL is already a URL: left alone. */
 export function isExternalSource(src: string): boolean {
@@ -46,7 +47,7 @@ export function resolveVaultFile(src: string, from = ''): TFile | null {
 export function resourceUrl(src: string, from = ''): string | undefined {
   if (isExternalSource(src)) return src
   const file = resolveVaultFile(src, from)
-  return file ? GlobalStore.getInstance().app.vault.getResourcePath(file) : undefined
+  return file ? vaultUrl(GlobalStore.getInstance().app, file) : undefined
 }
 
 /**
@@ -58,7 +59,9 @@ export function resourceUrl(src: string, from = ''): string | undefined {
  * resolves to nothing is left as written.
  */
 export function resolveMediaSources(root: ParentNode, from = ''): void {
-  for (const el of Array.from(root.querySelectorAll('img[src], video[src], audio[src], source[src]'))) {
+  for (const el of Array.from(
+    root.querySelectorAll('img[src], video[src], audio[src], source[src]')
+  )) {
     const src = el.getAttribute('src') ?? ''
     if (!src || isExternalSource(src)) continue
     const url = resourceUrl(src, from)

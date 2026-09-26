@@ -780,13 +780,13 @@ describe('Image', () => {
     const app = useVault([{ path: 'Media/a.png', content: '' }])
     ;(
       app.vault as unknown as { getResourcePath: (f: { path: string }) => string }
-    ).getResourcePath = (f) => `app://vault/${f.path}`
+    ).getResourcePath = (f) => `app://vault/${f.path}?1`
 
     const url = mount(Image, { props: { src: 'https://x/y.png', alt: 'y' } })
     expect(url.find('img').attributes('src')).toBe('https://x/y.png')
 
     const local = mount(Image, { props: { src: 'Media/a.png' } })
-    expect(local.find('img').attributes('src')).toBe('app://vault/Media/a.png')
+    expect(local.find('img').attributes('src')).toBe('app://vault/Media/a.png?1')
 
     const missing = mount(Image, { props: { src: 'Media/none.png', alt: 'gone' } })
     expect(missing.classes()).toContain('abele-image_missing')
@@ -831,11 +831,11 @@ describe('Image given the name a note links a picture by', () => {
     const app = useVault([{ path: 'Attachments/poster.jpg', content: '' }])
     ;(
       app.vault as unknown as { getResourcePath: (f: { path: string }) => string }
-    ).getResourcePath = (f) => `app://vault/${f.path}`
+    ).getResourcePath = (f) => `app://vault/${f.path}?1`
 
     const byName = mount(Image, { props: { src: 'poster.jpg' } })
 
-    expect(byName.attributes('src')).toBe('app://vault/Attachments/poster.jpg')
+    expect(byName.attributes('src')).toBe('app://vault/Attachments/poster.jpg?1')
     expect(byName.classes()).not.toContain('abele-image_missing')
   })
 })
@@ -845,7 +845,7 @@ describe('Card as a post', () => {
     const app = useVault([{ path: 'Attachments/poster.jpg', content: '' }])
     ;(
       app.vault as unknown as { getResourcePath: (f: { path: string }) => string }
-    ).getResourcePath = (f) => `app://vault/${f.path}`
+    ).getResourcePath = (f) => `app://vault/${f.path}?1`
 
     const post = mount(Card, {
       props: { title: 'Aftersun', cover: 'poster.jpg', large: true, description: 'A film.' },
@@ -853,7 +853,7 @@ describe('Card as a post', () => {
 
     expect(post.classes()).toContain('abele-card_large')
     const cover = post.find('.abele-card__cover img')
-    expect(cover.attributes('src')).toBe('app://vault/Attachments/poster.jpg')
+    expect(cover.attributes('src')).toBe('app://vault/Attachments/poster.jpg?1')
     expect(cover.attributes('alt')).toBe('Aftersun')
     // The picture comes before the words, the way a post reads.
     expect(post.element.firstElementChild?.classList.contains('abele-card__cover')).toBe(true)

@@ -192,6 +192,7 @@ import ScriptRunsView from './ScriptRuns.vue'
 import ScriptView from './ScriptView.vue'
 import SettingsView from './settings/Settings.vue'
 import { findInAnyWindow } from '@/helpers/windowDocuments'
+import { vaultUrl } from '@/helpers/vaultUrl'
 
 /**
  * A note widget's mount element, looked up in every open window. A selector string handed to
@@ -268,7 +269,7 @@ const previewStartIndex = computed(() => {
 function toViewerImage(file: TFile) {
   const { app } = GlobalStore.getInstance()
   return {
-    url: app.vault.getResourcePath(file),
+    url: vaultUrl(app, file),
     alt: file.name,
     type: 'local' as const,
     path: file.path,

@@ -128,7 +128,7 @@ beforeEach(() => {
     { path: 'Food.md', content: '' },
   ])
   ;(fake.vault as unknown as { getResourcePath: (f: { path: string }) => string }).getResourcePath =
-    (f) => `app://vault/${f.path}`
+    (f) => `app://vault/${f.path}?1`
   ;(fake.metadataCache as unknown as Record<string, unknown>).fileToLinktext = (f: {
     path: string
   }) => f.path.replace(/\.md$/, '')
@@ -234,7 +234,7 @@ describe('files as cards', () => {
     await nextTick()
     await nextTick()
     expect(el.querySelector('.abele-card__name')?.textContent).toBe('poster.png')
-    expect(el.querySelector('img')?.getAttribute('src')).toBe('app://vault/Media/poster.png')
+    expect(el.querySelector('img')?.getAttribute('src')).toBe('app://vault/Media/poster.png?1')
   })
 
   it('draws a Files list as a card each, and removing one writes the rest back', async () => {

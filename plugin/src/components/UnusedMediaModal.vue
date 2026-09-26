@@ -82,6 +82,7 @@ import ObsidianModal from './obsidian/Modal.vue'
 import Button from './obsidian/Button.vue'
 import Icon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { vaultUrl } from '@/helpers/vaultUrl'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -201,7 +202,7 @@ const scan = async () => {
         path: file.path,
         size: file.stat.size,
         mediaType: getMediaType(ext),
-        resourceUrl: app.vault.getResourcePath(file),
+        resourceUrl: vaultUrl(app, file),
         status: 'pending',
       })
     }

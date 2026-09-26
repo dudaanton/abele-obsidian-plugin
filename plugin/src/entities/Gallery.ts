@@ -8,6 +8,7 @@ import {
 import { GlobalStore } from '@/stores/GlobalStore'
 import { getEditorForFile } from '@/helpers/vaultUtils'
 import { TFile } from 'obsidian'
+import { vaultUrl } from '@/helpers/vaultUrl'
 
 export class Gallery {
   public readonly id: string
@@ -61,7 +62,7 @@ export class Gallery {
     this.bg = data.bg
   }
 
-  resolveImageUrl(image: GalleryImageEntry, version = 0): string | null {
+  resolveImageUrl(image: GalleryImageEntry): string | null {
     if (image.type === 'remote') {
       return image.path
     }
@@ -69,8 +70,7 @@ export class Gallery {
     const { app } = GlobalStore.getInstance()
     const file = app.metadataCache.getFirstLinkpathDest(image.path, this.filePath)
     if (file) {
-      const url = app.vault.getResourcePath(file)
-      return version ? `${url}#v=${version}` : url
+      return vaultUrl(app, file)
     }
 
     return null

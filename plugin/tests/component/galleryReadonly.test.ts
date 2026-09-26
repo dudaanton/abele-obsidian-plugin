@@ -17,7 +17,7 @@ function gallery(readonly: boolean) {
   const app = useVault([{ path: 'Notes/A.md', content: '' }, { path: 'Attachments/a.jpg', content: '' }])
   ;(
     app.vault as unknown as { getResourcePath: (f: { path: string }) => string }
-  ).getResourcePath = (f) => `app://vault/${f.path}`
+  ).getResourcePath = (f) => `app://vault/${f.path}?1`
   return new Gallery({
     file: null,
     sourcePath: 'Notes/A.md',
@@ -35,7 +35,7 @@ describe('a read-only gallery', () => {
 
     expect(w.find('.abele-gallery__header').exists()).toBe(false)
     expect(w.classes()).toContain('abele-gallery_readonly')
-    expect(w.find('.abele-gallery__image').attributes('src')).toBe('app://vault/Attachments/a.jpg')
+    expect(w.find('.abele-gallery__image').attributes('src')).toBe('app://vault/Attachments/a.jpg?1')
   })
 
   it('is the editable one everywhere else', () => {
@@ -107,6 +107,6 @@ describe('a picture that is not in the vault yet', () => {
     await flushPromises()
 
     expect(w.find('.abele-gallery__image-error').exists()).toBe(false)
-    expect(w.find('.abele-gallery__image').attributes('src')).toBe('app://vault/Attachments/a.jpg')
+    expect(w.find('.abele-gallery__image').attributes('src')).toBe('app://vault/Attachments/a.jpg?1')
   })
 })
