@@ -357,6 +357,12 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
     await reload('location.reload()')
     const phone = run<{
       error?: string
+      line?: {
+        foot: DOMRect
+        pen: DOMRect
+        mark: DOMRect
+        overflow: number
+      }
       fits?: boolean
       finger?: boolean
       paths?: number
@@ -366,6 +372,12 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
       const { view } = await open(${JSON.stringify(PDF)})
       await view.engine.goTo(2); await wait(800)
+      // The line under the page before drawing: the pen at its start, the bookmark at its end, all inside it.
+      const foot = q(view, '.abele-book-reader__footer').getBoundingClientRect()
+      const pen = q(view, '.abele-book-reader__draw').getBoundingClientRect()
+      const mark = q(view, '.abele-book-reader__bookmark').getBoundingClientRect()
+      const line = { foot: foot.toJSON(), pen: pen.toJSON(), mark: mark.toJSON(), overflow: q(view, '.abele-book-reader__footer').scrollWidth - q(view, '.abele-book-reader__footer').clientWidth }
+      await shoot('phone-line')
       click(view, '.abele-book-reader__draw')
       const barEl = await until(() => q(view, '.abele-book-ink'))
       await wait(400)
@@ -379,9 +391,14 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       ears.stop()
       const paths = inked(doc)
       await shoot('phone')
-      return { fits, finger, paths, heard: ears.heard, bar: { height: b.height, top: b.top, bottom: b.bottom, window: window.innerHeight } }
+      return { line, fits, finger, paths, heard: ears.heard, bar: { height: b.height, top: b.top, bottom: b.bottom, window: window.innerHeight } }
     `)
     expect(phone.error).toBeUndefined()
+    const { foot, pen, mark, overflow } = phone.line!
+    expect(overflow).toBeLessThanOrEqual(1)
+    expect(pen.left).toBeGreaterThanOrEqual(foot.left)
+    expect(mark.right).toBeLessThanOrEqual(foot.right + 1)
+    expect(pen.right).toBeLessThan(mark.left)
     expect(phone.fits).toBe(true)
     expect(phone.finger).toBe(true)
     expect(phone.paths).toBe(1)
