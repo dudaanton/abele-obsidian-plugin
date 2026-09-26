@@ -336,6 +336,8 @@ describe.skipIf(!available)('the drawing canvas', () => {
       await closeAll()
       const view = await newOne()
       const b = box(view)
+      // Everything within 360 × 640: a pool vault's window leaves the drawing no more than that
+      // beside the chat, and a pointer past its edge lands on the chat instead.
       const at = (x, y) => [b.left + x, b.top + y]
       await draw(...at(100, 100), ...at(300, 100), 'pen')
       await draw(...at(100, 300), ...at(300, 300), 'pen')
@@ -358,16 +360,16 @@ describe.skipIf(!available)('the drawing canvas', () => {
       click(view, '.abele-drawing-bar__undo'); await wait(100)
       const undone = items(view).length
       click(view, '.abele-drawing-bar__tool_shape'); await wait(100)
-      await draw(...at(400, 100), ...at(500, 180), 'pen')
+      await draw(...at(30, 470), ...at(130, 540), 'pen')
       view.session.setShape('arrow')
-      await draw(...at(400, 250), ...at(520, 320), 'mouse')
+      await draw(...at(180, 470), ...at(300, 540), 'mouse')
       const shapes = items(view).filter((i) => i.type === 'shape').map((i) => i.kind)
       click(view, '.abele-drawing-bar__tool_text'); await wait(100)
       await tap(...at(150, 420))
       const field = !!(await until(() => document.activeElement?.classList.contains('abele-drawing-text')))
       await cdp.sendCommand('Input.insertText', { text: 'Hello there' })
       await wait(100)
-      await tap(...at(600, 500))
+      await tap(...at(340, 620))
       await wait(200)
       const typed = items(view).find((i) => i.type === 'text')?.text
       click(view, '.abele-drawing-bar__mode')
