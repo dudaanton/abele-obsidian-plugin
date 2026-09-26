@@ -71,6 +71,9 @@ const PRELUDE = `
   }
   /** What is on screen where the gallery is: the gallery count, its box, its pictures. */
   const report = async (root, n, shot) => {
+    // The pictures load lazily: one below the fold of a short window never would.
+    await until(() => root.querySelector('.abele-gallery'))
+    root.querySelector('.abele-gallery')?.scrollIntoView({ block: 'start' })
     await until(() => seen(root, n))
     const g = root.querySelectorAll('.abele-gallery')
     const box = g[0]?.getBoundingClientRect()
