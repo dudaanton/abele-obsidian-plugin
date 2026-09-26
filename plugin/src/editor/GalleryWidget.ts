@@ -3,11 +3,10 @@ import { Gallery } from '@/entities/Gallery'
 import { GalleryImageEntry } from '@/helpers/galleryUtils'
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { setWidgetMount } from '@/helpers/widgetMounts'
+import { dropWidgetEntry, setWidgetMount } from '@/helpers/widgetMounts'
 import { TFile } from 'obsidian'
 
 export class GalleryWidget extends WidgetType {
-  private id: string
   private readonly file: TFile
   private readonly images: GalleryImageEntry[]
   private readonly layout: string
@@ -22,7 +21,6 @@ export class GalleryWidget extends WidgetType {
     bg: boolean
   ) {
     super()
-    this.id = genid()
     this.file = file
     this.images = images
     this.layout = layout
@@ -31,17 +29,19 @@ export class GalleryWidget extends WidgetType {
   }
 
   toDOM() {
+    // A fresh id each time: the same widget can be drawn again after its element is gone.
+    const id = genid()
     const container = createDiv()
-    container.id = this.id
+    container.id = id
     container.classList.add('abele-gallery-widget-container')
 
     const mount = container.createDiv({
-      attr: { 'data-gallery-id': this.id },
+      attr: { 'data-gallery-id': id },
       cls: 'abele-vue-mount',
     })
 
     const gallery = new Gallery({
-      id: this.id,
+      id,
       file: this.file,
       images: [...this.images],
       layout: this.layout,
@@ -56,13 +56,8 @@ export class GalleryWidget extends WidgetType {
     return container
   }
 
-  destroy() {
-    const store = GlobalStore.getInstance()
-    const index = store.galleriesContainers.value.findIndex((g) => g.id === this.id)
-    if (index !== -1) {
-      store.galleriesContainers.value[index].cleanup()
-      store.galleriesContainers.value.splice(index, 1)
-    }
+  destroy(dom: HTMLElement) {
+    dropWidgetEntry(GlobalStore.getInstance().galleriesContainers.value, dom)
   }
 
   eq(other: GalleryWidget) {
@@ -74,7 +69,6 @@ export class GalleryWidget extends WidgetType {
       this.images.length === other.images.length &&
       this.images.every((img, i) => img.raw === other.images[i].raw)
     ) {
-      this.id = other.id
       return true
     }
     return false

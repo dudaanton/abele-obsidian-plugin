@@ -56,7 +56,7 @@ export function createHeaderExtension(): Extension {
 
       private destroyWidget() {
         this.widgetElement?.remove()
-        this.wiget?.destroy()
+        if (this.widgetElement) this.wiget?.destroy(this.widgetElement)
         this.widgetElement = undefined
         this.wiget = undefined
       }

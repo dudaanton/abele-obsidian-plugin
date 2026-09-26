@@ -27,3 +27,21 @@ export function setWidgetMount(entry: object, el: HTMLElement): void {
 export function widgetMount(entry: object): HTMLElement | undefined {
   return mounts.get(toRaw(entry))
 }
+
+/**
+ * Takes out of `list` the entry drawn into `dom`, the element CodeMirror is destroying, and
+ * cleans it up.
+ *
+ * Found by its element, never by the widget's id: CodeMirror hands a kept element over to an
+ * equal new widget and compares widgets in both directions, so which widget instance is
+ * destroyed says nothing reliable about which entry it made. The element does.
+ */
+export function dropWidgetEntry<T extends { cleanup(): void }>(list: T[], dom: HTMLElement): void {
+  const at = list.findIndex((entry) => {
+    const mount = widgetMount(entry)
+    return !!mount && dom.contains(mount)
+  })
+  if (at === -1) return
+  list[at].cleanup()
+  list.splice(at, 1)
+}

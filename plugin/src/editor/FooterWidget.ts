@@ -1,7 +1,7 @@
 import { WidgetType } from '@codemirror/view'
 import { genid } from '@/helpers/vueUtils'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { setWidgetMount } from '@/helpers/widgetMounts'
+import { dropWidgetEntry, setWidgetMount } from '@/helpers/widgetMounts'
 import { Footer } from '@/entities/Footer'
 import { reactive } from 'vue'
 import { TFile } from 'obsidian'
@@ -11,36 +11,36 @@ import { keepScrollOnShrink } from './keepScrollOnShrink'
 const scrollKeepers = new WeakMap<HTMLElement, () => void>()
 
 export class FooterWidget extends WidgetType {
-  private id: string
   private readonly file: TFile
 
   constructor(file: TFile) {
     super()
-    this.id = genid()
     this.file = file
   }
 
   toDOM() {
+    // A fresh id each time: the same widget can be drawn again after its element is gone.
+    const id = genid()
     const container = createDiv()
-    container.id = this.id
+    container.id = id
     container.classList.add('abele-footer-widget-container')
 
     const mount = container.createDiv({
-      attr: { 'data-footer-id': this.id },
+      attr: { 'data-footer-id': id },
       cls: 'abele-vue-mount',
     })
     scrollKeepers.set(container, keepScrollOnShrink(container, mount))
 
     const store = GlobalStore.getInstance()
     const footer = new Footer({
-      id: this.id,
+      id,
       filePath: this.file.path,
     })
     // Before the store hears of it: the component is drawn into this element, not looked for.
     setWidgetMount(footer, mount)
     store.footersContainers.value.push(reactive(footer))
     console.debug(
-      `[FooterWidget] toDOM id=${this.id} file=${this.file.path} | total: ${store.footersContainers.value.length}`
+      `[FooterWidget] toDOM id=${id} file=${this.file.path} | total: ${store.footersContainers.value.length}`
     )
 
     return container
@@ -50,23 +50,14 @@ export class FooterWidget extends WidgetType {
     scrollKeepers.get(dom)?.()
     scrollKeepers.delete(dom)
     const store = GlobalStore.getInstance()
-    const index = store.footersContainers.value.findIndex((t) => t.id === this.id)
-    if (index !== -1) {
-      store.footersContainers.value[index].cleanup()
-      store.footersContainers.value.splice(index, 1)
-      console.debug(
-        `[FooterWidget] destroy OK id=${this.id} file=${this.file.path} | total: ${store.footersContainers.value.length}`
-      )
-    } else {
-      console.debug(
-        `[FooterWidget] destroy MISS id=${this.id} file=${this.file.path} | total: ${store.footersContainers.value.length}`
-      )
-    }
+    dropWidgetEntry(store.footersContainers.value, dom)
+    console.debug(
+      `[FooterWidget] destroy file=${this.file.path} | total: ${store.footersContainers.value.length}`
+    )
   }
 
   eq(other: FooterWidget) {
     if (this.file === other.file) {
-      this.id = other.id
       return true
     }
     return false
