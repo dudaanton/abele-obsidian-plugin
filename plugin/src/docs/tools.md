@@ -149,20 +149,27 @@ that answer the question.
 
 ## Books
 
-`book_views`, `book_contents`, `book_read`, `book_search`, `book_open`.
+`book_views`, `book_list`, `book_contents`, `book_read`, `book_search`, `book_open`,
+`book_highlights`, `book_highlight`, `book_highlight_edit`, `book_highlight_remove`,
+`book_bookmark`.
 
-Read-only access to the books (`.epub`) and PDFs in the vault and to the book tabs the person has
+The books (`.epub`, other e-book formats) and PDFs in the vault and the book tabs the person has
 open. A book is a file of the vault: a chat reaches only the books its scope lets it read, the
-same as notes, and one outside it is refused with `Access denied`. Nothing a book holds is ever
-changed. The book need not be open for `book_contents`, `book_read` and `book_search`.
+same as notes, and one outside it is refused with `Access denied`. The book file itself is never
+changed; highlights and bookmarks are written where the reader writes them. The book need not be
+open for any of them but `book_views`.
 
 A book is named by its vault path or by a link to a place in it — the links these tools write
 (`[[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]]`, `[[Paper.pdf#page=4]]`, see the vault
 section). Put those links in replies: a click opens the book at that place with the words
-selected.
+selected. A link is also how the tools are told where: pass one as `book` to read, highlight or
+bookmark there.
 
-A discussion about words in a book (a comment anchored to the book) always has the read-only book
-tools below, whatever its agent's own tools, for that book.
+The reading tools run without asking; the ones that mark a book ask first, like editing a note. A
+discussion about words in a book (a comment anchored to the book) always has the reading tools,
+whatever its agent's own tools, for that book.
+
+Reading:
 
 - `book_views` — what the person is reading: each open book, the one on screen, the chapter or
   page and how far through, a link to that place, the words they selected — quoted, with a link to
@@ -170,21 +177,44 @@ tools below, whatever its agent's own tools, for that book.
   page (chats kept with those words, each with a link and a quote), where the book's
   highlights note is, and the pages they bookmarked, each a link, the ones on this page marked.
   Start here whenever they say "this book", "this passage", "here".
+- `book_list` — the books in scope, the ones read last first, with how far they got and whether
+  it is open; `query` filters by words in the path, `offset` pages on.
 - `book_contents` — title, author, the table of contents, and the book's parts numbered as
-  `book_read` takes them, with how long each is. A PDF's parts are its pages.
+  `book_read` and `book_search` take them, with how long each is. A PDF's parts are its pages.
 - `book_read` — the text of one part (a chapter file, a PDF page), 12,000 characters by default
-  (`offset`, `limit` in characters; the answer says where the next window starts). Given a link to
-  a place instead of `part`, it reads from the paragraph that place is in. Blocks are on lines of
-  their own; the text is plain, without the book's markup.
-- `book_search` — every find of some words in the whole book, ignoring case and accents, with the
-  words around each, the part it is in and a link to exactly those words (a PDF: to the page).
+  (`offset`, `limit` in characters, at most 25,000; the answer says where the next window
+  starts). Given a link to a place instead of `part`, it reads from the paragraph that place is
+  in. Blocks are on lines of their own; the text is plain, without the book's markup.
+- `book_search` — the finds of some words, ignoring case and accents, 15 at a time: each the part
+  it is in, a link to exactly those words (a PDF: to the page) and about 200 characters around
+  them. `parts` limits it to some parts (`"3"`, `"2-4, 7"`) — search the chapter in question
+  rather than the book; `after` continues where the last page stopped.
 - `book_open` — opens a book in front of the person at a link's place, with the words there
   selected; a bare path opens it where they left off. It reuses the book's tab.
+- `book_highlights` — the book's highlights in its order: colour, a link to the words (the id
+  the tools below take), the words, the note; `color` filters, `offset` pages on. Then its
+  bookmarks, each with its id.
 
-The book's highlights are an ordinary note (see the vault section): read it with `read`. Reading a
-book, in this order: `book_views` for what they are looking at; `book_contents` for its shape;
-`book_read` from the place in question rather than the whole book; `book_search` to find where
-something is mentioned; answer with links to the places.
+Marking — each asks first:
+
+- `book_highlight` — highlights words, with a `color` (yellow, green, blue, pink, purple,
+  orange; yellow by default) and a `note`. `text` is the words as `book_read` or `book_search`
+  gives them — spacing, case and quote marks may differ, nothing else. Pass `book` as a link to
+  the place (a find of `book_search`) to highlight the occurrence nearest it; with a bare path it
+  looks through the whole book (or `part`) and refuses words that are in several places, listing
+  their links to choose from. Highlighting the same words again changes that highlight. On a PDF
+  it needs the page's text layer: a scanned page has no words.
+- `book_highlight_edit` — a highlight's `color` or `note`, named by its link; an empty note
+  removes it.
+- `book_highlight_remove` — removes a highlight named by its link. One carrying a discussion is
+  refused: the person removes it in the reader, which asks what becomes of the chat.
+- `book_bookmark` — bookmarks the place a link names (for a PDF, its page), or with `remove` and
+  the book, removes the bookmark of that id.
+
+Reading a book, in this order: `book_views` for what they are looking at; `book_contents` for its
+shape; `book_search` within the parts that matter to find where something is; `book_read` from
+that place rather than the whole book; answer with links to the places. To highlight, search for
+the words, then `book_highlight` with the find's link as `book` and the exact words as `text`.
 
 ## Maps
 

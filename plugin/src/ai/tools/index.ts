@@ -112,6 +112,12 @@ export function getToolRegistry(): ToolInfo[] {
     book_read: { label: 'Read book', category: 'Books' },
     book_search: { label: 'Search book', category: 'Books' },
     book_open: { label: 'Show in a book', category: 'Books' },
+    book_list: { label: 'List books', category: 'Books' },
+    book_highlights: { label: 'Book highlights', category: 'Books' },
+    book_highlight: { label: 'Highlight in a book', category: 'Books' },
+    book_highlight_edit: { label: 'Change a highlight', category: 'Books' },
+    book_highlight_remove: { label: 'Remove a highlight', category: 'Books' },
+    book_bookmark: { label: 'Bookmark in a book', category: 'Books' },
     geocode: { label: 'Geocode', category: 'Maps' },
     places: { label: 'Find places', category: 'Maps' },
     route: { label: 'Build route', category: 'Maps' },
@@ -276,7 +282,8 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createForgetTool(resolveAgent),
   ]
 
-  // Read-only: books and PDFs in the vault, as far as the chat's scope reaches.
+  // Books and PDFs in the vault, as far as the chat's scope reaches: read, and marked — highlights
+  // and bookmarks, written where the reader writes them. The book files are never changed.
   tools.push(...createBookTools())
 
   // Read-only, and only while the integration is on: with it off there is no GitHub to read.

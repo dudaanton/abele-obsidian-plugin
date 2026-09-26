@@ -52,8 +52,21 @@ A link to a place in a book opens the book there, just like a link to a heading 
 ## Asking about a passage
 
 With the AI agent on, **Ask here** on selected words starts a discussion about them. It is kept in
-the highlights note beside the passage, and the words stay marked. Agents can also read, search
-and open your books on their own, within their scope. See [Comments](comments).
+the highlights note beside the passage, and the words stay marked. See [Comments](comments).
+
+## Letting the agent work with a book
+
+In a chat the agent can find your books, open one at a place, read its contents, search it —
+the whole book or only the chapters you name — and read the passages it finds. It can also mark
+the book for you: highlight words in any colour with a note on them, change or remove a
+highlight, and add or remove bookmarks. Its highlights go to the same note as yours and look the
+same in the book. It reads on its own, but asks before it marks anything, the way it asks before
+editing a note; you can change that for each agent in its tools. It reaches only the books in the
+chat's scope.
+
+Try asking: "find where the book talks about memory in chapters 3 to 5 and highlight the key
+sentence in green, with a note on why it matters". Highlights work in EPUB and other e-books
+and in PDFs that have text; a scanned PDF has no words to highlight.
 
 ## Reading aloud
 

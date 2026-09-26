@@ -1,70 +1,31 @@
 /**
- * The book tools: read-only access to the books and PDFs in the vault, and to the book tabs the
- * person has open — what is on screen and selected, the contents, a part's text, a search — and
- * a way to put a place in front of them. A book is a file of the vault, so a chat reaches only
- * the books its scope lets it read, exactly as with notes.
+ * The book tools that read: the books and PDFs in the vault, and the book tabs the person has
+ * open — what is there, what is on screen and selected, the contents, a part's text, a search of
+ * the book or some of its parts — and a way to put a place in front of them. The tools that mark a
+ * book are in `BookMarkTools.ts`. A book is a file of the vault, so a chat reaches only the books
+ * its scope lets it read, exactly as with notes.
  */
-import { TFile, type App } from 'obsidian'
-import type { AgentTool, AgentToolResult } from '../client'
-import { ScopeResolver } from '../ScopeResolver'
-import { GlobalStore } from '@/stores/GlobalStore'
+import type { TFile } from 'obsidian'
+import type { AgentTool } from '../client'
 import { BOOK_VIEW_TYPE, READER_EXTENSIONS } from '@/reader/viewType'
+import { bookPlaces } from '@/reader/places'
+import type { BookPlace } from '@/reader/positions'
 import type { BookView } from '@/reader/BookView'
-import { linkToPlace, parsePlaceSubpath, type BookPlace } from '@/reader/bookLinks'
+import {
+  DEFAULT_CHARS,
+  MAX_CHARS,
+  answer,
+  app,
+  inScope,
+  link,
+  namedBook,
+  quoted,
+} from './bookToolKit'
 import { loadBookText, offsetOf, searchBookText, sectionText } from '@/reader/bookText'
 import { percent } from '@/reader/model'
+import { createBookMarkTools } from './BookMarkTools'
 
-/** The most text one call hands back. */
-const MAX_OUTPUT = 30_000
-/** Characters of a part read when no limit is asked for. */
-const DEFAULT_CHARS = 12_000
-const MAX_CHARS = 25_000
-
-const answer = (body: string): AgentToolResult => ({
-  content: [
-    {
-      type: 'text',
-      text:
-        body.length > MAX_OUTPUT
-          ? `${body.slice(0, MAX_OUTPUT)}\n\n[Cut at ${MAX_OUTPUT} characters — ask for a smaller part.]`
-          : body,
-    },
-  ],
-})
-
-const app = (): App => GlobalStore.getInstance().app
-const inScope = (path: string) => ScopeResolver.getInstance().isInScope(path)
-
-/**
- * The book a call names: a vault path, or a link to a place in it (`[[Book.epub#cfi=…]]`,
- * `Book.epub#page=4`). The place comes back too. A book outside the chat's scope is refused.
- */
-export function namedBook(input: unknown): { file: TFile; place: BookPlace | null } {
-  let text = typeof input === 'string' ? input.trim() : ''
-  if (!text) throw new Error('Name a book: its path in the vault, or a link to a place in it.')
-  const wiki = /^!?\[\[([^\]|]+)(?:\|[^\]]*)?\]\]$/.exec(text)
-  const md = /^\[[^\]]*\]\(\s*<?([^)>]+?)>?\s*\)$/.exec(text)
-  text = wiki?.[1] ?? md?.[1] ?? text
-  const hash = text.indexOf('#')
-  const target = hash >= 0 ? text.slice(0, hash) : text
-  const place = hash >= 0 ? parsePlaceSubpath(text.slice(hash)) : null
-  let path = target
-  try {
-    path = decodeURIComponent(target)
-  } catch {
-    // A stray `%` written by hand: the path as it is.
-  }
-  const direct = app().vault.getAbstractFileByPath(path)
-  const file = direct instanceof TFile ? direct : app().metadataCache.getFirstLinkpathDest(path, '')
-  if (!(file instanceof TFile)) throw new Error(`No book at ${path}.`)
-  if (!READER_EXTENSIONS.includes(file.extension))
-    throw new Error(
-      `${file.path} is not a book: the book tools read EPUB, PDF, MOBI, AZW3, FB2 and CBZ files.`
-    )
-  if (!inScope(file.path))
-    throw new Error(`Access denied: ${file.path} is not in this chat's scope.`)
-  return { file, place }
-}
+export { namedBook }
 
 type Resolved = { index: number; anchor?: (doc: Document) => Range | Element | null } | null
 
@@ -78,15 +39,6 @@ const resolverOf =
       return null
     }
   }
-
-const link = (file: TFile, place: BookPlace, label?: string) =>
-  linkToPlace(app(), file, place, label || file.basename)
-
-const quoted = (text: string) =>
-  text
-    .split('\n')
-    .map((line) => (line.trim() ? `   > ${line}` : '   >'))
-    .join('\n')
 
 export function createBookViewsTool(): AgentTool {
   return {
@@ -298,19 +250,67 @@ export function createBookReadTool(): AgentTool {
   }
 }
 
+/** Finds one search lists when no number is asked for, and the most it lists. */
+const SEARCH_LIMIT = 15
+const SEARCH_MAX = 40
+/** Characters of text kept on each side of a find: a snippet of about 200 in all. */
+const SIDE = 90
+
+/**
+ * Part numbers written as a person would — `3`, `2-4`, `1, 5-7` — as indices from 0; refused
+ * when one is not in the book.
+ */
+export function partsFrom(spec: unknown, count: number): Set<number> | undefined {
+  const text = typeof spec === 'number' ? String(spec) : typeof spec === 'string' ? spec.trim() : ''
+  if (!text) return undefined
+  const out = new Set<number>()
+  for (const piece of text.split(/[,;\s]+/).filter(Boolean)) {
+    const m = /^(\d+)(?:\s*[-–]\s*(\d+))?$/.exec(piece)
+    if (!m) throw new Error(`"${piece}" is not a part number or a range of them, like 3 or 2-4.`)
+    const from = Number(m[1])
+    const to = Number(m[2] ?? m[1])
+    if (from < 1 || to > count || from > to)
+      throw new Error(`This book has parts 1 to ${count}; "${piece}" is not among them.`)
+    for (let n = from; n <= to; n++) out.add(n - 1)
+  }
+  return out
+}
+
+/** The words around a find, on one line, cut to about `SIDE` characters each side at a word. */
+export function snippetOf(pre: string, match: string, post: string): string {
+  const flat = (t: string) => t.replace(/\s+/g, ' ')
+  let before = flat(pre)
+  let after = flat(post)
+  if (before.length > SIDE) before = '…' + before.slice(-SIDE).replace(/^\S*\s/, '')
+  if (after.length > SIDE) after = after.slice(0, SIDE).replace(/\s\S*$/, '') + '…'
+  return `${before}**${flat(match)}**${after}`.trim()
+}
+
 export function createBookSearchTool(): AgentTool {
   return {
     name: 'book_search',
     label: 'Search book',
     description:
-      'Searches the whole text of a book or PDF for words, ignoring case and accents. Each find comes with the words around it, which part or page it is in, and a link to exactly those words (a PDF: to the page). ' +
+      'Searches the text of a book or PDF for words, ignoring case and accents: the whole book, or only the parts given in `parts` (numbered as book_contents lists them, e.g. "3" or "2-4, 7"). ' +
+      `Each find is one short line of the words around it, the part it is in and a link to exactly those words (a PDF: to the page) — ${SEARCH_LIMIT} at a time; \`after\` continues from where the last page stopped. ` +
       'Read-only; the book need not be open.',
     parameters: {
       type: 'object',
       properties: {
         book: { type: 'string', description: 'The book file: a vault path or a link' },
         query: { type: 'string', description: 'The words to find' },
-        limit: { type: 'number', description: 'Finds to list (default 30, at most 100)' },
+        parts: {
+          type: 'string',
+          description: 'Only these parts: a number, a range or a list ("3", "2-4, 7")',
+        },
+        after: {
+          type: 'number',
+          description: 'Finds already seen: the answer says what to pass for the next page',
+        },
+        limit: {
+          type: 'number',
+          description: `Finds to list (default ${SEARCH_LIMIT}, at most ${SEARCH_MAX})`,
+        },
       },
       required: ['book', 'query'],
     },
@@ -318,21 +318,33 @@ export function createBookSearchTool(): AgentTool {
       const { file } = namedBook(params.book)
       const query = typeof params.query === 'string' ? params.query.trim() : ''
       if (query.length < 2) throw new Error('Search for at least two letters.')
-      const max = Math.min(100, Math.max(1, Math.round((params.limit as number) || 30)))
+      const max = Math.min(
+        SEARCH_MAX,
+        Math.max(1, Math.round((params.limit as number) || SEARCH_LIMIT))
+      )
+      const skip = Math.max(0, Math.round(Number(params.after) || 0))
       const loaded = await loadBookText(app(), file)
-      const { finds, total } = await searchBookText(loaded, query, max)
-      if (!total) return answer(`"${query}" is not in ${loaded.title}.`)
+      const parts = partsFrom(params.parts, loaded.sections.length)
+      const { finds, total } = await searchBookText(loaded, query, max, { parts, skip })
+      const where = parts
+        ? ` in part${parts.size === 1 ? '' : 's'} ${[...parts].map((i) => i + 1).join(', ')}`
+        : ''
+      if (!total) return answer(`"${query}" is not in ${loaded.title}${where}.`)
+      if (!finds.length)
+        return answer(
+          `${total} find${total === 1 ? '' : 's'} of "${query}"${where}; none after ${skip}.`
+        )
+      const shown = `${skip + 1}–${skip + finds.length}`
       const out = [
-        `${total} find${total === 1 ? '' : 's'} of "${query}" in ${loaded.title}${total > finds.length ? `; the first ${finds.length}` : ''}:`,
-        '',
+        `${total} find${total === 1 ? '' : 's'} of "${query}" in ${loaded.title}${where}${total > finds.length ? `; ${shown}` : ''}:`,
       ]
       finds.forEach((f, i) => {
-        const where = loaded.pdf ? { page: f.index + 1 } : { cfi: f.cfi ?? '' }
-        out.push(
-          `${i + 1}. ${f.label || `part ${f.index + 1}`} (part ${f.index + 1}) — ${link(file, where, f.label)}`
-        )
-        out.push(`   …${f.excerpt.pre}**${f.excerpt.match}**${f.excerpt.post}…`)
+        const place = loaded.pdf ? { page: f.index + 1 } : { cfi: f.cfi ?? '' }
+        out.push(`${skip + i + 1}. part ${f.index + 1} ${link(file, place, f.label)}`)
+        out.push(`   ${snippetOf(f.excerpt.pre, f.excerpt.match, f.excerpt.post)}`)
       })
+      if (skip + finds.length < total)
+        out.push(`[More: book_search with after ${skip + finds.length}.]`)
       return answer(out.join('\n'))
     },
   }
@@ -376,6 +388,77 @@ export function createBookOpenTool(): AgentTool {
   }
 }
 
+const LIST_LIMIT = 30
+
+export function createBookListTool(): AgentTool {
+  return {
+    name: 'book_list',
+    label: 'List books',
+    description:
+      'The books and PDFs in the vault this chat may read: path, how far the person has read and when, and whether it is open in a tab — the ones read last first. ' +
+      '`query` keeps those whose path has all its words; a page at a time, `offset` for the next. Read-only.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Words the path must contain' },
+        offset: { type: 'number', description: 'Books to pass over: the answer says the next' },
+        limit: {
+          type: 'number',
+          description: `Books to list (default ${LIST_LIMIT}, at most 100)`,
+        },
+      },
+    },
+    execute: async (_id, params) => {
+      const words = (typeof params.query === 'string' ? params.query : '')
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean)
+      const all = app()
+        .vault.getFiles()
+        .filter((f) => READER_EXTENSIONS.includes(f.extension.toLowerCase()))
+      const books = all.filter(
+        (f) => inScope(f.path) && words.every((w) => f.path.toLowerCase().includes(w))
+      )
+      if (!books.length)
+        return answer(
+          all.length
+            ? `No book${words.length ? ` matching "${words.join(' ')}"` : ''} in this chat's scope.`
+            : 'There are no books or PDFs in the vault.'
+        )
+      const places =
+        (await bookPlaces()
+          ?.byPath()
+          .catch((): null => null)) ?? new Map<string, BookPlace>()
+      const open = new Set(
+        app()
+          .workspace.getLeavesOfType(BOOK_VIEW_TYPE)
+          .map((l) => (l.view as unknown as { file?: TFile }).file?.path)
+      )
+      books.sort(
+        (a, b) =>
+          (places.get(b.path)?.at ?? 0) - (places.get(a.path)?.at ?? 0) ||
+          a.path.localeCompare(b.path)
+      )
+      const offset = Math.max(0, Math.round(Number(params.offset) || 0))
+      const limit = Math.min(100, Math.max(1, Math.round(Number(params.limit) || LIST_LIMIT)))
+      const page = books.slice(offset, offset + limit)
+      const out = [
+        `${books.length} book${books.length === 1 ? '' : 's'}${books.length > page.length ? `; ${offset + 1}–${offset + page.length}` : ''}:`,
+      ]
+      for (const f of page) {
+        const place = places.get(f.path)
+        const read = place
+          ? ` — ${percent(place.fraction)} read, last ${new Date(place.at).toISOString().slice(0, 10)}`
+          : ''
+        out.push(`- ${f.path}${read}${open.has(f.path) ? ' (open)' : ''}`)
+      }
+      if (offset + page.length < books.length)
+        out.push(`[More: book_list with offset ${offset + page.length}.]`)
+      return answer(out.join('\n'))
+    },
+  }
+}
+
 export function createBookTools(): AgentTool[] {
   return [
     createBookViewsTool(),
@@ -383,5 +466,7 @@ export function createBookTools(): AgentTool[] {
     createBookReadTool(),
     createBookSearchTool(),
     createBookOpenTool(),
+    createBookListTool(),
+    ...createBookMarkTools(),
   ]
 }

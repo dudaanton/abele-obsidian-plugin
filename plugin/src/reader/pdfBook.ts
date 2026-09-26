@@ -44,6 +44,11 @@ export interface PdfBookExtras {
   pageText(index: number): Promise<string>
   /** A page's size at 100%, in CSS pixels. */
   pageSize(index: number): Promise<{ width: number; height: number }>
+  /**
+   * A page as the reader's page frame holds it, its text layer filled and no picture drawn: where
+   * words are found for the agent, so a place in it is the place a person's selection makes.
+   */
+  pageDocument(index: number): Promise<Document>
 }
 
 /* The parts of PDF.js this uses, typed loosely: it is Obsidian's copy, of Obsidian's version. */
@@ -292,11 +297,37 @@ export async function openPdf(lib: PdfLib, data: Uint8Array): Promise<OpenedBook
     return text.replace(/[ \t]+\n/g, '\n').trim()
   }
 
+  /** A page as its frame holds it, the text layer drawn at 100% into a document of its own. */
+  async function pageDocument(index: number): Promise<Document> {
+    const page: PdfPage = await pdf.getPage(index + 1)
+    const viewport = page.getViewport({ scale: 1 })
+    const doc = new DOMParser().parseFromString(
+      pdfPageHtml(viewport.width, viewport.height),
+      'text/html'
+    )
+    const container = doc.querySelector('.textLayer')
+    if (container) {
+      // The same layer `drawPage` makes, so the page's elements, and a CFI into them, are the same.
+      await new lib.TextLayer({
+        textContentSource: page.streamTextContent(),
+        container,
+        viewport,
+      }).render()
+      const end = doc.createElementNS(XHTML_NS, 'div')
+      end.className = 'endOfContent'
+      container.append(end)
+      for (const hidden of Array.from(activeDocument.querySelectorAll('.hiddenCanvasElement')))
+        (hidden as HTMLElement).addClass('abele-book__pdf-hidden')
+    }
+    return doc
+  }
+
   const book: FoliateBook & PdfBookExtras = {
     pageEvents,
     searchPages,
     pageText,
     pageSize,
+    pageDocument,
     rendition: { layout: 'pre-paginated' },
     metadata: {
       title: get('dc:title') ?? meta.info?.Title,

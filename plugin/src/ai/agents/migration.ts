@@ -1,6 +1,7 @@
 import { createAgent, normaliseContextDepth, type AgentDefinition } from './types'
 import { REMEMBER_TOOL, FORGET_TOOL } from './memory'
 import {
+  BOOK_TOOL_MODES,
   DEFAULT_AI_SETTINGS,
   EDIT_SELECTION_TOOL,
   GITHUB_TOOLS,
@@ -199,6 +200,25 @@ function enableGithubTools(ai: AiSettings): boolean {
 }
 
 /**
+ * Hands the book tools to agents saved before they had their modes: reading on its own, marking
+ * a book after asking. Only a tool an agent has no opinion on is touched — one switched on or off
+ * by hand stays as it is.
+ */
+function enableBookTools(ai: AiSettings): boolean {
+  let changed = false
+
+  for (const agent of ai.agents || []) {
+    for (const [tool, mode] of Object.entries(BOOK_TOOL_MODES)) {
+      if (agent.toolModes[tool] !== undefined) continue
+      agent.toolModes[tool] = mode
+      changed = true
+    }
+  }
+
+  return changed
+}
+
+/**
  * Gives every agent a well-formed interceptor pair.
  *
  * Filling in the missing fields is not reported as a change: agents saved before the field
@@ -244,7 +264,8 @@ export function migrateAgents(ai: AiSettings): boolean {
   const maps = enableMapTools(ai)
   const memory = enableMemoryTool(ai)
   const github = enableGithubTools(ai)
+  const books = enableBookTools(ai)
   const interceptors = normaliseInterceptors(ai)
 
-  return legacy || comment || maps || memory || github || interceptors
+  return legacy || comment || maps || memory || github || books || interceptors
 }

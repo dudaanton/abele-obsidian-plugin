@@ -243,7 +243,16 @@ export const WRITE_TOOLS = ['edit', 'create', 'replace', 'write', EDIT_SELECTION
  * script lists its chats in the code view. `rm` is absent — a deleted note has no footer for
  * the link to show in.
  */
-export const TOUCHING_TOOLS = [...WRITE_TOOLS, 'mv', 'cp', 'create_script']
+export const TOUCHING_TOOLS = [
+  ...WRITE_TOOLS,
+  'mv',
+  'cp',
+  'create_script',
+  // A highlight written by an agent changes the book's highlights note, which then lists the chat.
+  'book_highlight',
+  'book_highlight_edit',
+  'book_highlight_remove',
+]
 
 /**
  * The tools that read the map — free, keyless, and on unless someone turns them off.
@@ -313,7 +322,26 @@ export const BOOK_READ_TOOLS = new Set([
   'book_read',
   'book_search',
   'book_open',
+  'book_list',
+  'book_highlights',
 ])
+
+/** The book tools that write: highlights and bookmarks, never the book file itself. */
+export const BOOK_WRITE_TOOLS = [
+  'book_highlight',
+  'book_highlight_edit',
+  'book_highlight_remove',
+  'book_bookmark',
+]
+
+/**
+ * Every agent reads books without asking — only those in its scope — and asks before it marks one,
+ * as it asks before editing a note. Someone who set a mode by hand keeps it (`enableBookTools`).
+ */
+export const BOOK_TOOL_MODES: Record<string, ToolMode> = {
+  ...Object.fromEntries([...BOOK_READ_TOOLS].map((name) => [name, 'auto' as ToolMode])),
+  ...Object.fromEntries(BOOK_WRITE_TOOLS.map((name) => [name, 'ask' as ToolMode])),
+}
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
   enabled: false,
@@ -331,6 +359,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
     // before asking where something is. See `enableMapTools` for the agents that already exist.
     ...MAP_TOOL_MODES,
     ...GITHUB_TOOL_MODES,
+    ...BOOK_TOOL_MODES,
   },
   scriptsEnabled: false,
   scriptsFolder: '',

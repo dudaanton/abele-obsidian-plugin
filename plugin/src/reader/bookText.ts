@@ -28,7 +28,7 @@ export interface LoadedBook {
   title: string
   author: string
   sections: BookSectionInfo[]
-  toc: { label: string; index: number; depth: number; cfi: string | null }[]
+  toc: { label: string; index: number; depth: number; cfi: string | null; href: string }[]
   destroy(): void
 }
 
@@ -70,7 +70,7 @@ async function load(app: App, file: TFile): Promise<LoadedBook> {
   const walk = async (items: FoliateTocItem[] | undefined, depth: number) => {
     for (const item of items ?? []) {
       const index = await indexOfHref(book as unknown, item.href)
-      toc.push({ label: (item.label ?? '').trim(), index, depth, cfi: null })
+      toc.push({ label: (item.label ?? '').trim(), index, depth, cfi: null, href: item.href })
       await walk(item.subitems, depth + 1)
     }
   }
@@ -197,20 +197,35 @@ export interface BookFind {
   excerpt: SearchExcerpt
 }
 
-/** Every match of `query`, in the book's order, up to `max`; `total` counts past it. */
+/** Which finds a search gives: of which parts only, and after how many already seen. */
+export interface SearchOptions {
+  /** Part indices (from 0) to search; all when absent. */
+  parts?: Set<number>
+  /** Finds to pass over before the first one kept: the ones a previous page gave. */
+  skip?: number
+}
+
+/**
+ * Every match of `query`, in the book's order, `max` of them after the first `skip`; `total`
+ * counts every match in the parts searched.
+ */
 export async function searchBookText(
   loaded: LoadedBook,
   query: string,
-  max: number
+  max: number,
+  options: SearchOptions = {}
 ): Promise<{ finds: BookFind[]; total: number }> {
   const finds: BookFind[] = []
+  const skip = options.skip ?? 0
+  const wanted = (index: number) => !options.parts || options.parts.has(index)
   let total = 0
+  const keep = () => total > skip && finds.length < max
   if (loaded.pdf && loaded.book.searchPages) {
     for await (const r of loaded.book.searchPages(query, () => false)) {
-      if ('progress' in r) continue
+      if ('progress' in r || !wanted(r.index)) continue
       for (const item of r.items) {
         total++
-        if (finds.length < max)
+        if (keep())
           finds.push({
             index: r.index,
             label: `Page ${r.index + 1}`,
@@ -223,11 +238,12 @@ export async function searchBookText(
   }
   const matcher = searchMatcher(textWalker, { defaultLocale: 'en' })
   for (const [index, section] of loaded.book.sections.entries()) {
+    if (!wanted(index)) continue
     const doc = await section.createDocument?.()
     if (!doc) continue
     for (const { range, excerpt } of matcher(doc, query)) {
       total++
-      if (finds.length >= max) continue
+      if (!keep()) continue
       const base = section.cfi
       finds.push({
         index,

@@ -5,6 +5,7 @@ import {
   DEFAULT_AI_SETTINGS,
   EDIT_SELECTION_TOOL,
   GITHUB_TOOLS,
+  BOOK_TOOL_MODES,
   GITHUB_TOOL_MODES,
   MAP_TOOL_MODES,
   type AiSettings,
@@ -205,7 +206,13 @@ describe('the Comment agent', () => {
   it('leaves settings that already name a comment agent alone', () => {
     // Both carry the map tools already, so the only thing that could report a change here
     // is the comment agent being seeded again — which is what the test is about.
-    const modes = { ...MAP_TOOL_MODES, ...GITHUB_TOOL_MODES, remember: 'auto' as const, forget: 'auto' as const }
+    const modes = {
+      ...MAP_TOOL_MODES,
+      ...GITHUB_TOOL_MODES,
+      ...BOOK_TOOL_MODES,
+      remember: 'auto' as const,
+      forget: 'auto' as const,
+    }
     const existing = createAgent({ id: 'comment-1', name: 'My commenter', toolModes: modes })
     const ai = {
       ...DEFAULT_AI_SETTINGS,

@@ -167,6 +167,17 @@ export class BookPlaces {
     return this.places[key] ?? null
   }
 
+  /** Every book's place by the path the book had when it was last read: what the agent lists. */
+  async byPath(): Promise<Map<string, BookPlace>> {
+    await this.load()
+    const out = new Map<string, BookPlace>()
+    for (const place of Object.values(this.places)) {
+      const known = out.get(place.path)
+      if (!known || known.at < place.at) out.set(place.path, { ...place })
+    }
+    return out
+  }
+
   async set(key: string, place: Omit<BookPlace, 'at'>): Promise<void> {
     await this.load()
     this.places[key] = { ...place, at: Date.now() }

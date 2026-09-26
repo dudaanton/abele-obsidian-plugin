@@ -406,7 +406,8 @@ PDF's page as `/6/<2×page>`), the chapter or page it is in, the page's first wo
 was made and last changed, in milliseconds. A removed one stays as `deleted: true` for 180 days, so
 another device's copy does not bring it back. Every device keeps the latest `at` for each bookmark;
 `book-bookmarks.backup.json` in the plugin's folder is this device's copy. The agent sees them
-through `book_views` and never writes them.
+through `book_views` and `book_highlights` and adds or removes one with `book_bookmark`, never by
+writing the file.
 
 `.epub` and `.pdf` files can be linked at a place, like notes at lines. The place goes where a
 heading would: `[[Books/Dune.epub#cfi=/6/8!/4/2,/1:0,/1:22|Chapter 3]]` (an EPUB CFI without its
@@ -465,7 +466,8 @@ Removing a highlight removes the lines its body wrote around it while they still
 
 The open book redraws whatever the note holds as soon as it changes, so adding, recolouring or
 removing a highlight by editing the note is fine; keep the shape above or the reader will not see
-it.
+it. To highlight words, prefer `book_highlight`: it finds the exact place (a CFI a hand-written
+link rarely gets right) and writes the callout where the settings send it, template included.
 
 ### Ink on PDF pages
 

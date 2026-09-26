@@ -1068,9 +1068,10 @@ describe('a discussion in a book, read further and asked inside', () => {
   it('comes with the read-only book tools, whatever its agent allows, and needs no approval for them', async () => {
     const service = CommentService.getInstance()
     const book = app.vault.getAbstractFileByPath(BOOK) as TFile
+    // The comment agent here has no tool modes at all.
+    AgentRegistry.getInstance().get(AbeleConfig.getInstance().ai.commentAgentId!)!.toolModes = {}
     const id = (await service.createOnBook(book, CFI, 'Fear is the mind-killer.'))!
     const session = service.sessionFor(id)!
-    // The comment agent here has no tool modes at all.
     const names = (session as unknown as { getTools(): { name: string }[] })
       .getTools()
       .map((t) => t.name)
