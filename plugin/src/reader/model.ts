@@ -82,6 +82,8 @@ export interface BookModel {
   chapter: string
   /** How far into the book, 0 to 1. */
   fraction: number
+  /** A PDF's scale on screen, 1 for its size at 100%; 0 until one is showing. */
+  zoom: number
   /** The page of the chapter and the place in the book; null for a PDF, which has its pages. */
   progress: BookProgress | null
   /** Whether the contents panel is open. */
@@ -127,6 +129,7 @@ export const emptyBookModel = (): BookModel => ({
   currentHref: null,
   chapter: '',
   fraction: 0,
+  zoom: 0,
   progress: null,
   panel: false,
   canGoBack: false,

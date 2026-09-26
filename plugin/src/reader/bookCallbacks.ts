@@ -11,6 +11,8 @@ import type { PageBookmarks } from './pageBookmarks'
 import type { PdfInk } from './ink/PdfInk'
 import type { InkToolName } from './ink/inkModel'
 import type { InkColor } from './ink/stroke'
+import { Menu } from 'obsidian'
+import { fillZoomMenu, type ZoomWay } from './bookMenu'
 
 export interface BookActions {
   model: BookModel
@@ -23,6 +25,7 @@ export interface BookActions {
   footnoteHref(): string
   commentOnSelection(): Promise<void>
   bookmarks(): PageBookmarks | null
+  zoom(way: ZoomWay): void
 }
 
 type Place = { cfi: string; label: string }
@@ -99,6 +102,12 @@ export function bookCallbacks(a: BookActions): Record<string, unknown> {
     onInkFinger: (on: boolean): void => a.ink()?.setFinger(on),
     onInkUndo: (): void => a.ink()?.undo(),
     onInkRedo: (): void => a.ink()?.redo(),
+    onZoom: (way: 'in' | 'out'): void => a.zoom(way),
+    onZoomMenu: (at: { x: number; y: number }, steps: boolean): void => {
+      const menu = new Menu()
+      fillZoomMenu(menu, (way) => a.zoom(way), steps)
+      menu.showAtPosition(at)
+    },
     onSearchHit: (hit: SearchHit, fromPanel: boolean): void => {
       if (fromPanel) model.panel = false
       void a.reading()?.goToHit(hit)

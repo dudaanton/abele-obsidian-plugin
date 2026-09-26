@@ -51,12 +51,12 @@ export class FixedLayout extends HTMLElement {
 
         const sheet = new CSSStyleSheet()
         this.#root.adoptedStyleSheets = [sheet]
+        // ABELE PATCH: centred by the pages' own auto margins, not by the flex box: a page zoomed
+        // past the screen's width then scrolls from its left edge instead of losing it.
         sheet.replaceSync(`:host {
             width: 100%;
             height: 100%;
             display: flex;
-            justify-content: center;
-            align-items: center;
             overflow: auto;
         }`)
 
@@ -135,6 +135,7 @@ export class FixedLayout extends HTMLElement {
                             right.height ?? blankHeight)))
             ) || 1
 
+        this.scale = scale // ABELE PATCH: the scale the pages are drawn at, for the host's zoom.
         const transform = frame => {
             let { element, iframe, width, height, blank, onZoom } = frame
             if (!iframe) return
@@ -154,6 +155,9 @@ export class FixedLayout extends HTMLElement {
                 display: 'block',
                 flexShrink: '0',
                 marginBlock: 'auto',
+                // ABELE PATCH: see the host's style; a spread's two pages meet in the middle.
+                marginInlineStart: portrait || this.#center || frame === left ? 'auto' : '0',
+                marginInlineEnd: portrait || this.#center || frame === right ? 'auto' : '0',
             })
             if (portrait && frame !== target) {
                 element.style.display = 'none'

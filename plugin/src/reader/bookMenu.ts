@@ -22,21 +22,43 @@ export interface BookMenuHost {
   drawing?: boolean
 }
 
-/** A PDF's zoom, from its tab's menu. */
-export function fillZoomMenu(menu: Menu, zoom: (way: 'in' | 'out' | 'reset') => void): void {
+export type ZoomWay = 'in' | 'out' | 'reset' | 'fit-width' | 'fit-page'
+
+/**
+ * A PDF's zoom, from its tab's menu or the zoom under its page: a step in and out (left out
+ * where the buttons beside it already step), a fit to the width or the whole page, and back to
+ * the setting.
+ */
+export function fillZoomMenu(menu: Menu, zoom: (way: ZoomWay) => void, steps = true): void {
+  if (steps) {
+    menu.addItem((item) =>
+      item
+        .setTitle('Zoom in')
+        .setIcon('zoom-in')
+        .setSection('zoom')
+        .onClick(() => zoom('in'))
+    )
+    menu.addItem((item) =>
+      item
+        .setTitle('Zoom out')
+        .setIcon('zoom-out')
+        .setSection('zoom')
+        .onClick(() => zoom('out'))
+    )
+  }
   menu.addItem((item) =>
     item
-      .setTitle('Zoom in')
-      .setIcon('zoom-in')
+      .setTitle('Fit the width')
+      .setIcon('move-horizontal')
       .setSection('zoom')
-      .onClick(() => zoom('in'))
+      .onClick(() => zoom('fit-width'))
   )
   menu.addItem((item) =>
     item
-      .setTitle('Zoom out')
-      .setIcon('zoom-out')
+      .setTitle('Fit the page')
+      .setIcon('maximize')
       .setSection('zoom')
-      .onClick(() => zoom('out'))
+      .onClick(() => zoom('fit-page'))
   )
   menu.addItem((item) =>
     item

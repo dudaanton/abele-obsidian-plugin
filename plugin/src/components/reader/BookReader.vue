@@ -94,6 +94,10 @@
           @seek="emit('seek', $event)"
           @bookmark="emit('bookmark')"
           @draw="emit('ink', true)"
+          @zoom="emit('zoom', $event)"
+          @zoom-menu="
+            (at: { x: number; y: number }, steps: boolean) => emit('zoom-menu', at, steps)
+          "
         />
       </div>
     </div>
@@ -206,6 +210,8 @@ const emit = defineEmits<{
   (e: 'go-bookmark', b: Bookmark, fromPanel: boolean): void
   (e: 'remove-bookmark', b: Bookmark): void
   (e: 'ink', on: boolean): void
+  (e: 'zoom', way: 'in' | 'out'): void
+  (e: 'zoom-menu', at: { x: number; y: number }, steps: boolean): void
   (e: 'ink-tool', tool: InkToolName): void
   (e: 'ink-color', color: InkColor): void
   (e: 'ink-finger', on: boolean): void

@@ -80,6 +80,10 @@ Every change is marked `ABELE PATCH` at its site.
    a frozen app for a reader's own book. It also moved to a place worked out from a page of no
    width, and said so as a relocation. Now nothing is rendered or measured while the tab has no
    size; its size coming back renders it once, at the place it had.
+9. **A zoomed page scrolls from its edge** (`fixed-layout.js`, the host's style and `#render`).
+   Upstream centred the pages with the flex box, which cuts off the left of a page wider than the
+   screen; they are centred by their own auto margins now. The renderer also says the `scale` it
+   drew at, which the host's zoom steps from.
 
 9. **An annotation's key and its place can differ** (`view.js`, `addAnnotation`). An annotation
    carrying `cfi` is drawn there and kept under its `value`, so the marks of notes linking to

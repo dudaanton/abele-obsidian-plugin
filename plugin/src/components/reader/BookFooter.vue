@@ -13,6 +13,36 @@
       class="abele-book-reader__draw"
       @click="emit('draw')"
     />
+    <template v-if="model.kind === 'pdf' && model.zoom">
+      <Icon
+        v-if="phone"
+        icon="zoom-in"
+        tooltip="Zoom"
+        class="abele-book-reader__zoom-menu"
+        @click="menu($event, true)"
+      />
+      <template v-else>
+        <Icon
+          icon="zoom-out"
+          tooltip="Zoom out"
+          class="abele-book-reader__zoom-out"
+          @click="emit('zoom', 'out')"
+        />
+        <span class="abele-book-reader__zoom" @click="menu($event, false)">
+          <Button
+            class="abele-book-reader__measure"
+            :text="`${Math.round(model.zoom * 100)}%`"
+            tooltip="Fit the page or its width"
+          />
+        </span>
+        <Icon
+          icon="zoom-in"
+          tooltip="Zoom in"
+          class="abele-book-reader__zoom-in"
+          @click="emit('zoom', 'in')"
+        />
+      </template>
+    </template>
     <span class="abele-book-reader__chapter">{{ model.chapter }}</span>
     <Slider
       class="abele-book-reader__progress"
@@ -44,13 +74,14 @@
 <script setup lang="ts">
 /**
  * The line under a book's page: the way back from a link, under a PDF the pen that turns drawing
- * on, the chapter, a slider through the whole book, and a measure of how far into it the page is. In a reflowing book a tap on the
+ * on and the zoom — out, the scale with the fits behind it, in — the chapter, a slider through the whole book, and a measure of how far into it the page is. In a reflowing book a tap on the
  * measure goes round its ways — the page of the chapter, the pages left in it, the place in the
  * whole book, the percentage — and the one chosen is kept, on every device the settings reach.
  * While the slider is held the measure shows where it would go, as a percentage. At the end, the
  * bookmark: filled when the page has one, a tap marks the page or unmarks it.
  */
 import { computed, ref, watch } from 'vue'
+import { Platform } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import Button from '../obsidian/Button.vue'
 import Slider from '../obsidian/Slider.vue'
@@ -65,7 +96,19 @@ const emit = defineEmits<{
   (e: 'seek', fraction: number): void
   (e: 'bookmark'): void
   (e: 'draw'): void
+  (e: 'zoom', way: 'in' | 'out'): void
+  (e: 'zoom-menu', at: { x: number; y: number }, steps: boolean): void
 }>()
+
+/** A phone's line is short: its zoom is one magnifier, with the steps in its menu. */
+const phone = Platform.isPhone
+
+/** The zoom's menu, under the control that opened it. */
+const menu = (e: Event, steps: boolean) => {
+  const el = (e.currentTarget ?? e.target) as HTMLElement | null
+  const box = el?.getBoundingClientRect()
+  emit('zoom-menu', { x: box?.left ?? 0, y: box?.top ?? 0 }, steps)
+}
 
 const marked = computed(() => props.model.bookmarksHere.length > 0)
 

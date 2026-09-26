@@ -14,6 +14,7 @@ import { strokePath, MARKER_OPACITY, inkLiteral, roundPoint, type InkStroke } fr
 import type { InkRoute } from './inkRoute'
 import { swipeDirection } from '../swipe'
 import { guardSurface } from './inkGuard'
+import type { PinchTracker } from '../pdfZoom'
 
 /** A page under a point: which one, where it is on screen, and its size at 100%. */
 export interface InkPageHit {
@@ -40,6 +41,10 @@ export interface InkOverlayHost {
   pan(dx: number, dy: number): boolean
   turn(way: 1 | -1): void
   zoom(way: 'in' | 'out'): void
+  /** Two fingers zoom the pages: the tracker that follows them, when the pages zoom smoothly. */
+  pinch?(): PinchTracker | null
+  /** Ctrl with the wheel, or a trackpad's pinch, zooming smoothly; false when not handled. */
+  wheelZoom?(e: WheelEvent): boolean
 }
 
 const XHTML = 'http://www.w3.org/1999/xhtml'
@@ -127,6 +132,7 @@ export class InkOverlay {
     const route = this.host.route(e)
     if (route === 'ignore') return
     this.stopGlide()
+    if (this.pinchDown(e)) return
     if (e.pointerType === 'pen') {
       this.host.pen(true)
       // A hand that touched first and was taken for a finger drawing: it was the palm.
@@ -175,6 +181,7 @@ export class InkOverlay {
 
   private move(e: PointerEvent): void {
     e.stopPropagation()
+    if (this.pinchTouch(e, 'move')) return
     const g = this.gestures.get(e.pointerId)
     if (!g) return
     const events = e.getCoalescedEvents?.() ?? []
@@ -206,6 +213,7 @@ export class InkOverlay {
 
   private up(e: PointerEvent, cancelled: boolean): void {
     e.stopPropagation()
+    this.pinchTouch(e, cancelled ? 'cancel' : 'end')
     const g = this.gestures.get(e.pointerId)
     this.gestures.delete(e.pointerId)
     this.touchIds.delete(e.pointerId)
@@ -219,6 +227,28 @@ export class InkOverlay {
     } else if (g.kind === 'erase') this.host.eraseEnd()
     else if (!cancelled) this.release(g, e)
     this.paint()
+  }
+
+  /**
+   * A finger coming down: with another already down it is a pinch, which zooms the pages, and what
+   * the first finger had begun — a move of the pages, or a line drawn by a finger — is let go
+   * undrawn. True when the finger is the pinch's.
+   */
+  private pinchDown(e: PointerEvent): boolean {
+    const tracker = e.pointerType === 'touch' ? this.host.pinch?.() : null
+    if (!tracker) return false
+    if (!tracker.touch('start', [{ id: e.pointerId, x: e.clientX, y: e.clientY }])) return false
+    for (const [id, g] of this.gestures)
+      if (this.isTouch(id) && g.kind !== 'erase') this.gestures.delete(id)
+    this.paint()
+    return true
+  }
+
+  /** A finger of a pinch moved or lifted; true when it was one. */
+  private pinchTouch(e: PointerEvent, type: 'move' | 'end' | 'cancel'): boolean {
+    const tracker = e.pointerType === 'touch' ? this.host.pinch?.() : null
+    if (!tracker) return false
+    return tracker.touch(type, [{ id: e.pointerId, x: e.clientX, y: e.clientY }])
   }
 
   /** A finger let go of the pages: they glide on, slowing, or — pages that turn — turn. */
@@ -259,6 +289,7 @@ export class InkOverlay {
     e.preventDefault()
     e.stopPropagation()
     if (e.ctrlKey || e.metaKey) {
+      if (this.host.wheelZoom?.(e)) return
       if (e.timeStamp - this.wheelAt < 120 || !e.deltaY) return
       this.wheelAt = e.timeStamp
       this.host.zoom(e.deltaY < 0 ? 'in' : 'out')

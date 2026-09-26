@@ -11,6 +11,7 @@
  */
 import { frameOptions } from '@/vendor/foliate-js/frame-options.js'
 import { defineElement, tagName } from '@/vendor/foliate-js/elements.js'
+import { keepPoint, type Point } from './pdfZoom'
 
 /** The element's name in this load of the plugin, as the engine's own are (`elements.js`). */
 export const PDF_SCROLL_TAG = tagName('abele-pdf-scroll')
@@ -173,6 +174,46 @@ export class PdfScroll extends HTMLElement {
     if (!this.#slots.length || !this.#scroller.clientHeight) return
     const keepIndex = this.#index
     const keepFraction = this.#fraction
+    this.#size()
+    this.#laidOut = true
+    this.#restore(keepIndex, keepFraction)
+    if (redraw) this.#redrawAll()
+    this.#update()
+  }
+
+  /**
+   * Sets the zoom and keeps a point of the pages — `from`, in this element's box before — at `to`,
+   * sideways too: the place under a pinch's fingers stays under them. Without a point, the page
+   * being read stays where it was, as for any other change of size.
+   */
+  zoomAt(zoom: string, from?: Point, to?: Point): void {
+    this.#zoom = zoom
+    // Said on the element too, so the attribute reads as the zoom it has; heard as no change.
+    if (this.getAttribute('zoom') !== zoom) this.setAttribute('zoom', zoom)
+    if (!from || !to || !this.#laidOut || !this.#scroller.clientHeight) {
+      this.#layout(true)
+      return
+    }
+    const content = { x: from.x + this.#scroller.scrollLeft, y: from.y + this.#scroller.scrollTop }
+    const { tops, heights } = this.#tops()
+    const slot = this.#slots[pageAt(tops, heights, content.y).index]
+    const box = (el: HTMLElement) => ({
+      left: el.offsetLeft,
+      top: el.offsetTop,
+      width: el.offsetWidth,
+      height: el.offsetHeight,
+    })
+    const before = box(slot.el)
+    this.#size()
+    const scroll = keepPoint(before, content, box(slot.el), to)
+    this.#scroller.scrollLeft = scroll.x
+    this.#scroller.scrollTop = scroll.y
+    this.#redrawAll()
+    this.#update()
+  }
+
+  /** Every slot, and every frame in one, at the size the zoom gives its page. */
+  #size(): void {
     for (const slot of this.#slots) {
       const scale = this.#scaleOf(slot)
       slot.el.style.setProperty('width', `${slot.width * scale}px`)
@@ -182,10 +223,19 @@ export class PdfScroll extends HTMLElement {
         slot.frame.style.setProperty('height', `${slot.height * scale}px`)
       }
     }
-    this.#laidOut = true
-    this.#restore(keepIndex, keepFraction)
-    if (redraw) for (let i = 0; i < this.#slots.length; i++) this.#redraw(i)
-    this.#update()
+  }
+
+  /** The pages drawn now, drawn again at their size: those on the screen first. */
+  #redrawAll(): void {
+    const top = this.#scroller.scrollTop
+    const bottom = top + this.#scroller.clientHeight
+    const order = this.#slots
+      .map((slot, i) => ({
+        i,
+        on: slot.el.offsetTop < bottom && slot.el.offsetTop + slot.el.offsetHeight > top,
+      }))
+      .sort((a, b) => Number(b.on) - Number(a.on))
+    for (const { i } of order) this.#redraw(i)
   }
 
   #redraw(i: number): void {

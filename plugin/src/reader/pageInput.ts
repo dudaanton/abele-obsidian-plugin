@@ -5,6 +5,7 @@
 import type { View as FoliateView } from '@/vendor/foliate-js/view.js'
 import { isOpenableExternal } from './bookSafety'
 import { swipeDirection } from './swipe'
+import { zoomedPast } from './pdfZoom'
 import { PDF_SCROLL_TAG } from './pdfScroll'
 import { PageGesture } from './pageGesture'
 import { TAP_EDGE, pagerFor, pagerOf } from './selectionPaging'
@@ -29,7 +30,8 @@ const barOpen = (host: PageHost) => () => !!(host.model.selection || host.model.
 /** Wires one page, as it arrives in its frame, for keys, taps and swipes. */
 export function watchPage(host: PageHost, doc: Document): void {
   doc.addEventListener('keydown', (e) => onKey(host.reader(), e))
-  if (host.fixed()) doc.addEventListener('wheel', pinchZoom(host), { passive: false })
+  // A PDF's pinch is its own zoom's (`pdfZoom.ts`); a comic's zooms a step at a time.
+  if (host.fixed() && !host.pdf) doc.addEventListener('wheel', pinchZoom(host), { passive: false })
   // Pictures and tables as large as the page allows, once they have their size, and again when
   // the page is laid out anew — a phone turned on its side.
   if (!host.fixed()) {
@@ -87,8 +89,9 @@ function watchSwipes(host: PageHost, doc: Document, gesture: PageGesture): void 
     if (!start || !t || !reader) return
     const way = swipeDirection(start, { x: t.screenX, y: t.screenY, t: e.timeStamp })
     start = null
-    // A finger that selected, or began over a selection or an open bar, turns nothing.
-    if (gesture.selecting) return
+    // A finger that selected, or began over a selection or an open bar, turns nothing; nor does
+    // one that moved about a page zoomed wider than the screen.
+    if (gesture.selecting || zoomedPast(reader.renderer as unknown as Element, true)) return
     if (way === 'left') void reader.goRight()
     else if (way === 'right') void reader.goLeft()
   })

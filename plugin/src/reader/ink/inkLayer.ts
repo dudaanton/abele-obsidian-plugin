@@ -25,7 +25,6 @@ export function drawInk(doc: Document, page: InkPage | undefined): void {
   root.querySelector(`:scope > .${INK_CLASS}`)?.remove()
   if (!page?.strokes.length) return
   const size = pageSizeOf(doc) ?? page
-  const scale = Number(root.style.getPropertyValue('--scale-factor')) || 1
   const svg = doc.createElementNS(SVG, 'svg')
   svg.setAttribute('class', INK_CLASS)
   svg.setAttribute('aria-hidden', 'true')
@@ -35,8 +34,10 @@ export function drawInk(doc: Document, page: InkPage | undefined): void {
     position: 'absolute',
     left: '0',
     top: '0',
-    width: `${size.width * scale}px`,
-    height: `${size.height * scale}px`,
+    // Sized by the page's own scale, so a page stretched to a new zoom while it is drawn again
+    // takes its ink along without the ink being drawn again.
+    width: `calc(${size.width}px * var(--scale-factor, 1))`,
+    height: `calc(${size.height}px * var(--scale-factor, 1))`,
     'pointer-events': 'none',
     overflow: 'visible',
     // Ink on paper: the marker lets the words under it through, and the pen's black stays black.

@@ -19,6 +19,7 @@ import { routePointer } from './inkRoute'
 import { hitStroke, type InkColor, type InkStroke } from './stroke'
 import type { InkPage } from './inkFile'
 import type { InkToolName } from './inkModel'
+import { zoomedPast, type PdfZoom } from '../pdfZoom'
 
 export interface PdfInkHost {
   app: App
@@ -29,6 +30,8 @@ export interface PdfInkHost {
   stage(): HTMLElement | null
   where(): NotesPlace
   zoom(way: 'in' | 'out'): void
+  /** The PDF's smooth zoom, which a pinch on the sheet goes to. */
+  zoomer?(): PdfZoom | null
 }
 
 /** The pen's width and the marker's, in page units: a fine nib, a highlighter's tip. */
@@ -207,15 +210,28 @@ export class PdfInk {
         this.sync()
       },
       pan: (dx, dy) => {
-        const renderer = this.h.engine.renderer as unknown as {
+        const renderer = this.h.engine.renderer as unknown as HTMLElement & {
           panBy?: (dx: number, dy: number) => void
         }
-        if (!renderer?.panBy) return false
-        if (dx || dy) renderer.panBy(dx, dy)
-        return true
+        if (renderer?.panBy) {
+          if (dx || dy) renderer.panBy(dx, dy)
+          return true
+        }
+        // A page turned one at a time, zoomed past the screen: moved about within itself; still
+        // turned by a swipe while it is no wider than the screen, and by the wheel at its end.
+        if (!renderer || !zoomedPast(renderer)) return false
+        const was = renderer.scrollLeft + renderer.scrollTop
+        if (dx || dy) renderer.scrollBy({ left: dx, top: dy, behavior: 'instant' })
+        return zoomedPast(renderer, true) || renderer.scrollLeft + renderer.scrollTop !== was
       },
       turn: (way) => void (way > 0 ? this.h.engine.next() : this.h.engine.prev()),
       zoom: (way) => this.h.zoom(way),
+      pinch: () => this.h.zoomer?.()?.pinch ?? null,
+      wheelZoom: (e) => {
+        const zoomer = this.h.zoomer?.()
+        zoomer?.wheel(e, { x: e.clientX, y: e.clientY })
+        return !!zoomer
+      },
     }
   }
 
@@ -341,6 +357,7 @@ export function inkFor(
     model: BookModel
     reading: { where(): NotesPlace } | null
     zoom(way: 'in' | 'out'): void
+    pdfZoom?: PdfZoom | null
   },
   file: TFile,
   engine: FoliateView,
@@ -361,5 +378,6 @@ export function inkFor(
         target: { to: 'book', path: '', template: '', alsoIn: [] },
       },
     zoom: (way) => view.zoom(way),
+    zoomer: () => view.pdfZoom ?? null,
   })
 }

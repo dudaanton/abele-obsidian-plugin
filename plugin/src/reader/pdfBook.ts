@@ -19,6 +19,7 @@ import type { FoliateBook, FoliateSection, FoliateTocItem } from '@/vendor/folia
 import textLayerCss from '@/vendor/pdfjs-css/text_layer_builder.css?raw'
 import annotationLayerCss from '@/vendor/pdfjs-css/annotation_layer_builder.css?raw'
 import type { OpenedBook } from './openBook'
+import { renderRatio } from './pdfZoom'
 import { search, type SearchExcerpt } from '@/vendor/foliate-js/search.js'
 
 /** A page of a PDF that has been drawn, or drawn again at a new size: its text layer is fresh. */
@@ -124,6 +125,9 @@ const tocItem = (item: { title?: string; dest?: unknown; items?: unknown[] }): F
     : undefined,
 })
 
+/** The scale each page document's picture was last drawn at, pixels per point of the page. */
+const renderedAt = new WeakMap<Document, number>()
+
 async function drawPage(
   lib: PdfLib,
   page: PdfPage,
@@ -131,13 +135,21 @@ async function drawPage(
   zoom: number,
   current: () => boolean
 ): Promise<void> {
-  const ratio = doc.defaultView?.devicePixelRatio ?? 1
+  const size = page.getViewport({ scale: 1 })
+  const ratio = renderRatio(zoom, doc.defaultView?.devicePixelRatio ?? 1, size.width, size.height)
   const scale = zoom * ratio
   // The page frame is a document of its own, which Obsidian's element helpers do not reach.
   const root = doc.documentElement.style
-  root.setProperty('transform', `scale(${1 / ratio})`)
   root.setProperty('transform-origin', 'top left')
-  root.setProperty('--scale-factor', String(scale))
+  const prior = renderedAt.get(doc)
+  if (prior) {
+    // Until the page is drawn at its new size, what it shows now is stretched to that size — the
+    // page never jumps small and back — words, ink and highlights with it: all are in the page.
+    root.setProperty('transform', `scale(${zoom / prior})`)
+  } else {
+    root.setProperty('transform', `scale(${1 / ratio})`)
+    root.setProperty('--scale-factor', String(scale))
+  }
   const viewport = page.getViewport({ scale })
 
   // Drawn on a canvas in the app's document, where PDF.js loaded the page's fonts, and shown in
@@ -155,9 +167,18 @@ async function drawPage(
   img.width = viewport.width
   img.height = viewport.height
   img.src = URL.createObjectURL(blob)
+  // Decoded before it is shown, so the page is never blank for a frame in between.
+  await img.decode().catch(() => {})
+  if (!current()) {
+    URL.revokeObjectURL(img.src)
+    return
+  }
   const holder = doc.querySelector('#canvas')
   const previous = holder?.querySelector('img')?.src
+  root.setProperty('--scale-factor', String(scale))
+  root.setProperty('transform', `scale(${1 / ratio})`)
   holder?.replaceChildren(img)
+  renderedAt.set(doc, scale)
   if (previous) URL.revokeObjectURL(previous)
 
   const container = doc.querySelector('.textLayer')

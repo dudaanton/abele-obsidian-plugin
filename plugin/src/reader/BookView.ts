@@ -31,7 +31,7 @@ import { BookReading } from './BookReading'
 import { linkedNotesFor } from './bookLinkedNotes'
 import type { LinkedNotes } from './linkedNotes'
 import { parsePlaceSubpath, type BookPlace } from './bookLinks'
-import { onExternalLink, onKey, pinchZoom, watchPage, type PageHost } from './pageInput'
+import { onExternalLink, onKey, watchPage, type PageHost } from './pageInput'
 import { redrawOver, relayoutOnFonts } from './pageLayout'
 import { bookCallbacks, type BookActions } from './bookCallbacks'
 import { bookKey } from './positions'
@@ -44,6 +44,7 @@ import { fillBookMenu, fillZoomMenu } from './bookMenu'
 import { bookScope, zoomStep } from './zoom'
 import { PDF_SCROLL_TAG, definePdfScroll } from './pdfScroll'
 import { inkFor, type PdfInk } from './ink/PdfInk'
+import { zoomFor, type PdfZoom } from './pdfZoom'
 
 /** The settings a PDF's layout is decided by when it opens. */
 const pdfLayoutKey = (s: { pdfLayout: string; pdfTwoPages: boolean }) =>
@@ -73,8 +74,10 @@ export class BookView extends FileView {
   private footnoteHref = ''
   /** How a PDF was laid out when it opened: a change to either opens it again. */
   private openedPdfLayout = ''
-  /** A zoom chosen in this tab — keys, a pinch — over the setting's; not saved. */
+  /** A zoom chosen in this tab — keys, a pinch — over the setting's; not saved. A comic's. */
   private zoomOverride: string | null = null
+  /** A PDF's zoom, kept per book. */
+  pdfZoom: PdfZoom | null = null
   /** Selections, highlights, links and search, once a book is showing. */
   reading: BookReading | null = null
   /** The book's bookmarks, once it is showing. */
@@ -265,12 +268,15 @@ export class BookView extends FileView {
       footnoteHref: () => this.footnoteHref,
       commentOnSelection: () => this.commentOnSelection(),
       bookmarks: () => this.bookmarks,
+      zoom: (way) => this.zoom(way),
     }
   }
 
   /** A PDF zoomed a step in or out, or back to the setting's zoom. */
-  zoom(way: 'in' | 'out' | 'reset'): void {
+  zoom(way: 'in' | 'out' | 'reset' | 'fit-width' | 'fit-page'): void {
     if (!this.fixed || !this.reader) return
+    if (this.pdfZoom) return this.pdfZoom.set(way, (s) => zoomStep(s, way === 'in'))
+    if (way === 'fit-width' || way === 'fit-page') return
     const renderer = this.reader.renderer as unknown as HTMLElement & { scale?: number }
     const now = renderer.scale ?? (Number(renderer.getAttribute('zoom')) || 1)
     this.zoomOverride = way === 'reset' ? null : String(zoomStep(now, way === 'in'))
@@ -334,6 +340,8 @@ export class BookView extends FileView {
     this.bookmarks = null
     this.ink?.destroy()
     this.ink = null
+    this.pdfZoom?.destroy()
+    this.pdfZoom = null
     void bookPlaces()?.flush()
     this.reader?.close()
     this.reader?.remove()
@@ -359,7 +367,9 @@ export class BookView extends FileView {
     if (!renderer) return
     if (view.isFixedLayout) {
       // A comic or a fixed-layout book fits its page: its pictures are the page.
-      const zoom = this.zoomOverride ?? (this.isPdf ? pdfZoomFor(settings) : 'fit-page')
+      const zoom = this.isPdf
+        ? (this.pdfZoom?.zoom ?? pdfZoomFor(settings))
+        : (this.zoomOverride ?? 'fit-page')
       if (renderer.getAttribute('zoom') !== zoom) renderer.setAttribute('zoom', zoom)
       const dark = this.isPdf && darkPdfPages(settings, themeValues(this.contentEl).dark)
       view.toggleClass('abele-book__engine_dark-pages', dark)
@@ -435,9 +445,12 @@ export class BookView extends FileView {
       reader.addEventListener('load', (e) => this.onPage((e as CustomEvent).detail))
       reader.addEventListener('external-link', (e) => onExternalLink(e as CustomEvent))
       reader.addEventListener('link', (e) => this.onLink(e))
-      // A pinch over the gaps between a PDF's pages, which no page frame hears.
-      if (this.isPdf)
-        reader.addEventListener('wheel', pinchZoom(this.pageHost()), { passive: false })
+      // A PDF's zoom, as this book was left at on this device; a pinch over the gaps between
+      // its pages, which no page frame hears.
+      if (this.isPdf) {
+        this.pdfZoom = zoomFor(this, reader, bookKey(opened.book.metadata?.identifier, file.path))
+        this.pdfZoom.watch(reader.ownerDocument, reader)
+      }
       reader.addEventListener('relocate', (e) =>
         this.onRelocate((e as CustomEvent<FoliateLocation>).detail)
       )
@@ -512,6 +525,7 @@ export class BookView extends FileView {
       ? `Page ${detail.section.current + 1} of ${detail.section.total}`
       : ''
     this.model.chapter = this.isPdf && page ? [page, label].filter(Boolean).join(' · ') : label
+    if (this.pdfZoom) this.model.zoom = this.pdfZoom.scale
     this.model.currentHref = detail.tocItem?.href ?? null
     this.bookmarks?.relocated()
     const file = this.file
@@ -561,6 +575,7 @@ export class BookView extends FileView {
     // A PDF's pages say when they are drawn; another book's fixed pages are drawn as they load.
     if (this.fixed && !this.isPdf) this.reading?.marks.drawPdf(doc, index)
     watchPage(this.pageHost(), doc)
+    this.pdfZoom?.watch(doc)
   }
 
   private pageHost(): PageHost {

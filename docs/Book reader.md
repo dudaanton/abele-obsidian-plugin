@@ -360,10 +360,23 @@ pages with light and dark swapped (**Dark pages in a dark theme**, on by default
 out as negatives). Text on the page can be selected and copied, links inside the document go to
 their page, and links to the web open in the browser.
 
-**Zoom** — Mod and plus or minus, Ctrl with the mouse wheel or a trackpad pinch, or **Zoom in**,
-**Zoom out** and **Zoom as set** in the tab's ⋯ menu — changes the size of the pages in that tab,
-keeping the page being read; Mod+0 goes back to the **Page size** setting. A zoom chosen this way
-is not saved.
+**Zoom.** Under the page, beside the pen: **−**, the scale (a tap offers **Fit the width**, **Fit
+the page** and **Zoom as set**) and **+**; on a phone one magnifier holds all of them. The same are
+in the tab's ⋯ menu, and on the keys Mod and plus or minus, Mod+0 going back to the **Page size**
+setting. A pinch — two fingers on a touch screen, a trackpad's pinch, Ctrl with the mouse wheel —
+follows the fingers and keeps the place under them where it is; also while drawing, where two
+fingers zoom and move the pages and one finger does what it did. Zoomed past the screen's width, the
+pages scroll sideways too; with pages turned one at a time a swipe then moves the page rather than
+turning it (a tap at the edge still turns it).
+
+During a pinch the pages are only stretched as a picture; when it ends the zoom is set once and the
+pages near the screen are drawn again at the new size, sharp — each page with at most 8 million
+pixels, so a tablet zoomed far in draws a little soft instead of running out of memory. Until a page
+is drawn again it shows the old picture stretched, never a jump. The words under the page (the text
+layer), highlights and ink are all inside the page, so they stay on their place at any zoom.
+
+The zoom chosen is kept per book **on this device** (the app's local storage, the last 200 books),
+not synced with the place: another device's screen is another size. **Zoom as set** forgets it.
 
 | Setting | What it does |
 |---|---|
