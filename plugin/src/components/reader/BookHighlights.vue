@@ -37,12 +37,17 @@
         </div>
       </div>
     </div>
-    <div v-if="highlights.length" class="abele-book-highlights__foot">
+    <!-- The click itself is kept on its way down: Mod on it asks for a new tab. -->
+    <div
+      v-if="highlights.length"
+      class="abele-book-highlights__foot"
+      @click.capture="noteClick = $event"
+    >
       <Button
         text="Open the note"
         icon="file-text"
         tooltip="Open the note these highlights are kept in"
-        @click="emit('open-note')"
+        @click="emit('open-note', noteClick ?? undefined)"
       />
     </div>
   </div>
@@ -68,10 +73,11 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'go', h: Highlight): void
   (e: 'discuss', h: Highlight): void
-  (e: 'open-note'): void
+  (e: 'open-note', evt?: MouseEvent): void
 }>()
 
 const show = ref('all')
+const noteClick = ref<MouseEvent | null>(null)
 const showOptions = [
   { value: 'all', display: 'Highlights and discussions' },
   { value: 'discussions', display: 'Discussions' },

@@ -170,10 +170,18 @@ opens a PDF on its page wherever PDFs open; a link to words in a PDF always open
 which is the only one that knows the place. Without the plugin every one of these links still opens
 the file. **Copy link to this place** (or **to this page** in a PDF) is in the tab's ⋯ menu.
 
+**A book already open is not opened again.** A plain click on a link to it — or to a place in it —
+brings forward the reader tab already showing it and goes to the place there, wherever that tab is:
+another split, a sidebar, a popout window; several such tabs, the one used last. The note the link
+was in stays as it was. Mod-click, a middle click and "Open in new tab" still open another tab. The
+same holds the other way: the highlights note, or a note linking into the book, opened from the
+book comes forward in the tab already showing it, flashed at the line; only when it is open nowhere
+— or with Mod on the click — does it get a new tab.
+
 **Notes linking to a place are marked there.** Any note whose text or properties link to words
 in the book (`#cfi=…`) has those words drawn with a dotted underline in the theme's accent — not a
-highlight's fill, not a discussion's solid line and bubble. A tap on them opens the note in a new
-tab, flashing the line the link is on; when several notes link there, a menu names them. The
+highlight's fill, not a discussion's solid line and bubble. A tap on them opens the note — in its tab
+when it is open already, else in a new one — flashing the line the link is on; when several notes link there, a menu names them. The
 book's highlights notes and its discussions are left out: they have marks of their own. A link to
 a page as a whole (copied with nothing selected) is marked by its first word only, so the page can
 still be tapped to turn. Which notes link to a book is read once from Obsidian's link index when

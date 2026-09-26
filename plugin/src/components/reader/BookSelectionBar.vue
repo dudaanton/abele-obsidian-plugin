@@ -62,7 +62,7 @@
         @click="emit('script')"
       />
       <template v-if="highlight">
-        <Icon icon="file-text" tooltip="Open the highlights note" @click="emit('open-note')" />
+        <Icon icon="file-text" tooltip="Open the highlights note" @click="emit('open-note', $event)" />
         <Icon icon="trash-2" tooltip="Remove the highlight" @click="emit('delete')" />
       </template>
       <Icon
@@ -102,7 +102,7 @@ const emit = defineEmits<{
   (e: 'copy-link'): void
   (e: 'quote'): void
   (e: 'script', name?: string): void
-  (e: 'open-note'): void
+  (e: 'open-note', evt?: MouseEvent): void
   (e: 'delete'): void
   (e: 'close'): void
 }>()

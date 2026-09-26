@@ -14,6 +14,7 @@ import { initBookBookmarks } from './bookmarkFiles'
 import { readerSettingsFrom, renamedBookNotes } from './settings'
 import { adoptPdfLeaves, setPdfTakeover } from './pdfTakeover'
 import { registerPlaceLinks } from './placeLinks'
+import { reuseBookTabs } from './bookTabReuse'
 import { forgetBookTexts } from './bookText'
 import { moveInk } from './ink/inkStore'
 
@@ -83,6 +84,8 @@ export function registerReader(plugin: Plugin): void {
 
   // A link to a place in a PDF's text opens here, where the place is understood.
   registerPlaceLinks(plugin, BOOK_VIEW_TYPE)
+  // A link to a book already open goes to its tab.
+  plugin.register(reuseBookTabs(app))
 
   // PDFs open in the reader while the setting says so — those already open in Obsidian's viewer,
   // tabs brought back from the last session among them, move over as it takes effect.

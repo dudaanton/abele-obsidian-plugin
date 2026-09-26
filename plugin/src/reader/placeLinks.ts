@@ -7,6 +7,7 @@
 import { Platform, TFile, type App, type PaneType, type Plugin } from 'obsidian'
 import { noteLinkAt, paneForClick } from '@/lineLinks/register'
 import { parsePlaceSubpath } from './bookLinks'
+import { followIntoOpenBook } from './bookTabReuse'
 
 const NOTE_SURFACES = '.workspace-leaf-content, .hover-popover, .markdown-rendered'
 const OPENING_EVENT: 'click' | 'mousedown' = Platform.isAndroidApp ? 'mousedown' : 'click'
@@ -38,6 +39,8 @@ export async function openPdfPlace(
   viewType: string,
   pane: PaneType | false
 ): Promise<void> {
+  // Open in the reader already: that tab goes to the place.
+  if (!pane && (await followIntoOpenBook(app, target.file.path + target.subpath, ''))) return
   const leaf = app.workspace.getLeaf(pane)
   await leaf.setViewState({ type: viewType, state: { file: target.file.path }, active: true })
   leaf.setEphemeralState({ subpath: target.subpath })

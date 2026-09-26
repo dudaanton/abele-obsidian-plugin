@@ -13,6 +13,7 @@ import type { InkToolName } from './ink/inkModel'
 import type { InkColor } from './ink/stroke'
 import { Menu } from 'obsidian'
 import { fillZoomMenu, type ZoomWay } from './bookMenu'
+import { paneOf } from './bookLinkedNotes'
 
 export interface BookActions {
   model: BookModel
@@ -84,7 +85,8 @@ export function bookCallbacks(a: BookActions): Record<string, unknown> {
       model.commenting = null
     },
     onDeleteHighlight: (h: Highlight): void => void a.reading()?.remove(h),
-    onOpenNote: (h?: Highlight): void => void a.reading()?.openNote(h),
+    onOpenNote: (h?: Highlight, evt?: MouseEvent): void =>
+      void a.reading()?.openNote(h, paneOf(evt)),
     onCloseActive: (): void => {
       model.active = null
     },

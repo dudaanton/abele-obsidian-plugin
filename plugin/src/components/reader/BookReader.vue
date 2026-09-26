@@ -38,7 +38,7 @@
           :highlights="model.highlights"
           @go="emit('go-highlight', $event, narrow())"
           @discuss="emit('discuss', $event)"
-          @open-note="emit('open-note')"
+          @open-note="emit('open-note', undefined, $event)"
         />
       </div>
     </template>
@@ -78,7 +78,7 @@
           @comment="onComment"
           @copy-link="emit('copy-link', target())"
           @quote="emit('quote', quoteTarget())"
-          @open-note="emit('open-note', model.active ?? undefined)"
+          @open-note="emit('open-note', model.active ?? undefined, $event)"
           @delete="model.active && emit('delete-highlight', model.active)"
           @close="model.active ? emit('close-active') : emit('clear-selection')"
         />
@@ -204,7 +204,7 @@ const emit = defineEmits<{
   (e: 'save-comment', h: Highlight, comment: string): void
   (e: 'cancel-comment'): void
   (e: 'delete-highlight', h: Highlight): void
-  (e: 'open-note', h?: Highlight): void
+  (e: 'open-note', h?: Highlight, evt?: MouseEvent): void
   (e: 'close-active'): void
   (e: 'bookmark'): void
   (e: 'go-bookmark', b: Bookmark, fromPanel: boolean): void

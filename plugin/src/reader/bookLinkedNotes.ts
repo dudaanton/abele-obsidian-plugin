@@ -3,20 +3,33 @@
  * kept on the page's marks, and a tap on marked words opening the note — at the line the link is
  * on, flashed — or, when several notes link there, a menu of them.
  */
-import { MarkdownView, Menu, type App, type TFile } from 'obsidian'
+import { Keymap, MarkdownView, Menu, type App, type PaneType, type TFile } from 'obsidian'
+import { openNoteInTab } from '@/helpers/openLeaves'
 import { flashLines } from '@/lineLinks/open'
 import { LinkedNotes, type LinkedNote } from './linkedNotes'
 import type { BookReading } from './BookReading'
 
-/** Opens a note linking to the book, at the line the link is on. */
-export async function openLinkedNote(app: App, note: LinkedNote): Promise<void> {
+/**
+ * Opens a note linking to the book, at the line the link is on — in the tab already showing it,
+ * unless `pane` (a Mod-click) asks for a new one.
+ */
+export async function openLinkedNote(
+  app: App,
+  note: LinkedNote,
+  pane: PaneType | false = false
+): Promise<void> {
   const file = app.vault.getFileByPath(note.path)
   if (!file) return
-  const leaf = app.workspace.getLeaf('tab')
-  await leaf.openFile(file)
+  const leaf = await openNoteInTab(app, file, pane)
   // Line 0 is the note's properties: the note opens at its top.
   if (note.line > 0 && leaf.view instanceof MarkdownView)
     await flashLines(leaf.view, { from: note.line + 1, to: note.line + 1 })
+}
+
+/** What a click on a menu item or button asks for: a new tab, split or window with Mod; else false. */
+export function paneOf(evt?: MouseEvent | KeyboardEvent | null): PaneType | false {
+  const mod = Keymap.isModEvent(evt ?? undefined)
+  return mod === true ? 'tab' : mod
 }
 
 /** The note linking to the words tapped, opened; several are offered in a menu. */
@@ -33,7 +46,7 @@ export function openLinkedNotes(app: App, notes: LinkedNote[], at: { x: number; 
       item
         .setTitle(name)
         .setIcon('file-text')
-        .onClick(() => void openLinkedNote(app, note))
+        .onClick((evt) => void openLinkedNote(app, note, paneOf(evt)))
     )
   }
   menu.showAtPosition(at)
