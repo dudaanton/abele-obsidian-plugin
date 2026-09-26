@@ -50,6 +50,10 @@ Add them in **Settings → Abele → Calendars**, each with a name and a colour,
   address in iCal format**. iCloud: share the calendar as a public calendar and copy its link;
   a `webcal://` link can be pasted as it is. Outlook: publish the calendar and copy the ICS link.
   Anyone with the link can read the calendar, so it is kept in the device's keychain.
+  A public Google calendar's embed or share link (`calendar/embed?src=…`, `?cid=…`) works too:
+  it is turned into that calendar's public iCal feed, and an embed link showing several
+  calendars adds each as a calendar of its own. A private calendar has no public feed, so for
+  one of your own use the secret address. A link that is not taken says why under the field.
 - **CalDAV account.** The server, the username and a password. For iCloud the server is
   `https://caldav.icloud.com`, the username is your Apple Account email, and the password is an
   app-specific password made at account.apple.com. **Find calendars** lists the account's

@@ -14,6 +14,7 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { McpService } from '@/ai/mcp/McpService'
 import { createMcpServer, type McpToolSnapshot } from '@/ai/mcp/types'
+import { mcpKeyId } from '@/ai/mcp/settings'
 import { secrets } from '@/secrets/SecretStore'
 import { useVault } from '../helpers/testEnv'
 
@@ -135,7 +136,8 @@ describe('adding one', () => {
       tools: TOOLS,
     })
     expect(saved.fetchedAt).toBeTruthy()
-    expect(saved.keyId).toBe(`abele-mcp-${saved.id}`)
+    expect(saved.keyId).toBe(mcpKeyId(saved.id))
+    expect(saved.keyId).toMatch(/^[a-z0-9-]+$/)
     expect(secrets().get(saved.keyId)).toBe('tok-1')
   })
 
@@ -155,7 +157,8 @@ describe('adding one', () => {
     await buttonNamed(view, 'Save').trigger('click')
 
     const [saved] = servers()
-    expect(saved.keyId).toBe(`abele-mcp-${saved.id}`)
+    expect(saved.keyId).toBe(mcpKeyId(saved.id))
+    expect(saved.keyId).toMatch(/^[a-z0-9-]+$/)
     expect(secrets().get(saved.keyId)).toBe('tok-abcdefgh-1234')
   })
 

@@ -556,7 +556,12 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
       const secrets = new Map<string, string>()
       return {
         getSecret: (id: string) => secrets.get(id) ?? '',
-        setSecret: (id: string, value: string) => void secrets.set(id, value),
+        // Obsidian's own rule, which it enforces by throwing: an id is lowercase letters,
+        // digits and dashes. A fake that took anything hid a calendar link that never saved.
+        setSecret: (id: string, value: string) => {
+          if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`Invalid secret ID: ${id}`)
+          secrets.set(id, value)
+        },
       }
     })(),
     stats,

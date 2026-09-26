@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   calendarKeyId,
+  calendarLinks,
   calendarSettingsFrom,
   newFeed,
   normalizeCalendarUrl,
@@ -85,6 +86,87 @@ describe('a pasted link', () => {
     expect(normalizeCalendarUrl('https://calendar.google.com/x/basic.ics')).toBe(
       'https://calendar.google.com/x/basic.ics'
     )
+  })
+})
+
+describe('the links people paste', () => {
+  const HOLIDAYS = 'ru.russian#holiday@group.v.calendar.google.com'
+  const HOLIDAYS_ICS =
+    'https://calendar.google.com/calendar/ical/ru.russian%23holiday%40group.v.calendar.google.com/public/basic.ics'
+
+  it('takes a Google secret address as it is, escapes and all', () => {
+    for (const url of [
+      'https://calendar.google.com/calendar/ical/abc123%40group.calendar.google.com/private-0f1e2d3c4b5a69788796a5b4c3d2e1f0/basic.ics',
+      'https://calendar.google.com/calendar/ical/anna.fake%40gmail.com/private-0123456789abcdef/basic.ics',
+      HOLIDAYS_ICS,
+    ]) {
+      expect(calendarLinks(url)).toEqual({ urls: [url] })
+    }
+  })
+
+  it('takes an iCloud public link, however long, as https', () => {
+    const token = 'fakeToken0123456789'.repeat(12)
+    expect(calendarLinks(`webcal://p123-caldav.icloud.com/published/2/${token}`)).toEqual({
+      urls: [`https://p123-caldav.icloud.com/published/2/${token}`],
+    })
+    expect(calendarLinks('webcals://example.com/cal')).toEqual({
+      urls: ['https://example.com/cal'],
+    })
+  })
+
+  it('drops the spaces and line breaks a paste brings along', () => {
+    expect(calendarLinks(`  \n${HOLIDAYS_ICS}\n  `)).toEqual({ urls: [HOLIDAYS_ICS] })
+  })
+
+  it('turns a Google embed page into the public feed of each calendar on it', () => {
+    expect(
+      calendarLinks(
+        'https://calendar.google.com/calendar/embed?src=ru.russian%23holiday%40group.v.calendar.google.com&ctz=Europe%2FMoscow'
+      )
+    ).toEqual({ urls: [HOLIDAYS_ICS] })
+    expect(
+      calendarLinks(
+        'https://calendar.google.com/calendar/embed?src=a%40group.calendar.google.com&src=b%40gmail.com&ctz=UTC'
+      )
+    ).toEqual({
+      urls: [
+        'https://calendar.google.com/calendar/ical/a%40group.calendar.google.com/public/basic.ics',
+        'https://calendar.google.com/calendar/ical/b%40gmail.com/public/basic.ics',
+      ],
+    })
+  })
+
+  it('turns a Google share link, its id in base64 or plain, into the public feed', () => {
+    const b64 = btoa(HOLIDAYS).replace(/=+$/, '')
+    expect(calendarLinks(`https://calendar.google.com/calendar/u/0?cid=${b64}`)).toEqual({
+      urls: [HOLIDAYS_ICS],
+    })
+    expect(
+      calendarLinks(`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(HOLIDAYS)}`)
+    ).toEqual({ urls: [HOLIDAYS_ICS] })
+    expect(
+      calendarLinks(
+        `https://calendar.google.com/calendar/render?cid=${encodeURIComponent('webcal://example.com/team.ics')}`
+      )
+    ).toEqual({ urls: ['https://example.com/team.ics'] })
+  })
+
+  it('says what is wrong with a link it cannot use', () => {
+    expect(calendarLinks('   ').problem).toMatch(/paste/i)
+    expect(calendarLinks('calendar.google.com/calendar/ical/x/basic.ics').problem).toMatch(
+      /https:\/\/ or webcal:\/\//
+    )
+    expect(calendarLinks('https://calendar.google.com/calendar/u/0/r').problem).toMatch(
+      /iCal/
+    )
+  })
+
+  it('keeps each calendar in a keychain slot Obsidian takes, whatever its id', () => {
+    for (const id of ['f1', 'xH7JnS8u', 'a_b-C', newFeed([]).id]) {
+      expect(calendarKeyId(id)).toMatch(/^[a-z0-9-]+$/)
+    }
+    expect(calendarKeyId('f1')).toBe('abele-calendar-f1')
+    expect(calendarKeyId('aB')).not.toBe(calendarKeyId('ab'))
   })
 })
 

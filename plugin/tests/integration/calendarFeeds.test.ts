@@ -85,6 +85,33 @@ describe('a calendar by its secret link', () => {
     expect(read.unchanged).toBe(true)
   })
 
+  it('says a web page is not a calendar feed, and where the feed is', async () => {
+    const page = '<!DOCTYPE html><html><head><title>Google Calendar</title></head></html>'
+    await expect(
+      readFeed(linkFeed(), 'https://example.invalid/calendar', WINDOW, async () => ({
+        status: 200,
+        text: page,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      }))
+    ).rejects.toThrow(/web page, not a calendar feed.*iCal/i)
+  })
+
+  it('reads a Google embed page as the feed of the calendar on it', async () => {
+    const seen: string[] = []
+    await readFeed(
+      linkFeed(),
+      'https://calendar.google.com/calendar/embed?src=ru.russian%23holiday%40group.v.calendar.google.com&ctz=Europe%2FMoscow',
+      WINDOW,
+      async (r) => {
+        seen.push(r.url)
+        return { status: 200, text: ICS, headers: {} }
+      }
+    )
+    expect(seen).toEqual([
+      'https://calendar.google.com/calendar/ical/ru.russian%23holiday%40group.v.calendar.google.com/public/basic.ics',
+    ])
+  })
+
   it('explains a link that leads nowhere', async () => {
     await expect(
       readFeed(linkFeed(), `${server.origin}/secret/other.ics`, WINDOW, nodeRequester)

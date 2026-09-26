@@ -82,12 +82,13 @@
         <template v-if="feed.source === 'ics'">
           <Setting name="Link" :desc="LINK_HELP">
             <SecretField
-              v-model="typed[feed.id]"
+              :model-value="typed[feed.id] ?? ''"
               :value="stored(feed)"
               placeholder="https://… or webcal://…"
               replace-placeholder="New link..."
               save-tooltip="Save the link"
               what="The link"
+              @update:model-value="type(feed, $event)"
               @save="saveSecret(feed)"
             >
               <template #actions>
@@ -100,6 +101,9 @@
               </template>
             </SecretField>
           </Setting>
+          <p v-if="problem[feed.id]" class="setting-item-description mod-warning">
+            {{ problem[feed.id] }}
+          </p>
         </template>
 
         <template v-else>
@@ -122,12 +126,13 @@
           </Setting>
           <Setting name="Password" :desc="PASSWORD_HELP">
             <SecretField
-              v-model="typed[feed.id]"
+              :model-value="typed[feed.id] ?? ''"
               :value="stored(feed)"
               placeholder="App-specific password"
               replace-placeholder="New password..."
               save-tooltip="Save the password"
               what="The password"
+              @update:model-value="type(feed, $event)"
               @save="saveSecret(feed)"
             >
               <template #actions>
@@ -140,6 +145,9 @@
               </template>
             </SecretField>
           </Setting>
+          <p v-if="problem[feed.id]" class="setting-item-description mod-warning">
+            {{ problem[feed.id] }}
+          </p>
           <Setting
             name="Calendar"
             desc="One calendar of the account, or all of them. Find calendars asks the server which there are."
@@ -211,10 +219,10 @@ import {
   DEFAULT_REFRESH_MINUTES,
   MIN_REFRESH_MINUTES,
   calendarKeyId,
+  calendarLinks,
   calendarSettingsFrom,
   feedLabel,
   newFeed,
-  normalizeCalendarUrl,
   type CalendarFeed,
   type CalendarSettings,
   type CalendarSource,
@@ -222,6 +230,7 @@ import {
 import { calendars } from '@/calendars/CalendarService'
 import { discoverCalendars, type CaldavCalendar } from '@/calendars/caldav'
 import { obsidianRequester } from '@/calendars/http'
+import { isKeychainId } from '@/secrets/keychainId'
 
 const LINK_HELP =
   'Google: the calendar’s settings, “Secret address in iCal format”. iCloud: share the calendar as a public calendar and copy its link. Outlook: publish the calendar and copy the ICS link. Kept in the keychain — anyone with the link can read the calendar.'
@@ -234,6 +243,8 @@ watch(config.version, () => Object.assign(settings, calendarSettingsFrom(config.
 
 /** What is being typed into each calendar's secret field, not yet saved. */
 const typed = reactive<Record<string, string>>({})
+/** Why the last link or password typed into a calendar was not saved. */
+const problem = reactive<Record<string, string>>({})
 const found = reactive<Record<string, { calendars: CaldavCalendar[]; message: string }>>({})
 const finding = ref<string | null>(null)
 const removing = ref<CalendarFeed | null>(null)
@@ -275,14 +286,49 @@ const stored = (feed: CalendarFeed): string => {
   return feed.keyId ? secrets().get(feed.keyId) : ''
 }
 
+const type = (feed: CalendarFeed, value: string) => {
+  typed[feed.id] = value
+  problem[feed.id] = ''
+}
+
+/** Puts a feed's secret into the keychain; the reason it could not, or ''. */
+const keep = (feed: CalendarFeed, value: string): string => {
+  const keyId = isKeychainId(feed.keyId) ? feed.keyId : calendarKeyId(feed.id)
+  try {
+    secrets().set(keyId, value)
+  } catch (e) {
+    const what = feed.source === 'ics' ? 'link' : 'password'
+    return `The ${what} could not be kept in the keychain: ${(e as Error)?.message ?? e}`
+  }
+  feed.keyId = keyId
+  return ''
+}
+
+/**
+ * A link is taken apart first: a Google page stands for the feeds of the calendars on it, and
+ * every calendar past the first on an embed page becomes a calendar of its own.
+ */
 const saveSecret = (feed: CalendarFeed) => {
   const raw = (typed[feed.id] ?? '').trim()
   if (!raw) return
-  const value = feed.source === 'ics' ? normalizeCalendarUrl(raw) : raw
-  const keyId = feed.keyId || calendarKeyId(feed.id)
-  secrets().set(keyId, value)
+  const values = feed.source === 'ics' ? calendarLinks(raw) : { urls: [raw] }
+  if (values.problem) {
+    problem[feed.id] = values.problem
+    return
+  }
+  const [first, ...more] = values.urls
+  const failed = keep(feed, first)
+  if (failed) {
+    problem[feed.id] = failed
+    return
+  }
+  for (const url of more) {
+    const extra = { ...newFeed(settings.feeds), name: feed.name }
+    if (!keep(extra, url)) settings.feeds.push(extra)
+  }
   typed[feed.id] = ''
-  update(feed, { keyId })
+  problem[feed.id] = ''
+  void save()
 }
 
 const forgetSecret = (feed: CalendarFeed) => {

@@ -45,6 +45,7 @@ describe('a server name', () => {
 
   it('has a keychain slot of its own for the token', () => {
     expect(mcpKeyId('abc')).toBe('abele-mcp-abc')
+    expect(mcpKeyId('XD-0OXNKp8')).toMatch(/^[a-z0-9-]+$/)
   })
 })
 

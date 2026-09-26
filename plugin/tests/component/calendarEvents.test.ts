@@ -255,6 +255,79 @@ describe('the settings screen', () => {
     expect(JSON.stringify(config.exportSettings())).not.toContain('example.com/secret')
   })
 
+  /** Types into the link field and presses its tick, the way a person does. */
+  const pasteAndSave = async (view: VueWrapper, text: string) => {
+    const field = view.findComponent(SecretField)
+    await field.find('input').setValue(text)
+    const tick = field.findAllComponents(Icon).find((i) => i.props('icon') === 'check')!
+    await tick.trigger('click')
+    await flushPromises()
+  }
+
+  it('saves a Google iCal address, with its escapes, under a key the keychain takes', async () => {
+    const link =
+      'https://calendar.google.com/calendar/ical/ru.russian%23holiday%40group.v.calendar.google.com/public/basic.ics'
+    wrapper = mount(CalendarsSettings)
+    await button(wrapper, 'Add calendar').trigger('click')
+    await flushPromises()
+    // A nanoid id, capitals and all, the way a real calendar gets one.
+    const id = config.calendars.feeds[0].id
+
+    await pasteAndSave(wrapper, `  ${link}\n`)
+
+    expect(config.calendars.feeds[0].keyId).toMatch(/^[a-z0-9-]+$/)
+    expect(secrets().get(config.calendars.feeds[0].keyId)).toBe(link)
+    expect(config.calendars.feeds[0].keyId).toBe(calendarKeyId(id))
+    expect(wrapper.text()).not.toContain('No link yet')
+  })
+
+  it('makes a Google embed page into its calendars’ feeds, one calendar each', async () => {
+    wrapper = mount(CalendarsSettings)
+    await button(wrapper, 'Add calendar').trigger('click')
+    await flushPromises()
+
+    await pasteAndSave(
+      wrapper,
+      'https://calendar.google.com/calendar/embed?src=ru.russian%23holiday%40group.v.calendar.google.com&src=team%40group.calendar.google.com&ctz=Europe%2FMoscow'
+    )
+
+    const feeds = config.calendars.feeds
+    expect(feeds).toHaveLength(2)
+    expect(feeds.map((f) => secrets().get(f.keyId))).toEqual([
+      'https://calendar.google.com/calendar/ical/ru.russian%23holiday%40group.v.calendar.google.com/public/basic.ics',
+      'https://calendar.google.com/calendar/ical/team%40group.calendar.google.com/public/basic.ics',
+    ])
+  })
+
+  it('says why a link it cannot use is not saved, instead of doing nothing', async () => {
+    wrapper = mount(CalendarsSettings)
+    await button(wrapper, 'Add calendar').trigger('click')
+    await flushPromises()
+
+    await pasteAndSave(wrapper, 'https://calendar.google.com/calendar/u/0/r')
+
+    expect(config.calendars.feeds[0].keyId).toBe('')
+    expect(wrapper.text()).toContain('not a calendar feed')
+    expect(wrapper.text()).toContain('Secret address in iCal format')
+
+    await wrapper.findComponent(SecretField).find('input').setValue('webcal://example.com/a')
+    expect(wrapper.text()).not.toContain('not a calendar feed')
+  })
+
+  it('says so when the keychain will not keep the link', async () => {
+    wrapper = mount(CalendarsSettings)
+    await button(wrapper, 'Add calendar').trigger('click')
+    await flushPromises()
+    vi.spyOn(app.secretStorage, 'setSecret').mockImplementation(() => {
+      throw new Error('No secure storage on this device')
+    })
+
+    await pasteAndSave(wrapper, 'https://example.com/secret/abc.ics')
+
+    expect(config.calendars.feeds[0].keyId).toBe('')
+    expect(wrapper.text()).toContain('No secure storage on this device')
+  })
+
   it('asks before deleting a calendar, and takes its link out of the keychain', async () => {
     config.calendars = { refreshMinutes: 30, feeds: [{ ...feed, keyId: calendarKeyId('f') }] }
     secrets().set(calendarKeyId('f'), 'https://example.com/secret/family.ics')

@@ -464,8 +464,12 @@ describe('a transfer that carries a key', () => {
       providers: [providerNamed('p1', 'openwebui'), providerNamed('P2', 'other')],
     } as AiSettings
     app.secretStorage.setSecret('key-p1', 'sk-the-secret')
-    // Both keys travel; it is the writing of the second one this vault will refuse.
-    app.secretStorage.setSecret('key-P2', 'sk-the-other')
+    // Both keys travel; it is the writing of the second one this vault will refuse. The
+    // keychain would not take that id here either, so the sending side reads it as given.
+    const getSecret = app.secretStorage.getSecret.bind(app.secretStorage)
+    vi.spyOn(app.secretStorage, 'getSecret').mockImplementation((id: string) =>
+      id === 'key-P2' ? 'sk-the-other' : getSecret(id)
+    )
     const refusing = vi
       .spyOn(app.secretStorage, 'setSecret')
       .mockImplementation((id: string, value: string) => {

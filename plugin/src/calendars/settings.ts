@@ -7,6 +7,9 @@
  */
 import { nanoid } from 'nanoid'
 import { isKitColor, type KitColor } from '@/constants/colors'
+import { keychainId } from '@/secrets/keychainId'
+
+export { calendarLinks, normalizeCalendarUrl } from './links'
 
 export type CalendarSource = 'ics' | 'caldav'
 
@@ -44,7 +47,7 @@ export const DEFAULT_CALENDAR_SETTINGS: CalendarSettings = {
 }
 
 /** The keychain id a feed's secret is stored under. */
-export const calendarKeyId = (feedId: string) => `abele-calendar-${feedId}`
+export const calendarKeyId = (feedId: string) => keychainId('abele-calendar', feedId)
 
 /** Colours handed to new calendars in turn, so two new ones do not look alike. */
 const NEW_COLORS: KitColor[] = [
@@ -109,16 +112,6 @@ export function calendarSettingsFrom(stored?: unknown): CalendarSettings {
       : DEFAULT_REFRESH_MINUTES,
     feeds,
   }
-}
-
-/**
- * A link as it is pasted: `webcal://` is what Apple and Outlook hand out for subscribing, and
- * means `https://` to anything that is not a calendar app.
- */
-export function normalizeCalendarUrl(url: string): string {
-  const trimmed = url.trim()
-  if (/^webcals?:\/\//i.test(trimmed)) return trimmed.replace(/^webcals?:\/\//i, 'https://')
-  return trimmed
 }
 
 /** What a feed is called when it has no name of its own. */

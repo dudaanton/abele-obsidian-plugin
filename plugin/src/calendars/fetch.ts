@@ -49,11 +49,21 @@ export async function readFeed(
   }
   if (response.status === 304 && etag) return { events: [], etag, unchanged: true }
   if (response.status >= 400) throw new Error(statusMessage(response.status, 'link'))
+  if (isWebPage(response.text, header(response, 'content-type'))) {
+    throw new Error(
+      'This link opens a web page, not a calendar feed. Use the calendar’s iCal address instead — in Google, “Secret address in iCal format” in the calendar’s settings.'
+    )
+  }
   return {
     events: parseIcs(response.text, feed.id, window),
     etag: header(response, 'etag') || undefined,
   }
 }
+
+/** A page for a browser rather than a calendar: what a share or embed link answers with. */
+const isWebPage = (text: string, type: string) =>
+  !/BEGIN:VCALENDAR/i.test(text) &&
+  (/text\/html/i.test(type) || /^\s*<(!doctype html|html)\b/i.test(text))
 
 async function readCaldav(
   feed: CalendarFeed,

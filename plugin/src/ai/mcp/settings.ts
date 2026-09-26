@@ -4,9 +4,10 @@
 import type { AiSettings, ToolMode } from '@/ai/types'
 import { MCP_PREFIX, mcpServerSlug } from './names'
 import type { McpServer } from './types'
+import { keychainId } from '@/secrets/keychainId'
 
 /** The keychain slot a server's token is kept in. */
-export const mcpKeyId = (serverId: string): string => `abele-mcp-${serverId}`
+export const mcpKeyId = (serverId: string): string => keychainId('abele-mcp', serverId)
 
 /** `Name: value` lines into headers. A line without a name is not a header and is dropped. */
 export function parseHeaders(text: string): Record<string, string> {
