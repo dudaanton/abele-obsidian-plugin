@@ -23,7 +23,7 @@ import type { App } from 'obsidian'
 import PropertyFiles from '@/components/properties/PropertyFiles.vue'
 import { evaluateAmount } from '@/helpers/calculator'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { fileEntries, isCoverKey, linkTarget } from './values'
+import { fileEntries, isCoverKey } from './values'
 import { walletBalance, type WalletSource } from './wallet'
 
 export interface WidgetContext {
@@ -68,6 +68,7 @@ const mounted = new Map<HTMLElement, VueApp>()
 let sweepTimer: number | null = null
 
 function sweep(all = false): void {
+  sweepBadges(all)
   for (const [cell, vue] of mounted) {
     if (all || !cell.isConnected) {
       vue.unmount()
@@ -161,8 +162,24 @@ function renderNumber(original: Render, el: HTMLElement, value: unknown, ctx: Wi
   return widget
 }
 
-/** The wallets' balances on screen, redrawn when a transaction changes one of them. */
-const badges = new Set<{ el: HTMLElement; value: unknown; sourcePath: string }>()
+/**
+ * The wallets' balances on screen, one per text row, by the row's value cell.
+ *
+ * Obsidian's text field draws its cell again by itself — clicked into to edit, left, given a
+ * new value — emptying it each time, without asking the type to draw the row again. So a badge
+ * put in the cell once is gone after the first edit. Each row keeps an eye on its cell instead
+ * and puts the badge back after the field has drawn itself, for the value the field holds now.
+ * Rows drawn before the finance index was there get theirs when it arrives.
+ */
+interface Badge {
+  cell: HTMLElement
+  widget: unknown
+  value: unknown
+  sourcePath: string
+  el: HTMLElement | null
+  observer: MutationObserver | null
+}
+const badges = new Map<HTMLElement, Badge>()
 let stopBadges: (() => void) | null = null
 
 function walletSource(): WalletSource | null {
@@ -178,43 +195,78 @@ function walletSource(): WalletSource | null {
   }
 }
 
-function drawBadge(badge: { el: HTMLElement; value: unknown; sourcePath: string }): void {
+/** What the field holds now: Obsidian's keeps it on the object it returned from `render`. */
+function badgeValue(badge: Badge): unknown {
+  const widget = badge.widget as { value?: unknown } | null
+  return widget && typeof widget === 'object' && 'value' in widget ? widget.value : badge.value
+}
+
+function drawBadge(badge: Badge): void {
+  const value = badgeValue(badge)
   const source = walletSource()
-  const balance = source ? walletBalance(badge.value, badge.sourcePath, source) : null
+  const balance = source ? walletBalance(value, badge.sourcePath, source) : null
+  // While the field is being typed into there is no link to stand beside.
+  const editing = !!badge.cell.querySelector('.metadata-input-longtext')
+  if (!balance && !badge.el) return
+  if (!badge.el) badge.el = badge.cell.createSpan({ cls: 'abele-badge abele-property-balance' })
+  if (badge.el.parentElement !== badge.cell) badge.cell.appendChild(badge.el)
   badge.el.toggleClass('abele-badge_color-red', !!balance?.negative)
   badge.el.setText(balance?.text ?? '')
-  badge.el.toggle(!!balance)
+  badge.el.toggle(!!balance && !editing)
+}
+
+function forgetBadge(cell: HTMLElement): void {
+  const badge = badges.get(cell)
+  if (!badge) return
+  badge.observer?.disconnect()
+  badges.delete(cell)
+}
+
+function sweepBadges(all = false): void {
+  for (const cell of [...badges.keys()]) if (all || !cell.isConnected) forgetBadge(cell)
 }
 
 function watchBadges(): void {
   if (stopBadges) return
   const store = GlobalStore.getInstance()
   stopBadges = watch(
-    () => store.balanceIndex.value?.version,
+    () => [store.balanceIndex.value?.version, store.accountsList.value?.accounts.size],
     () => {
-      for (const badge of badges) {
-        if (!badge.el.isConnected) badges.delete(badge)
-        else drawBadge(badge)
-      }
+      for (const badge of badges.values()) drawBadge(badge)
     }
   )
+}
+
+function addBadge(el: HTMLElement, widget: unknown, value: unknown, ctx: WidgetContext): void {
+  forgetBadge(el)
+  const badge: Badge = {
+    cell: el,
+    widget,
+    value,
+    sourcePath: ctx.sourcePath,
+    el: null,
+    observer: null,
+  }
+  badges.set(el, badge)
+  if (!walletSource()) log('finance is not loaded yet; the balance waits for it', ctx.key)
+  drawBadge(badge)
+  if (typeof MutationObserver !== 'undefined') {
+    badge.observer = new MutationObserver(() => {
+      if (badges.get(el) === badge) drawBadge(badge)
+    })
+    badge.observer.observe(el, { childList: true })
+  }
+  watchBadges()
+  sweepSoon()
 }
 
 function renderText(original: Render, el: HTMLElement, value: unknown, ctx: WidgetContext) {
   if (isCoverKey(ctx.key) && (value == null || typeof value === 'string'))
     return renderFiles(el, value, ctx, { multiple: false, imagesOnly: true, type: 'text' })
+  forgetBadge(el)
   const widget = original(el, value, ctx)
-  if (typeof value !== 'string' || !linkTarget(value)) return widget
-  const source = walletSource()
-  if (!source || !walletBalance(value, ctx.sourcePath, source)) return widget
-  const badge = {
-    el: el.createSpan({ cls: 'abele-badge abele-property-balance' }),
-    value,
-    sourcePath: ctx.sourcePath,
-  }
-  drawBadge(badge)
-  badges.add(badge)
-  watchBadges()
+  // Any text row: one holding no link now may be given one by hand.
+  if (value == null || typeof value === 'string') addBadge(el, widget, value, ctx)
   return widget
 }
 
@@ -307,7 +359,7 @@ export class PropertyWidgets {
     while (this.restores.length) this.restores.pop()?.()
     stopBadges?.()
     stopBadges = null
-    badges.clear()
+    sweepBadges(true)
   }
 
   private patch(

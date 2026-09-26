@@ -7,9 +7,10 @@
  * the plan): a number field that reads its input on Enter, a text field, the hidden File type.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 import type { App } from 'obsidian'
 import { FILES_TYPE, PropertyWidgets, type TypeWidget } from '@/properties/widgets'
+import { GlobalStore } from '@/stores/GlobalStore'
 import { useVault } from '../helpers/testEnv'
 
 interface Ctx {
@@ -48,9 +49,28 @@ function stockRegistry() {
     name: () => 'Text',
     icon: 'lucide-text',
     validate: (v) => typeof v === 'string',
+    // Like Obsidian's: the object it returns keeps the value and draws its cell again by itself,
+    // emptying it — when the value is set, and when the field is clicked into to edit it.
     render(el, value) {
-      el.createDiv({ cls: 'stock-text', text: String(value ?? '') })
-      return { containerEl: el, type: 'text' }
+      const widget = {
+        containerEl: el,
+        type: 'text',
+        value,
+        render() {
+          el.empty()
+          el.createDiv({ cls: 'stock-text', text: String(this.value ?? '') })
+        },
+        setValue(next: unknown) {
+          this.value = next
+          this.render()
+        },
+        edit() {
+          el.empty()
+          el.createDiv({ cls: 'metadata-input-longtext', text: String(this.value ?? '') })
+        },
+      }
+      widget.render()
+      return widget
     },
   }
   const multitext: TypeWidget = {
@@ -101,6 +121,9 @@ beforeEach(() => {
     { path: 'Note.md', content: '' },
     { path: 'Books/Dune.epub', content: '' },
     { path: 'Media/poster.png', content: '' },
+    { path: 'Wallet.md', content: '' },
+    { path: 'Card.md', content: '' },
+    { path: 'Food.md', content: '' },
   ])
   ;(fake.vault as unknown as { getResourcePath: (f: { path: string }) => string }).getResourcePath =
     (f) => `app://vault/${f.path}`
@@ -246,5 +269,102 @@ describe('files as cards', () => {
     widgets.apply(true)
     const el = draw('text', 'hello', ctx('title'))
     expect(el.querySelector('.stock-text')?.textContent).toBe('hello')
+  })
+})
+
+describe('a wallet’s balance beside a link to it', () => {
+  interface StockText {
+    render(): void
+    setValue(v: unknown): void
+    edit(): void
+  }
+  const balances: Record<string, number> = {}
+  const store = () => GlobalStore.getInstance()
+
+  const financeReady = () => {
+    const accounts = new Map([
+      ['Wallet.md', { accountType: 'asset', currency: 'EUR' }],
+      ['Card.md', { accountType: 'liability', currency: 'EUR' }],
+      ['Food.md', { accountType: 'expense', currency: 'EUR' }],
+    ])
+    store().accountsList.value = { accounts } as never
+    store().balanceIndex.value = {
+      version: ref(1),
+      getBalanceAtDate: (path: string) => balances[path] ?? 0,
+    } as never
+  }
+
+  const flush = () => new Promise((r) => setTimeout(r, 0))
+
+  const drawText = (value: unknown) => {
+    const el = host.createDiv({ cls: 'metadata-property-value' })
+    const widget = table.text.render(el, value, ctx('from')) as unknown as StockText
+    return { el, widget }
+  }
+
+  const badge = (el: HTMLElement) => {
+    const b = el.querySelector<HTMLElement>('.abele-property-balance')
+    return b && b.style.display !== 'none' ? b.textContent : null
+  }
+
+  beforeEach(() => {
+    balances['Wallet.md'] = 70
+    balances['Card.md'] = -20
+    widgets.load()
+    widgets.apply(true)
+  })
+
+  afterEach(() => {
+    store().balanceIndex.value = null
+    store().accountsList.value = null
+  })
+
+  it('shows the balance of the wallet a text property links to, and none for a category', () => {
+    financeReady()
+    expect(badge(drawText('[[Wallet]]').el)).toBe('70.00 EUR')
+    expect(badge(drawText('[[Food]]').el)).toBeNull()
+  })
+
+  it('keeps the balance when the field draws itself again, as it does after an edit', async () => {
+    financeReady()
+    const { el, widget } = drawText('[[Wallet]]')
+    widget.edit()
+    await flush()
+    expect(badge(el)).toBeNull()
+    widget.render()
+    await flush()
+    expect(badge(el)).toBe('70.00 EUR')
+  })
+
+  it('follows the value the field was given, to another wallet or away from one', async () => {
+    financeReady()
+    const { el, widget } = drawText('[[Wallet]]')
+    widget.setValue('[[Card]]')
+    await flush()
+    expect(badge(el)).toBe('-20.00 EUR')
+    widget.setValue('[[Food]]')
+    await flush()
+    expect(badge(el)).toBeNull()
+    widget.setValue('[[Wallet]]')
+    await flush()
+    expect(badge(el)).toBe('70.00 EUR')
+  })
+
+  it('shows the balance once the finance index is ready, for a row drawn before it', async () => {
+    const { el } = drawText('[[Wallet]]')
+    expect(badge(el)).toBeNull()
+    financeReady()
+    await nextTick()
+    await flush()
+    expect(badge(el)).toBe('70.00 EUR')
+  })
+
+  it('draws the new balance when a transaction changes it', async () => {
+    financeReady()
+    const { el } = drawText('[[Wallet]]')
+    balances['Wallet.md'] = 55
+    ;(store().balanceIndex.value as unknown as { version: number }).version++
+    await nextTick()
+    expect(badge(el)).toBe('55.00 EUR')
   })
 })

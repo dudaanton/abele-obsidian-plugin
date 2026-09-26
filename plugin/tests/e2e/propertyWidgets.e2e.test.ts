@@ -198,6 +198,65 @@ describe.skipIf(!available)('properties drawn by the plugin', () => {
     expect(r.to).toBeNull()
   })
 
+  it('keeps the balance after the property is edited by hand, and follows the transaction', () => {
+    const r = run<{
+      error?: string
+      editing?: boolean
+      afterEdit?: string | null
+      toCategory?: string | null
+      stored?: unknown
+      back?: string | null
+      reopened?: string | null
+      amount?: string | null
+    }>(`
+      const leaf = await open(${JSON.stringify(TX)})
+      const root = leaf.view.containerEl
+      const cell = () => row(root, 'from')
+      const badge = () => {
+        const b = cell()?.querySelector('.abele-property-balance')
+        return b && b.isShown() ? b.textContent : null
+      }
+      const file = app.vault.getAbstractFileByPath(${JSON.stringify(TX)})
+      const fm = () => app.metadataCache.getFileCache(file)?.frontmatter
+      // What a person does: the pencil beside the link opens the field, typing, then leaving it.
+      const edit = async (text) => {
+        cell().querySelector('.metadata-link-flair').click()
+        const input = await until(() => cell().querySelector('.metadata-input-longtext'))
+        input.textContent = text
+        input.dispatchEvent(new InputEvent('input', { bubbles: true }))
+        input.blur()
+        await until(() => fm()?.from === text)
+        await until(() => !cell().querySelector('.metadata-input-longtext'))
+        await wait(400)
+        return !!input
+      }
+      await until(() => badge())
+      const editing = await edit('[[Wallet]]')
+      const afterEdit = await until(() => badge(), 3000)
+      await edit('[[Food]]')
+      const toCategory = badge()
+      const stored = fm()?.from
+      await edit('[[Wallet]]')
+      const back = await until(() => badge(), 3000)
+      await open(${JSON.stringify(NOTE)})
+      await open(${JSON.stringify(TX)})
+      const reopened = await until(() => badge(), 3000)
+      await app.fileManager.processFrontMatter(file, (f) => { f.amount = 45 })
+      const amount = await until(() => badge() === '55.00 EUR' && badge(), 5000)
+      await app.fileManager.processFrontMatter(file, (f) => { f.amount = 30 })
+      await until(() => badge() === '70.00 EUR', 5000)
+      return { editing, afterEdit, toCategory, stored, back, reopened, amount }
+    `)
+    expect(r.error).toBeUndefined()
+    expect(r.editing).toBe(true)
+    expect(r.afterEdit).toBe('70.00 EUR')
+    expect(r.toCategory).toBeNull()
+    expect(r.stored).toBe('[[Food]]')
+    expect(r.back).toBe('70.00 EUR')
+    expect(r.reopened).toBe('70.00 EUR')
+    expect(r.amount).toBe('55.00 EUR')
+  })
+
   it('works out a sum typed into a number property and keeps the answer', () => {
     const r = run<{ error?: string; type?: string; stored?: unknown }>(`
       const leaf = await open(${JSON.stringify(NOTE)})
