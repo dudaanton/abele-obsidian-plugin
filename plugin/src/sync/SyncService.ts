@@ -21,6 +21,7 @@ import {
   MIGRATION_LINE,
   migrateConnection,
   readConnection,
+  selectiveFrom,
   writeConnection,
   type DeviceConnection,
 } from './connection'
@@ -528,10 +529,17 @@ export class SyncService {
    * road for anything else.
    *
    * Always marked as moved: a record this service wrote is the device's own, and the one-time
-   * move out of `data.json` must never run over it.
+   * move out of `data.json` must never run over it. The selective settings are filled out the
+   * way a read fills them, so what the engine is built on now is what the next launch reads —
+   * whoever wrote them, the agent included.
    */
   private saveConnection(patch: ConnectionPatch): void {
-    const next: DeviceConnection = { ...this.connection.value, ...patch, migrated: true }
+    const merged = { ...this.connection.value, ...patch }
+    const next: DeviceConnection = {
+      ...merged,
+      selective: selectiveFrom(merged.selective, Platform.isMobile),
+      migrated: true,
+    }
     if (this.storage !== null) writeConnection(this.storage, next)
     else console.debug('[abele-sync] the connection changed before local storage was read')
     this.connection.value = next

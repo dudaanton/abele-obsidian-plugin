@@ -768,6 +768,33 @@ describe('SyncService — a keychain id it did not mint', () => {
   })
 })
 
+/**
+ * Only the Sync tab writes what this device syncs today, but the agent is to be handed the
+ * same road: whatever arrives is stored the way it will be read back, so the engine is never
+ * built on something the next launch reads differently.
+ */
+describe('SyncService — what a connection change may hold', () => {
+  it('fills out selective settings that are not what they should be', async () => {
+    await connect()
+    await synced()
+
+    await service.updateConnection({
+      selective: {
+        ...conn().selective,
+        excludedFolders: 'Archive' as unknown as string[],
+        video: 'no' as unknown as boolean,
+        maxFileBytes: Number.NaN,
+      },
+    })
+
+    expect(conn().selective.excludedFolders).toEqual([])
+    expect(conn().selective.video).toBe(true)
+    expect(conn().selective.maxFileBytes).toBeNull()
+    expect(readConnection(app).selective).toEqual(conn().selective)
+    await synced()
+  })
+})
+
 describe('SyncService — the log', () => {
   it('keeps the last five hundred lines and no more', async () => {
     for (let i = 0; i < 600; i++) service.note(`line ${i}`)
