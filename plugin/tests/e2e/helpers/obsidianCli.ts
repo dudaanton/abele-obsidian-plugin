@@ -271,6 +271,30 @@ export function closeStrayWindows(): number {
 }
 
 /**
+ * Puts every note tab of the driven window, pop-outs included, back in the editor (live
+ * preview), at the note it shows. A tab keeps the mode it was left in, and the lists under a note
+ * live in the editor only: a file that left a tab in reading view handed the next one an editor
+ * hidden behind it, still holding the lists of the note it showed before. Tabs not yet drawn
+ * carry their mode in their saved state, which is where it is changed for them too.
+ */
+export function notesInEditor(): number {
+  const out = evalRaw(
+    `(async () => {
+      let changed = 0
+      for (const leaf of app.workspace.getLeavesOfType('markdown')) {
+        const vs = leaf.getViewState()
+        if (vs.state?.mode !== 'preview') continue
+        await leaf.setViewState({ ...vs, state: { ...vs.state, mode: 'source', source: false } })
+        changed++
+      }
+      return changed
+    })()`,
+    30_000
+  )
+  return Number(out) || 0
+}
+
+/**
  * Waits until Obsidian has resolved every note's links. After an app reload — which every
  * `emulateMobile` switch is — the link index fills in over several seconds while the
  * metadata is already there, so a file running right after one saw a group of 442 notes as 6.
