@@ -113,3 +113,29 @@ describe('BalanceIndex — transfers between wallets in different currencies', (
     expect(bi.getBalanceAtDate('Accounts/Dollar card.md', at)).toBe(-7)
   })
 })
+
+describe('BalanceIndex — two wallets of the same name', () => {
+  it('counts a transaction to the wallet beside it, the one Obsidian opens from its link', () => {
+    const bi = build([
+      {
+        path: 'Home/Wallet.md',
+        frontmatter: { type: 'account', accountType: 'asset', currency: 'EUR' },
+      },
+      {
+        path: 'Work/Wallet.md',
+        frontmatter: { type: 'account', accountType: 'asset', currency: 'EUR' },
+      },
+      {
+        path: 'Home/Lunch.md',
+        frontmatter: { type: 'transaction', date: '2026-09-01', from: '[[Wallet]]', amount: 30 },
+      },
+      {
+        path: 'Work/Taxi.md',
+        frontmatter: { type: 'transaction', date: '2026-09-01', from: '[[Wallet]]', amount: 12 },
+      },
+    ])
+
+    expect(bi.getBalanceAtDate('Home/Wallet.md', at)).toBe(-30)
+    expect(bi.getBalanceAtDate('Work/Wallet.md', at)).toBe(-12)
+  })
+})

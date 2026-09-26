@@ -38,17 +38,25 @@ export class BalanceIndex {
     this.rebuild()
   }
 
-  private resolveAccountPath(wikilink: string): string | null {
+  /**
+   * The account a transaction's link points at, found the way Obsidian opens the link: from the
+   * transaction's own note, so of two accounts with one name the one beside it wins — the same
+   * one the wallet's balance beside the link is read from.
+   */
+  private resolveAccountPath(wikilink: string, sourcePath: string): string | null {
     if (!wikilink) return null
 
-    const cached = this.resolvedPaths.get(wikilink)
+    // Obsidian resolves a link by the folder it is written in; the cache is keyed the same way.
+    const folder = sourcePath.includes('/') ? sourcePath.slice(0, sourcePath.lastIndexOf('/')) : ''
+    const key = `${folder}\u0000${wikilink}`
+    const cached = this.resolvedPaths.get(key)
     if (cached !== undefined) return cached
 
     const { app } = GlobalStore.getInstance()
     const linkPath = wikilinkToPath(wikilink)
-    const file = app.metadataCache.getFirstLinkpathDest(linkPath, '')
+    const file = app.metadataCache.getFirstLinkpathDest(linkPath, sourcePath)
     const resolved = file ? normalizePath(file.path) : null
-    this.resolvedPaths.set(wikilink, resolved)
+    this.resolvedPaths.set(key, resolved)
     return resolved
   }
 
@@ -132,10 +140,12 @@ export class BalanceIndex {
   private addTransactionEntries(transaction: Transaction): void {
     const dateStr = transaction.date.format(DATE_FORMAT)
     const currency = transaction.currency || ''
-    const fromPath = transaction.from ? this.resolveAccountPath(transaction.from) : null
-    const toPath = transaction.to ? this.resolveAccountPath(transaction.to) : null
     // A getter that looks the file up in the vault; once per transaction is enough.
     const transactionPath = transaction.transactionPath
+    const fromPath = transaction.from
+      ? this.resolveAccountPath(transaction.from, transactionPath)
+      : null
+    const toPath = transaction.to ? this.resolveAccountPath(transaction.to, transactionPath) : null
 
     if (transaction.from) {
       if (fromPath) {
@@ -367,15 +377,16 @@ export class BalanceIndex {
       if (dateStr < startStr || dateStr > endStr) continue
 
       if (params.categoryPath && raw.category) {
-        const catPath = this.resolveAccountPath(raw.category)
+        const catPath = this.resolveAccountPath(raw.category, raw.transactionPath)
         if (catPath !== params.categoryPath) continue
       } else if (params.categoryPath) {
         continue
       }
 
       if (params.accountPath) {
-        const fromPath = raw.from ? this.resolveAccountPath(raw.from) : null
-        const toPath = raw.to ? this.resolveAccountPath(raw.to) : null
+        const source = raw.transactionPath
+        const fromPath = raw.from ? this.resolveAccountPath(raw.from, source) : null
+        const toPath = raw.to ? this.resolveAccountPath(raw.to, source) : null
 
         if (params.direction === 'from' && fromPath === params.accountPath) {
           total += raw.amount

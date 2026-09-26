@@ -268,7 +268,20 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     }
   }
 
-  const resolveLink = (linkpath: string): TFile | null => {
+  const resolveLink = (linkpath: string, sourcePath = ''): TFile | null => {
+    // A bare name with several notes of that name: Obsidian takes the one beside the note the
+    // link is written in, even over one at the vault root.
+    if (sourcePath && !linkpath.includes('/')) {
+      const name = linkpath.endsWith('.md') ? linkpath.slice(0, -3) : linkpath
+      const same = byBasename.get(name) ?? []
+      if (same.length > 1) {
+        const folder = sourcePath.includes('/')
+          ? sourcePath.slice(0, sourcePath.lastIndexOf('/'))
+          : ''
+        const near = same.filter((f) => f.path === (folder ? `${folder}/${f.name}` : f.name))
+        if (near.length === 1) return near[0]
+      }
+    }
     const exact = byPath.get(linkpath)
     if (exact) return exact
 
@@ -281,7 +294,6 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
     const bare = linkpath.endsWith('.md') ? linkpath.slice(0, -3) : linkpath
     const candidates = byBasename.get(bare)
     if (candidates && candidates.length === 1) return candidates[0]
-
     // `![[poster.jpg]]` names an attachment by its file name, extension and all, and
     // Obsidian finds it in whichever folder it sits in. Same shortest-path rule as above.
     const named = files.filter((f) => f.name === linkpath || f.path.endsWith('/' + linkpath))
@@ -427,7 +439,8 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
   }
 
   const bytesOf = (path: string): ArrayBuffer =>
-    binByPath.get(path) ?? new TextEncoder().encode(rawByPath.get(path) ?? hidden.get(path) ?? '').buffer
+    binByPath.get(path) ??
+    new TextEncoder().encode(rawByPath.get(path) ?? hidden.get(path) ?? '').buffer
 
   const self = {
     loadLocalStorage(key: string) {
@@ -564,7 +577,9 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         async stat(path: string) {
           if (folders.has(path)) return { type: 'folder', size: 0, mtime: 0, ctime: 0 }
           if (!byPath.has(path) && !hidden.has(path)) return null
-          const size = binByPath.get(path)?.byteLength ?? (hidden.get(path) ?? rawByPath.get(path) ?? '').length
+          const size =
+            binByPath.get(path)?.byteLength ??
+            (hidden.get(path) ?? rawByPath.get(path) ?? '').length
           return { type: 'file', size, mtime: 0, ctime: 0 }
         },
         /** Children of a folder among the files kept out of the index. */
@@ -606,9 +621,9 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
         stats.getFileCache++
         return cacheByPath.get(file.path) ?? null
       },
-      getFirstLinkpathDest(linkpath: string) {
+      getFirstLinkpathDest(linkpath: string, sourcePath = '') {
         stats.getFirstLinkpathDest++
-        return resolveLink(linkpath)
+        return resolveLink(linkpath, sourcePath)
       },
       trigger() {
         // Obsidian fires metadata events here; nothing in these tests observes them.
