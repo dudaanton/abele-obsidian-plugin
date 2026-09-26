@@ -32,7 +32,7 @@ import { linkedNotesFor } from './bookLinkedNotes'
 import type { LinkedNotes } from './linkedNotes'
 import { parsePlaceSubpath, type BookPlace } from './bookLinks'
 import { onExternalLink, onKey, watchPage, type PageHost } from './pageInput'
-import { redrawOver, relayoutOnFonts } from './pageLayout'
+import { keepMarksOnText, redrawOver, relayoutOnFonts } from './pageLayout'
 import { bookCallbacks, type BookActions } from './bookCallbacks'
 import { bookKey } from './positions'
 import { bookPlaces, followPlace } from './places'
@@ -570,7 +570,8 @@ export class BookView extends FileView {
       if (link && !(link.localName === 'a' && link.hasAttribute('href'))) e.preventDefault()
     })
     if (!main) return
-    relayoutOnFonts(doc, () => redrawOver(this.reader?.renderer, doc))
+    relayoutOnFonts(doc, () => redrawOver(this.reader?.renderer, doc, 'fonts arrived'))
+    if (!this.fixed) keepMarksOnText(doc, () => this.reader?.renderer)
     this.reading?.watchSelection(doc, index)
     // A PDF's pages say when they are drawn; another book's fixed pages are drawn as they load.
     if (this.fixed && !this.isPdf) this.reading?.marks.drawPdf(doc, index)

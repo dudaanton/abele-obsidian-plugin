@@ -54,11 +54,77 @@ export function relayoutOnFonts(doc: Document, redraw?: () => void): void {
 }
 
 interface WithOverlays {
-  getContents?(): { doc?: Document; overlayer?: { redraw(): void } }[]
+  getContents?(): { doc?: Document; overlayer?: { redraw(): void; element?: Element } }[]
 }
 
-/** What the engine draws over a page's words — highlights and the like — drawn again. */
-export function redrawOver(renderer: unknown, doc: Document): void {
-  for (const c of (renderer as WithOverlays | undefined)?.getContents?.() ?? [])
-    if (c.doc === doc) c.overlayer?.redraw()
+/** Where the boxes drawn over a page are: every corner of every rect, in drawing order. */
+function boxesOf(el: Element | undefined): number[] {
+  const out: number[] = []
+  for (const r of Array.from(el?.querySelectorAll('rect') ?? []))
+    out.push(Number(r.getAttribute('x')), Number(r.getAttribute('y')))
+  return out
+}
+
+/**
+ * What the engine draws over a page's words — highlights and the like — drawn again. Returns how
+ * far the boxes moved, the largest shift of any one; boxes that moved are said in the console, so
+ * a book where highlights drift shows what moved them.
+ */
+export function redrawOver(renderer: unknown, doc: Document, why = 'redraw'): number {
+  let moved = 0
+  for (const c of (renderer as WithOverlays | undefined)?.getContents?.() ?? []) {
+    if (c.doc !== doc || !c.overlayer) continue
+    const before = boxesOf(c.overlayer.element)
+    c.overlayer.redraw()
+    const after = boxesOf(c.overlayer.element)
+    const n = Math.min(before.length, after.length)
+    for (let i = 0; i < n; i++) moved = Math.max(moved, Math.abs(after[i] - before[i]))
+  }
+  if (moved > 0.5) console.debug(`[Abele] book marks moved with their words (${why})`, moved)
+  return moved
+}
+
+/** The blocks of a page whose size moves the words after them. */
+const BLOCKS =
+  'p, li, dd, dt, blockquote, pre, table, figure, img, svg, video, h1, h2, h3, h4, h5, h6, header, aside, hr'
+
+/**
+ * What is drawn over a page's words kept on them. The engine measures its highlights once, and
+ * again only when the chapter's size changes — a page more or less. Words move without that: a
+ * picture, a font or a style arriving above them in the same column pushes them down by lines and
+ * the chapter keeps its page count (seen on a desktop, 2026-09-26: highlights in a book's notes
+ * one and two page margins above their words). So they are measured again whenever a block of the
+ * page changes size, and whenever the view comes to rest on a new place — at most once a frame.
+ */
+export function keepMarksOnText(doc: Document, renderer: () => unknown): void {
+  const win = doc.defaultView
+  if (!win) return
+  let queued = ''
+  const again = (why: string) => {
+    if (queued) return
+    queued = why
+    window.requestAnimationFrame(() => {
+      const reason = queued
+      queued = ''
+      if (doc.defaultView) redrawOver(renderer(), doc, reason)
+    })
+  }
+  // The first report is every block's size as it is: nothing has moved yet.
+  let first = true
+  const observer = new ResizeObserver(() => {
+    if (first) first = false
+    else again('a block changed size')
+  })
+  for (const el of Array.from(doc.body?.querySelectorAll(BLOCKS) ?? [])) observer.observe(el)
+  const target = renderer() as EventTarget | undefined
+  const settled = () => {
+    if (!doc.defaultView) {
+      observer.disconnect()
+      target?.removeEventListener?.('relocate', settled)
+      return
+    }
+    again('the view came to rest')
+  }
+  target?.addEventListener?.('relocate', settled)
+  win.addEventListener('pagehide', () => observer.disconnect(), { once: true })
 }

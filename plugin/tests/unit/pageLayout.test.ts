@@ -57,7 +57,7 @@ describe('laying a page out again', () => {
     expect(redraws).toBe(2)
   })
 
-  it("redraws only the overlay of the page whose fonts arrived", () => {
+  it('redraws only the overlay of the page whose fonts arrived', () => {
     const doc = page()
     const other = page()
     const drawn: string[] = []
@@ -71,5 +71,43 @@ describe('laying a page out again', () => {
     redrawOver(renderer, doc)
     redrawOver(undefined, doc)
     expect(drawn).toEqual(['this'])
+  })
+
+  it('says how far the boxes moved when drawn again, and says it in the console', () => {
+    const doc = page()
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    const box = (y: number) => {
+      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+      r.setAttribute('x', '10')
+      r.setAttribute('y', String(y))
+      return r
+    }
+    svg.append(box(100), box(124))
+    let shift = 0
+    const renderer = {
+      getContents: () => [
+        {
+          doc,
+          overlayer: {
+            element: svg,
+            redraw: () => svg.replaceChildren(box(100 + shift), box(124 + shift)),
+          },
+        },
+      ],
+    }
+    const said: unknown[][] = []
+    const debug = console.debug
+    console.debug = (...args: unknown[]) => void said.push(args)
+    try {
+      expect(redrawOver(renderer, doc, 'a test')).toBe(0)
+      expect(said).toEqual([])
+      shift = 48
+      expect(redrawOver(renderer, doc, 'a test')).toBe(48)
+      expect(said).toHaveLength(1)
+      expect(String(said[0][0])).toContain('a test')
+      expect(said[0][1]).toBe(48)
+    } finally {
+      console.debug = debug
+    }
   })
 })

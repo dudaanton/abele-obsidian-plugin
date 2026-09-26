@@ -81,6 +81,11 @@ under the page, in the place of the line with the slider:
 A **tap on a highlight** brings up the same bar for it: another colour, the comment, a link, the
 quote, the highlights note, or remove it. A tap beside the bar closes it.
 
+Highlights stay on their words when the words move without the page changing size — a picture,
+font or style arriving late above them: they are measured again whenever a block of the page
+changes size and whenever the view comes to rest on a new place. When that finds them moved, the
+console says so (`book marks moved with their words`, with the reason and how far).
+
 **A selection can run on past the page.** While words are selected, the page moves on under
 them by **half a page**, not a whole one, so the words just selected stay on screen beside the ones
 coming:

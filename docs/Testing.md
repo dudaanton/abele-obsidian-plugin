@@ -369,6 +369,10 @@ Three files, three concerns:
   edition under the same identifier), which opens it at its start instead of failing, and has
   the page's fonts arrive (`loadingdone`): the columns are laid out again and nothing on the page
   moves.
+- `bookMarksFollow.e2e.test.ts` — **highlights follow their words**: on the desktop in two
+  columns, a paragraph above a highlight grows by a couple of lines while the chapter keeps its
+  page count (what a late picture, font or style does), and every box drawn over the page is
+  compared with where its words now are; again after a page turned and back.
 - `bookBookmarks.e2e.test.ts` — **bookmarks**: the bookmark under the page marks the page and
   fills, turning on empties it, the Bookmarks tab lists it with its chapter and words and goes back
   to it, a text size of 150% keeps it on its words, the file in the vault holds it, `book_views`
