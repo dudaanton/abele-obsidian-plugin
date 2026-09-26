@@ -6,9 +6,9 @@ read along.
 ## Opening a book
 
 EPUB, Kindle (`.mobi`, `.azw`, `.azw3`), FictionBook (`.fb2`, `.fbz`) and comic archives (`.cbz`)
-open in the reader when you click them in the file explorer. PDFs open in Obsidian's own viewer
-unless you choose **Open in Abele reader** in the PDF's menu, or turn on
-**Open PDF files in the Abele reader** in **Settings → Abele → Books**.
+open in the reader when you click them in the file explorer, and so do PDFs. To read PDFs in
+Obsidian's own viewer instead, turn off **Open PDF files in the Abele reader** in
+**Settings → Abele → Books**; **Open in Abele reader** in a PDF's menu then still opens one here.
 
 The reader never changes a book file.
 

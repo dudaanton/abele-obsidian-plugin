@@ -38,8 +38,12 @@ export interface ReaderSettings {
   columns: 1 | 2
   /** Draw the book in the theme's text and background colours instead of its own. */
   themeColors: boolean
-  /** PDF files open in the book reader rather than in Obsidian's own PDF viewer. */
-  openPdf: boolean
+  /**
+   * PDF files open in the book reader rather than in Obsidian's own PDF viewer. On by default. It
+   * was `openPdf`, off by default, before; every setting is saved whole, so a stored `openPdf:
+   * false` is mostly that default rather than a choice, and is not read.
+   */
+  pdfInReader: boolean
   /** A PDF as one continuous scroll, page under page, or as pages turned one at a time. */
   pdfLayout: ReaderFlow
   /** How a PDF page is sized. */
@@ -114,7 +118,7 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   maxWidth: 720,
   columns: 2,
   themeColors: true,
-  openPdf: false,
+  pdfInReader: true,
   pdfLayout: 'scrolled',
   pdfZoom: 'auto',
   pdfTwoPages: false,
@@ -152,7 +156,7 @@ export function readerSettingsFrom(stored?: Partial<ReaderSettings> | null): Rea
     maxWidth: clamp(s.maxWidth, 300, 3000, d.maxWidth),
     columns: s.columns === 1 ? 1 : 2,
     themeColors: typeof s.themeColors === 'boolean' ? s.themeColors : d.themeColors,
-    openPdf: typeof s.openPdf === 'boolean' ? s.openPdf : d.openPdf,
+    pdfInReader: typeof s.pdfInReader === 'boolean' ? s.pdfInReader : d.pdfInReader,
     pdfLayout: oneOf(s.pdfLayout, ['paginated', 'scrolled'] as const, d.pdfLayout),
     pdfZoom: oneOf(s.pdfZoom, PDF_ZOOMS, d.pdfZoom),
     pdfTwoPages: typeof s.pdfTwoPages === 'boolean' ? s.pdfTwoPages : d.pdfTwoPages,

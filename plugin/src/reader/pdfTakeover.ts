@@ -6,6 +6,10 @@
  * theirs is put back when it is turned off or the plugin unloads. Where the registry is not what
  * this expects — a future Obsidian — nothing is changed, and "Open in Abele reader" in the file
  * menu still works.
+ *
+ * The claim decides where a PDF opens from then on — the file explorer, a link, the quick
+ * switcher — but not the tabs already showing one: those Obsidian brought back from the last
+ * session were made before the plugin's claim, in its own viewer. `adoptPdfLeaves` moves them.
  */
 interface ViewRegistry {
   typeByExtension: Record<string, string>
@@ -39,4 +43,38 @@ export function setPdfTakeover(app: unknown, on: boolean, ours: string): boolean
     theirs = null
   }
   return true
+}
+
+interface LeafLike {
+  getViewState(): { type: string; state?: Record<string, unknown> }
+  setViewState(state: { type: string; state?: Record<string, unknown> }): Promise<void>
+}
+
+/**
+ * Moves every tab showing a PDF in Obsidian's viewer into `ours`, keeping the tab — pinned, in its
+ * group, in its window — and not taking the focus. Says how many it moved.
+ */
+export async function adoptPdfLeaves(
+  app: unknown,
+  ours: string,
+  theirType = 'pdf'
+): Promise<number> {
+  const workspace = (
+    app as { workspace?: { iterateAllLeaves?: (fn: (l: LeafLike) => void) => void } }
+  ).workspace
+  if (typeof workspace?.iterateAllLeaves !== 'function') return 0
+  const leaves: LeafLike[] = []
+  workspace.iterateAllLeaves((leaf) => {
+    const vs = leaf.getViewState()
+    if (vs.type === theirType && typeof vs.state?.file === 'string') leaves.push(leaf)
+  })
+  for (const leaf of leaves) {
+    const vs = leaf.getViewState()
+    try {
+      await leaf.setViewState({ ...vs, type: ours, state: { file: vs.state?.file } })
+    } catch (e) {
+      console.warn('[Abele] could not move a PDF tab into the reader', e)
+    }
+  }
+  return leaves.length
 }

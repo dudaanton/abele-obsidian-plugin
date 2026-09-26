@@ -247,9 +247,10 @@ Three files, three concerns:
 - `bookPdf.e2e.test.ts` — **PDFs**, drawn by Obsidian's own PDF.js, with two PDFs written byte by
   byte in `tests/fixtures/books/pdfFixture.ts`: the pages draw with a text layer; the outline is
   the contents; keys, an internal link, a web link and outline entries go where they should; the
-  page is kept; page size and dark pages follow the settings; the setting that opens PDFs here
-  takes `.pdf` from Obsidian's viewer and gives it back, and the file menu offers **Open in Abele
-  reader**. A hostile PDF — JavaScript on opening, behind a link, in a form field and in the names
+  page is kept; page size and dark pages follow the settings; PDFs open here by default — a click
+  in the file explorer, a link — even over the old switch's stored `false`, the setting gives `.pdf`
+  back to Obsidian's viewer and, turned on again, moves a PDF tab open there into the reader; the
+  file menu offers **Open in Abele reader**. A hostile PDF — JavaScript on opening, behind a link, in a form field and in the names
   tree, a `javascript:` and a `file:` address, a launch action — is opened with both sandboxes and
   every link on it clicked: nothing may run, open, alert or ask for `child_process`. The phone file
   opens a PDF too, and checks the page fits the screen and turns by a tap and a swipe.

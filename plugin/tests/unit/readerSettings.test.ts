@@ -41,10 +41,10 @@ describe('reader settings as stored', () => {
     expect(s.maxWidth).toBe(DEFAULT_READER_SETTINGS.maxWidth)
   })
 
-  it("keep PDFs in Obsidian's viewer, whole pages, one at a time, dark in a dark theme by default", () => {
+  it('open PDFs in the reader, whole pages, one at a time, dark in a dark theme by default', () => {
     const s = readerSettingsFrom({})
     expect(s).toMatchObject({
-      openPdf: false,
+      pdfInReader: true,
       pdfZoom: 'auto',
       pdfTwoPages: false,
       pdfDarkPages: true,
@@ -53,6 +53,14 @@ describe('reader settings as stored', () => {
     // A zoom chosen before stays chosen.
     expect(readerSettingsFrom({ pdfZoom: 'fit-page' }).pdfZoom).toBe('fit-page')
     expect(readerSettingsFrom({ pdfZoom: '1.5' }).pdfZoom).toBe('1.5')
+  })
+
+  it('open PDFs in the reader even where the old off-by-default switch was saved as it came', () => {
+    // Every setting used to be saved whole, the old switch's default included: it says nothing
+    // about what the reader chose.
+    expect(readerSettingsFrom({ openPdf: false } as never).pdfInReader).toBe(true)
+    expect(readerSettingsFrom({ pdfInReader: false }).pdfInReader).toBe(false)
+    expect(readerSettingsFrom({ openPdf: false } as never)).not.toHaveProperty('openPdf')
   })
 
   it("keep 0 as the book's own line spacing", () => {

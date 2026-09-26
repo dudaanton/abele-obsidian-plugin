@@ -248,30 +248,67 @@ describe.skipIf(!available)('a PDF in the reader', () => {
     ])
   })
 
-  it('opens PDFs here instead of in Obsidian’s viewer only while the setting is on, and offers Open in Abele reader', () => {
+  it('opens PDFs here by default — from the file explorer, a link, a tab left open — and in Obsidian’s viewer only while the setting is off', () => {
     const r = run<{
       error?: string
-      before?: string
-      on?: string
-      openedIn?: string
-      after?: string
+      byDefault?: string
+      fromExplorer?: string
+      fromLink?: string
+      off?: string
+      offOpened?: string
+      adopted?: string
+      adoptedFile?: string
       menu?: string[]
     }>(`
       const cfg = window.__abeleTest.AbeleConfig.getInstance()
-      const before = app.viewRegistry.typeByExtension.pdf
-      cfg.reader = { ...cfg.reader, openPdf: true }
-      await cfg.saveSettings()
-      await wait(300)
-      const on = app.viewRegistry.typeByExtension.pdf
-      const leaf = app.workspace.getLeaf('tab')
-      await leaf.openFile(app.vault.getAbstractFileByPath(${JSON.stringify(PLAIN)}))
-      await wait(500)
-      const openedIn = leaf.view.getViewType()
-      leaf.detach()
+      const file = app.vault.getAbstractFileByPath(${JSON.stringify(PLAIN)})
+      // What older versions saved with every setting: their switch, off. It is not a choice.
       cfg.reader = { ...cfg.reader, openPdf: false }
+      delete cfg.reader.pdfInReader
       await cfg.saveSettings()
       await wait(300)
-      const after = app.viewRegistry.typeByExtension.pdf
+      const byDefault = app.viewRegistry.typeByExtension.pdf
+      const typeOf = (path) => {
+        const leaf = app.workspace.getLeavesOfType('abele-book').concat(app.workspace.getLeavesOfType('pdf'))
+          .find((l) => l.getViewState().state?.file === path)
+        return leaf?.getViewState().type
+      }
+      // Closing every tab can leave the main area with no group to open a tab in: an empty one is
+      // put back, as Obsidian itself does when a person closes the last.
+      const closeAll = () => {
+        for (const t of ['abele-book', 'pdf']) for (const l of app.workspace.getLeavesOfType(t)) l.detach()
+        if (!app.workspace.rootSplit.children.length) app.workspace.createLeafInParent(app.workspace.rootSplit, 0)
+      }
+      closeAll()
+      // A click on the file in the file explorer: its row's own click handler, which is what the
+      // explorer calls for a click on it (the row itself may be scrolled out of the drawn list).
+      const explorer = app.workspace.getLeavesOfType('file-explorer')[0]
+      await explorer?.loadIfDeferred?.()
+      const item = await until(() => explorer?.view.fileItems?.[${JSON.stringify(PLAIN)}], 5000)
+      item?.onSelfClick(new MouseEvent('click', { button: 0 }))
+      await until(() => typeOf(${JSON.stringify(PLAIN)}), 5000)
+      const fromExplorer = item ? typeOf(${JSON.stringify(PLAIN)}) : 'no row in the explorer'
+      closeAll()
+      await app.workspace.openLinkText(${JSON.stringify(PLAIN)}, '', 'tab')
+      await until(() => typeOf(${JSON.stringify(PLAIN)}), 5000)
+      const fromLink = typeOf(${JSON.stringify(PLAIN)})
+      closeAll()
+      // Off: Obsidian's viewer has it back.
+      cfg.reader = { ...cfg.reader, pdfInReader: false }
+      await cfg.saveSettings()
+      await wait(300)
+      const off = app.viewRegistry.typeByExtension.pdf
+      const leaf = app.workspace.getLeaf('tab')
+      await leaf.openFile(file)
+      await wait(500)
+      const offOpened = leaf.getViewState().type
+      // On again, as at the start of a session with a PDF tab left open: the tab moves over.
+      cfg.reader = { ...cfg.reader, pdfInReader: true }
+      await cfg.saveSettings()
+      await until(() => leaf.getViewState().type === 'abele-book', 5000)
+      const adopted = leaf.getViewState().type
+      const adoptedFile = leaf.getViewState().state?.file
+      closeAll()
       // A stand-in for the menu: what matters is which items the plugin adds to it.
       const items = []
       const menu = { addItem(add) {
@@ -280,14 +317,17 @@ describe.skipIf(!available)('a PDF in the reader', () => {
         add(item)
         return menu
       } }
-      app.workspace.trigger('file-menu', menu, app.vault.getAbstractFileByPath(${JSON.stringify(PLAIN)}), 'file-explorer')
-      return { before, on, openedIn, after, menu: items }
+      app.workspace.trigger('file-menu', menu, file, 'file-explorer')
+      return { byDefault, fromExplorer, fromLink, off, offOpened, adopted, adoptedFile, menu: items }
     `)
     expect(r.error).toBeUndefined()
-    expect(r.before).toBe('pdf')
-    expect(r.on).toBe('abele-book')
-    expect(r.openedIn).toBe('abele-book')
-    expect(r.after).toBe('pdf')
+    expect(r.byDefault).toBe('abele-book')
+    expect(r.fromExplorer).toBe('abele-book')
+    expect(r.fromLink).toBe('abele-book')
+    expect(r.off).toBe('pdf')
+    expect(r.offOpened).toBe('pdf')
+    expect(r.adopted).toBe('abele-book')
+    expect(r.adoptedFile).toBe(PLAIN)
     expect(r.menu).toContain('Open in Abele reader')
   })
 

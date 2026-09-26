@@ -314,16 +314,19 @@ is not read.
 ## PDF
 
 PDFs open in the same reader, drawn by the PDF.js that Obsidian itself ships (`loadPdfJs()`), so
-nothing is added to the plugin for it and the same library is on the phone. By default a `.pdf`
-still opens in Obsidian's own viewer; there are two ways to read one here:
+nothing is added to the plugin for it and the same library is on the phone. A `.pdf` opens here
+by default, however it is opened — the file explorer, a link, the quick switcher:
 
+- **Open PDF files in the Abele reader** in Settings → Abele → Books, on by default: every PDF
+  opens here, and tabs showing one in Obsidian's viewer — those brought back from the last
+  session — move here as the plugin starts or the setting is turned on. Turned off, `.pdf` goes
+  back to Obsidian's viewer. Obsidian lets one view own an extension and refuses a second claim, so
+  this goes through its view registry (not part of the plugin API); if a future Obsidian changes
+  it, the setting does nothing and the menu item below still works. The setting was called
+  `openPdf` and was off by default until 2026-09-26; the settings are saved whole, so that stored
+  `false` was the default rather than a choice, and the new key `pdfInReader` does not read it.
 - **Open in Abele reader** in a PDF's menu — in the file explorer, or the ⋯ menu of a PDF that is
   open in Obsidian's viewer.
-- **Open PDF files in the Abele reader** in Settings → Abele → Books: every PDF opens here until it
-  is turned off, which gives `.pdf` back to Obsidian's viewer. Obsidian lets one view own an
-  extension and refuses a second claim, so this goes through its view registry (not part of the
-  plugin API); if a future Obsidian changes it, the setting does nothing and the menu item still
-  works.
 
 A PDF is read as **one continuous scroll**, page under page, by default, or as **pages turned one
 at a time** — keys, a tap at the edge, a swipe on a phone. **Layout** in the settings, or the tab's

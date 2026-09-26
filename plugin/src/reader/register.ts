@@ -1,6 +1,6 @@
 /**
  * The book reader's hooks into Obsidian: the tab type, `.epub` files opening in it, "Open in
- * Abele reader" in a file's menu, and — when the setting is on — `.pdf` files opening in it.
+ * Abele reader" in a file's menu, and — unless the setting is off — `.pdf` files opening in it.
  *
  * Another plugin may already have claimed `.epub`; Obsidian then refuses a second claim, and the
  * books keep opening where they did before rather than the plugin failing to load.
@@ -12,7 +12,7 @@ import { BOOK_EXTENSIONS, BOOK_VIEW_TYPE, BookView, READER_EXTENSIONS } from './
 import { initBookPlaces } from './places'
 import { initBookBookmarks } from './bookmarkFiles'
 import { readerSettingsFrom, renamedBookNotes } from './settings'
-import { setPdfTakeover } from './pdfTakeover'
+import { adoptPdfLeaves, setPdfTakeover } from './pdfTakeover'
 import { registerPlaceLinks } from './placeLinks'
 import { forgetBookTexts } from './bookText'
 import { moveInk } from './ink/inkStore'
@@ -84,9 +84,16 @@ export function registerReader(plugin: Plugin): void {
   // A link to a place in a PDF's text opens here, where the place is understood.
   registerPlaceLinks(plugin, BOOK_VIEW_TYPE)
 
-  // PDFs open in the reader while the setting says so.
+  // PDFs open in the reader while the setting says so — those already open in Obsidian's viewer,
+  // tabs brought back from the last session among them, move over as it takes effect.
   const config = AbeleConfig.getInstance()
-  const apply = () => setPdfTakeover(app, readerSettingsFrom(config.reader).openPdf, BOOK_VIEW_TYPE)
+  let taken = false
+  const apply = () => {
+    const on = readerSettingsFrom(config.reader).pdfInReader
+    if (!setPdfTakeover(app, on, BOOK_VIEW_TYPE)) return
+    if (on && !taken) void adoptPdfLeaves(app, BOOK_VIEW_TYPE)
+    taken = on
+  }
   app.workspace.onLayoutReady(apply)
   const stop = watch(config.version, apply)
   plugin.register(() => {

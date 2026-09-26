@@ -228,7 +228,7 @@ describe('the PDF settings', () => {
     await toggle('Open PDF files in the Abele reader').trigger('click')
     await toggle('Two pages side by side').trigger('click')
     await toggle('Dark pages in a dark theme').trigger('click')
-    expect(config.reader).toMatchObject({ openPdf: true, pdfTwoPages: true, pdfDarkPages: false })
+    expect(config.reader).toMatchObject({ pdfInReader: false, pdfTwoPages: true, pdfDarkPages: false })
   })
 })
 

@@ -3,11 +3,11 @@
  * the page document, its policy, where links may go, and whether Obsidian's PDF.js will do.
  * Drawing real PDFs is the e2e tier's (`tests/e2e/bookPdf.e2e.test.ts`): PDF.js is Obsidian's.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { checkPdfLib, pdfDataUrls, pdfLinkService, pdfPageHtml } from '@/reader/pdfBook'
 import { auditDocument } from '@/reader/bookSafety'
 import { swipeDirection } from '@/reader/swipe'
-import { setPdfTakeover } from '@/reader/pdfTakeover'
+import { adoptPdfLeaves, setPdfTakeover } from '@/reader/pdfTakeover'
 
 describe('the page Abele writes for a PDF page', () => {
   it('has the policy first, the size of the page, and passes the audit', () => {
@@ -119,6 +119,40 @@ describe('PDFs opening in the reader', () => {
 
   it('leave a registry it does not recognise alone', () => {
     expect(setPdfTakeover({}, true, 'abele-book')).toBe(false)
+  })
+
+  it("move PDFs already open in Obsidian's viewer — tabs restored at start — into the reader", async () => {
+    const leaf = (type: string, file?: string) => {
+      let state: { type: string; state?: Record<string, unknown>; pinned?: boolean } = {
+        type,
+        state: file ? { file, page: 3 } : {},
+        pinned: true,
+      }
+      return {
+        getViewState: () => state,
+        setViewState: vi.fn(async (next: typeof state) => {
+          state = next
+        }),
+      }
+    }
+    const pdf = leaf('pdf', 'Books/a.pdf')
+    const note = leaf('markdown', 'a.md')
+    const empty = leaf('pdf')
+    const reader = leaf('abele-book', 'Books/b.pdf')
+    const app = {
+      workspace: {
+        iterateAllLeaves: (fn: (l: unknown) => void) => [pdf, note, empty, reader].forEach(fn),
+      },
+    }
+    expect(await adoptPdfLeaves(app, 'abele-book')).toBe(1)
+    expect(pdf.setViewState).toHaveBeenCalledWith({
+      type: 'abele-book',
+      state: { file: 'Books/a.pdf' },
+      pinned: true,
+    })
+    for (const l of [note, empty, reader]) expect(l.setViewState).not.toHaveBeenCalled()
+    // Nothing to walk: nothing done.
+    expect(await adoptPdfLeaves({}, 'abele-book')).toBe(0)
   })
 })
 

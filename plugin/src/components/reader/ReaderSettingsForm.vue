@@ -70,7 +70,10 @@
         name="Open PDF files in the Abele reader"
         desc="PDFs open here instead of in Obsidian's own viewer, with pages to turn, the contents beside them and the place kept. Off: they open in Obsidian's viewer, and Open in Abele reader in a PDF's menu still opens one here."
       >
-        <Checkbox :is-enabled="settings.openPdf" @toggle="set('openPdf', !settings.openPdf)" />
+        <Checkbox
+          :is-enabled="settings.pdfInReader"
+          @toggle="set('pdfInReader', !settings.pdfInReader)"
+        />
       </Setting>
       <Setting
         name="Layout"
