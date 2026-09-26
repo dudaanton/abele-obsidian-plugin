@@ -286,7 +286,7 @@ export default class AbelePlugin extends Plugin {
       // into a key when this device was unlocked, not now.
       const secretStore = createPluginSecrets(this)
       setSecrets(secretStore)
-      await startupStepAsync('sync connection', () => SyncService.getInstance().openConnection(this.app).catch((e) => console.error('[Abele] the sync connection could not be read', (e as Error)?.message)))
+      await startupStepAsync('sync connection', () => SyncService.getInstance().openConnection(this.app).catch((e) => console.error('[Abele] the sync connection could not be read, or data.json not written without it', (e as Error)?.message)))
       await startupStepAsync('synced secrets', () =>
         secretStore.load().catch((e) => {
           console.error('[Abele] the synced secrets could not be opened', (e as Error)?.message)

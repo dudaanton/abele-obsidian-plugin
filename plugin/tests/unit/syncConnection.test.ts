@@ -18,7 +18,7 @@ import {
   writeConnection,
   type DeviceConnection,
 } from '@/sync/connection'
-import type { LocalStorage } from '@/sync/ledgerId'
+import { LEDGER_KEY, type LocalStorage } from '@/sync/ledgerId'
 
 /** A vault's local storage, stored the way Obsidian stores it: as JSON, never by reference. */
 function storage(
@@ -106,6 +106,15 @@ describe('the connection record', () => {
     expect(selective.settings.hotkeys).toBe(false)
     expect(selective.settings.appearance).toBe(true)
   })
+
+  /** Whoever writes a record, the one-time move must never run over it. */
+  it('is always written as moved, whatever the caller handed it', () => {
+    const local = storage()
+
+    writeConnection(local, { ...connected(), migrated: false })
+
+    expect(readConnection(local).migrated).toBe(true)
+  })
 })
 
 describe('the size cap', () => {
@@ -149,9 +158,10 @@ describe('what a connection may say', () => {
 })
 
 /**
- * The one-time move out of `data.json`. The keychain is per vault and per device, so a token id
- * whose token this keychain holds is the proof that the file is this device's own; a block that
- * arrived from anywhere else fails it, and its identity is dropped rather than adopted.
+ * The one-time move out of `data.json`. The file is taken as this device's own only when this
+ * vault's local storage holds a ledger for the vault it names and the keychain holds the token it
+ * names. The ledger is what is certainly per vault: on a phone the keychain is one for the whole
+ * app, so a copy of a vault there finds the token too. A block that fails either is dropped.
  */
 describe('moving the connection out of data.json', () => {
   const legacy = {
@@ -166,13 +176,16 @@ describe('moving the connection out of data.json', () => {
   }
   const holds = (id: string): boolean => id === 'abele-sync-device-abc'
   const holdsNothing = (): boolean => false
+  /** This vault's local storage, holding the ledger enrolling on `vaultId` leaves behind. */
+  const enrolled = (vaultId = 'v1'): ReturnType<typeof storage> =>
+    storage({ [LEDGER_KEY]: { stateId: 'state-1', vaultId } })
 
-  it('takes the identity and the cap when this keychain holds the token', () => {
-    const local = storage()
+  it('takes the identity and the cap when this vault enrolled there and holds the token', () => {
+    const local = enrolled()
 
     const migration = migrateConnection(local, legacy, holds)
 
-    expect(migration).toEqual({ outcome: 'moved', rewrite: true })
+    expect(migration).toEqual({ outcome: 'moved', rewrite: true, stored: true })
     expect(readConnection(local)).toMatchObject({
       serverUrl: 'https://sync.example.com',
       vaultId: 'v1',
@@ -190,11 +203,11 @@ describe('moving the connection out of data.json', () => {
   })
 
   it('drops the identity of a file this device did not write, and keeps what it syncs', () => {
-    const local = storage()
+    const local = enrolled()
 
     const migration = migrateConnection(local, legacy, holdsNothing, true)
 
-    expect(migration).toEqual({ outcome: 'dropped', rewrite: true })
+    expect(migration).toEqual({ outcome: 'dropped', rewrite: true, stored: true })
     const record = readConnection(local, true)
     expect(record).toMatchObject({ serverUrl: '', vaultId: '', deviceTokenId: '', migrated: true })
     expect(record.paused).toBe(false)
@@ -202,6 +215,20 @@ describe('moving the connection out of data.json', () => {
     expect(record.selective.video).toBe(false)
     expect(record.selective.excludedFolders).toEqual(['Archive'])
     expect(record.selective.maxFileBytes).toBe(MOBILE_MAX_FILE_BYTES)
+  })
+
+  /**
+   * A phone's keychain is the app's, not the vault's: a vault copied on the phone finds the
+   * token the file names all the same. What it has no way to find is the original's ledger.
+   */
+  it('drops a file whose token the keychain holds but whose vault this one never enrolled on', () => {
+    for (const local of [storage(), enrolled('another-vault')]) {
+      const migration = migrateConnection(local, legacy, holds, true)
+
+      expect(migration?.outcome).toBe('dropped')
+      expect(readConnection(local, true)).toMatchObject({ serverUrl: '', deviceTokenId: '' })
+      expect(readConnection(local, true).selective.maxFileBytes).toBe(MOBILE_MAX_FILE_BYTES)
+    }
   })
 
   it('never asks the keychain for an id this plugin does not mint', () => {
@@ -220,7 +247,11 @@ describe('moving the connection out of data.json', () => {
   it('records a device nobody set up as moved too, so it never runs again', () => {
     const local = storage()
 
-    expect(migrateConnection(local, undefined, holds)).toEqual({ outcome: 'fresh', rewrite: false })
+    expect(migrateConnection(local, undefined, holds)).toEqual({
+      outcome: 'fresh',
+      rewrite: false,
+      stored: true,
+    })
     expect(readConnection(local)).toEqual({ ...emptyConnection(), migrated: true })
   })
 
@@ -230,15 +261,50 @@ describe('moving the connection out of data.json', () => {
     expect(migrateConnection(storage(), shared, holds)).toEqual({
       outcome: 'fresh',
       rewrite: false,
+      stored: true,
     })
   })
 
   it('does nothing once the record says it was moved', () => {
-    const local = storage()
+    const local = enrolled()
     writeConnection(local, { ...emptyConnection(), deviceName: 'Phone', migrated: true })
 
     expect(migrateConnection(local, legacy, holds)).toBeNull()
     expect(readConnection(local).deviceName).toBe('Phone')
     expect(readConnection(local).serverUrl).toBe('')
+  })
+
+  /** Any record at all is this device's own: one without the flag, or one gone bad, included. */
+  it('does nothing over a record that lacks the flag or is not one', () => {
+    for (const held of [
+      { ...connected(), migrated: undefined },
+      { ...connected(), migrated: 'yes' },
+      'nonsense',
+      [1, 2],
+    ]) {
+      const local = enrolled()
+      local.raw.set(CONNECTION_KEY, JSON.stringify(held))
+
+      expect(migrateConnection(local, { ...legacy, vaultId: 'v2' }, holds)).toBeNull()
+      expect(local.raw.get(CONNECTION_KEY)).toBe(JSON.stringify(held))
+    }
+  })
+
+  /**
+   * Obsidian's `saveLocalStorage` swallows every failure — a full quota on a phone among them.
+   * The file is the only copy of the connection until the record is there to read back.
+   */
+  it('asks for no rewrite when the record did not stick', () => {
+    const local = enrolled()
+    const lost: LocalStorage = {
+      loadLocalStorage: (key) => local.loadLocalStorage(key),
+      saveLocalStorage: () => undefined,
+    }
+
+    expect(migrateConnection(lost, legacy, holds)).toEqual({
+      outcome: 'moved',
+      rewrite: false,
+      stored: false,
+    })
   })
 })

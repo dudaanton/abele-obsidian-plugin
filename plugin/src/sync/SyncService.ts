@@ -16,9 +16,11 @@ import { isDeviceSecretId, secrets } from '@/secrets/SecretStore'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { ObsidianFileSystem } from './ObsidianFileSystem'
 import {
+  CONNECTION_KEY,
   connectionProblem,
   emptyConnection,
   MIGRATION_LINE,
+  MIGRATION_UNSTORED,
   migrateConnection,
   readConnection,
   selectiveFrom,
@@ -278,23 +280,44 @@ export class SyncService {
    * the first time a build that keeps it there has run on this device (`migrateConnection`).
    *
    * Called from `onload` as soon as the keychain is reachable — the move asks it whether the
-   * token the file names is this device's — and before `announce`, which reads the result. The
-   * `sync` block is the one `loadSettings` read off disk: by now the settings in memory have
-   * already dropped the fields being moved. A file that still holds them is written again
-   * without them, so the move happens once and the file stops naming this device.
+   * token the file names is here — and before `announce`, which reads the result. The `sync`
+   * block is the one `loadSettings` read off disk: by now the settings in memory have already
+   * dropped the fields being moved. A file that still holds them is written again without them,
+   * so the move happens once and the file stops naming this device.
+   *
+   * Nothing is moved, and nothing recorded, when there was no file to read: a `data.json` that
+   * is missing for now or would not parse may still name the connection, and a record written
+   * off it would say the move was made and drop that connection at the next launch that reads it.
    */
   async openConnection(app: App): Promise<void> {
     this.storage = app
     const config = AbeleConfig.getInstance()
-    const migration = migrateConnection(
-      app,
-      config.takeLoadedSync(),
-      (id) => secrets().device.get(id) !== '',
-      Platform.isMobile
-    )
+    const loaded = config.takeLoadedSync()
+    const migration =
+      loaded === null
+        ? null
+        : migrateConnection(
+            app,
+            loaded.sync,
+            (id) => secrets().device.get(id) !== '',
+            Platform.isMobile
+          )
     this.connection.value = readConnection(app, Platform.isMobile)
+    if (loaded === null) {
+      if (app.loadLocalStorage(CONNECTION_KEY) === null) {
+        this.note(
+          'data.json could not be read, or is not there yet; a connection it names is moved at ' +
+            'the next launch that reads it'
+        )
+      }
+      return
+    }
     if (migration === null) return
     this.note(MIGRATION_LINE[migration.outcome])
+    if (!migration.stored) {
+      this.note(MIGRATION_UNSTORED)
+      return
+    }
     if (migration.rewrite) await config.rewrite()
   }
 

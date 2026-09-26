@@ -8,8 +8,10 @@
  * another vault's ledger, find none of its files on this disk, and push a delete for each one.
  *
  * Obsidian's `loadLocalStorage`/`saveLocalStorage` are scoped to the vault by the app's own id
- * for it, which a copied folder does not share — the same place Obsidian keeps each vault's
- * keychain. What is kept is the id and the server vault the ledger describes.
+ * for it, which a copied folder does not share — on a desktop the same place Obsidian keeps the
+ * vault's keychain; on a phone the keychain is the system's, one for the whole app. What is kept
+ * is the id and the server vault the ledger describes, which is also what tells a connection
+ * moved out of an older `data.json` apart from one a copied vault carried in (`connection.ts`).
  */
 
 /** The key the record is filed under in this vault's local storage. */

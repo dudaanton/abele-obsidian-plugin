@@ -430,11 +430,16 @@ export class AbeleConfig {
   private unreadableTold = false
 
   /**
-   * The `sync` block exactly as the last load read it off disk, before the migration dropped
-   * what is no longer a setting. Kept for one reader: the one-time move of this device's
+   * The `sync` block exactly as the startup load read it off disk, before the migration dropped
+   * what is no longer a setting — or null when there was no file to read it from: none at all,
+   * or one that would not parse. Kept for one reader: the one-time move of this device's
    * connection out of `data.json` (`SyncService.openConnection`), which takes it.
+   *
+   * Null and a file that named nothing are different things. A file that is missing for now — an
+   * iCloud vault on a phone not yet downloaded — or half-written may still hold the connection,
+   * and the move must wait for a launch that reads it rather than record that there was nothing.
    */
-  private loadedSync: unknown = undefined
+  private loadedSync: { sync: unknown } | null = null
 
   /**
    * Whether the settings file exists and could not be read. Anything that acts on its own —
@@ -560,7 +565,8 @@ export class AbeleConfig {
       // `null` is no file at all — a fresh install. `undefined` is a file Obsidian could not
       // parse, and that is still somebody's settings.
       const stored = await this.plugin.loadData()
-      this.loadedSync = (stored as { sync?: unknown } | null | undefined)?.sync
+      this.loadedSync =
+        stored === null || stored === undefined ? null : { sync: (stored as { sync?: unknown }).sync }
       this.freshInstall = stored === null
       this.unreadable = stored === undefined
       this.unreadableTold = false
@@ -591,6 +597,8 @@ export class AbeleConfig {
    */
   async reloadSettings() {
     await this.loadSettings()
+    // Only the startup load's block is moved: one from another device is never this one's.
+    this.loadedSync = null
     this.version.value++
     this.tellSaved()
   }
@@ -638,10 +646,13 @@ export class AbeleConfig {
     if (moveLegacySecrets(this)) await this.writeSettings()
   }
 
-  /** The `sync` block the last load read off disk, handed over once: see `loadedSync`. */
-  takeLoadedSync(): unknown {
+  /**
+   * The `sync` block the startup load read off disk, handed over once — or null when there was
+   * no file to read it from: see `loadedSync`.
+   */
+  takeLoadedSync(): { sync: unknown } | null {
     const block = this.loadedSync
-    this.loadedSync = undefined
+    this.loadedSync = null
     return block
   }
 

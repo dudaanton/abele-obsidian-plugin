@@ -995,9 +995,10 @@ describe('SyncService — a ledger no file can carry', () => {
 
   /**
    * An older build kept the connection in `data.json`. A copy of such a file arriving with the
-   * token in the keychain too — the one case the move adopts it — still gets a ledger of its own.
+   * token in the keychain too — what a phone does, whose keychain is one for every vault on it —
+   * is still not adopted: this vault never enrolled, so it holds no ledger for that vault.
    */
-  it('opens a fresh ledger in a vault whose older data.json was copied from another', async () => {
+  it('does not adopt an older data.json copied from another vault, token or no token', async () => {
     const { other } = await connect()
     await synced()
     const tokenId = conn().deviceTokenId
@@ -1009,9 +1010,11 @@ describe('SyncService — a ledger no file can carry', () => {
     service = SyncService.getInstance()
     await launch(copied)
     start()
-    await synced()
+    await tick()
 
-    expect(await read('Existing.md')).toBe('already here')
+    expect(service.isConnected()).toBe(false)
+    expect(conn()).toMatchObject({ serverUrl: '', vaultId: '', deviceTokenId: '' })
+    expect(service.log.value.join('\n')).toContain('was not adopted')
     expect(await serverPaths(other)).toContain('Existing.md')
   })
 
@@ -1099,8 +1102,9 @@ describe('SyncService — a ledger no file can carry', () => {
 
 /**
  * A build before this one kept the connection in `data.json`. The first launch of this one
- * moves it into local storage — but only when this device's keychain holds the token the file
- * names, which is what says the file is this device's own and not a copy of another's.
+ * moves it into local storage — but only when this vault holds a ledger for the vault the file
+ * names and the keychain holds the token it names, which together say the file is this vault's
+ * own and not a copy of another's.
  */
 describe('SyncService — moving the connection out of data.json', () => {
   /** A device set up by the older build: its connection in the file, none in local storage. */
@@ -1156,6 +1160,57 @@ describe('SyncService — moving the connection out of data.json', () => {
     expect(conn()).toEqual({ ...held, paused: true, migrated: true })
     expect(written).toEqual([])
     expect(service.log.value.slice(lines).join('\n')).not.toContain('data.json')
+  })
+
+  /**
+   * The first launch of this build found `data.json` unreadable — half-written, or mid-swap by
+   * another sync tool. The file is restored, and the next launch must still move what it holds:
+   * a move recorded as done off a file nobody could read would lose the connection for good.
+   */
+  it('moves nothing off an unreadable file, and moves it once the file reads', async () => {
+    const { file, held } = await olderDevice()
+
+    expect(await launch(undefined)).toEqual([])
+    expect(app.loadLocalStorage(CONNECTION_KEY)).toBeNull()
+    expect(conn().serverUrl).toBe('')
+
+    const written = await launch(file)
+    start()
+    await synced()
+
+    expect(conn()).toEqual({ ...held, migrated: true })
+    expect((written[0] as { sync: unknown }).sync).toEqual({ keySignature: null })
+    expect(service.log.value.join('\n')).toContain("moved this device's connection")
+  })
+
+  /** An iCloud vault on a phone: `data.json` not downloaded yet reads as no file at all. */
+  it('moves nothing while the file is missing, and moves it once the file is there', async () => {
+    const { file, held } = await olderDevice()
+
+    await launch(null)
+    expect(app.loadLocalStorage(CONNECTION_KEY)).toBeNull()
+
+    await launch(file)
+    start()
+    await synced()
+
+    expect(conn()).toEqual({ ...held, migrated: true })
+    expect(service.isConnected()).toBe(true)
+  })
+
+  /** Obsidian swallows a failed local-storage write; the file is then the only copy there is. */
+  it('keeps data.json as it is when the record does not stick', async () => {
+    const { file } = await olderDevice()
+    const saving = app.saveLocalStorage.bind(app)
+    app.saveLocalStorage = (key: string, value: unknown) => {
+      if (key !== CONNECTION_KEY) saving(key, value)
+    }
+
+    const written = await launch(file)
+
+    expect(written).toEqual([])
+    expect(service.log.value.join('\n')).toContain('data.json was left as it was')
+    app.saveLocalStorage = saving
   })
 
   /**
