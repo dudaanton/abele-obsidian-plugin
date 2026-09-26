@@ -51,7 +51,21 @@ export function trackPanelVisibility(view: ItemView, id: string): () => void {
 export function registerPanelElement(id: string, el: HTMLElement): void {
   const elements = GlobalStore.getInstance().panelElements
   elements.value = new Map(elements.value).set(id, el)
+  // A panel still open and still empty a while later was never drawn. That is how the sidebars
+  // used to fail, with nothing in the console at all; now it says so.
+  window.setTimeout(() => {
+    const current = GlobalStore.getInstance().panelElements.value.get(id)
+    if (current === el && el.isConnected && !el.childElementCount) {
+      console.warn(
+        `[Abele] a sidebar panel opened ${PANEL_DRAW_CHECK_MS / 1000} s ago has not been drawn`,
+        el
+      )
+    }
+  }, PANEL_DRAW_CHECK_MS)
 }
+
+/** How long a panel may stay empty before `registerPanelElement` says it was never drawn. */
+export const PANEL_DRAW_CHECK_MS = 5000
 
 export function forgetPanel(id: string): void {
   const elements = GlobalStore.getInstance().panelElements
