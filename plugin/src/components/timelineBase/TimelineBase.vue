@@ -354,7 +354,8 @@ function createInMiddle() {
   gap: var(--size-4-2);
   height: 100%;
   min-height: 420px;
-  padding: var(--size-4-2) var(--size-4-4) var(--size-4-2);
+  // On a phone Obsidian's floating bar stands over the view's foot; the overview stays above it.
+  padding: var(--size-4-2) var(--size-4-4) max(var(--size-4-2), var(--view-bottom-spacing, 0px));
 }
 
 .abele-timeline-base__header {

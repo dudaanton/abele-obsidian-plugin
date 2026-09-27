@@ -290,7 +290,7 @@ describe.skipIf(!available)('the history timeline of a base', () => {
             if (still) await app.vault.delete(still)
           } else report.created = null
         } catch (e) {
-          report.error = String((e && e.stack) || e)
+          report.error = String((e && e.message) || e) + ' | ' + String(e && e.stack)
         } finally {
           setDark(wasDark)
         }
@@ -328,7 +328,7 @@ describe.skipIf(!available)('the history timeline of a base', () => {
           }
           report.frameMs = Math.round((performance.now() - t0) / 20)
         } catch (e) {
-          report.error = String((e && e.stack) || e)
+          report.error = String((e && e.message) || e) + ' | ' + String(e && e.stack)
         }
         return JSON.stringify(report)
       })()`,
@@ -394,7 +394,9 @@ describe.skipIf(!available)('the history timeline of a base', () => {
         if (s) {
           const [x, y] = centre(root, s)
           // A finger on a phone; a touch pointer where there is none.
-          if (host) await host.tap(x, y)
+          // The host's answer can be lost on the way back while the tap itself lands: the pick
+          // is what is checked.
+          if (host) await host.tap(x, y).catch((e) => (report.tapError = String((e && e.message) || e)))
           else await press(root, x, y, 'touch')
           await until(() => panel(root), 3000)
           await wait(300)
@@ -404,7 +406,7 @@ describe.skipIf(!available)('the history timeline of a base', () => {
           report.shots.push(await picture('timeline-phone-contemporaries.png'))
         }
       } catch (e) {
-        report.error = String((e && e.stack) || e)
+        report.error = String((e && e.message) || e) + ' | ' + String(e && e.stack)
       }
       return JSON.stringify(report)
     })()`,
