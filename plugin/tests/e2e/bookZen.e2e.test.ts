@@ -96,22 +96,28 @@ const PRELUDE = `
   }
   /** Words on the page on screen highlighted yellow; returns the highlight's place. */
   const highlight = async (view) => {
-    const doc = contents(view).doc
-    const p = [...doc.querySelectorAll('p')].find((el) => {
-      const r = el.getBoundingClientRect()
-      return r.width > 0 && r.left >= 0 && r.left < doc.defaultView.innerWidth && (el.firstChild?.length ?? 0) > 80
-    })
-    const text = p.firstChild
-    const range = doc.createRange()
-    range.setStart(text, 10); range.setEnd(text, 60)
-    // Tried again: a page still settling after the app came up may drop the first.
-    for (let i = 0; i < 3 && !view.model.selection; i++) {
+    // The page is found again on every try: one still settling after the app came up may be
+    // laid out anew under the selection.
+    let doc = null
+    // Words highlighted already — by the desktop's run of the same book — come back as that
+    // highlight rather than as a selection.
+    const picked = () => view.model.selection || view.model.active
+    for (let i = 0; i < 5 && !picked(); i++) {
+      doc = contents(view).doc
+      const p = [...doc.querySelectorAll('p')].find((el) => {
+        const r = el.getBoundingClientRect()
+        return r.width > 0 && r.left >= 0 && (el.firstChild?.length ?? 0) > 80
+      })
+      const range = doc.createRange()
+      range.setStart(p.firstChild, 10); range.setEnd(p.firstChild, 60)
       doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
-      await until(() => view.model.selection, 3000)
+      await until(picked, 2000)
     }
-    const cfi = view.model.selection.cfi
-    await view.reading.highlight('yellow')
+    if (!picked()) throw new Error('nothing selected: ' + doc.getSelection().toString().length)
+    const cfi = picked().cfi
+    if (view.model.selection) await view.reading.highlight('yellow')
     doc.getSelection().removeAllRanges()
+    view.model.active = null
     await until(() => contents(view).overlayer.element.querySelector('rect'), 5000)
     await until(() => !view.model.selection && !view.model.active, 3000)
     await wait(500)
