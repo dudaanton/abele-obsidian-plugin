@@ -1,4 +1,4 @@
-import { MarkdownPostProcessorContext } from 'obsidian'
+import { MarkdownPostProcessorContext, MarkdownRenderChild } from 'obsidian'
 import { echartsInit, EChartsType } from '@/bases/echarts'
 import { parseYaml } from 'obsidian'
 import Formula from 'fparser'
@@ -163,13 +163,27 @@ function buildEchartsOption(config: ChartConfig): Record<string, any> {
   }
 }
 
+/** Keeps the chart for exactly as long as the render that drew it. */
+class ChartRenderChild extends MarkdownRenderChild {
+  constructor(
+    el: HTMLElement,
+    private readonly dispose: () => void
+  ) {
+    super(el)
+  }
+
+  onunload(): void {
+    this.dispose()
+  }
+}
+
 export function registerChartCodeblock(
   registerFn: (
     language: string,
     handler: (source: string, el: HTMLElement, ctx: MarkdownPostProcessorContext) => void
   ) => void
 ): void {
-  registerFn('abele-chart', (source: string, el: HTMLElement) => {
+  registerFn('abele-chart', (source, el, ctx) => {
     let config: ChartConfig
 
     try {
@@ -203,9 +217,10 @@ export function registerChartCodeblock(
     container.style.height = `${height}px`
 
     let chart: EChartsType | null = null
+    let gone = false
 
     const initChart = () => {
-      if (chart) return
+      if (chart || gone) return
       try {
         const option = buildEchartsOption(config)
         chart = echartsInit(container)
@@ -217,18 +232,7 @@ export function registerChartCodeblock(
           text: `Chart error: ${e instanceof Error ? e.message : e}`,
         })
         resizeObs.disconnect()
-        return
       }
-
-      // Cleanup when element is removed — safe to observe parent here, el is in DOM
-      const mutObs = new MutationObserver(() => {
-        if (!el.isConnected) {
-          chart?.dispose()
-          resizeObs.disconnect()
-          mutObs.disconnect()
-        }
-      })
-      mutObs.observe(el.parentElement, { childList: true, subtree: true })
     }
 
     // ResizeObserver fires when container gets dimensions (after DOM insert + layout)
@@ -241,5 +245,18 @@ export function registerChartCodeblock(
       }
     })
     resizeObs.observe(container)
+
+    // Owned by the render, as the map and the diagram are: a chat message, a script view or a
+    // reading view closed around the block unloads it. Watching the parent for the block's own
+    // removal missed every one of those — an ancestor went, the parent's children stayed — and
+    // ECharts keeps each live chart in a registry of its own, so none of them was ever freed.
+    ctx.addChild(
+      new ChartRenderChild(container, () => {
+        gone = true
+        resizeObs.disconnect()
+        chart?.dispose()
+        chart = null
+      })
+    )
   })
 }
