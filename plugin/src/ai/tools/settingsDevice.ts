@@ -1,4 +1,5 @@
 import { normalizeServerUrl } from '@abele/sync-protocol'
+import { isPrototypeName } from '@/helpers/prototypeNames'
 import { defaultSelective } from '@/sync/connection'
 import { SyncService } from '@/sync/SyncService'
 
@@ -48,15 +49,11 @@ export function isDevicePath(path: string): boolean {
 }
 
 /**
- * Names that reach an object's prototype rather than a field of it. Walked into, the next
- * assignment lands on `Object.prototype` and every object in the app has the key from then on,
- * so no settings path may hold one, anywhere — refused before anything is read or written.
+ * Whether a settings path holds a segment that reaches a prototype (`PROTOTYPE_NAMES`): refused
+ * before anything is read or written.
  */
-const PROTOTYPE_SEGMENTS: ReadonlySet<string> = new Set(['__proto__', 'prototype', 'constructor'])
-
-/** Whether a settings path holds a segment that reaches a prototype (`PROTOTYPE_SEGMENTS`). */
 export function reachesPrototype(path: string): boolean {
-  return path.split('.').some((segment) => PROTOTYPE_SEGMENTS.has(segment))
+  return path.split('.').some(isPrototypeName)
 }
 
 /** The answer to a path that names no field at all. */

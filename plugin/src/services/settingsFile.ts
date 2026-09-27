@@ -11,6 +11,8 @@
  * whitespace was around them.
  */
 
+import { isPrototypeName } from '@/helpers/prototypeNames'
+
 /**
  * How long a reload waits before it looks at a file that would not parse a second time.
  *
@@ -74,6 +76,9 @@ export function localChanges(
     if (isSettingsObject(was) && isSettingsObject(now)) {
       for (const key of new Set([...Object.keys(was), ...Object.keys(now)])) {
         if (path.length === 0 && keep.includes(key)) continue
+        // A name that reaches a prototype is no setting, and put back it would re-prototype
+        // the copy the merge builds (`setAt`).
+        if (isPrototypeName(key)) continue
         walk(was[key], now[key], [...path, key])
       }
       return
@@ -94,13 +99,30 @@ export function reapply(theirs: unknown, changes: readonly LocalChange[]): unkno
   return result
 }
 
+/**
+ * `target` with `value` at `path`, every object on the way a copy. A path through a name that
+ * reaches a prototype changes nothing: assigned, `__proto__` would set the copy's prototype
+ * rather than a key. The key itself is defined, not assigned, for the same reason.
+ */
 function setAt(target: unknown, path: string[], value: unknown): unknown {
   if (path.length === 0) return value
+  if (path.some(isPrototypeName)) return target
   const [key, ...rest] = path
   const copy: Record<string, unknown> = isSettingsObject(target) ? { ...target } : {}
-  const inner = setAt(copy[key], rest, value)
+  const inner = setAt(
+    Object.prototype.hasOwnProperty.call(copy, key) ? copy[key] : undefined,
+    rest,
+    value
+  )
   if (inner === undefined) delete copy[key]
-  else copy[key] = inner
+  else {
+    Object.defineProperty(copy, key, {
+      value: inner,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    })
+  }
   return copy
 }
 
