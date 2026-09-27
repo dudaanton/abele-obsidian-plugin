@@ -46,7 +46,16 @@ import { normalizeRule, type AutomationRule } from '@/automations/types'
 import { moveLegacySecrets, notePlainSecrets } from '@/secrets/legacy'
 import { DEFAULT_LIFE_YEARS, isBirthDate, lifeYears } from '@/bases/lifeWeeks'
 import { DEFAULT_LINTER_SETTINGS, linterSettingsFrom, type LinterSettings } from '@/linter/settings'
-import { canonicalJson, isSettingsObject, pause, UNREADABLE_RETRY_MS } from './settingsFile'
+import { isStoreFile } from '@/secrets/storeFile'
+import {
+  canonicalJson,
+  isSettingsObject,
+  localChanges,
+  pause,
+  reapply,
+  settingsStampOf,
+  UNREADABLE_RETRY_MS,
+} from './settingsFile'
 
 export interface AbeleSettings {
   refreshDelay: number // in milliseconds
@@ -138,7 +147,8 @@ export interface AbeleSettings {
   groupProperties?: string[]
   /**
    * A panel at the top of the screen showing what the page reports about the on-screen
-   * keyboard. For finding out from a phone what no emulator shows; stays on its device.
+   * keyboard. For finding out from a phone what no emulator shows. Not carried by a settings
+   * transfer, but it is in `data.json`, so a sync of the settings file takes it along.
    */
   keyboardDiagnostics?: boolean
   // GitHub links opened inside Obsidian
@@ -430,8 +440,9 @@ export class AbeleConfig {
 
   /**
    * Set when `data.json` exists but could not be read. Nothing is written until it reads
-   * again: what is in memory then is defaults, and saving them would replace every setting
-   * the file still holds with nothing.
+   * again: at startup what is in memory then is defaults, and saving them would replace every
+   * setting the file still holds with nothing; on a reload what is in memory is the last good
+   * copy, and writing it would bury whatever the broken file was on its way to saying.
    */
   private unreadable = false
   /** Said once per failed load: saves come from chats as well, and each would repeat it. */
@@ -461,8 +472,32 @@ export class AbeleConfig {
    */
   private onDisk: string | null = null
 
-  /** The reload running now, which the next one waits for: see `reloadSettings`. */
-  private reloading: Promise<unknown> = Promise.resolve()
+  /**
+   * The settings in memory as they were right after they were last read or written — their
+   * export then. What differs from it now is what this copy changed since, and that is what a
+   * save or a reload puts back on top of a file that arrived in between (`localChanges`).
+   */
+  private base: AbeleSettings | null = null
+
+  /**
+   * The settings file's size and mtime when it was last read or written, or null for none (or
+   * no disk to ask). A save that finds another reads the file again first: see `catchUp`.
+   */
+  private stamp: string | null = null
+
+  /**
+   * A save took in a file that arrived before its reload came, so the reload will find the file
+   * read already. It must still answer that it reloaded, once: the secret store and the AI
+   * features have not seen the new settings yet.
+   */
+  private unannounced = false
+
+  /**
+   * Every load, reload and write of the settings file, one after another. A save computed from
+   * the settings before a reload and written after it would put the old settings back over the
+   * ones that just arrived; a save in the middle of a reload would write half of each.
+   */
+  private fileQueue: Promise<unknown> = Promise.resolve()
 
   /**
    * Whether the chat index (`ai.chatHistory`) is in its own file (`ai/chatIndexFile.ts`). Until
@@ -475,10 +510,19 @@ export class AbeleConfig {
   /** The chat index writes, one after another, and what the last of them wrote. */
   private indexSaving: Promise<void> = Promise.resolve()
   private indexWritten: string | null = null
+  /**
+   * The index file is there and could not be read — not a file that would not parse, which is
+   * kept aside, but a disk that would not hand it over: a phone's iCloud copy not downloaded
+   * yet. Writing it now would put the index in memory over one nobody has seen, so for this
+   * launch it is not written at all, and `data.json` does not take it either: the index is a
+   * cache, rebuilt from the chat files.
+   */
+  private indexBlocked = false
 
   /**
    * Whether the settings file exists and could not be read. Anything that acts on its own —
-   * automations — waits while it is: what is in memory then is defaults, not the person's.
+   * automations — waits while it is: at startup what is in memory then is defaults, not the
+   * person's, and after a reload it is settings the file on disk no longer says.
    */
   get settingsUnreadable(): boolean {
     return this.unreadable
@@ -572,8 +616,12 @@ export class AbeleConfig {
     this.pendingEdits = new SettingsEdits()
     this.plugin = plugin
     this.onDisk = null
+    this.base = null
+    this.stamp = null
+    this.unannounced = false
     this.indexOnDisk = false
     this.indexWritten = null
+    this.indexBlocked = false
   }
 
   public destroy(): void {
@@ -592,51 +640,78 @@ export class AbeleConfig {
     }
   }
 
-  async loadSettings() {
+  loadSettings(): Promise<void> {
     if (!this.plugin) {
       throw new Error('AbeleConfig not initialized with plugin instance.')
     }
-
-    const edits = this.pendingEdits
-    const finishRead = edits.beginRead()
-    try {
-      // `null` is no file at all — a fresh install. `undefined` is a file Obsidian could not
-      // parse, and that is still somebody's settings.
-      const stored: unknown = await this.plugin.loadData()
-      const index = await this.readChatIndex()
-      this.indexOnDisk = index !== null
-      await this.take(stored, index ?? [])
-    } finally {
-      finishRead()
-    }
+    return this.onFile(() => this.loadNow())
   }
 
-  /** Apply a file without losing edits made while it was being read. */
-  private async take(stored: any, index: AiChatHistoryEntry[]): Promise<void> {
-      const edits = this.pendingEdits
-      this.loadedSync =
-        stored === null || stored === undefined ? null : { sync: (stored as { sync?: unknown }).sync }
-      this.freshInstall = stored === null
-      this.unreadable = stored === undefined
-      this.unreadableTold = false
-      if (this.unreadable) console.error('[Abele] data.json could not be read; not writing to it')
+  private async loadNow(): Promise<void> {
+    if (!this.plugin) return
+    // `null` is no file at all — a fresh install. `undefined` is a file Obsidian could not
+    // parse, and that is still somebody's settings.
+    const finishRead = this.pendingEdits.beginRead()
+    try {
+    const stamp = await this.readStamp()
+    const stored: unknown = await this.plugin.loadData()
+    const index = await this.readChatIndex()
+    this.indexOnDisk = index !== null
+    await this.take(stored, stored, () => index ?? [], stamp)
+    } finally { finishRead() }
+  }
 
-      this.onDisk = isSettingsObject(stored) ? canonicalJson(stored) : null
+  /** Runs `step` after every load, reload and write of the settings file already asked for. */
+  private onFile<T>(step: () => Promise<T>): Promise<T> {
+    const run = this.fileQueue.then(step)
+    this.fileQueue = run.catch((): void => undefined)
+    return run
+  }
 
-      // Fresh/current settings have no copied descriptions; historical shipped defaults are
-      // already recognised by the lightweight migration. Only possible custom/current copies
-      // need the executable catalog to distinguish an override from today's tool description.
-      const candidates = pruneToolDescriptions(stored?.ai?.prompts?.toolDescriptions).kept
-      const defaults = Object.keys(candidates).length ? await codeToolDescriptions() : {}
-      const migrated = this.applySettings(stored ?? undefined, defaults, index)
-      // Include edits made before or during the read, without reverting unrelated incoming fields.
-      this.applySettings(edits.apply(this.exportSettings()), defaults)
+  /** The settings file's stamp now: see `stamp`. */
+  private readStamp(plugin: AbelePlugin | null = this.plugin): Promise<string | null> {
+    return settingsStampOf(plugin)()
+  }
 
-      // Migration only rewrites the settings held in memory. Persisting it here is what stops
-      // the same migration running again on the next launch — and, for the Comment agent,
-      // what stops a fresh one being minted every time the vault is opened.
-      if (this.indexInSettings || !this.indexOnDisk) await this.indexToFile()
-      if (migrated || (this.indexInSettings && this.indexOnDisk)) await this.writeSettings()
+  /**
+   * Put what was read off disk in force: the half of a load after the read. `file` is what the
+   * disk holds and `settings` what is applied — the same, unless changes made in memory are put
+   * back on top of it. `index` answers with the chat index this copy holds — the index file's at
+   * startup, the one in memory on a reload — which a settings file never replaces, only adds
+   * to. Asked for after the wait below, so a chat listed during it is not dropped.
+   */
+  private async take(
+    file: unknown,
+    settings: unknown,
+    index: () => AiChatHistoryEntry[],
+    stamp: string | null
+  ): Promise<void> {
+    this.loadedSync =
+      file === null || file === undefined ? null : { sync: (file as { sync?: unknown }).sync }
+    this.freshInstall = file === null
+    this.unreadable = file === undefined
+    this.unreadableTold = false
+    if (this.unreadable) console.error('[Abele] data.json could not be read; not writing to it')
+    this.onDisk = isSettingsObject(file) ? canonicalJson(file) : null
+    this.stamp = stamp
+
+    const candidates = pruneToolDescriptions((settings as AbeleSettings)?.ai?.prompts?.toolDescriptions).kept
+    const tools = Object.keys(candidates).length ? await codeToolDescriptions() : {}
+    const migrated = this.applySettings(
+      (settings ?? undefined) as AbeleSettings | undefined,
+      tools,
+      index()
+    )
+    this.applySettings(this.pendingEdits.apply(this.exportSettings()), tools, index())
+    this.base = this.exportSettings()
+
+    if (this.indexInSettings || !this.indexOnDisk) await this.indexToFile()
+
+    // Migration only rewrites the settings held in memory. Persisting it here is what stops
+    // the same migration running again on the next launch — and, for the Comment agent,
+    // what stops a fresh one being minted every time the vault is opened. A migration that
+    // came out where the file already was writes nothing (`writeNow`).
+    if (migrated || (this.indexInSettings && this.indexOnDisk)) await this.writeNow()
   }
 
   /**
@@ -657,43 +732,100 @@ export class AbeleConfig {
    * pulled file with the mtime it had on the device that saved it, so Obsidian's call is made
    * for most pulls but not for all of them — another device's clock behind this one's, or an
    * older version put back — which is why the sync calls too, and why the second call must be
-   * a no-op. Calls are taken one at a time, so the second sees what the first read.
+   * a no-op. Calls are taken one at a time, and in turn with saves, so each sees what the one
+   * before it left.
+   *
+   * What arrived is taken, except for two things:
+   * - what this copy changed in memory since it last read or wrote the file — a save waiting
+   *   behind this reload — which is put back on top and written;
+   * - the synced key store, when this device has one and the file names none. A fresh
+   *   install's file, a transfer's or an older build's holds no store, and taking that as the
+   *   store turned off would switch it off on every device. The store stays and goes back into
+   *   the file; turning it off writes a marker that says so (`storeFile.StoreOff`).
    *
    * A file caught half written — the sync's writes are not atomic — is read again once after
-   * `UNREADABLE_RETRY_MS` before it is called unreadable. A file that has gone is not a reason
-   * to fall back to defaults: the settings in memory stay, and the next save writes them again.
+   * `UNREADABLE_RETRY_MS`; one that still will not parse leaves the settings in memory as they
+   * are and blocks every write until a readable one arrives. A file that has gone is not a
+   * reason to fall back to defaults either: the settings in memory stay, and the next save
+   * writes the file again.
    */
   reloadSettings(): Promise<boolean> {
-    const run = this.reloading.then(() => this.reloadNow())
-    this.reloading = run.catch((): void => undefined)
-    return run
+    return this.onFile(() => this.reloadNow())
   }
 
   private async reloadNow(): Promise<boolean> {
     if (!this.plugin) {
       throw new Error('AbeleConfig not initialized with plugin instance.')
     }
+    let stamp = await this.readStamp()
     let stored: unknown = await this.plugin.loadData()
     if (stored === undefined) {
       console.debug('[Abele] data.json would not parse; reading it again in a moment')
       await pause(UNREADABLE_RETRY_MS)
       if (!this.plugin) return false
+      stamp = await this.readStamp()
       stored = await this.plugin.loadData()
+    }
+    if (stored === undefined) {
+      console.error(
+        '[Abele] data.json that arrived could not be read; keeping the settings in memory and not writing to it'
+      )
+      this.unreadable = true
+      this.stamp = stamp
+      this.tellUnreadable()
+      return false
     }
     if (stored === null) {
       console.debug('[Abele] data.json has gone; keeping the settings in memory')
+      // Nothing is on disk now, so the next save has something to write, whatever it is about.
+      this.onDisk = null
+      this.stamp = stamp
       return false
     }
     if (!this.unreadable && isSettingsObject(stored) && canonicalJson(stored) === this.onDisk) {
-      console.debug('[Abele] data.json says what this copy already holds; nothing to reload')
-      return false
+      this.stamp = stamp
+      if (!this.unannounced) {
+        console.debug('[Abele] data.json says what this copy already holds; nothing to reload')
+        return false
+      }
+    } else {
+      const settings = this.unreadable ? stored : this.ontoArrived(stored)
+      await this.take(stored, settings, () => this.ai?.chatHistory ?? [], stamp)
+      // Only the startup load's block is moved: one from another device is never this one's.
+      this.loadedSync = null
+      // What was put back on top of the file goes into it.
+      if (settings !== stored) await this.writeNow()
     }
-    await this.take(stored, this.ai?.chatHistory ?? [])
-    // Only the startup load's block is moved: one from another device is never this one's.
-    this.loadedSync = null
+    this.unannounced = false
     this.version.value++
     this.tellSaved()
     return true
+  }
+
+  /**
+   * The settings to apply for a file that arrived: the file, with this copy's key store kept
+   * where the file names none, and with what this copy changed in memory since it last read or
+   * wrote the file put back on top. The file itself when there is nothing to keep.
+   */
+  private ontoArrived(stored: unknown): unknown {
+    if (!isSettingsObject(stored)) return stored
+    let arrived: Record<string, unknown> = stored
+    if (stored.secretStore === undefined && isStoreFile(this.secretStore)) {
+      console.debug(
+        '[Abele] the settings that arrived hold no synced key store; keeping this device’s'
+      )
+      arrived = { ...stored, secretStore: this.secretStore }
+    }
+    // A store in the file is never overwritten by this copy's: its entries are merged by the
+    // store itself, when it is opened again on what arrived.
+    const keep = isStoreFile(arrived.secretStore) ? ['secretStore'] : []
+    const changes = this.base === null ? [] : localChanges(this.base, this.exportSettings(), keep)
+    if (changes.length > 0) {
+      console.debug(
+        `[Abele] settings changed here while another copy arrived; keeping ${changes.length} of them on top`
+      )
+    }
+    return changes.length > 0 ? reapply(arrived, changes) : arrived
   }
 
   async saveSettings() {
@@ -767,6 +899,7 @@ export class AbeleConfig {
    * listed nowhere.
    */
   async saveChatIndex(): Promise<void> {
+    if (this.indexBlocked) return
     if (!(await this.indexToFile())) await this.writeSettings()
   }
 
@@ -779,6 +912,7 @@ export class AbeleConfig {
     const run = this.indexSaving.then(async (): Promise<boolean> => {
       const disk = chatIndexDiskOf(this.plugin)
       if (disk === null) return false
+      if (this.indexBlocked) return true
       const entries = this.ai?.chatHistory ?? []
       const text = JSON.stringify(entries)
       if (this.indexOnDisk && text === this.indexWritten) return true
@@ -806,37 +940,106 @@ export class AbeleConfig {
       if (entries !== null) this.indexWritten = JSON.stringify(entries)
       return entries
     } catch (error) {
-      console.error('[Abele] the chat index could not be read', error)
+      console.error('[Abele] the chat index could not be read; not writing it this launch', error)
+      this.indexBlocked = true
       return null
     }
   }
 
   /**
-   * The write on its own, without the feature sync.
+   * The write on its own, without the feature sync, after every load, reload and write already
+   * asked for.
    *
    * A save during `loadSettings` must not register the AI features early: `onload` does that
    * itself, further down, and doing it here would reorder half the plugin's startup.
    */
-  private async writeSettings(): Promise<void> {
-    if (!this.plugin) return
+  private writeSettings(): Promise<void> {
+    // Taken now: a save asked for just before the plugin unloads still reaches the disk.
+    const plugin = this.plugin
+    return this.onFile(() => this.writeNow(plugin))
+  }
+
+  /** `writeSettings` for a step already on the queue — a load or a reload writing. */
+  private async writeNow(plugin: AbelePlugin | null = this.plugin): Promise<void> {
+    if (!plugin) return
     if (this.unreadable) {
-      if (this.unreadableTold) return
-      this.unreadableTold = true
-      new Notice(
-        'Abele could not read its settings file, so changes to settings are not being saved. ' +
-          'Restore the file, or delete it to start from defaults, and reload the plugin.'
-      )
+      this.tellUnreadable()
       return
     }
+    if (!(await this.catchUp(plugin))) return
     const next = this.exportSettings()
     const text = canonicalJson(next)
     // Nothing changed in meaning: writing would only hand every other device a file to pull
     // and reload for nothing, and a newer mtime to beat whatever they save next.
-    if (text === this.onDisk) return
+    if (text === this.onDisk) {
+      this.base = next
+      return
+    }
     const written = this.pendingEdits.written()
-    await this.plugin.saveData(settingsSnapshot(next))
+    await plugin.saveData(settingsSnapshot(next))
     written()
     this.onDisk = text
+    this.base = next
+    this.stamp = await this.readStamp(plugin)
+  }
+
+  /**
+   * Before a write: the file as this copy last read or wrote it, or taken in first when
+   * something else wrote it since. A sync writes a pulled file and tells the plugin only when its
+   * run is over, and Obsidian's own call comes 50 ms later, so a save can land between the file
+   * arriving and its reload — and written from the settings loaded before, it would put them
+   * back over the other device's change on every device. So the file is read again, what
+   * arrived is taken in with this copy's own changes on top (as a reload does), and the reload
+   * that follows is left to reopen the secret store and the AI features (`unannounced`).
+   *
+   * Answers false when the file will not parse even after a moment: it is left alone, the
+   * change stays in memory, and the reload that follows says what is wrong with it.
+   */
+  private async catchUp(plugin: AbelePlugin): Promise<boolean> {
+    let stamp = await this.readStamp(plugin)
+    if (stamp === this.stamp) return true
+    let fresh: unknown = await plugin.loadData()
+    if (fresh === undefined) {
+      await pause(UNREADABLE_RETRY_MS)
+      stamp = await this.readStamp(plugin)
+      fresh = await plugin.loadData()
+    }
+    if (fresh === undefined) {
+      console.debug('[Abele] data.json would not parse just before a save; not writing over it')
+      return false
+    }
+    this.stamp = stamp
+    if (!isSettingsObject(fresh)) {
+      // Gone, or not settings at all: nothing to take in, and the save writes the file again.
+      this.onDisk = null
+      return true
+    }
+    if (canonicalJson(fresh) === this.onDisk) return true
+    console.debug('[Abele] data.json changed on disk before this save; taking it in first')
+    const settings = this.ontoArrived(fresh)
+    // The startup load's block stays for its one reader; one from another device is never
+    // this one's (`reloadNow`).
+    const loaded = this.loadedSync
+    await this.take(fresh, settings, () => this.ai?.chatHistory ?? [], stamp)
+    this.loadedSync = loaded
+    this.unannounced = true
+    return true
+  }
+
+  /**
+   * Said once per unreadable file: saves come from chats as well, and each would repeat it.
+   *
+   * Not "delete it": the file syncs, and a delete would reach every device, which would each
+   * start again from defaults and push those. An earlier copy is in its version history.
+   */
+  private tellUnreadable(): void {
+    if (this.unreadableTold) return
+    this.unreadableTold = true
+    new Notice(
+      'Abele could not read its settings file, so changes to settings are not being saved. ' +
+        'Fix the file, or put back an earlier copy of it from its version history, and reload ' +
+        'the plugin. Deleting it would remove it from every synced device too.'
+    )
   }
 
   /**
@@ -1068,7 +1271,7 @@ export class AbeleConfig {
       busyDayThreshold: this.busyDayThreshold,
       excludedPathsForDefaultTemplate: [...this.excludedPathsForDefaultTemplate],
       // The chat index is not a setting: it is in a file of its own once that file holds it.
-      ai: this.indexOnDisk ? withoutChatIndex(this.ai) : { ...this.ai },
+      ai: this.indexOnDisk || this.indexBlocked ? withoutChatIndex(this.ai) : { ...this.ai },
       // A copy all the way down rather than a spread: the migration already knows how to build
       // one field by field.
       sync: migrateSyncSettings(this.sync),

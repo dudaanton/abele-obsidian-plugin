@@ -243,7 +243,10 @@ kept — is on the server, not here.
 The settings file itself syncs with Abele Sync like any other plugin's, while **Plugin settings**
 is on: a change written here reaches the person's other devices and is reloaded there. Two devices
 changing settings at nearly the same moment — the later save wins, and the other is in the file's
-version history.
+version history. A device that syncs the file for the first time takes the vault's copy, and its
+own goes to that history. A settings file that arrives and cannot be read is not loaded: saving is
+blocked until a readable one arrives, and the fix is an earlier copy from its version history, not
+a delete, which would reach every device.
 
 This device's connection is not a setting at all. Which server and vault it syncs, the device it
 enrolled as and the keychain slot its token is in (always named `abele-sync-device-…`), whether it
@@ -369,7 +372,8 @@ with the rest of `reader`; the font files themselves are vault files and go with
 `keyboardDiagnostics` shows a panel at the top of the screen with what the app reports about
 the on-screen keyboard — page and viewport sizes, Obsidian's keyboard height, the open dialog
 and the focused field, the last keyboard events. It is a troubleshooting aid, off by default,
-and is not carried by a settings transfer.
+and is not carried by a settings transfer — but it is in the settings file, so while Abele Sync
+carries **Plugin settings**, turning it on on one device turns it on on the others.
 
 A header button runs `scriptName` with `params`, and shows on notes whose `type` is in
 `noteTypes`, on notes anywhere under one of `folders`, or on every note when `allNotes` is on —

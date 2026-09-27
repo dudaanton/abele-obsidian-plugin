@@ -135,6 +135,31 @@ describe('a launch after the move', () => {
     vi.restoreAllMocks()
   })
 
+  it('writes nothing over an index file the disk would not hand over, nor into data.json', async () => {
+    stored = { tasksFolder: 'Work', ai: { chatHistory: [chat('AI/Chats/Old.abchat')] } }
+    const kept = JSON.stringify({ chats: [chat('AI/Chats/One.abchat')] })
+    const config = install([{ path: INDEX, content: kept }])
+    // A phone's iCloud copy not downloaded yet: the file is listed and will not be read.
+    const read = app.vault.adapter.readBinary.bind(app.vault.adapter)
+    app.vault.adapter.readBinary = async (path: string) => {
+      if (path === INDEX) throw new Error('not downloaded')
+      return read(path)
+    }
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    await config.loadSettings()
+    ChatStorage.getInstance().addHistoryEntry(chat('AI/Chats/New.abchat'))
+    for (let i = 0; i < 5; i++) await settle()
+    await config.saveSettings()
+
+    expect(writes).not.toContain('index')
+    app.vault.adapter.readBinary = read
+    expect(new TextDecoder().decode(await read(INDEX))).toBe(kept)
+    expect(chatHistoryIn(saved.at(-1))).toBeUndefined()
+    expect(config.ai.chatHistory.map((e) => e.path)).toContain('AI/Chats/New.abchat')
+    vi.restoreAllMocks()
+  })
+
   it('folds in an index an older build wrote into data.json, keeping this device’s entry for a path', async () => {
     stored = {
       tasksFolder: 'Work',

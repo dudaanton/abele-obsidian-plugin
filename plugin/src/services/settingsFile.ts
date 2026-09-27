@@ -48,3 +48,90 @@ export function isSettingsObject(value: unknown): value is Record<string, unknow
 
 export const pause = (ms: number): Promise<void> =>
   new Promise((resolve) => window.setTimeout(resolve, ms))
+
+/** One setting this copy changed in memory: where it sits, and what it is now (absent: gone). */
+export interface LocalChange {
+  path: string[]
+  value: unknown
+}
+
+/**
+ * What changed in memory since the settings were last read or written: every place `mine` says
+ * something other than `base`, as deep as both are objects. A list is one value — in settings
+ * its order is part of what it says, and two edits to one list do not merge.
+ *
+ * With no `base` at all everything is a change: nothing was ever read to tell them apart.
+ * `keep` names top-level keys never counted, whatever they hold.
+ */
+export function localChanges(
+  base: unknown,
+  mine: unknown,
+  keep: readonly string[] = []
+): LocalChange[] {
+  if (base === null || base === undefined) return [{ path: [], value: mine }]
+  const changes: LocalChange[] = []
+  const walk = (was: unknown, now: unknown, path: string[]): void => {
+    if (isSettingsObject(was) && isSettingsObject(now)) {
+      for (const key of new Set([...Object.keys(was), ...Object.keys(now)])) {
+        if (path.length === 0 && keep.includes(key)) continue
+        walk(was[key], now[key], [...path, key])
+      }
+      return
+    }
+    if (canonicalJson(was) !== canonicalJson(now)) changes.push({ path, value: now })
+  }
+  walk(base, mine, [])
+  return changes
+}
+
+/**
+ * `theirs` with `changes` put back on top: a file that arrived, with what this copy changed in
+ * memory meanwhile. Nothing of `theirs` is modified; the objects on a changed path are copies.
+ */
+export function reapply(theirs: unknown, changes: readonly LocalChange[]): unknown {
+  let result = theirs
+  for (const { path, value } of changes) result = setAt(result, path, value)
+  return result
+}
+
+function setAt(target: unknown, path: string[], value: unknown): unknown {
+  if (path.length === 0) return value
+  const [key, ...rest] = path
+  const copy: Record<string, unknown> = isSettingsObject(target) ? { ...target } : {}
+  const inner = setAt(copy[key], rest, value)
+  if (inner === undefined) delete copy[key]
+  else copy[key] = inner
+  return copy
+}
+
+/** Obsidian's `vault.adapter.stat`, as much of it as a settings file's stamp needs. */
+interface StampAdapter {
+  stat(path: string): Promise<{ size: number; mtime: number } | null>
+}
+
+/**
+ * The plugin's `data.json` as its size and mtime, or null for no file — or for a plugin with no
+ * disk to ask (a test's), which then never looks again before a save.
+ *
+ * A save compares this against the stamp of the file it last read or wrote: a different one
+ * means something else wrote the file since, and it is read again before anything is written
+ * over it. A stat rather than a read, because most saves find the file as they left it.
+ */
+export function settingsStampOf(plugin: unknown): () => Promise<string | null> {
+  const host = plugin as
+    | { app?: { vault?: { adapter?: Partial<StampAdapter> } }; manifest?: { dir?: string } }
+    | null
+    | undefined
+  const adapter = host?.app?.vault?.adapter
+  const dir = host?.manifest?.dir
+  if (!adapter || typeof adapter.stat !== 'function' || !dir) return async () => null
+  const stat = adapter.stat.bind(adapter)
+  return async () => {
+    try {
+      const found = await stat(`${dir}/data.json`)
+      return found ? `${found.size}:${found.mtime}` : null
+    } catch {
+      return null
+    }
+  }
+}
