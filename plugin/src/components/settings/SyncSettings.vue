@@ -147,7 +147,7 @@ import SelectiveSync from './sync/SelectiveSync.vue'
 import VaultPolicy from './sync/VaultPolicy.vue'
 import UsageCard from './sync/UsageCard.vue'
 import { SyncService } from '@/sync/SyncService'
-import { STATUS_LABEL } from '@/sync/status'
+import { changesAre, statusLabel as labelOf } from '@/sync/status'
 import { formatWhen } from '@/sync/format'
 
 const sync = SyncService.getInstance()
@@ -166,15 +166,22 @@ const confirming = ref<'disconnect' | 'forget' | null>(null)
 // A sign-in that was never followed by a vault holds an account token; closing the tab ends it.
 onUnmounted(() => sync.endConnect())
 
-const statusLabel = computed(() => STATUS_LABEL[status.value.state])
+const statusLabel = computed(() => labelOf(status.value))
 
 const statusDesc = computed(() => `Last synced ${formatWhen(status.value.lastSyncAt)}.`)
 
-const pendingDesc = computed(() =>
-  status.value.pending === 0
-    ? 'Nothing is waiting to be sent.'
-    : `${status.value.pending} ${status.value.pending === 1 ? 'change is' : 'changes are'} waiting to be sent.`
-)
+/**
+ * During a sync the number is what its scan found, not what is left — the engine does not count
+ * it down — so it is said as that. Outside one it is what the last push kept back for the next.
+ */
+const pendingDesc = computed(() => {
+  const { state, pending } = status.value
+  if (pending === 0) return 'Nothing is waiting to be sent.'
+  if (state === 'syncing') {
+    return `Sending the ${pending === 1 ? 'change' : `${pending} changes`} this sync found.`
+  }
+  return `${changesAre(pending)} waiting to be sent.`
+})
 
 const syncNow = (): void => {
   void sync.syncNow()

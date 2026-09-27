@@ -443,6 +443,20 @@ describe('a device that is set up', () => {
     expect(buttonNamed(screen, 'Rescan')?.props('disabled')).toBe(true)
   })
 
+  it('says a sync is sending what it found, and what is still waiting once it is over', async () => {
+    connect()
+    service.status.value = { ...service.status.value, state: 'syncing', pending: 3 }
+    const screen = open(SyncSettings)
+    await flushPromises()
+    expect(screen.text()).toContain('Sending the 3 changes this sync found.')
+    expect(screen.text()).not.toContain('Fully synced')
+
+    service.status.value = { ...service.status.value, state: 'idle', pending: 2 }
+    await flushPromises()
+    expect(screen.text()).toContain('2 changes are waiting to be sent.')
+    expect(screen.text()).not.toContain('Fully synced')
+  })
+
   /**
    * The engine does not publish `paused` until a run in flight has finished, so a screen that
    * waited for the status would go on offering Pause for as long as the sync takes. What the

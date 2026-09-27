@@ -5,6 +5,7 @@ import {
   STATUS_LABEL,
   renderStatus,
   statusOf,
+  statusLabel,
   statusText,
   statusTooltip,
   type SyncState,
@@ -50,11 +51,23 @@ describe('the status vocabulary', () => {
     expect(statusOf(engine)).toEqual(engine)
   })
 
-  it('counts what is left only while a sync is going', () => {
-    expect(statusText(status({ state: 'syncing', pending: 4 }))).toBe('Syncing (4)')
+  it('puts no number on a sync, since the engine does not count one down while it pushes', () => {
+    expect(statusText(status({ state: 'syncing', pending: 4 }))).toBe('Syncing')
     expect(statusText(status({ state: 'syncing', pending: 0 }))).toBe('Syncing')
-    // Pending outside a sync is what the last push kept back, not a number to put in the bar.
-    expect(statusText(status({ state: 'idle', pending: 4 }))).toBe('Fully synced')
+    // The number is still there to read, as what this run found rather than what is left.
+    expect(statusTooltip(status({ state: 'syncing', pending: 4 }))).toContain(
+      '4 changes found to send'
+    )
+  })
+
+  it('never says fully synced while changes are waiting to be sent', () => {
+    // Pending outside a sync is what the last push kept back: unsent, whatever else it is.
+    expect(statusText(status({ state: 'idle', pending: 4 }))).toBe('Waiting (4)')
+    expect(statusLabel(status({ state: 'idle', pending: 1 }))).toBe('Waiting')
+    expect(statusTooltip(status({ state: 'idle', pending: 1 }))).toContain(
+      '1 change is waiting to be sent'
+    )
+    expect(statusText(status({ state: 'idle', pending: 0 }))).toBe('Fully synced')
   })
 
   it('tells a disconnected device apart from one that has never synced', () => {
@@ -75,7 +88,7 @@ describe('renderStatus', () => {
     renderStatus(el, status({ state: 'syncing', pending: 2 }))
 
     expect(el.querySelector('[data-icon]')?.getAttribute('data-icon')).toBe(STATUS_ICON.syncing)
-    expect(el.textContent).toContain('Syncing (2)')
+    expect(el.textContent).toBe('Syncing')
     expect(el.getAttribute('aria-label')).toContain('Syncing')
     expect(el.classList.contains('abele-sync-status')).toBe(true)
   })
