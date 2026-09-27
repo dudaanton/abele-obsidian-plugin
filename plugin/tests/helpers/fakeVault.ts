@@ -853,7 +853,8 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
           if (folder === null || folder === '') throw new Error(`ENOENT: no such folder: ${path}`)
           const prefix = `${folder}/`
           const inside = (held: string): boolean => held.startsWith(prefix)
-          if (!recursive) throw new Error(`EISDIR: Path is a directory: rm returned EISDIR (${path})`)
+          if (!recursive)
+            throw new Error(`EISDIR: Path is a directory: rm returned EISDIR (${path})`)
           for (const file of [...disk.keys(), ...byPath.keys()].filter(inside)) removeFile(file)
           for (const gone of [folder, ...[...diskFolders].filter(inside)]) diskFolders.delete(gone)
           for (const gone of [folder, ...[...folders.keys()].filter(inside)]) {
