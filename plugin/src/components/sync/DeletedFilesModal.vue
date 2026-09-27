@@ -24,9 +24,9 @@
 
             <template #actions>
               <Button
-                text="Restore"
-                :disabled="busy !== null"
-                tooltip="Bring this file back to the path it was deleted from"
+                :text="buttonText(item)"
+                :disabled="waiting.has(item.file_id)"
+                :tooltip="buttonTooltip(item)"
                 @click="restore(item)"
               />
             </template>
@@ -47,7 +47,9 @@
  * made a week ago on a device they are not holding.
  *
  * Restoring is not destructive and is not asked about: it puts a file back where it was. What
- * it *is* is slow — a commit and then a pull — so the row that was pressed holds the rest. And
+ * it *is* is slow — a commit and then a pull — so restores run one at a time, in the order they
+ * were pressed: a row pressed while another runs says *Queued* and goes next, rather than the
+ * press going nowhere. And
  * a restore can be refused without failing: the server answers a 200 carrying `rejected`, and
  * it may also answer `applied` at a *different* path when the old one has since been taken, so
  * what is announced is the path the server gives back rather than the one that was asked for.
@@ -87,8 +89,12 @@ const items = ref<TrashItem[]>([])
 const notice = ref<string | null>('Reading what has been deleted…')
 /** What went wrong, said above the list without taking it away. */
 const error = ref<string | null>(null)
-/** The file id being restored, so its row can say so and the others can wait. */
+/** The file id being restored, so its row can say so. */
 const busy = ref<string | null>(null)
+/** Every file id pressed and not yet done, the one running included: those rows are not pressable. */
+const waiting = ref(new Set<string>())
+/** The restores, one after another; each press joins the end. */
+let line: Promise<void> = Promise.resolve()
 
 const root = useTemplateRef<HTMLElement>('root')
 
@@ -109,10 +115,32 @@ const metaOf = (item: TrashItem): string[] => [
  */
 const idempotencyKey = (): string => (root.value?.win ?? window).crypto.randomUUID()
 
-async function restore(item: TrashItem): Promise<void> {
-  if (client === null || busy.value !== null) return
+const buttonText = (item: TrashItem): string => {
+  if (busy.value === item.file_id) return 'Restoring…'
+  return waiting.value.has(item.file_id) ? 'Queued' : 'Restore'
+}
+
+const buttonTooltip = (item: TrashItem): string => {
+  if (busy.value === item.file_id) return 'Bringing this file back'
+  if (waiting.value.has(item.file_id)) return 'Restored as soon as the one before it is done'
+  return 'Bring this file back to the path it was deleted from'
+}
+
+/**
+ * Put a press in line. A second press of a row already in line does nothing — it is on its way.
+ * A press into an empty line starts a fresh account of what went wrong.
+ */
+function restore(item: TrashItem): Promise<void> {
+  if (client === null || waiting.value.has(item.file_id)) return line
+  if (waiting.value.size === 0) error.value = null
+  waiting.value.add(item.file_id)
+  line = line.then(() => restoreOne(item))
+  return line
+}
+
+async function restoreOne(item: TrashItem): Promise<void> {
+  if (client === null) return
   busy.value = item.file_id
-  error.value = null
   try {
     const result = await client.restoreDeleted(item.file_id, idempotencyKey())
     // A refusal is a 200, not a throw. Announcing it as a restore is how a dialog lies, and
@@ -141,6 +169,7 @@ async function restore(item: TrashItem): Promise<void> {
     error.value = `${item.path} could not be restored: ${reasonOf(failure)}`
   } finally {
     busy.value = null
+    waiting.value.delete(item.file_id)
   }
 }
 

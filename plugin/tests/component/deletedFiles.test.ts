@@ -296,4 +296,46 @@ describe('bringing a file back', () => {
     expect(titles(screen)).toContain('Notes/older.md')
     expect(errorLine(screen)).toContain('the server never answered')
   })
+
+  /**
+   * Two Restores pressed back to back: the second is queued behind the first, and both rows say
+   * what they are doing, rather than the second press going nowhere without a word.
+   */
+  it('queues a second Restore pressed while the first is running, and says so', async () => {
+    let finish: (result: CommitOpResult) => void = () => undefined
+    client.restoreDeleted
+      .mockImplementationOnce(() => new Promise<CommitOpResult>((resolve) => (finish = resolve)))
+      .mockResolvedValueOnce({ ...applied('Attachments/photo.png'), file_id: 'f-new' })
+    const screen = open()
+    await flushPromises()
+
+    void restoreFor(screen, 'Notes/older.md')?.trigger('click')
+    void restoreFor(screen, 'Attachments/photo.png')?.trigger('click')
+    await flushPromises()
+
+    expect(restoreFor(screen, 'Notes/older.md')?.props('text')).toBe('Restoring…')
+    expect(restoreFor(screen, 'Attachments/photo.png')?.props('text')).toBe('Queued')
+    expect(restoreFor(screen, 'Attachments/photo.png')?.props('disabled')).toBe(true)
+    expect(client.restoreDeleted).toHaveBeenCalledTimes(1)
+
+    finish(applied('Notes/older.md'))
+    await flushPromises()
+
+    expect(client.restoreDeleted).toHaveBeenCalledTimes(2)
+    expect(client.restoreDeleted.mock.calls[1][0]).toBe('f-new')
+    expect(titles(screen)).toEqual([])
+    expect(Notice.shown).toEqual(['Notes/older.md restored.', 'Attachments/photo.png restored.'])
+  })
+
+  it('leaves the other rows pressable while one restores', async () => {
+    client.restoreDeleted.mockImplementationOnce(() => new Promise<CommitOpResult>(() => undefined))
+    const screen = open()
+    await flushPromises()
+
+    await restoreFor(screen, 'Notes/older.md')?.trigger('click')
+    await flushPromises()
+
+    expect(restoreFor(screen, 'Attachments/photo.png')?.props('disabled')).toBe(false)
+    expect(restoreFor(screen, 'Attachments/photo.png')?.props('text')).toBe('Restore')
+  })
 })
