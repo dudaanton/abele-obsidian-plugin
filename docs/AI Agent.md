@@ -212,6 +212,13 @@ The agent has access to these tools:
 | `fetch` | Send HTTP requests to any URL |
 | `read_image` | Load an image for visual analysis |
 
+### Numbers
+
+| Tool | Description |
+|------|-------------|
+| `read_data` | What a finance, notes or base source holds: typed, profiled columns and the first rows |
+| `analyze_data` | Totals, groups, series, trend, seasonality, correlation, forecast, anomalies — see `Analytics.md` |
+
 ### Maps
 
 | Tool | Description |
