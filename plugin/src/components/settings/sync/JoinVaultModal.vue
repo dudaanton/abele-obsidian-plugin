@@ -5,6 +5,11 @@
 
       <template v-if="question.kind === 'choose'">
         <p class="abele-join-vault__counts">{{ counts }}</p>
+        <p v-if="onlySettings" class="abele-join-vault__counts">
+          This vault holds only Obsidian's own settings, as a vault just made does, so the server's
+          are chosen: kept as the newer copies, this vault's defaults would replace the settings of
+          every device.
+        </p>
         <p class="abele-join-vault__lead">
           Where both have a file with different contents, which one should be kept?
         </p>
@@ -123,7 +128,16 @@ const OPTIONS: { title: string; description: string; prefer: JoinPrefer | null }
   },
 ]
 
-const chosen = ref<JoinPrefer | null>(null)
+/**
+ * Whether every file here is one of Obsidian's settings, as in a vault just made: its
+ * defaults are the newest files there are, so under "merge both" they would win, and every
+ * device would take them (task-8 review, #3; a ruling). The server's side is chosen instead.
+ */
+const onlySettings = computed(
+  () => props.question.here.files > 0 && props.question.here.files === props.question.here.settings
+)
+
+const chosen = ref<JoinPrefer | null>(onlySettings.value ? 'theirs' : null)
 const name = ref(props.deviceName ?? '')
 const named = computed(() => props.deviceName === undefined || name.value.trim() !== '')
 
@@ -143,7 +157,8 @@ function files(count: FileCount): string {
 
 const counts = computed(() => {
   const { here, there } = props.question
-  const server = there === null ? 'could not be counted' : files(there)
+  // The whole vault: the server's count knows nothing of what this device leaves out.
+  const server = there === null ? 'could not be counted' : `${files(there)} in all`
   return `Here: ${files(here)} · On the server: ${server}`
 })
 
@@ -154,7 +169,7 @@ const lead = computed(() => {
   if (kind === 'download') {
     return there === null
       ? "The server's files will be downloaded."
-      : `The server's ${files(there)} will be downloaded.`
+      : `The server holds ${files(there)} in all; what this device takes of them will be downloaded.`
   }
   if (kind === 'reconnect') return 'This device picks up where it left off.'
   return 'Neither this vault nor the server holds any files yet.'

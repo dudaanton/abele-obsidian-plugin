@@ -95,6 +95,18 @@ describe("this vault's files", () => {
     expect(await countHere(vault(), selective, 'Scripts')).toEqual({ files: 2, settings: 1 })
   })
 
+  it('leaves out the settings file a join leaves alone', async () => {
+    const app = buildFakeVault([
+      { path: 'Note.md', content: 'a', mtime: 1 },
+      { path: '.obsidian/plugins/abele/manifest.json', content: '{}', mtime: 1 },
+      { path: '.obsidian/plugins/abele/data.json', content: '{}', mtime: 1 },
+    ]) as unknown as App
+
+    expect(
+      await countHere(app, defaultSelective(), 'Scripts', '.obsidian/plugins/abele/data.json')
+    ).toEqual({ files: 2, settings: 1 })
+  })
+
   it('counts no settings on a device that does not sync them', async () => {
     const selective = defaultSelective()
     selective.settings.main = false

@@ -29,17 +29,23 @@ signs in to one, it does not create one.
 
 ### Joining a vault that already has files
 
-The join dialog counts both sides first — "Here: 1240 files · On the server: 1180 files", saying
-how many of them are Obsidian settings when any are — and asks according to what it finds:
+The join dialog counts both sides first — "Here: 1240 files · On the server: 1180 files in all",
+saying how many of them are Obsidian settings when any are — and asks according to what it finds.
+The count here is what this device would sync; the server's is the whole vault, including what this
+device leaves out, so fewer may come down than it says.
 
 - **Only this vault holds files**: "Connect this vault to *X*? Its *N* files will be uploaded."
-- **Only the server holds files**: "…The server's *N* files will be downloaded."
+- **Only the server holds files**: "…The server holds *N* files in all; what this device takes of
+  them will be downloaded."
 - **Both hold files**: "Sync this vault with *X*?", and which copy is kept where both have a file
   with different contents:
   - **Merge both** (chosen to begin with) — files on both sides are combined. A note changed on
     both keeps both texts; for any other file the newer one wins. Nothing is deleted.
   - **This device wins** — where both have a file, this device's copy is kept everywhere.
-  - **The server wins** — where both have a file, the server's copy is kept here.
+  - **The server wins** — where both have a file, the server's copy is kept here. This one is
+    chosen to begin with instead when all this vault holds is Obsidian's own settings, as in a
+    vault just made: those defaults are newer than anything, so under **Merge both** they would
+    replace the settings of every device. The dialog says so in a line of its own.
 - **This device synced that vault before** and walked it to the end (a reconnect after
   **Disconnect**, with nothing forgotten): "Reconnect to *X*? This device picks up where it left
   off." There is nothing to choose.
@@ -66,9 +72,8 @@ What each choice does, file by file:
   (see [Abele's own settings](#what-syncs)). A new device's defaults never replace the settings
   everyone else has, whichever side was chosen.
 
-The choice is kept with the connection until the first sync that walked both sides has had its
-changes answered by the server — across a restart, so a join cut off half way (the network gone,
-Obsidian closed) finishes the way it was asked to. Then it is forgotten, a notice says the vault
+The choice is kept with the connection until a sync gets through — across a restart, so a join
+cut off half way (the network gone, Obsidian closed) finishes the way it was asked to. Then it is forgotten, a notice says the vault
 is synced and where the other copies are, and the next sync fetches Abele's own settings file.
 
 A device set up by a **transfer** gets the same dialog. It is connected as the transfer is

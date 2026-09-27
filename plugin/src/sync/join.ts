@@ -75,14 +75,16 @@ export function countThere(usage: Pick<Usage, 'by_kind'>): FileCount {
  * How many files in this vault the engine would sync: what it lists, less what the hidden rule,
  * the ignore file and this device's selective settings pass over — the filter the engine scans
  * with, asked of the same listing. Nothing is read or hashed; an ignore file that is there and
- * will not read throws, as it stops the engine too.
+ * will not read throws, as it stops the engine too. `keptOut` is the file the join leaves alone
+ * (this device's own `data.json`), not counted since it is not joined.
  */
 export async function countHere(
   app: App,
   selective: SelectiveSettings,
-  scriptsFolder: string
+  scriptsFolder: string,
+  keptOut: string | null = null
 ): Promise<FileCount> {
-  const ignore = ignoreFor(app.vault.configDir, await readIgnore(app))
+  const ignore = ignoreFor(app.vault.configDir, await readIgnore(app), keptOut)
   const count: FileCount = { files: 0, settings: 0 }
   for await (const info of new ObsidianFileSystem(app).list()) {
     let wire: string
@@ -128,6 +130,8 @@ export interface JoinFacts {
   timeoutMs: number
   /** The scripts folder the engine is built with; empty for the engine's own default. */
   scriptsFolder: string
+  /** This device's own `data.json`, which a join leaves alone (`EngineRunner.build`). */
+  ownSettings: string
   note(text: string): void
   /** The vault a sign-in listed, or undefined for the one this device is connected to. */
   vault?: VaultInfo
@@ -145,7 +149,7 @@ export async function askJoin(facts: JoinFacts): Promise<JoinQuestion> {
   if (vaultId === '') throw new Error('there is no vault to join')
   const there = vault === undefined ? await countOnServer(facts) : countThere(vault.usage)
   const scriptsFolder = facts.scriptsFolder || DEFAULT_SCRIPTS_FOLDER
-  const here = await countHere(app, connection.selective, scriptsFolder)
+  const here = await countHere(app, connection.selective, scriptsFolder, facts.ownSettings)
   const kept = await keptLedger(app, facts.factory, vaultId)
   return {
     kind: joinKind(here, there, kept),

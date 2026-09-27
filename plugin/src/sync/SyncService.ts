@@ -11,6 +11,7 @@ import { Enrolment, type ConnectionEdit, type VaultChoice } from './enrolment'
 import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer/connection'
 import { EngineRunner } from './engineRunner'
 import { joinOf } from './joinState'
+import { ownSettingsPath } from './ownSettings'
 import { askJoin, type JoinQuestion } from './join'
 import { factoryOf, transportOf, type SyncServiceDeps } from './environment'
 import { noop, SerialQueue } from './queue'
@@ -383,6 +384,7 @@ export class SyncService {
       transport: transportOf(this.deps),
       timeoutMs: this.enrolment.revoker.timeoutMs,
       scriptsFolder: AbeleConfig.getInstance().ai.scriptsFolder,
+      ownSettings: ownSettingsPath(app.vault.configDir, this.plugin?.manifest ?? { id: 'abele' }),
       note: (text) => this.note(text),
       vault,
     })

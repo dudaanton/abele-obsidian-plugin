@@ -66,10 +66,37 @@ describe('files on both sides', () => {
     ])
   })
 
+  /**
+   * A vault just made holds nothing but the settings Obsidian wrote at its first start. Under
+   * "merge both" the newer copy of a file wins, and these are the newest there are: the fresh
+   * vault's defaults would become every device's settings.
+   */
+  it('chooses the server when all this vault holds is Obsidian’s settings, and says why', async () => {
+    const view = open({ question: question({ here: { files: 4, settings: 4 } }) })
+
+    expect(choices(view).find((choice) => choice.selected)?.title).toBe('The server wins')
+    expect(said(view)).toMatch(/only Obsidian's own settings/i)
+    await button(view, 'Connect')!.trigger('click')
+    expect(view.emitted('connect')![0]![0]).toMatchObject({ prefer: 'theirs' })
+  })
+
+  it('keeps merge both chosen when there is anything here besides settings', () => {
+    const view = open({ question: question({ here: { files: 5, settings: 4 } }) })
+
+    expect(choices(view).find((choice) => choice.selected)?.title).toBe('Merge both')
+    expect(said(view)).not.toMatch(/only Obsidian's own settings/i)
+  })
+
+  it('says the server’s count is the whole vault, not what this device takes of it', () => {
+    const view = open()
+
+    expect(said(view)).toContain('On the server: 5 files in all')
+  })
+
   it('counts both sides, and says the version that loses is kept', () => {
     const view = open()
 
-    expect(said(view)).toContain('Here: 3 files · On the server: 5 files')
+    expect(said(view)).toContain('Here: 3 files · On the server: 5 files in all')
     for (const card of view.findAllComponents(Card)) {
       expect(card.props('description')).toContain(
         'The version that loses is kept in Version history'
@@ -131,7 +158,9 @@ describe('files on one side only', () => {
   it("says the server's files will be downloaded", () => {
     const view = open({ question: question({ here: { files: 0, settings: 0 }, kind: 'download' }) })
 
-    expect(said(view)).toContain("The server's 5 files will be downloaded.")
+    expect(said(view)).toContain(
+      'The server holds 5 files in all; what this device takes of them will be downloaded.'
+    )
     expect(view.findAllComponents(Card)).toHaveLength(0)
   })
 
