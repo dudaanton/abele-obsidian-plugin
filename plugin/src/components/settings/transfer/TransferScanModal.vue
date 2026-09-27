@@ -474,19 +474,15 @@ const run = async (takeConnection: boolean) => {
 
 /**
  * The device made for this side, when nobody is going to take it: the modal closed without
- * Apply while this device already syncs that vault — scanning again would say the same — while
- * a switch to it was left unticked, or on a device that syncs nothing, where only Apply would
- * have taken it (pi review #7). Not while an apply runs, which settles it itself. A switch to
- * it left ticked on a device that syncs another vault keeps it, as before.
+ * Apply, so nothing was taken whatever the switches said — a device that already syncs that
+ * vault, one that syncs another and left the switch to it ticked, or one that syncs nothing.
+ * Not while an apply runs, which settles it itself.
  */
 const release = () => {
   const got = arrived.value
   if (done.value || busy.value || got === null || got.connection === null) return
-  const unticked = !acceptedEntries.value.some((entry) => entry.section === CONNECTION_SECTION)
-  if (standing.value !== 'other' || unticked) {
-    done.value = true
-    void syncService.revokeTransferred(got.connection, got.token)
-  }
+  done.value = true
+  void syncService.revokeTransferred(got.connection, got.token)
 }
 
 const onClose = () => {
