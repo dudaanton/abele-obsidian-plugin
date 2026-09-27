@@ -24,7 +24,7 @@
           <span class="abele-sync-settings__value">{{ device.vaultId }}</span>
         </Setting>
 
-        <Setting name="This device" desc="What the vault's device list calls it.">
+        <Setting name="This device" desc="The name the server knows it by.">
           <span class="abele-sync-settings__value">{{ device.deviceName }}</span>
         </Setting>
 
@@ -101,21 +101,33 @@
     <!--
       A Disconnect that could not reach the server: the token is kept to tell it later, and this
       is where the person sees that and may stop waiting. Shown on either screen — a device that
-      left one vault offline and joined another is still waiting to tell the first.
+      left one vault offline and joined another is still waiting to tell the first. One on plain
+      http to another machine is never told, and says so.
     -->
     <Setting
       v-for="entry in device.pendingRevoke"
       :key="entry.tokenId"
-      :name="`The server has not been told that ${entry.deviceName || entry.deviceId} left ${entry.serverUrl}. It will be retried.`"
-      :desc="`Since ${formatWhen(entry.since)}. Forgetting leaves that device on the server's list until it is revoked there.`"
+      :name="entry.plainHttp ? 'Cannot tell the server' : 'Waiting to tell the server'"
+      :desc="pendingLine(entry)"
     >
       <Button
         text="Forget without telling the server"
         warning
         tooltip="Stop trying, and forget the token kept to tell the server with"
-        @click="sync.forgetPendingRevoke(entry.tokenId)"
+        @click="forgetting = entry"
       />
     </Setting>
+
+    <ConfirmModal
+      v-if="forgetting"
+      title="Forget without telling the server?"
+      :message="forgetMessage"
+      confirm-text="Forget"
+      confirm-tooltip="Forget the kept token; the server is not told"
+      cancel-tooltip="Close this and keep the token to tell the server with"
+      @confirm="forgetPending"
+      @close="forgetting = null"
+    />
 
     <ConfirmModal
       v-if="confirming === 'disconnect'"
@@ -131,7 +143,7 @@
     <ConfirmModal
       v-if="confirming === 'forget'"
       title="Forget this device's sync state?"
-      message="This device disconnects and throws away its record of what has already been synced. No file is deleted in the vault or on the server — the next connect walks the whole vault again instead of picking up where this one left off."
+      message="The server will stop accepting this device. Connecting again needs the password. This device also throws away its record of what has already been synced. No file is deleted in the vault or on the server — the next connect walks the whole vault again instead of picking up where this one left off."
       confirm-text="Forget"
       confirm-tooltip="Disconnect and drop the record of what was synced"
       cancel-tooltip="Close this and keep the record"
@@ -165,9 +177,11 @@ import ConnectCard from './sync/ConnectCard.vue'
 import SelectiveSync from './sync/SelectiveSync.vue'
 import VaultPolicy from './sync/VaultPolicy.vue'
 import UsageCard from './sync/UsageCard.vue'
+import { Notice } from 'obsidian'
 import { SyncService } from '@/sync/SyncService'
+import type { PendingRevoke } from '@/sync/connection'
 import { changesAre, statusLabel as labelOf } from '@/sync/status'
-import { formatWhen } from '@/sync/format'
+import { formatWhen, reasonOf } from '@/sync/format'
 
 const sync = SyncService.getInstance()
 
@@ -181,6 +195,41 @@ const device = sync.connection
 const status = sync.status
 const connected = computed(() => status.value.state !== 'disconnected')
 const confirming = ref<'disconnect' | 'forget' | null>(null)
+/** The waiting revoke whose kept token the person asked to forget, while that is asked. */
+const forgetting = ref<PendingRevoke | null>(null)
+
+const who = (entry: PendingRevoke): string => entry.deviceName || entry.deviceId
+
+/** What a waiting revoke's line says: who left where, since when, and what forgetting leaves. */
+function pendingLine(entry: PendingRevoke): string {
+  const since = `Since ${formatWhen(entry.since)}.`
+  if (entry.plainHttp) {
+    return (
+      `${who(entry)} left ${entry.serverUrl}, which cannot be told over plain http: the token ` +
+      `is not sent that way. The server there still has ${who(entry)} enrolled. ${since}`
+    )
+  }
+  return (
+    `The server has not been told that ${who(entry)} left ${entry.serverUrl}. It will be ` +
+    `retried. ${since}`
+  )
+}
+
+const forgetMessage = computed(() => {
+  const entry = forgetting.value
+  if (entry === null) return ''
+  return (
+    `${who(entry)} stays enrolled on ${entry.serverUrl}: anyone holding a copy of its token can ` +
+    'still sync that vault until the account revokes it there. This device forgets the token ' +
+    'it kept to tell the server with.'
+  )
+})
+
+function forgetPending(): void {
+  const entry = forgetting.value
+  forgetting.value = null
+  if (entry !== null) sync.forgetPendingRevoke(entry.tokenId)
+}
 
 // A sign-in that was never followed by a vault holds an account token; closing the tab ends it.
 onUnmounted(() => sync.endConnect())
@@ -221,12 +270,21 @@ function resume(): void {
   sync.resume()
 }
 
+/** A Disconnect can be refused — the keychain would not keep the token — and says why. */
 async function disconnect(): Promise<void> {
-  await sync.disconnect()
+  try {
+    await sync.disconnect()
+  } catch (error) {
+    new Notice(`Not disconnected: ${reasonOf(error)}`)
+  }
 }
 
 async function forget(): Promise<void> {
-  await sync.forget()
+  try {
+    await sync.forget()
+  } catch (error) {
+    new Notice(`Not forgotten: ${reasonOf(error)}`)
+  }
 }
 </script>
 

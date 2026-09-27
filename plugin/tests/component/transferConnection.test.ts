@@ -192,11 +192,29 @@ describe('sending the connection', () => {
     await waitFor(() => (screen.findComponent(TransferSendModal).props('frames') ?? []).length > 0)
 
     expect(screen.findComponent(TransferSendModal).text()).toContain(
-      'could not reach the server, so the other device will sign in itself'
+      'No device was made for the other side (never reached the server), so it will sign in itself.'
     )
     const payload = await sent(screen)
     expect(Object.keys(connectionIn(payload)!.data as object)).toEqual(['selective'])
     expect(payload.secrets).toEqual({})
+  })
+
+  /** Not every refusal is the network: the server's limit, or a token this device lost. */
+  it('does not blame the network for a refusal that is not the network', async () => {
+    service.connection.value = home()
+    service.enrolSibling.mockRejectedValue(new Error('too many devices made in a minute'))
+    const screen = open(TransferSettings)
+    await cardNamed(screen, 'Sync connection')!.trigger('click')
+    await click(screen, 'Send')
+
+    await click(screen, 'Make the codes')
+    await waitFor(() => (screen.findComponent(TransferSendModal).props('frames') ?? []).length > 0)
+
+    const text = screen.findComponent(TransferSendModal).text()
+    expect(text).toContain(
+      'No device was made for the other side (too many devices made in a minute)'
+    )
+    expect(text).not.toContain('could not reach')
   })
 
   it('makes no device, and asks for no name, when keys are left behind', async () => {
@@ -285,6 +303,91 @@ describe('receiving the connection', () => {
     expect(AbeleConfig.getInstance().ai.providers.map((p) => p.name)).toEqual(['openwebui'])
   })
 
+  /**
+   * Apply takes seconds on a phone — the adopt reconciles and builds an engine. A second press
+   * meanwhile must not run it again: by then the connection may be saved, the transfer reads as
+   * "the same vault", and the device just adopted would be revoked under this one.
+   */
+  it('takes the connection once, however often Apply is pressed', async () => {
+    let adopted: () => void = () => undefined
+    service.adoptTransferred.mockImplementation(
+      () => new Promise<void>((resolve) => (adopted = resolve))
+    )
+    const screen = await received()
+
+    await buttonNamed(screen, 'Apply')!.trigger('click')
+    await buttonNamed(screen, 'Apply')!.trigger('click')
+    await flushPromises()
+    expect(buttonNamed(screen, 'Apply')!.props('disabled')).toBe(true)
+    // What the first press has saved by now: this device syncs the vault that arrived.
+    service.connection.value = { ...home(), deviceId: 'd2' }
+    adopted()
+    await flushPromises()
+    await buttonNamed(screen, 'Apply')!.trigger('click')
+    await flushPromises()
+    expect(screen.emitted('applied')).toHaveLength(1)
+    screen.unmount()
+
+    expect(service.adoptTransferred).toHaveBeenCalledTimes(1)
+    expect(service.revokeTransferred).not.toHaveBeenCalled()
+  })
+
+  it('stores no key for the connection, and does not count its token as one', async () => {
+    const screen = await received()
+
+    expect(screen.text()).toContain('No keys came with this transfer.')
+  })
+
+  describe('closed without Apply', () => {
+    it('revokes the spare device when this device already syncs that vault', async () => {
+      service.connection.value = { ...home(), deviceId: 'd9' }
+      const screen = await received()
+
+      screen.unmount()
+      await flushPromises()
+
+      expect(service.revokeTransferred).toHaveBeenCalledTimes(1)
+      expect(service.revokeTransferred).toHaveBeenCalledWith(
+        expect.objectContaining({ deviceId: 'd2' }),
+        'absd_sibling'
+      )
+    })
+
+    it('revokes it only once when it was applied first', async () => {
+      service.connection.value = { ...home(), deviceId: 'd9' }
+      const screen = await received()
+      await click(screen, 'Apply')
+
+      screen.unmount()
+      await flushPromises()
+
+      expect(service.revokeTransferred).toHaveBeenCalledTimes(1)
+    })
+
+    it('revokes it when the switch to it was left unticked', async () => {
+      service.connection.value = { ...home(), vaultId: 'v7', vaultName: 'Work' }
+      const screen = await received()
+
+      screen.unmount()
+      await flushPromises()
+
+      expect(service.revokeTransferred).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps it when the switch was ticked, or on a device that syncs nothing', async () => {
+      service.connection.value = { ...home(), vaultId: 'v7', vaultName: 'Work' }
+      const ticking = await received()
+      await rowOf(ticking).trigger('click')
+      ticking.unmount()
+      service.connection.value = emptyConnection()
+      const fresh = await received()
+      fresh.unmount()
+      await flushPromises()
+
+      expect(service.revokeTransferred).not.toHaveBeenCalled()
+    })
+  })
+
   describe('on a device that syncs another vault', () => {
     beforeEach(() => {
       service.connection.value = { ...home(), vaultId: 'v7', vaultName: 'Work' }
@@ -339,6 +442,24 @@ describe('receiving the connection', () => {
       expect(service.revokeTransferred).toHaveBeenCalledTimes(1)
       expect(AbeleConfig.getInstance().ai.providers.map((p) => p.name)).toEqual(['openwebui'])
       expect(screen.emitted('applied')?.[0]?.[0]).toMatchObject({ items: 1 })
+    })
+
+    it('says this device was disconnected from its vault when the switch then failed', async () => {
+      service.adoptTransferred.mockImplementation(() => {
+        service.connection.value = emptyConnection()
+        return Promise.reject(new Error('the keychain refused'))
+      })
+      const screen = await received()
+      await rowOf(screen).trigger('click')
+      await click(screen, 'Apply')
+
+      screen.findComponent(ConfirmModal).vm.$emit('confirm')
+      screen.findComponent(ConfirmModal).vm.$emit('close')
+      await flushPromises()
+
+      const line = (screen.emitted('applied')?.[0]?.[0] as { connection?: string }).connection
+      expect(line).toContain('disconnected from Work')
+      expect(line).toContain('the keychain refused')
     })
 
     it('revokes the spare device when the connection is left unticked', async () => {

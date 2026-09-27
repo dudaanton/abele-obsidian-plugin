@@ -358,9 +358,9 @@ const onNamed = async (name: string) => {
     note = `The server made a device called ${sibling.deviceName} for the other side.`
   } catch (error) {
     chosen = picked.value.map((entry) => (isConnection(entry) ? withoutConnection(entry) : entry))
-    note =
-      'This device could not reach the server, so the other device will sign in itself. ' +
-      `(${error instanceof Error ? error.message : String(error)})`
+    // Not always the network: the server's limit, a refusal, or a token this device lost.
+    const reason = error instanceof Error ? error.message : String(error)
+    note = `No device was made for the other side (${reason}), so it will sign in itself.`
   } finally {
     minting.value = false
   }

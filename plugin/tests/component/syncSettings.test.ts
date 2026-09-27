@@ -19,6 +19,8 @@ import SelectiveSync from '@/components/settings/sync/SelectiveSync.vue'
 import VaultPolicy from '@/components/settings/sync/VaultPolicy.vue'
 import ConnectCard from '@/components/settings/sync/ConnectCard.vue'
 import Section from '@/components/obsidian/Section.vue'
+import Setting from '@/components/obsidian/Setting.vue'
+import { Notice } from 'obsidian'
 import Badge from '@/components/obsidian/Badge.vue'
 import Checkbox from '@/components/obsidian/Checkbox.vue'
 import Button from '@/components/obsidian/Button.vue'
@@ -83,6 +85,7 @@ const service = {
   updateConnection: vi.fn(),
   retryPendingRevokes: vi.fn(() => Promise.resolve()),
   forgetPendingRevoke: vi.fn(),
+  telling: ref<string | null>(null),
 }
 
 /** The connection the service holds, with these fields changed — what its verbs do. */
@@ -232,6 +235,43 @@ describe('a device nobody has set up', () => {
 })
 
 /**
+ * A sign-in first tells any server a device left while offline, waiting up to one revoke's
+ * timeout. The card says who it is telling, so a pause there does not read as a hang.
+ */
+describe('a sign-in with a device still to be told about', () => {
+  it('says who it is telling while the enrolment waits on it', async () => {
+    service.connect.mockResolvedValue([
+      {
+        id: 'v1',
+        name: 'Home',
+        role: 'owner',
+        usage: { live_bytes: 0, quota_bytes: null },
+      },
+    ])
+    let enrolled: () => void = () => undefined
+    service.chooseVault.mockImplementation(
+      () => new Promise<void>((resolve) => (enrolled = resolve))
+    )
+    const screen = open(ConnectCard, { serverUrl: 'https://sync.example.com' })
+    const [, email] = screen.findAll('input')
+    await type(email!, 'me@example.com')
+    await type(screen.find('input[type="password"]'), 'hunter2')
+    await buttonNamed(screen, 'Sign in')?.trigger('click')
+    await flushPromises()
+
+    await screen.findAllComponents(Card)[0]!.trigger('click')
+    service.telling.value = 'Telling https://sync.example.com that Old laptop left…'
+    await flushPromises()
+
+    expect(screen.text()).toContain('Telling https://sync.example.com that Old laptop left…')
+    service.telling.value = null
+    enrolled()
+    await flushPromises()
+    expect(screen.text()).not.toContain('Telling')
+  })
+})
+
+/**
  * A Disconnect that could not reach the server keeps the token to tell it later. The tab says so
  * on either screen, and offers to stop waiting — which is the person's call, not a timer's alone.
  */
@@ -242,6 +282,7 @@ describe('a device the server has not been told about', () => {
     deviceName: 'Old laptop',
     tokenId: 'abele-sync-device-revoke-0',
     since: '2026-09-01T00:00:00.000Z',
+    plainHttp: false,
   }
 
   it('tries to tell the server again as the tab opens', () => {
@@ -254,10 +295,29 @@ describe('a device the server has not been told about', () => {
     change({ pendingRevoke: [waiting] })
     const screen = open(SyncSettings)
 
-    expect(screen.text()).toContain(
+    const row = screen
+      .findAllComponents(Setting)
+      .find((r) => r.props('name') === 'Waiting to tell the server')
+    expect(row).toBeTruthy()
+    expect(row!.props('desc')).toContain(
       'The server has not been told that Old laptop left https://sync.example.com. It will be retried.'
     )
     expect(buttonNamed(screen, 'Forget without telling the server')).toBeTruthy()
+  })
+
+  it('asks before it forgets the kept token, naming the device and the server', async () => {
+    change({ pendingRevoke: [waiting] })
+    const screen = open(SyncSettings)
+
+    await buttonNamed(screen, 'Forget without telling the server')?.trigger('click')
+
+    expect(service.forgetPendingRevoke).not.toHaveBeenCalled()
+    const message = screen.findComponent(ConfirmModal).props('message') as string
+    expect(message).toContain('Old laptop')
+    expect(message).toContain('https://sync.example.com')
+    screen.findComponent(ConfirmModal).vm.$emit('close')
+    await flushPromises()
+    expect(service.forgetPendingRevoke).not.toHaveBeenCalled()
   })
 
   it('stops waiting when asked, and only for that device', async () => {
@@ -270,8 +330,31 @@ describe('a device the server has not been told about', () => {
       .findAllComponents(Button)
       .filter((b) => b.props('text') === 'Forget without telling the server')[1]!
       .trigger('click')
+    screen.findComponent(ConfirmModal).vm.$emit('confirm')
+    await flushPromises()
 
+    expect(service.forgetPendingRevoke).toHaveBeenCalledTimes(1)
     expect(service.forgetPendingRevoke).toHaveBeenCalledWith('abele-sync-device-revoke-1')
+  })
+
+  /**
+   * A connection made over plain http to another machine before the https rule: the token is
+   * never sent that way, so this one is not waiting on anything — and the line must not say it
+   * will be retried.
+   */
+  it('says a device on plain http cannot be told, and offers only to forget it', () => {
+    change({
+      pendingRevoke: [{ ...waiting, serverUrl: 'http://192.168.1.5:8787', plainHttp: true }],
+    })
+    const screen = open(SyncSettings)
+
+    const row = screen
+      .findAllComponents(Setting)
+      .find((r) => r.props('name') === 'Cannot tell the server')
+    expect(row).toBeTruthy()
+    expect(row!.props('desc')).toContain('cannot be told over plain http')
+    expect(row!.props('desc')).not.toContain('retried')
+    expect(buttonNamed(screen, 'Forget without telling the server')).toBeTruthy()
   })
 
   it('says nothing when nothing is waiting', () => {
@@ -464,6 +547,24 @@ describe('a device that is set up', () => {
     await buttonNamed(screen, 'Forget')?.trigger('click')
 
     expect(screen.findComponent(ConfirmModal).props('message')).toContain('No file is deleted')
+    // Forget runs through Disconnect, so it tells the server too.
+    expect(screen.findComponent(ConfirmModal).props('message')).toMatch(
+      /^The server will stop accepting this device\. Connecting again needs the password\./
+    )
+  })
+
+  it('says why, when the Disconnect was refused', async () => {
+    connect()
+    service.disconnect.mockRejectedValue(new Error('this device stays connected'))
+    Notice.shown.length = 0
+    const screen = open(SyncSettings)
+    await flushPromises()
+    await buttonNamed(screen, 'Disconnect')?.trigger('click')
+
+    screen.findComponent(ConfirmModal).vm.$emit('confirm')
+    await flushPromises()
+
+    expect(Notice.shown.join('\n')).toContain('this device stays connected')
   })
 
   it('syncs on demand', async () => {

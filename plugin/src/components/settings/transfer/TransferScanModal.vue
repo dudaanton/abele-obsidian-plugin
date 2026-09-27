@@ -1,5 +1,5 @@
 <template>
-  <ObsidianModal title="Read a transfer" size="wide" @close="emit('close')">
+  <ObsidianModal title="Read a transfer" size="wide" @close="onClose">
     <div ref="root" class="abele-transfer-scan">
       <template v-if="phase === 'collect'">
         <video v-show="cameraOn" ref="video" class="abele-transfer-scan__view" playsinline muted />
@@ -97,12 +97,8 @@
           <Button
             text="Apply"
             accent
-            :disabled="!accepted.size"
-            :tooltip="
-              accepted.size
-                ? 'Write these into this vault\'s settings'
-                : 'Tick something to apply first'
-            "
+            :disabled="!accepted.size || busy || done"
+            :tooltip="applyTooltip"
             @click="apply"
           />
         </Setting>
@@ -135,7 +131,12 @@ import ConfirmModal from '../../obsidian/ConfirmModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ScriptService } from '@/scripting/ScriptService'
 import { SyncService } from '@/sync/SyncService'
-import { CONNECTION_SECTION, matchConnection, readTransferred } from '@/transfer/connection'
+import {
+  CONNECTION_SECTION,
+  CONNECTION_TOKEN,
+  matchConnection,
+  readTransferred,
+} from '@/transfer/connection'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { createReceiver } from '@/transfer/frames'
 import { decodePayload, isEncrypted } from '@/transfer/payload'
@@ -383,7 +384,10 @@ const acceptedSummary = computed(() =>
   accepted.value.size === 1 ? '1 item to apply' : `${accepted.value.size} items to apply`
 )
 
-const keysCount = computed(() => Object.keys(payload.value?.secrets ?? {}).length)
+/** The connection's token is never stored as a key: it is the service's to file, or revoked. */
+const keysCount = computed(
+  () => Object.keys(payload.value?.secrets ?? {}).filter((name) => name !== CONNECTION_TOKEN).length
+)
 
 const keysSummary = computed(() =>
   keysCount.value
@@ -415,26 +419,73 @@ const swallow = async (text: string) => {
 }
 
 /**
+ * An apply is running — a second press meanwhile would take the connection twice, and by then
+ * the transfer may read as "the same vault" and revoke the device just taken — or has run, and
+ * nothing is left to apply. Set before anything is awaited.
+ */
+const busy = ref(false)
+const done = ref(false)
+
+const applyTooltip = computed(() => {
+  if (done.value) return 'Already applied'
+  if (busy.value) return 'Applying…'
+  return accepted.value.size
+    ? "Write these into this vault's settings"
+    : 'Tick something to apply first'
+})
+
+/**
  * Taking a connection that replaces this device's own is asked about first; everything else
  * goes at once. The connection is taken last, after the settings and files are written, so a
  * failure to take it costs nothing else.
  */
 const apply = async () => {
-  if (!payload.value) return
+  if (!payload.value || busy.value || done.value) return
+  busy.value = true
   const takingConnection = acceptedEntries.value.some(
     (entry) => entry.section === CONNECTION_SECTION
   )
   if (takingConnection && standing.value === 'other') {
+    // Still busy: the question is part of this apply, and its answer finishes it.
     switchConfirmed.value = false
     switching.value = true
     return
   }
-  await finish(takingConnection)
+  await run(takingConnection)
 }
 
 const closeSwitch = () => {
+  if (!switching.value) return
   switching.value = false
-  void finish(switchConfirmed.value)
+  void run(switchConfirmed.value)
+}
+
+const run = async (takeConnection: boolean) => {
+  try {
+    await finish(takeConnection)
+  } finally {
+    busy.value = false
+  }
+}
+
+/**
+ * The device made for this side, when nobody is going to take it: the modal closed without
+ * Apply while this device already syncs that vault — scanning again would say the same — or
+ * while a switch to it was left unticked. Not while an apply runs, which settles it itself.
+ */
+const release = () => {
+  const got = arrived.value
+  if (done.value || busy.value || got === null || got.connection === null) return
+  const unticked = !acceptedEntries.value.some((entry) => entry.section === CONNECTION_SECTION)
+  if (standing.value === 'same' || (standing.value === 'other' && unticked)) {
+    done.value = true
+    void syncService.revokeTransferred(got.connection, got.token)
+  }
+}
+
+const onClose = () => {
+  release()
+  emit('close')
 }
 
 /**
@@ -442,25 +493,42 @@ const closeSwitch = () => {
  * is already synced here, or the person chose not to — is revoked, so the server keeps no device
  * nobody holds. Only what the sender syncs, with no device, is a starting point for a device that
  * syncs nothing yet.
+ *
+ * `stand` is how the transfer stood when the apply began: the adopt saves a connection, and read
+ * again after it the transfer would stand as "the same vault".
  */
-const applyConnection = async (take: boolean): Promise<string | undefined> => {
+const applyConnection = async (
+  take: boolean,
+  stand: typeof standing.value
+): Promise<string | undefined> => {
   const got = arrived.value
   if (got === null) return undefined
   if (got.connection === null) {
-    if (!take || standing.value !== 'none') return undefined
+    if (!take || stand !== 'none') return undefined
     const own = syncService.connection.value
     await syncService.updateConnection({
       selective: { ...got.selective, maxFileBytes: own.selective.maxFileBytes },
     })
     return 'What to sync is set; sign in on the Sync tab to start.'
   }
-  if (take && (standing.value === 'none' || standing.value === 'other')) {
+  if (take && (stand === 'none' || stand === 'other')) {
+    const before = syncService.connection.value
+    const left = before.vaultName || before.vaultId
     try {
       await syncService.adoptTransferred(got.connection, got.token, got.selective)
       return `This device now syncs ${got.connection.vaultName || got.connection.vaultId}.`
     } catch (error) {
       void syncService.revokeTransferred(got.connection, got.token)
-      return `The sync connection was not taken: ${error instanceof Error ? error.message : String(error)}`
+      const reason = error instanceof Error ? error.message : String(error)
+      // The switch disconnects first: a failure after that leaves this device syncing nothing.
+      const now = syncService.connection.value
+      if (stand === 'other' && now.vaultId === '' && now.serverUrl === '') {
+        return (
+          `This device was disconnected from ${left}, and the sync connection that arrived was ` +
+          `not taken: ${reason}. Sign in on the Sync tab.`
+        )
+      }
+      return `The sync connection was not taken: ${reason}`
     }
   }
   void syncService.revokeTransferred(got.connection, got.token)
@@ -469,6 +537,7 @@ const applyConnection = async (take: boolean): Promise<string | undefined> => {
 
 const finish = async (takeConnection: boolean) => {
   if (!payload.value) return
+  const stand = standing.value
 
   const chosen = acceptedEntries.value.filter((entry) => entry.section !== CONNECTION_SECTION)
   const config = AbeleConfig.getInstance()
@@ -499,7 +568,8 @@ const finish = async (takeConnection: boolean) => {
   // with them rather than the one this vault had a moment ago.
   const files = await applyFiles(GlobalStore.getInstance().app, filesOnly(chosen), scriptsFolder())
 
-  const connection = await applyConnection(takeConnection)
+  const connection = await applyConnection(takeConnection, stand)
+  done.value = true
 
   emit('applied', {
     items: settingsOnly(chosen).length + files.written,
@@ -650,7 +720,11 @@ const pixels = (bitmap: ImageBitmap, from: Rect): ImageData | null => {
   return context.getImageData(0, 0, size.width, size.height)
 }
 
-onBeforeUnmount(stopCamera)
+onBeforeUnmount(() => {
+  stopCamera()
+  // Closed by the parent rather than by the person — the settings closing — is closed too.
+  release()
+})
 </script>
 
 <style lang="scss">

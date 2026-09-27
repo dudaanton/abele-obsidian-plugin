@@ -56,10 +56,16 @@
       >
         <Setting
           name="This device's name"
-          desc="What the vault's device list calls this device. You can change it before choosing."
+          desc="The name the server will know this device by. You can change it before choosing."
         >
           <Input :model-value="deviceName" :disabled="busy" @update:model-value="onDeviceName" />
         </Setting>
+
+        <!--
+          A device this one left while offline is told first, for up to ten seconds; said here so
+          the wait does not read as a hang.
+        -->
+        <p v-if="busy && telling" class="abele-connect-card__hint">{{ telling }}</p>
 
         <CardGrid wide>
           <Card
@@ -157,6 +163,8 @@ const chosen = ref<string | null>(null)
 /** Once a person has typed a name, no vault they click renames their device under them. */
 const nameEdited = ref(false)
 const busy = ref(false)
+/** Who the enrolment is telling that a device left, while it waits on that. */
+const telling = computed(() => sync().telling.value)
 const error = ref<string | null>(null)
 
 /** What the address row says while nothing is wrong with it. */
@@ -264,3 +272,11 @@ async function createVault(): Promise<void> {
   })
 }
 </script>
+
+<style lang="scss">
+.abele-connect-card__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+</style>
