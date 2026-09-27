@@ -12,6 +12,14 @@
  */
 import { reactive } from 'vue'
 import { filterCriteria, type NoteFilter, type PickReturns } from '@/helpers/noteFilter'
+import {
+  chartBlock,
+  galleryBlock,
+  mapBlock,
+  mermaidBlock,
+  type GalleryBlockOptions,
+  type GalleryImage,
+} from '@/helpers/markdownBlocks'
 
 export type Handler = (...args: any[]) => unknown
 
@@ -283,6 +291,32 @@ export class Markdown extends ViewNode {
   ) {
     super()
     this.assign(typeof arg === 'string' ? { text: arg } : arg)
+  }
+
+  // What a note draws, as a node. Each is a `Markdown` holding the block a person would type
+  // in a note, so it goes through the same renderer and the same components the note's block
+  // does, and is let go with the view in the same way. `text` is that block: assign another
+  // factory's `text` to change what is shown.
+
+  /** `::abele-gallery::` of vault files (by name or path) or addresses, with captions. */
+  static gallery(images: GalleryImage[], options: GalleryBlockOptions & BaseProps = {}): Markdown {
+    const { layout, height, bg, ...props } = options
+    return new Markdown({ ...props, text: galleryBlock(images, { layout, height, bg }) })
+  }
+
+  /** An `abele-chart` block of the config `chart_docs` describes. */
+  static chart(config: object, props: BaseProps = {}): Markdown {
+    return new Markdown({ ...props, text: chartBlock(config) })
+  }
+
+  /** A Mermaid diagram of the source. */
+  static mermaid(source: string, props: BaseProps = {}): Markdown {
+    return new Markdown({ ...props, text: mermaidBlock(source) })
+  }
+
+  /** An `abele-map` block: `points`, `lines`, `route`, `center`, `zoom`, `height`. */
+  static map(config: object, props: BaseProps = {}): Markdown {
+    return new Markdown({ ...props, text: mapBlock(config) })
   }
 }
 

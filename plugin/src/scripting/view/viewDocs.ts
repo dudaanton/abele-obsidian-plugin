@@ -142,12 +142,29 @@ v.body = new Stack([new Section({ title: 'Today', desc: 'What is due', children:
 
 | Class | Props |
 |---|---|
-| \`Markdown(text \\| { text?, file?, filePath?, onClick? })\` | Obsidian's own renderer: links, images, \`![[embeds]]\` and \`::abele-gallery::\` blocks all work. \`file\` renders that note and re-renders when it changes; \`filePath\` is what relative links in \`text\` resolve against — give it the note's path when \`text\` came out of a note. |
+| \`Markdown(text \\| { text?, file?, filePath?, onClick? })\` | Obsidian's own renderer, as a note draws: links, images, \`![[embeds]]\`, callouts, math, \`::abele-gallery::\`, \`mermaid\`, \`abele-chart\` and \`abele-map\` blocks all work. \`file\` renders that note and re-renders when it changes; \`filePath\` is what relative links in \`text\` resolve against — give it the note's path when \`text\` came out of a note. |
 | \`Text(text \\| { text, muted?, small? })\` | A paragraph. |
 | \`Image({ src, alt?, fit?, onClick? })\` | \`src\` is a vault path, the name a note links a file by (\`poster.jpg\`, as in \`![[poster.jpg]]\`) or a URL; \`fit\`: \`contain\` (default) \`cover\` \`natural\`. |
 | \`Table({ columns, rows, onRowClick? })\` | \`columns: string[] \\| { key, label }[]\`; \`rows: (string \\| node)[][] \\| Record<string, string \\| node>[]\`. |
 | \`Badge(text \\| { text, accent? })\` | A small label. |
 | \`EmptyState(text)\` | What to say when there is nothing to show. |
+
+\`Markdown.gallery(images, { layout?, height?, bg? })\`, \`Markdown.chart(config)\`,
+\`Markdown.mermaid(source)\` and \`Markdown.map(config)\` write that block from data and return a
+\`Markdown\` node — the same gallery, chart, diagram and map a note shows. \`images\` are vault
+names or paths, web addresses or \`{ src, caption }\`; a chart's config is \`chart_docs\`'s, a map's
+is the \`abele-map\` block's, both as objects. The node's \`text\` is the block: to change it, assign
+another one's (\`node.text = Markdown.chart(next).text\`). \`query_docs\` section \`display\` lists
+every block with an example.
+
+\`\`\`js
+v.body = [
+  Markdown.gallery(['Trip/day-1.jpg', { src: 'Trip/day-2.jpg', caption: 'Harbour' }]),
+  Markdown.chart({ type: 'bar', xLabels: ['Mon', 'Tue'], series: [{ name: 'Hours', data: [3, 5] }] }),
+  Markdown.mermaid('graph LR\\n  Idea --> Done'),
+  Markdown.map({ points: [{ coordinates: '56.9496, 24.1052', label: 'Old Town' }] }),
+]
+\`\`\`
 
 \`\`\`js
 const table = new Table({ columns: ['Note', 'Words'], rows: [['Inbox.md', '412']] })

@@ -430,6 +430,38 @@ describe('nodes', () => {
     expect(w.text()).toContain('Done')
   })
 
+  it('shows a gallery, a chart, a diagram and a map as the blocks a note would hold', async () => {
+    const v = make()
+    v.body = [
+      Markdown.gallery(['a.png', { src: 'b.png', caption: 'Bee' }], { layout: 'slider' }),
+      Markdown.chart({ type: 'bar', series: [{ data: [1, 2] }] }),
+      Markdown.mermaid('graph TD; A-->B'),
+      Markdown.map({ points: ['56.9496, 24.1052'] }, { id: 'where' }),
+    ]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+    await flushPromises()
+
+    const texts = w.findAllComponents(KitMarkdown).map((m) => m.props('text') as string)
+    expect(texts[0]).toBe('::abele-gallery{layout=slider}::\n![[a.png]]\n![[b.png|Bee]]')
+    expect(texts[1].startsWith('```abele-chart\n')).toBe(true)
+    expect(texts[2]).toBe('```mermaid\ngraph TD; A-->B\n```')
+    expect(texts[3].startsWith('```abele-map\n')).toBe(true)
+    expect(v.find('where')?.type).toBe('markdown')
+  })
+
+  it('changes a chart when its text is given another', async () => {
+    const v = make()
+    const chart = Markdown.chart({ series: [{ data: [1] }] })
+    v.body = [chart]
+    const w = mount(ScriptViewComponent, { props: { model: live(v) } })
+    await flushPromises()
+
+    chart.text = Markdown.chart({ series: [{ data: [9] }] }).text
+    await nextTick()
+
+    expect(w.findComponent(KitMarkdown).props('text')).toContain('9')
+  })
+
   it('renders a note for Markdown({ file }) and re-renders when it changes', async () => {
     const v = make()
     v.body = [new Markdown({ file: 'Notes/a.md' })]
