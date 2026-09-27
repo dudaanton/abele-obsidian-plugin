@@ -10,6 +10,7 @@ import type {
 import {
   serverUrlProblem,
   type ChangeItem,
+  type DeviceInfo,
   type JoinPrefer,
   type VaultInfo,
 } from '@abele/sync-protocol'
@@ -531,6 +532,33 @@ export class SyncService {
   /** Stop waiting to tell a server that a device left: see `Revoker.forget`. */
   forgetPendingRevoke(tokenId: string): void {
     this.enrolment.revoker.forget(tokenId)
+  }
+
+  /**
+   * The live devices of this account on this vault, this one included, oldest first — asked of
+   * the server with this device's own token, so no password is needed. Null on a device with no
+   * engine running, which has no server to ask.
+   */
+  async listDevices(): Promise<DeviceInfo[] | null> {
+    const client = this.runner.client()
+    if (client === null) return null
+    return client.listVaultDevices()
+  }
+
+  /**
+   * Revoke another device of this account on this vault: the server stops accepting its token at
+   * once, and its files stay where they are. Never this device, which leaves by Disconnect — that
+   * forgets its token too, where a revoke from the list would leave it holding one nobody takes.
+   * A device already gone is not an error: the list is read again either way.
+   */
+  async revokeDevice(deviceId: string): Promise<void> {
+    if (deviceId === this.connection.value.deviceId) {
+      throw new Error('this device leaves by Disconnect, not from the device list')
+    }
+    const client = this.runner.client()
+    if (client === null) throw new Error('this device is not connected to a server')
+    await client.revokeVaultDevice(deviceId)
+    this.note(`revoked device ${deviceId}; the server no longer accepts it`)
   }
 
   /** Have the server make a device for a transfer to hand over: see `Enrolment.enrolSibling`. */
