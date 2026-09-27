@@ -487,6 +487,20 @@ describe('Modal', () => {
   })
 
   /**
+   * A short dialog that still wants Obsidian's own sheet on a phone — a question with a few
+   * choices — asks for `mod-lg` alone. Their rules for it are all phone rules, so on a desktop it
+   * stays the dialog it was, sized to what it holds rather than stretched to `tall`'s height.
+   */
+  it('asks for Obsidian sheet alone, on a dialog that is neither tall nor full', () => {
+    const sheet = mount(ObsidianModal, { props: { phoneSheet: true } })
+
+    expect(classOf(sheet)).toContain('mod-lg')
+    expect(classOf(sheet)).not.toContain('abele-modal_tall')
+    expect(classOf(sheet)).not.toContain('abele-modal_full')
+    expect(classOf(sheet)).not.toContain('abele-modal_wide')
+  })
+
+  /**
    * A rule of ours has to be able to name the element this component appends. Reaching it as
    * `.modal-content > div` would make every such rule depend on the shape of the DOM the kit
    * happens to build.

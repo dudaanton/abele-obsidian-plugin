@@ -27,6 +27,13 @@ const props = defineProps<{
    * full screen.
    */
   size?: ShellSize
+  /**
+   * Obsidian's own `mod-lg` and nothing else, for a short dialog that should still be their sheet
+   * on a phone — full width, pinned to the bottom, its top edge and close button placed by their
+   * rules. Every rule they have for `mod-lg` is a phone rule, so on a desktop the dialog stays
+   * sized to what it holds; `tall` and `full` ask for it already.
+   */
+  phoneSheet?: boolean
 }>()
 
 const modal = ref<ShellModal | null>(null)
@@ -52,6 +59,7 @@ onBeforeMount(() => {
     }
   })(app, { title: props.title, size: props.size ?? 'default', footer: !!slots.footer })
 
+  if (props.phoneSheet) modal.value.modalEl.addClass('mod-lg')
   const el = modal.value.bodyEl
   el.id = id.value
   wrapper.value = el
