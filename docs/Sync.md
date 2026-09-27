@@ -354,6 +354,7 @@ The status bar item is hidden on a device that is not connected. Otherwise it sa
 | Syncing | A sync is running. The tooltip says how many changes it found to send. |
 | Waiting (3) | A sync has finished, and it left these changes for the next one — they changed again while it was sending them, or the server refused them. The log says which. |
 | Deletions held (312) | Many files were deleted on this device at once, and their deletions are held back until you decide. See [When many files disappear at once](#when-many-files-disappear-at-once). |
+| Choose how to join | A transfer connected this device to a vault, and both hold files. Nothing syncs until the join dialog on the Sync tab is answered. See [Joining a vault that already has files](#joining-a-vault-that-already-has-files). |
 | Paused | **Pause** was pressed. Nothing moves until **Resume**, and that survives a restart. |
 | Offline | The server cannot be reached. It is tried again on its own. |
 | Sync error | Something failed. The tooltip, and **Last failure** in the Sync tab, say what. A device the server no longer accepts says to connect again from the Sync settings. |

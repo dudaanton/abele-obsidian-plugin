@@ -139,10 +139,16 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 
 - Sync now · Pause or resume sync
 - Open sync log — also a click on the sync item in the status bar
-- Open deleted files — what was deleted anywhere in the vault, each with a Restore
+- Open deleted files — what was deleted anywhere in the vault, each with a Restore, and
+  *Restore all deleted since…* for everything deleted since a moment
 - *Open version history (Abele)* when a file is right-clicked, while the device is connected
 
-Connecting, disconnecting and choosing what a device syncs are on the Sync tab of the settings.
+Connecting, disconnecting and choosing what a device syncs are on the Sync tab of the settings,
+and so are the devices on the vault. Three dialogs open by themselves rather than from a command:
+the join question when a device connects to a vault that already has files (from the vault it was
+picked on, or from the Sync tab for a device a transfer connected), *Deletions held back* when many
+files were deleted at once on this device, and *Settings changed on another device* when Obsidian
+settings arrived. The last two stay on the Sync tab until they are answered.
 
 ## Other
 

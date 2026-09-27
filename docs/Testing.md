@@ -606,6 +606,36 @@ contracts, not an exhaustive inventory; `tests/e2e/*.e2e.test.ts` is the current
   menu's version history, read off the editor; a deleted note comes back through the deleted-files
   command; and the plugin logged no error throughout. Needs more than the rest — see
   [The sync suite](#the-sync-suite).
+- `syncPhone.e2e.test.ts` — **the sync screens on a phone**: in a vault of its own, filled with a
+  note of fifty versions, forty deleted files and a long log, the history, its diff and its restore
+  confirmation, the deleted files, the log and the Sync tab paired and not, at 390 and 320 wide under
+  the phone's emulation and with their focus rings on the desktop. Pictures in `/tmp/abele-phone/`.
+- `syncJoin.e2e.test.ts` — **joining a vault that already has files**: the question asked as a
+  download, an upload, a choice or a reconnect; **Merge both** keeps both texts on both disks;
+  **This device wins** puts this device's note everywhere with the server's in its history, while
+  Abele's own settings stay the vault's; **The server wins**, answered in the join dialog from the
+  sign-in card, keeps the server's note with this device's in history; and a transfer's receipt
+  waits in **Choose how to join** until the Sync tab's dialog is answered.
+- `syncDeletes.e2e.test.ts` — **many files deleted at once**: sixty deletes held, **Put them back**
+  and **Delete everywhere** from the dialog, **Restore all deleted since** the last hour, two
+  Restores pressed back to back, a hold answered twice on the Sync tab while paused, **Sync now**
+  while paused, and no empty folder left or offered after a rename on the other device.
+- `syncSettings.e2e.test.ts` — **settings that travel**: Abele's settings file reaches the other
+  device without the chat index and a change from there is reloaded once; Obsidian's settings from
+  the other device are asked about, and **Keep this device's**, **Later** then **Apply and
+  reload**, and **Reload now** each do what they say, with the reload counted through
+  `settingsPrompt.reloader` rather than run; a local change to a waiting file goes out instead.
+- `syncDevices.e2e.test.ts` — **the devices on a vault**: the Sync tab's list with a transfer's
+  device marked as enrolled by this one, **Revoke** on the daemon (its next sync is refused),
+  **Disconnect** telling the server while the transfer's device stays enrolled, and a Disconnect
+  with the server down waiting to tell it until **Forget without telling the server**.
+- `syncDialogs.e2e.test.ts` — **the phase-3b sync screens on a phone**: the held-deletes dialog
+  and its confirmation, the settings question, **Restore all deleted since** in each preset and
+  its confirmation, the Sync tab holding all of it with the device list and the Revoke
+  confirmation, the join dialog as a sign-in and a transfer open it, and the waiting-to-tell line
+  and its confirmation — at 390 and 320 wide under the phone's emulation, with their rings on the
+  desktop too. Also, as a phone, that a note made in front reaches the server with nothing else
+  done, and one made just before the app leaves the front too. Pictures in `/tmp/abele-phone/`.
 
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
 "mega group" to expose work that grows with the transitive closure. The former multi-minute
@@ -868,6 +898,9 @@ instead: `taskDatePhone` taps the time field and measures the system keyboard.
 
 ### The sync suite
 
+What follows is said of `sync.e2e.test.ts`, and holds for every `sync*.e2e.test.ts`: each makes a
+server, an account, daemon folders and a vault of its own, and takes them away again.
+
 `sync.e2e.test.ts` does not drive the vault the rest of the tier drives. It pairs a device with a
 server and writes files, which is not something to do to anyone's notes, so it makes a vault for
 the run and takes it away again.
@@ -910,6 +943,23 @@ closed; the folder is deleted; and the vault is taken off Obsidian's vault list,
 message the vault switcher's **Remove from list** sends. A window that will not close is left open
 with its folder, and a warning names the path: close the window, remove the vault from the
 switcher, then delete the folder.
+
+The other sync files differ in a few ways worth knowing before a run:
+
+- **Sign-ins are spaced out.** The server lets one address sign in ten times a minute, and a
+  daemon's `init` counts as much as the plugin's sign-in. `syncJoin` signs in about eight times,
+  so it waits between them (`beforeSignIn` in `tests/e2e/helpers/syncDriver.ts`) and takes a
+  couple of minutes.
+- **Some let part of the config folder through.** `syncJoin` lets Abele's own `data.json` sync;
+  `syncSettings` and `syncDialogs` also let `app.json`, `hotkeys.json` or other plugins'
+  `data.json` through. `main.js` stays out everywhere.
+- **The questions need the app in front.** The held-deletes and settings dialogs are asked only
+  while the page is visible, and the test window sits behind everything. The suites make the page
+  say it is (`SyncDriver.inFront`) and undo it at the end.
+- **`syncDevices` and `syncDialogs` kill their server part way,** for a Disconnect nobody answers;
+  those cases come last. A token kept to tell that server is let go in `afterAll`.
+- **`syncDialogs` turns its window into a phone** under the same reload lock as `syncPhone`
+  (`tests/e2e/helpers/phoneWindow.ts`), and runs for several minutes.
 
 Two things are left behind on purpose, as not worth the machinery that would avoid them:
 
