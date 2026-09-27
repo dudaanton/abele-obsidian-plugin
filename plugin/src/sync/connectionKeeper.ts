@@ -197,6 +197,10 @@ export class ConnectionKeeper {
    * move out of `data.json` must never run over it. The selective settings are filled out the
    * way a read fills them, so what the engine is built on now is what the next launch reads —
    * whoever wrote them, the agent included.
+   *
+   * Read back after it is written (pi review #6): a record local storage did not keep throws,
+   * and what is shown stays what is stored — a phone that refused the write must not sync, or
+   * show a pause, for as long as the app runs and find something else at the next start.
    */
   save(patch: ConnectionPatch): void {
     const merged = { ...this.connection.value, ...patch }
@@ -205,10 +209,26 @@ export class ConnectionKeeper {
       selective: selectiveFrom(merged.selective, Platform.isMobile),
       migrated: true,
     }
-    if (this.storage !== null) writeConnection(this.storage, next)
+    if (this.storage !== null) this.store(this.storage, next)
     else console.debug('[abele-sync] the connection changed before local storage was read')
     this.connection.value = next
     this.damaged = null
+  }
+
+  /** Writes the record and reads it back; throws, saying so in the log, when it did not take. */
+  private store(storage: LocalStorage, next: DeviceConnection): void {
+    let failure: string | null = null
+    try {
+      writeConnection(storage, next)
+      const back = JSON.stringify(storage.loadLocalStorage(CONNECTION_KEY))
+      if (back !== JSON.stringify(next)) failure = 'what was read back is not what was written'
+    } catch (error) {
+      failure = error instanceof Error ? error.message : String(error)
+    }
+    if (failure === null) return
+    const line = `this device could not save its connection (${failure}), so nothing was changed`
+    this.note(line)
+    throw new Error(line.charAt(0).toUpperCase() + line.slice(1) + '.')
   }
 
   /**

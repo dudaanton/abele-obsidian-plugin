@@ -104,7 +104,13 @@ export function finishJoin(host: JoinHost, join: JoinState): void {
   const connection = host.connection()
   const now = connection.join
   if (now === null || now.ask || now.vaultId !== join.vaultId) return
-  host.save({ join: null })
+  try {
+    host.save({ join: null })
+  } catch {
+    // Not kept, so the join is still open, and the next run that gets through tries again; the
+    // keeper has said why in the log.
+    return
+  }
   const vault = connection.vaultName || join.vaultId
   host.note(`joined ${vault}; the choice of which side wins is done with`)
   new Notice(

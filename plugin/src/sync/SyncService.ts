@@ -1,4 +1,4 @@
-import { Platform, type App } from 'obsidian'
+import { Notice, Platform, type App } from 'obsidian'
 import { ref, type Ref } from 'vue'
 import type { DeleteDecision, HeldDelete, StateEntry, VaultClient } from '@abele/sync-core'
 import type { ChangeItem, DeviceInfo, JoinPrefer, VaultInfo } from '@abele/sync-protocol'
@@ -356,17 +356,25 @@ export class SyncService {
    * reconcile runs after that build and puts the engine where the tab says it is.
    */
   pause(): void {
-    this.keeper.save({ paused: true })
-    this.runner.pause()
-    this.note('paused')
-    void this.serialise(() => this.runner.reconcile())
+    this.setPaused(true)
   }
 
   /** Sync again, and forget a token failure so the triggers are taken back. */
   resume(): void {
-    this.keeper.save({ paused: false })
-    this.runner.resume()
-    this.note('resumed')
+    this.setPaused(false)
+  }
+
+  /** A switch local storage would not keep changes nothing, and says so (pi review #6). */
+  private setPaused(paused: boolean): void {
+    try {
+      this.keeper.save({ paused })
+    } catch (error) {
+      new Notice(error instanceof Error ? error.message : String(error))
+      return
+    }
+    if (paused) this.runner.pause()
+    else this.runner.resume()
+    this.note(paused ? 'paused' : 'resumed')
     void this.serialise(() => this.runner.reconcile())
   }
 

@@ -191,8 +191,7 @@ export class Enrolment {
 
       const held = this.host.connection().deviceTokenId
       const tokenId = isDeviceSecretId(held) ? held : newSecretId()
-      secrets().device.set(tokenId, enrolled.device_token)
-      dropped = this.enrolAs(app, {
+      dropped = this.enrolAs(app, enrolled.device_token, {
         serverUrl: accountUrl,
         vaultId,
         vaultName,
@@ -254,8 +253,7 @@ export class Enrolment {
     )
 
     const tokenId = newSecretId()
-    secrets().device.set(tokenId, token)
-    const dropped = this.enrolAs(app, {
+    const dropped = this.enrolAs(app, token, {
       serverUrl,
       vaultId: arrived.vaultId,
       vaultName: arrived.vaultName,
@@ -361,6 +359,7 @@ export class Enrolment {
    */
   private enrolAs(
     app: App,
+    token: string,
     enrolled: {
       serverUrl: string
       vaultId: string
@@ -373,20 +372,31 @@ export class Enrolment {
     }
   ): string | null {
     const { tokenId, selective, join, ...where } = enrolled
+    const before = secrets().device.get(tokenId)
+    secrets().device.set(tokenId, token)
     let dropped: string | null = null
     const ledger = readLedgerId(app)
     if (ledger.stateId === '' || ledger.vaultId !== where.vaultId) {
       dropped = ledger.stateId === '' ? null : ledger.stateId
       writeLedgerId(app, { stateId: newStateId(), vaultId: where.vaultId })
     }
-    this.host.saveConnection({
-      ...where,
-      enrolledUrl: where.serverUrl,
-      deviceTokenId: tokenId,
-      paused: false,
-      join,
-      ...(selective === undefined ? {} : { selective }),
-    })
+    try {
+      this.host.saveConnection({
+        ...where,
+        enrolledUrl: where.serverUrl,
+        deviceTokenId: tokenId,
+        paused: false,
+        join,
+        ...(selective === undefined ? {} : { selective }),
+      })
+    } catch (error) {
+      // Not saved, so not enrolled here: the keychain and the ledger go back to what they were
+      // (pi review #6). The server keeps the device, which the device list can revoke.
+      secrets().device.set(tokenId, before)
+      writeLedgerId(app, ledger)
+      this.host.note(`the server made ${where.deviceName}, but this device did not keep it`)
+      throw error
+    }
     this.host.note(`enrolled as ${where.deviceName} on vault ${where.vaultName || where.vaultId}`)
     return dropped
   }
