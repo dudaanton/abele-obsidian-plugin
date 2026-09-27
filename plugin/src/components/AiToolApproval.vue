@@ -84,6 +84,23 @@
       <pre class="abele-tool-approval__code"><code>{{ params.content }}</code></pre>
     </template>
 
+    <!-- write_settings: the setting, what it holds → what it would hold, and what that moves -->
+    <template v-else-if="message.toolName === 'write_settings' && settingsWrite">
+      <div class="abele-tool-approval__path">{{ settingsWrite.path }}</div>
+      <div class="abele-tool-approval__move">
+        <span class="abele-tool-approval__before">{{ settingsWrite.before }}</span>
+        <span class="abele-tool-approval__arrow">→</span>
+        <span class="abele-tool-approval__after">{{ settingsWrite.after }}</span>
+      </div>
+      <div v-if="settingsWrite.warning" class="abele-tool-approval__warning">
+        <Icon icon="alert-triangle" />
+        <span>{{ settingsWrite.warning }}</span>
+      </div>
+      <div v-else-if="settingsWrite.deviceOnly" class="abele-tool-approval__note">
+        Only this device.
+      </div>
+    </template>
+
     <!-- Fallback: readable key-value -->
     <template v-else>
       <div v-for="(val, key) in params" :key="key" class="abele-tool-approval__param">
@@ -164,11 +181,15 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { TFile } from 'obsidian'
 import { WRITE_TOOLS, DECK_WRITE_TOOLS } from '@/ai/types'
 import type { ChatMessage } from '@/ai/types'
+<<<<<<< HEAD
 import { prepareWordChange } from '@/word/vaultAdapter'
 import type { WordEdit } from '@/word/edit'
 import { prepareWorkbookChange } from '@/spreadsheet/vaultAdapter'
 import type { WorkbookEdit } from '@/spreadsheet/edit'
 import { prepareDeckCreate, prepareSlideEdit, type SlideEdit } from '@/slides/core/edit'
+=======
+import { describeSettingsWrite } from '@/ai/tools/SettingsTools'
+>>>>>>> b700e6a9 (feat(sync): the settings tools reach this device's connection, and the write_settings approval shows before, after and where the token goes)
 
 const props = defineProps<{
   message: ChatMessage
@@ -307,6 +328,8 @@ const headerText = computed(() => {
       return 'Copy file'
     case 'eval_js':
       return 'Execute JavaScript'
+    case 'write_settings':
+      return 'Change a setting'
     default:
       return `Execute ${props.message.toolName}`
   }
@@ -347,6 +370,7 @@ watch(
   { immediate: true }
 )
 
+<<<<<<< HEAD
 const wordPreview = ref<{ old: string; new: string } | null>(null)
 const wordPreviewError = ref('')
 let wordPreviewVersion = 0
@@ -424,6 +448,18 @@ watch(
   },
   { immediate: true }
 )
+=======
+/**
+ * What a `write_settings` call would change, read the way the tool itself reads it — so the
+ * card cannot show one value and the tool report another. Null for any other tool.
+ */
+const settingsWrite = computed(() => {
+  if (props.message.toolName !== 'write_settings') return null
+  const { path, value } = params.value
+  if (typeof path !== 'string') return null
+  return describeSettingsWrite(path, typeof value === 'string' ? value : JSON.stringify(value))
+})
+>>>>>>> b700e6a9 (feat(sync): the settings tools reach this device's connection, and the write_settings approval shows before, after and where the token goes)
 
 const parseError = ref('')
 
@@ -570,6 +606,26 @@ const toggleEdit = () => {
 
 .abele-tool-approval__arrow {
   color: var(--text-faint);
+}
+
+.abele-tool-approval__before,
+.abele-tool-approval__after {
+  word-break: break-all;
+}
+
+.abele-tool-approval__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+  font-size: var(--font-small);
+  color: var(--text-warning);
+  margin-bottom: var(--size-4-2);
+}
+
+.abele-tool-approval__note {
+  font-size: var(--font-small);
+  color: var(--text-muted);
+  margin-bottom: var(--size-4-2);
 }
 
 .abele-tool-approval__param {

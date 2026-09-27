@@ -251,7 +251,13 @@ connecting again needs the password — and the switches under **What this devic
 what it takes. While the device holds a token its server address cannot be pointed at
 another server — the token goes only to the server that minted it — so moving it means
 **Disconnect** and a new sign-in; the address it enrolled on and the revokes still waiting to be
-told are not settings at all, and are never written from outside. A transfer can also set it: its **Sync connection** section, sent with keys, gives
+told are not settings at all, and are never written from outside. `read_settings` and `write_settings` reach it too, under `sync`: `sync.serverUrl`, `sync.vaultId`,
+`sync.deviceId`, `sync.deviceTokenId`, `sync.deviceName`, `sync.paused` and `sync.selective` with
+everything in it (`sync.selective.images`, `sync.selective.maxFileBytes`, …). A write there changes
+this device only, goes through the same checks as the Sync tab — an address it refuses, a keychain
+name it never uses or a new server while a token is held comes back as the reason and nothing
+changes — and its approval says where the token would be sent when the field decides that.
+A transfer can also set it: its **Sync connection** section, sent with keys, gives
 the other device a device of its own on the same vault. A `data.json` that still names a server or a vault — written by an older version of
 Abele — has those fields dropped when it is read, and they are never written back.
 
