@@ -94,6 +94,8 @@ export interface AbeleSettings {
    * cards for File and Files properties and for `cover`. Off is Obsidian's own drawing.
    */
   propertyWidgets?: boolean
+  /** Property names drawn as a counter: the number with − and + beside it. Empty counts as 0. */
+  counterProperties?: string[]
   /**
    * A panel at the top of the screen showing what the page reports about the on-screen
    * keyboard. For finding out from a phone what no emulator shows; stays on its device.
@@ -291,6 +293,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   halfWidthSidebarsOnTablet: false,
   mermaidViewer: true,
   propertyWidgets: true,
+  counterProperties: [],
   keyboardDiagnostics: false,
   github: { ...DEFAULT_GITHUB_SETTINGS },
   reader: { ...DEFAULT_READER_SETTINGS },
@@ -341,6 +344,7 @@ export class AbeleConfig {
   public halfWidthSidebarsOnTablet: boolean
   public mermaidViewer: boolean
   public propertyWidgets: boolean
+  public counterProperties: string[] = []
   public keyboardDiagnostics: boolean
   public github: GithubSettings
   public reader: ReaderSettings
@@ -665,6 +669,9 @@ export class AbeleConfig {
       settings?.halfWidthSidebarsOnTablet ?? DEFAULT_SETTINGS.halfWidthSidebarsOnTablet
     this.mermaidViewer = settings?.mermaidViewer ?? DEFAULT_SETTINGS.mermaidViewer ?? true
     this.propertyWidgets = settings?.propertyWidgets ?? DEFAULT_SETTINGS.propertyWidgets ?? true
+    this.counterProperties = Array.isArray(settings?.counterProperties)
+      ? settings.counterProperties.filter((name): name is string => typeof name === 'string')
+      : []
     this.keyboardDiagnostics = settings?.keyboardDiagnostics ?? false
     this.github = githubSettingsFrom(settings?.github)
     this.reader = readerSettingsFrom(settings?.reader)
@@ -720,6 +727,7 @@ export class AbeleConfig {
       halfWidthSidebarsOnTablet: this.halfWidthSidebarsOnTablet,
       mermaidViewer: this.mermaidViewer,
       propertyWidgets: this.propertyWidgets,
+      counterProperties: [...this.counterProperties],
       keyboardDiagnostics: this.keyboardDiagnostics,
       github: { ...this.github },
       reader: { ...this.reader },

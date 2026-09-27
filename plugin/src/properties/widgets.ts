@@ -14,6 +14,8 @@
  * - `file` (Obsidian's own, hidden from the type menu until now): a card for the file.
  * - `files` (added here): a list of those cards. Registered for as long as the plugin runs, so a
  *   property of that type never turns "unknown" here; with the setting off it draws as a list.
+ * - a property named in `counterProperties`, drawn as a number or as text (an empty one has no
+ *   type of its own yet): − and + around the number (`counterWidget.ts`).
  *
  * Every patch is guarded. When the table is not there or not the shape it was in 1.13, nothing
  * is patched; when a patched render throws, the stock one draws the row instead.
@@ -23,6 +25,8 @@ import type { App } from 'obsidian'
 import PropertyFiles from '@/components/properties/PropertyFiles.vue'
 import { evaluateAmount } from '@/helpers/calculator'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { counterKeys, counterValue, isCounterKey } from './counter'
+import { renderCounter } from './counterWidget'
 import { fileEntries, isCoverKey } from './values'
 import { walletBalance, type WalletSource } from './wallet'
 
@@ -299,6 +303,11 @@ function renderText(original: Render, el: HTMLElement, value: unknown, ctx: Widg
   return widget
 }
 
+export interface PropertyWidgetsOptions {
+  /** The property names drawn as counters, read each time a row is drawn. */
+  counterKeys?: () => readonly string[]
+}
+
 /**
  * Keeps the originals and puts them back. `apply(true)` patches, `apply(false)` restores, and
  * `destroy` restores and takes the `files` type out again.
@@ -308,7 +317,10 @@ export class PropertyWidgets {
   private filesWidget: TypeWidget | null = null
   private on = false
 
-  constructor(private readonly app: App) {}
+  constructor(
+    private readonly app: App,
+    private readonly options: PropertyWidgetsOptions = {}
+  ) {}
 
   /** Registers the `files` type. False when this Obsidian has no table to register it in. */
   load(): boolean {
@@ -352,8 +364,18 @@ export class PropertyWidgets {
     const table = typeRegistry(this.app)
     if (!table) return
     this.on = true
-    this.patch(table, 'number', renderNumber)
-    this.patch(table, 'text', renderText)
+    this.patch(
+      table,
+      'number',
+      (original, el, value, ctx) =>
+        this.renderCounter(el, value, ctx, 'number') ?? renderNumber(original, el, value, ctx)
+    )
+    this.patch(
+      table,
+      'text',
+      (original, el, value, ctx) =>
+        this.renderCounter(el, value, ctx, 'text') ?? renderText(original, el, value, ctx)
+    )
     this.patch(table, 'file', (_original, el, value, ctx) =>
       renderFiles(el, value, ctx, { multiple: false, type: 'file' })
     )
@@ -367,6 +389,17 @@ export class PropertyWidgets {
         file.reservedKeys = reserved
       })
     }
+  }
+
+  /** A counter's row, or null when the property is not one or holds something not a number. */
+  private renderCounter(el: HTMLElement, value: unknown, ctx: WidgetContext, type: string) {
+    const names = this.options.counterKeys?.() ?? []
+    if (!names.length || !isCounterKey(ctx.key, counterKeys(names))) return null
+    if (counterValue(value) === null) return null
+    forgetBadge(el)
+    mounted.get(el)?.unmount()
+    mounted.delete(el)
+    return renderCounter(el, value, ctx, type)
   }
 
   get active(): boolean {

@@ -287,6 +287,11 @@ if (typeof HTMLElement !== 'undefined' && !('empty' in HTMLElement.prototype)) {
         return buildEl(this.ownerDocument, 'span', { ...normalizeElInfo(info), parent: this })
       },
     },
+    createEl: {
+      value(this: HTMLElement, tag: keyof HTMLElementTagNameMap, info?: ElInfo | string) {
+        return buildEl(this.ownerDocument, tag, { ...normalizeElInfo(info), parent: this })
+      },
+    },
     /** Shows or hides the element, the way Obsidian's does: `display: none` or nothing. */
     toggle: {
       value(this: HTMLElement, show: boolean) {
@@ -360,7 +365,13 @@ if (typeof String !== 'undefined' && !('contains' in String.prototype)) {
  * that window's own document — which is why code that must land in a popout reaches through
  * `ownerDocument.win` instead of calling the global.
  */
-type ElInfo = { cls?: string; text?: string; attr?: Record<string, string>; parent?: Node }
+type ElInfo = {
+  cls?: string
+  text?: string
+  type?: string
+  attr?: Record<string, string>
+  parent?: Node
+}
 
 /** Both forms Obsidian accepts: a bare class name, or the full info object. */
 function normalizeElInfo(info?: ElInfo | string): ElInfo {
@@ -376,6 +387,7 @@ function buildEl<K extends keyof HTMLElementTagNameMap>(
   const el = doc.createElement(tag)
   if (o.cls) el.classList.add(...o.cls.split(' '))
   if (o.text) el.textContent = o.text
+  if (o.type) el.setAttribute('type', o.type)
   if (o.attr) for (const [k, v] of Object.entries(o.attr)) el.setAttribute(k, v)
   if (o.parent) o.parent.appendChild(el)
   return el

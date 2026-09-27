@@ -407,3 +407,111 @@ describe('a wallet’s balance beside a link to it', () => {
     }
   })
 })
+
+describe('a counter property', () => {
+  interface Drawn {
+    setValue(v: unknown): void
+  }
+  const counter = (el: HTMLElement) => el.querySelector<HTMLElement>('.abele-property-counter')
+  const button = (el: HTMLElement, name: 'decrease' | 'increase') =>
+    el.querySelector<HTMLButtonElement>(`.abele-property-counter__${name}`)!
+  const field = (el: HTMLElement) => el.querySelector<HTMLInputElement>('input')!
+
+  beforeEach(() => {
+    widgets.destroy()
+    widgets = new PropertyWidgets(app, { counterKeys: () => ['Reps', 'glasses'] })
+    widgets.load()
+    widgets.apply(true)
+  })
+
+  it('draws a listed number property with − and + beside it', () => {
+    const changes: unknown[] = []
+    const el = draw('number', 4, ctx('reps', changes))
+    expect(counter(el)).not.toBeNull()
+    expect(field(el).value).toBe('4')
+    button(el, 'increase').click()
+    expect(changes).toEqual([5])
+    expect(field(el).value).toBe('5')
+    button(el, 'decrease').click()
+    button(el, 'decrease').click()
+    expect(changes).toEqual([5, 4, 3])
+  })
+
+  it('counts an empty property as 0: + gives 1', () => {
+    const changes: unknown[] = []
+    // An empty property has no type of its own yet, so Obsidian draws it as text.
+    const el = draw('text', null, ctx('glasses', changes))
+    expect(counter(el)).not.toBeNull()
+    expect(field(el).value).toBe('')
+    button(el, 'increase').click()
+    expect(changes).toEqual([1])
+  })
+
+  it('counts an empty number as 0: − gives -1', () => {
+    const changes: unknown[] = []
+    const el = draw('number', null, ctx('reps', changes))
+    button(el, 'decrease').click()
+    expect(changes).toEqual([-1])
+  })
+
+  it('counts on from a number written as text', () => {
+    const changes: unknown[] = []
+    const el = draw('text', '7', ctx('reps', changes))
+    button(el, 'increase').click()
+    expect(changes).toEqual([8])
+  })
+
+  it('leaves a value that is not a number to Obsidian', () => {
+    const el = draw('text', 'many', ctx('reps'))
+    expect(counter(el)).toBeNull()
+    expect(el.querySelector('.stock-text')?.textContent).toBe('many')
+  })
+
+  it('leaves a property not in the list to Obsidian', () => {
+    const el = draw('number', 4, ctx('amount'))
+    expect(counter(el)).toBeNull()
+    expect(field(el).classList.contains('abele-number-calculator')).toBe(true)
+  })
+
+  it('takes a number typed into the field, a sum too, and an emptied field as empty', () => {
+    const changes: unknown[] = []
+    const el = draw('number', 4, ctx('reps', changes))
+    const input = field(el)
+    input.value = '10+2'
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    expect(changes).toEqual([12])
+    expect(input.value).toBe('12')
+    input.value = ''
+    input.dispatchEvent(new FocusEvent('blur'))
+    expect(changes).toEqual([12, null])
+    button(el, 'increase').click()
+    expect(changes).toEqual([12, null, 1])
+  })
+
+  it('puts back what was there when the field holds no number', () => {
+    const changes: unknown[] = []
+    const el = draw('number', 4, ctx('reps', changes))
+    const input = field(el)
+    input.value = 'lots'
+    input.dispatchEvent(new FocusEvent('blur'))
+    expect(changes).toEqual([])
+    expect(input.value).toBe('4')
+  })
+
+  it('shows a value the panel gives it later, and counts on from there', () => {
+    const changes: unknown[] = []
+    const el = host.createDiv({ cls: 'metadata-property-value' })
+    const drawn = table.number.render(el, 4, ctx('reps', changes)) as unknown as Drawn
+    drawn.setValue(9)
+    expect(field(el).value).toBe('9')
+    button(el, 'increase').click()
+    expect(changes).toEqual([10])
+  })
+
+  it('is Obsidian’s own field when drawing is switched off', () => {
+    widgets.apply(false)
+    const el = draw('number', 4, ctx('reps'))
+    expect(counter(el)).toBeNull()
+    expect(field(el).type).toBe('number')
+  })
+})

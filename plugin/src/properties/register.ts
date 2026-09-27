@@ -11,12 +11,21 @@ import { assignFileKeys } from './types'
 import { PropertyWidgets, redrawProperties } from './widgets'
 
 export function registerPropertyWidgets(plugin: Plugin): void {
-  const widgets = new PropertyWidgets(plugin.app)
-  if (!widgets.load()) return
   const config = AbeleConfig.getInstance()
+  const widgets = new PropertyWidgets(plugin.app, {
+    counterKeys: () => config.counterProperties,
+  })
+  if (!widgets.load()) return
+  let counters = config.counterProperties.join('\n')
 
   const sync = (redraw: boolean) => {
     const on = config.propertyWidgets
+    // Another list of counters: the rows on screen are drawn again, with or without buttons.
+    const listed = config.counterProperties.join('\n')
+    if (listed !== counters) {
+      counters = listed
+      if (on && on === widgets.active && redraw) redrawProperties(plugin.app)
+    }
     if (on === widgets.active) return
     widgets.apply(on)
     if (on && plugin.app.workspace.layoutReady) assignFileKeys(plugin.app)

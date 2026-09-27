@@ -1,0 +1,22 @@
+/* A counter's row: Obsidian's own icon buttons tight around its own number field. */
+.abele-property-counter {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--size-2-1);
+  min-width: 0;
+}
+
+/* As wide as the number, so + stays next to it rather than across the row. Outranks the phone's
+   own `.is-mobile input[type="text"] { width: 100% }`. */
+.abele-property-counter .abele-property-counter__value.metadata-input-number {
+  flex: 0 1 auto;
+  width: 6ch;
+  min-width: 4ch;
+  field-sizing: content;
+  text-align: center;
+}
+
+.abele-property-counter .clickable-icon {
+  flex: 0 0 auto;
+}

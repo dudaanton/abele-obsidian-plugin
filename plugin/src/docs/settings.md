@@ -200,7 +200,8 @@ headers, `fullWidthSidebars` widens the sidebars to the whole screen on
 a phone and `halfWidthSidebarsOnTablet` to half of it on a tablet, `mermaidViewer` (on by
 default) draws mermaid blocks with the plugin's zoomable viewer instead of Obsidian's own,
 `propertyWidgets` (on by default) draws some properties itself — a wallet's balance, sums in
-number fields, file cards for File and Files properties and `cover` — and
+number fields, file cards for File and Files properties and `cover` — `counterProperties` lists
+the property names drawn as a counter, the number with − and + beside it, while that is on — and
 `refreshDelay` is how long the plugin waits before rebuilding what a note shows.
 
 `headerButtons` are buttons on notes, each `{ id, name, icon, runs, commandId, scriptName, params,

@@ -173,6 +173,14 @@ describe('settings that arrived later than the transfer did', () => {
     expect(find(entries, 'other', 'other')?.data).toMatchObject({ mermaidViewer: false })
   })
 
+  it('carries the properties drawn as counters', () => {
+    const entries = collectEntries(settings({ counterProperties: ['reps', 'glasses'] }))
+
+    expect(find(entries, 'other', 'other')?.data).toMatchObject({
+      counterProperties: ['reps', 'glasses'],
+    })
+  })
+
   it('carries the GitHub settings and the token they point at', () => {
     const github = {
       enabled: true,

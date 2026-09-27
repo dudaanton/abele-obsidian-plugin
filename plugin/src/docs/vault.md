@@ -184,6 +184,13 @@ it up to date when the file moves: `file: "[[Books/Dune.epub]]"`, `files: ["[[a.
 the file's picture; the value stays plain frontmatter, and without the plugin a Files property
 shows as a raw list.
 
+## Counters
+
+A property named in the `counterProperties` setting is a counter: the plugin draws it with − and
++ beside the number. Its value is a plain number, `reps: 12`; empty or missing counts as 0, so the
+first + writes 1. Write a number, never text, into one; a value that is not a number is shown as
+it is and the buttons leave it alone.
+
 ## Skills and prompts
 
 Notes with `type: abele-skill` or `type: abele-prompt`. A skill teaches an agent how to do

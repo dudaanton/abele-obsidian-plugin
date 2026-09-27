@@ -32,6 +32,16 @@
       <Checkbox :is-enabled="propertyWidgets" @toggle="togglePropertyWidgets" />
     </Setting>
     <Setting
+      name="Counter properties"
+      desc="Comma-separated property names drawn as a number with − and + buttons. An empty value counts as 0. Needs own drawing of properties on."
+    >
+      <Input
+        :model-value="counterProperties"
+        placeholder="e.g. reps, glasses"
+        @update:model-value="updateCounterProperties"
+      />
+    </Setting>
+    <Setting
       name="Keyboard diagnostics"
       desc="Show, at the top of the screen, what the app reports about the on-screen keyboard — for a screenshot when a dialog ends up under it. Stays on this device."
     >
@@ -80,6 +90,7 @@ const mapCoordinatesProperty = ref(config.mapCoordinatesProperty)
 const mapStyleUrl = ref(config.mapStyleUrl)
 const mermaidViewer = ref(config.mermaidViewer)
 const propertyWidgets = ref(config.propertyWidgets)
+const counterProperties = ref((config.counterProperties ?? []).join(', '))
 
 const applyClass = (enabled: boolean) => {
   document.body.classList.toggle('abele-full-width-sidebars', enabled)
@@ -151,6 +162,20 @@ const togglePropertyWidgets = async () => {
   propertyWidgets.value = !propertyWidgets.value
   config.propertyWidgets = propertyWidgets.value
   await config.saveSettings()
+}
+
+// The rows on screen are drawn again by the plugin as the saved list moves.
+const saveCounterProperties = debounce(async (value: string) => {
+  config.counterProperties = value
+    .split(',')
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0)
+  await config.saveSettings()
+}, 500)
+
+const updateCounterProperties = (value: string) => {
+  counterProperties.value = value
+  saveCounterProperties(value)
 }
 
 const toggleKeyboardDiagnostics = async () => {
