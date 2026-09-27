@@ -66,7 +66,11 @@ What each choice does, file by file:
   make this device a copy of the server.
 - Files this device does not sync — its switches, `.abele-sync-ignore`, hidden files, anything over
   its size cap — are not touched on either side, whatever the choice.
-- Obsidian settings that differ are treated like any other file that is not a note.
+- Obsidian settings that differ are treated like any other file that is not a note, except that
+  where the server's copy wins it is not written straight away: it waits for **Reload now**, like
+  any settings change from another device (see [Obsidian settings from another
+  device](#obsidian-settings-from-another-device)). So the first sync of a join ends with that one
+  question when the vault's settings differ from this device's.
 - Abele's own settings file is left out of the join and taken up once it is done, the way it is on
   any device's first contact: the vault's copy wins, and this device's goes to that file's history
   (see [Abele's own settings](#what-syncs)). A new device's defaults never replace the settings
@@ -174,6 +178,35 @@ settings file that arrives unreadable is not loaded; the settings in memory stay
 until a readable one arrives, and a notice says so. Deleting the file does not reset anything —
 the delete reaches every device, and each writes its settings back at its next save, or when
 Abele is closed if that comes first.
+
+### Obsidian settings from another device
+
+Obsidian reads its settings, its hotkeys, its theme and every plugin's `data.json` once, when the
+vault opens. A file changed underneath it is read by nothing, and the next save puts the old
+values back. So a settings change that arrives from another device is not written at once: it
+waits, and a dialog, **Settings changed on another device**, says what arrived — "Obsidian settings
+changed on another device: App settings, Hotkeys, 2 plugins (Dataview, Tasks). Reload Obsidian to
+apply them." — and which device it came from. Everything in the configuration folder waits this
+way: Obsidian's own files, themes and snippets, and every plugin's files, including plugins that
+are not switched on here. Abele's own settings are the one exception; they are applied as they
+arrive, because Abele reloads them itself.
+
+- **Reload now** writes what arrived and reloads Obsidian. A file changed on this device since it
+  arrived is not written: this device's version of it goes to the other devices instead, and the
+  notice says how many. Where Obsidian has no reload command the button says **Apply**, and the
+  notice asks you to restart Obsidian.
+- **Later** leaves everything waiting. It is asked again when Obsidian next starts, or when more
+  settings arrive — not at every sync. Until then the Sync tab shows **Settings waiting (5)** with
+  **Apply and reload** and **Keep this device's**, and the status bar's tooltip says so too.
+- **Keep this device's** sends this device's files to the other devices over what arrived, so they
+  get the same question in turn. It never deletes anything anywhere: a file that only the other
+  device has — a plugin installed there, say — is left there and does not come here, and the
+  notice says how many were left.
+
+Changing settings here before reloading keeps this device's version everywhere: the change is
+sent as usual, and the one that was waiting for that file is dropped, with a line in the log
+("your change to hotkeys.json on this device replaced the one from Laptop"). The command-line
+client has no Obsidian to reload, and writes settings files as they arrive.
 
 These switches only work when the configuration folder is called `.obsidian`. On a device where
 Obsidian was told to use another folder (**Override config folder**, a phone on `.obsidian-mobile`
@@ -302,7 +335,9 @@ The status bar item is hidden on a device that is not connected. Otherwise it sa
 | Offline | The server cannot be reached. It is tried again on its own. |
 | Sync error | Something failed. The tooltip, and **Last failure** in the Sync tab, say what. A device the server no longer accepts says to connect again from the Sync settings. |
 
-Hovering shows the whole status and when the last sync finished. **Abele: Sync now** and
+Hovering shows the whole status and when the last sync finished, and "Settings waiting (5) —
+Apply and reload on the Sync tab." while settings from another device wait
+([Obsidian settings from another device](#obsidian-settings-from-another-device)). **Abele: Sync now** and
 **Abele: Pause or resume sync** are in the command palette too.
 
 ## On a phone

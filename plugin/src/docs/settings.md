@@ -284,6 +284,12 @@ sync until it signs in again. A phone that has not chosen a size cap takes files
 desktop takes everything. Notes and canvases always sync; the config folder syncs only when it is
 `.obsidian`, and other hidden files and folders never sync from the plugin.
 
+Obsidian settings that arrive from another device — anything in the config folder but Abele's own
+settings — are not written until the person answers **Settings changed on another device**
+(**Reload now**, **Later** or **Keep this device's**); until then they wait, and the Sync tab shows
+**Settings waiting**. There is no setting for this: a settings file an agent changes on this device
+goes out as usual, and replaces the one that was waiting for it.
+
 ## Synced keys
 
 Keys and tokens live in each device's own keychain, and a setting only names the slot. With

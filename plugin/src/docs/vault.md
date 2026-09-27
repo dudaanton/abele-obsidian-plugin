@@ -1154,7 +1154,9 @@ while the server could not be told,
 whose token is kept under an `abele-sync-device-revoke-…` keychain name until it is (one that left
 a server on plain http to another machine is never told, and is kept until the person forgets it); under
 `abele-sync-ledger`, the id of the record of what it has synced. That record is outside the vault,
-in Obsidian's IndexedDB, as a database named `abele-sync-<id>`. The device token itself is in the
+in Obsidian's IndexedDB, as a database named `abele-sync-<id>`; it also holds the Obsidian
+settings changes that arrived from other devices and wait for the person to reload or keep this
+device's, so a file in the config folder may be older on disk than on the other devices until then. The device token itself is in the
 keychain — one per vault on a desktop, one for the whole app on a phone. So a copy of the vault, a
 synced `data.json` or a transfer never makes another vault sync as this device or read its record;
 a transfer that carries the connection gives the other device a device of its own, made on the
