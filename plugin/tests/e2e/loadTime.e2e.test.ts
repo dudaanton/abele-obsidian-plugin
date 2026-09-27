@@ -40,7 +40,7 @@
  *
  * Requires Obsidian running with the plugin installed — see docs/Testing.md.
  */
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import {
@@ -51,6 +51,7 @@ import {
   runCli,
   waitForLinkIndex,
   assertWindowDrawn,
+  reloadApp,
 } from './helpers/obsidianCli'
 import { LOAD_MARKS } from '@/helpers/loadMarks'
 
@@ -199,9 +200,21 @@ function probeSource(runs: number): string {
       nums.sort((x, y) => x - y)
       return performance.now() - t
     }
+    // A full collection before every round. Left to itself, what the round before left behind
+    // is collected in the middle of the next one, reading the 30 MB main.js most of all, and a
+    // collection also empties V8's cache of compiled scripts: read + compile came out at 30 ms
+    // (cached, nothing to collect) or at 150-330 ms (collecting) from one reload to the next
+    // (2026-09-27). Collected first, every round reads and compiles main.js afresh, as an app
+    // start does, and the yardstick too runs on a clean heap.
+    const collect = async () => {
+      const cdp = require('@electron/remote').getCurrentWebContents().debugger
+      if (!cdp.isAttached()) cdp.attach('1.3')
+      await cdp.sendCommand('HeapProfiler.collectGarbage')
+    }
     const once = async () => {
       await app.plugins.disablePlugin(id)
       await settle(300, 5000)
+      await collect()
       const yardstickMs = yardstick()
       const t0 = performance.now()
       await app.plugins.enablePlugin(id)
@@ -331,7 +344,9 @@ describe.skipIf(!available)('plugin load time', () => {
     }
     yardstickMs =
       Math.round(
-        median(SCENARIOS.flatMap((name) => result.scenarios[name].samples.map((s) => s.yardstickMs))) * 10
+        median(
+          SCENARIOS.flatMap((name) => result.scenarios[name].samples.map((s) => s.yardstickMs))
+        ) * 10
       ) / 10
     lines.push(
       `  yardstick ${yardstickMs.toFixed(1)} ms` +
@@ -353,6 +368,14 @@ describe.skipIf(!available)('plugin load time', () => {
       writeFileSync(BASELINE_FILE, JSON.stringify(baseline, null, 2) + '\n')
     }
   }, 11 * 60_000)
+
+  // Every plugin reload leaves the instance before it in memory, a development build's the size
+  // of its 30 MB main.js several times over: the probe's sixteen add up to over a gigabyte, and
+  // a second run of this file in the same window ran it out of memory and killed it (2026-09-27).
+  // The window is started again after, so the files after this one begin with a clean heap.
+  afterAll(async () => {
+    if (result) await reloadApp('location.reload()')
+  }, 120_000)
 
   it('reads every phase from the marks the plugin leaves', () => {
     // A mark that never appeared is NaN: the build is older than the marks, or one moved out
