@@ -105,7 +105,7 @@ const reload = async (how: string): Promise<void> => {
 /** Opens the pull request on `section` and measures what reaches past the screen's edge. */
 const measure = (
   web: string,
-  section: 'conversation' | 'files' | 'compare' | 'markdown' | 'home'
+  section: 'conversation' | 'files' | 'compare' | 'markdown' | 'home' | 'list'
 ) =>
   evalAsync<Screen>(`(async () => {
     ${PRELUDE}
@@ -117,18 +117,22 @@ const measure = (
           ? `${web}/compare/${BASE_SHA}...main`
           : section === 'home'
             ? web
-            : section === 'markdown'
-              ? `${web}/blob/main/README.md#L10`
-              : `${web}/pull/42${section === 'files' ? '/files' : ''}`
+            : section === 'list'
+              ? `${web}/pulls`
+              : section === 'markdown'
+                ? `${web}/blob/main/README.md#L10`
+                : `${web}/pull/42${section === 'files' ? '/files' : ''}`
       )}
       const title = ${JSON.stringify(
         section === 'compare'
           ? '...main'
           : section === 'home'
             ? 'widgets'
-            : section === 'markdown'
-              ? 'README.md'
-              : 'Rework the widget loader'
+            : section === 'list'
+              ? 'Pull requests'
+              : section === 'markdown'
+                ? 'README.md'
+                : 'Rework the widget loader'
       )}
       const leaf = githubLeaves()[0] ?? app.workspace.getLeaf(false)
       await leaf.setViewState({ type: 'abele-github', state: { url }, active: true })
@@ -139,6 +143,8 @@ const measure = (
           ? root.querySelectorAll('.abele-github-comment').length > 5
           : ${JSON.stringify(section)} === 'markdown'
             ? root.querySelector('.abele-github-md__block_marked')
+            : ${JSON.stringify(section)} === 'list'
+            ? root.querySelector('.abele-github-list-row')
             : ${JSON.stringify(section)} === 'home'
             ? root.querySelector('[data-list="pulls"] .tree-item-self') &&
               root.querySelector('.abele-github-folder__readme h1') &&
@@ -172,7 +178,7 @@ const measure = (
 
       // On a real phone the harness's host takes the picture (see helpers/phone.ts).
       if (!window.__e2eHost) require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
-      const shot = ${JSON.stringify(SHOTS)} + (['compare', 'markdown', 'home'].includes(${JSON.stringify(section)}) ? '/github-' + ${JSON.stringify(section)} + '.png' : '/github-pull-' + ${JSON.stringify(section)} + '.png')
+      const shot = ${JSON.stringify(SHOTS)} + (['compare', 'markdown', 'home', 'list'].includes(${JSON.stringify(section)}) ? '/github-' + ${JSON.stringify(section)} + '.png' : '/github-pull-' + ${JSON.stringify(section)} + '.png')
       // The first picture after a reload can hang or fail; the measurements stand without it.
       if (window.__e2eHost) report.shot = await window.__e2eHost.shot(shot)
       for (let attempt = 0; attempt < 3 && !report.shot?.endsWith('.png'); attempt++) {
@@ -273,6 +279,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     screens.compare = measure(gh.web, 'compare')
     screens.markdown = measure(gh.web, 'markdown')
     screens.home = measure(gh.web, 'home')
+    screens.list = measure(gh.web, 'list')
     // Last: the tests below work in the pull request's files.
     screens.files = measure(gh.web, 'files')
     screens.picker = measurePicker('loader', 'suggestions')
@@ -298,7 +305,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     await reload('app.emulateMobile(false)')
   }, 180_000)
 
-  it.each(['conversation', 'files', 'compare', 'markdown', 'home'])(
+  it.each(['conversation', 'files', 'compare', 'markdown', 'home', 'list'])(
     '%s: shown in the phone layout',
     (section) => {
       expect(screens[section]?.error).toBeUndefined()
@@ -317,7 +324,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     expect((screens.picker as { rows?: number } | undefined)?.rows).toBe(3)
   })
 
-  it.each(['conversation', 'files', 'compare', 'markdown', 'home'])(
+  it.each(['conversation', 'files', 'compare', 'markdown', 'home', 'list'])(
     '%s: nothing reaches past the edge of the screen',
     (section) => {
       expect(screens[section]?.over ?? ['no report']).toEqual([])

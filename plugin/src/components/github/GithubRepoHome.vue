@@ -59,6 +59,7 @@
           empty=""
           :all-url="`${web}/releases`"
           all-tooltip="Open every release on GitHub in the browser"
+          all-external
           @retry="release.load"
         />
         <GithubRepoList
@@ -68,7 +69,7 @@
           :error="pulls.error.value"
           empty="No open pull requests."
           :all-url="`${web}/pulls`"
-          all-tooltip="Open every open pull request on GitHub in the browser"
+          all-tooltip="Every pull request, with filters, in a tab"
           @open="open"
           @retry="pulls.load"
         />
@@ -80,7 +81,7 @@
           :error="issues.error.value"
           empty="No open issues."
           :all-url="`${web}/issues`"
-          all-tooltip="Open every open issue on GitHub in the browser"
+          all-tooltip="Every issue, with filters, in a tab"
           @open="open"
           @retry="issues.load"
         />

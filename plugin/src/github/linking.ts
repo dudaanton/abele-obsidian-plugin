@@ -148,6 +148,7 @@ export function createLinker(o: {
         case 'blob':
         case 'tree':
         case 'repo':
+        case 'list':
           return null
       }
     },

@@ -66,6 +66,8 @@ const props = defineProps<{
   /** The whole list, on GitHub. */
   allUrl?: string
   allTooltip?: string
+  /** The whole list is GitHub's only — releases — and opens in the browser. */
+  allExternal?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -73,8 +75,12 @@ const emit = defineEmits<{
   (e: 'retry'): void
 }>()
 
-const openAll = () => {
-  if (props.allUrl) window.open(props.allUrl)
+/** The whole list in a tab of its own, by the clicks of any link here; GitHub's for releases. */
+const openAll = (event?: MouseEvent) => {
+  if (!props.allUrl) return
+  const pane = event ? paneForClick(event, false) : false
+  if (pane === null || props.allExternal) window.open(props.allUrl)
+  else emit('open', props.allUrl, pane)
 }
 
 const open = (row: ListRow, event: MouseEvent) => {

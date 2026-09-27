@@ -23,6 +23,7 @@ import {
 import { NotAFolderError, loadFolder, type FolderData } from './tree/folder'
 import { loadCompare, type CompareData } from './compare'
 import { loadRepoHome, type RepoHomeData } from './repoPage/repoHome'
+import { loadList, type ListData } from './lists/listData'
 
 type Of<K extends GithubTarget['kind']> = Extract<GithubTarget, { kind: K }>
 
@@ -35,6 +36,7 @@ export type ItemData =
   | FolderData
   | CompareData
   | RepoHomeData
+  | ListData
 
 export async function loadItem(
   client: GithubClient,
@@ -69,6 +71,8 @@ export async function loadItem(
       }
     case 'repo':
       return loadRepoHome(client, t)
+    case 'list':
+      return loadList(client, t)
     case 'tree':
       try {
         const folder = await loadFolder(client, t)

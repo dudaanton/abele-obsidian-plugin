@@ -209,6 +209,14 @@
           @tree="setPanel(true)"
         />
 
+        <GithubList
+          v-else-if="shown.kind === 'list' && list"
+          :target="shown"
+          :data="list"
+          :client="client()"
+          @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
+        />
+
         <template v-else-if="shown.kind === 'tree' && folder">
           <GithubFolder
             :folder="folder"
@@ -241,6 +249,8 @@ import GithubFindBar from './GithubFindBar.vue'
 import GithubCodeSearch from './GithubCodeSearch.vue'
 import GithubFolder from './GithubFolder.vue'
 import GithubRepoHome from './GithubRepoHome.vue'
+import GithubList from './GithubList.vue'
+import type { ListData } from '@/github/lists/listData'
 import type { RepoHomeData } from '@/github/repoPage/repoHome'
 import GithubProseActions from './GithubProseActions.vue'
 import GithubTreePanel from './GithubTreePanel.vue'
@@ -385,6 +395,8 @@ const folder = computed(() =>
 const home = computed(() =>
   shown.value.kind === 'repo' ? (main.data.value as RepoHomeData) : null
 )
+
+const list = computed(() => (shown.value.kind === 'list' ? (main.data.value as ListData) : null))
 
 const compared = computed(() =>
   shown.value?.kind === 'compare' ? (main.data.value as CompareData | null) : null

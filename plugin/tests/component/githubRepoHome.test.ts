@@ -165,14 +165,13 @@ describe('a repository front page', () => {
     expect(onOpen).toHaveBeenLastCalledWith('https://github.com/o/r/issues/9', 'tab')
   })
 
-  it('opens every open pull request on GitHub from "All"', async () => {
-    const opened = vi.spyOn(window, 'open').mockImplementation(() => null)
-    const { wrapper } = openTab('https://github.com/o/r', ROUTES)
+  it('opens every pull request in a list tab from "All"', async () => {
+    const { wrapper, onOpen } = openTab('https://github.com/o/r', ROUTES)
     await loaded(wrapper)
 
     const all = wrapper.find('[data-list="pulls"] .abele-github-home__all')
     await click(all.element)
-    expect(opened).toHaveBeenCalledWith('https://github.com/o/r/pulls')
+    expect(onOpen).toHaveBeenLastCalledWith('https://github.com/o/r/pulls', false)
   })
 
   it('names the latest release', async () => {

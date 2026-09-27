@@ -35,6 +35,7 @@ const ICONS: Record<RowKind, string> = {
   repo: 'book-marked',
   file: 'file-code',
   folder: 'folder',
+  list: 'list',
   note: 'info',
 }
 

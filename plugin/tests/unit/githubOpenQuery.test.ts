@@ -44,7 +44,7 @@ describe('a link', () => {
       kind: 'repo-link',
       repo,
     })
-    expect(parseOpenQuery('https://github.com/octo-org/octo-repo/pulls', ctx)).toMatchObject({
+    expect(parseOpenQuery('https://github.com/octo-org/octo-repo/wiki', ctx)).toMatchObject({
       kind: 'repo-link',
     })
   })

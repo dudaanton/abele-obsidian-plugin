@@ -26,6 +26,7 @@ export type RowKind =
   | 'repo'
   | 'file'
   | 'folder'
+  | 'list'
   | 'note'
 
 export interface OpenRow {
@@ -78,6 +79,7 @@ const KIND_OF_TARGET: Record<GithubTarget['kind'], RowKind> = {
   blob: 'file',
   tree: 'folder',
   repo: 'repo',
+  list: 'list',
 }
 
 const KIND_NAME: Record<RowKind, string> = {
@@ -90,6 +92,7 @@ const KIND_NAME: Record<RowKind, string> = {
   repo: 'Repository',
   file: 'File',
   folder: 'Folder',
+  list: 'List',
   note: '',
 }
 

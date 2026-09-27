@@ -28,7 +28,10 @@ With **Open GitHub links in Obsidian** on, a click on a GitHub link in a note op
   button to switch, the latest release, the five freshest open pull requests and issues, its
   languages, and its files with the README.
 
-Anything else, such as a release or a list of all issues, still goes to the browser.
+- a repository's list of pull requests, issues or discussions, with GitHub's search query on top
+  and filters for state, author, assignee, label, milestone, review, draft and sort.
+
+Anything else, such as a release, still goes to the browser.
 
 ## Opening by number or name
 

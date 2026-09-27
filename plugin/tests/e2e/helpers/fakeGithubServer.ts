@@ -112,14 +112,56 @@ const titleMatches = (title: string, q: string) => {
   return words.length > 0 && words.every((w) => title.toLowerCase().includes(w))
 }
 
-/** GitHub's issue search, over the one pull request and the one issue there are. */
+/** The qualifiers of a search, `is:open` → ['is', 'open']. */
+const qualifiers = (q: string) =>
+  q
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.includes(':'))
+    .map((w) => w.split(':') as [string, string])
+
+/** Whether an item passes the qualifiers a list tab writes: kind, state, author, label. */
+function passes(
+  item: {
+    state: string
+    user?: { login?: string }
+    labels?: { name: string }[]
+    pull_request?: unknown
+  },
+  q: string
+) {
+  return qualifiers(q).every(([key, value]) => {
+    if (key === 'is') {
+      if (value === 'pr') return !!item.pull_request
+      if (value === 'issue') return !item.pull_request
+      if (value === 'open' || value === 'closed') return item.state === value
+      if (value === 'merged') return false
+      return true
+    }
+    if (key === 'author') return item.user?.login === value
+    if (key === 'label')
+      return (item.labels ?? []).some((l) => l.name.toLowerCase() === value.replace(/"/g, ''))
+    return true
+  })
+}
+
+/**
+ * GitHub's issue search, over the one pull request and the one issue there are: by the words of
+ * their titles when there are words, and by the qualifiers a list tab writes.
+ */
 function searchIssues(res: ServerResponse, url: URL, web: string) {
   const f = fixtures(web)
   const q = url.searchParams.get('q') ?? ''
-  const items = [{ ...f.pull, pull_request: { merged_at: null } }, { ...f.issue }].filter((i) =>
-    titleMatches(i.title, q)
+  const words = searchWords(q)
+  const all = [{ ...f.pull, pull_request: { merged_at: null } }, { ...f.issue }].filter(
+    (i) => (words.length ? titleMatches(i.title, q) : true) && passes(i, q)
   )
-  return send(res, 200, { total_count: items.length, incomplete_results: false, items })
+  const perPage = Number(url.searchParams.get('per_page') ?? 30)
+  return send(res, 200, {
+    total_count: all.length,
+    incomplete_results: false,
+    items: all.slice(0, perPage),
+  })
 }
 
 /** A list is served whole on its first page, as a short page that says it is the last. */
@@ -198,6 +240,8 @@ function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) 
   if (path === '/languages') return send(res, 200, f.languages)
   if (path === '/releases/latest') return send(res, 200, f.release)
   if (path === '/tags') return send(res, 200, [{ name: TAG }])
+  if (path === '/labels') return send(res, 200, [{ name: 'bug' }, { name: 'enhancement' }])
+  if (path === '/milestones') return send(res, 200, [{ title: 'v2' }])
   if (path === '/pulls') return send(res, 200, page(url, [f.pull]))
   if (path === '/issues')
     return send(res, 200, page(url, [{ ...f.pull, pull_request: {} }, f.issue]))
@@ -358,9 +402,31 @@ async function graphql(req: IncomingMessage, res: ServerResponse, web: string) {
   }
   if (query?.includes('type:DISCUSSION')) {
     const d = fixtures(web).discussion
-    const nodes = titleMatches(d.title, String(variables?.q ?? '')) ? [d] : []
-    return send(res, 200, { data: { search: { nodes } } })
+    const q = String(variables?.q ?? '')
+    const words = searchWords(q)
+    const state = qualifiers(q).find(
+      ([k, v]) => k === 'is' && (v === 'open' || v === 'closed')
+    )?.[1]
+    const matches =
+      (words.length ? titleMatches(d.title, q) : true) &&
+      (!state || (state === 'closed') === d.closed)
+    const nodes = matches ? [d] : []
+    return send(res, 200, {
+      data: {
+        search: {
+          discussionCount: nodes.length,
+          pageInfo: { hasNextPage: false, endCursor: null },
+          nodes: nodes.slice(0, Number(variables?.n ?? 25)),
+        },
+      },
+    })
   }
+  if (query?.includes('discussionCategories'))
+    return send(res, 200, {
+      data: {
+        repository: { discussionCategories: { nodes: [{ name: 'Ideas' }, { name: 'Q&A' }] } },
+      },
+    })
   if (query?.includes('user(login:')) {
     // The batched lookup of people's names: `u0: user(login: $l0)`, one alias per login.
     const data: Record<string, unknown> = {}

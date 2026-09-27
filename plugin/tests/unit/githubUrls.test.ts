@@ -280,10 +280,40 @@ describe('a repository front page', () => {
   })
 })
 
+describe("a repository's lists", () => {
+  it("are pull requests, issues or discussions, with GitHub's own starting query", () => {
+    expect(parse('https://github.com/o/r/pulls')).toEqual({
+      kind: 'list',
+      host: 'github.com',
+      owner: 'o',
+      repo: 'r',
+      anchor: undefined,
+      list: 'pulls',
+      query: 'is:pr is:open',
+    })
+    expect(parse('https://github.com/o/r/issues')).toMatchObject({ query: 'is:issue is:open' })
+    expect(parse('https://github.com/o/r/discussions')).toMatchObject({
+      list: 'discussions',
+      query: 'is:open',
+    })
+  })
+
+  it('take the query the address carries', () => {
+    expect(
+      parse('https://github.com/o/r/issues?q=is%3Aissue+is%3Aclosed+label%3A%22good+first%22')
+    ).toMatchObject({ list: 'issues', query: 'is:issue is:closed label:"good first"' })
+  })
+
+  it('are keyed by their query, and named by what they list', () => {
+    const open = parse('https://github.com/o/r/pulls')!
+    const closed = parse('https://github.com/o/r/pulls?q=is%3Apr+is%3Aclosed')!
+    expect(targetKey(open)).not.toBe(targetKey(closed))
+    expect(shortName(open)).toBe('o/r pull requests')
+  })
+})
+
 describe('what stays with the browser', () => {
   it.each([
-    'https://github.com/o/r/issues',
-    'https://github.com/o/r/pulls',
     'https://github.com/o/r/issues/abc',
     'https://github.com/o/r/blob/main',
     'https://github.com/o/r/releases/tag/v1',

@@ -76,6 +76,13 @@ export type GithubTarget =
       kind: 'repo'
       ref?: string
     })
+  | (Repo & {
+      /** A repository's list of pull requests, issues or discussions for a search query. */
+      kind: 'list'
+      list: 'pulls' | 'issues' | 'discussions'
+      /** GitHub's search syntax, as `?q=` carries it; the list's own default without one. */
+      query: string
+    })
 
 export type GithubTargetKind = GithubTarget['kind']
 
@@ -129,6 +136,13 @@ const RESERVED_OWNERS = new Set([
   'users',
   'watching',
 ])
+
+/** What GitHub's own lists start with, for an address without `?q=`. */
+export const DEFAULT_LIST_QUERY = {
+  pulls: 'is:pr is:open',
+  issues: 'is:issue is:open',
+  discussions: 'is:open',
+}
 
 const positive = (text: string): number | null => {
   if (!/^\d+$/.test(text)) return null
@@ -208,7 +222,16 @@ export function parseGithubUrl(url: string, hosts: string[]): GithubTarget | nul
     if (RESERVED_OWNERS.has(owner.toLowerCase())) return null
     return { kind: 'repo', ...base, repo: repo.replace(/\.git$/i, '') }
   }
-  if (!id) return null
+  if (!id) {
+    if (section !== 'pulls' && section !== 'issues' && section !== 'discussions') return null
+    const q = parsed.searchParams.get('q')
+    return {
+      kind: 'list',
+      ...base,
+      list: section,
+      query: (q ?? DEFAULT_LIST_QUERY[section]).trim().replace(/\s+/g, ' '),
+    }
+  }
 
   switch (section) {
     case 'issues': {
@@ -382,6 +405,8 @@ export function targetKey(t: GithubTarget): string {
       return `tree:${repo}/${t.rest.join('/')}`
     case 'repo':
       return `repo:${repo}${t.ref ? `@${t.ref}` : ''}`
+    case 'list':
+      return `list:${repo}/${t.list}?${t.query}`
     case 'compare':
       return `compare:${repo}/${t.base ?? ''}${t.direct ? '..' : '...'}${t.head}`
   }
@@ -404,6 +429,8 @@ export function shortName(t: GithubTarget): string {
       return t.rest.length > 1 ? `${repo}: ${t.rest[t.rest.length - 1]}/` : repo
     case 'repo':
       return repo
+    case 'list':
+      return `${repo} ${t.list === 'pulls' ? 'pull requests' : t.list}`
     case 'compare':
       return t.base
         ? `${repo} ${t.base}${t.direct ? '..' : '...'}${t.head}`

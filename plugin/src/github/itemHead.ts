@@ -13,6 +13,9 @@ import type { FolderData } from './tree/folder'
 import type { CompareData } from './compare'
 import { treeUrl } from './tree/fileTree'
 import { homeUrl, type RepoHomeData } from './repoPage/repoHome'
+import { listUrl, type ListData } from './lists/listData'
+
+const LIST_TITLE = { pulls: 'Pull requests', issues: 'Issues', discussions: 'Discussions' }
 
 /** A commit SHA as GitHub shows one; a branch or a tag as it is. */
 export const shortRef = (ref: string) => (/^[0-9a-f]{40}$/i.test(ref) ? ref.slice(0, 7) : ref)
@@ -80,6 +83,11 @@ export function itemHead(t: GithubTarget | null, data: ItemData | null): ItemHea
       meta: meta.parent ? [`forked from ${meta.parent}`] : [],
     }
   }
+  // A list is titled by what it lists; how many the query finds is said under it.
+  if (t.kind === 'list') {
+    const list = data as ListData
+    return { ...fallback, title: LIST_TITLE[t.list], meta: [`${list.total} found`] }
+  }
   // A file or a folder is titled by where it is, which the breadcrumbs draw with its ref.
   if (t.kind === 'blob' || t.kind === 'tree') {
     const b = data as BlobData | FolderData
@@ -114,6 +122,7 @@ export function itemHead(t: GithubTarget | null, data: ItemData | null): ItemHea
  */
 export function itemTabTitle(t: GithubTarget, data: ItemData, title: string): string {
   if (t.kind === 'compare') return `${t.owner}/${t.repo} ${title}`
+  if (t.kind === 'list') return `${t.owner}/${t.repo} ${title.toLowerCase()}`
   if (t.kind === 'repo') {
     const home = data as RepoHomeData
     const name = `${home.meta.owner}/${home.meta.name}`
@@ -138,6 +147,12 @@ export function placeLink(t: GithubTarget, data: ItemData): GithubLink | undefin
     return {
       label: `${t.owner}/${t.repo}@${b.ref} · ${b.path}`,
       url: `${repoWeb(t)}/blob/${b.ref}/${path}`,
+    }
+  }
+  if (t.kind === 'list') {
+    return {
+      label: `${t.owner}/${t.repo} ${LIST_TITLE[t.list].toLowerCase()} · ${t.query}`,
+      url: listUrl(t),
     }
   }
   if (t.kind === 'repo') {

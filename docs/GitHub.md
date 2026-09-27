@@ -26,14 +26,15 @@ GitHub**.
 | `…/blob/<ref>/README.md?plain=1` | A markdown file as code, as GitHub shows it for this link. |
 | `…/owner/repo` | The repository's front page — see *A repository's front page* below. |
 | `…/owner/repo/tree/<ref>` | The front page at that branch, tag or commit. |
+| `…/owner/repo/pulls`, `…/issues`, `…/discussions` (with or without `?q=…`) | The repository's list of them for that query — see *Lists of pull requests, issues and discussions* below. |
 | `…/owner/repo/tree/<ref>/<path>` | A folder at that branch, tag or commit: its folders, its files and its README. |
 
 `#issuecomment-…`, `#discussioncomment-…` and `#pullrequestreview-…` scroll to that comment. A
 review comment — `…/pull/7#discussion_r…`, or `…/pull/7/files#r…` — opens the files, with the
 comment's file open and the comment marked. A file link that turns out to name a folder lists the
 folder, and a folder link that names a file shows the file, as GitHub redirects them. Anything
-else — a repository's list of pull requests or issues, a release, a gist, GitHub's own pages such
-as `github.com/settings/…` — still goes to the browser.
+else — a release, a wiki page, a gist, GitHub's own pages such as `github.com/settings/…` — still
+goes to the browser.
 
 A comparison's header has a button that swaps its two sides in the same tab — what base has that
 head has not — and its back arrow returns. GitHub sends at most 300 changed files for one
@@ -220,8 +221,8 @@ repository chosen in **Open GitHub repository…** (below).
   tree panel beside the page, at the ref shown.
 - **Beside the files**, or above them in a narrow pane and on a phone: the latest release (a click
   opens it on GitHub, since no tab shows a release), the five freshest open pull requests and the
-  five freshest open issues (a click opens each in the tab, Mod in a new one; **All** opens
-  GitHub's whole list in the browser), and the languages as a bar and their shares — the seven
+  five freshest open issues (a click opens each in the tab, Mod in a new one; **All** opens the
+  whole list with its filters in the tab — below), and the languages as a bar and their shares — the seven
   largest by name, the rest as *Other*. A language's colour is one of the theme's named colours by
   its place in the list, not GitHub's colour for it.
 - **The files and the README** are the repository's root, as a folder's page shows it: the entries,
@@ -265,6 +266,38 @@ opens the repository's front page by the tab rule, Mod+Enter in a new tab.
 
 Every repository in the picker is on the configured server today. When several GitHub connections
 arrive, each row will carry the one it is read with.
+
+## Lists of pull requests, issues and discussions
+
+`…/owner/repo/pulls`, `…/issues` and `…/discussions` open the repository's list in a tab, as does
+**All** beside the front page's pull requests and issues.
+
+**The query is the list.** The field on top holds it in GitHub's own search syntax —
+`is:pr is:open label:bug author:ann sort:updated-desc` — starting where GitHub's own list starts
+(`is:pr is:open`, `is:issue is:open`, `is:open`). Enter or **Search** lists what it finds. Every
+control under it only rewrites the query: the state tabs (Open and Closed with their counts, Merged
+for pull requests, All), Author, Assignee, Label, Milestone, Review for pull requests (none,
+required, approved, changes requested), Draft for pull requests, Category and Answer for
+discussions, and Sort (newest, oldest, most commented, recently updated). A changed query is a new
+address for the tab — `…/pulls?q=…`, the same address as GitHub's — so the back arrow returns to
+the list before, and the link can be copied or opened on GitHub as it is. The arrow beside the
+field goes back to the starting query. A pull request list stays one of pull requests whatever is
+typed (an `is:issue` is dropped), and so does an issue list.
+
+**The rows** say each one's state by its glyph and colour (open, draft, merged, closed; answered for
+a discussion), its title and labels, its number, who opened it and when, its milestone or
+category, and how many comments it has. A click opens it in the tab by the tab rule, Mod in a new
+one. Twenty-five come at a time; the next page is asked for as the end of the list comes into
+view, or with **Show more**. GitHub's search serves only the first thousand results of a query; past
+that the tab says to narrow it.
+
+**Where it comes from.** Pull requests and issues come from GitHub's issue search — the list, and
+one small search each for the open and the closed count, so opening a list costs three of the
+search API's 10 requests a minute without a token and 30 with one. A refusal is the tab's error,
+in the same words as anywhere else; the counts are left out when only they are refused. Discussions
+come from GraphQL's search, which needs a token. The labels, milestones and categories the filters
+offer are asked for once per tab; a filter whose choices could not be read is left out, and the
+qualifier can still be typed.
 
 ## Folders and the file tree
 
