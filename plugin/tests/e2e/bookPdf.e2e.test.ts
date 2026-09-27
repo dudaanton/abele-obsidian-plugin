@@ -243,6 +243,8 @@ describe.skipIf(!available)('a PDF in the reader', () => {
       'Page size',
       'Two pages side by side',
       'Dark pages in a dark theme',
+      // The PDF pen's own; the drawings' one stays in the plugin's settings.
+      'Pen thickness',
       'E-ink mode',
       'Show the keys the reader hears',
       'Voice',
