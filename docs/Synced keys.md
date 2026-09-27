@@ -10,6 +10,9 @@ Each device needs only the passphrase, typed once.
 The one exception is the device token for vault sync. Each device connects to the sync server
 and gets a token of its own, and a device holding another's would sync as that device, so the
 token stays in the keychain of the device it belongs to and is not listed under **All keys**.
+Every keychain name that starts with `abele-sync-device-` is treated this way, whichever device it
+belongs to: a provider or any other setting pointed at one reads no key, and neither the store nor
+a transfer with **Include keys** ever carries it.
 
 **Settings → Abele → Transfer → Synced keys.**
 
