@@ -315,8 +315,29 @@ export function useDomMenus(): void {
   )
 }
 
+/**
+ * Gets a window that is not being drawn drawn again, where it can be.
+ *
+ * Throttling off keeps a window drawing while nobody can see it, the Mac's screen locked or
+ * asleep — but only a page that was showing when that happened. A page loaded while it lasts,
+ * after a reload, starts hidden and stays so, at a frame or two a second, whatever the throttling
+ * says, until the window is shown again (2026-09-27: every reload after the screen went off left
+ * its window unable to draw, and a mermaid diagram waiting to be scrolled to was never drawn).
+ * Shown without taking the focus, it is drawn again at once. Only a window that draws too few
+ * frames is touched: showing puts it in front of the other windows.
+ */
+export function wakeWindow(): void {
+  if (onPhone() || framesPerSecond() >= 15) return
+  evalRaw(
+    `(() => { require('@electron/remote').getCurrentWindow().showInactive(); return 'ok' })()`,
+    30_000
+  )
+  sleepSync(500)
+}
+
 /** Stops the run with the reason when the window is not being drawn: see `framesPerSecond`. */
 export function assertWindowDrawn(): void {
+  wakeWindow()
   const fps = framesPerSecond()
   if (fps < 15)
     throw new Error(
@@ -547,6 +568,7 @@ async function reloadWindow(asked: string | undefined): Promise<void> {
     }
   }
   setBackgroundThrottling(false)
+  wakeWindow()
 }
 
 /**
