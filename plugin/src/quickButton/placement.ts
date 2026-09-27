@@ -58,3 +58,15 @@ export function sideFor(x: number, width: number): QuickSide {
 export function liftFor(at: { top: number; line: number; size: number; gap: number }): number {
   return Math.max(0, Math.round(at.line - at.gap - at.size - at.top))
 }
+
+/** How far a finger must travel toward the edge for a swipe to put the button away. */
+export const SWIPE_AWAY = 24
+
+/**
+ * Whether a finger that went `dx` across and `dy` down swiped the button off toward the edge it
+ * stands at: far enough, and mostly sideways — a drag up or down with a little drift is a drag.
+ */
+export function swipedAway(at: { dx: number; dy: number; side: QuickSide }): boolean {
+  const toward = at.side === 'right' ? at.dx : -at.dx
+  return toward >= SWIPE_AWAY && Math.abs(at.dy) <= toward / 2
+}

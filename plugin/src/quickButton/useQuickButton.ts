@@ -33,6 +33,12 @@ const platformNow = (): QuickPlatform =>
 /** How long a book that has just come to the front is left to find its place. */
 const SETTLING_MS = 2000
 
+/**
+ * Put away by a swipe toward its edge, on this device only: a phone's screen is not the
+ * tablet's, so it is kept in Obsidian's per-device storage, not in the synced settings.
+ */
+export const AWAY_KEY = 'abele-quick-button-away'
+
 /** The scroll, in pixels taken together, that tucks the button away or brings it back. */
 const SCROLL_STEP = 32
 
@@ -58,6 +64,8 @@ export function useQuickButton(app: App, button: Ref<HTMLElement | null | undefi
   const hiddenNav = ref(false)
   /** Tucked away by a scroll down or a page turned forward. */
   const scrolledAway = ref(false)
+  /** Put away by a swipe, until it is tapped — whatever is scrolled or opened meanwhile. */
+  const away = ref(!!app.loadLocalStorage?.(AWAY_KEY))
   const platform = platformNow()
 
   const busy = computed(() => {
@@ -84,7 +92,9 @@ export function useQuickButton(app: App, button: Ref<HTMLElement | null | undefi
     return typeof view.quickButtonTucked === 'function' ? !!view.quickButtonTucked() : false
   })
 
-  const tucked = computed(() => scrolledAway.value || hiddenNav.value || restsTucked.value)
+  const tucked = computed(
+    () => away.value || scrolledAway.value || hiddenNav.value || restsTucked.value
+  )
 
   /**
    * The home indicator's height. Measured by an element put on the page and taken off, which the
@@ -258,5 +268,30 @@ export function useQuickButton(app: App, button: Ref<HTMLElement | null | undefi
     scroll.note('show')
   }
 
-  return { settings, gone, tucked, line, place, schedule, untuck, context }
+  /** Swiped off toward its edge: it stays there, on this device, until it is tapped. */
+  const putAway = () => {
+    away.value = true
+    app.saveLocalStorage?.(AWAY_KEY, true)
+  }
+
+  /** Tapped while put away: it comes back, and nothing more. */
+  const bringBack = () => {
+    away.value = false
+    app.saveLocalStorage?.(AWAY_KEY, null)
+    untuck()
+  }
+
+  return {
+    settings,
+    gone,
+    tucked,
+    away,
+    line,
+    place,
+    schedule,
+    untuck,
+    putAway,
+    bringBack,
+    context,
+  }
 }

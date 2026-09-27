@@ -35,6 +35,8 @@ interface FakeView {
 
 let wrapper: VueWrapper | null = null
 let config: AbeleConfig
+/** Obsidian's per-device storage, which the app keeps apart from the synced settings. */
+let device: Map<string, unknown>
 const workspace = {
   leftSplit: { collapsed: true },
   rightSplit: { collapsed: true },
@@ -84,7 +86,13 @@ beforeEach(() => {
   ;(GlobalStore.getInstance() as unknown as { _app: unknown })._app = {
     workspace,
     commands: { commands: {}, findCommand: () => undefined, executeCommandById: vi.fn() },
+    loadLocalStorage: (key: string) => device.get(key) ?? null,
+    saveLocalStorage: (key: string, value: unknown) => {
+      if (value == null) device.delete(key)
+      else device.set(key, value)
+    },
   }
+  device = new Map()
   workspace.leaves = []
   workspace.leftSplit.collapsed = true
   workspace.rightSplit.collapsed = true
@@ -305,6 +313,106 @@ describe('the quick button', () => {
     expect(config.saveSettings).toHaveBeenCalled()
     expect(config.quickButton.side).toBe('left')
     expect(el.classList).toContain('abele-floating-button_left')
+  })
+
+  const swipe = (el: HTMLElement, from: [number, number], to: [number, number], id = 3) => {
+    el.dispatchEvent(
+      new PointerEvent('pointerdown', { pointerId: id, clientX: from[0], clientY: from[1] })
+    )
+    el.dispatchEvent(
+      new PointerEvent('pointermove', { pointerId: id, clientX: to[0], clientY: to[1] })
+    )
+    el.dispatchEvent(
+      new PointerEvent('pointerup', { pointerId: id, clientX: to[0], clientY: to[1] })
+    )
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  }
+
+  it('is put away by a swipe toward its edge, and stays away until it is tapped', async () => {
+    viewIn(workspace.rootSplit)
+    const show = vi.spyOn(Menu.prototype, 'showAtPosition')
+    await mountButton()
+    const el = buttonEl()!
+    swipe(el, [340, 600], [380, 604])
+    await settle()
+
+    expect(el.classList).toContain('abele-floating-button_tucked')
+    expect(show).not.toHaveBeenCalled()
+    // Where it stands is left as it was: nothing synced is written.
+    expect(config.saveSettings).not.toHaveBeenCalled()
+    expect(config.quickButton.side).toBe('right')
+
+    // A scroll up or another note does not bring it back.
+    viewIn(workspace.rootSplit)
+    workspace.leaves.shift()
+    document.body.createDiv()
+    await settle()
+    expect(buttonEl()!.classList).toContain('abele-floating-button_tucked')
+
+    // A tap does, without opening the menu.
+    const tab = buttonEl()!
+    tab.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 4, clientX: 385, clientY: 600 }))
+    tab.dispatchEvent(new PointerEvent('pointerup', { pointerId: 4, clientX: 385, clientY: 600 }))
+    tab.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await settle()
+    expect(tab.classList).not.toContain('abele-floating-button_tucked')
+    expect(show).not.toHaveBeenCalled()
+
+    // The next tap opens it as always.
+    tab.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 5, clientX: 360, clientY: 600 }))
+    tab.dispatchEvent(new PointerEvent('pointerup', { pointerId: 5, clientX: 360, clientY: 600 }))
+    tab.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await settle()
+    expect(show).toHaveBeenCalledTimes(1)
+  })
+
+  it('remembers being put away on this device, across a restart', async () => {
+    viewIn(workspace.rootSplit)
+    await mountButton()
+    swipe(buttonEl()!, [340, 600], [380, 600])
+    await settle()
+    expect(device.get('abele-quick-button-away')).toBeTruthy()
+
+    wrapper!.unmount()
+    await mountButton()
+    expect(buttonEl()!.classList).toContain('abele-floating-button_tucked')
+
+    const tab = buttonEl()!
+    tab.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 6, clientX: 385, clientY: 600 }))
+    tab.dispatchEvent(new PointerEvent('pointerup', { pointerId: 6, clientX: 385, clientY: 600 }))
+    await settle()
+    expect(device.has('abele-quick-button-away')).toBe(false)
+  })
+
+  it('on the left, is put away by a swipe to the left; toward the middle it is still a drag', async () => {
+    setStored({ side: 'left' })
+    viewIn(workspace.rootSplit)
+    await mountButton()
+    swipe(buttonEl()!, [40, 600], [80, 602])
+    await settle()
+    // Toward the middle: a drag, which saves where it was let go.
+    expect(buttonEl()!.classList).not.toContain('abele-floating-button_tucked')
+    expect(config.saveSettings).toHaveBeenCalled()
+    expect(device.size).toBe(0)
+
+    swipe(buttonEl()!, [40, 600], [4, 600], 7)
+    await settle()
+    expect(buttonEl()!.classList).toContain('abele-floating-button_tucked')
+  })
+
+  it('keeps the finger’s touches from Obsidian’s own edge swipes', async () => {
+    viewIn(workspace.rootSplit)
+    await mountButton()
+    const heard: string[] = []
+    const listen = (e: Event) => heard.push(e.type)
+    document.addEventListener('touchstart', listen)
+    document.addEventListener('touchmove', listen)
+    const touchLike = (type: string) => new Event(type, { bubbles: true, cancelable: true })
+    buttonEl()!.dispatchEvent(touchLike('touchstart'))
+    buttonEl()!.dispatchEvent(touchLike('touchmove'))
+    document.removeEventListener('touchstart', listen)
+    document.removeEventListener('touchmove', listen)
+    expect(heard).toEqual([])
   })
 })
 

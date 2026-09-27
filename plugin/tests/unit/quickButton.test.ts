@@ -5,7 +5,14 @@
  */
 import { describe, it, expect } from 'vitest'
 import { DEFAULT_QUICK_BUTTON, quickButtonSettingsFrom } from '@/quickButton/settings'
-import { buttonTop, restLine, sideFor, liftFor, type Box } from '@/quickButton/placement'
+import {
+  buttonTop,
+  restLine,
+  sideFor,
+  liftFor,
+  swipedAway,
+  type Box,
+} from '@/quickButton/placement'
 import { ScrollWatch, goneReason, type QuickSignals } from '@/quickButton/visibility'
 
 describe('the settings', () => {
@@ -81,6 +88,19 @@ describe('where it rests', () => {
     expect(liftFor({ top: 496, line: 760, size: 52, gap: 12 })).toBe(200)
     // Dragged below its resting place, it rests there.
     expect(liftFor({ top: 740, line: 760, size: 52, gap: 12 })).toBe(0)
+  })
+})
+
+describe('a swipe toward the edge', () => {
+  it('puts it away when far enough and mostly sideways, toward the side it stands at', () => {
+    expect(swipedAway({ dx: 40, dy: 6, side: 'right' })).toBe(true)
+    expect(swipedAway({ dx: -40, dy: 6, side: 'left' })).toBe(true)
+    // Toward the middle of the screen: that is a drag to the other side.
+    expect(swipedAway({ dx: -40, dy: 0, side: 'right' })).toBe(false)
+    // Not far enough: a tap that wandered.
+    expect(swipedAway({ dx: 20, dy: 0, side: 'right' })).toBe(false)
+    // More up than across: moving it up the edge.
+    expect(swipedAway({ dx: 40, dy: 30, side: 'right' })).toBe(false)
   })
 })
 

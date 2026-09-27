@@ -79,6 +79,14 @@ const PRELUDE = `
     const r = fab().getBoundingClientRect()
     await tap((Math.max(r.left, 0) + Math.min(r.right, innerWidth)) / 2, r.top + r.height / 2)
   }
+  const swipe = async (from, to, steps = 6) => {
+    await touch('touchStart', [from]); await wait(30)
+    for (let i = 1; i <= steps; i++) {
+      await touch('touchMove', [[from[0] + ((to[0] - from[0]) * i) / steps, from[1] + ((to[1] - from[1]) * i) / steps]])
+      await wait(16)
+    }
+    await touch('touchEnd'); await wait(900)
+  }
   const menuTitles = () => [...document.querySelectorAll('.menu .menu-item-title')].map((e) => e.textContent)
   const closeMenu = async () => {
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -147,6 +155,7 @@ describe.skipIf(!available)('the quick button on a phone', () => {
         await app.vault.create(${JSON.stringify(NOTE)}, ${JSON.stringify(lines)})
         const bytes = Uint8Array.from(atob(${JSON.stringify(epub)}), (c) => c.charCodeAt(0))
         await app.vault.createBinary(${JSON.stringify(BOOK)}, bytes.buffer)
+        app.saveLocalStorage('abele-quick-button-away', null)
         const cfg = window.__abeleTest.AbeleConfig.getInstance()
         cfg.quickButton = { enabled: true, tablet: false, side: 'right', lift: 0, actions: [
           { id: 'e2e1', type: 'command', commandId: 'abele:open-documentation', scriptName: '', name: 'Documentation', icon: 'life-buoy' },
@@ -165,6 +174,7 @@ describe.skipIf(!available)('the quick button on a phone', () => {
     evalRaw(
       `(async () => {
         for (const leaf of app.workspace.getLeavesOfType('abele-book')) leaf.detach()
+        app.saveLocalStorage('abele-quick-button-away', null)
         const cfg = window.__abeleTest.AbeleConfig.getInstance()
         cfg.quickButton = ${JSON.stringify(savedQuick)}
         await cfg.saveSettings()
@@ -224,6 +234,67 @@ describe.skipIf(!available)('the quick button on a phone', () => {
     expect(r.back!.tucked).toBe(false)
     expect(r.typing).toBe(true)
   })
+
+  it('in a note: a swipe to the edge puts it away through a reload, a tap brings it back', async () => {
+    const opened = run<{
+      error?: string
+      before?: Report
+      away?: Report
+      drawer?: boolean
+      menu?: boolean
+    }>(`
+      app.workspace.leftSplit.collapse(); app.workspace.rightSplit.collapse()
+      const leaf = app.workspace.getLeaf(false)
+      await leaf.openFile(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}), { state: { mode: 'preview' } })
+      await until(() => fab())
+      await wait(800)
+      document.activeElement?.blur?.()
+      // From the top of the note, where a scroll has not tucked it.
+      const top = leaf.view.containerEl.querySelector('.markdown-preview-view')
+      top.scrollTop = 40; await wait(100); top.scrollTop = 0; await wait(300)
+      const before = await report('.mobile-navbar')
+      before.hiddenNav = document.body.classList.contains('is-hidden-nav')
+      const r = fab().getBoundingClientRect()
+      const y = r.top + r.height / 2
+      await swipe([r.left + r.width / 2, y], [innerWidth - 2, y + 4])
+      const away = await report('.mobile-navbar')
+      await shoot('swiped-away')
+      return { before, away, drawer: !app.workspace.rightSplit.collapsed, menu: !!document.querySelector('.menu') }
+    `)
+    expect(opened.error).toBeUndefined()
+    expect(opened.before, JSON.stringify(opened.before)).toMatchObject({ tucked: false })
+    expect(opened.away!.tucked).toBe(true)
+    // A sliver at the edge, still on screen to tap.
+    expect(opened.away!.button!.left).toBeGreaterThanOrEqual(opened.away!.screen.width - 24)
+    expect(opened.away!.button!.left).toBeLessThan(opened.away!.screen.width)
+    // The swipe was the button's, not Obsidian's: no sidebar came out, no menu opened.
+    expect(opened.drawer).toBe(false)
+    expect(opened.menu).toBe(false)
+
+    await reload('window.location.reload()')
+    const after = run<{ error?: string; reloaded?: Report; back?: Report; menu?: boolean }>(`
+      const leaf = app.workspace.getLeaf(false)
+      await leaf.openFile(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}), { state: { mode: 'preview' } })
+      await until(() => fab())
+      await wait(800)
+      document.activeElement?.blur?.()
+      const scroller = leaf.view.containerEl.querySelector('.markdown-preview-view')
+      for (let i = 0; i < 4; i++) { scroller.scrollTop += 60; await wait(60) }
+      for (let i = 0; i < 4; i++) { scroller.scrollTop -= 60; await wait(60) }
+      const reloaded = await report('.mobile-navbar')
+      await tapFab()
+      const back = await report('.mobile-navbar')
+      await shoot('brought-back')
+      const menu = !!document.querySelector('.menu')
+      return { reloaded, back, menu }
+    `)
+    expect(after.error).toBeUndefined()
+    // Still away after a reload and a scroll up and down.
+    expect(after.reloaded!.tucked).toBe(true)
+    expect(after.back!.tucked).toBe(false)
+    expect(after.menu).toBe(false)
+    standsClear(after.back!)
+  }, 180_000)
 
   it('in a book: a sliver above the line under the page, the book’s own items on a tap', () => {
     const r = run<{

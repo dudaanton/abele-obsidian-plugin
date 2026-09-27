@@ -12,6 +12,9 @@
     @pointermove="onMove"
     @pointerup="onUp"
     @pointercancel="onCancel"
+    @touchstart.stop
+    @touchmove.stop
+    @touchend.stop
     @click="onClick"
     @keydown.enter.prevent="openMenu"
     @keydown.space.prevent="openMenu"
@@ -25,14 +28,18 @@
  *
  * A tap opens the menu. A drag moves the button: let go, it goes to the nearer edge and keeps
  * the height it was left at, above wherever it rests on each screen. Both are saved, so it is
- * where it was left on the next start and on the user's other devices.
+ * where it was left on the next start and on the user's other devices. A swipe toward its own
+ * edge puts it away there instead — a sliver at the edge that stays through scrolling, other
+ * notes and restarts, on this device only, until it is tapped; that tap brings it back and
+ * opens nothing. Its touches go no further than the button, so Obsidian does not take the swipe
+ * for its own, opening the sidebar at that edge.
  */
 import { computed, ref } from 'vue'
 import FloatingButton from '../obsidian/FloatingButton.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { useQuickButton } from '@/quickButton/useQuickButton'
-import { liftFor, sideFor } from '@/quickButton/placement'
+import { liftFor, sideFor, swipedAway } from '@/quickButton/placement'
 import { openQuickMenu } from '@/quickButton/open'
 
 const app = GlobalStore.getInstance().app
@@ -40,7 +47,7 @@ const config = AbeleConfig.getInstance()
 
 const floating = ref<{ el?: HTMLElement } | null>(null)
 const el = computed(() => floating.value?.el ?? null)
-const { settings, gone, tucked, line, untuck } = useQuickButton(app, el)
+const { settings, gone, tucked, away, line, untuck, putAway, bringBack } = useQuickButton(app, el)
 
 const side = computed(() => settings.value.side)
 const menuOpen = ref(false)
@@ -72,6 +79,8 @@ const onMove = (event: PointerEvent) => {
   if (!start || !button || event.pointerId !== start.id) return
   const dx = event.clientX - start.x
   const dy = event.clientY - start.y
+  // Put away, it is a sliver to tap, not to drag about.
+  if (away.value) return
   if (!dragging.value && Math.hypot(dx, dy) < SLOP) return
   dragging.value = true
   const max = window.innerHeight - button.offsetHeight
@@ -84,7 +93,23 @@ const onUp = (event: PointerEvent) => {
   const button = el.value
   if (!start || event.pointerId !== start.id) return
   const wasDrag = dragging.value
+  const dx = event.clientX - start.x
+  const dy = event.clientY - start.y
   start = null
+  if (away.value) {
+    // Brought back here, not on the click: there is no menu to open, and a pull on the sliver
+    // back into the screen may end without a click at all.
+    tapped = false
+    if (!swipedAway({ dx, dy, side: side.value })) bringBack()
+    return
+  }
+  if (swipedAway({ dx, dy, side: side.value })) {
+    tapped = false
+    button?.style.removeProperty('--abele-floating-button-shift')
+    dragging.value = false
+    putAway()
+    return
+  }
   // The menu opens on the click that ends the tap, not here: a touch is followed by mouse
   // events, and a menu shown now had its backdrop under them and closed at once.
   tapped = !wasDrag
@@ -118,6 +143,7 @@ const onCancel = () => {
 const openMenu = () => {
   const button = el.value
   if (!button || menuOpen.value) return
+  if (away.value) return bringBack()
   untuck()
   menuOpen.value = true
   const rect = button.getBoundingClientRect()
