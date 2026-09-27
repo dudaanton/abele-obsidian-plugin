@@ -650,3 +650,68 @@ describe('a device-only id the store already holds', () => {
     expect(phone.store.contents()!.map((c) => c.id)).toEqual(['abele-provider-x'])
   })
 })
+
+/**
+ * `data.json` syncs and the later save wins, so a device that wrote the store back every time it
+ * read the other's would hand the file back for ever. A load writes only when the store it read
+ * is missing something this device holds.
+ */
+describe('settling', () => {
+  async function macWithKeys(on: Shared): Promise<Device> {
+    const mac = device(on, ['abele-provider-x'])
+    mac.keychain.setSecret('abele-provider-x', 'sk-1')
+    await mac.store.enable('passphrase', FAST)
+    return mac
+  }
+
+  it('writes nothing on a load of a store that holds what this device already has', async () => {
+    const on = shared()
+    const mac = await macWithKeys(on)
+    const phone = device(on)
+    await phone.store.load()
+    await phone.store.unlock('passphrase')
+    await phone.store.flush()
+    mac.store.set('abele-brave-search', 'BSA-new')
+    await mac.store.flush()
+    await phone.store.load()
+    await phone.store.flush()
+
+    const writes = { mac: mac.writes, phone: phone.writes }
+    for (let round = 0; round < 3; round++) {
+      await mac.store.load()
+      await mac.store.flush()
+      await phone.store.load()
+      await phone.store.flush()
+    }
+
+    expect({ mac: mac.writes, phone: phone.writes }).toEqual(writes)
+    expect(phone.store.get('abele-brave-search')).toBe('BSA-new')
+  })
+
+  it('settles after two devices wrote at once: one write back, then none', async () => {
+    const on = shared()
+    const mac = device(on)
+    await mac.store.enable('passphrase', FAST)
+    const phone = device(on)
+    await phone.store.load()
+    await phone.store.unlock('passphrase')
+    await phone.store.flush()
+    mac.store.set('abele-provider-a', 'from-mac')
+    await mac.store.flush()
+    phone.store.set('abele-provider-b', 'from-phone')
+    await phone.store.flush()
+
+    // The Mac finds its key missing and writes it back; after that, loads write nothing.
+    await mac.store.load()
+    await mac.store.flush()
+    await phone.store.load()
+    await phone.store.flush()
+    const writes = { mac: mac.writes, phone: phone.writes }
+    await mac.store.load()
+    await mac.store.flush()
+    await phone.store.load()
+    await phone.store.flush()
+
+    expect({ mac: mac.writes, phone: phone.writes }).toEqual(writes)
+  })
+})

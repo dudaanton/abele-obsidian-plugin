@@ -1560,12 +1560,15 @@ export default class AbelePlugin extends Plugin {
   }
 
   /**
-   * `data.json` changed on disk without this plugin writing it — Obsidian Sync or another sync
-   * tool bringing another device's copy. Without this the settings loaded at startup stay in
-   * memory and the next save, from anywhere, writes them back over what arrived.
+   * `data.json` changed on disk without this plugin writing it — Abele Sync, Obsidian Sync or
+   * another sync tool bringing another device's copy. Without this the settings loaded at
+   * startup stay in memory and the next save, from anywhere, writes them back over what arrived.
+   *
+   * Called by Obsidian and, after a sync run that wrote the file, by the sync as well; the
+   * second call for one file reloads nothing (`AbeleConfig.reloadSettings` says why both come).
    */
   async onExternalSettingsChange() {
-    await AbeleConfig.getInstance().reloadSettings()
+    if (!(await AbeleConfig.getInstance().reloadSettings())) return
     // What arrived may hold another device's secrets, or have dropped this one's newest:
     // opening it again merges the two and writes back whatever the file is missing.
     await secrets()

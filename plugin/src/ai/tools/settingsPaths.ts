@@ -1,5 +1,6 @@
 import { AbeleConfig, DEFAULT_SETTINGS } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '../types'
+import { deviceValue, deviceView, isDevicePath } from './settingsDevice'
 
 /**
  * How `read_settings` and `write_settings` find a setting: dotted paths into the live config,
@@ -141,6 +142,8 @@ export class AmbiguousItem extends Error {}
 export function resolve(path: string): Resolved | null {
   const segments = path.split('.').filter(Boolean)
   if (segments.length === 0) return null
+  if (isDevicePath(path)) return { parent: {}, key: segments[segments.length - 1], value: deviceValue(path), parentPath: segments.slice(0, -1).join('.') }
+  if (path === 'sync') return { parent: {}, key: 'sync', value: { ...AbeleConfig.getInstance().sync, ...deviceView() }, parentPath: '' }
 
   let parent: Resolved['parent'] | null = null
   let key = ''

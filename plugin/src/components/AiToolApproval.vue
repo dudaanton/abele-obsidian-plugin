@@ -181,15 +181,12 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { TFile } from 'obsidian'
 import { WRITE_TOOLS, DECK_WRITE_TOOLS } from '@/ai/types'
 import type { ChatMessage } from '@/ai/types'
-<<<<<<< HEAD
 import { prepareWordChange } from '@/word/vaultAdapter'
 import type { WordEdit } from '@/word/edit'
 import { prepareWorkbookChange } from '@/spreadsheet/vaultAdapter'
 import type { WorkbookEdit } from '@/spreadsheet/edit'
 import { prepareDeckCreate, prepareSlideEdit, type SlideEdit } from '@/slides/core/edit'
-=======
 import { describeSettingsWrite } from '@/ai/tools/SettingsTools'
->>>>>>> b700e6a9 (feat(sync): the settings tools reach this device's connection, and the write_settings approval shows before, after and where the token goes)
 
 const props = defineProps<{
   message: ChatMessage
@@ -370,7 +367,6 @@ watch(
   { immediate: true }
 )
 
-<<<<<<< HEAD
 const wordPreview = ref<{ old: string; new: string } | null>(null)
 const wordPreviewError = ref('')
 let wordPreviewVersion = 0
@@ -448,7 +444,6 @@ watch(
   },
   { immediate: true }
 )
-=======
 /**
  * What a `write_settings` call would change, read the way the tool itself reads it — so the
  * card cannot show one value and the tool report another. Null for any other tool.
@@ -459,7 +454,6 @@ const settingsWrite = computed(() => {
   if (typeof path !== 'string') return null
   return describeSettingsWrite(path, typeof value === 'string' ? value : JSON.stringify(value))
 })
->>>>>>> b700e6a9 (feat(sync): the settings tools reach this device's connection, and the write_settings approval shows before, after and where the token goes)
 
 const parseError = ref('')
 

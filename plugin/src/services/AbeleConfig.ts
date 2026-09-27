@@ -39,6 +39,7 @@ import { normalizeRule, type AutomationRule } from '@/automations/types'
 import { moveLegacySecrets, notePlainSecrets } from '@/secrets/legacy'
 import { DEFAULT_LIFE_YEARS, isBirthDate, lifeYears } from '@/bases/lifeWeeks'
 import { DEFAULT_LINTER_SETTINGS, linterSettingsFrom, type LinterSettings } from '@/linter/settings'
+import { canonicalJson, isSettingsObject, pause, UNREADABLE_RETRY_MS } from './settingsFile'
 
 export interface AbeleSettings {
   refreshDelay: number // in milliseconds
@@ -442,6 +443,21 @@ export class AbeleConfig {
   private loadedSync: { sync: unknown } | null = null
 
   /**
+   * The settings file as this copy last read or wrote it, as canonical JSON (`settingsFile.ts`),
+   * or null while it knows of no readable file.
+   *
+   * `data.json` syncs, and the later save wins, so two devices that each wrote the file back on
+   * reading the other's would pass it between them for ever. This is what stops them: a save
+   * that says what the file already says writes nothing, and a reload of the file this copy
+   * already holds is no reload — which also makes the second of the two reloads one pulled file
+   * gets (the sync's and Obsidian's own, see `reloadSettings`) do nothing.
+   */
+  private onDisk: string | null = null
+
+  /** The reload running now, which the next one waits for: see `reloadSettings`. */
+  private reloading: Promise<unknown> = Promise.resolve()
+
+  /**
    * Whether the settings file exists and could not be read. Anything that acts on its own —
    * automations — waits while it is: what is in memory then is defaults, not the person's.
    */
@@ -536,6 +552,7 @@ export class AbeleConfig {
   public init(plugin: AbelePlugin): void {
     this.pendingEdits = new SettingsEdits()
     this.plugin = plugin
+    this.onDisk = null
   }
 
   public destroy(): void {
@@ -564,13 +581,23 @@ export class AbeleConfig {
     try {
       // `null` is no file at all — a fresh install. `undefined` is a file Obsidian could not
       // parse, and that is still somebody's settings.
-      const stored = await this.plugin.loadData()
+      await this.take(await this.plugin.loadData())
+    } finally {
+      finishRead()
+    }
+  }
+
+  /** Apply a file without losing edits made while it was being read. */
+  private async take(stored: any): Promise<void> {
+      const edits = this.pendingEdits
       this.loadedSync =
         stored === null || stored === undefined ? null : { sync: (stored as { sync?: unknown }).sync }
       this.freshInstall = stored === null
       this.unreadable = stored === undefined
       this.unreadableTold = false
       if (this.unreadable) console.error('[Abele] data.json could not be read; not writing to it')
+
+      this.onDisk = isSettingsObject(stored) ? canonicalJson(stored) : null
 
       // Fresh/current settings have no copied descriptions; historical shipped defaults are
       // already recognised by the lightweight migration. Only possible custom/current copies
@@ -585,22 +612,63 @@ export class AbeleConfig {
       // the same migration running again on the next launch — and, for the Comment agent,
       // what stops a fresh one being minted every time the vault is opened.
       if (migrated) await this.writeSettings()
-    } finally {
-      finishRead()
-    }
   }
 
   /**
-   * `data.json` changed on disk without this copy of the plugin writing it — sync from another
-   * device, most often. Keeping the settings loaded at startup would write them back over it
-   * at the next save, whatever that save was about.
+   * `data.json` changed on disk without this copy of the plugin writing it — another device's
+   * copy pulled by Abele Sync or brought by another sync tool. Keeping the settings loaded at
+   * startup would write them back over it at the next save, whatever that save was about.
+   *
+   * Answers whether anything was reloaded, so the caller knows whether the rest of a reload —
+   * the secret store, the AI features — has anything to do. It has not when the file says what
+   * this copy already holds: a file that came back reserialised, or the second of two calls for
+   * one pull. Both are expected. The sync calls this after a run that wrote the file, and
+   * Obsidian calls `onExternalSettingsChange` itself for the same write — checked against the
+   * installed app (`app.js` in `obsidian.asar`, 2026-09-27): every adapter write, the sync's
+   * included, ends in the adapter's `reconcileInternalFile`, which fires the vault's `raw`
+   * event; the plugin manager answers a `raw` for an enabled plugin's `data.json` with that
+   * plugin's `onConfigFileChange`, debounced 50 ms, which calls `onExternalSettingsChange` when
+   * the file's mtime is later than the one the plugin last loaded or saved. The sync writes a
+   * pulled file with the mtime it had on the device that saved it, so Obsidian's call is made
+   * for most pulls but not for all of them — another device's clock behind this one's, or an
+   * older version put back — which is why the sync calls too, and why the second call must be
+   * a no-op. Calls are taken one at a time, so the second sees what the first read.
+   *
+   * A file caught half written — the sync's writes are not atomic — is read again once after
+   * `UNREADABLE_RETRY_MS` before it is called unreadable. A file that has gone is not a reason
+   * to fall back to defaults: the settings in memory stay, and the next save writes them again.
    */
-  async reloadSettings() {
-    await this.loadSettings()
+  reloadSettings(): Promise<boolean> {
+    const run = this.reloading.then(() => this.reloadNow())
+    this.reloading = run.catch((): void => undefined)
+    return run
+  }
+
+  private async reloadNow(): Promise<boolean> {
+    if (!this.plugin) {
+      throw new Error('AbeleConfig not initialized with plugin instance.')
+    }
+    let stored: unknown = await this.plugin.loadData()
+    if (stored === undefined) {
+      console.debug('[Abele] data.json would not parse; reading it again in a moment')
+      await pause(UNREADABLE_RETRY_MS)
+      if (!this.plugin) return false
+      stored = await this.plugin.loadData()
+    }
+    if (stored === null) {
+      console.debug('[Abele] data.json has gone; keeping the settings in memory')
+      return false
+    }
+    if (!this.unreadable && isSettingsObject(stored) && canonicalJson(stored) === this.onDisk) {
+      console.debug('[Abele] data.json says what this copy already holds; nothing to reload')
+      return false
+    }
+    await this.take(stored)
     // Only the startup load's block is moved: one from another device is never this one's.
     this.loadedSync = null
     this.version.value++
     this.tellSaved()
+    return true
   }
 
   async saveSettings() {
@@ -681,9 +749,15 @@ export class AbeleConfig {
       )
       return
     }
+    const next = this.exportSettings()
+    const text = canonicalJson(next)
+    // Nothing changed in meaning: writing would only hand every other device a file to pull
+    // and reload for nothing, and a newer mtime to beat whatever they save next.
+    if (text === this.onDisk) return
     const written = this.pendingEdits.written()
-    await this.plugin.saveData(settingsSnapshot(this.exportSettings()))
+    await this.plugin.saveData(settingsSnapshot(next))
     written()
+    this.onDisk = text
   }
 
   /**

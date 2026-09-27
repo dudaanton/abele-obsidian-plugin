@@ -1,5 +1,4 @@
 import type { AgentTool } from '../client'
-<<<<<<< HEAD
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   AmbiguousItem,
@@ -22,11 +21,7 @@ import {
   updateItem,
   type ItemResult,
 } from './settingsItems'
-=======
-import { AbeleConfig, DEFAULT_SETTINGS } from '@/services/AbeleConfig'
-import { DEFAULT_AI_SETTINGS } from '../types'
-import { deviceValue, deviceView, deviceWarning, isDevicePath, writeDevice } from './settingsDevice'
->>>>>>> b700e6a9 (feat(sync): the settings tools reach this device's connection, and the write_settings approval shows before, after and where the token goes)
+import { deviceWarning, isDevicePath, writeDevice } from './settingsDevice'
 
 /**
  * Reading and changing the plugin's own settings, from a chat.
@@ -45,111 +40,6 @@ import { deviceValue, deviceView, deviceWarning, isDevicePath, writeDevice } fro
  * not a rewrite of all forty. The ops live in the same tool so they live under the same mode:
  * whoever may change a setting may change one item of it, and nobody else.
  */
-<<<<<<< HEAD
-=======
-function knownRoots(): Set<string> {
-  const roots = new Set<string>(Object.keys(DEFAULT_SETTINGS))
-  for (const key of Object.keys(DEFAULT_AI_SETTINGS)) roots.add(`ai.${key}`)
-  return roots
-}
-
-/**
- * Settings that are nobody's business but the person's, or nobody's business at all.
- *
- * Secrets first: what is stored is a keychain id rather than a key, but an id is still the
- * handle on somebody's key and there is no reason for a model to hold one. Then the caches —
- * the chat index is hundreds of entries rebuilt from the vault, and reading it costs more than
- * every other setting put together while saying nothing about how anything is configured.
- */
-const HIDDEN = [
-  // The synced secret store: every key, encrypted. Not a setting, and never an agent's.
-  'secretStore',
-  'ai.secrets',
-  'ai.chatHistory',
-  'ai.braveSearchApiKey',
-  'fireflyToken',
-  'ai.transferKey',
-]
-
-/** Key names that hold a secret wherever they turn up, however deep. */
-const SECRET_KEYS = /^(apiKeyId|keyId|apiKey|token|secret|password|secretStore)$/i
-
-function isHidden(path: string): boolean {
-  const lower = path.toLowerCase()
-  // A hidden setting hides everything under it too: `secretStore.entries` is as much the
-  // store as `secretStore` is.
-  if (HIDDEN.some((hidden) => lower === hidden.toLowerCase())) return true
-  if (HIDDEN.some((hidden) => lower.startsWith(`${hidden.toLowerCase()}.`))) return true
-  return path.split('.').some((segment) => SECRET_KEYS.test(segment))
-}
-
-/** Everything a secret key holds, replaced — the shape stays, the value does not. */
-function redact(value: unknown, key = ''): unknown {
-  if (SECRET_KEYS.test(key)) return value ? '<hidden>' : ''
-  if (Array.isArray(value)) return value.map((item) => redact(item))
-  if (value && typeof value === 'object') {
-    const out: Record<string, unknown> = {}
-    for (const [name, inner] of Object.entries(value as Record<string, unknown>)) {
-      out[name] = redact(inner, name)
-    }
-    return out
-  }
-  return value
-}
-
-interface Resolved {
-  /** The object the last segment lives on, so a write has somewhere to put the value. */
-  parent: Record<string, unknown>
-  key: string
-  value: unknown
-}
-
-/**
- * Walks a dotted path from the live config: `tasksFolder`, `ai.chatFolder`,
- * `ai.agents.0.name`. Numeric segments index arrays.
- *
- * This device's sync connection is the exception: it is not on `AbeleConfig` at all, and its
- * paths are read from the connection (`settingsDevice.ts`). `sync` itself reads as both halves
- * together, what `data.json` shares and what this device keeps, so an agent sees one block.
- *
- * Against `AbeleConfig` rather than against a plain object, because that is where the settings
- * live at runtime: several of them are accessors that do work on assignment — `logsNotesTypes`
- * rebuilds the regexps it is matched with — and a write that went into a copy would be a write
- * that changed nothing until the next restart, or never.
- */
-function resolve(path: string): Resolved | null {
-  const segments = path.split('.').filter(Boolean)
-  if (segments.length === 0) return null
-  if (isDevicePath(path)) {
-    return { parent: {}, key: segments[segments.length - 1], value: deviceValue(path) }
-  }
-  if (path === 'sync') {
-    const shared = AbeleConfig.getInstance().sync as unknown as Record<string, unknown>
-    return { parent: {}, key: 'sync', value: { ...shared, ...deviceView() } }
-  }
-
-  let holder: Record<string, unknown> = AbeleConfig.getInstance() as unknown as Record<
-    string,
-    unknown
-  >
-
-  for (const segment of segments.slice(0, -1)) {
-    const next = holder[segment]
-    if (!next || typeof next !== 'object') return null
-    holder = next as Record<string, unknown>
-  }
-
-  const key = segments[segments.length - 1]
-  return { parent: holder, key, value: holder[key] }
-}
-
-/** The type of a value as this tool talks about it, which is what a write has to match. */
-function typeOf(value: unknown): string {
-  if (value === null || value === undefined) return 'empty'
-  if (Array.isArray(value)) return 'array'
-  return typeof value
-}
->>>>>>> b700e6a9 (feat(sync): the settings tools reach this device's connection, and the write_settings approval shows before, after and where the token goes)
 
 /** One line per setting: what it is, and either its value or how much of it there is. */
 function summarise(path: string): string {
@@ -350,6 +240,14 @@ async function write(
     return `\`${op}\` needs \`value\`.`
   }
 
+  if (isDevicePath(path)) {
+    if (op !== 'set') return 'Change device sync settings one field at a time with set.'
+    const next = parseValue(raw!)
+    const { before, after } = describeSettingsWrite(path, raw!)
+    const refusal = await writeDevice(path, next)
+    return refusal ?? `${path}: ${before} → ${after}`
+  }
+
   let result: ItemResult
   if (op === 'set') result = setValue(path, found, parseValue(raw))
   else if (op === 'update') result = updateItem(path, found, parseValue(raw))
@@ -357,7 +255,6 @@ async function write(
   else if (op === 'remove') result = removeItem(path, found)
   else result = moveItem(path, found, index)
 
-<<<<<<< HEAD
   if (!result.changed) return result.text
 
   // Some top-level settings do work when assigned — `logsNotesTypes` rebuilds the regexps it
@@ -402,17 +299,6 @@ function setValue(
   ;(found.parent as Record<string, unknown>)[found.key] = next
 
   return { text: `${path}: ${before} → ${JSON.stringify(redact(next, found.key))}`, changed: true }
-=======
-  const { before, after } = describeSettingsWrite(path, raw)
-  if (isDevicePath(path)) {
-    const refusal = await writeDevice(path, next)
-    if (refusal) return refusal
-  } else {
-    found.parent[found.key] = next
-    await AbeleConfig.getInstance().saveSettings()
-  }
-
-  return `${path}: ${before} → ${after}`
 }
 
 /** What a write would change, as the approval card shows it and the tool reports it. */
@@ -452,5 +338,4 @@ export function describeSettingsWrite(path: string, raw: string): SettingsWriteV
     warning: device ? deviceWarning(trimmed, next) : null,
     deviceOnly: device,
   }
->>>>>>> b700e6a9 (feat(sync): the settings tools reach this device's connection, and the write_settings approval shows before, after and where the token goes)
 }
