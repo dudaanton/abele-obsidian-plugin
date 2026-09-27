@@ -1802,13 +1802,59 @@ describe('SyncService — a phone', () => {
     expect(domEvents).toHaveLength(1)
 
     await seed(other, [await create(other, 'Phone.md', 'read on the train')])
-    // Nothing prompts a phone: no watcher, no socket, no clock.
+    // No socket tells a phone, and its clock is a minute away.
     expect(await app.vault.adapter.exists('Phone.md')).toBe(false)
 
     domEvents[0]()
     await waitFor('the note to arrive', () => app.vault.adapter.exists('Phone.md'))
     expect(await read('Phone.md')).toBe('read on the train')
     expect(socketsOpened).toBe(0)
+  })
+
+  it('sends a note made on the phone while the app stays in front', async () => {
+    Platform.isMobile = true
+    const { other } = await connect()
+    await synced()
+
+    await write('Phone/Created on phone.md', 'written on the bus')
+    app.emit('vault', 'create', app.vault.getFileByPath('Phone/Created on phone.md'))
+
+    await waitFor('the note to reach the server', async () =>
+      (await serverPaths(other)).includes('Phone/Created on phone.md')
+    )
+    expect(socketsOpened).toBe(0)
+    expect(service.log.value.join('\n')).toContain('keeps no connection open')
+  })
+
+  it('asks the server on a clock while the app is in front', async () => {
+    Platform.isMobile = true
+    const { other } = await connect({ fallbackMs: 200 })
+    await synced()
+
+    await seed(other, [await create(other, 'Laptop.md', 'written at the desk')])
+    await waitFor('the note to arrive without the app leaving the front', () =>
+      app.vault.adapter.exists('Laptop.md')
+    )
+    expect(socketsOpened).toBe(0)
+  })
+
+  it('sends what is unsent as the app leaves the front', async () => {
+    Platform.isMobile = true
+    const { other } = await connect()
+    await synced()
+
+    // Written behind the vault's back, so only a sync that scans can find it.
+    await write('Locked away.md', 'the last thing before the pocket')
+    const doc = document as unknown as { visibilityState: string }
+    doc.visibilityState = 'hidden'
+    try {
+      domEvents[0]()
+      await waitFor('the note to reach the server', async () =>
+        (await serverPaths(other)).includes('Locked away.md')
+      )
+    } finally {
+      doc.visibilityState = 'visible'
+    }
   })
 
   it('opens a socket on a desktop, which is what the phone is spared', async () => {

@@ -46,6 +46,7 @@ import {
 } from './pieces'
 import { DISCONNECTED_STATUS, statusOf, type SyncStatus } from './status'
 import { fetchViaRequestUrl, wsFor } from './transport'
+import { PHONE_POLL_MS, phoneSocket } from './phone'
 
 export { isWireConfigDir } from './pieces'
 export type { ConnectionPatch, VaultChoice } from './enrolment'
@@ -87,10 +88,12 @@ export type { ConnectionPatch, VaultChoice } from './enrolment'
  *
  * ## The phone
  *
- * On mobile there is no socket, no file watcher and no background timer: the operating system
- * suspends the app the moment it leaves the screen, and a socket it will not let live is a
- * socket that only reconnects. A phone syncs once when the plugin starts and again every time
- * the app comes back to the front, which is exactly when its user is about to read something.
+ * A phone runs the engine the way a desktop does, less the socket (`phone.ts`): the operating
+ * system suspends the app the moment it leaves the screen, and a socket it will not let live is
+ * a socket that only reconnects. The vault's own events send an edit a moment after it is made,
+ * a clock asks the server every minute while the app is in front, and the app coming back to
+ * the front or leaving it syncs at once — the one to read what arrived, the other to get the
+ * last edit out before the system freezes the app.
  *
  * ## Secrets
  *
@@ -719,7 +722,7 @@ export class SyncService {
     const app = this.app
     if (app === null) return
     const fs = new ObsidianFileSystem(app, {
-      ...(this.deps.pollMs === undefined ? {} : { pollMs: this.deps.pollMs }),
+      ...(this.pollMs() === undefined ? {} : { pollMs: this.pollMs() }),
       onWatch: (paths) => this.noticed(paths),
     })
     const store = await IndexedDbStateStore.open(
@@ -745,7 +748,7 @@ export class SyncService {
         selective: connection.selective,
         ignore: this.ignore(app, ignoreText),
         ...(scriptsFolder === '' ? {} : { scriptsFolder }),
-        ...(this.deps.fallbackMs === undefined ? {} : { fallbackMs: this.deps.fallbackMs }),
+        ...(this.fallbackMs() === undefined ? {} : { fallbackMs: this.fallbackMs() }),
         onSync: (report) => this.note(summarise(report)),
         onFail: (error, kind) => this.failed(error, kind),
         log: (line) => this.note(line),
@@ -774,8 +777,8 @@ export class SyncService {
    *
    * The rescan is asked for *before* `start`, so it is the first run and the one `start`
    * prompts queues behind it; the scope is filed only once the run got through, so a rescan
-   * that failed is done again on the next start. A phone gets no `start` at all — no watcher,
-   * no socket, no clock — just this one sync, and another whenever the app comes back.
+   * that failed is done again on the next start. A phone is started too: its socket refuses to
+   * open (`phone.ts`), and the watcher and the clock are what it syncs on.
    */
   private async first(
     engine: SyncEngine,
@@ -803,11 +806,6 @@ export class SyncService {
       await store.setMeta(SCOPE_KEY, scope)
     }
 
-    if (Platform.isMobile) {
-      this.note('mobile: no socket and no background timers; syncing when the app is in front')
-      if (!paused && !due) void engine.sync().catch(noop)
-      return
-    }
     engine.start()
   }
 
@@ -893,8 +891,20 @@ export class SyncService {
     return this.deps.fetch ?? fetchViaRequestUrl(requestUrl)
   }
 
+  /** A phone's refuses to open, whatever a test hands in: a phone must never hold one. */
   private socket(): typeof WebSocket {
+    if (Platform.isMobile) return phoneSocket()
     return this.deps.WebSocket ?? wsFor()
+  }
+
+  /** How often the engine syncs unprompted: the engine's own five minutes, a minute on a phone. */
+  private fallbackMs(): number | undefined {
+    return this.deps.fallbackMs ?? (Platform.isMobile ? PHONE_POLL_MS : undefined)
+  }
+
+  /** How often the config folder is walked: the adapter's own default, a minute on a phone. */
+  private pollMs(): number | undefined {
+    return this.deps.pollMs ?? (Platform.isMobile ? PHONE_POLL_MS : undefined)
   }
 
   private factory(): IDBFactory {
@@ -904,7 +914,12 @@ export class SyncService {
   /* -- Wiring ----------------------------------------------------------- */
 
   /**
-   * A phone syncs when its user looks at it.
+   * A phone syncs when its user looks at it, and as they put it away.
+   *
+   * Coming back, because the clock was frozen while the app was away and whatever other devices
+   * did since is what the user is about to read. Going away, because the system is about to
+   * freeze the app, and an edit whose push is still waiting on the watcher's pause would sit
+   * here until the app is next opened; the system gives a moment, and a small push fits in it.
    *
    * Registered through the plugin so Obsidian takes the listener away when the plugin unloads,
    * and registered once — `init` may run again in a session whose settings were replaced.
@@ -914,9 +929,9 @@ export class SyncService {
     if (!Platform.isMobile || plugin === null || this.watchingVisibility) return
     this.watchingVisibility = true
     plugin.registerDomEvent(document, 'visibilitychange', () => {
-      if (document.visibilityState !== 'visible') return
       if (this.engine === null || this.connection.value.paused) return
-      this.note('the app came back to the front')
+      const visible = document.visibilityState === 'visible'
+      this.note(visible ? 'the app came back to the front' : 'the app left the front')
       void this.syncNow()
     })
   }
@@ -928,8 +943,8 @@ export class SyncService {
    * built again on the new rules and the manifest walked. Nothing else in a batch is the
    * service's business — the engine has already taken it in.
    *
-   * A phone never gets here: it runs no watcher at all, so an edit to the ignore file is picked
-   * up at the next launch or the next settings save, both of which reconcile anyway.
+   * A phone gets here too: it runs the same watcher, polling the ignore file with its config
+   * folder every minute.
    */
   private noticed(paths: string[]): void {
     if (!paths.some((path) => caseKey(path) === caseKey(IGNORE_FILE))) return
