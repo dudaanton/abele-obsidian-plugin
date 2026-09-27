@@ -1,4 +1,5 @@
-import { TAbstractFile, TFile, EventRef, Modal, Notice, normalizePath } from 'obsidian'
+import { askName } from '@/modal/askName'
+import { TAbstractFile, TFile, EventRef, Notice, normalizePath } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from './AbeleConfig'
 
@@ -119,36 +120,7 @@ export class SnippetService {
     }
 
     const { app } = GlobalStore.getInstance()
-    const name = await new Promise<string | null>((resolve) => {
-      const modal = new (class extends Modal {
-        onOpen() {
-          const { contentEl } = this
-          contentEl.createEl('h3', { text: 'New CSS snippet' })
-          const input = contentEl.createEl('input', {
-            type: 'text',
-            placeholder: 'filename',
-            cls: 'abele-snippet-name-input abele-name-input',
-          })
-          input.focus()
-          input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && input.value.trim()) {
-              resolve(input.value.trim())
-              this.close()
-            }
-          })
-          this.modalEl.addEventListener('click', (e) => {
-            if (e.target === this.modalEl) {
-              resolve(null)
-              this.close()
-            }
-          })
-        }
-        onClose() {
-          resolve(null)
-        }
-      })(app)
-      modal.open()
-    })
+    const name = await askName(app, { title: 'New CSS snippet' })
 
     if (!name) return
 

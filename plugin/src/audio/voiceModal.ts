@@ -8,25 +8,25 @@
  * Mounted by hand rather than through `VueRenderer`: that one finds its mount point through
  * the main document, and a note can be open in a window of its own.
  */
-import { App, Modal } from 'obsidian'
+import type { App } from 'obsidian'
+import { ShellModal } from '@/modal/ShellModal'
 import { createApp, type App as VueApp } from 'vue'
 import VoiceRecorder from '@/components/VoiceRecorder.vue'
 
-class VoiceModal extends Modal {
+class VoiceModal extends ShellModal {
   private vue: VueApp | null = null
 
   constructor(
     app: App,
     private readonly done: (text: string | null) => void
   ) {
-    super(app)
+    super(app, { title: 'Dictate' })
   }
 
   onOpen(): void {
-    this.titleEl.setText('Dictate')
-
-    const mount = this.contentEl.doc.win.createDiv()
-    this.contentEl.appendChild(mount)
+    super.onOpen()
+    const mount = this.bodyEl.doc.win.createDiv()
+    this.bodyEl.appendChild(mount)
 
     this.vue = createApp(VoiceRecorder, {
       autoStart: true,
@@ -44,8 +44,9 @@ class VoiceModal extends Modal {
     // releases it in `onBeforeUnmount`, and a dialog dismissed with Escape gets here too.
     this.vue?.unmount()
     this.vue = null
-    this.contentEl.empty()
+    this.bodyEl.empty()
     this.done(null)
+    super.onClose()
   }
 }
 

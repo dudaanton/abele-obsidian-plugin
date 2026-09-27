@@ -1,4 +1,5 @@
-import { App, Editor, MarkdownView, Modal, Notice, Setting } from 'obsidian'
+import { App, Editor, MarkdownView, Notice } from 'obsidian'
+import { confirmAction } from '@/modal/confirm'
 import { GlobalStore } from '@/stores/GlobalStore'
 
 const FOOTNOTE_REF_RE = /\[\^(\d+)\]/g
@@ -157,39 +158,13 @@ export function withoutFootnote(content: string, label: string): string {
   return result.join('\n')
 }
 
-/** Obsidian's own confirmation dialog. Resolves false if the user closes it any other way. */
+/** Asks before a footnote goes. Resolves false if the user closes it any other way. */
 function askToRemove(app: App, label: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const modal = new Modal(app)
-    let answered = false
-
-    modal.setTitle(`Remove footnote [^${label}]?`)
-    modal.contentEl.createEl('p', {
-      text: 'The footnote and every reference to it are removed from this note.',
-    })
-
-    new Setting(modal.contentEl)
-      .addButton((button) =>
-        button.setButtonText('Cancel').onClick(() => {
-          modal.close()
-        })
-      )
-      .addButton((button) =>
-        button
-          .setButtonText('Remove')
-          .setWarning()
-          .onClick(() => {
-            answered = true
-            modal.close()
-            resolve(true)
-          })
-      )
-
-    modal.onClose = () => {
-      if (!answered) resolve(false)
-    }
-
-    modal.open()
+  return confirmAction(app, {
+    title: `Remove footnote [^${label}]?`,
+    message: 'The footnote and every reference to it are removed from this note.',
+    confirmText: 'Remove',
+    confirmTooltip: 'Remove the footnote and its references',
   })
 }
 

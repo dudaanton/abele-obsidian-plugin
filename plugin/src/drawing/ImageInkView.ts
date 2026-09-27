@@ -7,6 +7,7 @@
  * tab closed without saving keeps nothing.
  */
 import {
+  type App,
   ItemView,
   Menu,
   Notice,
@@ -16,7 +17,7 @@ import {
   type WorkspaceLeaf,
 } from 'obsidian'
 import { createApp, reactive, type App as VueApp } from 'vue'
-import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
+import { confirmAction } from '@/modal/confirm'
 import { ChatService } from '@/ai/ChatService'
 import { DrawingSession } from './DrawingSession'
 import { drawingKeys, mountDrawingBar } from './drawingTab'
@@ -175,7 +176,7 @@ export class ImageInkView extends ItemView {
 
   /** The picture, drawn on, in the original's place — asked about first. */
   async saveOver(file: TFile, asked = false): Promise<boolean> {
-    if (!asked && !(await confirmOver(this.contentEl.ownerDocument, file.name))) return false
+    if (!asked && !(await confirmOver(this.app, file.name))) return false
     const blob = await this.picture(file)
     if (!blob) return false
     await this.app.vault.modifyBinary(file, await blob.arrayBuffer())
@@ -214,21 +215,11 @@ export class ImageInkView extends ItemView {
 }
 
 /** Asks before a picture is written over. */
-function confirmOver(doc: Document, name: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const host = doc.win.createDiv()
-    let answer = false
-    const app = createApp(ConfirmModal, {
-      title: 'Save over the picture?',
-      message: `${name} is replaced by the picture with the drawing on it. The picture as it is now is lost.`,
-      confirmText: 'Save over it',
-      confirmTooltip: 'Replace the picture with the one drawn on',
-      onConfirm: () => (answer = true),
-      onClose: () => {
-        app.unmount()
-        resolve(answer)
-      },
-    })
-    app.mount(host)
+function confirmOver(app: App, name: string): Promise<boolean> {
+  return confirmAction(app, {
+    title: 'Save over the picture?',
+    message: `${name} is replaced by the picture with the drawing on it. The picture as it is now is lost.`,
+    confirmText: 'Save over it',
+    confirmTooltip: 'Replace the picture with the one drawn on',
   })
 }

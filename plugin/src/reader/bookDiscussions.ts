@@ -8,7 +8,8 @@
  * chat again, after a restart or on another device too; asking again about the same words reuses
  * it. Nothing is ever written into the book.
  */
-import { App, Modal, Notice, type TFile } from 'obsidian'
+import { App, Notice, type TFile } from 'obsidian'
+import { ShellModal } from '@/modal/ShellModal'
 import { CommentService } from '@/ai/CommentService'
 import type { CommentAnchor } from '@/ai/types'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -110,32 +111,26 @@ export function askWhatToRemove(h: Highlight): Promise<RemoveChoice> {
   const { app } = GlobalStore.getInstance()
   return new Promise((resolve) => {
     let chosen: RemoveChoice = null
-    const modal = new (class extends Modal {
-      onOpen(): void {
-        this.setTitle('Remove this discussion from the book?')
-        this.contentEl.createEl('p', {
-          text: `“${h.text.length > 120 ? `${h.text.slice(0, 120)}…` : h.text}”`,
-          cls: 'abele-book-discussion-remove__quote',
-        })
-        this.contentEl.createEl('p', {
-          text: 'The words stop being marked. Their chat can stay as an ordinary chat in the history, or go with the mark.',
-        })
-        const row = this.contentEl.createDiv({ cls: 'modal-button-container' })
-        const button = (text: string, choice: RemoveChoice, cls?: string) => {
-          const b = row.createEl('button', { text, cls })
-          b.addEventListener('click', () => {
-            chosen = choice
-            this.close()
-          })
-        }
-        button('Keep the chat', 'keep', 'mod-cta')
-        button('Delete the chat too', 'delete', 'mod-warning')
-        button('Cancel', null)
-      }
+    const modal = new (class extends ShellModal {
       onClose(): void {
+        super.onClose()
         resolve(chosen)
       }
-    })(app)
+    })(app, { title: 'Remove this discussion from the book?', footer: true })
+    modal.bodyEl.createEl('p', {
+      text: `“${h.text.length > 120 ? `${h.text.slice(0, 120)}…` : h.text}”`,
+      cls: 'abele-book-discussion-remove__quote',
+    })
+    modal.bodyEl.createEl('p', {
+      text: 'The words stop being marked. Their chat can stay as an ordinary chat in the history, or go with the mark.',
+    })
+    const choose = (choice: RemoveChoice) => () => {
+      chosen = choice
+      modal.close()
+    }
+    modal.addButton('Keep the chat', choose('keep'), { cta: true })
+    modal.addButton('Delete the chat too', choose('delete'), { warning: true })
+    modal.addButton('Cancel', choose(null))
     modal.open()
   })
 }

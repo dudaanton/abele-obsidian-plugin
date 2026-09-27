@@ -1,3 +1,4 @@
+import { askName } from '@/modal/askName'
 import {
   TFile,
   TAbstractFile,
@@ -5,7 +6,6 @@ import {
   Notice,
   EventRef,
   MarkdownView,
-  Modal,
   normalizePath,
 } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -289,36 +289,7 @@ export class ScriptService {
     }
 
     const { app } = GlobalStore.getInstance()
-    const name = await new Promise<string | null>((resolve) => {
-      const modal = new (class extends Modal {
-        onOpen() {
-          const { contentEl } = this
-          contentEl.createEl('h3', { text: 'New script' })
-          const input = contentEl.createEl('input', {
-            type: 'text',
-            placeholder: 'filename',
-            cls: 'abele-name-input',
-          })
-          input.focus()
-          input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && input.value.trim()) {
-              resolve(input.value.trim())
-              this.close()
-            }
-          })
-          this.modalEl.addEventListener('click', (e) => {
-            if (e.target === this.modalEl) {
-              resolve(null)
-              this.close()
-            }
-          })
-        }
-        onClose() {
-          resolve(null)
-        }
-      })(app)
-      modal.open()
-    })
+    const name = await askName(app, { title: 'New script' })
 
     if (!name) return
 
