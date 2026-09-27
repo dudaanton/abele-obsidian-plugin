@@ -320,12 +320,14 @@ export class EngineRunner {
       ...(pollMs === undefined ? {} : { pollMs }),
       onWatch: (paths) => this.noticed(paths),
       onEngineWrite: (path) => settings.noteWrite(path),
+      yieldsToServer: (path) => settings.yields(path),
     })
     const store = await IndexedDbStateStore.open(
       factoryOf(deps),
       stateDatabaseName(this.ledgerFor(app, connection.vaultId).stateId)
     )
     store.onClosedElsewhere(() => this.closedUnderEngine(store))
+    settings.useLedger(store)
     let engine: SyncEngine
     let vault: VaultClient
     try {

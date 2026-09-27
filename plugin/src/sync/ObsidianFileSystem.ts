@@ -37,6 +37,14 @@ export interface ObsidianFileSystemOptions {
    * throw here is logged and swallowed: the engine's write has happened either way.
    */
   onEngineWrite?: (path: string) => void
+  /**
+   * Whether the copy of a file here must lose to the server's: while it says so, the file is
+   * listed and statted with mtime 0, the oldest the wire has. The plugin's own `data.json`
+   * before the ledger holds it (`OwnSettingsWatch.yields`): sent as a create against the vault's
+   * head, it loses the server's newer-mtime race, is kept in the head's history, and the head is
+   * written here. Asked only for files of the config folder, where that file is.
+   */
+  yieldsToServer?: (path: string) => Promise<boolean>
 }
 
 /**
@@ -73,6 +81,7 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly now: () => number
   private readonly onWatch: ((paths: string[]) => void) | null
   private readonly onEngineWrite: ((path: string) => void) | null
+  private readonly yieldsToServer: ((path: string) => Promise<boolean>) | null
   /** Set while `watch` is running: what `kick` reaches for, and nothing when nobody watches. */
   private pollNow: (() => void) | null = null
 
@@ -84,6 +93,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.now = options.now ?? ((): number => Date.now())
     this.onWatch = options.onWatch ?? null
     this.onEngineWrite = options.onEngineWrite ?? null
+    this.yieldsToServer = options.yieldsToServer ?? null
   }
 
   private get adapter(): DataAdapter {
@@ -106,7 +116,13 @@ export class ObsidianFileSystem implements FileSystem {
     for (const file of this.app.vault.getFiles()) {
       yield { path: file.path, size: file.stat.size, mtime: stamp(file.stat.mtime) }
     }
-    yield* this.walkConfig(this.configDir)
+    for await (const info of this.walkConfig(this.configDir)) yield await this.told(info)
+  }
+
+  /** A file as the engine is told of it: see `yieldsToServer`. */
+  private async told(info: FileInfo): Promise<FileInfo> {
+    if (this.yieldsToServer === null || !info.path.startsWith(`${this.configDir}/`)) return info
+    return (await this.yieldsToServer(info.path)) ? { ...info, mtime: 0 } : info
   }
 
   async read(path: string): Promise<Uint8Array> {
@@ -195,7 +211,7 @@ export class ObsidianFileSystem implements FileSystem {
     if (standing === null || standing.type !== 'file') return null
     // The path that was statted, spelled as it was asked for: the engine matches what comes
     // back against what it holds, and a name it did not ask about would be a different file.
-    return { path, size: standing.size, mtime: stamp(standing.mtime) }
+    return this.told({ path, size: standing.size, mtime: stamp(standing.mtime) })
   }
 
   /**

@@ -98,6 +98,18 @@ change Abele's settings at nearly the same moment, the later save wins; the othe
 version history. Abele's chat index (`chat-index.json` beside the settings) stays on each device
 and is rebuilt from the chat files.
 
+The first time a device syncs Abele's settings file — a new device, one set up by a settings
+transfer, one upgraded from a version that kept the file to itself — the vault's copy wins
+whatever the dates say: the device's own file, written at its first launch, goes to the file's
+version history and the vault's settings are loaded in its place. Where the vault has no such
+file yet, the device's becomes it.
+
+A settings change made on this device while another device's settings are arriving is kept: the
+arrived file is taken in first and the change put back on top of it, so neither is lost. A
+settings file that arrives unreadable is not loaded; the settings in memory stay, nothing is saved
+until a readable one arrives, and a notice says so. Deleting the file does not reset anything —
+the delete reaches every device, and each writes its settings back at its next save.
+
 These switches only work when the configuration folder is called `.obsidian`. On a device where
 Obsidian was told to use another folder (**Override config folder**, a phone on `.obsidian-mobile`
 for instance), the configuration folder does not sync at all for now: the Sync tab says so instead

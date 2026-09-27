@@ -1,4 +1,10 @@
+import type { StateEntry } from '@abele/sync-core'
 import { caseKey } from '@abele/sync-protocol'
+
+/** The engine's ledger, as much of it as `yields` asks. */
+interface Ledger {
+  get(path: string): Promise<StateEntry | null>
+}
 
 /**
  * Whether a sync run wrote the plugin's own `data.json`, and telling the plugin once it has.
@@ -18,6 +24,7 @@ import { caseKey } from '@abele/sync-protocol'
 export class OwnSettingsWatch {
   private readonly own: string
   private written = false
+  private ledger: Ledger | null = null
 
   /**
    * `path` is the settings file's wire path — `.obsidian/plugins/<id>/data.json` — and `tell`
@@ -29,6 +36,38 @@ export class OwnSettingsWatch {
     private readonly tell: () => void
   ) {
     this.own = caseKey(path)
+  }
+
+  /** The ledger `yields` asks, once the engine's state database is open. */
+  useLedger(ledger: Ledger): void {
+    this.ledger = ledger
+  }
+
+  /**
+   * Whether `path` is the settings file and the ledger does not hold it yet — this device has
+   * never synced it. Its first contact with the server's copy then goes the server's way
+   * (`ObsidianFileSystemOptions.yieldsToServer`).
+   *
+   * A device's own `data.json` exists before it first syncs: a fresh install writes defaults
+   * and a new Comment agent at its first launch, a settings transfer writes some sections and
+   * no key store, and a build that kept the file to itself never put it in the ledger. Sent as
+   * it stands, it is a create against the vault's head, which the server gives to the newer
+   * mtime — the newcomer's, nearly always — and every device would take its settings and lose
+   * theirs. Reported as the oldest file there is, it loses that race instead: the server keeps
+   * its head, keeps this copy as a version in the file's history, and the head is written here
+   * and reloaded like any other pull of it. Where the server has no such file yet, this copy
+   * becomes it.
+   *
+   * No ledger, or one that will not answer, and the file is left as it is.
+   */
+  async yields(path: string): Promise<boolean> {
+    if (this.ledger === null || caseKey(path) !== this.own) return false
+    try {
+      return (await this.ledger.get(path)) === null
+    } catch (error) {
+      console.debug('[abele-sync] the ledger would not say whether it holds the settings', error)
+      return false
+    }
   }
 
   /** The engine wrote, moved or removed a file at `path` (`onEngineWrite`). */

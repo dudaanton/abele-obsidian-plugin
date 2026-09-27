@@ -93,13 +93,20 @@ function reordered(value: unknown): unknown {
 }
 
 /**
- * A device on the vault. `reversed` has it write its settings with every key in the reverse
+ * A device on the vault, with `settings` already in its `data.json` if given. `reversed` has it write its settings with every key in the reverse
  * order — the same settings in another serialisation, as another build or a hand edit makes.
  */
-async function device(name: string, { reversed = false } = {}): Promise<Device> {
+async function device(
+  name: string,
+  { reversed = false, settings }: { reversed?: boolean; settings?: Record<string, unknown> } = {}
+): Promise<Device> {
   const app = buildFakeVault([
     { path: 'Existing.md', content: `made on ${name}`, mtime: 1000, ctime: 1000 },
     { path: '.obsidian/plugins/abele/manifest.json', content: '{}', mtime: 1000, ctime: 1000 },
+    // A settings file of its own from before it ever synced, saved just now.
+    ...(settings === undefined
+      ? []
+      : [{ path: DATA, content: JSON.stringify(settings), mtime: Date.now(), ctime: Date.now() }]),
   ])
   // Its own settings, as a second copy of the plugin would hold them.
   const config = new (AbeleConfig as unknown as new () => AbeleConfig)()
@@ -289,6 +296,41 @@ describe('Abele settings between two devices', () => {
     // The device that took the change wrote nothing back.
     expect(b.saves).toBe(before.saves)
     expect((await onDisk(b)).tasksFolder).toBe('Projects')
+  })
+
+  it('a device joining with settings of its own takes the vault’s, and its own go to history', async () => {
+    const a = await device('Laptop')
+    a.config.tasksFolder = 'From the laptop'
+    await a.config.saveSettings()
+    await a.store.enable('passphrase', FAST)
+    a.store.set(PROVIDER_KEY, 'sk-from-the-laptop')
+    await a.store.flush()
+    await cycle(a)
+
+    // Saved after the laptop's, so its mtime is the newer one: it would win a plain race.
+    await tick(20)
+    const b = await device('Phone', { settings: { tasksFolder: 'From the phone' } })
+    await settle(a, b)
+
+    for (const one of [a, b]) {
+      expect(one.config.tasksFolder).toBe('From the laptop')
+      expect((await onDisk(one)).tasksFolder).toBe('From the laptop')
+    }
+    expect(a.store.status.value).toBe('unlocked')
+    expect(a.store.get(PROVIDER_KEY)).toBe('sk-from-the-laptop')
+    expect(b.store.status.value).toBe('locked')
+
+    const item = (await other.manifest(null)).items.find((held) => held.path === DATA)
+    const versions = await other.versions(item!.file_id)
+    const texts = await Promise.all(
+      versions.map(async (version) =>
+        new TextDecoder().decode(await other.versionBytes(item!.file_id, version.version_id))
+      )
+    )
+    expect(texts.some((text) => text.includes('From the phone'))).toBe(true)
+
+    await twoMoreCycles(a, b)
+    expect([pushed(a), pushed(b)]).toEqual([0, 0])
   })
 
   it('settles even when something writes the settings back every time they are reloaded', async () => {
