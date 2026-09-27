@@ -8,7 +8,7 @@
  * is for the running app.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { flushPromises, type VueWrapper } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { MarkdownRenderer, WorkspaceLeaf } from 'obsidian'
 import { openTab as open } from '../helpers/githubTab'
 import { useVault } from '../helpers/testEnv'
@@ -48,6 +48,10 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks()
 })
+
+// A tab left mounted keeps its find bar watching the page, and its search timer then fires after
+// the test environment is gone — an unhandled error that fails the whole run.
+enableAutoUnmount(afterEach)
 
 const blocks = (w: VueWrapper) => w.findAll('.abele-github-md__block')
 const marked = (w: VueWrapper) =>
