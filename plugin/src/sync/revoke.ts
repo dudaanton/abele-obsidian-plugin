@@ -152,7 +152,8 @@ export class Revoker {
       if (kept) {
         this.host.note(
           `the server was not told that ${who} left: it is plain http to another machine, and ` +
-            'the token is not sent that way. It stays enrolled there until it is revoked there'
+            'the token is not sent that way. It stays enrolled there until it is revoked from the ' +
+            'device list on a device that still syncs that vault'
         )
       }
       return { ...told, kept }
@@ -256,7 +257,7 @@ export class Revoker {
         done.add(entry.tokenId)
         this.host.note(
           `gave up telling the server that ${who} left: a month has passed. The server still ` +
-            'has it enrolled, and anyone holding a copy of its token can still sync that vault'
+            'has it enrolled; revoke it from the device list on a device that still syncs that vault'
         )
         continue
       }

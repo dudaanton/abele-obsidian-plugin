@@ -62,7 +62,7 @@
           <span class="abele-sync-settings__value">{{ device.vaultId }}</span>
         </Setting>
 
-        <Setting name="This device" desc="The name the server knows it by.">
+        <Setting name="This device" desc="What the vault's device list calls it.">
           <span class="abele-sync-settings__value">{{ device.deviceName }}</span>
         </Setting>
 
@@ -148,6 +148,8 @@
       <SelectiveSync />
 
       <template v-if="!joining">
+        <DeviceList />
+
         <VaultPolicy />
 
         <UsageCard />
@@ -226,8 +228,8 @@
  *
  * Two screens, really. A device nobody has set up gets the connect card and nothing else,
  * because none of the rest has anything to say about a vault it cannot reach. A device that
- * is set up gets four sections: what it is doing, what of the vault it takes, the vault's own
- * policy, and how much room that vault is using.
+ * is set up gets five sections: what it is doing, what of the vault it takes, the devices that
+ * sync the vault, the vault's own policy, and how much room that vault is using.
  *
  * The status is the service's own ref, so this screen redraws as the engine moves without
  * polling anything — and which of the two screens shows is read off it too. Anything but
@@ -249,6 +251,7 @@ import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import ConnectCard from './sync/ConnectCard.vue'
 import SelectiveSync from './sync/SelectiveSync.vue'
 import VaultPolicy from './sync/VaultPolicy.vue'
+import DeviceList from './sync/DeviceList.vue'
 import UsageCard from './sync/UsageCard.vue'
 import JoinVaultModal from './sync/JoinVaultModal.vue'
 import HeldDeletesBlock from '../sync/HeldDeletesBlock.vue'
@@ -302,7 +305,8 @@ const forgetMessage = computed(() => {
   if (entry === null) return ''
   return (
     `${who(entry)} stays enrolled on ${entry.serverUrl}: anyone holding a copy of its token can ` +
-    'still sync that vault until the account revokes it there. This device forgets the token ' +
+    'still sync that vault until it is revoked there, under Devices on this vault on any device ' +
+    'that still syncs it. This device forgets the token ' +
     'it kept to tell the server with.'
   )
 })

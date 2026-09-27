@@ -302,7 +302,8 @@ export class Enrolment {
    *
    * Asked once, never again on a failure: the server enrols before it answers, so a request
    * whose answer was lost has made a device nobody holds the token of — and a retry would make
-   * another. The server records such a one as enrolled by this device.
+   * another. The device list shows such a one, enrolled by this device, and any device of the
+   * vault can revoke it there.
    *
    * Asked of the server the token was minted on, and of no other: an address changed since is
    * refused, as it is everywhere the token goes.

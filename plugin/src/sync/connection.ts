@@ -52,7 +52,7 @@ export interface DeviceConnection {
   deviceId: string
   /** The keychain name the device token is filed under — never the token. */
   deviceTokenId: string
-  /** The name the server knows this device by. */
+  /** What this device is called in the vault's device list. */
   deviceName: string
   /** Sync stays connected but moves nothing until this goes false again. */
   paused: boolean

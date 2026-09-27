@@ -3,13 +3,13 @@
     <div ref="root" class="abele-transfer-send">
       <!--
         Before the codes, when the sync connection is going with keys: the server is to make a
-        device for the other side, and will know it by this name. Asked here,
+        device for the other side, and the device list will show it under this name. Asked here,
         at the moment the codes are made, so the device is made once — not on every tick.
       -->
       <template v-if="naming">
         <Setting
           name="Name for the other device"
-          desc="The server makes a device of its own for it, and knows it by this name."
+          desc="The server makes a device of its own for it, and the vault's device list shows it under this name."
         >
           <Input
             :model-value="name"

@@ -30,7 +30,7 @@
       <Setting
         v-if="deviceName !== undefined"
         name="This device's name"
-        desc="The name the server will know this device by."
+        desc="What the vault's device list will call this device."
       >
         <Input :model-value="name" :disabled="busy" @update:model-value="name = $event" />
       </Setting>

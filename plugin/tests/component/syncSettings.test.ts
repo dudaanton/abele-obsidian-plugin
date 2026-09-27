@@ -97,6 +97,8 @@ const service = {
     reloader: { available: () => true, reload: () => true },
   },
   applySettingsAndReload: vi.fn(),
+  listDevices: vi.fn(() => Promise.resolve(null)),
+  revokeDevice: vi.fn(),
   keepLocalSettings: vi.fn(),
   decideDeletes: vi.fn(),
 }
@@ -149,6 +151,7 @@ beforeEach(() => {
   service.connected = false
   service.heldPrompt.held.value = []
   service.settingsPrompt.staged.value = []
+  service.listDevices.mockResolvedValue(null)
   service.status.value = { ...DISCONNECTED_STATUS }
   service.connection.value = emptyConnection()
   service.updateConnection.mockImplementation(async (patch: Partial<DeviceConnection>) =>
@@ -487,6 +490,29 @@ describe('deletions held back', () => {
     await flushPromises()
 
     expect(headings(screen)).not.toContain('Deletions held back')
+  })
+})
+
+describe('the devices on this vault', () => {
+  it('are listed on the tab of a connected device, beside this one', async () => {
+    connect()
+    service.listDevices.mockResolvedValue([
+      {
+        id: service.connection.value.deviceId,
+        name: 'Mac',
+        platform: 'desktop',
+        vault_id: 'v1',
+        created_at: '2026-09-01T10:00:00.000Z',
+        last_seen_at: null,
+        enrolled_by: null,
+      },
+    ] as never)
+
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    expect(headings(screen)).toContain('Devices on this vault')
+    expect(badgeTexts(screen)).toContain('This device')
   })
 })
 
