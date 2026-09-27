@@ -1,6 +1,6 @@
 import { Platform, type App } from 'obsidian'
 import { toRaw } from 'vue'
-import { SyncClient, SyncEngine, type VaultClient } from '@abele/sync-core'
+import { SyncClient, SyncEngine, joinFinished, type VaultClient } from '@abele/sync-core'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { ObsidianFileSystem } from './ObsidianFileSystem'
@@ -124,12 +124,13 @@ export async function buildEngine(recipe: EngineRecipe): Promise<BuiltEngine> {
       onSync: (report) => {
         board.note(summarise(report))
         settings.settle()
-        // Any run that got through ends the join. One that started at the feed's start walked
-        // the vault and so did the join; one that started past it sent no side (the engine
-        // sends one only from 0) — a join whose walk held nothing moved past 0 before its push,
-        // and a push cut off there would otherwise leave the join open for ever (task-8
-        // review, #1).
-        if (join !== null) host.joined(join)
+        // Only the run the engine says finished the join ends it: the one whose push, with the
+        // side chosen on every create, was answered. A run that got through without that — a
+        // restart after a pull whose scan failed moved the cursor past 0 — leaves the choice for
+        // the run that does (pi review #5). The engine keeps the join open across restarts by a
+        // mark in the ledger, so a push cut off after a walk that held nothing no longer leaves
+        // it open for ever (task-8 review, #1).
+        if (join !== null && joinFinished(report)) host.joined(join)
         host.synced(report)
       },
       // A run that failed after its pull still wrote what it pulled.
