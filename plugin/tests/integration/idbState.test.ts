@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { IDBFactory } from 'fake-indexeddb'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { IDBDatabase as FakeIDBDatabase, IDBFactory } from 'fake-indexeddb'
 import type { Journal, StateEntry } from '@abele/sync-core'
 import { IndexedDbStateStore, stateDatabaseName } from '@/sync/IndexedDbStateStore'
 
@@ -261,6 +261,104 @@ describe('IndexedDbStateStore', () => {
       })
     ).rejects.toMatchObject({ code: 'io' })
     store = await IndexedDbStateStore.open(indexedDB, NAME)
+  })
+
+  /**
+   * iOS, back from the background: the first request on the old connection fails with WebKit's
+   * `UnknownError … without an in-progress transaction`. Simulated by handing the next
+   * `transactions` transactions object stores whose every request fails that way.
+   */
+  function loseTransactions(transactions: number): { restore: () => void } {
+    const real = FakeIDBDatabase.prototype.transaction
+    let left = transactions
+    const lost = (): IDBRequest => {
+      const request = { error: null as DOMException | null } as unknown as IDBRequest & {
+        error: DOMException | null
+      }
+      setTimeout(() => {
+        request.error = new DOMException(
+          'Attempt to get a record from database without an in-progress transaction',
+          'UnknownError'
+        )
+        request.onerror?.(new Event('error'))
+      }, 0)
+      return request
+    }
+    const lostStore: IDBObjectStore = new Proxy({} as IDBObjectStore, {
+      get: (_target, key) => (key === 'index' ? () => lostStore : lost),
+    })
+    const spy = vi.spyOn(FakeIDBDatabase.prototype, 'transaction').mockImplementation(function (
+      this: FakeIDBDatabase,
+      ...args: Parameters<typeof real>
+    ) {
+      const tx = real.apply(this, args)
+      if (left <= 0) return tx
+      left--
+      return new Proxy(tx, {
+        get: (target, key) => {
+          if (key === 'objectStore') return () => lostStore
+          const value: unknown = Reflect.get(target, key, target)
+          return typeof value === 'function' ? (value as () => unknown).bind(target) : value
+        },
+        set: (target, key, value) => Reflect.set(target, key, value, target),
+      })
+    })
+    return { restore: () => spy.mockRestore() }
+  }
+
+  describe('a transaction WebKit dropped', () => {
+    it('reopens the connection and reads again, once', async () => {
+      await store.put(entry())
+      await store.setMeta('out-of-scope-files', '[]')
+      const opens = vi.spyOn(indexedDB, 'open')
+      const lose = loseTransactions(1)
+      try {
+        expect(await store.getMeta('out-of-scope-files')).toBe('[]')
+        expect(opens).toHaveBeenCalledTimes(1)
+        expect(await store.get('notes/a.md')).toEqual(entry())
+      } finally {
+        lose.restore()
+      }
+    })
+
+    it('writes again on the reopened connection, and the write lands', async () => {
+      const lose = loseTransactions(1)
+      try {
+        await store.setCursor(5)
+        await store.put(entry())
+      } finally {
+        lose.restore()
+      }
+      expect(await store.getCursor()).toBe(5)
+      expect(await collect(store)).toEqual([entry()])
+    })
+
+    it('commits a transaction whose flush lost its transaction', async () => {
+      const lose = loseTransactions(0)
+      try {
+        await store.transaction(async () => {
+          await store.put(entry())
+          await store.setCursor(3)
+          // The flush is the next transaction opened.
+          lose.restore()
+          loseTransactions(1)
+        })
+      } finally {
+        vi.restoreAllMocks()
+      }
+      expect(await store.getCursor()).toBe(3)
+      expect(await collect(store)).toEqual([entry()])
+    })
+
+    it('gives up as io when the reopened connection loses it too', async () => {
+      const lose = loseTransactions(2)
+      try {
+        await expect(store.getCursor()).rejects.toMatchObject({ code: 'io' })
+      } finally {
+        lose.restore()
+      }
+      expect(await store.getCursor()).toBe(0)
+    })
   })
 
   describe('transaction', () => {

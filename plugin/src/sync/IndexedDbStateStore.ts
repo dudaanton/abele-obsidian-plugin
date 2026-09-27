@@ -1,5 +1,12 @@
 import { EngineError, type Journal, type StateEntry, type StateStore } from '@abele/sync-core'
-import { asEngineError, completion, wait } from './idbRequests'
+import {
+  asEngineError,
+  completion,
+  connectTo,
+  deleteDatabase,
+  lostTransaction,
+  wait,
+} from './idbRequests'
 import {
   copyEntry,
   copyJournal,
@@ -101,7 +108,8 @@ interface MetaRow {
  *
  * Every failure the API raises comes back as `EngineError('io', …)`. IndexedDB has no lock a
  * caller could retry — an aborted transaction is a full disk, a closed connection or a browser
- * that evicted the origin's storage, and all of those are `io`.
+ * that evicted the origin's storage, and all of those are `io`. The one failure tried again is
+ * WebKit dropping a transaction, which gets one more go on a fresh connection (`once`).
  */
 export class IndexedDbStateStore implements StateStore {
   /** Non-null exactly while a transaction's body is running; a call arriving then joins it. */
@@ -114,7 +122,15 @@ export class IndexedDbStateStore implements StateStore {
   /** Told when another window made this connection close: see `onClosedElsewhere`. */
   private closedElsewhere: (() => void) | null = null
 
-  private constructor(private readonly db: IDBDatabase) {}
+  /** Set by `close`: a connection closed on purpose is not reopened behind the caller's back. */
+  private closed = false
+  /** A reopen under way, which every request that lost its transaction meanwhile waits for. */
+  private reopening: Promise<void> | null = null
+
+  private constructor(
+    private db: IDBDatabase,
+    private readonly connect: () => Promise<IDBDatabase>
+  ) {}
 
   /**
    * Called once if another window deletes or upgrades this database and the connection closes
@@ -130,35 +146,23 @@ export class IndexedDbStateStore implements StateStore {
    * Opens (and creates) the database and its stores. The factory is passed in rather than
    * taken from the window so a test can hand over its own and two tests never share one.
    */
-  static open(indexedDB: IDBFactory, name: string): Promise<IndexedDbStateStore> {
-    return new Promise((resolve, reject) => {
-      let request: IDBOpenDBRequest
-      try {
-        request = indexedDB.open(name, DB_VERSION)
-      } catch (cause) {
-        reject(new EngineError('io', `cannot open the state database ${name}`, cause))
-        return
-      }
-      request.onupgradeneeded = () => build(request.result)
-      request.onblocked = () => {
-        // Another connection holds the old version. It is asked to close below; this only
-        // says why the open is taking so long.
-        console.debug(`[abele-sync] the state database ${name} is held open elsewhere`)
-      }
-      request.onerror = () =>
-        reject(new EngineError('io', `cannot open the state database ${name}`, request.error))
-      request.onsuccess = () => {
-        const db = request.result
-        const store = new IndexedDbStateStore(db)
-        // A `delete` or a version bump from another window must not hang on this connection.
-        db.onversionchange = () => {
+  static async open(indexedDB: IDBFactory, name: string): Promise<IndexedDbStateStore> {
+    let store: IndexedDbStateStore | null = null
+    const connect = (): Promise<IDBDatabase> =>
+      connectTo(
+        indexedDB,
+        name,
+        build,
+        (db) => {
+          // A `delete` or a version bump from another window must not hang on this connection.
           console.debug(`[abele-sync] closing the state database ${name}: another window wants it`)
           db.close()
-          store.closedElsewhere?.()
-        }
-        resolve(store)
-      }
-    })
+          if (store?.db === db) store.closedElsewhere?.()
+        },
+        DB_VERSION
+      )
+    store = new IndexedDbStateStore(await connect(), connect)
+    return store
   }
 
   /**
@@ -172,37 +176,11 @@ export class IndexedDbStateStore implements StateStore {
     name: string,
     blockedTimeoutMs = DELETE_BLOCKED_TIMEOUT_MS
   ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      let request: IDBOpenDBRequest
-      try {
-        request = indexedDB.deleteDatabase(name)
-      } catch (cause) {
-        reject(new EngineError('io', `cannot forget the state database ${name}`, cause))
-        return
-      }
-      let timer: number | null = null
-      const settle = (finish: () => void): void => {
-        if (timer !== null) window.clearTimeout(timer)
-        timer = null
-        finish()
-      }
-      request.onblocked = () => {
-        console.debug(`[abele-sync] waiting to forget ${name}: it is still open somewhere`)
-        // A connection that ignores `versionchange` — another window running an older build —
-        // holds this open for ever otherwise.
-        timer = window.setTimeout(() => {
-          reject(new EngineError('io', `cannot forget ${name}: the state database is still open`))
-        }, blockedTimeoutMs)
-      }
-      request.onerror = () =>
-        settle(() =>
-          reject(new EngineError('io', `cannot forget the state database ${name}`, request.error))
-        )
-      request.onsuccess = () => settle(resolve)
-    })
+    return deleteDatabase(indexedDB, name, blockedTimeoutMs)
   }
 
   close(): void {
+    this.closed = true
     this.db.close()
   }
 
@@ -454,12 +432,14 @@ export class IndexedDbStateStore implements StateStore {
     stores: string[],
     fn: (tx: IDBTransaction) => Promise<T>
   ): Promise<T> {
-    const tx = this.begin(what, stores, 'readonly')
-    try {
-      return await fn(tx)
-    } catch (cause) {
-      throw asEngineError(what, cause)
-    }
+    return this.once(what, async () => {
+      const tx = this.begin(what, stores, 'readonly')
+      try {
+        return await fn(tx)
+      } catch (cause) {
+        throw asEngineError(what, cause)
+      }
+    })
   }
 
   /**
@@ -471,23 +451,71 @@ export class IndexedDbStateStore implements StateStore {
     stores: string[],
     fn: (tx: IDBTransaction) => Promise<T>
   ): Promise<T> {
-    const tx = this.begin(what, stores, 'readwrite')
-    const done = completion(tx, what)
-    let result: T
-    try {
-      result = await fn(tx)
-    } catch (cause) {
-      // The abort a failed request already caused must not be reported instead of the request.
-      void done.catch((): void => undefined)
+    return this.once(what, async () => {
+      const tx = this.begin(what, stores, 'readwrite')
+      const done = completion(tx, what)
+      let result: T
       try {
-        tx.abort()
-      } catch {
-        /* already finished */
+        result = await fn(tx)
+      } catch (cause) {
+        // The abort a failed request already caused must not be reported instead of the request.
+        void done.catch((): void => undefined)
+        try {
+          tx.abort()
+        } catch {
+          /* already finished */
+        }
+        throw asEngineError(what, cause)
       }
-      throw asEngineError(what, cause)
+      await done
+      return result
+    })
+  }
+
+  /**
+   * `attempt`, and once more on a connection opened afresh when WebKit dropped its transaction
+   * (`lostTransaction`) — what iOS does to the first request after the app comes back to the
+   * front. A lost transaction wrote nothing, so a write is made again whole. Any other failure,
+   * or the same one twice, is the caller's.
+   */
+  private async once<T>(what: string, attempt: () => Promise<T>): Promise<T> {
+    const failedOn = this.db
+    try {
+      return await attempt()
+    } catch (error) {
+      if (this.closed || !lostTransaction(error)) throw error
+      console.debug(
+        `[abele-sync] ${what}: the state database lost its transaction; reopening`,
+        error
+      )
+      try {
+        if (this.db === failedOn) {
+          this.reopening ??= this.reopen().finally(() => (this.reopening = null))
+        }
+        await this.reopening
+      } catch (cause) {
+        console.debug('[abele-sync] the state database would not reopen', cause)
+        throw error
+      }
+      return attempt()
     }
-    await done
-    return result
+  }
+
+  /** A fresh connection in place of the one that lost its transaction, which is closed. */
+  private async reopen(): Promise<void> {
+    const fresh = await this.connect()
+    const stale = this.db
+    if (this.closed) {
+      fresh.close()
+      return
+    }
+    this.db = fresh
+    stale.onversionchange = null
+    try {
+      stale.close()
+    } catch {
+      /* already closed */
+    }
   }
 
   private begin(what: string, stores: string[], mode: IDBTransactionMode): IDBTransaction {
