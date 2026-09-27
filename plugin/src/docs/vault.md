@@ -1139,7 +1139,8 @@ Two records are kept in Obsidian's local storage for this vault, which no file c
 `abele-sync-connection`, this device's connection — the server (and the one it enrolled on), the
 vault and its name, the device it enrolled as, the keychain name of its token, whether it is
 paused, what of the vault it takes, and any device it left while the server could not be told,
-whose token is kept under an `abele-sync-device-revoke-…` keychain name until it is; under
+whose token is kept under an `abele-sync-device-revoke-…` keychain name until it is (one that left
+a server on plain http to another machine is never told, and is kept until the person forgets it); under
 `abele-sync-ledger`, the id of the record of what it has synced. That record is outside the vault,
 in Obsidian's IndexedDB, as a database named `abele-sync-<id>`. The device token itself is in the
 keychain — one per vault on a desktop, one for the whole app on a phone. So a copy of the vault, a

@@ -21,8 +21,10 @@ signs in to one, it does not create one.
    sign-in and is never stored — not in the settings, not in the log.
 3. **Choose a vault**: click one of the account's vaults, or name a new one under **Create a new
    vault** and press **Create and connect**. A new vault is filled from what this device already
-   holds. **This device's name** is what the vault's device list will call it; change it before
-   choosing.
+   holds. **This device's name** is what the server will know it by; change it before
+   choosing. If this device left a vault while the server could not be told, the server is told
+   first — for up to ten seconds, with the card saying "Telling *server* that *device* left…" —
+   and the enrolment goes ahead either way.
 
 The device is then enrolled and the tab shows **This device**: its status, the server, the vault
 and its name, with **Sync now**, **Pause** (or **Resume**) and **Rescan**. **Rescan** walks the
@@ -44,14 +46,24 @@ changed since. If it cannot be reached — no network, the server down, or no an
 seconds — the Disconnect still goes ahead, and the token is kept under a name of its own to tell
 the server later. That is tried again when Obsidian starts, when the Sync tab opens and before
 every sign-in, for a month; after that it is given up and the log says so. Meanwhile the Sync tab
-shows a line — "The server has not been told that *device* left *server*. It will be retried." —
-with **Forget without telling the server**, which stops trying and forgets the token. The device
-then stays on the server's device list until it is revoked there. A device the server had already
-revoked disconnects the same way, with nothing left to retry.
+shows a line, **Waiting to tell the server** — "The server has not been told that *device* left
+*server*. It will be retried." — with **Forget without telling the server**, which asks first and
+then stops trying and forgets the token. The device then stays enrolled on that server, and anyone
+holding a copy of its token can still sync the vault, until the account revokes it there; Abele
+has no screen for that. A device the server had already revoked disconnects the same way, with
+nothing left to retry. In the rare case that the keychain will not take the kept copy, the
+Disconnect is refused instead and the device goes on syncing, so a token is never lost while the
+server still takes it.
+
+A connected device stays on the server it signed in to. Its address cannot be changed to another
+server, by the agent or anyone: the token is only ever sent to the server that minted it. To move
+to another server, disconnect and sign in there.
 
 A device connected over plain http to another machine before this rule does not sync: the tab
 says the connection uses plain http and asks for a new sign-in with an https address. It is not
-disconnected for you. The rule reads the address you give; a server that answers an https address
+disconnected for you. Disconnecting it does not tell that server either, since the token is never
+sent over plain http: the Sync tab then shows **Cannot tell the server**, saying the device is
+still enrolled there, with **Forget without telling the server**. The token is kept until then. The rule reads the address you give; a server that answers an https address
 by redirecting to plain http is not caught by it.
 
 ## What syncs
@@ -213,12 +225,13 @@ The connection travels in a section of its own, **Sync connection**, which a con
 offers. Sent with keys, it gives the other device **a device of its own**: when the codes are made,
 the dialog asks for a name for the other device ("Other device" unless you change it), and this
 device asks the server to enrol a new device under that name on the same vault. The transfer
-carries that device's token, never this one's, so the vault's device list shows both, and either
-can disconnect without cutting off the other. The list shows the new one as enrolled by the device
+carries that device's token, never this one's, so the server has both enrolled, and either can
+disconnect without cutting off the other. The server records the new one as enrolled by the device
 that sent it. The server is asked once: if the answer is lost on the way, the device it made is
-left with nobody holding its token — find it by that "enrolled by" and revoke it. If the server
-cannot be reached, the codes are made without a connection and the dialog says the other device
-will sign in itself. Sent without keys, the section carries only what this device syncs, as a
+left enrolled with nobody holding its token, as is one made for codes nobody applies on the other
+side, until the account revokes it on the server. If the server
+cannot be reached or refuses, the codes are made without a connection and the dialog says why, and
+that the other device will sign in itself. Sent without keys, the section carries only what this device syncs, as a
 starting point, and the other device signs in itself. The size cap never travels.
 
 On the receiving device:
@@ -231,6 +244,10 @@ On the receiving device:
   device's own connection". Ticked, **Apply** asks first, naming both vaults. Switching disconnects
   it from its vault — telling that server — and takes the new one. Declining applies the rest of the
   transfer, and the device made for it is revoked.
+
+Closing the dialog without **Apply** revokes the device made for it too, when this device already
+syncs that vault or the switch was left unticked. A switch that fails after this device was
+disconnected from its own vault says so, and the device then syncs nothing until it signs in.
 
 A transfer made by an older version of Abele still holds the sender's connection and token; the
 receiving device takes neither. A device that was set up by such a transfer before this version,

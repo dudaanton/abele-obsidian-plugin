@@ -248,7 +248,10 @@ cap, which parts of the config folder travel — are kept in Obsidian's local st
 hands to another device. They are changed on the Sync tab: signing in sets the connection,
 **Disconnect** and **Forget** clear it — and tell the server to stop accepting this device, so
 connecting again needs the password — and the switches under **What this device syncs** change
-what it takes. A transfer can also set it: its **Sync connection** section, sent with keys, gives
+what it takes. While the device holds a token its server address cannot be pointed at
+another server — the token goes only to the server that minted it — so moving it means
+**Disconnect** and a new sign-in; the address it enrolled on and the revokes still waiting to be
+told are not settings at all, and are never written from outside. A transfer can also set it: its **Sync connection** section, sent with keys, gives
 the other device a device of its own on the same vault. A `data.json` that still names a server or a vault — written by an older version of
 Abele — has those fields dropped when it is read, and they are never written back.
 
