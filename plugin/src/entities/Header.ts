@@ -6,6 +6,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import dayjs from 'dayjs'
 import { debounce, type EventRef, type TFile } from 'obsidian'
+import { toRaw } from 'vue'
 import { Journal } from './Journal'
 
 export class Header {
@@ -80,7 +81,7 @@ export class Header {
     )
     const resolved = metadataCache.on('resolved', () => {
       metadataCache.offref(resolved)
-      this.metadataRefs = this.metadataRefs.filter((ref) => ref !== resolved)
+      this.metadataRefs = this.metadataRefs.filter((ref) => toRaw(ref) !== resolved)
       retell()
     })
     this.metadataRefs.push(resolved)
@@ -122,7 +123,9 @@ export class Header {
     this.fileWatcher?.cleanup()
     this.fileWatcher = null
     const metadataCache = GlobalStore.getInstance().app?.metadataCache
-    for (const ref of this.metadataRefs) metadataCache?.offref(ref)
+    // Raw handles: the store keeps headers reactive, so a handle read back through the header
+    // is Vue's proxy of it, and Obsidian takes a listener off only by the very object it gave.
+    for (const ref of this.metadataRefs) metadataCache?.offref(toRaw(ref))
     this.metadataRefs = []
     this.watcherInitialized = false
     this.cleanHeaderData()
