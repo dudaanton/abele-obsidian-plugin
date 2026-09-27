@@ -254,9 +254,20 @@ describe.skipIf(!available)('GitHub links in a note', () => {
         window.__abeleGithubE2E.propertiesInDocument = before
         app.vault.setConfig('propertiesInDocument', 'visible')
         const note = ${noteLeaf}
-        await note.setViewState({ type: 'markdown', state: { file: ${JSON.stringify(NOTE)}, mode: 'preview' } })
+        // At the top, and said so: reading view puts back the scroll the note had last in it — the
+        // compare link above scrolled it down — a moment after it draws, and a click aimed before
+        // that landed a row lower, on the list property under this one.
+        await note.setViewState({ type: 'markdown', state: { file: ${JSON.stringify(NOTE)}, mode: 'preview' } }, { scroll: 0 })
         app.workspace.setActiveLeaf(note, { focus: true })
         const ok = await until(() => note.view.containerEl.querySelector('.markdown-reading-view .metadata-link-inner'), 10000)
+        // And still: the same place over a few frames before anything is aimed at it.
+        let last = null, same = 0
+        await until(() => {
+          const top = ok?.getBoundingClientRect().top
+          same = top === last ? same + 1 : 0
+          last = top
+          return same >= 3
+        }, 5000)
         const shown = ok && ok.getBoundingClientRect().height > 0
         return { ok: !!shown, before }
       })()`)
