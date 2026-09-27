@@ -145,7 +145,12 @@ describe.skipIf(!available)('a drawing of five thousand strokes', () => {
     expect(n.closePaintMs).toBeLessThan(60)
     expect(n.panFrameMs).toBeLessThan(60)
     expect(n.zoomFrameMs).toBeLessThan(60)
-    expect(n.writeMs).toBeLessThan(1500)
-    expect(n.bytes).toBeLessThan(12_000_000)
+    // Writing works out every pen line's outline. Since 0b7a43bf the outline is round nibs joined
+    // by bands, so a line that turns or trembles has no gaps: about twice the text of the old
+    // two-sided outline — 15 MB and 1.1 s here where it was 8 MB and 0.5 s. The limits sit about
+    // twice above that, as the others do; a slide back into gaps would not show here, a slide
+    // into tens of megabytes or several seconds would.
+    expect(n.writeMs).toBeLessThan(3000)
+    expect(n.bytes).toBeLessThan(30_000_000)
   }, 180_000)
 })
