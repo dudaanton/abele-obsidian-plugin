@@ -244,6 +244,28 @@ describe('joining with files on both sides', () => {
     expect(readConnection(app).join).toBeNull()
   })
 
+  /**
+   * The walk of a join with no file on both sides holds nothing, so the cursor moves past 0
+   * before the push. A push cut off there leaves every later run starting above 0, and none of
+   * them walks the vault again: a join forgotten only by a run that walked would never be.
+   */
+  it('forgets the choice after a join whose push was cut off after a walk that held nothing', async () => {
+    await app.vault.adapter.remove('Both.md')
+    await app.vault.adapter.remove('Photo.png')
+    commitsFail = true
+    start()
+    await service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
+    await service.chooseVault(vaultId, 'Desktop', 'mine')
+    await waitFor('the first sync to fail', () => service.status.value.lastError !== null)
+
+    commitsFail = false
+    await relaunch()
+    await joined()
+
+    expect(readConnection(app).join).toBeNull()
+    expect(await head('Only here.md')).toBe('made here')
+  })
+
   it('asks nothing of a vault this device already synced, on a reconnect', async () => {
     await join(null)
     await service.disconnect()

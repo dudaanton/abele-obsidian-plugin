@@ -65,7 +65,7 @@ export interface DeviceConnection {
   pendingRevoke: PendingRevoke[]
   /**
    * A join this device is in the middle of, or null: see {@link JoinState}. Written by the
-   * enrolment verbs alone, and cleared once the engine reports the join done (`joinFinished`).
+   * enrolment verbs alone, and cleared once a sync of the engine built with it gets through.
    */
   join: JoinState | null
   /**

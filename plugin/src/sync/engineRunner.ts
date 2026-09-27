@@ -1,7 +1,6 @@
 import { Platform, type App } from 'obsidian'
 import { toRaw } from 'vue'
 import {
-  joinFinished,
   SyncClient,
   SyncEngine,
   type StateEntry,
@@ -94,7 +93,7 @@ export interface EngineHost {
   /** What the plugin's settings file says now, as canonical JSON: what `replaced` holds. */
   settingsMeaning(): Promise<string>
   /**
-   * A run finished the join this engine was built with (`joinFinished`): the host forgets the
+   * A run of the engine built with this join got through: the host forgets the
    * choice, so no later engine is built with it, and says so.
    */
   joined(join: JoinState): void
@@ -399,7 +398,12 @@ export class EngineRunner {
         onSync: (report) => {
           this.board.note(summarise(report))
           settings.settle()
-          if (join !== null && joinFinished(report)) this.host.joined(join)
+          // Any run that got through ends the join. One that started at the feed's start walked
+          // the vault and so did the join; one that started past it sent no side (the engine
+          // sends one only from 0) — a join whose walk held nothing moved past 0 before its push,
+          // and a push cut off there would otherwise leave the join open for ever (task-8
+          // review, #1).
+          if (join !== null) this.host.joined(join)
         },
         // A run that failed after its pull still wrote what it pulled.
         onFail: (error, kind) => {
