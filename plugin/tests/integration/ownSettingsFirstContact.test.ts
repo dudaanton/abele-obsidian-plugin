@@ -55,6 +55,26 @@ describe("this device's own settings file before the ledger holds it", () => {
     expect((await fs.stat(DATA))?.mtime).toBe(0)
   })
 
+  it('is statted with its own mtime once it changed since it was listed, even at the same size', async () => {
+    const app = buildFakeVault(VAULT)
+    const watch = new OwnSettingsWatch(DATA, () => undefined)
+    watch.useLedger(ledger([]))
+    const fs = new ObsidianFileSystem(app as unknown as App, {
+      yieldsToServer: (path) => watch.yields(path),
+    })
+    await listed(fs)
+    expect((await fs.stat(DATA))?.mtime).toBe(0)
+
+    // Saved again while a create listed as the oldest file is on its way: same size, new mtime.
+    const bytes = new TextEncoder().encode('{"b":3}')
+    await app.vault.adapter.writeBinary(DATA, bytes.buffer as ArrayBuffer, { mtime: 5000 })
+
+    expect((await fs.stat(DATA))?.mtime).toBe(5000)
+    // The next listing is a new scan: it yields again, and so does the stat after it.
+    expect((await listed(fs)).find((info) => info.path === DATA)?.mtime).toBe(0)
+    expect((await fs.stat(DATA))?.mtime).toBe(0)
+  })
+
   it('leaves every other file as it is', async () => {
     const fs = build([])
     const infos = await listed(fs)

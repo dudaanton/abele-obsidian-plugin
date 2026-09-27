@@ -106,7 +106,14 @@ async function device(
     reversed = false,
     settings,
     prefer,
-  }: { reversed?: boolean; settings?: Record<string, unknown>; prefer?: JoinPrefer | null } = {}
+    beforeCommit,
+  }: {
+    reversed?: boolean
+    settings?: Record<string, unknown>
+    prefer?: JoinPrefer | null
+    /** Run before each commit this device sends reaches the server, with the request's body. */
+    beforeCommit?: (app: FakeApp, body: string) => Promise<void>
+  } = {}
 ): Promise<Device> {
   const app = buildFakeVault([
     { path: 'Existing.md', content: `made on ${name}`, mtime: 1000, ctime: 1000 },
@@ -167,7 +174,13 @@ async function device(
   made.service = new (SyncService as unknown as new () => SyncService)()
   made.idb = new IDBFactory()
   made.service.init(app as unknown as App, plugin as unknown as AbelePlugin, {
-    fetch: (input, init) => server.fetch(input, init),
+    fetch: async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      if (beforeCommit !== undefined && url.endsWith('/commit') && typeof init?.body === 'string') {
+        await beforeCommit(app, init.body)
+      }
+      return server.fetch(input, init)
+    },
     WebSocket: server.WebSocket,
     indexedDB: made.idb,
     fallbackMs: 60_000,
@@ -337,6 +350,51 @@ describe('Abele settings between two devices', () => {
       )
     )
     expect(texts.some((text) => text.includes('From the phone'))).toBe(true)
+
+    await twoMoreCycles(a, b)
+    expect([pushed(a), pushed(b)]).toEqual([0, 0])
+  })
+
+  /**
+   * The first contact reports this device's file as the oldest there is, so the pusher, taking
+   * the server's answer, must still see an edit made while the create was in the air — even one
+   * that left the file the same size. Taken for untouched, the head would be written over it and
+   * the edit would be in no version anywhere.
+   */
+  it('a same-size edit made while the first contact is in the air still reaches the history', async () => {
+    const a = await device('Laptop')
+    a.config.tasksFolder = 'From the laptop'
+    await a.config.saveSettings()
+    await cycle(a)
+
+    await tick(20)
+    let edited = false
+    const b = await device('Phone', {
+      settings: { tasksFolder: 'From the phone' },
+      beforeCommit: async (app, body) => {
+        if (edited || !body.includes(DATA)) return
+        edited = true
+        // The same number of bytes, saved a moment after the scan read the file.
+        const was = new TextDecoder().decode(await app.vault.adapter.readBinary(DATA))
+        const text = was.replace('From the phone', 'From the phonE')
+        expect(text.length).toBe(was.length)
+        await app.vault.adapter.writeBinary(DATA, encoder.encode(text).buffer as ArrayBuffer, {
+          mtime: Date.now() + 5000,
+        })
+      },
+    })
+    await settle(a, b)
+    expect(edited).toBe(true)
+
+    for (const one of [a, b]) expect((await onDisk(one)).tasksFolder).toBe('From the laptop')
+    const item = (await other.manifest(null)).items.find((held) => held.path === DATA)
+    const versions = await other.versions(item!.file_id)
+    const texts = await Promise.all(
+      versions.map(async (version) =>
+        new TextDecoder().decode(await other.versionBytes(item!.file_id, version.version_id))
+      )
+    )
+    expect(texts.some((text) => text.includes('From the phonE'))).toBe(true)
 
     await twoMoreCycles(a, b)
     expect([pushed(a), pushed(b)]).toEqual([0, 0])

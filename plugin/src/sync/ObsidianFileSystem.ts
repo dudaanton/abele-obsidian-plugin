@@ -39,10 +39,16 @@ export interface ObsidianFileSystemOptions {
   onEngineWrite?: (path: string) => void
   /**
    * Whether the copy of a file here must lose to the server's: while it says so, the file is
-   * listed and statted with mtime 0, the oldest the wire has. The plugin's own `data.json`
-   * before the ledger holds it (`OwnSettingsWatch.yields`): sent as a create against the vault's
-   * head, it loses the server's newer-mtime race, is kept in the head's history, and the head is
-   * written here. Asked only for files of the config folder, where that file is.
+   * listed with mtime 0, the oldest the wire has. The plugin's own `data.json` before the ledger
+   * holds it (`OwnSettingsWatch.yields`): sent as a create against the vault's head, it loses
+   * the server's newer-mtime race, is kept in the head's history, and the head is written here.
+   * Asked only for files of the config folder, where that file is.
+   *
+   * A `stat` says mtime 0 too, but only while the file is still what the listing found. The
+   * pusher stats a file before it writes the server's answer over it, to see whether it changed
+   * while the op was in the air; always answering 0 there would hide an edit that left the size
+   * alone, and the head would be written over bytes no version holds. Changed since, the stat
+   * tells the truth, the answer is not written, and the next scan sends the edit — yielding again.
    */
   yieldsToServer?: (path: string) => Promise<boolean>
 }
@@ -82,6 +88,11 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly onWatch: ((paths: string[]) => void) | null
   private readonly onEngineWrite: ((path: string) => void) | null
   private readonly yieldsToServer: ((path: string) => Promise<boolean>) | null
+  /**
+   * The size and mtime the last listing found for each file it reported as yielding, by path:
+   * what a `stat` compares against before it answers mtime 0 (`yieldsToServer`).
+   */
+  private readonly yielded = new Map<string, string>()
   /** Set while `watch` is running: what `kick` reaches for, and nothing when nobody watches. */
   private pollNow: (() => void) | null = null
 
@@ -116,13 +127,23 @@ export class ObsidianFileSystem implements FileSystem {
     for (const file of this.app.vault.getFiles()) {
       yield { path: file.path, size: file.stat.size, mtime: stamp(file.stat.mtime) }
     }
-    for await (const info of this.walkConfig(this.configDir)) yield await this.told(info)
+    for await (const info of this.walkConfig(this.configDir)) yield await this.told(info, true)
   }
 
-  /** A file as the engine is told of it: see `yieldsToServer`. */
-  private async told(info: FileInfo): Promise<FileInfo> {
+  /**
+   * A file as the engine is told of it: see `yieldsToServer`. `listed` is a listing's report,
+   * which is remembered; a `stat`'s is compared with it.
+   */
+  private async told(info: FileInfo, listed: boolean): Promise<FileInfo> {
     if (this.yieldsToServer === null || !info.path.startsWith(`${this.configDir}/`)) return info
-    return (await this.yieldsToServer(info.path)) ? { ...info, mtime: 0 } : info
+    if (!(await this.yieldsToServer(info.path))) {
+      this.yielded.delete(info.path)
+      return info
+    }
+    const seen = `${info.size}:${info.mtime}`
+    if (listed) this.yielded.set(info.path, seen)
+    else if ((this.yielded.get(info.path) ?? seen) !== seen) return info
+    return { ...info, mtime: 0 }
   }
 
   async read(path: string): Promise<Uint8Array> {
@@ -207,11 +228,17 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async stat(path: string): Promise<FileInfo | null> {
+    const info = await this.fileAt(path)
+    return info === null ? null : this.told(info, false)
+  }
+
+  /** The file at `path` as the disk has it, before `told`; null for none, or not a file. */
+  private async fileAt(path: string): Promise<FileInfo | null> {
     const standing = await this.rawStat(path)
     if (standing === null || standing.type !== 'file') return null
     // The path that was statted, spelled as it was asked for: the engine matches what comes
     // back against what it holds, and a name it did not ask about would be a different file.
-    return this.told({ path, size: standing.size, mtime: stamp(standing.mtime) })
+    return { path, size: standing.size, mtime: stamp(standing.mtime) }
   }
 
   /**
@@ -319,7 +346,7 @@ export class ObsidianFileSystem implements FileSystem {
       throw new EngineError('io', `cannot list ${folder}`, cause)
     }
     for (const path of listed.files) {
-      const info = await this.stat(path)
+      const info = await this.fileAt(path)
       if (info !== null) yield info
     }
     for (const child of listed.folders) yield* this.walkConfig(child, depth + 1, walked)
