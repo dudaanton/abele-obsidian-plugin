@@ -300,7 +300,10 @@ thousand, and a notice counts what happened: "Restored 310; 2 came back under a 
 the old one was taken; 0 failed". A file whose path was taken meanwhile comes back beside it under
 the next free name. A file no longer in the trash, because it was restored meanwhile or swept,
 does not come back and counts as failed. While sync is paused, the notice says the files arrive
-when it is resumed.
+when it is resumed. "The last hour" and "today" count from the moment **Restore** is pressed. If
+the connection drops part way, what came back is synced to this device at once, and pressing
+**Restore** again carries on: a batch the server took before its answer was lost counts as
+restored, not failed.
 
 ## When many files disappear at once
 
@@ -323,10 +326,14 @@ and offers:
 - **Decide later**: the files stay held. The same question stays on the Sync tab, under
   **Deletions held back**, for as long as they are held.
 
-The decision covers exactly the files the dialog showed. If more files are deleted while it is
-open, they join the hold, and the dialog asks again about all of them. A file that comes back by
-itself leaves the hold. A decision taken while sync is paused is carried out when it is resumed,
-and the notice says so.
+The decision covers exactly the files the dialog showed — on the Sync tab, the files its
+confirmation counted when it opened. If more files are deleted while it is open, they join the
+hold, and the dialog asks again about all of them. A file that comes back by itself leaves the
+hold. A decision taken while sync is paused, or whose sync then fails, is carried out when sync
+resumes or next gets through, and the notice says so. Until then the Sync tab keeps the question
+with a line saying what was decided ("Decided: delete everywhere (60 files), carried out when
+sync is resumed"); answering again there replaces that answer. A hold survives a restart, and is
+asked about again when Obsidian starts.
 
 ## The log and the status bar
 

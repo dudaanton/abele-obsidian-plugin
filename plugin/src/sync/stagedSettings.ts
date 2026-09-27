@@ -119,8 +119,9 @@ export class StagedSettingsPrompt {
   }
 
   /**
-   * Ask about everything staged now — also what the Sync tab's button does. The dialog already
-   * open on the same changes is left as it is, rather than drawn again under whoever reads it.
+   * Ask about everything staged now. The dialog already open on the same changes is left as it
+   * is, rather than drawn again under whoever reads it. The Sync tab asks nothing: it shows the
+   * same answers inline for as long as anything waits.
    */
   ask(): void {
     const changes = this.staged.value
