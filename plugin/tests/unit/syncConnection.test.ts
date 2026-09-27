@@ -335,6 +335,7 @@ describe('the fields a Disconnect relies on', () => {
     deviceName: 'Laptop',
     tokenId: 'abele-sync-device-revoke-abc',
     since: '2026-09-01T00:00:00.000Z',
+    plainHttp: false,
   }
 
   it('reads back the vault name, the enrolment address and what is waiting to be told', () => {
@@ -384,6 +385,39 @@ describe('the fields a Disconnect relies on', () => {
 
     expect(connection.pendingRevoke).toEqual([pending])
     expect(damaged).toContain('pendingRevoke')
+  })
+
+  it('reads back a waiting entry that can never be told over plain http, and no other as one', () => {
+    const local = storage({
+      [CONNECTION_KEY]: {
+        ...connected(),
+        pendingRevoke: [
+          { ...pending, plainHttp: true },
+          { ...pending, tokenId: 'abele-sync-device-revoke-def', plainHttp: 'yes' },
+          { ...pending, tokenId: 'abele-sync-device-revoke-ghi', plainHttp: undefined },
+        ],
+      },
+    })
+
+    expect(readConnection(local).pendingRevoke.map((entry) => entry.plainHttp)).toEqual([
+      true,
+      false,
+      false,
+    ])
+  })
+
+  it('never takes a waiting revoke’s token as this device’s own', () => {
+    const local = storage({
+      [CONNECTION_KEY]: { ...connected(), deviceTokenId: 'abele-sync-device-revoke-abc' },
+    })
+
+    const { connection, damaged } = inspectConnection(local)
+
+    expect(connection.deviceTokenId).toBe('')
+    expect(damaged).toContain('deviceTokenId')
+    expect(
+      connectionProblem({ ...connected(), deviceTokenId: 'abele-sync-device-revoke-abc' })
+    ).toMatch('not this device')
   })
 
   it('reads a waiting entry with no readable date as long overdue, so it is given up', () => {

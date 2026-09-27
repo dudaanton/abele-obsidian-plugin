@@ -6,7 +6,7 @@
  * So the sending device asks the server for a device of the receiver's own
  * (`POST /v1/devices/self/siblings`) and sends that one's token instead — only when keys are
  * being sent, since a token is a key, and never retried, since a lost answer is a device nobody
- * holds the token of (the device list shows it, with the device that asked for it).
+ * holds the token of (the server records it as enrolled by the device that asked for it).
  *
  * What this device syncs travels beside it as a starting point for the other device, which may
  * change it there. The size cap never does: it is each device's own, and a desktop's "no cap"

@@ -23,8 +23,27 @@ import { Revoker, withTimeout } from './revoke'
 /** Which vault `chooseVault` was asked for: one that exists, or one to make. */
 export type VaultChoice = string | { create: string }
 
-/** What a connection may be changed by: anything but the record's own bookkeeping. */
+/** What the service's own verbs may change of a connection: anything but the move flag. */
 export type ConnectionPatch = Partial<Omit<DeviceConnection, 'migrated'>>
+
+/**
+ * The fields the bookkeeping owns, never changed from outside: where the token was minted, the
+ * revokes still waiting — each naming a kept token and where to send it — and the move flag.
+ */
+export const KEPT_FIELDS = ['enrolledUrl', 'pendingRevoke', 'migrated'] as const
+
+/** What a screen or the agent may change of a connection (`SyncService.updateConnection`). */
+export type ConnectionEdit = Partial<Omit<DeviceConnection, (typeof KEPT_FIELDS)[number]>>
+
+/**
+ * Why a device holding a token may not be pointed at `serverUrl`, or null when it may: the
+ * token goes only to the server that minted it. A new server is a new sign-in.
+ */
+export function enrolledElsewhere(serverUrl: string, enrolledUrl: string): string | null {
+  const url = normalizeServerUrl(serverUrl) ?? serverUrl
+  if (url === enrolledUrl) return null
+  return `this device is enrolled on ${enrolledUrl || 'no server'}; disconnect and sign in to the new server`
+}
 
 /** What the enrolment verbs are handed by the service that owns the engine. */
 export interface EnrolmentHost {
@@ -40,6 +59,8 @@ export interface EnrolmentHost {
   serialise<T>(fn: () => Promise<T>): Promise<T>
   teardown(): Promise<void>
   reconcile(): Promise<void>
+  /** Who a sign-in's retry of waiting revokes is telling now (`Revoker.retryWithin`). */
+  telling?(line: string | null): void
 }
 
 export class Enrolment {
@@ -129,8 +150,9 @@ export class Enrolment {
     if (app === null) throw new Error('the sync service has not been started yet')
     const name = deviceName.trim()
     if (name === '') throw new Error('this device needs a name to enrol under')
-    // A device this one left while offline is told first: it is the same server, reachable now.
-    await this.revoker.retry()
+    // A device this one left while offline is told first: most likely the same server, reachable
+    // now. Waited on for one revoke's timeout at most; the card says who is being told.
+    await this.revoker.retryWithin(this.revoker.timeoutMs)
 
     /** The ledger this enrolment replaces, to be deleted once nothing is holding it. */
     let dropped: string | null = null
@@ -212,7 +234,10 @@ export class Enrolment {
    *
    * Asked once, never again on a failure: the server enrols before it answers, so a request
    * whose answer was lost has made a device nobody holds the token of — and a retry would make
-   * another. The device list shows such a one, with this device as the one that asked for it.
+   * another. The server records such a one as enrolled by this device.
+   *
+   * Asked of the server the token was minted on, and of no other: an address changed since is
+   * refused, as it is everywhere the token goes.
    */
   async enrolSibling(name: string): Promise<Sibling> {
     const own = this.host.connection()
@@ -220,10 +245,13 @@ export class Enrolment {
     if (own.serverUrl === '' || own.vaultId === '' || token === '') {
       throw new Error('this device is not connected')
     }
+    const refused =
+      serverUrlProblem(own.enrolledUrl) ?? enrolledElsewhere(own.serverUrl, own.enrolledUrl)
+    if (refused !== null) throw new Error(refused)
     const deviceName = name.trim()
     if (deviceName === '') throw new Error('the other device needs a name')
     const client = new SyncClient({
-      baseUrl: own.serverUrl,
+      baseUrl: own.enrolledUrl,
       fetch: this.host.transport(),
       token,
       userAgent: USER_AGENT,
@@ -236,7 +264,7 @@ export class Enrolment {
     )
     this.host.note(`the server made ${deviceName} on this vault, for a transfer to hand over`)
     return {
-      serverUrl: own.serverUrl,
+      serverUrl: own.enrolledUrl,
       vaultId: own.vaultId,
       vaultName: own.vaultName,
       deviceId: answer.device_id,
@@ -326,7 +354,9 @@ export class Enrolment {
    * The server is asked to revoke the device, on the address the token was minted on: after
    * that no copy of the token anywhere reads or writes the vault. When it cannot be reached the
    * token is kept under a name of its own and the revoke tried again (`revoke.ts`); the
-   * Disconnect itself goes ahead either way.
+   * Disconnect itself goes ahead either way — unless the keychain will not take that copy: then
+   * no copy would be left anywhere to tell the server with, and the device stays enrolled for
+   * good, so the Disconnect is refused and the engine put back.
    *
    * The device token is cleared from the keychain and the identity fields from the connection.
    * What is kept is everything that is not a credential: what this device syncs, which is the
@@ -343,10 +373,17 @@ export class Enrolment {
       const token = isDeviceSecretId(tokenId) ? secrets().device.get(tokenId) : ''
       const serverUrl = own.enrolledUrl !== '' ? own.enrolledUrl : own.serverUrl
       if (token !== '' && serverUrl !== '') {
-        await this.revoker.leave(
+        const told = await this.revoker.leave(
           { serverUrl, deviceId: own.deviceId, deviceName: own.deviceName },
           token
         )
+        if (told.kept === false) {
+          await this.host.reconcile()
+          throw new Error(
+            'the server could not be told, and the keychain would not keep the token to tell it ' +
+              'later, so this device stays connected; try again when the server can be reached'
+          )
+        }
       }
       // The secret goes and the id stays: `token()` reads a missing secret as no device, which
       // is exactly the truth.

@@ -262,28 +262,148 @@ describe('Disconnect tells the server', () => {
   })
 
   /**
-   * The agent can write the server address (GUESS-8). The token is told to the server that
-   * minted it, never to wherever the address has been pointed since.
+   * A record whose address was changed outside the service — by hand, or by an older build —
+   * runs nothing, and a Disconnect still tells the server that minted the token, never the
+   * address written since.
    */
   it('tells the server the device enrolled on, not an address written since', async () => {
     const { accountToken, deviceId, token } = await connect()
-    await service.updateConnection({ serverUrl: 'https://elsewhere.example.com' })
+    await service.destroy()
+    app.saveLocalStorage(CONNECTION_KEY, {
+      ...readConnection(app),
+      serverUrl: 'https://elsewhere.example.com',
+    })
     const seen: string[] = []
     const spying: typeof fetch = (input, init) => {
       seen.push(String(input))
       return transport(input, init)
     }
-    await service.destroy()
     service = SyncService.getInstance()
     start({ fetch: spying })
-    await synced()
-    seen.length = 0
+    await waitFor('the refusal', () => service.status.value.state === 'error')
+    expect(service.status.value.lastError).toContain(
+      `this device is enrolled on ${server.BASE_URL}; disconnect and sign in to the new server`
+    )
+    await expect(service.enrolSibling('Phone')).rejects.toThrow(
+      `this device is enrolled on ${server.BASE_URL}`
+    )
 
     await service.disconnect()
 
     expect(seen.some((url) => url.startsWith('https://elsewhere.example.com'))).toBe(false)
     expect(await liveDevices(accountToken)).not.toContain(deviceId)
     expect(token).not.toBe('')
+  })
+
+  /**
+   * A connection made over plain http to another machine, before the https rule: the token is
+   * never sent that way, so the server cannot be told — and the Sync tab has to be able to say
+   * so, rather than the device being left enrolled with only a log line knowing.
+   */
+  it('keeps a device on plain http to another machine as one the server cannot be told of', async () => {
+    const { token } = await connect()
+    await service.destroy()
+    app.saveLocalStorage(CONNECTION_KEY, {
+      ...readConnection(app),
+      serverUrl: 'http://192.168.1.5:8787',
+      enrolledUrl: 'http://192.168.1.5:8787',
+    })
+    const seen: string[] = []
+    const spying: typeof fetch = (input, init) => {
+      seen.push(String(input))
+      return transport(input, init)
+    }
+    service = SyncService.getInstance()
+    start({ fetch: spying })
+    await waitFor('the refusal', () => service.status.value.state === 'error')
+
+    await service.disconnect()
+
+    expect(conn().serverUrl).toBe('')
+    expect(conn().pendingRevoke).toHaveLength(1)
+    const [waiting] = conn().pendingRevoke
+    expect(waiting).toMatchObject({ serverUrl: 'http://192.168.1.5:8787', plainHttp: true })
+    expect(tokenOf(waiting!.tokenId)).toBe(token)
+    await relaunch()
+    await service.retryPendingRevokes()
+    expect(conn().pendingRevoke).toHaveLength(1)
+    expect(seen.some((url) => url.startsWith('http://192.168.1.5'))).toBe(false)
+
+    service.forgetPendingRevoke(waiting!.tokenId)
+    expect(conn().pendingRevoke).toEqual([])
+    expect(tokenOf(waiting!.tokenId)).toBe('')
+  })
+
+  /**
+   * Offline, the token is kept under a revoke id to tell the server later. A keychain that will
+   * not take that copy would leave the device live on the server with no copy of its token
+   * anywhere, so the Disconnect is refused instead, and the device goes on syncing.
+   */
+  it('refuses a Disconnect it cannot keep the token for, and goes on syncing', async () => {
+    const { vaultId, token } = await connect()
+    const tokenId = conn().deviceTokenId
+    const setSecret = app.secretStorage.setSecret.bind(app.secretStorage)
+    app.secretStorage.setSecret = (id: string, value: string) => {
+      if (id.startsWith('abele-sync-device-revoke-')) throw new Error('the keychain refused')
+      setSecret(id, value)
+    }
+    offline = true
+
+    await expect(service.disconnect()).rejects.toThrow('stays connected')
+
+    expect(conn()).toMatchObject({ vaultId, deviceTokenId: tokenId, pendingRevoke: [] })
+    expect(tokenOf(tokenId)).toBe(token)
+    expect(service.isConnected()).toBe(true)
+    offline = false
+  })
+})
+
+/**
+ * The token is the server's that minted it. What the agent or a screen may change of the
+ * connection never includes where the token goes, or the bookkeeping that decides it.
+ */
+describe('a connection change cannot move the token', () => {
+  it('refuses another server address while the device is enrolled', async () => {
+    await connect()
+
+    await expect(
+      service.updateConnection({ serverUrl: 'https://elsewhere.example.com' })
+    ).rejects.toThrow(
+      `this device is enrolled on ${server.BASE_URL}; disconnect and sign in to the new server`
+    )
+
+    expect(conn().serverUrl).toBe(server.BASE_URL)
+    expect(readConnection(app).serverUrl).toBe(server.BASE_URL)
+    expect(service.isConnected()).toBe(true)
+    // The same address in another spelling is the same server.
+    await service.updateConnection({ serverUrl: `${server.BASE_URL}/` })
+    expect(service.isConnected()).toBe(true)
+  })
+
+  it('takes another server address on a device that holds no token', async () => {
+    start()
+
+    await service.updateConnection({ serverUrl: 'https://elsewhere.example.com' })
+
+    expect(conn().serverUrl).toBe('https://elsewhere.example.com')
+  })
+
+  it('refuses the enrolment address, the waiting revokes and a revoke id from outside', async () => {
+    await connect()
+    const held = { ...conn() }
+
+    for (const patch of [
+      { enrolledUrl: 'https://elsewhere.example.com' },
+      { pendingRevoke: [] },
+      { migrated: false },
+    ]) {
+      await expect(service.updateConnection(patch as never)).rejects.toThrow('kept by the plugin')
+    }
+    await expect(
+      service.updateConnection({ deviceTokenId: 'abele-sync-device-revoke-x' })
+    ).rejects.toThrow('not this device')
+
+    expect(conn()).toEqual(held)
   })
 })
 

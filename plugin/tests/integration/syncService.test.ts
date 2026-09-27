@@ -614,6 +614,20 @@ describe('SyncService — what this device syncs', () => {
     expect(paths).toContain('Kept.md')
     expect(paths).not.toContain('Drafts/note.md')
   })
+
+  /**
+   * The engine files the ignore file's text with the scope it took its marks under, as the
+   * daemon hands it over: a later engine on another scope then knows what this one left out.
+   */
+  it('hands the engine the ignore file itself, which it files with the scope', async () => {
+    await write(IGNORE_FILE, '# scratch\nDrafts/\n')
+    await connect()
+    await synced()
+
+    await waitFor('the scope to be filed', async () => (await meta('marked-scope')) !== null)
+    const filed = JSON.parse((await meta('marked-scope'))!) as { ignore?: string | null }
+    expect(filed.ignore).toBe('# scratch\nDrafts/\n')
+  })
 })
 
 /**

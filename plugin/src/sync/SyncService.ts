@@ -27,7 +27,14 @@ import {
   writeConnection,
   type DeviceConnection,
 } from './connection'
-import { Enrolment, type ConnectionPatch, type VaultChoice } from './enrolment'
+import {
+  Enrolment,
+  KEPT_FIELDS,
+  enrolledElsewhere,
+  type ConnectionEdit,
+  type ConnectionPatch,
+  type VaultChoice,
+} from './enrolment'
 import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer/connection'
 import { readLedgerId, writeLedgerId, type LedgerId, type LocalStorage } from './ledgerId'
 import {
@@ -50,7 +57,7 @@ import { fetchViaRequestUrl, wsFor } from './transport'
 import { PHONE_POLL_MS, phoneSocket } from './phone'
 
 export { isWireConfigDir } from './pieces'
-export type { ConnectionPatch, VaultChoice } from './enrolment'
+export type { ConnectionEdit, ConnectionPatch, VaultChoice } from './enrolment'
 
 /**
  * One engine per plugin, and everything Obsidian has to know about it.
@@ -174,6 +181,12 @@ export class SyncService {
    */
   readonly connection: Ref<DeviceConnection> = ref(emptyConnection(Platform.isMobile))
 
+  /**
+   * Who a sign-in is telling that a device left, while it waits on that before enrolling —
+   * "Telling https://… that Laptop left…" — or null. The sign-in card shows it.
+   */
+  readonly telling: Ref<string | null> = ref(null)
+
   /** Where the connection is filed: the vault's local storage, from `openConnection` or `init`. */
   private storage: LocalStorage | null = null
 
@@ -216,6 +229,9 @@ export class SyncService {
     serialise: <T>(fn: () => Promise<T>) => this.serialise(fn),
     teardown: () => this.teardown(),
     reconcile: () => this.reconcile(),
+    telling: (line) => {
+      this.telling.value = line
+    },
   })
 
   private readonly listeners = new Set<(status: SyncStatus) => void>()
@@ -357,19 +373,39 @@ export class SyncService {
    * Change this device's connection, and put the engine in step with it.
    *
    * Only the fields named are checked, by the rules a sign-in holds them to: a server address
-   * the https rule refuses, and a keychain name this plugin never mints, are thrown back before
-   * anything is written. What is already saved is not re-judged — a connection made before the
-   * https rule can still have its switches changed, and `reconcile` says why it builds nothing.
+   * the https rule refuses, and a keychain name this plugin never mints or keeps for a waiting
+   * revoke, are thrown back before anything is written. What is already saved is not re-judged —
+   * a connection made before the https rule can still have its switches changed, and `reconcile`
+   * says why it builds nothing.
+   *
+   * Where the token goes is not a field to edit: while a token is held, the address must stay
+   * the one it was minted on, and the fields that record that and the waiting revokes are the
+   * bookkeeping's alone — refused here, whatever the caller's types said.
    */
-  async updateConnection(patch: ConnectionPatch): Promise<void> {
+  async updateConnection(patch: ConnectionEdit): Promise<void> {
+    const kept = KEPT_FIELDS.filter((field) => field in patch)
+    if (kept.length > 0) throw new Error(`${kept.join(', ')} is kept by the plugin itself`)
     const problem = connectionProblem({
       ...emptyConnection(),
       serverUrl: patch.serverUrl ?? '',
       deviceTokenId: patch.deviceTokenId ?? '',
     })
     if (problem !== null) throw new Error(problem)
+    // Asked only of a change that moves the address or the token: a locked keychain must not
+    // stop a switch being flipped, and `reconcile` reports it the way it reports any build.
+    const next = { ...this.connection.value, ...patch }
+    const moves = patch.serverUrl !== undefined || patch.deviceTokenId !== undefined
+    if (moves && next.serverUrl !== '' && this.holdsToken(next.deviceTokenId)) {
+      const elsewhere = enrolledElsewhere(next.serverUrl, next.enrolledUrl)
+      if (elsewhere !== null) throw new Error(elsewhere)
+    }
     this.saveConnection(patch)
     await this.serialise(() => this.reconcile())
+  }
+
+  /** Whether the keychain holds a device token under this id. */
+  private holdsToken(id: string): boolean {
+    return isDeviceSecretId(id) && secrets().device.get(id) !== ''
   }
 
   /** Stop everything and let the singleton go; the next `getInstance` builds a fresh one. */
@@ -711,6 +747,10 @@ export class SyncService {
       if (problem !== null) {
         throw new Error(problem === PLAIN_HTTP_REFUSED ? PLAIN_HTTP_CONNECTION : problem)
       }
+      // The token goes to the server that minted it and nowhere else: an address changed since
+      // (by hand, by an older build) is refused, and Disconnect still tells the right server.
+      const elsewhere = enrolledElsewhere(connection.serverUrl, connection.enrolledUrl)
+      if (elsewhere !== null) throw new Error(elsewhere)
 
       const ignoreText = await readIgnore(app)
       const scope = await scopeKey(connection.selective, ignoreText)
@@ -796,6 +836,8 @@ export class SyncService {
         // scope its marks were taken under, and IndexedDB cannot clone a reactive proxy.
         selective: selectiveFrom(toRaw(connection.selective), Platform.isMobile),
         ignore: this.ignore(app, ignoreText),
+        // Filed with the scope, so a later engine can tell what this ignore file left out.
+        ignoreText,
         ...(scriptsFolder === '' ? {} : { scriptsFolder }),
         ...(this.fallbackMs() === undefined ? {} : { fallbackMs: this.fallbackMs() }),
         onSync: (report) => this.note(summarise(report)),

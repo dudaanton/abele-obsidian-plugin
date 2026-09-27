@@ -8,14 +8,21 @@
  * The server cannot always be reached at that moment — a phone on a train. Then the token is
  * kept, filed under an id of its own that a reconnect will not pick up, and the revoke is tried
  * again when the plugin starts, when the Sync tab opens and before every sign-in, for a month.
- * After that it is given up, since a token nobody could deliver for a month is also a device the
- * person has most likely revoked from another device's list by then.
+ * After that it is given up: the server keeps that device enrolled, and the log says so.
+ *
+ * A connection made over plain http to another machine, before the https rule, is never told at
+ * all — the token would cross the network readable. Its token is kept all the same, with an entry
+ * that says so, so the Sync tab can show the device is still enrolled there until the person
+ * forgets it.
+ *
+ * A server from before `DELETE /v1/devices/self` answers the device token with 401 on the
+ * account's `/:id` route, which reads as `already`. No such server is in use.
  *
  * The keychain is one store for the whole app on a phone, so every id here is minted fresh at
  * random: no two vaults on one phone can file two waiting tokens under the same name.
  */
 import { SyncClient } from '@abele/sync-core'
-import { serverUrlProblem } from '@abele/sync-protocol'
+import { PLAIN_HTTP_REFUSED, serverUrlProblem } from '@abele/sync-protocol'
 import { secrets } from '@/secrets/SecretStore'
 import { REVOKE_SECRET_PREFIX, type DeviceConnection, type PendingRevoke } from './connection'
 import { USER_AGENT, messageOf, randomStem } from './pieces'
@@ -32,8 +39,8 @@ const DEVICE_TOKEN_PREFIX = 'absd_'
 /**
  * What a server said to a revoke:
  * - `revoked`: it took the token back;
- * - `already`: it no longer takes the token — revoked from another device's list, or never its
- *   own. Told to the server that minted the token, that is the same thing;
+ * - `already`: it no longer takes the token — revoked by the account already, or never its own.
+ *   Told to the server that minted the token, that is the same thing;
  * - `unusable`: nothing was sent: the token is not one, or the address is one the https rule
  *   refuses. There is no server to tell, now or later;
  * - `failed`: it could not be told now, and may be later.
@@ -41,6 +48,11 @@ const DEVICE_TOKEN_PREFIX = 'absd_'
 export interface Told {
   told: 'revoked' | 'already' | 'unusable' | 'failed'
   reason?: string
+  /**
+   * From `Revoker.leave`: whether a copy of the token was filed to tell the server later — false
+   * when the keychain would not take it, and the caller then still holds the only copy.
+   */
+  kept?: boolean
 }
 
 /** A fresh keychain id for a token waiting to be revoked. */
@@ -100,6 +112,8 @@ export interface RevokeHost {
   note(text: string): void
   connection(): DeviceConnection
   saveConnection(patch: { pendingRevoke: PendingRevoke[] }): void
+  /** Who a retry is telling now, for a screen to show while it waits; null once it is done. */
+  telling?(line: string | null): void
 }
 
 /** The device a revoke is about: where it was enrolled, and what it was called there. */
@@ -112,6 +126,8 @@ export interface Leaving {
 export class Revoker {
   /** A retry already running, which a second caller waits on rather than repeats. */
   private running: Promise<void> | null = null
+  /** How many are waiting on a retry (`retryWithin`); only then is who is being told said. */
+  private waiting = 0
 
   constructor(
     private readonly host: RevokeHost,
@@ -129,19 +145,53 @@ export class Revoker {
     const who = `${device.deviceName || device.deviceId} on ${device.serverUrl}`
     if (told.told === 'revoked') this.host.note(`the server stopped accepting ${who}`)
     else if (told.told === 'already') this.host.note(`the server already did not accept ${who}`)
-    else if (told.told === 'unusable') {
+    else if (told.told === 'unusable' && told.reason === PLAIN_HTTP_REFUSED) {
+      const kept = this.keep(device, token, true, told.reason)
+      if (kept) {
+        this.host.note(
+          `the server was not told that ${who} left: it is plain http to another machine, and ` +
+            'the token is not sent that way. It stays enrolled there until it is revoked there'
+        )
+      }
+      return { ...told, kept }
+    } else if (told.told === 'unusable') {
       this.host.note(`the server was not told that ${who} left: ${told.reason ?? ''}`)
     } else {
-      const tokenId = newRevokeSecretId()
-      secrets().device.set(tokenId, token)
-      const entry: PendingRevoke = { ...device, tokenId, since: new Date(this.now()).toISOString() }
-      this.host.saveConnection({ pendingRevoke: [...this.host.connection().pendingRevoke, entry] })
-      this.host.note(
-        `the server could not be told that ${who} left (${told.reason ?? 'no answer'}); ` +
-          'it will be tried again'
-      )
+      const kept = this.keep(device, token, false, told.reason ?? 'no answer')
+      if (kept) {
+        this.host.note(
+          `the server could not be told that ${who} left (${told.reason ?? 'no answer'}); ` +
+            'it will be tried again'
+        )
+      }
+      return { ...told, kept }
     }
     return told
+  }
+
+  /**
+   * File a copy of the token under a revoke id of its own, with its entry. False when the
+   * keychain would not take it: then nothing is filed, and the caller holds the only copy.
+   */
+  private keep(device: Leaving, token: string, plainHttp: boolean, why: string): boolean {
+    const tokenId = newRevokeSecretId()
+    try {
+      secrets().device.set(tokenId, token)
+    } catch (error) {
+      this.host.note(
+        `the server was not told that ${device.deviceName || device.deviceId} left (${why}), ` +
+          `and the token could not be kept to tell it later: ${messageOf(error)}`
+      )
+      return false
+    }
+    const entry: PendingRevoke = {
+      ...device,
+      tokenId,
+      since: new Date(this.now()).toISOString(),
+      plainHttp,
+    }
+    this.host.saveConnection({ pendingRevoke: [...this.host.connection().pendingRevoke, entry] })
+    return true
   }
 
   /**
@@ -153,6 +203,26 @@ export class Revoker {
       this.running = null
     })
     return this.running
+  }
+
+  /**
+   * `retry`, waited on for at most `ms`: a sign-in goes ahead after that, and the retry carries
+   * on behind it. Each server may take the whole revoke timeout, and a sign-in that waited on
+   * every one in turn could sit for minutes with nothing moving.
+   */
+  async retryWithin(ms: number): Promise<void> {
+    let timer: number | undefined
+    const late = new Promise<void>((resolve) => {
+      timer = window.setTimeout(resolve, ms)
+    })
+    this.waiting++
+    try {
+      await Promise.race([this.retry(), late])
+    } finally {
+      window.clearTimeout(timer)
+      this.waiting--
+      this.host.telling?.(null)
+    }
   }
 
   /** Stop waiting to tell the server, and let the token go: "Forget without telling the server". */
@@ -170,6 +240,8 @@ export class Revoker {
   private async retryAll(): Promise<void> {
     const done = new Set<string>()
     for (const entry of this.host.connection().pendingRevoke) {
+      // Never sent, never given up: the person forgets it, from the line the Sync tab shows.
+      if (entry.plainHttp) continue
       const who = `${entry.deviceName || entry.deviceId} on ${entry.serverUrl}`
       const token = secrets().device.get(entry.tokenId)
       if (token === '') {
@@ -181,10 +253,15 @@ export class Revoker {
         secrets().device.remove(entry.tokenId)
         done.add(entry.tokenId)
         this.host.note(
-          `gave up telling the server that ${who} left: a month has passed; ` +
-            'revoke it from the device list if it is still there'
+          `gave up telling the server that ${who} left: a month has passed. The server still ` +
+            'has it enrolled, and anyone holding a copy of its token can still sync that vault'
         )
         continue
+      }
+      if (this.waiting > 0) {
+        this.host.telling?.(
+          `Telling ${entry.serverUrl} that ${entry.deviceName || entry.deviceId} left…`
+        )
       }
       const told = await tellServer(entry.serverUrl, token, this.host.transport(), this.timeoutMs)
       if (told.told === 'failed') continue

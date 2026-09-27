@@ -49,7 +49,7 @@ export interface DeviceConnection {
   deviceId: string
   /** The keychain name the device token is filed under — never the token. */
   deviceTokenId: string
-  /** What this device calls itself in the vault's device list. */
+  /** The name the server knows this device by. */
   deviceName: string
   /** Sync stays connected but moves nothing until this goes false again. */
   paused: boolean
@@ -82,6 +82,12 @@ export interface PendingRevoke {
   tokenId: string
   /** When the device left, as an ISO date. */
   since: string
+  /**
+   * The address is plain http to another machine — a connection made before the https rule —
+   * so the server is never told: the token is not sent over the network readable. Kept so the
+   * Sync tab can say so until the person forgets it; never retried, never given up on its own.
+   */
+  plainHttp: boolean
 }
 
 /** How every keychain id of a token waiting to be revoked starts. */
@@ -158,7 +164,11 @@ export function inspectConnection(
   const vaultId = text('vaultId')
   const deviceId = text('deviceId')
   let deviceTokenId = text('deviceTokenId')
-  if (deviceTokenId !== '' && !isDeviceSecretId(deviceTokenId)) {
+  // A waiting revoke's token is a device's that left: synced on, it would come back to life.
+  if (
+    deviceTokenId !== '' &&
+    (!isDeviceSecretId(deviceTokenId) || isRevokeSecretId(deviceTokenId))
+  ) {
     damaged.push('deviceTokenId')
     deviceTokenId = ''
   }
@@ -210,6 +220,9 @@ export function connectionProblem(connection: DeviceConnection): string | null {
   }
   if (connection.deviceTokenId !== '' && !isDeviceSecretId(connection.deviceTokenId)) {
     return `a device token is only ever filed under a name that starts with ${DEVICE_SECRET_PREFIX}`
+  }
+  if (isRevokeSecretId(connection.deviceTokenId)) {
+    return "that keychain name holds a token kept to tell a server a device left, not this device's own"
   }
   return null
 }
@@ -379,6 +392,7 @@ function pendingFrom(raw: unknown): { entries: PendingRevoke[]; damaged: boolean
       deviceName: o.deviceName as string,
       tokenId: o.tokenId,
       since: new Date(Number.isNaN(since) ? 0 : since).toISOString(),
+      plainHttp: o.plainHttp === true,
     })
   }
   return { entries, damaged: entries.length !== raw.length }
