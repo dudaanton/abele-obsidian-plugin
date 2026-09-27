@@ -12,11 +12,21 @@
           @update:model-value="set('flow', $event)"
         />
       </Setting>
-      <Setting name="Font" desc="The font of the text. The theme's is the one your notes use.">
+      <Setting name="Font" :desc="fontDesc">
         <Dropdown
           :options="fontOptions"
           :model-value="settings.font"
           @update:model-value="set('font', $event)"
+        />
+      </Setting>
+      <Setting
+        name="Fonts folder"
+        desc="A folder in the vault with font files: .ttf, .otf, .woff or .woff2. Each family in it is offered as a font above, and travels to your other devices with the vault. Obsidian Sync carries them with Sync all other types on. Empty: no fonts from the vault."
+      >
+        <Input
+          :model-value="fontsFolder"
+          placeholder="Fonts"
+          @update:model-value="setFontsFolder"
         />
       </Setting>
       <Setting name="Text size">
@@ -195,7 +205,10 @@ import EmptyState from '../obsidian/EmptyState.vue'
 import Input from '../obsidian/Input.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { THICKNESSES } from '@/drawing/model'
+import { readerFonts } from '@/reader/readerFonts'
 import {
+  VAULT_FONT,
+  vaultFontOf,
   FONT_SIZES,
   PDF_ZOOMS,
   TTS_RATES,
@@ -224,12 +237,30 @@ const flowOptions = [
   { value: 'paginated', display: 'Pages' },
   { value: 'scrolled', display: 'Scrolling' },
 ]
-const fontOptions = [
-  { value: 'theme', display: "Theme's text font" },
-  { value: 'serif', display: 'Serif' },
-  { value: 'sans', display: 'Sans-serif' },
-  { value: 'book', display: "The book's own" },
-]
+/** The fonts folder's families; read when the settings open, followed while they are. */
+const fonts = readerFonts()
+void fonts?.ensure()
+const fontOptions = computed(() => {
+  const families = fonts?.families.value ?? []
+  const chosen = vaultFontOf(settings)
+  return [
+    { value: 'theme', display: "Theme's text font" },
+    { value: 'serif', display: 'Serif' },
+    { value: 'sans', display: 'Sans-serif' },
+    { value: 'book', display: "The book's own" },
+    ...families.map((f) => ({ value: `${VAULT_FONT}${f.name}`, display: f.name })),
+    // A family chosen whose files are not here — not synced yet, or removed — stays chosen,
+    // named as what it is; the text is in a serif meanwhile.
+    ...(chosen && !families.some((f) => f.name.toLowerCase() === chosen.toLowerCase())
+      ? [{ value: settings.font, display: `${chosen} (not in the fonts folder)` }]
+      : []),
+  ]
+})
+const fontDesc = computed(() =>
+  fonts?.families.value.length
+    ? "The font of the text. The theme's is the one your notes use; below the book's own are the fonts from your fonts folder."
+    : "The font of the text. The theme's is the one your notes use. Put font files in the fonts folder to read in your own."
+)
 const sizeOptions = FONT_SIZES.map((n) => ({ value: String(n), display: `${n}%` }))
 const lineOptions = LINE_HEIGHTS.map((n) => ({
   value: String(n),
@@ -298,6 +329,26 @@ const setPlacesPath = (value: string) => {
 }
 // Settings closed while typing: what was typed is kept.
 onBeforeUnmount(() => placesTimer && savePlacesPath())
+
+/** The folder as typed, saved a moment after typing stops, as the places file is. */
+const fontsFolder = ref(settings.fontsFolder)
+watch(
+  () => settings.fontsFolder,
+  (value) => (fontsFolder.value = value)
+)
+let fontsTimer = 0
+const saveFontsFolder = () => {
+  window.clearTimeout(fontsTimer)
+  fontsTimer = 0
+  if (fontsFolder.value.trim() !== settings.fontsFolder)
+    set('fontsFolder', fontsFolder.value.trim())
+}
+const setFontsFolder = (value: string) => {
+  fontsFolder.value = value
+  window.clearTimeout(fontsTimer)
+  fontsTimer = window.setTimeout(saveFontsFolder, 500)
+}
+onBeforeUnmount(() => fontsTimer && saveFontsFolder())
 
 const set = <K extends keyof ReaderSettings>(key: K, value: ReaderSettings[K] | string) => {
   ;(settings as Record<string, unknown>)[key] = value

@@ -49,6 +49,7 @@ import { newDrawing, openImageInk } from '@/drawing/files'
 import * as bookSafety from '@/reader/bookSafety'
 import { BOOK_VIEW_TYPE, bookViews, readerTestHooks } from '@/reader/BookView'
 import { openEpub } from '@/reader/openBook'
+import { readerFonts } from '@/reader/readerFonts'
 import type { Plugin } from 'obsidian'
 
 export interface GroupResolveMeasurement {
@@ -156,6 +157,8 @@ interface AbeleTestApi {
     safety: typeof bookSafety
     hooks: typeof readerTestHooks
     openEpub: typeof openEpub
+    /** The fonts folder the reader offers fonts from. */
+    fonts: typeof readerFonts
   }
   /** The keyboard diagnostics panel, on or off, without going through the settings. */
   setKeyboardDiagnostics: typeof setKeyboardDiagnostics
@@ -586,6 +589,7 @@ export function exposeTestApi(plugin: Plugin): void {
       safety: bookSafety,
       hooks: readerTestHooks,
       openEpub,
+      fonts: readerFonts,
     },
     plugin,
     viewProbe: null,

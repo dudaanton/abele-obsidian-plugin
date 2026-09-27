@@ -236,6 +236,9 @@ describe('settings that arrived later than the transfer did', () => {
       pdfInkThickness: 'bold' as const,
       // And on a drawing, chosen apart.
       drawingInkThickness: 'fine' as const,
+      // And a font from the vault, with the folder it is kept in.
+      font: 'vault:Literata' as const,
+      fontsFolder: 'Books/Fonts',
     }
     const entries = collectEntries(settings({ reader }))
     const entry = find(entries, 'reader', 'reader')

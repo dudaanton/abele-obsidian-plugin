@@ -92,6 +92,26 @@ of the device's own (a monospace text font), WebKit reported where the words of 
 are from a layout made before the font was in place, so highlights sat a couple of letters off
 until the font was changed; a layout that was right does not move.
 
+### Fonts from the vault
+
+The font files in the fonts folder and the folders in it — `.ttf`, `.otf`, `.woff`, `.woff2` —
+are the reader's own fonts (`src/reader/readerFonts.ts`). Each file is read once to learn what it
+is (`fontNames.ts`): a TrueType, OpenType or WOFF file by its `name` table (the typographic family,
+name 16, over the legacy one), its weight and slant from `OS/2` and `head`, a variable font's
+weights from its `fvar` axis; a WOFF2 file, compressed whole with Brotli, by its file name
+(`Literata-BoldItalic` is Literata, 700, italic). Files of one family become one entry with a
+face per weight and style. The folder is read the first time a book or the settings ask, and
+again a moment after any file in it is created, changed, renamed or deleted — by hand or by a
+sync — and when the setting names another folder.
+
+A family chosen is stored as `vault:<family>`; every page gets `"<family>"` with a serif stack
+behind it, so a device the files have not reached yet reads in a serif. Each page, the note
+window's included, is given the family's faces as `FontFace`s made from the files' bytes, with
+the page's own `FontFace` (`fontFaces.ts`): no URL, so the pages' Content Security Policy stays
+as it is, and WebKit on an iPhone or iPad takes them the same way. Once they are in, the page is
+laid out again and its highlights measured again: it was first laid out with the serif. A change
+of font, or of the folder's files, puts the new faces in and takes out the old ones.
+
 A page is laid out again when a picture on it finishes loading, as when a font does, so a picture
 that arrives late never lies over the text after it. An inline element wrapped around blocks —
 some converters put each note's number and paragraph inside one `span` — is laid out as a block,
@@ -282,7 +302,8 @@ and travels with the settings transfer.
 | Setting | What it does |
 |---|---|
 | Layout | Pages turned one at a time, or scrolling through each chapter. |
-| Font | The theme's text font (the one notes use), a serif, a sans-serif, or the book's own. |
+| Font | The theme's text font (the one notes use), a serif, a sans-serif, the book's own, or a family from the fonts folder. |
+| Fonts folder | A folder in the vault (`Fonts` by default, empty for none) whose font files are offered as fonts (see **Fonts from the vault** below). |
 | Text size | 70% to 200% of the book's own. |
 | Line spacing | 1.2 to 2, or the book's own. |
 | Margins | Narrow, normal or wide space around the text and between columns. |

@@ -25,7 +25,10 @@ import {
   pdfZoomFor,
   readerSettingsFrom,
   themeValues,
+  vaultFontOf,
 } from './settings'
+import { readerFonts } from './readerFonts'
+import { setDocumentFonts, type FaceData } from './fontFaces'
 import type { PdfBookExtras } from './pdfBook'
 import { BookReading } from './BookReading'
 import { linkedNotesFor } from './bookLinkedNotes'
@@ -33,7 +36,14 @@ import type { LinkedNotes } from './linkedNotes'
 import { parsePlaceSubpath, type BookPlace } from './bookLinks'
 import { onExternalLink, onKey, watchPage, type PageHost } from './pageInput'
 import { showBookStyles } from './bookStyles'
-import { keepMarksOnText, redrawOver, relayoutOnFonts, relayoutOnPictures } from './pageLayout'
+import {
+  keepMarksOnText,
+  redrawOver,
+  relayoutColumns,
+  relayoutOnFonts,
+  relayoutOnPictures,
+  relayoutText,
+} from './pageLayout'
 import { bookCallbacks, type BookActions } from './bookCallbacks'
 import { bookKey } from './positions'
 import { bookPlaces, followPlace } from './places'
@@ -156,7 +166,14 @@ export class BookView extends FileView {
     this.addAction('a-large-small', 'Text and layout', () => (this.model.settingsOpen = true))
 
     const config = AbeleConfig.getInstance()
-    this.stopWatch = watch(config.version, () => this.applySettings())
+    const stopSettings = watch(config.version, () => this.applySettings())
+    // Font files added, changed or removed in the fonts folder, here or on another device.
+    const fonts = readerFonts()
+    const stopFonts = fonts ? watch(fonts.version, () => this.applyFonts()) : null
+    this.stopWatch = () => {
+      stopSettings()
+      stopFonts?.()
+    }
     this.model.canAsk = !!AbeleConfig.getInstance().ai?.enabled
     this.registerEvent(
       this.app.workspace.on('css-change', () => {
@@ -387,7 +404,39 @@ export class BookView extends FileView {
       if (renderer.getAttribute(name) !== value) renderer.setAttribute(name, value)
     renderer.setStyles?.(pageStyles(settings, themeValues(this.contentEl)))
     const pages = (renderer as { getContents?: () => { doc?: Document }[] }).getContents?.() ?? []
-    for (const { doc } of pages) if (doc) showBookStyles(doc, settings.bookStyles)
+    for (const { doc } of pages)
+      if (doc) {
+        showBookStyles(doc, settings.bookStyles)
+        void this.fontsInto(doc, !note)
+      }
+  }
+
+  /** The family from the fonts folder put into every page shown, the note's included. */
+  private applyFonts(): void {
+    for (const [view, main] of [
+      [this.reader, true],
+      [this.model.footnote?.view as FoliateView | undefined, false],
+    ] as const) {
+      if (!view || view.isFixedLayout) continue
+      const renderer = view.renderer as { getContents?: () => { doc?: Document }[] } | undefined
+      for (const { doc } of renderer?.getContents?.() ?? []) if (doc) void this.fontsInto(doc, main)
+    }
+  }
+
+  /**
+   * A page given the family from the fonts folder the text is set in, or rid of one it no longer
+   * is; laid out again once the faces are in, and what is drawn over its words drawn again. The
+   * page was laid out with the serif behind the family: the lines move, and a highlight measured
+   * before would stay where the serif had put the words.
+   */
+  private async fontsInto(doc: Document, main: boolean): Promise<void> {
+    const family = vaultFontOf(readerSettingsFrom(AbeleConfig.getInstance().reader))
+    const fonts = readerFonts()
+    const faces: FaceData[] | Promise<FaceData[]> = family && fonts ? fonts.facesOf(family) : []
+    if (!(await setDocumentFonts(doc, family, faces)) || !doc.defaultView) return
+    relayoutText(doc)
+    relayoutColumns(doc)
+    if (main) redrawOver(this.reader?.renderer, doc, 'a font from the vault arrived')
   }
 
   private applySettings(): void {
@@ -573,6 +622,7 @@ export class BookView extends FileView {
       if (link && !(link.localName === 'a' && link.hasAttribute('href'))) e.preventDefault()
     })
     showBookStyles(doc, readerSettingsFrom(AbeleConfig.getInstance().reader).bookStyles)
+    if (!this.fixed) void this.fontsInto(doc, main)
     if (!main) return
     relayoutOnFonts(doc, () => redrawOver(this.reader?.renderer, doc, 'fonts arrived'))
     relayoutOnPictures(doc, () => redrawOver(this.reader?.renderer, doc, 'a picture arrived'))

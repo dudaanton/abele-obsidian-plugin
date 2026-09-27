@@ -7,9 +7,13 @@
 import { PROGRESS_SHOWS, type ProgressShow } from './readingProgress'
 import { bookMenuScriptsFrom, type BookMenuScript } from '@/scripting/bookMenuScripts'
 import { THICKNESSES, type Thickness } from '@/drawing/model'
+import { cleanFamily } from './fontNames'
 
 export type ReaderFlow = 'paginated' | 'scrolled'
-export type ReaderFont = 'theme' | 'serif' | 'sans' | 'book'
+/** One of the reader's own, or a family from the fonts folder, as `vault:<family>`. */
+export type ReaderFont = 'theme' | 'serif' | 'sans' | 'book' | `vault:${string}`
+/** Marks a font from the fonts folder in `font`. */
+export const VAULT_FONT = 'vault:'
 export type ReaderMargin = 'narrow' | 'normal' | 'wide'
 /** How a PDF page is sized: to fit the tab whole, to fit its width, or at a fixed zoom. */
 export type PdfZoom = 'auto' | 'fit-page' | 'fit-width' | '1' | '1.25' | '1.5' | '2'
@@ -26,8 +30,16 @@ export const PDF_ZOOMS: readonly PdfZoom[] = [
 export interface ReaderSettings {
   /** Pages turned one at a time, or the chapter as one long scroll. */
   flow: ReaderFlow
-  /** Obsidian's text font, a serif, a sans-serif, or whatever the book asks for. */
+  /**
+   * Obsidian's text font, a serif, a sans-serif, whatever the book asks for, or a family from the
+   * fonts folder.
+   */
   font: ReaderFont
+  /**
+   * The folder in the vault whose font files (`.ttf`, `.otf`, `.woff`, `.woff2`) the reader
+   * offers as fonts; empty for none. Kept in the vault so Obsidian Sync takes them to every device.
+   */
+  fontsFolder: string
   /** Text size, in percent of the book's own. */
   fontSize: number
   /** Line spacing, as a multiple of the text size; 0 keeps the book's own. */
@@ -132,6 +144,7 @@ export const TTS_RATES = [0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   flow: 'paginated',
   font: 'theme',
+  fontsFolder: 'Fonts',
   fontSize: 100,
   lineHeight: 1.5,
   margin: 'normal',
@@ -173,7 +186,8 @@ export function readerSettingsFrom(stored?: Partial<ReaderSettings> | null): Rea
   const d = DEFAULT_READER_SETTINGS
   return {
     flow: oneOf(s.flow, ['paginated', 'scrolled'] as const, d.flow),
-    font: oneOf(s.font, ['theme', 'serif', 'sans', 'book'] as const, d.font),
+    font: fontFrom(s.font) ?? d.font,
+    fontsFolder: typeof s.fontsFolder === 'string' ? s.fontsFolder : d.fontsFolder,
     fontSize: clamp(s.fontSize, 50, 300, d.fontSize),
     lineHeight: s.lineHeight === 0 ? 0 : clamp(s.lineHeight, 1, 3, d.lineHeight),
     margin: oneOf(s.margin, ['narrow', 'normal', 'wide'] as const, d.margin),
@@ -201,6 +215,30 @@ export function readerSettingsFrom(stored?: Partial<ReaderSettings> | null): Rea
 }
 
 const NOTES_TO = ['book', 'note'] as const
+
+/** A font as stored, when it is one: a family from the folder is kept by a name CSS can hold. */
+function fontFrom(value: unknown): ReaderFont | null {
+  if (typeof value !== 'string') return null
+  if (value.startsWith(VAULT_FONT)) {
+    const family = cleanFamily(value.slice(VAULT_FONT.length))
+    return family ? `${VAULT_FONT}${family}` : null
+  }
+  return (['theme', 'serif', 'sans', 'book'] as const).find((f) => f === value) ?? null
+}
+
+/** The family from the fonts folder the text is set in; empty when it is set in another. */
+export function vaultFontOf(settings: ReaderSettings): string {
+  return settings.font.startsWith(VAULT_FONT) ? settings.font.slice(VAULT_FONT.length) : ''
+}
+
+/**
+ * The fonts folder, tidied; empty when none is set or it is one Obsidian Sync would not carry —
+ * a part of it hidden, the vault's settings folder included — and Obsidian does not list.
+ */
+export function fontsFolderOf(settings: ReaderSettings): string {
+  const path = settings.fontsFolder.trim().replace(/\\/g, '/').split('/').filter(Boolean).join('/')
+  return path.split('/').some((p) => p.startsWith('.')) ? '' : path
+}
 
 /** One book's choice as stored, without what is no choice; null when nothing is left. */
 function choiceFrom(value: unknown): BookNotesChoice | null {
@@ -319,7 +357,7 @@ export interface ThemeValues {
   dark: boolean
 }
 
-const FONT_STACKS: Record<Exclude<ReaderFont, 'book' | 'theme'>, string> = {
+const FONT_STACKS: Record<'serif' | 'sans', string> = {
   serif: 'Charter, "Iowan Old Style", Georgia, Cambria, "Times New Roman", serif',
   sans: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
 }
@@ -347,12 +385,16 @@ export function fontList(value: string): string {
  * own stylesheets, as defaults the book may override; the second after, as what it may not.
  */
 export function pageStyles(settings: ReaderSettings, theme: ThemeValues): [string, string] {
-  const family =
-    settings.font === 'theme'
+  const vault = vaultFontOf(settings)
+  // A family from the folder, with a serif behind it until it arrives — or on a device the files
+  // have not reached yet.
+  const family = vault
+    ? `"${cleanFamily(vault)}", ${FONT_STACKS.serif}`
+    : settings.font === 'theme'
       ? fontList(theme.fontText) || FONT_STACKS.serif
       : settings.font === 'book'
         ? ''
-        : FONT_STACKS[settings.font]
+        : FONT_STACKS[settings.font as 'serif' | 'sans']
   const mono = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
   const before = `
     @namespace epub "http://www.idpf.org/2007/ops";

@@ -147,3 +147,16 @@ voice and speed in the reader's settings.
 The **Aa** button changes the font, text size, line spacing, margins, column width, two columns
 and whether the book takes the theme's colours. The
 same settings are in **Settings → Abele → Books**, and they travel with a settings transfer.
+
+### Your own fonts
+
+Put font files — `.ttf`, `.otf`, `.woff` or `.woff2` — in the **Fonts** folder at the root of
+the vault, or in the folder named under **Fonts folder** in the same settings. Every family in it
+appears in the **Font** list after the book's own: the regular, bold and italic files of one
+family become one entry, named as the font names itself. Files added, renamed or removed show up
+at once, in a book that is open too.
+
+The files live in the vault, so they reach your phone and tablet the way your notes do. With
+Obsidian Sync, turn on **Sync all other types** in its settings, or font files are left behind. On
+a device the files have not reached yet the book is set in a serif, and the list says the font is
+not in the folder.

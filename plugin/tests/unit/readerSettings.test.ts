@@ -8,7 +8,9 @@ import {
   layoutAttributes,
   pageStyles,
   placesPathOf,
+  fontsFolderOf,
   readerSettingsFrom,
+  vaultFontOf,
   type ThemeValues,
 } from '@/reader/settings'
 
@@ -94,6 +96,37 @@ describe('the file the places of books are kept in', () => {
     expect(of('.obsidian/places.json')).toBe('abele-book-places.json')
     expect(of('../outside.json')).toBe('abele-book-places.json')
     expect(of('')).toBe('abele-book-places.json')
+  })
+})
+
+describe('fonts from the vault', () => {
+  it('keep their folder, Fonts by default, empty for none', () => {
+    expect(readerSettingsFrom({}).fontsFolder).toBe('Fonts')
+    expect(readerSettingsFrom({ fontsFolder: '' }).fontsFolder).toBe('')
+    expect(readerSettingsFrom({ fontsFolder: 7 as never }).fontsFolder).toBe('Fonts')
+  })
+
+  it('are looked for in a folder Obsidian Sync carries, or nowhere', () => {
+    const at = (fontsFolder: string) => fontsFolderOf(readerSettingsFrom({ fontsFolder }))
+    expect(at(' /Books/Fonts/ ')).toBe('Books/Fonts')
+    expect(at('')).toBe('')
+    expect(at('.obsidian/fonts')).toBe('')
+    expect(at('Books/.fonts')).toBe('')
+  })
+
+  it('are chosen by family, which is kept as said', () => {
+    expect(readerSettingsFrom({ font: 'vault:Literata' }).font).toBe('vault:Literata')
+    expect(vaultFontOf(readerSettingsFrom({ font: 'vault:Literata' }))).toBe('Literata')
+    expect(vaultFontOf(readerSettingsFrom({ font: 'serif' }))).toBe('')
+    expect(readerSettingsFrom({ font: 'vault:' as never }).font).toBe('theme')
+    expect(readerSettingsFrom({ font: 'vault:A"}b' as never }).font).toBe('vault:Ab')
+  })
+
+  it("set the book's text in the family, with a serif behind it until it arrives", () => {
+    const [, after] = pageStyles(readerSettingsFrom({ font: 'vault:Literata' }), theme)
+    expect(after).toMatch(
+      /html, body, body \* \{ font-family: "Literata", Charter,[^}]*serif !important; \}/
+    )
   })
 })
 

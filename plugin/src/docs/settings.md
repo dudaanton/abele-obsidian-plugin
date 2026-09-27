@@ -221,7 +221,10 @@ A rule with no entry runs as it ships. It travels in a transfer.
 scripts offered first on words selected in a book, in order: each `{ script, name, icon }`,
 `script` being the script's `@name` and an empty `name` or `icon` meaning the script's own.
 Scripts whose header says `@book` follow them without being listed; listing one gives it a place
-and a name. It travels in a transfer with the rest of `reader`.
+and a name. `font` is `theme`, `serif`, `sans`, `book`, or `vault:<family>` for a family from
+the fonts folder; `fontsFolder` is that folder's path (`Fonts` by default, empty for none), whose
+`.ttf`, `.otf`, `.woff` and `.woff2` files are the reader's own fonts. It travels in a transfer
+with the rest of `reader`; the font files themselves are vault files and go with the vault.
 
 `keyboardDiagnostics` shows a panel at the top of the screen with what the app reports about
 the on-screen keyboard — page and viewport sizes, Obsidian's keyboard height, the open dialog

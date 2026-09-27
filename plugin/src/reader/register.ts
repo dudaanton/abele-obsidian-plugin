@@ -11,7 +11,8 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { BOOK_EXTENSIONS, BOOK_VIEW_TYPE, BookView, READER_EXTENSIONS } from './BookView'
 import { initBookPlaces } from './places'
 import { initBookBookmarks } from './bookmarkFiles'
-import { readerSettingsFrom, renamedBookNotes } from './settings'
+import { fontsFolderOf, readerSettingsFrom, renamedBookNotes } from './settings'
+import { ReaderFonts, initReaderFonts } from './readerFonts'
 import { adoptPdfLeaves, setPdfTakeover } from './pdfTakeover'
 import { registerPlaceLinks } from './placeLinks'
 import { reuseBookTabs } from './bookTabReuse'
@@ -22,6 +23,14 @@ export function registerReader(plugin: Plugin): void {
   const { app } = plugin
   const places = initBookPlaces(plugin)
   const bookmarks = initBookBookmarks(plugin)
+  // The fonts folder: read when a book or the settings first ask, followed from then on.
+  const fonts = new ReaderFonts(app.vault, () =>
+    fontsFolderOf(readerSettingsFrom(AbeleConfig.getInstance().reader))
+  )
+  initReaderFonts(fonts)
+  plugin.register(fonts.start())
+  plugin.register(watch(AbeleConfig.getInstance().version, () => fonts.folderChanged()))
+  plugin.register(() => initReaderFonts(null))
   plugin.registerView(BOOK_VIEW_TYPE, (leaf) => new BookView(leaf))
   // The last page turned is written a moment later; quitting or unloading writes it now.
   plugin.registerEvent(app.workspace.on('quit', () => void places.flush()))
