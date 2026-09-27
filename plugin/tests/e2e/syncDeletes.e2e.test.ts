@@ -235,19 +235,27 @@ describe.skipIf(why !== null)('many files deleted at once', () => {
       if (!(await poll(() => cardOf(${JSON.stringify(two[0])}) && cardOf(${JSON.stringify(two[1])}), 20000)))
         throw new Error('the trash does not list both notes')
       const buttonOf = (path) => cardOf(path).querySelector('.abele-card__actions button')
+      // Every word the second row's button shows, as it shows it: against a server on this
+      // machine the first restore can be over, and the second under way, before a poll looks.
+      const second = buttonOf(${JSON.stringify(two[1])})
+      const said = []
+      const watch = new MutationObserver(() => {
+        const now = second.isConnected ? textOf(second) : 'gone'
+        if (said[said.length - 1] !== now) said.push(now)
+      })
+      watch.observe(document.querySelector('.abele-deleted-files'), { childList: true, subtree: true, characterData: true })
       buttonOf(${JSON.stringify(two[0])}).click()
-      buttonOf(${JSON.stringify(two[1])}).click()
-      await sleep(50)
-      const said = cardOf(${JSON.stringify(two[1])}) ? textOf(buttonOf(${JSON.stringify(two[1])})) : 'gone already'
-      if (!(await poll(() => !cardOf(${JSON.stringify(two[0])}) && !cardOf(${JSON.stringify(two[1])}), 60000)))
-        throw new Error('the two notes stayed in the list')
+      second.click()
+      const bothGone = await poll(() => !cardOf(${JSON.stringify(two[0])}) && !cardOf(${JSON.stringify(two[1])}), 60000)
+      watch.disconnect()
+      if (!bothGone) throw new Error('the two notes stayed in the list')
       await escapeIn()
-      return said
+      return said.join(' > ')
       `,
       120_000
     )
-    // The first may be quick enough to finish inside the 50 ms; then there was nothing to queue.
-    expect(['Queued', 'gone already']).toContain(second)
+    // Pressed while the first ran, so it said Queued before it went ahead.
+    expect(second.split(' > ')[0]).toBe('Queued')
     await sync.syncNow()
     expect(sync.exists(two[0])).toBe(true)
     expect(sync.exists(two[1])).toBe(true)
