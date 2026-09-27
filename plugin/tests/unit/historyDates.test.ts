@@ -223,6 +223,10 @@ describe('a whole span in one field', () => {
     const open = parsePeriod('1991 – present', { approx: 5, now: NOW })!
     expect(open.end.now).toBe(true)
     expect(parsePeriod('1914', { approx: 5, now: NOW })).toBeNull()
+    const words = parsePeriod('с 1914 по 1918', { approx: 5, now: NOW })!
+    expect([words.start.at, words.end.at]).toEqual([1914, 1918])
+    // Each side keeps the way it was written, for the label.
+    expect(parsePeriod('XVI век – 1620', { approx: 5, now: NOW })!.start.text).toBe('XVI век')
   })
 })
 

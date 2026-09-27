@@ -65,7 +65,7 @@ const isLeap = (y: number) => {
   const m = ((y % 400) + 400) % 400
   return m % 4 === 0 && (m % 100 !== 0 || m === 0)
 }
-const daysIn = (y: number) => (isLeap(y) ? 366 : 365)
+export const daysIn = (y: number): number => (isLeap(y) ? 366 : 365)
 const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 const monthDays = (y: number, m: number) => (m === 2 && isLeap(y) ? 29 : MONTH_DAYS[m - 1])
 
@@ -259,11 +259,10 @@ function monthOrDay(y: number, month: number, day: number | null): Core | null {
   return span(lo, lo + 1 / daysIn(y), 'day', false)
 }
 
-/** Lower case, one kind of dash, single spaces, "н. э." closed up. */
+/** One kind of dash and single spaces; the case is kept for the text of a range's sides. */
 function normalise(text: string): string {
   return text
     .trim()
-    .toLowerCase()
     .replace(/[‒–—―−]/g, (c) => (c === '−' ? '-' : '–'))
     .replace(/\s+/g, ' ')
 }
@@ -306,14 +305,14 @@ function parseQualified(
 
 /** The two sides of a range, or null when `s` is one date. */
 function splitRange(s: string): [string, string] | null {
-  let m = /^(.+?)\s*(?:–|\.\.|\s-\s|\s+to\s+|\s+по\s+)\s*(.+)$/.exec(s)
+  // "с 1914 по 1918", "from 1914 to 1918"
+  let m = /^(?:с|from)\s+(.+?)\s+(?:по|до|to|until)\s+(.+)$/i.exec(s)
+  if (m) return [m[1], m[2]]
+  m = /^(.+?)\s*(?:–|\.\.|\s-\s|\s+to\s+|\s+по\s+)\s*(.+)$/i.exec(s)
   if (m) return [m[1], m[2]]
   // A hyphen between two years is a range; "1440-12" is a month.
   m = /^(\d{1,4})-(\d{3,4})(.*)$/.exec(s)
-  if (m) return [m[1], m[2] + m[3]]
-  // "с 1914 по 1918", "from 1914 to 1918"
-  m = /^(?:с|from)\s+(.+?)\s+(?:по|до|to|until)\s+(.+)$/.exec(s)
-  return m ? [m[1], m[2]] : null
+  return m ? [m[1], m[2] + m[3]] : null
 }
 
 const whole = (d: Core & { approx: boolean; uncertain: boolean }, text: string): HistDate => ({
@@ -337,12 +336,15 @@ const nowDate = (opts: HistParseOptions, text: string): HistDate => ({
 /** Both sides of a range; an era written once at its end holds for both. */
 function parseSides(sides: [string, string], opts: HistParseOptions): [HistDate, HistDate] | null {
   const [a, b] = sides
-  const [, eraB] = splitEra(b.replace(/[?~%]$/, ''))
-  const [, eraA] = splitEra(a.replace(/[?~%]$/, ''))
-  const end = NOW_RE.test(b) ? nowDate(opts, b) : parseQualified(b, null, opts)
-  const start = parseQualified(a, eraA ?? eraB, opts)
-  if (!start || !end) return null
-  return [whole(start, a), 'now' in end ? end : whole(end, b)]
+  const la = a.toLowerCase()
+  const lb = b.toLowerCase()
+  const [, eraB] = splitEra(lb.replace(/[?~%]$/, ''))
+  const [, eraA] = splitEra(la.replace(/[?~%]$/, ''))
+  const start = parseQualified(la, eraA ?? eraB, opts)
+  if (!start) return null
+  if (NOW_RE.test(lb)) return [whole(start, a), nowDate(opts, b)]
+  const end = parseQualified(lb, null, opts)
+  return end ? [whole(start, a), whole(end, b)] : null
 }
 
 const cache = new Map<string, HistDate | null>()
@@ -363,7 +365,8 @@ function textOf(value: unknown): string | null {
 export function parseHistDate(value: unknown, opts: HistParseOptions): HistDate | null {
   const text = textOf(value)
   if (text === null) return null
-  const s = normalise(text)
+  const tidy = normalise(text)
+  const s = tidy.toLowerCase()
   if (NOW_RE.test(s)) return nowDate(opts, text)
   const key = `${opts.approx}|${s}`
   const known = cache.get(key)
@@ -372,7 +375,7 @@ export function parseHistDate(value: unknown, opts: HistParseOptions): HistDate 
   const single = parseQualified(s, null, opts)
   if (single) found = whole(single, text)
   else {
-    const sides = splitRange(s)
+    const sides = splitRange(tidy)
     const both = sides && parseSides(sides, opts)
     if (both && !both[1].now && both[1].hi >= both[0].lo) {
       const [a, b] = both
