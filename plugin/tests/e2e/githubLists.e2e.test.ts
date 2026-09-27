@@ -108,6 +108,8 @@ describe.skipIf(!available)("a repository's lists", () => {
       await until(() => leaf.view.model.url.includes('is%3Aclosed') && listReady(leaf), 20000)
       report.closedUrl = leaf.view.model.url
       report.closedRows = rowsOf(root)
+      // Obsidian writes the step into the tab's history once the navigation has settled.
+      await until(() => leaf.history.backHistory.length >= 2, 5000)
       await leaf.history.back()
       await until(() => leaf.view.model.url.endsWith('/pulls') && listReady(leaf) && rowsOf(root).length, 20000)
       report.backUrl = leaf.view.model.url
@@ -158,7 +160,9 @@ describe.skipIf(!available)("a repository's lists", () => {
       if (!(await until(() => listReady(leaf) && rowsOf(root).length && root.textContent.includes('Category'), 20000)))
         return { error: 'no list: ' + root.textContent.slice(0, 300) }
       const select = [...root.querySelectorAll('.abele-github-list__filter')].find((f) => f.textContent.startsWith('Category'))
-      return { rows: rowsOf(root), categories: [...select.querySelectorAll('option')].map((o) => o.textContent) }
+      // Obsidian measures a dropdown with a copy of it beside; the options are the real one's.
+      const real = select.querySelector('select:not(.is-measuring)')
+      return { rows: rowsOf(root), categories: [...real.querySelectorAll('option')].map((o) => o.textContent) }
     })()`)
     expect(r.error).toBeUndefined()
     expect(r.rows).toEqual(['How should paging work?'])
