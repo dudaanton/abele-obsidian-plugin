@@ -2,6 +2,18 @@ import type { App, DataAdapter, ListedFiles, Stat } from 'obsidian'
 import { EngineError, type FileInfo, type FileSystem } from '@abele/sync-core'
 import { caseKey } from '@abele/sync-protocol'
 import { watchVault } from './vaultWatcher'
+import type { LocalStorage } from './ledgerId'
+import { makeParents, pruneAbove } from './vaultFolders'
+import {
+  bytesOf,
+  isAdapterTemp,
+  isDroppableTemp,
+  nativeOf,
+  storageOf,
+  VaultWriter,
+  WriteJournal,
+  type NativeFs,
+} from './vaultWrites'
 
 /** How often the config folder is looked at, since no vault event describes it. */
 const DEFAULT_POLL_MS = 30000
@@ -51,6 +63,11 @@ export interface ObsidianFileSystemOptions {
    * tells the truth, the answer is not written, and the next scan sends the edit — yielding again.
    */
   yieldsToServer?: (path: string) => Promise<boolean>
+  /**
+   * Where unfinished replacements are written down (`vaultWrites.ts`); the vault's own local
+   * storage, through the app, by default.
+   */
+  storage?: LocalStorage
 }
 
 /**
@@ -63,13 +80,11 @@ export interface ObsidianFileSystemOptions {
  * write goes through: the index has no bytes, and `vault.read` would hand back text where
  * the engine wants the file as it is on disk.
  *
- * **Writes here are not atomic.** `adapter.writeBinary` truncates the file and writes into
- * it; a crash mid-write leaves a short file where the engine's contract asks for either the
- * old bytes or the new ones. The alternative — a temp file beside it and a rename — puts a
- * half-written file inside the vault, where Obsidian's own indexer sees it, opens it, and
- * reports it to the plugin; the daemon can hide such a file in `.abele-sync/tmp` and a
- * plugin cannot. The engine survives the difference: a short file has the wrong hash, the
- * next scan calls it a local change, and the server sends the whole thing back.
+ * **Writes are whole or not at all** (`vaultWrites.ts`): the new bytes go to a hidden temp
+ * name beside the file and take its name only once they are all there, so a crash leaves the
+ * old file as it was. A short file would be read by the next scan as an edit made here and
+ * sent to every device. The temp names start with a dot, which keeps them out of Obsidian's
+ * file index, and the config-folder walk skips them by name.
  *
  * Names are passed through exactly as Obsidian reports them, because that spelling is what
  * `move` and `remove` have to name later; the engine folds a path to NFC itself when it puts
@@ -95,6 +110,10 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly yielded = new Map<string, string>()
   /** Set while `watch` is running: what `kick` reaches for, and nothing when nobody watches. */
   private pollNow: (() => void) | null = null
+  private readonly writer: VaultWriter
+  private readonly journal: WriteJournal
+  /** What a crash left half done, put back once, before the first listing is taken. */
+  private recovered: Promise<void> | null = null
 
   constructor(
     private readonly app: App,
@@ -105,6 +124,19 @@ export class ObsidianFileSystem implements FileSystem {
     this.onWatch = options.onWatch ?? null
     this.onEngineWrite = options.onEngineWrite ?? null
     this.yieldsToServer = options.yieldsToServer ?? null
+    this.journal = new WriteJournal(options.storage ?? storageOf(app))
+    this.writer = new VaultWriter({
+      adapter: app.vault.adapter,
+      native: this.native,
+      journal: this.journal,
+      indexed: (path) => app.vault.getAbstractFileByPath(path) !== null,
+      makeParents: (path) => makeParents(this.adapter, path),
+    })
+  }
+
+  /** Obsidian desktop's `fs.promises`, or null on a phone (`vaultWrites.nativeOf`). */
+  private get native(): NativeFs | null {
+    return nativeOf(this.adapter)
   }
 
   private get adapter(): DataAdapter {
@@ -124,7 +156,10 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async *list(): AsyncIterable<FileInfo> {
+    this.recovered ??= this.writer.recover()
+    await this.recovered
     for (const file of this.app.vault.getFiles()) {
+      if (isAdapterTemp(file.path)) continue
       yield { path: file.path, size: file.stat.size, mtime: stamp(file.stat.mtime) }
     }
     for await (const info of this.walkConfig(this.configDir)) yield await this.told(info, true)
@@ -155,13 +190,8 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async writeAtomic(path: string, bytes: Uint8Array, mtime: number): Promise<void> {
-    await this.onlyFileOrNothing(path)
-    await this.makeParents(path)
-    try {
-      await this.adapter.writeBinary(path, bytesOf(bytes), { mtime })
-    } catch (cause) {
-      throw new EngineError('io', `cannot write ${path}`, cause)
-    }
+    const standing = await this.onlyFileOrNothing(path)
+    await this.writer.write(path, bytesOf(bytes), mtime, standing !== null)
     this.wrote(path)
   }
 
@@ -191,13 +221,13 @@ export class ObsidianFileSystem implements FileSystem {
       // Only a listing that says outright that the old spelling is still there sends this
       // round again; a listing that would not answer leaves the rename as done.
       if ((await this.spelledExactly(to)) !== false) return
-      await this.respell(from, to)
+      await this.writer.respell(from, to, (path) => this.spelledExactly(path))
       return
     }
-    await this.makeParents(to)
+    await makeParents(this.adapter, to)
     await this.rename(from, to)
     this.wrote(from, to)
-    await this.pruneAbove(from)
+    await pruneAbove(this.adapter, this.configDir, from)
   }
 
   async remove(path: string): Promise<void> {
@@ -212,7 +242,7 @@ export class ObsidianFileSystem implements FileSystem {
       throw new EngineError('io', `cannot remove ${path}`, cause)
     }
     this.wrote(path)
-    await this.pruneAbove(path)
+    await pruneAbove(this.adapter, this.configDir, path)
   }
 
   /** Tell the host what the engine changed on disk (`onEngineWrite`). */
@@ -272,41 +302,6 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   /**
-   * The folders above a file the engine has just taken away, removed while that has left them
-   * empty — the folder another device renamed or emptied, which Obsidian would otherwise go on
-   * showing here, in the file list and in every folder picker. The daemon's rule: only folders
-   * that held the file a moment ago, so a folder somebody left empty themselves is never
-   * touched; only when the listing shows nothing at all, hidden files included (a `.DS_Store`
-   * is enough to keep one); the first folder that is not empty ends the climb. Never the vault
-   * itself and never the config folder.
-   *
-   * Tidying, not syncing: a folder that would not be listed or removed stays, and says so in
-   * the console, rather than failing a sync whose files all arrived.
-   */
-  private async pruneAbove(path: string): Promise<void> {
-    const segments = path.split('/').slice(0, -1)
-    while (segments.length > 0) {
-      const folder = segments.join('/')
-      if (folder === this.configDir) return
-      try {
-        const listed = await this.adapter.list(folder)
-        if (listed.files.length > 0 || listed.folders.length > 0) return
-        // `recursive`, though the folder was just seen empty: Obsidian desktop's `rmdir` is
-        // `fs.rm`, which without it refuses every folder, empty ones too (EISDIR), and the
-        // mobile adapter removes recursively whatever the flag says. The listing above is the
-        // check that it holds nothing — the same one Obsidian's own Sync makes before it
-        // removes a folder.
-        await this.adapter.rmdir(folder, true)
-      } catch (error) {
-        console.debug(`[abele-sync] left the folder ${folder} in place`, error)
-        return
-      }
-      console.debug(`[abele-sync] removed the folder ${folder}, which the sync emptied`)
-      segments.pop()
-    }
-  }
-
-  /**
    * Look at the config folder now, without waiting for the next tick.
    *
    * The settings tab calls it after it has saved: Obsidian writes `data.json` itself, and a
@@ -351,10 +346,25 @@ export class ObsidianFileSystem implements FileSystem {
       throw new EngineError('io', `cannot list ${folder}`, cause)
     }
     for (const path of listed.files) {
+      if (isAdapterTemp(path)) {
+        // A temp of new bytes a killed write left behind goes; a backup is somebody's only
+        // copy, and the write journal puts it back.
+        if (isDroppableTemp(path)) await this.sweep(path)
+        continue
+      }
       const info = await this.fileAt(path)
       if (info !== null) yield info
     }
     for (const child of listed.folders) yield* this.walkConfig(child, depth + 1, walked)
+  }
+
+  private async sweep(path: string): Promise<void> {
+    try {
+      await this.adapter.remove(path)
+      console.debug(`[abele-sync] removed ${path}, left by a write that did not finish`)
+    } catch (error) {
+      console.debug(`[abele-sync] could not remove ${path}`, error)
+    }
   }
 
   /** Whether the path is there; a question that cannot be answered is answered with yes. */
@@ -397,9 +407,9 @@ export class ObsidianFileSystem implements FileSystem {
    * directory. Obsidian's adapter reports what a link points at rather than the link, so a
    * symlink to a folder arrives here as the folder — which is the answer that matters.
    */
-  private async onlyFileOrNothing(path: string): Promise<void> {
+  private async onlyFileOrNothing(path: string): Promise<Stat | null> {
     const standing = await this.rawStat(path)
-    if (standing === null || standing.type === 'file') return
+    if (standing === null || standing.type === 'file') return standing
     throw conflictAt(path, standing)
   }
 
@@ -441,44 +451,6 @@ export class ObsidianFileSystem implements FileSystem {
     }
   }
 
-  /**
-   * The folder a file goes in, made if it is not there.
-   *
-   * One `exists` and one `mkdir`: on the desktop `mkdir` is `fs.mkdir` with `recursive`, so
-   * it makes the whole chain, and walking the segments would cost a round trip each for a
-   * depth every write reaches. The chain is only walked when the one call did not do it,
-   * which is what a host whose `mkdir` makes one folder at a time would look like.
-   */
-  private async makeParents(target: string): Promise<void> {
-    const cut = target.lastIndexOf('/')
-    if (cut <= 0) return
-    const folder = target.slice(0, cut)
-    if (await this.adapter.exists(folder)) return
-    const failed = await this.tryMkdir(folder)
-    if (failed === null) return
-
-    let walked = ''
-    for (const segment of folder.split('/')) {
-      walked = walked === '' ? segment : `${walked}/${segment}`
-      await this.tryMkdir(walked)
-    }
-    if (!(await this.adapter.exists(folder))) {
-      throw new EngineError('io', `cannot create the folder ${folder}`, failed)
-    }
-  }
-
-  /** Makes a folder; answers what went wrong, or null when the folder is there afterwards. */
-  private async tryMkdir(folder: string): Promise<unknown> {
-    try {
-      await this.adapter.mkdir(folder)
-      return null
-    } catch (cause) {
-      // Two writes into one new folder race; the loser is told it exists, which is what it
-      // asked for.
-      return (await this.adapter.exists(folder)) ? null : cause
-    }
-  }
-
   private async rename(from: string, to: string): Promise<void> {
     try {
       await this.adapter.rename(from, to)
@@ -491,61 +463,6 @@ export class ObsidianFileSystem implements FileSystem {
       }
       throw new EngineError('io', `cannot move ${from} to ${to}`, cause)
     }
-  }
-
-  /**
-   * The new spelling of a name the disk would not respell in one go.
-   *
-   * POSIX lets `rename` between two names of one file do nothing at all, and some mounts take
-   * it literally, so the file goes out to a name nothing holds and comes back under the
-   * spelling that was asked for. There is no half-written file to leave behind — a rename
-   * carries the whole thing or none of it — and a crash between the two steps leaves the
-   * bytes under the temp name, which the next scan reports as a file the server has not seen.
-   */
-  private async respell(from: string, to: string): Promise<void> {
-    const temp = await this.tempBeside(to)
-    // Out from `to`, not from `from`: on the disk this is for, both names answer to the one
-    // file, and `to` is the one that is there whether the rename before this took or not.
-    try {
-      await this.adapter.rename(to, temp)
-    } catch (cause) {
-      throw new EngineError('conflict', `cannot spell ${from} as ${to}`, cause)
-    }
-    try {
-      await this.adapter.rename(temp, to)
-    } catch (cause) {
-      // Back under the name it had, rather than leaving the vault holding a temp name. A
-      // disk that will not do that either leaves the bytes under the temp name, which the
-      // next scan reports as a file the server has not seen — nothing is lost.
-      try {
-        await this.adapter.rename(temp, from)
-      } catch {
-        console.debug(`[abele-sync] ${from} is left at ${temp}`)
-      }
-      throw new EngineError('conflict', `cannot spell ${from} as ${to}`, cause)
-    }
-    if ((await this.spelledExactly(to)) === false) {
-      throw new EngineError('conflict', `this disk keeps ${from} spelled as it was`)
-    }
-  }
-
-  /**
-   * A free name in the same folder to rename through.
-   *
-   * Short, and beside the file rather than built on its name: a segment may already be at the
-   * 255 bytes a filesystem allows, and twenty more would make the rename fail with a name too
-   * long — a hold the vault would never get out of. The leading dot keeps it out of Obsidian's
-   * file index for the moment it exists.
-   */
-  private async tempBeside(to: string): Promise<string> {
-    const cut = to.lastIndexOf('/')
-    const folder = cut === -1 ? '' : to.slice(0, cut)
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const stem = Math.random().toString(36).slice(2, 10).padEnd(8, '0')
-      const path = folder === '' ? `.abele-sync-${stem}.tmp` : `${folder}/.abele-sync-${stem}.tmp`
-      if ((await this.rawStat(path)) === null) return path
-    }
-    throw new EngineError('conflict', `no free name beside ${to} to rename ${to} through`)
   }
 }
 
@@ -574,21 +491,4 @@ function stamp(mtime: number): number {
 
 function conflictAt(path: string, standing: Stat): EngineError {
   return new EngineError('conflict', `a ${standing.type} is at ${path}, where a file was expected`)
-}
-
-/**
- * The bytes as `writeBinary` takes them.
- *
- * The engine often holds a window onto a larger buffer, and only the window's own bytes may
- * be written; a view that is its whole buffer is passed through without copying it.
- */
-function bytesOf(bytes: Uint8Array): ArrayBuffer {
-  const { buffer, byteOffset, byteLength } = bytes
-  if (buffer instanceof ArrayBuffer) {
-    if (byteOffset === 0 && byteLength === buffer.byteLength) return buffer
-    return buffer.slice(byteOffset, byteOffset + byteLength)
-  }
-  const copy = new ArrayBuffer(byteLength)
-  new Uint8Array(copy).set(bytes)
-  return copy
 }

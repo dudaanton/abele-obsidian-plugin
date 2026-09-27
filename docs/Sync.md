@@ -236,6 +236,12 @@ Folders themselves do not sync, only the files in them. When another device rena
 folder, the files move or go here too, and a folder this left empty is removed. A folder you made
 empty yourself, or one still holding a hidden file such as `.DS_Store`, stays.
 
+A file that arrives is written whole or not at all. Its new contents go to a hidden file beside it,
+named `.abele-sync-….tmp`, and take the file's name only once they are all there, so Obsidian
+closing half way leaves the old file as it was. On a phone the old file steps aside to a hidden
+`.abele-sync-….old` for that moment, and if Obsidian closes right then it is put back the next time
+sync starts.
+
 These never travel, whatever the switches say:
 
 - **Hidden files and folders**, anything with a name starting with a dot — `.git/`, `.gitignore`,

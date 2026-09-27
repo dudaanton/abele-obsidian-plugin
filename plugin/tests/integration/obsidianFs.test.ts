@@ -255,7 +255,9 @@ describe('ObsidianFileSystem — moving and removing', () => {
       ['note.md', temp],
       [temp, 'note.md'],
     ])
-    expect(temp).toMatch(/^\.abele-sync-[a-z0-9]{8}\.tmp$/)
+    // `.old`: between the two renames it is the file's only copy, which the write journal
+    // puts back after a crash and no sweep ever removes.
+    expect(temp).toMatch(/^\.abele-sync-[a-z0-9]{8}\.old$/)
     // Nothing of the adapter's own is left behind in the vault.
     const paths = (await listed(fs)).map((info) => info.path)
     expect(paths.filter((path) => path.includes('abele-sync'))).toEqual([])
