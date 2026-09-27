@@ -17,7 +17,7 @@ import { mount, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, h, nextTick } from 'vue'
 import ObsidianModal from '@/components/obsidian/Modal.vue'
 import { useVault } from '../helpers/testEnv'
-import { liftFor, revealDelta, KEYBOARD_GAP } from '@/composables/keyboardLift'
+import { liftFor, revealDelta, KEYBOARD_GAP } from '@/modal/keyboardLift'
 
 class StillViewport extends EventTarget {
   height: number
@@ -93,10 +93,10 @@ const keyboard = async (px: number) => {
   await settle()
 }
 
-const openDialog = async () => {
+const openDialog = async (size: 'default' | 'tall' = 'default') => {
   const Form = defineComponent({
     setup: () => () =>
-      h(ObsidianModal, { title: 'Form' }, () =>
+      h(ObsidianModal, { title: 'Form', size }, () =>
         h('div', { class: 'list', style: 'overflow-y: auto' }, [h('input', { class: 'field' })])
       ),
   })
@@ -176,17 +176,21 @@ describe('a dialog on an iPad, keyboard up', () => {
     expect(scrolledIntoView).not.toHaveBeenCalled()
   })
 
-  it('keeps its size in landscape, and the field it covers is scrolled just above the keyboard', async () => {
+  it('is held above the keyboard in landscape, and the field it covers is scrolled just above it', async () => {
     await openDialog()
     await keyboard(398)
 
     // Centred at 134..634, moved up to the top of the screen and no further.
     expect(liftPx()).toBe(134 - KEYBOARD_GAP)
     const keyboardTop = 768 - 398
-    expect(list().classList.contains('abele-keyboard-scroller')).toBe(true)
-    expect(list().style.getPropertyValue('--abele-keyboard-cover')).toBe(
-      `${634 - (134 - KEYBOARD_GAP) - (keyboardTop - KEYBOARD_GAP)}px`
+    // A dialog of the shell is held to the room above the keyboard, its buttons with it, rather
+    // than keeping its size with room to scroll up from under the keyboard.
+    const dialog = document.querySelector<HTMLElement>('.modal')!
+    expect(dialog.classList.contains('abele-keyboard-capped')).toBe(true)
+    expect(dialog.style.getPropertyValue('--abele-keyboard-cap')).toBe(
+      `${500 - (634 - (134 - KEYBOARD_GAP) - (keyboardTop - KEYBOARD_GAP))}px`
     )
+    expect(document.querySelector('.abele-keyboard-scroller')).toBeNull()
     const f = field().getBoundingClientRect()
     expect(f.bottom).toBeLessThanOrEqual(keyboardTop - KEYBOARD_GAP + 0.5)
     expect(f.top).toBeGreaterThanOrEqual(KEYBOARD_GAP)
@@ -255,8 +259,9 @@ describe('the same dialog on an iPhone, as it was', () => {
     })
   })
 
+  // Obsidian's big sheet; a form of the shell is fitted into the room instead (below).
   it('is pinned to the top, keeps its size, scrolls what is covered and centres the field', async () => {
-    await openDialog()
+    await openDialog('tall')
     await keyboard(KEYBOARD)
 
     expect(container().classList.contains('abele-keyboard-cover')).toBe(true)
@@ -268,6 +273,16 @@ describe('the same dialog on an iPhone, as it was', () => {
       `${DIALOG - (SCREEN - KEYBOARD)}px`
     )
     expect(scrolledIntoView).toHaveBeenCalledWith({ block: 'center' })
+  })
+
+  it('fits a form taller than the room into it, its body scrolling and its buttons above the keyboard', async () => {
+    await openDialog()
+    await keyboard(KEYBOARD)
+
+    expect(container().classList.contains('abele-keyboard-room')).toBe(true)
+    expect(container().classList.contains('abele-keyboard-cover')).toBe(false)
+    expect(container().style.getPropertyValue('--abele-room-height')).toBe(`${SCREEN - KEYBOARD}px`)
+    expect(lifted()).toBe(false)
   })
 
   it('fits a dialog shorter than the room into it, as before', async () => {

@@ -1,5 +1,14 @@
-import { onBeforeUnmount, onMounted, type Ref } from 'vue'
 import { KEYBOARD_GAP, liftFor, revealDelta, safeAreaTop } from './keyboardLift'
+import {
+  FIELD_WIDGET,
+  KEYBOARD_EVENTS,
+  TYPED,
+  caretRect,
+  fullHeight,
+  keyboardRoomReport,
+  keyboardVar,
+  toolbarTop,
+} from './keyboard'
 
 /**
  * On the dialog's container while it is moved into the room the keyboard leaves, whole; the
@@ -18,88 +27,20 @@ const SCROLLER = 'abele-keyboard-scroller'
  * as the keyboard covers it — see `keyboardLift.ts`.
  */
 const LIFTED = 'abele-keyboard-lift'
-
-/** Obsidian's own: the height of the on-screen keyboard, written by the mobile app. */
-export const KEYBOARD_VAR = '--keyboard-height'
-
 /**
- * What the mobile app raises on the window around the keyboard. Obsidian listens to the two
- * `Will` ones itself (its toolbar and navigation bar); the `Did` ones are the Capacitor
- * keyboard plugin's names and cost nothing to hear as well.
+ * On a tablet's dialog of the shell still covered once moved as far up as it goes: held to
+ * `--abele-keyboard-cap`, its body scrolling in that and its buttons above the keyboard.
  */
-export const KEYBOARD_EVENTS = [
-  'keyboardWillShow',
-  'keyboardDidShow',
-  'keyboardWillHide',
-  'keyboardDidHide',
-] as const
-
-/** A field the on-screen keyboard comes up for. */
-export const TYPED =
-  'textarea, [contenteditable="true"], input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="range"]):not([type="color"]):not([type="file"])'
-
-/** What the last measurement decided, for the keyboard diagnostics panel. */
-export interface KeyboardRoomReport {
-  at: number
-  /** The container's top and bottom when measured, before any fit. */
-  container: [number, number]
-  /** Where the visual viewport ends, and where the keyboard height says the keyboard starts. */
-  viewportBottom: number | null
-  keyboardTop: number | null
-  keyboardHeight: number
-  fullHeight: number
-  typing: boolean
-  /** The room given as top and height, or null when the container was left as it was. */
-  room: [number, number] | null
-  /** On a tablet: how far the dialog was moved up, and how much of it still scrolls. */
-  lift?: number
-  cover?: number
-}
-
-export const keyboardRoomReport: { last: KeyboardRoomReport | null } = { last: null }
-
-const px = (value: string | null | undefined): number => {
-  const n = parseFloat(value ?? '')
-  return Number.isFinite(n) && n > 0 ? n : 0
-}
-
-/** The keyboard height the app has written, in CSS pixels; 0 where it writes none. */
-export function keyboardVar(doc: Document): number {
-  const root = doc.documentElement
-  const inline = root.style.getPropertyValue(KEYBOARD_VAR)
-  if (inline) return px(inline)
-  const view = doc.defaultView
-  if (!view) return 0
-  return px(view.getComputedStyle(root).getPropertyValue(KEYBOARD_VAR))
-}
-
-/**
- * The tallest the page has been at each width. The keyboard is measured from the bottom of the
- * screen, and where the platform shrinks the page for it `innerHeight` shrinks too — so the
- * screen's bottom is remembered from before, or the keyboard would be taken off twice.
- */
-const tallest = new Map<number, number>()
-
-function fullHeight(win: Window): number {
-  const width = win.innerWidth
-  const seen = Math.max(tallest.get(width) ?? 0, win.innerHeight)
-  tallest.set(width, seen)
-  // The screen, where it is the same shape as the window: covers a dialog first measured with
-  // the keyboard already up. iOS never turns `screen` with the device, hence both sides.
-  const screen = win.screen
-  let whole = 0
-  if (screen && Math.abs(screen.width - width) < 2) whole = screen.height
-  else if (screen && Math.abs(screen.height - width) < 2) whole = screen.width
-  return Math.max(seen, whole)
-}
+const CAPPED = 'abele-keyboard-capped'
 
 /**
  * Keeps a dialog inside the part of the screen the on-screen keyboard leaves free, and the
  * field being typed into in sight.
  *
- * Every dialog of the plugin gets this through the kit's `Modal`. On a phone the task's date
- * dialog stood centred on the whole screen and the keyboard for its time field covered the
- * lower half of it, with nothing that could be scrolled to bring it back.
+ * Every dialog of the plugin gets this through the dialog shell (`ShellModal`), attached when it
+ * opens. On a phone the task's date dialog stood centred on the whole screen and the keyboard for
+ * its time field covered the lower half of it, with nothing that could be scrolled to bring it
+ * back.
  *
  * Where the keyboard is, is told two ways, and which one a platform uses cannot be seen from
  * here — so both are read, and each gives the line the keyboard starts at, never an amount to
@@ -119,8 +60,12 @@ function fullHeight(win: Window): number {
  * (1.19.1). So it is watched as an attribute of the root element, heard through the window
  * events as well, and trusted only while there is something to type into.
  *
- * The dialog ends up no taller than the room and scrolls inside, and the field that has focus
- * is scrolled into view each time the room changes and each time a field takes focus.
+ * A dialog of the shell ends up in the room, standing on the keyboard, its body scrolling and its
+ * buttons above the keyboard; Obsidian's big sheet keeps its size and what the keyboard covers
+ * of it scrolls up above it. Obsidian's editing toolbar, standing on the keyboard while a note
+ * field is typed into, counts as keyboard. The field that has focus is scrolled into view each
+ * time the room changes, each time a field takes focus and — by its caret, for a note field
+ * many lines tall — each time it is typed into.
  *
  * That is the phone, where Obsidian draws a dialog as a sheet over the screen. On a tablet it
  * stands in the middle, the keyboard covers less of it or none, and the phone's rules jumped it
@@ -132,9 +77,10 @@ function fullHeight(win: Window): number {
  *
  * @param root - An element inside the dialog. The dialog and its container are found from it.
  */
-export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefined>>): void {
-  let win: Window | null = null
-  let doc: Document | null = null
+export function attachKeyboardRoom(root: HTMLElement): () => void {
+  const doc: Document = root.ownerDocument
+  const win: Window | null = doc.defaultView
+  if (!win) return () => {}
   let observer: MutationObserver | null = null
   // The container carrying a fit of ours, if any: only then is there anything of ours to undo.
   let fitted: HTMLElement | null = null
@@ -143,14 +89,17 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
   let lifted: HTMLElement | null = null
   let lift = 0
   let cover = 0
+  // The tablet's dialog held shorter, and the height it had before.
+  let capped: HTMLElement | null = null
+  let natural = 0
   // What a keyboard event said the height was, until one says the keyboard has gone.
   let announced = 0
   const timers: number[] = []
 
   // Found each time rather than once on mounting: Obsidian may not have finished putting the
   // dialog together when this component mounts inside it.
-  const dialog = () => root.value?.closest<HTMLElement>('.modal') ?? null
-  const container = () => root.value?.closest<HTMLElement>('.modal-container') ?? null
+  const dialog = () => root.closest<HTMLElement>('.modal')
+  const container = () => root.closest<HTMLElement>('.modal-container')
 
   const releaseScroller = () => {
     scroller?.classList.remove(SCROLLER)
@@ -159,7 +108,15 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
     scroller = null
   }
 
+  const releaseCap = () => {
+    capped?.classList.remove(CAPPED)
+    capped?.style.removeProperty('--abele-keyboard-cap')
+    capped = null
+    natural = 0
+  }
+
   const releaseLift = () => {
+    releaseCap()
     lifted?.classList.remove(LIFTED)
     lifted?.style.removeProperty('--abele-keyboard-lift')
     lifted = null
@@ -187,8 +144,12 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
       const overflow = view?.getComputedStyle(el).overflowY
       return overflow === 'auto' || overflow === 'scroll'
     }
-    for (let el = from?.parentElement ?? null; el && el !== box; el = el.parentElement)
-      if (scrolls(el)) return el
+    // Above the field's own widget: an editor scrolls inside itself, and room given to that box
+    // leaves the field where it is.
+    const field = from?.closest(FIELD_WIDGET) ?? from
+    // The shell's body is the box a dialog's content scrolls in, by construction.
+    for (let el = field?.parentElement ?? null; el && el !== box; el = el.parentElement)
+      if (scrolls(el) || el.classList.contains('abele-modal__body')) return el
     // Walked from the top, never into a box that scrolls: a list of a thousand icons is one box.
     let largest: HTMLElement | null = null
     const walk = (el: Element) => {
@@ -201,6 +162,16 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
     walk(box)
     return largest ?? box
   }
+
+  /**
+   * A dialog of the shell whose body is what scrolls — every one but Obsidian's big sheet, which
+   * holds a list or a whole screen and which their own stylesheet already stops above the
+   * keyboard. It is fitted into the room even when it is taller: its body scrolls in less height,
+   * and its title and buttons stay in sight, where the buttons of a dialog keeping its size stood
+   * under the keyboard.
+   */
+  const shrinks = (panel: HTMLElement) =>
+    panel.classList.contains('abele-modal') && !panel.classList.contains('mod-lg')
 
   /** The dialog's element that has focus, if any. */
   const focused = (): Element | null => {
@@ -217,28 +188,42 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
    * Obsidian only sets `is-phone` on a mobile device, so a desktop window keeps the phone's rules.
    */
   const tablet = () => {
-    const body = doc?.body
+    const body = doc.body
     return !!body && body.classList.contains('is-mobile') && !body.classList.contains('is-phone')
   }
 
-  /** Where the field may stand on a tablet: set by the last measurement. */
+  /** Where the field may stand while the keyboard is up: set by the last measurement. */
   let band: [number, number] | null = null
 
-  /** The field brought between the top of the screen and the keyboard, only if it is not. */
-  const revealOnTablet = () => {
+  /**
+   * The field — its caret, for a field many lines tall — brought between the top of the screen
+   * and the keyboard, only if it is not there. Its own box is scrolled, never the page: scrolling
+   * the page pans the whole app under the keyboard.
+   */
+  const revealInBand = () => {
     const field = focused()
     const panel = dialog()
     if (!field || !panel || !band) return
-    const delta = revealDelta(field.getBoundingClientRect(), band[0], band[1])
-    if (Math.abs(delta) < 1) return
-    // Its own box, never the page: scrolling the page pans the whole app under the keyboard.
     const box = scroller ?? scrollerOf(field, panel)
+    // Inside what the box shows, too: the dialog's pinned buttons stand under its body, and a
+    // line kept only above the keyboard stood behind them.
+    const shown = box.getBoundingClientRect()
+    const ceiling = shown.height > 0 ? Math.max(band[0], shown.top + KEYBOARD_GAP) : band[0]
+    const floor = shown.height > 0 ? Math.min(band[1], shown.bottom - KEYBOARD_GAP) : band[1]
+    const delta = revealDelta(caretRect(field), ceiling, Math.max(ceiling, floor))
+    if (Math.abs(delta) < 1) return
     box.scrollTop += delta
   }
 
   const reveal = () => {
-    if (tablet()) revealOnTablet()
-    else focused()?.scrollIntoView({ block: 'center' })
+    const field = focused()
+    if (!field) return
+    // A field of one line is centred, as the platform would; one many lines tall, the note
+    // field, is kept by its caret: centring the whole of it put the line being typed under the
+    // keyboard.
+    if (tablet() || field.closest(FIELD_WIDGET) || field.matches('[contenteditable="true"]'))
+      revealInBand()
+    else field.scrollIntoView({ block: 'center' })
   }
 
   /**
@@ -262,8 +247,14 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
     const floor = bottom - KEYBOARD_GAP
     band = [ceiling, floor]
     const rect = panel.getBoundingClientRect()
-    // Where Obsidian put it: our move is a shift and nothing else.
-    const wanted = liftFor({ top: rect.top + lift, bottom: rect.bottom + lift }, ceiling, floor)
+    // Where Obsidian put it: our move is a shift and nothing else, and a hold on its height is
+    // measured through as well.
+    const height = capped === panel ? natural : rect.height
+    const wanted = liftFor(
+      { top: rect.top + lift, bottom: rect.top + height + lift },
+      ceiling,
+      floor
+    )
     if (!wanted) {
       releaseScroller()
       releaseLift()
@@ -276,8 +267,23 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
       lifted = box
       lift = wanted.lift
     }
-    if (wanted.cover < 1) releaseScroller()
-    else if (!scroller || Math.abs(wanted.cover - cover) >= 1) {
+    if (wanted.cover >= 1 && shrinks(panel)) {
+      // A dialog of the shell is held above the keyboard instead: its body scrolls in less
+      // height and its buttons stay in sight, where they stood under the keyboard.
+      releaseScroller()
+      if (capped !== panel) {
+        releaseCap()
+        natural = rect.height
+        capped = panel
+        panel.classList.add(CAPPED)
+      }
+      const cap = `${Math.floor(natural - wanted.cover)}px`
+      if (panel.style.getPropertyValue('--abele-keyboard-cap') !== cap)
+        panel.style.setProperty('--abele-keyboard-cap', cap)
+    } else if (wanted.cover < 1) {
+      releaseScroller()
+      releaseCap()
+    } else if (!scroller || Math.abs(wanted.cover - cover) >= 1) {
       const target = scroller ?? scrollerOf(focused(), panel)
       if (!scroller) {
         // Held at the height it has, so the room added at its end scrolls rather than grows it.
@@ -298,7 +304,7 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
     // tablet's move is only a shift of the dialog, so it is measured through instead.
     if (!onTablet || fitted) release()
     const box = container()
-    if (!box || !win || !doc) return
+    if (!box || !win) return
 
     const rect = box.getBoundingClientRect()
     const viewport = win.visualViewport
@@ -322,6 +328,10 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
       bottom = Math.min(bottom, keyboardTop)
     }
 
+    // Obsidian's editing toolbar stands on the keyboard while a note field is typed into.
+    const bar = typing && keyboardTop !== null ? toolbarTop(doc) : null
+    if (bar !== null && bar < bottom) bottom = bar
+
     const covered = top > rect.top + 1 || bottom < rect.bottom - 1
 
     if (onTablet) {
@@ -334,13 +344,17 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
         keyboardHeight: height,
         fullHeight: full,
         typing,
+        toolbarTop: bar,
         room: covered ? [top, bottom - top] : null,
         lift: moved?.lift ?? 0,
         cover: moved?.cover ?? 0,
       }
-      revealOnTablet()
+      revealInBand()
       return
     }
+
+    // The band a field is kept in on a phone: under the top of the room, above the keyboard.
+    band = covered ? [Math.max(top, safeAreaTop(doc)) + KEYBOARD_GAP, bottom - KEYBOARD_GAP] : null
 
     const room: [number, number] | null = covered && bottom - top > 0 ? [top, bottom - top] : null
     const panel = dialog()
@@ -348,10 +362,12 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
       box.style.setProperty('--abele-room-top', `${room[0]}px`)
       box.style.setProperty('--abele-room-height', `${room[1]}px`)
       fitted = box
-      // A dialog keeps its size. One that fits the room moves into it; one that does not stands
-      // at the room's top as tall as it was, and what the keyboard covers of it scrolls up above
-      // the keyboard — a dialog squeezed into the room was a squashed one (the search, 1.36).
-      if (panel.getBoundingClientRect().height <= room[1] + 1) box.classList.add(FITTED)
+      // One that fits the room moves into it, and so does a form of the shell, its body scrolling
+      // in less height. Obsidian's big sheet keeps its size: it stands at the room's top as tall
+      // as it was, and what the keyboard covers of it scrolls up above the keyboard — a list
+      // squeezed into the room was a squashed one (the search, 1.36).
+      if (panel.getBoundingClientRect().height <= room[1] + 1 || shrinks(panel))
+        box.classList.add(FITTED)
       else {
         box.classList.add(COVERED)
         const target = scrollerOf(focused(), panel)
@@ -379,6 +395,7 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
       keyboardHeight: height,
       fullHeight: full,
       typing,
+      toolbarTop: bar,
       room,
     }
 
@@ -388,7 +405,7 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
   }
 
   const later = (ms: number) => {
-    const id = win?.setTimeout(fit, ms)
+    const id = win.setTimeout(fit, ms)
     if (id !== undefined) timers.push(id)
   }
 
@@ -411,47 +428,64 @@ export function useKeyboardRoom(root: Readonly<Ref<HTMLElement | null | undefine
     if (!box || !(event.target as Node | null) || !box.contains(event.target as Node)) return
     // After the focus has landed and the platform has had its chance to scroll first. A
     // timeout rather than a frame: a window in the background draws no frames at all.
-    win?.setTimeout(reveal, 50)
+    win.setTimeout(reveal, 50)
     refit()
   }
 
   // Focus moving between two fields passes through the body; look once it has landed.
   const onFocusOut = () => later(0)
 
-  onMounted(() => {
-    const el = root.value
-    if (!el) return
-    doc = el.ownerDocument
-    win = doc.defaultView
-    if (!win) return
+  /**
+   * While typing: a note field grows a line at a time, and the line being typed walked down under
+   * the keyboard with nothing following it. Kept in sight after each change of the text or of
+   * where the caret is, once the editor has drawn it.
+   */
+  let typingTimer: number | undefined
+  const onTyping = () => {
+    const field = focused()
+    // Only a field that grows: a line of text stays where it was put, and scrolling under it
+    // while it is typed into is only a chance to lose a keystroke.
+    if (
+      !field ||
+      !band ||
+      !(field.closest(FIELD_WIDGET) || field.matches('[contenteditable="true"]'))
+    )
+      return
+    if (typingTimer !== undefined) win.clearTimeout(typingTimer)
+    typingTimer = win.setTimeout(() => {
+      typingTimer = undefined
+      revealInBand()
+    }, 30)
+  }
 
-    win.visualViewport?.addEventListener('resize', fit)
-    win.visualViewport?.addEventListener('scroll', fit)
-    win.addEventListener('resize', fit)
-    for (const name of KEYBOARD_EVENTS) win.addEventListener(name, onKeyboard)
-    doc.addEventListener('focusin', onFocusIn)
-    doc.addEventListener('focusout', onFocusOut)
-    // The variable changes with no event of its own; the attribute carrying it does.
-    // The window's own constructor: a dialog in the settings window is watched from there.
-    const Observer = (win as Window & { MutationObserver: typeof MutationObserver })
-      .MutationObserver
-    observer = new Observer(() => fit())
-    observer.observe(doc.documentElement, { attributes: true, attributeFilter: ['style'] })
-    fit()
-  })
+  win.visualViewport?.addEventListener('resize', fit)
+  win.visualViewport?.addEventListener('scroll', fit)
+  win.addEventListener('resize', fit)
+  for (const name of KEYBOARD_EVENTS) win.addEventListener(name, onKeyboard)
+  doc.addEventListener('focusin', onFocusIn)
+  doc.addEventListener('focusout', onFocusOut)
+  doc.addEventListener('input', onTyping, true)
+  doc.addEventListener('selectionchange', onTyping)
+  // The variable changes with no event of its own; the attribute carrying it does.
+  // The window's own constructor: a dialog in the settings window is watched from there.
+  const Observer = (win as Window & { MutationObserver: typeof MutationObserver }).MutationObserver
+  observer = new Observer(() => fit())
+  observer.observe(doc.documentElement, { attributes: true, attributeFilter: ['style'] })
+  fit()
 
-  onBeforeUnmount(() => {
-    win?.visualViewport?.removeEventListener('resize', fit)
-    win?.visualViewport?.removeEventListener('scroll', fit)
-    win?.removeEventListener('resize', fit)
-    for (const name of KEYBOARD_EVENTS) win?.removeEventListener(name, onKeyboard)
-    doc?.removeEventListener('focusin', onFocusIn)
-    doc?.removeEventListener('focusout', onFocusOut)
+  return () => {
+    win.visualViewport?.removeEventListener('resize', fit)
+    win.visualViewport?.removeEventListener('scroll', fit)
+    win.removeEventListener('resize', fit)
+    for (const name of KEYBOARD_EVENTS) win.removeEventListener(name, onKeyboard)
+    doc.removeEventListener('focusin', onFocusIn)
+    doc.removeEventListener('focusout', onFocusOut)
+    doc.removeEventListener('input', onTyping, true)
+    doc.removeEventListener('selectionchange', onTyping)
     observer?.disconnect()
     observer = null
-    for (const id of timers.splice(0)) win?.clearTimeout(id)
+    if (typingTimer !== undefined) win.clearTimeout(typingTimer)
+    for (const id of timers.splice(0)) win.clearTimeout(id)
     release()
-    win = null
-    doc = null
-  })
+  }
 }

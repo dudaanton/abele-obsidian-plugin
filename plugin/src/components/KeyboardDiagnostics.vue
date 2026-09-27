@@ -22,12 +22,7 @@
  * events arrived and when. Turned on in Settings → Other; never in the way of a tap.
  */
 import { onBeforeUnmount, onMounted, ref, type CSSProperties } from 'vue'
-import {
-  KEYBOARD_EVENTS,
-  KEYBOARD_VAR,
-  keyboardRoomReport,
-  keyboardVar,
-} from '@/composables/useKeyboardRoom'
+import { KEYBOARD_EVENTS, KEYBOARD_VAR, keyboardRoomReport, keyboardVar } from '@/modal/keyboard'
 
 /** Inline, so that no stylesheet — a theme's, a snippet's — can make the panel take taps. */
 const FRAME: CSSProperties = {

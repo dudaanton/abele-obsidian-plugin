@@ -724,6 +724,38 @@ export class WorkspaceLeaf {
 export class Plugin {}
 export class PluginSettingTab {}
 export class Setting {}
+/** Obsidian's button: a real `<button>` appended to its parent, and the setters it chains. */
+export class ButtonComponent {
+  buttonEl: HTMLButtonElement
+  constructor(containerEl: HTMLElement) {
+    this.buttonEl = containerEl.ownerDocument.createElement('button')
+    containerEl.appendChild(this.buttonEl)
+  }
+  setButtonText(text: string): this {
+    this.buttonEl.textContent = text
+    return this
+  }
+  setCta(): this {
+    this.buttonEl.classList.add('mod-cta')
+    return this
+  }
+  setWarning(): this {
+    this.buttonEl.classList.add('mod-warning')
+    return this
+  }
+  setTooltip(text: string): this {
+    this.buttonEl.setAttribute('aria-label', text)
+    return this
+  }
+  setDisabled(disabled: boolean): this {
+    this.buttonEl.disabled = disabled
+    return this
+  }
+  onClick(handler: (evt: MouseEvent) => void): this {
+    this.buttonEl.addEventListener('click', handler)
+    return this
+  }
+}
 /**
  * A component is a lifecycle handle: things that render into the DOM take one so their
  * children can be unloaded with them. Nothing here has children to unload, so the methods

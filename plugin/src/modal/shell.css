@@ -1,0 +1,206 @@
+/*
+ * The dialog shell — see `ShellModal.ts`. Every dialog of the plugin carries `abele-modal`.
+ *
+ * Obsidian's `.modal` is already a flex column capped at `--dialog-max-height`. What is added is
+ * that the boxes between that height and the content — their content element and the body this
+ * shell appends — are columns too, so a body longer than the dialog scrolls inside it rather
+ * than the dialog scrolling itself or growing past the screen. The dialog scrolling itself
+ * scrolled its own buttons and title away, and on a phone left the keyboard nothing to work on.
+ */
+.modal.abele-modal {
+  overflow: hidden;
+}
+
+/*
+ * Never taller than the room the dialog stands in, so that its body scrolls rather than the
+ * dialog being cut at both ends. Obsidian's own cap is written in viewport units, which keep the
+ * height of the whole screen where the page shrinks for the keyboard. Twice the top inset because
+ * the dialog is centred: that keeps its top edge — and the close button — below the notch, where
+ * a long form of theirs reached under the status bar. Their big sheet places itself.
+ */
+.modal.abele-modal:not(.mod-lg) {
+  max-height: min(var(--dialog-max-height, 100%), calc(100% - 2 * var(--safe-area-inset-top, 0px)));
+}
+
+/*
+ * The content element clips nothing: it stands exactly where the content does — on the desktop it
+ * has no padding of its own — so anything that reaches past the content by design, the focus ring
+ * a field draws outside its box, was cut at its edge (2026-09-05, twice). On a phone Obsidian
+ * makes it the scroller; here the body is.
+ */
+.modal.abele-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+/*
+ * The body is what scrolls, when what it holds is taller than the dialog. A scrolling box clips
+ * at its padding edge, so the padding is room for a field's focus ring, pulled back by the same
+ * margin so the content stands where it would.
+ */
+.modal.abele-modal .abele-modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--size-2-2);
+  margin: calc(-1 * var(--size-2-2));
+}
+
+/* The row under the body, for a dialog's buttons: it stays in sight while the body scrolls. */
+.abele-modal__footer {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  justify-content: flex-end;
+  padding-top: var(--size-4-3);
+  margin-top: var(--size-4-2);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+/*
+ * Obsidian's default dialog is a reading-width column. A form with its own navigation needs more,
+ * but never more than the window it opens in — settings can be a 900px window of its own, and on
+ * a phone the dialog is the whole screen.
+ */
+.abele-modal_wide {
+  width: min(52rem, 92vw);
+  max-width: min(52rem, 92vw);
+}
+
+/*
+ * A tall dialog stands at Obsidian's own cap, whatever the tab holds, and its body is a column
+ * whose content fills it. A height that followed the content jumped from tab to tab — a short
+ * Tools tab under a tall Skills one — and on a phone one that followed the keyboard stayed
+ * computed after the keyboard had gone (1.19.1, from the phone). The cap is theirs, so it is
+ * never taller than the screen.
+ */
+.modal.abele-modal_tall {
+  height: var(--dialog-max-height);
+}
+
+.modal.abele-modal_tall .abele-modal__body,
+.modal.abele-modal_full .abele-modal__body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* A full dialog is as large as Obsidian lets any dialog be, in both directions. */
+.modal.abele-modal_full {
+  width: var(--dialog-max-width);
+  height: var(--dialog-max-height);
+}
+
+/* What a full dialog shows draws and pans itself; its body never scrolls. */
+.modal.abele-modal_full .abele-modal__body {
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+}
+
+body.is-phone .modal.abele-modal_full,
+body.is-phone .modal.abele-modal_tall {
+  /* Their sheet has no vertical padding at all; the home indicator needs the bottom of it. */
+  padding-bottom: var(--safe-area-inset-bottom);
+}
+
+/*
+ * A dialog and the on-screen keyboard — see `keyboardRoom.ts`. Only while the keyboard covers
+ * some of the dialog. A dialog keeps its size either way.
+ *
+ * One that fits the part of the screen the keyboard leaves free moves into it: its container is
+ * fitted to that room, and the dialog stands in it as it would on the whole screen.
+ */
+.modal-container.abele-keyboard-room {
+  top: var(--abele-room-top);
+  bottom: auto;
+  height: var(--abele-room-height);
+}
+
+/*
+ * A form taller than that room is fitted into it too: its body scrolls in what is left between
+ * its title and its buttons, below the notch, and it stands on the keyboard, its buttons just
+ * above it. Obsidian's big sheet is left alone — see below.
+ */
+.modal-container.abele-keyboard-room > .modal.abele-modal:not(.mod-lg) {
+  max-height: calc(100% - var(--safe-area-inset-top, 0px));
+  margin-top: auto;
+  margin-bottom: 0;
+}
+
+/*
+ * One taller than the room stands at the room's top, below the notch, as tall as it was; the
+ * keyboard covers its lower part. The box that scrolls the field being typed into gets that
+ * much more room at its end, so everything under the keyboard can be scrolled up above it, and
+ * a field scrolled into sight stops above the keyboard, not behind it.
+ */
+.modal-container.abele-keyboard-cover {
+  align-items: flex-start;
+  padding-top: max(var(--abele-room-top), var(--safe-area-inset-top, 0px));
+}
+
+.modal-container.abele-keyboard-cover > .modal {
+  margin-top: 0;
+  margin-bottom: auto;
+  align-self: flex-start;
+}
+
+/*
+ * A tablet's dialog stands in the middle of the screen and the keyboard covers less of it: it is
+ * moved up by what the keyboard covers, no further, and stays where Obsidian put it otherwise.
+ * `top` rather than a transform — Obsidian animates the dialog's transform as it opens — and no
+ * transition, which would leave the next measurement reading a dialog half way there.
+ */
+.modal-container.abele-keyboard-lift > .modal {
+  top: calc(-1 * var(--abele-keyboard-lift));
+}
+
+/* A dialog of the shell the keyboard still covers there is held above it — see `CAPPED`. */
+.modal-container.abele-keyboard-lift > .modal.abele-keyboard-capped {
+  max-height: var(--abele-keyboard-cap);
+}
+
+/* Measures the safe-area insets for `keyboardLift.ts`; never seen. The bottom one through
+   Obsidian's own variable first, which its phone emulation sets as well. */
+.abele-safe-area-probe {
+  position: fixed;
+  visibility: hidden;
+  pointer-events: none;
+  height: 0;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+}
+
+/* Under the container's class, so a scroller's own rules (a component's) do not win. */
+.modal-container.abele-keyboard-cover .abele-keyboard-scroller,
+.modal-container.abele-keyboard-lift .abele-keyboard-scroller {
+  box-sizing: border-box;
+  height: var(--abele-keyboard-keep);
+  max-height: var(--abele-keyboard-keep);
+  flex: 0 0 auto;
+  overflow-y: auto;
+  scroll-padding-bottom: var(--abele-keyboard-cover);
+}
+
+/*
+ * The room at the scroller's end is a box of its own, not padding: WebKit leaves a flex
+ * container's end padding out of what it scrolls, so on an iPhone the room was there and could
+ * not be scrolled into — the date dialog's buttons stayed under the keyboard. And what the
+ * scroller holds keeps its height rather than shrinking to make room, which is what hid the
+ * icon picker's grid.
+ */
+.modal-container.abele-keyboard-cover .abele-keyboard-scroller::after,
+.modal-container.abele-keyboard-lift .abele-keyboard-scroller::after {
+  content: '';
+  display: block;
+  flex: 0 0 auto;
+  height: var(--abele-keyboard-cover);
+}
+
+.modal-container.abele-keyboard-cover .abele-keyboard-scroller > *,
+.modal-container.abele-keyboard-lift .abele-keyboard-scroller > * {
+  flex-shrink: 0;
+}
