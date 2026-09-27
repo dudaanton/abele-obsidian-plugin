@@ -213,9 +213,14 @@ export class EngineRunner {
   }
 
   /**
-   * See `SyncService.decideDeletes`. Null with no engine to decide. A run that failed after the
-   * decision was filed has filed it all the same: it is taken at the next run that gets through,
-   * and the failure is in the status and the log.
+   * See `SyncService.decideDeletes`. Null with no engine to decide.
+   *
+   * How many were decided is counted before the engine is asked — the ids still held, the same
+   * set the engine files — and that count stands when the run after it fails: the engine has
+   * taken the decision by then (a put-back is carried out on this disk before the first request),
+   * and it is carried out by the next run that gets through. Counted afterwards, a put-back that
+   * went offline would read as nothing decided, its files already off the hold (task-10 review,
+   * #2).
    */
   async decideDeletes(
     kind: DeleteDecision['kind'],
@@ -223,14 +228,13 @@ export class EngineRunner {
   ): Promise<{ decided: number; applied: boolean } | null> {
     const engine = this.engine
     if (engine === null) return null
+    const held = new Set((await engine.heldDeletes()).map((one) => one.fileId))
+    const decided = fileIds.filter((id) => held.has(id)).length
     try {
-      const { decided, report } = await engine.decideDeletes(kind, fileIds)
-      return { decided, applied: report !== null }
+      const result = await engine.decideDeletes(kind, fileIds)
+      return { decided: result.decided, applied: result.report !== null }
     } catch {
-      const still = new Set(
-        (await this.heldDeletes().catch((): HeldDelete[] => [])).map((one) => one.fileId)
-      )
-      return { decided: fileIds.filter((id) => still.has(id)).length, applied: false }
+      return { decided, applied: false }
     }
   }
 
