@@ -1,15 +1,13 @@
-import { Platform, type App } from 'obsidian'
-import { toRaw } from 'vue'
-import {
-  SyncClient,
+import type { App } from 'obsidian'
+import type {
+  DeferredApplied,
+  DeferredKept,
+  DeleteDecision,
+  HeldDelete,
+  StateEntry,
   SyncEngine,
-  type DeferredApplied,
-  type DeferredKept,
-  type DeleteDecision,
-  type HeldDelete,
-  type StateEntry,
-  type SyncReport,
-  type VaultClient,
+  SyncReport,
+  VaultClient,
 } from '@abele/sync-core'
 import {
   caseKey,
@@ -18,38 +16,24 @@ import {
   type ChangeItem,
 } from '@abele/sync-protocol'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
-import { ObsidianFileSystem } from './ObsidianFileSystem'
-import { selectiveFrom, type DeviceConnection, type JoinState } from './connection'
+import type { IndexedDbStateStore } from './IndexedDbStateStore'
+import type { DeviceConnection, JoinState } from './connection'
+import { buildEngine, firstRun } from './engineBuild'
 import { JOIN_SCOPE, joinLine, joinOf } from './joinState'
 import { enrolledElsewhere } from './enrolment'
-import {
-  factoryOf,
-  fallbackMsOf,
-  pollMsOf,
-  socketOf,
-  transportOf,
-  type SyncServiceDeps,
-} from './environment'
-import { newStateId } from './ids'
-import { readLedgerId, writeLedgerId, type LedgerId } from './ledgerId'
-import { messageOf, summarise } from './messages'
-import { OwnSettingsWatch, ownSettingsPath } from './ownSettings'
-import { noop } from './queue'
+import type { SyncServiceDeps } from './environment'
+import { messageOf } from './messages'
 import {
   IGNORE_FILE,
   SCOPE_KEY,
   configLine,
-  ignoreFor,
   ignoreLine,
   isWireConfigDir,
   readIgnore,
   scopeKey,
-  settingsDeferred,
 } from './scope'
 import { DISCONNECTED_STATUS, JOINING_LINE, statusOf } from './status'
 import type { StatusBoard } from './statusBoard'
-import { USER_AGENT } from './transport'
 
 /**
  * The engine's lifecycle: building one on the connection, keeping it in step, and taking it
@@ -266,24 +250,6 @@ export class EngineRunner {
   /* -- Building the engine ---------------------------------------------- */
 
   /**
-   * The ledger the engine is about to be built on, minted when this vault has none for the
-   * vault the connection names.
-   *
-   * `chooseVault` mints one as it enrols. This is for a connection that arrived some other way —
-   * a transfer, a move out of `data.json` — which names a server vault and carries no ledger id
-   * at all: a fresh one is what makes the first run a walk of the manifest rather than a delete
-   * of everything this disk does not hold.
-   */
-  private ledgerFor(app: App, vaultId: string): LedgerId {
-    const held = readLedgerId(app)
-    if (held.stateId !== '' && held.vaultId === vaultId) return held
-    const minted = { stateId: newStateId(), vaultId }
-    writeLedgerId(app, minted)
-    this.board.note('a fresh ledger for this vault: the first sync walks the whole manifest')
-    return minted
-  }
-
-  /**
    * Bring the engine in line with the connection and the settings.
    *
    * Everything the engine was built on is in one string, beside the token: change any of it and
@@ -391,13 +357,7 @@ export class EngineRunner {
     if (!paused && !running) engine.resume()
   }
 
-  /**
-   * `join` is the join in progress, or null. While there is one the engine is told the side the
-   * person chose, and leaves this device's own `data.json` alone: every create of a join carries
-   * that side, and "this device wins" would make a fresh device's defaults the vault's settings
-   * whatever their age. Once the join is done the next engine takes the file up the way a first
-   * contact does — the vault's copy wins, and this one goes to the file's history.
-   */
+  /** Build the engine on the connection (`engineBuild.ts`), keep it, and give it its first run. */
   private async build(
     connection: DeviceConnection,
     token: string,
@@ -406,80 +366,17 @@ export class EngineRunner {
   ): Promise<void> {
     const app = this.host.app()
     if (app === null) return
-    const deps = this.host.deps()
-    const pollMs = pollMsOf(deps)
-    const fallbackMs = fallbackMsOf(deps)
-    const ownSettings = ownSettingsPath(app.vault.configDir, this.host.manifest())
-    // Settings changes from other devices wait for the person (`stagedSettings.ts`).
-    const defer = settingsDeferred(app.vault.configDir, ownSettings)
-    const settings = new OwnSettingsWatch(
-      ownSettings,
-      (replaced) => this.host.settingsArrived(replaced),
-      () => this.host.settingsMeaning()
-    )
-    const fs = new ObsidianFileSystem(app, {
-      ...(pollMs === undefined ? {} : { pollMs }),
-      onWatch: (paths) => this.noticed(paths),
-      onEngineWrite: (path) => settings.noteWrite(path),
-      yieldsToServer: (path) => settings.yields(path),
+    const { engine, store, vault } = await buildEngine({
+      app,
+      host: this.host,
+      board: this.board,
+      connection,
+      token,
+      ignoreText,
+      join,
+      noticed: (paths) => this.noticed(paths),
+      closedElsewhere: (closed) => this.closedUnderEngine(closed),
     })
-    const store = await IndexedDbStateStore.open(
-      factoryOf(deps),
-      stateDatabaseName(this.ledgerFor(app, connection.vaultId).stateId)
-    )
-    store.onClosedElsewhere(() => this.closedUnderEngine(store))
-    settings.useLedger(store)
-    let engine: SyncEngine
-    let vault: VaultClient
-    try {
-      vault = new SyncClient({
-        baseUrl: connection.serverUrl,
-        fetch: transportOf(deps),
-        WebSocket: socketOf(deps),
-        token,
-        userAgent: USER_AGENT,
-      }).forVault(connection.vaultId)
-      const scriptsFolder = AbeleConfig.getInstance().ai.scriptsFolder
-      engine = new SyncEngine({
-        client: vault,
-        fs,
-        state: store,
-        // A plain copy, never the ref's own: the engine files it in the state database with the
-        // scope its marks were taken under, and IndexedDB cannot clone a reactive proxy.
-        selective: selectiveFrom(toRaw(connection.selective), Platform.isMobile),
-        // The ignore file and the hidden paths (`ignoreFor`), and while a join is in progress
-        // this device's own `data.json`. Not that file otherwise: it names no device, so it
-        // follows the Plugin settings switch like any other plugin's (`OwnSettingsWatch`).
-        ignore: ignoreFor(app.vault.configDir, ignoreText, join === null ? null : ownSettings),
-        // Filed with the scope, so a later engine can tell what this ignore file left out.
-        ignoreText,
-        ...(scriptsFolder === '' ? {} : { scriptsFolder }),
-        ...(fallbackMs === undefined ? {} : { fallbackMs }),
-        ...(join?.prefer ? { joinPrefer: join.prefer } : {}),
-        ...(defer === null ? {} : { defer }),
-        onSync: (report) => {
-          this.board.note(summarise(report))
-          settings.settle()
-          // Any run that got through ends the join. One that started at the feed's start walked
-          // the vault and so did the join; one that started past it sent no side (the engine
-          // sends one only from 0) — a join whose walk held nothing moved past 0 before its push,
-          // and a push cut off there would otherwise leave the join open for ever (task-8
-          // review, #1).
-          if (join !== null) this.host.joined(join)
-          this.host.synced(report)
-        },
-        // A run that failed after its pull still wrote what it pulled.
-        onFail: (error, kind) => {
-          this.board.failed(error, kind)
-          settings.settle()
-        },
-        log: (line) => this.board.note(line),
-      })
-    } catch (error) {
-      // Nothing may be left holding the database when no engine got built to close it.
-      store.close()
-      throw error
-    }
 
     this.store = store
     this.vault = vault
@@ -497,44 +394,9 @@ export class EngineRunner {
     if (join !== null) this.board.note(joinLine(join))
     this.board.note(ignoreLine(ignoreText))
     if (!isWireConfigDir(app.vault.configDir)) this.board.note(configLine(app.vault.configDir))
-    await this.first(engine, store, connection.paused)
-  }
-
-  /**
-   * The first run, and what keeps the engine going after it.
-   *
-   * The rescan is asked for *before* `start`, so it is the first run and the one `start`
-   * prompts queues behind it; the scope is filed only once the run got through, so a rescan
-   * that failed is done again on the next start. A phone is started too: its socket refuses to
-   * open (`phone.ts`), and the watcher and the clock are what it syncs on.
-   */
-  private async first(
-    engine: SyncEngine,
-    store: IndexedDbStateStore,
-    paused: boolean
-  ): Promise<void> {
-    // Read before the awaits: a teardown while the rescan runs sets `this.scope` back to
+    // Read before the awaits: a teardown while the first run goes sets `this.scope` back to
     // nothing, and writing that to the old store would tell the next start any scope will do.
-    const scope = this.scope
-    const stored = await store.getMeta(SCOPE_KEY)
-    // A state that never recorded a key has never finished a sync, and its first one walks the
-    // manifest anyway.
-    const due = stored !== null && stored !== scope
-    if (paused) engine.pause()
-
-    if (paused) {
-      this.board.note('sync is paused; nothing will move until it is resumed')
-    } else if (due) {
-      this.board.note('rescan: what this device syncs changed since the last sync')
-      void engine
-        .rescan()
-        .then(() => store.setMeta(SCOPE_KEY, scope))
-        .catch(noop)
-    } else {
-      await store.setMeta(SCOPE_KEY, scope)
-    }
-
-    engine.start()
+    await firstRun(engine, store, this.scope, connection.paused, this.board)
   }
 
   /**
