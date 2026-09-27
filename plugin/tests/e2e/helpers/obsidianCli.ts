@@ -352,6 +352,11 @@ export function assertWindowDrawn(): void {
  * called "Settings" and measures whichever comes first. Only popouts of the driven window are
  * touched, told by the vault name in the title — another vault's window, and whatever its owner
  * has open, is not ours.
+ *
+ * With no popout left in the workspace, any other window of the vault goes too. Obsidian closes a
+ * popout whose last tab is gone on the next frame, and a window nobody can see — the screen
+ * locked — gets none: the popout stays open, empty and hidden, through the rest of the tier
+ * (2026-09-27, "Other" and "Gallery" from the popout widget test).
  */
 export function closeStrayWindows(): number {
   // A phone has one window; settings is a dialog in it.
@@ -367,7 +372,9 @@ export function closeStrayWindows(): number {
         if (w.id === main.id || w.isDestroyed()) continue
         // Obsidian titles a popout after its vault: "Settings - <vault> - Obsidian 1.x".
         const title = w.getTitle()
-        if (title.startsWith('Settings') && title.includes(' - ' + app.vault.getName() + ' - ')) {
+        const ours = title.includes(' - ' + app.vault.getName() + ' - ')
+        const orphan = ours && app.workspace.floatingSplit.children.length === 0
+        if ((ours && title.startsWith('Settings')) || orphan) {
           w.destroy()
           closed++
         }

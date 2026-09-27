@@ -62,8 +62,11 @@ describe.skipIf(!available)('note widgets in a popout window', () => {
       }
       const remote = require('@electron/remote')
       const before = new Set(remote.BrowserWindow.getAllWindows().map((w) => w.id))
+      // A tab of the main window, made before the popout: made after it, with the popout active,
+      // it was a second tab of the popout, which then outlived the popout's own leaf and stayed
+      // open, hidden and empty, through the rest of the tier.
+      let main = app.workspace.getLeaf('tab')
       const pop = app.workspace.openPopoutLeaf()
-      let main = null
       try {
         await pop.setViewState({ type: 'markdown', state: { file: ${JSON.stringify(DIR + '/Gallery.md')}, mode: 'source', source: false }, active: true })
         const root = pop.view.containerEl
@@ -75,7 +78,6 @@ describe.skipIf(!available)('note widgets in a popout window', () => {
           return b.width > 0 && b.height > 0 ? { w: Math.round(b.width), h: Math.round(b.height), loaded: true } : null
         }
         const first = await until(picture)
-        main = app.workspace.getLeaf('tab')
         await main.openFile(app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/Other.md')}))
         await wait(1200)
         app.workspace.setActiveLeaf(pop, { focus: true })
@@ -92,7 +94,6 @@ describe.skipIf(!available)('note widgets in a popout window', () => {
       } finally {
         // The popout closes with a leaf of the main window active, or the next note opened
         // anywhere would be looked for in a window that is gone.
-        if (!main) main = app.workspace.getLeaf('tab')
         app.workspace.setActiveLeaf(main, { focus: true })
         pop.detach()
         await wait(500)
