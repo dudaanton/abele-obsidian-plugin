@@ -23,7 +23,8 @@ import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer
 import { EngineRunner } from './engineRunner'
 import { finishJoin, joinOf, tellJoinWaiting } from './joinState'
 import { HeldDeletesPrompt } from './heldDeletes'
-import { StagedSettingsPrompt, type AppliedSettings } from './stagedSettings'
+import { pluginNamesIn, StagedSettingsPrompt, type AppliedSettings } from './stagedSettings'
+import { listDevices, revokeDevice } from './devices'
 import { obsidianReloader } from './reload'
 import { watchTheFront } from './phone'
 import { ownSettingsPath, settingsArrived, settingsMeaning } from './ownSettings'
@@ -186,8 +187,11 @@ export class SyncService {
   readonly settingsPrompt = new StagedSettingsPrompt(
     {
       list: () => this.runner.deferred(),
+      apply: () => this.runner.applyDeferred(),
+      keep: (paths) => this.runner.keepLocal(paths),
       visible: () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
-      names: (ids) => this.pluginNames(ids),
+      names: (ids) => pluginNamesIn(this.app, ids),
+      note: (text) => this.note(text),
     },
     obsidianReloader(() => this.app)
   )
@@ -396,49 +400,14 @@ export class SyncService {
     return this.runner.deferred()
   }
 
-  /**
-   * Reload now: write every staged settings change — but a file changed here since, which is
-   * this device's edit and goes out as one — and then reload Obsidian, which reads its settings
-   * only when a vault opens. Where Obsidian has no reload command, or nothing was written, it is
-   * not reloaded, and the answer says so. Null with no engine to apply them.
-   */
-  async applySettingsAndReload(): Promise<AppliedSettings | null> {
-    const result = await this.runner.applyDeferred()
-    // Closed first: what the read finds that nobody was shown is asked about afresh.
-    this.settingsPrompt.later()
-    await this.settingsPrompt.refresh()
-    if (result === null) return null
-    this.note(
-      `applied ${result.applied.length} staged settings file(s)` +
-        (result.skipped.length > 0 ? `; ${result.skipped.length} changed here since` : '')
-    )
-    const reloader = this.settingsPrompt.reloader
-    let reloaded = false
-    if (result.applied.length > 0 && reloader.available()) {
-      this.note('reloading Obsidian to read the settings that were applied')
-      reloaded = reloader.reload()
-    }
-    return { applied: result.applied, skipped: result.skipped, reloaded }
+  /** Reload now: see `StagedSettingsPrompt.applyAndReload`. Null with no engine. */
+  applySettingsAndReload(): Promise<AppliedSettings | null> {
+    return this.settingsPrompt.applyAndReload()
   }
 
-  /**
-   * Keep this device's: this device's settings files go out over the staged changes — those at
-   * `paths`, or all of them — as edits on the server's head, so every other device is asked
-   * about them in turn. A file only the other device has is left there; nothing is deleted on
-   * any device. Null with no engine.
-   */
-  async keepLocalSettings(paths?: string[]): Promise<DeferredKept | null> {
-    const kept = await this.runner.keepLocal(paths)
-    // Closed first: what the read finds that nobody was shown is asked about afresh.
-    this.settingsPrompt.later()
-    await this.settingsPrompt.refresh()
-    if (kept !== null) {
-      this.note(
-        `keeping this device's settings: ${kept.kept.length} file(s) go out` +
-          (kept.left.length > 0 ? `, ${kept.left.length} exist only elsewhere and stay there` : '')
-      )
-    }
-    return kept
+  /** Keep this device's: see `StagedSettingsPrompt.keepLocal`. Null with no engine. */
+  keepLocalSettings(paths?: string[]): Promise<DeferredKept | null> {
+    return this.settingsPrompt.keepLocal(paths)
   }
 
   /** Walk the whole manifest again and then sync: for when this device widened what it takes. */
@@ -540,30 +509,14 @@ export class SyncService {
     this.enrolment.revoker.forget(tokenId)
   }
 
-  /**
-   * The live devices of this account on this vault, this one included, oldest first — asked of
-   * the server with this device's own token, so no password is needed. Null on a device with no
-   * engine running, which has no server to ask.
-   */
-  async listDevices(): Promise<DeviceInfo[] | null> {
-    const client = this.runner.client()
-    if (client === null) return null
-    return client.listVaultDevices()
+  /** The devices on this vault, from the server: see `devices.ts`. Null with no engine. */
+  listDevices(): Promise<DeviceInfo[] | null> {
+    return listDevices(this.runner.client())
   }
 
-  /**
-   * Revoke another device of this account on this vault: the server stops accepting its token at
-   * once, and its files stay where they are. Never this device, which leaves by Disconnect — that
-   * forgets its token too, where a revoke from the list would leave it holding one nobody takes.
-   * A device already gone is not an error: the list is read again either way.
-   */
+  /** Revoke another device on this vault, never this one: see `devices.ts`. */
   async revokeDevice(deviceId: string): Promise<void> {
-    if (deviceId === this.connection.value.deviceId) {
-      throw new Error('this device leaves by Disconnect, not from the device list')
-    }
-    const client = this.runner.client()
-    if (client === null) throw new Error('this device is not connected to a server')
-    await client.revokeVaultDevice(deviceId)
+    await revokeDevice(this.runner.client(), this.connection.value.deviceId, deviceId)
     this.note(`revoked device ${deviceId}; the server no longer accepts it`)
   }
 
@@ -627,30 +580,6 @@ export class SyncService {
         void this.syncNow()
       },
     })
-  }
-
-  /**
-   * The names of the plugins in these config-folder folders, from each one's `manifest.json` on
-   * this device; a plugin this device does not have, or whose manifest will not read, is left
-   * out, and the dialog shows its folder instead.
-   */
-  private async pluginNames(ids: string[]): Promise<Record<string, string>> {
-    const app = this.app
-    const names: Record<string, string> = {}
-    if (app === null) return names
-    for (const id of ids) {
-      try {
-        const bytes = await app.vault.adapter.readBinary(
-          `${app.vault.configDir}/plugins/${id}/manifest.json`
-        )
-        const manifest: unknown = JSON.parse(new TextDecoder().decode(bytes))
-        const name = (manifest as { name?: unknown } | null)?.name
-        if (typeof name === 'string' && name.trim() !== '') names[id] = name.trim()
-      } catch {
-        // Not here, or not JSON: the folder stands for it.
-      }
-    }
-    return names
   }
 
   /** Runs the work after everything asked for before it, whether that succeeded or not. */

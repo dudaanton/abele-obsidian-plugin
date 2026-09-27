@@ -1,5 +1,11 @@
 import { ref, type Ref } from 'vue'
-import { settingsCategory, type SyncReport } from '@abele/sync-core'
+import type { App } from 'obsidian'
+import {
+  settingsCategory,
+  type DeferredApplied,
+  type DeferredKept,
+  type SyncReport,
+} from '@abele/sync-core'
 import type { ChangeItem } from '@abele/sync-protocol'
 import type { SyncStatus } from './status'
 import type { Reloader } from './reload'
@@ -34,6 +40,12 @@ export interface StagedHost {
   visible(): boolean
   /** The names of the plugins in these folders, read from their `manifest.json` here. */
   names(ids: string[]): Promise<Record<string, string>>
+  /** Write what is staged (`SyncEngine.applyDeferred`); null with no engine. */
+  apply(): Promise<DeferredApplied | null>
+  /** Keep this device's files over what is staged (`SyncEngine.keepLocal`); null with no engine. */
+  keep(paths?: string[]): Promise<DeferredKept | null>
+  /** A line for the sync log. */
+  note(text: string): void
 }
 
 /** How many of a sync's staged changes were news: the rule the engine documents. */
@@ -133,6 +145,49 @@ export class StagedSettingsPrompt {
     this.asking.value = { key: ++this.asked, changes: [...changes], names: { ...this.names.value } }
   }
 
+  /**
+   * Reload now: write every staged settings change — but a file changed here since, which is
+   * this device's edit and goes out as one — and then reload Obsidian, which reads its settings
+   * only when a vault opens. Where Obsidian has no reload command, or nothing was written, it is
+   * not reloaded, and the answer says so. Null with no engine to apply them.
+   */
+  async applyAndReload(): Promise<AppliedSettings | null> {
+    const result = await this.host.apply()
+    // Closed first: what the read finds that nobody was shown is asked about afresh.
+    this.later()
+    await this.refresh()
+    if (result === null) return null
+    this.host.note(
+      `applied ${result.applied.length} staged settings file(s)` +
+        (result.skipped.length > 0 ? `; ${result.skipped.length} changed here since` : '')
+    )
+    let reloaded = false
+    if (result.applied.length > 0 && this.reloader.available()) {
+      this.host.note('reloading Obsidian to read the settings that were applied')
+      reloaded = this.reloader.reload()
+    }
+    return { applied: result.applied, skipped: result.skipped, reloaded }
+  }
+
+  /**
+   * Keep this device's: this device's settings files go out over the staged changes — those at
+   * `paths`, or all of them — as edits on the server's head, so every other device is asked
+   * about them in turn. A file only the other device has is left there; nothing is deleted on
+   * any device. Null with no engine.
+   */
+  async keepLocal(paths?: string[]): Promise<DeferredKept | null> {
+    const kept = await this.host.keep(paths)
+    this.later()
+    await this.refresh()
+    if (kept !== null) {
+      this.host.note(
+        `keeping this device's settings: ${kept.kept.length} file(s) go out` +
+          (kept.left.length > 0 ? `, ${kept.left.length} exist only elsewhere and stay there` : '')
+      )
+    }
+    return kept
+  }
+
   /** Later: the dialog closes and the changes stay staged, asked about at the next start or batch. */
   later(): void {
     this.asking.value = null
@@ -146,6 +201,32 @@ export class StagedSettingsPrompt {
     this.asking.value = null
     this.waiting = false
   }
+}
+
+/**
+ * The names of the plugins in these config-folder folders, from each one's `manifest.json` on
+ * this device; a plugin this device does not have, or whose manifest will not read, is left out,
+ * and the dialog shows its folder instead. Read as bytes, as the sync reads the config folder.
+ */
+export async function pluginNamesIn(
+  app: App | null,
+  ids: string[]
+): Promise<Record<string, string>> {
+  const names: Record<string, string> = {}
+  if (app === null) return names
+  for (const id of ids) {
+    try {
+      const bytes = await app.vault.adapter.readBinary(
+        `${app.vault.configDir}/plugins/${id}/manifest.json`
+      )
+      const manifest: unknown = JSON.parse(new TextDecoder().decode(bytes))
+      const name = (manifest as { name?: unknown } | null)?.name
+      if (typeof name === 'string' && name.trim() !== '') names[id] = name.trim()
+    } catch {
+      // Not here, or not JSON: the folder stands for it.
+    }
+  }
+  return names
 }
 
 /* -- What the question says ------------------------------------------------- */
