@@ -1,4 +1,5 @@
 import { normalizeServerUrl } from '@abele/sync-protocol'
+import { defaultSelective } from '@/sync/connection'
 import { SyncService } from '@/sync/SyncService'
 
 /**
@@ -46,6 +47,52 @@ export function isDevicePath(path: string): boolean {
   return fieldOf(path) !== null
 }
 
+/**
+ * Names that reach an object's prototype rather than a field of it. Walked into, the next
+ * assignment lands on `Object.prototype` and every object in the app has the key from then on,
+ * so no settings path may hold one, anywhere — refused before anything is read or written.
+ */
+const PROTOTYPE_SEGMENTS: ReadonlySet<string> = new Set(['__proto__', 'prototype', 'constructor'])
+
+/** Whether a settings path holds a segment that reaches a prototype (`PROTOTYPE_SEGMENTS`). */
+export function reachesPrototype(path: string): boolean {
+  return path.split('.').some((segment) => PROTOTYPE_SEGMENTS.has(segment))
+}
+
+/** The answer to a path that names no field at all. */
+export const invalidPath = (path: string): string => `"${path}" is not a valid field path.`
+
+/** Whether `object` has `key` of its own, not through its prototype. */
+export function ownKey(object: unknown, key: string): boolean {
+  return (
+    typeof object === 'object' &&
+    object !== null &&
+    Object.prototype.hasOwnProperty.call(object, key)
+  )
+}
+
+/**
+ * Whether a device path names a field there is: `sync.<field>`, or a field the selective
+ * settings have — `sync.selective.images`, `sync.selective.settings.main` — walked down their
+ * own shape, with an index as the last step into the list of excluded folders. Every other
+ * connection field is a plain value, with nothing under it.
+ */
+export function isValidDevicePath(path: string): boolean {
+  if (reachesPrototype(path)) return false
+  const field = fieldOf(path)
+  if (field === null) return false
+  const rest = path.split('.').slice(2)
+  if (rest.length === 0) return true
+  if (field !== 'selective') return false
+  let shape: unknown = defaultSelective()
+  for (const [at, segment] of rest.entries()) {
+    if (Array.isArray(shape)) return at === rest.length - 1 && /^(0|[1-9]\d*)$/.test(segment)
+    if (!ownKey(shape, segment)) return false
+    shape = (shape as Record<string, unknown>)[segment]
+  }
+  return true
+}
+
 /** The device fields as plain data: a copy, never the reactive record itself. */
 export function deviceView(): Record<string, unknown> {
   const connection = SyncService.getInstance().connection.value
@@ -61,9 +108,10 @@ export function deviceView(): Record<string, unknown> {
  * undefined when the path names nothing.
  */
 export function deviceValue(path: string): unknown {
+  if (!isValidDevicePath(path)) return undefined
   let holder: unknown = deviceView()
   for (const segment of path.split('.').slice(1)) {
-    if (!holder || typeof holder !== 'object') return undefined
+    if (!ownKey(holder, segment)) return undefined
     holder = (holder as Record<string, unknown>)[segment]
   }
   return holder
@@ -71,7 +119,8 @@ export function deviceValue(path: string): unknown {
 
 /**
  * Writes one device path through `updateConnection`, and answers with its refusal, or null
- * when it was written.
+ * when it was written. A path that names no field (`isValidDevicePath`) is refused before
+ * anything is read.
  *
  * A field is replaced whole; a path inside `selective` replaces `selective` with a copy that
  * has that one value changed, so the rest of what this device takes stays as it was.
@@ -79,13 +128,26 @@ export function deviceValue(path: string): unknown {
 export async function writeDevice(path: string, next: unknown): Promise<string | null> {
   const field = fieldOf(path)
   if (field === null) return `"${path}" is not a field of this device's connection.`
+  if (!isValidDevicePath(path)) return invalidPath(path)
   const rest = path.split('.').slice(2)
   let value: unknown = next
   if (rest.length > 0) {
+    // A copy made through JSON, so it holds its fields as its own and nothing else. Walked
+    // only through what it holds itself, and the value defined rather than assigned, so no
+    // setter anywhere up a prototype chain is ever reached.
     const copy = deviceView()[field] as Record<string, unknown>
     let holder = copy
-    for (const segment of rest.slice(0, -1)) holder = holder[segment] as Record<string, unknown>
-    holder[rest[rest.length - 1]] = next
+    for (const segment of rest.slice(0, -1)) {
+      const inner = ownKey(holder, segment) ? holder[segment] : undefined
+      if (typeof inner !== 'object' || inner === null) return invalidPath(path)
+      holder = inner as Record<string, unknown>
+    }
+    Object.defineProperty(holder, rest[rest.length - 1], {
+      value: next,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    })
     value = copy
   }
   try {

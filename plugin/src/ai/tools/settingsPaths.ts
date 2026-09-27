@@ -1,6 +1,6 @@
 import { AbeleConfig, DEFAULT_SETTINGS } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '../types'
-import { deviceValue, deviceView, isDevicePath } from './settingsDevice'
+import { deviceValue, deviceView, isDevicePath, reachesPrototype, ownKey } from './settingsDevice'
 
 /**
  * How `read_settings` and `write_settings` find a setting: dotted paths into the live config,
@@ -140,6 +140,7 @@ export class AmbiguousItem extends Error {}
  * that changed nothing until the next restart, or never.
  */
 export function resolve(path: string): Resolved | null {
+  if (reachesPrototype(path)) return null
   const segments = path.split('.').filter(Boolean)
   if (segments.length === 0) return null
   if (isDevicePath(path)) return { parent: {}, key: segments[segments.length - 1], value: deviceValue(path), parentPath: segments.slice(0, -1).join('.') }
@@ -163,6 +164,7 @@ export function resolve(path: string): Resolved | null {
     } else {
       parent = value as Record<string, unknown>
       key = segments[i]
+      if (i > 0 && !ownKey(parent, key)) return null
       value = parent[key]
       i++
     }

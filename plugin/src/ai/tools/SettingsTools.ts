@@ -26,7 +26,10 @@ import {
   deviceTypes,
   deviceValue,
   deviceWarning,
+  invalidPath,
   isDevicePath,
+  isValidDevicePath,
+  reachesPrototype,
   startFailure,
   writeDevice,
 } from './settingsDevice'
@@ -48,6 +51,17 @@ import {
  * not a rewrite of all forty. The ops live in the same tool so they live under the same mode:
  * whoever may change a setting may change one item of it, and nobody else.
  */
+/**
+ * Why a path names no field at all, or null when it may: a segment that reaches a prototype,
+ * anywhere in it, or a device path deeper than the connection goes (`isValidDevicePath`).
+ * Asked before a path is resolved, read or written.
+ */
+function pathProblem(path: string): string | null {
+  if (reachesPrototype(path)) return invalidPath(path)
+  if (isDevicePath(path) && !isValidDevicePath(path)) return invalidPath(path)
+  return null
+}
+
 
 /** One line per setting: what it is, and either its value or how much of it there is. */
 function summarise(path: string): string {
@@ -117,6 +131,8 @@ function read(path: string): string {
   }
 
   if (isHidden(path)) return `"${path}" holds a secret or a cache and is not readable.`
+  const problem = pathProblem(path)
+  if (problem !== null) return problem
 
   if (!knownRoots().has(rootOf(path))) {
     return `No setting "${path}". Call this tool with no arguments for the ones there are.`
@@ -227,6 +243,8 @@ async function write(
   if (!OPS.includes(op)) return `No op "${op}". Use one of: ${OPS.join(', ')}.`
   if (!path) return 'No setting named. Give `path`, as `read_settings` lists it.'
   if (isHidden(path)) return `"${path}" holds a secret or a cache and is not writable.`
+  const problem = pathProblem(path)
+  if (problem !== null) return problem
 
   const root = rootOf(path)
   if (!knownRoots().has(root)) {
@@ -343,7 +361,7 @@ export function describeSettingsWrite(path: string, raw: string): SettingsWriteV
     const hidden = JSON.stringify('<hidden>')
     return { path: trimmed, before: hidden, after: hidden, warning: null, deviceOnly: false }
   }
-  const found = trimmed ? resolve(trimmed) : null
+  const found = trimmed && pathProblem(trimmed) === null ? resolve(trimmed) : null
   const key = found?.key ?? ''
   const before =
     found && found.value !== undefined ? JSON.stringify(redact(found.value, key)) : '(not set)'

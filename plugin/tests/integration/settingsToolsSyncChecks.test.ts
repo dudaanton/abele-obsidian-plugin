@@ -131,7 +131,7 @@ describe('the selective settings are held to the Sync tab rules', () => {
 
     expect(kind).toMatch(/was not changed|type/)
     expect(block).toContain('was not changed')
-    expect(extra).toMatch(/was not changed|not a setting/)
+    expect(extra).toMatch(/was not changed|not a setting|not a valid field path/)
     expect(connection().selective.settings.main).toBe(true)
     expect(connection().selective).not.toHaveProperty('surprise')
   })
