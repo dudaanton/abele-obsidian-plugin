@@ -1,12 +1,6 @@
 import { Platform, type App } from 'obsidian'
 import { ref, type Ref } from 'vue'
-import type {
-  DeferredKept,
-  DeleteDecision,
-  HeldDelete,
-  StateEntry,
-  VaultClient,
-} from '@abele/sync-core'
+import type { DeleteDecision, HeldDelete, StateEntry, VaultClient } from '@abele/sync-core'
 import type { ChangeItem, DeviceInfo, JoinPrefer, VaultInfo } from '@abele/sync-protocol'
 import type AbelePlugin from '@/main'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -15,7 +9,7 @@ import { ConnectionKeeper } from './connectionKeeper'
 import type { ConnectionEdit, VaultChoice } from './enrolment'
 import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer/connection'
 import { tellJoinWaiting } from './joinState'
-import type { AppliedSettings } from './stagedSettings'
+import type { AppliedSettings, KeptSettings } from './stagedSettings'
 import { listDevices, revokeDevice } from './devices'
 import { watchTheFront } from './phone'
 import type { JoinQuestion } from './join'
@@ -334,7 +328,7 @@ export class SyncService {
   }
 
   /** Keep this device's: see `StagedSettingsPrompt.keepLocal`. Null with no engine. */
-  keepLocalSettings(paths?: string[]): Promise<DeferredKept | null> {
+  keepLocalSettings(paths?: string[]): Promise<KeptSettings | null> {
     return this.settingsPrompt.keepLocal(paths)
   }
 

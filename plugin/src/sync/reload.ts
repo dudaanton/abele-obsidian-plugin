@@ -11,8 +11,10 @@ import type { App } from 'obsidian'
  * in the installed bundle (`obsidian.asar`, `app.js`, Obsidian 1.13.7): it is registered beside
  * `app:open-help`, outside the `isDesktopApp` block that holds the desktop-only commands, and
  * its callback is `window.location.reload()` — which a phone's WebView has as well. The mobile
- * bundle is not on this machine, so the command is looked up rather than assumed: where it is
- * missing, nothing is reloaded and the person is asked to restart Obsidian instead.
+ * bundle is not on this machine, so the command is looked up rather than assumed, and where it is
+ * missing — or will not run — the window is reloaded directly, which is all the command does.
+ * Only with neither is nothing reloaded and the person asked to restart Obsidian: settings files
+ * written under a running Obsidian are undone by its next save, on every device.
  *
  * `executeCommandById` answers false for a command it does not know, and for one whose callback
  * threw; either way the reload did not happen.
@@ -37,13 +39,39 @@ interface Commands {
 const commandsOf = (app: App | null): Commands | null =>
   ((app as unknown as { commands?: Commands } | null)?.commands ?? null) as Commands | null
 
-/** Obsidian's own reload, through its command registry. */
-export function obsidianReloader(app: () => App | null): Reloader {
+/** The part of `Location` a reload needs. */
+interface Reloadable {
+  reload(): void
+}
+
+/**
+ * Obsidian's own reload, through its command registry, and the window's reload where that has
+ * no such command or it did not run. `location` is the window's, and the test seam.
+ */
+export function obsidianReloader(
+  app: () => App | null,
+  location: () => Reloadable | null = () => (typeof window === 'undefined' ? null : window.location)
+): Reloader {
+  const direct = (): Reloadable | null => {
+    const found = location()
+    return typeof found?.reload === 'function' ? found : null
+  }
   return {
     available: () => {
       const found = commandsOf(app())?.findCommand?.(RELOAD_COMMAND)
-      return found !== undefined && found !== null
+      return (found !== undefined && found !== null) || direct() !== null
     },
-    reload: () => commandsOf(app())?.executeCommandById?.(RELOAD_COMMAND) === true,
+    reload: () => {
+      if (commandsOf(app())?.executeCommandById?.(RELOAD_COMMAND) === true) return true
+      const fallback = direct()
+      if (fallback === null) return false
+      try {
+        fallback.reload()
+        return true
+      } catch (error) {
+        console.debug('[abele-sync] the window would not reload', error)
+        return false
+      }
+    },
   }
 }

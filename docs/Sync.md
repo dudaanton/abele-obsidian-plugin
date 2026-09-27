@@ -205,15 +205,17 @@ arrive, because Abele reloads them itself.
 
 - **Reload now** writes what arrived and reloads Obsidian. A file changed on this device since it
   arrived is not written: this device's version of it goes to the other devices instead, and the
-  notice says how many. Where Obsidian has no reload command the button says **Apply**, and the
-  notice asks you to restart Obsidian.
+  notice says how many. Nothing more is synced from the moment the reload starts. Where Obsidian
+  cannot reload itself at all the button says **Apply**, and the notice asks you to restart
+  Obsidian — change no setting before you do, or its save puts the old values back everywhere.
 - **Later** leaves everything waiting. It is asked again when Obsidian next starts, or when more
   settings arrive — not at every sync. Until then the Sync tab shows **Settings waiting (5)** with
   **Apply and reload** and **Keep this device's**, and the status bar's tooltip says so too.
 - **Keep this device's** sends this device's files to the other devices over what arrived, so they
   get the same question in turn. It never deletes anything anywhere: a file that only the other
   device has — a plugin installed there, say — is left there and does not come here, and the
-  notice says how many were left.
+  notice says how many were left. A file whose path is taken here by another synced file cannot be
+  kept until that is sorted out; the notice says how many, and the log names them.
 
 Changing settings here before reloading keeps this device's version everywhere: the change is
 sent as usual, and the one that was waiting for that file is dropped, with a line in the log

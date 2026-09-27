@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { DeferredApplied, DeferredKept } from '@abele/sync-core'
 import type { ChangeItem } from '@abele/sync-protocol'
 import {
   StagedSettingsPrompt,
@@ -117,7 +118,7 @@ describe('what is said afterwards', () => {
       'Settings applied; Obsidian is reloading.'
     )
     expect(appliedNotice({ applied: ['a'], skipped: [], reloaded: false })).toBe(
-      'Settings applied. Restart Obsidian to use them.'
+      'Settings applied. Restart Obsidian to use them, and change no setting before you do: its save would put the old values back everywhere.'
     )
   })
 
@@ -133,11 +134,21 @@ describe('what is said afterwards', () => {
   })
 
   it('says what stayed on the other device when this device’s were kept', () => {
-    expect(keptNotice({ kept: ['a'], left: ['b', 'c', 'd'] })).toBe(
-      "This device's settings go to the other devices at the next sync. 3 files exist only on the other device and were left there."
+    expect(keptNotice({ kept: ['a'], left: ['b', 'c', 'd'], blocked: [] })).toBe(
+      "This device's settings stay as they are; where they differ, they go to the other devices at the next sync. 3 files exist only on the other device and were left there."
     )
-    expect(keptNotice({ kept: [], left: ['b'] })).toBe(
+    expect(keptNotice({ kept: [], left: ['b'], blocked: [] })).toBe(
       '1 file exists only on the other device and was left there.'
+    )
+  })
+
+  /** Review of task 12, #4: a blocked keep left the files staged and said they no longer wait. */
+  it('says which files could not be kept, rather than that nothing waits', () => {
+    expect(keptNotice({ kept: [], left: [], blocked: ['a', 'b'] })).toBe(
+      '2 files could not be kept: another file is at that path here. See the sync log.'
+    )
+    expect(keptNotice({ kept: [], left: [], blocked: [] })).toBe(
+      'These settings are no longer waiting.'
     )
   })
 })
@@ -149,10 +160,62 @@ describe('when the question is asked', () => {
       list: vi.fn(async () => reads.shift() ?? []),
       visible: vi.fn(() => visible),
       names: vi.fn(async () => ({})),
+      apply: vi.fn(async () => ({ applied: ['a'], skipped: [] }) as DeferredApplied | null),
+      keep: vi.fn(async () => ({ kept: [], left: [] }) as DeferredKept | null),
+      note: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
     }
-    const reloader = { available: () => true, reload: () => true }
-    return { host, prompt: new StagedSettingsPrompt(host, reloader) }
+    const reloader = { available: () => true, reload: vi.fn(() => true) }
+    return { host, reloader, prompt: new StagedSettingsPrompt(host, reloader) }
   }
+
+  /** Review of task 12, #5: a record dropped under an open dialog stayed listed in it. */
+  it('draws the open question again without a change that is no longer staged', async () => {
+    const hotkeys = change('.obsidian/hotkeys.json')
+    const appJson = change('.obsidian/app.json')
+    const { prompt: p } = prompt([[hotkeys, appJson], [appJson], []])
+    await p.noticed(status(2))
+    const key = p.asking.value!.key
+
+    await p.noticed(status(1))
+    expect(p.asking.value?.changes).toEqual([appJson])
+    expect(p.asking.value?.key).toBe(key)
+
+    await p.noticed(status(0))
+    expect(p.asking.value).toBeNull()
+  })
+
+  /** Review of task 12, #4: what the engine left staged after a Keep is named, by version. */
+  it('names the shown files a Keep left staged', async () => {
+    const hotkeys = change('.obsidian/hotkeys.json')
+    const appJson = change('.obsidian/app.json')
+    const { host, prompt: p } = prompt([[hotkeys, appJson], [hotkeys]])
+    await p.noticed(status(2))
+    host.keep.mockResolvedValue({ kept: ['.obsidian/app.json'], left: [] })
+
+    const kept = await p.keepLocal([hotkeys.path, appJson.path])
+
+    expect(kept).toEqual({ kept: ['.obsidian/app.json'], left: [], blocked: [hotkeys.path] })
+  })
+
+  it('pauses the engine before it reloads, and resumes it when the reload did not start', async () => {
+    const waiting = [change('.obsidian/app.json')]
+    const { host, reloader, prompt: p } = prompt([waiting, []])
+    await p.noticed(status(1))
+    const order: string[] = []
+    host.pause.mockImplementation(() => order.push('pause'))
+    reloader.reload.mockImplementation(() => {
+      order.push('reload')
+      return false
+    })
+    host.resume.mockImplementation(() => order.push('resume'))
+
+    const outcome = await p.applyAndReload()
+
+    expect(order).toEqual(['pause', 'reload', 'resume'])
+    expect(outcome?.reloaded).toBe(false)
+  })
 
   it('asks about what waits at a start, once', async () => {
     const waiting = [change('.obsidian/app.json')]
@@ -218,13 +281,36 @@ describe('the reload', () => {
     expect(RELOAD_COMMAND).toBe('app:reload')
   })
 
-  it('is not available where Obsidian has no such command', () => {
+  /**
+   * Review of task 12, #1: where the command is missing, or will not run, the page is reloaded
+   * the way the command itself does it — files written under a running Obsidian would be undone
+   * by its next save.
+   */
+  it('reloads the window itself where Obsidian has no such command, or it did not run', () => {
+    const location = { reload: vi.fn() }
+    const missing = obsidianReloader(
+      appWith({ findCommand: () => undefined, executeCommandById: () => false }),
+      () => location
+    )
+    expect(missing.available()).toBe(true)
+    expect(missing.reload()).toBe(true)
+    expect(location.reload).toHaveBeenCalledTimes(1)
+
+    const refused = obsidianReloader(
+      appWith({ findCommand: () => ({}), executeCommandById: () => false }),
+      () => location
+    )
+    expect(refused.reload()).toBe(true)
+    expect(location.reload).toHaveBeenCalledTimes(2)
+  })
+
+  it('is not available with neither the command nor a window to reload', () => {
     const reloader = obsidianReloader(
-      appWith({ findCommand: () => undefined, executeCommandById: () => false })
+      () => null,
+      () => null
     )
     expect(reloader.available()).toBe(false)
     expect(reloader.reload()).toBe(false)
-    expect(obsidianReloader(() => null).available()).toBe(false)
   })
 })
 

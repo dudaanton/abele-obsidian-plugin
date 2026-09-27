@@ -236,7 +236,7 @@ describe('settings changed on another device', () => {
     await waitFor('the question', () => service.settingsPrompt.asking.value !== null)
 
     const kept = await service.keepLocalSettings()
-    expect(kept).toEqual({ kept: [HOTKEYS], left: [] })
+    expect(kept).toEqual({ kept: [HOTKEYS], left: [], blocked: [] })
     await service.syncNow()
 
     expect(await read(HOTKEYS)).toBe('{"here":true}')

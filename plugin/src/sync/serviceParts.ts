@@ -116,6 +116,10 @@ export function wireParts(host: PartsHost): ServiceParts {
       visible,
       names: (ids) => pluginNamesIn(host.app(), ids),
       note: (text) => host.note(text),
+      pause: () => runner.pause(),
+      resume: () => {
+        if (!host.connection().paused) runner.resume()
+      },
     },
     obsidianReloader(() => host.app())
   )

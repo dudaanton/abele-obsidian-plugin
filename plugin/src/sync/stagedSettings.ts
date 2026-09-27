@@ -46,6 +46,10 @@ export interface StagedHost {
   keep(paths?: string[]): Promise<DeferredKept | null>
   /** A line for the sync log. */
   note(text: string): void
+  /** Stop the running engine taking up more work: a reload is about to end it. */
+  pause(): void
+  /** Take work up again after a reload that did not start, unless the person paused sync. */
+  resume(): void
 }
 
 /** How many of a sync's staged changes were news: the rule the engine documents. */
@@ -120,9 +124,25 @@ export class StagedSettingsPrompt {
       this.clear()
       return
     }
+    this.narrow(changes)
     if (changes.every((change) => this.shown.has(change.version_id))) return
     if (this.host.visible()) this.ask()
     else this.waiting = true
+  }
+
+  /**
+   * The open question, less what is no longer staged — a local edit sent this device's version
+   * of it, or another device's replaced it — so neither answer names a change nobody can act on.
+   * Kept under its key, so the dialog is redrawn rather than opened again; closed when nothing it
+   * showed is left.
+   */
+  private narrow(changes: readonly ChangeItem[]): void {
+    const open = this.asking.value
+    if (open === null) return
+    const staged = new Set(changes.map((change) => change.version_id))
+    const left = open.changes.filter((change) => staged.has(change.version_id))
+    if (left.length === open.changes.length) return
+    this.asking.value = left.length === 0 ? null : { ...open, changes: left }
   }
 
   /** The app came to the front: a question that waited for it is asked now. */
@@ -164,7 +184,11 @@ export class StagedSettingsPrompt {
     let reloaded = false
     if (result.applied.length > 0 && this.reloader.available()) {
       this.host.note('reloading Obsidian to read the settings that were applied')
+      // Nothing more is started under a reload that is about to end it: a sync that began
+      // after the apply would be cut off, and relies only on its journal to come back whole.
+      this.host.pause()
       reloaded = this.reloader.reload()
+      if (!reloaded) this.host.resume()
     }
     return { applied: result.applied, skipped: result.skipped, reloaded }
   }
@@ -175,17 +199,30 @@ export class StagedSettingsPrompt {
    * about them in turn. A file only the other device has is left there; nothing is deleted on
    * any device. Null with no engine.
    */
-  async keepLocal(paths?: string[]): Promise<DeferredKept | null> {
+  async keepLocal(paths?: string[]): Promise<KeptSettings | null> {
+    // The versions asked about, as the list stood: whichever of them is still staged afterwards
+    // was not kept — another file holds its path here (the engine says so in the log).
+    const wanted = paths === undefined ? null : new Set(paths)
+    const asked = this.staged.value.filter(
+      (change) =>
+        wanted === null ||
+        wanted.has(change.path) ||
+        (change.prev_path !== null && wanted.has(change.prev_path))
+    )
     const kept = await this.host.keep(paths)
     this.later()
     await this.refresh()
-    if (kept !== null) {
-      this.host.note(
-        `keeping this device's settings: ${kept.kept.length} file(s) go out` +
-          (kept.left.length > 0 ? `, ${kept.left.length} exist only elsewhere and stay there` : '')
-      )
-    }
-    return kept
+    if (kept === null) return null
+    const still = new Set(this.staged.value.map((change) => change.version_id))
+    const blocked = asked
+      .filter((change) => still.has(change.version_id))
+      .map((change) => change.path)
+    this.host.note(
+      `keeping this device's settings: ${kept.kept.length} file(s) go out` +
+        (kept.left.length > 0 ? `, ${kept.left.length} exist only elsewhere and stay there` : '') +
+        (blocked.length > 0 ? `, ${blocked.length} could not be kept` : '')
+    )
+    return { ...kept, blocked }
   }
 
   /** Later: the dialog closes and the changes stay staged, asked about at the next start or batch. */
@@ -306,6 +343,12 @@ export function stagedSummary(groups: StagedGroups): string {
 /** `1 file`, `3 files`. */
 const filesOf = (count: number): string => (count === 1 ? '1 file' : `${count} files`)
 
+/** What "Keep this device's" did: the engine's answer, and the shown files it left staged. */
+export interface KeptSettings extends DeferredKept {
+  /** Still staged afterwards: another file holds the path here. */
+  blocked: string[]
+}
+
 /** What "Reload now" did, as `SyncService.applySettingsAndReload` answers it. */
 export interface AppliedSettings {
   applied: string[]
@@ -326,7 +369,8 @@ export function appliedNotice(outcome: AppliedSettings | null): string {
     lines.push(
       reloaded
         ? 'Settings applied; Obsidian is reloading.'
-        : 'Settings applied. Restart Obsidian to use them.'
+        : 'Settings applied. Restart Obsidian to use them, and change no setting before you ' +
+            'do: its save would put the old values back everywhere.'
     )
   }
   if (skipped.length > 0) {
@@ -339,17 +383,27 @@ export function appliedNotice(outcome: AppliedSettings | null): string {
 }
 
 /** What is said once "Keep this device's" has run. */
-export function keptNotice(kept: { kept: string[]; left: string[] } | null): string {
+export function keptNotice(kept: KeptSettings | null): string {
   if (kept === null) return 'Sync is not running on this device, so nothing was kept.'
   const lines: string[] = []
   if (kept.kept.length > 0) {
-    lines.push("This device's settings go to the other devices at the next sync.")
+    // "Where they differ": a staged delete kept where this device has no file sends nothing.
+    lines.push(
+      "This device's settings stay as they are; where they differ, they go to the other " +
+        'devices at the next sync.'
+    )
   }
   if (kept.left.length > 0) {
     lines.push(
       `${filesOf(kept.left.length)} ${kept.left.length === 1 ? 'exists' : 'exist'} only on the ` +
         'other device and ' +
         `${kept.left.length === 1 ? 'was' : 'were'} left there.`
+    )
+  }
+  if (kept.blocked.length > 0) {
+    lines.push(
+      `${filesOf(kept.blocked.length)} could not be kept: another file is at that path here. ` +
+        'See the sync log.'
     )
   }
   return lines.length > 0 ? lines.join(' ') : 'These settings are no longer waiting.'

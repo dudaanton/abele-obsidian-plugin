@@ -122,13 +122,16 @@ describe('the settings-arrived dialog', () => {
     await button(view, 'Apply')!.trigger('click')
     await flushPromises()
 
-    expect(Notice.shown).toContain('Settings applied. Restart Obsidian to use them.')
+    expect(Notice.shown).toContain(
+      'Settings applied. Restart Obsidian to use them, and change no setting before you do: its save would put the old values back everywhere.'
+    )
   })
 
   it("keeps this device's files for exactly the changes shown, and says what was left there", async () => {
     service.keepLocalSettings.mockResolvedValue({
       kept: ['.obsidian/app.json'],
       left: ['.obsidian/plugins/obsidian-tasks-plugin/data.json'],
+      blocked: [],
     })
     const view = open()
 
