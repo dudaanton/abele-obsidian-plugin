@@ -121,6 +121,14 @@
     :held="heldAsking.held"
     @close="heldPrompt.close()"
   />
+  <!-- Keyed the same way: a new batch of settings from another device is a new question. -->
+  <SettingsArrivedModal
+    v-if="settingsAsking"
+    :key="settingsAsking.key"
+    :changes="settingsAsking.changes"
+    :names="settingsAsking.names"
+    @close="settingsPrompt.later()"
+  />
   <Teleport v-if="settingsContainer" :to="settingsContainer">
     <SettingsView />
   </Teleport>
@@ -151,6 +159,7 @@ import ScriptFormModal from './ScriptFormModal.vue'
 import VersionHistoryModal from './sync/VersionHistoryModal.vue'
 import DeletedFilesModal from './sync/DeletedFilesModal.vue'
 import HeldDeletesModal from './sync/HeldDeletesModal.vue'
+import SettingsArrivedModal from './sync/SettingsArrivedModal.vue'
 import SyncLogModal from './sync/SyncLogModal.vue'
 import { TIMELINE_SIDEBAR_ID_ATTR } from '@/views/TimelineSidebarView'
 import { TODO_SIDEBAR_ID_ATTR } from '@/views/TodoSidebarView'
@@ -203,8 +212,10 @@ const {
 } = GlobalStore.getInstance()
 
 /** Many files deleted at once, held back until decided: the question, while one is open. */
-const { heldPrompt } = SyncService.getInstance()
+const { heldPrompt, settingsPrompt } = SyncService.getInstance()
 const heldAsking = heldPrompt.asking
+/** Obsidian settings changed on another device, staged until answered: the question, if open. */
+const settingsAsking = settingsPrompt.asking
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'])
 

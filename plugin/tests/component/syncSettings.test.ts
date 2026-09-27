@@ -34,7 +34,7 @@ import { SyncService } from '@/sync/SyncService'
 import { DISCONNECTED_STATUS, type SyncStatus } from '@/sync/status'
 import { defaultSyncSettings } from '@/sync/settings'
 import { emptyConnection, type DeviceConnection } from '@/sync/connection'
-import { PLAIN_HTTP_REFUSED } from '@abele/sync-protocol'
+import { PLAIN_HTTP_REFUSED, type ChangeItem } from '@abele/sync-protocol'
 import { useVault } from '../helpers/testEnv'
 
 /** Obsidian's own widgets need a real app to construct; what they hold is tested elsewhere. */
@@ -91,6 +91,13 @@ const service = {
   joinQuestion: vi.fn(),
   answerJoin: vi.fn(),
   heldPrompt: { held: ref<{ path: string; fileId: string }[]>([]) },
+  settingsPrompt: {
+    staged: ref<ChangeItem[]>([]),
+    names: ref<Record<string, string>>({}),
+    reloader: { available: () => true, reload: () => true },
+  },
+  applySettingsAndReload: vi.fn(),
+  keepLocalSettings: vi.fn(),
   decideDeletes: vi.fn(),
 }
 
@@ -141,6 +148,7 @@ beforeEach(() => {
 
   service.connected = false
   service.heldPrompt.held.value = []
+  service.settingsPrompt.staged.value = []
   service.status.value = { ...DISCONNECTED_STATUS }
   service.connection.value = emptyConnection()
   service.updateConnection.mockImplementation(async (patch: Partial<DeviceConnection>) =>
@@ -479,6 +487,42 @@ describe('deletions held back', () => {
     await flushPromises()
 
     expect(headings(screen)).not.toContain('Deletions held back')
+  })
+})
+
+describe('settings from another device', () => {
+  const staged = (path: string): ChangeItem => ({
+    seq: 1,
+    file_id: `f-${path}`,
+    op: 'modify',
+    path,
+    prev_path: null,
+    sha: 'a'.repeat(64),
+    size: 2,
+    mtime: 1,
+    version_id: `v-${path}`,
+    kind: 'config',
+    actor: { kind: 'device', id: 'd1', name: 'Laptop' },
+    at: '2026-09-27T10:00:00.000Z',
+  })
+
+  it('wait on the tab with Apply and reload for as long as they are staged', async () => {
+    connect()
+    service.settingsPrompt.staged.value = [
+      staged('.obsidian/app.json'),
+      staged('.obsidian/hotkeys.json'),
+    ]
+
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    expect(headings(screen)).toContain('Settings waiting (2)')
+    expect(buttonNamed(screen, 'Apply and reload')).toBeDefined()
+    expect(buttonNamed(screen, "Keep this device's")).toBeDefined()
+
+    service.settingsPrompt.staged.value = []
+    await flushPromises()
+    expect(headings(screen).some((title) => title.startsWith('Settings waiting'))).toBe(false)
   })
 })
 

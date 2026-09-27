@@ -137,6 +137,14 @@
         <HeldDeletesBlock :held="held" />
       </Section>
 
+      <!--
+        Obsidian settings changed on another device, staged until somebody says what to do with
+        them. The dialog asks once per batch; this is where they wait after Later.
+      -->
+      <Section v-if="staged.length > 0" :title="`Settings waiting (${staged.length})`">
+        <StagedSettingsBlock :changes="staged" :names="stagedNames" apply-text="Apply and reload" />
+      </Section>
+
       <SelectiveSync />
 
       <template v-if="!joining">
@@ -244,6 +252,7 @@ import VaultPolicy from './sync/VaultPolicy.vue'
 import UsageCard from './sync/UsageCard.vue'
 import JoinVaultModal from './sync/JoinVaultModal.vue'
 import HeldDeletesBlock from '../sync/HeldDeletesBlock.vue'
+import StagedSettingsBlock from '../sync/StagedSettingsBlock.vue'
 import type { JoinQuestion } from '@/sync/join'
 import { Notice } from 'obsidian'
 import { SyncService } from '@/sync/SyncService'
@@ -263,6 +272,9 @@ const device = sync.connection
 const status = sync.status
 /** What the engine holds back after many files went at once (`HeldDeletesPrompt`). */
 const held = sync.heldPrompt.held
+/** Settings changed on another device, waiting for Apply or Keep (`StagedSettingsPrompt`). */
+const staged = sync.settingsPrompt.staged
+const stagedNames = sync.settingsPrompt.names
 const connected = computed(() => status.value.state !== 'disconnected')
 const confirming = ref<'disconnect' | 'forget' | null>(null)
 /** The waiting revoke whose kept token the person asked to forget, while that is asked. */
