@@ -18,7 +18,7 @@ import { registerPlaceLinks } from './placeLinks'
 import { reuseBookTabs } from './bookTabReuse'
 import { forgetBookTexts } from './bookText'
 import { moveInk } from './ink/inkStore'
-import { eink, initEink, setEink } from './eink'
+import { EINK_BODY_CLASS, eink, followEink, initEink, setEink } from './eink'
 
 export function registerReader(plugin: Plugin): void {
   const { app } = plugin
@@ -26,6 +26,12 @@ export function registerReader(plugin: Plugin): void {
   const bookmarks = initBookBookmarks(plugin)
   // E-ink mode is this device's own choice, kept on it (`eink.ts`).
   initEink(app)
+  // The quick button floats over a book from outside its tab: it holds still by the body's class.
+  const stopBody = followEink(document.body, () => {}, EINK_BODY_CLASS)
+  plugin.register(() => {
+    stopBody()
+    document.body.classList.remove(EINK_BODY_CLASS)
+  })
   plugin.addCommand({
     id: 'reader-toggle-eink',
     name: 'Toggle e-ink mode for books on this device',

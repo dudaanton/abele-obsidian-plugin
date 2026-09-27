@@ -33,6 +33,11 @@ export const EINK_KEY = 'abele-reader-eink'
 export const REFRESH_EVERY = [0, 5, 10, 20, 50] as const
 /** The class a book tab carries while the mode is on: every e-ink style hangs off it. */
 export const EINK_CLASS = 'abele-book_eink'
+/**
+ * The class the app's body carries while the mode is on: what floats over a book from outside
+ * it — the quick button — holds still by it too.
+ */
+export const EINK_BODY_CLASS = 'abele-eink'
 /** The share of the page's width, from either edge, a tap turns the page in. */
 export const TAP_SHARE = 0.25
 export const EINK_TAP_SHARE = 1 / 3
@@ -98,12 +103,16 @@ export function setEink(patch: Partial<EinkState>): void {
  * A book tab following the mode: it carries `EINK_CLASS` while the mode is on, and `changed` is
  * called whenever the mode is switched — not for the keys shown or the flash. Returns the stop.
  */
-export function followEink(el: HTMLElement, changed: (on: boolean) => void): () => void {
-  el.classList.toggle(EINK_CLASS, state.on)
+export function followEink(
+  el: HTMLElement,
+  changed: (on: boolean) => void,
+  cls = EINK_CLASS
+): () => void {
+  el.classList.toggle(cls, state.on)
   return watch(
     () => state.on,
     (on) => {
-      el.classList.toggle(EINK_CLASS, on)
+      el.classList.toggle(cls, on)
       changed(on)
     }
   )

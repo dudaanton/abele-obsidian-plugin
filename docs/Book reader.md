@@ -589,7 +589,7 @@ transfer copies it to another — carrying the mode to the phone is exactly what
 That is also why it is not in `src/transfer/entries.ts`. Switched on in the **Aa** dialog (its
 section **E-ink, on this device**, also in **Settings → Abele → Books**), from the tab's menu, or
 with the command **Toggle e-ink mode for books on this device**. Everything it changes is scoped
-to the book tab (the `abele-book_eink` class on its content): the rest of Obsidian is left as it is.
+to the book tab (the `abele-book_eink` class on its content), except the quick button, which floats over the book from outside it: the app's body carries `abele-eink` while the mode is on, and the button then moves and fades in one step, never translucent. The rest of Obsidian is left as it is.
 
 ## The engine
 

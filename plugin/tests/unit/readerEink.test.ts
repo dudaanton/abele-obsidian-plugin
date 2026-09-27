@@ -15,6 +15,7 @@ import {
   einkTheme,
   EINK_CLASS,
   followEink,
+  EINK_BODY_CLASS,
   flashDue,
   heardKey,
   initEink,
@@ -256,5 +257,23 @@ describe('a book tab following the mode', () => {
     followEink(el, () => {})()
     expect(el.classList.contains(EINK_CLASS)).toBe(true)
     setEink({ on: false })
+  })
+})
+
+describe('the app on an e-ink device', () => {
+  beforeEach(() => initEink({ loadLocalStorage: () => null, saveLocalStorage: () => {} }))
+
+  it('marks the body while the mode is on, so the quick button holds still too', async () => {
+    const body = document.createElement('body')
+    const stop = followEink(body, () => {}, EINK_BODY_CLASS)
+    setEink({ on: true })
+    await nextTick()
+    expect(body.classList.contains(EINK_BODY_CLASS)).toBe(true)
+    expect(body.classList.contains(EINK_CLASS)).toBe(false)
+    setEink({ on: false })
+    await nextTick()
+    expect(body.classList.contains(EINK_BODY_CLASS)).toBe(false)
+    stop()
+    body.classList.remove(EINK_BODY_CLASS)
   })
 })

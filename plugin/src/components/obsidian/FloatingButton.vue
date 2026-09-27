@@ -124,6 +124,16 @@ body:not(.is-floating-nav) .abele-floating-button {
   transform: translateX(-100%);
 }
 
+// On an e-ink device (the reader's e-ink mode, `src/reader/eink.ts`) it moves and fades in one
+// step, never through a slide a slow screen would redraw frame by frame, and is never translucent.
+.abele-eink .abele-floating-button {
+  transition: none;
+}
+
+.abele-eink .abele-floating-button.abele-floating-button_tucked {
+  opacity: 1;
+}
+
 .abele-floating-button_dragging {
   opacity: 0.85;
   transform: translateX(var(--abele-floating-button-shift, 0px));
