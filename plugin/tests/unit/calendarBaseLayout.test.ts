@@ -202,29 +202,31 @@ describe('a day lists', () => {
 
   // A wall-clock bound fails on a busy machine and passes a slow algorithm on a fast one. What
   // quadratic means is that four times the notes take sixteen times as long, so that is what is
-  // measured: the best of three runs at each size, their ratio against a bound a linear pass
-  // stays well under whatever the load, and a quadratic one cannot reach.
+  // measured. Each size is timed right after the other, five times over, and the middle ratio is
+  // taken: the load a busy machine puts on one run it puts on its neighbour too, where the best
+  // of three at 2 500 notes — a millisecond — came out at 12 beside a busy check (2026-09-27).
   it('places thousands of notes over a month without going quadratic', () => {
     const notes = (n: number) =>
       Array.from({ length: n }, (_, i) =>
         item({ title: `n${i}`, start: addDays('2026-01-01', i % 365), startMinute: (i * 7) % 1440 })
       )
-    const best = (items: CalendarItem[]) => {
-      let fastest = Infinity
-      for (let run = 0; run < 3; run++) {
-        const t = performance.now()
-        placeByDay(items, '2026-08-31', '2026-10-11')
-        fastest = Math.min(fastest, performance.now() - t)
-      }
-      return Math.max(fastest, 1)
+    const time = (items: CalendarItem[]) => {
+      const t = performance.now()
+      placeByDay(items, '2026-08-31', '2026-10-11')
+      return Math.max(performance.now() - t, 0.5)
     }
-    const small = best(notes(2500))
-    const large = notes(10000)
-    expect(best(large) / small).toBeLessThan(10)
+    const small = notes(5000)
+    const large = notes(20000)
+    time(small)
+    time(large)
+    const ratios: number[] = []
+    for (let run = 0; run < 5; run++) ratios.push(time(large) / time(small))
+    ratios.sort((x, y) => x - y)
+    expect(ratios[2]).toBeLessThan(10)
     expect(placeByDay(large, '2026-08-31', '2026-10-11').get('2026-09-26')!.length).toBeGreaterThan(
       0
     )
-  }, 30_000)
+  }, 60_000)
 })
 
 describe('the week hours', () => {
