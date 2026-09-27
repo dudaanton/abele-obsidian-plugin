@@ -231,7 +231,7 @@ async function restore(): Promise<void> {
 /** The files out of the trash now: back, or no longer there to restore. */
 function gone(items: TrashItem[], results: CommitOpResult[]): string[] {
   return results.flatMap((result, at) =>
-    result.status === 'applied' || result.code === 'not_found' ? [items[at]!.file_id] : []
+    result.status === 'applied' || result.code === 'not_found' ? [items[at].file_id] : []
   )
 }
 </script>

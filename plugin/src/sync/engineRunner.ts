@@ -216,7 +216,9 @@ export class EngineRunner {
       const { decided, report } = await engine.decideDeletes(kind, fileIds)
       return { decided, applied: report !== null }
     } catch {
-      const still = new Set((await this.heldDeletes().catch((): HeldDelete[] => [])).map((one) => one.fileId))
+      const still = new Set(
+        (await this.heldDeletes().catch((): HeldDelete[] => [])).map((one) => one.fileId)
+      )
       return { decided: fileIds.filter((id) => still.has(id)).length, applied: false }
     }
   }
