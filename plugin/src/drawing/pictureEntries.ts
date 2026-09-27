@@ -166,10 +166,15 @@ export class PictureEmbedMenus {
   readonly onTouchEnd = (evt: TouchEvent): void => {
     const press = this.press
     if (!press) return
-    // The finger lifted after the menu opened: not a tap that puts the caret into the embed.
-    if (press.fired && evt.cancelable) evt.preventDefault()
+    const held = Date.now() - press.since >= LONG_PRESS_MS
+    // The finger lifted after a menu opened, the plugin's or the one Obsidian opens for the press:
+    // not a tap that puts the caret into the embed — nor, where the browser turns the lift into a
+    // click, one that lands outside that menu and closes it again.
+    const doc = (evt.target as Node | null)?.ownerDocument
+    const menuUp = held && !!doc?.querySelector('.menu')
+    if ((press.fired || menuUp) && evt.cancelable) evt.preventDefault()
     // A long press lifted before any menu came still gets one; a tap does not.
-    if (press.fired || Date.now() - press.since < LONG_PRESS_MS) this.cancelPress()
+    if (press.fired || !held) this.cancelPress()
   }
 
   private cancelPress(): void {
