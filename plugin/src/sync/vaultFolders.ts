@@ -1,5 +1,6 @@
 import type { DataAdapter } from 'obsidian'
 import { EngineError } from '@abele/sync-core'
+import type { NativeFs } from './vaultWrites'
 
 /** Folders under the vault, made on the way to a file and tidied when the sync empties them. */
 
@@ -55,6 +56,7 @@ async function tryMkdir(adapter: DataAdapter, folder: string): Promise<unknown> 
  */
 export async function pruneAbove(
   adapter: DataAdapter,
+  native: NativeFs | null,
   configDir: string,
   path: string
 ): Promise<void> {
@@ -65,10 +67,7 @@ export async function pruneAbove(
     try {
       const listed = await adapter.list(folder)
       if (listed.files.length > 0 || listed.folders.length > 0) return
-      // `recursive`, though the folder was just seen empty: Obsidian desktop's `rmdir` is
-      // `fs.rm`, which without it refuses every folder, empty ones too (EISDIR), and the
-      // mobile adapter removes recursively whatever the flag says.
-      await adapter.rmdir(folder, true)
+      await removeEmptyFolder(adapter, native, folder)
     } catch (error) {
       console.debug(`[abele-sync] left the folder ${folder} in place`, error)
       return
@@ -76,4 +75,33 @@ export async function pruneAbove(
     console.debug(`[abele-sync] removed the folder ${folder}, which the sync emptied`)
     segments.pop()
   }
+}
+
+/**
+ * Remove a folder only while it is empty (pi review #2).
+ *
+ * On the desktop that is `rmdir(2)` itself, which refuses a folder holding anything: a file
+ * that arrived after the listing above stays, and so does the folder. The adapter's own
+ * `rmdir` cannot be asked for that — it is `fs.rm`, which refuses every folder without
+ * `recursive` (EISDIR) and removes whatever the folder holds with it.
+ *
+ * A phone has only the adapter's, and the phone's removes recursively whatever it is told. So
+ * there the folder is listed again right before it goes and removed only when that listing is
+ * empty too. What remains is the moment between that listing and the removal: a file written
+ * into the folder inside it goes with the folder. Nothing in Obsidian's mobile API closes it.
+ */
+async function removeEmptyFolder(
+  adapter: DataAdapter,
+  native: NativeFs | null,
+  folder: string
+): Promise<void> {
+  if (native !== null) {
+    await native.rmdirEmpty(folder)
+    return
+  }
+  const again = await adapter.list(folder)
+  if (again.files.length > 0 || again.folders.length > 0) {
+    throw new Error(`${folder} is not empty any more`)
+  }
+  await adapter.rmdir(folder, true)
 }

@@ -227,7 +227,7 @@ export class ObsidianFileSystem implements FileSystem {
     await makeParents(this.adapter, to)
     await this.rename(from, to)
     this.wrote(from, to)
-    await pruneAbove(this.adapter, this.configDir, from)
+    await pruneAbove(this.adapter, this.native, this.configDir, from)
   }
 
   async remove(path: string): Promise<void> {
@@ -242,7 +242,7 @@ export class ObsidianFileSystem implements FileSystem {
       throw new EngineError('io', `cannot remove ${path}`, cause)
     }
     this.wrote(path)
-    await pruneAbove(this.adapter, this.configDir, path)
+    await pruneAbove(this.adapter, this.native, this.configDir, path)
   }
 
   /** Tell the host what the engine changed on disk (`onEngineWrite`). */

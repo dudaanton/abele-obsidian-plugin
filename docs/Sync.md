@@ -234,7 +234,11 @@ device passed over arrives. **Skip a folder** offers the folders that hold at le
 
 Folders themselves do not sync, only the files in them. When another device renames or deletes a
 folder, the files move or go here too, and a folder this left empty is removed. A folder you made
-empty yourself, or one still holding a hidden file such as `.DS_Store`, stays.
+empty yourself, or one still holding a hidden file such as `.DS_Store`, stays. On a computer the
+folder is removed only by a call that refuses a folder holding anything, so a file saved into it at
+that moment keeps the folder. A phone has no such call: the folder is looked at twice, right before
+it goes, and a file saved into it in the instant between the second look and the removal would go
+with it.
 
 A file that arrives is written whole or not at all. Its new contents go to a hidden file beside it,
 named `.abele-sync-….tmp`, and take the file's name only once they are all there, so Obsidian

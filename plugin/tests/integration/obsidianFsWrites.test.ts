@@ -207,3 +207,30 @@ describe('ObsidianFileSystem writes on a phone, interrupted between the two rena
     expect(left).toContain('.obsidian/.abele-sync-abcd1234.old')
   })
 })
+
+describe('ObsidianFileSystem tidying folders', () => {
+  it('never removes a file that arrived after the folder was seen empty (desktop)', async () => {
+    const app = buildFakeVault([...VAULT, { path: 'Burst/a.md', content: 'a', mtime: 1 }])
+    const calls = withDesktopFs(app)
+    const fs = new ObsidianFileSystem(app as unknown as App)
+    const realList = app.vault.adapter.list.bind(app.vault.adapter)
+    app.vault.adapter.list = async (path) => {
+      const listing = await realList(path)
+      // Obsidian, or the person, puts a file in the folder right after it was looked at.
+      if (path === 'Burst')
+        await app.vault.adapter.writeBinary('Burst/new.md', text('new').buffer as ArrayBuffer)
+      return listing
+    }
+    await fs.remove('Burst/a.md')
+    expect(read(await app.vault.adapter.readBinary('Burst/new.md'))).toBe('new')
+    expect(calls.rmdirs).toEqual(['Burst'])
+  })
+
+  it('still removes a folder the sync emptied (desktop)', async () => {
+    const app = buildFakeVault([...VAULT, { path: 'Burst/deep/a.md', content: 'a', mtime: 1 }])
+    withDesktopFs(app)
+    const fs = new ObsidianFileSystem(app as unknown as App)
+    await fs.remove('Burst/deep/a.md')
+    expect(await app.vault.adapter.exists('Burst')).toBe(false)
+  })
+})
