@@ -228,6 +228,10 @@ export default class AbelePlugin extends Plugin {
       name: 'Sync now',
       icon: 'refresh-cw',
       callback: () => {
+        // The service says so in the log and moves nothing; from the palette there is no
+        // Sync tab in view to say it, so it is said here too.
+        if (sync.connection.value.paused)
+          new Notice('Sync is paused. Resume it to sync this device.')
         void sync.syncNow()
       },
     })

@@ -432,6 +432,17 @@ describe('a device that is set up', () => {
     expect(service.resume).toHaveBeenCalled()
   })
 
+  it('does not offer Sync now while paused, and says to resume instead', async () => {
+    connect()
+    change({ paused: true })
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    expect(buttonNamed(screen, 'Sync now')?.props('disabled')).toBe(true)
+    expect(buttonNamed(screen, 'Sync now')?.props('tooltip')).toContain('Resume')
+    expect(buttonNamed(screen, 'Rescan')?.props('disabled')).toBe(true)
+  })
+
   /**
    * The engine does not publish `paused` until a run in flight has finished, so a screen that
    * waited for the status would go on offering Pause for as long as the sync takes. What the

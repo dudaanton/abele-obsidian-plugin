@@ -106,6 +106,9 @@ export type { ConnectionPatch, VaultChoice } from './enrolment'
  * writes a token or a password to the log.
  */
 
+/** What Sync now and Rescan say while the device is paused, after which verb was refused. */
+const PAUSED_REFUSAL = 'sync is paused; nothing moves until Resume'
+
 /** How many lines the log keeps. Older ones fall off the front. */
 const LOG_LINES = 500
 
@@ -451,7 +454,8 @@ export class SyncService {
   /* -- The verbs -------------------------------------------------------- */
 
   /**
-   * Sync now, whatever the triggers are doing. A failure is already in the status and the log.
+   * Sync now, whatever the triggers are doing — unless sync is paused, which the log says and
+   * nothing moves. A failure is already in the status and the log.
    *
    * A device that is set up but has no engine was stopped by an error — an ignore file that
    * would not read, a ledger another window closed — and nothing else will try again: the
@@ -471,6 +475,12 @@ export class SyncService {
       await this.serialise(() => this.reconcile())
       return
     }
+    // The engine would run a sync it is asked for outright, paused or not; the switch says
+    // nothing moves until Resume, and that is what the person who pressed it was told.
+    if (this.connection.value.paused) {
+      this.note(`sync now: ${PAUSED_REFUSAL}`)
+      return
+    }
     try {
       await engine.sync()
     } catch {
@@ -484,6 +494,12 @@ export class SyncService {
     const store = this.store
     if (engine === null || store === null) {
       this.note('nothing to rescan: this device is not connected to a server')
+      return
+    }
+    // The scope stays unrecorded, so the walk still happens: at the next start, or at Resume
+    // when what this device takes has widened (the engine settles that itself).
+    if (this.connection.value.paused) {
+      this.note(`rescan: ${PAUSED_REFUSAL}`)
       return
     }
     // Read before the await: a teardown while this runs sets `this.scope` back to nothing, and

@@ -516,6 +516,23 @@ describe('SyncService — syncing', () => {
     await service.syncNow()
     expect(await read('Resumed.md')).toBe('moving again')
   })
+
+  it('moves nothing on Sync now or Rescan while paused, and says why', async () => {
+    const { other } = await connect()
+    await synced()
+    service.pause()
+
+    await write('Made while paused.md', 'stays here')
+    await seed(other, [await create(other, 'Sent while paused.md', 'stays there')])
+    await service.syncNow()
+    await service.rescan()
+
+    expect(await serverPaths(other)).not.toContain('Made while paused.md')
+    expect(await app.vault.adapter.exists('Sent while paused.md')).toBe(false)
+    expect(service.status.value.state).toBe('paused')
+    expect(service.log.value.join('\n')).toContain('sync now: sync is paused')
+    expect(service.log.value.join('\n')).toContain('rescan: sync is paused')
+  })
 })
 
 /**

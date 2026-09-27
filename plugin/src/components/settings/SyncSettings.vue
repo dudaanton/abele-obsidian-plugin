@@ -33,10 +33,19 @@
         </Setting>
 
         <Setting name="Sync" :desc="pendingDesc">
+          <!--
+            Not offered while paused: the switch says nothing moves until Resume, and a button
+            beside it that moved files anyway would make the switch a lie.
+          -->
           <Button
             text="Sync now"
-            accent
-            tooltip="Send and fetch everything outstanding, without waiting for a trigger"
+            :accent="!device.paused"
+            :disabled="device.paused"
+            :tooltip="
+              device.paused
+                ? 'Sync is paused; press Resume to sync this device'
+                : 'Send and fetch everything outstanding, without waiting for a trigger'
+            "
             @click="syncNow"
           />
           <Button
@@ -53,7 +62,12 @@
           />
           <Button
             text="Rescan"
-            tooltip="Walk the whole vault again and sync whatever this device is now missing"
+            :disabled="device.paused"
+            :tooltip="
+              device.paused
+                ? 'Sync is paused; press Resume to sync this device'
+                : 'Walk the whole vault again and sync whatever this device is now missing'
+            "
             @click="rescan"
           />
         </Setting>

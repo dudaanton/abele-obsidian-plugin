@@ -7,6 +7,7 @@
  * dialog. The ids are what a hotkey is bound to, so they are asserted exactly.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { Notice } from 'obsidian'
 import AbelePlugin from '@/main'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiSettings } from '@/ai/types'
@@ -80,5 +81,21 @@ describe('the sync commands', () => {
     expect(syncNow).toHaveBeenCalledOnce()
     expect(store.syncLogModalOpened.value).toBe(true)
     expect(store.deletedFilesModalOpened.value).toBe(true)
+  })
+
+  it('says sync is paused when Sync now is run from the palette while it is', () => {
+    const sync = SyncService.getInstance()
+    vi.spyOn(sync, 'syncNow').mockResolvedValue()
+    const held = sync.connection.value
+    sync.connection.value = { ...held, paused: true }
+    Notice.shown.length = 0
+    try {
+      const { plugin, commands } = aPlugin()
+      ;(plugin as unknown as { initSync(): void }).initSync()
+      commands.find((c) => c.id === 'sync-now')?.callback()
+      expect(Notice.shown).toEqual(['Sync is paused. Resume it to sync this device.'])
+    } finally {
+      sync.connection.value = held
+    }
   })
 })
