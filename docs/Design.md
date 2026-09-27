@@ -20,7 +20,7 @@ not invent its own.
 | `Button` | Anything the user presses that carries a word. |
 | `Icon` | Anything the user presses that carries only a glyph. Has `disabled` and `tooltip`, and `color` for a glyph whose colour carries meaning, from the same named palette as `Badge`. |
 | `Input`, `Dropdown`, `Checkbox`, `Search`, `ColorPicker` | Form controls. `Input` takes `password` for a passphrase or a key: dots instead of characters, nothing offered to remember it. |
-| `Modal` | A dialog. `size="wide"` when a form needs more than the default column; `size="tall"` for a body that fills the height a dialog may have and scrolls inside it when it runs longer; `size="full"` for something that wants all the room a dialog may have, a diagram viewed full screen. A form's buttons go in the `footer` slot: a row under the body that stays in sight while the body scrolls. |
+| `Modal` | A dialog — the dialog shell below, with slots. `size="wide"` when a form needs more than the default column; `size="tall"` for a body that fills the height a dialog may have and scrolls inside it when it runs longer; `size="full"` for something that wants all the room a dialog may have, a diagram viewed full screen. A dialog's buttons go in the `footer` slot: a row under the body that stays in sight while the body scrolls. |
 | `Slider` | A value along a track — a place in a book. Obsidian's own `slider` class, its filled part kept in step; `input` follows the thumb, the model changes when it is let go. |
 | `NotePicker` | Choosing notes out of part of the vault — the wallets, the people of a folder — by typing, fuzzy-matched as in the quick switcher. `filter` is the script `find()` vocabulary; what is chosen stands above the field as Obsidian's own pills, title and folder, each with a way to take it out. `multiple` for several; `create` offers to make a note of a name nothing matches. |
 | `IconPicker` | Choosing an icon: every glyph Obsidian can draw as a grid to click, a search field that narrows it, arrow keys and Enter from that field. Emits the name without the `lucide-` prefix. |
@@ -36,6 +36,42 @@ not invent its own.
 
 If a screen needs something the kit does not have, the change belongs in the kit — with a
 test — not in the screen.
+
+## The dialog shell
+
+Every dialog of the plugin is one shape, `src/modal/ShellModal.ts`: Obsidian's `Modal` with a
+title, a body, and an optional row of buttons pinned under the body. The kit's `Modal` is the
+shell with slots — the default slot is the body, `footer` the row. Code that builds a dialog by
+hand extends `ShellModal` and fills `bodyEl` and `footerEl` (`addButton(text, onClick, { cta,
+warning, tooltip })`); `askName` and `confirmAction` in the same folder are the two such
+dialogs everything shares — the name of a new script or snippet, the question before something
+goes. Obsidian's own pickers (`SuggestModal`, `FuzzySuggestModal`) stay theirs.
+
+- **The body is the one thing that scrolls.** The dialog never does, so its title and its
+  buttons stay where they are however long the body runs, and a box inside the body is not
+  capped at a height of its own — that is two scrollbars.
+- **Buttons that end the dialog go in the row** — Run, Save, Confirm, Cancel. Buttons that act
+  inside it — Scan, Fetch tools — stay beside what they act on.
+- **Fits the room it stands in.** Never taller than the page less the notch at both ends, so a
+  centred dialog keeps its close button below the status bar; `tall` and `full` ask for
+  Obsidian's `mod-lg`, the bottom sheet they draw for their own big dialogs on a phone, and are
+  placed by their rules. Nothing places a dialog on a phone by hand.
+- **The keyboard** (`src/modal/keyboardRoom.ts`, attached when the dialog opens). While a field
+  of the dialog is typed into on a phone, the part of the screen the keyboard leaves is measured —
+  the visual viewport, or `--keyboard-height` where Obsidian's iPhone app writes it and shrinks
+  nothing, and Obsidian's editing toolbar over the keyboard — as a line, never an amount, so
+  that no reading is taken off twice. A dialog of the shell is fitted into that room, standing on
+  the keyboard, its body scrolling in less height and its buttons just above the keyboard.
+  Obsidian's big sheet keeps its size and gives the box that scrolls room to scroll up from under
+  the keyboard, unless their own stylesheet already stopped it above. The field being typed
+  into — the caret's line, in a note field — is kept in sight as it takes focus, as the keyboard
+  comes up and while it is typed into; a note field's own scroller is never the one scrolled. A
+  tablet only moves the dialog up by what the keyboard covers of it.
+- **Its own window.** Everything is built in the dialog's document, so a dialog opened from the
+  settings window lives and measures there.
+
+A new dialog is added to `src/testing/openDialog.ts` and to the list in
+`tests/e2e/phoneLayout.e2e.test.ts`, so the phone probe and the focus-ring probe open it.
 
 ## Rules
 

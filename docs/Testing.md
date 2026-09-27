@@ -97,7 +97,7 @@ one tick after `mount` before the sentinel is being observed.
 ```ts
 global: {
   stubs: {
-    ObsidianModal: { template: '<div><slot /></div>' },
+    ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' },
     Setting: { props: ['name', 'desc'], template: '<div><slot /></div>' },
   },
 }
@@ -175,16 +175,19 @@ Three files, three concerns:
 - `dialogRings.e2e.test.ts` — **focus rings in the chat dialogs, on the desktop**. Focuses every
   focusable thing in every tab of the setup dialog and in the history, and measures its ring
   against every ancestor that clips: a box standing flush with the content cuts the ring a field
-  draws outside its box, which happened twice in one day. The icon picker, the MCP server form
-  and the list of keys are measured the same way.
+  draws outside its box, which happened twice in one day. The icon picker, the MCP server form,
+  the list of keys and every dialog `openDialog` opens by name (`src/testing/openDialog.ts`) are
+  measured the same way.
 - `dialogScroll.e2e.test.ts` — **dialogs taller than the window, on the desktop**. Makes the
   window short, fetches forty tools into the MCP server form from a stub, and opens the list of
   keys and a long script form: nothing may be cut off by a box that clips without scrolling, the
   last line has to come into sight when scrolled to, and the MCP form's Save has to stand on
   screen without any scrolling at all.
-- `phoneLayout.e2e.test.ts` — **every chat dialog, on a phone**. Switches the app to
+- `phoneLayout.e2e.test.ts` — **every dialog, on a phone**. Switches the app to
   `emulateMobile`, sizes the window to an iPhone (390×844), opens the chat, the settings dialog
-  tab by tab and the history, and asks each screen the questions a phone-width layout fails:
+  tab by tab, the history and every dialog `openDialog` opens by name — each of those must stand
+  whole on the screen with the buttons of its pinned row in sight — and asks each screen the
+  questions a phone-width layout fails:
   nothing past the right edge, a tab strip on one row and not shrunk below its tabs, at most one
   scroller inside the body and none capped at a desktop `max-height`, a sheet the height of the
   screen. Seeds a dozen skills and prompts so the lists have something to fill with, and removes
@@ -203,14 +206,20 @@ Three files, three concerns:
   phone-sized window still gets the list. Pictures go to `/tmp/abele-tablet/`. A window behind
   others keeps its old viewport until it is reloaded, so every resize here is followed by one.
 - `taskDatePhone.e2e.test.ts` — **the task's date dialog on a phone, keyboard up**. No emulator
-  shows a keyboard, so the two ways a platform makes room for one are mimicked in a 390×844
-  phone window: the dialog's container made shorter by hand (the page shrinks, the dialog's
-  `vh` cap does not), and `window.visualViewport` replaced by one reporting the smaller height.
-  A third writes the keyboard's height as Obsidian's iPhone app does. Where the page shrinks the
-  dialog has to fit the smaller page and scroll inside; where the keyboard is drawn over the page
-  it keeps its size, and what the keyboard covers scrolls up above it — the time field in sight,
-  the buttons reachable. Writes one task note for the run and removes it; pictures go to
+  shows a keyboard, so the ways a platform makes room for one are mimicked in a 390×844 phone
+  window: the dialog's container made shorter by hand (the page shrinks, the dialog's `vh` cap
+  does not), `window.visualViewport` replaced by one reporting the smaller height, and the
+  keyboard's height written as Obsidian's iPhone app writes it. In each the dialog stands in the
+  room the keyboard leaves, its body scrolls there, the time field is in sight and the buttons
+  stand above the keyboard. Writes one task note for the run and removes it; pictures go to
   `/tmp/abele-phone/task-date-*.png`.
+- `formKeyboard.e2e.test.ts` — **typing into a long form on a phone, keyboard up**. A script's
+  `form()` of twelve text fields and a note field, under `emulateMobile` at 390×844 with the
+  keyboard written as Obsidian's iPhone app does: the last text field and then the note field,
+  line after line, are typed into with real key input, and what is typed — the note field's caret
+  — has to stand above the keyboard and Obsidian's editing toolbar, with Run in sight. On a phone
+  the fields are tapped and typed into with the system keyboard. Pictures in
+  `/tmp/abele-phone/form-keyboard-*.png`.
 - `taskDateTablet.e2e.test.ts` — **the same dialog on a tablet, keyboard up**. Obsidian's tablet
   layout (a 1180×820 window and a taller portrait one under `emulateMobile`) stands the dialog
   in the middle of the screen. The keyboard's height is written as Obsidian's iOS app writes it:
@@ -634,9 +643,9 @@ npm run test:e2e:phone          # E2E_TARGET=phone
 A file takes part by saying so at its top — `targets('desktop', 'phone')` from
 `tests/e2e/helpers/target.ts`. The e2e config reads that call from each file's source: a phone
 run loads only the files that name the phone, and a file with no call is a desktop file, so the
-desktop run is what it always was. The phone files so far: `calendarsPhone`, `githubPhone` and
+desktop run is what it always was. The phone files so far: `calendarsPhone`, `githubPhone`,
 `taskDatePhone` (which on the phone taps the time field and measures the system's own
-keyboard). `phoneLayout`, `bookPhone` and `bookPhoneControls` carry the phone's side of their
+keyboard) and `formKeyboard` (which taps a long form's fields and types with it). `phoneLayout`, `bookPhone` and `bookPhoneControls` carry the phone's side of their
 probes too — pictures through the host, the book's taps, swipes and pinch as real gestures, the
 phone really turned — but are not yet green there, so they still name only the desktop.
 
@@ -648,6 +657,7 @@ to answer:
 |---|---|
 | `doctor` | one line per part, `OK …` or `FAIL …`, exit 0 when the phone is ready |
 | `take WHO --wait --pid PID`, `drop --pid PID` | the lock that gives one process the phone; `drop` turns the screen off first |
+| `launch BUNDLE` | brings the app forward and aims the touches and typing at it (`md.obsidian`) |
 | `open-url URL` | opens a URL on the phone (`obsidian://open?vault=…`) |
 | `push-plugin DIR MANIFEST VAULT` | installs a build (`main.js`, `main.css`) into a vault on the phone |
 | `eval --envelope --timeout S CODE` | evaluates in Obsidian's page, prints `{"type","value"}` or `{"thrown"}` |
