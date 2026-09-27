@@ -87,8 +87,10 @@ series:
     data: [3, 5, 2]
 ```
 
-A chart over the properties of many notes belongs in a base with the **Chart** view, embedded
-with `![[Name.base]]`, rather than copied into a block.
+Numbers worked out from the vault should come from `analyze_data` rather than be typed in:
+with `chart: true` it hands back a finished `abele-chart` block to put in the reply as it is. A
+chart over the properties of many notes belongs in a base with the **Chart** view, embedded with
+`![[Name.base]]`, rather than copied into a block.
 
 ## Maps
 
