@@ -32,10 +32,22 @@ again, once the cause is fixed. While the device is paused, **Sync now** and **R
 out, and from the command palette **Sync now** says sync is paused and moves nothing: **Resume**
 comes first.
 
-To stop, **Disconnect** forgets the server and the device's token and keeps everything else: your
-files, and what this device syncs. **Forget** does the same and also throws away this device's
-record of what was already synced, so the next connect walks the whole vault again instead of
-picking up where it left off. Neither deletes a file, here or on the server.
+To stop, **Disconnect** tells the server to stop accepting this device, then forgets the server
+and the device's token and keeps everything else: your files, and what this device syncs. After
+that no copy of the token anywhere can read or write the vault, and connecting again needs the
+password. **Forget** does the same and also throws away this device's record of what was already
+synced, so the next connect walks the whole vault again instead of picking up where it left off.
+Neither deletes a file, here or on the server.
+
+The server is told on the address the device signed in to, even if the address saved for it was
+changed since. If it cannot be reached — no network, the server down, or no answer in ten
+seconds — the Disconnect still goes ahead, and the token is kept under a name of its own to tell
+the server later. That is tried again when Obsidian starts, when the Sync tab opens and before
+every sign-in, for a month; after that it is given up and the log says so. Meanwhile the Sync tab
+shows a line — "The server has not been told that *device* left *server*. It will be retried." —
+with **Forget without telling the server**, which stops trying and forgets the token. The device
+then stays on the server's device list until it is revoked there. A device the server had already
+revoked disconnects the same way, with nothing left to retry.
 
 A device connected over plain http to another machine before this rule does not sync: the tab
 says the connection uses plain http and asks for a new sign-in with an https address. It is not
@@ -197,12 +209,35 @@ vault on it. So on a phone two vaults can see the same token; what they cannot s
 connection and the record of what was synced.
 
 The **Sync** section of **Transfer → Send to another device** carries only what every device shares.
-It carries no token and no connection, so the other device signs in itself. A transfer made by an
-older version of Abele still holds the sender's connection and token; the receiving device takes
-neither. A device that was set up by such a transfer before this version, though, took both at
-the time: it syncs as the sender — one device on the server, not two — and keeps doing so after
-the upgrade, because the connection in its `data.json` and the token in its keychain are really
-there. Disconnect it and connect it again to give it a device of its own.
+The connection travels in a section of its own, **Sync connection**, which a connected device
+offers. Sent with keys, it gives the other device **a device of its own**: when the codes are made,
+the dialog asks for a name for the other device ("Other device" unless you change it), and this
+device asks the server to enrol a new device under that name on the same vault. The transfer
+carries that device's token, never this one's, so the vault's device list shows both, and either
+can disconnect without cutting off the other. The list shows the new one as enrolled by the device
+that sent it. The server is asked once: if the answer is lost on the way, the device it made is
+left with nobody holding its token — find it by that "enrolled by" and revoke it. If the server
+cannot be reached, the codes are made without a connection and the dialog says the other device
+will sign in itself. Sent without keys, the section carries only what this device syncs, as a
+starting point, and the other device signs in itself. The size cap never travels.
+
+On the receiving device:
+
+- one that syncs nothing takes the connection when the transfer is applied, and starts syncing as
+  its own device; what the sender syncs is its starting point, with its own size cap kept;
+- one that already syncs that vault on that server shows "Already connected to this vault" and
+  skips it; the device made for it is revoked, so none is left over;
+- one that syncs another vault or another server shows the section unticked, marked "Replaces this
+  device's own connection". Ticked, **Apply** asks first, naming both vaults. Switching disconnects
+  it from its vault — telling that server — and takes the new one. Declining applies the rest of the
+  transfer, and the device made for it is revoked.
+
+A transfer made by an older version of Abele still holds the sender's connection and token; the
+receiving device takes neither. A device that was set up by such a transfer before this version,
+though, took both at the time: it syncs as the sender — one device on the server, not two — and
+keeps doing so after the upgrade, because the connection in its `data.json` and the token in its
+keychain are really there. Now that Disconnect revokes, disconnecting either of the two would cut
+off both. Disconnect the receiving one and connect it again once, to give it a device of its own.
 
 What a transfer never carries either is the record of what this device has already synced. That
 record belongs to one vault on one machine, and is kept in Obsidian's storage for that vault; a
