@@ -68,6 +68,7 @@ const client = { restoreDeletedMany: vi.fn() }
 
 const service = {
   status: ref<SyncStatus>({ ...DISCONNECTED_STATUS, state: 'idle' }),
+  connection: ref({ vaultId: 'v1' }),
   client: vi.fn(() => client),
   syncNow: vi.fn(),
   note: vi.fn(),
@@ -229,6 +230,45 @@ describe('restoring them', () => {
     const [first, second] = client.restoreDeletedMany.mock.calls
     expect(second![0]).toEqual(first![0])
     expect(second![1]).toBe(first![1])
+  })
+
+  /**
+   * pi review #8: the answer to a batch the server took is lost, the dialog is closed, and
+   * Restore is pressed again in a new one. The same files go under the same key, so the server
+   * answers with what it did the first time rather than `not_found`.
+   */
+  it('retries under the same key after the dialog was closed and opened again', async () => {
+    client.restoreDeletedMany.mockRejectedValueOnce(new Error('the answer was lost'))
+    const first = open()
+    await button(first, 'Restore')!.trigger('click')
+    first.findComponent(ConfirmModal).vm.$emit('confirm')
+    await flushPromises()
+    first.unmount()
+
+    const again = open()
+    await button(again, 'Restore')!.trigger('click')
+    again.findComponent(ConfirmModal).vm.$emit('confirm')
+    await flushPromises()
+
+    const [before, after] = client.restoreDeletedMany.mock.calls
+    expect(after![0]).toEqual(before![0])
+    expect(after![1]).toBe(before![1])
+  })
+
+  it('uses a fresh key once a restore has got through', async () => {
+    const first = open()
+    await button(first, 'Restore')!.trigger('click')
+    first.findComponent(ConfirmModal).vm.$emit('confirm')
+    await flushPromises()
+    first.unmount()
+
+    const again = open()
+    await button(again, 'Restore')!.trigger('click')
+    again.findComponent(ConfirmModal).vm.$emit('confirm')
+    await flushPromises()
+
+    const [before, after] = client.restoreDeletedMany.mock.calls
+    expect(after![1]).not.toBe(before![1])
   })
 
   it('syncs what came back when a later batch fails', async () => {

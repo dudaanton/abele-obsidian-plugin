@@ -62,6 +62,9 @@ import Button from '../obsidian/Button.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import { SyncService } from '@/sync/SyncService'
 import { reasonOf } from '@/sync/format'
+import { RestoreKeys } from '@/sync/restoreKeys'
+import type { LocalStorage } from '@/sync/ledgerId'
+import { GlobalStore } from '@/stores/GlobalStore'
 
 type Preset = 'hour' | 'today' | 'custom'
 
@@ -172,30 +175,29 @@ function ask(): void {
   if (asked.value.length > 0) confirming.value = true
 }
 
+/** The vault's local storage, where the batch keys outlive this dialog; none in a bare test. */
+function localStorageOf(): LocalStorage | null {
+  const app = GlobalStore.getInstance().app as Partial<LocalStorage> | undefined
+  return typeof app?.loadLocalStorage === 'function' && typeof app.saveLocalStorage === 'function'
+    ? (app as LocalStorage)
+    : null
+}
+
 /** A key for one restore, from the element's own window: see `DeletedFilesModal`. */
 const idempotencyKey = (): string => (root.value?.win ?? window).crypto.randomUUID()
 
 /**
- * The key each batch went out under, by the files in it, kept until a restore gets through.
- * A retry sends a batch whose answer was lost under the key it first had, so the server answers
- * with what it did then — restored — rather than `not_found` for files it already took out of
- * the trash (task-10 review, #5). Batches that came back are off the list, so the ones left
- * line up with the ones sent before. Keyed by the exact files of a batch: a retry after more
- * deletes reached the trash cuts the batches differently, and a batch whose answer was lost is
- * then counted as failed though its files are back — the common retry, with nothing new and at
- * most one batch, is not affected.
+ * The key each batch went out under, by the files in it, kept in the vault's local storage until
+ * a restore gets through (`restoreKeys.ts`), so a retry after the dialog was closed — or Obsidian
+ * restarted — sends a batch whose answer was lost under the key it first had, and the server
+ * answers with what it did then rather than `not_found` (task-10 review, #5; pi review #8).
+ * Keyed by the exact files of a batch: a retry after more deletes reached the trash cuts the
+ * batches differently, and a batch whose answer was lost is then counted as failed though its
+ * files are back — the common retry, with nothing new and at most one batch, is not affected.
  */
-const batchKeys = new Map<string, string>()
+const batchKeys = new RestoreKeys(localStorageOf(), sync.connection.value.vaultId, idempotencyKey)
 
-function keyOf(ids: string[]): string {
-  const batch = ids.join(' ')
-  let key = batchKeys.get(batch)
-  if (key === undefined) {
-    key = idempotencyKey()
-    batchKeys.set(batch, key)
-  }
-  return key
-}
+const keyOf = (ids: string[]): string => batchKeys.keyOf(ids)
 
 /**
  * What the summary says of the results. Restored: back where it was. Renamed: back under a new

@@ -72,6 +72,7 @@ const client = {
 
 const service = {
   status: ref<SyncStatus>({ ...DISCONNECTED_STATUS }),
+  connection: ref({ vaultId: 'v1' }),
   log: ref<string[]>([]),
   connected: true,
   isConnected: vi.fn(() => service.connected),

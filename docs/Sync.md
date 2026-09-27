@@ -322,7 +322,8 @@ does not come back and counts as failed. While sync is paused, the notice says t
 when it is resumed. "The last hour" and "today" count from the moment **Restore** is pressed. If
 the connection drops part way, what came back is synced to this device at once, and pressing
 **Restore** again carries on: a batch the server took before its answer was lost counts as
-restored, not failed.
+restored, not failed. That holds for a day, also after the dialog was closed or Obsidian
+restarted.
 
 ## When many files disappear at once
 
