@@ -1,5 +1,6 @@
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
+import type { VersionInfo } from '@abele/sync-protocol'
 import type { SyncState } from './status'
 
 /**
@@ -52,4 +53,25 @@ export function restoredNotice(state: SyncState, done: string, what: string): st
     return `${what}; it reaches this device at the next sync that gets through.`
   }
   return done
+}
+
+/**
+ * Whose version a merge row holds, for the history's card; undefined for any other row.
+ *
+ * A merge row is written by the device whose change caused it, whatever it kept: a device that
+ * joined under "The server wins" shows as having merged, though the bytes are the head's. So
+ * the row is read by what it holds — the incoming bytes are its sender's, the head's are the
+ * author of `merge.head_version_id`, and anything else is the two merged. A head version older
+ * than the page the dialog read leaves nothing to name.
+ */
+export function mergeLine(version: VersionInfo, page: VersionInfo[]): string | undefined {
+  const merge = version.merge
+  if (version.op !== 'merge' || merge === null) return undefined
+  if (version.sha !== null && version.sha === merge.incoming_sha) {
+    return `Kept ${version.actor.name}'s version`
+  }
+  const head = page.find((row) => row.version_id === merge.head_version_id)
+  if (head === undefined) return undefined
+  if (version.sha === head.sha) return `Kept ${head.actor.name}'s version`
+  return `Merged ${head.actor.name}'s and ${version.actor.name}'s edits`
 }

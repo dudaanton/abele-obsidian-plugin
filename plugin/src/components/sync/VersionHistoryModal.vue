@@ -18,6 +18,7 @@
             v-for="version in versions"
             :key="version.version_id"
             :title="`#${version.no}`"
+            :subtitle="mergeLine(version, versions)"
             :meta="metaOf(version)"
             :clickable="isText"
             :selected="isText ? selected === version.version_id : undefined"
@@ -107,7 +108,7 @@ import EmptyState from '../obsidian/EmptyState.vue'
 import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { SyncService } from '@/sync/SyncService'
-import { formatWhen, reasonOf, restoredNotice } from '@/sync/format'
+import { formatWhen, mergeLine, reasonOf, restoredNotice } from '@/sync/format'
 import { unifiedDiff } from '@/sync/diff'
 import { formatBytes } from '@/helpers/reduceImage'
 

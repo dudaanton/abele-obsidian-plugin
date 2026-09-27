@@ -185,6 +185,66 @@ describe('what has happened to a file', () => {
     expect(cardFor(screen, 2)?.props('meta')).toContain('2.0 KB')
   })
 
+  /**
+   * A merge row is written by the device whose change caused it, whatever bytes it holds: a
+   * joiner that lost under "The server wins" shows as having merged. Whose version the row
+   * really holds is in `merge.head_version_id`, and that is what the card says.
+   */
+  describe('whose version a merge kept', () => {
+    const laptop = { kind: 'device' as const, id: 'd1', name: 'Laptop' }
+    const phone = { kind: 'device' as const, id: 'd2', name: 'Phone' }
+    const merged = (sha: string, incoming = 'sha-2') =>
+      version({
+        no: 3,
+        op: 'merge',
+        sha,
+        actor: phone,
+        merge: {
+          base_version_id: null,
+          head_version_id: 'v1',
+          incoming_sha: incoming,
+          clean: false,
+        },
+      })
+    const history = (top: VersionInfo): VersionInfo[] => [
+      top,
+      version({ no: 2, op: 'modify', sha: 'sha-2', actor: phone }),
+      version({ no: 1, op: 'create', sha: 'sha-1', actor: laptop }),
+    ]
+    const subtitleOf = async (top: VersionInfo): Promise<unknown> => {
+      client.versions.mockResolvedValue(history(top))
+      const screen = open()
+      await flushPromises()
+      return cardFor(screen, 3)?.props('subtitle')
+    }
+
+    it('names the device whose version was kept, not the one that wrote the row', async () => {
+      expect(await subtitleOf(merged('sha-1'))).toBe("Kept Laptop's version")
+    })
+
+    it('names the sender when the incoming bytes were kept', async () => {
+      expect(await subtitleOf(merged('sha-2'))).toBe("Kept Phone's version")
+    })
+
+    it('says both were merged when the result is neither', async () => {
+      expect(await subtitleOf(merged('sha-9'))).toBe("Merged Laptop's and Phone's edits")
+    })
+
+    it('says nothing more when the kept version is beyond the page', async () => {
+      const top = merged('sha-1')
+      client.versions.mockResolvedValue([top])
+      const screen = open()
+      await flushPromises()
+      expect(cardFor(screen, 3)?.props('subtitle')).toBeUndefined()
+    })
+
+    it('gives an ordinary version no such line', async () => {
+      const screen = open()
+      await flushPromises()
+      expect(cardFor(screen, 4)?.props('subtitle')).toBeUndefined()
+    })
+  })
+
   it('says a file nobody has synced has no history, rather than sitting empty', async () => {
     service.entryFor.mockResolvedValue(null)
     const screen = open()

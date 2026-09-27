@@ -275,7 +275,9 @@ other keep the edit, and the file comes back.
 Right-click a file in the file list and choose **Open version history (Abele)** (shown only while
 this device is connected; Obsidian's own Sync, when it is on, adds an item of its own without the
 suffix). Every version the server keeps is listed with its number, what happened
-(created, edited, deleted…) and when. Clicking a version of a text file shows how it differs from
+(created, edited, deleted…) and when. A merged version also says whose version it kept, or
+that it merged two devices' edits: the device named beside it is the one whose change caused the
+merge, which is not always the one whose text won. Clicking a version of a text file shows how it differs from
 the file as it is now. **Restore** makes that version the current one on every device, after a
 confirmation; nothing is lost, since what the file held becomes a version of its own. A restore
 brings back content, never a name: a version from before a rename is restored under the current
