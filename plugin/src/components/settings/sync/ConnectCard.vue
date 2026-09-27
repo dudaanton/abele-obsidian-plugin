@@ -113,8 +113,13 @@
       </Section>
     </template>
 
+    <!--
+      Keyed by the question, so each one is a dialog of its own: Obsidian's modal is opened when
+      the component mounts, and a new question handed to one already closed would open nothing.
+    -->
     <JoinVaultModal
       v-if="asking"
+      :key="asking.key"
       :question="asking.question"
       :device-name="deviceName"
       :busy="busy"
@@ -180,7 +185,9 @@ const deviceName = ref('')
 const newVaultName = ref('')
 const chosen = ref<string | null>(null)
 /** The vault tapped, and what the join dialog asks about it, while the dialog is open. */
-const asking = ref<{ vault: VaultInfo; question: JoinQuestion } | null>(null)
+const asking = ref<{ vault: VaultInfo; question: JoinQuestion; key: number } | null>(null)
+/** Numbers each question asked, for the dialog's key. */
+let asked = 0
 /** Once a person has typed a name, no vault they click renames their device under them. */
 const nameEdited = ref(false)
 const busy = ref(false)
@@ -293,7 +300,7 @@ async function choose(vault: VaultInfo): Promise<void> {
     chosen.value = null
     return
   }
-  asking.value = { vault, question }
+  asking.value = { vault, question, key: ++asked }
 }
 
 /** The join dialog answered: enrol on the vault, under the name and with the side it gave. */
@@ -312,10 +319,15 @@ async function join(answer: {
   if (enrolled) asking.value = null
 }
 
-/** The join dialog closed without an answer: nothing was enrolled, and no vault is chosen. */
+/**
+ * The join dialog closed. Obsidian closes it on Escape or a tap beside it whatever this card
+ * thinks, so it is let go of at once, busy or not (task-8 review, #2). Without an answer nothing
+ * was enrolled and no vault is chosen; a connect already under way goes on, and what it comes to
+ * shows on the card.
+ */
 function stopAsking(): void {
-  if (busy.value) return
   asking.value = null
+  if (busy.value) return
   chosen.value = null
   error.value = null
 }

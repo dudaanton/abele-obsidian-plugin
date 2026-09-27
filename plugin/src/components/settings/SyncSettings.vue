@@ -138,8 +138,10 @@
       </template>
     </template>
 
+    <!-- Keyed by the question: see ConnectCard's. -->
     <JoinVaultModal
       v-if="joinAsking"
+      :key="joinAsked"
       :question="joinAsking"
       :busy="joinBusy"
       :error="joinError"
@@ -297,6 +299,8 @@ onMounted(() => void sync.retryPendingRevokes())
 const joining = computed(() => status.value.state === 'joining')
 /** The join question, while its dialog is open. */
 const joinAsking = ref<JoinQuestion | null>(null)
+/** Numbers each question asked, for the dialog's key. */
+const joinAsked = ref(0)
 const joinBusy = ref(false)
 const joinError = ref<string | null>(null)
 
@@ -314,6 +318,7 @@ async function askJoin(): Promise<void> {
   joinError.value = null
   try {
     joinAsking.value = await sync.joinQuestion()
+    joinAsked.value++
   } catch (error) {
     joinError.value = `The join could not be prepared: ${reasonOf(error)}`
   } finally {
@@ -336,9 +341,13 @@ async function answerJoin(prefer: JoinPrefer | null | undefined): Promise<void> 
   }
 }
 
+/**
+ * The dialog closed: let go of it at once, busy or not — Obsidian closes it whatever this tab
+ * thinks. An answer already under way goes on, and a failure shows on the row.
+ */
 function closeJoin(): void {
-  if (joinBusy.value) return
   joinAsking.value = null
+  if (joinBusy.value) return
   joinError.value = null
 }
 

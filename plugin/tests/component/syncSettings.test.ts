@@ -385,6 +385,36 @@ describe('choosing a vault', () => {
     expect(screen.findComponent(JoinVaultModal).props('error')).toBe('the server said no')
   })
 
+  /**
+   * Obsidian closes a dialog on Escape or a tap beside it whatever the component thinks, so a
+   * close while the connect runs must leave nothing half open: the next tap opens a dialog.
+   */
+  it('opens a new dialog on the next tap after one was closed while it connected', async () => {
+    const screen = await signedIn()
+    let refuse!: (error: Error) => void
+    service.chooseVault.mockImplementation(
+      () => new Promise<void>((_resolve, reject) => (refuse = reject))
+    )
+    await vaultCard(screen).trigger('click')
+    await flushPromises()
+    const first = screen.findComponent(JoinVaultModal)
+    first.vm.$emit('connect', { prefer: null, deviceName: 'Desktop — Home' })
+    await flushPromises()
+
+    first.vm.$emit('close')
+    await flushPromises()
+    expect(screen.findComponent(JoinVaultModal).exists()).toBe(false)
+    refuse(new Error('the server said no'))
+    await flushPromises()
+    expect(screen.text()).toContain('the server said no')
+
+    await vaultCard(screen).trigger('click')
+    await flushPromises()
+    const second = screen.findComponent(JoinVaultModal)
+    expect(second.exists()).toBe(true)
+    expect(second.vm.$.uid).not.toBe(first.vm.$.uid)
+  })
+
   it('says why on the card when the files could not be counted, and opens nothing', async () => {
     const screen = await signedIn()
     service.joinQuestion.mockRejectedValue(new Error('.abele-sync-ignore could not be read'))
@@ -474,6 +504,32 @@ describe('a device waiting to join', () => {
     await buttonNamed(screen, 'Choose…')?.trigger('click')
     await flushPromises()
     expect(screen.findComponent(JoinVaultModal).exists()).toBe(true)
+  })
+
+  it('closes at once when closed while it answers, and opens a new dialog from the tab', async () => {
+    waiting()
+    let refuse!: (error: Error) => void
+    service.answerJoin.mockImplementation(
+      () => new Promise<void>((_resolve, reject) => (refuse = reject))
+    )
+    const screen = open(SyncSettings)
+    await flushPromises()
+    const first = screen.findComponent(JoinVaultModal)
+    first.vm.$emit('connect', { prefer: 'mine', deviceName: '' })
+    await flushPromises()
+
+    first.vm.$emit('close')
+    await flushPromises()
+    expect(screen.findComponent(JoinVaultModal).exists()).toBe(false)
+    refuse(new Error('the server said no'))
+    await flushPromises()
+    expect(screen.text()).toContain('the server said no')
+
+    await buttonNamed(screen, 'Choose…')?.trigger('click')
+    await flushPromises()
+    const second = screen.findComponent(JoinVaultModal)
+    expect(second.exists()).toBe(true)
+    expect(second.vm.$.uid).not.toBe(first.vm.$.uid)
   })
 
   it('offers what this device takes and leaving, not what needs a running sync', async () => {
