@@ -163,6 +163,21 @@ turn, switch on **Show the keys the reader hears** in the same settings: the las
 heard shows over the page. Nothing showing when you press a button means the button never
 reaches Obsidian.
 
+## Zen mode
+
+**Zen mode** leaves only the book's text on screen: the tab's header, the row under the page and,
+on a phone, Obsidian's own bars go, and the page takes their room. Turn it on from the tab's menu
+(**Zen mode**) or with **Toggle zen mode for books on this device**, which you can give a hotkey.
+
+- On a phone or a tablet, tap the middle of the page to bring the header and the row under the
+  page back for a few seconds; tap again to hide them sooner.
+- On a computer, move the mouse to the top of the tab to bring the header back.
+- Selecting words still brings up their bar, over the bottom of the page.
+- Leave it from the tab's menu (**Leave zen mode**), the command, or with Esc on a keyboard.
+
+Like e-ink mode it is kept on the device where you turned it on, and a settings transfer does not
+carry it.
+
 ## Reading aloud
 
 The speaker button reads the book aloud from the page on screen, with your device's voices,

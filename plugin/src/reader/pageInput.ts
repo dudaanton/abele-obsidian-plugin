@@ -23,6 +23,8 @@ export interface PageHost {
   /** Pages of a fixed size — a PDF, a comic — which zoom and are marked by the reader itself. */
   fixed(): boolean
   zoom(way: 'in' | 'out' | 'reset'): void
+  /** A clean tap in the middle of the page, which turns nothing: zen mode's chrome (`zen.ts`). */
+  middleTap?(): void
 }
 
 /** Whether a selection's or a highlight's bar is open: the page is held while it is. */
@@ -206,6 +208,7 @@ function onTap(host: PageHost, e: MouseEvent, doc: Document, gesture: PageGestur
   const edge = edgeOf(host, e, doc, tapShare())
   if (edge === -1) void reader.goLeft()
   else if (edge === 1) void reader.goRight()
+  else host.middleTap?.()
 }
 
 /**
@@ -234,6 +237,7 @@ function onMarginTap(host: PageHost, e: MouseEvent): void {
   const dir = edge(tapShare())
   if (dir === -1) void reader.goLeft()
   else if (dir === 1) void reader.goRight()
+  else host.middleTap?.()
 }
 
 /** The edge of the page a tap was on, within `share` of its width either side: -1 left, 1 right. */

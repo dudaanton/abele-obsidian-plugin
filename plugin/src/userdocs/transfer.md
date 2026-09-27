@@ -11,7 +11,7 @@ go along too. What you picked goes as QR codes, as a line of text to paste, or a
 **Include keys** sends the API keys the ticked settings need. A transfer that carries a key is
 locked with a one-time code, shown on this device and typed on the other.
 
-A few choices belong to one device and never travel: e-ink mode for books, a PDF's zoom, whether
+A few choices belong to one device and never travel: e-ink and zen mode for books, a PDF's zoom, whether
 the contents panel is open. They are not in the settings file, so neither sync nor a transfer
 takes them to another device.
 

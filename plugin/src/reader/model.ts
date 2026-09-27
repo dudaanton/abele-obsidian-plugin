@@ -119,6 +119,8 @@ export interface BookModel {
   ink: InkModel
   /** Pages turned since the book opened, for e-ink mode's flash every so many. */
   turns: number
+  /** Zen mode's chrome shown for a moment over the page (`zen.ts`). */
+  zenPeek: boolean
 }
 
 export const emptyBookModel = (): BookModel => ({
@@ -151,6 +153,7 @@ export const emptyBookModel = (): BookModel => ({
   bookmarksHere: [],
   ink: emptyInk(),
   turns: 0,
+  zenPeek: false,
 })
 
 /** The engine's contents as the tree the panel draws. */

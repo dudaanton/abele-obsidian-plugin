@@ -1,11 +1,12 @@
 /**
- * What a book tab's ⋯ menu offers besides Obsidian's own: pages or scrolling, e-ink mode, a link to the place
+ * What a book tab's ⋯ menu offers besides Obsidian's own: pages or scrolling, e-ink mode, zen mode, a link to the place
  * on screen, a chat about it, the search, the highlights, the bookmarks and the text and layout settings.
  */
 import type { Menu } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { readerSettingsFrom } from './settings'
 import { eink, setEink } from './eink'
+import { setZen, zen } from './zen'
 
 export interface BookMenuHost {
   /** A book is showing, so there is a place to link to. */
@@ -100,6 +101,13 @@ export function fillBookMenu(menu: Menu, host: BookMenuHost): void {
       .setIcon('tablet')
       .setSection('view')
       .onClick(() => setEink({ on: !eink().on }))
+  )
+  menu.addItem((item) =>
+    item
+      .setTitle(zen().on ? 'Leave zen mode' : 'Zen mode')
+      .setIcon(zen().on ? 'shrink' : 'expand')
+      .setSection('view')
+      .onClick(() => setZen(!zen().on))
   )
   if (host.ready) {
     menu.addItem((item) =>

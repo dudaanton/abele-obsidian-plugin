@@ -55,7 +55,12 @@
            selected or a highlight tapped, else the bar for reading aloud, else the line with the
            slider. Nothing stands over the text, and the page is never laid out anew for a bar —
            which would move the words under a selection. -->
-      <div v-if="model.status === 'ready'" class="abele-book-reader__foot">
+      <!-- In zen mode it lies over the bottom of the page instead, shown only when needed. -->
+      <div
+        v-if="model.status === 'ready'"
+        class="abele-book-reader__foot"
+        :class="{ 'abele-book-reader__foot_hidden': zen().on && !zenFootShown(model) }"
+      >
         <BookInkBar
           v-if="model.ink.on"
           :ink="model.ink"
@@ -175,6 +180,7 @@ import { ScriptService } from '@/scripting/ScriptService'
 import { bookMenu } from '@/scripting/bookMenuScripts'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { readerSettingsFrom } from '@/reader/settings'
+import { zen, zenFootShown } from '@/reader/zen'
 
 const props = defineProps<{
   model: BookModel
@@ -477,6 +483,85 @@ body:not(.is-mobile) .abele-book-reader__foot {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+// Zen mode (`src/reader/zen.ts`): the page takes the room of the header and the row under it,
+// which lie over it when they show, so the page is laid out once as the mode is switched and
+// never for a bar or a peek.
+.abele-book_zen {
+  position: relative;
+
+  .abele-book-reader__foot {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 3;
+    background-color: var(--background-primary);
+    border-top: var(--border-width) solid var(--background-modifier-border);
+  }
+
+  .abele-book-reader__foot_hidden {
+    display: none;
+  }
+}
+
+// A computer or a tablet: the header is out of the layout, and over the top of the page while
+// it is peeked at. A strip at the top of the tab stands for it under the mouse.
+body:not(.is-phone) .abele-book_zen {
+  > .view-header {
+    display: none;
+  }
+
+  &.abele-book_zen-peek > .view-header {
+    display: flex;
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    z-index: 3;
+    background-color: var(--background-primary);
+    border-bottom: var(--border-width) solid var(--background-modifier-border);
+  }
+}
+
+.abele-book-zen-edge {
+  display: none;
+}
+
+body:not(.is-mobile) .abele-book_zen > .abele-book-zen-edge {
+  display: block;
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: var(--size-4-3);
+  z-index: 2;
+}
+
+// A phone: Obsidian's header and bar are hidden its own way (`zenChrome.ts`) and float over the
+// page when shown; the page runs from the top of the screen to its bottom, clear of its insets.
+.is-phone .mod-root .workspace-leaf-content.abele-book_zen .view-content.abele-book {
+  margin-top: var(--safe-area-inset-top);
+  padding-bottom: var(--safe-area-inset-bottom);
+}
+
+// Where Obsidian keeps them in the layout — its bar not floating — they are taken out of it.
+.is-phone .abele-book_zen > .view-header {
+  position: fixed;
+  top: 0;
+}
+
+.is-phone:has(.mod-active > .abele-book_zen) .mobile-navbar {
+  position: fixed;
+}
+
+// Peeked at, the row under the page sits over Obsidian's bar rather than under it.
+.is-phone .abele-book_zen.abele-book_zen-peek .abele-book-reader__foot {
+  bottom: max(0px, calc(var(--view-bottom-spacing, 0px) - var(--safe-area-inset-bottom)));
+}
+
+// E-ink: Obsidian's own header and bar come and go in one step too, over a book in zen mode.
+body.abele-eink .abele-book_zen > .view-header,
+body.abele-eink:has(.mod-active > .abele-book_zen) .mobile-navbar {
+  transition: none;
 }
 
 // Too narrow to share, a phone or a split pane: the contents are a drawer over the page.

@@ -19,6 +19,7 @@ import { reuseBookTabs } from './bookTabReuse'
 import { forgetBookTexts } from './bookText'
 import { moveInk } from './ink/inkStore'
 import { EINK_BODY_CLASS, eink, followEink, initEink, setEink } from './eink'
+import { initZen, setZen, zen } from './zen'
 
 export function registerReader(plugin: Plugin): void {
   const { app } = plugin
@@ -39,6 +40,13 @@ export function registerReader(plugin: Plugin): void {
       setEink({ on: !eink().on })
       new Notice(eink().on ? 'E-ink mode is on for books on this device.' : 'E-ink mode is off.')
     },
+  })
+  // Zen mode, the device's own choice too (`zen.ts`).
+  initZen(app)
+  plugin.addCommand({
+    id: 'reader-toggle-zen',
+    name: 'Toggle zen mode for books on this device',
+    callback: () => setZen(!zen().on),
   })
   // The fonts folder: read when a book or the settings first ask, followed from then on.
   const fonts = new ReaderFonts(app.vault, () =>

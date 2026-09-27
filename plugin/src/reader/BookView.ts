@@ -58,6 +58,8 @@ import { inkFor, type PdfInk } from './ink/PdfInk'
 import { zoomFor, type PdfZoom } from './pdfZoom'
 import { EINK_PAGE_STYLE, eink, einkTheme, followEink, withEink } from './eink'
 import type { ReaderSettings } from './settings'
+import { escLeavesZen, setZen, zen } from './zen'
+import { ZenChrome, type MobileNavbar } from './zenChrome'
 
 /** The reader's settings as this device reads them: e-ink mode keeps pages and paper. */
 const readerSettings = (): ReaderSettings =>
@@ -103,6 +105,8 @@ export class BookView extends FileView {
   linked: LinkedNotes | null = null
   /** Drawing on a PDF's pages. */
   ink: PdfInk | null = null
+  /** Zen mode's chrome for this tab: hidden, peeked at, Obsidian's phone navigation. */
+  private zenChrome: ZenChrome | null = null
   /** A place a link asked for, gone to once the book is open. */
   private pendingPlace: BookPlace | null = null
   /** Every page loaded so far in this tab, newest last. */
@@ -165,6 +169,15 @@ export class BookView extends FileView {
     this.model.panel = !Platform.isPhone && this.app.loadLocalStorage(PANEL_KEY) === '1'
     this.vue = createApp(BookReader, { model: this.model, ...bookCallbacks(this.actions()) })
     this.vue.mount(mount)
+    this.zenChrome = new ZenChrome({
+      containerEl: this.containerEl,
+      model: this.model,
+      navbar: () => (this.app as unknown as { mobileNavbar?: MobileNavbar | null }).mobileNavbar,
+      phone: Platform.isPhone,
+      touch: Platform.isMobile,
+      front: () => this.app.workspace.getActiveViewOfType(BookView) === this,
+      still: () => eink().on,
+    })
 
     this.addAction('audio-lines', 'Read aloud', () => this.reading?.speech.toggle())
     this.addAction('search', 'Search in the book', () => this.openSearch())
@@ -213,6 +226,8 @@ export class BookView extends FileView {
   async onClose(): Promise<void> {
     this.teardown()
     this.stopWatch?.()
+    this.zenChrome?.destroy()
+    this.zenChrome = null
     this.vue?.unmount()
     this.vue = null
     await super.onClose()
@@ -266,7 +281,8 @@ export class BookView extends FileView {
       m.selecting ||
       !!m.commenting ||
       m.settingsOpen ||
-      !!m.footnote
+      !!m.footnote ||
+      (zen().on && !m.zenPeek)
     )
   }
 
@@ -648,6 +664,7 @@ export class BookView extends FileView {
     // A PDF's pages say when they are drawn; another book's fixed pages are drawn as they load.
     if (this.fixed && !this.isPdf) this.reading?.marks.drawPdf(doc, index)
     watchPage(this.pageHost(), doc)
+    doc.addEventListener('keydown', (e) => this.zenEsc(e))
     this.pdfZoom?.watch(doc)
   }
 
@@ -660,7 +677,18 @@ export class BookView extends FileView {
       pdf: this.isPdf,
       fixed: () => this.fixed,
       zoom: (way) => this.zoom(way),
+      middleTap: () => this.zenChrome?.middleTap(),
     }
+  }
+
+  /** Esc leaves zen mode, when the tab has nothing nearer to close. Returns whether it did. */
+  private zenEsc(e: KeyboardEvent): boolean {
+    if (e.key !== 'Escape' || e.defaultPrevented || !zen().on || !escLeavesZen(this.model))
+      return false
+    if (this.containerEl.doc.querySelector('.modal-container, .menu')) return false
+    e.preventDefault()
+    setZen(false)
+    return true
   }
 
   onload(): void {
@@ -677,6 +705,7 @@ export class BookView extends FileView {
         return
       // A dialog over the tab keeps its keys.
       if (!inside && this.containerEl.doc.querySelector('.modal-container')) return
+      if (this.zenEsc(e)) return
       onKey(this.reader, e, inside ? 'tab' : 'app')
     })
     // The tab takes the focus when it comes to the front, so the keys come to it rather than to
@@ -684,6 +713,7 @@ export class BookView extends FileView {
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', (leaf) => {
         if (leaf === this.leaf) this.takeFocus()
+        this.zenChrome?.frontChanged()
       })
     )
   }

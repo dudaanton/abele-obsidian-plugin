@@ -10,6 +10,7 @@
  * module is dropped entirely from the production bundle.
  */
 import { eink, setEink } from '@/reader/eink'
+import { setZen, zen } from '@/reader/zen'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { ChatService } from '@/ai/ChatService'
 import { CommentService } from '@/ai/CommentService'
@@ -163,6 +164,8 @@ interface AbeleTestApi {
     fonts: typeof readerFonts
     /** E-ink mode, this device's: its state, and a way to set it and put it back. */
     eink: { state: typeof eink; set: typeof setEink }
+    /** Zen mode, this device's: its state, and a way to set it and put it back. */
+    zen: { state: typeof zen; set: typeof setZen }
   }
   /** The keyboard diagnostics panel, on or off, without going through the settings. */
   setKeyboardDiagnostics: typeof setKeyboardDiagnostics
@@ -597,6 +600,7 @@ export function exposeTestApi(plugin: Plugin): void {
       openEpub,
       fonts: readerFonts,
       eink: { state: eink, set: setEink },
+      zen: { state: zen, set: setZen },
     },
     plugin,
     viewProbe: null,

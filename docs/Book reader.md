@@ -591,6 +591,43 @@ section **E-ink, on this device**, also in **Settings → Abele → Books**), fr
 with the command **Toggle e-ink mode for books on this device**. Everything it changes is scoped
 to the book tab (the `abele-book_eink` class on its content), except the quick button, which floats over the book from outside it: the app's body carries `abele-eink` while the mode is on, and the button then moves and fades in one step, never translucent. The rest of Obsidian is left as it is.
 
+## Zen mode
+
+Only the book's text on screen (`src/reader/zen.ts` for the state and the rules, `zenChrome.ts`
+for one tab, the look in `BookReader.vue`). The tab's leaf carries `abele-book_zen` while the mode
+is on, and `abele-book_zen-peek` while the chrome is shown for a moment.
+
+- **What goes.** On a computer or a tablet the tab's header is taken out of the layout; on a phone
+  Obsidian's own navigation — its header, its bar under the tabs and the status bar — is hidden
+  the way Obsidian hides it when a note is scrolled down (`app.mobileNavbar.hideNavigation()`, the
+  body's `is-hidden-nav`), and taken out of the layout where the bar does not float. The row
+  under the page is laid over the bottom of the page instead of under it.
+- **The page is laid out once.** Switching the mode changes the page's size, and the engine and
+  `keepMarksOnText` lay it out and draw the marks again as they do for a resized window. Nothing
+  shown later — the header on a peek, the bar for words selected — takes room from the page: they
+  lie over it, so a selection's words never move under the finger.
+- **Getting the chrome back.** On a touch screen a clean tap in the middle of the page (the part
+  that turns no page, `middleTap` in `pageInput.ts`) shows it for `PEEK_MS`, or until the next
+  tap; it stays while a menu or a dialog opened from it is up. On a computer a strip at the top of
+  the tab shows the header while the mouse is on it, the header or the row under the page, and
+  it goes a moment after the mouse leaves them.
+- **Obsidian brings its navigation back by itself** on any press in the app's window and when
+  another tab comes to the front. While this tab is in front in zen mode, a watch on the body's
+  class hides it again; when the tab goes behind, the mode is left or the tab closes, it is given
+  back.
+- **Leaving.** The tab's menu, the command **Toggle zen mode for books on this device** (no
+  default hotkey), or Esc — heard in the tab and on its page — when the tab has nothing nearer to
+  close (words selected, a panel, a dialog).
+- **Selecting.** The row under the page shows for words selected or a highlight tapped, once the
+  finger or the mouse lets go, and while drawing on a PDF.
+- **E-ink.** Obsidian's header and bar move without a transition over a book in zen mode while
+  e-ink mode is on, and the navigation is given back without its animation.
+- The quick button is put away in the mode, except during a peek.
+
+**It is the device's, not the vault's**, for the reason e-ink mode is: kept in Obsidian's local
+storage (`abele-reader-zen`, removed while off), not in the settings, so neither sync nor the
+settings transfer carries it, and it is not in `src/transfer/entries.ts`.
+
 ## The engine
 
 Pages are drawn by [foliate-js](https://github.com/johnfactotum/foliate-js) (MIT), the engine of
