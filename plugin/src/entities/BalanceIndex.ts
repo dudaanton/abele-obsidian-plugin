@@ -7,6 +7,7 @@ import { ref, toRaw } from 'vue'
 import { AccountsList } from './AccountsList'
 import { Transaction } from './Transaction'
 import { TransactionsList } from './TransactionsList'
+import { walletAmount } from './walletAmount'
 
 interface BalanceEntry {
   date: string // YYYY-MM-DD
@@ -80,29 +81,12 @@ export class BalanceIndex {
     otherPath: string | null,
     role: 'from' | 'to'
   ): number {
-    const sign = role === 'from' ? -1 : 1
-    const currency = this.walletCurrency(accountPath)
-    if (!currency) return sign * transaction.amount
-
-    if (transaction.foreignAmount != null && transaction.foreignCurrency === currency) {
-      return sign * transaction.foreignAmount
-    }
-
-    // A move between two wallets in different currencies: the amount is in one of them, and
-    // the other side is only known through foreignAmount. Without it that side has received
-    // (or sent) nothing we can count — reusing the sum in the other currency would credit
-    // dollars as if they were euros.
-    const otherCurrency = this.walletCurrency(otherPath)
-    if (otherCurrency && otherCurrency !== currency) {
-      const holdsAmount = transaction.currency ? transaction.currency === currency : role === 'from'
-      if (holdsAmount) return sign * transaction.amount
-      if (transaction.foreignAmount != null && !transaction.foreignCurrency) {
-        return sign * transaction.foreignAmount
-      }
-      return 0
-    }
-
-    return sign * transaction.amount
+    return walletAmount(
+      transaction,
+      this.walletCurrency(accountPath),
+      this.walletCurrency(otherPath),
+      role
+    )
   }
 
   rebuild(): void {
