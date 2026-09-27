@@ -1,12 +1,8 @@
-import { TFolder } from 'obsidian'
-import type { App, DataAdapter, EventRef, ListedFiles, Stat, TAbstractFile } from 'obsidian'
+import type { App, DataAdapter, ListedFiles, Stat } from 'obsidian'
 import { EngineError, type FileInfo, type FileSystem } from '@abele/sync-core'
 import { caseKey } from '@abele/sync-protocol'
+import { watchVault } from './vaultWatcher'
 
-/** How long the watcher waits for a burst to end before it reports a batch. */
-const WATCH_DEBOUNCE_MS = 300
-/** How long a batch may be held back by a burst that never lets up. */
-const WATCH_MAX_WAIT_MS = 2000
 /** How often the config folder is looked at, since no vault event describes it. */
 const DEFAULT_POLL_MS = 30000
 /**
@@ -189,116 +185,21 @@ export class ObsidianFileSystem implements FileSystem {
    * are the two ways of not waiting for the next tick.
    */
   watch(cb: (paths: string[]) => void): () => void {
-    const pending = new Set<string>()
-    let timer: number | undefined
-    let firstPendingAt = 0
-    let stopped = false
-
-    const fire = (): void => {
-      if (timer !== undefined) window.clearTimeout(timer)
-      timer = undefined
-      firstPendingAt = 0
-      if (stopped || pending.size === 0) return
-      const paths = [...pending]
-      pending.clear()
-      console.debug(`[abele-sync] the vault changed at ${paths.length} path(s)`)
-      try {
-        this.onWatch?.(paths)
-      } catch (error) {
-        console.debug('[abele-sync] the host threw at a batch of changes', error)
-      }
-      try {
-        cb(paths)
-      } catch (error) {
-        // Whoever is listening threw. The batch is spent either way — holding it back would
-        // report the same paths on every tick from here on.
-        console.debug('[abele-sync] a listener threw at a batch of changes', error)
-      }
-    }
-
-    const add = (paths: string[]): void => {
-      if (stopped) return
-      for (const path of paths) if (path !== '') pending.add(path)
-      if (pending.size === 0) return
-      const now = this.now()
-      if (firstPendingAt === 0) firstPendingAt = now
-      // Past the ceiling the running timer is left alone, so a burst that never lets up still
-      // hands over what it has instead of holding everything to the end.
-      if (timer !== undefined && now - firstPendingAt >= WATCH_MAX_WAIT_MS) return
-      if (timer !== undefined) window.clearTimeout(timer)
-      timer = window.setTimeout(fire, WATCH_DEBOUNCE_MS)
-    }
-
-    /** The config folder as it was last seen; null until the first walk has finished. */
-    let seen: Map<string, string> | null = null
-    let walking = false
-    let again = false
-    const poll = async (): Promise<void> => {
-      if (stopped) return
-      // One walk at a time: a `kick` during a walk is answered by the walk after it, which
-      // is the only one that can see what the kick was about.
-      if (walking) {
-        again = true
-        return
-      }
-      walking = true
-      try {
-        do {
-          again = false
-          let taken: Map<string, string>
-          try {
-            taken = await this.configSnapshot()
-          } catch (error) {
-            // A folder that would not be listed is not a reason to say its files are gone.
-            console.debug('[abele-sync] cannot read the settings folder', error)
-            continue
-          }
-          if (stopped) return
-          const before = seen
-          // Written down before anything is reported: a listener that throws must not leave
-          // the watcher holding the old snapshot and reporting the same batch for ever.
-          seen = taken
-          if (before === null) continue
-          const changed = changedBetween(before, taken)
-          if (changed.length > 0) {
-            add(changed)
-            fire()
-          }
-        } while (again)
-      } finally {
-        walking = false
-      }
-    }
-
-    const kick = (): void => void poll()
-
-    const refs: EventRef[] = [
-      this.app.vault.on('create', (file) => add(pathsOf(file))),
-      this.app.vault.on('modify', (file) => add(pathsOf(file))),
-      this.app.vault.on('delete', (file) => add(pathsOf(file))),
-      this.app.vault.on('rename', (file, oldPath) => add(pathsOf(file, oldPath))),
-    ]
-    // Obsidian rewrites its appearance settings and then says the CSS changed; that is the
-    // one moment it tells a plugin anything at all about the config folder. This watcher's
-    // own poll, not `this.kick()`, which is whichever watcher started last.
-    const cssRef = this.app.workspace.on('css-change', kick)
-
-    this.pollNow = kick
-    const ticker = window.setInterval(kick, this.pollMs)
-    // The baseline, so the first tick reports what changed since watching began rather than
-    // every settings file there is.
-    kick()
-    console.debug(`[abele-sync] watching the vault, ${this.configDir} every ${this.pollMs} ms`)
-
+    const watcher = watchVault(
+      {
+        app: this.app,
+        now: this.now,
+        onWatch: this.onWatch,
+        pollMs: this.pollMs,
+        configDir: this.configDir,
+        snapshot: () => this.configSnapshot(),
+      },
+      cb
+    )
+    this.pollNow = watcher.kick
     return () => {
-      stopped = true
-      if (timer !== undefined) window.clearTimeout(timer)
-      timer = undefined
-      window.clearInterval(ticker)
-      for (const ref of refs) this.app.vault.offref(ref)
-      this.app.workspace.offref(cssRef)
-      if (this.pollNow === kick) this.pollNow = null
-      console.debug('[abele-sync] stopped watching the vault')
+      watcher.stop()
+      if (this.pollNow === watcher.kick) this.pollNow = null
     }
   }
 
@@ -573,45 +474,6 @@ export class ObsidianFileSystem implements FileSystem {
     }
     throw new EngineError('conflict', `no free name beside ${to} to rename ${to} through`)
   }
-}
-
-/**
- * Which on-disk paths one vault event is about.
- *
- * Obsidian names the thing that changed and nothing under it, so a folder renamed in the
- * sidebar arrives as one path though it moved every note inside. The children are named
- * here, under both spellings, or the engine would hear about the move and not about the
- * notes until its next full scan. The folder itself goes in too: it stats as nothing, and a
- * batch that holds it is still a reason to look at the vault.
- */
-function pathsOf(file: TAbstractFile, oldPath?: string): string[] {
-  const paths = [file.path]
-  if (oldPath !== undefined) paths.push(oldPath)
-  if (!(file instanceof TFolder)) return paths
-  for (const path of filesUnder(file)) {
-    paths.push(path)
-    // `Notes/Trips/a.md` under `Notes/Trips` renamed from `Trips` is `Trips/a.md`.
-    if (oldPath !== undefined) paths.push(oldPath + path.slice(file.path.length))
-  }
-  return paths
-}
-
-/** Every file below a folder, however deep. A deleted folder may already have none. */
-function filesUnder(folder: TFolder): string[] {
-  const paths: string[] = []
-  for (const child of folder.children) {
-    if (child instanceof TFolder) paths.push(...filesUnder(child))
-    else paths.push(child.path)
-  }
-  return paths
-}
-
-/** What changed between two walks of the config folder: written, added, or gone. */
-function changedBetween(before: Map<string, string>, after: Map<string, string>): string[] {
-  const paths: string[] = []
-  for (const [path, mark] of after) if (before.get(path) !== mark) paths.push(path)
-  for (const path of before.keys()) if (!after.has(path)) paths.push(path)
-  return paths
 }
 
 /** The folder holding `target`; `/` for a file at the root, which is what `list` takes. */
