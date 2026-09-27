@@ -352,6 +352,53 @@ describe('ObsidianFileSystem — moving and removing', () => {
     await expect(fs.remove('never/there.md')).resolves.toBeUndefined()
   })
 
+  /**
+   * A folder another device renamed or emptied stays behind here as an empty tree, and the
+   * folder picker goes on offering it. The daemon's rule: only folders that held the file a
+   * moment ago, only while they are empty, and never one the person left empty themselves.
+   */
+  it('removes the folders a remove or a move emptied, and no other', async () => {
+    const fs = useVault([
+      ...VAULT,
+      { path: 'Burst/deep/a.md', content: 'a', mtime: 1000, ctime: 900 },
+      { path: 'Kept/b.md', content: 'b', mtime: 1000, ctime: 900 },
+      { path: 'Kept/c.md', content: 'c', mtime: 1000, ctime: 900 },
+      { path: 'Moved/d.md', content: 'd', mtime: 1000, ctime: 900 },
+    ])
+    await app.vault.adapter.mkdir('Empty')
+
+    await fs.remove('Burst/deep/a.md')
+    await fs.remove('Kept/b.md')
+    await fs.move('Moved/d.md', 'Elsewhere/d.md')
+
+    expect(await app.vault.adapter.exists('Burst')).toBe(false)
+    expect(await app.vault.adapter.exists('Moved')).toBe(false)
+    expect(app.vault.getAbstractFileByPath('Burst')).toBeNull()
+    expect(await app.vault.adapter.exists('Kept')).toBe(true)
+    expect(await app.vault.adapter.exists('Empty')).toBe(true)
+    expect(await app.vault.adapter.exists('Elsewhere/d.md')).toBe(true)
+  })
+
+  it('leaves an emptied folder that something hidden still holds, and the config folder', async () => {
+    const fs = useVault([
+      { path: 'Notes/a.md', content: 'a', mtime: 1000, ctime: 900 },
+      { path: 'Notes/.DS_Store', content: 'finder', mtime: 1000, ctime: 900 },
+      { path: '.obsidian/app.json', content: '{}', mtime: 1000, ctime: 900 },
+    ])
+    await fs.remove('Notes/a.md')
+    await fs.remove('.obsidian/app.json')
+
+    expect(await app.vault.adapter.exists('Notes')).toBe(true)
+    expect(await app.vault.adapter.exists('.obsidian')).toBe(true)
+  })
+
+  it('leaves the folders alone when a case-only rename keeps the file in them', async () => {
+    const fs = useVault([{ path: 'Notes/board.canvas', content: '{}', mtime: 1000, ctime: 900 }])
+    await fs.move('Notes/board.canvas', 'Notes/Board.canvas')
+    expect(await app.vault.adapter.exists('Notes')).toBe(true)
+    expect(await app.vault.adapter.exists('Notes/Board.canvas')).toBe(true)
+  })
+
   it('refuses to remove a folder', async () => {
     const fs = useVault(VAULT)
     await expect(codeOf(fs.remove('Notes'))).resolves.toBe('conflict')

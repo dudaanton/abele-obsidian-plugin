@@ -152,6 +152,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     await this.makeParents(to)
     await this.rename(from, to)
+    await this.pruneAbove(from)
   }
 
   async remove(path: string): Promise<void> {
@@ -165,6 +166,7 @@ export class ObsidianFileSystem implements FileSystem {
       if ((await this.rawStat(path)) === null) return
       throw new EngineError('io', `cannot remove ${path}`, cause)
     }
+    await this.pruneAbove(path)
   }
 
   async stat(path: string): Promise<FileInfo | null> {
@@ -297,6 +299,36 @@ export class ObsidianFileSystem implements FileSystem {
       this.app.workspace.offref(cssRef)
       if (this.pollNow === kick) this.pollNow = null
       console.debug('[abele-sync] stopped watching the vault')
+    }
+  }
+
+  /**
+   * The folders above a file the engine has just taken away, removed while that has left them
+   * empty — the folder another device renamed or emptied, which Obsidian would otherwise go on
+   * showing here, in the file list and in every folder picker. The daemon's rule: only folders
+   * that held the file a moment ago, so a folder somebody left empty themselves is never
+   * touched; only when the listing shows nothing at all, hidden files included (a `.DS_Store`
+   * is enough to keep one); the first folder that is not empty ends the climb. Never the vault
+   * itself and never the config folder.
+   *
+   * Tidying, not syncing: a folder that would not be listed or removed stays, and says so in
+   * the console, rather than failing a sync whose files all arrived.
+   */
+  private async pruneAbove(path: string): Promise<void> {
+    const segments = path.split('/').slice(0, -1)
+    while (segments.length > 0) {
+      const folder = segments.join('/')
+      if (folder === this.configDir) return
+      try {
+        const listed = await this.adapter.list(folder)
+        if (listed.files.length > 0 || listed.folders.length > 0) return
+        await this.adapter.rmdir(folder, false)
+      } catch (error) {
+        console.debug(`[abele-sync] left the folder ${folder} in place`, error)
+        return
+      }
+      console.debug(`[abele-sync] removed the folder ${folder}, which the sync emptied`)
+      segments.pop()
     }
   }
 

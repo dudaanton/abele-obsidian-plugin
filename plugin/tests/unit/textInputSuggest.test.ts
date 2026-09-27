@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { App } from 'obsidian'
 import { TFile, TFolder } from 'obsidian'
-import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
+import { FilledFolderSuggest, FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
 
 let app: App
 
@@ -114,5 +114,35 @@ describe('refreshing without taking anything', () => {
 
     expect(heard).toHaveBeenCalledTimes(1)
     expect(input.value).toBe('proj')
+  })
+})
+
+/**
+ * The Sync tab's "Skip a folder" picker. An empty folder is one another device renamed or
+ * emptied and this one kept — skipping it skips nothing, and offering it reads as a folder
+ * that still exists everywhere.
+ */
+describe('what the skip-a-folder picker offers', () => {
+  it('offers only folders that hold a file somewhere below them', () => {
+    const root = folder('')
+    const burst = folder('Burst2')
+    const sub = folder('Burst2/sub')
+    const notes = folder('Notes')
+    const deep = folder('Notes/Deep')
+    const note = file('Notes/Deep/one.md')
+    burst.children = [sub]
+    sub.children = []
+    notes.children = [deep]
+    deep.children = [note]
+    root.children = [burst, notes]
+    app = {
+      vault: { getAllLoadedFiles: () => [root, burst, sub, notes, deep, note] },
+    } as unknown as App
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+
+    const suggest = new FilledFolderSuggest(app, input)
+
+    expect(suggest.getSuggestions('').map((f) => f.path)).toEqual(['Notes', 'Notes/Deep'])
   })
 })

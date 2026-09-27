@@ -63,7 +63,7 @@
     <Setting name="Skip a folder" desc="Pick a folder this device should leave alone.">
       <Search
         :model-value="folderToAdd"
-        :suggester="FolderSuggest"
+        :suggester="FilledFolderSuggest"
         placeholder="e.g. Archive/Video"
         @update:model-value="folderToAdd = $event"
       />
@@ -105,7 +105,7 @@ import Button from '../../obsidian/Button.vue'
 import Icon from '../../obsidian/Icon.vue'
 import Search from '../../obsidian/Search.vue'
 import EmptyState from '../../obsidian/EmptyState.vue'
-import { FolderSuggest } from '@/helpers/suggesters/FolderSuggester'
+import { FilledFolderSuggest } from '@/helpers/suggesters/FolderSuggester'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { SyncService, isWireConfigDir } from '@/sync/SyncService'
 

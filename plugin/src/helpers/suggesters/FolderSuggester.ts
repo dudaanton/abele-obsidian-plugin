@@ -31,3 +31,25 @@ export class FolderSuggest extends TextInputSuggest<TFolder> {
     this.applyValue(file.path)
   }
 }
+
+/**
+ * Folders with a file somewhere below them, and not the vault root.
+ *
+ * The Sync tab's "Skip a folder" picker. An empty folder here is most often one another device
+ * renamed or emptied and this one kept from before it tidied such folders away; skipping it
+ * skips nothing, and offering it reads as a folder that still exists everywhere.
+ */
+export class FilledFolderSuggest extends FolderSuggest {
+  getSuggestions(inputStr: string): TFolder[] {
+    return super
+      .getSuggestions(inputStr)
+      .filter((folder) => folder.path !== '' && folder.path !== '/' && holdsAFile(folder))
+  }
+}
+
+/** Whether a file sits anywhere below the folder. */
+function holdsAFile(folder: TFolder): boolean {
+  return (folder.children ?? []).some((child) =>
+    child instanceof TFolder ? holdsAFile(child) : true
+  )
+}
