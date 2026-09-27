@@ -51,7 +51,7 @@
           />
           <Button
             text="Save a file"
-            tooltip="Write the transfer into this vault, to send on however you like"
+            tooltip="Save the transfer as a file outside what syncs, to send on however you like"
             @click="save"
           />
           <Button
@@ -61,6 +61,17 @@
             @click="showing = true"
           />
         </div>
+
+        <!--
+          The clipboard refused — a window that is not focused, or one that may not write it —
+          so the text is put where it can be selected and copied by hand.
+        -->
+        <Input
+          v-if="uncopied"
+          as-text-area
+          class="abele-transfer-send__fallback"
+          :model-value="text"
+        />
 
         <template v-if="showing && frames.length">
           <QrCode :text="frames[index]" :label="`Transfer code ${index + 1} of ${frames.length}`" />
@@ -85,8 +96,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
 import { Notice } from 'obsidian'
+import { platformClipboard } from '@/secrets/clipboard'
+import { platformRoads, saveTransfer, type SavedTo } from '@/transfer/saveFile'
 import ObsidianModal from '../../obsidian/Modal.vue'
 import QrCode from '../../obsidian/QrCode.vue'
 import Button from '../../obsidian/Button.vue'
@@ -163,23 +176,62 @@ const step = (by: number) => {
   cycling.value = false
 }
 
-const copy = async () => {
-  await win().navigator.clipboard.writeText(props.text)
-  new Notice('Transfer copied. Paste it on the other device.')
+/** Set when the clipboard would not take the text: the text is then shown to select by hand. */
+const uncopied = ref(false)
+
+const selectFallback = () => {
+  const field = root.value?.querySelector<HTMLTextAreaElement>('.abele-transfer-send__fallback')
+  field?.focus()
+  field?.select()
 }
 
 /**
- * Saved into the vault rather than downloaded: on a phone there is nowhere else to put it,
- * and the vault folder is somewhere both Finder and Files can reach — which is what makes it
- * something you can hand over, by AirDrop, by sync, or by sending the file itself.
+ * Through Electron's clipboard on the desktop, which does not care whether the window has focus;
+ * the page's clipboard refuses an unfocused one, and on a phone that is the only one there is.
+ */
+const copy = async () => {
+  try {
+    await platformClipboard(win()).write(props.text)
+  } catch (error) {
+    console.debug('[Abele] the clipboard would not take the transfer', error)
+    uncopied.value = true
+    new Notice('Could not copy the text. Select it below and copy it, or save it as a file.')
+    await nextTick()
+    selectFallback()
+    return
+  }
+  new Notice('Transfer copied. Paste it on the other device.')
+}
+
+/** What the person is told once the file has gone somewhere. */
+const savedLine = (saved: SavedTo): string | null => {
+  const open = 'Open it under "Read a transfer" on the other device'
+  if (saved.road === 'disk') return `Saved to ${saved.path}. ${open}.`
+  if (saved.road === 'vault') {
+    return (
+      `Saved as ${saved.path}, in a hidden folder of this vault that Abele Sync does not carry. ` +
+      `${open}, and delete it once it is read.`
+    )
+  }
+  return null
+}
+
+/**
+ * Never into the vault's own files: a transfer can hold a key locked by a short code, or a live
+ * device token, and a sync would carry it to every device and keep it in the server's history.
+ * The desktop's save dialog, then the share sheet, then a hidden folder (`saveFile.ts`).
  */
 const save = async () => {
   const { app } = GlobalStore.getInstance()
-  const path = `Abele transfer ${stamp()}.txt`
-
   try {
-    await app.vault.create(path, props.text)
-    new Notice(`Saved as ${path}. Open it under "Read a transfer" on the other device.`)
+    const saved = await saveTransfer(
+      app,
+      props.text,
+      `Abele transfer ${stamp()}.txt`,
+      platformRoads(win())
+    )
+    const line = savedLine(saved)
+    if (line) new Notice(line)
   } catch (error) {
     new Notice(`Could not save it: ${error instanceof Error ? error.message : error}`)
   }
@@ -267,6 +319,11 @@ onBeforeUnmount(stop)
 .abele-transfer-send__counter {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.abele-transfer-send__fallback {
+  font-family: var(--font-monospace);
+  word-break: break-all;
 }
 
 .abele-transfer-send__hint {

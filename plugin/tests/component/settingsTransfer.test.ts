@@ -16,7 +16,9 @@ import Input from '@/components/obsidian/Input.vue'
 import Checkbox from '@/components/obsidian/Checkbox.vue'
 import Button from '@/components/obsidian/Button.vue'
 import QrCode from '@/components/obsidian/QrCode.vue'
+import { Notice } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { HIDDEN_FOLDER } from '@/transfer/saveFile'
 import { DEFAULT_AI_SETTINGS, type AiSettings } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
@@ -727,15 +729,48 @@ describe('sending without a camera', () => {
     expect(wrapper.text()).toContain('openwebui')
   })
 
-  it('saves it into the vault, under a name a file may have', async () => {
+  it('says so, and offers the text to select, when the clipboard will not take it', async () => {
+    // A window that is not focused: the page's clipboard refuses, and nothing else says so.
+    const writeText = vi
+      .fn()
+      .mockRejectedValue(new DOMException('Document is not focused.', 'NotAllowedError'))
+    Object.defineProperty(window.navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    })
     const modal = await send()
+    Notice.shown.length = 0
+
+    await clickButton(modal, 'Copy the text')
+
+    expect(Notice.shown.join(' ')).toContain('Could not copy the text')
+    const fallback = modal.find('textarea.abele-transfer-send__fallback')
+    expect(fallback.exists()).toBe(true)
+    expect((fallback.element as HTMLTextAreaElement).value).toBe(modal.props('text'))
+  })
+
+  /**
+   * Not into the vault's own files: a transfer can hold a code-locked key or a live device token,
+   * and a sync would carry it to every device and keep it in the server's history. With no save
+   * dialog and no share sheet — as here — it goes into a hidden folder no sync carries.
+   */
+  it('saves it where no sync carries it, under a name a file may have, and says where', async () => {
+    const modal = await send()
+    Notice.shown.length = 0
 
     await clickButton(modal, 'Save a file')
 
-    const saved = app.vault.getFiles().filter((file) => file.path.startsWith('Abele transfer'))
-    expect(saved).toHaveLength(1)
-    expect(saved[0].path).toMatch(/^Abele transfer \d{4}-\d\d-\d\d \d\d-\d\d-\d\d\.txt$/)
-    await expect(app.vault.read(saved[0])).resolves.toBe(modal.props('text'))
+    expect(app.vault.getFiles().filter((file) => file.path.includes('Abele transfer'))).toEqual([])
+    const listed = await app.vault.adapter.list(HIDDEN_FOLDER)
+    expect(listed.files).toHaveLength(1)
+    expect(listed.files[0]).toMatch(
+      new RegExp(
+        `^${HIDDEN_FOLDER}/Abele transfer \\d{4}-\\d\\d-\\d\\d \\d\\d-\\d\\d-\\d\\d\\.txt$`
+      )
+    )
+    const bytes = await app.vault.adapter.readBinary(listed.files[0])
+    expect(new TextDecoder().decode(bytes)).toBe(modal.props('text'))
+    expect(Notice.shown.join(' ')).toContain(listed.files[0])
   })
 })
 
