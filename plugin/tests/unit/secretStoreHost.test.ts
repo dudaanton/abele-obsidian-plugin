@@ -95,6 +95,34 @@ describe('the plugin’s secrets', () => {
     ).toEqual(['abele-sync-device-1'])
   })
 
+  /** A token kept to tell a server a device left is this device's as much as the live one. */
+  it('names the tokens waiting to be revoked as this device’s own too', () => {
+    const local = new Map<string, unknown>()
+    local.set(CONNECTION_KEY, {
+      ...emptyConnection(),
+      deviceTokenId: 'abele-sync-device-1',
+      pendingRevoke: [
+        {
+          serverUrl: 'https://sync.example.com',
+          deviceId: 'd0',
+          deviceName: 'Old laptop',
+          tokenId: 'abele-sync-device-revoke-0',
+          since: '2026-09-01T00:00:00.000Z',
+        },
+      ],
+      migrated: true,
+    })
+    const storage = {
+      loadLocalStorage: (key: string) => local.get(key) ?? null,
+      saveLocalStorage: (key: string, value: unknown) => void local.set(key, value),
+    }
+
+    expect(deviceOnlySecretIds(storage)).toEqual([
+      'abele-sync-device-1',
+      'abele-sync-device-revoke-0',
+    ])
+  })
+
   it('names no id to the store as this device’s own that is not a sync device token', () => {
     // Named as device-only, the store would drop the search key and no device would get it.
     expect(deviceOnlySecretIds(connectedUnder('abele-brave-search'))).toEqual([])

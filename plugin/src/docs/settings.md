@@ -246,8 +246,10 @@ is paused, and what of the vault it takes — the kinds of attachment, the folde
 cap, which parts of the config folder travel — are kept in Obsidian's local storage for this vault
 (see the vault reference), because `data.json` is exactly what a copy of the vault or a transfer
 hands to another device. They are changed on the Sync tab: signing in sets the connection,
-**Disconnect** and **Forget** clear it, and the switches under **What this device syncs** change
-what it takes. A `data.json` that still names a server or a vault — written by an older version of
+**Disconnect** and **Forget** clear it — and tell the server to stop accepting this device, so
+connecting again needs the password — and the switches under **What this device syncs** change
+what it takes. A transfer can also set it: its **Sync connection** section, sent with keys, gives
+the other device a device of its own on the same vault. A `data.json` that still names a server or a vault — written by an older version of
 Abele — has those fields dropped when it is read, and they are never written back.
 
 The server address is an https one, or plain http to a server on this device (`localhost`,

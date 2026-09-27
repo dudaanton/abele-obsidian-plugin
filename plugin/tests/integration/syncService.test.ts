@@ -953,7 +953,15 @@ describe('SyncService — one ledger per local vault', () => {
 
 /** A `data.json` as a build before the move wrote it: the connection inside the sync block. */
 const olderDataJson = (connection: DeviceConnection): Record<string, unknown> => {
-  const { migrated: _migrated, ...block } = connection
+  // An older build knew none of the fields added since: the vault's name, the enrolment address
+  // and the revokes still waiting.
+  const {
+    migrated: _migrated,
+    vaultName: _name,
+    enrolledUrl: _enrolled,
+    pendingRevoke: _pending,
+    ...block
+  } = connection
   return {
     ...AbeleConfig.getInstance().exportSettings(),
     sync: { ...block, keySignature: null },
@@ -1139,7 +1147,8 @@ describe('SyncService — moving the connection out of data.json', () => {
   async function olderDevice(): Promise<{ file: Record<string, unknown>; held: DeviceConnection }> {
     await connect()
     await synced()
-    const held = { ...conn() }
+    // An older build never learned what the vault is called.
+    const held = { ...conn(), vaultName: '' }
     await service.destroy()
     app.saveLocalStorage(CONNECTION_KEY, null)
     service = SyncService.getInstance()

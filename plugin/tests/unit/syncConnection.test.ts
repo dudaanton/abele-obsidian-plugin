@@ -322,3 +322,92 @@ describe('moving the connection out of data.json', () => {
     })
   })
 })
+
+/**
+ * What a Disconnect that could not reach the server leaves behind, and where the device was
+ * enrolled: both are read back defensively, like the rest of the record, because the retry
+ * sends the token under each entry's id to the address the entry names.
+ */
+describe('the fields a Disconnect relies on', () => {
+  const pending = {
+    serverUrl: 'https://sync.example.com',
+    deviceId: 'd1',
+    deviceName: 'Laptop',
+    tokenId: 'abele-sync-device-revoke-abc',
+    since: '2026-09-01T00:00:00.000Z',
+  }
+
+  it('reads back the vault name, the enrolment address and what is waiting to be told', () => {
+    const local = storage()
+    const record = {
+      ...connected(),
+      vaultName: 'Home',
+      enrolledUrl: 'https://sync.example.com',
+      pendingRevoke: [pending],
+    }
+
+    writeConnection(local, record)
+
+    expect(readConnection(local)).toEqual(record)
+  })
+
+  it('starts with no vault name, no enrolment address and nothing waiting', () => {
+    expect(emptyConnection()).toMatchObject({ vaultName: '', enrolledUrl: '', pendingRevoke: [] })
+  })
+
+  it('takes the server address as the enrolment address of a record written before it', () => {
+    const { enrolledUrl: _gone, ...older } = { ...connected(), enrolledUrl: 'x' }
+    const local = storage({ [CONNECTION_KEY]: older })
+
+    expect(readConnection(local).enrolledUrl).toBe('https://sync.example.com')
+    // Said out loud as empty, it stays empty: that record knows it was never enrolled.
+    const empty = storage({ [CONNECTION_KEY]: { ...connected(), enrolledUrl: '' } })
+    expect(readConnection(empty).enrolledUrl).toBe('')
+  })
+
+  it('keeps only waiting entries filed under a revoke id, with every field a string', () => {
+    const local = storage({
+      [CONNECTION_KEY]: {
+        ...connected(),
+        pendingRevoke: [
+          pending,
+          { ...pending, tokenId: 'abele-sync-device-abc' },
+          { ...pending, tokenId: 'abele-brave-search' },
+          { ...pending, tokenId: 'abele-sync-device-revoke-def', serverUrl: 42 },
+          'nonsense',
+          null,
+        ],
+      },
+    })
+
+    const { connection, damaged } = inspectConnection(local)
+
+    expect(connection.pendingRevoke).toEqual([pending])
+    expect(damaged).toContain('pendingRevoke')
+  })
+
+  it('reads a waiting entry with no readable date as long overdue, so it is given up', () => {
+    const local = storage({
+      [CONNECTION_KEY]: { ...connected(), pendingRevoke: [{ ...pending, since: 'soon' }] },
+    })
+
+    expect(readConnection(local).pendingRevoke[0].since).toBe(new Date(0).toISOString())
+  })
+
+  it('records the address the moved connection was enrolled with', () => {
+    const local = storage({ [LEDGER_KEY]: { stateId: 'state-1', vaultId: 'v1' } })
+
+    migrateConnection(
+      local,
+      {
+        serverUrl: 'https://sync.example.com',
+        vaultId: 'v1',
+        deviceId: 'd1',
+        deviceTokenId: 'abele-sync-device-abc',
+      },
+      () => true
+    )
+
+    expect(readConnection(local).enrolledUrl).toBe('https://sync.example.com')
+  })
+})

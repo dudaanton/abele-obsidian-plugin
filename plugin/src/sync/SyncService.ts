@@ -28,6 +28,7 @@ import {
   type DeviceConnection,
 } from './connection'
 import { Enrolment, type ConnectionPatch, type VaultChoice } from './enrolment'
+import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer/connection'
 import { readLedgerId, writeLedgerId, type LedgerId, type LocalStorage } from './ledgerId'
 import {
   IGNORE_FILE,
@@ -265,6 +266,7 @@ export class SyncService {
       await pending
       await this.reconcile()
     })
+    void this.retryPendingRevokes()
   }
 
   /**
@@ -562,6 +564,35 @@ export class SyncService {
   /** Disconnect and throw away the ledger and the keychain name: see `Enrolment.forget`. */
   forget(): Promise<void> {
     return this.enrolment.forget()
+  }
+
+  /** Tell the servers of devices this one left offline, now: see `Revoker.retry`. */
+  retryPendingRevokes(): Promise<void> {
+    return this.enrolment.revoker.retry()
+  }
+
+  /** Stop waiting to tell a server that a device left: see `Revoker.forget`. */
+  forgetPendingRevoke(tokenId: string): void {
+    this.enrolment.revoker.forget(tokenId)
+  }
+
+  /** Have the server make a device for a transfer to hand over: see `Enrolment.enrolSibling`. */
+  enrolSibling(name: string): Promise<Sibling> {
+    return this.enrolment.enrolSibling(name)
+  }
+
+  /** Take the connection a transfer brought: see `Enrolment.adoptTransferred`. */
+  adoptTransferred(
+    arrived: TransferredConnection,
+    token: string,
+    selective: SharedSelective
+  ): Promise<void> {
+    return this.enrolment.adoptTransferred(arrived, token, selective)
+  }
+
+  /** Tell the server a device made for a transfer is not needed: see `Enrolment`. */
+  revokeTransferred(arrived: TransferredConnection, token: string): Promise<void> {
+    return this.enrolment.revokeTransferred(arrived, token)
   }
 
   /**

@@ -1,49 +1,84 @@
 <template>
   <ObsidianModal title="Send to another device" @close="emit('close')">
     <div ref="root" class="abele-transfer-send">
-      <div v-if="code" class="abele-transfer-send__code">
-        <div class="abele-transfer-send__code-label">Type this on the other device</div>
-        <div class="abele-transfer-send__code-value">{{ code }}</div>
-      </div>
-
-      <p class="abele-transfer-send__hint">{{ advice }}</p>
-
-      <div class="abele-transfer-send__roads">
+      <!--
+        Before the codes, when the sync connection is going with keys: the server is to make a
+        device for the other side, and the device list will show it under this name. Asked here,
+        at the moment the codes are made, so the device is made once — not on every tick.
+      -->
+      <template v-if="naming">
+        <Setting
+          name="Name for the other device"
+          desc="The server makes a device of its own for it, and the vault's device list shows it under this name."
+        >
+          <Input
+            :model-value="name"
+            placeholder="Other device"
+            @update:model-value="name = $event"
+          />
+        </Setting>
+        <p v-if="busy" class="abele-transfer-send__hint">
+          Asking the server for a device of its own for the other side…
+        </p>
         <Button
-          text="Copy the text"
-          :accent="!showing"
-          tooltip="Copy the whole transfer, to paste on the other device"
-          @click="copy"
+          text="Make the codes"
+          accent
+          :disabled="busy || !name.trim()"
+          :tooltip="
+            name.trim()
+              ? 'Have the server make the other device, and show the codes'
+              : 'Give the other device a name first'
+          "
+          @click="emit('named', name.trim())"
         />
-        <Button
-          text="Save a file"
-          tooltip="Write the transfer into this vault, to send on however you like"
-          @click="save"
-        />
-        <Button
-          v-if="!showing"
-          text="Show the codes"
-          :tooltip="`Show the transfer as ${frames.length === 1 ? 'a QR code' : `${frames.length} QR codes`}`"
-          @click="showing = true"
-        />
-      </div>
+      </template>
 
-      <template v-if="showing">
-        <QrCode :text="frames[index]" :label="`Transfer code ${index + 1} of ${frames.length}`" />
+      <template v-else>
+        <div v-if="code" class="abele-transfer-send__code">
+          <div class="abele-transfer-send__code-label">Type this on the other device</div>
+          <div class="abele-transfer-send__code-value">{{ code }}</div>
+        </div>
 
-        <div v-if="frames.length > 1" class="abele-transfer-send__series">
-          <Icon icon="chevron-left" with-bg tooltip="Previous code" @click="step(-1)" />
-          <span class="abele-transfer-send__counter">{{ index + 1 }} / {{ frames.length }}</span>
-          <Icon icon="chevron-right" with-bg tooltip="Next code" @click="step(1)" />
-          <Icon
-            :icon="cycling ? 'pause' : 'play'"
-            with-bg
-            :tooltip="
-              cycling ? 'Stop moving through the codes' : 'Move through the codes on their own'
-            "
-            @click="cycling = !cycling"
+        <p v-if="note" class="abele-transfer-send__hint">{{ note }}</p>
+        <p class="abele-transfer-send__hint">{{ advice }}</p>
+
+        <div class="abele-transfer-send__roads">
+          <Button
+            text="Copy the text"
+            :accent="!showing"
+            tooltip="Copy the whole transfer, to paste on the other device"
+            @click="copy"
+          />
+          <Button
+            text="Save a file"
+            tooltip="Write the transfer into this vault, to send on however you like"
+            @click="save"
+          />
+          <Button
+            v-if="!showing"
+            text="Show the codes"
+            :tooltip="`Show the transfer as ${frames.length === 1 ? 'a QR code' : `${frames.length} QR codes`}`"
+            @click="showing = true"
           />
         </div>
+
+        <template v-if="showing && frames.length">
+          <QrCode :text="frames[index]" :label="`Transfer code ${index + 1} of ${frames.length}`" />
+
+          <div v-if="frames.length > 1" class="abele-transfer-send__series">
+            <Icon icon="chevron-left" with-bg tooltip="Previous code" @click="step(-1)" />
+            <span class="abele-transfer-send__counter">{{ index + 1 }} / {{ frames.length }}</span>
+            <Icon icon="chevron-right" with-bg tooltip="Next code" @click="step(1)" />
+            <Icon
+              :icon="cycling ? 'pause' : 'play'"
+              with-bg
+              :tooltip="
+                cycling ? 'Stop moving through the codes' : 'Move through the codes on their own'
+              "
+              @click="cycling = !cycling"
+            />
+          </div>
+        </template>
       </template>
     </div>
   </ObsidianModal>
@@ -56,18 +91,32 @@ import ObsidianModal from '../../obsidian/Modal.vue'
 import QrCode from '../../obsidian/QrCode.vue'
 import Button from '../../obsidian/Button.vue'
 import Icon from '../../obsidian/Icon.vue'
+import Input from '../../obsidian/Input.vue'
+import Setting from '../../obsidian/Setting.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 
-const props = defineProps<{
-  /** The transfer cut for a camera, one code at a time. */
-  frames: string[]
-  /** The same transfer in one piece, for the roads that are not a picture. */
-  text: string
-  /** The one-time code, when the transfer carries a key. */
-  code?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    /** The transfer cut for a camera, one code at a time. */
+    frames?: string[]
+    /** The same transfer in one piece, for the roads that are not a picture. */
+    text?: string
+    /** The one-time code, when the transfer carries a key. */
+    code?: string
+    /** Ask for the other device's name first; the parent makes the codes once it has one. */
+    naming?: boolean
+    /** The parent is asking the server for the other device. */
+    busy?: boolean
+    /** Something about what went, said above the advice: the sync connection's fate, today. */
+    note?: string
+  }>(),
+  { frames: () => [], text: '', code: undefined, naming: false, busy: false, note: '' }
+)
 
-const emit = defineEmits<{ (e: 'close'): void }>()
+const emit = defineEmits<{ (e: 'close'): void; (e: 'named', name: string): void }>()
+
+/** GUESS-7: the name offered is a plain one; the person is expected to make it theirs. */
+const name = ref('Other device')
 
 const root = useTemplateRef<HTMLElement>('root')
 const index = ref(0)
@@ -86,6 +135,16 @@ const WORTH_PHOTOGRAPHING = 6
 
 const showing = ref(props.frames.length <= WORTH_PHOTOGRAPHING)
 const cycling = ref(props.frames.length > 1)
+
+// The codes arrive after the name when there was one to ask for.
+watch(
+  () => props.frames.length,
+  (count) => {
+    index.value = 0
+    showing.value = count <= WORTH_PHOTOGRAPHING
+    cycling.value = count > 1
+  }
+)
 
 const advice = computed(() => {
   const tail = props.code ? ' The code above unlocks it on the other side.' : ''

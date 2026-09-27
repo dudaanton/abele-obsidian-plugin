@@ -84,6 +84,11 @@
         >
           <Checkbox :is-enabled="accepted.has(id(item))" @toggle="toggle(item)" />
           <span class="abele-transfer-scan__entry-name">{{ item.entry.label }}</span>
+          <span
+            v-if="isConnection(item) && connectionNote"
+            class="abele-transfer-scan__entry-note"
+            >{{ connectionNote }}</span
+          >
           <span class="abele-transfer-scan__entry-section">{{ label(item.entry.section) }}</span>
           <Badge :text="statusWord(item.status)" />
         </div>
@@ -102,6 +107,17 @@
           />
         </Setting>
       </template>
+
+      <ConfirmModal
+        v-if="switching"
+        title="Switch this device to another vault?"
+        :message="switchMessage"
+        confirm-text="Switch"
+        confirm-tooltip="Disconnect from the vault this device syncs now, and take the one that arrived"
+        cancel-tooltip="Apply the rest of the transfer and keep syncing what this device syncs now"
+        @confirm="switchConfirmed = true"
+        @close="closeSwitch"
+      />
     </div>
   </ObsidianModal>
 </template>
@@ -115,8 +131,11 @@ import Checkbox from '../../obsidian/Checkbox.vue'
 import Badge from '../../obsidian/Badge.vue'
 import Setting from '../../obsidian/Setting.vue'
 import Dropdown from '../../obsidian/Dropdown.vue'
+import ConfirmModal from '../../obsidian/ConfirmModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ScriptService } from '@/scripting/ScriptService'
+import { SyncService } from '@/sync/SyncService'
+import { CONNECTION_SECTION, matchConnection, readTransferred } from '@/transfer/connection'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { createReceiver } from '@/transfer/frames'
 import { decodePayload, isEncrypted } from '@/transfer/payload'
@@ -142,6 +161,8 @@ export interface Applied {
   keysRefused: number
   /** Files the vault would not take — a path it refuses, or a folder it cannot make. */
   filesRefused: number
+  /** What became of the sync connection, when one arrived: a line to say, or nothing. */
+  connection?: string
 }
 
 const emit = defineEmits<{ (e: 'close'): void; (e: 'applied', result: Applied): void }>()
@@ -224,7 +245,7 @@ const accept = async (opened: TransferPayload) => {
     scriptsFolder()
   )
   payload.value = opened
-  accepted.value = new Set(planned.value.map((item) => id(item)))
+  accepted.value = new Set(planned.value.filter(tickedAtFirst).map((item) => id(item)))
   phase.value = 'review'
 }
 
@@ -253,12 +274,67 @@ const reset = () => {
 
 const settings = () => AbeleConfig.getInstance().exportSettings()
 
+/* ------------------------------------------------------------------ the sync connection */
+
+const syncService = SyncService.getInstance()
+
+/** The connection a transfer carries, read the way a receiver may take it (`connection.ts`). */
+const arrived = computed(() => {
+  const entry = payload.value?.entries.find((item) => item.section === CONNECTION_SECTION)
+  return entry ? readTransferred(entry, payload.value?.secrets ?? {}) : null
+})
+
+/**
+ * How it stands to this device: `kept` when only what the sender syncs came — no device for this
+ * side — and this device syncs something of its own already.
+ */
+const standing = computed<'none' | 'same' | 'other' | 'kept' | null>(() => {
+  const got = arrived.value
+  if (got === null) return null
+  if (got.connection !== null) return matchConnection(syncService.connection.value, got.connection)
+  const own = syncService.connection.value
+  return own.serverUrl === '' && own.vaultId === '' ? 'none' : 'kept'
+})
+
+const isConnection = (item: PlannedEntry) => item.entry.section === CONNECTION_SECTION
+
+/** Nothing to choose: the device already syncs that vault, or keeps its own choices. */
+const fixed = (item: PlannedEntry) =>
+  isConnection(item) && (standing.value === 'same' || standing.value === 'kept')
+
+const connectionNote = computed(() => {
+  if (standing.value === 'same') return 'Already connected to this vault'
+  if (standing.value === 'other') return "Replaces this device's own connection"
+  if (standing.value === 'kept') return 'This device keeps what it syncs'
+  if (arrived.value?.connection === null) return 'What to sync only; sign in on the Sync tab'
+  return ''
+})
+
+const switching = ref(false)
+const switchConfirmed = ref(false)
+
+const switchMessage = computed(() => {
+  const own = syncService.connection.value
+  const here = own.vaultName || own.vaultId
+  const there = arrived.value?.connection
+  const name = there ? there.vaultName || there.vaultId : ''
+  return (
+    `This device syncs ${here} on ${own.serverUrl}. Switch it to ${name}? It will be ` +
+    `disconnected from ${here}, and the server there will be told.`
+  )
+})
+
 const planned = computed<PlannedEntry[]>(() => {
   const entries = payload.value?.entries
   if (!entries) return []
 
   return [
-    ...planEntries(entries, settings()),
+    ...planEntries(entries, settings()).map((item) => {
+      if (!isConnection(item)) return item
+      const status =
+        standing.value === 'other' ? 'replace' : standing.value === 'none' ? 'new' : 'same'
+      return { ...item, status } as PlannedEntry
+    }),
     ...planFiles(filesOnly(entries), current.value, scriptsFolder()),
   ]
 })
@@ -267,7 +343,14 @@ const id = (item: PlannedEntry) => `${item.entry.section}:${item.entry.id}`
 
 const accepted = ref(new Set<string>())
 
+/**
+ * Ticked to start with: everything but a connection that would replace this device's own —
+ * that one is the person's to tick — or one there is nothing to do with.
+ */
+const tickedAtFirst = (item: PlannedEntry) => !isConnection(item) || standing.value === 'none'
+
 const toggle = (item: PlannedEntry) => {
+  if (fixed(item)) return
   const next = new Set(accepted.value)
   if (!next.delete(id(item))) next.add(id(item))
   accepted.value = next
@@ -331,10 +414,63 @@ const swallow = async (text: string) => {
   return any
 }
 
+/**
+ * Taking a connection that replaces this device's own is asked about first; everything else
+ * goes at once. The connection is taken last, after the settings and files are written, so a
+ * failure to take it costs nothing else.
+ */
 const apply = async () => {
   if (!payload.value) return
+  const takingConnection = acceptedEntries.value.some(
+    (entry) => entry.section === CONNECTION_SECTION
+  )
+  if (takingConnection && standing.value === 'other') {
+    switchConfirmed.value = false
+    switching.value = true
+    return
+  }
+  await finish(takingConnection)
+}
 
-  const chosen = acceptedEntries.value
+const closeSwitch = () => {
+  switching.value = false
+  void finish(switchConfirmed.value)
+}
+
+/**
+ * The connection's part of an apply. A device made for this side that is not taken — the vault
+ * is already synced here, or the person chose not to — is revoked, so the server keeps no device
+ * nobody holds. Only what the sender syncs, with no device, is a starting point for a device that
+ * syncs nothing yet.
+ */
+const applyConnection = async (take: boolean): Promise<string | undefined> => {
+  const got = arrived.value
+  if (got === null) return undefined
+  if (got.connection === null) {
+    if (!take || standing.value !== 'none') return undefined
+    const own = syncService.connection.value
+    await syncService.updateConnection({
+      selective: { ...got.selective, maxFileBytes: own.selective.maxFileBytes },
+    })
+    return 'What to sync is set; sign in on the Sync tab to start.'
+  }
+  if (take && (standing.value === 'none' || standing.value === 'other')) {
+    try {
+      await syncService.adoptTransferred(got.connection, got.token, got.selective)
+      return `This device now syncs ${got.connection.vaultName || got.connection.vaultId}.`
+    } catch (error) {
+      void syncService.revokeTransferred(got.connection, got.token)
+      return `The sync connection was not taken: ${error instanceof Error ? error.message : String(error)}`
+    }
+  }
+  void syncService.revokeTransferred(got.connection, got.token)
+  return undefined
+}
+
+const finish = async (takeConnection: boolean) => {
+  if (!payload.value) return
+
+  const chosen = acceptedEntries.value.filter((entry) => entry.section !== CONNECTION_SECTION)
   const config = AbeleConfig.getInstance()
   let incomingKeyIds: string[]
   try {
@@ -363,10 +499,13 @@ const apply = async () => {
   // with them rather than the one this vault had a moment ago.
   const files = await applyFiles(GlobalStore.getInstance().app, filesOnly(chosen), scriptsFolder())
 
+  const connection = await applyConnection(takeConnection)
+
   emit('applied', {
     items: settingsOnly(chosen).length + files.written,
     keysRefused,
     filesRefused: files.failed.length,
+    connection,
   })
 }
 
@@ -565,6 +704,11 @@ onBeforeUnmount(stopCamera)
 .abele-transfer-scan__entry-name {
   color: var(--text-normal);
   overflow-wrap: anywhere;
+}
+
+.abele-transfer-scan__entry-note {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
 }
 
 .abele-transfer-scan__entry-section {

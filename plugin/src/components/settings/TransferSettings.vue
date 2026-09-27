@@ -18,7 +18,11 @@
           <Button
             v-if="group.entries.length > 1"
             :text="allChosen(group) ? 'Clear' : 'Select all'"
-            :tooltip="allChosen(group) ? `Send none of the ${group.label.toLowerCase()}` : `Send all of the ${group.label.toLowerCase()}`"
+            :tooltip="
+              allChosen(group)
+                ? `Send none of the ${group.label.toLowerCase()}`
+                : `Send all of the ${group.label.toLowerCase()}`
+            "
             @click="toggleGroup(group)"
           />
         </Setting>
@@ -69,7 +73,10 @@
       title="Receive from another device"
       desc="Read the codes the other device is showing. Nothing is written until you have seen what arrived."
     >
-      <Setting name="Read a transfer" desc="Camera, a photo of the code, a file, or the text itself.">
+      <Setting
+        name="Read a transfer"
+        desc="Camera, a photo of the code, a file, or the text itself."
+      >
         <Button
           text="Scan"
           tooltip="Read a transfer from another device"
@@ -86,11 +93,15 @@
     />
 
     <TransferSendModal
-      v-if="sending"
-      :frames="sending.frames"
-      :text="sending.text"
-      :code="sending.code"
-      @close="sending = null"
+      v-if="sending || naming"
+      :frames="sending?.frames"
+      :text="sending?.text"
+      :code="sending?.code"
+      :note="sending?.note"
+      :naming="naming && !sending"
+      :busy="minting"
+      @named="onNamed"
+      @close="closeSend"
     />
 
     <TransferScanModal v-if="scanning" @close="scanning = false" @applied="onApplied" />
@@ -117,6 +128,13 @@ import TransferScanModal, { type Applied } from './transfer/TransferScanModal.vu
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { collectEntries, buildPayload, needsCode, sectionLabel } from '@/transfer/entries'
+import {
+  CONNECTION_SECTION,
+  connectionEntry,
+  withSibling,
+  withoutConnection,
+} from '@/transfer/connection'
+import { SyncService } from '@/sync/SyncService'
 import { collectFiles } from '@/transfer/files'
 import { encodePayload, newTransferCode } from '@/transfer/payload'
 import { toFrames, toText, newTransferId, FRAME_PAYLOAD_BYTES } from '@/transfer/frames'
@@ -144,7 +162,22 @@ onMounted(async () => {
   fileEntries.value = await collectFiles(app, AbeleConfig.getInstance().ai.scriptsFolder || '')
 })
 
-const entries = computed(() => [...settingsEntries.value, ...fileEntries.value])
+const sync = SyncService.getInstance()
+
+/**
+ * The sync connection, when this device has one: where it syncs and what it takes. Not a setting
+ * — it lives in the vault's local storage — so it is read from the service, not `collectEntries`.
+ */
+const connectionEntries = computed(() => {
+  const entry = connectionEntry(sync.connection.value)
+  return entry === null ? [] : [entry]
+})
+
+const entries = computed(() => [
+  ...settingsEntries.value,
+  ...connectionEntries.value,
+  ...fileEntries.value,
+])
 
 const key = (entry: TransferEntry) => `${entry.section}:${entry.id}`
 
@@ -197,6 +230,16 @@ const details = (entry: TransferEntry): string[] => {
   if (!data || typeof data !== 'object') return []
 
   const facts: string[] = []
+  if (entry.section === CONNECTION_SECTION) {
+    const where = data as { serverUrl?: string; vaultName?: string; vaultId?: string }
+    facts.push(`${where.vaultName || where.vaultId} on ${where.serverUrl}`)
+    facts.push(
+      withKeys.value
+        ? 'The other device gets a device of its own on the server'
+        : 'Without keys, only what this device syncs goes; the other device signs in itself'
+    )
+    return facts
+  }
   if (isFileSection(entry.section)) {
     const file = entry.data as TransferFile
     facts.push(file.base ? `${file.base}/${file.path}` : file.path)
@@ -265,19 +308,81 @@ const previewing = ref(false)
 /** Exactly what would go, built the same way the codes are — keys included or not. */
 const preview = computed(() => buildPayload(picked.value, reader()))
 
-const sending = ref<{ frames: string[]; text: string; code?: string } | null>(null)
+const sending = ref<{ frames: string[]; text: string; code?: string; note?: string } | null>(null)
 const scanning = ref(false)
+/** The send dialog is asking what the other device is to be called. */
+const naming = ref(false)
+/** The server is being asked for that device. */
+const minting = ref(false)
 
+const isConnection = (entry: TransferEntry) => entry.section === CONNECTION_SECTION
+
+/**
+ * The sync connection going with keys needs a device made for the other side, and that needs
+ * its name: the dialog asks first, and `onNamed` makes the codes. Anything else goes at once —
+ * the connection among it with no device in it, since without keys there is no token to send.
+ */
 const show = async () => {
-  const payload = buildPayload(picked.value, reader())
+  if (withKeys.value && picked.value.some(isConnection)) {
+    naming.value = true
+    return
+  }
+  const note = picked.value.some(isConnection)
+    ? 'Keys are left behind, so the other device gets what this one syncs and signs in itself.'
+    : undefined
+  await pack(
+    picked.value.map((entry) => (isConnection(entry) ? withoutConnection(entry) : entry)),
+    {},
+    note
+  )
+}
+
+/**
+ * Ask the server for the other side's device, once — a lost answer is a device nobody holds the
+ * token of, and asking again would make a second one. When it cannot be had the connection goes
+ * without it, and the dialog says why.
+ */
+const onNamed = async (name: string) => {
+  minting.value = true
+  let extra: Record<string, string> = {}
+  let note: string
+  let chosen: TransferEntry[]
+  try {
+    const sibling = await sync.enrolSibling(name)
+    chosen = picked.value.map((entry) => {
+      if (!isConnection(entry)) return entry
+      const made = withSibling(entry, sibling)
+      extra = made.secrets
+      return made.entry
+    })
+    note = `The server made a device called ${sibling.deviceName} for the other side.`
+  } catch (error) {
+    chosen = picked.value.map((entry) => (isConnection(entry) ? withoutConnection(entry) : entry))
+    note =
+      'This device could not reach the server, so the other device will sign in itself. ' +
+      `(${error instanceof Error ? error.message : String(error)})`
+  } finally {
+    minting.value = false
+  }
+  await pack(chosen, extra, note)
+}
+
+const pack = async (chosen: TransferEntry[], extra: Record<string, string>, note?: string) => {
+  const payload = buildPayload(chosen, reader())
+  Object.assign(payload.secrets, extra)
   const code = needsCode(payload) ? newTransferCode() : undefined
   const blob = await encodePayload(payload, code)
 
   const id = newTransferId()
-  sending.value = { frames: toFrames(blob, id), text: toText(blob, id), code }
+  sending.value = { frames: toFrames(blob, id), text: toText(blob, id), code, note }
 }
 
-const onApplied = ({ items, keysRefused, filesRefused }: Applied) => {
+const closeSend = () => {
+  sending.value = null
+  naming.value = false
+}
+
+const onApplied = ({ items, keysRefused, filesRefused, connection }: Applied) => {
   scanning.value = false
 
   const parts = [`Applied ${plural(items, 'item')}.`]
@@ -287,6 +392,7 @@ const onApplied = ({ items, keysRefused, filesRefused }: Applied) => {
     )
   }
   if (filesRefused) parts.push(`${plural(filesRefused, 'file')} could not be written.`)
+  if (connection) parts.push(connection)
 
   new Notice(parts.join(' '))
 }

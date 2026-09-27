@@ -30,6 +30,7 @@ export const TRANSFER_SECTIONS = [
   'quick-button',
   'linter',
   'sync',
+  'connection',
   'other',
 ] as const
 
@@ -46,6 +47,13 @@ export const FILE_SECTION_LABELS: Record<(typeof FILE_SECTIONS)[number], string>
 
 export const isFileSection = (section: SectionId): boolean =>
   (FILE_SECTIONS as readonly string[]).includes(section)
+
+/**
+ * The sections built from something other than the settings: the files, and the device's sync
+ * connection (`connection.ts`), which lives in the vault's local storage.
+ */
+export const isSpecialSection = (section: SectionId): boolean =>
+  isFileSection(section) || section === 'connection'
 
 /**
  * One thing that can travel on its own: a provider, an agent, a link — or a whole block of

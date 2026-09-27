@@ -23,7 +23,7 @@ import type { AbeleSettings } from '@/services/AbeleConfig'
 import { DEFAULT_READER_SETTINGS } from '@/reader/settings'
 import type { AiSettings } from '@/ai/types'
 import { createAgent } from '@/ai/agents/types'
-import { TRANSFER_SECTIONS, isFileSection, type TransferEntry } from '@/transfer/types'
+import { TRANSFER_SECTIONS, isSpecialSection, type TransferEntry } from '@/transfer/types'
 import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
 import { defaultSyncSettings } from '@/sync/settings'
 
@@ -152,11 +152,12 @@ describe('what the sending side offers', () => {
    * A guard on the list itself. Every section the screen offers has to be described here, so a
    * new one added to `TRANSFER_SECTIONS` without a section to read it is a failure rather than
    * a group that quietly never appears. File sections are the exception: their entries are
-   * built by `files.ts` from the vault, not from the settings.
+   * built by `files.ts` from the vault, not from the settings — and so is the sync connection,
+   * built by `transfer/connection.ts` from the device's own record.
    */
   it('describes every section the screen offers', () => {
     const described = new Set(SECTIONS.map((section) => section.id))
-    const missing = TRANSFER_SECTIONS.filter((id) => !isFileSection(id) && !described.has(id))
+    const missing = TRANSFER_SECTIONS.filter((id) => !isSpecialSection(id) && !described.has(id))
 
     expect(missing).toEqual([])
   })

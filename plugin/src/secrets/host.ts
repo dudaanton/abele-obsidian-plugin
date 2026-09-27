@@ -45,7 +45,12 @@ export function deviceOnlySecretIds(storage?: LocalStorage): string[] {
   const ids = collectEntries(AbeleConfig.getInstance().exportSettings())
     .filter((entry) => isDeviceOnly(entry.section))
     .flatMap((entry) => entry.secretIds ?? [])
-  if (storage !== undefined) ids.push(readConnection(storage).deviceTokenId)
+  if (storage !== undefined) {
+    const connection = readConnection(storage)
+    ids.push(connection.deviceTokenId)
+    // Kept to tell a server a device left (`sync/revoke.ts`): this device's alone, like the other.
+    ids.push(...connection.pendingRevoke.map((entry) => entry.tokenId))
+  }
   return [...new Set(ids.filter(isDeviceSecretId))]
 }
 

@@ -74,7 +74,7 @@
 
         <Setting
           name="Stop syncing this device"
-          desc="Disconnect forgets the server and the device token, and keeps your files and what this device syncs. Forget also throws away the record of what has already been synced."
+          desc="Disconnect tells the server to stop accepting this device and forgets its token; your files and what this device syncs are kept. Forget also throws away the record of what has already been synced."
         >
           <Button
             text="Disconnect"
@@ -98,12 +98,31 @@
       <UsageCard />
     </template>
 
+    <!--
+      A Disconnect that could not reach the server: the token is kept to tell it later, and this
+      is where the person sees that and may stop waiting. Shown on either screen — a device that
+      left one vault offline and joined another is still waiting to tell the first.
+    -->
+    <Setting
+      v-for="entry in device.pendingRevoke"
+      :key="entry.tokenId"
+      :name="`The server has not been told that ${entry.deviceName || entry.deviceId} left ${entry.serverUrl}. It will be retried.`"
+      :desc="`Since ${formatWhen(entry.since)}. Forgetting leaves that device on the server's list until it is revoked there.`"
+    >
+      <Button
+        text="Forget without telling the server"
+        warning
+        tooltip="Stop trying, and forget the token kept to tell the server with"
+        @click="sync.forgetPendingRevoke(entry.tokenId)"
+      />
+    </Setting>
+
     <ConfirmModal
       v-if="confirming === 'disconnect'"
       title="Disconnect this device?"
-      message="This device stops syncing and forgets its token. Not one file is deleted, here or on the server, and what this device syncs is remembered for when you connect again."
+      message="The server will stop accepting this device. Connecting again needs the password. Files are not touched."
       confirm-text="Disconnect"
-      confirm-tooltip="Stop syncing and forget the token"
+      confirm-tooltip="Stop syncing, and have the server stop accepting this device"
       cancel-tooltip="Close this and keep syncing"
       @confirm="disconnect"
       @close="confirming = null"
@@ -136,7 +155,7 @@
  * `disconnected` is a device somebody set up: an engine that failed to build is `error`, and
  * that screen is the one that says why, where the sign-in card would only ask again.
  */
-import { computed, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
 import Badge from '../obsidian/Badge.vue'
@@ -165,6 +184,9 @@ const confirming = ref<'disconnect' | 'forget' | null>(null)
 
 // A sign-in that was never followed by a vault holds an account token; closing the tab ends it.
 onUnmounted(() => sync.endConnect())
+
+// A device left while the server could not be reached: opening the tab is a moment to try again.
+onMounted(() => void sync.retryPendingRevokes())
 
 const statusLabel = computed(() => labelOf(status.value))
 

@@ -81,6 +81,8 @@ const service = {
   onSettingsSaved: vi.fn(),
   endConnect: vi.fn(),
   updateConnection: vi.fn(),
+  retryPendingRevokes: vi.fn(() => Promise.resolve()),
+  forgetPendingRevoke: vi.fn(),
 }
 
 /** The connection the service holds, with these fields changed — what its verbs do. */
@@ -226,6 +228,56 @@ describe('a device nobody has set up', () => {
 
     expect(screen.text()).not.toContain(PLAIN_HTTP_REFUSED)
     expect(buttonNamed(screen, 'Sign in')?.props('disabled')).toBe(false)
+  })
+})
+
+/**
+ * A Disconnect that could not reach the server keeps the token to tell it later. The tab says so
+ * on either screen, and offers to stop waiting — which is the person's call, not a timer's alone.
+ */
+describe('a device the server has not been told about', () => {
+  const waiting = {
+    serverUrl: 'https://sync.example.com',
+    deviceId: 'd0',
+    deviceName: 'Old laptop',
+    tokenId: 'abele-sync-device-revoke-0',
+    since: '2026-09-01T00:00:00.000Z',
+  }
+
+  it('tries to tell the server again as the tab opens', () => {
+    open(SyncSettings)
+
+    expect(service.retryPendingRevokes).toHaveBeenCalledTimes(1)
+  })
+
+  it('says which device the server does not yet know left, on the sign-in screen too', () => {
+    change({ pendingRevoke: [waiting] })
+    const screen = open(SyncSettings)
+
+    expect(screen.text()).toContain(
+      'The server has not been told that Old laptop left https://sync.example.com. It will be retried.'
+    )
+    expect(buttonNamed(screen, 'Forget without telling the server')).toBeTruthy()
+  })
+
+  it('stops waiting when asked, and only for that device', async () => {
+    change({ pendingRevoke: [waiting, { ...waiting, tokenId: 'abele-sync-device-revoke-1' }] })
+    connect()
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    await screen
+      .findAllComponents(Button)
+      .filter((b) => b.props('text') === 'Forget without telling the server')[1]!
+      .trigger('click')
+
+    expect(service.forgetPendingRevoke).toHaveBeenCalledWith('abele-sync-device-revoke-1')
+  })
+
+  it('says nothing when nothing is waiting', () => {
+    const screen = open(SyncSettings)
+
+    expect(buttonNamed(screen, 'Forget without telling the server')).toBeUndefined()
   })
 })
 
@@ -385,7 +437,10 @@ describe('a device that is set up', () => {
     await buttonNamed(screen, 'Disconnect')?.trigger('click')
 
     expect(service.disconnect).not.toHaveBeenCalled()
-    expect(screen.findComponent(ConfirmModal).props('message')).toContain('Not one file is deleted')
+    expect(screen.findComponent(ConfirmModal).props('message')).toBe(
+      'The server will stop accepting this device. Connecting again needs the password. ' +
+        'Files are not touched.'
+    )
   })
 
   it('disconnects once the question has been answered', async () => {

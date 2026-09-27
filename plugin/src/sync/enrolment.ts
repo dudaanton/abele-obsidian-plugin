@@ -1,15 +1,18 @@
 import { Platform, type App } from 'obsidian'
 import { SyncClient } from '@abele/sync-core'
-import { serverUrlProblem, type VaultInfo } from '@abele/sync-protocol'
+import { normalizeServerUrl, serverUrlProblem, type VaultInfo } from '@abele/sync-protocol'
 import { isDeviceSecretId, secrets } from '@/secrets/SecretStore'
+import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer/connection'
 import type { DeviceConnection } from './connection'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { NO_LEDGER, readLedgerId, writeLedgerId } from './ledgerId'
 import { USER_AGENT, messageOf, newSecretId, newStateId } from './pieces'
+import { Revoker, withTimeout } from './revoke'
 
 /**
- * Setting this device up and taking it down again: signing in, enrolling on a vault,
- * disconnecting and forgetting.
+ * Setting this device up and taking it down again: signing in, enrolling on a vault, taking a
+ * connection a transfer brought, making a device for a transfer to hand over, disconnecting —
+ * which tells the server (`revoke.ts`) — and forgetting.
  *
  * Kept apart from the service that runs the engine because none of it is the engine's business:
  * it talks to the server as an account, files a token in the keychain and writes the connection,
@@ -44,8 +47,15 @@ export class Enrolment {
   private account: SyncClient | null = null
   /** The server that account signed in to, so `chooseVault` files the one it enrolled against. */
   private accountUrl = ''
+  /** What the account's vaults are called, from its last listing, for the connection to say. */
+  private vaultNames = new Map<string, string>()
 
-  constructor(private readonly host: EnrolmentHost) {}
+  /** Telling the server a device has left, now or later. */
+  readonly revoker: Revoker
+
+  constructor(private readonly host: EnrolmentHost) {
+    this.revoker = new Revoker(host)
+  }
 
   /**
    * Sign in and list the vaults this account can enrol a device on.
@@ -55,11 +65,14 @@ export class Enrolment {
    * is ever written to the log, the connection or `data.json`.
    */
   async connect(serverUrl: string, email: string, password: string): Promise<VaultInfo[]> {
-    const baseUrl = serverUrl.trim().replace(/\/+$/, '')
-    if (baseUrl === '') throw new Error('a server address is needed to connect')
+    const typed = serverUrl.trim()
+    if (typed === '') throw new Error('a server address is needed to connect')
     // Before the password goes anywhere: over plain http it would cross the network readable.
-    const problem = serverUrlProblem(baseUrl)
+    const problem = serverUrlProblem(typed)
     if (problem !== null) throw new Error(problem)
+    // One spelling, whatever was typed: the connection compares addresses, and a transfer tells
+    // "the same vault" from "another one" by them.
+    const baseUrl = normalizeServerUrl(typed) ?? typed
     this.host.note(`connecting to ${baseUrl}`)
     const { account_token } = await SyncClient.login(
       baseUrl,
@@ -76,6 +89,7 @@ export class Enrolment {
     const vaults = await account.listVaults()
     this.account = account
     this.accountUrl = baseUrl
+    this.vaultNames = new Map(vaults.map((vault) => [vault.id, vault.name]))
     this.host.note(`signed in; the account has ${vaults.length} vault(s)`)
     return vaults
   }
@@ -115,12 +129,16 @@ export class Enrolment {
     if (app === null) throw new Error('the sync service has not been started yet')
     const name = deviceName.trim()
     if (name === '') throw new Error('this device needs a name to enrol under')
+    // A device this one left while offline is told first: it is the same server, reachable now.
+    await this.revoker.retry()
 
     /** The ledger this enrolment replaces, to be deleted once nothing is holding it. */
     let dropped: string | null = null
     try {
       const vaultId =
         typeof choice === 'string' ? choice : (await account.createVault(choice.create)).id
+      const vaultName =
+        typeof choice === 'string' ? (this.vaultNames.get(choice) ?? '') : choice.create
       const enrolled = await account.enrolDevice(
         vaultId,
         name,
@@ -130,27 +148,158 @@ export class Enrolment {
       const held = this.host.connection().deviceTokenId
       const tokenId = isDeviceSecretId(held) ? held : newSecretId()
       secrets().device.set(tokenId, enrolled.device_token)
-      const ledger = readLedgerId(app)
-      if (ledger.stateId === '' || ledger.vaultId !== vaultId) {
-        dropped = ledger.stateId === '' ? null : ledger.stateId
-        writeLedgerId(app, { stateId: newStateId(), vaultId })
-      }
-      this.host.saveConnection({
+      dropped = this.enrolAs(app, {
         serverUrl: accountUrl,
         vaultId,
+        vaultName,
         deviceId: enrolled.device_id,
-        deviceTokenId: tokenId,
         deviceName: name,
-        paused: false,
+        tokenId,
       })
-      this.host.note(`enrolled as ${name} on vault ${vaultId}`)
     } finally {
       this.account = null
     }
+    await this.settle(dropped)
+  }
 
-    // `reconcile` sees the new token even behind an unchanged keychain id, so it builds another
-    // engine of its own accord. Only once that has stopped the old engine is the ledger it held
-    // free to delete.
+  /**
+   * Take the connection a transfer brought: the device the sending side had the server make for
+   * this one, and its token.
+   *
+   * A device that syncs something already is disconnected from it first — which tells that
+   * server it left — and only a screen that has asked calls this over one. The token is filed
+   * under an id minted here: on a phone the keychain is one for the whole app, and a name the
+   * sender chose, or one reused, could land on another vault's token. What the sender syncs is
+   * taken as a starting point, with this device's own size cap kept.
+   */
+  async adoptTransferred(
+    arrived: TransferredConnection,
+    token: string,
+    selective: SharedSelective
+  ): Promise<void> {
+    const app = this.host.app()
+    if (app === null) throw new Error('the sync service has not been started yet')
+    const problem = serverUrlProblem(arrived.serverUrl)
+    const serverUrl = normalizeServerUrl(arrived.serverUrl)
+    if (problem !== null || serverUrl === null) {
+      throw new Error(problem ?? 'that is not a web address; use an https:// address')
+    }
+    if (!token.startsWith('absd_') || arrived.vaultId === '' || arrived.deviceId === '') {
+      throw new Error('the transfer did not carry a whole connection')
+    }
+
+    const own = this.host.connection()
+    if (own.serverUrl !== '' || own.vaultId !== '') await this.disconnect()
+
+    const tokenId = newSecretId()
+    secrets().device.set(tokenId, token)
+    const dropped = this.enrolAs(app, {
+      serverUrl,
+      vaultId: arrived.vaultId,
+      vaultName: arrived.vaultName,
+      deviceId: arrived.deviceId,
+      deviceName: arrived.deviceName,
+      tokenId,
+      selective: { ...selective, maxFileBytes: this.host.connection().selective.maxFileBytes },
+    })
+    this.host.note('took the connection a transfer brought')
+    await this.settle(dropped)
+  }
+
+  /**
+   * Have the server make a device on this vault for a transfer to hand over, and return it with
+   * its token.
+   *
+   * Asked once, never again on a failure: the server enrols before it answers, so a request
+   * whose answer was lost has made a device nobody holds the token of — and a retry would make
+   * another. The device list shows such a one, with this device as the one that asked for it.
+   */
+  async enrolSibling(name: string): Promise<Sibling> {
+    const own = this.host.connection()
+    const token = isDeviceSecretId(own.deviceTokenId) ? secrets().device.get(own.deviceTokenId) : ''
+    if (own.serverUrl === '' || own.vaultId === '' || token === '') {
+      throw new Error('this device is not connected')
+    }
+    const deviceName = name.trim()
+    if (deviceName === '') throw new Error('the other device needs a name')
+    const client = new SyncClient({
+      baseUrl: own.serverUrl,
+      fetch: this.host.transport(),
+      token,
+      userAgent: USER_AGENT,
+    })
+    // Which one the other device is, nobody here knows; the likelier guess is the other kind.
+    const platform = Platform.isMobile ? 'desktop' : 'mobile'
+    const answer = await withTimeout(
+      client.enrolSibling(deviceName, platform),
+      this.revoker.timeoutMs
+    )
+    this.host.note(`the server made ${deviceName} on this vault, for a transfer to hand over`)
+    return {
+      serverUrl: own.serverUrl,
+      vaultId: own.vaultId,
+      vaultName: own.vaultName,
+      deviceId: answer.device_id,
+      deviceName,
+      token: answer.device_token,
+    }
+  }
+
+  /**
+   * Tell the server a device made for a transfer is not needed: the receiving side already syncs
+   * that vault, or chose not to take it. Kept to be told later, like any Disconnect, when the
+   * server cannot be reached now — so nothing is left enrolled that nobody holds.
+   */
+  async revokeTransferred(arrived: TransferredConnection, token: string): Promise<void> {
+    const serverUrl = normalizeServerUrl(arrived.serverUrl) ?? arrived.serverUrl
+    await this.revoker.leave(
+      { serverUrl, deviceId: arrived.deviceId, deviceName: arrived.deviceName },
+      token
+    )
+  }
+
+  /**
+   * Write the connection an enrolment produced, minting a ledger when this vault has none for
+   * that vault. Returns the ledger it replaced, for `settle` to delete.
+   */
+  private enrolAs(
+    app: App,
+    enrolled: {
+      serverUrl: string
+      vaultId: string
+      vaultName: string
+      deviceId: string
+      deviceName: string
+      tokenId: string
+      selective?: DeviceConnection['selective']
+    }
+  ): string | null {
+    const { tokenId, selective, ...where } = enrolled
+    let dropped: string | null = null
+    const ledger = readLedgerId(app)
+    if (ledger.stateId === '' || ledger.vaultId !== where.vaultId) {
+      dropped = ledger.stateId === '' ? null : ledger.stateId
+      writeLedgerId(app, { stateId: newStateId(), vaultId: where.vaultId })
+    }
+    this.host.saveConnection({
+      ...where,
+      enrolledUrl: where.serverUrl,
+      deviceTokenId: tokenId,
+      paused: false,
+      ...(selective === undefined ? {} : { selective }),
+    })
+    this.host.note(`enrolled as ${where.deviceName} on vault ${where.vaultName || where.vaultId}`)
+    return dropped
+  }
+
+  /**
+   * Put the engine on the connection just written, then delete the ledger it replaced.
+   *
+   * `reconcile` sees the new token even behind an unchanged keychain id, so it builds another
+   * engine of its own accord. Only once that has stopped the old engine is the ledger it held
+   * free to delete.
+   */
+  private async settle(dropped: string | null): Promise<void> {
     await this.host.serialise(() => this.host.reconcile())
     if (dropped !== null) await this.dropLedger(dropped)
   }
@@ -172,7 +321,12 @@ export class Enrolment {
   }
 
   /**
-   * Stop syncing and forget how to reach the server.
+   * Stop syncing, tell the server this device has left, and forget how to reach it.
+   *
+   * The server is asked to revoke the device, on the address the token was minted on: after
+   * that no copy of the token anywhere reads or writes the vault. When it cannot be reached the
+   * token is kept under a name of its own and the revoke tried again (`revoke.ts`); the
+   * Disconnect itself goes ahead either way.
    *
    * The device token is cleared from the keychain and the identity fields from the connection.
    * What is kept is everything that is not a credential: what this device syncs, which is the
@@ -184,13 +338,24 @@ export class Enrolment {
   async disconnect(): Promise<void> {
     await this.host.serialise(async () => {
       await this.host.teardown()
+      const own = this.host.connection()
+      const tokenId = own.deviceTokenId
+      const token = isDeviceSecretId(tokenId) ? secrets().device.get(tokenId) : ''
+      const serverUrl = own.enrolledUrl !== '' ? own.enrolledUrl : own.serverUrl
+      if (token !== '' && serverUrl !== '') {
+        await this.revoker.leave(
+          { serverUrl, deviceId: own.deviceId, deviceName: own.deviceName },
+          token
+        )
+      }
       // The secret goes and the id stays: `token()` reads a missing secret as no device, which
       // is exactly the truth.
-      const tokenId = this.host.connection().deviceTokenId
       if (tokenId !== '') secrets().device.remove(tokenId)
       this.host.saveConnection({
         serverUrl: '',
+        enrolledUrl: '',
         vaultId: '',
+        vaultName: '',
         deviceId: '',
         deviceName: '',
         paused: false,

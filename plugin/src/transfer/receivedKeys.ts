@@ -18,6 +18,9 @@ import type { TransferEntry } from './types'
 /** The one section an older build sent a device token under, beside the sender's connection. */
 const OLDER_SYNC_SECTION = 'sync'
 
+/** The section whose token the sync service takes, and nothing here. */
+const CONNECTION_SECTION = 'connection'
+
 /** Returns how many keys the keychain refused. */
 export function storeReceivedKeys(
   entries: TransferEntry[],
@@ -25,7 +28,7 @@ export function storeReceivedKeys(
 ): number {
   let refused = 0
   for (const entry of entries) {
-    if (entry.section === OLDER_SYNC_SECTION) continue
+    if (entry.section === OLDER_SYNC_SECTION || entry.section === CONNECTION_SECTION) continue
     const deviceOnly = isDeviceOnly(entry.section)
     const road = deviceOnly ? secrets().device : secrets()
     for (const secretId of entry.secretIds ?? []) {

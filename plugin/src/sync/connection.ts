@@ -36,7 +36,16 @@ export interface DeviceConnection {
    * device (`serverUrlProblem`). Empty means not set up.
    */
   serverUrl: string
+  /**
+   * The address the device token was minted on. Only a sign-in and a transfer write it; an edit
+   * to `serverUrl` leaves it where it was, so a Disconnect tells the server that can revoke the
+   * token rather than whatever the address says now — and reads "not a token of ours" from
+   * there as the truth it is.
+   */
+  enrolledUrl: string
   vaultId: string
+  /** What the vault is called on the server, for saying so; empty when it was never told. */
+  vaultName: string
   deviceId: string
   /** The keychain name the device token is filed under — never the token. */
   deviceTokenId: string
@@ -47,10 +56,44 @@ export interface DeviceConnection {
   /** What this device takes of the vault, the size cap included. */
   selective: SelectiveSettings
   /**
+   * Devices this one left while it could not reach the server, whose tokens it still holds to
+   * tell the server with (`revoke.ts`).
+   */
+  pendingRevoke: PendingRevoke[]
+  /**
    * Set once the connection has been moved out of `data.json`. Every record written says so
    * (`writeConnection`), and the move looks for a record at all rather than for this.
    */
   migrated: boolean
+}
+
+/**
+ * A Disconnect the server has not heard of yet.
+ *
+ * The token is kept, under a keychain id of its own (`abele-sync-device-revoke-…`) so that a
+ * reconnect — which reuses `deviceTokenId` — cannot pick it up, and tried again until the server
+ * answers or a month has passed.
+ */
+export interface PendingRevoke {
+  /** Where to tell: the address the token was minted on. */
+  serverUrl: string
+  deviceId: string
+  deviceName: string
+  tokenId: string
+  /** When the device left, as an ISO date. */
+  since: string
+}
+
+/** How every keychain id of a token waiting to be revoked starts. */
+export const REVOKE_SECRET_PREFIX = `${DEVICE_SECRET_PREFIX}revoke-`
+
+/** Whether an id is one a waiting revoke is filed under: the prefix and something after it. */
+export function isRevokeSecretId(id: unknown): id is string {
+  return (
+    typeof id === 'string' &&
+    id.length > REVOKE_SECRET_PREFIX.length &&
+    id.startsWith(REVOKE_SECRET_PREFIX)
+  )
 }
 
 /** The selective settings a device starts with: everything, and on a phone a size cap. */
@@ -64,12 +107,15 @@ export function defaultSelective(isMobile = false): SelectiveSettings {
 export function emptyConnection(isMobile = false): DeviceConnection {
   return {
     serverUrl: '',
+    enrolledUrl: '',
     vaultId: '',
+    vaultName: '',
     deviceId: '',
     deviceTokenId: '',
     deviceName: '',
     paused: false,
     selective: defaultSelective(isMobile),
+    pendingRevoke: [],
     migrated: false,
   }
 }
@@ -117,17 +163,25 @@ export function inspectConnection(
     deviceTokenId = ''
   }
   const deviceName = text('deviceName')
+  // A record from before the field was the device's own sign-in's, which wrote both at once.
+  const enrolledUrl = o.enrolledUrl === undefined ? serverUrl : text('enrolledUrl')
+  const vaultName = text('vaultName')
   if (o.paused !== undefined && typeof o.paused !== 'boolean') damaged.push('paused')
   if (o.selective !== undefined && objectOf(o.selective) === null) damaged.push('selective')
+  const pending = pendingFrom(o.pendingRevoke)
+  if (pending.damaged) damaged.push('pendingRevoke')
   return {
     connection: {
       serverUrl,
+      enrolledUrl,
       vaultId,
+      vaultName,
       deviceId,
       deviceTokenId,
       deviceName,
       paused: boolOr(o.paused, false),
       selective: selectiveFrom(o.selective, isMobile),
+      pendingRevoke: pending.entries,
       migrated: o.migrated === true,
     },
     damaged,
@@ -243,7 +297,9 @@ export function migrateConnection(
   )
   const record: DeviceConnection = own
     ? {
+        ...emptyConnection(isMobile),
         serverUrl: stringOr(o.serverUrl, ''),
+        enrolledUrl: stringOr(o.serverUrl, ''),
         vaultId,
         deviceId: stringOr(o.deviceId, ''),
         deviceTokenId: tokenId,
@@ -299,6 +355,33 @@ export function selectiveFrom(raw: unknown, isMobile = false): SelectiveSettings
       pluginSettings: boolOr(settings.pluginSettings, defaults.settings.pluginSettings),
     },
   }
+}
+
+/**
+ * The waiting revokes a record holds, each taken only whole: an entry filed under anything but a
+ * revoke id would have the retry send some other secret to a server, and delete it after. A date
+ * that does not read is taken as the start of time, so the entry is given up at the next retry
+ * rather than kept for ever.
+ */
+function pendingFrom(raw: unknown): { entries: PendingRevoke[]; damaged: boolean } {
+  if (raw === undefined) return { entries: [], damaged: false }
+  if (!Array.isArray(raw)) return { entries: [], damaged: true }
+  const entries: PendingRevoke[] = []
+  for (const item of raw) {
+    const o = objectOf(item)
+    const fields = ['serverUrl', 'deviceId', 'deviceName'] as const
+    if (o === null || !isRevokeSecretId(o.tokenId)) continue
+    if (fields.some((field) => typeof o[field] !== 'string')) continue
+    const since = typeof o.since === 'string' ? Date.parse(o.since) : NaN
+    entries.push({
+      serverUrl: o.serverUrl as string,
+      deviceId: o.deviceId as string,
+      deviceName: o.deviceName as string,
+      tokenId: o.tokenId,
+      since: new Date(Number.isNaN(since) ? 0 : since).toISOString(),
+    })
+  }
+  return { entries, damaged: entries.length !== raw.length }
 }
 
 /** A plain object to read fields off, or nothing — arrays and `null` are not records. */

@@ -463,7 +463,9 @@ export function arrivingSecretIds(
 }
 
 export const sectionLabel = (id: SectionId): string =>
-  sectionById.get(id)?.label ?? FILE_SECTION_LABELS[id as keyof typeof FILE_SECTION_LABELS] ?? id
+  sectionById.get(id)?.label ??
+  FILE_SECTION_LABELS[id as keyof typeof FILE_SECTION_LABELS] ??
+  (id === 'connection' ? 'Sync connection' : id)
 
 /** Whether a section's keys stay on the device that holds them: see `deviceOnly`. */
 export const isDeviceOnly = (id: SectionId): boolean => {
