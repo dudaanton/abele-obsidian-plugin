@@ -1145,9 +1145,12 @@ again. Other hidden files and folders — `.git/`,
 `.DS_Store`, `.trash/` — are neither fetched nor sent by the plugin, nor is a config folder renamed
 from `.obsidian`. The daemon's `.abele-sync/` folder, when
 a vault is synced by the command-line client, is its state and never syncs either. Leave both
-alone unless asked.
+alone unless asked. A hidden `.abele-sync-….tmp` or `.abele-sync-….old` file beside a note is a
+file the sync is writing that moment; one left after Obsidian closed is tidied (or, for `.old`,
+put back under its own name) the next time sync starts. Never delete an `.old` by hand: it can be
+the only copy of that file.
 
-Two records are kept in Obsidian's local storage for this vault, which no file carries: under
+Four records are kept in Obsidian's local storage for this vault, which no file carries: under
 `abele-sync-connection`, this device's connection — the server (and the one it enrolled on), the
 vault and its name, the device it enrolled as, the keychain name of its token, whether it is
 paused, what of the vault it takes, a join in progress (which side wins where this vault and the
@@ -1156,6 +1159,9 @@ connection waits for the person to choose; cleared once the join is done), and a
 while the server could not be told,
 whose token is kept under an `abele-sync-device-revoke-…` keychain name until it is (one that left
 a server on plain http to another machine is never told, and is kept until the person forgets it); under
+`abele-sync-writes`, the files a sync write was replacing when Obsidian last closed, put back at
+the next start; under `abele-sync-restore-keys`, for a day, the keys of a **Restore all deleted
+since** whose answer did not arrive, so pressing it again is not a second restore; under
 `abele-sync-ledger`, the id of the record of what it has synced. That record is outside the vault,
 in Obsidian's IndexedDB, as a database named `abele-sync-<id>`; it also holds the Obsidian
 settings changes that arrived from other devices and wait for the person to reload or keep this
