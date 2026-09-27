@@ -208,4 +208,14 @@ describe('opening at lines in reading view', () => {
     const view = leaves[0].view
     expect(view.sections.filter((s) => s.el.classList.contains('abele-line-flash'))).toHaveLength(1)
   })
+
+  /** Drawn anew once measured, the blocks come back without the flash: they get it again. */
+  it('flashes again the blocks drawn anew just after the jump', async () => {
+    vi.useRealTimers()
+    await openNoteAtLines(app as never, note(), { from: 20, to: 20 })
+    const view = leaves[0].view
+    view.sections[19].el = document.createElement('p')
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    expect(view.sections[19].el.classList.contains('abele-line-flash')).toBe(true)
+  })
 })

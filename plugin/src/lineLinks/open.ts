@@ -102,24 +102,36 @@ function onScreen(el: HTMLElement, scroller: HTMLElement | null | undefined): bo
 }
 
 /**
- * For a moment after the jump, the lines are brought back whenever they are no longer on screen:
- * a note just opened is still laying itself out, and the tab's own opening — its focus, the
- * place it last showed — can move it after the jump was made. Not awaited: the jump is done.
+ * For a moment after the jump the lines are looked after while the note settles. Not awaited:
+ * the jump is done.
+ *
+ * - Brought back whenever they are no longer on screen: a note just opened is still laying itself
+ *   out, and the tab's own opening — its focus, the place it last showed — can move it after the
+ *   jump was made.
+ * - Flashed again when they lost the flash: the editor draws the lines anew once it has measured
+ *   a note just opened, and the lines it flashed are gone with the old drawing.
  */
 async function keepOnScreen(
   targets: () => HTMLElement[],
   scroller: () => HTMLElement | null | undefined,
-  again: () => void
+  scroll: () => void
 ): Promise<void> {
-  for (let waited = 0; waited < KEEP_MS; waited += RENDER_POLL_MS) {
+  for (let waited = 0; waited < REFLASH_MS; waited += RENDER_POLL_MS) {
     await pause()
-    const els = targets()
-    if (els.length && !els.some((el) => onScreen(el, scroller()))) again()
+    let els = targets()
+    if (!els.length) continue
+    if (waited < KEEP_MS && !els.some((el) => onScreen(el, scroller()))) {
+      scroll()
+      els = targets()
+    }
+    for (const el of els) if (!el.classList.contains('abele-line-flash')) flash(el)
   }
 }
 
 /** How long after a jump the lines are held on screen while the note settles. */
 const KEEP_MS = 1000
+/** How long after a jump lines drawn anew get the flash back — well inside the flash itself. */
+const REFLASH_MS = 1500
 
 /**
  * Reading view scrolled to the range, and the blocks holding it flashed. A note just opened is
@@ -150,10 +162,7 @@ async function flashInPreview(view: MarkdownView, range: LineRange): Promise<voi
   void keepOnScreen(
     () => within().map((s) => s.el),
     () => rendererOf(view)?.previewEl,
-    () => {
-      scrollPreview(view, top)
-      for (const s of within()) if (!s.el.hasClass('abele-line-flash')) flash(s.el)
-    }
+    () => scrollPreview(view, top)
   )
 }
 
@@ -200,14 +209,7 @@ async function flashInEditor(view: MarkdownView, range: LineRange): Promise<void
     els = within()
   }
   for (const el of els) flash(el)
-  void keepOnScreen(
-    within,
-    () => cm.scrollDOM,
-    () => {
-      scroll()
-      for (const el of within()) if (!el.hasClass('abele-line-flash')) flash(el)
-    }
-  )
+  void keepOnScreen(within, () => cm.scrollDOM, scroll)
 }
 
 /**
