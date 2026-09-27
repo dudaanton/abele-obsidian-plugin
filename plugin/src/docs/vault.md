@@ -1068,11 +1068,14 @@ thing to write.
 
 ## Transfer files
 
-Files in the vault root named `Abele transfer <date> <time>.txt` are settings on their way to
-another device: one line beginning `ABL1:`, holding the settings the person ticked on the
-Transfer tab, compressed and — if a key went with them — encrypted. They are not notes, they
-are not content, and nothing reads them except the Transfer tab on the receiving device. Leave
-them alone; the person deletes them when the transfer has landed.
+Files named `Abele transfer <date> <time>.txt` are settings on their way to another device: one
+line beginning `ABL1:`, holding the settings the person ticked on the Transfer tab, compressed
+and — if a key went with them — encrypted. The Transfer tab saves them outside the vault where
+the device lets it (a save dialog, the share sheet), and otherwise into the hidden
+`.abele-transfers/` folder, which Abele Sync never carries; older versions put them in the
+vault root. They are not notes, they are not content, and nothing reads them except the
+Transfer tab on the receiving device. Leave them alone; the person deletes them when the
+transfer has landed.
 
 ## Scripts from other devices
 
