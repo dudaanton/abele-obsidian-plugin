@@ -188,6 +188,9 @@ const MILLENNIUM_RE =
 function parseCore(s: string, era: Era): Core | null {
   s = s.replace(YEAR_WORD_RE, '').trim()
   let m: RegExpExecArray | null
+  // Year zero exists in no calendar people write in: `0` or `0 BC` is a slip, and is reported
+  // as a date the view cannot read rather than quietly drawn as 1 BC.
+  if (/^-?0+(?=$|-|\s)/.test(s) || /\s-?0+$/.test(s)) return null
 
   // A plain year; a minus is BC.
   if ((m = /^(-?)(\d{1,4})$/.exec(s))) {

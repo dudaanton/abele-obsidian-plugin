@@ -60,7 +60,7 @@ the way a person would, in Russian or English:
 | `сейчас`, `now`, `present` | still going |
 
 **A negative year is BC the way people count**: `-490` is 490 BC. It is not the EDTF or
-astronomical `-0489`; there is no year zero. The label on the timeline shows a vague date as
+astronomical `-0489`; there is no year zero, and `0` is not read — the note counts as undated. The label on the timeline shows a vague date as
 written, so keep the wording you want seen: `ок. 1450`, not a made-up `1450`.
 
 ## Making historical notes

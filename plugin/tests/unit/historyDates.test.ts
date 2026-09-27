@@ -212,6 +212,16 @@ describe('now', () => {
 })
 
 describe('not a date', () => {
+  it('turns down year zero, which no calendar people use has', () => {
+    for (const text of ['0', '-0', '0 BC', '0 до н.э.', '0 AD', 0])
+      expect(parse(text), String(text)).toBeNull()
+  })
+
+  it('reads "16 c." as the century, not as the year 16 of an era', () => {
+    expect(parse('16 c.')?.precision).toBe('century')
+    expect(parse('16 c.')?.lo).toBe(1501)
+  })
+
   it('turns down what it cannot read', () => {
     for (const text of ['', '   ', 'soon', 'Иван', '12345678', null, undefined, {}, '1564-13'])
       expect(parse(text), String(text)).toBeNull()
