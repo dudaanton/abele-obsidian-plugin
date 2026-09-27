@@ -76,6 +76,15 @@ const PRELUDE = `
     for (let i = 1; i <= 10; i++) { await touch('touchMove', x0 + (x1 - x0) * i / 10, y0 + (y1 - y0) * i / 10); await wait(16) }
     await touch('touchEnd'); await wait(600)
   }
+  /**
+   * A flick, the way a page is turned: a turn is a swipe done within 800 ms (swipeDirection),
+   * so no pause between the moves — ten of them with a wait each ran past that on a busy machine.
+   */
+  const swipe = async (x0, y0, x1, y1) => {
+    await touch('touchStart', x0, y0)
+    for (let i = 1; i <= 10; i++) await touch('touchMove', x0 + (x1 - x0) * i / 10, y0 + (y1 - y0) * i / 10)
+    await touch('touchEnd'); await wait(600)
+  }
   const open = async (path) => {
     // Just after a reload the workspace may still be putting itself back: a tab made then is lost.
     await until(() => app.workspace.layoutReady, 15000)
@@ -94,6 +103,19 @@ const PRELUDE = `
   const R = (view) => view.engine.renderer
   const page = (view, index) => R(view).getContents().find((c) => c.index === index || (c.index === undefined && c.doc?.querySelector('#canvas img')))?.doc
   const frame = (doc) => doc.defaultView.frameElement.getBoundingClientRect()
+  /**
+   * The part of a page a pen can reach: the page's frame, cut to the drawing surface above the bar.
+   * A stroke is placed at fractions of this, not of the whole page — at the width of the tab a
+   * page runs past the bottom of the window, by how much depending on the window and on the
+   * sidebars a vault has open, and a stroke placed below it was sent to nothing and never drawn.
+   */
+  const reach = (view, doc) => {
+    const f = frame(doc)
+    const o = q(view, '.abele-ink-overlay').getBoundingClientRect()
+    const bar = q(view, '.abele-book-ink')?.getBoundingClientRect()
+    const top = Math.max(f.top, o.top), bottom = Math.min(f.bottom, o.bottom, bar ? bar.top : Infinity)
+    return { left: f.left, width: f.width, top, height: bottom - top }
+  }
   const inked = (doc) => doc?.querySelectorAll(':scope > svg.abele-ink path').length ?? 0
   const q = (view, sel) => view.contentEl.querySelector(sel)
   const click = (view, sel) => q(view, sel).click()
@@ -196,7 +218,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       const overlay = !!(await until(() => q(view, '.abele-ink-overlay')))
       const bar = !!(await until(() => q(view, '.abele-book-ink')))
       const doc = page(view, 0)
-      const f = frame(doc)
+      const f = reach(view, doc)
       const ears = listen()
       await draw(f.left + f.width * 0.2, f.top + f.height * 0.2, f.left + f.width * 0.7, f.top + f.height * 0.3, 'pen', 0.1, 1)
       ears.stop()
@@ -236,7 +258,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
     }>(`
       const view = app.workspace.getLeavesOfType('abele-book')[0].view
       const doc = page(view, 0)
-      const f = frame(doc)
+      const f = reach(view, doc)
       click(view, '.abele-book-ink__undo'); await wait(100)
       const afterUndo = inked(doc)
       click(view, '.abele-book-ink__redo'); await wait(100)
@@ -281,7 +303,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
     }>(`
       const view = app.workspace.getLeavesOfType('abele-book')[0].view
       const doc = page(view, 0)
-      const f = frame(doc)
+      const f = reach(view, doc)
       const before = inked(doc)
       // A line on its way, the pen still down: is there ink right under the pen?
       const x0 = f.left + f.width * 0.2, x1 = f.left + f.width * 0.6, y = f.top + f.height * 0.75
@@ -361,7 +383,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       // The marker, drawn in yellow, on the first page brought back.
       await view.engine.goTo(0); await wait(800)
       q(view, '.abele-book-ink__tool:nth-child(2)').click(); await wait(100)
-      const f = frame(doc)
+      const f = reach(view, doc)
       await draw(f.left + f.width * 0.2, f.top + f.height * 0.4, f.left + f.width * 0.7, f.top + f.height * 0.4, 'pen')
       const marker = doc.querySelectorAll(':scope > svg.abele-ink path[stroke]').length
       click(view, '.abele-book-ink__done')
@@ -424,7 +446,7 @@ describe.skipIf(!available)('drawing on the pages of a PDF', () => {
       const seen = { idx: R(view).getContents().map((c) => view.ink.docIndex.get(c.doc)), loc: view.engine.lastLocation?.section?.current, paths, pages: [...view.ink.pages.keys()], frames: R(view).getContents().map((c) => ({ index: c.index, w: c.doc ? frame(c.doc).width : null })), f: [f.left, f.top, f.width, f.height], overlay: q(view, '.abele-ink-overlay')?.getBoundingClientRect().toJSON() }
       const before = view.engine.lastLocation?.section?.current
       const stage = q(view, '.abele-book-reader__stage').getBoundingClientRect()
-      await drag(stage.left + stage.width * 0.8, stage.top + stage.height / 2, stage.left + stage.width * 0.2, stage.top + stage.height / 2)
+      await swipe(stage.left + stage.width * 0.8, stage.top + stage.height / 2, stage.left + stage.width * 0.2, stage.top + stage.height / 2)
       await wait(800)
       const after = view.engine.lastLocation?.section?.current
       click(view, '.abele-book-ink__done')
