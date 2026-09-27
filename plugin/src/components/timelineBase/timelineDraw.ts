@@ -37,6 +37,12 @@ export interface Frame {
 
 const PAD = 6
 const POINT = 10
+/**
+ * How far to the left of the screen something is still looked at: its label, beside a point or
+ * a short bar, may reach into sight after the thing itself has gone. Longer labels are rare
+ * enough to lose.
+ */
+const LABEL_REACH = 640
 
 /** Paints a frame and says where the pressable things ended up. */
 export function paint(ctx: CanvasRenderingContext2D, f: Frame): Hit[] {
@@ -135,7 +141,7 @@ function paintLane(
   const m = scene.metrics
   const linesTop = y0 + m.laneHead
   const focus = scene.focus
-  const shown = visibleRange(box.items, box.longest, t0 - 1 / f.view.ppy, t1)
+  const shown = visibleRange(box.items, box.longest, t0 - LABEL_REACH / f.view.ppy, t1)
   for (const item of shown) {
     const place = box.pack.placed.get(item)
     if (!place) continue
@@ -235,7 +241,8 @@ function paintItem(
       ctx.lineWidth = 1
     }
     let lx = x + r + PAD
-    if (labeled) lx = paintLabel(ctx, f, item, lx, y, h, false)
+    const reach = lx + labelWidth(ctx, f.palette, item, f.lang, f.covers, h)
+    if (labeled && reach > f.scene.metrics.labelW) lx = paintLabel(ctx, f, item, lx, y, h, false)
     hits.push({ kind: 'item', item, x: x - r, y, w: Math.max(POINT, lx - x + r), h })
     return
   }
@@ -284,9 +291,9 @@ function paintItem(
     // as what is left of the bar on screen holds it; a label cut by the edge says nothing.
     const shown = x1 - Math.max(x0, areaX)
     if (!inside) {
-      if (x1 + PAD >= areaX) right = paintLabel(ctx, f, item, x1 + PAD, y, h, false)
-    }
-    else if (shown >= w + 2 * PAD) {
+      // Drawn while any of it is in sight; the edge of the drawing cuts the rest.
+      if (x1 + PAD + w > areaX) right = paintLabel(ctx, f, item, x1 + PAD, y, h, false)
+    } else if (shown >= w + 2 * PAD) {
       const lx = Math.min(Math.max(x0 + PAD, areaX + PAD), x1 - PAD - w)
       paintLabel(ctx, f, item, lx, y, h, true)
     } else {
