@@ -52,6 +52,11 @@ const preferOf = (raw: unknown): JoinPrefer | undefined =>
 /**
  * The join the connection is in the middle of, or null. A join to another vault than the one the
  * connection names is not this connection's, and is not in force.
+ *
+ * So an agent that writes `sync.vaultId` builds an engine without the question being asked, and
+ * writing the old id back brings the join back. Left so on purpose (task-8 review, #7): the
+ * device token is bound to its own vault, and the server refuses it on any other, so that engine
+ * syncs nothing.
  */
 export function joinOf(connection: DeviceConnection): JoinState | null {
   const join = connection.join
