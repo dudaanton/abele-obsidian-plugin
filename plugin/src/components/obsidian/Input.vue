@@ -7,7 +7,7 @@
       'abele-obsidian-input_sized': asTextArea && rows !== undefined,
     }"
     :value="modelValue"
-    :type="password ? 'password' : 'text'"
+    :type="password ? 'password' : dateTime ? 'datetime-local' : 'text'"
     :autocomplete="password ? 'off' : undefined"
     :rows="asTextArea ? rows : undefined"
     :placeholder="placeholder"
@@ -26,6 +26,11 @@ const props = defineProps<{
   asTextArea?: boolean
   /** Typed characters shown as dots: a passphrase, a key. Single-line only. */
   password?: boolean
+  /**
+   * A date and a time of day, picked with the platform's own control; the value is
+   * `YYYY-MM-DDTHH:mm`, in this device's time zone. Single-line only.
+   */
+  dateTime?: boolean
   /**
    * How many lines tall the field stands, for a caller that grows it with its content.
    * Ignored on a single-line input, which has no such attribute.

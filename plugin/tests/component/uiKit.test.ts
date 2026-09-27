@@ -680,6 +680,13 @@ describe('Input', () => {
     expect(plain.attributes('type')).toBe('text')
   })
 
+  it('asks for a date and a time with the platform’s own picker', () => {
+    const view = mount(Input, { props: { modelValue: '2026-09-27T14:30', dateTime: true } })
+
+    expect(view.attributes('type')).toBe('datetime-local')
+    expect((view.element as HTMLInputElement).value).toBe('2026-09-27T14:30')
+  })
+
   /**
    * A field whose every save costs something — a rebuild, a rescan — wants the value once it is
    * finished, not a keystroke at a time: `commit` is that, on Enter or on leaving the field.
