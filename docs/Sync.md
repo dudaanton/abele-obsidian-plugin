@@ -80,7 +80,8 @@ A device set up by a **transfer** gets the same dialog. It is connected as the t
 applied, but syncs nothing until the question is answered: the status bar says **Choose how to
 join**, a notice says so when Obsidian starts, and the Sync tab opens the dialog by itself and keeps
 a **Choose…** button for it (and **Disconnect**, to leave instead). What this device syncs can be
-changed there before answering.
+changed there before answering. A transfer onto the vault this device already synced to the end
+asks nothing: it is a reconnect, and syncing starts at once.
 
 The device is then enrolled and the tab shows **This device**: its status, the server, the vault
 and its name, with **Sync now**, **Pause** (or **Resume**) and **Rescan**. **Rescan** walks the

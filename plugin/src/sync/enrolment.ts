@@ -10,6 +10,7 @@ import { isDeviceSecretId, secrets } from '@/secrets/SecretStore'
 import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer/connection'
 import type { DeviceConnection, JoinState } from './connection'
 import { sideOf } from './joinState'
+import { keptLedger } from './join'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { NO_LEDGER, readLedgerId, writeLedgerId } from './ledgerId'
 import { newSecretId, newStateId } from './ids'
@@ -222,7 +223,8 @@ export class Enrolment {
    *
    * The join question is left open (`join.ask`): the vault arriving may hold files, and so may
    * this one, and which side wins is the person's to say. No engine is built until the Sync tab
-   * has asked it and `answerJoin` has the answer.
+   * has asked it and `answerJoin` has the answer. Not for a vault this device already walked to
+   * the end (`keptLedger`): that is a reconnect, with nothing to choose, and it syncs at once.
    */
   async adoptTransferred(
     arrived: TransferredConnection,
@@ -242,6 +244,14 @@ export class Enrolment {
 
     const own = this.host.connection()
     if (own.serverUrl !== '' || own.vaultId !== '') await this.disconnect()
+    // A vault this device already walked to the end is a reconnect: nothing to choose, so
+    // nothing is asked and it syncs at once (task-8 review, #6).
+    const reconnect = await keptLedger(app, this.host.factory(), arrived.vaultId).catch(
+      (error: unknown) => {
+        this.host.note(`the ledger could not be read, so the join is asked: ${messageOf(error)}`)
+        return false
+      }
+    )
 
     const tokenId = newSecretId()
     secrets().device.set(tokenId, token)
@@ -253,9 +263,13 @@ export class Enrolment {
       deviceName: arrived.deviceName,
       tokenId,
       selective: { ...selective, maxFileBytes: this.host.connection().selective.maxFileBytes },
-      join: { vaultId: arrived.vaultId, prefer: null, ask: true },
+      join: reconnect ? null : { vaultId: arrived.vaultId, prefer: null, ask: true },
     })
-    this.host.note('took the connection a transfer brought')
+    this.host.note(
+      reconnect
+        ? 'took the connection a transfer brought; this device synced that vault before'
+        : 'took the connection a transfer brought'
+    )
     await this.settle(dropped)
   }
 

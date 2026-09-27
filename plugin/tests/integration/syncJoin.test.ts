@@ -299,6 +299,29 @@ describe('a transfer onto a vault with files', () => {
     )
   }
 
+  it('asks nothing when this device already synced that vault to the end, and syncs', async () => {
+    await join(null)
+    await service.disconnect()
+    const { deviceToken } = await server.device(accountToken, vaultId, 'Sender')
+    const minted = await server.clientOn(deviceToken).enrolSibling('Desktop', 'desktop')
+
+    await service.adoptTransferred(
+      {
+        serverUrl: server.BASE_URL,
+        vaultId,
+        vaultName: 'Home',
+        deviceId: minted.device_id,
+        deviceName: 'Desktop',
+      },
+      minted.device_token,
+      selective()
+    )
+
+    expect(conn().join).toBeNull()
+    await waitFor('the sync to run', () => service.isConnected())
+    expect(service.status.value.state).not.toBe('joining')
+  })
+
   it('builds no engine until the question is answered', async () => {
     await receive()
 
