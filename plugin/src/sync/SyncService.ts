@@ -209,11 +209,10 @@ export class SyncService {
   /**
    * Change this device's connection, and put the engine in step with it. Checked first, by the
    * rules `ConnectionKeeper.check` holds every change from outside to; nothing is written when
-   * it throws.
+   * it throws, and what is written is the change as `check` answers it — the address normalised.
    */
   async updateConnection(patch: ConnectionEdit): Promise<void> {
-    this.keeper.check(patch)
-    this.keeper.save(patch)
+    this.keeper.save(this.keeper.check(patch))
     await this.serialise(() => this.runner.reconcile())
   }
 

@@ -1,3 +1,4 @@
+import { normalizeServerUrl } from '@abele/sync-protocol'
 import { SyncService } from '@/sync/SyncService'
 
 /**
@@ -105,16 +106,51 @@ function hostOf(url: string): string {
 }
 
 /**
+ * The types a device path takes, where they are not simply the type it holds now: the size cap
+ * is a number or no cap at all, on a phone as on a desktop, as an empty field on the Sync tab
+ * is. Null for every other path, which the ordinary type check covers.
+ */
+export function deviceTypes(path: string): readonly string[] | null {
+  return path === 'sync.selective.maxFileBytes' ? ['number', 'empty'] : null
+}
+
+/**
+ * The value a write would leave at a device path, as far as can be said before it runs: an
+ * address the way it will be stored (`ConnectionKeeper.check`), anything else as asked.
+ */
+export function deviceNext(path: string, next: unknown): unknown {
+  if (path !== 'sync.serverUrl' || typeof next !== 'string' || next === '') return next
+  return normalizeServerUrl(next) ?? next
+}
+
+/**
+ * Why sync is not running after a write that went through, or null when nothing says it failed:
+ * the address named a vault the token is not enrolled on, the server did not answer. The
+ * error status never carries a secret.
+ */
+export function startFailure(): string | null {
+  const status = SyncService.getInstance().status.value
+  return status.state === 'error' ? (status.lastError ?? 'no reason was given') : null
+}
+
+/**
  * The line the approval card adds for a device path: a warning for a field that moves this
  * device's token — naming where it would be sent — and null for any other.
+ *
+ * Emptying the address or the vault sends the token nowhere: the device stops syncing, and the
+ * token it holds stays valid on the server it was minted on until Disconnect tells that server.
  */
 export function deviceWarning(path: string, next: unknown): string | null {
   const field = fieldOf(path)
   if (field === null || !MOVES_TOKEN.has(field)) return null
-  const server =
-    field === 'serverUrl' && typeof next === 'string'
-      ? next
-      : SyncService.getInstance().connection.value.serverUrl
+  const connection = SyncService.getInstance().connection.value
+  if ((field === 'serverUrl' || field === 'vaultId') && next === '') {
+    const minted = connection.enrolledUrl || connection.serverUrl
+    return minted === ''
+      ? 'Stops this device syncing.'
+      : `Stops this device syncing. Its device token stays valid on ${hostOf(minted)} until Disconnect.`
+  }
+  const server = field === 'serverUrl' && typeof next === 'string' ? next : connection.serverUrl
   const where = server === '' ? 'whichever server this device is set to' : hostOf(server)
   return `Changes where this device syncs. Its device token will be sent to ${where}.`
 }

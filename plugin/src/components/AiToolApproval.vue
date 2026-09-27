@@ -93,7 +93,7 @@
         <span class="abele-tool-approval__after">{{ settingsWrite.after }}</span>
       </div>
       <div v-if="settingsWrite.warning" class="abele-tool-approval__warning">
-        <Icon icon="alert-triangle" />
+        <Icon icon="alert-triangle" color="orange" no-hover />
         <span>{{ settingsWrite.warning }}</span>
       </div>
       <div v-else-if="settingsWrite.deviceOnly" class="abele-tool-approval__note">
@@ -593,6 +593,7 @@ const toggleEdit = () => {
   font-family: var(--font-monospace);
   font-size: var(--font-small);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--size-4-2);
   margin-bottom: var(--size-4-2);

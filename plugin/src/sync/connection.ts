@@ -398,6 +398,58 @@ function pendingFrom(raw: unknown): { entries: PendingRevoke[]; damaged: boolean
   return { entries, damaged: entries.length !== raw.length }
 }
 
+const KIND_KEYS = ['images', 'audio', 'video', 'pdf', 'other'] as const
+const SETTINGS_KEYS = [
+  'main',
+  'appearance',
+  'hotkeys',
+  'corePlugins',
+  'communityPlugins',
+  'pluginSettings',
+] as const
+
+/**
+ * Why selective settings from outside may not be written, or null when they may: the Sync
+ * tab's rules, for a writer that has no tab to hold it to them. Every field is there and of its
+ * type, and nothing else is; the cap is no cap (`null`) or a positive whole number of bytes, on
+ * a phone as on a desktop. `selectiveFrom` fills in and drops silently, which is right for a
+ * record read back and wrong for a change somebody asked for and is told was made.
+ *
+ * The cap is judged only when it changes: one saved before this rule still lets the switches
+ * beside it be flipped, the way `ConnectionKeeper.check` leaves a saved address alone.
+ */
+export function selectiveProblem(raw: unknown, saved: SelectiveSettings): string | null {
+  const o = objectOf(raw)
+  if (o === null) return 'selective has to be an object'
+  const known = new Set<string>([...KIND_KEYS, 'excludedFolders', 'maxFileBytes', 'settings'])
+  const unknown = Object.keys(o).filter((key) => !known.has(key))
+  if (unknown.length > 0) return `selective has no ${unknown.join(', ')}`
+  for (const key of KIND_KEYS) {
+    if (typeof o[key] !== 'boolean') return `selective.${key} has to be true or false`
+  }
+  const folders = o.excludedFolders
+  if (!Array.isArray(folders) || folders.some((folder) => typeof folder !== 'string')) {
+    return 'selective.excludedFolders has to be a list of folder names'
+  }
+  const cap = o.maxFileBytes
+  if (cap !== saved.maxFileBytes && cap !== null) {
+    if (typeof cap !== 'number' || !Number.isSafeInteger(cap) || cap <= 0) {
+      return 'selective.maxFileBytes has to be a positive whole number of bytes, or null for no cap'
+    }
+  }
+  const settings = objectOf(o.settings)
+  if (settings === null) return 'selective.settings has to be an object'
+  const extra = Object.keys(settings).filter(
+    (key) => !(SETTINGS_KEYS as readonly string[]).includes(key)
+  )
+  if (extra.length > 0) return `selective.settings has no ${extra.join(', ')}`
+  for (const key of SETTINGS_KEYS) {
+    if (typeof settings[key] !== 'boolean')
+      return `selective.settings.${key} has to be true or false`
+  }
+  return null
+}
+
 /** A plain object to read fields off, or nothing — arrays and `null` are not records. */
 export function objectOf(raw: unknown): Record<string, unknown> | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null

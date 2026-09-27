@@ -10,6 +10,7 @@
  * still waiting — is not reachable at all.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import type { App } from 'obsidian'
 import { PLAIN_HTTP_REFUSED } from '@abele/sync-protocol'
 import {
   createReadSettingsTool,
@@ -18,8 +19,9 @@ import {
 } from '@/ai/tools/SettingsTools'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { emptyConnection } from '@/sync/connection'
+import { emptyConnection, writeConnection } from '@/sync/connection'
 import { SyncService } from '@/sync/SyncService'
+import type AbelePlugin from '@/main'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 
@@ -35,6 +37,11 @@ const OLD = 'https://old.example.com'
 const TOKEN_ID = 'abele-sync-device-abc123'
 
 let app: FakeApp
+
+const plugin = {
+  manifest: { id: 'abele' },
+  registerDomEvent: () => undefined,
+} as unknown as AbelePlugin
 let saved: number
 
 /** The connection as a device enrolled on `OLD` holds it; `token` puts its token in the keychain. */
@@ -99,13 +106,22 @@ describe('changing where this device syncs', () => {
     expect(SyncService.getInstance().connection.value.serverUrl).toBe(OLD)
   })
 
-  it('writes an https address through updateConnection, not data.json', async () => {
+  it('writes an https address through updateConnection, not data.json, and reconciles', async () => {
+    // Started, so a reconcile has an app to work on; filed where `init` reads the connection.
+    writeConnection(app as unknown as App, SyncService.getInstance().connection.value)
     const service = SyncService.getInstance()
+    const runner = (service as unknown as { runner: { reconcile: () => Promise<void> } }).runner
+    const reconcile = vi.spyOn(runner, 'reconcile')
+    service.init(app as unknown as App, plugin)
+    // The start's own reconcile, out of the way, so the one counted below is the write's.
+    await vi.waitFor(() => expect(reconcile).toHaveBeenCalledTimes(1))
+    reconcile.mockClear()
     const update = vi.spyOn(service, 'updateConnection')
 
     const text = await answer(write, { path: 'sync.serverUrl', value: 'https://new.example.com' })
 
     expect(update).toHaveBeenCalledWith({ serverUrl: 'https://new.example.com' })
+    expect(reconcile).toHaveBeenCalled()
     expect(service.connection.value.serverUrl).toBe('https://new.example.com')
     expect(text).toContain(`"${OLD}" → "https://new.example.com"`)
     expect(saved).toBe(0)
@@ -215,9 +231,12 @@ describe('what a write would do, as the approval card says it', () => {
   })
 
   it('never shows a secret on either side', () => {
+    AbeleConfig.getInstance().fireflyToken = 'the stored firefly token'
     const view = describeSettingsWrite('fireflyToken', '"a new token"')
 
-    expect(view.before).not.toContain('a real')
+    expect(view.before).toBe('"<hidden>"')
     expect(view.after).toBe('"<hidden>"')
+    expect(JSON.stringify(view)).not.toContain('the stored firefly token')
+    expect(JSON.stringify(view)).not.toContain('a new token')
   })
 })

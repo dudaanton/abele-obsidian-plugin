@@ -865,28 +865,29 @@ describe('SyncService — a keychain id it did not mint', () => {
 })
 
 /**
- * Only the Sync tab writes what this device syncs today, but the agent is to be handed the
- * same road: whatever arrives is stored the way it will be read back, so the engine is never
- * built on something the next launch reads differently.
+ * The agent is handed the Sync tab's road, and a change from outside is held to the tab's rules
+ * before anything is written: selective settings that are not what they should be are refused
+ * whole, rather than filled out silently into something nobody asked for and reported as made.
  */
 describe('SyncService — what a connection change may hold', () => {
-  it('fills out selective settings that are not what they should be', async () => {
+  it('refuses selective settings that are not what they should be, and writes nothing', async () => {
     await connect()
     await synced()
+    const before = conn().selective
 
-    await service.updateConnection({
-      selective: {
-        ...conn().selective,
-        excludedFolders: 'Archive' as unknown as string[],
-        video: 'no' as unknown as boolean,
-        maxFileBytes: Number.NaN,
-      },
-    })
+    for (const bad of [
+      { excludedFolders: 'Archive' as unknown as string[] },
+      { video: 'no' as unknown as boolean },
+      { maxFileBytes: Number.NaN },
+      { maxFileBytes: 0 },
+    ]) {
+      await expect(
+        service.updateConnection({ selective: { ...conn().selective, ...bad } })
+      ).rejects.toThrow(/selective/)
+    }
 
-    expect(conn().selective.excludedFolders).toEqual([])
-    expect(conn().selective.video).toBe(true)
-    expect(conn().selective.maxFileBytes).toBeNull()
-    expect(readConnection(app).selective).toEqual(conn().selective)
+    expect(conn().selective).toEqual(before)
+    expect(readConnection(app).selective).toEqual(before)
     await synced()
   })
 })

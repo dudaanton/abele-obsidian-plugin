@@ -1,5 +1,6 @@
 import { Platform, type App } from 'obsidian'
 import { ref, type Ref } from 'vue'
+import { normalizeServerUrl } from '@abele/sync-protocol'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { isDeviceSecretId, secrets } from '@/secrets/SecretStore'
 import {
@@ -11,6 +12,7 @@ import {
   MIGRATION_UNSTORED,
   migrateConnection,
   selectiveFrom,
+  selectiveProblem,
   writeConnection,
   type DeviceConnection,
 } from './connection'
@@ -125,19 +127,25 @@ export class ConnectionKeeper {
   }
 
   /**
-   * Throws why this change from outside may not be written, before anything is.
+   * Throws why this change from outside may not be written, before anything is; otherwise
+   * answers with the change as it is to be written.
    *
    * Only the fields named are checked, by the rules a sign-in holds them to: a server address
    * the https rule refuses, and a keychain name this plugin never mints or keeps for a waiting
-   * revoke, are thrown back. What is already saved is not re-judged — a connection made before
+   * revoke, are thrown back, and selective settings are held to the Sync tab's rules
+   * (`selectiveProblem`). What is already saved is not re-judged — a connection made before
    * the https rule can still have its switches changed, and `reconcile` says why it builds
    * nothing.
+   *
+   * What is written is what a sign-in would write: the address the way `normalizeServerUrl`
+   * spells it, so the host that was judged is the host every request goes to. A new vault id
+   * drops the vault name that went with the old one, unless the change names one of its own.
    *
    * Where the token goes is not a field to edit: while a token is held, the address must stay
    * the one it was minted on, and the fields that record that and the waiting revokes are the
    * bookkeeping's alone — refused here, whatever the caller's types said.
    */
-  check(patch: ConnectionEdit): void {
+  check(patch: ConnectionEdit): ConnectionEdit {
     const kept = KEPT_FIELDS.filter((field) => field in patch)
     if (kept.length > 0) throw new Error(`${kept.join(', ')} is kept by the plugin itself`)
     const problem = connectionProblem({
@@ -146,14 +154,31 @@ export class ConnectionKeeper {
       deviceTokenId: patch.deviceTokenId ?? '',
     })
     if (problem !== null) throw new Error(problem)
+    const current = this.connection.value
+    if (patch.selective !== undefined) {
+      const refused = selectiveProblem(patch.selective, current.selective)
+      if (refused !== null) throw new Error(refused)
+    }
+    const edit: ConnectionEdit = { ...patch }
+    if (patch.serverUrl !== undefined && patch.serverUrl !== '') {
+      edit.serverUrl = normalizeServerUrl(patch.serverUrl) ?? patch.serverUrl
+    }
+    if (
+      patch.vaultId !== undefined &&
+      patch.vaultId !== current.vaultId &&
+      patch.vaultName === undefined
+    ) {
+      edit.vaultName = ''
+    }
     // Asked only of a change that moves the address or the token: a locked keychain must not
     // stop a switch being flipped, and `reconcile` reports it the way it reports any build.
-    const next = { ...this.connection.value, ...patch }
-    const moves = patch.serverUrl !== undefined || patch.deviceTokenId !== undefined
+    const next = { ...current, ...edit }
+    const moves = edit.serverUrl !== undefined || edit.deviceTokenId !== undefined
     if (moves && next.serverUrl !== '' && this.holdsToken(next.deviceTokenId)) {
       const elsewhere = enrolledElsewhere(next.serverUrl, next.enrolledUrl)
       if (elsewhere !== null) throw new Error(elsewhere)
     }
+    return edit
   }
 
   /** Whether the keychain holds a device token under this id. */

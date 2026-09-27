@@ -21,7 +21,15 @@ import {
   updateItem,
   type ItemResult,
 } from './settingsItems'
-import { deviceWarning, isDevicePath, writeDevice } from './settingsDevice'
+import {
+  deviceNext,
+  deviceTypes,
+  deviceValue,
+  deviceWarning,
+  isDevicePath,
+  startFailure,
+  writeDevice,
+} from './settingsDevice'
 
 /**
  * Reading and changing the plugin's own settings, from a chat.
@@ -243,10 +251,19 @@ async function write(
   if (isDevicePath(path)) {
     if (op !== 'set') return 'Change device sync settings one field at a time with set.'
     const next = parseValue(raw!)
-    const { before, after } = describeSettingsWrite(path, raw!)
+    const { before } = describeSettingsWrite(path, raw!)
+    const takes = deviceTypes(path)
+    if (takes && !takes.includes(typeOf(next))) return `"${path}" is ${takes.join(' or ')}; ${JSON.stringify(next)} is ${typeOf(next)}. The type has to match.`
     const refusal = await writeDevice(path, next)
-    return refusal ?? `${path}: ${before} → ${after}`
+    if (refusal) return refusal
+    // What the connection holds now, not what was asked: the address is stored normalised.
+    const stored = JSON.stringify(redact(deviceValue(path), found.key)) ?? '(not set)'
+    const failure = startFailure()
+    const line = `${path}: ${before} → ${stored}`
+    return failure === null ? line : `${line} — sync could not start: ${failure}`
   }
+  found.parent[found.key] = next
+  await AbeleConfig.getInstance().saveSettings()
 
   let result: ItemResult
   if (op === 'set') result = setValue(path, found, parseValue(raw))
@@ -334,7 +351,7 @@ export function describeSettingsWrite(path: string, raw: string): SettingsWriteV
   return {
     path: trimmed,
     before,
-    after: JSON.stringify(redact(next, key)) ?? '(not set)',
+    after: JSON.stringify(redact(device ? deviceNext(trimmed, next) : next, key)) ?? '(not set)',
     warning: device ? deviceWarning(trimmed, next) : null,
     deviceOnly: device,
   }

@@ -65,6 +65,14 @@ describe('approving a change to a setting', () => {
     expect(warning.text()).toContain('new.example.com')
   })
 
+  it('draws the warning glyph in the warning colour, as decoration nobody clicks', () => {
+    const wrapper = approval({ path: 'sync.serverUrl', value: 'https://new.example.com' })
+
+    const glyph = wrapper.find('.abele-tool-approval__warning .abele-obsidian-icon')
+    expect(glyph.classes()).toContain('abele-obsidian-icon_color-orange')
+    expect(glyph.classes()).toContain('abele-obsidian-icon_no-hover')
+  })
+
   it('shows before → after with no warning for an ordinary setting', () => {
     const wrapper = approval({ path: 'ai.chatFolder', value: 'Chats' })
 

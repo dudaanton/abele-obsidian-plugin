@@ -260,8 +260,13 @@ told are not settings at all, and are never written from outside. `read_settings
 `sync.deviceId`, `sync.deviceTokenId`, `sync.deviceName`, `sync.paused` and `sync.selective` with
 everything in it (`sync.selective.images`, `sync.selective.maxFileBytes`, …). A write there changes
 this device only, goes through the same checks as the Sync tab — an address it refuses, a keychain
-name it never uses or a new server while a token is held comes back as the reason and nothing
-changes — and its approval says where the token would be sent when the field decides that.
+name it never uses, a new server while a token is held, a size cap that is not a positive whole
+number of bytes (`null` is no cap, on a phone too) or a folder list with anything but names in it
+comes back as the reason and nothing changes. An address is stored the way a sign-in stores it
+(lower-case host, no trailing slash), and the answer reports the value as stored, adding why sync
+could not start when the change left it unable to. The approval says where the token would be sent
+when the field decides that, and that emptying the address or the vault stops this device syncing
+while its token stays valid on the server until **Disconnect**.
 A transfer can also set it: its **Sync connection** section, sent with keys, gives
 the other device a device of its own on the same vault. A `data.json` that still names a server or a vault — written by an older version of
 Abele — has those fields dropped when it is read, and they are never written back.
