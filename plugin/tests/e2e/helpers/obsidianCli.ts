@@ -406,6 +406,8 @@ export function notesInEditor(): number {
  * Waits until Obsidian has resolved every note's links. After an app reload — which every
  * `emulateMobile` switch is — the link index fills in over several seconds while the
  * metadata is already there, so a file running right after one saw a group of 442 notes as 6.
+ * And until the workspace's layout is ready too: the plugin is back, and the test API with it,
+ * before the layout is, and a file opening a tab in that moment was told "No tab group found".
  */
 export function waitForLinkIndex(timeoutMs = 120_000): void {
   const deadline = Date.now() + timeoutMs
@@ -416,7 +418,7 @@ export function waitForLinkIndex(timeoutMs = 120_000): void {
         const q = m.linkResolverQueue
         const pending = q ? (q.items?.size ?? q.items?.length ?? 0) : 0
         const running = !!q?.runnable?.running
-        return m.initialized && !pending && !running &&
+        return app.workspace.layoutReady && m.initialized && !pending && !running &&
           Object.keys(m.resolvedLinks).length >= app.vault.getMarkdownFiles().length
       })()`,
       30_000
@@ -559,6 +561,9 @@ async function reloadWindow(asked: string | undefined): Promise<void> {
     await pauseAsync(4000)
     const deadline = Date.now() + 60_000
     while (!hasTestApi() && Date.now() < deadline) await pauseAsync(1000)
+    // The plugin is back before the layout is; a tab opened in between finds no tab group.
+    while (Date.now() < deadline && !evalJson<boolean>('app.workspace.layoutReady', 30_000))
+      await pauseAsync(500)
     evalRaw(`(() => { localStorage.removeItem('${MOBILE_KEY}'); return 'ok' })()`, 30_000)
   } finally {
     try {
