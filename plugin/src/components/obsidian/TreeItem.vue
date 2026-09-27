@@ -1,15 +1,15 @@
 <template>
   <div class="tree-item abele-tree-item" :class="{ 'is-collapsed': collapsible && collapsed }">
     <div
-      class="tree-item-self is-clickable abele-tree-item__self"
-      :class="{ 'mod-collapsible': collapsible, 'is-active': active }"
+      class="tree-item-self abele-tree-item__self"
+      :class="{ 'is-clickable': !plain, 'mod-collapsible': collapsible, 'is-active': active }"
       role="treeitem"
-      tabindex="0"
+      :tabindex="plain ? undefined : 0"
       :aria-expanded="collapsible ? !collapsed : undefined"
       :aria-current="active ? 'true' : undefined"
       :data-path="path"
-      @click="emit('click', $event)"
-      @keydown.enter.prevent="emit('click', keyClick($event))"
+      @click="plain || emit('click', $event)"
+      @keydown.enter.prevent="plain || emit('click', keyClick($event))"
     >
       <div
         v-if="collapsible"
@@ -56,6 +56,11 @@ const props = withDefaults(
     collapsed?: boolean
     /** Carried as `data-path`, for finding the row again. */
     path?: string
+    /**
+     * A row that is only read — a list of files a question is about: no hover, no tab stop, no
+     * click. Without it every row is one more stop for the keyboard on the way to the buttons.
+     */
+    plain?: boolean
   }>(),
   {
     icon: undefined,
@@ -64,6 +69,7 @@ const props = withDefaults(
     collapsible: false,
     collapsed: false,
     path: undefined,
+    plain: false,
   }
 )
 

@@ -400,6 +400,16 @@ describe('EmptyState', () => {
 })
 
 describe('TreeItem', () => {
+  it('draws a row that is only read as neither a tab stop nor a click target', async () => {
+    const view = mount(TreeItem, { props: { text: 'Notes/a.md', plain: true } })
+    const self = view.find('.tree-item-self')
+
+    expect(self.attributes('tabindex')).toBeUndefined()
+    expect(self.classes()).not.toContain('is-clickable')
+    await self.trigger('click')
+    expect(view.emitted('click')).toBeUndefined()
+  })
+
   it("draws a row in Obsidian's own tree classes: glyph, name, flair, the active mark", () => {
     const view = mount(TreeItem, {
       props: { text: 'app.ts', icon: 'file', flair: '3 KB', active: true, path: 'src/app.ts' },
