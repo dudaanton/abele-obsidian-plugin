@@ -123,6 +123,60 @@ const PRELUDE = `
     await wait(500)
     return cfi
   }
+  /**
+   * Words on the last line of text on screen selected, as a finger or the mouse leaves them, and
+   * whether the bar for them covers them: the words' boxes and the bar's, in the window.
+   */
+  const selectLastLine = async (view, name) => {
+    // A page whose text ends above the bar's place — a paragraph that did not fit — does not
+    // show the case: the next page is tried.
+    for (let i = 0; i < 6; i++) {
+      const out = await selectLastLineHere(view, name)
+      if (out.wouldCover) return out
+      await view.engine.next()
+      await wait(800)
+    }
+    return selectLastLineHere(view, name)
+  }
+  const selectLastLineHere = async (view, name) => {
+    const doc = contents(view).doc
+    const frame = doc.defaultView.frameElement.getBoundingClientRect()
+    const box = stage(view).getBoundingClientRect()
+    // The last letter shown on the page, found letter by letter in the paragraphs on screen.
+    const inside = (r) =>
+      r.width > 0 && r.left + frame.left >= box.left && r.right + frame.left <= box.right &&
+      r.top + frame.top >= box.top && r.bottom + frame.top <= box.bottom
+    const letter = doc.createRange()
+    let end = null
+    const walker = doc.createTreeWalker(doc.body, 4)
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const p = node.parentElement.getBoundingClientRect()
+      if (p.right + frame.left < box.left || p.left + frame.left > box.right) continue
+      for (let i = 0; i < node.length; i++) {
+        letter.setStart(node, i); letter.setEnd(node, i + 1)
+        if (node.data[i].trim() && inside(letter.getBoundingClientRect())) end = { node, i }
+      }
+    }
+    if (!end) throw new Error('no text on the page')
+    const range = doc.createRange()
+    range.setStart(end.node, Math.max(0, end.i - 4)); range.setEnd(end.node, end.i + 1)
+    if (range.getClientRects().length > 1) range.setStart(end.node, end.i)
+    doc.getSelection().removeAllRanges(); doc.getSelection().addRange(range)
+    await until(() => view.model.selection, 3000)
+    await wait(600)
+    const words = [...range.getClientRects()].map((r) => ({ top: r.top + frame.top, bottom: r.bottom + frame.top }))
+    const f = foot(view).getBoundingClientRect()
+    const covered = words.some((w) => w.bottom > f.top + 1 && w.top < f.bottom - 1)
+    // Where the bar lies when it is at the page's foot: the words must be there, or the case the
+    // step is for never came up.
+    const wouldCover = words.some((w) => w.bottom > box.bottom - f.height + 1)
+    if (name && wouldCover) await shot(name)
+    const out = { foot: shown(foot(view)), covered, wouldCover, words: words.map((w) => Math.round(w.top)), bar: [Math.round(f.top), Math.round(f.bottom)], page: [Math.round(box.top), Math.round(box.bottom)], height: height(view) }
+    doc.getSelection().removeAllRanges()
+    await until(() => !view.model.selection, 3000)
+    await wait(300)
+    return out
+  }
   const shot = async (name) => {
     const img = await require('@electron/remote').getCurrentWebContents().capturePage()
     require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
@@ -139,6 +193,25 @@ const run = <T>(body: string): T =>
   )
 
 type Boxes = { drawn: number[][]; words: number[][] }
+type Last = {
+  foot: boolean
+  covered: boolean
+  wouldCover: boolean
+  words: number[]
+  bar: number[]
+  page: number[]
+  height: number
+}
+
+/** The bar for words on the last line shows, covers none of them, and moves nothing. */
+const uncovered = (name: string, last: Last | undefined, height: number | undefined) => {
+  expect(last?.wouldCover, `${name}: words ${last?.words} in the bar's place at the foot`).toBe(
+    true
+  )
+  expect(last?.foot, `${name}: the bar shows`).toBe(true)
+  expect(last?.covered, `${name}: words ${last?.words} under the bar ${last?.bar}`).toBe(false)
+  expect(last?.height, `${name}: the page not laid out anew`).toBe(height)
+}
 
 const onWords = (name: string, b: Boxes | undefined) => {
   expect(b?.drawn.length, `${name}: boxes drawn`).toBeGreaterThan(0)
@@ -151,10 +224,12 @@ const onWords = (name: string, b: Boxes | undefined) => {
 
 describe.skipIf(!available)('zen mode', () => {
   let size: [number, number] = [0, 0]
+  let savedReader: unknown = null
 
   beforeAll(async () => {
     if (evalRaw(`String(app.isMobile)`) === 'true') await reload('app.emulateMobile(false)')
     size = evalJson<[number, number]>(`${WINDOW}.getContentSize()`)
+    savedReader = evalJson<unknown>('window.__abeleTest.AbeleConfig.getInstance().reader')
     const data = Buffer.from(buildProseEpub()).toString('base64')
     evalRaw(
       `(async () => {
@@ -165,6 +240,11 @@ describe.skipIf(!available)('zen mode', () => {
         await app.vault.createFolder(${JSON.stringify(DIR)})
         const bytes = Uint8Array.from(atob(${JSON.stringify(data)}), (c) => c.charCodeAt(0))
         await app.vault.createBinary(${JSON.stringify(PROSE)}, bytes.buffer)
+        // The narrow margin: the last line of a page then always lies where the bar for words
+        // would at the page's foot.
+        const cfg = window.__abeleTest.AbeleConfig.getInstance()
+        cfg.reader = { ...cfg.reader, margin: 'narrow' }
+        await cfg.saveSettings()
         return 'ok'
       })()`,
       44_000
@@ -180,6 +260,9 @@ describe.skipIf(!available)('zen mode', () => {
           if (leaf.view.file?.path?.startsWith(${JSON.stringify(DIR)})) leaf.detach()
         const dir = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
         if (dir) await app.vault.delete(dir, true)
+        const cfg = window.__abeleTest.AbeleConfig.getInstance()
+        cfg.reader = ${JSON.stringify(savedReader)}
+        await cfg.saveSettings()
         return 'ok'
       })()`
     evalRaw(clean, 44_000)
@@ -196,6 +279,7 @@ describe.skipIf(!available)('zen mode', () => {
       peek?: { height: number; header: boolean; headerTop: number; pageTop: number }
       peekGone?: boolean
       selected?: { foot: boolean; height: number }
+      last?: Last
       after?: { height: number; header: boolean; foot: boolean; boxes: Boxes; on: boolean }
     }>(`
       api.zen.set(false)
@@ -237,6 +321,8 @@ describe.skipIf(!available)('zen mode', () => {
       doc.getSelection().removeAllRanges()
       await until(() => !view.model.selection, 3000)
       await wait(300)
+      // Words on the last line: the bar goes where it covers none of them.
+      const last = await selectLastLine(view, 'desktop-last-line')
 
       // Esc, as the keyboard sends it, to whatever holds the focus.
       view.takeFocus()
@@ -244,7 +330,7 @@ describe.skipIf(!available)('zen mode', () => {
       await until(() => height(view) < zen.height - 40, 5000)
       await wait(1500)
       const after = { ...state(), on: api.zen.state().on }
-      return { before, zen, peek, peekGone, selected, after }
+      return { before, zen, peek, peekGone, selected, last, after }
     `)
     expect(r.error).toBeUndefined()
     expect(r.before?.header).toBe(true)
@@ -265,6 +351,7 @@ describe.skipIf(!available)('zen mode', () => {
 
     expect(r.selected?.foot).toBe(true)
     expect(r.selected?.height).toBe(r.zen?.height)
+    uncovered('desktop', r.last, r.zen?.height)
 
     expect(r.after?.on).toBe(false)
     expect(r.after?.header).toBe(true)
@@ -284,6 +371,7 @@ describe.skipIf(!available)('zen mode', () => {
       zen?: { height: number; hidden: boolean; navbarOpacity: string; header: string; boxes: Boxes }
       peek?: { height: number; hidden: boolean; foot: boolean; footBottom: number; navTop: number }
       expired?: { hidden: boolean; foot: boolean }
+      last?: Last
       after?: { height: number; hidden: boolean; boxes: Boxes }
     }>(`
       api.zen.set(false)
@@ -321,12 +409,13 @@ describe.skipIf(!available)('zen mode', () => {
       await shot('phone-peek')
       await wait(4500)
       const expired = { hidden: document.body.classList.contains('is-hidden-nav'), foot: shown(foot(view)) }
+      const last = await selectLastLine(view, 'phone-last-line')
 
       await toggle()
       await until(() => height(view) < zen.height - 40, 5000)
       await wait(1500)
       const after = { height: height(view), hidden: document.body.classList.contains('is-hidden-nav'), boxes: boxes(view, cfi) }
-      return { phone: app.isMobile, before, zen, peek, expired, after }
+      return { phone: app.isMobile, before, zen, peek, expired, last, after }
     `)
     expect(r.error).toBeUndefined()
     expect(r.phone).toBe(true)
@@ -345,6 +434,7 @@ describe.skipIf(!available)('zen mode', () => {
     if (r.before?.nav) expect(r.peek?.footBottom).toBeLessThanOrEqual((r.peek?.navTop ?? 0) + 1)
     expect(r.expired?.hidden).toBe(true)
     expect(r.expired?.foot).toBe(false)
+    uncovered('phone', r.last, r.zen?.height)
 
     expect(r.after?.hidden).toBe(false)
     expect(r.after?.height).toBe(r.before?.height)

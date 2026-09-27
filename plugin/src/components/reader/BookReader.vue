@@ -59,7 +59,10 @@
       <div
         v-if="model.status === 'ready'"
         class="abele-book-reader__foot"
-        :class="{ 'abele-book-reader__foot_hidden': zen().on && !zenFootShown(model) }"
+        :class="{
+          'abele-book-reader__foot_hidden': zen().on && !zenFootShown(model),
+          'abele-book-reader__foot_top': zen().on && model.zenFootTop,
+        }"
       >
         <BookInkBar
           v-if="model.ink.on"
@@ -503,6 +506,15 @@ body:not(.is-mobile) .abele-book-reader__foot {
   .abele-book-reader__foot_hidden {
     display: none;
   }
+
+  // Over the top of the page, when at its foot it would cover the words it is for.
+  .abele-book-reader__foot.abele-book-reader__foot_top {
+    top: 0;
+    bottom: auto;
+    padding-bottom: 0;
+    border-top: none;
+    border-bottom: var(--border-width) solid var(--background-modifier-border);
+  }
 }
 
 // A computer or a tablet: the header is out of the layout, and over the top of the page while
@@ -554,7 +566,9 @@ body:not(.is-mobile) .abele-book_zen > .abele-book-zen-edge {
 }
 
 // Peeked at, the row under the page sits over Obsidian's bar rather than under it.
-.is-phone .abele-book_zen.abele-book_zen-peek .abele-book-reader__foot {
+.is-phone
+  .abele-book_zen.abele-book_zen-peek
+  .abele-book-reader__foot:not(.abele-book-reader__foot_top) {
   bottom: max(0px, calc(var(--view-bottom-spacing, 0px) - var(--safe-area-inset-bottom)));
 }
 

@@ -113,3 +113,21 @@ export function escLeavesZen(m: Busy): boolean {
 export function navHidden(o: { on: boolean; front: boolean; phone: boolean; peek: boolean }) {
   return o.on && o.front && o.phone && !o.peek
 }
+
+/** Top and bottom of a box, in the window. */
+export interface Band {
+  top: number
+  bottom: number
+}
+
+/**
+ * Whether the bar for words selected, or a highlight tapped, goes to the top of the page rather
+ * than its foot: when at the foot, `foot` tall, it would cover them, and at the top it would not.
+ * Words at both ends leave nowhere free, and the bar stays where it always is.
+ */
+export function zenFootAtTop(words: Band[], page: Band, foot: number): boolean {
+  if (!words.length || !(foot > 0)) return false
+  const low = words.some((w) => w.bottom > page.bottom - foot)
+  const high = words.some((w) => w.top < page.top + foot)
+  return low && !high
+}

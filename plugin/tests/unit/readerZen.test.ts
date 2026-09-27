@@ -17,6 +17,7 @@ import {
   navHidden,
   setZen,
   zen,
+  zenFootAtTop,
   zenFootShown,
   zenStateFrom,
 } from '@/reader/zen'
@@ -63,6 +64,22 @@ describe('what shows in zen mode', () => {
     // Still selecting: the bar waits until the finger lets go, as it does outside the mode.
     expect(zenFootShown(m({ selection: sel, selecting: true }))).toBe(false)
     expect(zenFootShown(m({ ink: { ...emptyBookModel().ink, on: true } }))).toBe(true)
+  })
+
+  it('puts the bar for words at the top of the page when at the foot it would cover them', () => {
+    const page = { top: 0, bottom: 800 }
+    const line = (top: number) => ({ top, bottom: top + 20 })
+    // Nothing selected, or words high on the page: the bar stays at the foot.
+    expect(zenFootAtTop([], page, 44)).toBe(false)
+    expect(zenFootAtTop([line(100)], page, 44)).toBe(false)
+    expect(zenFootAtTop([line(730)], page, 44)).toBe(false)
+    // On the last lines, where the bar lies: it goes to the top.
+    expect(zenFootAtTop([line(760)], page, 44)).toBe(true)
+    expect(zenFootAtTop([line(700), line(770)], page, 44)).toBe(true)
+    // Words at both ends of the page: nowhere is free, it stays where it always is.
+    expect(zenFootAtTop([line(10), line(770)], page, 44)).toBe(false)
+    // Measured against the page where it is, not the window.
+    expect(zenFootAtTop([line(760)], { top: 100, bottom: 900 }, 44)).toBe(false)
   })
 
   it('lets Esc leave the mode only when there is nothing nearer to close', () => {

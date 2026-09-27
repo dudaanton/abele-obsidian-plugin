@@ -9,7 +9,17 @@
  */
 import { watch, type WatchStopHandle } from 'vue'
 import type { BookModel } from './model'
-import { PEEK_LEAVE_MS, PEEK_MS, ZEN_CLASS, ZEN_PEEK_CLASS, followZen, navHidden, zen } from './zen'
+import {
+  type Band,
+  PEEK_LEAVE_MS,
+  PEEK_MS,
+  ZEN_CLASS,
+  ZEN_PEEK_CLASS,
+  followZen,
+  navHidden,
+  zen,
+  zenFootAtTop,
+} from './zen'
 
 /** Obsidian's phone navigation, which it does not publish in its API. */
 export interface MobileNavbar {
@@ -30,6 +40,8 @@ export interface ZenHost {
   front(): boolean
   /** Moves without animation: e-ink mode. */
   still(): boolean
+  /** The lines of the words selected, or of the highlight tapped, in the window. */
+  words(): Band[]
 }
 
 const HIDDEN_NAV = 'is-hidden-nav'
@@ -61,6 +73,16 @@ export class ZenChrome {
         }
       )
     )
+    // The bar for words goes where it covers none of them, measured once it shows — and again
+    // when the page turns under a selection.
+    const m = host.model
+    this.stops.push(
+      watch(
+        () => [m.selection, m.active, m.selecting, m.fraction, m.zenPeek, zen().on] as const,
+        () => this.placeFoot(),
+        { flush: 'post' }
+      )
+    )
     const body = el.ownerDocument.body
     if (host.phone && host.navbar()) {
       this.observer = new MutationObserver(() => this.syncNav())
@@ -85,6 +107,26 @@ export class ZenChrome {
   middleTap(): void {
     if (!zen().on || !this.host.touch) return
     this.peek(!this.host.model.zenPeek)
+  }
+
+  /** The bar for words at the top of the page when at its foot it would cover them. */
+  private placeFoot(): void {
+    const m = this.host.model
+    const el = this.host.containerEl
+    const foot = el.querySelector('.abele-book-reader__foot')
+    const stage = el.querySelector('.abele-book-reader__stage')
+    const top =
+      zen().on &&
+      !!(m.selection || m.active) &&
+      !m.selecting &&
+      !!foot &&
+      !!stage &&
+      zenFootAtTop(
+        this.host.words(),
+        stage.getBoundingClientRect(),
+        foot.getBoundingClientRect().height
+      )
+    if (m.zenFootTop !== top) m.zenFootTop = top
   }
 
   /** Shows the chrome for a moment, or hides it again. */

@@ -177,6 +177,7 @@ export class BookView extends FileView {
       touch: Platform.isMobile,
       front: () => this.app.workspace.getActiveViewOfType(BookView) === this,
       still: () => eink().on,
+      words: () => this.selectedLines(),
     })
 
     this.addAction('audio-lines', 'Read aloud', () => this.reading?.speech.toggle())
@@ -679,6 +680,42 @@ export class BookView extends FileView {
       zoom: (way) => this.zoom(way),
       middleTap: () => this.zenChrome?.middleTap(),
     }
+  }
+
+  /** The lines of the words selected, or of the highlight tapped, in the window: zen's bar. */
+  private selectedLines(): { top: number; bottom: number }[] {
+    const m = this.model
+    const reader = this.reader as
+      | (FoliateView & {
+          resolveNavigation?: (cfi: string) => { index: number; anchor?: (d: Document) => unknown }
+        })
+      | null
+    if (!reader || !(m.selection || m.active)) return []
+    const renderer = reader.renderer as { getContents?: () => { doc?: Document; index?: number }[] }
+    const lines: { top: number; bottom: number }[] = []
+    for (const { doc, index } of renderer.getContents?.() ?? []) {
+      const frame = doc?.defaultView?.frameElement?.getBoundingClientRect()
+      if (!doc || !frame) continue
+      let range: Range | null = null
+      const sel = doc.getSelection()
+      if (m.selection && sel && !sel.isCollapsed && sel.rangeCount) range = sel.getRangeAt(0)
+      else if (m.active)
+        try {
+          const place = reader.resolveNavigation?.(m.active.cfi)
+          const anchor = place && place.index === index ? place.anchor?.(doc) : null
+          if (
+            anchor &&
+            typeof (anchor as Range).getClientRects === 'function' &&
+            'startContainer' in (anchor as Range)
+          )
+            range = anchor as Range
+        } catch {
+          // A place this page does not have.
+        }
+      for (const r of Array.from(range?.getClientRects() ?? []))
+        lines.push({ top: r.top + frame.top, bottom: r.bottom + frame.top })
+    }
+    return lines
   }
 
   /** Esc leaves zen mode, when the tab has nothing nearer to close. Returns whether it did. */

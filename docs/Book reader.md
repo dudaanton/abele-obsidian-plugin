@@ -621,7 +621,11 @@ is on, and `abele-book_zen-peek` while the chrome is shown for a moment.
   default hotkey), or Esc — heard in the tab and on its page — when the tab has nothing nearer to
   close (words selected, a panel, a dialog).
 - **Selecting.** The row under the page shows for words selected or a highlight tapped, once the
-  finger or the mouse lets go, and while drawing on a PDF.
+  finger or the mouse lets go, and while drawing on a PDF. It lies over the page, so it never
+  covers the words it is for: when at the page's foot it would lie over any of their lines, it
+  goes to the top of the page instead (`zenFootAtTop`, the tab's `selectedLines`), measured once
+  it shows and again when the page turns under a selection. Words at both ends of the page leave
+  nowhere free, and it stays at the foot.
 - **E-ink.** Obsidian's header and bar move without a transition over a book in zen mode while
   e-ink mode is on, and the navigation is given back without its animation.
 - The quick button is put away in the mode, except during a peek.

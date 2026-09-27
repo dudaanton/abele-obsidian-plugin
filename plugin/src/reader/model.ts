@@ -121,6 +121,8 @@ export interface BookModel {
   turns: number
   /** Zen mode's chrome shown for a moment over the page (`zen.ts`). */
   zenPeek: boolean
+  /** Zen mode's bar for words sits at the top of the page, where it covers none of them. */
+  zenFootTop: boolean
 }
 
 export const emptyBookModel = (): BookModel => ({
@@ -154,6 +156,7 @@ export const emptyBookModel = (): BookModel => ({
   ink: emptyInk(),
   turns: 0,
   zenPeek: false,
+  zenFootTop: false,
 })
 
 /** The engine's contents as the tree the panel draws. */
