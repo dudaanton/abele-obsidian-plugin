@@ -220,6 +220,54 @@ describe('the code search panel', () => {
     expect(tab.onOpen.mock.calls[0][0]).toMatch(/\/compare\/main\.\.\.fix#diff-[0-9a-f]{64}R2$/)
   })
 
+  it('runs a search asked for while the comparison is still loading, once it has loaded', async () => {
+    // The comparison's files are named by a hash that is worked out off the main thread; hold it
+    // back, so the tab is still loading when Enter is pressed.
+    const digest = crypto.subtle.digest.bind(crypto.subtle)
+    let release = () => {}
+    const held = new Promise<void>((r) => (release = r))
+    const spy = vi
+      .spyOn(crypto.subtle, 'digest')
+      .mockImplementation(async (...args: Parameters<SubtleCrypto['digest']>) => {
+        await held
+        return digest(...args)
+      })
+    try {
+      const tab = openTab('https://github.com/o/r/compare/main...fix', {
+        '/repos/o/r/compare/main...fix': {
+          json: {
+            status: 'ahead',
+            ahead_by: 1,
+            behind_by: 0,
+            total_commits: 1,
+            commits: [],
+            files: [
+              {
+                ...file('src/app.ts', '@@ -1,2 +1,2 @@\n keep\n-old formatName\n+new formatName'),
+                contents_url: `https://api.github.com/repos/o/r/contents/src/app.ts?ref=${SHA}`,
+              },
+            ],
+          },
+        },
+      })
+      await flushPromises()
+      await tab.wrapper
+        .findAll('.abele-github-header__actions .abele-obsidian-icon')
+        .find((i) => i.attributes('aria-label')?.startsWith('Search the code'))!
+        .trigger('click')
+      await flushPromises()
+      await search(tab.wrapper, 'formatName')
+      expect(tab.wrapper.find('.abele-github-search__line').exists()).toBe(false)
+
+      release()
+      await vi.waitFor(() =>
+        expect(tab.wrapper.findAll('.abele-github-search__line')).toHaveLength(2)
+      )
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('finds file names as they are typed', async () => {
     const { wrapper } = await openPanel()
     await wrapper.find<HTMLSelectElement>('.abele-github-search__scope select').setValue('names')

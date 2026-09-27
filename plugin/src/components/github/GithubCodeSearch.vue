@@ -160,6 +160,8 @@ const stageText = ref('')
 const error = ref('')
 const results = ref<CodeResults | null>(null)
 let abort: AbortController | null = null
+/** Enter was pressed before the tab's item loaded: the search runs once it has. */
+let pending = false
 
 const scopes = computed(() => [
   ...(props.hasChanges ? [{ value: 'changes', display: 'Only the changed files' }] : []),
@@ -192,7 +194,12 @@ const parts = (line: ResultLine) => {
 
 const run = async () => {
   const text = query.value.trim()
-  if (!text || !props.ready) return
+  if (!text) return
+  if (!props.ready) {
+    pending = true
+    return
+  }
+  pending = false
   abort?.abort()
   const mine = (abort = new AbortController())
   running.value = true
@@ -265,7 +272,8 @@ watch([query, scope], () => {
 watch(
   () => props.ready,
   (ready) => {
-    if (ready && props.request && !results.value && !running.value) void run()
+    if (!ready || running.value) return
+    if (pending || (props.request && !results.value)) void run()
   }
 )
 
