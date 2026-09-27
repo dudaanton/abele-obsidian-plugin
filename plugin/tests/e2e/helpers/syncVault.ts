@@ -22,6 +22,7 @@
  * takes it for one of the command's own arguments, and a test that did that would drive
  * whatever window the developer last clicked on — and keeps the tier's per-call ceiling.
  */
+import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import {
   copyFileSync,
@@ -87,6 +88,31 @@ const CORE_PLUGINS: Record<string, boolean> = {
   sync: false,
   bases: true,
   webviewer: false,
+}
+
+/**
+ * Runs `step` while whoever shares this Obsidian knows the whole app is being touched.
+ *
+ * Opening a vault, closing its window and taking it off the list all rewrite the app's vault
+ * list, which is the app's, not the driven window's. A machine where several runs share one
+ * Obsidian can name a command in `ABELE_E2E_APP_GATE`; it is run with `enter` before the step,
+ * may wait there until the app is free, and is run with `leave` after it, whatever happened.
+ * Awaited rather than run synchronously, so a wait does not stop the worker answering the runner.
+ * Without the variable the step simply runs.
+ */
+async function withAppGate<T>(step: () => Promise<T>): Promise<T> {
+  const gate = process.env.ABELE_E2E_APP_GATE
+  if (gate === undefined || gate === '') return step()
+  const call = (arg: string): Promise<void> =>
+    new Promise((resolve, reject) => {
+      execFile(gate, [arg], (error) => (error ? reject(error) : resolve()))
+    })
+  await call('enter')
+  try {
+    return await step()
+  } finally {
+    await call('leave')
+  }
 }
 
 export interface TestVault extends VaultCli {
@@ -191,19 +217,20 @@ export async function openTestVault(): Promise<TestVault> {
     dispose: () => dispose(host, vault, windowId),
   }
 
-  let opened = ''
-  try {
-    opened = host.evalRaw(
-      `window.electron.ipcRenderer.sendSync("vault-open", ${JSON.stringify(path)}, false)`,
-      20_000
-    )
-  } catch (error) {
-    opened = String(error)
-  }
+  const opened = await withAppGate(async () => {
+    try {
+      return host.evalRaw(
+        `window.electron.ipcRenderer.sendSync("vault-open", ${JSON.stringify(path)}, false)`,
+        20_000
+      )
+    } catch (error) {
+      return String(error)
+    }
+  })
   if (opened !== 'true') {
     // It may have been registered even so; the folder and the entry go either way.
     removeFolder(path)
-    forgetVault(host, path)
+    await withAppGate(async () => forgetVault(host, path))
     throw new Error(`Obsidian would not open ${path}: ${opened}`)
   }
 
@@ -314,6 +341,14 @@ function alive(vault: VaultCli): boolean {
  * one window they can close themselves.
  */
 async function dispose(host: VaultCli, vault: TestVault, windowId: number | null): Promise<void> {
+  await withAppGate(() => closeAndForget(host, vault, windowId))
+}
+
+async function closeAndForget(
+  host: VaultCli,
+  vault: TestVault,
+  windowId: number | null
+): Promise<void> {
   const windows = `(() => {
     const remote = require('@electron/remote')
     return remote.BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() &&

@@ -944,6 +944,11 @@ message the vault switcher's **Remove from list** sends. A window that will not 
 with its folder, and a warning names the path: close the window, remove the vault from the
 switcher, then delete the folder.
 
+A machine where several runs share one Obsidian can name a command in `ABELE_E2E_APP_GATE`.
+Opening the vault, closing its window and taking it off the list rewrite the app's own vault list,
+so each of those steps is run between `<command> enter`, which may wait until the app is free, and
+`<command> leave`. Without the variable they simply run.
+
 The other sync files differ in a few ways worth knowing before a run:
 
 - **Sign-ins are spaced out.** The server lets one address sign in ten times a minute, and a
