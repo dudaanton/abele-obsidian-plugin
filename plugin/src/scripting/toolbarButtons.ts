@@ -1,32 +1,26 @@
 /**
- * Puts the toolbar's scripts where they are pressed: a button among the icons at the top right
- * of every note on a computer, and a place on the phone's toolbar above the keyboard.
+ * Puts the toolbar's scripts where they are pressed: an icon on the left ribbon on a computer,
+ * and a place on the phone's toolbar above the keyboard.
  *
  * Which scripts those are, and the rules for the phone's list, are in `scriptToolbar.ts`. This is
- * the part that touches Obsidian — the notes' headers and the app's config — and it redraws
- * whenever the scripts, the settings or the open notes change.
+ * the part that touches Obsidian — its ribbon and the app's config — and it redraws whenever the
+ * scripts or the settings change.
  *
- * Every script is an Obsidian command already (`Script: <name>`), so the phone's toolbar only
- * needs its id; a button runs the same command's way, with the note it sits on made the active
- * one first, so the script sees that note and whatever is selected in it.
+ * The ribbon icons are Obsidian's own ribbon items, so its ribbon settings list them and the
+ * person reorders or hides them there. Every script is an Obsidian command already
+ * (`Script: <name>`), so the phone's toolbar only needs its id; a ribbon icon runs the script the
+ * command's way, on the note in front and whatever is selected in it.
  */
-import {
-  MarkdownView,
-  Notice,
-  Platform,
-  type EventRef,
-  type View,
-  type WorkspaceLeaf,
-} from 'obsidian'
+import { Notice, Platform } from 'obsidian'
 import { watch, type WatchStopHandle } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import type { ScriptService } from './ScriptService'
 import type { ParsedScript } from './types'
 import {
-  TOOLBAR_SCRIPT_ICON,
   mobileToolbarNext,
   toolbarCommandId,
+  toolbarRibbonItems,
   toolbarScripts,
   toolbarScriptsFrom,
   withToolbarScript,
@@ -37,8 +31,19 @@ import {
 const OFFERED_KEY = 'abele-script-toolbar-offered'
 const PHONE_TOOLBAR = 'mobileToolbarCommands'
 
-/** The class on each button, so tests and styles find them. */
-export const SCRIPT_ACTION_CLASS = 'abele-script-action'
+/** The class on each ribbon icon, so tests and styles find them. */
+export const SCRIPT_RIBBON_CLASS = 'abele-script-ribbon'
+
+/** Obsidian's left ribbon, as its own `addRibbonIcon` uses it. */
+interface Ribbon {
+  addRibbonItemButton(
+    id: string,
+    icon: string,
+    title: string,
+    callback: (evt: MouseEvent) => unknown
+  ): HTMLElement
+  removeRibbonAction(id: string): void
+}
 
 interface AppConfig {
   vault: {
@@ -56,89 +61,76 @@ export function currentToolbarScripts(service: ScriptService): ParsedScript[] {
 }
 
 export class ScriptToolbar {
-  private refs: EventRef[] = []
   private stopWatch: WatchStopHandle | null = null
   private stopped = false
-  /** The buttons drawn into each note, and what they were drawn for. */
-  private drawn = new Map<View, { signature: string; els: HTMLElement[] }>()
+  /** The ribbon icons drawn, by id, and what each was drawn for. */
+  private drawn = new Map<string, { signature: string; el: HTMLElement }>()
 
   constructor(private readonly service: ScriptService) {}
 
   start(): void {
-    const { app } = GlobalStore.getInstance()
-    const redraw = () => this.drawButtons()
-    this.refs = [
-      app.workspace.on('layout-change', redraw),
-      app.workspace.on('active-leaf-change', redraw),
-    ]
     this.stopWatch = watch(
       [this.service.scriptList, AbeleConfig.getInstance().version],
       () => this.sync(),
       { flush: 'sync' }
     )
-    // The phone's list waits for the index: read before it, every script would look gone and
-    // be taken off.
+    // Both wait for the index: read before it, every script would look gone, and the phone's
+    // list would lose them.
     void this.service.ready.then(() => this.sync())
   }
 
   stop(): void {
     this.stopped = true
-    const { app } = GlobalStore.getInstance()
-    for (const ref of this.refs) app.workspace.offref(ref)
-    this.refs = []
     this.stopWatch?.()
     this.stopWatch = null
-    for (const { els } of this.drawn.values()) for (const el of els) el.remove()
-    this.drawn.clear()
+    for (const id of [...this.drawn.keys()]) this.removeIcon(id)
   }
 
   /** Brings both toolbars up to date. */
   sync(): void {
     if (this.stopped) return
-    this.drawButtons()
+    this.drawRibbon()
     this.syncPhoneToolbar()
   }
 
-  /**
-   * A button per script in every note's header, on a computer only: on a phone the header has
-   * no room, and the toolbar above the keyboard is where they go instead. A note whose buttons
-   * already show the same scripts is left alone.
-   */
-  private drawButtons(): void {
-    if (this.stopped) return
+  private ribbon(): Ribbon | null {
     const { app } = GlobalStore.getInstance()
-    const scripts = Platform.isMobile ? [] : currentToolbarScripts(this.service)
-    const signature = scripts
-      .map((s) => `${s.path}\u0000${s.meta.name}\u0000${s.meta.icon}`)
-      .join('\n')
-
-    const live = new Set<View>()
-    for (const leaf of app.workspace.getLeavesOfType('markdown')) {
-      const view = leaf.view
-      if (!(view instanceof MarkdownView)) continue
-      live.add(view)
-      const before = this.drawn.get(view)
-      if (before?.signature === signature) continue
-      for (const el of before?.els ?? []) el.remove()
-      // `addAction` puts each new button first, so they are added last to first.
-      const els = [...scripts].reverse().map((script) => {
-        const el = view.addAction(script.meta.icon || TOOLBAR_SCRIPT_ICON, script.meta.name, () =>
-          this.run(leaf, script.path)
-        )
-        el.addClass(SCRIPT_ACTION_CLASS)
-        el.dataset.script = script.meta.name
-        return el
-      })
-      this.drawn.set(view, { signature, els })
-    }
-    for (const view of [...this.drawn.keys()]) if (!live.has(view)) this.drawn.delete(view)
+    return (app.workspace as unknown as { leftRibbon?: Ribbon }).leftRibbon ?? null
   }
 
-  /** Runs a script from a note's button, with that note the one in front. */
-  private run(leaf: WorkspaceLeaf, path: string): void {
-    const { app } = GlobalStore.getInstance()
-    app.workspace.setActiveLeaf(leaf, { focus: true })
-    void this.service.executeFromCommand(path)
+  /**
+   * An icon per script on the left ribbon, on a computer only: a phone has the toolbar above the
+   * keyboard for them. An icon already showing the same script is left alone; one whose script
+   * is gone, or off the toolbar, is taken away.
+   */
+  private drawRibbon(): void {
+    const plugin = AbeleConfig.getInstance().plugin
+    const ribbon = this.ribbon()
+    if (!plugin || !ribbon) return
+    const scripts = Platform.isMobile ? [] : currentToolbarScripts(this.service)
+    const items = toolbarRibbonItems(plugin.manifest.id, scripts)
+    const wanted = new Set(items.map((i) => i.id))
+    for (const id of [...this.drawn.keys()]) if (!wanted.has(id)) this.removeIcon(id)
+    for (const item of items) {
+      const signature = `${item.icon}\u0000${item.title}`
+      if (this.drawn.get(item.id)?.signature === signature) continue
+      this.removeIcon(item.id)
+      const el = ribbon.addRibbonItemButton(item.id, item.icon, item.title, () => {
+        void this.service.executeFromCommand(item.path)
+      })
+      el.addClass(SCRIPT_RIBBON_CLASS)
+      el.dataset.script = item.title
+      this.drawn.set(item.id, { signature, el })
+    }
+  }
+
+  /** Takes an icon off the ribbon the way Obsidian does for a plugin's own: its place is kept. */
+  private removeIcon(id: string): void {
+    const drawn = this.drawn.get(id)
+    if (!drawn) return
+    this.ribbon()?.removeRibbonAction(id)
+    drawn.el.detach()
+    this.drawn.delete(id)
   }
 
   /** Puts this device's additions to the phone's toolbar in line with the scripts on it. */

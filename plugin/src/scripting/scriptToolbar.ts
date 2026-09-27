@@ -3,7 +3,7 @@
  *
  * A script gets there two ways, as on the book menu: by its own header (`// @toolbar`), or by
  * being put there from the script library, which keeps its name in `ai.toolbarScripts`. On a
- * computer each one is a button among the icons at the top right of every note; on a phone it is
+ * computer each one is an icon on the left ribbon; on a phone it is
  * a place on Obsidian's own toolbar above the keyboard, which lists commands by id in the app's
  * config (`mobileToolbarCommands`).
  *
@@ -64,6 +64,27 @@ export function withoutToolbarScript(chosen: string[], name: string): string[] {
  */
 export function toolbarCommandId(pluginId: string, script: ParsedScript): string {
   return `${pluginId}:${script.commandId}`
+}
+
+/** One script's icon on the left ribbon, as Obsidian's ribbon takes it. */
+export interface RibbonItem {
+  /** Named by the script's file, not its name: renaming a script keeps its place and whether
+   * the person hid it in Obsidian's ribbon settings, which are kept by this id. */
+  id: string
+  icon: string
+  /** The tooltip, and the name the ribbon settings list it by. */
+  title: string
+  path: string
+}
+
+/** The ribbon's items for the scripts on the toolbar, in their order. */
+export function toolbarRibbonItems(pluginId: string, scripts: ParsedScript[]): RibbonItem[] {
+  return scripts.map((s) => ({
+    id: `${pluginId}:script:${s.path}`,
+    icon: s.meta.icon || TOOLBAR_SCRIPT_ICON,
+    title: s.meta.name,
+    path: s.path,
+  }))
 }
 
 /** One script the phone's toolbar should carry: its command, and the file, to follow a rename. */

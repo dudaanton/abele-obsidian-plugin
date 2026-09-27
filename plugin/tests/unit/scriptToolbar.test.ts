@@ -8,6 +8,7 @@ import { parseScriptHeader } from '@/scripting/ScriptParser'
 import {
   mobileToolbarNext,
   toolbarCommandId,
+  toolbarRibbonItems,
   toolbarPlace,
   toolbarScripts,
   toolbarScriptsFrom,
@@ -70,6 +71,31 @@ describe('the toolbar list', () => {
 
   it('names the command the way Obsidian registers it: the plugin id in front', () => {
     expect(toolbarCommandId('abele', ALL[0])).toBe('abele:abele:script-translate')
+  })
+})
+
+describe('the ribbon', () => {
+  it('has an item per script, in order, named by its file so a rename keeps its place', () => {
+    expect(toolbarRibbonItems('abele', toolbarScripts(ALL, ['Translate']))).toEqual([
+      {
+        id: 'abele:script:Scripts/translate.js',
+        icon: 'languages',
+        title: 'Translate',
+        path: 'Scripts/translate.js',
+      },
+      {
+        id: 'abele:script:Scripts/anki.js',
+        icon: 'scroll-text',
+        title: 'Anki',
+        path: 'Scripts/anki.js',
+      },
+      {
+        id: 'abele:script:Scripts/card.js',
+        icon: 'scroll-text',
+        title: 'Word card',
+        path: 'Scripts/card.js',
+      },
+    ])
   })
 })
 

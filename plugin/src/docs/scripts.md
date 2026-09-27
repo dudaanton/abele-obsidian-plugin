@@ -50,14 +50,16 @@ whose header has `// @book`. Up to three are a button each, more fold into one m
 script is picked from the list. A script can call another with `runScript`.
 
 The toolbar is the same idea for notes. A script whose header has `// @toolbar`, or which the
-person pinned from the script library (`ai.toolbarScripts`, by name), is a button with its icon
-among the icons at the top right of every note on a computer — pressed, it runs on that note and
-whatever is selected in it, as from the command palette — and is put at the start of the phone's
+person pinned from the script library (`ai.toolbarScripts`, by name), is an icon on Obsidian's
+left ribbon on a computer — its own icon, its name as the tooltip, pressed it runs on the note in
+front and whatever is selected in it, as from the command palette — and is put at the start of the phone's
 toolbar above the keyboard, Obsidian's own `mobileToolbarCommands`. That list belongs to the person
 as much as to the plugin: only what the plugin put there is taken off again, and a script the
 person took off by hand is not put back unless it is pinned again. Every script is a command
 (`Script: <name>`) whether or not it is on the toolbar, so it can have a hotkey and be put on the
-phone's toolbar by hand too.
+phone's toolbar by hand too. A ribbon item is named by the script's file (`abele:script:<path>`),
+so renaming the script keeps its place and whether it was hidden in Obsidian's ribbon settings,
+where these items are reordered and hidden like any other. Nothing is added to notes' headers.
 
 A script can also run each time the plugin starts — Obsidian opening, and also the plugin being
 reloaded or updated, which is the same start from where the plugin stands; switching scripts on

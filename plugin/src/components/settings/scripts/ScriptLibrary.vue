@@ -3,11 +3,11 @@
     <template #desc>
       Every script in the scripts folder. A script describes itself in the comment block at the top
       of its file: <code>@name</code>, <code>@description</code>, <code>@icon</code> and a
-      <code>@param</code> line per value it takes. The pin puts a script on the toolbar: a button at
-      the top right of every note on a computer, and a place on the toolbar above the keyboard on a
-      phone — <code>@toolbar</code> in its header does the same. The power button runs a script each
-      time Obsidian starts; <code>@startup</code> in its header does the same, and the Startup tab
-      puts them in order.
+      <code>@param</code> line per value it takes. The pin puts a script on the toolbar: an icon on
+      the left ribbon on a computer, and a place on the toolbar above the keyboard on a phone —
+      <code>@toolbar</code> in its header does the same. The power button runs a script each time
+      Obsidian starts; <code>@startup</code> in its header does the same, and the Startup tab puts
+      them in order.
     </template>
 
     <EmptyState v-if="!scriptsEnabled">
@@ -180,7 +180,7 @@ const toolbarTooltip = (script: ParsedScript): string => {
   const place = placeOf(script)
   if (place === 'header') return 'On the toolbar by its // @toolbar header line'
   if (place === 'setting') return 'Take it off the toolbar'
-  return 'Put it on the toolbar: at the top right of every note, and above the keyboard on a phone'
+  return 'Put it on the toolbar: the left ribbon, and above the keyboard on a phone'
 }
 
 const toggleToolbar = (script: ParsedScript) => {

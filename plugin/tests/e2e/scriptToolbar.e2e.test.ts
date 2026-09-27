@@ -3,14 +3,15 @@
  *
  * With a scripts folder of the run's own (written for the run and removed after it):
  *
- * - a script whose header says `@toolbar` has a button among the icons at the top right of an
- *   open note; pressed, it runs with that note in front and the words selected in it;
- * - a script pinned from the library (`ai.toolbarScripts`) gets one too, ahead of the header's,
- *   and loses it when unpinned;
+ * - a script whose header says `@toolbar` has an icon on the left ribbon, its own icon with its
+ *   name as the tooltip, listed among Obsidian's ribbon items; pressed, it runs on the note in
+ *   front and the words selected in it. Notes' headers get nothing from it;
+ * - a script pinned from the library (`ai.toolbarScripts`) gets one too and loses it when
+ *   unpinned; a script whose name changes keeps its ribbon item, renamed; a deleted one loses it;
  * - the phone's toolbar above the keyboard (`mobileToolbarCommands`) gets each at its start; a
  *   renamed script keeps its place there; one the person took off is not put back; one
  *   switched off is taken off; a command put there by hand is never touched;
- * - on a phone (390×844, `emulateMobile`) the notes have no such buttons, the toolbar above
+ * - on a phone (390×844, `emulateMobile`) there are no ribbon icons for them, the toolbar above
  *   the keyboard shows the script's icon and runs it on a tap — pictured to
  *   `/tmp/abele-phone/script-toolbar.png`.
  */
@@ -58,6 +59,9 @@ const PRELUDE = `
     await wait(300)
     return leaf
   }
+  const RIBBON = 'abele:script:' + ${JSON.stringify(SCRIPTS)} + '/'
+  const ribbonItems = () => app.workspace.leftRibbon.items.filter((i) => i.id.startsWith(RIBBON) && i.buttonEl?.isConnected)
+  const ribbon = () => ribbonItems().map((i) => i.title)
   const buttons = (leaf) => [...leaf.view.containerEl.querySelectorAll('.view-actions .abele-script-action')].map((b) => b.dataset.script)
   const phone = () => app.vault.getConfig('mobileToolbarCommands') ?? []
   // The script takes a parameter, so it asks first, as from the command palette: the form is
@@ -150,46 +154,79 @@ describe.skipIf(!available)('scripts on the toolbar', () => {
     )
   }, 180_000)
 
-  it('a @toolbar script has a button on the note, and runs on that note and its selection', () => {
+  it('a @toolbar script has an icon on the ribbon, and runs on the note in front and its selection', () => {
     const r = run<{
       error?: string
-      buttons?: string[]
+      ribbon?: string[]
+      icon?: string
+      id?: string
+      headerButtons?: number
       field?: string
       output?: string
       source?: string
     }>(`
       const leaf = await openNote()
-      const shown = await until(() => buttons(leaf).length && buttons(leaf))
+      const shown = await until(() => ribbon().length && ribbon())
+      const item = ribbonItems()[0]
       leaf.view.editor.setSelection({ line: 0, ch: 5 }, { line: 0, ch: 10 })
-      // Another note in front: the button's own note is the one the script is given.
       const before = lastRun()?.id
-      const other = app.workspace.getLeaf('split')
-      app.workspace.setActiveLeaf(other, { focus: true })
-      leaf.view.containerEl.querySelector('.abele-script-action[data-script="E2E toolbar headed"]').click()
+      item.buttonEl.click()
       const field = await answerForm()
       const done = await until(() => lastRun()?.id !== before && lastRun()?.status === 'done' && lastRun())
-      other.detach()
-      return { buttons: shown, field, output: done?.result, source: done?.source }
+      return {
+        ribbon: shown,
+        icon: item.icon,
+        id: item.id,
+        headerButtons: document.querySelectorAll('.view-actions .abele-script-action').length,
+        field,
+        output: done?.result,
+        source: done?.source,
+      }
     `)
     expect(r.error).toBeUndefined()
-    expect(r.buttons).toEqual(['E2E toolbar headed'])
+    expect(r.ribbon).toEqual(['E2E toolbar headed'])
+    expect(r.icon).toBe('rocket')
+    expect(r.id).toBe(`abele:script:${SCRIPTS}/headed.js`)
+    expect(r.headerButtons).toBe(0)
     expect(r.field).toBe('words')
     expect(r.source).toBe('command')
     expect(r.output).toBe(`${NOTE}|words`)
   })
 
-  it('a script pinned from the library gets a button, and loses it when unpinned', () => {
-    const r = run<{ error?: string; on?: string[]; off?: string[] }>(`
-      const leaf = await openNote()
+  it('a pinned script gets a ribbon icon, keeps it through a rename, and loses it when unpinned or deleted', () => {
+    const r = run<{
+      error?: string
+      on?: string[]
+      renamed?: string[]
+      renamedId?: string
+      off?: string[]
+      gone?: string[]
+    }>(`
+      // A line break written as a character, not an escape: the CLI turns escapes in the code into
+      // real line breaks, which a string cannot hold.
+      const NL = String.fromCharCode(10)
       await pin(['E2E toolbar pinned'])
-      const on = await until(() => buttons(leaf).length === 2 && buttons(leaf))
+      const on = await until(() => ribbon().length === 2 && ribbon())
+      await rewrite(${JSON.stringify(`${SCRIPTS}/pinned.js`)}, ${JSON.stringify(PLAIN)}.replace('// @name E2E toolbar pinned', '// @name E2E toolbar pinned' + NL + '// @toolbar').replace('E2E toolbar pinned', 'E2E toolbar moved'))
+      const renamed = await until(() => ribbon().includes('E2E toolbar moved') && ribbon())
+      const renamedId = ribbonItems().find((i) => i.title === 'E2E toolbar moved')?.id
+      await rewrite(${JSON.stringify(`${SCRIPTS}/pinned.js`)}, ${JSON.stringify(PLAIN)})
       await pin([])
-      const off = await until(() => buttons(leaf).length === 1 && buttons(leaf))
-      return { on, off }
+      const off = await until(() => ribbon().length === 1 && ribbon())
+      await app.vault.create(${JSON.stringify(`${SCRIPTS}/doomed.js`)}, ${JSON.stringify(PLAIN)}.replace('E2E toolbar pinned', 'E2E toolbar doomed').replace('// @icon anchor', '// @icon anchor' + NL + '// @toolbar'))
+      await scripts.discover(); await wait(300)
+      await until(() => ribbon().length === 2)
+      await app.vault.delete(app.vault.getAbstractFileByPath(${JSON.stringify(`${SCRIPTS}/doomed.js`)}))
+      await scripts.discover(); await wait(300)
+      const gone = await until(() => ribbon().length === 1 && ribbon())
+      return { on, renamed, renamedId, off, gone }
     `)
     expect(r.error).toBeUndefined()
-    expect(r.on).toEqual(['E2E toolbar pinned', 'E2E toolbar headed'])
+    expect(r.on?.slice().sort()).toEqual(['E2E toolbar headed', 'E2E toolbar pinned'])
+    expect(r.renamed?.slice().sort()).toEqual(['E2E toolbar headed', 'E2E toolbar moved'])
+    expect(r.renamedId).toBe(`abele:script:${SCRIPTS}/pinned.js`)
     expect(r.off).toEqual(['E2E toolbar headed'])
+    expect(r.gone).toEqual(['E2E toolbar headed'])
   })
 
   it('the phone toolbar gets them at its start, keeps a renamed one in place, and leaves the rest', () => {
@@ -238,6 +275,8 @@ describe.skipIf(!available)('scripts on the toolbar', () => {
       const s = scripts.getAll().find((x) => x.meta.name === 'E2E toolbar headed')
       scripts.toolbar.forgetOffered(s.path)
       await pin([])
+      // Obsidian writes its config a moment after it changes; the reload below would not wait.
+      await app.vault.saveConfig()
       return { ok: true }
     `)
     evalRaw(
@@ -249,6 +288,7 @@ describe.skipIf(!available)('scripts on the toolbar', () => {
       error?: string
       mobile?: boolean
       buttons?: string[]
+      ribbon?: string[]
       icons?: string[]
       field?: string
       output?: string
@@ -272,11 +312,12 @@ describe.skipIf(!available)('scripts on the toolbar', () => {
       rocket?.click()
       const field = await answerForm()
       const done = await until(() => lastRun()?.id !== before && lastRun()?.status === 'done' && lastRun())
-      return { mobile: app.isMobile, buttons: buttons(leaf), icons, field, output: done?.result }
+      return { mobile: app.isMobile, buttons: buttons(leaf), ribbon: ribbon(), icons, field, output: done?.result }
     `)
     expect(r.error).toBeUndefined()
     expect(r.mobile).toBe(true)
     expect(r.buttons).toEqual([])
+    expect(r.ribbon).toEqual([])
     expect(r.icons?.some((c) => c.includes('lucide-rocket'))).toBe(true)
     expect(r.field).toBe('Some')
     expect(r.output).toBe(`${NOTE}|Some`)

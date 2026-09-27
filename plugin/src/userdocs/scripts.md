@@ -52,8 +52,10 @@ script runs, the status bar says so.
 Pin a script in **Settings → Abele → Scripts → Library** (the pin on its card), or add a
 `// @toolbar` line to its header, and it is on the toolbar:
 
-- on a computer, a button with the script's icon at the top right of every note, beside
-  Obsidian's own. It runs the script on that note and on the words selected in it.
+- on a computer, an icon on the left ribbon, the strip of icons at the edge of the window, with
+  the script's name as its tooltip. It runs the script on the note in front and on the words
+  selected in it. Reorder or hide it in Obsidian's **Settings → Appearance → Ribbon menu configuration**, like
+  any other; renaming the script keeps its place.
 - on a phone, a button at the start of the toolbar above the keyboard. Move it or take it off in
   Obsidian's **Settings → Toolbar**, like any other; one you took off stays off until you pin it
   again.
