@@ -1,3 +1,4 @@
+import { addMoney } from '@/helpers/moneySum'
 import type { Account, AccountType } from '@/entities/Account'
 
 export type AccountsSort = 'size' | 'balance' | 'name'
@@ -49,7 +50,7 @@ export function normalizeAccountsList(stored: unknown): AccountsListSettings {
     sort: s.sort === 'size' || s.sort === 'balance' || s.sort === 'name' ? s.sort : d.sort,
     groupByType: typeof s.groupByType === 'boolean' ? s.groupByType : d.groupByType,
     types: Array.isArray(s.types)
-      ? ACCOUNT_TYPE_ORDER.filter((t) => s.types!.includes(t))
+      ? ACCOUNT_TYPE_ORDER.filter((t) => s.types.includes(t))
       : [...d.types],
     hideZero: typeof s.hideZero === 'boolean' ? s.hideZero : d.hideZero,
     showExcluded: typeof s.showExcluded === 'boolean' ? s.showExcluded : d.showExcluded,
@@ -117,7 +118,7 @@ export function accountRows(
     if (type === 'computed') {
       for (const wikilink of account.sourceAccounts) {
         const sourcePath = source.resolve(wikilink)
-        if (sourcePath) balance += source.balance(sourcePath)
+        if (sourcePath) balance = addMoney(balance, source.balance(sourcePath))
       }
     } else {
       balance = source.balance(path)
@@ -162,7 +163,7 @@ export function groupAccountRows(rows: AccountRow[], byType: boolean): AccountGr
     const sums = new Map<string, number>()
     for (const row of group.rows) {
       if (row.excluded) continue
-      sums.set(row.currency, (sums.get(row.currency) ?? 0) + row.balance)
+      sums.set(row.currency, addMoney(sums.get(row.currency) ?? 0, row.balance))
     }
     group.totals = [...sums]
       .map(([currency, amount]) => ({ currency, amount: cents(amount) }))

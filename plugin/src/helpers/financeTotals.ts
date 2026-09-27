@@ -1,3 +1,4 @@
+import { addMoney } from '@/helpers/moneySum'
 import type { Account } from '@/entities/Account'
 
 /**
@@ -32,13 +33,13 @@ export function currencyCard(
     if (account.excludeFromTotal) continue
 
     if (account.accountType === 'asset') {
-      assets += balanceOf(path)
+      assets = addMoney(assets, balanceOf(path))
     } else if (account.accountType === 'liability') {
       const balance = balanceOf(path)
-      if (balance < 0) debt += -balance
-      else owed += balance
+      if (balance < 0) debt = addMoney(debt, -balance)
+      else owed = addMoney(owed, balance)
     }
   }
 
-  return { currency, assets, debt, owed, net: assets - debt + owed }
+  return { currency, assets, debt, owed, net: addMoney(addMoney(assets, -debt), owed) }
 }

@@ -175,6 +175,7 @@
 </template>
 
 <script setup lang="ts">
+import { addMoney } from '@/helpers/moneySum'
 import { computed, ref, unref, watch, nextTick, onUnmounted, toRef } from 'vue'
 import { useIntersectionObserver } from '@vueuse/core'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -237,7 +238,7 @@ const pinnedCurrenciesList = computed(() =>
 
 const currencyCards = pausedWhileHidden(active, (): CurrencyCard[] => {
   const al = accountsList.value
-  const bi = toRaw(balanceIndex.value) as BalanceIndex | null
+  const bi = toRaw(balanceIndex.value)
   if (!al || !bi) return []
   bi.version.value // track reactivity
 
@@ -339,7 +340,7 @@ const periodByCurrency = computed(() => {
         incomeBreakdown: [],
       })
     }
-    return result.get(cur)!
+    return result.get(cur)
   }
 
   for (const entry of ledger.value) {
@@ -351,25 +352,25 @@ const periodByCurrency = computed(() => {
 
     if (toPath && expensePaths.has(toPath)) {
       const key = `${cur}|${toPath}`
-      expenseMap.set(key, (expenseMap.get(key) || 0) + amount)
+      expenseMap.set(key, addMoney(expenseMap.get(key) || 0, amount))
     }
     if (toPath && liabilityPaths.has(toPath)) {
-      getOrCreate(cur).lent += amount
+      getOrCreate(cur).lent = addMoney(getOrCreate(cur).lent, amount)
     }
 
     if (fromPath && revenuePaths.has(fromPath)) {
       const key = `${cur}|${fromPath}`
-      incomeMap.set(key, (incomeMap.get(key) || 0) + amount)
+      incomeMap.set(key, addMoney(incomeMap.get(key) || 0, amount))
     }
     if (fromPath && liabilityPaths.has(fromPath)) {
-      getOrCreate(cur).returned += amount
+      getOrCreate(cur).returned = addMoney(getOrCreate(cur).returned, amount)
     }
   }
 
   for (const [key, total] of expenseMap) {
     const [cur, path] = key.split('|')
     const data = getOrCreate(cur)
-    data.expenses += total
+    data.expenses = addMoney(data.expenses, total)
     if (total > 0) {
       data.expenseBreakdown.push({
         name: accountNames.get(path) || path,
@@ -382,7 +383,7 @@ const periodByCurrency = computed(() => {
   for (const [key, total] of incomeMap) {
     const [cur, path] = key.split('|')
     const data = getOrCreate(cur)
-    data.income += total
+    data.income = addMoney(data.income, total)
     if (total > 0) {
       data.incomeBreakdown.push({
         name: accountNames.get(path) || path,
@@ -445,7 +446,7 @@ const periodIncome = computed(() => periodTotals.value.income)
 const periodExpenses = computed(() => periodTotals.value.expenses)
 const periodLent = computed(() => periodTotals.value.lent)
 const periodReturned = computed(() => periodTotals.value.returned)
-const periodSavings = computed(() => periodIncome.value - periodExpenses.value)
+const periodSavings = computed(() => addMoney(periodIncome.value, -periodExpenses.value))
 
 // --- Account Type Lookup ---
 
@@ -581,10 +582,10 @@ const calendarData = computed(() => {
     if (entry.date < startStr || entry.date > endStr) continue
 
     if (!dayMap.has(entry.date)) dayMap.set(entry.date, { expense: 0, income: 0 })
-    const day = dayMap.get(entry.date)!
+    const day = dayMap.get(entry.date)
 
-    if (entry.to && expPaths.has(entry.to)) day.expense += entry.amount
-    if (entry.from && revPaths.has(entry.from)) day.income += entry.amount
+    if (entry.to && expPaths.has(entry.to)) day.expense = addMoney(day.expense, entry.amount)
+    if (entry.from && revPaths.has(entry.from)) day.income = addMoney(day.income, entry.amount)
   }
 
   return dayMap
@@ -712,7 +713,7 @@ interface NetworthSeries {
 }
 
 const networthData = pausedWhileHidden(active, () => {
-  const bi = toRaw(balanceIndex.value) as BalanceIndex | null
+  const bi = toRaw(balanceIndex.value)
   if (!bi) return { dates: [] as string[], series: [] as NetworthSeries[] }
   bi.version.value // track reactivity
 
@@ -884,7 +885,7 @@ const dayTotals = computed(() => {
     if (!byCurrency) byDay.set(entry.date, (byCurrency = new Map()))
     const cur = entry.currency || '?'
     const sign = transactionType(entry) === 'income' ? 1 : -1
-    byCurrency.set(cur, (byCurrency.get(cur) || 0) + sign * (entry.amount || 0))
+    byCurrency.set(cur, addMoney(byCurrency.get(cur) || 0, sign * (entry.amount || 0)))
   }
 
   for (const [day, byCurrency] of byDay) {

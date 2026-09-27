@@ -63,6 +63,7 @@
 </template>
 
 <script setup lang="ts">
+import { addMoney } from '@/helpers/moneySum'
 import { Header } from '@/entities/Header'
 import Icon from './obsidian/Icon.vue'
 import { computed, onMounted, ref } from 'vue'
@@ -105,7 +106,7 @@ const accountBalances = computed(() => {
       const linkPath = wikilinkToPath(wikilink)
       if (!linkPath) continue
       const file = app.metadataCache.getFirstLinkpathDest(linkPath, '')
-      if (file) sum += bi.getBalanceAtDate(file.path, dayjs())
+      if (file) sum = addMoney(sum, bi.getBalanceAtDate(file.path, dayjs()))
     }
     return [{ currency: account.currency || '', formatted: fmt(sum) }]
   }

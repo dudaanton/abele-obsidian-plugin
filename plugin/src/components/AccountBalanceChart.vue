@@ -20,6 +20,7 @@
 </template>
 
 <script setup lang="ts">
+import { addMoney, sumMoney } from '@/helpers/moneySum'
 import { computed, ref, watch, nextTick, onUnmounted } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { BalanceIndex } from '@/entities/BalanceIndex'
@@ -103,13 +104,13 @@ const chartData = computed(() => {
 
       const fromPath = raw.from
         ? (() => {
-            const lp = wikilinkToPath(raw.from!)
+            const lp = wikilinkToPath(raw.from)
             return lp ? (app.metadataCache.getFirstLinkpathDest(lp, '')?.path ?? null) : null
           })()
         : null
       const toPath = raw.to
         ? (() => {
-            const lp = wikilinkToPath(raw.to!)
+            const lp = wikilinkToPath(raw.to)
             return lp ? (app.metadataCache.getFirstLinkpathDest(lp, '')?.path ?? null) : null
           })()
         : null
@@ -118,8 +119,8 @@ const chartData = computed(() => {
 
       const cur = raw.currency
       if (!dailyByCurrency.has(cur)) dailyByCurrency.set(cur, new Map())
-      const daily = dailyByCurrency.get(cur)!
-      daily.set(dateStr, (daily.get(dateStr) || 0) + raw.amount)
+      const daily = dailyByCurrency.get(cur)
+      daily.set(dateStr, addMoney(daily.get(dateStr) || 0, raw.amount))
     }
 
     for (const [cur, daily] of dailyByCurrency) {
@@ -151,7 +152,7 @@ const chartData = computed(() => {
       for (let i = 0; i < dates.length; i++) {
         let sum = 0
         for (const sp of sourcePaths) {
-          sum += bi.getBalanceAtDate(sp, dd)
+          sum = addMoney(sum, bi.getBalanceAtDate(sp, dd))
         }
         data.push(Math.round(sum * 100) / 100)
         dd = dd.add(1, 'day')
@@ -188,7 +189,7 @@ const monthTotals = computed(() => {
 
   return seriesList.map((s) => ({
     currency: s.name,
-    formatted: fmt(s.data.reduce((a, b) => a + b, 0)),
+    formatted: fmt(sumMoney(s.data)),
   }))
 })
 

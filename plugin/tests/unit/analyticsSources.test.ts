@@ -208,7 +208,7 @@ describe('finance: balance', () => {
           { app: app as never, inScope: everywhere, today: date }
         )
         const last = money(t, 'balance').pop()!
-        expect(last).toBeCloseTo(bi.getBalanceAtDate(`Accounts/${name}.md`, dayjs(date)), 9)
+        expect(last).toBe(bi.getBalanceAtDate(`Accounts/${name}.md`, dayjs(date)))
       }
     } finally {
       bi.cleanup()

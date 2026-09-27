@@ -1,3 +1,4 @@
+import { addMoney } from '@/helpers/moneySum'
 import { DATE_FORMAT } from '@/constants/dates'
 import { wikilinkToPath } from '@/helpers/pathsHelpers'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -183,7 +184,7 @@ export class BalanceIndex {
     const sums: number[] = new Array(entries.length)
     sums[0] = entries[0].amount
     for (let i = 1; i < entries.length; i++) {
-      sums[i] = sums[i - 1] + entries[i].amount
+      sums[i] = addMoney(sums[i - 1], entries[i].amount)
     }
 
     this.prefixSums.set(accountPath, sums)
@@ -239,7 +240,7 @@ export class BalanceIndex {
       return startingBalance
     }
 
-    return startingBalance + sums[index]
+    return addMoney(startingBalance, sums[index])
   }
 
   getBalanceSeries(
@@ -286,7 +287,7 @@ export class BalanceIndex {
       return startingBalance
     }
 
-    return startingBalance + sums[index]
+    return addMoney(startingBalance, sums[index])
   }
 
   getBalanceAtDateByCurrency(accountPath: string, date: dayjs.Dayjs, currency: string): number {
@@ -321,7 +322,7 @@ export class BalanceIndex {
     for (const [path, account] of this.accountsList.accounts) {
       if (account.excludeFromTotal) continue
       if (account.accountType === 'asset' || account.accountType === 'liability') {
-        netWorth += this.getBalanceAtDate(path, date)
+        netWorth = addMoney(netWorth, this.getBalanceAtDate(path, date))
       }
     }
 
@@ -335,7 +336,7 @@ export class BalanceIndex {
       if (account.currency !== currency) continue
       if (account.excludeFromTotal) continue
       if (account.accountType === 'asset' || account.accountType === 'liability') {
-        netWorth += this.getBalanceAtDate(path, date)
+        netWorth = addMoney(netWorth, this.getBalanceAtDate(path, date))
       }
     }
 
@@ -373,15 +374,15 @@ export class BalanceIndex {
         const toPath = raw.to ? this.resolveAccountPath(raw.to, source) : null
 
         if (params.direction === 'from' && fromPath === params.accountPath) {
-          total += raw.amount
+          total = addMoney(total, raw.amount)
         } else if (params.direction === 'to' && toPath === params.accountPath) {
-          total += raw.amount
+          total = addMoney(total, raw.amount)
         } else if (!params.direction) {
-          if (fromPath === params.accountPath) total -= raw.amount
-          if (toPath === params.accountPath) total += raw.amount
+          if (fromPath === params.accountPath) total = addMoney(total, -raw.amount)
+          if (toPath === params.accountPath) total = addMoney(total, raw.amount)
         }
       } else {
-        total += raw.amount
+        total = addMoney(total, raw.amount)
       }
     }
 

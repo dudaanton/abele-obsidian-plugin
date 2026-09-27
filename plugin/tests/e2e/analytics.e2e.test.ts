@@ -161,7 +161,7 @@ describe.skipIf(!available)('analytics in the app', () => {
     expect(compared).toBe(36) // three currencies, twelve months
   })
 
-  it('agrees with the balance the app shows', () => {
+  it('agrees exactly with the balance the app shows', () => {
     const r = evalAsync<{ ours: number; app: number }>(`(async () => {
       const t = window.__abeleTest
       t.GlobalStore.getInstance().initFinance()
@@ -175,7 +175,7 @@ describe.skipIf(!available)('analytics in the app', () => {
       const app = bi.getBalanceAtDate('ScaleTest/Finance/Accounts/Cash EUR.md', window.moment('2026-06-30'))
       return JSON.stringify({ ours, app })
     })()`)
-    expect(r.ours).toBeCloseTo(r.app, 6)
+    expect(r.ours).toBe(r.app)
   })
 
   it('reads a base through Obsidian, with its filter, formula, sort and limit', () => {

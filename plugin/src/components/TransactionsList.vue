@@ -47,6 +47,7 @@
 </template>
 
 <script setup lang="ts">
+import { addMoney } from '@/helpers/moneySum'
 import { Transaction } from '@/entities/Transaction'
 import { AccountsList } from '@/entities/AccountsList'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -170,7 +171,7 @@ const dayTotals = (date: string): string[] => {
     if (isAssetToAsset(tx)) continue
     const cur = tx.currency || '?'
     const sign = getType(tx) === 'income' ? 1 : -1
-    byCurrency.set(cur, (byCurrency.get(cur) || 0) + sign * (tx.amount || 0))
+    byCurrency.set(cur, addMoney(byCurrency.get(cur) || 0, sign * (tx.amount || 0)))
   }
   return Array.from(byCurrency.entries()).map(
     ([cur, amount]) => `${amount >= 0 ? '+' : ''}${formatAmount(amount)} ${cur}`
@@ -185,7 +186,7 @@ function addTransaction() {
   let to: string | undefined
 
   if (account) {
-    const wikilink = pathToWikilink(props.accountPath!)
+    const wikilink = pathToWikilink(props.accountPath)
     if (account.accountType === 'revenue') {
       from = wikilink
     } else {
