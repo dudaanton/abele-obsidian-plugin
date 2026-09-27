@@ -422,17 +422,28 @@ describe('receiving the connection', () => {
       expect(service.revokeTransferred).toHaveBeenCalledTimes(1)
     })
 
-    it('keeps it when the switch was ticked, or on a device that syncs nothing', async () => {
+    it('keeps it when the switch was ticked', async () => {
       service.connection.value = { ...home(), vaultId: 'v7', vaultName: 'Work' }
       const ticking = await received()
       await rowOf(ticking).trigger('click')
       ticking.unmount()
+      await flushPromises()
+
+      expect(service.revokeTransferred).not.toHaveBeenCalled()
+    })
+
+    /** pi review #7: nobody took it, and the token would stay live in the transfer. */
+    it('revokes it on a device that syncs nothing', async () => {
       service.connection.value = emptyConnection()
       const fresh = await received()
       fresh.unmount()
       await flushPromises()
 
-      expect(service.revokeTransferred).not.toHaveBeenCalled()
+      expect(service.revokeTransferred).toHaveBeenCalledTimes(1)
+      expect(service.revokeTransferred).toHaveBeenCalledWith(
+        expect.objectContaining({ deviceId: 'd2' }),
+        'absd_sibling'
+      )
     })
   })
 
