@@ -221,15 +221,17 @@ export async function loadOpenPulls(client: GithubClient, r: RepoLike): Promise<
   return list.slice(0, FRESHEST).map((p) => itemRow(p, `${repoWeb(r)}/pull/${p.number}`))
 }
 
-/** The issues API lists pull requests too; a page of thirty leaves enough issues among them. */
-const ISSUE_PAGE = 30
-
+/**
+ * The freshest open issues, asked of the search: the issues API lists pull requests among them,
+ * and a repository whose last hundred items are all pull requests would seem to have no issues.
+ */
 export async function loadOpenIssues(client: GithubClient, r: RepoLike): Promise<ItemRow[]> {
-  const list = await client.get<RawItem[]>(
-    `${repoApiPath(r)}/issues?state=open&sort=created&direction=desc&per_page=${ISSUE_PAGE}`,
+  const q = `repo:${repoName(r)} is:issue is:open`
+  const found = await client.get<{ items?: RawItem[] }>(
+    `/search/issues?q=${encodeURIComponent(q)}&sort=created&order=desc&per_page=${FRESHEST}`,
     { what: `the issues of ${repoName(r)}` }
   )
-  return list
+  return (found.items ?? [])
     .filter((i) => !i.pull_request)
     .slice(0, FRESHEST)
     .map((i) => itemRow(i, `${repoWeb(r)}/issues/${i.number}`))
@@ -244,11 +246,22 @@ export interface ReleaseData {
   url: string
 }
 
+/**
+ * Repositories found to have no release, and when: GitHub says so with a 404, which the client
+ * keeps no ETag for, so without this every opening of the page would ask again. Kept ten minutes.
+ */
+const noRelease = new Map<string, number>()
+const NO_RELEASE_MS = 10 * 60 * 1000
+
 /** The latest release, or null for a repository that has none. */
 export async function loadLatestRelease(
   client: GithubClient,
-  r: RepoLike
+  r: RepoLike,
+  now = Date.now()
 ): Promise<ReleaseData | null> {
+  const key = `${client.endpoints.api}\n${client.hasToken}\n${repoName(r)}`.toLowerCase()
+  const none = noRelease.get(key)
+  if (none !== undefined && now - none < NO_RELEASE_MS) return null
   try {
     const rel = await client.get<{
       name?: string | null
@@ -269,7 +282,10 @@ export async function loadLatestRelease(
     }
   } catch (e) {
     // GitHub's way of saying there is no release yet.
-    if (e instanceof GithubError && e.kind === 'not-found') return null
+    if (e instanceof GithubError && e.kind === 'not-found') {
+      noRelease.set(key, now)
+      return null
+    }
     throw e
   }
 }

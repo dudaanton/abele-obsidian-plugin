@@ -121,6 +121,8 @@ export const entryOf = (host: string, r: RawRepo): RepoEntry => ({
 export interface AccountRepos {
   own: RepoEntry[]
   starred: RepoEntry[]
+  /** Why one of the two could not be read, when only one could. */
+  problem?: string
 }
 
 /** How long an account's lists are kept before GitHub is asked again. */
@@ -136,16 +138,27 @@ export function accountRepos(client: GithubClient, now = Date.now()): Promise<Ac
   const kept = accounts.get(client)
   if (kept && now - kept.at < ACCOUNT_TTL_MS) return kept.lists
   const host = client.endpoints.webHost
-  const lists = Promise.all([
+  // Each on its own: a token that may not read the stars still lists the repositories.
+  const lists = Promise.allSettled([
     client.list<RawRepo>(
       '/user/repos?sort=pushed&affiliation=owner,collaborator,organization_member',
       { what: 'your repositories' }
     ),
     client.list<RawRepo>('/user/starred?sort=created', { what: 'your starred repositories' }),
-  ]).then(([own, starred]) => ({
-    own: own.items.map((r) => entryOf(host, r)),
-    starred: starred.items.map((r) => entryOf(host, r)),
-  }))
+  ]).then(([own, starred]): AccountRepos => {
+    if (own.status === 'rejected' && starred.status === 'rejected') throw own.reason
+    const failed = own.status === 'rejected' ? own : starred.status === 'rejected' ? starred : null
+    return {
+      own: own.status === 'fulfilled' ? own.value.items.map((r) => entryOf(host, r)) : [],
+      starred:
+        starred.status === 'fulfilled' ? starred.value.items.map((r) => entryOf(host, r)) : [],
+      problem: failed
+        ? failed.reason instanceof Error
+          ? failed.reason.message.split('\n')[0]
+          : 'GitHub could not be asked.'
+        : undefined,
+    }
+  })
   // A failure is not kept: the next picker asks again.
   lists.catch(() => accounts.delete(client))
   accounts.set(client, { at: now, lists })
@@ -174,6 +187,10 @@ const GROUP_NOTE: Record<RepoGroup, string> = {
 }
 
 export const groupName = (g: RepoGroup): string => GROUP_NOTE[g]
+
+/** An entry's fields that say something, for laying over another's. */
+const definedOf = (e: RepoEntry): Partial<RepoEntry> =>
+  Object.fromEntries(Object.entries(e).filter(([, v]) => v !== undefined))
 
 /** How well an entry matches the typed text; 0 is not at all. */
 function score(e: RepoEntry, needle: string): number {
@@ -211,26 +228,31 @@ export function repoRows(
   limit = 50
 ): RepoRow[] {
   const needle = query.trim().toLowerCase()
-  const seen = new Set<string>()
-  const scored: { row: RepoRow; score: number; order: number }[] = []
+  // Each repository once, under the first list it is in, with what any list says of it: a pin
+  // holds only the address, and the description the "Yours" list has is still searched.
+  const known = new Map<string, { group: RepoGroup; entry: RepoEntry }>()
   for (const group of GROUP_ORDER) {
     for (const entry of sources[group] ?? []) {
       const key = repoKey(entry)
-      if (seen.has(key)) continue
-      seen.add(key)
-      const s = score(entry, needle)
-      if (!s) continue
-      scored.push({
-        row: {
-          group,
-          title: `${entry.owner}/${entry.repo}`,
-          note: noteOf(entry, group),
-          repo: entry,
-        },
-        score: s,
-        order: scored.length,
-      })
+      const first = known.get(key)
+      if (!first) known.set(key, { group, entry })
+      else first.entry = { ...entry, ...definedOf(first.entry) }
     }
+  }
+  const scored: { row: RepoRow; score: number; order: number }[] = []
+  for (const { group, entry } of known.values()) {
+    const s = score(entry, needle)
+    if (!s) continue
+    scored.push({
+      row: {
+        group,
+        title: `${entry.owner}/${entry.repo}`,
+        note: noteOf(entry, group),
+        repo: entry,
+      },
+      score: s,
+      order: scored.length,
+    })
   }
   return scored
     .sort((a, b) => (needle ? b.score - a.score : 0) || a.order - b.order)

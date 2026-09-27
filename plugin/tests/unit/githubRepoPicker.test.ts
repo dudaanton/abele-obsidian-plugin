@@ -117,6 +117,19 @@ describe('the rows', () => {
     ])
   })
 
+  it('find a repository by what any list says of it, under the first list it is in', () => {
+    const rows = repoRows(
+      {
+        pinned: [e('a', 'b')],
+        own: [e('a', 'b', { description: 'The dashboard' })],
+      },
+      'dashboard'
+    )
+    expect(rows.map((r) => [r.group, r.title, r.note])).toEqual([
+      ['pinned', 'a/b', 'Pinned · The dashboard'],
+    ])
+  })
+
   it('say where each came from and what it is', () => {
     const [row] = repoRows({ own: [e('a', 'b', { private: true, description: 'Code' })] }, '')
     expect(row.note).toBe('Yours · private · Code')
@@ -187,6 +200,16 @@ describe("the account's own and starred", () => {
     expect(calls.filter((p) => p.startsWith('/user/repos'))).toHaveLength(1)
     await accountRepos(c, 1000 + ACCOUNT_TTL_MS + 1)
     expect(calls.filter((p) => p.startsWith('/user/repos'))).toHaveLength(2)
+  })
+})
+
+describe("the account's lists apart", () => {
+  it('keep yours when the starred ones are refused', async () => {
+    const { client: c } = client({ '/user/repos': [raw('me', 'mine')] })
+    const lists = await accountRepos(c, 1)
+    expect(lists.own.map((r) => r.repo)).toEqual(['mine'])
+    expect(lists.starred).toEqual([])
+    expect(lists.problem).toMatch(/starred/)
   })
 })
 

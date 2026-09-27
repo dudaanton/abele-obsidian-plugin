@@ -238,7 +238,10 @@ can see it — is the tab's error, in the same words as for any other item. A re
 issues turned off has no issues list; one without a release has no release.
 
 Each is kept the way everything else in a tab is: GitHub is asked again with the answer's ETag,
-so reopening a page that has not changed costs nothing of the hourly limit.
+so reopening a page that has not changed costs nothing of the hourly limit. GitHub says "no
+release" with a refusal, which carries no ETag, so that is remembered for ten minutes instead. The
+open issues are asked of the search (`is:issue is:open`), since the issues list mixes pull requests
+in and a busy repository's newest hundred can all be pull requests.
 
 ### Open GitHub repository…
 
@@ -257,7 +260,9 @@ picker of repositories with a search field:
    organisation, freshest pushed first, up to a thousand.
 4. **Starred** ones.
 
-Yours and starred need a token; without one the picker says so. They are asked for when the
+Yours and starred need a token; without one the picker says so. Each is asked for on its own, so
+a token that may not read the stars still lists your repositories, and the picker says why the
+starred ones are missing. They are asked for when the
 picker first opens and kept for an hour. Each repository is listed once, under the first of these
 it belongs to. Typing narrows the list — the name first, then the whole `owner/repo`, then the
 description — and, once the typing pauses, asks GitHub's repository search for anything else by

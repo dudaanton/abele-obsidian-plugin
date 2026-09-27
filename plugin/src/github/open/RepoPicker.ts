@@ -82,6 +82,7 @@ export class RepoPicker extends SuggestModal<RepoRow> {
     void accountRepos(this.client).then(
       (lists) => {
         this.account = lists
+        if (lists.problem) this.accountProblem = lists.problem
         this.refresh()
       },
       (e: unknown) => {

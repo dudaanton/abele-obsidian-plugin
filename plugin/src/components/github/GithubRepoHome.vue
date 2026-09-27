@@ -85,9 +85,21 @@
           @open="open"
           @retry="issues.load"
         />
-        <section v-if="languages.data.value?.length" class="abele-github-home__langs">
+        <section
+          v-if="languages.data.value?.length || languages.error.value"
+          class="abele-github-home__langs"
+          data-list="languages"
+        >
           <FoldHeading text="Languages" />
-          <div class="abele-github-home__lang-bar" aria-hidden="true">
+          <div v-if="languages.error.value" class="abele-github-home__langs-error">
+            <EmptyState :text="languages.error.value" />
+            <Icon icon="refresh-cw" tooltip="Ask GitHub again" @click="languages.load" />
+          </div>
+          <div
+            v-if="languages.data.value?.length"
+            class="abele-github-home__lang-bar"
+            aria-hidden="true"
+          >
             <span
               v-for="(lang, i) in languages.data.value"
               :key="lang.name"
@@ -96,7 +108,7 @@
               :style="{ flexGrow: lang.percent }"
             />
           </div>
-          <ul class="abele-github-home__lang-list">
+          <ul v-if="languages.data.value?.length" class="abele-github-home__lang-list">
             <li v-for="(lang, i) in languages.data.value" :key="lang.name">
               <span
                 class="abele-github-home__lang-dot"
@@ -309,6 +321,14 @@ const switchRef = () => {
     display: flex;
     flex-direction: column;
     gap: var(--size-4-2);
+  }
+
+  &__langs-error {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--size-4-2);
+    white-space: pre-line;
+    overflow-wrap: anywhere;
   }
 
   &__lang-bar {

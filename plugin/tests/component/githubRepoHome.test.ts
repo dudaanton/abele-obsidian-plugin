@@ -55,12 +55,18 @@ const ROUTES: Record<string, Route> = {
   '/repos/o/r/pulls': {
     json: [pullItem(12, 'Page the loader'), pullItem(11, 'Try a new layout', true)],
   },
-  '/repos/o/r/issues': {
-    json: [
-      { ...pullItem(12, 'Page the loader'), pull_request: {} },
-      { ...pullItem(9, 'Loader hangs'), html_url: 'https://github.com/o/r/issues/9' },
-    ],
-  },
+  // The freshest open issues are asked of the search, which leaves the pull requests out.
+  '/search/issues': (req) =>
+    /is:issue is:open/.test(decodeURIComponent(req.url.replace(/\+/g, ' ')))
+      ? {
+          json: {
+            total_count: 1,
+            items: [
+              { ...pullItem(9, 'Loader hangs'), html_url: 'https://github.com/o/r/issues/9' },
+            ],
+          },
+        }
+      : { json: { total_count: 0, items: [] } },
   '/repos/o/r/releases/latest': {
     json: {
       name: 'Widgets 2.0',
@@ -155,7 +161,6 @@ describe('a repository front page', () => {
     expect(pulls()[0].text()).toContain('#12')
     // A draft says so by its glyph.
     expect(pulls()[1].find('[data-icon="git-pull-request-draft"]').exists()).toBe(true)
-    // The issues API lists pull requests too; only the issue is an issue.
     const issues = wrapper.findAll('[data-list="issues"] .tree-item-self')
     expect(issues.map((r) => r.text())).toEqual(['Loader hangs#9'])
 
@@ -302,7 +307,9 @@ describe('the README of a private repository', () => {
   it('reads a picture the raw address refused again through the API, with the token', async () => {
     // The stub renderer draws text; this one draws the picture the README names.
     vi.spyOn(MarkdownRenderer, 'render').mockImplementation(async (_app, _md, el) => {
-      el.innerHTML = '<p><img src="docs/logo.png" alt="logo"></p>'
+      const img = el.createEl('p').createEl('img')
+      img.setAttribute('src', 'docs/logo.png')
+      img.setAttribute('alt', 'logo')
     })
     const { wrapper, request } = openTab('https://github.com/o/r', {
       ...ROUTES,
@@ -325,5 +332,64 @@ describe('the README of a private repository', () => {
     expect(
       request.mock.calls.some(([r]) => r.url.includes('/repos/o/r/contents/docs/logo.png'))
     ).toBe(true)
+  })
+})
+
+describe('what the page asks GitHub', () => {
+  it('finds open issues however many pull requests are newer', async () => {
+    const { wrapper, request } = openTab('https://github.com/o/r', ROUTES)
+    await loaded(wrapper)
+    await vi.waitFor(() =>
+      expect(wrapper.findAll('[data-list="issues"] .tree-item-self')).toHaveLength(1)
+    )
+    const asked = request.mock.calls
+      .map(([r]) => new URL(r.url))
+      .find((u) => u.pathname === '/search/issues')!
+    expect(asked.searchParams.get('q')).toBe('repo:o/r is:issue is:open')
+    expect(asked.searchParams.get('sort')).toBe('created')
+  })
+
+  it('says why the languages were refused, and asks again on request', async () => {
+    let refuse = true
+    const { wrapper } = openTab('https://github.com/o/r', {
+      ...ROUTES,
+      '/repos/o/r/languages': () =>
+        refuse
+          ? {
+              status: 403,
+              headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1790000000' },
+              json: { message: 'API rate limit exceeded' },
+            }
+          : { json: { Go: 10 } },
+    })
+    await loaded(wrapper)
+    await vi.waitFor(() => expect(wrapper.find('[data-list="languages"]').text()).toMatch(/limit/i))
+    refuse = false
+    await click(
+      wrapper
+        .find('[data-list="languages"] [data-icon="refresh-cw"]')
+        .element.closest('.abele-obsidian-icon')!
+    )
+    await vi.waitFor(() =>
+      expect(wrapper.findAll('.abele-github-home__lang-name').map((l) => l.text())).toEqual(['Go'])
+    )
+  })
+
+  it('asks for the latest release of a repository that has none once a session', async () => {
+    const routes = {
+      ...ROUTES,
+      '/repos/x/none': { json: { ...META, name: 'none', owner: { login: 'x' } } },
+      '/repos/x/none/contents': { json: ROOT },
+      '/repos/x/none/releases/latest': { status: 404, json: { message: 'Not Found' } },
+    }
+    const first = openTab('https://github.com/x/none', routes)
+    await loaded(first.wrapper)
+    first.wrapper.unmount()
+    const second = openTab('https://github.com/x/none', routes)
+    await loaded(second.wrapper)
+    const asked = [...first.request.mock.calls, ...second.request.mock.calls].filter(([r]) =>
+      r.url.includes('/repos/x/none/releases/latest')
+    )
+    expect(asked).toHaveLength(1)
   })
 })
