@@ -635,10 +635,15 @@ const deleteMenu = useMenu(deleteBtnRef, deleteChoices, handleDeleteMenu)
 </script>
 
 <style lang="scss">
+/**
+ * A container, so the layouts below can ask how wide the gallery is rather than the window: a
+ * gallery in a chat or a sidebar is narrow on the widest screen.
+ */
 .abele-gallery {
   position: relative;
   margin: 0.5em 0;
   border-radius: var(--radius-m);
+  container-type: inline-size;
 }
 
 .abele-gallery__drop-zone {
@@ -716,6 +721,22 @@ const deleteMenu = useMenu(deleteBtnRef, deleteChoices, handleDeleteMenu)
   position: relative;
   aspect-ratio: 1;
   overflow: hidden;
+}
+
+/**
+ * Narrow: a chat, a sidebar, a phone. A 200px column fits once there, so the grid was one
+ * picture per row, each a square the width of the chat — three pictures a screen and a half
+ * tall. Here the grid keeps three to a row (two for two pictures, as `auto-fit` stretches what
+ * is there), and a picture in the column layout is capped rather than as tall as it is wide.
+ */
+@container (max-width: 480px) {
+  .abele-gallery__grid:not(.abele-gallery__grid--column) {
+    grid-template-columns: repeat(auto-fit, minmax(calc((100% - 8px) / 3), 1fr));
+  }
+
+  .abele-gallery__grid--column .abele-gallery__image {
+    max-height: 240px;
+  }
 }
 
 .abele-gallery__image {
