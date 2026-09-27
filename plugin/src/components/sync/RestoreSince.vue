@@ -180,7 +180,10 @@ const idempotencyKey = (): string => (root.value?.win ?? window).crypto.randomUU
  * A retry sends a batch whose answer was lost under the key it first had, so the server answers
  * with what it did then — restored — rather than `not_found` for files it already took out of
  * the trash (task-10 review, #5). Batches that came back are off the list, so the ones left
- * line up with the ones sent before.
+ * line up with the ones sent before. Keyed by the exact files of a batch: a retry after more
+ * deletes reached the trash cuts the batches differently, and a batch whose answer was lost is
+ * then counted as failed though its files are back — the common retry, with nothing new and at
+ * most one batch, is not affected.
  */
 const batchKeys = new Map<string, string>()
 
