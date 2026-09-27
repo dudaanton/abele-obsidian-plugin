@@ -219,6 +219,14 @@ Three files, three concerns:
   measuring the keyboard again moves nothing, and the keyboard gone puts it back. Pictures go
   to `/tmp/abele-tablet/task-date-*.png`.
 
+- `linter.e2e.test.ts` — **the linter**. Writes a folder of notes and a `// @lint` script for the
+  run, lints the folder into the linter's tab and checks the findings, the script's among them;
+  presses a line and checks the note opens at it beside the tab; presses Fix all, answers its
+  question, and checks each note's new text and that only what cannot be fixed is still listed.
+  Then at 390×844 under `emulateMobile`: nothing in the tab or in a fix's preview reaches past the
+  screen, pictures in `/tmp/abele-phone/linter-*.png`. Puts the notes, the script and the linter
+  settings back.
+
 - `githubLinks.e2e.test.ts`, `githubTabs.e2e.test.ts`, `githubSearch.e2e.test.ts`,
   `githubPhone.e2e.test.ts` — **the GitHub tabs, against a fake GitHub**. Each file starts a GitHub
   Enterprise Server of its own on `127.0.0.1` (`helpers/fakeGithubServer.ts`, run as a separate
