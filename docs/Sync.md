@@ -21,10 +21,61 @@ signs in to one, it does not create one.
    sign-in and is never stored — not in the settings, not in the log.
 3. **Choose a vault**: click one of the account's vaults, or name a new one under **Create a new
    vault** and press **Create and connect**. A new vault is filled from what this device already
-   holds. **This device's name** is what the server will know it by; change it before
-   choosing. If this device left a vault while the server could not be told, the server is told
-   first — for up to ten seconds, with the card saying "Telling *server* that *device* left…" —
-   and the enrolment goes ahead either way.
+   holds, and nothing is asked; its card has a field for this device's name too. Clicking a vault
+   that exists only opens the join dialog below — nothing is enrolled until its **Connect**, and
+   **Cancel** enrols nothing. If this device left a vault while the server could not be told, the
+   server is told first — for up to ten seconds, with the dialog saying "Telling *server* that
+   *device* left…" — and the enrolment goes ahead either way.
+
+### Joining a vault that already has files
+
+The join dialog counts both sides first — "Here: 1240 files · On the server: 1180 files", saying
+how many of them are Obsidian settings when any are — and asks according to what it finds:
+
+- **Only this vault holds files**: "Connect this vault to *X*? Its *N* files will be uploaded."
+- **Only the server holds files**: "…The server's *N* files will be downloaded."
+- **Both hold files**: "Sync this vault with *X*?", and which copy is kept where both have a file
+  with different contents:
+  - **Merge both** (chosen to begin with) — files on both sides are combined. A note changed on
+    both keeps both texts; for any other file the newer one wins. Nothing is deleted.
+  - **This device wins** — where both have a file, this device's copy is kept everywhere.
+  - **The server wins** — where both have a file, the server's copy is kept here.
+- **This device synced that vault before** and walked it to the end (a reconnect after
+  **Disconnect**, with nothing forgotten): "Reconnect to *X*? This device picks up where it left
+  off." There is nothing to choose.
+
+**This device's name** — what the server will know it by — is asked in the same dialog.
+
+What each choice does, file by file:
+
+- A file both sides hold with the same contents is simply taken as synced; nothing moves.
+- A file both sides hold with different contents is the only case where one copy replaces the
+  other. The copy that loses is always on the server first, as an earlier version of that file in
+  **Version history** — this device's copy is stored before anything is written over it here. It
+  is kept there as long as the vault keeps history for its kind: by default a year for notes, a
+  month for settings and two weeks for attachments (see the vault policy on the Sync tab).
+- A file only this device holds is uploaded, and one only the server holds is downloaded,
+  whichever side wins. So is a file this device holds that the server has in its trash: it is
+  uploaded as a new file, and the one in the trash stays restorable. "The server wins" does not
+  make this device a copy of the server.
+- Files this device does not sync — its switches, `.abele-sync-ignore`, hidden files, anything over
+  its size cap — are not touched on either side, whatever the choice.
+- Obsidian settings that differ are treated like any other file that is not a note.
+- Abele's own settings file is left out of the join and taken up once it is done, the way it is on
+  any device's first contact: the vault's copy wins, and this device's goes to that file's history
+  (see [Abele's own settings](#what-syncs)). A new device's defaults never replace the settings
+  everyone else has, whichever side was chosen.
+
+The choice is kept with the connection until the first sync that walked both sides has had its
+changes answered by the server — across a restart, so a join cut off half way (the network gone,
+Obsidian closed) finishes the way it was asked to. Then it is forgotten, a notice says the vault
+is synced and where the other copies are, and the next sync fetches Abele's own settings file.
+
+A device set up by a **transfer** gets the same dialog. It is connected as the transfer is
+applied, but syncs nothing until the question is answered: the status bar says **Choose how to
+join**, a notice says so when Obsidian starts, and the Sync tab opens the dialog by itself and keeps
+a **Choose…** button for it (and **Disconnect**, to leave instead). What this device syncs can be
+changed there before answering.
 
 The device is then enrolled and the tab shows **This device**: its status, the server, the vault
 and its name, with **Sync now**, **Pause** (or **Resume**) and **Rescan**. **Rescan** walks the

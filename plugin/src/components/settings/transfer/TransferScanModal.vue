@@ -321,7 +321,8 @@ const switchMessage = computed(() => {
   const name = there ? there.vaultName || there.vaultId : ''
   return (
     `This device syncs ${here} on ${own.serverUrl}. Switch it to ${name}? It will be ` +
-    `disconnected from ${here}, and the server there will be told.`
+    `disconnected from ${here}, and the server there will be told. Next you will choose how ` +
+    `this vault's files are joined with ${name}.`
   )
 })
 
@@ -516,7 +517,15 @@ const applyConnection = async (
     const left = before.vaultName || before.vaultId
     try {
       await syncService.adoptTransferred(got.connection, got.token, got.selective)
-      return `This device now syncs ${got.connection.vaultName || got.connection.vaultId}.`
+      const name = got.connection.vaultName || got.connection.vaultId
+      // Taken with the join question open: which side wins is asked on the Sync tab.
+      if (syncService.connection.value.join?.ask === true) {
+        return (
+          `This device is connected to ${name}. Choose how this vault's files are joined with ` +
+          'it on the Sync tab; nothing syncs until then.'
+        )
+      }
+      return `This device now syncs ${name}.`
     } catch (error) {
       void syncService.revokeTransferred(got.connection, got.token)
       const reason = error instanceof Error ? error.message : String(error)

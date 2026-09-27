@@ -54,18 +54,10 @@
         title="Choose a vault"
         desc="Pick the vault this device should sync with, or make a new one for it."
       >
-        <Setting
-          name="This device's name"
-          desc="The name the server will know this device by. You can change it before choosing."
-        >
-          <Input :model-value="deviceName" :disabled="busy" @update:model-value="onDeviceName" />
-        </Setting>
-
-        <!--
-          A device this one left while offline is told first, for up to ten seconds; said here so
-          the wait does not read as a hang.
-        -->
-        <p v-if="busy && telling" class="abele-connect-card__hint">{{ telling }}</p>
+        <!-- Counting the files on both sides, before the join dialog opens. -->
+        <p v-if="busy && asking === null && chosen !== null" class="abele-connect-card__hint">
+          Counting the files here and on the server…
+        </p>
 
         <CardGrid wide>
           <Card
@@ -91,15 +83,23 @@
               :model-value="newVaultName"
               placeholder="Name the new vault"
               :disabled="busy"
-              @update:model-value="newVaultName = $event"
+              @update:model-value="onNewVaultName"
+            />
+            <Input
+              :model-value="deviceName"
+              placeholder="This device's name"
+              :disabled="busy"
+              @update:model-value="onDeviceName"
             />
             <Button
               text="Create and connect"
-              :disabled="busy || newVaultName.trim() === ''"
+              :disabled="busy || newVaultName.trim() === '' || deviceName.trim() === ''"
               :tooltip="
                 newVaultName.trim() === ''
                   ? 'Name the new vault first'
-                  : 'Make this vault and enrol this device on it'
+                  : deviceName.trim() === ''
+                    ? 'Name this device first'
+                    : 'Make this vault and enrol this device on it'
               "
               @click="createVault"
             />
@@ -112,6 +112,17 @@
         />
       </Section>
     </template>
+
+    <JoinVaultModal
+      v-if="asking"
+      :question="asking.question"
+      :device-name="deviceName"
+      :busy="busy"
+      :error="error"
+      :hint="busy ? telling : null"
+      @connect="join"
+      @close="stopAsking"
+    />
   </Section>
 </template>
 
@@ -125,11 +136,17 @@
  *
  * The device name is offered rather than demanded: there is no hostname to read inside
  * Obsidian, so the default is the platform and the vault it is joining — "Phone — Notes" —
- * which is at least true, and editable before anything is enrolled.
+ * which is at least true, and editable before anything is enrolled: in the join dialog for a
+ * vault that exists, on the card for one made here.
+ *
+ * A tap on a vault only asks (phase 3b, decision 7). The join dialog says how many files each
+ * side holds and, when both hold some, which side is kept where both have a file; nothing is
+ * enrolled until it is answered, and closing it enrols nothing. "Create a new vault" asks
+ * nothing: a vault made just now holds no file to decide about.
  */
 import { computed, ref } from 'vue'
 import { Platform } from 'obsidian'
-import { serverUrlProblem, type VaultInfo } from '@abele/sync-protocol'
+import { serverUrlProblem, type JoinPrefer, type VaultInfo } from '@abele/sync-protocol'
 import Section from '../../obsidian/Section.vue'
 import Setting from '../../obsidian/Setting.vue'
 import Input from '../../obsidian/Input.vue'
@@ -138,9 +155,11 @@ import Card from '../../obsidian/Card.vue'
 import CardGrid from '../../obsidian/CardGrid.vue'
 import Badge from '../../obsidian/Badge.vue'
 import EmptyState from '../../obsidian/EmptyState.vue'
+import JoinVaultModal from './JoinVaultModal.vue'
 import { SyncService } from '@/sync/SyncService'
 import { formatBytes } from '@/helpers/reduceImage'
 import { reasonOf } from '@/sync/format'
+import type { JoinQuestion } from '@/sync/join'
 
 const props = defineProps<{
   /** What the settings already remember, so a reconnect does not retype the address. */
@@ -160,6 +179,8 @@ const vaults = ref<VaultInfo[] | null>(null)
 const deviceName = ref('')
 const newVaultName = ref('')
 const chosen = ref<string | null>(null)
+/** The vault tapped, and what the join dialog asks about it, while the dialog is open. */
+const asking = ref<{ vault: VaultInfo; question: JoinQuestion } | null>(null)
 /** Once a person has typed a name, no vault they click renames their device under them. */
 const nameEdited = ref(false)
 const busy = ref(false)
@@ -231,6 +252,11 @@ function onDeviceName(value: string): void {
   nameEdited.value = true
 }
 
+function onNewVaultName(value: string): void {
+  newVaultName.value = value
+  suggest(value.trim() || 'vault')
+}
+
 /** The suggestion follows the vault being joined, right up until somebody types over it. */
 function suggest(vaultName: string): void {
   if (!nameEdited.value) deviceName.value = suggestedName(vaultName)
@@ -252,20 +278,50 @@ async function signIn(): Promise<void> {
   })
 }
 
+/**
+ * A vault tapped: count both sides and open the join dialog. Nothing is enrolled here — the
+ * dialog's Connect does that — and a count that fails says why on the card, with nothing chosen.
+ */
 async function choose(vault: VaultInfo): Promise<void> {
   chosen.value = vault.id
   suggest(vault.name)
+  let question: JoinQuestion | null = null
+  await attempt(async () => {
+    question = await sync().joinQuestion(vault)
+  })
+  if (question === null) {
+    chosen.value = null
+    return
+  }
+  asking.value = { vault, question }
+}
+
+/** The join dialog answered: enrol on the vault, under the name and with the side it gave. */
+async function join(answer: {
+  prefer: JoinPrefer | null | undefined
+  deviceName: string
+}): Promise<void> {
+  const vault = asking.value?.vault
+  if (vault === undefined) return
+  deviceName.value = answer.deviceName
+  nameEdited.value = true
   const enrolled = await attempt(async () => {
-    await sync().chooseVault(vault.id, deviceName.value)
+    await sync().chooseVault(vault.id, answer.deviceName, answer.prefer)
     emit('connected')
   })
-  // A card still marked as chosen after a refusal would say the device is on that vault.
-  if (!enrolled) chosen.value = null
+  if (enrolled) asking.value = null
+}
+
+/** The join dialog closed without an answer: nothing was enrolled, and no vault is chosen. */
+function stopAsking(): void {
+  if (busy.value) return
+  asking.value = null
+  chosen.value = null
+  error.value = null
 }
 
 async function createVault(): Promise<void> {
   const name = newVaultName.value.trim()
-  suggest(name)
   await attempt(async () => {
     await sync().chooseVault({ create: name }, deviceName.value)
     emit('connected')

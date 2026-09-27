@@ -285,6 +285,29 @@ describe('receiving the connection', () => {
     expect(service.revokeTransferred).not.toHaveBeenCalled()
   })
 
+  /**
+   * The connection is taken with the join question open: nothing syncs until it is answered on
+   * the Sync tab, and the line the Transfer tab shows after Apply says where to go.
+   */
+  it('says where to answer the join the connection is waiting on', async () => {
+    service.adoptTransferred.mockImplementation(async () => {
+      service.connection.value = {
+        ...home(),
+        deviceId: 'd2',
+        join: { vaultId: 'v1', prefer: null, ask: true },
+      }
+    })
+    const screen = await received()
+
+    await click(screen, 'Apply')
+
+    const line = (screen.emitted('applied')?.[0]?.[0] as { connection?: string }).connection
+    expect(line).toBe(
+      "This device is connected to Home. Choose how this vault's files are joined with it on " +
+        'the Sync tab; nothing syncs until then.'
+    )
+  })
+
   it('is skipped by a device that already syncs that vault, and the spare device revoked', async () => {
     service.connection.value = { ...home(), deviceId: 'd9' }
     const screen = await received()
@@ -410,7 +433,8 @@ describe('receiving the connection', () => {
       expect(confirm.exists()).toBe(true)
       expect(confirm.props('message')).toBe(
         'This device syncs Work on https://sync.example.com. Switch it to Home? It will be ' +
-          'disconnected from Work, and the server there will be told.'
+          'disconnected from Work, and the server there will be told. Next you will choose ' +
+          "how this vault's files are joined with Home."
       )
       expect(service.adoptTransferred).not.toHaveBeenCalled()
       expect(AbeleConfig.getInstance().ai.providers).toHaveLength(0)

@@ -26,6 +26,8 @@ import Checkbox from '@/components/obsidian/Checkbox.vue'
 import Button from '@/components/obsidian/Button.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import UsageCard from '@/components/settings/sync/UsageCard.vue'
+import JoinVaultModal from '@/components/settings/sync/JoinVaultModal.vue'
+import type { JoinQuestion } from '@/sync/join'
 import Card from '@/components/obsidian/Card.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { SyncService } from '@/sync/SyncService'
@@ -86,6 +88,8 @@ const service = {
   retryPendingRevokes: vi.fn(() => Promise.resolve()),
   forgetPendingRevoke: vi.fn(),
   telling: ref<string | null>(null),
+  joinQuestion: vi.fn(),
+  answerJoin: vi.fn(),
 }
 
 /** The connection the service holds, with these fields changed — what its verbs do. */
@@ -248,6 +252,12 @@ describe('a sign-in with a device still to be told about', () => {
         usage: { live_bytes: 0, quota_bytes: null },
       },
     ])
+    service.joinQuestion.mockResolvedValue({
+      kind: 'upload',
+      vaultName: 'Home',
+      here: { files: 3, settings: 0 },
+      there: { files: 0, settings: 0 },
+    })
     let enrolled: () => void = () => undefined
     service.chooseVault.mockImplementation(
       () => new Promise<void>((resolve) => (enrolled = resolve))
@@ -260,14 +270,234 @@ describe('a sign-in with a device still to be told about', () => {
     await flushPromises()
 
     await screen.findAllComponents(Card)[0]!.trigger('click')
+    await flushPromises()
+    screen
+      .findComponent(JoinVaultModal)
+      .vm.$emit('connect', { prefer: undefined, deviceName: 'Desktop — Home' })
     service.telling.value = 'Telling https://sync.example.com that Old laptop left…'
     await flushPromises()
 
-    expect(screen.text()).toContain('Telling https://sync.example.com that Old laptop left…')
+    expect(screen.findComponent(JoinVaultModal).props('hint')).toBe(
+      'Telling https://sync.example.com that Old laptop left…'
+    )
     service.telling.value = null
     enrolled()
     await flushPromises()
-    expect(screen.text()).not.toContain('Telling')
+    expect(screen.findComponent(JoinVaultModal).exists()).toBe(false)
+  })
+})
+
+/**
+ * Choosing a vault asks first (phase 3b, decision 7). The tap counts both sides and opens the
+ * join dialog; only its Connect enrols, with the name and the side it was given, and closing it
+ * enrols nothing. A vault made here asks nothing: it holds no file to decide about.
+ */
+describe('choosing a vault', () => {
+  const VAULTS = [
+    {
+      id: 'v1',
+      name: 'Home',
+      role: 'owner',
+      usage: { live_bytes: 0, quota_bytes: null, by_kind: { note: { live_bytes: 1, count: 5 } } },
+    },
+  ]
+  const ASKED: JoinQuestion = {
+    kind: 'choose',
+    vaultName: 'Home',
+    here: { files: 3, settings: 0 },
+    there: { files: 5, settings: 0 },
+  }
+
+  async function signedIn(): Promise<Screen> {
+    service.connect.mockResolvedValue(VAULTS)
+    service.joinQuestion.mockResolvedValue(ASKED)
+    const screen = open(ConnectCard, { serverUrl: 'https://sync.example.com' })
+    const [, email] = screen.findAll('input')
+    await type(email!, 'me@example.com')
+    await type(screen.find('input[type="password"]'), 'hunter2')
+    await buttonNamed(screen, 'Sign in')?.trigger('click')
+    await flushPromises()
+    return screen
+  }
+
+  const vaultCard = (screen: Screen) =>
+    screen.findAllComponents(Card).find((card) => card.props('title') === 'Home')!
+
+  it('asks before it enrols, with the question for that vault', async () => {
+    const screen = await signedIn()
+
+    await vaultCard(screen).trigger('click')
+    await flushPromises()
+
+    expect(service.joinQuestion).toHaveBeenCalledWith(VAULTS[0])
+    expect(service.chooseVault).not.toHaveBeenCalled()
+    const modal = screen.findComponent(JoinVaultModal)
+    expect(modal.props('question')).toEqual(ASKED)
+    expect(modal.props('deviceName')).toMatch(/Home$/)
+  })
+
+  it('no longer asks for the device name before a vault is chosen', async () => {
+    const screen = await signedIn()
+
+    expect(screen.findAllComponents(Setting).map((row) => row.props('name'))).not.toContain(
+      "This device's name"
+    )
+  })
+
+  it('enrols with the side and the name the dialog was given', async () => {
+    const screen = await signedIn()
+    await vaultCard(screen).trigger('click')
+    await flushPromises()
+
+    screen
+      .findComponent(JoinVaultModal)
+      .vm.$emit('connect', { prefer: 'theirs', deviceName: 'Work laptop' })
+    await flushPromises()
+
+    expect(service.chooseVault).toHaveBeenCalledWith('v1', 'Work laptop', 'theirs')
+    expect(screen.findComponent(JoinVaultModal).exists()).toBe(false)
+  })
+
+  it('enrols nothing when the dialog is closed', async () => {
+    const screen = await signedIn()
+    await vaultCard(screen).trigger('click')
+    await flushPromises()
+
+    screen.findComponent(JoinVaultModal).vm.$emit('close')
+    await flushPromises()
+
+    expect(service.chooseVault).not.toHaveBeenCalled()
+    expect(screen.findComponent(JoinVaultModal).exists()).toBe(false)
+    expect(vaultCard(screen).props('selected')).toBe(false)
+  })
+
+  it('keeps the dialog open with the reason when the enrolment fails', async () => {
+    const screen = await signedIn()
+    service.chooseVault.mockRejectedValue(new Error('the server said no'))
+    await vaultCard(screen).trigger('click')
+    await flushPromises()
+
+    screen
+      .findComponent(JoinVaultModal)
+      .vm.$emit('connect', { prefer: null, deviceName: 'Desktop — Home' })
+    await flushPromises()
+
+    expect(screen.findComponent(JoinVaultModal).props('error')).toBe('the server said no')
+  })
+
+  it('says why on the card when the files could not be counted, and opens nothing', async () => {
+    const screen = await signedIn()
+    service.joinQuestion.mockRejectedValue(new Error('.abele-sync-ignore could not be read'))
+
+    await vaultCard(screen).trigger('click')
+    await flushPromises()
+
+    expect(screen.findComponent(JoinVaultModal).exists()).toBe(false)
+    expect(screen.text()).toContain('.abele-sync-ignore could not be read')
+    expect(vaultCard(screen).props('selected')).toBe(false)
+  })
+
+  it('makes a new vault without asking, under the name on its card', async () => {
+    const screen = await signedIn()
+    const card = screen
+      .findAllComponents(Card)
+      .find((c) => c.props('title') === 'Create a new vault')!
+    const [vaultName, deviceName] = card.findAll('input')
+    await type(vaultName!, 'Notes')
+    expect((deviceName!.element as HTMLInputElement).value).toMatch(/Notes$/)
+    await type(deviceName!, 'Studio')
+
+    await buttonNamed(screen, 'Create and connect')?.trigger('click')
+    await flushPromises()
+
+    expect(service.joinQuestion).not.toHaveBeenCalled()
+    expect(screen.findComponent(JoinVaultModal).exists()).toBe(false)
+    expect(service.chooseVault).toHaveBeenCalledWith({ create: 'Notes' }, 'Studio')
+  })
+})
+
+/**
+ * A transfer connected this device to a vault, and both may hold files: nothing syncs until the
+ * join question is answered. The tab asks by itself, and is where the question is found again.
+ */
+describe('a device waiting to join', () => {
+  const ASKED: JoinQuestion = {
+    kind: 'choose',
+    vaultName: 'Home',
+    here: { files: 3, settings: 0 },
+    there: { files: 5, settings: 0 },
+  }
+
+  function waiting(): void {
+    connect()
+    change({ vaultName: 'Home', join: { vaultId: 'v1', prefer: null, ask: true } })
+    service.connected = false
+    service.status.value = { ...DISCONNECTED_STATUS, state: 'joining' }
+    service.joinQuestion.mockResolvedValue(ASKED)
+    service.answerJoin.mockResolvedValue(undefined)
+  }
+
+  it('asks the question as the tab opens, with no name to give', async () => {
+    waiting()
+
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    expect(service.joinQuestion).toHaveBeenCalledWith()
+    const modal = screen.findComponent(JoinVaultModal)
+    expect(modal.props('question')).toEqual(ASKED)
+    expect(modal.props('deviceName')).toBeUndefined()
+  })
+
+  it('answers with the side chosen, and closes', async () => {
+    waiting()
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    screen.findComponent(JoinVaultModal).vm.$emit('connect', { prefer: 'mine', deviceName: '' })
+    await flushPromises()
+
+    expect(service.answerJoin).toHaveBeenCalledWith('mine')
+    expect(screen.findComponent(JoinVaultModal).exists()).toBe(false)
+  })
+
+  it('keeps waiting when the dialog is closed, and asks again from the tab', async () => {
+    waiting()
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    screen.findComponent(JoinVaultModal).vm.$emit('close')
+    await flushPromises()
+    expect(service.answerJoin).not.toHaveBeenCalled()
+    expect(headings(screen)).toContain('Choose how to join')
+
+    await buttonNamed(screen, 'Choose…')?.trigger('click')
+    await flushPromises()
+    expect(screen.findComponent(JoinVaultModal).exists()).toBe(true)
+  })
+
+  it('offers what this device takes and leaving, not what needs a running sync', async () => {
+    waiting()
+
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    expect(screen.findComponent(SelectiveSync).exists()).toBe(true)
+    expect(screen.findComponent(VaultPolicy).exists()).toBe(false)
+    expect(screen.findComponent(UsageCard).exists()).toBe(false)
+    expect(buttonNamed(screen, 'Sync now')).toBeUndefined()
+    expect(buttonNamed(screen, 'Disconnect')).toBeDefined()
+  })
+
+  it('says why when the question could not be prepared', async () => {
+    waiting()
+    service.joinQuestion.mockRejectedValue(new Error('.abele-sync-ignore could not be read'))
+
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    expect(screen.findComponent(JoinVaultModal).exists()).toBe(false)
+    expect(screen.text()).toContain('.abele-sync-ignore could not be read')
   })
 })
 

@@ -3,7 +3,45 @@
     <ConnectCard v-if="!connected" :server-url="device.serverUrl" />
 
     <template v-else>
+      <!--
+        A connection a transfer brought, onto a vault that may hold files, into one that may hold
+        files too: nothing syncs until the join question is answered. The dialog opens by itself;
+        this is where it is found again after it was closed.
+      -->
       <Section
+        v-if="joining"
+        title="Choose how to join"
+        desc="This device is connected, and waits for one answer before it syncs anything."
+      >
+        <Setting name="Vault" desc="The vault on the server this device was connected to.">
+          <span class="abele-sync-settings__value">{{ device.vaultName || device.vaultId }}</span>
+        </Setting>
+
+        <Setting name="Not syncing yet" :desc="joinDesc">
+          <Button
+            text="Choose…"
+            accent
+            :disabled="joinBusy"
+            tooltip="Say how this vault's files are joined with the server's"
+            @click="askJoin"
+          />
+        </Setting>
+
+        <Setting
+          name="Stop syncing this device"
+          desc="Disconnect tells the server to stop accepting this device and forgets its token; your files are not touched."
+        >
+          <Button
+            text="Disconnect"
+            warning
+            tooltip="Leave this vault instead of joining it"
+            @click="confirming = 'disconnect'"
+          />
+        </Setting>
+      </Section>
+
+      <Section
+        v-else
         title="This device"
         desc="Where it syncs, what it is called there, and what it is doing right now."
       >
@@ -93,10 +131,21 @@
 
       <SelectiveSync />
 
-      <VaultPolicy />
+      <template v-if="!joining">
+        <VaultPolicy />
 
-      <UsageCard />
+        <UsageCard />
+      </template>
     </template>
+
+    <JoinVaultModal
+      v-if="joinAsking"
+      :question="joinAsking"
+      :busy="joinBusy"
+      :error="joinError"
+      @connect="answerJoin($event.prefer)"
+      @close="closeJoin"
+    />
 
     <!--
       A Disconnect that could not reach the server: the token is kept to tell it later, and this
@@ -166,8 +215,14 @@
  * polling anything — and which of the two screens shows is read off it too. Anything but
  * `disconnected` is a device somebody set up: an engine that failed to build is `error`, and
  * that screen is the one that says why, where the sign-in card would only ask again.
+ *
+ * `joining` is a device a transfer connected to a vault, still to be told which side wins where
+ * both hold a file (phase 3b, decision 7). It builds no engine until then, so the screen asks —
+ * the join dialog opens by itself — and offers what makes sense before a first sync: what this
+ * device takes, and leaving instead. The vault's policy and usage wait for an engine to ask with.
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import type { JoinPrefer } from '@abele/sync-protocol'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
 import Badge from '../obsidian/Badge.vue'
@@ -177,6 +232,8 @@ import ConnectCard from './sync/ConnectCard.vue'
 import SelectiveSync from './sync/SelectiveSync.vue'
 import VaultPolicy from './sync/VaultPolicy.vue'
 import UsageCard from './sync/UsageCard.vue'
+import JoinVaultModal from './sync/JoinVaultModal.vue'
+import type { JoinQuestion } from '@/sync/join'
 import { Notice } from 'obsidian'
 import { SyncService } from '@/sync/SyncService'
 import type { PendingRevoke } from '@/sync/connection'
@@ -236,6 +293,58 @@ onUnmounted(() => sync.endConnect())
 
 // A device left while the server could not be reached: opening the tab is a moment to try again.
 onMounted(() => void sync.retryPendingRevokes())
+
+const joining = computed(() => status.value.state === 'joining')
+/** The join question, while its dialog is open. */
+const joinAsking = ref<JoinQuestion | null>(null)
+const joinBusy = ref(false)
+const joinError = ref<string | null>(null)
+
+const joinDesc = computed(
+  () =>
+    joinError.value ??
+    `Choose which copy is kept where this vault and ${device.value.vaultName || 'the server'} ` +
+      'both have a file. Nothing syncs until you do.'
+)
+
+/** Count both sides and open the join dialog. A count that fails says why on the row. */
+async function askJoin(): Promise<void> {
+  if (joinBusy.value) return
+  joinBusy.value = true
+  joinError.value = null
+  try {
+    joinAsking.value = await sync.joinQuestion()
+  } catch (error) {
+    joinError.value = `The join could not be prepared: ${reasonOf(error)}`
+  } finally {
+    joinBusy.value = false
+  }
+}
+
+/** The dialog answered: the engine is built on the answer, and the dialog closes. */
+async function answerJoin(prefer: JoinPrefer | null | undefined): Promise<void> {
+  if (joinBusy.value) return
+  joinBusy.value = true
+  joinError.value = null
+  try {
+    await sync.answerJoin(prefer)
+    joinAsking.value = null
+  } catch (error) {
+    joinError.value = reasonOf(error)
+  } finally {
+    joinBusy.value = false
+  }
+}
+
+function closeJoin(): void {
+  if (joinBusy.value) return
+  joinAsking.value = null
+  joinError.value = null
+}
+
+// The question asks itself as soon as the tab shows a join waiting, and again whenever one
+// arrives while it is open — a transfer applied in the meantime.
+watch(joining, (waiting) => (waiting ? void askJoin() : closeJoin()), { immediate: true })
 
 const statusLabel = computed(() => labelOf(status.value))
 
