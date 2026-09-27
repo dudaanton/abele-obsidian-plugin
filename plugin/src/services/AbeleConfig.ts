@@ -122,6 +122,16 @@ export class AbeleConfig {
       this.version.value++
       this.tellSaved()
     },
+    arrivedUnannounced: () => {
+      const plugin = this.plugin
+      // A plugin stood in for by a test may have no such method.
+      if (typeof plugin?.onExternalSettingsChange !== 'function') return
+      void Promise.resolve()
+        .then(() => plugin.onExternalSettingsChange())
+        .catch((error: unknown) =>
+          console.error('[Abele] the settings that arrived could not be reloaded', error)
+        )
+    },
   })
 
   /**
@@ -226,6 +236,7 @@ export class AbeleConfig {
 
   public destroy(): void {
     this.pendingEdits = new SettingsEdits()
+    this.file.leaving()
     this.plugin = null
   }
 

@@ -160,10 +160,14 @@ that cleared Abele's sync database to free space, meets the file for the first t
 its settings give way to the vault's in the same way.
 
 A settings change made on this device while another device's settings are arriving is kept: the
-arrived file is taken in first and the change put back on top of it, so neither is lost. A
+arrived file is taken in first and the change put back on top of it, so neither is lost. That
+merge goes setting by setting, but a list — the agents, the providers, the links, the
+automations — is one setting in it: when both devices changed the same list, this device's list
+is kept whole, and the other device's version of it is in the file's version history. A
 settings file that arrives unreadable is not loaded; the settings in memory stay, nothing is saved
 until a readable one arrives, and a notice says so. Deleting the file does not reset anything —
-the delete reaches every device, and each writes its settings back at its next save.
+the delete reaches every device, and each writes its settings back at its next save, or when
+Abele is closed if that comes first.
 
 These switches only work when the configuration folder is called `.obsidian`. On a device where
 Obsidian was told to use another folder (**Override config folder**, a phone on `.obsidian-mobile`

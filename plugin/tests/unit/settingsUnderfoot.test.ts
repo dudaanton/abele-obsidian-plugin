@@ -48,6 +48,9 @@ function arrive(file: Record<string, unknown> | null): void {
   disk.mtime += 1000
 }
 
+/** The plugin's `onExternalSettingsChange`, for the installs that have one. */
+let external: ReturnType<typeof vi.fn> | null = null
+
 function install(): AbeleConfig {
   saved = []
   loadData = async () => {
@@ -78,6 +81,7 @@ function install(): AbeleConfig {
       disk.mtime += 1
     },
     syncAiFeatures: vi.fn(),
+    ...(external === null ? {} : { onExternalSettingsChange: external }),
   } as never)
   return config
 }
@@ -97,7 +101,11 @@ const onDisk = (): Record<string, unknown> => disk.file as Record<string, unknow
 beforeEach(() => {
   useVault([])
   Notice.shown.length = 0
+  external = null
 })
+
+/** Lets whatever a finished step scheduled run. */
+const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 
 describe('a pulled settings file that will not parse', () => {
   it('keeps the settings in memory, reloads nothing, and writes nothing over it', async () => {
@@ -145,6 +153,29 @@ describe('a pulled settings file that will not parse', () => {
   })
 })
 
+describe('a pulled file that would not parse, followed by one that does', () => {
+  it('keeps this device’s key store, and a change made meanwhile, on top of it', async () => {
+    const config = await settled()
+    const { file: store } = await createStore('passphrase', {}, { iterations: 1000 })
+    config.secretStore = store
+    await config.saveSettings()
+    disk.broken = true
+    await config.reloadSettings()
+    config.busyDayThreshold = 9
+    await config.saveSettings()
+
+    // Put back from an older version, or written by an older build: no store in it.
+    arrive({ tasksFolder: 'Elsewhere' })
+    expect(await config.reloadSettings()).toBe(true)
+
+    expect(config.tasksFolder).toBe('Elsewhere')
+    expect(config.busyDayThreshold).toBe(9)
+    expect(config.secretStore).toEqual(store)
+    expect(onDisk().secretStore).toEqual(store)
+    expect(onDisk().busyDayThreshold).toBe(9)
+  })
+})
+
 describe('a settings file that has gone', () => {
   it('is written again by the next save, even one that changed nothing', async () => {
     const config = await settled()
@@ -155,6 +186,27 @@ describe('a settings file that has gone', () => {
 
     expect(saved).toHaveLength(1)
     expect(onDisk().tasksFolder).toBe('Work')
+  })
+
+  it('is written again when the plugin unloads before any save', async () => {
+    const config = await settled()
+    arrive(null)
+    await config.reloadSettings()
+
+    config.destroy()
+    await settle()
+
+    expect(saved).toHaveLength(1)
+    expect(onDisk().tasksFolder).toBe('Work')
+  })
+
+  it('is not written at unload when it is there', async () => {
+    const config = await settled()
+
+    config.destroy()
+    await settle()
+
+    expect(saved).toEqual([])
   })
 })
 
@@ -183,6 +235,22 @@ describe('a save while a pulled file waits for its reload', () => {
     expect(await config.reloadSettings()).toBe(false)
     expect(config.busyDayThreshold).toBe(9)
     expect(config.tasksFolder).toBe('Projects')
+  })
+
+  it('asks for the rest of the reload itself, once, when nothing else would', async () => {
+    external = vi.fn()
+    const config = await settled()
+    arrive({ ...onDisk(), busyDayThreshold: 9 })
+
+    config.tasksFolder = 'Projects'
+    await config.saveSettings()
+    await settle()
+
+    expect(external).toHaveBeenCalledTimes(1)
+    config.tasksFolder = 'Elsewhere'
+    await config.saveSettings()
+    await settle()
+    expect(external).toHaveBeenCalledTimes(1)
   })
 
   it('waits for a reload already running, and keeps the change it was asked to save', async () => {
@@ -253,6 +321,22 @@ describe('the synced key store in an arriving file', () => {
     config.secretStore = store
     await config.saveSettings()
 
+    const off = { off: true, id: store.id }
+    arrive({ tasksFolder: 'Work', secretStore: off })
+    await config.reloadSettings()
+
+    expect(config.secretStore).toEqual(off)
+    expect(onDisk().secretStore).toEqual(off)
+  })
+
+  it('is taken whole when it says off, whatever this device changed in its store meanwhile', async () => {
+    const config = await settled()
+    const { file: store } = await createStore('passphrase', {}, { iterations: 1000 })
+    config.secretStore = store
+    await config.saveSettings()
+
+    // A write of this device's store, queued behind the reload of a file that turned it off.
+    config.secretStore = { ...store, entries: { 'abele-key': { at: 1 } } }
     const off = { off: true, id: store.id }
     arrive({ tasksFolder: 'Work', secretStore: off })
     await config.reloadSettings()

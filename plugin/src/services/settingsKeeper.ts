@@ -34,6 +34,11 @@ export interface SettingsHost {
   readonly index: ChatIndexKeeper
   /** The settings in memory were replaced by a reload: redraw, and tell the listeners. */
   reloaded(): void
+  /**
+   * A save took in a file that arrived before anything announced it (`catchUp`): the rest of a
+   * reload — the secret store, the AI features — is still to be done.
+   */
+  arrivedUnannounced(): void
 }
 
 /**
@@ -52,6 +57,20 @@ export class SettingsKeeper {
   private unreadable = false
   /** Said once per failed load: saves come from chats as well, and each would repeat it. */
   private unreadableTold = false
+  /**
+   * Whether what is in memory is defaults rather than anybody's settings: the startup load
+   * found a file it could not read. The readable file that ends it is then taken as it is. After
+   * a reload that could not read, memory is the last good copy instead, and a readable file is
+   * taken the way any arriving one is (`ontoArrived`) — this device's key store kept, and what
+   * was changed here meanwhile put back on top.
+   */
+  private defaultsInMemory = false
+  /**
+   * A pull removed the file and nothing has written it since. The next save writes it again;
+   * so does the plugin unloading first (`leaving`), since the launch after would find no file,
+   * start from defaults, and hand those to every device.
+   */
+  private gone = false
 
   /**
    * The `sync` block exactly as the startup load read it off disk, before the migration dropped
@@ -108,6 +127,7 @@ export class SettingsKeeper {
 
   /** A new launch: nothing is known of the file yet. */
   reset(): void {
+    this.gone = false
     this.onDisk = null
     this.base = null
     this.stamp = null
@@ -167,6 +187,8 @@ export class SettingsKeeper {
       file === null || file === undefined ? null : { sync: (file as { sync?: unknown }).sync }
     this.host.fresh(file === null)
     this.unreadable = file === undefined
+    this.defaultsInMemory = this.unreadable
+    this.gone = false
     this.unreadableTold = false
     if (this.unreadable) console.error('[Abele] data.json could not be read; not writing to it')
     this.onDisk = isSettingsObject(file) ? canonicalJson(file) : null
@@ -263,6 +285,7 @@ export class SettingsKeeper {
       console.debug('[Abele] data.json has gone; keeping the settings in memory')
       // Nothing is on disk now, so the next save has something to write, whatever it is about.
       this.onDisk = null
+      this.gone = true
       this.stamp = stamp
       return false
     }
@@ -273,7 +296,7 @@ export class SettingsKeeper {
         return false
       }
     } else {
-      const settings = this.unreadable ? stored : this.ontoArrived(stored)
+      const settings = this.defaultsInMemory ? stored : this.ontoArrived(stored)
       await this.take(stored, settings, () => this.host.chatHistory(), stamp)
       // Only the startup load's block is moved: one from another device is never this one's.
       this.loadedSync = null
@@ -299,9 +322,11 @@ export class SettingsKeeper {
       )
       arrived = { ...stored, secretStore: this.host.secretStore() }
     }
-    // A store in the file is never overwritten by this copy's: its entries are merged by the
-    // store itself, when it is opened again on what arrived.
-    const keep = isStoreFile(arrived.secretStore) ? ['secretStore'] : []
+    // The store is one value, never merged leaf by leaf here. A store in the file is not
+    // overwritten by this copy's: its entries are merged by the store itself, when it is opened
+    // again on what arrived. A marker saying the store is off is taken as it is: this copy's
+    // entries put onto it would leave ciphertext in a file that says there is none.
+    const keep = ['secretStore']
     const changes = this.base === null ? [] : localChanges(this.base, this.host.export(), keep)
     if (changes.length > 0) {
       console.debug(
@@ -353,6 +378,7 @@ export class SettingsKeeper {
     const written = this.host.edits.written()
     await plugin.saveData(settingsSnapshot(next))
     written()
+    this.gone = false
     this.onDisk = text
     this.base = next
     this.stamp = await this.readStamp(plugin)
@@ -398,7 +424,21 @@ export class SettingsKeeper {
     await this.take(fresh, settings, () => this.host.chatHistory(), stamp)
     this.loadedSync = loaded
     this.unannounced = true
+    // What reopens the secret store and the AI features on what arrived. The sync asks for it
+    // once its run is over and Obsidian when the file's mtime is newer, but a file another tool
+    // wrote with an older mtime is announced by neither; the second of two asks finds nothing.
+    this.host.arrivedUnannounced()
     return true
+  }
+
+  /**
+   * The plugin is unloading. A file a pull removed is written again now if no save has done it:
+   * see `gone`. Not waited for — nothing on the way out is.
+   */
+  leaving(): void {
+    if (!this.gone || this.unreadable || this.host.plugin() === null) return
+    console.debug('[Abele] data.json went and nothing wrote it since; writing it on the way out')
+    void this.write()
   }
 
   /**
