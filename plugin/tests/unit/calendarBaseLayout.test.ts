@@ -200,18 +200,31 @@ describe('a day lists', () => {
     expect(days.get('2026-09-01')![0].fromBefore).toBe(true)
   })
 
-  // A shared CI runner stalls for tens of milliseconds at random, so a tight bound on a small
-  // input fails for no reason. Twenty thousand notes with a loose bound still fails loudly on
-  // anything quadratic, which is what this is here to catch.
+  // A wall-clock bound fails on a busy machine and passes a slow algorithm on a fast one. What
+  // quadratic means is that four times the notes take sixteen times as long, so that is what is
+  // measured: the best of three runs at each size, their ratio against a bound a linear pass
+  // stays well under whatever the load, and a quadratic one cannot reach.
   it('places thousands of notes over a month without going quadratic', () => {
-    const many = Array.from({ length: 20000 }, (_, i) =>
-      item({ title: `n${i}`, start: addDays('2026-01-01', i % 365), startMinute: (i * 7) % 1440 })
+    const notes = (n: number) =>
+      Array.from({ length: n }, (_, i) =>
+        item({ title: `n${i}`, start: addDays('2026-01-01', i % 365), startMinute: (i * 7) % 1440 })
+      )
+    const best = (items: CalendarItem[]) => {
+      let fastest = Infinity
+      for (let run = 0; run < 3; run++) {
+        const t = performance.now()
+        placeByDay(items, '2026-08-31', '2026-10-11')
+        fastest = Math.min(fastest, performance.now() - t)
+      }
+      return Math.max(fastest, 1)
+    }
+    const small = best(notes(2500))
+    const large = notes(10000)
+    expect(best(large) / small).toBeLessThan(10)
+    expect(placeByDay(large, '2026-08-31', '2026-10-11').get('2026-09-26')!.length).toBeGreaterThan(
+      0
     )
-    const t = performance.now()
-    const days = placeByDay(many, '2026-08-31', '2026-10-11')
-    expect(performance.now() - t).toBeLessThan(1000)
-    expect(days.get('2026-09-26')!.length).toBeGreaterThan(0)
-  })
+  }, 30_000)
 })
 
 describe('the week hours', () => {
