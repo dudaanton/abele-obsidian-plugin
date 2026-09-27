@@ -146,6 +146,32 @@ describe('many files deleted at once on this device', () => {
   })
 })
 
+describe('after they were deleted everywhere', () => {
+  it('come back with one bulk restore of the trash, and are here after a sync', async () => {
+    await remove(0, 60)
+    await service.syncNow()
+    await service.decideDeletes(
+      'confirm',
+      (await service.heldDeletes()).map((one) => one.fileId)
+    )
+    const client = service.client()!
+    const trash = await client.trash()
+    expect(trash).toHaveLength(60)
+
+    const results = await client.restoreDeletedMany(
+      trash.map((one) => one.file_id),
+      'restore-since-test'
+    )
+    await service.syncNow()
+
+    expect(results.every((result) => result.status === 'applied')).toBe(true)
+    expect(await client.trash()).toHaveLength(0)
+    expect(await app.vault.adapter.exists(note(0))).toBe(true)
+    expect(await app.vault.adapter.exists(note(59))).toBe(true)
+    expect(service.status.value.heldDeletes).toBe(0)
+  })
+})
+
 describe('asking about held deletes', () => {
   it('asks once per new set of held files, with exactly those files', async () => {
     await remove(0, 60)
