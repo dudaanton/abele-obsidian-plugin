@@ -1,368 +1,35 @@
 import { ref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { SettingsEdits, settingsSnapshot } from './settingsEdits'
-import { savedKeysWithIds } from '@/ai/savedKeyIds'
-import { nanoid } from 'nanoid'
-import { migrateMcpPermissions } from '@/ai/mcp/permissions'
-import { notifyMcpPermissionReset } from '@/ai/mcp/settings'
-import { Notice } from 'obsidian'
-import { Journal, JournalDTO } from '@/entities/Journal'
-import {
-  AiSettings,
-  DEFAULT_AI_SETTINGS,
-  ImageProvider,
-  migrateOldPermissions,
-  type AiChatHistoryEntry,
-} from '@/ai/types'
-import { chatIndexDiskOf, mergeChatIndex } from '@/ai/chatIndexFile'
-import { migrateAgents } from '@/ai/agents/migration'
-import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
-import {
-  DEFAULT_ACCOUNTS_LIST,
-  normalizeAccountsList,
-  type AccountsListSettings,
-} from '@/helpers/accountRows'
-import { defaultSyncSettings, migrateSyncSettings, type SyncSettings } from '@/sync/settings'
+import { SettingsEdits } from './settingsEdits'
+import type { CalendarSettings } from '@/calendars/settings'
+import type { CompletionMarks } from '@/calendars/completion'
+import type { QuickButtonSettings } from '@/quickButton/settings'
+import type { LinterSettings } from '@/linter/settings'
+import type { Journal } from '@/entities/Journal'
+import type { AiSettings, AiChatHistoryEntry } from '@/ai/types'
+import type { AccountsListSettings } from '@/helpers/accountRows'
+import type { SyncSettings } from '@/sync/settings'
 import AbelePlugin from '@/main'
-import { isKitColor } from '@/constants/colors'
-import { DEFAULT_LABEL_PROPERTY, type LabelColor } from '@/helpers/taskMeta'
-import { DEFAULT_GITHUB_SETTINGS, githubSettingsFrom, type GithubSettings } from '@/github/settings'
-import { projectLegacy } from '@/github/connections'
-import { migrateLegacyConnectionAccess } from '@/github/agentAccess'
-import {
-  DEFAULT_CALENDAR_SETTINGS,
-  calendarSettingsFrom,
-  type CalendarSettings,
-} from '@/calendars/settings'
-import { completionMarksFrom, type CompletionMarks } from '@/calendars/completion'
-import { DEFAULT_READER_SETTINGS, readerSettingsFrom, type ReaderSettings } from '@/reader/settings'
-import { selectionMenuScriptsFrom } from '@/scripting/selectionMenuScripts'
-import {
-  DEFAULT_QUICK_BUTTON,
-  quickButtonSettingsFrom,
-  type QuickButtonSettings,
-} from '@/quickButton/settings'
-import { normalizeRule, type AutomationRule } from '@/automations/types'
-import { moveLegacySecrets, notePlainSecrets } from '@/secrets/legacy'
-import { DEFAULT_LIFE_YEARS, isBirthDate, lifeYears } from '@/bases/lifeWeeks'
-import { DEFAULT_LINTER_SETTINGS, linterSettingsFrom, type LinterSettings } from '@/linter/settings'
-import { isStoreFile } from '@/secrets/storeFile'
-import {
-  canonicalJson,
-  isSettingsObject,
-  localChanges,
-  pause,
-  reapply,
-  settingsStampOf,
-  UNREADABLE_RETRY_MS,
-} from './settingsFile'
+import type { LabelColor } from '@/helpers/taskMeta'
+import type { GithubSettings } from '@/github/settings'
+import type { ReaderSettings } from '@/reader/settings'
+import type { AutomationRule } from '@/automations/types'
+import { moveLegacySecrets } from '@/secrets/legacy'
+import { applySettingsTo, exportSettingsOf } from './settingsApply'
+import { ChatIndexKeeper } from './chatIndexKeeper'
+import { SettingsKeeper } from './settingsKeeper'
+import type { AbeleSettings, HeaderButtonDefinition, LinkDefinition } from './settingsShape'
 
-export interface AbeleSettings {
-  refreshDelay: number // in milliseconds
-  tasksFolder?: string // Optional folder path for tasks
-  logsNotesTypes?: string[] // Optional array of note types to consider as log notes
-  tasksTimeChoices?: string[] // Optional array of time choices for tasks
-  tasksDateChoices?: string[] // Optional array of date choices for tasks
-  tasksRecurrenceChoices?: string[] // Optional array of recurrence choices for tasks
-  weekStartsOnMonday?: boolean // Optional setting for week start day
-  /** The person's birth date, `YYYY-MM-DD`, for the calendar's life in weeks; empty when unset. */
-  birthDate?: string
-  /** The years the life in weeks is drawn to. */
-  lifeExpectancy?: number
-  /** Frontmatter property a task's labels are read from. */
-  taskLabelProperty?: string
-  /** Frontmatter property used for task priority, independent of widget property lists. */
-  taskPriorityProperty?: string
-  /** A colour per label value. A label with no entry here is grey. */
-  taskLabelColors?: LabelColor[]
-  journals?: JournalDTO[]
-  busyDayThreshold?: number // Optional threshold for busy day
-  excludedPathsForDefaultTemplate?: string[] // Paths where default template should not apply
-  // AI Agent settings
-  ai?: AiSettings
-  // Device sync: only what every device on the vault shares. Where this device syncs and what
-  // it takes is in the vault's local storage (`src/sync/connection.ts`), not here.
-  sync?: SyncSettings
-  // Finance settings
-  transactionPathTemplate?: string // Path template for new transactions
-  transactionTemplatePath?: string // Path to the template note for new transactions
-  accountsFolder?: string // Default folder for new accounts
-  financeCategoriesFolder?: string // Default folder for new finance categories
-  defaultCurrency?: string // Default currency code for new transactions
-  pinnedCurrencies?: string // Comma-separated currencies to show in sidebar
-  fireflyBaseUrl?: string // Firefly III instance base URL for migration
-  /**
-   * Legacy: the Firefly III token as it was once saved, in the clear. Moved into the keychain
-   * at the next save and dropped from the file (`src/secrets/legacy.ts`); read the token with
-   * `fireflyToken()`, never from here.
-   */
-  fireflyToken?: string
-  /** What the accounts panel lists and how it orders them. */
-  accountsList?: AccountsListSettings
-  // Time tracking settings
-  timeEntryPathTemplate?: string // Path template for new time entries
-  timeTrackableNoteTypes?: string[] // Note types that show timer button in header
-  timeTrackAllNotes?: boolean // Show timer button for all notes
-  // Links
-  links?: LinkDefinition[]
-  // Buttons added to the header of notes of a given type
-  headerButtons?: HeaderButtonDefinition[]
-  /** Scripts run by themselves when something happens to a note. */
-  automations?: AutomationRule[]
-  // Maps
-  /** Note property holding a place's `lat, lon`. What the agent is told to write into. */
-  mapCoordinatesProperty?: string
-  /** A MapLibre style URL of one's own, instead of the free tiles the plugin ships with. */
-  mapStyleUrl?: string
-  // Other
-  snippetsFolder?: string
-  fullWidthSidebars?: boolean
-  /** On a tablet, sidebars take half the screen. The phone has its own, `fullWidthSidebars`. */
-  halfWidthSidebarsOnTablet?: boolean
-  /** ```mermaid blocks drawn by the plugin's viewer, with zoom and full screen, not Obsidian's. */
-  mermaidViewer?: boolean
-  /** Newly opened .canvas leaves use the read-only explanatory viewer. */
-  canvasViewer?: boolean
-  /** Fill fenced-code language gaps in Source and Live Preview using Obsidian's Prism. */
-  editorSyntaxHighlight?: boolean
-  /**
-   * The plugin's own drawing of some properties: a wallet's balance, arithmetic in numbers, file
-   * cards for File and Files properties and for `cover`. Off is Obsidian's own drawing.
-   */
-  propertyWidgets?: boolean
-  /**
-   * Notes open where they were last left — scroll and cursor, saved on each device — unless
-   * they are opened at a place of their own: a heading, a search result, a book's highlight.
-   */
-  rememberNotePlaces?: boolean
-  /** Property names drawn as a counter: the number with − and + beside it. Empty counts as 0. */
-  counterProperties?: string[]
-  /** Property names drawn as a date: a day back and on, how far away, its daily note. */
-  dateProperties?: string[]
-  /** Property names drawn as a task priority, raised and lowered. */
-  priorityProperties?: string[]
-  /** Property names drawn as labels: pills, and a field adding one from those the vault uses. */
-  labelProperties?: string[]
-  /** Property names drawn as groups: link pills, and a field adding a group note. */
-  groupProperties?: string[]
-  /**
-   * A panel at the top of the screen showing what the page reports about the on-screen
-   * keyboard. For finding out from a phone what no emulator shows. Not carried by a settings
-   * transfer, but it is in `data.json`, so a sync of the settings file takes it along.
-   */
-  keyboardDiagnostics?: boolean
-  // GitHub links opened inside Obsidian
-  github?: GithubSettings
-  // The book reader: page layout, text and colours
-  reader?: ReaderSettings
-  /** External calendars shown beside the tasks, read only. Their links and passwords are keys. */
-  calendars?: CalendarSettings
-  /** Owner completion of single external event occurrences; travels with calendars. */
-  calendarCompletion?: CompletionMarks
-  /** The floating button on a phone and the menu it opens. */
-  quickButton?: QuickButtonSettings
-  /** The linter: folders it never looks in, and how each rule is set up. */
-  linter?: LinterSettings
-  /**
-   * The synced secret store, encrypted — see `src/secrets/`. Kept as whatever the file holds:
-   * it is opened and checked by the store, never by the settings, and never shown to an agent
-   * nor carried by a settings transfer.
-   */
-  secretStore?: unknown
-}
-
-export interface LinkDefinition {
-  id: string
-  name: string
-  type: 'script' | 'command'
-  scriptName: string
-  commandId: string
-  waitForSync: boolean
-}
-
-/**
- * A button placed in the header of every note of a given type, running a script or any command.
- *
- * A script button sits in the plugin's own header inside the note and can hand the script
- * parameters. A command button sits among the icons at the top right of the note — Obsidian's
- * own header — and runs any command Obsidian knows: core, another plugin's, the plugin's own,
- * or a script's, which is a command too.
- *
- * `params` holds a value per parameter the script declares, and each value is a template:
- * `{{title}}`, `{{path}}` and any frontmatter field of the note are substituted before the
- * script runs, which is what lets one button mean something different on each note.
- */
-export interface HeaderButtonDefinition {
-  id: string
-  /** Shown on the button, beside its icon. */
-  name: string
-  /** A lucide icon name, as everywhere else in the header. */
-  icon: string
-  /** Note types this button belongs to, matched against the note's `type` frontmatter. */
-  noteTypes: string[]
-  /** What pressing it does. Absent means `script`, what every button did before commands. */
-  runs?: 'script' | 'command'
-  scriptName: string
-  /** The command a `command` button runs, by its id: `editor:toggle-bold`. */
-  commandId?: string
-  /** Parameter values, by parameter name. Empty means the script's own default. */
-  params: Record<string, string>
-  /** Off keeps the button configured without showing it anywhere. Absent means on. */
-  enabled?: boolean
-  /** Only the icon in the header, with the name as its tooltip, for a header already full. */
-  iconOnly?: boolean
-  /** On every note, whatever its type or folder. */
-  allNotes?: boolean
-  /** Folders whose notes, at any depth, show the button — besides the notes of `noteTypes`. */
-  folders?: string[]
-  /** Tags whose notes show the button, nested ones under them included, with or without `#`. */
-  tags?: string[]
-  /**
-   * A command button on files other than notes too — a PDF, a canvas, a book, an image — as long
-   * as its folders or tags let them; a note's type and properties they do not have.
-   */
-  otherFiles?: boolean
-  /**
-   * Frontmatter the note must have, on top of where it is: the button shows on a note of its
-   * types or folders only when these hold. A button naming no type and no folder shows on any
-   * note these hold for.
-   */
-  conditions?: HeaderButtonCondition[]
-  /** `all` (the default) needs every condition to hold, `any` one of them. */
-  conditionMode?: 'all' | 'any'
-}
-
-/** What a header button asks of one frontmatter property. */
-export type PropertyTest = 'equals' | 'not-equals' | 'filled' | 'empty'
-
-export const PROPERTY_TESTS: PropertyTest[] = ['equals', 'not-equals', 'filled', 'empty']
-
-export interface HeaderButtonCondition {
-  property: string
-  test: PropertyTest
-  /** Compared for `equals` and `not-equals`, ignored by the other two. */
-  value: string
-}
-
-/**
- * A button's conditions as they may arrive: from an older settings file (none at all), from
- * another device, or typed by hand into `data.json`. Anything that is not a condition is
- * dropped rather than left to break the header, and a test nobody knows reads as `equals`.
- */
-export function normalizeConditions(raw: unknown): HeaderButtonCondition[] {
-  if (!Array.isArray(raw)) return []
-  return raw
-    .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object')
-    .map((c) => ({
-      property: typeof c.property === 'string' ? c.property : '',
-      test: PROPERTY_TESTS.includes(c.test as PropertyTest) ? (c.test as PropertyTest) : 'equals',
-      value:
-        typeof c.value === 'string'
-          ? c.value
-          : typeof c.value === 'number' || typeof c.value === 'boolean'
-            ? String(c.value)
-            : '',
-    }))
-}
-
-/** A link as settings, an agent or a transfer may have left it, made whole. */
-export function normalizeLink(raw: Partial<LinkDefinition>): LinkDefinition {
-  return {
-    ...raw,
-    id: raw.id || nanoid(),
-    name: raw.name ?? '',
-    scriptName: raw.scriptName ?? '',
-    type: raw.type || 'script',
-    commandId: raw.commandId || '',
-    waitForSync: raw.waitForSync ?? true,
-  }
-}
-
-/**
- * A header button made whole. Older settings files have no buttons at all, and a button saved
- * before a field existed is missing it rather than holding a default — so each one is filled in
- * on the way in, and so is one an agent adds with only the fields it cared about.
- */
-export function normalizeHeaderButton(
-  raw: Partial<HeaderButtonDefinition>
-): HeaderButtonDefinition {
-  return {
-    ...raw,
-    id: raw.id || nanoid(),
-    name: raw.name ?? '',
-    runs: raw.runs === 'command' ? 'command' : 'script',
-    scriptName: raw.scriptName ?? '',
-    commandId: typeof raw.commandId === 'string' ? raw.commandId : '',
-    icon: raw.icon || 'play',
-    noteTypes: raw.noteTypes || [],
-    params: raw.params || {},
-    enabled: raw.enabled ?? true,
-    iconOnly: raw.iconOnly ?? false,
-    allNotes: raw.allNotes ?? false,
-    folders: raw.folders || [],
-    tags: Array.isArray(raw.tags) ? raw.tags.filter((t) => typeof t === 'string') : [],
-    otherFiles: raw.otherFiles === true,
-    conditions: normalizeConditions(raw.conditions),
-    conditionMode: raw.conditionMode === 'any' ? 'any' : 'all',
-  }
-}
-
-export const DEFAULT_SETTINGS: AbeleSettings = {
-  refreshDelay: 300,
-  tasksFolder: 'Tasks',
-  logsNotesTypes: ['journal', 'log', 'daily'],
-  tasksTimeChoices: ['09:00', '12:00', '18:00', '21:00'],
-  tasksDateChoices: ['Today', 'Tomorrow', 'Next Week', 'Next Month'],
-  tasksRecurrenceChoices: ['Daily', 'Weekly', 'Monthly', 'Yearly'],
-  weekStartsOnMonday: true,
-  birthDate: '',
-  lifeExpectancy: DEFAULT_LIFE_YEARS,
-  taskLabelProperty: DEFAULT_LABEL_PROPERTY,
-  taskPriorityProperty: 'priority',
-  taskLabelColors: [],
-  journals: [],
-  busyDayThreshold: 3,
-  excludedPathsForDefaultTemplate: ['attachments/', 'templates/'],
-  ai: { ...DEFAULT_AI_SETTINGS },
-  sync: defaultSyncSettings(),
-  transactionPathTemplate: 'Finance/Transactions/{{date:YYYY/MM}}/{{title}}',
-  transactionTemplatePath: '',
-  accountsFolder: 'Finance/Accounts',
-  financeCategoriesFolder: 'Finance/Categories',
-  defaultCurrency: 'EUR',
-  pinnedCurrencies: 'EUR',
-  fireflyBaseUrl: '',
-  fireflyToken: '',
-  accountsList: DEFAULT_ACCOUNTS_LIST,
-  timeEntryPathTemplate: 'Time/{{date:YYYY/MM}}/{{groups}} {{start}}',
-  timeTrackableNoteTypes: ['task'],
-  timeTrackAllNotes: false,
-  links: [],
-  headerButtons: [],
-  automations: [],
-  mapCoordinatesProperty: 'coordinates',
-  mapStyleUrl: '',
-  snippetsFolder: '',
-  fullWidthSidebars: false,
-  halfWidthSidebarsOnTablet: false,
-  mermaidViewer: true,
-  canvasViewer: true,
-  editorSyntaxHighlight: true,
-  propertyWidgets: true,
-  rememberNotePlaces: true,
-  counterProperties: [],
-  dateProperties: ['date', 'due'],
-  priorityProperties: ['priority'],
-  labelProperties: ['labels'],
-  groupProperties: ['groups'],
-  keyboardDiagnostics: false,
-  github: { ...DEFAULT_GITHUB_SETTINGS },
-  reader: { ...DEFAULT_READER_SETTINGS },
-  calendars: { ...DEFAULT_CALENDAR_SETTINGS, feeds: [] },
-  calendarCompletion: {},
-  quickButton: { ...DEFAULT_QUICK_BUTTON },
-  linter: { ...DEFAULT_LINTER_SETTINGS, rules: {} },
-}
+export {
+  DEFAULT_SETTINGS,
+  normalizeConditions,
+  PROPERTY_TESTS,
+  type AbeleSettings,
+  type HeaderButtonCondition,
+  type HeaderButtonDefinition,
+  type LinkDefinition,
+  type PropertyTest,
+} from './settingsShape'
 
 export class AbeleConfig {
   public plugin: AbelePlugin
@@ -438,86 +105,24 @@ export class AbeleConfig {
    */
   public readonly version = ref(0)
 
-  /**
-   * Set when `data.json` exists but could not be read. Nothing is written until it reads
-   * again: at startup what is in memory then is defaults, and saving them would replace every
-   * setting the file still holds with nothing; on a reload what is in memory is the last good
-   * copy, and writing it would bury whatever the broken file was on its way to saying.
-   */
-  private unreadable = false
-  /** Said once per failed load: saves come from chats as well, and each would repeat it. */
-  private unreadableTold = false
+  /** Where the chat index is kept: its own file, or `data.json` until that file holds it. */
+  private readonly chatIndex = new ChatIndexKeeper()
 
-  /**
-   * The `sync` block exactly as the startup load read it off disk, before the migration dropped
-   * what is no longer a setting — or null when there was no file to read it from: none at all,
-   * or one that would not parse. Kept for one reader: the one-time move of this device's
-   * connection out of `data.json` (`SyncService.openConnection`), which takes it.
-   *
-   * Null and a file that named nothing are different things. A file that is missing for now — an
-   * iCloud vault on a phone not yet downloaded — or half-written may still hold the connection,
-   * and the move must wait for a launch that reads it rather than record that there was nothing.
-   */
-  private loadedSync: { sync: unknown } | null = null
-
-  /**
-   * The settings file as this copy last read or wrote it, as canonical JSON (`settingsFile.ts`),
-   * or null while it knows of no readable file.
-   *
-   * `data.json` syncs, and the later save wins, so two devices that each wrote the file back on
-   * reading the other's would pass it between them for ever. This is what stops them: a save
-   * that says what the file already says writes nothing, and a reload of the file this copy
-   * already holds is no reload — which also makes the second of the two reloads one pulled file
-   * gets (the sync's and Obsidian's own, see `reloadSettings`) do nothing.
-   */
-  private onDisk: string | null = null
-
-  /**
-   * The settings in memory as they were right after they were last read or written — their
-   * export then. What differs from it now is what this copy changed since, and that is what a
-   * save or a reload puts back on top of a file that arrived in between (`localChanges`).
-   */
-  private base: AbeleSettings | null = null
-
-  /**
-   * The settings file's size and mtime when it was last read or written, or null for none (or
-   * no disk to ask). A save that finds another reads the file again first: see `catchUp`.
-   */
-  private stamp: string | null = null
-
-  /**
-   * A save took in a file that arrived before its reload came, so the reload will find the file
-   * read already. It must still answer that it reloaded, once: the secret store and the AI
-   * features have not seen the new settings yet.
-   */
-  private unannounced = false
-
-  /**
-   * Every load, reload and write of the settings file, one after another. A save computed from
-   * the settings before a reload and written after it would put the old settings back over the
-   * ones that just arrived; a save in the middle of a reload would write half of each.
-   */
-  private fileQueue: Promise<unknown> = Promise.resolve()
-
-  /**
-   * Whether the chat index (`ai.chatHistory`) is in its own file (`ai/chatIndexFile.ts`). Until
-   * it is — the first launch of this build, or a disk that would not take the file — it stays
-   * in `data.json` as it always was, so no step of the move can lose a chat.
-   */
-  private indexOnDisk = false
-  /** Whether the settings last applied carried an index of their own: an older build's. */
-  private indexInSettings = false
-  /** The chat index writes, one after another, and what the last of them wrote. */
-  private indexSaving: Promise<void> = Promise.resolve()
-  private indexWritten: string | null = null
-  /**
-   * The index file is there and could not be read — not a file that would not parse, which is
-   * kept aside, but a disk that would not hand it over: a phone's iCloud copy not downloaded
-   * yet. Writing it now would put the index in memory over one nobody has seen, so for this
-   * launch it is not written at all, and `data.json` does not take it either: the index is a
-   * cache, rebuilt from the chat files.
-   */
-  private indexBlocked = false
+  /** The settings file itself: every load, reload and write of it, one at a time. */
+  private readonly file = new SettingsKeeper({
+    plugin: () => this.plugin,
+    edits: this.pendingEdits,
+    fresh: (fresh) => { this.freshInstall = fresh },
+    apply: (settings, toolDefaults, index) => this.applySettings(settings, toolDefaults, index),
+    export: () => this.exportSettings(),
+    secretStore: () => this.secretStore,
+    chatHistory: () => this.ai?.chatHistory ?? [],
+    index: this.chatIndex,
+    reloaded: () => {
+      this.version.value++
+      this.tellSaved()
+    },
+  })
 
   /**
    * Whether the settings file exists and could not be read. Anything that acts on its own —
@@ -525,7 +130,7 @@ export class AbeleConfig {
    * person's, and after a reload it is settings the file on disk no longer says.
    */
   get settingsUnreadable(): boolean {
-    return this.unreadable
+    return this.file.isUnreadable
   }
 
   public get logsNotesTypes(): string[] {
@@ -615,13 +220,8 @@ export class AbeleConfig {
   public init(plugin: AbelePlugin): void {
     this.pendingEdits = new SettingsEdits()
     this.plugin = plugin
-    this.onDisk = null
-    this.base = null
-    this.stamp = null
-    this.unannounced = false
-    this.indexOnDisk = false
-    this.indexWritten = null
-    this.indexBlocked = false
+    this.file.reset()
+    this.chatIndex.reset()
   }
 
   public destroy(): void {
@@ -644,188 +244,15 @@ export class AbeleConfig {
     if (!this.plugin) {
       throw new Error('AbeleConfig not initialized with plugin instance.')
     }
-    return this.onFile(() => this.loadNow())
-  }
-
-  private async loadNow(): Promise<void> {
-    if (!this.plugin) return
-    // `null` is no file at all — a fresh install. `undefined` is a file Obsidian could not
-    // parse, and that is still somebody's settings.
-    const finishRead = this.pendingEdits.beginRead()
-    try {
-    const stamp = await this.readStamp()
-    const stored: unknown = await this.plugin.loadData()
-    const index = await this.readChatIndex()
-    this.indexOnDisk = index !== null
-    await this.take(stored, stored, () => index ?? [], stamp)
-    } finally { finishRead() }
-  }
-
-  /** Runs `step` after every load, reload and write of the settings file already asked for. */
-  private onFile<T>(step: () => Promise<T>): Promise<T> {
-    const run = this.fileQueue.then(step)
-    this.fileQueue = run.catch((): void => undefined)
-    return run
-  }
-
-  /** The settings file's stamp now: see `stamp`. */
-  private readStamp(plugin: AbelePlugin | null = this.plugin): Promise<string | null> {
-    return settingsStampOf(plugin)()
+    return this.file.load()
   }
 
   /**
-   * Put what was read off disk in force: the half of a load after the read. `file` is what the
-   * disk holds and `settings` what is applied — the same, unless changes made in memory are put
-   * back on top of it. `index` answers with the chat index this copy holds — the index file's at
-   * startup, the one in memory on a reload — which a settings file never replaces, only adds
-   * to. Asked for after the wait below, so a chat listed during it is not dropped.
-   */
-  private async take(
-    file: unknown,
-    settings: unknown,
-    index: () => AiChatHistoryEntry[],
-    stamp: string | null
-  ): Promise<void> {
-    this.loadedSync =
-      file === null || file === undefined ? null : { sync: (file as { sync?: unknown }).sync }
-    this.freshInstall = file === null
-    this.unreadable = file === undefined
-    this.unreadableTold = false
-    if (this.unreadable) console.error('[Abele] data.json could not be read; not writing to it')
-    this.onDisk = isSettingsObject(file) ? canonicalJson(file) : null
-    this.stamp = stamp
-
-    const candidates = pruneToolDescriptions((settings as AbeleSettings)?.ai?.prompts?.toolDescriptions).kept
-    const tools = Object.keys(candidates).length ? await codeToolDescriptions() : {}
-    const migrated = this.applySettings(
-      (settings ?? undefined) as AbeleSettings | undefined,
-      tools,
-      index()
-    )
-    this.applySettings(this.pendingEdits.apply(this.exportSettings()), tools, index())
-    this.base = this.exportSettings()
-
-    if (this.indexInSettings || !this.indexOnDisk) await this.indexToFile()
-
-    // Migration only rewrites the settings held in memory. Persisting it here is what stops
-    // the same migration running again on the next launch — and, for the Comment agent,
-    // what stops a fresh one being minted every time the vault is opened. A migration that
-    // came out where the file already was writes nothing (`writeNow`).
-    if (migrated || (this.indexInSettings && this.indexOnDisk)) await this.writeNow()
-  }
-
-  /**
-   * `data.json` changed on disk without this copy of the plugin writing it — another device's
-   * copy pulled by Abele Sync or brought by another sync tool. Keeping the settings loaded at
-   * startup would write them back over it at the next save, whatever that save was about.
-   *
-   * Answers whether anything was reloaded, so the caller knows whether the rest of a reload —
-   * the secret store, the AI features — has anything to do. It has not when the file says what
-   * this copy already holds: a file that came back reserialised, or the second of two calls for
-   * one pull. Both are expected. The sync calls this after a run that wrote the file, and
-   * Obsidian calls `onExternalSettingsChange` itself for the same write — checked against the
-   * installed app (`app.js` in `obsidian.asar`, 2026-09-27): every adapter write, the sync's
-   * included, ends in the adapter's `reconcileInternalFile`, which fires the vault's `raw`
-   * event; the plugin manager answers a `raw` for an enabled plugin's `data.json` with that
-   * plugin's `onConfigFileChange`, debounced 50 ms, which calls `onExternalSettingsChange` when
-   * the file's mtime is later than the one the plugin last loaded or saved. The sync writes a
-   * pulled file with the mtime it had on the device that saved it, so Obsidian's call is made
-   * for most pulls but not for all of them — another device's clock behind this one's, or an
-   * older version put back — which is why the sync calls too, and why the second call must be
-   * a no-op. Calls are taken one at a time, and in turn with saves, so each sees what the one
-   * before it left.
-   *
-   * What arrived is taken, except for two things:
-   * - what this copy changed in memory since it last read or wrote the file — a save waiting
-   *   behind this reload — which is put back on top and written;
-   * - the synced key store, when this device has one and the file names none. A fresh
-   *   install's file, a transfer's or an older build's holds no store, and taking that as the
-   *   store turned off would switch it off on every device. The store stays and goes back into
-   *   the file; turning it off writes a marker that says so (`storeFile.StoreOff`).
-   *
-   * A file caught half written — the sync's writes are not atomic — is read again once after
-   * `UNREADABLE_RETRY_MS`; one that still will not parse leaves the settings in memory as they
-   * are and blocks every write until a readable one arrives. A file that has gone is not a
-   * reason to fall back to defaults either: the settings in memory stay, and the next save
-   * writes the file again.
+   * `data.json` changed on disk without this copy of the plugin writing it: takes it in. Answers
+   * whether anything was reloaded — see `SettingsKeeper.reload`.
    */
   reloadSettings(): Promise<boolean> {
-    return this.onFile(() => this.reloadNow())
-  }
-
-  private async reloadNow(): Promise<boolean> {
-    if (!this.plugin) {
-      throw new Error('AbeleConfig not initialized with plugin instance.')
-    }
-    let stamp = await this.readStamp()
-    let stored: unknown = await this.plugin.loadData()
-    if (stored === undefined) {
-      console.debug('[Abele] data.json would not parse; reading it again in a moment')
-      await pause(UNREADABLE_RETRY_MS)
-      if (!this.plugin) return false
-      stamp = await this.readStamp()
-      stored = await this.plugin.loadData()
-    }
-    if (stored === undefined) {
-      console.error(
-        '[Abele] data.json that arrived could not be read; keeping the settings in memory and not writing to it'
-      )
-      this.unreadable = true
-      this.stamp = stamp
-      this.tellUnreadable()
-      return false
-    }
-    if (stored === null) {
-      console.debug('[Abele] data.json has gone; keeping the settings in memory')
-      // Nothing is on disk now, so the next save has something to write, whatever it is about.
-      this.onDisk = null
-      this.stamp = stamp
-      return false
-    }
-    if (!this.unreadable && isSettingsObject(stored) && canonicalJson(stored) === this.onDisk) {
-      this.stamp = stamp
-      if (!this.unannounced) {
-        console.debug('[Abele] data.json says what this copy already holds; nothing to reload')
-        return false
-      }
-    } else {
-      const settings = this.unreadable ? stored : this.ontoArrived(stored)
-      await this.take(stored, settings, () => this.ai?.chatHistory ?? [], stamp)
-      // Only the startup load's block is moved: one from another device is never this one's.
-      this.loadedSync = null
-      // What was put back on top of the file goes into it.
-      if (settings !== stored) await this.writeNow()
-    }
-    this.unannounced = false
-    this.version.value++
-    this.tellSaved()
-    return true
-  }
-
-  /**
-   * The settings to apply for a file that arrived: the file, with this copy's key store kept
-   * where the file names none, and with what this copy changed in memory since it last read or
-   * wrote the file put back on top. The file itself when there is nothing to keep.
-   */
-  private ontoArrived(stored: unknown): unknown {
-    if (!isSettingsObject(stored)) return stored
-    let arrived: Record<string, unknown> = stored
-    if (stored.secretStore === undefined && isStoreFile(this.secretStore)) {
-      console.debug(
-        '[Abele] the settings that arrived hold no synced key store; keeping this device’s'
-      )
-      arrived = { ...stored, secretStore: this.secretStore }
-    }
-    // A store in the file is never overwritten by this copy's: its entries are merged by the
-    // store itself, when it is opened again on what arrived.
-    const keep = isStoreFile(arrived.secretStore) ? ['secretStore'] : []
-    const changes = this.base === null ? [] : localChanges(this.base, this.exportSettings(), keep)
-    if (changes.length > 0) {
-      console.debug(
-        `[Abele] settings changed here while another copy arrived; keeping ${changes.length} of them on top`
-      )
-    }
-    return changes.length > 0 ? reapply(arrived, changes) : arrived
+    return this.file.reload()
   }
 
   async saveSettings() {
@@ -873,12 +300,10 @@ export class AbeleConfig {
 
   /**
    * The `sync` block the startup load read off disk, handed over once — or null when there was
-   * no file to read it from: see `loadedSync`.
+   * no file to read it from: see `SettingsKeeper.loadedSync`.
    */
   takeLoadedSync(): { sync: unknown } | null {
-    const block = this.loadedSync
-    this.loadedSync = null
-    return block
+    return this.file.takeLoadedSync()
   }
 
   /**
@@ -899,147 +324,20 @@ export class AbeleConfig {
    * listed nowhere.
    */
   async saveChatIndex(): Promise<void> {
-    if (this.indexBlocked) return
-    if (!(await this.indexToFile())) await this.writeSettings()
-  }
-
-  /**
-   * The index written to its own file, one write at a time; answers whether the file holds it
-   * now. False with no file to write to, or when the disk refused — the index is then in
-   * `data.json`'s export again, and the caller decides whether to write that.
-   */
-  private indexToFile(): Promise<boolean> {
-    const run = this.indexSaving.then(async (): Promise<boolean> => {
-      const disk = chatIndexDiskOf(this.plugin)
-      if (disk === null) return false
-      if (this.indexBlocked) return true
-      const entries = this.ai?.chatHistory ?? []
-      const text = JSON.stringify(entries)
-      if (this.indexOnDisk && text === this.indexWritten) return true
-      try {
-        await disk.write(entries)
-        this.indexWritten = text
-        this.indexOnDisk = true
-        return true
-      } catch (error) {
-        console.error('[Abele] the chat index could not be written; keeping it in data.json', error)
-        this.indexOnDisk = false
-        return false
-      }
-    })
-    this.indexSaving = run.then((): void => undefined)
-    return run
-  }
-
-  /** The index file's entries, or null when there is none that reads. Never throws. */
-  private async readChatIndex(): Promise<AiChatHistoryEntry[] | null> {
-    const disk = chatIndexDiskOf(this.plugin)
-    if (disk === null) return null
-    try {
-      const entries = await disk.read()
-      if (entries !== null) this.indexWritten = JSON.stringify(entries)
-      return entries
-    } catch (error) {
-      console.error('[Abele] the chat index could not be read; not writing it this launch', error)
-      this.indexBlocked = true
-      return null
-    }
+    if (this.chatIndex.blocked) return
+    const written = await this.chatIndex.toFile(
+      () => this.plugin,
+      () => this.ai?.chatHistory ?? []
+    )
+    if (!written) await this.writeSettings()
   }
 
   /**
    * The write on its own, without the feature sync, after every load, reload and write already
    * asked for.
-   *
-   * A save during `loadSettings` must not register the AI features early: `onload` does that
-   * itself, further down, and doing it here would reorder half the plugin's startup.
    */
   private writeSettings(): Promise<void> {
-    // Taken now: a save asked for just before the plugin unloads still reaches the disk.
-    const plugin = this.plugin
-    return this.onFile(() => this.writeNow(plugin))
-  }
-
-  /** `writeSettings` for a step already on the queue — a load or a reload writing. */
-  private async writeNow(plugin: AbelePlugin | null = this.plugin): Promise<void> {
-    if (!plugin) return
-    if (this.unreadable) {
-      this.tellUnreadable()
-      return
-    }
-    if (!(await this.catchUp(plugin))) return
-    const next = this.exportSettings()
-    const text = canonicalJson(next)
-    // Nothing changed in meaning: writing would only hand every other device a file to pull
-    // and reload for nothing, and a newer mtime to beat whatever they save next.
-    if (text === this.onDisk) {
-      this.base = next
-      return
-    }
-    const written = this.pendingEdits.written()
-    await plugin.saveData(settingsSnapshot(next))
-    written()
-    this.onDisk = text
-    this.base = next
-    this.stamp = await this.readStamp(plugin)
-  }
-
-  /**
-   * Before a write: the file as this copy last read or wrote it, or taken in first when
-   * something else wrote it since. A sync writes a pulled file and tells the plugin only when its
-   * run is over, and Obsidian's own call comes 50 ms later, so a save can land between the file
-   * arriving and its reload — and written from the settings loaded before, it would put them
-   * back over the other device's change on every device. So the file is read again, what
-   * arrived is taken in with this copy's own changes on top (as a reload does), and the reload
-   * that follows is left to reopen the secret store and the AI features (`unannounced`).
-   *
-   * Answers false when the file will not parse even after a moment: it is left alone, the
-   * change stays in memory, and the reload that follows says what is wrong with it.
-   */
-  private async catchUp(plugin: AbelePlugin): Promise<boolean> {
-    let stamp = await this.readStamp(plugin)
-    if (stamp === this.stamp) return true
-    let fresh: unknown = await plugin.loadData()
-    if (fresh === undefined) {
-      await pause(UNREADABLE_RETRY_MS)
-      stamp = await this.readStamp(plugin)
-      fresh = await plugin.loadData()
-    }
-    if (fresh === undefined) {
-      console.debug('[Abele] data.json would not parse just before a save; not writing over it')
-      return false
-    }
-    this.stamp = stamp
-    if (!isSettingsObject(fresh)) {
-      // Gone, or not settings at all: nothing to take in, and the save writes the file again.
-      this.onDisk = null
-      return true
-    }
-    if (canonicalJson(fresh) === this.onDisk) return true
-    console.debug('[Abele] data.json changed on disk before this save; taking it in first')
-    const settings = this.ontoArrived(fresh)
-    // The startup load's block stays for its one reader; one from another device is never
-    // this one's (`reloadNow`).
-    const loaded = this.loadedSync
-    await this.take(fresh, settings, () => this.ai?.chatHistory ?? [], stamp)
-    this.loadedSync = loaded
-    this.unannounced = true
-    return true
-  }
-
-  /**
-   * Said once per unreadable file: saves come from chats as well, and each would repeat it.
-   *
-   * Not "delete it": the file syncs, and a delete would reach every device, which would each
-   * start again from defaults and push those. An earlier copy is in its version history.
-   */
-  private tellUnreadable(): void {
-    if (this.unreadableTold) return
-    this.unreadableTold = true
-    new Notice(
-      'Abele could not read its settings file, so changes to settings are not being saved. ' +
-        'Fix the file, or put back an earlier copy of it from its version history, and reload ' +
-        'the plugin. Deleting it would remove it from every synced device too.'
-    )
+    return this.file.write()
   }
 
   /**
@@ -1053,308 +351,12 @@ export class AbeleConfig {
     toolDefaults: Record<string, string> = {},
     index: AiChatHistoryEntry[] = this.ai?.chatHistory ?? []
   ): boolean {
-    this.refreshDelay = settings?.refreshDelay ?? DEFAULT_SETTINGS.refreshDelay
-    this.tasksFolder = settings?.tasksFolder ?? DEFAULT_SETTINGS.tasksFolder
-    this.logsNotesTypes = settings?.logsNotesTypes || [...DEFAULT_SETTINGS.logsNotesTypes]
-    this.tasksTimeChoices = settings?.tasksTimeChoices || [...DEFAULT_SETTINGS.tasksTimeChoices]
-    this.tasksDateChoices = settings?.tasksDateChoices || [...DEFAULT_SETTINGS.tasksDateChoices]
-    this.tasksRecurrenceChoices = settings?.tasksRecurrenceChoices || [
-      ...DEFAULT_SETTINGS.tasksRecurrenceChoices,
-    ]
-    this.weekStartsOnMonday = settings?.weekStartsOnMonday ?? DEFAULT_SETTINGS.weekStartsOnMonday
-    // Both can be edited by hand; anything that is not a day or a life is left unset.
-    this.birthDate = isBirthDate(settings?.birthDate) ? settings.birthDate : ''
-    this.lifeExpectancy = lifeYears(settings?.lifeExpectancy, DEFAULT_LIFE_YEARS)
-    this.taskLabelProperty =
-      settings?.taskLabelProperty?.trim() || DEFAULT_SETTINGS.taskLabelProperty
-    this.taskPriorityProperty =
-      typeof settings?.taskPriorityProperty === 'string'
-        ? settings.taskPriorityProperty.trim() || DEFAULT_SETTINGS.taskPriorityProperty
-        : DEFAULT_SETTINGS.taskPriorityProperty
-    // Cleaned on the way in: the file can be edited by hand, and a colour the kit has no class
-    // for would render as nothing. Grey is the absence of a colour, so it is not stored.
-    this.taskLabelColors = (settings?.taskLabelColors ?? [])
-      .filter((c) => typeof c?.value === 'string' && c.value.trim() && isKitColor(c.color))
-      .filter((c) => c.color !== 'grey')
-      .map((c) => ({ value: c.value.trim(), color: c.color }))
-    this.journals = (settings?.journals || [...DEFAULT_SETTINGS.journals]).map(
-      (j) => new Journal(j)
-    )
-    this.busyDayThreshold = settings?.busyDayThreshold ?? DEFAULT_SETTINGS.busyDayThreshold
-    this.excludedPathsForDefaultTemplate = settings?.excludedPathsForDefaultTemplate || [
-      ...DEFAULT_SETTINGS.excludedPathsForDefaultTemplate,
-    ]
-    this.ai = settings?.ai ? { ...DEFAULT_AI_SETTINGS, ...settings.ai } : { ...DEFAULT_AI_SETTINGS }
-    this.ai.chatSelectionScripts = selectionMenuScriptsFrom(this.ai.chatSelectionScripts)
-    // The chat index is this device's, in a file of its own (`ai/chatIndexFile.ts`); settings
-    // replace everything else but only add to it. One in the settings is an older build's, or
-    // this device's own from before the move, and its chats are folded in, never dropped.
-    const carried: unknown = (settings?.ai as { chatHistory?: unknown } | undefined)?.chatHistory
-    this.indexInSettings = Array.isArray(carried)
-    this.ai.chatHistory = mergeChatIndex(index, Array.isArray(carried) ? carried : [])
-    // Runs before the legacy migrations below, so a settings file predating both is folded
-    // into an agent using the values it actually had on disk.
-    let migrated = migrateAgents(this.ai)
-    const savedKeys = savedKeysWithIds(this.ai.secrets ?? [])
-    if (savedKeys.some((key, index) => key.id !== this.ai.secrets[index].id)) migrated = true
-    this.ai.secrets = savedKeys
-    // Settings used to save every default tool description, and a saved one replaces the
-    // tool's own — so a vault stayed on the descriptions of the version that first saved it.
-    // Only the ones the person changed are kept; the rest go, once, and the file is rewritten.
-    const descriptions = pruneToolDescriptions(this.ai.prompts?.toolDescriptions, toolDefaults)
-    if (descriptions.dropped > 0 && this.ai.prompts) {
-      this.ai = {
-        ...this.ai,
-        prompts: { ...this.ai.prompts, toolDescriptions: descriptions.kept },
-      }
-      migrated = true
-    }
-    // Migrate old boolean permissions to toolModes
-    if (
-      settings?.ai &&
-      !settings.ai.toolModes &&
-      (settings.ai as any).allowWebSearch !== undefined
-    ) {
-      this.ai.toolModes = migrateOldPermissions(null, settings.ai as any)
-    }
-    const mcpPermissions = migrateMcpPermissions(this.ai)
-    this.ai = mcpPermissions.ai
-    migrated ||= mcpPermissions.changed
-    notifyMcpPermissionReset(mcpPermissions.reset)
-    // Migrate image generation settings to imageProviders
-    if (settings?.ai && !settings.ai.imageProviders) {
-      const old = settings.ai as any
-      // Check for v2 format (single imageGeneration object)
-      const ig = old.imageGeneration
-      // Check for v1 format (openRouterApiKey + imageModel)
-      const legacyKey = old.openRouterApiKey || ''
-      const legacyModel = old.imageModel || ''
-
-      if (ig) {
-        // Migrate v2 → v3
-        const provider: ImageProvider = {
-          id: 'migrated-img',
-          name: ig.apiType === 'openai' ? 'OpenAI' : 'OpenRouter',
-          apiType: ig.apiType || 'openrouter',
-          endpoint: ig.endpoint || '',
-          apiKeyId: ig.apiKeyId || '',
-          models: [
-            {
-              id: ig.model || 'gpt-image-1',
-              name: ig.model || 'gpt-image-1',
-              size: ig.size || '1024x1024',
-              outputFormat: ig.outputFormat || 'png',
-              quality: ig.quality || 'medium',
-            },
-          ],
-        }
-        this.ai.imageProviders = [provider]
-        this.ai.defaultImageModel = `${provider.id}::${provider.models[0].id}`
-      } else if (legacyKey || legacyModel) {
-        // Migrate v1 → v3
-        const modelId = legacyModel || 'google/gemini-2.5-flash-preview:thinking'
-        const provider: ImageProvider = {
-          id: 'migrated-img',
-          name: 'OpenRouter',
-          apiType: 'openrouter',
-          endpoint: '',
-          apiKeyId: legacyKey,
-          models: [
-            {
-              id: modelId,
-              name: modelId,
-              size: '1024x1024',
-              outputFormat: 'png',
-              quality: 'medium',
-            },
-          ],
-        }
-        this.ai.imageProviders = [provider]
-        this.ai.defaultImageModel = `${provider.id}::${modelId}`
-      }
-    }
-    // Every field is checked on the way in, and a connection an older build wrote here is
-    // dropped: it is this device's alone and lives in local storage now.
-    this.sync = migrateSyncSettings(settings?.sync)
-    this.transactionPathTemplate =
-      settings?.transactionPathTemplate ?? DEFAULT_SETTINGS.transactionPathTemplate
-    this.transactionTemplatePath =
-      settings?.transactionTemplatePath ?? DEFAULT_SETTINGS.transactionTemplatePath
-    this.accountsFolder = settings?.accountsFolder ?? DEFAULT_SETTINGS.accountsFolder
-    this.financeCategoriesFolder =
-      settings?.financeCategoriesFolder ?? DEFAULT_SETTINGS.financeCategoriesFolder
-    this.defaultCurrency = settings?.defaultCurrency ?? DEFAULT_SETTINGS.defaultCurrency
-    this.pinnedCurrencies = settings?.pinnedCurrencies ?? DEFAULT_SETTINGS.pinnedCurrencies
-    this.fireflyBaseUrl = settings?.fireflyBaseUrl ?? DEFAULT_SETTINGS.fireflyBaseUrl
-    this.fireflyToken = settings?.fireflyToken ?? DEFAULT_SETTINGS.fireflyToken ?? ''
-    notePlainSecrets(this)
-    this.accountsList = normalizeAccountsList(settings?.accountsList)
-    this.timeEntryPathTemplate =
-      settings?.timeEntryPathTemplate ?? DEFAULT_SETTINGS.timeEntryPathTemplate
-    this.timeTrackableNoteTypes = settings?.timeTrackableNoteTypes || [
-      ...DEFAULT_SETTINGS.timeTrackableNoteTypes,
-    ]
-    this.timeTrackAllNotes = settings?.timeTrackAllNotes ?? DEFAULT_SETTINGS.timeTrackAllNotes
-    this.links = (settings?.links || []).map(normalizeLink)
-    this.headerButtons = (settings?.headerButtons || []).map(normalizeHeaderButton)
-    this.automations = (Array.isArray(settings?.automations) ? settings.automations : []).map(
-      (rule) => normalizeRule(rule)
-    )
-    this.mapCoordinatesProperty =
-      settings?.mapCoordinatesProperty ?? DEFAULT_SETTINGS.mapCoordinatesProperty
-    this.mapStyleUrl = settings?.mapStyleUrl ?? DEFAULT_SETTINGS.mapStyleUrl
-    this.snippetsFolder = settings?.snippetsFolder ?? DEFAULT_SETTINGS.snippetsFolder
-    this.fullWidthSidebars = settings?.fullWidthSidebars ?? DEFAULT_SETTINGS.fullWidthSidebars
-    this.halfWidthSidebarsOnTablet =
-      settings?.halfWidthSidebarsOnTablet ?? DEFAULT_SETTINGS.halfWidthSidebarsOnTablet
-    this.mermaidViewer = settings?.mermaidViewer ?? DEFAULT_SETTINGS.mermaidViewer ?? true
-    this.canvasViewer = settings?.canvasViewer ?? DEFAULT_SETTINGS.canvasViewer ?? true
-    this.editorSyntaxHighlight =
-      settings?.editorSyntaxHighlight ?? DEFAULT_SETTINGS.editorSyntaxHighlight ?? true
-    this.propertyWidgets = settings?.propertyWidgets ?? DEFAULT_SETTINGS.propertyWidgets ?? true
-    this.rememberNotePlaces =
-      settings?.rememberNotePlaces ?? DEFAULT_SETTINGS.rememberNotePlaces ?? true
-    this.counterProperties = Array.isArray(settings?.counterProperties)
-      ? settings.counterProperties.filter((name): name is string => typeof name === 'string')
-      : []
-    // A list never saved takes the default; one emptied by hand stays empty.
-    const names = (list: unknown, fallback: string[] = []) =>
-      Array.isArray(list)
-        ? list.filter((name): name is string => typeof name === 'string')
-        : [...fallback]
-    this.dateProperties = names(settings?.dateProperties, DEFAULT_SETTINGS.dateProperties)
-    this.priorityProperties = names(
-      settings?.priorityProperties,
-      DEFAULT_SETTINGS.priorityProperties
-    )
-    this.labelProperties = names(settings?.labelProperties, DEFAULT_SETTINGS.labelProperties)
-    this.groupProperties = names(settings?.groupProperties, DEFAULT_SETTINGS.groupProperties)
-    this.keyboardDiagnostics = settings?.keyboardDiagnostics ?? false
-    this.github = githubSettingsFrom(settings?.github)
-    if (migrateLegacyConnectionAccess(this.ai.agents ?? [], this.github.connections))
-      migrated = true
-    if (
-      settings?.github &&
-      (!Array.isArray(settings.github.connections) ||
-        settings.github.keyId !== this.github.keyId ||
-        settings.github.server !== this.github.server ||
-        settings.github.legacyServer !== this.github.legacyServer ||
-        settings.github.defaultRepo !== this.github.defaultRepo ||
-        JSON.stringify(settings.github.connections) !== JSON.stringify(this.github.connections))
-    )
-      migrated = true
-    this.reader = readerSettingsFrom(settings?.reader)
-    this.calendars = calendarSettingsFrom(settings?.calendars)
-    this.calendarCompletion = completionMarksFrom(settings?.calendarCompletion)
-    this.quickButton = quickButtonSettingsFrom(settings?.quickButton)
-    this.linter = linterSettingsFrom(settings?.linter)
-    this.secretStore = settings?.secretStore
-
-    return migrated
+    const applied = applySettingsTo(this, settings, toolDefaults, index)
+    this.chatIndex.inSettings = applied.indexInSettings
+    return applied.migrated
   }
 
   exportSettings(): AbeleSettings {
-    return {
-      refreshDelay: this.refreshDelay,
-      tasksFolder: this.tasksFolder,
-      logsNotesTypes: [...this.logsNotesTypes],
-      tasksTimeChoices: [...this.tasksTimeChoices],
-      tasksDateChoices: [...this.tasksDateChoices],
-      tasksRecurrenceChoices: [...this.tasksRecurrenceChoices],
-      weekStartsOnMonday: this.weekStartsOnMonday,
-      birthDate: this.birthDate,
-      lifeExpectancy: this.lifeExpectancy,
-      taskLabelProperty: this.taskLabelProperty,
-      taskPriorityProperty: this.taskPriorityProperty,
-      taskLabelColors: this.taskLabelColors.map((c) => ({ ...c })),
-      journals: this.journals.map((j) => j.toDTO()),
-      busyDayThreshold: this.busyDayThreshold,
-      excludedPathsForDefaultTemplate: [...this.excludedPathsForDefaultTemplate],
-      // The chat index is not a setting: it is in a file of its own once that file holds it.
-      ai: this.indexOnDisk || this.indexBlocked ? withoutChatIndex(this.ai) : { ...this.ai },
-      // A copy all the way down rather than a spread: the migration already knows how to build
-      // one field by field.
-      sync: migrateSyncSettings(this.sync),
-      transactionPathTemplate: this.transactionPathTemplate,
-      transactionTemplatePath: this.transactionTemplatePath,
-      accountsFolder: this.accountsFolder,
-      financeCategoriesFolder: this.financeCategoriesFolder,
-      defaultCurrency: this.defaultCurrency,
-      pinnedCurrencies: this.pinnedCurrencies,
-      fireflyBaseUrl: this.fireflyBaseUrl,
-      ...(this.fireflyToken ? { fireflyToken: this.fireflyToken } : {}),
-      accountsList: { ...this.accountsList, types: [...this.accountsList.types] },
-      timeEntryPathTemplate: this.timeEntryPathTemplate,
-      timeTrackableNoteTypes: [...this.timeTrackableNoteTypes],
-      timeTrackAllNotes: this.timeTrackAllNotes,
-      links: [...this.links],
-      headerButtons: [...this.headerButtons],
-      automations: this.automations.map((rule) => ({
-        ...rule,
-        noteTypes: [...rule.noteTypes],
-        folders: [...rule.folders],
-        params: { ...rule.params },
-      })),
-      mapCoordinatesProperty: this.mapCoordinatesProperty,
-      mapStyleUrl: this.mapStyleUrl,
-      snippetsFolder: this.snippetsFolder,
-      fullWidthSidebars: this.fullWidthSidebars,
-      halfWidthSidebarsOnTablet: this.halfWidthSidebarsOnTablet,
-      mermaidViewer: this.mermaidViewer,
-      canvasViewer: this.canvasViewer,
-      editorSyntaxHighlight: this.editorSyntaxHighlight,
-      propertyWidgets: this.propertyWidgets,
-      rememberNotePlaces: this.rememberNotePlaces,
-      counterProperties: [...this.counterProperties],
-      dateProperties: [...this.dateProperties],
-      priorityProperties: [...this.priorityProperties],
-      labelProperties: [...this.labelProperties],
-      groupProperties: [...this.groupProperties],
-      keyboardDiagnostics: this.keyboardDiagnostics,
-      github: projectLegacy(this.github),
-      reader: { ...this.reader },
-      calendars: {
-        ...this.calendars,
-        feeds: this.calendars.feeds.map((feed) => ({ ...feed })),
-      },
-      calendarCompletion: completionMarksFrom(this.calendarCompletion),
-      quickButton: {
-        ...this.quickButton,
-        actions: this.quickButton.actions.map((action) => ({ ...action })),
-      },
-      // Through JSON: every rule's parameters are plain data, and nested lists stay unshared.
-      linter: JSON.parse(JSON.stringify(this.linter)) as LinterSettings,
-      // Falsy but present values are damaged stores, not a request to forget device keys.
-      ...(this.secretStore !== undefined && this.secretStore !== null
-        ? { secretStore: this.secretStore }
-        : {}),
-    }
-  }
-}
-
-/**
- * The AI settings without the chat index, for a `data.json` that no longer carries it. Typed as
- * the settings still are — with the field — because every reader in memory has it; only the
- * file goes without, and a missing index reads as an empty one on the way back in.
- */
-function withoutChatIndex(ai: AiSettings): AiSettings {
-  const copy: Partial<AiSettings> = { ...ai }
-  delete copy.chatHistory
-  return copy as AiSettings
-}
-
-/**
- * What each tool says of itself, for telling a saved copy of it from an override. Loaded when
- * the settings are, not imported: the tools import these settings, and building them costs
- * nothing that must not happen before the settings exist. Nothing is lost if it fails — the
- * shipped defaults are still recognised.
- */
-async function codeToolDescriptions(): Promise<Record<string, string>> {
-  try {
-    const tools = await import('@/ai/tools')
-    return tools.codeToolDescriptions()
-  } catch (err) {
-    console.debug('[Abele] tool descriptions unavailable while loading settings', err)
-    return {}
+    return exportSettingsOf(this, this.chatIndex.outOfSettings)
   }
 }
