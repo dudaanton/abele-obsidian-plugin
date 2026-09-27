@@ -246,6 +246,43 @@ per kind, and the files with the heaviest histories.
 vault and not yet swept by the server. **Restore** brings a file back to the path it had, on every
 device.
 
+**Restore all deleted since** brings back everything deleted since a moment: **the last hour**,
+**today**, or **a time I choose**. The moment is compared with the time the server recorded each
+delete, so a device whose clock is wrong does not change what is picked. The row says how many
+files that is before anything happens; **Restore** then asks, naming the count, the first files
+and which devices deleted them ("310 by MacBook, 2 by Phone"). The files come back in batches of a
+thousand, and a notice counts what happened: "Restored 310; 2 came back under a new name because
+the old one was taken; 0 failed". A file whose path was taken meanwhile comes back beside it under
+the next free name. A file no longer in the trash, because it was restored meanwhile or swept,
+does not come back and counts as failed. While sync is paused, the notice says the files arrive
+when it is resumed.
+
+## When many files disappear at once
+
+A sync that finds many files deleted on this device holds those deletions back instead of sending
+them. That is 50 files or more at once, or at least 10 that are also a quarter of what this device
+syncs, counting what went in the last 15 minutes. It sends everything else as usual. The other
+devices keep the files, and the server's copies are not touched, until someone decides. A folder
+moved into one this device skips counts too, since the other devices see it as deleted. An
+emptied vault, a disk that was not mounted, or a script gone wrong is caught this way before it
+reaches every device.
+
+The status bar then says **Deletions held (312)** in the theme's warning colour, and a dialog
+asks, once for each new set of held files. On a desktop it asks when the hold is found; on a
+phone it asks when the app is next in front. It lists the first twenty files, then "and 292 more",
+and offers:
+
+- **Delete everywhere**: asks first, then sends the deletions. The files go to the server's trash
+  and disappear from every device. Deleted files can bring them back until the trash is swept.
+- **Put them back**: the files come back to this device from the server.
+- **Decide later**: the files stay held. The same question stays on the Sync tab, under
+  **Deletions held back**, for as long as they are held.
+
+The decision covers exactly the files the dialog showed. If more files are deleted while it is
+open, they join the hold, and the dialog asks again about all of them. A file that comes back by
+itself leaves the hold. A decision taken while sync is paused is carried out when it is resumed,
+and the notice says so.
+
 ## The log and the status bar
 
 **Abele: Open sync log**, or a click on the status bar item, shows what sync has done since
@@ -260,6 +297,7 @@ The status bar item is hidden on a device that is not connected. Otherwise it sa
 | Fully synced | Nothing is left to send or fetch. |
 | Syncing | A sync is running. The tooltip says how many changes it found to send. |
 | Waiting (3) | A sync has finished, and it left these changes for the next one — they changed again while it was sending them, or the server refused them. The log says which. |
+| Deletions held (312) | Many files were deleted on this device at once, and their deletions are held back until you decide. See [When many files disappear at once](#when-many-files-disappear-at-once). |
 | Paused | **Pause** was pressed. Nothing moves until **Resume**, and that survives a restart. |
 | Offline | The server cannot be reached. It is tried again on its own. |
 | Sync error | Something failed. The tooltip, and **Last failure** in the Sync tab, say what. A device the server no longer accepts says to connect again from the Sync settings. |
