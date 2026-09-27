@@ -177,6 +177,7 @@ interface Phone {
 
 describe.skipIf(!available)('the calendar view of a base', () => {
   let size: [number, number] = [0, 0]
+  let sidebars: [boolean, boolean] | null = null
   let desktop: Desktop = {}
   let phone: Phone = {}
 
@@ -192,6 +193,16 @@ describe.skipIf(!available)('the calendar view of a base', () => {
     })()`)
     // The metadata cache has to have read the notes before the base can filter on them.
     await pause(2000)
+    // The month shows its notes as lines only when the view is wide enough; narrower it shows
+    // dots, as on a phone. Open sidebars left by whatever ran in this window before can take a
+    // 1024-pixel window below that, so the desktop half makes its own room and gives it back.
+    sidebars = evalAsync<[boolean, boolean]>(`(async () => {
+      const ws = app.workspace
+      const was = [ws.leftSplit.collapsed, ws.rightSplit.collapsed]
+      ws.leftSplit.collapse()
+      ws.rightSplit.collapse()
+      return JSON.stringify(was)
+    })()`)
 
     desktop = evalAsync<Desktop>(`(async () => {
       ${PRELUDE}
@@ -352,6 +363,18 @@ describe.skipIf(!available)('the calendar view of a base', () => {
     }
     if (size[0]) await setWindowSize(size[0], size[1])
     await reload('app.emulateMobile(false)')
+    if (sidebars) {
+      const [left, right] = sidebars
+      evalRaw(
+        `(async () => {
+          const ws = app.workspace
+          if (!${left}) ws.leftSplit.expand()
+          if (!${right}) ws.rightSplit.expand()
+          return 'restored'
+        })()`,
+        30_000
+      )
+    }
   }, 180_000)
 
   it('puts each note on its day in the month, a span on every day of it', () => {

@@ -38,15 +38,22 @@ function firstWeekdayAfterReload(): string {
       return null
     }
     await until(() => ${PLUGIN} && window.__abeleTest, 30000)
+    // Opened for the look and closed again, the sidebar as it was: an open one narrows the
+    // main pane for every test that runs in this window after this one.
     const type = 'abele-timeline-sidebar-view'
+    const collapsed = app.workspace.rightSplit.collapsed
     let leaf = app.workspace.getLeavesOfType(type)[0]
-    if (!leaf) {
+    const made = !leaf
+    if (made) {
       leaf = app.workspace.getRightLeaf(false)
       await leaf.setViewState({ type, active: true })
     }
     await app.workspace.revealLeaf(leaf)
     const day = await until(() => leaf.view.containerEl.querySelector('.abele-calendar__weekday'), 20000)
-    return JSON.stringify(day ? day.textContent.trim() : '')
+    const first = day ? day.textContent.trim() : ''
+    if (made) leaf.detach()
+    if (collapsed) app.workspace.rightSplit.collapse()
+    return JSON.stringify(first)
   })()`)
 }
 
