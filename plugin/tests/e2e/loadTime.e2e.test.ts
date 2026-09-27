@@ -3,7 +3,7 @@
  *
  * The plugin is switched off and on again inside the running app — Obsidian's own
  * `disablePlugin` / `enablePlugin`, which re-reads `main.js` from disk and evaluates it afresh —
- * several times, and the median of each phase is compared with `loadTime.baseline.json`. The
+ * several times, and the fastest of each phase is compared with `loadTime.baseline.json`. The
  * phases come from performance marks the plugin leaves as it starts (`src/helpers/loadMarks.ts`):
  *
  * - read + compile — from the call until the first statement of `main.js` runs
@@ -95,7 +95,7 @@ interface ProbeResult {
   error?: string
 }
 
-/** A median over this many reloads may be this much slower than the baseline before failing. */
+/** The fastest of this many reloads may be this much slower than the baseline before failing. */
 interface Tolerance {
   /** Allowed ratio over the baseline. */
   factor: number
@@ -106,7 +106,7 @@ interface Tolerance {
 type Recorded = {
   recorded: string
   mainJsBytes: number
-  /** The yardstick's median when the baseline was recorded; see `slowdown`. */
+  /** The yardstick's fastest when the baseline was recorded; see `slowdown`. */
   yardstickMs?: number
 } & Partial<Record<Scenario, Sample>>
 
@@ -295,6 +295,15 @@ async function runProbe(): Promise<ProbeResult> {
   throw new Error('The load-time probe did not finish in time')
 }
 
+/**
+ * The fastest of the reloads, not their middle one. Every reload leaves the plugin before it in
+ * memory, so the heap grows through the run and the later reloads of a scene pay for collecting
+ * it: read + compile of the workspace scene went 101, 107, 319, 375, 257, 318, 394 ms in one run
+ * (2026-09-27). What the plugin costs is in every reload; what the machine and the heap add comes
+ * on top of some of them, never below. So the fastest is the plugin's own cost.
+ */
+const fastest = (values: number[]): number => Math.min(...values)
+
 const median = (values: number[]): number => {
   const sorted = [...values].sort((a, b) => a - b)
   const mid = Math.floor(sorted.length / 2)
@@ -313,7 +322,7 @@ const PHASES: Phase[] = [
 
 describe.skipIf(!available)('plugin load time', () => {
   let result: ProbeResult
-  const medians = {} as Record<Scenario, Sample>
+  const best = {} as Record<Scenario, Sample>
   let yardstickMs = 0
   const baseline = JSON.parse(readFileSync(BASELINE_FILE, 'utf8')) as Baseline
 
@@ -326,25 +335,25 @@ describe.skipIf(!available)('plugin load time', () => {
     const was = baseline.builds[result.build]
     const lines = [
       '',
-      `  ${result.build} build ${result.version}, main.js ${(result.mainJsBytes / 1024).toFixed(0)} KB, median of ${RUNS} reloads`,
+      `  ${result.build} build ${result.version}, main.js ${(result.mainJsBytes / 1024).toFixed(0)} KB, fastest of ${RUNS} reloads`,
     ]
     for (const name of SCENARIOS) {
       const { samples, note, views } = result.scenarios[name]
-      medians[name] = Object.fromEntries(
-        PHASES.map((p) => [p, Math.round(median(samples.map((s) => s[p])) * 10) / 10])
+      best[name] = Object.fromEntries(
+        PHASES.map((p) => [p, Math.round(fastest(samples.map((s) => s[p])) * 10) / 10])
       ) as unknown as Sample
       lines.push(`  ${name}: ${note || 'no note'}, views ${views.join(', ') || 'none'}`)
       for (const p of PHASES) {
         const before = was?.[name]?.[p]
         lines.push(
-          `    ${p.padEnd(14, '.')} ${medians[name][p].toFixed(1).padStart(8)} ms` +
+          `    ${p.padEnd(14, '.')} ${best[name][p].toFixed(1).padStart(8)} ms` +
             (before != null ? `   baseline ${before.toFixed(1).padStart(8)} ms` : '')
         )
       }
     }
     yardstickMs =
       Math.round(
-        median(
+        fastest(
           SCENARIOS.flatMap((name) => result.scenarios[name].samples.map((s) => s.yardstickMs))
         ) * 10
       ) / 10
@@ -355,7 +364,7 @@ describe.skipIf(!available)('plugin load time', () => {
     console.info([...lines, ''].join('\n'))
     writeFileSync(
       '/tmp/abele-load-time.json',
-      JSON.stringify({ vault: activeVaultName(), ...result, medians }, null, 2)
+      JSON.stringify({ vault: activeVaultName(), ...result, best }, null, 2)
     )
 
     if (UPDATE) {
@@ -363,7 +372,7 @@ describe.skipIf(!available)('plugin load time', () => {
         recorded: new Date().toISOString().slice(0, 10),
         mainJsBytes: result.mainJsBytes,
         yardstickMs,
-        ...medians,
+        ...best,
       }
       writeFileSync(BASELINE_FILE, JSON.stringify(baseline, null, 2) + '\n')
     }
@@ -414,9 +423,9 @@ describe.skipIf(!available)('plugin load time', () => {
       >) {
         const limit =
           Math.max(before[phase] * tolerance.factor, before[phase] + tolerance.slackMs) * slowdown
-        if (medians[name][phase] > limit)
+        if (best[name][phase] > limit)
           over.push(
-            `${name} ${phase}: ${medians[name][phase]} ms, limit ${limit.toFixed(1)} ms (baseline ${before[phase]}, machine ×${slowdown.toFixed(2)})`
+            `${name} ${phase}: ${best[name][phase]} ms, limit ${limit.toFixed(1)} ms (baseline ${before[phase]}, machine ×${slowdown.toFixed(2)})`
           )
       }
     }
