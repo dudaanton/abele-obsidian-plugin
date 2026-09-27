@@ -1,5 +1,5 @@
 import { Platform, requestUrl, type App } from 'obsidian'
-import { ref, type Ref } from 'vue'
+import { ref, toRaw, type Ref } from 'vue'
 import {
   IgnoreRules,
   SyncClient,
@@ -761,7 +761,9 @@ export class SyncService {
         client: vault,
         fs,
         state: store,
-        selective: connection.selective,
+        // A plain copy, never the ref's own: the engine files it in the state database with the
+        // scope its marks were taken under, and IndexedDB cannot clone a reactive proxy.
+        selective: selectiveFrom(toRaw(connection.selective), Platform.isMobile),
         ignore: this.ignore(app, ignoreText),
         ...(scriptsFolder === '' ? {} : { scriptsFolder }),
         ...(this.fallbackMs() === undefined ? {} : { fallbackMs: this.fallbackMs() }),
