@@ -37,26 +37,24 @@ import {
 } from './enrolment'
 import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer/connection'
 import { readLedgerId, writeLedgerId, type LedgerId, type LocalStorage } from './ledgerId'
+import { messageOf, summarise } from './messages'
+import { noop, SerialQueue } from './queue'
 import {
   IGNORE_FILE,
   SCOPE_KEY,
-  USER_AGENT,
   configLine,
   ignoreLine,
   isHidden,
   isWireConfigDir,
-  messageOf,
-  newStateId,
-  noop,
   readIgnore,
   scopeKey,
-  summarise,
-} from './pieces'
+} from './scope'
+import { newStateId } from './ids'
 import { DISCONNECTED_STATUS, statusOf, type SyncStatus } from './status'
-import { fetchViaRequestUrl, wsFor } from './transport'
+import { fetchViaRequestUrl, USER_AGENT, wsFor } from './transport'
 import { PHONE_POLL_MS, phoneSocket } from './phone'
 
-export { isWireConfigDir } from './pieces'
+export { isWireConfigDir } from './scope'
 export type { ConnectionEdit, ConnectionPatch, VaultChoice } from './enrolment'
 
 /**
@@ -242,14 +240,8 @@ export class SyncService {
   /** What the last failure was, which is how `publish` knows to say what to do about it. */
   private lastFailure: SyncFailure | null = null
 
-  /**
-   * Everything that touches the engine goes through here, in the order it was asked for.
-   *
-   * `init`, a settings save, `chooseVault` and `disconnect` can all arrive while the previous
-   * one is still opening a database or stopping an engine, and two of them interleaved would
-   * leave a store closed under a running engine.
-   */
-  private queue: Promise<unknown> = Promise.resolve()
+  /** Everything that touches the engine, one at a time (`queue.ts`). */
+  private readonly queue = new SerialQueue()
 
   private constructor() {}
 
@@ -1093,8 +1085,6 @@ export class SyncService {
 
   /** Runs the work after everything asked for before it, whether that succeeded or not. */
   private serialise<T>(fn: () => Promise<T>): Promise<T> {
-    const next = this.queue.then(fn, fn)
-    this.queue = next.then(noop, noop)
-    return next
+    return this.queue.run(fn)
   }
 }

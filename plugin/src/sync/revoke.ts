@@ -25,7 +25,9 @@ import { SyncClient } from '@abele/sync-core'
 import { PLAIN_HTTP_REFUSED, serverUrlProblem } from '@abele/sync-protocol'
 import { secrets } from '@/secrets/SecretStore'
 import { REVOKE_SECRET_PREFIX, type DeviceConnection, type PendingRevoke } from './connection'
-import { USER_AGENT, messageOf, randomStem } from './pieces'
+import { randomStem } from './ids'
+import { messageOf } from './messages'
+import { USER_AGENT } from './transport'
 
 /** How long a revoke may take before it counts as not reaching the server. */
 export const REVOKE_TIMEOUT_MS = 10_000

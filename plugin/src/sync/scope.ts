@@ -1,16 +1,10 @@
 import type { App } from 'obsidian'
-import {
-  encodeText,
-  settingsCategory,
-  sha256,
-  type SelectiveSettings,
-  type SyncReport,
-} from '@abele/sync-core'
-import { DEVICE_SECRET_PREFIX } from '@/secrets/SecretStore'
+import { encodeText, settingsCategory, sha256, type SelectiveSettings } from '@abele/sync-core'
+import { messageOf } from './messages'
 
 /**
- * The small pieces the sync service and the enrolment verbs share: names, the lines the log
- * writes, the scope key, the ignore file read. None of them holds state.
+ * What this device syncs besides its selective settings: the vault's ignore file, the hidden
+ * paths Obsidian cannot see, and the scope key both are hashed into. None of it holds state.
  */
 
 /** The meta key the scope is filed under, the same one the daemon uses. */
@@ -18,22 +12,6 @@ export const SCOPE_KEY = 'scope'
 
 /** The vault's ignore file, read from its root. */
 export const IGNORE_FILE = '.abele-sync-ignore'
-
-/** What this plugin calls itself to a sync server. */
-export const USER_AGENT = 'abele-obsidian-plugin'
-
-export const noop = (): void => undefined
-
-/** What a failure says. A thrown value that is neither an error nor text is shown as JSON. */
-export const messageOf = (error: unknown): string => {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  try {
-    return JSON.stringify(error) ?? 'an unknown failure'
-  } catch {
-    return 'an unknown failure'
-  }
-}
 
 /**
  * Whether this vault's config folder is the one the wire knows.
@@ -44,20 +22,6 @@ export const messageOf = (error: unknown): string => {
  */
 export function isWireConfigDir(configDir: string): boolean {
   return settingsCategory(`${configDir}/app.json`) !== null
-}
-
-/** A keychain id: lowercase letters, digits and dashes, which is all Obsidian accepts. */
-export function newSecretId(): string {
-  return `${DEVICE_SECRET_PREFIX}${randomStem()}`
-}
-
-/** The name this device's ledger is filed under. Local to this vault and shown to nobody. */
-export function newStateId(): string {
-  return `${randomStem()}${randomStem()}`
-}
-
-export function randomStem(): string {
-  return Math.random().toString(36).slice(2, 10).padEnd(8, '0')
 }
 
 /**
@@ -120,15 +84,4 @@ export async function readIgnore(app: App): Promise<string | null> {
     console.debug('[abele-sync] cannot read the ignore file', error)
     throw new Error(`${IGNORE_FILE} is there but could not be read: ${messageOf(error)}`)
   }
-}
-
-/** What one sync did, in the line the log keeps — the same one the daemon writes. */
-export function summarise(report: SyncReport): string {
-  const pulled = report.pull.applied + (report.secondPull?.applied ?? 0)
-  const held = (report.secondPull ?? report.pull).held.length
-  return (
-    `sync: done (pulled ${pulled}, pushed ${report.push.applied}, ` +
-    `merged ${report.push.merged}, conflicts ${report.push.conflicts}, ` +
-    `rejected ${report.push.rejected.length}, held ${held})`
-  )
 }

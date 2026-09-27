@@ -11,6 +11,9 @@ import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
  * mobile.
  */
 
+/** What this plugin calls itself to a sync server. */
+export const USER_AGENT = 'abele-obsidian-plugin'
+
 /**
  * `requestUrl` as this module needs it. Obsidian's own is assignable to it: the real one
  * also takes a bare url string and answers a promise carrying `arrayBuffer`/`json`/`text`

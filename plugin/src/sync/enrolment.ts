@@ -6,7 +6,9 @@ import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer
 import type { DeviceConnection } from './connection'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { NO_LEDGER, readLedgerId, writeLedgerId } from './ledgerId'
-import { USER_AGENT, messageOf, newSecretId, newStateId } from './pieces'
+import { newSecretId, newStateId } from './ids'
+import { messageOf } from './messages'
+import { USER_AGENT } from './transport'
 import { Revoker, withTimeout } from './revoke'
 
 /**
