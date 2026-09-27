@@ -91,6 +91,12 @@ backlinks, tasks and transactions); search the web and read pages; look up addre
 on a map; read your books; read GitHub; make and edit pictures; ask you questions with a form;
 run your scripts; and delegate work to other agents.
 
+They can also work out numbers from your vault rather than guess them: totals and averages,
+spending per category or per month, trends, how two things move together, rough forecasts and
+unusual values — over your finances, over notes such as daily notes with `weight` or `sleep`, or
+over the rows of a base. Ask "how has my spending on food changed this year?" or "does my sleep
+go with my weight?", and the agent answers from the computed figures, with a chart if you ask.
+
 ## MCP servers
 
 **Settings → Abele → AI Agent → MCP** connects MCP servers reached over HTTP; nothing is started on

@@ -51,6 +51,7 @@ import { BOOK_VIEW_TYPE, bookViews, readerTestHooks } from '@/reader/BookView'
 import { openEpub } from '@/reader/openBook'
 import { readerFonts } from '@/reader/readerFonts'
 import type { Plugin } from 'obsidian'
+import * as analytics from '@/analytics'
 
 export interface GroupResolveMeasurement {
   /** Wall-clock milliseconds spent inside a single uncached resolve(). */
@@ -168,6 +169,8 @@ interface AbeleTestApi {
    * that needs to wait for a leaf or a render stores here and the test polls for it.
    */
   viewProbe: unknown
+  /** The analytics toolkit: sources and analyses, as the tools and scripts reach them. */
+  analytics: typeof analytics
   measureGroupResolve(groupPath: string): GroupResolveMeasurement
   /** Sorted member paths of a group, via the same path the scope editor preview uses. */
   groupPreviewPaths(groupPath: string): string[]
@@ -593,6 +596,7 @@ export function exposeTestApi(plugin: Plugin): void {
     },
     plugin,
     viewProbe: null,
+    analytics,
     measureGroupResolve,
     measureNoteRelations,
     groupPreviewPaths,

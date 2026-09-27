@@ -213,6 +213,42 @@ const each = await agent("Extract the date", { items: paths })
 
 ---
 
+## Analytics
+
+\`analytics\` — statistics over finance, notes and bases, the same as the \`read_data\` and
+\`analyze_data\` tools but answering with objects. Read-only; rows outside the scope are left out.
+Sources, analyses and every option: \`query_docs\` section \`analytics\`.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| \`analytics.read(source)\` | \`{ columns, rows, meta }\` | A source as a table, money in decimals |
+| \`analytics.profile(source, { where?, limit? })\` | \`object\` | Columns profiled, row count, first rows |
+| \`analytics.analyze(spec)\` | \`object\` | Totals, groups, series, trend, seasonality, correlation, forecast, anomalies |
+| \`analytics.describe(values)\` | \`object\` | count, sum, mean, median, stdev, min, max, percentiles |
+| \`analytics.percentile(values, p)\`, \`analytics.median(values)\` | \`number\` | |
+| \`analytics.resample(points, { period, agg, fill })\` | \`{ period, value, n }[]\` | \`points\`: \`{ date: 'YYYY-MM-DD', value }[]\` |
+| \`analytics.rolling(values, window, agg?)\` | \`(number \\| null)[]\` | Rolling mean or sum |
+| \`analytics.linearFit(values)\`, \`analytics.trend(series)\` | \`object\` | Slope, r², change |
+| \`analytics.correlation(xs, ys, { method?, detrend? })\` | \`object\` | r, n, p and a hint |
+| \`analytics.forecast(values, { method, horizon, window?, season? })\` | \`object\` | Points with 80%/95% ranges |
+| \`analytics.anomalies(values, { method?, threshold? })\` | \`object\` | Values past the IQR fences or a z-score |
+
+Source: \`{ kind: 'finance', measure?: 'transactions' | 'flow' | 'balance', from?, to?, accounts?,
+categories?, only?, linkedTo?, currency? }\`, \`{ kind: 'notes', folder?, type?, where?, tag?, date?,
+columns? }\` or \`{ kind: 'base', path, view? }\`.
+
+\`\`\`js
+const a = await analytics.analyze({
+  source: { kind: 'finance', only: 'expense', currency: 'EUR' },
+  period: 'month',
+  analyses: ['trend', { type: 'forecast', horizon: 3 }],
+})
+log(a.trend.slopePerPeriod, a.forecast.points)
+const weights = await analytics.read({ kind: 'notes', folder: 'Daily', columns: ['weight'] })
+\`\`\`
+
+---
+
 ## Scripts
 
 | Function | Returns | Description |
@@ -281,6 +317,7 @@ await v.open()
 | \`params\` | \`object\` | Resolved parameter values from the script header |
 | \`event\` | \`object \\| null\` | What happened, when an automation started the run (see above) |
 | \`book\` | \`object \\| null\` | The words in a book the script was run on from the reader (see below) |
+| \`analytics\` | \`object\` | Statistics over finance, notes and bases (see Analytics above) |
 | \`signal\` | \`AbortSignal\` | Cancellation signal — check \`signal.aborted\` in long loops |
 | \`dayjs\` | \`function\` | [Day.js](https://day.js.org) date library — \`dayjs()\`, \`dayjs('2026-01-01').add(7, 'day')\`, \`.format('YYYY-MM-DD')\`, etc. |
 | \`log(...args)\` | — | Append to script output. Objects are JSON-stringified |

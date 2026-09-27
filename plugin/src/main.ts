@@ -69,6 +69,7 @@ import { SCRIPT_RUNS_VIEW_TYPE, ScriptRunsView } from './views/ScriptRunsView'
 import { USER_DOCS_VIEW_TYPE, UserDocsView, openUserDocs } from './views/UserDocsView'
 import { SCRIPT_VIEW_TYPE, ScriptView } from './views/ScriptView'
 import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
+import { BaseProbeView, probeFor } from './analytics/sources/baseProbe'
 import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
 import { CALENDAR_VIEW_ID, CalendarView, calendarViewOptions } from './bases/CalendarView'
 import { TIMELINE_VIEW_ID, TimelineView, timelineViewOptions } from './bases/TimelineView'
@@ -330,7 +331,14 @@ export default class AbelePlugin extends Plugin {
     this.registerBasesView(CHART_VIEW_ID, {
       name: 'Chart',
       icon: 'chart-line',
-      factory: (controller, containerEl) => new ChartView(controller, containerEl),
+      // Inside an offscreen probe host the same id reads a base's rows for the analytics tools
+      // instead of drawing them — see `analytics/sources/baseProbe.ts`.
+      factory: (controller, containerEl) => {
+        const probe = probeFor(containerEl)
+        return probe
+          ? new BaseProbeView(controller, CHART_VIEW_ID, probe)
+          : new ChartView(controller, containerEl)
+      },
       options: () => [
         {
           key: 'chartType',

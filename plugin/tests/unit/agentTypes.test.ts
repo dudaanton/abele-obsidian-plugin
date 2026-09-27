@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { BOOK_TOOL_MODES, LINT_TOOL_MODES, GITHUB_TOOL_MODES } from '@/ai/types'
+import {
+  BOOK_TOOL_MODES,
+  LINT_TOOL_MODES,
+  GITHUB_TOOL_MODES,
+  ANALYTICS_TOOL_MODES,
+} from '@/ai/types'
 import { createAgent } from '@/ai/agents/types'
 
 describe('createAgent', () => {
@@ -22,6 +27,7 @@ describe('createAgent', () => {
       ...GITHUB_TOOL_MODES,
       ...BOOK_TOOL_MODES,
       ...LINT_TOOL_MODES,
+      ...ANALYTICS_TOOL_MODES,
     })
     expect(agent.memory).toEqual([])
     expect(agent.scope).toEqual([])

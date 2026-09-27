@@ -39,6 +39,11 @@ quick switcher does, only among the notes its `filter` lets through, written in 
 wikilink with `returns: "link"`, and a list with `multiple`; `create` lets the person make the
 note they were looking for when it is not there yet.
 
+A script that needs numbers — totals, averages, a trend, a correlation — takes them from
+`analytics` rather than adding them up itself: `analytics.analyze(spec)` answers exactly what
+`analyze_data` does, as an object, and money totals come out exact to the cent. The spec is the
+`analytics` section of this reference.
+
 ## Running one
 
 Six ways in: the command palette, a button in a note's header (a script button, or a command

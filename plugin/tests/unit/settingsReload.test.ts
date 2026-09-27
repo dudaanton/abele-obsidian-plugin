@@ -16,6 +16,7 @@ import {
   DEFAULT_AI_SETTINGS,
   BOOK_TOOL_MODES,
   LINT_TOOL_MODES,
+  ANALYTICS_TOOL_MODES,
   GITHUB_TOOL_MODES,
   MAP_TOOL_MODES,
 } from '@/ai/types'
@@ -49,6 +50,7 @@ function settingsWith(headerButtons: HeaderButtonDefinition[]) {
     ...GITHUB_TOOL_MODES,
     ...BOOK_TOOL_MODES,
     ...LINT_TOOL_MODES,
+    ...ANALYTICS_TOOL_MODES,
     remember: 'auto' as const,
     forget: 'auto' as const,
   }

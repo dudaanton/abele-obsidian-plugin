@@ -7,6 +7,7 @@ import templates from './templates.md?raw'
 import commands from './commands.md?raw'
 import settings from './settings.md?raw'
 import history from './history.md?raw'
+import analytics from './analytics.md?raw'
 
 /**
  * The plugin's reference, written for agents rather than for people.
@@ -44,6 +45,7 @@ const FILES: [id: string, source: string][] = [
   ['commands', commands],
   ['settings', settings],
   ['history', history],
+  ['analytics', analytics],
 ]
 
 export function slug(heading: string): string {

@@ -1,3 +1,4 @@
+import { createAnalyticsTools } from './AnalyticsTools'
 import type { AgentTool } from '../client'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { EDIT_SELECTION_TOOL } from '../types'
@@ -137,6 +138,8 @@ export function getToolRegistry(): ToolInfo[] {
     read_backlinks: { label: 'Read backlinks', category: 'Vault data' },
     read_transactions: { label: 'Read transactions', category: 'Vault data' },
     read_tasks: { label: 'Read tasks', category: 'Vault data' },
+    read_data: { label: 'Read data', category: 'Vault data' },
+    analyze_data: { label: 'Analyze data', category: 'Vault data' },
     lint: { label: 'Lint notes', category: 'Vault data' },
     lint_fix: { label: 'Fix lint issues', category: 'Vault data' },
     list_templates: { label: 'List templates', category: 'Templates' },
@@ -279,6 +282,8 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createReadBacklinksTool(),
     createReadTransactionsTool(),
     createReadTasksTool(),
+    // Statistics over finance, notes and bases, computed rather than guessed. Read-only.
+    ...createAnalyticsTools(),
     createLintTool(),
     createLintFixTool(),
     createScreenshotTool(),

@@ -3,6 +3,7 @@ import {
   BOOK_TOOL_MODES,
   GITHUB_TOOL_MODES,
   LINT_TOOL_MODES,
+  ANALYTICS_TOOL_MODES,
   type PermissionMode,
   type ToolMode,
 } from '@/ai/types'
@@ -116,6 +117,7 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
       ...GITHUB_TOOL_MODES,
       ...BOOK_TOOL_MODES,
       ...LINT_TOOL_MODES,
+      ...ANALYTICS_TOOL_MODES,
     },
     scope: [],
     fullVaultAccess: false,

@@ -7,6 +7,7 @@ import {
   GITHUB_TOOLS,
   BOOK_TOOL_MODES,
   LINT_TOOL_MODES,
+  ANALYTICS_TOOL_MODES,
   GITHUB_TOOL_MODES,
   MAP_TOOL_MODES,
   type AiSettings,
@@ -212,6 +213,7 @@ describe('the Comment agent', () => {
       ...GITHUB_TOOL_MODES,
       ...BOOK_TOOL_MODES,
       ...LINT_TOOL_MODES,
+      ...ANALYTICS_TOOL_MODES,
       remember: 'auto' as const,
       forget: 'auto' as const,
     }
@@ -511,5 +513,17 @@ describe('the linter tools', () => {
     expect(ai.agents[0].toolModes.lint).toBe('auto')
     // Switched off by hand, and so left off.
     expect(ai.agents[0].toolModes.lint_fix).toBe('off')
+  })
+})
+
+describe('the analytics tools', () => {
+  it('are handed to agents saved before them, running on their own; a mode set by hand stays', () => {
+    const agent = createAgent({ id: 'old', toolModes: { analyze_data: 'off' } })
+    delete agent.toolModes.read_data
+    const ai = { ...DEFAULT_AI_SETTINGS, agents: [agent], defaultAgentId: 'old' } as AiSettings
+
+    expect(migrateAgents(ai)).toBe(true)
+    expect(ai.agents[0].toolModes.read_data).toBe('auto')
+    expect(ai.agents[0].toolModes.analyze_data).toBe('off')
   })
 })

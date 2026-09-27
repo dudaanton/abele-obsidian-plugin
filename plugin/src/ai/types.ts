@@ -360,8 +360,8 @@ export const BOOK_WRITE_TOOLS = [
  * as it asks before editing a note. Someone who set a mode by hand keeps it (`enableBookTools`).
  */
 export const BOOK_TOOL_MODES: Record<string, ToolMode> = {
-  ...Object.fromEntries([...BOOK_READ_TOOLS].map((name) => [name, 'auto' as ToolMode])),
-  ...Object.fromEntries(BOOK_WRITE_TOOLS.map((name) => [name, 'ask' as ToolMode])),
+  ...Object.fromEntries([...BOOK_READ_TOOLS].map((name) => [name, 'auto'])),
+  ...Object.fromEntries(BOOK_WRITE_TOOLS.map((name) => [name, 'ask'])),
 }
 
 /**
@@ -369,6 +369,15 @@ export const BOOK_TOOL_MODES: Record<string, ToolMode> = {
  * as editing a note does. Someone who set a mode by hand keeps it (`enableLintTools`).
  */
 export const LINT_TOOL_MODES: Record<string, ToolMode> = { lint: 'auto', lint_fix: 'ask' }
+
+/**
+ * The analytics tools only read and compute, so every agent has them on its own. Someone who set
+ * a mode by hand keeps it (`enableAnalyticsTools`).
+ */
+export const ANALYTICS_TOOL_MODES: Record<string, ToolMode> = {
+  read_data: 'auto',
+  analyze_data: 'auto',
+}
 
 export const DEFAULT_AI_SETTINGS: AiSettings = {
   enabled: false,

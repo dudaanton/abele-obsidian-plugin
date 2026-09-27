@@ -28,6 +28,7 @@ import { VIEW_GLOBALS } from './view/components'
 import { defaultViewHost } from './view/host'
 import { showFormModal } from './formModal'
 import { noteInfo as readNoteInfo, type NoteInfo } from './noteInfo'
+import { scriptAnalytics } from './analyticsApi'
 import type { AutomationEvent } from '@/automations/types'
 import type { BookScriptContext } from './bookContext'
 
@@ -575,6 +576,11 @@ export function buildScriptContext(opts: {
     },
 
     ...VIEW_GLOBALS,
+
+    // ── Analytics ──
+
+    /** Statistics over finance, notes and bases — see `analyticsApi.ts`. Read-only. */
+    analytics: scriptAnalytics(),
 
     // ── UI ──
 

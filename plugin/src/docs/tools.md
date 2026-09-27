@@ -67,12 +67,24 @@ Every one of these is bounded by the agent's scope.
 
 ## Vault data
 
-`read_logs`, `read_backlinks`, `read_tasks`, `read_transactions`.
+`read_logs`, `read_backlinks`, `read_tasks`, `read_transactions`, `read_data`, `analyze_data`.
 
 These read the plugin's own structures rather than raw files: the logs shown on a note, what
 links to it, the tasks and transactions related to it. Prefer them to reconstructing the same
 answer by reading notes and parsing frontmatter — they walk `groups` the way the plugin does,
 which a hand-rolled search will not.
+
+`read_data`, `analyze_data` — numbers out of the vault, computed rather than estimated: totals,
+averages, medians and spread, sums per category or per month, trends, seasonality, correlations,
+rough forecasts and unusual values, over the finance notes, notes picked by folder, type or
+property (daily notes with `weight`, `sleep`), or the rows a `.base` view shows. `read_data` shows
+what a source holds — its columns, typed and profiled, and the first rows — and `analyze_data`
+runs the arithmetic. **Never add up, average or fit numbers yourself** — not from `read_transactions`
+and not from notes you have read: call `analyze_data`. Money totals come back exact to the cent,
+and amounts in several currencies are never added together unless the source converts them, with
+the rates it used named in the answer. `chart: true` adds an `abele-chart` block — put it in your
+answer as it is. Both only read, and see only what the chat's scope reaches. The source shapes,
+the analyses and worked examples are the `analytics` section of this reference.
 
 `lint`, `lint_fix` — the linter, with the rules the person set up in its settings: properties
 present and readable, required properties, a note type, no tags, no h1, one blank line after the

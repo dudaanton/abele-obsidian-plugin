@@ -49,6 +49,13 @@ note it looks only through that note's transactions. What is found stays grouped
 **Show accounts sidebar** lists every account with its balance. Its options sort the list, group
 it by account type, hide empty accounts and pick one currency.
 
+## Asking an agent about your money
+
+An agent in the chat can total, average and compare your transactions and balances exactly —
+per category, per month, per account — and show a trend, a rough forecast or unusual spending.
+Amounts in different currencies are kept apart, or converted with the rates your own
+two-currency transactions imply; the answer says which rates it used.
+
 ## Moving from Firefly III
 
 **Migrate data from Firefly III** copies accounts, categories and transactions from a Firefly III server. Its

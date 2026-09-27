@@ -176,7 +176,7 @@ export function createReadTransactionsTool(): AgentTool {
     name: 'read_transactions',
     label: 'Read Transactions',
     description:
-      'Read financial transactions. Provide a note path to get transactions linked to that note, or omit to get all. Optionally filter by date period.',
+      'Read financial transactions. Provide a note path to get transactions linked to that note, or omit to get all. Optionally filter by date period. For totals, averages, per-category sums, trends or balances over time use analyze_data instead of adding these up yourself.',
     parameters: {
       type: 'object',
       properties: {
