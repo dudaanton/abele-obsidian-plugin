@@ -103,6 +103,11 @@ interface Drawn {
   noteEmbed: string
   baseEmbed: number
   link: number
+  /** Rows the gallery's three pictures take up, and its height over its width. */
+  galleryRows: number
+  galleryAspect: number
+  /** Pixels of the diagram's frame a control covers, on screen. */
+  controlsOverDiagram: number
 }
 
 interface Report {
@@ -174,6 +179,29 @@ const probe = (label: string) => `(async () => {
       noteEmbed: el.querySelector('.internal-embed.markdown-embed .markdown-embed-content')?.textContent.trim() || '',
       baseEmbed: q('.internal-embed.bases-embed'),
       link: q('a.internal-link[data-href="ACE Note"]'),
+      ...measure(el),
+    }
+  }
+  const measure = (el) => {
+    const g = el.querySelector('.abele-gallery-widget-container')
+    const tops = new Set([...(g ? g.querySelectorAll('.abele-gallery__item') : [])].map((i) => Math.round(i.getBoundingClientRect().top)))
+    const gr = g ? g.getBoundingClientRect() : null
+    const frame = el.querySelector('.abele-mermaid__frame')
+    let covered = 0
+    if (frame) {
+      const f = frame.getBoundingClientRect()
+      for (const c of el.querySelectorAll('.abele-mermaid__controls')) {
+        if (Number(getComputedStyle(c).opacity) === 0) continue
+        const r = c.getBoundingClientRect()
+        const w = Math.min(r.right, f.right) - Math.max(r.left, f.left)
+        const h = Math.min(r.bottom, f.bottom) - Math.max(r.top, f.top)
+        if (w > 0 && h > 0) covered += Math.round(w * h)
+      }
+    }
+    return {
+      galleryRows: tops.size,
+      galleryAspect: gr && gr.width ? Math.round((gr.height / gr.width) * 100) / 100 : 0,
+      controlsOverDiagram: covered,
     }
   }
   const settled = (el) => {
@@ -349,6 +377,17 @@ function expectEverythingDrawn(get: () => Report) {
       chart: 1,
       map: 1,
     })
+  })
+
+  it('lays three pictures side by side in a narrow chat, not one under another', () => {
+    expect(get().chat!.galleryRows).toBe(1)
+    expect(get().chat!.galleryAspect).toBeLessThan(0.5)
+  })
+
+  it('puts no control over the diagram where they are always shown', () => {
+    // On a computer they show on hover only, which the probe never does.
+    expect(get().chat!.controlsOverDiagram).toBe(0)
+    expect(get().view!.controlsOverDiagram).toBe(0)
   })
 
   it('leaves no chart or map behind once the chat and the view are closed', () => {
