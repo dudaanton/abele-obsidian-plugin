@@ -157,6 +157,17 @@ export function getLanguage(): string {
   return 'en'
 }
 
+/** Obsidian's own: the frontmatter's tags with a `#`, then the ones written in the body. */
+export function getAllTags(cache: {
+  frontmatter?: Record<string, unknown>
+  tags?: { tag: string }[]
+}): string[] {
+  const raw = cache.frontmatter?.tags ?? cache.frontmatter?.tag
+  const listed = Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(/[,\s]+/) : []
+  const own = listed.filter(Boolean).map((t) => (String(t).startsWith('#') ? String(t) : `#${t}`))
+  return [...own, ...(cache.tags ?? []).map((t) => t.tag)]
+}
+
 export function normalizePath(path: string): string {
   return path
     .replace(/\\/g, '/')

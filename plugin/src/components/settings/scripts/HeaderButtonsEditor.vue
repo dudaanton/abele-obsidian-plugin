@@ -1,9 +1,12 @@
 <template>
   <Section title="Header buttons">
     <template #desc>
-      Buttons in the header of a note, each running a script. A button shows on notes of its types,
-      on notes in its folders, or on every note, and only where the note's properties fit its
-      conditions, in the order listed here. Parameters accept
+      Buttons in the header of a note. One that runs a command — any command Obsidian has: its own,
+      another plugin's, this plugin's or a script's — sits among the icons at the top right of the
+      note; on a phone the ones after the first {{ phoneRoom }} go into the note's menu. One that
+      runs a script sits in the header inside the note and can hand the script parameters. A button
+      shows on notes of its types, with its tags, in its folders, or on every note, and only where
+      the note's properties fit its conditions, in the order listed here. Script parameters accept
       <code>{{ variableExamples }}</code> and any frontmatter field of the note, such as
       <code>{{ frontmatterExample }}</code
       >.
@@ -17,7 +20,7 @@
         :key="button.id"
         :title="button.name || 'Unnamed button'"
         :icon="button.icon || 'play'"
-        :subtitle="button.scriptName || 'No script chosen yet'"
+        :subtitle="subtitleOf(button)"
       >
         <template #badges>
           <Badge v-if="button.enabled === false" text="Off" />
@@ -56,7 +59,22 @@
             @toggle="updateFlag(idx, 'enabled', button.enabled === false)"
           />
         </Setting>
-        <Setting name="Name" desc="Shown on the button, or as its tooltip when it is icon only.">
+        <Setting name="Runs" desc="A command from anywhere in Obsidian, or one of your scripts.">
+          <Dropdown
+            class="abele-header-buttons__runs"
+            :options="RUNS_OPTIONS"
+            :model-value="runsOf(button)"
+            @update:model-value="updateRuns(idx, $event)"
+          />
+        </Setting>
+        <Setting
+          name="Name"
+          :desc="
+            isCommand(button)
+              ? 'Shown as the button\'s tooltip, and in the menu where it does not fit.'
+              : 'Shown on the button, or as its tooltip when it is icon only.'
+          "
+        >
           <Input
             :model-value="button.name"
             placeholder="e.g. Fetch details"
@@ -71,13 +89,24 @@
             @click="pickingIconFor = idx"
           />
         </Setting>
-        <Setting name="Icon only" desc="Leave the name off the header, for a header already full.">
+        <Setting v-if="isCommand(button)" name="Command" desc="Command the button runs.">
+          <Button
+            :text="button.commandId ? commandName(button.commandId) : 'Choose command...'"
+            tooltip="Search every command Obsidian has for the one this button runs"
+            @click="chooseCommand(idx)"
+          />
+        </Setting>
+        <Setting
+          v-if="!isCommand(button)"
+          name="Icon only"
+          desc="Leave the name off the header, for a header already full."
+        >
           <Checkbox
             :is-enabled="button.iconOnly === true"
             @toggle="updateFlag(idx, 'iconOnly', !button.iconOnly)"
           />
         </Setting>
-        <Setting name="Script" desc="Script the button runs.">
+        <Setting v-if="!isCommand(button)" name="Script" desc="Script the button runs.">
           <Button
             :text="button.scriptName || 'Choose script...'"
             tooltip="Search the scripts for the one this button runs"
@@ -85,7 +114,7 @@
           />
         </Setting>
 
-        <template v-for="param in paramsOf(button)" :key="param.name">
+        <template v-for="param in isCommand(button) ? [] : paramsOf(button)" :key="param.name">
           <Setting :name="param.name" :desc="paramDescription(param)">
             <Input
               :model-value="button.params[param.name] || ''"
@@ -94,11 +123,14 @@
             />
           </Setting>
         </template>
-        <p v-if="button.scriptName && !paramsOf(button).length" class="setting-item-description">
+        <p
+          v-if="!isCommand(button) && button.scriptName && !paramsOf(button).length"
+          class="setting-item-description"
+        >
           This script takes no parameters.
         </p>
 
-        <Setting name="On every note" desc="Whatever its type or folder.">
+        <Setting name="On every note" desc="Whatever its type, tags or folder.">
           <Checkbox
             :is-enabled="button.allNotes === true"
             @toggle="updateFlag(idx, 'allNotes', !button.allNotes)"
@@ -119,7 +151,27 @@
               @update:model-value="updateList(idx, 'folders', $event)"
             />
           </Setting>
+          <Setting
+            name="Tags"
+            desc="Comma-separated, with or without #. Notes with one of these, or a tag nested under it, show the button too."
+          >
+            <Input
+              :model-value="(button.tags ?? []).join(', ')"
+              placeholder="e.g. work, project/site"
+              @update:model-value="updateList(idx, 'tags', $event)"
+            />
+          </Setting>
         </template>
+        <Setting
+          v-if="isCommand(button)"
+          name="Also on other files"
+          desc="PDFs, canvases, books and other files opened in a tab, as far as its folders and tags reach. They have no type or properties."
+        >
+          <Checkbox
+            :is-enabled="button.otherFiles === true"
+            @toggle="updateFlag(idx, 'otherFiles', !button.otherFiles)"
+          />
+        </Setting>
 
         <Setting
           name="Only when its properties"
@@ -233,7 +285,9 @@ import { ScriptService } from '@/scripting/ScriptService'
 import { placementProblems, type VaultShape } from '@/helpers/headerButtons'
 import { TFolder } from 'obsidian'
 import { findScriptByName } from '@/scripting/runScript'
-import { pickScript } from '@/helpers/suggesters/RunnablePicker'
+import { pickCommand, pickScript } from '@/helpers/suggesters/RunnablePicker'
+import { buttonRuns } from '@/helpers/headerButtons'
+import { PHONE_ROOM, hasCommand } from '@/headerButtons/viewActions'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { useSettingsSave } from '@/composables/useSettingsSave'
 import type { ScriptParam } from '@/scripting/types'
@@ -268,9 +322,47 @@ const vaultShape = ((): VaultShape => {
   }
   return {
     types,
-    folderExists: (folder) => app.vault.getAbstractFileByPath(folder) instanceof TFolder,
+    folderExists: (folder) =>
+      folder === '/' || app.vault.getAbstractFileByPath(folder) instanceof TFolder,
+    hasCommand: (id) => hasCommand(app, id),
   }
 })()
+
+const phoneRoom = PHONE_ROOM
+
+const RUNS_OPTIONS = [
+  { value: 'command', display: 'A command' },
+  { value: 'script', display: 'A script' },
+]
+
+const runsOf = buttonRuns
+const isCommand = (button: HeaderButtonDefinition) => buttonRuns(button) === 'command'
+
+interface CommandInfo {
+  id: string
+  name: string
+  icon?: string
+}
+
+/** A command as Obsidian has it now, or undefined while its plugin is off. */
+const findCommand = (id: string): CommandInfo | undefined => {
+  const commands = (
+    GlobalStore.getInstance().app as unknown as {
+      commands?: { findCommand?(id: string): CommandInfo | undefined }
+    }
+  ).commands
+  return commands?.findCommand?.(id)
+}
+
+/** The command's name as the palette shows it; its id while it is not there. */
+const commandName = (id: string): string => findCommand(id)?.name ?? id
+
+const subtitleOf = (button: HeaderButtonDefinition): string => {
+  if (isCommand(button)) {
+    return button.commandId ? commandName(button.commandId) : 'No command chosen yet'
+  }
+  return button.scriptName || 'No script chosen yet'
+}
 
 const problemsOf = (button: HeaderButtonDefinition) => placementProblems(button, vaultShape)
 
@@ -289,7 +381,9 @@ const typesDescription = (button: HeaderButtonDefinition): string => {
 }
 
 const foldersDescription = (button: HeaderButtonDefinition): string => {
-  const plain = 'Comma-separated. Notes anywhere under one of these show the button too.'
+  const plain =
+    'Comma-separated. Notes anywhere under one of these show the button too. A * stands for ' +
+    'any one folder, ** for any depth: Projects/*/Notes.'
   const missing = problemsOf(button).missingFolders
   if (!missing.length) return plain
   return missing.length === 1
@@ -338,18 +432,23 @@ const paramDescription = (param: ScriptParam): string => {
 const runnableScripts = () =>
   ScriptService.getInstance().scriptList.value.filter((s) => s.meta.enabled !== false)
 
+/** A new button runs a command, on every note: narrowing it down is the next step, if any. */
 const addButton = () => {
   buttons.value.push({
     id: nanoid(8),
     name: '',
     icon: 'play',
     noteTypes: [],
+    runs: 'command',
     scriptName: '',
+    commandId: '',
     params: {},
     enabled: true,
     iconOnly: false,
-    allNotes: false,
+    allNotes: true,
     folders: [],
+    tags: [],
+    otherFiles: false,
     conditions: [],
     conditionMode: 'all',
   })
@@ -377,6 +476,26 @@ const chooseScript = async (idx: number) => {
   if (script) updateField(idx, 'scriptName', script.meta.name)
 }
 
+/**
+ * The command, from every command Obsidian has, scripts' included. A button with no name or
+ * icon of its own yet takes the command's, which is what it would have been called anyway.
+ */
+const chooseCommand = async (idx: number) => {
+  const command = await pickCommand(GlobalStore.getInstance().app)
+  if (!command) return
+  const button = buttons.value[idx]
+  button.commandId = command.id
+  if (!button.name.trim()) button.name = command.name
+  if ((!button.icon || button.icon === 'play') && command.icon) button.icon = command.icon
+  save()
+}
+
+/** Switching what it runs keeps both the script and the command, so switching back loses nothing. */
+const updateRuns = (idx: number, runs: string) => {
+  buttons.value[idx].runs = runs === 'script' ? 'script' : 'command'
+  save()
+}
+
 const updateField = (idx: number, field: 'name' | 'icon' | 'scriptName', value: string) => {
   const changedScript = field === 'scriptName' && buttons.value[idx].scriptName !== value
   buttons.value[idx][field] = value
@@ -387,12 +506,16 @@ const updateField = (idx: number, field: 'name' | 'icon' | 'scriptName', value: 
   save()
 }
 
-const updateFlag = (idx: number, field: 'enabled' | 'iconOnly' | 'allNotes', value: boolean) => {
+const updateFlag = (
+  idx: number,
+  field: 'enabled' | 'iconOnly' | 'allNotes' | 'otherFiles',
+  value: boolean
+) => {
   buttons.value[idx][field] = value
   save()
 }
 
-const updateList = (idx: number, field: 'noteTypes' | 'folders', value: string) => {
+const updateList = (idx: number, field: 'noteTypes' | 'folders' | 'tags', value: string) => {
   buttons.value[idx][field] = value
     .split(',')
     .map((item) => item.trim())

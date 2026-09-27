@@ -84,10 +84,22 @@ next time Obsidian starts, with a notice naming it, so you can reach the setting
 
 ## Header buttons
 
-**Settings → Abele → Scripts → Header buttons** puts buttons above notes that run a script on
-that note. A button can show on notes of some types, in some folders, or on every note, and only
-when the note's properties match conditions you set. Pick its icon from a grid and choose whether
-it shows its name.
+**Settings → Abele → Header buttons** (also under **Scripts**) puts buttons on notes. A button
+runs either a command or a script.
+
+- **A command** — any command Obsidian has: its own, another plugin's, the plugin's, or a
+  script's, since every script is a command too. Choose it from a searchable list. The button
+  sits among the icons at the top right of the note, with its name as the tooltip. If the plugin
+  that gives the command is switched off, the button hides until it is back. On a phone the header
+  holds two of them; the rest are at the top of the note's **More options** menu. Turn on **Also
+  on other files** to have it on PDFs, canvases, books and other files opened in a tab too.
+- **A script** — the button sits in the plugin's own header inside the note and can hand the
+  script values from the note, such as its title or a property.
+
+A new button runs a command and shows on every note. Narrow it down to notes of some types, with
+some tags (nested tags count), in some folders — `Projects/*/Notes` for the notes folder of every
+project — and to notes whose properties match conditions you set. The order in the list is the
+order in the header. Pick its icon from a grid.
 
 ## Automations
 

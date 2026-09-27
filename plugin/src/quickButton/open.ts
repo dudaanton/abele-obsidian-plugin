@@ -4,7 +4,14 @@
  */
 import { MarkdownView, Menu, type App } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { buttonParams, buttonsForNote, noteVariables } from '@/helpers/headerButtons'
+import {
+  buttonParams,
+  buttonRuns,
+  buttonsForNote,
+  noteTags,
+  noteVariables,
+} from '@/helpers/headerButtons'
+import { hasCommand } from '@/headerButtons/viewActions'
 import { getFrontmatterFromCache } from '@/helpers/notesUtils'
 import { runScriptByName } from '@/scripting/runScript'
 import { openAbeleSettings } from '@/components/settings/settingsTab'
@@ -19,13 +26,29 @@ function headerButtonsOf(view: View | null): QuickHeaderButton[] {
   const path = view.file.path
   const frontmatter = getFrontmatterFromCache(path)
   const type = typeof frontmatter?.type === 'string' ? frontmatter.type : null
-  return buttonsForNote(AbeleConfig.getInstance().headerButtons, { type, path, frontmatter }).map(
-    (button) => ({
-      id: button.id,
-      name: button.name || button.scriptName,
-      icon: button.icon,
-      run: () => void runScriptByName(button.scriptName, buttonParams(button, noteVariables(path))),
-    })
+  const app = view.app
+  return buttonsForNote(
+    AbeleConfig.getInstance().headerButtons,
+    { type, path, frontmatter, tags: noteTags(path) },
+    { hasCommand: (id) => hasCommand(app, id) }
+  ).map((button) =>
+    buttonRuns(button) === 'command'
+      ? {
+          id: button.id,
+          name: button.name || button.commandId || '',
+          icon: button.icon,
+          run: () =>
+            void (
+              app as unknown as { commands: { executeCommandById(id: string): boolean } }
+            ).commands.executeCommandById(button.commandId ?? ''),
+        }
+      : {
+          id: button.id,
+          name: button.name || button.scriptName,
+          icon: button.icon,
+          run: () =>
+            void runScriptByName(button.scriptName, buttonParams(button, noteVariables(path))),
+        }
   )
 }
 

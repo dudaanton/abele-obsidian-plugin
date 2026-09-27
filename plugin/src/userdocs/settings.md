@@ -46,6 +46,11 @@ memory and interceptor. **MCP** connects MCP servers whose tools agents can use.
 **Library**, **Header buttons**, **Automations** and **General**, where scripts are turned on. See
 [Scripts and automations](scripts).
 
+## Header buttons
+
+Buttons on notes that run a command or a script, and which notes each one shows on. See
+[Header buttons](scripts#header-buttons).
+
 ## Links
 
 Named links that run a script or a command. See [Links](scripts#links).

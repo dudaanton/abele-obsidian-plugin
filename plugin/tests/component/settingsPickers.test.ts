@@ -217,9 +217,13 @@ describe('the script a header button runs', () => {
     await nextTick()
 
     expect(config.headerButtons).toHaveLength(2)
+    // The one added is a command button, the one it had still waits for its script.
     expect(
       wrapper.findAllComponents(Button).filter((b) => b.props('text') === 'Choose script...')
-    ).toHaveLength(2)
+    ).toHaveLength(1)
+    expect(
+      wrapper.findAllComponents(Button).filter((b) => b.props('text') === 'Choose command...')
+    ).toHaveLength(1)
   })
 })
 

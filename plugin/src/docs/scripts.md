@@ -41,7 +41,8 @@ note they were looking for when it is not there yet.
 
 ## Running one
 
-Six ways in: the command palette, a button in a note's header, an `abele://` link, an
+Six ways in: the command palette, a button in a note's header (a script button, or a command
+button set to the script's command — `headerButtons` in the settings reference), an `abele://` link, an
 agent calling the `script_<name>` tool, an automation when something happens to a note, or the
 book reader's bar on selected words, which gets the words, their sentence and a link to their
 place as `book`. What that bar offers first is the book menu: the scripts the person chose in

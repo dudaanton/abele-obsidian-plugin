@@ -360,6 +360,6 @@ describe('the header buttons', () => {
       .trigger('click')
 
     expect(config.headerButtons).toHaveLength(1)
-    expect(cardTitled(wrapper, 'Unnamed button').props('subtitle')).toBe('No script chosen yet')
+    expect(cardTitled(wrapper, 'Unnamed button').props('subtitle')).toBe('No command chosen yet')
   })
 })

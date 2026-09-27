@@ -5,7 +5,7 @@
  * the same form is in `settingsPickers.test.ts`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import HeaderButtonsEditor from '@/components/settings/scripts/HeaderButtonsEditor.vue'
 import Button from '@/components/obsidian/Button.vue'
@@ -14,7 +14,11 @@ import Input from '@/components/obsidian/Input.vue'
 import Badge from '@/components/obsidian/Badge.vue'
 import Dropdown from '@/components/obsidian/Dropdown.vue'
 import IconPicker from '@/components/obsidian/IconPicker.vue'
-import { AbeleConfig } from '@/services/AbeleConfig'
+import Setting from '@/components/obsidian/Setting.vue'
+import Checkbox from '@/components/obsidian/Checkbox.vue'
+import { AbeleConfig, normalizeHeaderButton } from '@/services/AbeleConfig'
+import { GlobalStore } from '@/stores/GlobalStore'
+import * as RunnablePicker from '@/helpers/suggesters/RunnablePicker'
 import { ScriptService } from '@/scripting/ScriptService'
 import { useVault } from '../helpers/testEnv'
 
@@ -216,5 +220,114 @@ describe('a header button that would show nowhere', () => {
 
     expect(wrapper.text()).not.toContain('No note in this vault')
     expect(badges(wrapper)).not.toContain('Shows nowhere')
+  })
+})
+
+describe('a header button that runs a command', () => {
+  const BOLD = { id: 'editor:toggle-bold', name: 'Toggle bold', icon: 'bold' }
+  const commands = new Map([[BOLD.id, BOLD]])
+
+  beforeEach(() => {
+    const { app } = GlobalStore.getInstance() as unknown as { app: Record<string, unknown> }
+    app.commands = {
+      findCommand: (id: string) => commands.get(id),
+      listCommands: () => [...commands.values()],
+      executeCommandById: () => true,
+    }
+  })
+
+  const settingNamed = (wrapper: ReturnType<typeof mount>, name: string) =>
+    wrapper.findAllComponents(Setting).find((s) => s.props('name') === name)
+  const runsDropdown = (wrapper: ReturnType<typeof mount>) =>
+    settingNamed(wrapper, 'Runs')!.findComponent(Dropdown)
+
+  it('is what a new button is, shown on every note until told otherwise', async () => {
+    config.headerButtons = []
+    const wrapper = open()
+
+    await buttonWith(wrapper, 'Add button').trigger('click')
+
+    expect(config.headerButtons[0]).toMatchObject({ runs: 'command', allNotes: true })
+    expect(buttonWith(wrapper, 'Choose command...').exists()).toBe(true)
+    expect(settingNamed(wrapper, 'Script')).toBeUndefined()
+    expect(settingNamed(wrapper, 'Icon only')).toBeUndefined()
+  })
+
+  it('takes its command from the searchable list, and its name and icon with it', async () => {
+    vi.spyOn(RunnablePicker, 'pickCommand').mockResolvedValue(BOLD as never)
+    config.headerButtons = []
+    const wrapper = open()
+    await buttonWith(wrapper, 'Add button').trigger('click')
+
+    await buttonWith(wrapper, 'Choose command...').trigger('click')
+    await flushPromises()
+
+    expect(config.headerButtons[0]).toMatchObject({
+      commandId: 'editor:toggle-bold',
+      name: 'Toggle bold',
+      icon: 'bold',
+    })
+    expect(buttonWith(wrapper, 'Toggle bold').exists()).toBe(true)
+  })
+
+  it('keeps a name and an icon of its own when the command changes', async () => {
+    vi.spyOn(RunnablePicker, 'pickCommand').mockResolvedValue(BOLD as never)
+    config.headerButtons = [
+      normalizeHeaderButton({ id: 'c', name: 'Mine', icon: 'star', runs: 'command' }),
+    ]
+    const wrapper = open()
+
+    await buttonWith(wrapper, 'Choose command...').trigger('click')
+    await flushPromises()
+
+    expect(config.headerButtons[0]).toMatchObject({ name: 'Mine', icon: 'star' })
+  })
+
+  it('turns into a script button and back, keeping what each had', async () => {
+    config.headerButtons = [
+      normalizeHeaderButton({ id: 'c', runs: 'command', commandId: BOLD.id, scriptName: 'Fetch' }),
+    ]
+    const wrapper = open()
+
+    await runsDropdown(wrapper).vm.$emit('update:model-value', 'script')
+    expect(config.headerButtons[0].runs).toBe('script')
+    expect(settingNamed(wrapper, 'Script')).toBeDefined()
+    expect(settingNamed(wrapper, 'Command')).toBeUndefined()
+
+    await runsDropdown(wrapper).vm.$emit('update:model-value', 'command')
+    expect(config.headerButtons[0]).toMatchObject({ runs: 'command', commandId: BOLD.id })
+  })
+
+  it('offers files other than notes, for a command button only', async () => {
+    config.headerButtons = [normalizeHeaderButton({ id: 'c', runs: 'command' })]
+    const wrapper = open()
+
+    await settingNamed(wrapper, 'Also on other files')!.findComponent(Checkbox).vm.$emit('toggle')
+    expect(config.headerButtons[0].otherFiles).toBe(true)
+
+    await runsDropdown(wrapper).vm.$emit('update:model-value', 'script')
+    expect(settingNamed(wrapper, 'Also on other files')).toBeUndefined()
+  })
+
+  it('is placed by tags, typed as a list', async () => {
+    config.headerButtons = [normalizeHeaderButton({ id: 'c', runs: 'command' })]
+    const wrapper = open()
+
+    await settingNamed(wrapper, 'Tags')!
+      .findComponent(Input)
+      .vm.$emit('update:model-value', '#work, project/site ')
+
+    expect(config.headerButtons[0].tags).toEqual(['#work', 'project/site'])
+  })
+
+  it('says it shows nowhere while its command is not there — its plugin switched off', () => {
+    config.headerButtons = [
+      normalizeHeaderButton({ id: 'c', runs: 'command', commandId: 'dataview:refresh' }),
+    ]
+    const wrapper = open()
+
+    expect(wrapper.findAllComponents(Badge).map((b) => b.props('text'))).toContain('Shows nowhere')
+    expect(wrapper.text()).toContain('not available')
+    expect(buttonWith(wrapper, 'dataview:refresh').exists()).toBe(true)
   })
 })

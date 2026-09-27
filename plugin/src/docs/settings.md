@@ -195,13 +195,26 @@ every one of them has the same show and copy icons beside the stored key.
 
 ## Everything else
 
-`snippetsFolder` is where CSS snippets are written, `links` and `headerButtons` are the buttons
-and links added to note headers, `fullWidthSidebars` widens the sidebars to the whole screen on
+`snippetsFolder` is where CSS snippets are written, `links` are the links added to note
+headers, `fullWidthSidebars` widens the sidebars to the whole screen on
 a phone and `halfWidthSidebarsOnTablet` to half of it on a tablet, `mermaidViewer` (on by
 default) draws mermaid blocks with the plugin's zoomable viewer instead of Obsidian's own,
 `propertyWidgets` (on by default) draws some properties itself — a wallet's balance, sums in
 number fields, file cards for File and Files properties and `cover` — and
 `refreshDelay` is how long the plugin waits before rebuilding what a note shows.
+
+`headerButtons` are buttons on notes, each `{ id, name, icon, runs, commandId, scriptName, params,
+enabled, iconOnly, allNotes, noteTypes, folders, tags, otherFiles, conditions, conditionMode }`.
+`runs: "command"` (what a new one is) runs `commandId`, any command id Obsidian has — a script's
+is `abele:` followed by its command id — from among the icons at the top right of the note; on
+a phone the third and later go into the note's more-options menu, and one whose command is not
+registered (its plugin off) is hidden. `runs: "script"` (the default for an item without it)
+runs `scriptName` with `params`, templates of the note's `{{title}}`, `{{path}}` and frontmatter,
+from the plugin's header inside the note. Where it shows: every note with `allNotes`, else a
+note of one of `noteTypes`, with one of `tags` (nested ones count, `#` optional), or under one of
+`folders` (`*` is one folder, `**` any depth); then `conditions` on properties, `all` or `any`
+by `conditionMode`. `otherFiles` puts a command button on PDFs, canvases, books and other
+non-note files too, by folders and tags alone. They travel in a transfer.
 
 `quickButton` is the floating button on a phone: `enabled` (off by default, it is a concept),
 `tablet` (a tablet too), `side` (`right` or `left`), `lift` (pixels above where it rests,

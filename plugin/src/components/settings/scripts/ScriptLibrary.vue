@@ -133,7 +133,9 @@ const paramSummary = (script: ParsedScript): string[] => {
 
 const buttonCount = (script: ParsedScript): number => {
   void config.version.value
-  return config.headerButtons.filter((b) => b.scriptName === script.meta.name).length
+  return config.headerButtons.filter(
+    (b) => b.runs !== 'command' && b.scriptName === script.meta.name
+  ).length
 }
 
 const buttonLabel = (script: ParsedScript): string => {

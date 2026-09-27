@@ -2,6 +2,8 @@ import type { HeaderButtonCondition, HeaderButtonDefinition } from '@/services/A
 import { getFrontmatterFromCache, renderTemplate } from '@/helpers/notesUtils'
 import { DATE_FORMAT } from '@/constants/dates'
 import dayjs from 'dayjs'
+import { getAllTags, TFile } from 'obsidian'
+import { GlobalStore } from '@/stores/GlobalStore'
 
 /**
  * Buttons a note's header offers, and what they pass to the script behind them.
@@ -19,43 +21,124 @@ export function buttonsForType(
   return buttonsForNote(buttons, { type, path: '' })
 }
 
+/** What a note, or another file open in a tab, offers a button to judge it by. */
+export interface ButtonTarget {
+  type: string | null
+  path: string
+  frontmatter?: Record<string, unknown> | null
+  /** Its tags, as Obsidian gives them: `#work/meetings`. */
+  tags?: string[]
+  /** False for a file that is not a note — a PDF, a canvas, a book. Absent means a note. */
+  markdown?: boolean
+}
+
+export interface ButtonLookup {
+  /** Whether a command is there now; one that is not — its plugin off — hides its button. */
+  hasCommand?: (id: string) => boolean
+}
+
+/** A file's tags, frontmatter and body both, as Obsidian has them indexed. */
+export function noteTags(path: string): string[] {
+  const app = GlobalStore.getInstance().app
+  const file = app?.vault?.getAbstractFileByPath?.(path)
+  if (!(file instanceof TFile)) return []
+  const cache = app.metadataCache?.getFileCache?.(file)
+  return cache ? (getAllTags(cache) ?? []) : []
+}
+
+/** What pressing a button does: an old button, from before commands, runs its script. */
+export function buttonRuns(button: HeaderButtonDefinition): 'script' | 'command' {
+  return button.runs === 'command' ? 'command' : 'script'
+}
+
 /**
- * The buttons a note shows, in the order they were configured.
+ * The buttons a note shows, in the order they were configured, script and command ones alike.
  *
  * Two questions, both of which have to be yes. Where: every note, a note of one of its types,
- * or a note anywhere under one of its folders — and a button that names none of those but has
- * property conditions means any note. Then what: its property conditions, all of them or any
- * one, against the note's frontmatter. One that is switched off, or names no script and so
- * would do nothing if pressed, shows nowhere.
+ * with one of its tags, or anywhere under one of its folders — and a button that names none of
+ * those but has property conditions means any note. Then what: its property conditions, all of
+ * them or any one, against the note's frontmatter. One that is switched off, or names nothing to
+ * run — no script, no command, or a command that is not there now — shows nowhere. A file that
+ * is not a note shows only the command buttons that ask for other files too.
  */
 export function buttonsForNote(
   buttons: HeaderButtonDefinition[],
-  note: { type: string | null; path: string; frontmatter?: Record<string, unknown> | null }
+  note: ButtonTarget,
+  lookup: ButtonLookup = {}
 ): HeaderButtonDefinition[] {
   const noteType = note.type?.trim().toLowerCase() ?? ''
+  const markdown = note.markdown !== false
 
   return buttons.filter((button) => {
-    if (!button.scriptName || button.enabled === false) return false
+    if (button.enabled === false || !runnable(button, lookup)) return false
+    if (!markdown && !(buttonRuns(button) === 'command' && button.otherFiles)) return false
     const conditions = (button.conditions ?? []).filter((c) => c.property.trim() !== '')
     return (
-      placeFits(button, noteType, note.path, conditions.length > 0) &&
+      placeFits(button, noteType, note, conditions.length > 0) &&
       propertiesFit(conditions, button.conditionMode, note.frontmatter ?? null)
     )
   })
 }
 
+/** The buttons of the plugin's own header inside a note, which run scripts. */
+export function scriptButtonsFor(
+  buttons: HeaderButtonDefinition[],
+  note: ButtonTarget
+): HeaderButtonDefinition[] {
+  return buttonsForNote(buttons, note).filter((b) => buttonRuns(b) === 'script')
+}
+
+/** The buttons among the icons at the top right of a note, which run commands. */
+export function commandButtonsFor(
+  buttons: HeaderButtonDefinition[],
+  note: ButtonTarget,
+  lookup: ButtonLookup = {}
+): HeaderButtonDefinition[] {
+  return buttonsForNote(buttons, note, lookup).filter((b) => buttonRuns(b) === 'command')
+}
+
+function runnable(button: HeaderButtonDefinition, lookup: ButtonLookup): boolean {
+  if (buttonRuns(button) === 'script') return !!button.scriptName
+  const id = button.commandId?.trim()
+  if (!id) return false
+  return lookup.hasCommand ? lookup.hasCommand(id) : true
+}
+
+/**
+ * The buttons a header has room for, and the rest, which go to the view's more-options menu —
+ * on a phone the header holds only a couple of icons beside the note's title.
+ */
+export function splitForHeader<T>(buttons: T[], limit: number): { shown: T[]; overflow: T[] } {
+  const room = Math.max(0, limit)
+  return { shown: buttons.slice(0, room), overflow: buttons.slice(room) }
+}
+
 function placeFits(
   button: HeaderButtonDefinition,
   noteType: string,
-  path: string,
+  note: ButtonTarget,
   hasConditions: boolean
 ): boolean {
   if (button.allNotes) return true
   const types = button.noteTypes ?? []
-  const folders = button.folders ?? []
-  if (hasConditions && !types.length && !folders.length) return true
+  const folders = (button.folders ?? []).filter((f) => f.trim())
+  const tags = (button.tags ?? []).map(bareTag).filter(Boolean)
+  if (hasConditions && !types.length && !folders.length && !tags.length) return true
   if (noteType && types.some((t) => t.trim().toLowerCase() === noteType)) return true
-  return folders.some((folder) => isInside(path, folder))
+  if (tags.length && (note.tags ?? []).some((t) => tags.some((wanted) => tagFits(t, wanted))))
+    return true
+  return folders.some((folder) => pathFitsFolder(note.path, folder))
+}
+
+/** A tag as compared: no `#`, no stray spaces, case folded. */
+function bareTag(tag: string): string {
+  return tag.trim().replace(/^#/, '').toLowerCase()
+}
+
+/** `#work/meetings` has the tag `work`; `#workshop` does not. */
+function tagFits(tag: string, wanted: string): boolean {
+  const bare = bareTag(tag)
+  return bare === wanted || bare.startsWith(wanted + '/')
 }
 
 function propertiesFit(
@@ -106,10 +189,31 @@ function conditionHolds(
   }
 }
 
-/** Whether a vault path sits under a folder, at any depth. `Films` does not contain `Filmsy/`. */
-function isInside(path: string, folder: string): boolean {
+/**
+ * Whether a vault path sits under a folder, at any depth. `Films` does not contain `Filmsy/`.
+ * The folder may be a pattern: `*` stands for one folder's name, `**` for any number of them —
+ * so a star in the middle, between two project folders and `Notes`, means every project's notes.
+ */
+export function pathFitsFolder(path: string, folder: string): boolean {
   const prefix = folder.trim().replace(/^\/+|\/+$/g, '')
-  return prefix !== '' && path.startsWith(prefix + '/')
+  if (prefix === '') return false
+  if (!prefix.includes('*')) return path.startsWith(prefix + '/')
+  const pattern = prefix
+    .split('/')
+    .map((part) =>
+      part === '**'
+        ? '(?:[^/]+/)*'
+        : part.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*') + '/'
+    )
+    .join('')
+  return new RegExp('^' + pattern).test(path)
+}
+
+/** The part of a folder pattern before its first `*`, which has to exist for it to match. */
+function fixedPart(folder: string): string {
+  const parts = folder.split('/')
+  const star = parts.findIndex((p) => p.includes('*'))
+  return (star < 0 ? parts : parts.slice(0, star)).join('/')
 }
 
 /**
@@ -168,6 +272,8 @@ export interface VaultShape {
   /** Every `type` a note in the vault has, lower-cased. */
   types: Set<string>
   folderExists: (folder: string) => boolean
+  /** Whether a command is there now. Absent, every command is taken to be. */
+  hasCommand?: (id: string) => boolean
 }
 
 export interface PlacementProblems {
@@ -192,16 +298,34 @@ export function placementProblems(
   const types = (button.noteTypes ?? []).map((t) => t.trim()).filter(Boolean)
   const folders = (button.folders ?? []).map((f) => f.trim()).filter(Boolean)
   const unknownTypes = types.filter((t) => !vault.types.has(t.toLowerCase()))
-  const missingFolders = folders.filter((f) => !vault.folderExists(f.replace(/^\/+|\/+$/g, '')))
+  // A pattern is judged by the folder its stars hang from: `Projects/*/Notes` needs `Projects`.
+  const missingFolders = folders.filter(
+    (f) => !vault.folderExists(fixedPart(f.replace(/^\/+|\/+$/g, '')) || '/')
+  )
+  const tags = (button.tags ?? []).map((t) => t.trim()).filter(Boolean)
   const hasConditions = (button.conditions ?? []).some((c) => c.property.trim() !== '')
+  const command = buttonRuns(button) === 'command'
+  const commandId = button.commandId?.trim() ?? ''
 
   let nowhere: string | null = null
-  if (!button.scriptName) {
+  if (command && !commandId) {
+    nowhere = 'Shows nowhere until a command is chosen.'
+  } else if (command && vault.hasCommand && !vault.hasCommand(commandId)) {
+    nowhere =
+      'Shows nowhere now: its command is not available — the plugin that gives it may be off.'
+  } else if (!command && !button.scriptName) {
     nowhere = 'Shows nowhere until a script is chosen.'
-  } else if (!button.allNotes && !types.length && !folders.length && !hasConditions) {
-    nowhere = 'Shows nowhere yet: give it note types, folders, a property, or every note.'
   } else if (
     !button.allNotes &&
+    !types.length &&
+    !folders.length &&
+    !tags.length &&
+    !hasConditions
+  ) {
+    nowhere = 'Shows nowhere yet: give it note types, folders, tags, a property, or every note.'
+  } else if (
+    !button.allNotes &&
+    !tags.length &&
     (types.length || folders.length) &&
     unknownTypes.length === types.length &&
     missingFolders.length === folders.length

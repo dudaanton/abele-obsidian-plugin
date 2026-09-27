@@ -196,11 +196,15 @@ describe('header buttons saved before they could be switched off, placed or show
     expect(AbeleConfig.getInstance().headerButtons).toEqual([
       {
         ...old,
+        runs: 'script',
+        commandId: '',
         params: {},
         enabled: true,
         iconOnly: false,
         allNotes: false,
         folders: [],
+        tags: [],
+        otherFiles: false,
         conditions: [],
         conditionMode: 'all',
       },

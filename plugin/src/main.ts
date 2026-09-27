@@ -120,6 +120,7 @@ import { openChat } from '@/ai/openChat'
 import { keepChatFilesOutOfLeaves } from '@/ai/chatFileLeaves'
 import { applyQuickButton, setQuickButton } from '@/quickButton/mount'
 import { openQuickMenu } from '@/quickButton/open'
+import { HeaderCommands } from '@/headerButtons/viewActions'
 import { moveFooterFolds } from '@/composables/useFooterFold'
 
 // Every module imported above has run its top-level code by now. See `helpers/loadMarks.ts`.
@@ -130,6 +131,7 @@ const releaseVueSetters = claimVueSetters()
 
 export default class AbelePlugin extends Plugin {
   private vueApp: VueApp | null = null
+  private headerCommands: HeaderCommands | null = null
 
   initializeVue() {
     const rootContainer = createDiv()
@@ -1328,6 +1330,12 @@ export default class AbelePlugin extends Plugin {
     // Over the workspace, so only once there is one to be over.
     this.app.workspace.onLayoutReady(() => applyQuickButton())
 
+    // Command buttons among the icons at the top right of a note; see `headerButtons/viewActions.ts`.
+    this.app.workspace.onLayoutReady(() => {
+      this.headerCommands = new HeaderCommands()
+      this.headerCommands.start(this)
+    })
+
     // The first start in a vault: no settings file yet. The documentation is the way in, and it
     // is shown once — the settings are written straight after, so the next start is not a first.
     if (AbeleConfig.getInstance().freshInstall) {
@@ -1359,6 +1367,8 @@ export default class AbelePlugin extends Plugin {
     document.body.classList.remove('abele-full-width-sidebars', 'abele-half-width-sidebars')
     setKeyboardDiagnostics(false)
     setQuickButton(false)
+    this.headerCommands?.stop()
+    this.headerCommands = null
     // Unmount Vue BEFORE store cleanup so Teleport components unmount cleanly
     if (this.vueApp) {
       this.vueApp.unmount()

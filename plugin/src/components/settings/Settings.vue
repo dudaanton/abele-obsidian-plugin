@@ -54,6 +54,7 @@ import GithubSettings from './GithubSettings.vue'
 import ReaderSettings from './ReaderSettings.vue'
 import CalendarsSettings from './CalendarsSettings.vue'
 import QuickButtonSettings from './QuickButtonSettings.vue'
+import HeaderButtonsEditor from './scripts/HeaderButtonsEditor.vue'
 import LinterSettings from './LinterSettings.vue'
 import { takePendingTab } from './settingsTab'
 
@@ -76,6 +77,9 @@ const tabs: SettingsTab[] = [
   { id: 'github', label: 'GitHub', component: markRaw(GithubSettings) },
   { id: 'reader', label: 'Books', component: markRaw(ReaderSettings) },
   { id: 'quick-button', label: 'Quick button', component: markRaw(QuickButtonSettings) },
+  // Also under Scripts, where a script's own card leads to it; here it is a page of its own,
+  // because most of its buttons run commands that have nothing to do with scripts.
+  { id: 'header-buttons', label: 'Header buttons', component: markRaw(HeaderButtonsEditor) },
   { id: 'linter', label: 'Linter', component: markRaw(LinterSettings) },
   { id: 'transfer', label: 'Transfer', component: markRaw(TransferSettings) },
   { id: 'other', label: 'Other', component: markRaw(OtherSettings) },

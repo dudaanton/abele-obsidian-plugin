@@ -213,6 +213,7 @@ const SETTINGS_TAB_PAGES: Record<string, string> = {
   reader: 'books',
   transfer: 'transfer',
   'quick-button': 'quick-button',
+  'header-buttons': 'scripts',
   linter: 'linter',
   other: 'settings',
 }

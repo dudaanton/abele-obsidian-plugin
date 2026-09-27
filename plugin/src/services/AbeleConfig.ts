@@ -127,7 +127,12 @@ export interface LinkDefinition {
 }
 
 /**
- * A button placed in the header of every note of a given type, running a script.
+ * A button placed in the header of every note of a given type, running a script or any command.
+ *
+ * A script button sits in the plugin's own header inside the note and can hand the script
+ * parameters. A command button sits among the icons at the top right of the note — Obsidian's
+ * own header — and runs any command Obsidian knows: core, another plugin's, the plugin's own,
+ * or a script's, which is a command too.
  *
  * `params` holds a value per parameter the script declares, and each value is a template:
  * `{{title}}`, `{{path}}` and any frontmatter field of the note are substituted before the
@@ -141,7 +146,11 @@ export interface HeaderButtonDefinition {
   icon: string
   /** Note types this button belongs to, matched against the note's `type` frontmatter. */
   noteTypes: string[]
+  /** What pressing it does. Absent means `script`, what every button did before commands. */
+  runs?: 'script' | 'command'
   scriptName: string
+  /** The command a `command` button runs, by its id: `editor:toggle-bold`. */
+  commandId?: string
   /** Parameter values, by parameter name. Empty means the script's own default. */
   params: Record<string, string>
   /** Off keeps the button configured without showing it anywhere. Absent means on. */
@@ -152,6 +161,13 @@ export interface HeaderButtonDefinition {
   allNotes?: boolean
   /** Folders whose notes, at any depth, show the button — besides the notes of `noteTypes`. */
   folders?: string[]
+  /** Tags whose notes show the button, nested ones under them included, with or without `#`. */
+  tags?: string[]
+  /**
+   * A command button on files other than notes too — a PDF, a canvas, a book, an image — as long
+   * as its folders or tags let them; a note's type and properties they do not have.
+   */
+  otherFiles?: boolean
   /**
    * Frontmatter the note must have, on top of where it is: the button shows on a note of its
    * types or folders only when these hold. A button naming no type and no folder shows on any
@@ -220,7 +236,9 @@ export function normalizeHeaderButton(
     ...raw,
     id: raw.id || nanoid(),
     name: raw.name ?? '',
+    runs: raw.runs === 'command' ? 'command' : 'script',
     scriptName: raw.scriptName ?? '',
+    commandId: typeof raw.commandId === 'string' ? raw.commandId : '',
     icon: raw.icon || 'play',
     noteTypes: raw.noteTypes || [],
     params: raw.params || {},
@@ -228,6 +246,8 @@ export function normalizeHeaderButton(
     iconOnly: raw.iconOnly ?? false,
     allNotes: raw.allNotes ?? false,
     folders: raw.folders || [],
+    tags: Array.isArray(raw.tags) ? raw.tags.filter((t) => typeof t === 'string') : [],
+    otherFiles: raw.otherFiles === true,
     conditions: normalizeConditions(raw.conditions),
     conditionMode: raw.conditionMode === 'any' ? 'any' : 'all',
   }

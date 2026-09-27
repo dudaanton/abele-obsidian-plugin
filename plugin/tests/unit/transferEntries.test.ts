@@ -536,6 +536,28 @@ describe('header buttons', () => {
 
     expect(next.headerButtons).toEqual([button])
   })
+
+  it('arrive running the command they ran, with their tags and whether they show beyond notes', () => {
+    const button = {
+      id: 'c1',
+      name: 'Bold',
+      icon: 'bold',
+      noteTypes: [],
+      runs: 'command' as const,
+      commandId: 'editor:toggle-bold',
+      scriptName: '',
+      params: {},
+      allNotes: false,
+      folders: ['Projects/*/Notes'],
+      tags: ['work'],
+      otherFiles: true,
+    }
+    const arriving = collectEntries(settings({ headerButtons: [button] })).filter(
+      (e) => e.section === 'header-buttons'
+    )
+
+    expect(applyEntries(arriving, settings()).headerButtons).toEqual([button])
+  })
 })
 
 describe('automations', () => {
