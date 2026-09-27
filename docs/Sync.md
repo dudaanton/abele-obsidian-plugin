@@ -28,7 +28,9 @@ The device is then enrolled and the tab shows **This device**: its status, the s
 and its name, with **Sync now**, **Pause** (or **Resume**) and **Rescan**. **Rescan** walks the
 whole vault again and fetches whatever this device is missing — for when something looks absent
 that should not be. When sync has stopped on an error, **Sync now** is also what tries to start it
-again, once the cause is fixed.
+again, once the cause is fixed. While the device is paused, **Sync now** and **Rescan** are greyed
+out, and from the command palette **Sync now** says sync is paused and moves nothing: **Resume**
+comes first.
 
 To stop, **Disconnect** forgets the server and the device's token and keeps everything else: your
 files, and what this device syncs. **Forget** does the same and also throws away this device's
@@ -72,7 +74,11 @@ server are left alone.
 
 **Folders this device skips** leaves whole folders alone on this device; the other devices still
 hold them. Taking a folder or a kind back in makes the next sync walk the vault again, so what this
-device passed over arrives.
+device passed over arrives. **Skip a folder** offers the folders that hold at least one file.
+
+Folders themselves do not sync, only the files in them. When another device renames or deletes a
+folder, the files move or go here too, and a folder this left empty is removed. A folder you made
+empty yourself, or one still holding a hidden file such as `.DS_Store`, stays.
 
 These never travel, whatever the switches say:
 
@@ -148,7 +154,8 @@ The status bar item is hidden on a device that is not connected. Otherwise it sa
 | Status bar | Meaning |
 |---|---|
 | Fully synced | Nothing is left to send or fetch. |
-| Syncing (3) | A sync is running; the number is what is still to be sent. |
+| Syncing | A sync is running. The tooltip says how many changes it found to send. |
+| Waiting (3) | A sync has finished, and it left these changes for the next one — they changed again while it was sending them, or the server refused them. The log says which. |
 | Paused | **Pause** was pressed. Nothing moves until **Resume**, and that survives a restart. |
 | Offline | The server cannot be reached. It is tried again on its own. |
 | Sync error | Something failed. The tooltip, and **Last failure** in the Sync tab, say what. A device the server no longer accepts says to connect again from the Sync settings. |
@@ -159,9 +166,14 @@ Hovering shows the whole status and when the last sync finished. **Abele: Sync n
 ## On a phone
 
 A phone keeps no connection open and runs nothing in the background, because the system suspends
-the app the moment it leaves the screen. It syncs when Obsidian starts and every time the app comes
-back to the front, and whenever **Sync now** is pressed. A change made on a laptop reaches the phone
-the next time the phone is opened, not while it sits in a pocket.
+the app the moment it leaves the screen. While Obsidian is in front, an edit on the phone is sent a
+moment after it is made, just as on a laptop, and the phone asks the server for what other devices
+changed once a minute. It also syncs when Obsidian starts, when the app comes back to the front,
+when it leaves the front — so the last edit goes out before the phone is locked — and whenever
+**Sync now** is pressed. A change made on a laptop reaches a phone in a pocket the next time it is
+opened.
+
+Obsidian hides the status bar on a phone, so the sync state is only shown in the Sync tab.
 
 On a phone **Largest file** starts at 50 MB, so the vault's video and big scans stay off it while
 every note arrives. The cap is always the phone's own: nothing that arrives from a laptop — a
