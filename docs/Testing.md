@@ -645,7 +645,8 @@ A file takes part by saying so at its top — `targets('desktop', 'phone')` from
 run loads only the files that name the phone, and a file with no call is a desktop file, so the
 desktop run is what it always was. The phone files so far: `calendarsPhone`, `githubPhone`,
 `taskDatePhone` (which on the phone taps the time field and measures the system's own
-keyboard) and `formKeyboard` (which taps a long form's fields and types with it). `phoneLayout`, `bookPhone` and `bookPhoneControls` carry the phone's side of their
+keyboard) `formKeyboard` (which taps a long form's fields and types with it) and `bookFormFocus` (which
+taps a script form's field over a book with words selected and checks the keyboard stays). `phoneLayout`, `bookPhone` and `bookPhoneControls` carry the phone's side of their
 probes too — pictures through the host, the book's taps, swipes and pinch as real gestures, the
 phone really turned — but are not yet green there, so they still name only the desktop.
 
