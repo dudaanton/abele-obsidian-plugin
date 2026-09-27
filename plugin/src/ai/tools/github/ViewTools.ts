@@ -27,6 +27,7 @@ const KIND_NAME: Record<string, string> = {
   compare: 'Comparison',
   blob: 'File',
   tree: 'Folder',
+  repo: 'Repository',
 }
 
 const SECTION_NAME: Record<string, string> = {
@@ -194,7 +195,8 @@ export function createGithubOpenTool(): AgentTool {
           !target ||
           target.kind === 'issue' ||
           target.kind === 'discussion' ||
-          target.kind === 'tree'
+          target.kind === 'tree' ||
+          target.kind === 'repo'
         ) {
           throw new Error(
             'Lines can be marked in a pull request, a commit, a comparison or a file. For an issue number that is a pull request, give its /pull/ link.'

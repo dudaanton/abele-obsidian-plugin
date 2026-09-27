@@ -226,9 +226,62 @@ describe('comparisons', () => {
   })
 })
 
+describe('a repository front page', () => {
+  it('is the repository at its default branch', () => {
+    expect(parse('https://github.com/octo/widgets')).toEqual({
+      kind: 'repo',
+      host: 'github.com',
+      owner: 'octo',
+      repo: 'widgets',
+      anchor: undefined,
+    })
+    expect(parse('https://github.com/octo/widgets/')).toMatchObject({ kind: 'repo' })
+    // A README heading on the front page is an anchor, kept for scrolling to.
+    expect(parse('https://github.com/octo/widgets#install')).toMatchObject({
+      kind: 'repo',
+      anchor: 'install',
+    })
+  })
+
+  it('drops the .git a clone address ends with', () => {
+    expect(parse('https://github.com/octo/widgets.git')).toMatchObject({
+      kind: 'repo',
+      repo: 'widgets',
+    })
+  })
+
+  it('is taken on a configured Enterprise host too', () => {
+    expect(
+      parseGithubUrl('https://git.example.com/o/r', ['github.com', 'git.example.com'])
+    ).toMatchObject({ kind: 'repo', host: 'git.example.com', owner: 'o', repo: 'r' })
+  })
+
+  it.each([
+    'https://github.com/settings/tokens',
+    'https://github.com/orgs/acme',
+    'https://github.com/marketplace/actions',
+    'https://github.com/topics/obsidian',
+    'https://github.com/sponsors/octo',
+    'https://github.com/features/copilot',
+    'https://github.com/apps/dependabot',
+    'https://github.com/notifications/beta',
+    'https://github.com/login/oauth',
+    'https://github.com/users/octo',
+    'https://github.com/octo',
+  ])('leaves %s, a page of GitHub itself rather than a repository, to the browser', (url) => {
+    expect(parse(url)).toBeNull()
+  })
+
+  it('names the tab by the repository and keys it apart from its folders', () => {
+    const t = parse('https://github.com/Octo/Widgets')!
+    expect(shortName(t)).toBe('Octo/Widgets')
+    expect(targetKey(t)).toBe('repo:github.com/octo/widgets')
+    expect(targetKey(t)).not.toBe(targetKey(parse('https://github.com/Octo/Widgets/tree/main')!))
+  })
+})
+
 describe('what stays with the browser', () => {
   it.each([
-    'https://github.com/o/r',
     'https://github.com/o/r/issues',
     'https://github.com/o/r/pulls',
     'https://github.com/o/r/issues/abc',

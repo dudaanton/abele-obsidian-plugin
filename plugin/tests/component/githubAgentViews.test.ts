@@ -417,7 +417,7 @@ describe('github_open', () => {
 
   it('refuses what no tab can show', async () => {
     await expect(
-      run(createGithubOpenTool(), { url: 'https://github.com/acme/widgets' })
+      run(createGithubOpenTool(), { url: 'https://github.com/acme/widgets/releases' })
     ).rejects.toThrow('not this link')
     expect(opened).toEqual([])
   })

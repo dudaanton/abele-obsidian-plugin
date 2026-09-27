@@ -200,6 +200,15 @@
           />
         </template>
 
+        <GithubRepoHome
+          v-else-if="shown.kind === 'repo' && home"
+          :home="home"
+          :repo="repoRef!"
+          :client="client()"
+          @open="(url: string, pane: PaneType | false) => onOpen?.(url, pane)"
+          @tree="setPanel(true)"
+        />
+
         <template v-else-if="shown.kind === 'tree' && folder">
           <GithubFolder
             :folder="folder"
@@ -231,6 +240,8 @@ import GithubNotice from './GithubNotice.vue'
 import GithubFindBar from './GithubFindBar.vue'
 import GithubCodeSearch from './GithubCodeSearch.vue'
 import GithubFolder from './GithubFolder.vue'
+import GithubRepoHome from './GithubRepoHome.vue'
+import type { RepoHomeData } from '@/github/repoPage/repoHome'
 import GithubProseActions from './GithubProseActions.vue'
 import GithubTreePanel from './GithubTreePanel.vue'
 import GithubLayout from './GithubLayout.vue'
@@ -369,6 +380,10 @@ const commit = computed(() =>
 const blob = computed(() => (shown.value.kind === 'blob' ? (main.data.value as BlobData) : null))
 const folder = computed(() =>
   shown.value.kind === 'tree' ? (main.data.value as FolderData) : null
+)
+
+const home = computed(() =>
+  shown.value.kind === 'repo' ? (main.data.value as RepoHomeData) : null
 )
 
 const compared = computed(() =>
@@ -552,7 +567,9 @@ const openCommit = (sha: string) => {
 let unpin = () => {}
 const scrollToAnchor = async () => {
   // A heading of a rendered file is found by its slug, whatever case the link wrote it in.
-  const a = shown.value?.kind === 'blob' && anchor.value ? anchorSlug(anchor.value) : anchor.value
+  // So is one of a README under a folder or a front page.
+  const rendered = ['blob', 'tree', 'repo'].includes(shown.value?.kind ?? '')
+  const a = rendered && anchor.value ? anchorSlug(anchor.value) : anchor.value
   if (!a || fileAnchor.value || !root.value) return
   await nextTick()
   const el = root.value

@@ -68,6 +68,14 @@ export type GithubTarget =
       /** Everything after `tree/`: a ref and a folder in it, split as for a file — `treeCandidates`. */
       rest: string[]
     })
+  | (Repo & {
+      /**
+       * The repository's front page. `ref` is unset for the address itself (the default branch);
+       * a `tree/<ref>` link that turns out to name the root is shown as this, at that ref.
+       */
+      kind: 'repo'
+      ref?: string
+    })
 
 export type GithubTargetKind = GithubTarget['kind']
 
@@ -75,6 +83,52 @@ const DIFF_ANCHOR = /^diff-([0-9a-f]{64})(?:([LR])(\d+)(?:-[LR](\d+))?)?$/
 /** A review comment: `#discussion_r12` on the conversation, `#r12` on the files. */
 const REVIEW_COMMENT_ANCHOR = /^(?:discussion_)?r(\d+)$/
 const LINE_ANCHOR = /^L(\d+)(?:C\d+)?(?:-L(\d+)(?:C\d+)?)?$/
+
+/**
+ * The first parts of github.com's own pages: `github.com/settings/tokens` has the shape of a
+ * repository's address and is not one. A user or an organisation cannot take these names.
+ */
+const RESERVED_OWNERS = new Set([
+  'about',
+  'account',
+  'apps',
+  'codespaces',
+  'collections',
+  'contact',
+  'customer-stories',
+  'dashboard',
+  'enterprise',
+  'enterprises',
+  'events',
+  'explore',
+  'features',
+  'github-copilot',
+  'issues',
+  'join',
+  'login',
+  'logout',
+  'marketplace',
+  'new',
+  'notifications',
+  'organizations',
+  'orgs',
+  'password_reset',
+  'pricing',
+  'pulls',
+  'readme',
+  'search',
+  'security',
+  'sessions',
+  'settings',
+  'site',
+  'sponsors',
+  'stars',
+  'team',
+  'topics',
+  'trending',
+  'users',
+  'watching',
+])
 
 const positive = (text: string): number | null => {
   if (!/^\d+$/.test(text)) return null
@@ -142,11 +196,19 @@ export function parseGithubUrl(url: string, hosts: string[]): GithubTarget | nul
   }
 
   const [owner, repo, section, id, ...more] = segments
-  if (!owner || !repo || !section || !id) return null
+  if (!owner || !repo) return null
   if (owner === 'orgs' || owner === 'enterprises') return null
 
   const hash = parsed.hash.replace(/^#/, '')
   const base: Repo = { host, owner, repo, anchor: hash || undefined }
+
+  // The front page: nothing after the name but a clone address's `.git`. Only this shape is
+  // shared with GitHub's own pages, so only here are their names told apart.
+  if (!section) {
+    if (RESERVED_OWNERS.has(owner.toLowerCase())) return null
+    return { kind: 'repo', ...base, repo: repo.replace(/\.git$/i, '') }
+  }
+  if (!id) return null
 
   switch (section) {
     case 'issues': {
@@ -318,6 +380,8 @@ export function targetKey(t: GithubTarget): string {
       return `blob:${repo}/${t.rest.join('/')}`
     case 'tree':
       return `tree:${repo}/${t.rest.join('/')}`
+    case 'repo':
+      return `repo:${repo}${t.ref ? `@${t.ref}` : ''}`
     case 'compare':
       return `compare:${repo}/${t.base ?? ''}${t.direct ? '..' : '...'}${t.head}`
   }
@@ -338,6 +402,8 @@ export function shortName(t: GithubTarget): string {
       return `${repo}: ${t.rest[t.rest.length - 1]}`
     case 'tree':
       return t.rest.length > 1 ? `${repo}: ${t.rest[t.rest.length - 1]}/` : repo
+    case 'repo':
+      return repo
     case 'compare':
       return t.base
         ? `${repo} ${t.base}${t.direct ? '..' : '...'}${t.head}`

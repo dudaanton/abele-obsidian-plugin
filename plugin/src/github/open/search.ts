@@ -77,6 +77,7 @@ const KIND_OF_TARGET: Record<GithubTarget['kind'], RowKind> = {
   compare: 'compare',
   blob: 'file',
   tree: 'folder',
+  repo: 'repo',
 }
 
 const KIND_NAME: Record<RowKind, string> = {
@@ -292,12 +293,13 @@ export class OpenSearch {
     }
   }
 
-  private repoRow(repo: RepoRef, defaultBranch: string, description?: string | null): OpenRow {
+  private repoRow(repo: RepoRef, description?: string | null): OpenRow {
     return {
       kind: 'repo',
       title: repoName(repo),
       note: ['Repository', description?.trim()].filter(Boolean).join(' · '),
-      url: branchUrl(repo, defaultBranch),
+      // The front page, at the default branch: the address of the repository itself.
+      url: repoWeb(repo),
       repo,
     }
   }
@@ -312,7 +314,7 @@ export class OpenSearch {
       }>(repoApiPath(repo), { what: repoName(repo) })
       // GitHub answers a renamed repository under its new name.
       const named = { ...repo, owner: r.owner?.login ?? repo.owner, repo: r.name ?? repo.repo }
-      return [this.repoRow(named, r.default_branch, r.description)]
+      return [this.repoRow(named, r.description)]
     } catch (e) {
       if (isGone(e)) return []
       throw e
@@ -331,7 +333,7 @@ export class OpenSearch {
       what: 'repositories',
     })
     return (found.items ?? []).map((r) =>
-      this.repoRow({ host, owner: r.owner.login, repo: r.name }, r.default_branch, r.description)
+      this.repoRow({ host, owner: r.owner.login, repo: r.name }, r.description)
     )
   }
 
@@ -356,7 +358,7 @@ export class OpenSearch {
         lookup.placeholder = {
           kind: 'repo',
           title: repoName(q.repo),
-          note: 'Repository · its files on the default branch',
+          note: 'Repository · its front page',
           resolve: this.resolver(lookup),
           repo: q.repo,
         }

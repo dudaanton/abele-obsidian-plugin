@@ -147,6 +147,7 @@ export function createLinker(o: {
         }
         case 'blob':
         case 'tree':
+        case 'repo':
           return null
       }
     },

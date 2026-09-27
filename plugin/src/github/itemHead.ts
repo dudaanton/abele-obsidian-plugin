@@ -12,6 +12,7 @@ import type { BlobData, CommitData, DiscussionData, IssueData, Label, PullData }
 import type { FolderData } from './tree/folder'
 import type { CompareData } from './compare'
 import { treeUrl } from './tree/fileTree'
+import { homeUrl, type RepoHomeData } from './repoPage/repoHome'
 
 /** A commit SHA as GitHub shows one; a branch or a tag as it is. */
 export const shortRef = (ref: string) => (/^[0-9a-f]{40}$/i.test(ref) ? ref.slice(0, 7) : ref)
@@ -67,6 +68,18 @@ export function itemHead(t: GithubTarget | null, data: ItemData | null): ItemHea
       ].filter(Boolean),
     }
   }
+  // The front page is titled by the repository, which the breadcrumbs draw with the ref shown;
+  // what it is — private, archived, a fork — is said beside it.
+  if (t.kind === 'repo') {
+    const { meta } = data as RepoHomeData
+    return {
+      ...fallback,
+      title: `${meta.owner}/${meta.name}`,
+      state: meta.visibility,
+      labels: meta.archived ? [{ name: 'archived', color: '' }] : [],
+      meta: meta.parent ? [`forked from ${meta.parent}`] : [],
+    }
+  }
   // A file or a folder is titled by where it is, which the breadcrumbs draw with its ref.
   if (t.kind === 'blob' || t.kind === 'tree') {
     const b = data as BlobData | FolderData
@@ -101,6 +114,11 @@ export function itemHead(t: GithubTarget | null, data: ItemData | null): ItemHea
  */
 export function itemTabTitle(t: GithubTarget, data: ItemData, title: string): string {
   if (t.kind === 'compare') return `${t.owner}/${t.repo} ${title}`
+  if (t.kind === 'repo') {
+    const home = data as RepoHomeData
+    const name = `${home.meta.owner}/${home.meta.name}`
+    return home.ref === home.meta.defaultBranch ? name : `${name} @ ${shortRef(home.ref)}`
+  }
   if (t.kind === 'blob' || t.kind === 'tree') {
     const b = data as BlobData | FolderData
     const name = b.path ? b.path.split('/').pop() : t.repo
@@ -120,6 +138,14 @@ export function placeLink(t: GithubTarget, data: ItemData): GithubLink | undefin
     return {
       label: `${t.owner}/${t.repo}@${b.ref} · ${b.path}`,
       url: `${repoWeb(t)}/blob/${b.ref}/${path}`,
+    }
+  }
+  if (t.kind === 'repo') {
+    const home = data as RepoHomeData
+    const atDefault = home.ref === home.meta.defaultBranch
+    return {
+      label: `${t.owner}/${t.repo}${atDefault ? '' : `@${home.ref}`}`,
+      url: homeUrl(t, home.ref, home.meta.defaultBranch),
     }
   }
   if (t.kind === 'tree') {

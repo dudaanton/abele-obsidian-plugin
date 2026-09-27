@@ -32,8 +32,15 @@ describe('a link', () => {
     })
   })
 
-  it('to a repository front page, or a page of it no tab shows, is the repository', () => {
-    expect(parseOpenQuery('https://github.com/octo-org/octo-repo', ctx)).toEqual({
+  it('to a repository front page is the front page, which a tab shows', () => {
+    expect(parseOpenQuery('https://github.com/octo-org/octo-repo', ctx)).toMatchObject({
+      kind: 'link',
+      target: { kind: 'repo', owner: 'octo-org', repo: 'octo-repo' },
+    })
+  })
+
+  it('to a page of a repository no tab shows is the repository', () => {
+    expect(parseOpenQuery('https://github.com/octo-org/octo-repo/releases', ctx)).toEqual({
       kind: 'repo-link',
       repo,
     })

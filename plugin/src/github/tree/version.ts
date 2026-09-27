@@ -18,6 +18,7 @@ export function linkRef(shown: GithubTarget, data: unknown): string | null {
       return d.sha || shown.sha
     case 'blob':
     case 'tree':
+    case 'repo':
       return d.ref || null
     default:
       return null

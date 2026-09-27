@@ -131,7 +131,7 @@ describe('a plain click on a GitHub link', () => {
 
   it('does nothing with a link a tab cannot show', async () => {
     const { app, created } = workspace([])
-    expect(await openGithubUrl(app, 'https://github.com/acme/widgets')).toBe(false)
+    expect(await openGithubUrl(app, 'https://github.com/acme/widgets/releases')).toBe(false)
     expect(created).toEqual([])
   })
 })

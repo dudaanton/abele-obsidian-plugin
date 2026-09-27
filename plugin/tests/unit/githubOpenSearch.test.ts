@@ -232,7 +232,7 @@ describe('words', () => {
     ])
   })
 
-  it('shaped like owner/repo offer that repository at its default branch', async () => {
+  it('shaped like owner/repo offer that repository, opening its front page', async () => {
     const { run } = setup({
       '/repos/feat/login': {
         json: {
@@ -247,7 +247,7 @@ describe('words', () => {
     })
     const view = await run('feat/login')
     expect(view.rows).toEqual([
-      expect.objectContaining({ kind: 'repo', url: 'https://github.com/feat/login/tree/trunk' }),
+      expect.objectContaining({ kind: 'repo', url: 'https://github.com/feat/login' }),
     ])
   })
 
@@ -306,10 +306,17 @@ describe('a pasted link', () => {
     expect(calls).toEqual([])
   })
 
-  it('to a repository opens its default branch', async () => {
-    const { run } = setup({ [R]: { json: { default_branch: 'main' } } })
+  it('to a repository opens its front page, asking GitHub nothing first', async () => {
+    const { run, calls } = setup({ [R]: { json: { default_branch: 'main' } } })
     const [row] = (await run('https://github.com/octo-org/octo-repo')).rows
-    expect(row.url).toBe('https://github.com/octo-org/octo-repo/tree/main')
+    expect(row).toMatchObject({ kind: 'repo', url: 'https://github.com/octo-org/octo-repo' })
+    expect(calls).toEqual([])
+  })
+
+  it('to a page of a repository no tab shows opens its front page', async () => {
+    const { run } = setup({ [R]: { json: { default_branch: 'main' } } })
+    const [row] = (await run('https://github.com/octo-org/octo-repo/releases')).rows
+    expect(row).toMatchObject({ kind: 'repo', url: 'https://github.com/octo-org/octo-repo' })
   })
 
   it('to another host says whose it is', async () => {

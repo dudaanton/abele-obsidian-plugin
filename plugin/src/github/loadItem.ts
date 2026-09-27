@@ -22,6 +22,7 @@ import {
 } from './api'
 import { NotAFolderError, loadFolder, type FolderData } from './tree/folder'
 import { loadCompare, type CompareData } from './compare'
+import { loadRepoHome, type RepoHomeData } from './repoPage/repoHome'
 
 type Of<K extends GithubTarget['kind']> = Extract<GithubTarget, { kind: K }>
 
@@ -33,6 +34,7 @@ export type ItemData =
   | BlobData
   | FolderData
   | CompareData
+  | RepoHomeData
 
 export async function loadItem(
   client: GithubClient,
@@ -65,9 +67,17 @@ export async function loadItem(
         promote(tree)
         return loadFolder(client, tree)
       }
+    case 'repo':
+      return loadRepoHome(client, t)
     case 'tree':
       try {
-        return await loadFolder(client, t)
+        const folder = await loadFolder(client, t)
+        if (folder.path) return folder
+        // The root at a ref is the front page at that ref, as the branch switcher opens it.
+        const { host, owner, repo, anchor } = t
+        const home: Of<'repo'> = { kind: 'repo', host, owner, repo, anchor, ref: folder.ref }
+        promote(home)
+        return await loadRepoHome(client, home, folder)
       } catch (e) {
         // And a file's link written as a folder's: the file.
         if (!(e instanceof NotAFolderError)) throw e

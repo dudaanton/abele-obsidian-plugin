@@ -66,7 +66,7 @@ export function useTabSearch(o: TabSearchOptions) {
     if (head) promise = Promise.resolve(head)
     else if (t.kind === 'compare') promise = resolveSha(o.client(), repo(), t.head)
     else if (t.kind === 'commit' && d) promise = Promise.resolve((d as CommitData).sha)
-    else if ((t.kind === 'blob' || t.kind === 'tree') && d)
+    else if ((t.kind === 'blob' || t.kind === 'tree' || t.kind === 'repo') && d)
       promise = commitSha(o.client(), repo(), (d as BlobData | FolderData).ref)
     else promise = resolveSha(o.client(), repo())
     // A failed lookup is not kept: the next ask tries again.
@@ -83,7 +83,7 @@ export function useTabSearch(o: TabSearchOptions) {
     if (t.kind === 'pull') return (d as PullData)?.head || `#${t.number}`
     if (t.kind === 'commit') return ((d as CommitData)?.sha ?? t.sha).slice(0, 7)
     if (t.kind === 'compare') return t.head
-    if (t.kind === 'blob' || t.kind === 'tree') {
+    if (t.kind === 'blob' || t.kind === 'tree' || t.kind === 'repo') {
       const ref = (d as BlobData | FolderData | null)?.ref ?? ''
       // A commit reads as GitHub shows it; a branch or a tag as it is.
       return /^[0-9a-f]{40}$/i.test(ref) ? ref.slice(0, 7) : ref

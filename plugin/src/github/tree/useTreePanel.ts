@@ -74,7 +74,7 @@ export function useTreePanel(o: TreePanelOptions) {
     const d = o.data() as BlobData | FolderData | null
     if (!t || !d) return null
     if (t.kind === 'blob') return { path: d.path, kind: 'file' }
-    if (t.kind === 'tree') return { path: d.path, kind: 'dir' }
+    if (t.kind === 'tree' || t.kind === 'repo') return { path: d.path, kind: 'dir' }
     return null
   })
 
@@ -82,13 +82,15 @@ export function useTreePanel(o: TreePanelOptions) {
   const crumbs = computed<Crumb[] | undefined>(() => {
     const t = o.shown.value
     const d = o.data() as BlobData | FolderData | null
-    if (!t || !d || (t.kind !== 'blob' && t.kind !== 'tree')) return undefined
+    if (!t || !d || (t.kind !== 'blob' && t.kind !== 'tree' && t.kind !== 'repo')) return undefined
     return crumbsOf(t, d.ref, d.path)
   })
   const crumbRef = computed(() => {
     const t = o.shown.value
     const d = o.data() as BlobData | FolderData | null
-    return t && d && (t.kind === 'blob' || t.kind === 'tree') ? shortRef(d.ref) : undefined
+    return t && d && (t.kind === 'blob' || t.kind === 'tree' || t.kind === 'repo')
+      ? shortRef(d.ref)
+      : undefined
   })
 
   /** A file picked in the panel; a drawer over the content gets out of its way. */
