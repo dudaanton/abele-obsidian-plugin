@@ -107,12 +107,15 @@ async function device(
     settings,
     prefer,
     beforeCommit,
+    beforeReload,
   }: {
     reversed?: boolean
     settings?: Record<string, unknown>
     prefer?: JoinPrefer | null
     /** Run before each commit this device sends reaches the server, with the request's body. */
     beforeCommit?: (app: FakeApp, body: string) => Promise<void>
+    /** Run when the sync tells the plugin its settings file changed, before it is reloaded. */
+    beforeReload?: () => Promise<void>
   } = {}
 ): Promise<Device> {
   const app = buildFakeVault([
@@ -161,6 +164,7 @@ async function device(
     // `main.ts`'s `onExternalSettingsChange`, less what needs the whole plugin.
     onExternalSettingsChange: async () => {
       made.calls++
+      if (beforeReload !== undefined) await beforeReload()
       if (!(await config.reloadSettings())) return
       made.reloads++
       await made.store.load()
@@ -513,6 +517,65 @@ describe('Abele settings between two devices', () => {
     await twoMoreCycles(a, b)
     expect([pushed(a), pushed(b)]).toEqual([0, 0])
     expect([a.saves, b.saves]).toEqual(saves)
+  })
+
+  /**
+   * pi review, test gap: a file that arrives is parsed, a change this device made meanwhile is
+   * put back on top of it rather than lost under it, and what is on disk — and then on every
+   * device — holds both.
+   */
+  it('takes an arriving file with a change made here and not saved yet on top, on disk and everywhere', async () => {
+    const a = await device('Laptop')
+    const b = await device('Phone')
+    await settle(a, b)
+
+    b.config.refreshDelay = 777
+    a.config.tasksFolder = 'Projects'
+    await a.config.saveSettings()
+    await cycle(a)
+    await cycle(b)
+
+    expect(b.config.tasksFolder).toBe('Projects')
+    expect(b.config.refreshDelay).toBe(777)
+    expect(await onDisk(b)).toMatchObject({ tasksFolder: 'Projects', refreshDelay: 777 })
+
+    await settle(a, b)
+    expect(a.config.refreshDelay).toBe(777)
+    expect(await onDisk(a)).toMatchObject({ tasksFolder: 'Projects', refreshDelay: 777 })
+    await twoMoreCycles(a, b)
+    expect([pushed(a), pushed(b)]).toEqual([0, 0])
+  })
+
+  it('takes an arriving file with a save made here between its write and its reload on top', async () => {
+    const a = await device('Laptop')
+    let saveHere: (() => Promise<void>) | null = null
+    const b = await device('Phone', {
+      beforeReload: async () => {
+        const save = saveHere
+        saveHere = null
+        await save?.()
+      },
+    })
+    await settle(a, b)
+
+    saveHere = async () => {
+      b.config.refreshDelay = 888
+      await b.config.saveSettings()
+    }
+    a.config.tasksFolder = 'Projects'
+    await a.config.saveSettings()
+    await cycle(a)
+    await cycle(b)
+
+    expect(saveHere).toBeNull()
+    expect(b.config.tasksFolder).toBe('Projects')
+    expect(b.config.refreshDelay).toBe(888)
+    expect(await onDisk(b)).toMatchObject({ tasksFolder: 'Projects', refreshDelay: 888 })
+
+    await settle(a, b)
+    expect(await onDisk(a)).toMatchObject({ tasksFolder: 'Projects', refreshDelay: 888 })
+    await twoMoreCycles(a, b)
+    expect([pushed(a), pushed(b)]).toEqual([0, 0])
   })
 
   it('keeps the later of two saves made at once, and the other in version history', async () => {
