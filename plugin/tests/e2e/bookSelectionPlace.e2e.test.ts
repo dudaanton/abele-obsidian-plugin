@@ -192,7 +192,7 @@ describe.skipIf(!available)('a word is selected where it is drawn', () => {
         const hit = doc.caretRangeFromPoint(w.r.left + w.r.width / 2, w.r.top + w.r.height / 2)
         if (!hit || hit.startContainer.nodeType !== 3) return false
         const t = hit.startContainer.data, at = hit.startOffset
-        const inside = at > 0 && at < t.length && /\S/.test(t[at - 1]) && /\S/.test(t[at])
+        const inside = at > 0 && at < t.length && /\\S/.test(t[at - 1]) && /\\S/.test(t[at])
         return inside && !(hit.startContainer === w.text && at >= w.start && at <= w.end)
       })
       const lines = []
