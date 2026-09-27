@@ -436,8 +436,9 @@ On the receiving device:
   it from its vault — telling that server — and takes the new one. Declining applies the rest of the
   transfer, and the device made for it is revoked.
 
-Closing the dialog without **Apply** revokes the device made for it too, when this device already
-syncs that vault or the switch was left unticked. A switch that fails after this device was
+Closing the dialog without **Apply** revokes the device made for it too, when this device syncs
+nothing, already syncs that vault, or the switch was left unticked. Only a switch left ticked on a
+device that syncs another vault keeps it. A switch that fails after this device was
 disconnected from its own vault says so, and the device then syncs nothing until it signs in.
 
 A transfer made by an older version of Abele still holds the sender's connection and token; the
