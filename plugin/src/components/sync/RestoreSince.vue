@@ -8,6 +8,7 @@
         :model-value="custom"
         :disabled="busy"
         @update:model-value="custom = $event"
+        @commit="custom = $event"
       />
       <Button
         :text="busy ? progress : `Restore ${picked.length}…`"
@@ -160,14 +161,38 @@ const question = computed(() => {
   )
 })
 
-/** Ask about the files picked now; the question and the restore keep to exactly those. */
+/**
+ * Ask about the files picked now; the question and the restore keep to exactly those. A preset
+ * counts from this moment, not from when it was chosen: "the last hour" of a dialog left open
+ * is the hour before Restore is pressed.
+ */
 function ask(): void {
+  if (preset.value !== 'custom') now.value = Date.now()
   asked.value = [...picked.value]
   if (asked.value.length > 0) confirming.value = true
 }
 
 /** A key for one restore, from the element's own window: see `DeletedFilesModal`. */
 const idempotencyKey = (): string => (root.value?.win ?? window).crypto.randomUUID()
+
+/**
+ * The key each batch went out under, by the files in it, kept until a restore gets through.
+ * A retry sends a batch whose answer was lost under the key it first had, so the server answers
+ * with what it did then — restored — rather than `not_found` for files it already took out of
+ * the trash (task-10 review, #5). Batches that came back are off the list, so the ones left
+ * line up with the ones sent before.
+ */
+const batchKeys = new Map<string, string>()
+
+function keyOf(ids: string[]): string {
+  const batch = ids.join(' ')
+  let key = batchKeys.get(batch)
+  if (key === undefined) {
+    key = idempotencyKey()
+    batchKeys.set(batch, key)
+  }
+  return key
+}
 
 /**
  * What the summary says of the results. Restored: back where it was. Renamed: back under a new
@@ -191,22 +216,26 @@ async function restore(): Promise<void> {
   if (client === null || busy.value || items.length === 0) return
   busy.value = true
   error.value = null
-  const key = idempotencyKey()
   const results: CommitOpResult[] = []
   try {
-    for (let at = 0, batch = 0; at < items.length; at += TRASH_RESTORE_MAX, batch++) {
+    for (let at = 0; at < items.length; at += TRASH_RESTORE_MAX) {
       progress.value = `Restoring… ${at} of ${items.length}`
       const ids = items.slice(at, at + TRASH_RESTORE_MAX).map((one) => one.file_id)
-      results.push(...(await client.restoreDeletedMany(ids, `${key}-${batch}`)))
+      results.push(...(await client.restoreDeletedMany(ids, keyOf(ids))))
     }
   } catch (failure) {
     error.value =
       `Restoring stopped after ${results.length} of ${items.length}: ${reasonOf(failure)}. ` +
       'What came back is on the server; the list shows the rest.'
-    if (results.length > 0) emit('restored', gone(items, results))
+    if (results.length > 0) {
+      emit('restored', gone(items, results))
+      // What came back is on the server; a pull puts it here now rather than at the next poll.
+      await sync.syncNow()
+    }
     busy.value = false
     return
   }
+  batchKeys.clear()
   const { restored, renamed, failed } = tally(items, results)
   sync.note(
     `restored ${restored} file(s) deleted since ${new Date(cutoff.value ?? 0).toISOString()}`

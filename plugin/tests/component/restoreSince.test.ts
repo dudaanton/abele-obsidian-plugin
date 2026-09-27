@@ -129,6 +129,24 @@ describe('picking what to restore', () => {
     expect(preview(view)).toContain('4 files deleted since then')
   })
 
+  it('takes a time a picker commits without an input event', async () => {
+    const view = open()
+    await choose(view, 'custom')
+    view.findComponent(Input).vm.$emit('commit', '2026-09-26T22:00')
+    await flushPromises()
+
+    expect(preview(view)).toContain('4 files deleted since then')
+  })
+
+  it('counts the last hour from when Restore is pressed, not from when the dialog opened', async () => {
+    const view = open()
+    vi.setSystemTime(new Date(2026, 8, 27, 15, 20))
+
+    await button(view, 'Restore')!.trigger('click')
+
+    expect(view.findComponent(ConfirmModal).props('title')).toBe('Restore 1 file?')
+  })
+
   it('offers nothing to restore when nothing went since then', async () => {
     const view = open([ITEMS[3]!])
 
@@ -195,6 +213,39 @@ describe('restoring them', () => {
     await flushPromises()
 
     expect(Notice.shown.some((text) => text.includes('when sync is resumed'))).toBe(true)
+  })
+
+  it('retries a failed restore under the same key, so what landed answers as landed', async () => {
+    client.restoreDeletedMany.mockRejectedValueOnce(new Error('the answer was lost'))
+    const view = open()
+    await button(view, 'Restore')!.trigger('click')
+    view.findComponent(ConfirmModal).vm.$emit('confirm')
+    await flushPromises()
+
+    await button(view, 'Restore')!.trigger('click')
+    view.findComponent(ConfirmModal).vm.$emit('confirm')
+    await flushPromises()
+
+    const [first, second] = client.restoreDeletedMany.mock.calls
+    expect(second![0]).toEqual(first![0])
+    expect(second![1]).toBe(first![1])
+  })
+
+  it('syncs what came back when a later batch fails', async () => {
+    const many = Array.from({ length: 1001 }, (_, n) => item(`m${n}`, `Notes/m${n}.md`, at(14, 50)))
+    client.restoreDeletedMany
+      .mockImplementationOnce(async (ids: string[]) =>
+        ids.map((id) => applied(id, `Notes/${id}.md`))
+      )
+      .mockRejectedValueOnce(new Error('the server went away'))
+    const view = open(many)
+    await button(view, 'Restore')!.trigger('click')
+
+    view.findComponent(ConfirmModal).vm.$emit('confirm')
+    await flushPromises()
+
+    expect(view.text()).toContain('Restoring stopped after 1000 of 1001')
+    expect(service.syncNow).toHaveBeenCalled()
   })
 
   it('says what went wrong, and restores nothing more, when the server fails', async () => {
