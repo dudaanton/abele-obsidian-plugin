@@ -4,6 +4,7 @@
  */
 import { ViewPlugin } from '@codemirror/view'
 import {
+  Platform,
   TFile,
   TFolder,
   editorInfoField,
@@ -24,6 +25,12 @@ import {
 } from './files'
 import { drawingEmbedProcessor, drawingEmbedsInEditor } from './embed'
 import { followNoteRename } from './noteRenames'
+import {
+  DRAW_ON_PICTURE,
+  PenOnPictureTabs,
+  PictureEmbedMenus,
+  type PictureTab,
+} from './pictureEntries'
 
 export function registerDrawing(plugin: Plugin): void {
   const { app } = plugin
@@ -88,8 +95,37 @@ export function registerDrawing(plugin: Plugin): void {
     })
   )
 
+  // Drawing begun where a picture is looked at: a pen in the header of Obsidian's own picture
+  // tab, and the menu of a picture embedded in a note.
+  const pens = new PenOnPictureTabs(
+    () => app.workspace.getLeavesOfType('image').map((leaf) => leaf.view as unknown as PictureTab),
+    (path) => void openImageInk(app, path)
+  )
+  app.workspace.onLayoutReady(() => pens.sync())
+  plugin.registerEvent(app.workspace.on('layout-change', () => pens.sync()))
+  plugin.registerEvent(app.workspace.on('file-open', () => pens.sync()))
+  plugin.register(() => pens.stop())
+  const embeds = new PictureEmbedMenus(
+    app,
+    (path, anchor) => void openImageInk(app, path, '', anchor)
+  )
+  plugin.registerMarkdownPostProcessor(embeds.remember)
+  const listen = (doc: Document) => {
+    plugin.registerDomEvent(doc, 'contextmenu', embeds.onContextMenu, { capture: true })
+    if (!Platform.isMobile) return
+    plugin.registerDomEvent(doc, 'touchstart', embeds.onTouchStart, {
+      capture: true,
+      passive: true,
+    })
+    plugin.registerDomEvent(doc, 'touchmove', embeds.onTouchMove, { capture: true, passive: true })
+    plugin.registerDomEvent(doc, 'touchend', embeds.onTouchEnd, { capture: true, passive: false })
+    plugin.registerDomEvent(doc, 'touchcancel', embeds.onTouchEnd, { capture: true })
+  }
+  listen(document)
+  plugin.registerEvent(app.workspace.on('window-open', (_win, win) => listen(win.document)))
+
   plugin.registerEvent(
-    app.workspace.on('file-menu', (menu, file) => {
+    app.workspace.on('file-menu', (menu, file, source) => {
       if (file instanceof TFolder) {
         menu.addItem((item) =>
           item
@@ -101,12 +137,14 @@ export function registerDrawing(plugin: Plugin): void {
         return
       }
       if (file instanceof TFile && DRAWABLE_PICTURES.includes(file.extension.toLowerCase())) {
+        // Opened on a picture embedded in a note: the embed it was, to save back in its place.
+        const anchor = source === 'link-context-menu' ? embeds.take(file.path) : null
         menu.addItem((item) =>
           item
-            .setTitle('Draw on this picture')
+            .setTitle(DRAW_ON_PICTURE)
             .setIcon('pen-line')
             .setSection('action')
-            .onClick(() => void openImageInk(app, file.path))
+            .onClick(() => void openImageInk(app, file.path, '', anchor))
         )
         return
       }

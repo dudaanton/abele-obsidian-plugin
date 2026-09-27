@@ -95,13 +95,29 @@ the writing is small.
 
 ## Drawing on pictures
 
-**Draw on this picture** in a picture's menu in the file explorer — PNG, JPEG, WebP, GIF or BMP —
-opens it in a tab with the same tools, the picture under the ink. In the chat, right-click a
-picture the agent made or showed, or one you attached, and choose **Draw on it**.
+A picture in the vault — PNG, JPEG, WebP, GIF or BMP — opens in a tab with the same tools, the
+picture under the ink, from wherever you are looking at it:
+
+- a picture open in its own tab: the pen in the tab's header, or **Draw on this picture** in the
+  tab's menu;
+- a picture shown in a note, in reading view or while editing: right-click it and choose **Draw
+  on this picture**. On a phone, long-press it while editing the note — in reading view a long
+  press gets the phone's own picture menu;
+- the full-screen picture viewer of a gallery: the **Draw** button under the picture;
+- the file explorer: **Draw on this picture** in the picture's menu;
+- the chat: right-click a picture the agent made or showed, or one you attached, and choose
+  **Draw on it**.
+
+A picture on the web, not in the vault, cannot be drawn on.
 
 The picture stays as it is until you choose, in the menu at the end of the bar, what becomes of
 it: **Save over the picture** (asked about first), **Save as a new picture** beside it, or **Send
-back to the chat**, which saves a new picture and attaches it to what you are writing there. A
+back to the chat**, which saves a new picture and attaches it to what you are writing there.
+Begun from a picture shown in a note, there is also **Save as a new picture and replace it in the
+note**: the new picture is saved beside the original, and that one place in the note shows it
+instead, written the way it was — its size and caption kept. The original picture stays in the
+vault. If the note has changed meanwhile so that the place cannot be found for certain, the new
+picture is still saved and the note is left as it is; a message says so. A
 picture that cannot be written in its own kind — GIF, BMP — is saved as a new PNG. Closing the tab
 without saving keeps nothing.
 

@@ -26,6 +26,7 @@ import { emptyDrawingModel, type DrawingModel } from './model'
 import { keptDrawingThickness } from './penThickness'
 import { DRAWABLE_PICTURES, IMAGE_INK_VIEW_TYPE } from './viewType'
 import { vaultUrl } from '@/helpers/vaultUrl'
+import { relink, replaceEmbed, type EmbedAnchor } from './embedRelink'
 
 export { IMAGE_INK_VIEW_TYPE }
 
@@ -41,6 +42,8 @@ export class ImageInkView extends ItemView {
   private path = ''
   /** The chat the picture came from, to send it back to; empty when it came from the vault. */
   private chat = ''
+  /** The embed in a note the picture was opened from; null when it came from anywhere else. */
+  private embed: EmbedAnchor | null = null
   private image: HTMLImageElement | null = null
 
   constructor(leaf: WorkspaceLeaf) {
@@ -90,9 +93,10 @@ export class ImageInkView extends ItemView {
   }
 
   async setState(state: unknown, result: ViewStateResult): Promise<void> {
-    const s = (state ?? {}) as { path?: unknown; chat?: unknown }
+    const s = (state ?? {}) as { path?: unknown; chat?: unknown; embed?: unknown }
     const path = typeof s.path === 'string' ? s.path : ''
     this.chat = typeof s.chat === 'string' ? s.chat : ''
+    this.embed = anchorOf(s.embed)
     if (path && path !== this.path) {
       this.path = path
       await this.loadPicture()
@@ -101,7 +105,7 @@ export class ImageInkView extends ItemView {
   }
 
   getState(): Record<string, unknown> {
-    return { path: this.path, chat: this.chat }
+    return { path: this.path, chat: this.chat, embed: this.embed }
   }
 
   /** The picture, under an empty sheet of ink, ready to draw on. */
@@ -149,6 +153,13 @@ export class ImageInkView extends ItemView {
           .setIcon('image-plus')
           .onClick(() => void this.saveNew(file))
       )
+      if (this.embed)
+        menu.addItem((item) =>
+          item
+            .setTitle('Save as a new picture and replace it in the note')
+            .setIcon('replace')
+            .onClick(() => void this.saveInNote(file))
+        )
       menu.addItem((item) =>
         item
           .setTitle(this.chat ? 'Send back to the chat' : 'Send to the chat')
@@ -201,6 +212,36 @@ export class ImageInkView extends ItemView {
     return made
   }
 
+  /**
+   * A new picture beside the original, put in the original's place in the note the picture was
+   * opened from — that one embed, written as it was. The original stays. A note changed so that
+   * the embed cannot be found for certain keeps it, and says so.
+   */
+  async saveInNote(file: TFile): Promise<boolean> {
+    const embed = this.embed
+    const note = embed && this.app.vault.getAbstractFileByPath(embed.note)
+    if (!embed || !(note instanceof TFile)) return false
+    const made = await this.saveNew(file, false)
+    if (!made) return false
+    const link = relink(embed.original, this.app.fileManager.generateMarkdownLink(made, note.path))
+    let start = -1
+    await this.app.vault.process(note, (text) => {
+      const r = replaceEmbed(text, embed, link)
+      start = r.at
+      return r.text
+    })
+    if (start < 0) {
+      new Notice(
+        `Saved as ${made.path}. The picture in ${note.basename} was not replaced: the note has changed`
+      )
+      return false
+    }
+    // Saved again, the embed now showing the new picture is the one replaced.
+    this.embed = { note: embed.note, start, original: link }
+    new Notice(`Saved as ${made.path} and put in its place in ${note.basename}`)
+    return true
+  }
+
   /** A new picture, attached to what is being written in the chat it came from. */
   async sendToChat(file: TFile): Promise<boolean> {
     const made = await this.saveNew(file, false)
@@ -212,6 +253,17 @@ export class ImageInkView extends ItemView {
     await chats.revealSidebar()
     return true
   }
+}
+
+/** An embed anchor from a tab's saved state, when it is one. */
+function anchorOf(value: unknown): EmbedAnchor | null {
+  const v = value as Partial<EmbedAnchor> | null | undefined
+  return v &&
+    typeof v.note === 'string' &&
+    typeof v.start === 'number' &&
+    typeof v.original === 'string'
+    ? { note: v.note, start: v.start, original: v.original }
+    : null
 }
 
 /** Asks before a picture is written over. */

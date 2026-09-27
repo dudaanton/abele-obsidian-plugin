@@ -58,6 +58,14 @@
         <ObsidianIcon icon="copy" no-hover text-right="Copy" @click="copyImage" />
         <ObsidianIcon icon="link" no-hover text-right="Path" @click="copyPath" />
         <ObsidianIcon
+          v-if="drawable"
+          icon="pen-line"
+          no-hover
+          text-right="Draw"
+          tooltip="Draw on this picture"
+          @click="drawOnImage"
+        />
+        <ObsidianIcon
           v-if="isLocal"
           icon="rotate-cw"
           no-hover
@@ -87,6 +95,8 @@ import { reduceImageFile, formatBytes } from '@/helpers/reduceImage'
 import { useFilesInAgent } from '@/helpers/useFilesInAgent'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { vaultUrl } from '@/helpers/vaultUrl'
+import { openImageInk } from '@/drawing/files'
+import { isDrawable } from '@/drawing/pictureEntries'
 
 export interface ViewerImage {
   url: string
@@ -136,6 +146,16 @@ const fileInfo = computed(() => {
     }),
   }
 })
+
+/** A picture in the vault that can be drawn on: the pen opens it in a drawing tab. */
+const drawable = computed(() => isLocal.value && isDrawable(resolveFile()))
+
+function drawOnImage() {
+  const file = resolveFile()
+  if (!file) return
+  close()
+  void openImageInk(GlobalStore.getInstance().app, file.path)
+}
 
 const displayUrl = computed(() => urlOverride.value || currentImage.value.url)
 

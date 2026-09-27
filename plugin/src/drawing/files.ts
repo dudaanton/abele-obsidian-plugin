@@ -12,6 +12,7 @@ import { drawingCallout } from './embedFormat'
 import { DRAWING_VIEW_TYPE, IMAGE_INK_VIEW_TYPE } from './viewType'
 import type { DrawingView } from './DrawingView'
 import type { Rect } from './items'
+import type { EmbedAnchor } from './embedRelink'
 
 /** What was found in each SVG, by path, while it has the size and time it had. */
 export const known = new Map<string, { mtime: number; size: number; drawing: boolean }>()
@@ -130,9 +131,21 @@ export async function copyEmbed(embed: string, view?: Rect | null): Promise<void
   new Notice('Copied: paste it into a note to show the drawing there')
 }
 
-/** Opens a picture to draw on, in a tab of its own; `chat` is the chat it came from. */
-export async function openImageInk(app: App, path: string, chat = ''): Promise<void> {
+/**
+ * Opens a picture to draw on, in a tab of its own; `chat` is the chat it came from, `embed` the
+ * embed in a note it was opened from, so the drawing can take the picture's place there.
+ */
+export async function openImageInk(
+  app: App,
+  path: string,
+  chat = '',
+  embed: EmbedAnchor | null = null
+): Promise<void> {
   const leaf = app.workspace.getLeaf('tab')
-  await leaf.setViewState({ type: IMAGE_INK_VIEW_TYPE, state: { path, chat }, active: true })
+  await leaf.setViewState({
+    type: IMAGE_INK_VIEW_TYPE,
+    state: { path, chat, embed },
+    active: true,
+  })
   await app.workspace.revealLeaf(leaf)
 }
