@@ -55,9 +55,22 @@ function selectInEditor(view: MarkdownView, range: LineRange): void {
 const RENDER_WAIT_MS = 1500
 const RENDER_POLL_MS = 25
 
+/**
+ * Reading view's renderer as Obsidian keeps it. Not part of the published API: `applyScroll`
+ * answers false, and does nothing, while the blocks above the line are not measured yet.
+ */
+interface PreviewRenderer {
+  sections?: PreviewSection[]
+  previewEl?: HTMLElement
+  applyScroll?: (line: number) => boolean | void
+}
+
+function rendererOf(view: MarkdownView): PreviewRenderer | undefined {
+  return (view.previewMode as unknown as { renderer?: PreviewRenderer }).renderer
+}
+
 function previewSections(view: MarkdownView): PreviewSection[] {
-  const preview = view.previewMode as unknown as { renderer?: { sections?: PreviewSection[] } }
-  return preview.renderer?.sections ?? []
+  return rendererOf(view)?.sections ?? []
 }
 
 /** Whether reading view has laid out the block holding `line` (0-based) yet. */
@@ -65,22 +78,83 @@ function rendered(view: MarkdownView, line: number): boolean {
   return previewSections(view).some((s) => !!s.el && !!s.end && s.end.line >= line)
 }
 
+/** Reading view scrolled to `line` (0-based); false while its renderer cannot do it yet. */
+function scrollPreview(view: MarkdownView, line: number): boolean {
+  const renderer = rendererOf(view)
+  if (typeof renderer?.applyScroll === 'function') return renderer.applyScroll(line) !== false
+  view.previewMode.applyScroll(line)
+  return true
+}
+
+const pause = () => new Promise((resolve) => window.setTimeout(resolve, RENDER_POLL_MS))
+
+/**
+ * Whether `el` shows inside `scroller`. Undecidable — nothing laid out, as in a test's DOM — is
+ * taken as yes, so nothing is scrolled again on a guess.
+ */
+function onScreen(el: HTMLElement, scroller: HTMLElement | null | undefined): boolean {
+  if (!scroller) return true
+  const s = scroller.getBoundingClientRect()
+  if (s.height === 0) return true
+  if (!el.isConnected) return false
+  const b = el.getBoundingClientRect()
+  return b.bottom > s.top && b.top < s.bottom
+}
+
+/**
+ * For a moment after the jump, the lines are brought back whenever they are no longer on screen:
+ * a note just opened is still laying itself out, and the tab's own opening — its focus, the
+ * place it last showed — can move it after the jump was made. Not awaited: the jump is done.
+ */
+async function keepOnScreen(
+  targets: () => HTMLElement[],
+  scroller: () => HTMLElement | null | undefined,
+  again: () => void
+): Promise<void> {
+  for (let waited = 0; waited < KEEP_MS; waited += RENDER_POLL_MS) {
+    await pause()
+    const els = targets()
+    if (els.length && !els.some((el) => onScreen(el, scroller()))) again()
+  }
+}
+
+/** How long after a jump the lines are held on screen while the note settles. */
+const KEEP_MS = 1000
+
 /**
  * Reading view scrolled to the range, and the blocks holding it flashed. A note just opened is
- * rendered a moment later, so this waits for its blocks — briefly: a note that never renders
- * that far is left as it is.
+ * rendered a moment later, and measured a moment after that — only then will it scroll — so this
+ * waits for both, briefly: a note that never renders that far is left as it is.
  */
 async function flashInPreview(view: MarkdownView, range: LineRange): Promise<void> {
-  for (let waited = 0; waited < RENDER_WAIT_MS && !rendered(view, range.from - 1); ) {
-    await new Promise((resolve) => window.setTimeout(resolve, RENDER_POLL_MS))
-    waited += RENDER_POLL_MS
+  const top = Math.max(0, range.from - 1 - contextAbove())
+  let scrolled = false
+  for (let waited = 0; waited < RENDER_WAIT_MS; waited += RENDER_POLL_MS) {
+    if (rendered(view, range.from - 1) && scrollPreview(view, top)) {
+      scrolled = true
+      break
+    }
+    await pause()
   }
-  view.previewMode.applyScroll(Math.max(0, range.from - 1 - contextAbove()))
-  for (const section of previewSections(view)) {
-    if (!section.el || !section.start || !section.end) continue
-    if (section.start.line > range.to - 1 || section.end.line < range.from - 1) continue
-    flash(section.el)
-  }
+  if (!scrolled) scrollPreview(view, top)
+  const within = () =>
+    previewSections(view).filter(
+      (s): s is Required<PreviewSection> =>
+        !!s.el &&
+        !!s.start &&
+        !!s.end &&
+        s.start.line <= range.to - 1 &&
+        s.end.line >= range.from - 1
+    )
+  for (const section of within()) flash(section.el)
+  void keepOnScreen(
+    () => within().map((s) => s.el),
+    () => rendererOf(view)?.previewEl,
+    () => {
+      scrollPreview(view, top)
+      for (const s of within()) if (!s.el.hasClass('abele-line-flash')) flash(s.el)
+    }
+  )
 }
 
 /** Flashes an element the way a footnote flashes when it is jumped to. */
@@ -95,6 +169,7 @@ export function flash(el: HTMLElement): void {
 /** The part of CodeMirror's view this needs; `editor.cm` is not in the published API. */
 interface EditorDom {
   contentDOM: HTMLElement
+  scrollDOM?: HTMLElement
   state: { doc: { line(n: number): { from: number; to: number } } }
   posAtDOM(node: Node): number
 }
@@ -106,7 +181,8 @@ interface EditorDom {
  */
 async function flashInEditor(view: MarkdownView, range: LineRange): Promise<void> {
   const from = { line: range.from - 1, ch: 0 }
-  view.editor.scrollIntoView({ from, to: { line: range.to - 1, ch: 0 } }, true)
+  const scroll = () => view.editor.scrollIntoView({ from, to: { line: range.to - 1, ch: 0 } }, true)
+  scroll()
   const cm = (view.editor as unknown as { cm?: EditorDom }).cm
   if (!cm) return
   const start = cm.state.doc.line(range.from).from
@@ -120,10 +196,18 @@ async function flashInEditor(view: MarkdownView, range: LineRange): Promise<void
   let els = within()
   // The lines are drawn once the scroll has been measured, a frame or two later.
   for (let waited = 0; !els.length && waited < RENDER_WAIT_MS; waited += RENDER_POLL_MS) {
-    await new Promise((resolve) => window.setTimeout(resolve, RENDER_POLL_MS))
+    await pause()
     els = within()
   }
   for (const el of els) flash(el)
+  void keepOnScreen(
+    within,
+    () => cm.scrollDOM,
+    () => {
+      scroll()
+      for (const el of within()) if (!el.hasClass('abele-line-flash')) flash(el)
+    }
+  )
 }
 
 /**

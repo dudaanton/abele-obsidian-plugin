@@ -171,4 +171,41 @@ describe('opening at lines in reading view', () => {
     const view = leaves[0].view
     expect(view.sections.filter((s) => s.el.classList.contains('abele-line-flash'))).toHaveLength(1)
   })
+
+  /**
+   * A note just opened has its blocks before it has measured them, and Obsidian's renderer
+   * refuses to scroll until it has — saying so only by returning false. Asked once, too early,
+   * a note opened fresh from a book stayed at its top with the flash off screen.
+   */
+  it('scrolls once the renderer has measured the note, not when it first has blocks', async () => {
+    vi.useRealTimers()
+    const origGetLeaf = (app.workspace as { getLeaf: (p: unknown) => { view: FakeMarkdownView } })
+      .getLeaf
+    const measured: { at: number | null } = { at: null }
+    ;(app.workspace as { getLeaf: unknown }).getLeaf = (pane: unknown) => {
+      const leaf = origGetLeaf(pane)
+      let computed = false
+      setTimeout(() => (computed = true), 150)
+      const renderer = {
+        sections: leaf.view.sections,
+        applyScroll: (n: number) => {
+          if (!computed) return false
+          measured.at = n
+          return true
+        },
+      }
+      leaf.view.previewMode = {
+        // Obsidian's own wrapper drops what the renderer answers.
+        applyScroll: (n: number) => void renderer.applyScroll(n),
+        renderer,
+      } as never
+      return leaf
+    }
+
+    await openNoteAtLines(app as never, note(), { from: 20, to: 20 })
+
+    expect(measured.at).toBe(17)
+    const view = leaves[0].view
+    expect(view.sections.filter((s) => s.el.classList.contains('abele-line-flash'))).toHaveLength(1)
+  })
 })
