@@ -41,6 +41,7 @@ import { mermaidExtensions, refreshMermaidEditors } from './editor/MermaidPlugin
 import { mermaidPostProcessor, MERMAID_PROCESSOR_ORDER } from './mermaid/mermaidBlocks'
 import { footnoteExtensions } from './editor/FootnotePlugin'
 import { highlightStateField } from './editor/HighlightPlugin'
+import { coloredHighlightPostProcessor } from './editor/highlightPostProcessor'
 import {
   commentExtensions,
   setCommentClickHandler,
@@ -432,6 +433,8 @@ export default class AbelePlugin extends Plugin {
     this.registerEditorExtension(commentExtensions)
     // The gallery outside the editor: reading mode, embeds, chat, script views.
     this.registerMarkdownPostProcessor(galleryPostProcessor)
+    // Coloured highlights outside the editor, for the same places.
+    this.registerMarkdownPostProcessor(coloredHighlightPostProcessor)
     // Mermaid diagrams drawn by the plugin's viewer rather than Obsidian's: in rendered
     // markdown ahead of Obsidian's own processor, and in Live Preview as the block's widget.
     this.registerMarkdownPostProcessor(mermaidPostProcessor, MERMAID_PROCESSOR_ORDER)
