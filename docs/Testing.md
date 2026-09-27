@@ -390,6 +390,12 @@ Three files, three concerns:
   columns, a paragraph above a highlight grows by a couple of lines while the chapter keeps its
   page count (what a late picture, font or style does), and every box drawn over the page is
   compared with where its words now are; again after a page turned and back.
+- `bookSelectionPlace.e2e.test.ts` — **a word is selected where it is drawn**, desktop and phone
+  (`tests/fixtures/books/latvianBook.ts`, made-up justified text in a monospace font): for every
+  word on the page, the middle of its measured box must hit that word, once the page has settled
+  and again after its style changed; on the phone a real long press in the middle of a word must
+  select that word with its selection box on it. iOS WebKit measured such a line as if it were
+  not stretched while it drew it stretched. Picture in `/tmp/abele-phone/selection-place-held.png`.
 - `bookStyles.e2e.test.ts` — **a book's own styles** (`tests/fixtures/books/styledBook.ts`): a
   linked stylesheet importing another shows its indents, alignment, table and drop cap; its fixed
   text size follows the reader's; no request leaves for the rules pointing outside the book; turned

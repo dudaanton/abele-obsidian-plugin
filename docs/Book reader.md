@@ -87,10 +87,12 @@ changes size and whenever the view comes to rest on a new place. When that finds
 console says so (`book marks moved with their words`, with the reason and how far). They are
 also measured again when the page's styles change — a font changed in the settings can move the
 words sideways without any line changing its height. And a few times in the first seconds after a page
-arrives or its styles change, the page is laid out again: on an iPhone opened fresh with a font
-of the device's own (a monospace text font), WebKit reported where the words of a justified line
-are from a layout made before the font was in place, so highlights sat a couple of letters off
-until the font was changed; a layout that was right does not move.
+arrives or its styles change, the page's text is set anew with a font property given to all of it
+and taken back at once, and laid out again. On an iPhone with a monospace text font, WebKit draws
+and hit-tests a justified line stretched, but on a paragraph's first layout reports where its words
+are as if the line were not: a word long-pressed was selected with its selection painted over the
+words to its left, and highlights sat a few letters off, until the font was changed and back. Any
+change to a font property of the text puts it right; a layout that was right does not move.
 
 ### Fonts from the vault
 

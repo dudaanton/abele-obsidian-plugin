@@ -51,41 +51,33 @@ const onlyRelayout = (records: MutationRecord[]): boolean =>
   )
 
 /**
- * Sets every line of the page anew: its alignment overridden and put back within one task, laid
- * out each time, so nothing is painted in between and a page that was right stays as it was.
- * WebKit keeps how far it stretched each justified line; laying the columns out again reuses it,
- * so an iPhone that measured the lines before the text's font was in place kept reporting the
- * words where the stretch had put them (2026-09-27: highlights two letters off on each fresh open).
+ * The passing font property `relayoutText` sets on all the text: one no book sets, part of what
+ * WebKit keys a font by, that changes nothing in Latin or Cyrillic text.
  */
-/**
- * An element's own alignment, set on the element: it is in a book's page, where neither the
- * plugin's stylesheet nor Obsidian's `setCssProps` reach.
- */
-function alignOn(el: HTMLElement, value: string, priority: string): void {
-  el.style.setProperty('text-align', value, priority)
-}
+const PASSING_FONT = 'font-variant-east-asian: jis78 !important;'
 
+/**
+ * Sets every line of the page anew, with the text's font made anew: a font property given to all
+ * of it and taken back within one task, laid out each time, so nothing is painted in between and
+ * a page that was right stays as it was.
+ *
+ * iOS WebKit (iOS 26, 2026-09-27) draws a justified line in a monospace font stretched across the
+ * column, and hit-tests it that way, but on a paragraph's first layout answers where its words
+ * are — `Range.getClientRects`, the selection it paints, the highlights measured from it — as if
+ * the line were not stretched. A word long-pressed was selected with its selection painted over
+ * the words to its left, and highlights sat a few letters off, until the reader's font was
+ * switched and back. What puts it right is a change to any font property of the text, and it
+ * stays right after; realigning the lines, resizing the column or changing the text does not.
+ */
 export function relayoutText(doc: Document): void {
   const head = doc.head
   if (!head) return
   const style = doc.createElementNS('http://www.w3.org/1999/xhtml', 'style')
   style.setAttribute(RELAYOUT_MARK, '')
-  style.textContent = 'html, body, body * { text-align: start !important; }'
+  style.textContent = `html, body, body * { ${PASSING_FONT} }`
   head.append(style)
-  // A book's own `style` attribute is not cleaned of `!important` the way its stylesheets are, and
-  // wins over any stylesheet: those elements are set plainly on themselves, and given back after.
-  const own: [HTMLElement, string, string][] = []
-  for (const el of Array.from(doc.querySelectorAll<HTMLElement>('[style*="text-align"]'))) {
-    own.push([
-      el,
-      el.style.getPropertyValue('text-align'),
-      el.style.getPropertyPriority('text-align'),
-    ])
-    alignOn(el, 'start', 'important')
-  }
   void doc.documentElement.offsetHeight
   style.remove()
-  for (const [el, value, priority] of own) alignOn(el, value, priority)
   void doc.documentElement.offsetHeight
 }
 
@@ -162,14 +154,14 @@ const BLOCKS =
   'p, li, dd, dt, blockquote, pre, table, figure, img, svg, video, h1, h2, h3, h4, h5, h6, header, aside, hr'
 
 /**
- * When, after a page arrives or its styles change, it is laid out again (`relayoutColumns`) and
- * what is drawn over its words measured again. On an iPhone opened fresh with a monospace text
- * font, WebKit answered where the words of a justified line are from a layout made before the
- * font was in place, while it drew them where they are: every highlight's first and last line a
- * couple of letters off, on each fresh open, right again after the font was changed and back
- * (2026-09-27). Nothing announces it — the font is the device's own, so no font event, and no
- * line changes height — and the words' own measure is as stale as the highlight's. Laying the
- * page out again puts it right; a layout that was right does not move.
+ * When, after a page arrives or its styles change, its text is set anew (`relayoutText`), it is
+ * laid out again (`relayoutColumns`) and what is drawn over its words measured again. On an
+ * iPhone with a monospace text font, WebKit answered where the words of a justified line are as
+ * if the line were not stretched, while it drew and hit-tested them stretched: highlights a few
+ * letters off, and a word long-pressed selected with its selection over its neighbours, right
+ * again after the font was changed and back (2026-09-27). Nothing announces it, and the words'
+ * own measure is as wrong as the highlight's. Making the text's font anew puts it right; a
+ * layout that was right does not move.
  */
 export const FONT_CHECKS_MS = [250, 700, 1500, 3000, 6000, 12000]
 
