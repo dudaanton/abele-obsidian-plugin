@@ -1,5 +1,12 @@
 import type { App } from 'obsidian'
-import { encodeText, settingsCategory, sha256, type SelectiveSettings } from '@abele/sync-core'
+import {
+  encodeText,
+  IgnoreRules,
+  settingsCategory,
+  sha256,
+  type PathMatcher,
+  type SelectiveSettings,
+} from '@abele/sync-core'
 import { messageOf } from './messages'
 
 /**
@@ -9,6 +16,12 @@ import { messageOf } from './messages'
 
 /** The meta key the scope is filed under, the same one the daemon uses. */
 export const SCOPE_KEY = 'scope'
+
+/**
+ * The scripts folder the engine assumes when it is given none — the core's own default, which it
+ * does not export. Asked for only where the plugin reads a path the way the engine would.
+ */
+export const DEFAULT_SCRIPTS_FOLDER = 'Scripts'
 
 /** The vault's ignore file, read from its root. */
 export const IGNORE_FILE = '.abele-sync-ignore'
@@ -40,6 +53,26 @@ export function configLine(configDir: string): string {
     `the config folder here is ${configDir}, which sync does not know: ` +
     'Obsidian settings do not sync on this device, and nothing in either folder is touched'
   )
+}
+
+/**
+ * What this device will not sync whatever the selective settings say: the vault's
+ * `.abele-sync-ignore`, parsed by the core's own gitignore reader so that the plugin and the
+ * daemon read one file the same way, and every hidden path but the config folder (`isHidden`).
+ *
+ * `keptOut` is one more wire path left alone, for as long as the engine this is built for runs:
+ * this device's own `data.json` while it joins a vault (`EngineRunner.build`).
+ */
+export function ignoreFor(
+  configDir: string,
+  ignoreText: string | null,
+  keptOut: string | null = null
+): PathMatcher {
+  const rules = ignoreText === null ? null : IgnoreRules.parse(ignoreText)
+  return {
+    ignores: (wirePath) =>
+      wirePath === keptOut || isHidden(wirePath, configDir) || (rules?.ignores(wirePath) ?? false),
+  }
 }
 
 /** What the log says about the rules the engine was just built on. */

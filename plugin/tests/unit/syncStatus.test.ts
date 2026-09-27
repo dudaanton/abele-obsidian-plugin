@@ -18,7 +18,15 @@ import { formatWhen, reasonOf } from '@/sync/format'
  * sync outside the settings tab is here, so this is where the vocabulary is pinned down.
  */
 
-const STATES: SyncState[] = ['disconnected', 'idle', 'syncing', 'paused', 'offline', 'error']
+const STATES: SyncState[] = [
+  'disconnected',
+  'joining',
+  'idle',
+  'syncing',
+  'paused',
+  'offline',
+  'error',
+]
 
 const status = (over: Partial<SyncStatus> = {}): SyncStatus => ({
   ...DISCONNECTED_STATUS,
@@ -73,6 +81,18 @@ describe('the status vocabulary', () => {
   it('tells a disconnected device apart from one that has never synced', () => {
     expect(statusTooltip(DISCONNECTED_STATUS)).toBe('Abele Sync: Not connected')
     expect(statusTooltip(status({ lastSyncAt: null }))).toContain('Last sync never')
+  })
+
+  /**
+   * A device that took a connection from a transfer, with files here and on the server, syncs
+   * nothing until somebody says which side wins. The status bar is where that is seen first.
+   */
+  it('says a join is waiting for a choice, and where to make it', () => {
+    const joining = status({ state: 'joining' })
+
+    expect(statusText(joining)).toBe('Choose how to join')
+    expect(statusTooltip(joining)).toContain('Nothing syncs until you choose, on the Sync tab')
+    expect(statusTooltip(joining)).not.toContain('Last sync')
   })
 
   it('puts the last failure in the tooltip', () => {

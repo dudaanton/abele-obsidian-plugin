@@ -20,6 +20,9 @@ import { selectiveDefaults, type SelectiveSettings } from '@abele/sync-core'
 import { serverUrlProblem } from '@abele/sync-protocol'
 import { DEVICE_SECRET_PREFIX, isDeviceSecretId } from '@/secrets/deviceSecret'
 import { readLedgerId, type LocalStorage } from './ledgerId'
+import { joinFrom, type JoinState } from './joinState'
+
+export type { JoinState } from './joinState'
 
 /** The key the record is filed under in this vault's local storage. */
 export const CONNECTION_KEY = 'abele-sync-connection'
@@ -60,6 +63,11 @@ export interface DeviceConnection {
    * tell the server with (`revoke.ts`).
    */
   pendingRevoke: PendingRevoke[]
+  /**
+   * A join this device is in the middle of, or null: see {@link JoinState}. Written by the
+   * enrolment verbs alone, and cleared once the engine reports the join done (`joinFinished`).
+   */
+  join: JoinState | null
   /**
    * Set once the connection has been moved out of `data.json`. Every record written says so
    * (`writeConnection`), and the move looks for a record at all rather than for this.
@@ -122,6 +130,7 @@ export function emptyConnection(isMobile = false): DeviceConnection {
     paused: false,
     selective: defaultSelective(isMobile),
     pendingRevoke: [],
+    join: null,
     migrated: false,
   }
 }
@@ -180,6 +189,8 @@ export function inspectConnection(
   if (o.selective !== undefined && objectOf(o.selective) === null) damaged.push('selective')
   const pending = pendingFrom(o.pendingRevoke)
   if (pending.damaged) damaged.push('pendingRevoke')
+  const join = joinFrom(o.join, vaultId)
+  if (join.damaged) damaged.push('join')
   return {
     connection: {
       serverUrl,
@@ -192,6 +203,7 @@ export function inspectConnection(
       paused: boolOr(o.paused, false),
       selective: selectiveFrom(o.selective, isMobile),
       pendingRevoke: pending.entries,
+      join: join.join,
       migrated: o.migrated === true,
     },
     damaged,

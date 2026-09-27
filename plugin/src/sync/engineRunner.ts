@@ -1,10 +1,9 @@
 import { Platform, type App } from 'obsidian'
 import { toRaw } from 'vue'
 import {
-  IgnoreRules,
+  joinFinished,
   SyncClient,
   SyncEngine,
-  type PathMatcher,
   type StateEntry,
   type VaultClient,
 } from '@abele/sync-core'
@@ -12,7 +11,8 @@ import { caseKey, PLAIN_HTTP_REFUSED, serverUrlProblem } from '@abele/sync-proto
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { ObsidianFileSystem } from './ObsidianFileSystem'
-import { selectiveFrom, type DeviceConnection } from './connection'
+import { selectiveFrom, type DeviceConnection, type JoinState } from './connection'
+import { JOIN_SCOPE, joinLine, joinOf } from './joinState'
 import { enrolledElsewhere } from './enrolment'
 import {
   factoryOf,
@@ -31,13 +31,13 @@ import {
   IGNORE_FILE,
   SCOPE_KEY,
   configLine,
+  ignoreFor,
   ignoreLine,
-  isHidden,
   isWireConfigDir,
   readIgnore,
   scopeKey,
 } from './scope'
-import { DISCONNECTED_STATUS, statusOf } from './status'
+import { DISCONNECTED_STATUS, JOINING_LINE, statusOf } from './status'
 import type { StatusBoard } from './statusBoard'
 import { USER_AGENT } from './transport'
 
@@ -87,6 +87,11 @@ export interface EngineHost {
   serialise<T>(fn: () => Promise<T>): Promise<T>
   /** A run wrote the plugin's own `data.json`: the plugin reloads its settings. */
   settingsArrived(): void
+  /**
+   * A run finished the join this engine was built with (`joinFinished`): the host forgets the
+   * choice, so no later engine is built with it, and says so.
+   */
+  joined(join: JoinState): void
 }
 
 export class EngineRunner {
@@ -253,8 +258,17 @@ export class EngineRunner {
       const elsewhere = enrolledElsewhere(connection.serverUrl, connection.enrolledUrl)
       if (elsewhere !== null) throw new Error(elsewhere)
 
+      // A connection a transfer brought, onto a vault that has files, into one that has files
+      // too: which side wins is asked first, and nothing moves until it is answered.
+      const join = joinOf(connection)
+      if (join?.ask === true) {
+        await this.awaitJoin()
+        return
+      }
+
       const ignoreText = await readIgnore(app)
-      const scope = await scopeKey(connection.selective, ignoreText)
+      const scope =
+        (await scopeKey(connection.selective, ignoreText)) + (join === null ? '' : JOIN_SCOPE)
       // The scripts folder too: the engine's filter reads it once, when it is built.
       const scriptsFolder = AbeleConfig.getInstance().ai.scriptsFolder
       const built = [
@@ -275,7 +289,7 @@ export class EngineRunner {
       this.built = built
       this.builtToken = token
       this.scope = scope
-      await this.build(connection, token, ignoreText)
+      await this.build(connection, token, ignoreText, join)
     } catch (error) {
       // A state database that would not open, a ledger that would not be read, a client the
       // connection will not build. Nothing is running and nothing will retry, so it has to be
@@ -293,6 +307,17 @@ export class EngineRunner {
     }
   }
 
+  /**
+   * No engine while the join question is open: whatever is running stops, and the status says a
+   * choice is waiting — said once in the log, not at every reconcile a settings save queues.
+   */
+  private async awaitJoin(): Promise<void> {
+    const waiting = this.engine === null && this.board.status.value.state === 'joining'
+    await this.teardown({ publish: false })
+    if (!waiting) this.board.note(`not syncing yet: ${JOINING_LINE}`)
+    this.board.publish({ ...DISCONNECTED_STATUS, state: 'joining' })
+  }
+
   /** Pause or resume an engine already running, to match what the connection now says. */
   private applyPause(paused: boolean): void {
     const engine = this.engine
@@ -302,20 +327,26 @@ export class EngineRunner {
     if (!paused && !running) engine.resume()
   }
 
+  /**
+   * `join` is the join in progress, or null. While there is one the engine is told the side the
+   * person chose, and leaves this device's own `data.json` alone: every create of a join carries
+   * that side, and "this device wins" would make a fresh device's defaults the vault's settings
+   * whatever their age. Once the join is done the next engine takes the file up the way a first
+   * contact does — the vault's copy wins, and this one goes to the file's history.
+   */
   private async build(
     connection: DeviceConnection,
     token: string,
-    ignoreText: string | null
+    ignoreText: string | null,
+    join: JoinState | null
   ): Promise<void> {
     const app = this.host.app()
     if (app === null) return
     const deps = this.host.deps()
     const pollMs = pollMsOf(deps)
     const fallbackMs = fallbackMsOf(deps)
-    const settings = new OwnSettingsWatch(
-      `${app.vault.configDir}/plugins/${this.host.pluginId()}/data.json`,
-      () => this.host.settingsArrived()
-    )
+    const ownSettings = `${app.vault.configDir}/plugins/${this.host.pluginId()}/data.json`
+    const settings = new OwnSettingsWatch(ownSettings, () => this.host.settingsArrived())
     const fs = new ObsidianFileSystem(app, {
       ...(pollMs === undefined ? {} : { pollMs }),
       onWatch: (paths) => this.noticed(paths),
@@ -346,14 +377,19 @@ export class EngineRunner {
         // A plain copy, never the ref's own: the engine files it in the state database with the
         // scope its marks were taken under, and IndexedDB cannot clone a reactive proxy.
         selective: selectiveFrom(toRaw(connection.selective), Platform.isMobile),
-        ignore: this.ignore(app, ignoreText),
+        // The ignore file and the hidden paths (`ignoreFor`), and while a join is in progress
+        // this device's own `data.json`. Not that file otherwise: it names no device, so it
+        // follows the Plugin settings switch like any other plugin's (`OwnSettingsWatch`).
+        ignore: ignoreFor(app.vault.configDir, ignoreText, join === null ? null : ownSettings),
         // Filed with the scope, so a later engine can tell what this ignore file left out.
         ignoreText,
         ...(scriptsFolder === '' ? {} : { scriptsFolder }),
         ...(fallbackMs === undefined ? {} : { fallbackMs }),
+        ...(join?.prefer ? { joinPrefer: join.prefer } : {}),
         onSync: (report) => {
           this.board.note(summarise(report))
           settings.settle()
+          if (join !== null && joinFinished(report)) this.host.joined(join)
         },
         // A run that failed after its pull still wrote what it pulled.
         onFail: (error, kind) => {
@@ -381,6 +417,7 @@ export class EngineRunner {
       state: connection.paused ? 'paused' : 'syncing',
     })
     this.board.note(`syncing vault ${connection.vaultId} with ${connection.serverUrl}`)
+    if (join !== null) this.board.note(joinLine(join))
     this.board.note(ignoreLine(ignoreText))
     if (!isWireConfigDir(app.vault.configDir)) this.board.note(configLine(app.vault.configDir))
     await this.first(engine, store, connection.paused)
@@ -469,31 +506,6 @@ export class EngineRunner {
   }
 
   /* -- The pieces the engine is given ----------------------------------- */
-
-  /**
-   * What this device will not sync whatever the selective settings say.
-   *
-   * The vault's `.abele-sync-ignore`, parsed by the core's own gitignore reader so that the
-   * plugin and the daemon read one file the same way.
-   *
-   * Not this plugin's own `data.json` any more: it names no device (the connection is in local
-   * storage), so it follows the **Plugin settings** switch like any other plugin's, and a pull
-   * that writes it is followed by a reload (`OwnSettingsWatch`). Its chat index,
-   * `chat-index.json` beside it, needs no rule here: the core files everything in a plugin's
-   * folder but its code and `data.json` as a cache that never travels.
-   *
-   * And every hidden path but the config folder. Obsidian indexes nothing with a dot-segment,
-   * so a `.git/HEAD` or a `.DS_Store` this device pulled would be missing from the very next
-   * scan, and a missing file the ledger knows is a delete — a daemon on a git or Syncthing
-   * folder would lose them. Ignored here, they are neither taken nor deleted.
-   */
-  private ignore(app: App, ignoreText: string | null): PathMatcher {
-    const rules = ignoreText === null ? null : IgnoreRules.parse(ignoreText)
-    const configDir = app.vault.configDir
-    return {
-      ignores: (wirePath) => isHidden(wirePath, configDir) || (rules?.ignores(wirePath) ?? false),
-    }
-  }
 
   /**
    * The batch the watcher handed the engine, looked at for one path of the host's own.

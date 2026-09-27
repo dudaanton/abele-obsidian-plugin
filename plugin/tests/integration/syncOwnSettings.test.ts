@@ -3,6 +3,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { Platform, type App } from 'obsidian'
 import type { VaultClient } from '@abele/sync-core'
+import type { JoinPrefer } from '@abele/sync-protocol'
+import { IndexedDbStateStore, stateDatabaseName } from '@/sync/IndexedDbStateStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { SyncService } from '@/sync/SyncService'
 import { SecretStore, setSecrets, type Keychain } from '@/secrets/SecretStore'
@@ -77,6 +79,8 @@ interface Device {
   saves: number
   /** The plugin's `onExternalSettingsChange`, for making Obsidian's own call by hand. */
   tell: () => Promise<void>
+  /** Where its ledger lives. */
+  idb: IDBFactory
 }
 
 const encoder = new TextEncoder()
@@ -98,7 +102,11 @@ function reordered(value: unknown): unknown {
  */
 async function device(
   name: string,
-  { reversed = false, settings }: { reversed?: boolean; settings?: Record<string, unknown> } = {}
+  {
+    reversed = false,
+    settings,
+    prefer,
+  }: { reversed?: boolean; settings?: Record<string, unknown>; prefer?: JoinPrefer | null } = {}
 ): Promise<Device> {
   const app = buildFakeVault([
     { path: 'Existing.md', content: `made on ${name}`, mtime: 1000, ctime: 1000 },
@@ -157,15 +165,16 @@ async function device(
   await made.store.load()
 
   made.service = new (SyncService as unknown as new () => SyncService)()
+  made.idb = new IDBFactory()
   made.service.init(app as unknown as App, plugin as unknown as AbelePlugin, {
     fetch: (input, init) => server.fetch(input, init),
     WebSocket: server.WebSocket,
-    indexedDB: new IDBFactory(),
+    indexedDB: made.idb,
     fallbackMs: 60_000,
     pollMs: 60_000,
   })
   await made.service.connect(server.BASE_URL, EMAIL, server.TEST_PASSWORD)
-  await made.service.chooseVault(vaultId, name)
+  await made.service.chooseVault(vaultId, name, prefer)
   await waitFor(`${name} to sync`, () => {
     const status = made.service.status.value
     return status.state === 'idle' && status.lastSyncAt !== null
@@ -331,6 +340,54 @@ describe('Abele settings between two devices', () => {
 
     await twoMoreCycles(a, b)
     expect([pushed(a), pushed(b)]).toEqual([0, 0])
+  })
+
+  /**
+   * "This device wins" makes every file the joining device holds the head, whatever its age —
+   * and every Abele device holds a `data.json` from its first launch. So that one file is left out
+   * of the join, and taken up once the join is done the way a first contact is: the vault's wins.
+   */
+  it('a device joining with "this device wins" still takes the vault’s settings, and its own go to history', async () => {
+    const a = await device('Laptop')
+    a.config.tasksFolder = 'X'
+    await a.config.saveSettings()
+    await cycle(a)
+
+    await tick(20)
+    const b = await device('Phone', { settings: { tasksFolder: 'From the phone' }, prefer: 'mine' })
+    await settle(a, b)
+
+    for (const one of [a, b]) {
+      expect(one.config.tasksFolder).toBe('X')
+      expect((await onDisk(one)).tasksFolder).toBe('X')
+    }
+    expect(b.service.connection.value.join).toBeNull()
+    const item = (await other.manifest(null)).items.find((held) => held.path === DATA)
+    const versions = await other.versions(item!.file_id)
+    const texts = await Promise.all(
+      versions.map(async (version) =>
+        new TextDecoder().decode(await other.versionBytes(item!.file_id, version.version_id))
+      )
+    )
+    expect(texts.some((text) => text.includes('From the phone'))).toBe(true)
+    // The note both held went the way the phone asked: its copy is the head.
+    const note = (await other.manifest(null)).items.find((held) => held.path === 'Existing.md')
+    const head = await other.versionBytes(note!.file_id, note!.version_id)
+    expect(new TextDecoder().decode(head)).toBe('made on Phone')
+
+    // Left out while joining and back in after: nothing marks it as a file that went while out
+    // of scope, which is what would later read its absence as a delete.
+    const { stateId } = b.app.loadLocalStorage('abele-sync-ledger') as { stateId: string }
+    const store = await IndexedDbStateStore.open(b.idb, stateDatabaseName(stateId))
+    const marks = JSON.parse((await store.getMeta('out-of-scope-files')) ?? '[]') as string[]
+    store.close()
+    expect(marks).not.toContain(item!.file_id)
+
+    await twoMoreCycles(a, b)
+    expect([pushed(a), pushed(b)]).toEqual([0, 0])
+    const still = (await other.manifest(null)).items.find((held) => held.path === DATA)
+    expect(still?.file_id).toBe(item!.file_id)
+    expect((await onDisk(b)).tasksFolder).toBe('X')
   })
 
   it('settles even when something writes the settings back every time they are reloaded', async () => {

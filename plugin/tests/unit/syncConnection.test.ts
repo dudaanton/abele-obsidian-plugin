@@ -445,3 +445,54 @@ describe('the fields a Disconnect relies on', () => {
     expect(readConnection(local).enrolledUrl).toBe('https://sync.example.com')
   })
 })
+
+/**
+ * Joining a vault that already has files, with files here too: which side wins is asked, and the
+ * answer is kept with the connection until the join is done — across a restart, so a join cut
+ * off half way finishes the way the person chose. A record that does not read as a join is read
+ * as a question still to answer: guessing would be guessing whose copy of a file becomes the head.
+ */
+describe('the join', () => {
+  it('starts with none', () => {
+    expect(emptyConnection().join).toBeNull()
+    expect(readConnection(storage({ [CONNECTION_KEY]: connected() })).join).toBeNull()
+  })
+
+  it('reads back a choice, and a question still to answer', () => {
+    for (const join of [
+      { vaultId: 'v1', prefer: 'theirs' as const, ask: false },
+      { vaultId: 'v1', prefer: 'mine' as const, ask: false },
+      { vaultId: 'v1', prefer: null, ask: false },
+      { vaultId: 'v1', prefer: null, ask: true },
+    ]) {
+      const local = storage()
+      writeConnection(local, { ...connected(), join })
+
+      expect(readConnection(local).join).toEqual(join)
+    }
+  })
+
+  it('reads a join it cannot make out as the question asked again, and says so', () => {
+    for (const join of [
+      'theirs',
+      { vaultId: 'v1', prefer: 'everything', ask: false },
+      { vaultId: 7, prefer: 'mine', ask: false },
+      { vaultId: 'v1', prefer: 'mine', ask: 'no' },
+    ]) {
+      const local = storage({ [CONNECTION_KEY]: { ...connected(), join } })
+
+      const { connection, damaged } = inspectConnection(local)
+
+      expect(connection.join).toEqual({ vaultId: 'v1', prefer: null, ask: true })
+      expect(damaged).toContain('join')
+    }
+  })
+
+  it('drops a join it cannot make out on a device with no vault to join', () => {
+    const local = storage({
+      [CONNECTION_KEY]: { ...emptyConnection(), migrated: true, join: { prefer: 'x' } },
+    })
+
+    expect(readConnection(local).join).toBeNull()
+  })
+})

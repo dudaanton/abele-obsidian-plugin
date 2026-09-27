@@ -388,7 +388,7 @@ describe('a connection change cannot move the token', () => {
     expect(conn().serverUrl).toBe('https://elsewhere.example.com')
   })
 
-  it('refuses the enrolment address, the waiting revokes and a revoke id from outside', async () => {
+  it('refuses the enrolment address, the waiting revokes, the join and a revoke id from outside', async () => {
     await connect()
     const held = { ...conn() }
 
@@ -396,6 +396,8 @@ describe('a connection change cannot move the token', () => {
       { enrolledUrl: 'https://elsewhere.example.com' },
       { pendingRevoke: [] },
       { migrated: false },
+      // Which side wins a join is asked of the person, never set around the question.
+      { join: { vaultId: held.vaultId, prefer: 'theirs', ask: false } },
     ]) {
       await expect(service.updateConnection(patch as never)).rejects.toThrow('kept by the plugin')
     }
@@ -441,6 +443,9 @@ describe('a transfer hands over a device of its own', () => {
     service = SyncService.getInstance()
     start()
     await service.adoptTransferred(connection, siblingToken, selective(false))
+    // Both vaults hold files: nothing syncs until the join question is answered.
+    expect(service.status.value.state).toBe('joining')
+    await service.answerJoin(null)
     await synced()
 
     expect(conn()).toMatchObject({
@@ -505,6 +510,9 @@ describe('a transfer hands over a device of its own', () => {
       minted.device_token,
       selective(true)
     )
+    // An empty vault: the question is a plain confirmation, with no side to keep.
+    expect((await service.joinQuestion()).kind).toBe('upload')
+    await service.answerJoin()
     await synced()
 
     expect(await liveDevices(accountToken)).not.toContain(deviceId)

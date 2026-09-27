@@ -6,8 +6,9 @@ import { formatWhen } from './format'
  * What the plugin says sync is doing, in one word and one line.
  *
  * The engine has five states and knows nothing about a device that was never set up, which is
- * the state a vault spends most of its life in: `disconnected` is the plugin's own, and it is
- * the only one this module adds. Everything else is the engine's, spelled the same way, so a
+ * the state a vault spends most of its life in: `disconnected` is the plugin's own. So is
+ * `joining`: a device that took a connection from a transfer, with files here and on the server,
+ * builds no engine until somebody says which side wins where both hold a file. Everything else is the engine's, spelled the same way, so a
  * reader comparing the status bar with the daemon's log is looking at one vocabulary.
  *
  * The labels are the user's words rather than the engine's — `idle` is what the engine calls a
@@ -15,7 +16,14 @@ import { formatWhen } from './format'
  * also the phrase Obsidian Sync uses for the same thing.
  */
 
-export type SyncState = 'disconnected' | 'idle' | 'syncing' | 'paused' | 'offline' | 'error'
+export type SyncState =
+  | 'disconnected'
+  | 'joining'
+  | 'idle'
+  | 'syncing'
+  | 'paused'
+  | 'offline'
+  | 'error'
 
 export interface SyncStatus {
   state: SyncState
@@ -43,6 +51,7 @@ export const DISCONNECTED_STATUS: SyncStatus = Object.freeze({
 
 export const STATUS_LABEL: Record<SyncState, string> = {
   disconnected: 'Not connected',
+  joining: 'Choose how to join',
   idle: 'Fully synced',
   syncing: 'Syncing',
   paused: 'Paused',
@@ -56,6 +65,7 @@ export const STATUS_LABEL: Record<SyncState, string> = {
  */
 export const STATUS_ICON: Record<SyncState, string> = {
   disconnected: 'cloud-off',
+  joining: 'git-merge',
   idle: 'check-circle',
   syncing: 'refresh-cw',
   paused: 'pause-circle',
@@ -89,6 +99,11 @@ export function statusText(status: SyncStatus): string {
   return status.state === 'idle' && status.pending > 0 ? `${label} (${status.pending})` : label
 }
 
+/** What the tooltip says of a join waiting for its question to be answered. */
+export const JOINING_LINE =
+  'This vault and the server both hold files. Nothing syncs until you choose, on the Sync tab, ' +
+  'which side is kept where both have a file.'
+
 /** How many changes, in words: `1 change is`, `3 changes are`. */
 export function changesAre(count: number): string {
   return count === 1 ? '1 change is' : `${count} changes are`
@@ -106,7 +121,10 @@ export function statusTooltip(status: SyncStatus): string {
   if (status.state === 'idle' && status.pending > 0) {
     lines.push(`${changesAre(status.pending)} waiting to be sent`)
   }
-  if (status.state !== 'disconnected') lines.push(`Last sync ${formatWhen(status.lastSyncAt)}`)
+  if (status.state === 'joining') lines.push(JOINING_LINE)
+  else if (status.state !== 'disconnected') {
+    lines.push(`Last sync ${formatWhen(status.lastSyncAt)}`)
+  }
   if (status.lastError !== null) lines.push(status.lastError)
   return lines.join('\n')
 }

@@ -1147,7 +1147,10 @@ alone unless asked.
 Two records are kept in Obsidian's local storage for this vault, which no file carries: under
 `abele-sync-connection`, this device's connection — the server (and the one it enrolled on), the
 vault and its name, the device it enrolled as, the keychain name of its token, whether it is
-paused, what of the vault it takes, and any device it left while the server could not be told,
+paused, what of the vault it takes, a join in progress (which side wins where this vault and the
+server both held a file — `mine`, `theirs` or `null` for merge both — or `ask` while a transfer's
+connection waits for the person to choose; cleared once the join is done), and any device it left
+while the server could not be told,
 whose token is kept under an `abele-sync-device-revoke-…` keychain name until it is (one that left
 a server on plain http to another machine is never told, and is kept until the person forgets it); under
 `abele-sync-ledger`, the id of the record of what it has synced. That record is outside the vault,

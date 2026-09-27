@@ -1,9 +1,15 @@
 import { Platform, type App } from 'obsidian'
 import { SyncClient } from '@abele/sync-core'
-import { normalizeServerUrl, serverUrlProblem, type VaultInfo } from '@abele/sync-protocol'
+import {
+  normalizeServerUrl,
+  serverUrlProblem,
+  type JoinPrefer,
+  type VaultInfo,
+} from '@abele/sync-protocol'
 import { isDeviceSecretId, secrets } from '@/secrets/SecretStore'
 import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer/connection'
-import type { DeviceConnection } from './connection'
+import type { DeviceConnection, JoinState } from './connection'
+import { sideOf } from './joinState'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { NO_LEDGER, readLedgerId, writeLedgerId } from './ledgerId'
 import { newSecretId, newStateId } from './ids'
@@ -30,9 +36,11 @@ export type ConnectionPatch = Partial<Omit<DeviceConnection, 'migrated'>>
 
 /**
  * The fields the bookkeeping owns, never changed from outside: where the token was minted, the
- * revokes still waiting — each naming a kept token and where to send it — and the move flag.
+ * revokes still waiting — each naming a kept token and where to send it — the join in progress,
+ * whose side is the person's to choose in the join dialog and nobody's to set around it, and the
+ * move flag.
  */
-export const KEPT_FIELDS = ['enrolledUrl', 'pendingRevoke', 'migrated'] as const
+export const KEPT_FIELDS = ['enrolledUrl', 'pendingRevoke', 'join', 'migrated'] as const
 
 /** What a screen or the agent may change of a connection (`SyncService.updateConnection`). */
 export type ConnectionEdit = Partial<Omit<DeviceConnection, (typeof KEPT_FIELDS)[number]>>
@@ -130,6 +138,13 @@ export class Enrolment {
   /**
    * Enrol this device on a vault — an existing one, or one made for it — and start syncing.
    *
+   * `prefer` is the answer to the join question (`join.ts`), given only when it was asked: which
+   * side wins where this vault and the server both hold a file — `mine`, `theirs`, or null for
+   * "merge both". It is kept with the connection until the engine reports the join done, so a
+   * join cut off half way finishes the way it was asked to. Left out, nothing was asked — a new
+   * vault, a vault only one side has files for, a reconnect — and the engine merges, which on
+   * those is the same thing as either side.
+   *
    * The device token the server answers with goes straight into Obsidian's keychain; only the
    * id it is filed under is saved with the connection. Enrolling again over an existing setup
    * reuses that id, so the keychain never fills with tokens no device holds any more.
@@ -142,7 +157,11 @@ export class Enrolment {
    * client is dropped on the way out either way: it is on a token this flow has no further use
    * for.
    */
-  async chooseVault(choice: VaultChoice, deviceName: string): Promise<void> {
+  async chooseVault(
+    choice: VaultChoice,
+    deviceName: string,
+    prefer?: JoinPrefer | null
+  ): Promise<void> {
     const account = this.account
     // Read with the account, not after the awaits: the tab closing mid-enrolment calls
     // `endConnect`, and the device the server enrols meanwhile must still be filed against it.
@@ -179,6 +198,11 @@ export class Enrolment {
         deviceId: enrolled.device_id,
         deviceName: name,
         tokenId,
+        // A vault made just now holds nothing to join with.
+        join:
+          prefer === undefined || typeof choice !== 'string'
+            ? null
+            : { vaultId, prefer, ask: false },
       })
     } finally {
       this.account = null
@@ -195,6 +219,10 @@ export class Enrolment {
    * under an id minted here: on a phone the keychain is one for the whole app, and a name the
    * sender chose, or one reused, could land on another vault's token. What the sender syncs is
    * taken as a starting point, with this device's own size cap kept.
+   *
+   * The join question is left open (`join.ask`): the vault arriving may hold files, and so may
+   * this one, and which side wins is the person's to say. No engine is built until the Sync tab
+   * has asked it and `answerJoin` has the answer.
    */
   async adoptTransferred(
     arrived: TransferredConnection,
@@ -225,9 +253,33 @@ export class Enrolment {
       deviceName: arrived.deviceName,
       tokenId,
       selective: { ...selective, maxFileBytes: this.host.connection().selective.maxFileBytes },
+      join: { vaultId: arrived.vaultId, prefer: null, ask: true },
     })
     this.host.note('took the connection a transfer brought')
     await this.settle(dropped)
+  }
+
+  /**
+   * Answer the join question a transfer left open, and start syncing.
+   *
+   * `prefer` as `chooseVault` takes it; undefined when the question turned out to be a plain
+   * confirmation — only one side holds files, or this vault already walked the server's to the
+   * end — and there is no side to keep. Refused when no question is open for the vault this
+   * device is connected to: an answer that arrives after a Disconnect is not an answer to anything.
+   */
+  async answerJoin(prefer?: JoinPrefer | null): Promise<void> {
+    const own = this.host.connection()
+    const open = own.join
+    if (open === null || !open.ask || open.vaultId !== own.vaultId || own.vaultId === '') {
+      throw new Error('there is no join waiting for an answer')
+    }
+    const join: JoinState | null =
+      prefer === undefined ? null : { vaultId: own.vaultId, prefer, ask: false }
+    this.host.saveConnection({ join })
+    this.host.note(
+      join === null ? 'join confirmed; nothing to choose' : `join answered: ${sideOf(join.prefer)}`
+    )
+    await this.host.serialise(() => this.host.reconcile())
   }
 
   /**
@@ -302,9 +354,10 @@ export class Enrolment {
       deviceName: string
       tokenId: string
       selective?: DeviceConnection['selective']
+      join: JoinState | null
     }
   ): string | null {
-    const { tokenId, selective, ...where } = enrolled
+    const { tokenId, selective, join, ...where } = enrolled
     let dropped: string | null = null
     const ledger = readLedgerId(app)
     if (ledger.stateId === '' || ledger.vaultId !== where.vaultId) {
@@ -316,6 +369,7 @@ export class Enrolment {
       enrolledUrl: where.serverUrl,
       deviceTokenId: tokenId,
       paused: false,
+      join,
       ...(selective === undefined ? {} : { selective }),
     })
     this.host.note(`enrolled as ${where.deviceName} on vault ${where.vaultName || where.vaultId}`)
@@ -398,6 +452,8 @@ export class Enrolment {
         deviceId: '',
         deviceName: '',
         paused: false,
+        // A join belongs to the vault it was asked about; connecting again asks again.
+        join: null,
       })
       this.account = null
       this.accountUrl = ''

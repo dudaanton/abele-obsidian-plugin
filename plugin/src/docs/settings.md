@@ -259,7 +259,11 @@ connecting again needs the password — and the switches under **What this devic
 what it takes. While the device holds a token its server address cannot be pointed at
 another server — the token goes only to the server that minted it — so moving it means
 **Disconnect** and a new sign-in; the address it enrolled on and the revokes still waiting to be
-told are not settings at all, and are never written from outside. `read_settings` and `write_settings` reach it too, under `sync`: `sync.serverUrl`, `sync.vaultId`,
+told are not settings at all, and are never written from outside. Neither is a join in progress
+(`join`): which side wins where this vault and the server both hold a file is asked of the person in
+the join dialog when the device connects, and kept with the connection until the join is done —
+`write_settings` cannot set it, and a device a transfer connected syncs nothing until the question
+is answered on the Sync tab. `read_settings` and `write_settings` reach it too, under `sync`: `sync.serverUrl`, `sync.vaultId`,
 `sync.deviceId`, `sync.deviceTokenId`, `sync.deviceName`, `sync.paused` and `sync.selective` with
 everything in it (`sync.selective.images`, `sync.selective.maxFileBytes`, …). A write there changes
 this device only, goes through the same checks as the Sync tab — an address it refuses, a keychain

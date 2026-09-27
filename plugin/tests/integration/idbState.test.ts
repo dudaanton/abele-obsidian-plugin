@@ -187,6 +187,26 @@ describe('IndexedDbStateStore', () => {
     expect(await store.getMeta('scope')).toBe('notes')
   })
 
+  /**
+   * A joining device's creates carry the side it chose (`prefer`), and they are journalled before
+   * they are sent. A replay after a crash sends the journal as it is: a store that dropped the
+   * field would have the replay merge instead of keeping the side the person chose.
+   */
+  it('keeps the side a joining create carries, across a close and a reopen', async () => {
+    const joining = journal({
+      ops: [
+        { op: 'create', path: 'Both.md', sha: 'b'.repeat(64), size: 4, mtime: 9, prefer: 'theirs' },
+        { op: 'create', path: 'Mine.md', sha: 'c'.repeat(64), size: 4, mtime: 9, prefer: 'mine' },
+      ],
+    })
+    await store.setJournal(joining)
+    store.close()
+
+    store = await IndexedDbStateStore.open(indexedDB, NAME)
+
+    expect(await store.getJournal()).toEqual(joining)
+  })
+
   it('gives two vaults two databases that share nothing', async () => {
     const other = await IndexedDbStateStore.open(indexedDB, stateDatabaseName('vault-2'))
     try {

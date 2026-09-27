@@ -1,14 +1,16 @@
-import { Platform, type App } from 'obsidian'
-import { ref, type Ref } from 'vue'
+import { Notice, Platform, type App } from 'obsidian'
+import { ref, toRaw, type Ref } from 'vue'
 import type { StateEntry, VaultClient } from '@abele/sync-core'
-import { serverUrlProblem, type VaultInfo } from '@abele/sync-protocol'
+import { serverUrlProblem, type JoinPrefer, type VaultInfo } from '@abele/sync-protocol'
 import type AbelePlugin from '@/main'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import type { DeviceConnection } from './connection'
+import type { DeviceConnection, JoinState } from './connection'
 import { ConnectionKeeper } from './connectionKeeper'
 import { Enrolment, type ConnectionEdit, type VaultChoice } from './enrolment'
 import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer/connection'
 import { EngineRunner } from './engineRunner'
+import { joinOf } from './joinState'
+import { askJoin, type JoinQuestion } from './join'
 import { factoryOf, transportOf, type SyncServiceDeps } from './environment'
 import { noop, SerialQueue } from './queue'
 import { messageOf } from './messages'
@@ -118,6 +120,7 @@ export class SyncService {
       damage: () => this.keeper.damage(),
       serialise: <T>(fn: () => Promise<T>) => this.serialise(fn),
       settingsArrived: () => this.settingsArrived(),
+      joined: (join) => this.joined(join),
     },
     this.board
   )
@@ -174,6 +177,15 @@ export class SyncService {
       await this.runner.reconcile()
     })
     void this.retryPendingRevokes()
+    // A join a transfer left open syncs nothing until it is answered, and only the status bar
+    // would say so: said once here, where the person sees it.
+    if (joinOf(this.connection.value)?.ask === true) {
+      const vault = this.connection.value.vaultName || this.connection.value.vaultId
+      new Notice(
+        `Abele Sync is waiting: choose how this vault's files are joined with ${vault} on the ` +
+          'Sync tab. Nothing syncs until then.'
+      )
+    }
   }
 
   /**
@@ -194,10 +206,9 @@ export class SyncService {
       serverUrlProblem(connection.serverUrl) === null &&
       this.keeper.token() !== null
     ) {
-      this.board.publish({
-        ...DISCONNECTED_STATUS,
-        state: connection.paused ? 'paused' : 'syncing',
-      })
+      // A join still to be answered pulls nothing: no engine is built until it is.
+      const state = joinOf(connection)?.ask ? 'joining' : connection.paused ? 'paused' : 'syncing'
+      this.board.publish({ ...DISCONNECTED_STATUS, state })
     }
   }
 
@@ -343,9 +354,41 @@ export class SyncService {
     this.enrolment.endConnect()
   }
 
-  /** Enrol this device on a vault and start syncing: see `Enrolment.chooseVault`. */
-  chooseVault(choice: VaultChoice, deviceName: string): Promise<void> {
-    return this.enrolment.chooseVault(choice, deviceName)
+  /**
+   * Enrol this device on a vault and start syncing, with the answer to the join question if it
+   * was asked: see `Enrolment.chooseVault`.
+   */
+  chooseVault(choice: VaultChoice, deviceName: string, prefer?: JoinPrefer | null): Promise<void> {
+    return this.enrolment.chooseVault(choice, deviceName, prefer)
+  }
+
+  /**
+   * What the join dialog asks before this device syncs `vault` (`join.ts`): how many files each
+   * side holds, and whether that makes it a question of which side wins, a confirmation, or a
+   * reconnect. Asked of the vault a sign-in listed, or — with no vault — of the one this device
+   * is connected to with the question still open, which a transfer leaves. Nothing is enrolled
+   * or written; the server is asked only for its count, and a server that does not answer is
+   * counted as unknown, which asks the question rather than skipping it.
+   */
+  async joinQuestion(vault?: VaultInfo): Promise<JoinQuestion> {
+    const app = this.app
+    if (app === null) throw new Error('the sync service has not been started yet')
+    return askJoin({
+      app,
+      factory: factoryOf(this.deps),
+      connection: toRaw(this.connection.value),
+      token: this.keeper.token(),
+      transport: transportOf(this.deps),
+      timeoutMs: this.enrolment.revoker.timeoutMs,
+      scriptsFolder: AbeleConfig.getInstance().ai.scriptsFolder,
+      note: (text) => this.note(text),
+      vault,
+    })
+  }
+
+  /** Answer the join question a transfer left open: see `Enrolment.answerJoin`. */
+  answerJoin(prefer?: JoinPrefer | null): Promise<void> {
+    return this.enrolment.answerJoin(prefer)
   }
 
   /** Stop syncing and forget how to reach the server: see `Enrolment.disconnect`. */
@@ -407,6 +450,25 @@ export class SyncService {
    * to land inside the window.
    */
   onSettingsSaved(): void {
+    void this.serialise(() => this.runner.reconcile())
+  }
+
+  /**
+   * The engine finished the join it was built with: the choice is forgotten, so no later engine
+   * is built with it, and the next one — no longer leaving this device's own `data.json` alone —
+   * walks the manifest again to take that file up the way a first contact does. Only the join
+   * still on file is cleared: one answered again since, or for another vault, is not this one.
+   */
+  private joined(join: JoinState): void {
+    const now = this.connection.value.join
+    if (now === null || now.ask || now.vaultId !== join.vaultId) return
+    this.keeper.save({ join: null })
+    const vault = this.connection.value.vaultName || join.vaultId
+    this.note(`joined ${vault}; the choice of which side wins is done with`)
+    new Notice(
+      `This vault is now synced with ${vault}. Where both had a different copy of a file, the ` +
+        "other copy is kept in that file's Version history."
+    )
     void this.serialise(() => this.runner.reconcile())
   }
 
