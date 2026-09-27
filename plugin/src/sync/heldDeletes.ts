@@ -20,6 +20,13 @@ export interface HeldQuestion {
   held: HeldDelete[]
 }
 
+/** A decision filed but not carried out yet — sync paused, or the run after it failed. */
+export interface FiledDecision {
+  kind: 'confirm' | 'restore'
+  /** How many files it covers. */
+  count: number
+}
+
 /** What the prompt is handed by the service. */
 export interface HeldHost {
   /** The deletes the running engine holds; none without an engine. */
@@ -33,6 +40,14 @@ export class HeldDeletesPrompt {
   readonly held: Ref<HeldDelete[]> = ref([])
   /** The question the dialog shows, or null while none is open. */
   readonly asking: Ref<HeldQuestion | null> = ref(null)
+  /**
+   * The answer given and filed, waiting for a sync to carry it out, or null (task-10 review,
+   * #4). The hold is unchanged until then, so without this the Sync tab would show the same
+   * question as if nobody had answered it; answering again replaces this one.
+   */
+  readonly decided: Ref<FiledDecision | null> = ref(null)
+  /** The files `decided` covers: it is let go once none of them is held any more. */
+  private decidedIds = new Set<string>()
 
   /** Every file id a question has shown, since nothing was last held. */
   private readonly shown = new Set<string>()
@@ -70,6 +85,9 @@ export class HeldDeletesPrompt {
       this.clear()
       return
     }
+    if (this.decided.value !== null && !list.some((one) => this.decidedIds.has(one.fileId))) {
+      this.settled()
+    }
     if (!list.some((one) => !this.shown.has(one.fileId))) return
     if (this.host.visible()) this.ask()
     else this.waiting = true
@@ -80,7 +98,26 @@ export class HeldDeletesPrompt {
     if (this.waiting && this.held.value.length > 0 && this.host.visible()) this.ask()
   }
 
-  /** Ask about everything held now — also what the Sync tab's button does. */
+  /**
+   * A decision was handed to the engine. One a sync carried out is done with; one it did not is
+   * shown as waiting. Answers whether it replaced an earlier answer still waiting — the engine
+   * keeps only the last word.
+   */
+  filed(kind: FiledDecision['kind'], fileIds: readonly string[], applied: boolean): boolean {
+    const replaced = this.decided.value !== null
+    if (applied) {
+      this.settled()
+      return replaced
+    }
+    this.decided.value = { kind, count: fileIds.length }
+    this.decidedIds = new Set(fileIds)
+    return replaced
+  }
+
+  /**
+   * Ask about everything held now, in the dialog. Called when a hold holds files no question has
+   * shown; the Sync tab asks nothing, it shows the same answers inline for as long as they are held.
+   */
   ask(): void {
     const held = this.held.value
     if (held.length === 0) return
@@ -94,12 +131,19 @@ export class HeldDeletesPrompt {
     this.asking.value = null
   }
 
+  /** The decision waiting was carried out, or given up: nothing is shown as waiting. */
+  private settled(): void {
+    this.decided.value = null
+    this.decidedIds = new Set()
+  }
+
   /** Nothing is held: forget what was shown, so a hold made later is asked about afresh. */
   private clear(): void {
     this.held.value = []
     this.asking.value = null
     this.shown.clear()
     this.waiting = false
+    this.settled()
   }
 }
 

@@ -381,6 +381,12 @@ export class SyncService {
       `${kind === 'confirm' ? 'deleting everywhere' : 'putting back'} ${fileIds.length} held file(s)`
     )
     const result = await this.runner.decideDeletes(kind, fileIds)
+    if (result !== null && result.decided > 0) {
+      const replaced = this.heldPrompt.filed(kind, fileIds, result.applied)
+      if (replaced && !result.applied) {
+        this.note('this answer replaces the answer given before, which was not carried out yet')
+      }
+    }
     await this.heldPrompt.refresh()
     return result
   }

@@ -30,6 +30,8 @@ let app: FakeApp
 let service: SyncService
 let other: VaultClient
 let vaultId: string
+/** Flipped by a test to make every request fail the way a lost network does. */
+let offline = false
 
 const plugin = {
   manifest: { id: 'abele' },
@@ -63,6 +65,7 @@ async function remove(from: number, to: number): Promise<void> {
 }
 
 beforeEach(async () => {
+  offline = false
   server = await syncServer()
   Platform.isMobile = false
   AbeleConfig.getInstance().init(plugin)
@@ -79,7 +82,8 @@ beforeEach(async () => {
 
   service = SyncService.getInstance()
   service.init(app as unknown as App, plugin, {
-    fetch: (input, init) => server.fetch(input, init),
+    fetch: (input, init) =>
+      offline ? Promise.reject(new Error('the network is gone')) : server.fetch(input, init),
     WebSocket: server.WebSocket,
     indexedDB: new IDBFactory(),
     fallbackMs: 60_000,
@@ -143,6 +147,42 @@ describe('many files deleted at once on this device', () => {
 
     service.resume()
     await waitFor('the trash to fill', async () => (await other.trash()).length === 60)
+  })
+})
+
+describe('a decision a sync did not carry out', () => {
+  it('is counted as taken when the sync after it fails, and is carried out once it gets through', async () => {
+    await remove(0, 60)
+    await service.syncNow()
+    const shown = (await service.heldDeletes()).map((one) => one.fileId)
+
+    offline = true
+    expect(await service.decideDeletes('restore', shown)).toEqual({ decided: 60, applied: false })
+
+    offline = false
+    await service.syncNow()
+    await waitFor('the files to come back', async () => app.vault.adapter.exists(note(59)))
+    expect(await other.trash()).toHaveLength(0)
+  })
+
+  it('is shown as waiting while paused, and a second answer replaces it, saying so', async () => {
+    await remove(0, 60)
+    await service.syncNow()
+    const shown = (await service.heldDeletes()).map((one) => one.fileId)
+    service.pause()
+
+    await service.decideDeletes('confirm', shown)
+    expect(service.heldPrompt.decided.value).toEqual({ kind: 'confirm', count: 60 })
+
+    await service.decideDeletes('restore', shown)
+    expect(service.heldPrompt.decided.value).toEqual({ kind: 'restore', count: 60 })
+    expect(service.log.value.join('\n')).toContain('replaces the answer given before')
+
+    service.resume()
+    await waitFor('the files to come back', async () => app.vault.adapter.exists(note(59)))
+    await waitFor('the hold to go', () => service.heldPrompt.held.value.length === 0)
+    expect(service.heldPrompt.decided.value).toBeNull()
+    expect(await other.trash()).toHaveLength(0)
   })
 })
 

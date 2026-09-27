@@ -90,7 +90,7 @@ const service = {
   telling: ref<string | null>(null),
   joinQuestion: vi.fn(),
   answerJoin: vi.fn(),
-  heldPrompt: { held: ref<{ path: string; fileId: string }[]>([]) },
+  heldPrompt: { held: ref<{ path: string; fileId: string }[]>([]), decided: ref(null) },
   settingsPrompt: {
     staged: ref<ChangeItem[]>([]),
     names: ref<Record<string, string>>({}),

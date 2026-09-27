@@ -30,6 +30,7 @@ const service = {
   status: ref<SyncStatus>({ ...DISCONNECTED_STATUS, state: 'idle' }),
   decideDeletes: vi.fn(),
   note: vi.fn(),
+  heldPrompt: { decided: ref<{ kind: 'confirm' | 'restore'; count: number } | null>(null) },
 }
 
 const open = (held: HeldDelete[]) =>
@@ -43,6 +44,7 @@ beforeEach(() => {
   useVault([])
   Notice.shown.length = 0
   service.status.value = { ...DISCONNECTED_STATUS, state: 'idle' }
+  service.heldPrompt.decided.value = null
   service.decideDeletes.mockImplementation(async (_kind: string, ids: string[]) => ({
     decided: ids.length,
     applied: true,
@@ -151,6 +153,60 @@ describe('the held deletes dialog', () => {
 })
 
 describe('the held deletes block on the Sync tab', () => {
+  it('says an answer is waiting for Resume, and that answering again replaces it', () => {
+    service.status.value = { ...service.status.value, state: 'paused' }
+    service.heldPrompt.decided.value = { kind: 'confirm', count: 60 }
+    const view = mount(HeldDeletesBlock, { props: { held: heldOf(60) }, global: { stubs: STUBS } })
+
+    expect(view.text()).toContain(
+      'Decided: delete everywhere (60 files), carried out when sync is resumed. Answering again replaces it.'
+    )
+  })
+
+  it('deletes everywhere exactly the files its confirmation named, though the hold grew', async () => {
+    const view = mount(HeldDeletesBlock, { props: { held: heldOf(60) }, global: { stubs: STUBS } })
+
+    await button(view as never, 'Delete everywhere')!.trigger('click')
+    await view.setProps({ held: heldOf(80) })
+    const confirm = view.findComponent(ConfirmModal)
+    expect(confirm.props('title')).toBe('Delete 60 files everywhere?')
+
+    confirm.vm.$emit('confirm')
+    await flushPromises()
+
+    expect(service.decideDeletes).toHaveBeenCalledWith(
+      'confirm',
+      heldOf(60).map((one) => one.fileId)
+    )
+  })
+
+  it('puts back exactly the files shown when pressed, though the hold grew', async () => {
+    let finish: (value: unknown) => void = () => undefined
+    service.decideDeletes.mockReturnValue(new Promise((resolve) => (finish = resolve)))
+    const view = mount(HeldDeletesBlock, { props: { held: heldOf(5) }, global: { stubs: STUBS } })
+
+    await button(view as never, 'Put them back')!.trigger('click')
+    await view.setProps({ held: heldOf(9) })
+    finish({ decided: 5, applied: true })
+    await flushPromises()
+
+    expect(service.decideDeletes).toHaveBeenCalledWith(
+      'restore',
+      heldOf(5).map((one) => one.fileId)
+    )
+  })
+
+  it('lists the files as rows that are read, not tab stops that do nothing', () => {
+    const view = mount(HeldDeletesBlock, { props: { held: heldOf(3) }, global: { stubs: STUBS } })
+
+    const rows = view.findAll('.tree-item-self')
+    expect(rows).toHaveLength(3)
+    for (const row of rows) {
+      expect(row.attributes('tabindex')).toBeUndefined()
+      expect(row.classes()).not.toContain('is-clickable')
+    }
+  })
+
   it('offers the same two answers, and no putting off', () => {
     const view = mount(HeldDeletesBlock, { props: { held: heldOf(5) }, global: { stubs: STUBS } })
 
