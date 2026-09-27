@@ -21,6 +21,12 @@
  * rather than by emulating a device: those rules are keyed on exactly that class, and adding
  * it neither reloads the app nor leaves anything behind.
  *
+ * The Sync tab is measured here as the vault the tier drives has it — not connected. Its connected
+ * states (held deletions, waiting settings, the device list, a join waiting, a revoke waiting) need
+ * a vault paired with a server, and `syncDialogs.e2e.test.ts` asks the same two questions of them:
+ * nothing past the edge at 390 and 320 under the phone's emulation, no half-empty row there and at
+ * a desktop width.
+ *
  * Requires Obsidian running with the plugin installed — see docs/Testing.md.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'

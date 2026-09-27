@@ -34,7 +34,7 @@
  * Requires Obsidian running with a vault open, the sibling repository built, and
  * `npm run build:test` newer than the source — see docs/Testing.md.
  */
-import { mkdirSync, mkdtempSync, rmSync, rmdirSync, statSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -46,8 +46,14 @@ import {
   spawnSyncServer,
   type SyncServer,
 } from './helpers/syncServer'
-import { obsidianMissing, openTestVault, waitFor, type TestVault } from './helpers/syncVault'
+import { obsidianMissing, waitFor, type TestVault } from './helpers/syncVault'
 import { probePrelude, type Screen } from './helpers/layoutProbe'
+import {
+  openVaultUnderLock,
+  reloadAs as reloadWindowAs,
+  setWindowSize as setWindowSizeOf,
+  windowSize as windowSizeOf,
+} from './helpers/phoneWindow'
 
 const EMAIL = 'sync-phone@example.com'
 const PASSWORD = 'a-password-nobody-prints'
@@ -105,94 +111,21 @@ const step = <T>(body: string): T =>
     ${body}
   })()`)
 
-// ─── the phone, for this window only ──────────────────────────────────────────────────────────
-
-/** Obsidian's key, and this window's own wish, which its `sessionStorage` keeps over a reload. */
-const MOBILE_KEY = 'EmulateMobile'
-const MOBILE_WISH = 'abele-e2e-mobile'
-/** The lock the rest of the tier holds while the shared key is set; see the file's comment. */
-const RELOAD_LOCK = join(tmpdir(), 'abele-e2e-reload.lock')
-const RELOAD_LOCK_STALE_MS = 120_000
-
-async function takeReloadLock(): Promise<void> {
-  const deadline = Date.now() + 5 * 60_000
-  for (;;) {
-    try {
-      mkdirSync(RELOAD_LOCK)
-      return
-    } catch {
-      try {
-        if (Date.now() - statSync(RELOAD_LOCK).mtimeMs > RELOAD_LOCK_STALE_MS)
-          rmdirSync(RELOAD_LOCK)
-      } catch {
-        /* gone in between */
-      }
-      if (Date.now() > deadline) throw new Error(`${RELOAD_LOCK} was not released in 5 minutes`)
-      await delay(250)
-    }
-  }
-}
-
-const hasTestApi = (): boolean => {
-  try {
-    return app().evalRaw('String(typeof window.__abeleTest === "object")', 10_000) === 'true'
-  } catch {
-    return false
-  }
-}
+// ─── the phone, for this window only (`helpers/phoneWindow.ts`) ──────────────────────────────
 
 /**
  * Reloads the test window as a phone or as a desktop, and waits for the plugin — and, on a
  * device that is paired, for its first sync after the reload.
  */
 async function reloadAs(mobile: boolean, paired: boolean): Promise<void> {
-  await takeReloadLock()
-  try {
-    app().evalRaw(
-      `(() => {
-        sessionStorage.setItem('${MOBILE_WISH}', '${mobile ? '1' : ''}')
-        if (${mobile}) localStorage.setItem('${MOBILE_KEY}', '1')
-        else localStorage.removeItem('${MOBILE_KEY}')
-        setTimeout(() => location.reload(), 50)
-        return 'ok'
-      })()`,
-      20_000
-    )
-    await delay(4000)
-    await waitFor('the plugin to be back after the reload', hasTestApi, 60_000)
-    app().evalRaw(`(() => { localStorage.removeItem('${MOBILE_KEY}'); return 'ok' })()`, 20_000)
-  } finally {
-    try {
-      rmdirSync(RELOAD_LOCK)
-    } catch {
-      /* taken away as stale by another run */
-    }
-  }
-  app().evalRaw(
-    `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(false); return 'ok' })()`,
-    20_000
-  )
+  await reloadWindowAs(app(), mobile)
   if (paired) await waitIdle()
 }
 
-const windowSize = (): [number, number] =>
-  app().evalAwait<[number, number]>(
-    `require('@electron/remote').getCurrentWindow().getContentSize()`
-  )
+const windowSize = (): [number, number] => windowSizeOf(app())
 
-/** Resizes, then nudges by two pixels and back: a capture after a reload waits on a frame. */
-async function setWindowSize(width: number, height: number): Promise<void> {
-  app().evalRaw(
-    `(() => {
-      const w = require('@electron/remote').getCurrentWindow()
-      w.setContentSize(${width + 2}, ${height + 2})
-      setTimeout(() => w.setContentSize(${width}, ${height}), 300)
-      return 'ok'
-    })()`,
-    20_000
-  )
-  await delay(1500)
-}
+const setWindowSize = (width: number, height: number): Promise<void> =>
+  setWindowSizeOf(app(), width, height)
 
 // ─── seeding ──────────────────────────────────────────────────────────────────────────────────
 
@@ -468,16 +401,7 @@ describe.skipIf(why !== null)('the sync screens on a phone', () => {
     const vaultId = daemonConfig(daemonDir).vaultId
 
     // Opening a vault starts a window, which reads the shared phone key as it starts.
-    await takeReloadLock()
-    try {
-      vault = await openTestVault()
-    } finally {
-      try {
-        rmdirSync(RELOAD_LOCK)
-      } catch {
-        /* taken as stale */
-      }
-    }
+    vault = await openVaultUnderLock()
     vault.evalAwait(
       `(async () => {
         const sync = ${service}

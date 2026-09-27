@@ -8,6 +8,10 @@
  * setup dialog, the history, the icon picker, the MCP server form, the list of keys and every
  * other dialog `openDialog` knows, each of its tabs included, and measures its ring against every clipping ancestor. The
  * phone probe does the same at 390×844.
+ *
+ * The sync dialogs are not here: they only open on a vault paired with a server, which this file
+ * does not make. `syncPhone.e2e.test.ts` and `syncDialogs.e2e.test.ts` measure their rings on the
+ * desktop as well as on a phone, in vaults of their own.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalLong } from './helpers/obsidianCli'
