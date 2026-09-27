@@ -811,6 +811,20 @@ describe('packing what was ticked', () => {
     expect(payload.secrets).toEqual({ 'key-p1': 'sk-provider' })
   })
 
+  it('never carries a sync device token, whatever id an entry names', () => {
+    const base = settings()
+    const entries = collectEntries({
+      ...base,
+      ai: { ...base.ai, providers: [provider('p1', 'openwebui', 'abele-sync-device-1234')] },
+    } as AbeleSettings)
+    const chosen = [find(entries, 'ai-providers', 'p1')!]
+
+    const payload = buildPayload(chosen, () => 'absd_device_token')
+
+    expect(payload.secrets).toEqual({})
+    expect(needsCode(payload)).toBe(false)
+  })
+
   it('sends the provider without its key when keys are not being sent', () => {
     const entries = collectEntries(settings())
     const chosen = [find(entries, 'ai-providers', 'p1')!]

@@ -604,12 +604,24 @@ describe('a secret kept on this device alone', () => {
 describe('a device-only id the store already holds', () => {
   const TOKEN = 'abele-sync-device-1'
 
+  /** The token put into the store's entries the way an older build did, and written out. */
+  async function leak(mac: Device, value: string): Promise<void> {
+    ;(mac.store as unknown as { entries: Record<string, unknown> }).entries[TOKEN] = {
+      value,
+      at: 5,
+    }
+    mac.store.set('abele-provider-x', mac.store.get('abele-provider-x'))
+    await mac.store.flush()
+  }
+
   async function leaked(on: Shared) {
-    // A device whose settings count the token among the store's secrets, as the leak did.
+    // A device of an older build, whose settings counted the token among the store's secrets.
     const mac = device(on, ['abele-provider-x', TOKEN])
     mac.keychain.setSecret('abele-provider-x', 'sk-1')
     mac.keychain.setSecret(TOKEN, 'absd_mac')
     await mac.store.enable('passphrase', FAST)
+    await leak(mac, 'absd_mac')
+    expect(mac.store.contents()!.map((c) => c.id)).toContain(TOKEN)
     return mac
   }
 
@@ -629,13 +641,12 @@ describe('a device-only id the store already holds', () => {
     await phone.store.flush()
 
     expect(phone.keychain.getSecret(TOKEN)).toBe('absd_phone')
-    expect(phone.store.get(TOKEN)).toBe('absd_phone')
+    expect(phone.store.device.get(TOKEN)).toBe('absd_phone')
     expect(phone.store.contents()!.map((c) => c.id)).toEqual(['abele-provider-x'])
     expect(phone.store.get('abele-provider-x')).toBe('sk-1')
 
     // The leaky device writes it back in; the next load drops it again.
-    mac.store.set(TOKEN, 'absd_mac2')
-    await mac.store.flush()
+    await leak(mac, 'absd_mac2')
     await phone.store.load()
     await phone.store.flush()
     expect(phone.keychain.getSecret(TOKEN)).toBe('absd_phone')
@@ -750,5 +761,61 @@ describe('settling', () => {
     await phone.store.flush()
 
     expect({ mac: mac.writes, phone: phone.writes }).toEqual(writes)
+  })
+})
+
+/**
+ * Every id under the reserved prefix is a sync device token's, whichever device minted it and
+ * whether or not this device's settings name it (pi review #4). A provider's `apiKeyId`, edited
+ * or imported to point at one, must not carry it into the synced store, a transfer or a request.
+ */
+describe('the reserved device-token names', () => {
+  const OTHER = 'abele-sync-device-elsewhere'
+
+  it('are never read through the ordinary road, even where the keychain holds one', () => {
+    const mac = device(shared(), ['abele-provider-x', OTHER])
+    mac.keychain.setSecret(OTHER, 'absd_other')
+
+    expect(mac.store.get(OTHER)).toBe('')
+    expect(mac.store.device.get(OTHER)).toBe('absd_other')
+  })
+
+  it('are never moved into the store when it is made, nor recorded later', async () => {
+    const on = shared()
+    const mac = device(on, ['abele-provider-x', OTHER])
+    mac.keychain.setSecret('abele-provider-x', 'sk-1')
+    mac.keychain.setSecret(OTHER, 'absd_other')
+    await mac.store.enable('passphrase', FAST)
+    const writes = mac.writes
+
+    mac.store.set('abele-sync-device-third', 'absd_third')
+    await mac.store.flush()
+
+    expect(mac.store.contents()!.map((c) => c.id)).toEqual(['abele-provider-x'])
+    expect(mac.writes).toBe(writes)
+  })
+
+  it('are dropped from a store that holds one, and never mirrored into the keychain', async () => {
+    const on = shared()
+    const mac = device(on, ['abele-provider-x'])
+    mac.keychain.setSecret('abele-provider-x', 'sk-1')
+    await mac.store.enable('passphrase', FAST)
+    // An older build, or a hand edit, put another device's token into the file.
+    const leaky = device(on, ['abele-provider-x'])
+    await leaky.store.load()
+    await leaky.store.unlock('passphrase')
+    ;(leaky.store as unknown as { entries: Record<string, unknown> }).entries[OTHER] = {
+      value: 'absd_other',
+      at: 5,
+    }
+    leaky.store.set('abele-provider-x', 'sk-2')
+    await leaky.store.flush()
+
+    const phone = device(on, ['abele-provider-x'])
+    await phone.store.load()
+    await phone.store.unlock('passphrase')
+
+    expect(phone.keychain.getSecret(OTHER)).toBeNull()
+    expect(phone.store.contents()!.map((c) => c.id)).toEqual(['abele-provider-x'])
   })
 })

@@ -19,6 +19,7 @@ import { savedKeysWithIds } from '@/ai/savedKeyIds'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
 import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
+import { isReservedSecretId } from '@/secrets/deviceSecret'
 import {
   FILE_SECTION_LABELS,
   isFileSection,
@@ -521,6 +522,8 @@ export function buildPayload(
   if (readSecret) {
     for (const entry of entries) {
       for (const id of entry.secretIds ?? []) {
+        // A sync device token opens the whole vault: never packed, whatever id names it.
+        if (isReservedSecretId(id)) continue
         const value = readSecret(id)
         // A key the keychain does not hold is one this vault never had: sending an empty
         // string would wipe the one waiting on the other side.

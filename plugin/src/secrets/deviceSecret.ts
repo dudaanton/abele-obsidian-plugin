@@ -14,3 +14,14 @@ export function isDeviceSecretId(id: string | undefined | null): id is string {
     id.startsWith(DEVICE_SECRET_PREFIX)
   )
 }
+
+/**
+ * Whether an id is under the reserved prefix at all — any device's token, this one's or not, and
+ * whether or not a setting names it. Such an id is never read through the ordinary road, never
+ * moved into the synced store and never packed into a transfer (pi review #4): a provider's key
+ * id pointed at one, by an import or a hand edit, would otherwise carry a token that opens the
+ * whole vault to wherever that road goes.
+ */
+export function isReservedSecretId(id: string | undefined | null): boolean {
+  return typeof id === 'string' && id.toLowerCase().startsWith(DEVICE_SECRET_PREFIX)
+}

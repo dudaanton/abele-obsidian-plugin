@@ -14,7 +14,7 @@
  * "Remove from this device" is what takes them out of the keychain again.
  */
 import { CredentialGenerations } from './credentialGenerations'
-import { DEVICE_SECRET_PREFIX, isDeviceSecretId } from './deviceSecret'
+import { DEVICE_SECRET_PREFIX, isDeviceSecretId, isReservedSecretId } from './deviceSecret'
 import { ref, type Ref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { fromBase64, toBase64 } from './crypto'
@@ -66,7 +66,7 @@ export interface StoreHost {
   now(): number
 }
 
-export { DEVICE_SECRET_PREFIX, isDeviceSecretId }
+export { DEVICE_SECRET_PREFIX, isDeviceSecretId, isReservedSecretId }
 
 /** A secret's road that bypasses the store: see `SecretStore.device`. */
 export interface DeviceSecrets {
@@ -117,8 +117,9 @@ export class SecretStore {
 
   // ── What every feature uses ────────────────────────────────
 
+  /** A device token's id reads as no secret here: see `isReservedSecretId`, and `device`. */
   get(id: string | undefined | null): string {
-    if (!id) return ''
+    if (!id || isReservedSecretId(id)) return ''
     if (this.status.value === 'unlocked' && this.entries?.[id]) return this.entries[id].value
     return this.host.keychain().getSecret(id) ?? ''
   }
@@ -315,7 +316,7 @@ export class SecretStore {
     await this.saving
     if (this.storeId) this.forget(deviceKeyId(this.storeId))
     const own = this.ownIds()
-    for (const id of Object.keys(this.entries ?? {})) if (!own.has(id)) this.forget(id)
+    for (const id of Object.keys(this.entries ?? {})) if (!isOwn(own, id)) this.forget(id)
     this.entries = null
     this.key = null
     this.status.value = this.storeId ? 'locked' : 'off'
@@ -413,7 +414,7 @@ export class SecretStore {
 
   private record(id: string, value: string): void {
     if (this.status.value === 'off' || !this.storeId) return
-    if (this.ownIds().has(id)) return
+    if (isOwn(this.ownIds(), id)) return
     this.entries = { ...(this.entries ?? {}), [id]: { value, at: this.host.now() } }
     this.version.value++
     if (this.status.value === 'unlocked') this.persist()
@@ -445,7 +446,7 @@ export class SecretStore {
     const keychain = this.host.keychain()
     const own = this.ownIds()
     for (const [id, entry] of Object.entries(entries)) {
-      if (own.has(id)) continue
+      if (isOwn(own, id)) continue
       try {
         if (!entry.value) this.forget(id)
         else if (keychain.getSecret(id) !== entry.value) keychain.setSecret(id, entry.value)
@@ -455,7 +456,10 @@ export class SecretStore {
     }
   }
 
-  /** The ids this device's own secrets live under: see `StoreHost.deviceOnly`. */
+  /**
+   * The ids this device's own secrets live under: see `StoreHost.deviceOnly`. Every id under the
+   * reserved prefix is treated the same way (`isOwn`), named here or not.
+   */
   private ownIds(): Set<string> {
     return new Set(this.host.deviceOnly?.() ?? [])
   }
@@ -463,7 +467,7 @@ export class SecretStore {
   /** What the settings point at and the store may hold. */
   private storedIds(): string[] {
     const own = this.ownIds()
-    return [...new Set(this.host.ids())].filter((id) => !own.has(id))
+    return [...new Set(this.host.ids())].filter((id) => !isOwn(own, id))
   }
 
   /**
@@ -473,10 +477,10 @@ export class SecretStore {
    */
   private withoutOwn(entries: SecretEntries): SecretEntries {
     const own = this.ownIds()
-    const dropped = Object.keys(entries).filter((id) => own.has(id))
+    const dropped = Object.keys(entries).filter((id) => isOwn(own, id))
     if (!dropped.length) return entries
     console.debug('[Abele] device-only keys dropped from the synced store', dropped.length)
-    return Object.fromEntries(Object.entries(entries).filter(([id]) => !own.has(id)))
+    return Object.fromEntries(Object.entries(entries).filter(([id]) => !isOwn(own, id)))
   }
 
   private forget(id: string): void {
@@ -496,6 +500,11 @@ export class SecretStore {
     this.status.value = status
     this.version.value++
   }
+}
+
+/** An id that never enters the store: this device's own, or anything under the reserved prefix. */
+function isOwn(own: Set<string>, id: string): boolean {
+  return own.has(id) || isReservedSecretId(id)
 }
 
 let current: SecretStore | null = null
