@@ -307,9 +307,10 @@ describe('the README of a private repository', () => {
   it('reads a picture the raw address refused again through the API, with the token', async () => {
     // The stub renderer draws text; this one draws the picture the README names.
     vi.spyOn(MarkdownRenderer, 'render').mockImplementation(async (_app, _md, el) => {
-      const img = el.createEl('p').createEl('img')
+      const img = el.ownerDocument.createElement('img')
       img.setAttribute('src', 'docs/logo.png')
       img.setAttribute('alt', 'logo')
+      el.appendChild(img)
     })
     const { wrapper, request } = openTab('https://github.com/o/r', {
       ...ROUTES,
