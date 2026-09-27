@@ -31,6 +31,7 @@
         v-else-if="isMarkdownPath(readme.path)"
         :text="readmeText.data.value"
         :repo="readmeFile"
+        :client="client"
         as-document
       />
       <pre v-else class="abele-github-folder__plain">{{ readmeText.data.value }}</pre>

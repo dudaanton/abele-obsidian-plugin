@@ -47,7 +47,7 @@ import {
   pickBlock,
   sourcesOf,
 } from '@/github/markdownPreview'
-import { repoImageUrl, type RepoFile } from '@/github/markdownLinks'
+import { retryImageThroughApi, type RepoFile } from '@/github/markdownLinks'
 import { finishGithubMarkdown, guardInlineCode } from '@/github/safeMarkdown'
 import { LINE_CONTEXT, elementTop, pinIntoView, scrollParent } from '@/github/scrollTo'
 
@@ -124,24 +124,8 @@ let renderRun = 0
 const objectUrls: string[] = []
 
 /** An image the raw address refused: once more through the API, when there is a token. */
-const retryThroughApi = (img: HTMLImageElement) => {
-  const path = img.dataset.abeleRepoPath
-  const client = props.client
-  if (!path || !client?.hasToken) return
-  img.addEventListener(
-    'error',
-    () => {
-      repoImageUrl(client, props.file, path).then(
-        (url) => {
-          objectUrls.push(url)
-          img.src = url
-        },
-        () => {}
-      )
-    },
-    { once: true }
-  )
-}
+const retryThroughApi = (img: HTMLImageElement) =>
+  retryImageThroughApi(img, props.client, props.file, (url) => objectUrls.push(url))
 
 const renderAll = async () => {
   const mine = ++renderRun

@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
-import { Platform } from 'obsidian'
+import { MarkdownRenderer, Platform } from 'obsidian'
 import { openTab, type Route } from '../helpers/githubTab'
 import { useVault } from '../helpers/testEnv'
 import { forgetRepoTrees } from '@/github/tree/repoTree'
@@ -295,5 +295,35 @@ describe('pinned repositories in the settings', () => {
     expect(save).toHaveBeenCalled()
     expect(config.github.pinnedRepos).toEqual([])
     expect(wrapper.text()).toContain('Nothing pinned yet.')
+  })
+})
+
+describe('the README of a private repository', () => {
+  it('reads a picture the raw address refused again through the API, with the token', async () => {
+    // The stub renderer draws text; this one draws the picture the README names.
+    vi.spyOn(MarkdownRenderer, 'render').mockImplementation(async (_app, _md, el) => {
+      el.innerHTML = '<p><img src="docs/logo.png" alt="logo"></p>'
+    })
+    const { wrapper, request } = openTab('https://github.com/o/r', {
+      ...ROUTES,
+      '/repos/o/r/contents/README.md': { text: '# Widgets\n\n![logo](docs/logo.png)' },
+      '/repos/o/r/contents/docs/logo.png': {
+        bytes: new Uint8Array([137, 80, 78, 71]),
+        headers: { 'content-type': 'image/png' },
+      },
+    })
+    await loaded(wrapper)
+    const img = await vi.waitFor(() => {
+      const found = wrapper.find('.abele-github-folder__readme img')
+      expect(found.exists()).toBe(true)
+      return found.element as HTMLImageElement
+    })
+    expect(img.getAttribute('src')).toContain('raw.githubusercontent.com')
+
+    img.dispatchEvent(new Event('error'))
+    await vi.waitFor(() => expect(img.getAttribute('src')).toMatch(/^blob:/))
+    expect(
+      request.mock.calls.some(([r]) => r.url.includes('/repos/o/r/contents/docs/logo.png'))
+    ).toBe(true)
   })
 })

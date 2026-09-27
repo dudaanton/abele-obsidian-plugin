@@ -225,6 +225,34 @@ export function rewriteRendered(root: HTMLElement, file: RepoFile): void {
 }
 
 /**
+ * Arms a rendered image of the repository to be read again through the API when its raw address
+ * refuses it — a private repository's pictures need the token, which a raw address never sees.
+ * `keep` is handed the object URL, for the caller to revoke when the text goes.
+ */
+export function retryImageThroughApi(
+  img: HTMLImageElement,
+  client: GithubClient | undefined,
+  file: RepoFile,
+  keep: (url: string) => void
+): void {
+  const path = img.dataset.abeleRepoPath
+  if (!path || !client?.hasToken) return
+  img.addEventListener(
+    'error',
+    () => {
+      repoImageUrl(client, file, path).then(
+        (url) => {
+          keep(url)
+          img.src = url
+        },
+        () => {}
+      )
+    },
+    { once: true }
+  )
+}
+
+/**
  * Loads an image of the repository through the API, with the token, for when its raw address
  * refused it — a private repository, or an Enterprise server that wants a session. The bytes come
  * back as an object URL the caller revokes.
