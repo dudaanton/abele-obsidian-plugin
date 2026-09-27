@@ -65,6 +65,11 @@ and the scripts offered on selected words. See [Books](books).
 Turning the floating button on for a phone, and for a tablet, the side it stands at, putting it
 back down, and the commands and scripts at the top of its menu. See [Quick button](quick-button).
 
+## Linter
+
+Folders the linter never looks in, each rule switched on or off, and where and how each applies.
+See [Linter](linter#setting-it-up).
+
 ## Transfer
 
 Sending settings to another device, receiving them, synced keys and the list of all keys. See

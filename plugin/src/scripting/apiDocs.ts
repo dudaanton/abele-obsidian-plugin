@@ -31,6 +31,7 @@ Every script must start with a comment block declaring its metadata:
 // @book
 // @toolbar
 // @startup
+// @lint warning
 \`\`\`
 
 - \`@icon\`: Lucide icon name for toolbar display (e.g. \`scroll-text\`, \`sparkles\`, \`wand\`). Defaults to \`scroll-text\` if omitted. See https://lucide.dev for available icons.
@@ -44,6 +45,7 @@ Every script must start with a comment block declaring its metadata:
 - \`@toolbar\`: the script is on the toolbar — a button with its icon at the top right of every note on a computer, run on that note and its selection, and a place on the phone's toolbar above the keyboard (so can any script pinned from the script library)
 - \`@startup\`: the script runs each time the plugin starts, after the vault is open, with its parameter defaults and no forms (\`form()\` answers \`null\`); \`@startup desktop\` or \`@startup mobile\` runs it on those devices only. A script that needs a parameter without a default is skipped. The startup list in Settings → Scripts → Startup does the same and sets the order
 - Parameters are available via the \`params\` object (e.g. \`params.paramName\`)
+- \`@lint\` (or \`@lint warning\`): the script is a rule of the linter, not something to run — no command, no agent tool. Declare \`function check(note)\` returning what is wrong: a list of messages or of \`{ message, line, fixable }\` (line 1-based over the whole file). Optionally \`function fix(note)\` returning the note's whole new text, or \`null\`. (Or \`return { check, fix }\`.) \`note\` has \`path\`, \`name\`, \`folder\`, \`content\`, \`lines\`, \`frontmatter\` (parsed, or \`null\`), \`frontmatterError\`, \`frontmatterEnd\`, \`body\`, \`bodyStart\`, \`ctime\`, \`mtime\`. Keep \`check\` fast and pure: it runs once per note over the whole vault. The rule is set up in Settings → Linter, with the built-in ones
 
 ---
 

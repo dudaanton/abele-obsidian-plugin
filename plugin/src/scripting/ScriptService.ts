@@ -409,6 +409,8 @@ export class ScriptService {
     this.unregisterAllCommands()
     this.scripts = next
     for (const parsed of next.values()) {
+      // A lint rule is not something to run: it gives the linter its `check` and `fix`.
+      if (parsed.meta.lint) continue
       try {
         plugin.addCommand({
           id: parsed.commandId,
@@ -467,7 +469,35 @@ export class ScriptService {
   }
 
   getEnabledToolScripts(): ParsedScript[] {
-    return this.getAll().filter((s) => s.meta.enabled !== false)
+    return this.getAll().filter((s) => s.meta.enabled !== false && !s.meta.lint)
+  }
+
+  /** The scripts that are rules of the linter (`// @lint`). */
+  getLintScripts(): ParsedScript[] {
+    return this.getAll().filter((s) => s.meta.lint)
+  }
+
+  /**
+   * What a script gives back when it is run once with no parameters, as it is: a lint rule's
+   * `{ check, fix }`. Functions named `check` and `fix` that the script only declares are handed
+   * back too, so a rule may be written either way. Not a run — nothing is listed or shown in the
+   * status bar — since the linter calls what comes back once per note.
+   */
+  async definition(path: string, signal?: AbortSignal): Promise<unknown> {
+    const script = this.scripts.get(path)
+    if (!script) throw new Error(`Script not found: ${path}`)
+    const logs: string[] = []
+    const ctx = buildScriptContext({
+      params: {},
+      signal: signal ?? new AbortController().signal,
+      logs,
+      scriptName: script.meta.name,
+    })
+    const declared =
+      'return { check: typeof check === "function" ? check : undefined, ' +
+      'fix: typeof fix === "function" ? fix : undefined }'
+    // The user's own script, as `execute` runs it; see there.
+    return compile(`${script.code}\n;${declared}`)(ctx)
   }
 
   setStatus(text: string) {

@@ -19,6 +19,12 @@ export interface ScriptMeta {
   toolbar?: boolean
   /** `@startup`: run each time the plugin starts, on the devices named (`desktop`, `mobile`). */
   startup?: StartupDevices
+  /**
+   * `@lint`: the script is a rule of the linter, not something to run — it gives back a `check`
+   * and maybe a `fix` (see `src/linter/scriptRules.ts`). The word after it is how bad a finding
+   * is, `error` unless it says `warning`.
+   */
+  lint?: 'error' | 'warning'
 }
 
 /** Which devices a startup script runs on. */

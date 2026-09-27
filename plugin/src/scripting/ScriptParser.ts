@@ -9,6 +9,7 @@ import type { ScriptMeta, ScriptParam, StartupDevices } from './types'
  *   // @book
  *   // @toolbar
  *   // @startup mobile
+ *   // @lint warning
  *
  * Returns null if @name is missing.
  */
@@ -23,6 +24,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
   let book = false
   let toolbar = false
   let startup: StartupDevices | undefined
+  let lint: 'error' | 'warning' | undefined
 
   for (const line of lines) {
     const trimmed = line.trim()
@@ -45,6 +47,8 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
     } else if (content === '@startup' || content.startsWith('@startup ')) {
       const word = content.slice(8).trim()
       startup = word === 'desktop' || word === 'mobile' ? word : 'both'
+    } else if (content === '@lint' || content.startsWith('@lint ')) {
+      lint = content.slice(5).trim() === 'warning' ? 'warning' : 'error'
     } else if (content.startsWith('@param ')) {
       const param = parseParam(content.slice(7).trim())
       if (param) params.push(param)
@@ -62,6 +66,7 @@ export function parseScriptHeader(source: string): ScriptMeta | null {
     ...(book ? { book } : {}),
     ...(toolbar ? { toolbar } : {}),
     ...(startup ? { startup } : {}),
+    ...(lint ? { lint } : {}),
   }
 }
 

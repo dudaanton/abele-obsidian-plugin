@@ -79,6 +79,19 @@ makes a header button for it, pins it to the toolbar, or puts it on the startup 
 (its **Startup** tab orders that list and holds the switch that skips it). That header is therefore also how a script presents
 itself to the person: a script without `@description` shows up saying it has none.
 
+## Lint rules
+
+A script whose header has `// @lint` (or `// @lint warning`) is a rule of the linter, listed in
+Settings → Linter beside the built-in ones as `script:<name>`, and neither a command nor a
+`script_<name>` tool. It declares `check(note)` — returning a list of messages, or of
+`{ message, line, fixable }` with `line` counted from 1 over the whole file — and may declare
+`fix(note)`, returning the note's whole new text or `null`. `note` carries `path`, `name`,
+`folder`, `content`, `lines`, `frontmatter` (parsed, or `null` when missing or unreadable),
+`frontmatterError`, `frontmatterEnd`, `body`, `bodyStart`, `ctime` and `mtime`; changing it
+changes nothing. The script is run once when a lint starts, and `check` then once per note, so it
+does no I/O of its own per note. Asked to add a rule the built-ins do not cover, write one of these
+with `create_script`; `lint` shows what it finds.
+
 ## Automations
 
 A script can also run by itself when something happens to a note. The **Automations** tab of

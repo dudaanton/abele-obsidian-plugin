@@ -116,6 +116,35 @@ A script can open a tab of its own with cards, buttons, fields, tables and its o
 notes, flashcards, a dashboard. The tab is saved with your workspace and comes back after a
 restart.
 
+## Lint rules
+
+A script whose header says `// @lint` is a rule of the [linter](linter) rather than something to
+run. It declares a `check` that is handed each note and gives back what is wrong with it — a list
+of messages, or of `{ message, line }` — and may declare a `fix` that gives back the note's whole
+new text:
+
+```js
+// @name No spaces at line ends
+// @description Lines do not end in spaces
+// @lint warning
+
+function check(note) {
+  return note.lines.flatMap((text, i) =>
+    /[ \t]+$/.test(text) ? [{ message: 'Spaces at the end of the line', line: i + 1 }] : []
+  )
+}
+
+function fix(note) {
+  return note.lines.map((text) => text.replace(/[ \t]+$/, '')).join('\n')
+}
+```
+
+The note has its `path`, `name`, `folder`, whole `content` and its `lines`, the `frontmatter` as
+properties (or `null`), the `body` under them and the line it starts on, `bodyStart`. Without
+`warning` in the header a finding is an error. The rule is listed in **Settings → Abele →
+Linter** with the others, where it can be switched off or kept to some folders. A lint script is
+not a command and not a tool for the agent: the linter is what runs it.
+
 ## CSS snippets
 
 Choose a snippets folder in **Settings → Abele → Other**. The CSS files in it are loaded, and

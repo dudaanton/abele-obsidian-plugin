@@ -75,6 +75,7 @@ import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
 import { registerDrawing } from './drawing/register'
 import { registerReader } from './reader/register'
 import { registerPropertyWidgets } from './properties/register'
+import { registerLinter } from './linter/register'
 import { ChatService } from './ai/ChatService'
 import { CommentService } from './ai/CommentService'
 import { useFilesInAgent } from './helpers/useFilesInAgent'
@@ -269,6 +270,9 @@ export default class AbelePlugin extends Plugin {
 
     // Some properties drawn by the plugin: wallet balances, sums in numbers, file cards.
     startupStep('property widgets', () => registerPropertyWidgets(this))
+
+    // The linter: notes checked against rules of the person's choosing, a tab listing what is wrong.
+    startupStep('linter', () => registerLinter(this))
 
     startupStep('bases views', () => this.registerBasesViews())
 

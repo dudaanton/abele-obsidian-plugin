@@ -272,6 +272,8 @@ export const SECTIONS: Section[] = [
   // Whole, so the scripts chosen for words selected in a book (`selectionScripts`) go with it.
   rootBlock('reader', 'Book reader', ['reader']),
   rootBlock('quick-button', 'Quick button', ['quickButton']),
+  // Whole: the folders it skips and every rule's setup, script rules included by their names.
+  rootBlock('linter', 'Linter', ['linter']),
   rootBlock('other', 'Other', [
     'refreshDelay',
     'logsNotesTypes',

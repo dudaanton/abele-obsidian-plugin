@@ -15,6 +15,7 @@ import writing from './writing.md?raw'
 import transfer from './transfer.md?raw'
 import settings from './settings.md?raw'
 import quickButton from './quick-button.md?raw'
+import linter from './linter.md?raw'
 import { slug } from '@/docs'
 
 /**
@@ -66,6 +67,7 @@ const FILES: [id: string, source: string][] = [
   ['books', books],
   ['drawing', drawing],
   ['writing', writing],
+  ['linter', linter],
   ['transfer', transfer],
   ['quick-button', quickButton],
   ['settings', settings],
@@ -209,6 +211,7 @@ const SETTINGS_TAB_PAGES: Record<string, string> = {
   reader: 'books',
   transfer: 'transfer',
   'quick-button': 'quick-button',
+  linter: 'linter',
   other: 'settings',
 }
 

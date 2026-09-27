@@ -267,6 +267,30 @@ describe('settings that arrived later than the transfer did', () => {
     expect(applyEntries([entry!], settings()).quickButton).toEqual(quickButton)
   })
 
+  it('carries the linter, every rule set up with it', () => {
+    const linter = {
+      exclude: ['Templates'],
+      rules: {
+        'no-tags': {
+          enabled: true,
+          severity: 'warning' as const,
+          folders: ['Notes'],
+          exclude: [],
+          types: ['task'],
+          property: '',
+          value: '',
+          params: { inline: false },
+        },
+      },
+    }
+    const entries = collectEntries(settings({ linter }))
+    const entry = find(entries, 'linter', 'linter')
+
+    expect(entry?.label).toBe('Linter')
+    expect(entry?.data).toEqual({ linter })
+    expect(applyEntries([entry!], settings()).linter).toEqual(linter)
+  })
+
   /**
    * The section lists the keys it carries by name, so anything added to the settings after it
    * was written is silently left behind. Voice input was exactly that.

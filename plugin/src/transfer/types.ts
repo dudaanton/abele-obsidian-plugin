@@ -27,6 +27,7 @@ export const TRANSFER_SECTIONS = [
   'calendars',
   'reader',
   'quick-button',
+  'linter',
   'other',
 ] as const
 

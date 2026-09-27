@@ -28,6 +28,7 @@ import {
 import { normalizeRule, type AutomationRule } from '@/automations/types'
 import { moveLegacySecrets, notePlainSecrets } from '@/secrets/legacy'
 import { DEFAULT_LIFE_YEARS, isBirthDate, lifeYears } from '@/bases/lifeWeeks'
+import { DEFAULT_LINTER_SETTINGS, linterSettingsFrom, type LinterSettings } from '@/linter/settings'
 
 export interface AbeleSettings {
   refreshDelay: number // in milliseconds
@@ -106,6 +107,8 @@ export interface AbeleSettings {
   calendars?: CalendarSettings
   /** The floating button on a phone and the menu it opens. */
   quickButton?: QuickButtonSettings
+  /** The linter: folders it never looks in, and how each rule is set up. */
+  linter?: LinterSettings
   /**
    * The synced secret store, encrypted — see `src/secrets/`. Kept as whatever the file holds:
    * it is opened and checked by the store, never by the settings, and never shown to an agent
@@ -273,6 +276,7 @@ export const DEFAULT_SETTINGS: AbeleSettings = {
   reader: { ...DEFAULT_READER_SETTINGS },
   calendars: { ...DEFAULT_CALENDAR_SETTINGS, feeds: [] },
   quickButton: { ...DEFAULT_QUICK_BUTTON },
+  linter: { ...DEFAULT_LINTER_SETTINGS, rules: {} },
 }
 
 export class AbeleConfig {
@@ -322,6 +326,7 @@ export class AbeleConfig {
   public reader: ReaderSettings
   public calendars: CalendarSettings = calendarSettingsFrom()
   public quickButton: QuickButtonSettings
+  public linter: LinterSettings = linterSettingsFrom()
   /** Carried through untouched; `SecretStore` is the only thing that reads or writes it. */
   public secretStore: unknown = undefined
   /**
@@ -645,6 +650,7 @@ export class AbeleConfig {
     this.reader = readerSettingsFrom(settings?.reader)
     this.calendars = calendarSettingsFrom(settings?.calendars)
     this.quickButton = quickButtonSettingsFrom(settings?.quickButton)
+    this.linter = linterSettingsFrom(settings?.linter)
     this.secretStore = settings?.secretStore
 
     return migrated
@@ -705,6 +711,8 @@ export class AbeleConfig {
         ...this.quickButton,
         actions: this.quickButton.actions.map((action) => ({ ...action })),
       },
+      // Through JSON: every rule's parameters are plain data, and nested lists stay unshared.
+      linter: JSON.parse(JSON.stringify(this.linter)) as LinterSettings,
       ...(this.secretStore ? { secretStore: this.secretStore } : {}),
     }
   }

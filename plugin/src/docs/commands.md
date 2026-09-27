@@ -61,6 +61,10 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
 - Migrate tasks from Dataview · Migrate from Dataview fields
 - Migrate data from Firefly III · Migrate time entries from Toggl
 
+- Lint current note · Lint folder… · Lint vault · Open linter — the linter's run shown in its own
+  tab, grouped by note or rule, with fixes; also **Lint this note** / **Lint this folder** in the
+  file menus. The `lint` and `lint_fix` tools do the same for an agent
+
 ## Other
 
 - Open documentation — the plugin's own documentation for people, page by page with a search

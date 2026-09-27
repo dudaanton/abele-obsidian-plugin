@@ -204,6 +204,14 @@ dragged there by hand) and `actions`, the person's own entries at the top of its
 `{ id, type, commandId, scriptName, name, icon }`, `type` being `command` or `script`. A command
 entry is left out of the menu wherever the command cannot run. It travels in a transfer.
 
+`linter` is the linter's setup: `exclude`, folders or globs no rule looks in, and `rules`, by rule
+id (a built-in's, or `script:<name>`), each `{ enabled, severity, folders, exclude, types,
+property, value, params }` — `severity` `error` or `warning`; `folders`/`exclude` folders or globs
+(`Projects/*/Tasks`, `**/*.excalidraw.md`); `types` note types; `property`/`value` a property the
+note must have, equal to the value when one is given; `params` the rule's own (for
+`required-properties` a `properties` list whose entries may carry a default, `created: {{ctime}}`).
+A rule with no entry runs as it ships. It travels in a transfer.
+
 `reader` holds the book reader's settings. Among them `selectionScripts` is the book menu, the
 scripts offered first on words selected in a book, in order: each `{ script, name, icon }`,
 `script` being the script's `@name` and an empty `name` or `icon` meaning the script's own.

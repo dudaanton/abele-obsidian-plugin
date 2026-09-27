@@ -19,6 +19,9 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { secrets } from '@/secrets/SecretStore'
 import { NoteRelations } from '@/entities/NoteRelations'
 import { ScriptService } from '@/scripting/ScriptService'
+import { LinterService } from '@/linter/LinterService'
+import { lintInView } from '@/linter/LinterView'
+import { openIssue } from '@/linter/openIssue'
 import { ScriptRuns } from '@/scripting/ScriptRuns'
 import { AutomationService } from '@/automations/AutomationService'
 import { ScriptViewService } from '@/scripting/view/ScriptViewService'
@@ -121,6 +124,10 @@ interface AbeleTestApi {
   /** A picture opened to draw on. */
   openImageInk: typeof openImageInk
   ScriptService: typeof ScriptService
+  /** The linter: its report, runs and fixes. */
+  LinterService: typeof LinterService
+  lintInView: typeof lintInView
+  openIssue: typeof openIssue
   ScriptViewService: typeof ScriptViewService
   ScriptRuns: typeof ScriptRuns
   AutomationService: typeof AutomationService
@@ -551,6 +558,9 @@ export function exposeTestApi(plugin: Plugin): void {
     newDrawing,
     openImageInk,
     ScriptService,
+    LinterService,
+    lintInView,
+    openIssue,
     ScriptViewService,
     ScriptRuns,
     AutomationService,
