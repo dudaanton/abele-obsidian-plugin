@@ -14,6 +14,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildSync } from 'esbuild'
 import { evalRaw, runCli } from './obsidianCli'
+import { onPhone } from './target'
+import { exposeToPhone } from './phone'
 import { OWNER, REPO } from './fakeGithubRepo'
 
 export interface FakeGithub {
@@ -67,11 +69,14 @@ export async function startFakeGithub(
   const lines: string[] = []
   child.stdout!.on('data', (chunk: Buffer) => lines.push(...chunk.toString().split('\n')))
   const origin = `http://127.0.0.1:${port}`
+  // On a real phone the same address has to lead here: see `exposeToPhone`.
+  const unexpose = onPhone() ? exposeToPhone(port) : () => {}
   return {
     origin,
     web: `${origin}/${OWNER}/${REPO}`,
     requests: () => lines.filter((l) => /^(GET|POST) /.test(l)),
     stop: () => {
+      unexpose()
       child.kill()
       rmSync(dir, { recursive: true, force: true })
     },

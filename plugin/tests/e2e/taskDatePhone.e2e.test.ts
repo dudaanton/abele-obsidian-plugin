@@ -22,7 +22,9 @@
  *
  * In both the dialog has to fit the room, scroll inside it, and show the time field. A picture
  * of each is written to `/tmp/abele-phone/task-date-*.png`; look at them. What a real keyboard
- * does on a real phone is not something this can see.
+ * does is not something the desktop can see: run on a real phone (`npm run test:e2e:phone`), the
+ * mimics are left out and the time field is tapped for real, the system keyboard comes up, and
+ * the same is asked of the dialog.
  *
  * Writes one task note to the vault for the run and removes it. Restores the window and the
  * desktop layout after itself. Requires Obsidian running on a vault with the development build
@@ -32,11 +34,15 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
   activeVaultName,
   evalJson,
+  evalLong,
   evalRaw,
   hasTestApi,
   isObsidianRunning,
   reloadApp,
 } from './helpers/obsidianCli'
+import { onPhone, targets } from './helpers/target'
+
+targets('desktop', 'phone')
 
 const PHONE = { width: 390, height: 844 }
 /** An iPhone keyboard with its suggestion bar, in points. */
@@ -73,12 +79,15 @@ const probeScript = `(async () => {
     }
     return false
   }
-  const fs = require('fs')
-  const win = require('@electron/remote').getCurrentWindow()
-  fs.mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
+  // On a real phone the harness's host takes the pictures and touches the screen (helpers/phone.ts).
+  const host = window.__e2eHost
+  const fs = host ? null : require('fs')
+  const win = host ? null : require('@electron/remote').getCurrentWindow()
+  if (fs) fs.mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
 
   let nudged = false
   const shoot = async (label) => {
+    if (host) { await wait(500); return host.shot(${JSON.stringify(SHOTS)} + '/task-date-' + label + '.png') }
     // The first capture after a reload under emulateMobile can hang; a frame produced by a
     // nudge of the window size unsticks it. Later ones do not need it.
     if (!nudged) {
@@ -149,7 +158,10 @@ const probeScript = `(async () => {
       entry.field = [Math.round(f.top), Math.round(f.bottom)]
       entry.content = { scrollHeight: content.scrollHeight, clientHeight: content.clientHeight }
       // What scrolls what the keyboard covers, when the dialog keeps its size over it.
-      const scroller = dialog.classList.contains('abele-keyboard-scroller') ? dialog : dialog.querySelector('.abele-keyboard-scroller')
+      // Under a real keyboard Obsidian itself stops the dialog's content above it, and the
+      // content is what scrolls.
+      const scroller = (dialog.classList.contains('abele-keyboard-scroller') ? dialog : dialog.querySelector('.abele-keyboard-scroller')) ??
+        (label === 'real-keyboard' && content.scrollHeight > content.clientHeight + 1 ? content : null)
       entry.scroller = scroller ? { scrollHeight: scroller.scrollHeight, clientHeight: scroller.clientHeight } : null
       // The buttons, scrolled to: where they stand then.
       if (scroller) { scroller.scrollTop = scroller.scrollHeight; await wait(100) }
@@ -180,6 +192,22 @@ const probeScript = `(async () => {
     // Nothing covers the screen.
     await openDialog()
     await measure('no-keyboard')
+
+    if (host) {
+      // A finger on the time field, and the phone's own keyboard.
+      const f = field().getBoundingClientRect()
+      await host.tap(f.left + f.width / 2, f.top + f.height / 2)
+      const kb = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--keyboard-height')) || 0
+      await until(() => kb() > 0, 5000)
+      await wait(800)
+      await measure('real-keyboard')
+      report['real-keyboard'].keyboard = kb()
+      report['real-keyboard'].screen = window.innerHeight
+      field().blur()
+      await until(() => kb() === 0, 5000)
+      await closeDialog()
+      return report
+    }
 
     // The page shrinks, the dialog's cap does not.
     const container = document.querySelector('.modal-container')
@@ -257,13 +285,17 @@ const setMobile = async (on: boolean): Promise<void> => {
   await reloadApp(`app.emulateMobile(${on})`)
 }
 
+/** A phone's window is its screen: measured, never set. */
 const windowSize = (): [number, number] =>
-  evalJson<[number, number]>(
-    `require('@electron/remote').getCurrentWindow().getContentSize()`,
-    30_000
-  )
+  onPhone()
+    ? evalJson<[number, number]>(`[innerWidth, innerHeight]`, 30_000)
+    : evalJson<[number, number]>(
+        `require('@electron/remote').getCurrentWindow().getContentSize()`,
+        30_000
+      )
 
 const setWindowSize = async (width: number, height: number): Promise<void> => {
+  if (onPhone()) return
   evalRaw(
     `(() => {
       require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height})
@@ -284,7 +316,7 @@ describe.skipIf(!available)("the task's date dialog on a phone, keyboard up", ()
     size = windowSize()
     await setMobile(true)
     await setWindowSize(PHONE.width, PHONE.height)
-    report = JSON.parse(evalRaw(probeScript, 120_000)) as Report
+    report = JSON.parse(await evalLong(probeScript, 170_000)) as Report
 
     const lines = Object.entries(report).map(
       ([label, s]) =>
@@ -300,7 +332,11 @@ describe.skipIf(!available)("the task's date dialog on a phone, keyboard up", ()
     await setMobile(false)
   }, 120_000)
 
-  const keyboardUp = ['page-shrinks', 'viewport-shrinks', 'keyboard-height']
+  // On a real phone the three mimics give way to the real keyboard.
+  const keyboardUp = onPhone()
+    ? ['real-keyboard']
+    : ['page-shrinks', 'viewport-shrinks', 'keyboard-height']
+  const desktop = it.skipIf(onPhone())
 
   it('reaches every screen', () => {
     expect(report.run?.error ?? '').toBe('')
@@ -310,7 +346,7 @@ describe.skipIf(!available)("the task's date dialog on a phone, keyboard up", ()
     }
   })
 
-  it('shows the diagnostics panel at the top without taking taps', () => {
+  desktop('shows the diagnostics panel at the top without taking taps', () => {
     const s = report['diagnostics']
     expect(s?.error ?? 'missing').toBe('')
     expect(s.dialog[0]).toBeGreaterThanOrEqual(0)
@@ -329,14 +365,17 @@ describe.skipIf(!available)("the task's date dialog on a phone, keyboard up", ()
   // stand in, and fits it. Where the keyboard is drawn over the page, the dialog keeps its size
   // (a dialog squeezed into the room above the keyboard was a squashed one, 1.36): it stands on
   // the screen as tall as it was, and what the keyboard covers is scrolled up above it.
-  it('page-shrinks: the dialog stands in the room the keyboard leaves, and scrolls in it', () => {
-    const s = report['page-shrinks']
-    expect(s.dialog[0]).toBeGreaterThanOrEqual(0)
-    expect(s.dialog[1]).toBeLessThanOrEqual(ROOM)
-    expect(s.content.scrollHeight).toBeGreaterThan(s.content.clientHeight)
-  })
+  desktop(
+    'page-shrinks: the dialog stands in the room the keyboard leaves, and scrolls in it',
+    () => {
+      const s = report['page-shrinks']
+      expect(s.dialog[0]).toBeGreaterThanOrEqual(0)
+      expect(s.dialog[1]).toBeLessThanOrEqual(ROOM)
+      expect(s.content.scrollHeight).toBeGreaterThan(s.content.clientHeight)
+    }
+  )
 
-  it.each(['viewport-shrinks', 'keyboard-height'])(
+  desktop.each(['viewport-shrinks', 'keyboard-height'])(
     '%s: the dialog keeps its size, and what the keyboard covers scrolls up above it',
     (label) => {
       const s = report[label]
@@ -354,8 +393,20 @@ describe.skipIf(!available)("the task's date dialog on a phone, keyboard up", ()
   )
 
   it.each(keyboardUp)('%s: the time field is in sight', (label) => {
-    const s = report[label]
+    const s = report[label] as Screen & { keyboard?: number; screen?: number }
+    // The room the real keyboard leaves, where it is one; the mimicked one's otherwise.
+    const room = s.keyboard ? s.screen! - s.keyboard : ROOM
     expect(s.field[0]).toBeGreaterThanOrEqual(s.dialog[0])
-    expect(s.field[1]).toBeLessThanOrEqual(Math.min(s.dialog[1], ROOM))
+    expect(s.field[1]).toBeLessThanOrEqual(Math.min(s.dialog[1], room))
   })
+
+  it.runIf(onPhone())(
+    'real keyboard: it came up, and scrolled to its end the dialog shows its buttons above it',
+    () => {
+      const s = report['real-keyboard'] as Screen & { keyboard?: number; screen?: number }
+      expect(s?.keyboard ?? 0).toBeGreaterThan(200)
+      expect(s.buttons).toBeGreaterThan(0)
+      expect(s.buttons).toBeLessThanOrEqual(s.screen! - s.keyboard!)
+    }
+  )
 })

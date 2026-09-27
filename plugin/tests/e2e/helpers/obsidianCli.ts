@@ -9,6 +9,8 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, rmdirSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { onPhone, desktopOnly } from './target'
+import { phoneEval, installPhoneHost } from './phone'
 
 const CLI = process.env.OBSIDIAN_CLI ?? '/usr/local/bin/obsidian'
 
@@ -45,6 +47,7 @@ const CALL_CEILING_MS = 45_000
 
 function run(args: string[], timeoutMs = CALL_CEILING_MS): string {
   timeoutMs = Math.min(timeoutMs, CALL_CEILING_MS)
+  if (onPhone()) return runOnPhone(args, timeoutMs)
   const deadline = Date.now() + timeoutMs
   for (;;) {
     // What is left of the one allowance: waiting for the app to get ready counts against it.
@@ -87,6 +90,33 @@ function runOnce(args: string[], timeoutMs: number): string {
   }
 }
 
+/**
+ * The CLI commands the tier uses, answered on a phone from inside its page; the ones that only
+ * a desktop has — the DevTools protocol, the CLI's console capture — say so (`DesktopOnlyError`).
+ */
+function runOnPhone(args: string[], timeoutMs: number): string {
+  const [command, ...rest] = args
+  switch (command) {
+    case 'vault': {
+      const name = phoneEval('app.vault.getName()', timeoutMs)
+      if (!name.startsWith('=> '))
+        throw new ObsidianUnavailableError(`no vault open on the phone: ${name}`)
+      return `name\t${name.slice(3)}`
+    }
+    case 'eval':
+      return phoneEval(rest[0].replace(/^code=/, ''), timeoutMs)
+    case 'plugin:reload': {
+      const id = (rest[0] ?? 'id=abele').replace(/^id=/, '')
+      return phoneEval(
+        `(async () => { await app.plugins.disablePlugin(${JSON.stringify(id)}); await app.plugins.enablePlugin(${JSON.stringify(id)}); return 'ok' })()`,
+        timeoutMs
+      )
+    }
+    default:
+      return desktopOnly(`obsidian ${command}`)
+  }
+}
+
 /** A CLI command with its arguments, as they are passed — `dev:cdp`, say. */
 export const runCli = (args: string[], timeoutMs?: number): string => run(args, timeoutMs)
 
@@ -122,6 +152,48 @@ export function evalRaw(code: string, timeoutMs?: number): string {
   const output = run(['eval', `code=${code}`], timeoutMs)
   const marker = output.indexOf('=>')
   return marker === -1 ? output : output.slice(marker + 2).trim()
+}
+
+/**
+ * `evalRaw` for a script that runs long — a probe walking through every dialog. On the desktop it
+ * is `evalRaw`. On a phone, where the same probe runs slower, it is started in the page and asked
+ * after every second, so the worker is never blocked for longer than one short call: a call that
+ * blocks it past a minute ends the whole run ("Timeout calling onTaskUpdate", see `CALL_CEILING_MS`).
+ */
+export async function evalLong(code: string, timeoutMs = 180_000): Promise<string> {
+  if (!onPhone()) return evalRaw(code, timeoutMs)
+  const id = evalRaw(
+    `(() => {
+      const id = 'job' + Date.now() + Math.random().toString(36).slice(2)
+      const jobs = (window.__e2eJobs = window.__e2eJobs || {})
+      jobs[id] = { done: false }
+      // Started from a timer, after this call has answered: begun in a microtask it could run
+      // on before the answer went out, and the call waited for the script it was only to start.
+      new Promise((ready) => setTimeout(ready, 0))
+        .then(() => (${code}))
+        .then(
+          (v) => { jobs[id] = { done: true, out: v === undefined ? '(no output)' : '=> ' + (typeof v === 'string' ? v : JSON.stringify(v, null, 2)) } },
+          (e) => { jobs[id] = { done: true, out: 'Error: ' + String((e && e.message) || e) } }
+        )
+      return id
+    })()`,
+    30_000
+  )
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    await pauseAsync(1000)
+    const job = evalJson<{ done: boolean; out?: string } | null>(
+      `(() => { const j = (window.__e2eJobs || {})[${JSON.stringify(id)}]; if (j && j.done) delete window.__e2eJobs[${JSON.stringify(id)}]; return j ?? null })()`,
+      30_000
+    )
+    // Gone with the page: something in the script reloaded it.
+    if (!job) throw new Error('the script was lost: the page reloaded while it ran')
+    if (job.done) {
+      const out = job.out ?? ''
+      return out.startsWith('=> ') ? out.slice(3) : out
+    }
+    if (Date.now() > deadline) throw new Error(`the script did not finish in ${timeoutMs} ms`)
+  }
 }
 
 /**
@@ -174,6 +246,8 @@ export function capturedErrors(): string {
  * run and back on after it — left off, a window nobody looks at keeps burning a core.
  */
 export function setBackgroundThrottling(on: boolean): void {
+  // A phone's app is in front, on a screen that stays awake: nothing to throttle.
+  if (onPhone()) return
   evalRaw(
     `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(${on}); return 'ok' })()`,
     30_000
@@ -214,6 +288,8 @@ export function framesPerSecond(): number {
  * failing in every window but the one in front). Survives a reload; switched off after the run.
  */
 export function setFocusEmulation(on: boolean): void {
+  // The phone's app is the one in front and has the focus for real.
+  if (onPhone()) return
   run(['dev:cdp', 'method=Emulation.setFocusEmulationEnabled', `params={"enabled":${on}}`], 30_000)
 }
 
@@ -249,6 +325,9 @@ export function assertWindowDrawn(): void {
  * has open, is not ours.
  */
 export function closeStrayWindows(): number {
+  // A phone has one window; settings is a dialog in it.
+  if (onPhone())
+    return evalJson<number>(`(() => { try { app.setting.close() } catch {} return 0 })()`, 30_000)
   return evalJson<number>(
     `(() => {
       const remote = require('@electron/remote')
@@ -365,6 +444,7 @@ async function takeReloadLock(): Promise<void> {
  * window's phone or desktop is its own, whoever else reloads.
  */
 export async function reloadApp(how = 'location.reload()'): Promise<void> {
+  if (onPhone()) return reloadPhone()
   const asked = /emulateMobile\((true|false)\)/.exec(how)?.[1]
   await takeReloadLock()
   try {
@@ -392,4 +472,21 @@ export async function reloadApp(how = 'location.reload()'): Promise<void> {
     }
   }
   setBackgroundThrottling(false)
+}
+
+/**
+ * A reload on a phone: it is a phone already, so `emulateMobile(true|false)` is just a reload —
+ * a desktop is not something a phone can become. Waits for the plugin, then puts back the page
+ * side of the phone harness, which the reload took with it (`installPhoneHost`).
+ */
+async function reloadPhone(): Promise<void> {
+  evalRaw(`(() => { setTimeout(() => location.reload(), 50); return 'ok' })()`, 30_000)
+  await pauseAsync(3000)
+  const deadline = Date.now() + 90_000
+  while (!hasTestApi()) {
+    if (Date.now() > deadline)
+      throw new Error('the plugin did not come back on the phone after a reload')
+    await pauseAsync(1000)
+  }
+  installPhoneHost()
 }

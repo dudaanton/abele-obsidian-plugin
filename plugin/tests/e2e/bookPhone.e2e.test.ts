@@ -7,17 +7,28 @@
  * opened over the last one. A picture of each goes to `/tmp/abele-phone/book-*.png` — look at
  * them.
  *
- * What cannot be checked here: WebKit (the iPhone's engine), the system's long-press text
- * selection, and a real finger's swipe. Those are for the phone itself.
+ * On the desktop, what cannot be checked is WebKit (the iPhone's engine), the system's
+ * long-press text selection, and a real finger's swipe. Run on a real phone
+ * (`npm run test:e2e:phone`), the tap and the swipe are a finger's, through the screen.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
-import { evalAsync } from './helpers/githubLive'
+import {
+  evalJson,
+  evalLong,
+  evalRaw,
+  hasTestApi,
+  isObsidianRunning,
+  reloadApp,
+} from './helpers/obsidianCli'
 import { buildPlainEpub } from '../fixtures/books/maliciousBook'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildPlainPdf } from '../fixtures/books/pdfFixture'
+import { onPhone, targets } from './helpers/target'
+
+// Adapted for a real phone, not yet green there: see docs/Testing.md, "On a real phone".
+targets('desktop')
 
 const PHONE = { width: 390, height: 844 }
 const SHOTS = '/tmp/abele-phone'
@@ -26,10 +37,14 @@ const available = isObsidianRunning() && hasTestApi()
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/** A phone's window is its screen: measured, never set. */
 const windowSize = (): [number, number] =>
-  evalJson<[number, number]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
+  onPhone()
+    ? evalJson<[number, number]>(`[innerWidth, innerHeight]`)
+    : evalJson<[number, number]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
 
 const setWindowSize = async (width: number, height: number): Promise<void> => {
+  if (onPhone()) return
   evalRaw(
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
@@ -56,8 +71,11 @@ interface Screen {
   shot?: string
 }
 
-const measure = (name: string) =>
-  evalAsync<Screen>(`(async () => {
+/** Each is long on a phone: see `evalLong`. */
+const measure = async (name: string): Promise<Screen> =>
+  JSON.parse(
+    await evalLong(
+      `(async () => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms))
     const until = async (fn, ms = 15000) => {
       const deadline = Date.now() + ms
@@ -111,8 +129,12 @@ const measure = (name: string) =>
       report.text = (page.doc.body?.innerText ?? '').trim().length
       report.sandbox = page.doc.defaultView.frameElement?.getAttribute('sandbox') ?? null
 
-      require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
+      // On a real phone the harness's host takes the picture, and the tap and swipe below are
+      // a finger's on the screen (see helpers/phone.ts).
+      const host = window.__e2eHost
       const shot = ${JSON.stringify(SHOTS)} + '/book-' + ${JSON.stringify(name)} + '.png'
+      if (host) report.shot = await host.shot(shot)
+      else require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
       for (let attempt = 0; attempt < 3 && !report.shot?.endsWith('.png'); attempt++) {
         try {
           const capture = require('@electron/remote').getCurrentWebContents().capturePage()
@@ -126,7 +148,8 @@ const measure = (name: string) =>
       const frame = page.doc.defaultView.frameElement.getBoundingClientRect()
       const x = r.right - 10 - frame.left
       const y = r.top + r.height / 2 - frame.top
-      page.doc.elementFromPoint(Math.max(0, x), y)?.dispatchEvent(new MouseEvent('click', {
+      if (host) await host.tap(r.right - 10, r.top + r.height / 2)
+      else page.doc.elementFromPoint(Math.max(0, x), y)?.dispatchEvent(new MouseEvent('click', {
         bubbles: true, cancelable: true, view: page.doc.defaultView, clientX: x, clientY: y }))
       report.turned = !!await until(() => engine.lastLocation.fraction > before, 5000)
 
@@ -139,15 +162,24 @@ const measure = (name: string) =>
       const fire = (type, x) => target.dispatchEvent(new TouchEvent(type, {
         bubbles: true, cancelable: true, touches: type === 'touchend' ? [] : [touch(x)],
         changedTouches: [touch(x)] }))
-      fire('touchstart', 300)
-      for (let x = 280; x >= 80; x -= 40) { await wait(16); fire('touchmove', x) }
-      fire('touchend', 80)
+      if (host) {
+        const mid = r.top + r.height / 2
+        await host.swipe(r.right - 40, mid, r.left + 40, mid)
+      } else {
+        fire('touchstart', 300)
+        for (let x = 280; x >= 80; x -= 40) { await wait(16); fire('touchmove', x) }
+        fire('touchend', 80)
+      }
       report.swiped = !!await until(() => engine.lastLocation.fraction > swipeFrom, 5000)
     } catch (e) {
-      report.error = String((e && e.stack) || e)
+      // The message too: WebKit's stack does not carry it.
+      report.error = String(e && e.message) + '\\n' + String((e && e.stack) || e)
     }
     return report
-  })()`)
+  })()`,
+      120_000
+    )
+  ) as Screen
 
 describe.skipIf(!available)('a book on a phone', () => {
   let size: [number, number] = [0, 0]
@@ -200,13 +232,16 @@ describe.skipIf(!available)('a book on a phone', () => {
     await reload('app.emulateMobile(true)')
     await setWindowSize(PHONE.width, PHONE.height)
     await reload('window.location.reload()')
-    screens.plain = measure('plain')
-    screens['epub-test'] = measure('epub-test')
-    screens['plain-pdf'] = measure('plain-pdf')
-    screens.rich = measure('rich')
-    overlays = evalAsync(`(async () => {
+    screens.plain = await measure('plain')
+    screens['epub-test'] = await measure('epub-test')
+    screens['plain-pdf'] = await measure('plain-pdf')
+    screens.rich = await measure('rich')
+    overlays = JSON.parse(
+      await evalLong(
+        `(async () => {
       const wait = (ms) => new Promise((r) => setTimeout(r, ms))
       const shoot = async (name) => {
+        if (window.__e2eHost) return window.__e2eHost.shot(${JSON.stringify(SHOTS)} + '/book-' + name + '.png')
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
             const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
@@ -286,7 +321,10 @@ describe.skipIf(!available)('a book on a phone', () => {
       view.reading.speech.stop()
       hooks.speech = null
       return report
-    })()`)
+    })()`,
+        120_000
+      )
+    ) as typeof overlays
     console.info(`\n  ${JSON.stringify(overlays)}\n`)
     console.info(`\n  ${JSON.stringify(screens)}\n`)
   }, 300_000)

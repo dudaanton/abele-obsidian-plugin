@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:perf": "vitest run --config vitest.perf.config.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:e2e:phone": "E2E_TARGET=phone vitest run --config vitest.e2e.config.ts",
     "test:size": "vitest run --config vitest.size.config.ts",
     "guard": "node scripts/repo-guard.mjs --all",
     "guard:staged": "node scripts/repo-guard.mjs --staged",

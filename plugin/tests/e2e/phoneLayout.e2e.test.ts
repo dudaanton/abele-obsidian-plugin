@@ -31,11 +31,16 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
   activeVaultName,
   evalJson,
+  evalLong,
   evalRaw,
   hasTestApi,
   isObsidianRunning,
   reloadApp,
 } from './helpers/obsidianCli'
+import { onPhone, targets } from './helpers/target'
+
+// Adapted for a real phone, not yet green there: see docs/Testing.md, "On a real phone".
+targets('desktop')
 
 const PHONE = { width: 390, height: 844 }
 const SHOTS = '/tmp/abele-phone'
@@ -60,10 +65,6 @@ interface Screen {
 
 type Report = Record<string, Screen>
 
-/** `evalRaw` for a script that resolves to a JSON-serializable value, parsed directly. */
-const evalAsync = <T>(script: string, timeoutMs: number): T =>
-  JSON.parse(evalRaw(script, timeoutMs)) as T
-
 const probeScript = `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
   const until = async (fn, ms) => {
@@ -74,9 +75,11 @@ const probeScript = `(async () => {
     }
     return false
   }
-  const fs = require('fs')
-  const win = require('@electron/remote').getCurrentWindow()
-  fs.mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
+  // On a real phone the harness's host takes the pictures (see phone.ts); there is no Electron.
+  const host = window.__e2eHost
+  const fs = host ? null : require('fs')
+  const win = host ? null : require('@electron/remote').getCurrentWindow()
+  if (fs) fs.mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
 
   const name = (el) => ((el.className || el.tagName) + '').split(' ')[0].slice(0, 48)
 
@@ -156,6 +159,8 @@ const probeScript = `(async () => {
     // where it started from. Nothing here waits on one.
     for (const el of document.querySelectorAll('.modal, .modal-container')) el.style.transition = 'none'
     await wait(400)
+    const path = ${JSON.stringify(SHOTS)} + '/' + label.replace(/[^a-z0-9]+/gi, '-') + '.png'
+    if (host) return host.shot(path)
     let img
     try {
       img = await win.webContents.capturePage()
@@ -166,7 +171,6 @@ const probeScript = `(async () => {
       await wait(300)
       img = await win.webContents.capturePage()
     }
-    const path = ${JSON.stringify(SHOTS)} + '/' + label.replace(/[^a-z0-9]+/gi, '-') + '.png'
     fs.writeFileSync(path, img.toPNG())
     return path
   }
@@ -747,13 +751,17 @@ const setMobile = async (on: boolean): Promise<void> => {
   await reloadApp(`app.emulateMobile(${on})`)
 }
 
+/** A phone's window is its screen: measured, never set. */
 const windowSize = (): [number, number] =>
-  evalJson<[number, number]>(
-    `require('@electron/remote').getCurrentWindow().getContentSize()`,
-    30_000
-  )
+  onPhone()
+    ? evalJson<[number, number]>(`[innerWidth, innerHeight]`, 30_000)
+    : evalJson<[number, number]>(
+        `require('@electron/remote').getCurrentWindow().getContentSize()`,
+        30_000
+      )
 
 const setWindowSize = async (width: number, height: number): Promise<void> => {
+  if (onPhone()) return
   evalRaw(
     `(() => {
       require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height})
@@ -774,7 +782,8 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     size = windowSize()
     await setMobile(true)
     await setWindowSize(PHONE.width, PHONE.height)
-    report = evalAsync<Report>(probeScript, 120_000)
+    // On a phone this probe runs longer than one call may block for: see `evalLong`.
+    report = JSON.parse(await evalLong(probeScript, 170_000)) as Report
 
     const lines = Object.entries(report).map(
       ([label, s]) => `  ${label.padEnd(20)} ${s.shot || s.error}`

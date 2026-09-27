@@ -14,11 +14,35 @@ import {
   setBackgroundThrottling,
   setFocusEmulation,
 } from './obsidianCli'
+import { onPhone } from './target'
+import {
+  assertPhoneReady,
+  dropPhone,
+  installBuild,
+  startHost,
+  stopHost,
+  takePhone,
+} from './phoneHost'
 
 const KEYS = ['file', 'files']
 let typesBefore: Record<string, string | null> | undefined
 
-export function setup(): void {
+export async function setup(): Promise<void> {
+  if (onPhone()) {
+    // The phone is taken for the whole run, checked, given this tree's build and the page
+    // side of the harness; see phoneHost.ts. Any failure stops the run with its reason.
+    takePhone(`abele e2e ${process.cwd()}`)
+    try {
+      assertPhoneReady()
+      const version = installBuild(process.cwd())
+      await startHost()
+      console.info(`\n  phone ready, abele ${version}\n`)
+    } catch (error) {
+      stopHost()
+      dropPhone()
+      throw error
+    }
+  }
   if (!isObsidianRunning()) return
   try {
     typesBefore = evalJson<Record<string, string | null>>(
@@ -31,6 +55,10 @@ export function setup(): void {
 }
 
 export function teardown(): void {
+  if (onPhone()) {
+    stopHost()
+    dropPhone()
+  }
   if (!isObsidianRunning()) return
   try {
     closeStrayWindows()

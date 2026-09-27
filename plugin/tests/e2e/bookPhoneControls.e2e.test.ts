@@ -13,21 +13,27 @@
  *   table scrolls sideways without turning the page, a tap on either opens it full screen,
  *   where a pinch zooms and a swipe down closes, and turning the phone keeps the place.
  *
- * Pictures of each go to `/tmp/abele-phone/controls-*.png` — look at them. A real keyboard, a
- * real finger and iOS's own gestures are for the phone itself.
+ * Pictures of each go to `/tmp/abele-phone/controls-*.png` — look at them. On the desktop a real
+ * keyboard, a real finger and iOS's own gestures cannot be had. Run on a real phone
+ * (`npm run test:e2e:phone`), every touch below is replayed as the phone's own gesture — a tap,
+ * a swipe, a pinch — the keyboard is the system's, and the phone is really turned on its side.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
   evalJson,
+  evalLong,
   evalRaw,
   hasTestApi,
   isObsidianRunning,
   reloadApp,
   runCli,
 } from './helpers/obsidianCli'
-import { evalAsync } from './helpers/githubLive'
 import { buildRichEpub } from '../fixtures/books/richBook'
 import { buildFigureEpub } from '../fixtures/books/figureBook'
+import { onPhone, targets } from './helpers/target'
+
+// Adapted for a real phone, not yet green there: see docs/Testing.md, "On a real phone".
+targets('desktop')
 
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Abele reader controls e2e'
@@ -39,6 +45,7 @@ const KEYBOARD = 336
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const setWindowSize = async (width: number, height: number): Promise<void> => {
+  if (onPhone()) return
   evalRaw(
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
@@ -50,10 +57,13 @@ const setWindowSize = async (width: number, height: number): Promise<void> => {
  * way the CLI attaches it: after a fresh start of the app nothing has, and input sent through it
  * goes nowhere.
  */
-const attachDebugger = (): void => void runCli(['dev:debug', 'on'], 30_000)
+const attachDebugger = (): void => {
+  if (!onPhone()) runCli(['dev:debug', 'on'], 30_000)
+}
 
 const reload = async (how: string): Promise<void> => {
   await reloadApp(how)
+  if (onPhone()) return
   attachDebugger()
   evalRaw(
     `(() => { require('@electron/remote').getCurrentWebContents().setBackgroundThrottling(false); return 'ok' })()`
@@ -67,12 +77,31 @@ const PRELUDE = `
     while (Date.now() < deadline) { try { const v = await fn(); if (v) return v } catch {} await wait(50) }
     return null
   }
-  const cdp = require('@electron/remote').getCurrentWebContents().debugger
-  const touch = (type, points = []) => cdp.sendCommand('Input.dispatchTouchEvent', {
-    type, touchPoints: points.map(([x, y], id) => ({ x: Math.round(x), y: Math.round(y), id })),
-  })
+  // On a real phone the harness's host touches the screen and takes the pictures (helpers/phone.ts).
+  const host = window.__e2eHost
+  const cdp = host ? null : require('@electron/remote').getCurrentWebContents().debugger
+  // There a gesture is gathered as it is described and replayed whole when the finger lifts:
+  // one finger that stayed put is a tap, one that moved a swipe, two a pinch.
+  let gesture = null
+  const touch = async (type, points = []) => {
+    if (!host) return cdp.sendCommand('Input.dispatchTouchEvent', {
+      type, touchPoints: points.map(([x, y], id) => ({ x: Math.round(x), y: Math.round(y), id })),
+    })
+    if (type === 'touchStart') { gesture = { start: points, last: points }; return }
+    if (type === 'touchMove') { gesture.last = points; return }
+    const g = gesture
+    gesture = null
+    if (g.start.length > 1) {
+      const apart = (p) => Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1])
+      return host.pinch(apart(g.last) / apart(g.start))
+    }
+    const [[x0, y0]] = g.start, [[x1, y1]] = g.last
+    if (Math.hypot(x1 - x0, y1 - y0) < 8) return host.tap(x0, y0)
+    return host.swipe(x0, y0, x1, y1)
+  }
   const tap = async (x, y) => { await touch('touchStart', [[x, y]]); await wait(60); await touch('touchEnd'); await wait(800) }
   const shoot = async (name) => {
+    if (host) return host.shot(${JSON.stringify(SHOTS)} + '/controls-' + name + '.png')
     const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
     if (img) { require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true }); require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/controls-' + name + '.png', img.toPNG()) }
   }
@@ -112,13 +141,17 @@ const PRELUDE = `
   }
 `
 
-const run = <T>(body: string): T =>
-  evalAsync<T>(
-    `(async () => { ${PRELUDE}
-      try { ${body} } catch (e) { return { error: String((e && e.stack) || e) } }
+/** Long on a phone, where every touch is a real gesture: see `evalLong`. */
+const run = async <T>(body: string): Promise<T> =>
+  JSON.parse(
+    await evalLong(
+      `(async () => { ${PRELUDE}
+      // The message and the stack: WebKit's stack does not carry the message.
+      try { ${body} } catch (e) { return { error: String(e && e.message) + '\\n' + String((e && e.stack) || e) } }
     })()`,
-    120_000
-  )
+      120_000
+    )
+  ) as T
 
 describe.skipIf(!available)('the reader’s controls on a phone', () => {
   let savedReader: unknown = null
@@ -131,9 +164,11 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       'figures.epub': Buffer.from(buildFigureEpub()).toString('base64'),
     }
     savedReader = evalJson<unknown>('window.__abeleTest.AbeleConfig.getInstance().reader')
-    size = evalJson<[number, number]>(
-      `require('@electron/remote').getCurrentWindow().getContentSize()`
-    )
+    size = onPhone()
+      ? [0, 0]
+      : evalJson<[number, number]>(
+          `require('@electron/remote').getCurrentWindow().getContentSize()`
+        )
     evalRaw(
       `(async () => {
         const old = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
@@ -172,8 +207,8 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
     await reload('app.emulateMobile(false)')
   }, 180_000)
 
-  it('dragging the progress slider moves through the book, not Obsidian’s side panel', () => {
-    const r = run<{ error?: string; closed?: boolean[]; fraction?: number[] }>(`
+  it('dragging the progress slider moves through the book, not Obsidian’s side panel', async () => {
+    const r = await run<{ error?: string; closed?: boolean[]; fraction?: number[] }>(`
       const { leaf, view } = await open(${JSON.stringify(RICH)})
       // From the start of the book, with room to move to the right.
       await view.engine.goTo(view.model.toc[0].href); await wait(600)
@@ -195,8 +230,8 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
     expect(r.fraction![1]).toBeGreaterThan(r.fraction![0] + 0.2)
   })
 
-  it('the line under the page shows the page of the chapter, and a tap goes round its other ways', () => {
-    const r = run<{
+  it('the line under the page shows the page of the chapter, and a tap goes round its other ways', async () => {
+    const r = await run<{
       error?: string
       shown?: string[]
       turned?: string
@@ -248,8 +283,8 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
     expect(r.scrolled).toMatch(/^Page 2 of \d+$/)
   })
 
-  it('the text and layout dialog scrolls to its last row; the note and comment dialogs show their buttons', () => {
-    const r = run<{
+  it('the text and layout dialog scrolls to its last row; the note and comment dialogs show their buttons', async () => {
+    const r = await run<{
       error?: string
       settings?: {
         scrolls: boolean
@@ -309,8 +344,8 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
     expect(r.comment![1]).toBeLessThanOrEqual(r.comment![2])
   })
 
-  it('a dialog with a search field keeps its size over the keyboard, and what is under it scrolls up', () => {
-    const r = run<{
+  it('a dialog with a search field keeps its size over the keyboard, and what is under it scrolls up', async () => {
+    const r = await run<{
       error?: string
       before?: number
       after?: number
@@ -325,21 +360,35 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       const dialog = document.querySelector('.modal')
       const before = Math.round(dialog.getBoundingClientRect().height)
       const input = dialog.querySelector('input')
-      input.focus(); await wait(200)
-      keyboard(${KEYBOARD}); await wait(800)
+      // On a real phone: a finger on the field, and the system's keyboard, however tall it is.
+      const kb = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--keyboard-height')) || 0
+      if (host) {
+        const f = input.getBoundingClientRect()
+        await host.tap(f.left + f.width / 2, f.top + f.height / 2)
+        await until(() => kb() > 0, 5000)
+      } else {
+        input.focus(); await wait(200)
+        keyboard(${KEYBOARD})
+      }
+      await wait(800)
       const after = Math.round(dialog.getBoundingClientRect().height)
       const cover = document.querySelector('.modal-container').className
-      const sc = dialog.querySelector('.abele-keyboard-scroller') ?? (dialog.classList.contains('abele-keyboard-scroller') ? dialog : null)
-      const keyboardTop = innerHeight - ${KEYBOARD}
+      const given = dialog.querySelector('.abele-keyboard-scroller') ?? (dialog.classList.contains('abele-keyboard-scroller') ? dialog : null)
+      // Where nothing needed room given — Obsidian's phone app already stops a dialog's content
+      // above its keyboard — the picker's own list is what scrolls.
+      const sc = given ?? (host ? dialog.querySelector('.abele-icon-picker__scroller') : null)
+      const keyboardTop = innerHeight - (host ? kb() : ${KEYBOARD})
       // How much of the scroller lies under the keyboard, and how far it can scroll past the end
       // of what it holds: at least that much, so its last row can be brought above the keyboard.
-      const scroller = sc ? { under: Math.round(sc.getBoundingClientRect().bottom - keyboardTop), reach: parseInt(sc.style.getPropertyValue('--abele-keyboard-cover')) } : null
+      const scroller = sc ? { under: Math.round(sc.getBoundingClientRect().bottom - keyboardTop), reach: given ? parseInt(sc.style.getPropertyValue('--abele-keyboard-cover')) : 0 } : null
       if (sc) { sc.scrollTop = sc.scrollHeight; await wait(300) }
-      const lastItem = sc?.lastElementChild
+      const lastItem = sc && (host ? [...sc.querySelectorAll('.abele-icon-picker__icon')].pop() : sc.lastElementChild)
       const field = lastItem ? Math.round(lastItem.getBoundingClientRect().bottom - keyboardTop) : 999
       await shoot('keyboard-icon-picker')
-      keyboard(0); input.blur()
-      document.querySelector('.modal-container .modal-close-button')?.click()
+      if (!host) keyboard(0)
+      input.blur()
+      // A phone's dialog has its close button in the header instead.
+      ;(document.querySelector('.modal-container .modal-close-button') ?? document.querySelector('.modal-container .modal-header-button'))?.click()
       await wait(500)
       return { before, after, cover, scroller, field }
     `)
@@ -352,8 +401,8 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
     expect(r.field).toBeLessThanOrEqual(0)
   })
 
-  it('pictures and tables: centred, left small, scrolled sideways, opened full screen, zoomed and closed', () => {
-    const r = run<{
+  it('pictures and tables: centred, left small, scrolled sideways, opened full screen, zoomed and closed', async () => {
+    const r = await run<{
       error?: string
       scan?: { centred: boolean; width: number }
       dot?: { display: string; width: number; opens: boolean }
@@ -432,8 +481,8 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
     expect(r.tableViewer).toEqual({ opened: 'table', frame: true, sandbox: 'allow-same-origin' })
   })
 
-  it('turned on its side, the page is laid out anew at the same place, the picture centred', () => {
-    const r = run<{ error?: string; kept?: boolean; pages?: number[]; centred?: boolean }>(`
+  it('turned on its side, the page is laid out anew at the same place, the picture centred', async () => {
+    const r = await run<{ error?: string; kept?: boolean; pages?: number[]; centred?: boolean }>(`
       const { leaf, view } = await open(${JSON.stringify(FIGURES)})
       await view.engine.goTo(view.model.toc[0].href); await wait(500)
       for (let i = 0; i < 3; i++) { await R(view).next(); await wait(400) }
@@ -441,8 +490,9 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       const before = view.engine.lastLocation.range
       const start = [before.startContainer, before.startOffset]
       const p0 = R(view).page
-      const win = require('@electron/remote').getCurrentWindow()
-      win.setContentSize(844, 390)
+      const win = host ? null : require('@electron/remote').getCurrentWindow()
+      if (host) await host.orientation('landscape')
+      else win.setContentSize(844, 390)
       await wait(2000)
       // What began the page upright is on the page on its side.
       const after = view.engine.lastLocation.range
@@ -452,7 +502,8 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
       const centred = Math.abs((own.left - column.left) - (column.right - own.right)) < 3
       await turnTo(view, scanEl)
       await shoot('figure-landscape')
-      win.setContentSize(390, 844)
+      if (host) await host.orientation('portrait')
+      else win.setContentSize(390, 844)
       await wait(1500)
       leaf.detach()
       return { kept, pages: [p0], centred }

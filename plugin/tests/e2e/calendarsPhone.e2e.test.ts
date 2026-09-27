@@ -17,6 +17,10 @@ import { join } from 'node:path'
 import { buildSync } from 'esbuild'
 import { evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { LINK_TOKEN } from '../helpers/fakeCalendarServer'
+import { onPhone, targets } from './helpers/target'
+import { exposeToPhone } from './helpers/phone'
+
+targets('desktop', 'phone')
 
 const PHONE = { width: 390, height: 844 }
 const SHOTS = '/tmp/abele-phone'
@@ -58,9 +62,12 @@ async function startCalendarProcess(ics: string): Promise<CalendarProcess> {
     })
     child.on('exit', (code) => reject(new Error(`the fake calendar exited with ${code}`)))
   })
+  // On a real phone the same address has to lead here: see `exposeToPhone`.
+  const unexpose = onPhone() ? exposeToPhone(port) : () => {}
   return {
     origin: `http://127.0.0.1:${port}`,
     stop: () => {
+      unexpose()
       child.kill()
       rmSync(dir, { recursive: true, force: true })
     },
@@ -128,12 +135,16 @@ const reload = async (how: string): Promise<void> => {
   await reloadApp(how)
 }
 
+/** A phone's window is its screen: measured, never set. */
 const windowSize = (): [number, number] =>
-  JSON.parse(
-    evalRaw(`JSON.stringify(require('@electron/remote').getCurrentWindow().getContentSize())`)
-  ) as [number, number]
+  onPhone()
+    ? (JSON.parse(evalRaw(`JSON.stringify([innerWidth, innerHeight])`)) as [number, number])
+    : (JSON.parse(
+        evalRaw(`JSON.stringify(require('@electron/remote').getCurrentWindow().getContentSize())`)
+      ) as [number, number])
 
 const setWindowSize = async (width: number, height: number): Promise<void> => {
+  if (onPhone()) return
   evalRaw(
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
@@ -162,6 +173,8 @@ const PRELUDE = `
     return over.slice(0, 12)
   }
   const picture = async (file) => {
+    // On a real phone the harness's host takes it (see helpers/phone.ts).
+    if (window.__e2eHost) { await window.__e2eHost.shot(${JSON.stringify(SHOTS)} + '/' + file); return file }
     require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
     for (let attempt = 0; attempt < 3; attempt++) {
       try {

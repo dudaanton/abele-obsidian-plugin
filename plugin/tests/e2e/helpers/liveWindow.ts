@@ -8,7 +8,7 @@
  * Per file rather than once for the run: `emulateMobile` reloads the app, and a file that
  * crashes half way is exactly the one that leaves a settings window behind.
  */
-import { beforeAll, afterAll } from 'vitest'
+import { beforeAll, afterAll, beforeEach, onTestFailed } from 'vitest'
 import {
   assertWindowDrawn,
   closeStrayWindows,
@@ -19,11 +19,15 @@ import {
   useDomMenus,
   waitForLinkIndex,
 } from './obsidianCli'
+import { onPhone } from './target'
+import { installPhoneHost } from './phone'
 
 const available = isObsidianRunning()
 
 beforeAll(() => {
   if (!available) return
+  // The page side of the phone harness: the file before may have reloaded it away.
+  if (onPhone()) installPhoneHost()
   closeStrayWindows()
   notesInEditor()
   setBackgroundThrottling(false)
@@ -40,4 +44,20 @@ afterAll(() => {
   if (!available) return
   closeStrayWindows()
   notesInEditor()
+})
+
+/**
+ * A test that failed only because it asked for something a phone does not have (see
+ * `DesktopOnlyError`) is reported as skipped, with what it needed, rather than as failed.
+ */
+beforeEach(() => {
+  onTestFailed(({ task }) => {
+    const errors = task.result?.errors ?? []
+    if (!errors.length || !errors.every((e) => e?.name === 'DesktopOnlyError')) return
+    // The runner reports a result in this state as skipped, `note` as the reason.
+    const result = task.result as NonNullable<typeof task.result> & { note?: string }
+    result.state = 'skip'
+    result.note = errors[0].message
+    result.errors = undefined
+  })
 })

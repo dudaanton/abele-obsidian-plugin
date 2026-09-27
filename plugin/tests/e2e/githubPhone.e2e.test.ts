@@ -9,8 +9,9 @@
  *
  * Text stays selectable on a phone, and a finger held on a name in the code opens the code menu
  * while one held anywhere else does not. The phone's own long-press selection cannot be made
- * here: the Mac's Chromium turns no touch into a long-press gesture, so what is checked is that
- * nothing stands in its way — the text is selectable, and the menu keeps to names.
+ * on the desktop: the Mac's Chromium turns no touch into a long-press gesture, so what is checked
+ * there is that nothing stands in its way — the text is selectable, and the menu keeps to names.
+ * On a real phone (`npm run test:e2e:phone`) the press is a finger's.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
@@ -30,6 +31,10 @@ import {
   type FakeGithub,
 } from './helpers/githubLive'
 import { BASE_SHA } from './helpers/fakeGithubRepo'
+import { onPhone, targets } from './helpers/target'
+import { longPress as fingerHeld } from './helpers/phone'
+
+targets('desktop', 'phone')
 
 const PHONE = { width: 390, height: 844 }
 const SHOTS = '/tmp/abele-phone'
@@ -60,6 +65,12 @@ const longPress = async <T>(
   during: () => T,
   ms = 900
 ): Promise<T> => {
+  // A real finger: the menu a long press opens stays after the lift, as it does for a person.
+  if (onPhone()) {
+    fingerHeld(at.x, at.y)
+    await pause(300)
+    return during()
+  }
   cdp('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 })
   try {
     cdp('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [at] })
@@ -71,10 +82,14 @@ const longPress = async <T>(
   }
 }
 
+/** A phone's window is its screen: measured, never set. */
 const windowSize = (): [number, number] =>
-  evalJson<[number, number]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
+  onPhone()
+    ? evalJson<[number, number]>(`[innerWidth, innerHeight]`)
+    : evalJson<[number, number]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
 
 const setWindowSize = async (width: number, height: number): Promise<void> => {
+  if (onPhone()) return
   evalRaw(
     `(() => { require('@electron/remote').getCurrentWindow().setContentSize(${width}, ${height}); return 'ok' })()`,
     30_000
@@ -144,9 +159,11 @@ const measure = (web: string, section: 'conversation' | 'files' | 'compare' | 'm
       report.over = over.slice(0, 12)
       report.sideways = content.scrollWidth - content.clientWidth
 
-      require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
+      // On a real phone the harness's host takes the picture (see helpers/phone.ts).
+      if (!window.__e2eHost) require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
       const shot = ${JSON.stringify(SHOTS)} + (${JSON.stringify(section)} === 'compare' || ${JSON.stringify(section)} === 'markdown' ? '/github-' + ${JSON.stringify(section)} + '.png' : '/github-pull-' + ${JSON.stringify(section)} + '.png')
       // The first picture after a reload can hang or fail; the measurements stand without it.
+      if (window.__e2eHost) report.shot = await window.__e2eHost.shot(shot)
       for (let attempt = 0; attempt < 3 && !report.shot?.endsWith('.png'); attempt++) {
         try {
           const capture = require('@electron/remote').getCurrentWebContents().capturePage()
@@ -196,8 +213,10 @@ const measurePicker = (text: string, label: string) =>
         .map((el) => name(el) + ' +' + Math.round(el.getBoundingClientRect().right - edge))
         .slice(0, 12)
       report.sideways = root.scrollWidth - root.clientWidth
-      require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
+      // On a real phone the harness's host takes the picture (see helpers/phone.ts).
+      if (!window.__e2eHost) require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
       const shot = ${JSON.stringify(SHOTS)} + '/github-open-' + ${JSON.stringify(label)} + '.png'
+      if (window.__e2eHost) report.shot = await window.__e2eHost.shot(shot)
       for (let attempt = 0; attempt < 3 && !report.shot?.endsWith('.png'); attempt++) {
         try {
           const capture = require('@electron/remote').getCurrentWebContents().capturePage()
@@ -371,9 +390,12 @@ describe.skipIf(!available)('a pull request on a phone', () => {
       const before = main.getBoundingClientRect().width
       // The file with its breadcrumbs, before the drawer covers it.
       try {
-        const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
-        require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
-        if (img) require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/github-tree-file.png', img.toPNG())
+        if (window.__e2eHost) await window.__e2eHost.shot(${JSON.stringify(SHOTS)} + '/github-tree-file.png')
+        else {
+          const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])
+          require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
+          if (img) require('fs').writeFileSync(${JSON.stringify(SHOTS)} + '/github-tree-file.png', img.toPNG())
+        }
       } catch (e) {}
       const icon = [...root.querySelectorAll('.abele-github-header__actions .abele-obsidian-icon')]
         .find((i) => i.querySelector('svg.lucide-folder-tree'))
@@ -393,8 +415,9 @@ describe.skipIf(!available)('a pull request on a phone', () => {
       report.over = [...panel.querySelectorAll('*')]
         .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.right > edge + 1 })
         .map((el) => el.tagName.toLowerCase() + '.' + [...el.classList].join('.')).slice(0, 8)
-      require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
       const shot = ${JSON.stringify(SHOTS)} + '/github-tree-drawer.png'
+      if (window.__e2eHost) report.shot = await window.__e2eHost.shot(shot)
+      else require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
       for (let attempt = 0; attempt < 3 && !report.shot; attempt++) {
         try {
           const img = await Promise.race([require('@electron/remote').getCurrentWebContents().capturePage(), wait(8000).then(() => null)])

@@ -604,6 +604,66 @@ duration of an `eval`. When two multi-minute files run in the same invocation, V
 report `Timeout calling "onTaskUpdate"` alongside otherwise correct results. Running the
 long files one at a time avoids it. The real fix is to move the helpers to async `execFile`.
 
+### On a real phone
+
+The same files can run on Obsidian on a real phone, cabled to the machine that runs the tier:
+
+```bash
+npm run test:e2e:phone          # E2E_TARGET=phone
+```
+
+A file takes part by saying so at its top — `targets('desktop', 'phone')` from
+`tests/e2e/helpers/target.ts`. The e2e config reads that call from each file's source: a phone
+run loads only the files that name the phone, and a file with no call is a desktop file, so the
+desktop run is what it always was. The phone files so far: `calendarsPhone`, `githubPhone` and
+`taskDatePhone` (which on the phone taps the time field and measures the system's own
+keyboard). `phoneLayout`, `bookPhone` and `bookPhoneControls` carry the phone's side of their
+probes too — pictures through the host, the book's taps, swipes and pinch as real gestures, the
+phone really turned — but are not yet green there, so they still name only the desktop.
+
+**The phone driver.** The repository does not know how to reach a phone. Everything goes
+through a command on the machine, named by `ABELE_PHONE_DRIVER` (default `iphone`), which has
+to answer:
+
+| Command | What it does |
+|---|---|
+| `doctor` | one line per part, `OK …` or `FAIL …`, exit 0 when the phone is ready |
+| `take WHO --wait --pid PID`, `drop --pid PID` | the lock that gives one process the phone; `drop` turns the screen off first |
+| `open-url URL` | opens a URL on the phone (`obsidian://open?vault=…`) |
+| `push-plugin DIR MANIFEST VAULT` | installs a build (`main.js`, `main.css`) into a vault on the phone |
+| `eval --envelope --timeout S CODE` | evaluates in Obsidian's page, prints `{"type","value"}` or `{"thrown"}` |
+| `tap X Y`, `swipe X1 Y1 X2 Y2`, `longpress X Y`, `type TEXT`, `pinch SCALE` | real touches, in the page's CSS pixels |
+| `orientation landscape\|portrait`, `alert [BUTTON]`, `shot PATH`, `status` | the rest |
+| `reverse PORT` | while it runs, `127.0.0.1:PORT` on the phone reaches the same port on the machine |
+
+**What a run does** (`helpers/phoneHost.ts`, from `globalSetup`): takes the phone's lock for the
+whole run — anything else that drives the phone takes the same lock and waits while it is held,
+so two runs, or a run and another user of the phone, never touch it at once — and gives it back
+at the end with the screen turned off; stops with the driver's own report when
+`doctor` says anything but the plugin is down; builds the plugin like `build:test` into a scratch
+directory (`ABELE_PHONE_BUILD` names a build to install instead) and installs it into the phone's
+test vault (`ABELE_PHONE_VAULT`, default `abele-e2e` — a copy of the fixture vault, never a real
+one), opening that vault by name if another is open, reloads and waits for exactly that version; starts a small server the page reaches through
+a reversed port.
+
+**Inside the page** the harness puts `window.__e2eHost` (`installPhoneHost` in
+`helpers/phone.ts`, put back after every reload): `shot(path)`, `tap`, `swipe`, `longPress`,
+`type`, `pinch`, `orientation`. A probe that runs in the page tells the phone by it and uses it
+where the desktop uses Electron — `capturePage()` becomes `shot`, a DevTools touch becomes a
+finger. A probe that runs long goes through `evalLong()`: on a phone it is started in the page and
+asked after every second, since a call that blocks the test worker for a minute ends the run. Pictures go to `/tmp/abele-iphone/` (`ABELE_PHONE_SHOTS`), so they never mix with the
+desktop's `/tmp/abele-phone/`. A server a test starts on the machine (the fake GitHub, the
+calendar feed) is reversed onto the phone with `exposeToPhone(port)`, so its `http://127.0.0.1`
+address works in both places.
+
+**What differs from the desktop.** A phone is a phone: `reloadApp('app.emulateMobile(…)')` is a
+plain reload there, the window is the screen (measured, never resized), throttling and focus
+emulation do nothing. What only a desktop has — the DevTools protocol (`dev:cdp`), the CLI's
+console capture — throws `DesktopOnlyError`, and a test that fails with nothing else is reported
+as skipped with what it needed. Where the desktop mimics something a phone has for real — the
+keyboard's height, a finger's long press, turning the phone — the phone file does the real thing
+instead: `taskDatePhone` taps the time field and measures the system keyboard.
+
 ### The test hook
 
 Plugin singletons live in module scope inside the bundle and are unreachable from
