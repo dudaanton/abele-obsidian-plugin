@@ -364,6 +364,12 @@ export const BOOK_TOOL_MODES: Record<string, ToolMode> = {
   ...Object.fromEntries(BOOK_WRITE_TOOLS.map((name) => [name, 'ask' as ToolMode])),
 }
 
+/**
+ * The linter's tools: reading what the rules find runs on its own, applying the fixes asks first,
+ * as editing a note does. Someone who set a mode by hand keeps it (`enableLintTools`).
+ */
+export const LINT_TOOL_MODES: Record<string, ToolMode> = { lint: 'auto', lint_fix: 'ask' }
+
 export const DEFAULT_AI_SETTINGS: AiSettings = {
   enabled: false,
   providers: [],

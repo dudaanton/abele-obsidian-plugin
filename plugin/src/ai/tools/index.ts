@@ -41,6 +41,7 @@ import { createRememberTool } from './RememberTool'
 import { createForgetTool } from './ForgetTool'
 import { createGithubTools } from './github'
 import { createBookTools } from './BookTools'
+import { createLintTool, createLintFixTool } from './LintTools'
 import { githubSettings } from '@/github/GithubService'
 import { createMcpTools } from '../mcp/tools'
 import { AgentRegistry } from '../agents/AgentRegistry'
@@ -136,6 +137,8 @@ export function getToolRegistry(): ToolInfo[] {
     read_backlinks: { label: 'Read backlinks', category: 'Vault data' },
     read_transactions: { label: 'Read transactions', category: 'Vault data' },
     read_tasks: { label: 'Read tasks', category: 'Vault data' },
+    lint: { label: 'Lint notes', category: 'Vault data' },
+    lint_fix: { label: 'Fix lint issues', category: 'Vault data' },
     list_templates: { label: 'List templates', category: 'Templates' },
     apply_template: { label: 'Apply template', category: 'Templates' },
     skill: { label: 'Skill', category: 'Templates' },
@@ -276,6 +279,8 @@ function buildAgentTools(options: AgentToolsOptions = {}, everything = false): A
     createReadBacklinksTool(),
     createReadTransactionsTool(),
     createReadTasksTool(),
+    createLintTool(),
+    createLintFixTool(),
     createScreenshotTool(),
     createInspectViewTool(),
     createGeocodeTool(),

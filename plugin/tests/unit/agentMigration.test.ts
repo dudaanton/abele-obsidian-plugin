@@ -6,6 +6,7 @@ import {
   EDIT_SELECTION_TOOL,
   GITHUB_TOOLS,
   BOOK_TOOL_MODES,
+  LINT_TOOL_MODES,
   GITHUB_TOOL_MODES,
   MAP_TOOL_MODES,
   type AiSettings,
@@ -210,6 +211,7 @@ describe('the Comment agent', () => {
       ...MAP_TOOL_MODES,
       ...GITHUB_TOOL_MODES,
       ...BOOK_TOOL_MODES,
+      ...LINT_TOOL_MODES,
       remember: 'auto' as const,
       forget: 'auto' as const,
     }
@@ -496,5 +498,18 @@ describe('the interceptor an agent carries', () => {
     migrateAgents(ai)
 
     expect(ai.agents[0].interceptorContextDepth).toBe(0)
+  })
+})
+
+describe('the linter tools', () => {
+  it('are handed to agents saved before them: reading on its own, fixing after asking', () => {
+    const agent = createAgent({ id: 'old', toolModes: { lint_fix: 'off' } })
+    delete agent.toolModes.lint
+    const ai = { ...DEFAULT_AI_SETTINGS, agents: [agent], defaultAgentId: 'old' } as AiSettings
+
+    expect(migrateAgents(ai)).toBe(true)
+    expect(ai.agents[0].toolModes.lint).toBe('auto')
+    // Switched off by hand, and so left off.
+    expect(ai.agents[0].toolModes.lint_fix).toBe('off')
   })
 })

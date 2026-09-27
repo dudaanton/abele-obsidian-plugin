@@ -12,7 +12,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Notice } from 'obsidian'
 import { AbeleConfig, type HeaderButtonDefinition } from '@/services/AbeleConfig'
-import { DEFAULT_AI_SETTINGS, BOOK_TOOL_MODES, GITHUB_TOOL_MODES, MAP_TOOL_MODES } from '@/ai/types'
+import {
+  DEFAULT_AI_SETTINGS,
+  BOOK_TOOL_MODES,
+  LINT_TOOL_MODES,
+  GITHUB_TOOL_MODES,
+  MAP_TOOL_MODES,
+} from '@/ai/types'
 import { createAgent } from '@/ai/agents/types'
 import { useVault } from '../helpers/testEnv'
 
@@ -42,6 +48,7 @@ function settingsWith(headerButtons: HeaderButtonDefinition[]) {
     ...MAP_TOOL_MODES,
     ...GITHUB_TOOL_MODES,
     ...BOOK_TOOL_MODES,
+    ...LINT_TOOL_MODES,
     remember: 'auto' as const,
     forget: 'auto' as const,
   }

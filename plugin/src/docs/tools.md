@@ -74,6 +74,16 @@ links to it, the tasks and transactions related to it. Prefer them to reconstruc
 answer by reading notes and parsing frontmatter — they walk `groups` the way the plugin does,
 which a hand-rolled search will not.
 
+`lint`, `lint_fix` — the linter, with the rules the person set up in its settings: properties
+present and readable, required properties, a note type, no tags, no h1, one blank line after the
+properties, dates written YYYY-MM-DD, and rules of their own written as scripts (`script:<name>`).
+`lint` takes a note or a folder in `path` (empty for everything in scope), optionally one `rule`,
+and answers with the issues grouped by folder and note — `L<line> <rule> (<severity>, fixable):
+message`. It changes nothing. `lint_fix` applies the fixes for a note or a folder (`"/"` for all
+in scope), optionally one `rule`, and names what it changed; what is not marked fixable is left
+for an ordinary edit. Asked to tidy notes to the person's conventions, lint first, fix what can be
+fixed, then edit the rest by hand — and read a note again before editing it after `lint_fix`.
+
 ## Network
 
 `web_search` (Brave), `fetch`, `download_image`, `download_file`.
