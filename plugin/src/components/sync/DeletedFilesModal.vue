@@ -11,6 +11,7 @@
           would not bring back leaves every other one on the list and still restorable.
         -->
         <p v-if="error !== null" class="abele-deleted-files__error">{{ error }}</p>
+        <RestoreSince v-if="items.length > 0" :items="items" @restored="dropRestored" />
       </div>
 
       <div class="abele-deleted-files__list">
@@ -64,6 +65,7 @@ import CardGrid from '../obsidian/CardGrid.vue'
 import Badge from '../obsidian/Badge.vue'
 import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
+import RestoreSince from './RestoreSince.vue'
 import { SyncService } from '@/sync/SyncService'
 import { formatWhen, reasonOf, restoredNotice } from '@/sync/format'
 import { formatBytes } from '@/helpers/reduceImage'
@@ -171,6 +173,13 @@ async function restoreOne(item: TrashItem): Promise<void> {
     busy.value = null
     waiting.value.delete(item.file_id)
   }
+}
+
+/** Files a bulk restore took out of the trash leave the list, as a single restore's row does. */
+function dropRestored(fileIds: string[]): void {
+  const gone = new Set(fileIds)
+  items.value = items.value.filter((held) => !gone.has(held.file_id))
+  if (items.value.length === 0) notice.value = EMPTY
 }
 
 onMounted(async () => {

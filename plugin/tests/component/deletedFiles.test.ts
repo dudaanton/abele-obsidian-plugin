@@ -16,12 +16,13 @@ import Card from '@/components/obsidian/Card.vue'
 import Badge from '@/components/obsidian/Badge.vue'
 import Button from '@/components/obsidian/Button.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
+import RestoreSince from '@/components/sync/RestoreSince.vue'
 import { SyncService } from '@/sync/SyncService'
 import { DISCONNECTED_STATUS, type SyncStatus } from '@/sync/status'
 import { useVault } from '../helpers/testEnv'
 
 /** The dialog itself is Obsidian's; unwrapping it puts the body where a query can reach it. */
-const STUBS = { ObsidianModal: { template: '<div><slot /></div>' } }
+const STUBS = { ObsidianModal: { template: '<div><slot /></div>' }, Dropdown: true }
 
 const minutesAgo = (minutes: number): string =>
   new Date(Date.now() - minutes * 60_000).toISOString()
@@ -109,6 +110,28 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks()
   vi.clearAllMocks()
+})
+
+describe('restoring everything deleted since a moment', () => {
+  it('is offered over a trash with something in it, and takes what it restored off the list', async () => {
+    const screen = open()
+    await flushPromises()
+
+    const since = screen.findComponent(RestoreSince)
+    expect(since.props('items')).toHaveLength(2)
+    since.vm.$emit('restored', ['f-new'])
+    await flushPromises()
+
+    expect(titles(screen)).toEqual(['Notes/older.md'])
+  })
+
+  it('is not offered over an empty trash', async () => {
+    client.trash.mockResolvedValue([])
+    const screen = open()
+    await flushPromises()
+
+    expect(screen.findComponent(RestoreSince).exists()).toBe(false)
+  })
 })
 
 describe('what has been deleted', () => {
