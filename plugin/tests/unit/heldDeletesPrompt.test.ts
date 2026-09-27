@@ -40,14 +40,31 @@ describe('the held-deletes question at a start', () => {
     })
     await prompt.noticed(status({ state: 'paused', heldDeletes: 3 }))
 
-    expect(prompt.filed('confirm', ['f0', 'f1', 'f2'], false)).toBe(false)
+    expect(prompt.filed('confirm', ['f0', 'f1', 'f2'], { decided: 3, applied: false })).toBe(false)
     expect(prompt.decided.value).toEqual({ kind: 'confirm', count: 3 })
-    expect(prompt.filed('restore', ['f0', 'f1', 'f2'], false)).toBe(true)
+    expect(prompt.filed('restore', ['f0', 'f1', 'f2'], { decided: 3, applied: false })).toBe(true)
     expect(prompt.decided.value).toEqual({ kind: 'restore', count: 3 })
 
     // Carried out, while more were deleted meanwhile: those are still held, the answer is not.
     list = [{ path: 'Notes/new.md', fileId: 'g0' }]
     await prompt.noticed(status({ state: 'idle', heldDeletes: 1, lastSyncAt: 'x' }))
     expect(prompt.decided.value).toBeNull()
+  })
+
+  /** Review of task 12, #6: ids passed that were no longer held were counted as decided. */
+  it('counts what the engine decided, not the ids it was handed', async () => {
+    const decide = vi.fn(async () => ({ decided: 2, applied: false }))
+    const prompt = new HeldDeletesPrompt({
+      list: async () => held(2),
+      visible: () => true,
+      decide,
+      note: () => undefined,
+    })
+    await prompt.noticed(status({ state: 'paused', heldDeletes: 2 }))
+
+    await prompt.decide('confirm', ['f0', 'f1', 'gone'])
+
+    expect(decide).toHaveBeenCalledWith('confirm', ['f0', 'f1', 'gone'])
+    expect(prompt.decided.value).toEqual({ kind: 'confirm', count: 2 })
   })
 })

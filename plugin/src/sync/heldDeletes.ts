@@ -106,18 +106,24 @@ export class HeldDeletesPrompt {
   }
 
   /**
-   * A decision was handed to the engine. One a sync carried out is done with; one it did not is
-   * shown as waiting. Answers whether it replaced an earlier answer still waiting — the engine
-   * keeps only the last word.
+   * A decision was handed to the engine, which decided `result.decided` of `fileIds` — those
+   * still held. One a sync carried out is done with; one it did not is shown as waiting, counted
+   * as the engine counted it. Answers whether it replaced an earlier answer still waiting — the
+   * engine keeps only the last word.
    */
-  filed(kind: FiledDecision['kind'], fileIds: readonly string[], applied: boolean): boolean {
+  filed(
+    kind: FiledDecision['kind'],
+    fileIds: readonly string[],
+    result: { decided: number; applied: boolean }
+  ): boolean {
     const replaced = this.decided.value !== null
-    if (applied) {
+    if (result.applied) {
       this.settled()
       return replaced
     }
-    this.decided.value = { kind, count: fileIds.length }
-    this.decidedIds = new Set(fileIds)
+    const held = new Set(this.held.value.map((one) => one.fileId))
+    this.decided.value = { kind, count: result.decided }
+    this.decidedIds = new Set(fileIds.filter((id) => held.has(id)))
     return replaced
   }
 
@@ -130,7 +136,7 @@ export class HeldDeletesPrompt {
     this.host.note(`${verb} ${fileIds.length} held file(s)`)
     const result = await this.host.decide(kind, fileIds)
     if (result !== null && result.decided > 0) {
-      const replaced = this.filed(kind, fileIds, result.applied)
+      const replaced = this.filed(kind, fileIds, result)
       if (replaced && !result.applied) {
         this.host.note(
           'this answer replaces the answer given before, which was not carried out yet'
