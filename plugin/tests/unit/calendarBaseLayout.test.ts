@@ -200,29 +200,40 @@ describe('a day lists', () => {
     expect(days.get('2026-09-01')![0].fromBefore).toBe(true)
   })
 
-  // A wall-clock bound fails on a busy machine and passes a slow algorithm on a fast one. What
-  // quadratic means is that four times the notes take sixteen times as long, so that is what is
-  // measured. Each size is timed right after the other, five times over, and the middle ratio is
-  // taken: the load a busy machine puts on one run it puts on its neighbour too, where the best
-  // of three at 2 500 notes — a millisecond — came out at 12 beside a busy check (2026-09-27).
+  // What quadratic means is that eight times the notes take sixty-four times as long, where the
+  // real code takes eight to twenty (sorting, the cache), so the ratio of the two sizes is what is
+  // checked, never a time, against a bound between the two.
+  // And the time is this process's own CPU time, not the clock: on a busy machine the clock runs
+  // on while the test waits for a core, and that wait landed on one size and not the other, which
+  // failed the wall-clock ratio beside a heavy check (2026-09-27). Each size is repeated until it
+  // has used a measurable amount of CPU, and the middle of five ratios is taken.
   it('places thousands of notes over a month without going quadratic', () => {
     const notes = (n: number) =>
       Array.from({ length: n }, (_, i) =>
         item({ title: `n${i}`, start: addDays('2026-01-01', i % 365), startMinute: (i * 7) % 1440 })
       )
-    const time = (items: CalendarItem[]) => {
-      const t = performance.now()
-      placeByDay(items, '2026-08-31', '2026-10-11')
-      return Math.max(performance.now() - t, 0.5)
+    const cpuMs = () => {
+      const u = process.cpuUsage()
+      return (u.user + u.system) / 1000
     }
-    const small = notes(5000)
+    /** CPU milliseconds one placement of these items takes, averaged over at least 20 ms. */
+    const cost = (items: CalendarItem[]) => {
+      const start = cpuMs()
+      let runs = 0
+      do {
+        placeByDay(items, '2026-08-31', '2026-10-11')
+        runs++
+      } while (cpuMs() - start < 20)
+      return (cpuMs() - start) / runs
+    }
+    const small = notes(2500)
     const large = notes(20000)
-    time(small)
-    time(large)
+    cost(small)
+    cost(large)
     const ratios: number[] = []
-    for (let run = 0; run < 5; run++) ratios.push(time(large) / time(small))
+    for (let run = 0; run < 5; run++) ratios.push(cost(large) / cost(small))
     ratios.sort((x, y) => x - y)
-    expect(ratios[2]).toBeLessThan(10)
+    expect(ratios[2]).toBeLessThan(32)
     expect(placeByDay(large, '2026-08-31', '2026-10-11').get('2026-09-26')!.length).toBeGreaterThan(
       0
     )
