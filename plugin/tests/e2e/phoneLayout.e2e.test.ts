@@ -45,6 +45,39 @@ targets('desktop')
 const PHONE = { width: 390, height: 844 }
 const SHOTS = '/tmp/abele-phone'
 
+/**
+ * Every dialog `openDialog` opens by name (src/testing/openDialog.ts). Listed here as well, so a
+ * dialog added there is added to the checks below by name — the probe fails while the two lists
+ * differ.
+ */
+const DIALOGS = [
+  'confirm',
+  'date',
+  'recurrence',
+  'date-range',
+  'book-comment',
+  'model',
+  'image-model',
+  'template-select',
+  'template-variables',
+  'find-replace',
+  'import-files',
+  'save-media',
+  'unused-media',
+  'dedup-media',
+  'migrate-dataview-fields',
+  'migrate-dataview',
+  'migrate-firefly',
+  'migrate-toggl',
+  'transfer-send',
+  'transfer-preview',
+  'transfer-scan',
+  'agent-editor',
+  'ask-name',
+  'confirm-action',
+  'discussion-remove',
+].map((name) => `dialog ${name}`)
+
 interface Screen {
   /** Class names of elements past the right edge of the root, with how far past. */
   over: string[]
@@ -677,6 +710,42 @@ const probeScript = `(async () => {
       }
     }
 
+    // Every other dialog of the plugin, each in the dialog shell, opened by name: nothing past
+    // the edge, the whole dialog on the screen below the notch, its buttons in sight without
+    // scrolling, and no field's focus ring cut.
+    report.__dialogs = window.__abeleTest.dialogNames()
+    for (const dialogName of report.__dialogs) {
+      const label = 'dialog ' + dialogName
+      try {
+        window.__abeleTest.openDialog(dialogName)
+        if (!(await until(() => document.querySelector('.modal.abele-modal'), 5000))) throw new Error('did not open')
+        await wait(300)
+        const modal = document.querySelector('.modal.abele-modal')
+        await screen(label, modal, modal.querySelector('.abele-modal__body'))
+        const d = modal.getBoundingClientRect()
+        report[label].edges = [Math.round(d.top), Math.round(d.bottom)]
+        const footer = modal.querySelector('.abele-modal__footer')
+        report[label].hidden = footer
+          ? [...footer.querySelectorAll('button')]
+              .filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && (r.top < 0 || r.bottom > window.innerHeight) })
+              .map((b) => b.textContent.trim())
+          : []
+        const clipped = []
+        for (const f of modal.querySelectorAll('input, textarea, select, button, [tabindex="0"]')) {
+          const cs = getComputedStyle(f)
+          if (cs.display === 'none' || cs.visibility === 'hidden' || f.getBoundingClientRect().width === 0) continue
+          f.focus()
+          for (const cut of ringClipped(f)) clipped.push(name(f) + ': ' + cut)
+          f.blur()
+        }
+        report[label].clipped = clipped
+      } catch (e) {
+        report[label] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && e.message) || e) }
+      } finally {
+        await closeDialog()
+      }
+    }
+
     // The documentation, a tab rather than a dialog: its text keeps a note's margins, and the
     // end of a page and of the contents can be scrolled out from under the floating bottom bar.
     // The last screen is a search result just opened, taken while its place still flashes.
@@ -783,13 +852,13 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     await setMobile(true)
     await setWindowSize(PHONE.width, PHONE.height)
     // On a phone this probe runs longer than one call may block for: see `evalLong`.
-    report = JSON.parse(await evalLong(probeScript, 170_000)) as Report
+    report = JSON.parse(await evalLong(probeScript, 320_000)) as Report
 
     const lines = Object.entries(report).map(
       ([label, s]) => `  ${label.padEnd(20)} ${s.shot || s.error}`
     )
     console.info(`\n  vault ...................... ${activeVaultName()}\n${lines.join('\n')}\n`)
-  }, 300_000)
+  }, 480_000)
 
   afterAll(async () => {
     if (!available) return
@@ -842,10 +911,28 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
 
   it('reaches every screen', () => {
     expect(report.run?.error ?? '').toBe('')
-    for (const label of screens) {
+    expect(
+      ((report as unknown as { __dialogs?: string[] }).__dialogs ?? []).map((n) => `dialog ${n}`)
+    ).toEqual(DIALOGS)
+    for (const label of [...screens, ...DIALOGS]) {
       expect(report[label], label).toBeDefined()
       expect(report[label].error, label).toBe('')
     }
+  })
+
+  type Dialog = Screen & { edges?: [number, number]; hidden?: string[] }
+
+  it.each(DIALOGS)('%s: nothing past the edge, one scroller, and no ring cut', (label) => {
+    expect(report[label]?.over ?? ['no report']).toEqual([])
+    expect(report[label]?.scrollers.length ?? 9).toBeLessThanOrEqual(1)
+    expect(report[label]?.clipped ?? ['no report']).toEqual([])
+  })
+
+  it.each(DIALOGS)('%s: the whole dialog is on the screen, its buttons in sight', (label) => {
+    const d = report[label] as Dialog
+    expect(d?.edges?.[0] ?? -1).toBeGreaterThanOrEqual(0)
+    expect(d?.edges?.[1] ?? 9999).toBeLessThanOrEqual(PHONE.height)
+    expect(d?.hidden ?? ['no report']).toEqual([])
   })
 
   it.each(screens)('%s: nothing reaches past the edge of the screen', (label) => {

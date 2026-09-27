@@ -113,9 +113,17 @@ export function installPhoneHost(): void {
     throw new Error('ABELE_PHONE_HOST_PORT is not set: the phone run did not start its host')
   phoneEval(
     `(() => {
-      const call = async (what, body) => {
-        const r = await requestUrl({ url: 'http://127.0.0.1:${port}/' + what, method: 'POST',
+      const ask = (what, body) => requestUrl({ url: 'http://127.0.0.1:${port}/' + what, method: 'POST',
           contentType: 'application/json', body: JSON.stringify(body), throw: false })
+      const call = async (what, body) => {
+        // A picture is asked for again when the reversed port dropped the first request: the
+        // first one of a run now and then arrives on a connection the port has just closed.
+        // Only a picture — a touch asked for twice would touch twice.
+        let r
+        try { r = await ask(what, body) } catch (error) {
+          if (what !== 'shot' || !String(error && error.message).includes('connection was lost')) throw error
+          r = await ask(what, body)
+        }
         if (r.status !== 200) throw new Error('host ' + what + ': ' + r.text)
         return r.json
       }

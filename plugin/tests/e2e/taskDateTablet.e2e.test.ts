@@ -5,8 +5,9 @@
  * and the field still ended up under the keyboard". Obsidian's tablet layout stands a dialog in
  * the middle of the screen, not as a sheet, and the keyboard covers less of it or none of it.
  * On a tablet the dialog is now moved up only by what the keyboard covers of it, no higher than
- * the top of the screen; what still does not fit scrolls, the field only when it is covered; and
- * measuring the keyboard again moves nothing.
+ * the top of the screen; if the keyboard still covers some of it, it is held to the room above
+ * the keyboard, its body scrolling there and its buttons in sight; the field is scrolled only
+ * when it is covered; and measuring the keyboard again moves nothing.
  *
  * Under `emulateMobile` Obsidian gives a window of at least 600×600 its tablet layout for real.
  * No emulator shows a keyboard, so its height is written to `--keyboard-height` on the root
@@ -259,11 +260,15 @@ describe.skipIf(!available)("the task's date dialog on an iPad, keyboard up", ()
       expect(bar.field).toEqual(whole.field)
     })
 
-    it('moves up no further than the keyboard covers it, and keeps its size', () => {
+    // Its size, unless moving it up to the top of the screen still leaves some of it under the
+    // keyboard: then it is held to the room above the keyboard, its body scrolling and its
+    // buttons in sight, and ends at the keyboard.
+    it('moves up no further than the keyboard covers it, and keeps its size or ends above the keyboard', () => {
       const whole = screen('no-keyboard')
       const s = screen('keyboard')
       const height = whole.dialog[1] - whole.dialog[0]
-      expect(Math.abs(s.dialog[1] - s.dialog[0] - height)).toBeLessThanOrEqual(1)
+      if (s.dialog[1] - s.dialog[0] < height - 1) expect(s.dialog[1]).toBeLessThanOrEqual(keyboardTop())
+      else expect(Math.abs(s.dialog[1] - s.dialog[0] - height)).toBeLessThanOrEqual(1)
       expect(s.dialog[0]).toBeGreaterThanOrEqual(0)
       if (whole.dialog[1] <= keyboardTop()) {
         expect(s.lifted).toBe(false)

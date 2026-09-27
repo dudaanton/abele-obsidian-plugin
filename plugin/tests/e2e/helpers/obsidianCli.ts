@@ -155,13 +155,13 @@ export function evalRaw(code: string, timeoutMs?: number): string {
 }
 
 /**
- * `evalRaw` for a script that runs long — a probe walking through every dialog. On the desktop it
- * is `evalRaw`. On a phone, where the same probe runs slower, it is started in the page and asked
- * after every second, so the worker is never blocked for longer than one short call: a call that
- * blocks it past a minute ends the whole run ("Timeout calling onTaskUpdate", see `CALL_CEILING_MS`).
+ * `evalRaw` for a script that runs long — a probe walking through every dialog. It is started in
+ * the page and asked after every second, so the worker is never blocked for longer than one short
+ * call: a call that blocks it past a minute ends the whole run ("Timeout calling onTaskUpdate"),
+ * and a single call is cut at `CALL_CEILING_MS` — the phone probe, walking every dialog of the
+ * plugin, took longer than that on the desktop too.
  */
 export async function evalLong(code: string, timeoutMs = 180_000): Promise<string> {
-  if (!onPhone()) return evalRaw(code, timeoutMs)
   const id = evalRaw(
     `(() => {
       const id = 'job' + Date.now() + Math.random().toString(36).slice(2)

@@ -23,6 +23,7 @@ import {
   stopHost,
   takePhone,
 } from './phoneHost'
+import { driver } from './phone'
 
 const KEYS = ['file', 'files']
 let typesBefore: Record<string, string | null> | undefined
@@ -34,6 +35,10 @@ export async function setup(): Promise<void> {
     takePhone(`abele e2e ${process.cwd()}`)
     try {
       assertPhoneReady()
+      // Obsidian brought forward and made the app the driver's touches and typing go to: a driver
+      // started again since it last was is aimed at the home screen, and text typed there is
+      // typed into nothing — which ends the driver (2026-09-27).
+      driver(['launch', 'md.obsidian'])
       const version = installBuild(process.cwd())
       await startHost()
       console.info(`\n  phone ready, abele ${version}\n`)

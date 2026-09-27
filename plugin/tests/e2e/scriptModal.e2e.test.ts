@@ -83,7 +83,15 @@ const probe = (shape: string) => `(() => {
     window.__abeleModalProbe = {
       scrollsDown: [modal, ...modal.querySelectorAll('*')].filter(scrolls).map(name),
       scrollsSideways: modal.scrollWidth > modal.clientWidth + 1,
-      heightUsed: modal.clientHeight / parseFloat(getComputedStyle(modal).maxHeight),
+      // Against Obsidian's cap, resolved by a box standing that tall: the dialog's own max-height
+      // is a min() of it and the page, which reads back unresolved.
+      heightUsed: (() => {
+        const cap = modal.parentElement.createDiv()
+        cap.style.cssText = 'position:absolute;visibility:hidden;height:var(--dialog-max-height)'
+        const allowed = Math.min(cap.getBoundingClientRect().height, modal.parentElement.clientHeight)
+        cap.remove()
+        return modal.getBoundingClientRect().height / allowed
+      })(),
       block: { overflowY: blockStyle.overflowY, maxHeight: blockStyle.maxHeight },
       codeWraps: code$.scrollWidth <= code$.clientWidth + 1,
       tableScrollsItself: table$.scrollWidth > table$.clientWidth + 1,
@@ -116,8 +124,8 @@ beforeAll(async () => {
 }, 120_000)
 
 describe.runIf(isObsidianRunning() && hasTestApi())('a script modal taller than the window', () => {
-  it.each(SHAPES)('scrolls in one place, and it is the modal — %s', (shape) => {
-    expect(reports[shape].scrollsDown).toEqual(['modal'])
+  it.each(SHAPES)('scrolls in one place, and it is the dialog’s body — %s', (shape) => {
+    expect(reports[shape].scrollsDown).toEqual(['abele-modal__body'])
   })
 
   it.each(SHAPES)('takes the height Obsidian allows it rather than 60vh of it — %s', (shape) => {

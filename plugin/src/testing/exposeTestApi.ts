@@ -39,6 +39,7 @@ import { openIconPicker } from './openIconPicker'
 import { openSecretsList } from './openSecretsList'
 import { openMcpServer } from './openMcpServer'
 import { openRewind } from './openRewind'
+import { openDialog, dialogNames } from './openDialog'
 import { ChatRewind } from '@/ai/rewind/ChatRewind'
 import { memoryStore } from '@/ai/rewind/RewindStore'
 import { showFormModal } from '@/scripting/formModal'
@@ -195,6 +196,10 @@ interface AbeleTestApi {
   rewind: { ChatRewind: typeof ChatRewind; memoryStore: typeof memoryStore }
   /** A script's form, as `form(fields)` shows it; resolves with the answers, or null. */
   showFormModal: typeof showFormModal
+  /** Opens one of the plugin's dialogs by name, for the layout probes; see `openDialog.ts`. */
+  openDialog(name: string): void
+  /** Every name `openDialog` knows. */
+  dialogNames(): string[]
   /** Whether Obsidian's note editor can still be borrowed for the note fields. */
   embeddedEditorAvailable(): boolean
   /** The note editor's view inside a note field, found by the field's element. */
@@ -601,6 +606,8 @@ export function exposeTestApi(plugin: Plugin): void {
     openRewind,
     rewind: { ChatRewind, memoryStore },
     showFormModal,
+    openDialog,
+    dialogNames,
     embeddedEditorAvailable: () => isEmbeddedEditorAvailable(GlobalStore.getInstance().app),
     noteFieldView: (el: HTMLElement) => embeddedViews.get(el) ?? null,
   }

@@ -5,11 +5,12 @@
  * for it. Twice on 2026-09-05 one did not — the dialog's mount point on a phone, its content
  * element on the desktop — and the search field lost 2px off each side: «задолбала меня
  * обрезка содержимого в модалках». This focuses every focusable thing in every tab of the
- * setup dialog, the history, the icon picker, the MCP server form and the list of keys, and
- * measures its ring against every clipping ancestor. The phone probe does the same at 390×844.
+ * setup dialog, the history, the icon picker, the MCP server form, the list of keys and every
+ * other dialog `openDialog` knows, and measures its ring against every clipping ancestor. The
+ * phone probe does the same at 390×844.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
-import { isObsidianRunning, hasTestApi, evalRaw } from './helpers/obsidianCli'
+import { isObsidianRunning, hasTestApi, evalLong } from './helpers/obsidianCli'
 
 interface Cut {
   screen: string
@@ -145,6 +146,18 @@ const script = `(async () => {
     cuts.push({ screen: 'secrets list', field: '-', by: ['dialog did not open'] })
   }
 
+  // Every other dialog of the plugin, in the dialog shell, opened by name.
+  for (const dialogName of window.__abeleTest.dialogNames()) {
+    window.__abeleTest.openDialog(dialogName)
+    if (await until(() => document.querySelector('.modal.abele-modal'), 5000)) {
+      await wait(300)
+      measureAll('dialog ' + dialogName, document.querySelector('.modal.abele-modal'))
+    } else {
+      cuts.push({ screen: 'dialog ' + dialogName, field: '-', by: ['dialog did not open'] })
+    }
+    await closeDialog()
+  }
+
   return JSON.stringify(cuts)
 })()`
 
@@ -153,11 +166,11 @@ const available = isObsidianRunning() && hasTestApi()
 describe.skipIf(!available)('focus rings in the chat dialogs on the desktop', () => {
   let cuts: Cut[] = []
 
-  beforeAll(() => {
-    cuts = JSON.parse(evalRaw(script, 120_000)) as Cut[]
-  }, 150_000)
+  beforeAll(async () => {
+    cuts = JSON.parse(await evalLong(script, 240_000)) as Cut[]
+  }, 270_000)
 
-  it('no box in the setup dialog, the history, the icon picker, the MCP server or the list of keys cuts the ring off a focused field', () => {
+  it('no box in any dialog of the plugin cuts the ring off a focused field', () => {
     expect(cuts.map((c) => `${c.screen}: ${c.field} — ${c.by.join(', ')}`)).toEqual([])
   })
 })
