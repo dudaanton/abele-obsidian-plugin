@@ -80,7 +80,7 @@ export interface EngineHost {
   connection(): DeviceConnection
   /** The device token, or null when the keychain holds none for the connection. */
   token(): string | null
-  /** What was wrong with the record as it was read, or null (`SyncService.load`). */
+  /** What was wrong with the record as it was read, or null (`ConnectionKeeper.damage`). */
   damage(): string | null
   /** Runs after everything already asked of the engine (`SyncService.serialise`). */
   serialise<T>(fn: () => Promise<T>): Promise<T>

@@ -55,7 +55,7 @@ export interface EnrolmentHost {
   factory(): IDBFactory
   note(text: string): void
   connection(): DeviceConnection
-  /** Writes the connection with these fields changed, unchecked (`SyncService.saveConnection`). */
+  /** Writes the connection with these fields changed, unchecked (`ConnectionKeeper.save`). */
   saveConnection(patch: ConnectionPatch): void
   /** Runs after everything already asked of the engine (`SyncService.serialise`). */
   serialise<T>(fn: () => Promise<T>): Promise<T>

@@ -87,7 +87,7 @@
  * not in `data.json`, which other devices can be handed — and never sent to the server: two
  * devices on one vault may each take a different half of it. The engine hashes these into its
  * scope key, so widening them makes the next run a rescan rather than a read of the feed; that
- * happens in `SyncService.reconcile`, which `updateConnection` reaches.
+ * happens in `EngineRunner.reconcile`, which `updateConnection` reaches.
  *
  * The cap is offered in megabytes because that is the unit a person thinks in about a video,
  * and stored in bytes because that is what the engine compares a file against. An empty field
