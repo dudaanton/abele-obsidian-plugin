@@ -50,6 +50,7 @@ import {
   activeVaultName,
   runCli,
   waitForLinkIndex,
+  assertWindowDrawn,
 } from './helpers/obsidianCli'
 import { LOAD_MARKS } from '@/helpers/loadMarks'
 
@@ -69,6 +70,9 @@ interface Sample {
   settledMs: number
 }
 
+/** A sample as the probe takes it: the phases, and the yardstick timed just before them. */
+type Taken = Sample & { yardstickMs: number }
+
 type Phase = keyof Sample
 type Build = 'development' | 'production'
 const SCENARIOS = ['bare', 'workspace'] as const
@@ -79,7 +83,7 @@ interface ScenarioResult {
   note: string
   /** Abele views mounted after the load, by type. */
   views: string[]
-  samples: Sample[]
+  samples: Taken[]
 }
 
 interface ProbeResult {
@@ -98,7 +102,12 @@ interface Tolerance {
   slackMs: number
 }
 
-type Recorded = { recorded: string; mainJsBytes: number } & Partial<Record<Scenario, Sample>>
+type Recorded = {
+  recorded: string
+  mainJsBytes: number
+  /** The yardstick's median when the baseline was recorded; see `slowdown`. */
+  yardstickMs?: number
+} & Partial<Record<Scenario, Sample>>
 
 interface Baseline {
   tolerance: Partial<Record<Phase, Tolerance>>
@@ -175,9 +184,25 @@ function probeSource(runs: number): string {
       .flatMap((t) => ws.getLeavesOfType(t))
       .filter((l) => !l.isDeferred && l.view.getViewType().startsWith('abele'))
       .map((l) => l.view.getViewType()).sort()
+    // A fixed piece of work of the same kind as a load — a megabyte of script read and compiled,
+    // some of it run, an array sorted — timed just before each load. On a machine busy with other
+    // windows it slows down as the load does, and the limits follow it (see \`slowdown\`).
+    const body = 'var a = [], i; for (i = 0; i < 40; i++) a.push({ k: i, v: String(i * 7) }); ' +
+      'return a.filter(function (o) { return o.k % 3 }).map(function (o) { return o.v.length }).length'
+    const yardstick = () => {
+      const t = performance.now()
+      let src = '/* ' + Math.random() + ' */ var out = 0;'
+      for (let i = 0; i < 4000; i++) src += 'function f' + i + '() { ' + body + ' }'
+      for (let i = 0; i < 4000; i += 40) src += 'out += f' + i + '();'
+      new Function(src + 'return out')()
+      const nums = Array.from({ length: 200000 }, (_, i) => (i * 7919) % 100003)
+      nums.sort((x, y) => x - y)
+      return performance.now() - t
+    }
     const once = async () => {
       await app.plugins.disablePlugin(id)
       await settle(300, 5000)
+      const yardstickMs = yardstick()
       const t0 = performance.now()
       await app.plugins.enablePlugin(id)
       const t1 = performance.now()
@@ -198,6 +223,7 @@ function probeSource(runs: number): string {
         enableMs: t1 - t0,
         firstFrameMs: t2 - t0,
         settledMs: Math.max(settled, t1) - t0,
+        yardstickMs,
       }
     }
     ;(async () => {
@@ -275,11 +301,15 @@ const PHASES: Phase[] = [
 describe.skipIf(!available)('plugin load time', () => {
   let result: ProbeResult
   const medians = {} as Record<Scenario, Sample>
+  let yardstickMs = 0
   const baseline = JSON.parse(readFileSync(BASELINE_FILE, 'utf8')) as Baseline
 
   beforeAll(async () => {
     result = await runProbe()
     if (result.error) throw new Error(`The load-time probe failed in the app: ${result.error}`)
+    // Checked before the run and again after it: a window hidden half way — the screen locked —
+    // has its timers held back, and "settled" then reads a second for every build alike.
+    assertWindowDrawn()
     const was = baseline.builds[result.build]
     const lines = [
       '',
@@ -299,6 +329,14 @@ describe.skipIf(!available)('plugin load time', () => {
         )
       }
     }
+    yardstickMs =
+      Math.round(
+        median(SCENARIOS.flatMap((name) => result.scenarios[name].samples.map((s) => s.yardstickMs))) * 10
+      ) / 10
+    lines.push(
+      `  yardstick ${yardstickMs.toFixed(1)} ms` +
+        (was?.yardstickMs != null ? `, baseline ${was.yardstickMs.toFixed(1)} ms` : '')
+    )
     console.info([...lines, ''].join('\n'))
     writeFileSync(
       '/tmp/abele-load-time.json',
@@ -309,6 +347,7 @@ describe.skipIf(!available)('plugin load time', () => {
       baseline.builds[result.build] = {
         recorded: new Date().toISOString().slice(0, 10),
         mainJsBytes: result.mainJsBytes,
+        yardstickMs,
         ...medians,
       }
       writeFileSync(BASELINE_FILE, JSON.stringify(baseline, null, 2) + '\n')
@@ -339,6 +378,10 @@ describe.skipIf(!available)('plugin load time', () => {
       console.warn(`No ${result.build} baseline yet — run with ABELE_LOAD_BASELINE=update.`)
       return
     }
+    // How much slower this machine is now than when the baseline was recorded, by the yardstick:
+    // other windows running their own tests take the same share of a load as of the yardstick.
+    // Never below 1 — a quiet machine does not tighten the limits.
+    const slowdown = was.yardstickMs ? Math.max(1, yardstickMs / was.yardstickMs) : 1
     const over: string[] = []
     for (const name of SCENARIOS) {
       const before = was[name]
@@ -346,10 +389,11 @@ describe.skipIf(!available)('plugin load time', () => {
       for (const [phase, tolerance] of Object.entries(baseline.tolerance) as Array<
         [Phase, Tolerance]
       >) {
-        const limit = Math.max(before[phase] * tolerance.factor, before[phase] + tolerance.slackMs)
+        const limit =
+          Math.max(before[phase] * tolerance.factor, before[phase] + tolerance.slackMs) * slowdown
         if (medians[name][phase] > limit)
           over.push(
-            `${name} ${phase}: ${medians[name][phase]} ms, limit ${limit.toFixed(1)} ms (baseline ${before[phase]})`
+            `${name} ${phase}: ${medians[name][phase]} ms, limit ${limit.toFixed(1)} ms (baseline ${before[phase]}, machine ×${slowdown.toFixed(2)})`
           )
       }
     }
