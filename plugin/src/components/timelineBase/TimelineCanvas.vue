@@ -47,6 +47,7 @@ import { DESKTOP, PHONE, buildScene, type Hit, type Scene } from './timelineScen
 import { paint } from './timelineDraw'
 import { labelWidth, readPalette, type Palette } from './timelineText'
 import { createGestures, type HoverAt } from './timelineGestures'
+import { CoverCache } from './timelineCovers'
 
 const props = defineProps<{
   items: readonly TimelineItem[]
@@ -148,19 +149,23 @@ const ariaLabel = computed(() => {
 
 // ---- pictures ------------------------------------------------------------------------------
 
-const images = new Map<string, HTMLImageElement | null>()
-function image(url: string): HTMLImageElement | null {
-  const known = images.get(url)
-  if (known !== undefined) return known && known.complete && known.naturalWidth ? known : null
-  const doc = canvas.value?.ownerDocument ?? activeDocument
-  const img = doc.win.createEl('img')
-  img.decoding = 'async'
-  img.addEventListener('load', () => pictures.value++)
-  img.addEventListener('error', () => images.set(url, null))
-  img.src = url
-  images.set(url, img)
-  return null
-}
+const covers = new CoverCache(
+  (url) => {
+    const doc = canvas.value?.ownerDocument ?? activeDocument
+    const img = doc.win.createEl('img')
+    img.decoding = 'async'
+    img.src = url
+    return img
+  },
+  () => pictures.value++
+)
+const image = (url: string) => covers.get(url)
+
+// The notes changed: the pictures of notes gone from the base go too.
+watch(
+  () => props.items,
+  (items) => covers.keepOnly(new Set(items.flatMap((i) => (i.cover ? [i.cover] : []))))
+)
 
 // ---- drawing -------------------------------------------------------------------------------
 
@@ -290,6 +295,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   observer?.disconnect()
   gestures.dispose()
+  covers.clear()
   root.value?.ownerDocument.defaultView?.cancelAnimationFrame(frame)
 })
 
