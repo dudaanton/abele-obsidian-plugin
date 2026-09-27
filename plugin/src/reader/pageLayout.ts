@@ -57,6 +57,14 @@ const onlyRelayout = (records: MutationRecord[]): boolean =>
  * so an iPhone that measured the lines before the text's font was in place kept reporting the
  * words where the stretch had put them (2026-09-27: highlights two letters off on each fresh open).
  */
+/**
+ * An element's own alignment, set on the element: it is in a book's page, where neither the
+ * plugin's stylesheet nor Obsidian's `setCssProps` reach.
+ */
+function alignOn(el: HTMLElement, value: string, priority: string): void {
+  el.style.setProperty('text-align', value, priority)
+}
+
 export function relayoutText(doc: Document): void {
   const head = doc.head
   if (!head) return
@@ -64,8 +72,20 @@ export function relayoutText(doc: Document): void {
   style.setAttribute(RELAYOUT_MARK, '')
   style.textContent = 'html, body, body * { text-align: start !important; }'
   head.append(style)
+  // A book's own `style` attribute is not cleaned of `!important` the way its stylesheets are, and
+  // wins over any stylesheet: those elements are set plainly on themselves, and given back after.
+  const own: [HTMLElement, string, string][] = []
+  for (const el of Array.from(doc.querySelectorAll<HTMLElement>('[style*="text-align"]'))) {
+    own.push([
+      el,
+      el.style.getPropertyValue('text-align'),
+      el.style.getPropertyPriority('text-align'),
+    ])
+    alignOn(el, 'start', 'important')
+  }
   void doc.documentElement.offsetHeight
   style.remove()
+  for (const [el, value, priority] of own) alignOn(el, value, priority)
   void doc.documentElement.offsetHeight
 }
 

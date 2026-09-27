@@ -200,4 +200,26 @@ describe('laying a page out again', () => {
     expect(seen).toEqual(['2', '1'])
     expect(doc.head.innerHTML).toBe('<style id="book">p { text-align: justify }</style>')
   })
+
+  it('sets anew the lines of an element the book justified inline and important, and gives it back its own', () => {
+    const doc = page('500px')
+    doc.body.innerHTML =
+      '<p id="plain">a</p><p id="own" style="text-align: justify !important; color: red">b</p>'
+    const own = doc.getElementById('own') as HTMLElement
+    const plain = doc.getElementById('plain') as HTMLElement
+    const seen: string[] = []
+    Object.defineProperty(doc.documentElement, 'offsetHeight', {
+      get: () => (
+        seen.push([plain, own].map((el) => window.getComputedStyle(el).textAlign).join(' ')),
+        0
+      ),
+    })
+    relayoutText(doc)
+    // Laid out once with every line set plainly, the book's own importance overridden too.
+    expect(seen[0]).toBe('start start')
+    expect(seen[1].split(' ').pop()).toBe('justify')
+    expect(own.style.getPropertyValue('text-align')).toBe('justify')
+    expect(own.style.getPropertyPriority('text-align')).toBe('important')
+    expect(own.style.getPropertyValue('color')).toBe('red')
+  })
 })
