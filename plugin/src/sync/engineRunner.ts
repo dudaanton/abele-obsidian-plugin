@@ -3,12 +3,20 @@ import { toRaw } from 'vue'
 import {
   SyncClient,
   SyncEngine,
+  type DeferredApplied,
+  type DeferredKept,
   type DeleteDecision,
   type HeldDelete,
   type StateEntry,
+  type SyncReport,
   type VaultClient,
 } from '@abele/sync-core'
-import { caseKey, PLAIN_HTTP_REFUSED, serverUrlProblem } from '@abele/sync-protocol'
+import {
+  caseKey,
+  PLAIN_HTTP_REFUSED,
+  serverUrlProblem,
+  type ChangeItem,
+} from '@abele/sync-protocol'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
 import { ObsidianFileSystem } from './ObsidianFileSystem'
@@ -37,6 +45,7 @@ import {
   isWireConfigDir,
   readIgnore,
   scopeKey,
+  settingsDeferred,
 } from './scope'
 import { DISCONNECTED_STATUS, JOINING_LINE, statusOf } from './status'
 import type { StatusBoard } from './statusBoard'
@@ -99,6 +108,8 @@ export interface EngineHost {
    * choice, so no later engine is built with it, and says so.
    */
   joined(join: JoinState): void
+  /** A run got through: what it staged is looked at (`StagedSettingsPrompt.reported`). */
+  synced(report: SyncReport): void
 }
 
 export class EngineRunner {
@@ -221,6 +232,21 @@ export class EngineRunner {
       )
       return { decided: fileIds.filter((id) => still.has(id)).length, applied: false }
     }
+  }
+
+  /** The settings changes the running engine holds staged (`SyncService.stagedSettings`). */
+  async deferred(): Promise<ChangeItem[]> {
+    return (await this.engine?.deferred()) ?? []
+  }
+
+  /** Write what is staged (`SyncService.applySettingsAndReload`); null with no engine. */
+  async applyDeferred(): Promise<DeferredApplied | null> {
+    return (await this.engine?.applyDeferred()) ?? null
+  }
+
+  /** Keep this device's files over what is staged (`SyncService.keepLocalSettings`). */
+  async keepLocal(paths?: string[]): Promise<DeferredKept | null> {
+    return (await this.engine?.keepLocal(paths)) ?? null
   }
 
   /** Pause the running engine, if there is one. */
@@ -380,6 +406,8 @@ export class EngineRunner {
     const pollMs = pollMsOf(deps)
     const fallbackMs = fallbackMsOf(deps)
     const ownSettings = ownSettingsPath(app.vault.configDir, this.host.manifest())
+    // Settings changes from other devices wait for the person (`stagedSettings.ts`).
+    const defer = settingsDeferred(app.vault.configDir, ownSettings)
     const settings = new OwnSettingsWatch(
       ownSettings,
       (replaced) => this.host.settingsArrived(replaced),
@@ -424,6 +452,7 @@ export class EngineRunner {
         ...(scriptsFolder === '' ? {} : { scriptsFolder }),
         ...(fallbackMs === undefined ? {} : { fallbackMs }),
         ...(join?.prefer ? { joinPrefer: join.prefer } : {}),
+        ...(defer === null ? {} : { defer }),
         onSync: (report) => {
           this.board.note(summarise(report))
           settings.settle()
@@ -433,6 +462,7 @@ export class EngineRunner {
           // and a push cut off there would otherwise leave the join open for ever (task-8
           // review, #1).
           if (join !== null) this.host.joined(join)
+          this.host.synced(report)
         },
         // A run that failed after its pull still wrote what it pulled.
         onFail: (error, kind) => {

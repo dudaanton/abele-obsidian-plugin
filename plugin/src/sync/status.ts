@@ -42,6 +42,11 @@ export interface SyncStatus {
    * whether they go everywhere (phase 3b, decision 8); 0 when none are.
    */
   heldDeletes: number
+  /**
+   * How many changes to Obsidian's settings from other devices are staged rather than written,
+   * waiting for Reload now or Keep this device's (phase 3b, decision 11); 0 when none are.
+   */
+  deferred: number
 }
 
 /** A device that has not been set up: no engine, nothing to report, nothing wrong. */
@@ -53,6 +58,7 @@ export const DISCONNECTED_STATUS: SyncStatus = Object.freeze({
   cursor: 0,
   headSeq: null,
   heldDeletes: 0,
+  deferred: 0,
 })
 
 export const STATUS_LABEL: Record<SyncState, string> = {
@@ -81,11 +87,13 @@ export const STATUS_ICON: Record<SyncState, string> = {
 
 /**
  * The engine's status as the plugin's. The fields are the same; the state is wider, and a held
- * count the engine leaves out — it always sets one, but the field is optional — is none.
+ * or staged count the engine leaves out — it always sets both, but the fields are optional — is
+ * none.
  */
 export const statusOf = (engine: EngineStatus): SyncStatus => ({
   ...engine,
   heldDeletes: engine.heldDeletes ?? 0,
+  deferred: engine.deferred ?? 0,
 })
 
 /** What the status bar says while deletions are held. */
@@ -134,6 +142,11 @@ export function statusText(status: SyncStatus): string {
   return status.state === 'idle' && status.pending > 0 ? `${label} (${status.pending})` : label
 }
 
+/** The tooltip's line for settings from other devices waiting to be applied. */
+export function stagedLine(count: number): string {
+  return `Settings waiting (${count}) — Apply and reload on the Sync tab.`
+}
+
 /** What the tooltip says of a join waiting for its question to be answered. */
 export const JOINING_LINE =
   'This vault and the server both hold files. Nothing syncs until you choose, on the Sync tab, ' +
@@ -157,6 +170,7 @@ export function statusTooltip(status: SyncStatus): string {
     lines.push(`${changesAre(status.pending)} waiting to be sent`)
   }
   if (status.heldDeletes > 0) lines.push(heldLine(status.heldDeletes))
+  if (status.deferred > 0) lines.push(stagedLine(status.deferred))
   if (status.state === 'joining') lines.push(JOINING_LINE)
   else if (status.state !== 'disconnected') {
     lines.push(`Last sync ${formatWhen(status.lastSyncAt)}`)

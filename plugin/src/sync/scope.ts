@@ -81,6 +81,26 @@ export function ignoreFor(
   }
 }
 
+/**
+ * Which pulled paths the engine stages rather than writes (phase 3b, decision 11): everything
+ * in the config folder — Obsidian's own settings, every plugin's files, the themes and snippets,
+ * of plugins enabled here or not — except this plugin's own `data.json`, which it reloads
+ * itself. Case-folded, as the settings watch compares it. Null on a device whose config folder
+ * the wire does not know, where no settings file syncs at all.
+ */
+export function settingsDeferred(
+  configDir: string,
+  ownSettings: string
+): ((wirePath: string) => boolean) | null {
+  if (!isWireConfigDir(configDir)) return null
+  const folder = caseKey(`${configDir}/`)
+  const own = caseKey(ownSettings)
+  return (wirePath) => {
+    const key = caseKey(wirePath)
+    return key.startsWith(folder) && key !== own
+  }
+}
+
 /** What the log says about the rules the engine was just built on. */
 export function ignoreLine(ignoreText: string | null): string {
   if (ignoreText === null) return `no ${IGNORE_FILE} in this vault`

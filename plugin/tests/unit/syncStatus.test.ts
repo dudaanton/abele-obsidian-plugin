@@ -56,6 +56,7 @@ describe('the status vocabulary', () => {
       cursor: 12,
       headSeq: 14,
       heldDeletes: 2,
+      deferred: 4,
     }
     expect(statusOf(engine)).toEqual(engine)
   })

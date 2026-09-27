@@ -1,7 +1,18 @@
 import { Platform, type App } from 'obsidian'
 import { ref, toRaw, type Ref } from 'vue'
-import type { DeleteDecision, HeldDelete, StateEntry, VaultClient } from '@abele/sync-core'
-import { serverUrlProblem, type JoinPrefer, type VaultInfo } from '@abele/sync-protocol'
+import type {
+  DeferredKept,
+  DeleteDecision,
+  HeldDelete,
+  StateEntry,
+  VaultClient,
+} from '@abele/sync-core'
+import {
+  serverUrlProblem,
+  type ChangeItem,
+  type JoinPrefer,
+  type VaultInfo,
+} from '@abele/sync-protocol'
 import type AbelePlugin from '@/main'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import type { DeviceConnection } from './connection'
@@ -11,6 +22,8 @@ import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer
 import { EngineRunner } from './engineRunner'
 import { finishJoin, joinOf, tellJoinWaiting } from './joinState'
 import { HeldDeletesPrompt } from './heldDeletes'
+import { StagedSettingsPrompt, type AppliedSettings } from './stagedSettings'
+import { obsidianReloader } from './reload'
 import { watchTheFront } from './phone'
 import { ownSettingsPath, settingsArrived, settingsMeaning } from './ownSettings'
 import { askJoin, type JoinQuestion } from './join'
@@ -134,6 +147,7 @@ export class SyncService {
           },
           join
         ),
+      synced: (report) => void this.settingsPrompt.reported(report),
     },
     this.board
   )
@@ -163,13 +177,30 @@ export class SyncService {
     visible: () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
   })
 
+  /**
+   * Obsidian settings changed on another device, staged by the engine until the person says
+   * what to do with them, and the question about them (`stagedSettings.ts`). Its `reloader` is
+   * the seam a test replaces so that "Reload now" reloads nothing.
+   */
+  readonly settingsPrompt = new StagedSettingsPrompt(
+    {
+      list: () => this.runner.deferred(),
+      visible: () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
+      names: (ids) => this.pluginNames(ids),
+    },
+    obsidianReloader(() => this.app)
+  )
+
   /** Whether the visibility listener has been registered; it is registered once. */
   private watchingVisibility = false
   /** Drops the settings-saved subscription. */
   private unhookSettings: (() => void) | null = null
 
   private constructor() {
-    this.board.onStatusChange((status) => void this.heldPrompt.noticed(status))
+    this.board.onStatusChange((status) => {
+      void this.heldPrompt.noticed(status)
+      void this.settingsPrompt.noticed(status)
+    })
   }
 
   /* -- Starting and stopping -------------------------------------------- */
@@ -353,6 +384,56 @@ export class SyncService {
     return result
   }
 
+  /** The settings changes from other devices the engine holds staged, oldest first. */
+  stagedSettings(): Promise<ChangeItem[]> {
+    return this.runner.deferred()
+  }
+
+  /**
+   * Reload now: write every staged settings change — but a file changed here since, which is
+   * this device's edit and goes out as one — and then reload Obsidian, which reads its settings
+   * only when a vault opens. Where Obsidian has no reload command, or nothing was written, it is
+   * not reloaded, and the answer says so. Null with no engine to apply them.
+   */
+  async applySettingsAndReload(): Promise<AppliedSettings | null> {
+    const result = await this.runner.applyDeferred()
+    // Closed first: what the read finds that nobody was shown is asked about afresh.
+    this.settingsPrompt.later()
+    await this.settingsPrompt.refresh()
+    if (result === null) return null
+    this.note(
+      `applied ${result.applied.length} staged settings file(s)` +
+        (result.skipped.length > 0 ? `; ${result.skipped.length} changed here since` : '')
+    )
+    const reloader = this.settingsPrompt.reloader
+    let reloaded = false
+    if (result.applied.length > 0 && reloader.available()) {
+      this.note('reloading Obsidian to read the settings that were applied')
+      reloaded = reloader.reload()
+    }
+    return { applied: result.applied, skipped: result.skipped, reloaded }
+  }
+
+  /**
+   * Keep this device's: this device's settings files go out over the staged changes — those at
+   * `paths`, or all of them — as edits on the server's head, so every other device is asked
+   * about them in turn. A file only the other device has is left there; nothing is deleted on
+   * any device. Null with no engine.
+   */
+  async keepLocalSettings(paths?: string[]): Promise<DeferredKept | null> {
+    const kept = await this.runner.keepLocal(paths)
+    // Closed first: what the read finds that nobody was shown is asked about afresh.
+    this.settingsPrompt.later()
+    await this.settingsPrompt.refresh()
+    if (kept !== null) {
+      this.note(
+        `keeping this device's settings: ${kept.kept.length} file(s) go out` +
+          (kept.left.length > 0 ? `, ${kept.left.length} exist only elsewhere and stay there` : '')
+      )
+    }
+    return kept
+  }
+
   /** Walk the whole manifest again and then sync: for when this device widened what it takes. */
   rescan(): Promise<void> {
     return this.runner.rescan()
@@ -502,13 +583,40 @@ export class SyncService {
     if (plugin === null || this.watchingVisibility) return
     this.watchingVisibility = true
     watchTheFront(plugin, Platform.isMobile, {
-      held: () => this.heldPrompt.foreground(),
+      held: () => {
+        this.heldPrompt.foreground()
+        this.settingsPrompt.foreground()
+      },
       sync: (visible) => {
         if (!this.runner.isRunning() || this.connection.value.paused) return
         this.note(visible ? 'the app came back to the front' : 'the app left the front')
         void this.syncNow()
       },
     })
+  }
+
+  /**
+   * The names of the plugins in these config-folder folders, from each one's `manifest.json` on
+   * this device; a plugin this device does not have, or whose manifest will not read, is left
+   * out, and the dialog shows its folder instead.
+   */
+  private async pluginNames(ids: string[]): Promise<Record<string, string>> {
+    const app = this.app
+    const names: Record<string, string> = {}
+    if (app === null) return names
+    for (const id of ids) {
+      try {
+        const bytes = await app.vault.adapter.readBinary(
+          `${app.vault.configDir}/plugins/${id}/manifest.json`
+        )
+        const manifest: unknown = JSON.parse(new TextDecoder().decode(bytes))
+        const name = (manifest as { name?: unknown } | null)?.name
+        if (typeof name === 'string' && name.trim() !== '') names[id] = name.trim()
+      } catch {
+        // Not here, or not JSON: the folder stands for it.
+      }
+    }
+    return names
   }
 
   /** Runs the work after everything asked for before it, whether that succeeded or not. */
