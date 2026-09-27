@@ -39,6 +39,7 @@ const DEVICES = [
 
 const service = {
   connection: ref({ deviceId: 'd-mac' }),
+  status: ref({ state: 'idle' as string }),
   listDevices: vi.fn(),
   revokeDevice: vi.fn(),
 }
@@ -58,6 +59,7 @@ beforeEach(() => {
   useVault([])
   Notice.shown.length = 0
   service.listDevices.mockResolvedValue(DEVICES)
+  service.status.value = { state: 'idle' }
   service.revokeDevice.mockResolvedValue(undefined)
   vi.spyOn(SyncService, 'getInstance').mockReturnValue(service as never)
 })
@@ -153,5 +155,35 @@ describe('the devices on this vault', () => {
     await flushPromises()
 
     expect(view.findComponent(EmptyState).props('text')).toMatch(/not connected/)
+  })
+
+  /**
+   * Review of task 12, #7: opened while the engine was still being built — a start, a join just
+   * answered — the section said "not connected" for as long as the tab stayed open.
+   */
+  it('reads the list again once the engine that was being built is running', async () => {
+    service.status.value = { state: 'disconnected' }
+    service.listDevices.mockResolvedValueOnce(null)
+    const view = open()
+    await flushPromises()
+    expect(view.findComponent(EmptyState).props('text')).toMatch(/not connected/)
+
+    service.status.value = { state: 'syncing' }
+    await flushPromises()
+
+    // Views of earlier tests stay mounted and watch the same status, so the list is what counts.
+    expect(view.findComponent(EmptyState).exists()).toBe(false)
+    expect(row(view, 'Phone')).toBeDefined()
+  })
+
+  it('does not ask again as syncs come and go', async () => {
+    open()
+    await flushPromises()
+    service.status.value = { state: 'syncing' }
+    await flushPromises()
+    service.status.value = { state: 'idle' }
+    await flushPromises()
+
+    expect(service.listDevices).toHaveBeenCalledTimes(1)
   })
 })

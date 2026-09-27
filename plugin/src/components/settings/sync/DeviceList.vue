@@ -19,7 +19,11 @@
           text="Revoke"
           warning
           :disabled="busy"
-          :tooltip="`Stop ${one.name} syncing this vault; its files stay on it`"
+          :tooltip="
+            busy
+              ? 'Wait: a revoke is under way'
+              : `Stop ${one.name} syncing this vault; its files stay on it`
+          "
           @click="revoking = one"
         />
       </Setting>
@@ -52,9 +56,11 @@
  * applied. It is asked about first, since a device revoked needs the password to come back.
  *
  * Read once when the tab opens and again after a revoke, like the vault's usage: it changes
- * when a device is added or removed, not while one is being looked at.
+ * when a device is added or removed, not while one is being looked at. And once more when an
+ * engine that was being built as the tab opened — at a start, after a join was answered — is up:
+ * until then there is no client to ask, and the section would say "not connected" for good.
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { Notice } from 'obsidian'
 import type { DeviceInfo } from '@abele/sync-protocol'
 import Section from '../../obsidian/Section.vue'
@@ -148,6 +154,16 @@ async function revoke(): Promise<void> {
     busy.value = false
   }
 }
+
+/** The states in which no engine runs, so no client can be asked. */
+const UNBUILT = new Set(['disconnected', 'joining', 'error'])
+
+watch(
+  () => sync.status.value.state,
+  (state, before) => {
+    if (UNBUILT.has(before) && !UNBUILT.has(state)) void load()
+  }
+)
 
 onMounted(() => void load())
 </script>

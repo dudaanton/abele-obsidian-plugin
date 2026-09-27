@@ -17,7 +17,11 @@
       <Button
         text="Keep this device's"
         :disabled="busy"
-        tooltip="Send this device's settings to the other devices over the ones that arrived"
+        :tooltip="
+          busy
+            ? 'Wait: the last answer is still being carried out'
+            : 'Send this device\'s settings to the other devices over the ones that arrived'
+        "
         @click="keep"
       />
       <Button
@@ -25,9 +29,11 @@
         accent
         :disabled="busy"
         :tooltip="
-          reloadable
-            ? 'Write the settings that arrived and reload Obsidian to use them'
-            : 'Write the settings that arrived; restart Obsidian to use them'
+          busy
+            ? 'Wait: the last answer is still being carried out'
+            : reloadable
+              ? 'Write the settings that arrived and reload Obsidian to use them'
+              : 'Write the settings that arrived; restart Obsidian to use them'
         "
         @click="apply"
       />
