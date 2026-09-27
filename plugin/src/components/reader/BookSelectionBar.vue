@@ -6,16 +6,37 @@
     :aria-label="highlight ? 'Highlight' : 'Selection'"
   >
     <div class="abele-book-selection__colors">
-      <Icon
-        v-for="c in HIGHLIGHT_COLORS"
-        :key="c"
-        icon="circle"
-        :color="c"
-        :active="highlight?.color === c"
-        :tooltip="highlight ? `Make it ${c}` : `Highlight in ${c}`"
-        class="abele-book-selection__swatch"
-        @click="emit('color', c)"
-      />
+      <!-- On e-ink a colour is shown as the shape its highlight takes, which a grey screen can
+           tell apart where it cannot the colours. -->
+      <template v-if="einkOn">
+        <Icon
+          v-for="c in HIGHLIGHT_COLORS"
+          :key="c"
+          text-right="ab"
+          :active="highlight?.color === c"
+          :tooltip="
+            highlight
+              ? `Make it ${c}: ${SHAPE_NAMES[einkShape(c)]}`
+              : `Highlight in ${c}: ${SHAPE_NAMES[einkShape(c)]}`
+          "
+          :aria-label="`${c}, ${SHAPE_NAMES[einkShape(c)]}`"
+          :class="`abele-book-selection__shape abele-book-selection__shape_${einkShape(c)}`"
+          :data-color="c"
+          @click="emit('color', c)"
+        />
+      </template>
+      <template v-else>
+        <Icon
+          v-for="c in HIGHLIGHT_COLORS"
+          :key="c"
+          icon="circle"
+          :color="c"
+          :active="highlight?.color === c"
+          :tooltip="highlight ? `Make it ${c}` : `Highlight in ${c}`"
+          class="abele-book-selection__swatch"
+          @click="emit('color', c)"
+        />
+      </template>
     </div>
     <div class="abele-book-selection__actions">
       <Icon
@@ -72,7 +93,11 @@
         />
       </template>
       <template v-if="highlight">
-        <Icon icon="file-text" tooltip="Open the highlights note" @click="emit('open-note', $event)" />
+        <Icon
+          icon="file-text"
+          tooltip="Open the highlights note"
+          @click="emit('open-note', $event)"
+        />
         <Icon icon="trash-2" tooltip="Remove the highlight" @click="emit('delete')" />
       </template>
       <Icon
@@ -96,6 +121,18 @@ import { Menu } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import { HIGHLIGHT_COLORS, type Highlight, type HighlightColor } from '@/reader/highlights'
 import { BOOK_BAR_BUTTONS } from '@/scripting/bookMenuScripts'
+import { eink, einkShape, type EinkShape } from '@/reader/eink'
+
+/** On e-ink, what each shape a highlight takes is called, for its tooltip. */
+const SHAPE_NAMES: Record<EinkShape, string> = {
+  underline: 'underlined',
+  double: 'underlined twice',
+  dashed: 'a dashed underline',
+  box: 'boxed',
+  'dashed-box': 'in a dashed box',
+  'over-under': 'lined above and below',
+}
+const einkOn = computed(() => eink().on)
 
 const props = defineProps<{
   /** The highlight tapped; unset for a fresh selection. */

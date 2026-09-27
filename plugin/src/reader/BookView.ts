@@ -56,6 +56,12 @@ import { bookScope, zoomStep } from './zoom'
 import { PDF_SCROLL_TAG, definePdfScroll } from './pdfScroll'
 import { inkFor, type PdfInk } from './ink/PdfInk'
 import { zoomFor, type PdfZoom } from './pdfZoom'
+import { EINK_PAGE_STYLE, eink, einkTheme, followEink, withEink } from './eink'
+import type { ReaderSettings } from './settings'
+
+/** The reader's settings as this device reads them: e-ink mode keeps pages and paper. */
+const readerSettings = (): ReaderSettings =>
+  withEink(readerSettingsFrom(AbeleConfig.getInstance().reader), eink().on)
 
 /** The settings a PDF's layout is decided by when it opens. */
 const pdfLayoutKey = (s: { pdfLayout: string; pdfTwoPages: boolean }) =>
@@ -170,9 +176,16 @@ export class BookView extends FileView {
     // Font files added, changed or removed in the fonts folder, here or on another device.
     const fonts = readerFonts()
     const stopFonts = fonts ? watch(fonts.version, () => this.applyFonts()) : null
+    // E-ink mode switched on this device: the page laid out and marked again, a PDF opened
+    // again when its layout changes with it.
+    const stopEink = followEink(this.contentEl, () => {
+      this.applySettings()
+      this.reading?.marks.redraw()
+    })
     this.stopWatch = () => {
       stopSettings()
       stopFonts?.()
+      stopEink()
     }
     this.model.canAsk = !!AbeleConfig.getInstance().ai?.enabled
     this.registerEvent(
@@ -378,7 +391,7 @@ export class BookView extends FileView {
 
   /** Layout and page style from the settings and the theme, on the book's engine or a note's. */
   private applyTo(view: FoliateView, note = false): void {
-    const settings = readerSettingsFrom(AbeleConfig.getInstance().reader)
+    const settings = readerSettings()
     const renderer = view.renderer as unknown as HTMLElement & {
       setStyles?: (css: [string, string]) => void
     }
@@ -402,7 +415,9 @@ export class BookView extends FileView {
     }
     for (const [name, value] of Object.entries(attrs))
       if (renderer.getAttribute(name) !== value) renderer.setAttribute(name, value)
-    renderer.setStyles?.(pageStyles(settings, themeValues(this.contentEl)))
+    const theme = themeValues(this.contentEl)
+    const [before, after] = pageStyles(settings, eink().on ? einkTheme(theme) : theme)
+    renderer.setStyles?.([before, eink().on ? after + EINK_PAGE_STYLE : after])
     const pages = (renderer as { getContents?: () => { doc?: Document }[] }).getContents?.() ?? []
     for (const { doc } of pages)
       if (doc) {
@@ -430,7 +445,7 @@ export class BookView extends FileView {
    * before would stay where the serif had put the words.
    */
   private async fontsInto(doc: Document, main: boolean): Promise<void> {
-    const family = vaultFontOf(readerSettingsFrom(AbeleConfig.getInstance().reader))
+    const family = vaultFontOf(readerSettings())
     const fonts = readerFonts()
     const faces: FaceData[] | Promise<FaceData[]> = family && fonts ? fonts.facesOf(family) : []
     if (!(await setDocumentFonts(doc, family, faces)) || !doc.defaultView) return
@@ -442,7 +457,7 @@ export class BookView extends FileView {
   private applySettings(): void {
     this.model.canAsk = !!AbeleConfig.getInstance().ai?.enabled
     // A PDF's layout is decided when it opens; a change opens it again, at the same page.
-    const layout = pdfLayoutKey(readerSettingsFrom(AbeleConfig.getInstance().reader))
+    const layout = pdfLayoutKey(readerSettings())
     if (this.isPdf && this.opened && this.file && layout !== this.openedPdfLayout) {
       void bookPlaces()
         ?.flush()
@@ -466,7 +481,7 @@ export class BookView extends FileView {
       const stage = await this.stageReady
       const data = new Uint8Array(await this.app.vault.readBinary(file))
       if (token !== this.loadToken) return
-      const settings = readerSettingsFrom(AbeleConfig.getInstance().reader)
+      const settings = readerSettings()
       const opened = await openBookFile(file, data)
       if (this.isPdf) {
         this.openedPdfLayout = pdfLayoutKey(settings)
@@ -558,6 +573,7 @@ export class BookView extends FileView {
       // The first page of a book is not a place to go back to.
       this.model.canGoBack = false
       this.model.status = 'ready'
+      if (this.app.workspace.getActiveViewOfType(BookView) === this) this.takeFocus()
     } catch (e) {
       if (token !== this.loadToken) return
       console.error('[Abele] book did not open', e)
@@ -569,6 +585,7 @@ export class BookView extends FileView {
   private onRelocate(detail: FoliateLocation): void {
     const index = (detail as { index?: number }).index ?? detail.section?.current
     if (typeof index === 'number') this.reading?.relocated(index)
+    if (this.model.status === 'ready') this.model.turns++
     this.model.fraction = detail.fraction ?? 0
     this.model.progress = this.isPdf ? null : progressOf(detail, this.reader?.renderer as never)
     const label = detail.tocItem?.label?.trim() ?? ''
@@ -621,7 +638,7 @@ export class BookView extends FileView {
       const link = target?.closest?.('a, area')
       if (link && !(link.localName === 'a' && link.hasAttribute('href'))) e.preventDefault()
     })
-    showBookStyles(doc, readerSettingsFrom(AbeleConfig.getInstance().reader).bookStyles)
+    showBookStyles(doc, readerSettings().bookStyles)
     if (!this.fixed) void this.fontsInto(doc, main)
     if (!main) return
     relayoutOnFonts(doc, () => redrawOver(this.reader?.renderer, doc, 'fonts arrived'))
@@ -648,10 +665,35 @@ export class BookView extends FileView {
 
   onload(): void {
     super.onload()
-    this.registerDomEvent(this.contentEl, 'keydown', (e) => {
-      if ((e.target as Element | null)?.closest?.('input, select, textarea')) return
-      onKey(this.reader, e)
+    // The page keys, wherever they arrive in this tab — the page's own frame hears its own
+    // (`watchPage`) — and while the tab is the one in front with nothing else focused: a
+    // reader's page buttons send keys to whatever holds the focus.
+    this.registerDomEvent(this.containerEl.doc, 'keydown', (e) => {
+      const target = e.target as Element | null
+      if (target?.closest?.('input, select, textarea, [contenteditable="true"]')) return
+      const inside = !!target && this.containerEl.contains(target)
+      const unfocused = !target || target === target.ownerDocument.body
+      if (!inside && !(unfocused && this.app.workspace.getActiveViewOfType(BookView) === this))
+        return
+      // A dialog over the tab keeps its keys.
+      if (!inside && this.containerEl.doc.querySelector('.modal-container')) return
+      onKey(this.reader, e, inside ? 'tab' : 'app')
     })
+    // The tab takes the focus when it comes to the front, so the keys come to it rather than to
+    // the file list a book was opened from.
+    this.registerEvent(
+      this.app.workspace.on('active-leaf-change', (leaf) => {
+        if (leaf === this.leaf) this.takeFocus()
+      })
+    )
+  }
+
+  /** The focus given to the tab, unless something in it already has it. */
+  takeFocus(): void {
+    const el = this.contentEl
+    if (!el.isConnected || el.contains(el.doc.activeElement)) return
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1')
+    el.focus({ preventScroll: true })
   }
 }
 

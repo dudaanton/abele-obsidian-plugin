@@ -14,6 +14,11 @@ import { Overlayer } from '@/vendor/foliate-js/overlayer.js'
 import type { View as FoliateView } from '@/vendor/foliate-js/view.js'
 import type { Highlight, HighlightColor } from './highlights'
 import { LINK_KEY, linkMark, pointInWindow, shortenPlace } from './linkMarks'
+import { eink, einkShape, type EinkShape } from './eink'
+import { einkBoxStyle, einkMark } from './einkMarks'
+
+/** The ink e-ink marks are drawn in: the page's own text colour, black on its white. */
+const EINK_INK = 'CanvasText'
 
 export const MARKS_CLASS = 'abele-marks'
 
@@ -25,6 +30,8 @@ interface Box {
   discussion?: 'under' | 'over'
   /** Words a note links to: a dotted underline, tested apart from highlights. */
   link?: string
+  /** In e-ink mode, the shape of the highlight's lines, drawn in place of its fill. */
+  shape?: EinkShape
 }
 
 const SVG = 'http://www.w3.org/2000/svg'
@@ -36,12 +43,14 @@ const BUBBLE =
  * The engine's drawing of a discussion: its words underlined or highlighted, and the bubble over
  * the end of the last line, where a tap on it still lands on the words and opens the chat.
  */
-export function discussionMark(plain: boolean) {
+export function discussionMark(plain: boolean, shape?: EinkShape) {
   return (rects: DOMRect[], options: { color?: string } = {}): SVGGElement => {
     const color = options.color ?? 'currentColor'
     const words = plain
       ? (Overlayer.underline(rects, { color, width: 2 }) as SVGGElement)
-      : (Overlayer.highlight(rects, { color }) as SVGGElement)
+      : shape
+        ? einkMark(shape)(rects, { color })
+        : (Overlayer.highlight(rects, { color }) as SVGGElement)
     const g = document.createElementNS(SVG, 'g')
     g.append(words)
     const last = rects[rects.length - 1]
@@ -105,11 +114,13 @@ export function drawBoxes(doc: Document, layerClass: string, items: Box[], opaci
           ? { 'border-bottom': `2px dotted ${item.color}`, 'box-sizing': 'border-box' }
           : under
             ? { 'border-bottom': `2px solid ${item.color}`, 'box-sizing': 'border-box' }
-            : {
-                'background-color': item.color,
-                opacity: String(opacity),
-                'mix-blend-mode': 'multiply',
-              }),
+            : item.shape
+              ? einkBoxStyle(item.shape, item.color)
+              : {
+                  'background-color': item.color,
+                  opacity: String(opacity),
+                  'mix-blend-mode': 'multiply',
+                }),
         'border-radius': '2px',
       }))
         box.style.setProperty(k, v)
@@ -174,15 +185,18 @@ export class BookMarks {
       if (annotation.value.startsWith(LINK_KEY)) {
         const { range } = (e as CustomEvent).detail as { range?: Range }
         if (range && 'setStart' in range) shortenPlace(range)
-        draw(linkMark, { color: this.accent() })
+        draw(linkMark, { color: eink().on ? EINK_INK : this.accent() })
         return
       }
       const h = this.list.find((x) => x.cfi === annotation.value)
       if (!h) return
+      // On e-ink, lines in the ink whose shape says the colour, over words left black.
+      const shape = eink().on ? einkShape(h.color) : undefined
       if (h.discussion)
-        draw(discussionMark(!!h.plain), {
-          color: h.plain ? this.accent() : markColor(this.themeEl, h.color),
+        draw(discussionMark(!!h.plain, shape), {
+          color: shape ? EINK_INK : h.plain ? this.accent() : markColor(this.themeEl, h.color),
         })
+      else if (shape) draw(einkMark(shape), { color: EINK_INK })
       else draw(Overlayer.highlight, { color: markColor(this.themeEl, h.color) })
     })
     // A chapter's page is made anew on every visit: its highlights go back on.
@@ -331,20 +345,27 @@ export class BookMarks {
     for (const [i, d] of this.pdfDocs) if (!d.defaultView) this.pdfDocs.delete(i)
     const mine = this.list.filter((h) => this.indexOf(h.cfi) === index)
     const items: Box[] = []
+    const on = eink().on
     for (const h of mine) {
       const range = this.rangeIn(doc, h.cfi)
       if (!range) continue
       items.push({
         range,
-        color: h.discussion && h.plain ? this.accent() : markColor(this.themeEl, h.color),
+        color: on
+          ? EINK_INK
+          : h.discussion && h.plain
+            ? this.accent()
+            : markColor(this.themeEl, h.color),
         cfi: h.cfi,
         ...(h.discussion ? { discussion: h.plain ? ('under' as const) : ('over' as const) } : {}),
+        ...(on ? { shape: einkShape(h.color) } : {}),
       })
     }
     for (const cfi of this.links) {
       if (this.indexOf(cfi) !== index) continue
       const range = this.rangeIn(doc, cfi)
-      if (range) items.push({ range: shortenPlace(range), color: this.accent(), link: cfi })
+      if (range)
+        items.push({ range: shortenPlace(range), color: on ? EINK_INK : this.accent(), link: cfi })
     }
     drawBoxes(doc, MARKS_CLASS, items)
   }

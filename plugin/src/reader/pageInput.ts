@@ -12,6 +12,7 @@ import { TAP_EDGE, pagerFor, pagerOf } from './selectionPaging'
 import { figureAt, fitFigures } from './figures'
 import type { BookModel } from './model'
 import type { BookReading } from './BookReading'
+import { EINK_TAP_SHARE, TAP_SHARE, eink, heardKey, pageKeyWay, type PageWay } from './eink'
 
 export interface PageHost {
   reader(): FoliateView | null
@@ -29,7 +30,7 @@ const barOpen = (host: PageHost) => () => !!(host.model.selection || host.model.
 
 /** Wires one page, as it arrives in its frame, for keys, taps and swipes. */
 export function watchPage(host: PageHost, doc: Document): void {
-  doc.addEventListener('keydown', (e) => onKey(host.reader(), e))
+  doc.addEventListener('keydown', (e) => onKey(host.reader(), e, 'page'))
   // A PDF's pinch is its own zoom's (`pdfZoom.ts`); a comic's zooms a step at a time.
   if (host.fixed() && !host.pdf) doc.addEventListener('wheel', pinchZoom(host), { passive: false })
   // Pictures and tables as large as the page allows, once they have their size, and again when
@@ -45,6 +46,7 @@ export function watchPage(host: PageHost, doc: Document): void {
   const renderer = reader?.renderer as
     | (NonNullable<FoliateView['renderer']> & {
         holdPages?: () => boolean
+        stillSwipes?: () => boolean
         abeleMargins?: boolean
       })
     | undefined
@@ -54,7 +56,11 @@ export function watchPage(host: PageHost, doc: Document): void {
     renderer.addEventListener('click', (e) => onMarginTap(host, e))
   }
   // The engine's own swipes wait while words are selected or a bar is open.
-  if (renderer) renderer.holdPages = barOpen(host)
+  if (renderer) {
+    renderer.holdPages = barOpen(host)
+    // On e-ink the page does not follow a swiping finger: it is turned once, as the finger lifts.
+    renderer.stillSwipes = () => eink().on
+  }
   pagerFor(doc, {
     // A PDF in one long scroll has no pages to turn under a selection.
     renderer: () => {
@@ -119,16 +125,42 @@ export function onExternalLink(e: CustomEvent<{ href_?: string }>): void {
   if (isOpenableExternal(href)) window.open(href, '_blank')
 }
 
-export function onKey(reader: FoliateView | null, e: KeyboardEvent): void {
-  if (!reader) return
-  if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
-    e.preventDefault()
-    void reader.goLeft()
-  } else if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
-    e.preventDefault()
-    void reader.goRight()
+/**
+ * A key heard on the page or around it: a page key turns the page (`pageKeyWay`), whatever else
+ * is left alone. `where` names where it arrived, for the keys shown in e-ink mode. Returns
+ * whether the key turned the page.
+ */
+export function onKey(reader: FoliateView | null, e: KeyboardEvent, where: string): boolean {
+  if (!reader || e.defaultPrevented) return false
+  const renderer = reader.renderer as unknown as Element | undefined
+  // Pages are turned, not scrolled: a book laid out in pages, or a PDF a page at a time.
+  const paged = reader.isFixedLayout
+    ? renderer?.localName !== PDF_SCROLL_TAG
+    : renderer?.getAttribute('flow') !== 'scrolled'
+  const way = pageKeyWay(e, { eink: eink().on, paged })
+  heardKey(e, where, way)
+  if (!way) return false
+  e.preventDefault()
+  void turn(reader, way)
+  return true
+}
+
+/** Turns the page one way: through the book, or towards a side of the screen. */
+export function turn(reader: FoliateView, way: PageWay): Promise<void> {
+  switch (way) {
+    case 'next':
+      return reader.next()
+    case 'prev':
+      return reader.prev()
+    case 'left':
+      return reader.goLeft()
+    case 'right':
+      return reader.goRight()
   }
 }
+
+/** How far in from either edge a tap turns the page: a third in e-ink mode, a quarter else. */
+const tapShare = () => (eink().on ? EINK_TAP_SHARE : TAP_SHARE)
 
 /**
  * A tap near the left or right edge turns the page; one on a highlight opens what it offers. Only
@@ -171,7 +203,7 @@ function onTap(host: PageHost, e: MouseEvent, doc: Document, gesture: PageGestur
     host.model.figure = figure
     return
   }
-  const edge = edgeOf(host, e, doc, 0.25)
+  const edge = edgeOf(host, e, doc, tapShare())
   if (edge === -1) void reader.goLeft()
   else if (edge === 1) void reader.goRight()
 }
@@ -199,7 +231,7 @@ function onMarginTap(host: PageHost, e: MouseEvent): void {
     host.model.active = null
     return
   }
-  const dir = edge(0.25)
+  const dir = edge(tapShare())
   if (dir === -1) void reader.goLeft()
   else if (dir === 1) void reader.goRight()
 }

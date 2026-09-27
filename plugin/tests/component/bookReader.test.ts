@@ -202,6 +202,8 @@ describe('the PDF settings', () => {
       'Page size',
       'Dark pages in a dark theme',
       'Pen thickness',
+      'E-ink mode',
+      'Show the keys the reader hears',
       'Voice',
       'Speed',
     ])
@@ -213,6 +215,8 @@ describe('the PDF settings', () => {
       'Two pages side by side',
       'Dark pages in a dark theme',
       'Pen thickness',
+      'E-ink mode',
+      'Show the keys the reader hears',
       'Voice',
       'Speed',
     ])

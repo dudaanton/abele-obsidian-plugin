@@ -1,10 +1,11 @@
 /**
- * What a book tab's ⋯ menu offers besides Obsidian's own: pages or scrolling, a link to the place
+ * What a book tab's ⋯ menu offers besides Obsidian's own: pages or scrolling, e-ink mode, a link to the place
  * on screen, a chat about it, the search, the highlights, the bookmarks and the text and layout settings.
  */
 import type { Menu } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { readerSettingsFrom } from './settings'
+import { eink, setEink } from './eink'
 
 export interface BookMenuHost {
   /** A book is showing, so there is a place to link to. */
@@ -80,14 +81,25 @@ async function setFlow(flow: 'paginated' | 'scrolled', pdf: boolean): Promise<vo
 export function fillBookMenu(menu: Menu, host: BookMenuHost): void {
   const settings = readerSettingsFrom(AbeleConfig.getInstance().reader)
   const flow = host.pdf ? settings.pdfLayout : settings.flow
+  // E-ink mode keeps pages: scrolling is not offered while it is on.
+  if (!eink().on)
+    menu.addItem((item) =>
+      item
+        .setTitle(
+          flow === 'paginated'
+            ? 'Scroll instead of turning pages'
+            : 'Turn pages instead of scrolling'
+        )
+        .setIcon(flow === 'paginated' ? 'scroll-text' : 'book-open')
+        .setSection('view')
+        .onClick(() => void setFlow(flow === 'paginated' ? 'scrolled' : 'paginated', host.pdf))
+    )
   menu.addItem((item) =>
     item
-      .setTitle(
-        flow === 'paginated' ? 'Scroll instead of turning pages' : 'Turn pages instead of scrolling'
-      )
-      .setIcon(flow === 'paginated' ? 'scroll-text' : 'book-open')
+      .setTitle(eink().on ? 'Turn e-ink mode off on this device' : 'E-ink mode on this device')
+      .setIcon('tablet')
       .setSection('view')
-      .onClick(() => void setFlow(flow === 'paginated' ? 'scrolled' : 'paginated', host.pdf))
+      .onClick(() => setEink({ on: !eink().on }))
   )
   if (host.ready) {
     menu.addItem((item) =>

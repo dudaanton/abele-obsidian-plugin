@@ -909,6 +909,14 @@ export class Paginator extends HTMLElement {
         e.preventDefault()
         const touch = e.changedTouches[0]
         const x = touch.screenX, y = touch.screenY
+        // ABELE PATCH: on e-ink (`stillSwipes`) the page does not follow the finger, which would
+        // redraw a slow screen at every move; where the finger went is kept, and the page is
+        // turned once, as it lifts.
+        if (this.stillSwipes?.()) {
+            state.x = x
+            state.y = y
+            return
+        }
         const dx = state.x - x, dy = state.y - y
         const dt = e.timeStamp - state.t
         state.x = x
@@ -928,6 +936,14 @@ export class Paginator extends HTMLElement {
         const state = this.#touchState
         if (state && (state.selecting || !state.swiping)) {
             if (scrolled) requestAnimationFrame(() => this.snap(0, 0))
+            return
+        }
+        // ABELE PATCH: a still swipe (see #onTouchMove) turns one page its way, or none.
+        if (state && this.stillSwipes?.() && !scrolled) {
+            const dx = state.x0 - state.x, dy = state.y0 - state.y
+            if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.5) return
+            const forward = dx > 0 !== this.#rtl
+            void (forward ? this.next() : this.prev())
             return
         }
 

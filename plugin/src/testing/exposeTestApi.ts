@@ -9,6 +9,7 @@
  * replaces with a string literal at build time, so the guard folds to `false` and this
  * module is dropped entirely from the production bundle.
  */
+import { eink, setEink } from '@/reader/eink'
 import { ScopeResolver } from '@/ai/ScopeResolver'
 import { ChatService } from '@/ai/ChatService'
 import { CommentService } from '@/ai/CommentService'
@@ -160,6 +161,8 @@ interface AbeleTestApi {
     openEpub: typeof openEpub
     /** The fonts folder the reader offers fonts from. */
     fonts: typeof readerFonts
+    /** E-ink mode, this device's: its state, and a way to set it and put it back. */
+    eink: { state: typeof eink; set: typeof setEink }
   }
   /** The keyboard diagnostics panel, on or off, without going through the settings. */
   setKeyboardDiagnostics: typeof setKeyboardDiagnostics
@@ -593,6 +596,7 @@ export function exposeTestApi(plugin: Plugin): void {
       hooks: readerTestHooks,
       openEpub,
       fonts: readerFonts,
+      eink: { state: eink, set: setEink },
     },
     plugin,
     viewProbe: null,

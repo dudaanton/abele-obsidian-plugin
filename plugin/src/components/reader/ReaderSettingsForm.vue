@@ -5,7 +5,14 @@
       text="This book's pages are laid out by the book, like a comic's: there is nothing to set for them. Zoom with Mod and plus or minus, a pinch, or the tab's menu."
     />
     <template v-if="kind === 'epub' || kind === 'all'">
-      <Setting name="Layout" desc="Turn pages one at a time, or scroll through each chapter.">
+      <Setting
+        name="Layout"
+        :desc="
+          einkState.on
+            ? 'Turn pages one at a time, or scroll through each chapter. E-ink mode keeps pages on this device.'
+            : 'Turn pages one at a time, or scroll through each chapter.'
+        "
+      >
         <Dropdown
           :options="flowOptions"
           :model-value="settings.flow"
@@ -156,6 +163,38 @@
       </Setting>
     </Section>
 
+    <Section
+      title="E-ink, on this device"
+      desc="For a reader with an e-ink screen, such as a Boox. Kept on this device only: your phone and computer read as before."
+    >
+      <Setting
+        name="E-ink mode"
+        desc="Pages turned, never scrolled or slid, a PDF's too. Black text on white, nothing grey, thicker lines, nothing that moves or fades. Highlights drawn as lines whose shape tells the colour. A tap in the left or right third turns the page. The page buttons and keys turn it too."
+      >
+        <Checkbox :is-enabled="einkState.on" @toggle="setEink({ on: !einkState.on })" />
+      </Setting>
+      <Setting
+        v-if="einkState.on"
+        name="Full refresh"
+        desc="The page flashes black and then white every so many pages, which clears the faint ghost of earlier pages an e-ink screen leaves."
+      >
+        <Dropdown
+          :options="refreshOptions"
+          :model-value="String(einkState.refreshEvery)"
+          @update:model-value="setEink({ refreshEvery: Number($event) })"
+        />
+      </Setting>
+      <Setting
+        name="Show the keys the reader hears"
+        desc="Over the page, the name and code of the last key or button pressed, and whether it turned the page; the console logs each. For finding out what a reader's page buttons send when they do not turn the pages."
+      >
+        <Checkbox
+          :is-enabled="einkState.showKeys"
+          @toggle="setEink({ showKeys: !einkState.showKeys })"
+        />
+      </Setting>
+    </Section>
+
     <Section title="Reading aloud">
       <Setting
         name="Voice"
@@ -206,6 +245,7 @@ import Input from '../obsidian/Input.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { THICKNESSES } from '@/drawing/model'
 import { readerFonts } from '@/reader/readerFonts'
+import { REFRESH_EVERY, eink, setEink } from '@/reader/eink'
 import {
   VAULT_FONT,
   vaultFontOf,
@@ -232,6 +272,13 @@ const settings = reactive<ReaderSettings>(readerSettingsFrom(config.reader))
 
 // Settings changed on disk — synced from another device — are shown rather than overwritten.
 watch(config.version, () => Object.assign(settings, readerSettingsFrom(config.reader)))
+
+/** E-ink mode, this device's own. */
+const einkState = eink()
+const refreshOptions = REFRESH_EVERY.map((n) => ({
+  value: String(n),
+  display: n ? `Every ${n} pages` : 'Never',
+}))
 
 const flowOptions = [
   { value: 'paginated', display: 'Pages' },

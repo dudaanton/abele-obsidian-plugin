@@ -13,7 +13,7 @@ others still come here; the console says which.
 A book opens where it was left. The first time, it opens on its first chapter of text (the cover
 and front matter are skipped when the book says where the text starts).
 
-- **Turning pages.** The arrow keys, Page Up and Page Down, the space bar, a tap near the left or
+- **Turning pages.** The arrow keys (up and down only where pages are turned), Page Up and Page Down, the space bar (Shift with it back), a tap near the left or
   right edge of the page, or on a touch screen a swipe. Only a clean tap or swipe turns: not a
   long press, not a finger held and then moved, not the mouse let go after a drag — words just
   selected, wherever the button is released, the edge included; a press that wanders more than a
@@ -530,6 +530,66 @@ in the book (EPUB CFIs) stay the same as in the book's own file.
 The rules and the reasons are in `plugin/src/reader/bookSafety.ts`. The tests that prove them are
 `tests/unit/bookSafety.test.ts` and, in the running app, `tests/e2e/bookReader.e2e.test.ts` (see
 [Testing](Testing.md)).
+
+## E-ink mode
+
+For a reader with an e-ink screen — a Boox, or any Android e-reader running Obsidian — the reader
+has a mode of its own (`src/reader/eink.ts`, `einkMarks.ts`, the look in
+`src/components/reader/BookEink.vue`). Such a screen redraws slowly, leaves a ghost of what was
+there before and shows no colour or a washed-out one, so in this mode:
+
+- **Pages, never a scroll.** A book's layout and a PDF's are pages whatever the settings say
+  (`withEink`); the tab's menu does not offer scrolling. A page is turned in one step, never slid
+  (the engine is not given its `animated` attribute), and a swipe does not drag the page under the
+  finger: the page stays put and is turned once, its way, when the finger lifts (the paginator's
+  `stillSwipes`, a patch named in the engine's README; a PDF's pages were always turned that way).
+- **Black on white, nothing grey.** The tab's text, faint and muted text, accent, borders and
+  backgrounds are the platform's `CanvasText` on `Canvas` under a light colour scheme — pure ink
+  and paper, whatever the theme — and the page is drawn in them too, links underlined, words
+  selected as ink with the text on them turned to paper. The rules under the page and beside the
+  panel are twice as thick; nothing in the tab has a transition, an animation or a shadow; a PDF
+  is never shown dark.
+- **Highlights are lines.** A grey screen cannot tell six pale fills apart and a fill greys the
+  words under it, so each colour is drawn as a black line of its own shape: yellow underlined,
+  green underlined twice, blue a dashed underline, pink a box, purple a dashed box, orange a line
+  above and below. On a book's page they are drawn in the engine's overlay, on a PDF's as the
+  borders of the boxes over its text. The bar over selected words shows each colour as a sample
+  in its shape, the colour named in its tooltip. A note's link keeps its dotted line.
+- **Bigger places to tap.** The left and right thirds of the page turn it, not the outer quarter.
+- **A full refresh.** **Full refresh** (never, or every 5, 10, 20 or 50 pages) covers the page with
+  ink and then paper for a moment every so many turns, which makes an e-ink screen redraw the
+  area whole and clears its ghosting.
+- **The page keys.** The keys that turn a page are the same with and without the mode: the arrows
+  left and right towards their side, Page Up and Down and the space bar (Shift with it back)
+  through the book, and the arrows up and down where pages are turned rather than scrolled. In
+  the mode the volume keys (`AudioVolumeUp`/`Down`) and the media track keys turn it too. They are
+  heard in the page's own frame, anywhere in the tab, and — while the tab is the one in front and
+  nothing else has the focus — anywhere in the app; the tab takes the focus when it opens and
+  when it comes to the front, so a key goes to it rather than to the file list the book was
+  opened from. A key held with Mod, Ctrl or Alt is never a page turn.
+
+What a Boox's page buttons send is its choice, per app (App Optimization → Customize Buttons, the
+names varying by model and firmware): **Page-turning**, **Volume** or **Scrolling**. When an event
+reaches the page, Chromium names Android's `KEYCODE_PAGE_UP`/`DOWN` as `PageUp`/`PageDown`
+(`keyCode` 33/34), `DPAD` as the arrows and `VOLUME_UP`/`DOWN` as `AudioVolumeUp`/`Down`, so each
+of them turns a page here; `code` comes from the scan code and may be empty, so it is never
+relied on. Whether Obsidian's Android app passes the volume keys to its page at all, rather than
+changing the volume, is not known. **Show the keys the reader hears** puts the last key's `key`,
+`code`, `keyCode`, where it arrived and what it did over the page, and logs every key to the
+console: a button that shows nothing never reaches the page, which no code of the plugin can
+change. Sources: [BOOX App Optimization](https://help.boox.com/hc/en-us/articles/8569442137108-App-Optimization),
+[Chromium's Android key conversion](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/ui/events/keycodes/keyboard_code_conversion_android.cc),
+[Android `KeyEvent`](https://developer.android.com/reference/android/view/KeyEvent).
+
+**It is the device's, not the vault's.** One vault is read on a phone, a computer and the e-ink
+reader, and only the reader wants the mode. So its three choices are kept in Obsidian's local
+storage (`abele-reader-eink`, per vault on the device, removed while all are off), like a PDF's
+zoom, and not in the plugin's settings: the settings file syncs to every device, and the settings
+transfer copies it to another — carrying the mode to the phone is exactly what must not happen.
+That is also why it is not in `src/transfer/entries.ts`. Switched on in the **Aa** dialog (its
+section **E-ink, on this device**, also in **Settings → Abele → Books**), from the tab's menu, or
+with the command **Toggle e-ink mode for books on this device**. Everything it changes is scoped
+to the book tab (the `abele-book_eink` class on its content): the rest of Obsidian is left as it is.
 
 ## The engine
 

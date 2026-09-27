@@ -14,7 +14,7 @@ The reader never changes a book file.
 
 ## Reading
 
-Turn pages with the arrow keys, the space bar, a tap near the edge or a swipe. The tab's menu
+Turn pages with the arrow keys, Page Up and Page Down, the space bar, a tap near the edge or a swipe. The tab's menu
 switches between pages and scrolling. The list button in the tab's header opens the contents, and
 the search button searches the whole book. A tap on a note mark opens the note over the page. A
 tap on a picture or a table opens it full screen.
@@ -135,6 +135,33 @@ chat's scope.
 Try asking: "find where the book talks about memory in chapters 3 to 5 and highlight the key
 sentence in green, with a note on why it matters". Highlights work in EPUB and other e-books
 and in PDFs that have text; a scanned PDF has no words to highlight.
+
+## E-ink readers
+
+On a reader with an e-ink screen, such as a Boox, turn on **E-ink mode** under **E-ink, on this
+device** in the **Aa** settings, or run **Toggle e-ink mode for books on this device** from the
+command palette, or pick it in the tab's menu. It is kept on that device only: your phone and
+computer read as before, and a settings transfer does not carry it.
+
+In e-ink mode:
+
+- Pages are turned, never scrolled or slid, a PDF's too; a swipe turns the page once, when your
+  finger lifts, instead of dragging it.
+- Text is black on white whatever the theme, nothing is grey, and lines are thicker. Nothing
+  moves, fades or casts a shadow.
+- Highlights are lines instead of colour, and the shape tells the colour: yellow underlined,
+  green underlined twice, blue a dashed underline, pink boxed, purple a dashed box, orange lined
+  above and below. The bar over selected words shows each colour as its shape.
+- A tap in the left or right third of the page turns it.
+- **Full refresh** flashes the page black and then white every 5, 10, 20 or 50 pages, which
+  clears the ghost of earlier pages the screen leaves.
+
+The page buttons turn the pages when they send Page Up and Page Down, the arrow keys or the volume
+keys. On a Boox, set the buttons for Obsidian in its **App Optimization → Customize Buttons**
+(the names vary by model): try **Page-turning** first, then **Volume**. If the pages still do not
+turn, switch on **Show the keys the reader hears** in the same settings: the last key the reader
+heard shows over the page. Nothing showing when you press a button means the button never
+reaches Obsidian.
 
 ## Reading aloud
 

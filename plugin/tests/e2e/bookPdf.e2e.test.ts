@@ -243,6 +243,8 @@ describe.skipIf(!available)('a PDF in the reader', () => {
       'Page size',
       'Two pages side by side',
       'Dark pages in a dark theme',
+      'E-ink mode',
+      'Show the keys the reader hears',
       'Voice',
       'Speed',
     ])

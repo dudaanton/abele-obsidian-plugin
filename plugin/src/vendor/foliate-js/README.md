@@ -73,6 +73,11 @@ Every change is marked `ABELE PATCH` at its site.
    as wide as on its page and a line shown at the top as on a page, so going over to it and back
    moves no line. `showAnchor` puts a place on screen without selecting it.
 
+8. **A swipe can turn the page without the page following the finger** (`paginator.js`,
+   `stillSwipes`). In e-ink mode (`src/reader/eink.ts`) the host sets it: the page stays put while
+   the finger moves — a slow screen redrawn at every move smears — and is turned once, its way,
+   as the finger lifts.
+
 8. **A hidden page is not laid out** (`paginator.js`, `Paginator.render`, `View.expand`). A tab
    put behind another has no size, and its resize observer fired a render at none: the chapter
    poured into columns of no height, a column per line, which the app had to lay out first when

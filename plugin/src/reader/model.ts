@@ -117,6 +117,8 @@ export interface BookModel {
   bookmarksHere: string[]
   /** Drawing on a PDF's pages. */
   ink: InkModel
+  /** Pages turned since the book opened, for e-ink mode's flash every so many. */
+  turns: number
 }
 
 export const emptyBookModel = (): BookModel => ({
@@ -148,6 +150,7 @@ export const emptyBookModel = (): BookModel => ({
   bookmarks: [],
   bookmarksHere: [],
   ink: emptyInk(),
+  turns: 0,
 })
 
 /** The engine's contents as the tree the panel draws. */

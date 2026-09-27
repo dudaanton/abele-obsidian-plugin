@@ -5,7 +5,7 @@
  * Another plugin may already have claimed `.epub`; Obsidian then refuses a second claim, and the
  * books keep opening where they did before rather than the plugin failing to load.
  */
-import { TFile, type Plugin } from 'obsidian'
+import { Notice, TFile, type Plugin } from 'obsidian'
 import { watch } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { BOOK_EXTENSIONS, BOOK_VIEW_TYPE, BookView, READER_EXTENSIONS } from './BookView'
@@ -18,11 +18,22 @@ import { registerPlaceLinks } from './placeLinks'
 import { reuseBookTabs } from './bookTabReuse'
 import { forgetBookTexts } from './bookText'
 import { moveInk } from './ink/inkStore'
+import { eink, initEink, setEink } from './eink'
 
 export function registerReader(plugin: Plugin): void {
   const { app } = plugin
   const places = initBookPlaces(plugin)
   const bookmarks = initBookBookmarks(plugin)
+  // E-ink mode is this device's own choice, kept on it (`eink.ts`).
+  initEink(app)
+  plugin.addCommand({
+    id: 'reader-toggle-eink',
+    name: 'Toggle e-ink mode for books on this device',
+    callback: () => {
+      setEink({ on: !eink().on })
+      new Notice(eink().on ? 'E-ink mode is on for books on this device.' : 'E-ink mode is off.')
+    },
+  })
   // The fonts folder: read when a book or the settings first ask, followed from then on.
   const fonts = new ReaderFonts(app.vault, () =>
     fontsFolderOf(readerSettingsFrom(AbeleConfig.getInstance().reader))

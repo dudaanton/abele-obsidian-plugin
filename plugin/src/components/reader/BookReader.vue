@@ -44,6 +44,7 @@
     </template>
 
     <div class="abele-book-reader__main">
+      <BookEink :model="model" />
       <div class="abele-book-reader__page">
         <div ref="stage" class="abele-book-reader__stage" />
         <div v-if="model.status !== 'ready'" class="abele-book-reader__message">
@@ -161,6 +162,7 @@ import BookSelectionBar from './BookSelectionBar.vue'
 import BookComment from './BookComment.vue'
 import BookSpeechBar from './BookSpeechBar.vue'
 import BookInkBar from './BookInkBar.vue'
+import BookEink from './BookEink.vue'
 import type { InkToolName } from '@/reader/ink/inkModel'
 import type { InkColor } from '@/reader/ink/stroke'
 import Tabs from '../obsidian/Tabs.vue'
