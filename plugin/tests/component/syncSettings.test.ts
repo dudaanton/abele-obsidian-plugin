@@ -90,6 +90,8 @@ const service = {
   telling: ref<string | null>(null),
   joinQuestion: vi.fn(),
   answerJoin: vi.fn(),
+  heldPrompt: { held: ref<{ path: string; fileId: string }[]>([]) },
+  decideDeletes: vi.fn(),
 }
 
 /** The connection the service holds, with these fields changed — what its verbs do. */
@@ -138,6 +140,7 @@ beforeEach(() => {
   unhook = config.onSaved(() => service.onSettingsSaved())
 
   service.connected = false
+  service.heldPrompt.held.value = []
   service.status.value = { ...DISCONNECTED_STATUS }
   service.connection.value = emptyConnection()
   service.updateConnection.mockImplementation(async (patch: Partial<DeviceConnection>) =>
@@ -450,6 +453,35 @@ describe('choosing a vault', () => {
  * A transfer connected this device to a vault, and both may hold files: nothing syncs until the
  * join question is answered. The tab asks by itself, and is where the question is found again.
  */
+describe('deletions held back', () => {
+  it('shows the question on the tab for as long as they are held', async () => {
+    connect()
+    service.heldPrompt.held.value = [
+      { path: 'Notes/a.md', fileId: 'f1' },
+      { path: 'Notes/b.md', fileId: 'f2' },
+    ]
+
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    expect(headings(screen)).toContain('Deletions held back')
+    expect(buttonNamed(screen, 'Put them back')).toBeDefined()
+
+    service.heldPrompt.held.value = []
+    await flushPromises()
+    expect(headings(screen)).not.toContain('Deletions held back')
+  })
+
+  it('shows nothing of it while nothing is held', async () => {
+    connect()
+
+    const screen = open(SyncSettings)
+    await flushPromises()
+
+    expect(headings(screen)).not.toContain('Deletions held back')
+  })
+})
+
 describe('a device waiting to join', () => {
   const ASKED: JoinQuestion = {
     kind: 'choose',

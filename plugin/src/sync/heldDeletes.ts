@@ -102,3 +102,33 @@ export class HeldDeletesPrompt {
     this.waiting = false
   }
 }
+
+/** `3 files`, `1 file`. */
+const filesOf = (count: number): string => (count === 1 ? '1 file' : `${count} files`)
+
+/**
+ * What is said once a decision about held deletes was taken: `result` as
+ * `SyncService.decideDeletes` answered, and `state` the status sync was left in. A decision a
+ * sync did not carry out — paused, offline, failing — is filed, and is carried out by the next
+ * sync that gets through; saying it was done would send somebody looking for a result that is
+ * not there yet.
+ */
+export function decidedNotice(
+  kind: 'confirm' | 'restore',
+  result: { decided: number; applied: boolean } | null,
+  state: SyncStatus['state']
+): string {
+  if (result === null) return 'Sync is not running on this device, so nothing was decided.'
+  if (result.decided === 0) return 'These files are no longer held, so nothing was decided.'
+  const files = filesOf(result.decided)
+  const one = result.decided === 1
+  if (result.applied) {
+    return kind === 'confirm'
+      ? `${files} ${one ? 'was' : 'were'} deleted everywhere. The server keeps ${one ? 'it' : 'them'} in Deleted files until the trash is swept.`
+      : `${files} ${one ? 'is' : 'are'} coming back.`
+  }
+  const when = state === 'paused' ? 'when sync is resumed' : 'at the next sync that gets through'
+  return kind === 'confirm'
+    ? `${files} will be deleted everywhere ${when}.`
+    : `${files} will come back ${when}.`
+}

@@ -129,6 +129,14 @@
         </Setting>
       </Section>
 
+      <!--
+        Many files deleted at once on this device, held back until somebody decides. The dialog
+        asks once per new hold; this is where the question stays for as long as it lasts.
+      -->
+      <Section v-if="held.length > 0" title="Deletions held back">
+        <HeldDeletesBlock :held="held" />
+      </Section>
+
       <SelectiveSync />
 
       <template v-if="!joining">
@@ -235,6 +243,7 @@ import SelectiveSync from './sync/SelectiveSync.vue'
 import VaultPolicy from './sync/VaultPolicy.vue'
 import UsageCard from './sync/UsageCard.vue'
 import JoinVaultModal from './sync/JoinVaultModal.vue'
+import HeldDeletesBlock from '../sync/HeldDeletesBlock.vue'
 import type { JoinQuestion } from '@/sync/join'
 import { Notice } from 'obsidian'
 import { SyncService } from '@/sync/SyncService'
@@ -252,6 +261,8 @@ const sync = SyncService.getInstance()
  */
 const device = sync.connection
 const status = sync.status
+/** What the engine holds back after many files went at once (`HeldDeletesPrompt`). */
+const held = sync.heldPrompt.held
 const connected = computed(() => status.value.state !== 'disconnected')
 const confirming = ref<'disconnect' | 'forget' | null>(null)
 /** The waiting revoke whose kept token the person asked to forget, while that is asked. */
