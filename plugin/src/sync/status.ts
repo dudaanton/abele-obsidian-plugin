@@ -37,6 +37,11 @@ export interface SyncStatus {
   cursor: number
   /** The vault's head, as last heard from the server, or null before it has been asked. */
   headSeq: number | null
+  /**
+   * How many deletes made on this device the engine holds back until the person decides
+   * whether they go everywhere (phase 3b, decision 8); 0 when none are.
+   */
+  heldDeletes: number
 }
 
 /** A device that has not been set up: no engine, nothing to report, nothing wrong. */
@@ -47,6 +52,7 @@ export const DISCONNECTED_STATUS: SyncStatus = Object.freeze({
   lastError: null,
   cursor: 0,
   headSeq: null,
+  heldDeletes: 0,
 })
 
 export const STATUS_LABEL: Record<SyncState, string> = {
@@ -73,8 +79,35 @@ export const STATUS_ICON: Record<SyncState, string> = {
   error: 'alert-circle',
 }
 
-/** The engine's status as the plugin's. The fields are the same; only the state is wider. */
-export const statusOf = (engine: EngineStatus): SyncStatus => ({ ...engine })
+/**
+ * The engine's status as the plugin's. The fields are the same; the state is wider, and a held
+ * count the engine leaves out — it always sets one, but the field is optional — is none.
+ */
+export const statusOf = (engine: EngineStatus): SyncStatus => ({
+  ...engine,
+  heldDeletes: engine.heldDeletes ?? 0,
+})
+
+/** What the status bar says while deletions are held. */
+export const HELD_LABEL = 'Deletions held'
+
+/**
+ * Whether the status bar leads with the held deletions: they are held, and sync has settled —
+ * a state doing something (syncing, paused, offline, failing) keeps its own word, with the held
+ * line in the tooltip.
+ */
+const leadsWithHeld = (status: SyncStatus): boolean =>
+  status.heldDeletes > 0 && status.state === 'idle'
+
+/** The tooltip's line for held deletions: how many, and where they are decided. */
+export function heldLine(count: number): string {
+  const files =
+    count === 1 ? '1 file deleted on this device is' : `${count} files deleted on this device are`
+  return (
+    `${files} held back from the other devices, because so many went at once. Decide on the ` +
+    'Sync tab whether they are deleted everywhere or put back.'
+  )
+}
 
 /**
  * The one word for the status, which is the state's label but for one case: a device that has
@@ -82,6 +115,7 @@ export const statusOf = (engine: EngineStatus): SyncStatus => ({ ...engine })
  * synced*. Nothing is being sent at that moment, and saying it is all through would be a lie.
  */
 export function statusLabel(status: SyncStatus): string {
+  if (leadsWithHeld(status)) return HELD_LABEL
   if (status.state === 'idle' && status.pending > 0) return 'Waiting'
   return STATUS_LABEL[status.state]
 }
@@ -96,6 +130,7 @@ export function statusLabel(status: SyncStatus): string {
  */
 export function statusText(status: SyncStatus): string {
   const label = statusLabel(status)
+  if (leadsWithHeld(status)) return `${label} (${status.heldDeletes})`
   return status.state === 'idle' && status.pending > 0 ? `${label} (${status.pending})` : label
 }
 
@@ -121,6 +156,7 @@ export function statusTooltip(status: SyncStatus): string {
   if (status.state === 'idle' && status.pending > 0) {
     lines.push(`${changesAre(status.pending)} waiting to be sent`)
   }
+  if (status.heldDeletes > 0) lines.push(heldLine(status.heldDeletes))
   if (status.state === 'joining') lines.push(JOINING_LINE)
   else if (status.state !== 'disconnected') {
     lines.push(`Last sync ${formatWhen(status.lastSyncAt)}`)
@@ -139,9 +175,17 @@ export function statusTooltip(status: SyncStatus): string {
 export function renderStatus(el: HTMLElement, status: SyncStatus): void {
   el.empty()
   el.addClass('abele-sync-status')
+  el.toggleClass('abele-sync-status_warning', leadsWithHeld(status))
   const icon = el.createSpan({ cls: 'abele-sync-status-icon' })
   // A tick beside *Waiting* would say the opposite of the word.
-  setIcon(icon, status.state === 'idle' && status.pending > 0 ? 'clock' : STATUS_ICON[status.state])
+  setIcon(
+    icon,
+    leadsWithHeld(status)
+      ? 'alert-triangle'
+      : status.state === 'idle' && status.pending > 0
+        ? 'clock'
+        : STATUS_ICON[status.state]
+  )
   el.createSpan({ cls: 'abele-sync-status-text', text: statusText(status) })
   el.setAttribute('aria-label', statusTooltip(status))
 }

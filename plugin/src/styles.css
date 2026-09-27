@@ -776,3 +776,9 @@ body.is-mobile .abele-comment-marker_pending::after {
 .abele-sync-status-icon {
   display: inline-flex;
 }
+
+/* The one state that needs somebody: deletions held back until they are decided. The theme's
+   own warning colour, so it is a warning in every theme. */
+.abele-sync-status_warning {
+  color: var(--text-warning);
+}

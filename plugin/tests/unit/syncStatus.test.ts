@@ -55,8 +55,43 @@ describe('the status vocabulary', () => {
       lastError: 'the server never answered',
       cursor: 12,
       headSeq: 14,
+      heldDeletes: 2,
     }
     expect(statusOf(engine)).toEqual(engine)
+  })
+
+  it('counts no held deletions for an engine that does not say', () => {
+    const engine = {
+      state: 'idle' as const,
+      pending: 0,
+      lastSyncAt: null,
+      lastError: null,
+      cursor: 0,
+      headSeq: null,
+    }
+    expect(statusOf(engine).heldDeletes).toBe(0)
+  })
+
+  /**
+   * Many files deleted at once on this device are held back from the others until somebody
+   * says whether they go (phase 3b, decision 8). Until then nothing about sync is "fully synced",
+   * and the status bar is where it is seen first.
+   */
+  it('says deletions are held, how many, and where to decide', () => {
+    const held = status({ state: 'idle', heldDeletes: 312, pending: 3 })
+
+    expect(statusText(held)).toBe('Deletions held (312)')
+    expect(statusLabel(held)).toBe('Deletions held')
+    expect(statusTooltip(held)).toContain('312 files deleted on this device are held back')
+    expect(statusTooltip(held)).toContain('Sync tab')
+  })
+
+  it('keeps the word of a state that is doing something, with the held line in the tooltip', () => {
+    const paused = status({ state: 'paused', heldDeletes: 1 })
+
+    expect(statusText(paused)).toBe('Paused')
+    expect(statusTooltip(paused)).toContain('1 file deleted on this device is held back')
+    expect(statusText(status({ state: 'syncing', heldDeletes: 5 }))).toBe('Syncing')
   })
 
   it('puts no number on a sync, since the engine does not count one down while it pushes', () => {
@@ -111,6 +146,16 @@ describe('renderStatus', () => {
     expect(el.textContent).toBe('Syncing')
     expect(el.getAttribute('aria-label')).toContain('Syncing')
     expect(el.classList.contains('abele-sync-status')).toBe(true)
+  })
+
+  it('warns while deletions are held', () => {
+    const el = document.createElement('div')
+    renderStatus(el, status({ state: 'idle', heldDeletes: 60 }))
+
+    expect(el.querySelector('[data-icon]')?.getAttribute('data-icon')).toBe('alert-triangle')
+    expect(el.classList.contains('abele-sync-status_warning')).toBe(true)
+    renderStatus(el, status({ state: 'idle' }))
+    expect(el.classList.contains('abele-sync-status_warning')).toBe(false)
   })
 
   it('replaces what was there rather than adding to it', () => {
