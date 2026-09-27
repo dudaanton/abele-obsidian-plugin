@@ -1,6 +1,6 @@
 import { Notice, Platform, type App } from 'obsidian'
 import { ref, toRaw, type Ref } from 'vue'
-import type { StateEntry, VaultClient } from '@abele/sync-core'
+import type { DeleteDecision, HeldDelete, StateEntry, VaultClient } from '@abele/sync-core'
 import { serverUrlProblem, type JoinPrefer, type VaultInfo } from '@abele/sync-protocol'
 import type AbelePlugin from '@/main'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -11,6 +11,7 @@ import { Enrolment, type ConnectionEdit, type VaultChoice } from './enrolment'
 import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer/connection'
 import { EngineRunner } from './engineRunner'
 import { joinOf } from './joinState'
+import { HeldDeletesPrompt } from './heldDeletes'
 import { ownSettingsPath } from './ownSettings'
 import { askJoin, type JoinQuestion } from './join'
 import { factoryOf, transportOf, type SyncServiceDeps } from './environment'
@@ -144,12 +145,23 @@ export class SyncService {
     },
   })
 
-  /** Whether the phone's visibility listener has been registered; it is registered once. */
+  /**
+   * Many files deleted at once, held back by the engine, and the question about them
+   * (`heldDeletes.ts`). Told of every status; the dialog and the Sync tab read it.
+   */
+  readonly heldPrompt = new HeldDeletesPrompt({
+    list: () => this.runner.heldDeletes(),
+    visible: () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
+  })
+
+  /** Whether the visibility listener has been registered; it is registered once. */
   private watchingVisibility = false
   /** Drops the settings-saved subscription. */
   private unhookSettings: (() => void) | null = null
 
-  private constructor() {}
+  private constructor() {
+    this.board.onStatusChange((status) => void this.heldPrompt.noticed(status))
+  }
 
   /* -- Starting and stopping -------------------------------------------- */
 
@@ -314,6 +326,30 @@ export class SyncService {
    */
   syncNow(): Promise<void> {
     return this.runner.syncNow()
+  }
+
+  /** The deletes the engine holds back until they are decided: the path and file id of each. */
+  heldDeletes(): Promise<HeldDelete[]> {
+    return this.runner.heldDeletes()
+  }
+
+  /**
+   * Decide about the held deletes the person was shown, named by `fileIds`: `confirm` sends
+   * them to the server's trash, `restore` brings the files back from the server. Only those are
+   * decided; a delete held since they were shown stays held, and is asked about next. Answers
+   * how many were decided and whether a sync carried them out — not while sync is paused, when
+   * they are carried out once it resumes — or null with no engine to decide.
+   */
+  async decideDeletes(
+    kind: DeleteDecision['kind'],
+    fileIds: readonly string[]
+  ): Promise<{ decided: number; applied: boolean } | null> {
+    this.note(
+      `${kind === 'confirm' ? 'deleting everywhere' : 'putting back'} ${fileIds.length} held file(s)`
+    )
+    const result = await this.runner.decideDeletes(kind, fileIds)
+    await this.heldPrompt.refresh()
+    return result
   }
 
   /** Walk the whole manifest again and then sync: for when this device widened what it takes. */
@@ -527,16 +563,21 @@ export class SyncService {
    * did since is what the user is about to read. Going away, because the system is about to
    * freeze the app, and an edit whose push is still waiting on the watcher's pause would sit
    * here until the app is next opened; the system gives a moment, and a small push fits in it.
+   * On every device, coming back also asks a question about held deletes that was found while
+   * the app was away (`HeldDeletesPrompt.foreground`).
    *
    * Registered through the plugin so Obsidian takes the listener away when the plugin unloads,
    * and registered once — `init` may run again in a session whose settings were replaced.
    */
   private hookVisibility(): void {
     const plugin = this.plugin
-    if (!Platform.isMobile || plugin === null || this.watchingVisibility) return
+    if (plugin === null || this.watchingVisibility) return
     this.watchingVisibility = true
+    const phone = Platform.isMobile
     plugin.registerDomEvent(document, 'visibilitychange', () => {
-      if (!this.runner.isRunning() || this.connection.value.paused) return
+      // A question about held deletes found while the app was away is asked as it comes back.
+      this.heldPrompt.foreground()
+      if (!phone || !this.runner.isRunning() || this.connection.value.paused) return
       const visible = document.visibilityState === 'visible'
       this.note(visible ? 'the app came back to the front' : 'the app left the front')
       void this.syncNow()

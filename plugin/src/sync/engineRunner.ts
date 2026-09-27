@@ -1,6 +1,13 @@
 import { Platform, type App } from 'obsidian'
 import { toRaw } from 'vue'
-import { SyncClient, SyncEngine, type StateEntry, type VaultClient } from '@abele/sync-core'
+import {
+  SyncClient,
+  SyncEngine,
+  type DeleteDecision,
+  type HeldDelete,
+  type StateEntry,
+  type VaultClient,
+} from '@abele/sync-core'
 import { caseKey, PLAIN_HTTP_REFUSED, serverUrlProblem } from '@abele/sync-protocol'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
@@ -186,6 +193,31 @@ export class EngineRunner {
       await store.setMeta(SCOPE_KEY, scope)
     } catch {
       // The scope stays as it was, so the next start walks the manifest again.
+    }
+  }
+
+  /** The deletes the running engine holds back (`SyncService.heldDeletes`); none without one. */
+  async heldDeletes(): Promise<HeldDelete[]> {
+    return (await this.engine?.heldDeletes()) ?? []
+  }
+
+  /**
+   * See `SyncService.decideDeletes`. Null with no engine to decide. A run that failed after the
+   * decision was filed has filed it all the same: it is taken at the next run that gets through,
+   * and the failure is in the status and the log.
+   */
+  async decideDeletes(
+    kind: DeleteDecision['kind'],
+    fileIds: readonly string[]
+  ): Promise<{ decided: number; applied: boolean } | null> {
+    const engine = this.engine
+    if (engine === null) return null
+    try {
+      const { decided, report } = await engine.decideDeletes(kind, fileIds)
+      return { decided, applied: report !== null }
+    } catch {
+      const still = new Set((await this.heldDeletes().catch((): HeldDelete[] => [])).map((one) => one.fileId))
+      return { decided: fileIds.filter((id) => still.has(id)).length, applied: false }
     }
   }
 
