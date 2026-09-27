@@ -94,6 +94,9 @@ A row starts on a birthday, so its weeks are counted from there, not from Monday
 of each row takes the day or two a year has over 52 weeks. Each week is tinted by how many of the
 base's notes fall in it.
 
+A base can also draw its notes on a timeline of history, `type: abele-timeline`, read from dates
+written as text (`490 до н.э.`, `XVI век`, `ок. 1450`) — see the `history` section.
+
 Dragging a note on the calendar writes into that note's frontmatter: every date property it
 has (start and end) moves by the same number of days, and dropped on an hour its time is set,
 an end time on the same day moving with it. A time goes where the note already keeps it, in

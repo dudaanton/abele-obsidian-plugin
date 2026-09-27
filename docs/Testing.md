@@ -424,6 +424,17 @@ Three files, three concerns:
   sit beside the page and go to a chapter; the place is kept across closing the tab and across
   renaming and moving the file; a change of the text and layout settings and a switch to a dark
   theme redraw the open page. Puts the settings and the theme back after itself.
+- `historyTimeline.e2e.test.ts` — **the history timeline of a base**, with the made-up history of
+  `tests/fixtures/history/historyNotes.ts` (rulers, thinkers, scientists, artists, events and
+  eras, dated as people write: `-470`, `490 до н.э.`, `ок. 1450`, `1450?`, `XVI век`, `period`),
+  grouped by `category`. The rows and eras are drawn, 470 BC lands at year -469, a name typed in
+  the go-to field picks that person and lists their contemporaries with the years shared, a press
+  picks a bar and Escape lets go, the card over a bar shows its round picture, Ctrl with the wheel
+  zooms about the pointer, **New note** writes the year into the start; light and dark pictures.
+  Then two thousand notes more: the first drawing and a frame of moving stay quick. On a phone
+  (390×844 under `emulateMobile`, or the real one): nothing past the edge, a finger's tap picks,
+  two fingers zoom. The canvas keeps what it drew on `canvas.abeleHits`, which is how the test
+  finds a bar by name. Pictures in `/tmp/abele-phone/timeline-*.png`.
 
 Correctness runs on small groups so it stays quick; cost and responsiveness run on the wide
 "mega group", where a single resolution currently takes about two minutes.

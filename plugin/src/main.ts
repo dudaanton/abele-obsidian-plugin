@@ -71,6 +71,7 @@ import { SCRIPT_VIEW_TYPE, ScriptView } from './views/ScriptView'
 import { CHART_VIEW_ID, ChartView } from './bases/ChartView'
 import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from './bases/FindAndReplaceView'
 import { CALENDAR_VIEW_ID, CalendarView, calendarViewOptions } from './bases/CalendarView'
+import { TIMELINE_VIEW_ID, TimelineView, timelineViewOptions } from './bases/TimelineView'
 import { CODE_VIEW_TYPE, CodeView } from './views/CodeView'
 import { registerDrawing } from './drawing/register'
 import { registerReader } from './reader/register'
@@ -400,6 +401,14 @@ export default class AbelePlugin extends Plugin {
       icon: 'calendar-days',
       factory: (controller, containerEl) => new CalendarView(controller, containerEl),
       options: calendarViewOptions,
+    })
+
+    // History: people, events and eras on one line of years, placed by dates as notes write them.
+    this.registerBasesView(TIMELINE_VIEW_ID, {
+      name: 'Timeline',
+      icon: 'gantt-chart',
+      factory: (controller, containerEl) => new TimelineView(controller, containerEl),
+      options: timelineViewOptions,
     })
   }
 

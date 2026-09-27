@@ -152,6 +152,11 @@ export class Notice {
 export type EventRef = { id: string }
 
 /** Mirrors Obsidian's own `normalizePath` closely enough for path handling tests. */
+/** The app's language; the tests run in English. */
+export function getLanguage(): string {
+  return 'en'
+}
+
 export function normalizePath(path: string): string {
   return path
     .replace(/\\/g, '/')

@@ -328,7 +328,10 @@ export function density(
     const a = Math.max(0, Math.min(bins - 1, Math.floor((item.from - t0) * k)))
     // A bar ending where a stretch begins is not in that stretch; a point is in its own.
     const end = (item.to - t0) * k
-    const b = Math.max(a, Math.min(bins - 1, item.to > item.from ? Math.ceil(end) - 1 : Math.floor(end)))
+    const b = Math.max(
+      a,
+      Math.min(bins - 1, item.to > item.from ? Math.ceil(end) - 1 : Math.floor(end))
+    )
     diff[a]++
     diff[b + 1]--
   }

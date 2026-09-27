@@ -16,6 +16,7 @@ import transfer from './transfer.md?raw'
 import settings from './settings.md?raw'
 import quickButton from './quick-button.md?raw'
 import linter from './linter.md?raw'
+import history from './history.md?raw'
 import { slug } from '@/docs'
 
 /**
@@ -66,6 +67,7 @@ const FILES: [id: string, source: string][] = [
   ['github', github],
   ['books', books],
   ['drawing', drawing],
+  ['history', history],
   ['writing', writing],
   ['linter', linter],
   ['transfer', transfer],

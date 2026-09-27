@@ -26,6 +26,7 @@ import { App, TFile } from 'obsidian'
 import { computed, ref, shallowRef, toRaw } from 'vue'
 import type { FindAndReplaceInstance } from '@/bases/FindAndReplaceView'
 import type { CalendarBaseInstance } from '@/bases/CalendarView'
+import type { TimelineBaseInstance } from '@/bases/TimelineView'
 import type { ScriptViewModel } from '@/views/ScriptView'
 
 export class GlobalStore {
@@ -93,6 +94,8 @@ export class GlobalStore {
   )
   /** One per open calendar view of a base; the view puts it here and Vue draws from it. */
   public readonly calendarBaseInstances = shallowRef<Map<string, CalendarBaseInstance>>(new Map())
+  /** One per open history timeline of a base, the same way. */
+  public readonly timelineBaseInstances = shallowRef<Map<string, TimelineBaseInstance>>(new Map())
 
   public readonly tasksList = ref<TasksList | null>(null)
   public readonly transactionsList = ref<TransactionsList | null>(null)
