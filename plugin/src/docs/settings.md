@@ -256,7 +256,9 @@ cap, which parts of the config folder travel — are kept in Obsidian's local st
 hands to another device. They are changed on the Sync tab: signing in sets the connection,
 **Disconnect** and **Forget** clear it — and tell the server to stop accepting this device, so
 connecting again needs the password — and the switches under **What this device syncs** change
-what it takes. While the device holds a token its server address cannot be pointed at
+what it takes. The Sync tab also lists the devices on this vault — this account's, from the server
+— and revokes any but this one, after asking; that is not a setting either, and no tool reaches
+it. While the device holds a token its server address cannot be pointed at
 another server — the token goes only to the server that minted it — so moving it means
 **Disconnect** and a new sign-in; the address it enrolled on and the revokes still waiting to be
 told are not settings at all, and are never written from outside. Neither is a join in progress

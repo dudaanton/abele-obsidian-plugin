@@ -95,6 +95,18 @@ again, once the cause is fixed. While the device is paused, **Sync now** and **R
 out, and from the command palette **Sync now** says sync is paused and moves nothing: **Resume**
 comes first.
 
+Below it, **Devices on this vault** lists every device of your account that syncs this vault, this
+one included and marked **This device**: its name, whether it is a desktop, a phone or tablet or
+the command-line client, which device enrolled it (a device made by a transfer is enrolled by the
+one that sent it; one you signed in on was enrolled with the account password), and when it was
+last seen syncing. The list is asked of the server with this device's own token, so no password is
+needed. Every other device has **Revoke**, which asks first — "*device* stops syncing; its files
+stay on it" — and then has the server stop accepting it at once. Nothing is deleted anywhere; the
+revoked device shows **Sync error** at its next sync, saying to connect again, which needs the
+password. This device has no **Revoke**: it leaves by
+**Disconnect**, which also forgets its token. A device of another account that shares the vault,
+or one of yours on another vault, is not listed.
+
 To stop, **Disconnect** tells the server to stop accepting this device, then forgets the server
 and the device's token and keeps everything else: your files, and what this device syncs. After
 that no copy of the token anywhere can read or write the vault, and connecting again needs the
@@ -110,8 +122,8 @@ every sign-in, for a month; after that it is given up and the log says so. Meanw
 shows a line, **Waiting to tell the server** — "The server has not been told that *device* left
 *server*. It will be retried." — with **Forget without telling the server**, which asks first and
 then stops trying and forgets the token. The device then stays enrolled on that server, and anyone
-holding a copy of its token can still sync the vault, until the account revokes it there; Abele
-has no screen for that. A device the server had already revoked disconnects the same way, with
+holding a copy of its token can still sync the vault, until it is revoked there: under **Devices
+on this vault** on any device that still syncs it. A device the server had already revoked disconnects the same way, with
 nothing left to retry. In the rare case that the keychain will not take the kept copy, the
 Disconnect is refused instead and the device goes on syncing, so a token is never lost while the
 server still takes it.
@@ -378,11 +390,10 @@ The connection travels in a section of its own, **Sync connection**, which a con
 offers. Sent with keys, it gives the other device **a device of its own**: when the codes are made,
 the dialog asks for a name for the other device ("Other device" unless you change it), and this
 device asks the server to enrol a new device under that name on the same vault. The transfer
-carries that device's token, never this one's, so the server has both enrolled, and either can
-disconnect without cutting off the other. The server records the new one as enrolled by the device
+carries that device's token, never this one's, so the vault's device list shows both, and either
+can disconnect without cutting off the other. The list shows the new one as enrolled by the device
 that sent it. The server is asked once: if the answer is lost on the way, the device it made is
-left enrolled with nobody holding its token, as is one made for codes nobody applies on the other
-side, until the account revokes it on the server. If the server
+left with nobody holding its token — find it in the list by that "enrolled by" and revoke it. If the server
 cannot be reached or refuses, the codes are made without a connection and the dialog says why, and
 that the other device will sign in itself. Sent without keys, the section carries only what this device syncs, as a
 starting point, and the other device signs in itself. The size cap never travels.
