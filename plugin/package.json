@@ -1,6 +1,6 @@
 {
   "name": "abele-obsidian-plugin",
-  "version": "1.48.6",
+  "version": "1.48.7",
   "description": "This is Abele Obsidian plugin.",
   "main": "main.js",
   "scripts": {
