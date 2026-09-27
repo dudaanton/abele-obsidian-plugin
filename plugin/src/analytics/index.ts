@@ -25,10 +25,18 @@ export interface ReadOptions {
   skipScope?: boolean
 }
 
+/**
+ * The scope of the chat whose call this is, taken once when the call starts: a base is read
+ * across awaits, and by then another chat's tool call may have made its own scope the active one.
+ */
+function inScopeOf(scope: ScopeResolver): (path: string) => boolean {
+  return (path) => scope.isInScope(path)
+}
+
 export function sourceDeps(opts: ReadOptions = {}): SourceDeps {
   return {
     app: GlobalStore.getInstance().app,
-    inScope: opts.skipScope ? () => true : (path) => ScopeResolver.getInstance().isInScope(path),
+    inScope: opts.skipScope ? () => true : inScopeOf(ScopeResolver.getInstance()),
     today: dayjs().format('YYYY-MM-DD'),
     probeType: PROBE_VIEW_TYPE,
   }

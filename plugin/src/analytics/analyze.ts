@@ -15,7 +15,8 @@
  */
 import { barChart, lineChart, type ChartLine } from './chartSpec'
 import { analyseGroup, total, type Ctx, type Point } from './group'
-import { fromUnits } from './money'
+import { decimalsOf, fromUnits } from './money'
+import { sumMoney } from '@/helpers/moneySum'
 import type { Agg } from './resample'
 import { filterRows, pickColumn, type Analysis, type AnalyzeSpec, type SourceReader } from './spec'
 import type { Table } from './table'
@@ -67,6 +68,10 @@ export async function analyzeTable(
           ? 'previous'
           : 'none'),
     weekStartsOnMonday,
+    levelKey:
+      valueCol.level && spec.by !== 'account' && table.columns.some((c) => c.name === 'account')
+        ? 'account'
+        : undefined,
   }
   const warnings = new Set<string>()
 
@@ -88,6 +93,8 @@ export async function analyzeTable(
   }
 
   const groups = new Map<string, Point[]>()
+  /** The one currency a group's money is in, when the rows hold more than one. */
+  const groupCurrency = new Map<string, string>()
   for (const row of rows) {
     const raw = row[valueCol.name]
     const units = money && typeof raw === 'number' ? raw : null
@@ -110,6 +117,7 @@ export async function analyzeTable(
       let g = groups.get(key)
       if (!g) groups.set(key, (g = []))
       g.push({ date, value, units, row })
+      if (currencies.length > 1) groupCurrency.set(key, String(row.currency || '?'))
     }
   }
   const grouped = !!spec.by || splitCurrency
@@ -121,12 +129,22 @@ export async function analyzeTable(
   const limit = Math.max(1, spec.limit ?? 12)
   let kept = ranked
   if (ranked.length > limit) {
+    // The tail is folded per currency: an "other" never adds euros to dollars.
     const rest = ranked.slice(limit - 1)
-    const pts = rest.flatMap((g) => g.pts)
-    kept = [
-      ...ranked.slice(0, limit - 1),
-      { key: `other (${rest.length})`, pts, total: total(pts, ctx) },
-    ]
+    const tails = new Map<string, typeof rest>()
+    for (const g of rest) {
+      const cur = groupCurrency.get(g.key) ?? ''
+      let list = tails.get(cur)
+      if (!list) tails.set(cur, (list = []))
+      list.push(g)
+    }
+    kept = ranked.slice(0, limit - 1)
+    for (const [cur, list] of tails) {
+      const pts = list.flatMap((g) => g.pts)
+      const key = `other (${list.length})${cur ? ` · ${cur}` : ''}`
+      if (cur) groupCurrency.set(key, cur)
+      kept.push({ key, pts, total: total(pts, ctx) })
+    }
   }
 
   const out: Record<string, unknown> = {
@@ -141,9 +159,7 @@ export async function analyzeTable(
 
   if (grouped) {
     const all =
-      ctx.agg === 'sum' && currencies.length <= 1
-        ? kept.reduce((s, g) => s + (g.total ?? 0), 0)
-        : null
+      ctx.agg === 'sum' && currencies.length <= 1 ? sumMoney(kept.map((g) => g.total ?? 0)) : null
     out.groups = kept.map((g) => ({
       group: g.key,
       count: g.pts.length,
@@ -216,7 +232,8 @@ export function tidy(v: unknown, decimals = 4): unknown {
   if (typeof v === 'number') {
     if (!Number.isFinite(v))
       return v === Infinity ? 'Infinity' : v === -Infinity ? '-Infinity' : null
-    if (Number.isInteger(v)) return v
+    // Already short — an exact money total, a count, a percentile of whole values — stays as is.
+    if (Number.isInteger(v) || decimalsOf(v) <= decimals) return v
     const r = Math.abs(v) >= 1 ? Number(v.toFixed(decimals)) : Number(v.toPrecision(4))
     return r + 0
   }

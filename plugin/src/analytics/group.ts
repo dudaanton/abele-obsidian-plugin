@@ -44,6 +44,8 @@ export interface Ctx {
   agg: Agg
   fill: Fill
   weekStartsOnMonday: boolean
+  /** For a level: the column that tells one account's balance from another's. */
+  levelKey?: string
 }
 
 function exactSum(ctx: Ctx) {
@@ -53,14 +55,56 @@ function exactSum(ctx: Ctx) {
 }
 
 function seriesOf(points: Point[], ctx: Ctx, period: Period): PeriodValue[] {
+  // Several balances in one group (net worth by hand, three accounts asked for at once): each
+  // account's level per period, carried over its own gaps, then the accounts added up — not
+  // whichever account's balance happened to come last.
+  if (ctx.valueCol.level && ctx.levelKey) {
+    const key = ctx.levelKey
+    const byAccount = new Map<string, Point[]>()
+    for (const p of points) {
+      const k = String(p.row[key] ?? '')
+      let list = byAccount.get(k)
+      if (!list) byAccount.set(k, (list = []))
+      list.push(p)
+    }
+    if (byAccount.size > 1) {
+      // Every account over the same range, so one that stopped changing is still counted.
+      const dates = points
+        .map((p) => p.date)
+        .filter((d): d is string => !!d)
+        .sort()
+      const range = { from: ctx.spec.from ?? dates[0], to: ctx.spec.to ?? dates[dates.length - 1] }
+      const each = [...byAccount.values()].map((pts) => plainSeries(pts, ctx, period, range))
+      const periods = [...new Set(each.flatMap((s) => s.map((p) => p.period)))].sort()
+      const add = exactSum(ctx) ?? ((vs: number[]) => vs.reduce((a, b) => a + b, 0))
+      return periods.map((period) => {
+        const found = each.map((s) => s.find((p) => p.period === period)).filter((p) => !!p)
+        const values = found.map((p) => p.value).filter((v): v is number => v !== null)
+        return {
+          period,
+          value: values.length ? add(values) : null,
+          n: found.reduce((n, p) => n + p.n, 0),
+        }
+      })
+    }
+  }
+  return plainSeries(points, ctx, period)
+}
+
+function plainSeries(
+  points: Point[],
+  ctx: Ctx,
+  period: Period,
+  range: { from?: string; to?: string } = ctx.spec
+): PeriodValue[] {
   return resample(
     points.filter((p) => p.date).map((p) => ({ date: p.date, value: p.value })),
     {
       period,
       agg: ctx.agg,
       fill: ctx.fill,
-      from: ctx.spec.from,
-      to: ctx.spec.to,
+      from: range.from,
+      to: range.to,
       weekStartsOnMonday: ctx.weekStartsOnMonday,
       add: exactSum(ctx),
     }
@@ -172,12 +216,12 @@ export async function analyseGroup(
         const known = s.filter((x) => x.value !== null)
         if (known.length < s.length)
           warnings.add(
-            'Empty periods were left out of the forecast; fill them (fill: "zero" or "previous") to count them.'
+            'Some periods are empty; the forecast works around them, each value kept in its own period. Fill them (fill: "zero" or "previous") if empty means zero or unchanged.'
           )
         const method =
-          a.method ?? (known.length >= 2 * SEASON[p] && SEASON[p] > 1 ? 'seasonal' : 'linear')
+          a.method ?? (s.length >= 2 * SEASON[p] && SEASON[p] > 1 ? 'seasonal' : 'linear')
         const f = forecast(
-          known.map((x) => x.value),
+          s.map((x) => x.value),
           {
             method,
             horizon: a.horizon ?? 3,
@@ -219,7 +263,9 @@ export async function analyseGroup(
         const col = pickColumn(other, w.value, ['number', 'money'], 'the value to correlate with')
         const dcol = pickColumn(other, w.date, ['date'], 'the date')
         const otherMoney = col.type === 'money'
-        const rows = filterRows(other, w.where)
+        // Of the same table, the other column is read from the rows this answer is about — the
+        // question's filters and this group — not from the whole table.
+        const rows = filterRows(other, w.where, w.source ? other.rows : points.map((p) => p.row))
         const pts = rows.map((r) => ({
           date: r[dcol.name] as string | null,
           value:

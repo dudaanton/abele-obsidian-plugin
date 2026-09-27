@@ -113,7 +113,7 @@ describe('analyzeTable', () => {
     const t = spending()
     expect(filterRows(t, [{ column: 'date', op: '>=', value: '2026-06-01' }])).toHaveLength(2)
     expect(filterRows(t, [{ column: 'shop', op: 'in', value: ['B', 'C'] }])).toHaveLength(6)
-    expect(filterRows(t, [{ column: 'amount', op: '>', value: 12000 }])).toHaveLength(3)
+    expect(filterRows(t, [{ column: 'amount', op: '>', value: 120 }])).toHaveLength(3)
   })
 
   it('rounds for reading without touching exact totals', () => {

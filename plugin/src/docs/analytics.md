@@ -24,7 +24,9 @@ currency? }`.
   `startingBalanceDate`. Without `accounts` it is net worth: every asset and liability not
   excluded from totals. Only asset, liability and computed accounts have a balance; ask a category
   or an expense account for its `flow` or `transactions` instead. Balances are levels: over a
-  period they take the last value, and an empty period carries the previous one.
+  period they take the last value, and an empty period carries the previous one. Several
+  accounts asked for at once are added up per period (each carrying its own last balance) unless
+  grouped with `by: "account"`.
 - `accounts`, `categories`, `linkedTo` (a note the transactions have in `groups` — a trip, a
   project) take names, paths or links. `only` is `income`, `expense` or `transfer`. `from`/`to`
   are `YYYY-MM-DD`, both included.
@@ -47,18 +49,21 @@ left empty and counted under `source.unparsed`.
 the view shows (`note.weight` becomes `weight`; `file.name` and `formula.x` keep their names) and
 `path`. The first view when none is named.
 
-Rows outside the chat's scope are left out of every source and counted under `source.outOfScope`.
+Rows outside the chat's scope are left out of every source and counted under `source.outOfScope`;
+accounts whose notes are outside it are left out of balances and net worth, opening balances
+included, and counted under `source.accountsOutOfScope`.
 
 ## Asking
 
 `analyze_data` takes the source and:
 
 - `where` — row filters, all must hold: `{ column, op?, value }`, `op` one of `=` (default), `!=`,
-  `>`, `>=`, `<`, `<=`, `contains`, `in` (value a list). Text compares ignoring case.
+  `>`, `>=`, `<`, `<=`, `contains`, `in` (value a list). Text compares ignoring case; money
+  compares in the decimals `read_data` shows (`amount > 10` is more than ten).
 - `value` — the number or money column (default `amount` / `balance`, else the first number column).
 - `date` — the date column (default `date`).
 - `by` — group by a column; a list column (`groups`) groups by each item. `limit` keeps the largest
-  groups (default 12) and folds the rest into one `other (n)`. Group totals come with `share` in
+  groups (default 12) and folds the rest into `other (n)` — one per currency when there are several. Group totals come with `share` in
   percent when they are sums in one currency.
 - `period` — `day`, `week` (starting on the day the settings say), `month`, `quarter`, `year`: the
   rows become a series of periods, every period in the range present. `from`/`to` set the range.
@@ -90,15 +95,16 @@ warning; give the source a `currency` to have one total.
   week, `index` against the overall mean (1.2 = 20% above usual) and `n` behind each.
 - `{ type: "forecast", method?, horizon?: 3, window?, season? }` — `linear` (the trend line carried
   on, t-based prediction interval), `moving-average` (the mean of the last `window`), `seasonal`
-  (the value one season ago; the default once there are two full seasons). Each point has `lo80`,
+  (the value one season ago; the default once there are two full seasons). Empty periods keep
+  their place: a value after a gap is not taken for the next period's. Each point has `lo80`,
   `hi80`, `lo95`, `hi95`. It is a rough estimate from the past alone — say so when you pass it on.
 - `{ type: "anomalies", method?: "iqr" | "zscore", threshold? }` — `iqr` (default) flags values past
   1.5 interquartile ranges outside the middle half; `zscore` values more than 3 standard deviations
   from the mean. Without a period the unusual rows come back with their date, text columns and
   path — which transaction, which day.
 - `{ type: "correlate", with: { value, source?, where?, agg? }, method?: "pearson" | "spearman",
-  detrend? }` — the series against another column of the same source or of another source, paired
-  by period. Answers `r`, `n` (pairs where both have a value), `p` and a `hint` in words. A
+  detrend? }` — the series against another column of the same source (read from the same rows:
+  the question's `where` and the group) or of another source, paired by period. Answers `r`, `n` (pairs where both have a value), `p` and a `hint` in words. A
   `warning` comes when both series trend over time, which alone makes them look related; ask again
   with `detrend: true` to correlate their period-to-period changes. Spearman is steadier with
   outliers. Report `n` and the hint along with `r`, and never present a correlation as a cause.

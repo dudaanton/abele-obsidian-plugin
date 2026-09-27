@@ -35,17 +35,28 @@ export function readBalances(
     if (!deps.inScope(p)) throw new Error(`${p} is outside this chat's scope.`)
   }
 
-  // Each series: a name, the wallets it adds up, and the currency they are in.
+  // Each series: a name and the wallets it adds up. A wallet whose note is outside the chat's
+  // scope is left out — its opening balance and its movements alike — and counted.
+  const hidden = new Set<string>()
+  const visible = (p: string) => {
+    if (deps.inScope(p)) return true
+    hidden.add(p)
+    return false
+  }
   const series: { label: string; wallets: string[] }[] = accountInputs.length
-    ? accountInputs.map((p) => ({ label: name(p), wallets: ledger.expand(p).filter(isWallet) }))
+    ? accountInputs.map((p) => ({
+        label: name(p),
+        wallets: ledger.expand(p).filter((w) => isWallet(w) && visible(w)),
+      }))
     : [
         {
           label: 'Net worth',
           wallets: [...ledger.accounts.values()]
-            .filter((a) => isWallet(a.path) && !a.excluded)
+            .filter((a) => isWallet(a.path) && !a.excluded && visible(a.path))
             .map((a) => a.path),
         },
       ]
+  if (hidden.size) meta.accountsOutOfScope = hidden.size
 
   // Every change to every wallet, in units at one scale.
   const scale = scaleFor([

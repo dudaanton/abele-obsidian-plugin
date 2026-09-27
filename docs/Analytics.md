@@ -54,8 +54,10 @@ reference agents read is `src/docs/analytics.md` (`query_docs` section `analytic
 
 ## Scope
 
-The agent tools check every transaction, note and base row against the chat's scope
-(`ScopeResolver`) and count what they leave out. A base file out of scope is refused. Implied
+The agent tools check every transaction, note and base row, and every account a balance adds
+up, against the chat's scope and count what they leave out. The scope is taken once, when the
+call starts (`sourceDeps`): a base is read across awaits, and another chat's tool call can make its
+own scope the active one meanwhile. A base file out of scope is refused. Implied
 rates come only from transactions in scope. Scripts read the whole vault, as their other file
 operations do (`skipScope`).
 

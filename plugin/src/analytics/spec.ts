@@ -5,6 +5,7 @@
 import type { AnomalyMethod } from './anomalies'
 import type { ForecastMethod } from './forecast'
 import type { Agg, Fill, Period } from './resample'
+import { fromUnits } from './money'
 import type { Cell, Column, Row, Table } from './table'
 
 export type Op = '=' | '!=' | '>' | '>=' | '<' | '<=' | 'contains' | 'in'
@@ -86,8 +87,16 @@ function test(cell: Cell, op: Op, value: Cell | Cell[]): boolean {
   return op === '>' ? a > b : op === '>=' ? a >= b : op === '<' ? a < b : a <= b
 }
 
-export function filterRows(table: Table, where: Filter[] | undefined): Row[] {
-  if (!where?.length) return table.rows
+/**
+ * The rows every filter holds for — of the table, or of `rows` taken from it. A money column is
+ * compared in decimals, as the agent reads it, not in the minor units it is kept in.
+ */
+export function filterRows(
+  table: Table,
+  where: Filter[] | undefined,
+  rows: Row[] = table.rows
+): Row[] {
+  if (!where?.length) return rows
   for (const f of where) {
     if (!table.columns.some((c) => c.name === f.column)) {
       throw new Error(
@@ -95,7 +104,15 @@ export function filterRows(table: Table, where: Filter[] | undefined): Row[] {
       )
     }
   }
-  return table.rows.filter((r) => where.every((f) => test(r[f.column], f.op ?? '=', f.value)))
+  const scaleOf = new Map(
+    table.columns.filter((c) => c.type === 'money').map((c) => [c.name, c.scale ?? 2])
+  )
+  const cell = (r: Row, column: string): Cell => {
+    const v = r[column]
+    const scale = scaleOf.get(column)
+    return scale !== undefined && typeof v === 'number' ? fromUnits(v, scale) : v
+  }
+  return rows.filter((r) => where.every((f) => test(cell(r, f.column), f.op ?? '=', f.value)))
 }
 
 export function pickColumn(

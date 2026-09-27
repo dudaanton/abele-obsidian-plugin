@@ -53,8 +53,20 @@ const rms = (errors: number[]): number =>
   errors.length ? Math.sqrt(errors.reduce((s, e) => s + e * e, 0) / errors.length) : 0
 
 /** `values` without gaps, oldest first. */
-export function forecast(values: readonly number[], opts: ForecastOptions): Forecast {
-  const ys = values.filter((v) => Number.isFinite(v))
+/**
+ * `values` oldest first, one per period; an empty period is `null` and keeps its place, so a
+ * value after a gap is not taken for the one right after the value before it.
+ */
+export function forecast(values: readonly (number | null)[], opts: ForecastOptions): Forecast {
+  const len = values.length
+  const xs: number[] = []
+  const ys: number[] = []
+  values.forEach((v, i) => {
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      xs.push(i)
+      ys.push(v)
+    }
+  })
   const n = ys.length
   const horizon = Math.max(1, Math.min(Math.floor(opts.horizon), 120))
   const points: ForecastPoint[] = []
@@ -69,23 +81,23 @@ export function forecast(values: readonly number[], opts: ForecastOptions): Fore
 
   if (opts.method === 'linear') {
     if (n < 4) throw new Error(`A linear forecast needs at least 4 values; there are ${n}.`)
-    const mx = (n - 1) / 2
+    const mx = xs.reduce((a, b) => a + b, 0) / n
     const my = ys.reduce((a, b) => a + b, 0) / n
     let sxx = 0
     let sxy = 0
     for (let i = 0; i < n; i++) {
-      sxx += (i - mx) ** 2
-      sxy += (i - mx) * (ys[i] - my)
+      sxx += (xs[i] - mx) ** 2
+      sxy += (xs[i] - mx) * (ys[i] - my)
     }
     const slope = sxy / sxx
     const intercept = my - slope * mx
     let sse = 0
-    for (let i = 0; i < n; i++) sse += (ys[i] - (intercept + slope * i)) ** 2
+    for (let i = 0; i < n; i++) sse += (ys[i] - (intercept + slope * xs[i])) ** 2
     const s = Math.sqrt(sse / (n - 2))
     const t80 = tQuantile(0.9, n - 2)
     const t95 = tQuantile(0.975, n - 2)
     for (let h = 1; h <= horizon; h++) {
-      const x0 = n - 1 + h
+      const x0 = len - 1 + h
       const se = s * Math.sqrt(1 + 1 / n + (x0 - mx) ** 2 / sxx)
       points.push(band(h, intercept + slope * x0, t80 * se, t95 * se))
     }
@@ -93,6 +105,7 @@ export function forecast(values: readonly number[], opts: ForecastOptions): Fore
   }
 
   if (opts.method === 'moving-average') {
+    // Over the values there are: an empty period says nothing about the level.
     const w = Math.max(1, Math.floor(opts.window ?? 3))
     if (n < w + 1) {
       throw new Error(
@@ -111,17 +124,37 @@ export function forecast(values: readonly number[], opts: ForecastOptions): Fore
   }
 
   const m = Math.max(1, Math.floor(opts.season ?? 12))
-  if (n < 2 * m) {
-    throw new Error(`A seasonal forecast needs two seasons (${2 * m} values); there are ${n}.`)
+  if (len < 2 * m) {
+    throw new Error(`A seasonal forecast needs two seasons (${2 * m} periods); there are ${len}.`)
+  }
+  const at = (i: number): number | null => {
+    const v = values[i]
+    return typeof v === 'number' && Number.isFinite(v) ? v : null
   }
   const errors: number[] = []
-  for (let i = m; i < n; i++) errors.push(ys[i] - ys[i - m])
+  for (let i = m; i < len; i++) {
+    const a = at(i)
+    const b = at(i - m)
+    if (a !== null && b !== null) errors.push(a - b)
+  }
+  if (!errors.length) {
+    throw new Error(
+      'A seasonal forecast needs the same period in two seasons; fill the gaps first.'
+    )
+  }
   const s = rms(errors)
   for (let h = 1; h <= horizon; h++) {
     const k = Math.floor((h - 1) / m)
-    const value = ys[n - m + ((h - 1) % m)]
+    // The same period a season back; further back if that one is empty.
+    let i = len - m + ((h - 1) % m)
+    while (i >= 0 && at(i) === null) i -= m
+    if (i < 0) {
+      throw new Error(
+        'A seasonal forecast needs the same period in a past season; fill the gaps first.'
+      )
+    }
     const widen = Math.sqrt(k + 1)
-    points.push(band(h, value, Z80 * s * widen, Z95 * s * widen))
+    points.push(band(h, at(i), Z80 * s * widen, Z95 * s * widen))
   }
   return { method: 'seasonal', horizon, residualStdev: s, points, note: NOTE }
 }
