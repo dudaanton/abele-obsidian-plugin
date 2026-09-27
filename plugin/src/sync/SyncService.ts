@@ -114,7 +114,7 @@ export class SyncService {
   private readonly runner = new EngineRunner(
     {
       app: () => this.app,
-      pluginId: () => this.plugin?.manifest.id ?? 'abele',
+      manifest: () => this.plugin?.manifest ?? { id: 'abele' },
       deps: () => this.deps,
       connection: () => this.connection.value,
       token: () => this.keeper.token(),

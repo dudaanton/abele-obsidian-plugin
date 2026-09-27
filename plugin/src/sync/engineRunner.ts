@@ -1,11 +1,6 @@
 import { Platform, type App } from 'obsidian'
 import { toRaw } from 'vue'
-import {
-  SyncClient,
-  SyncEngine,
-  type StateEntry,
-  type VaultClient,
-} from '@abele/sync-core'
+import { SyncClient, SyncEngine, type StateEntry, type VaultClient } from '@abele/sync-core'
 import { caseKey, PLAIN_HTTP_REFUSED, serverUrlProblem } from '@abele/sync-protocol'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
@@ -24,7 +19,7 @@ import {
 import { newStateId } from './ids'
 import { readLedgerId, writeLedgerId, type LedgerId } from './ledgerId'
 import { messageOf, summarise } from './messages'
-import { OwnSettingsWatch } from './ownSettings'
+import { OwnSettingsWatch, ownSettingsPath } from './ownSettings'
 import { noop } from './queue'
 import {
   IGNORE_FILE,
@@ -74,8 +69,8 @@ export const PLAIN_HTTP_CONNECTION =
 export interface EngineHost {
   /** The app the service was started with, or null before `init` and after `destroy`. */
   app(): App | null
-  /** The plugin's id, whose own `data.json` a pull may write (`OwnSettingsWatch`). */
-  pluginId(): string
+  /** The plugin's manifest: whose own `data.json` a pull may write (`OwnSettingsWatch`). */
+  manifest(): { id: string; dir?: string }
   deps(): SyncServiceDeps
   connection(): DeviceConnection
   /** The device token, or null when the keychain holds none for the connection. */
@@ -350,7 +345,7 @@ export class EngineRunner {
     const deps = this.host.deps()
     const pollMs = pollMsOf(deps)
     const fallbackMs = fallbackMsOf(deps)
-    const ownSettings = `${app.vault.configDir}/plugins/${this.host.pluginId()}/data.json`
+    const ownSettings = ownSettingsPath(app.vault.configDir, this.host.manifest())
     const settings = new OwnSettingsWatch(
       ownSettings,
       (replaced) => this.host.settingsArrived(replaced),

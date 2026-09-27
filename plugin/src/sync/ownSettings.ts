@@ -1,6 +1,15 @@
 import type { StateEntry } from '@abele/sync-core'
 import { caseKey } from '@abele/sync-protocol'
 
+/**
+ * The plugin's own `data.json`, as a vault path: in the plugin's real folder — Obsidian's
+ * `manifest.dir`, which is not always named after the id — and under the id in the config
+ * folder where no folder is known (a plugin stood in for by a test).
+ */
+export function ownSettingsPath(configDir: string, manifest: { id: string; dir?: string }): string {
+  return `${manifest.dir ?? `${configDir}/plugins/${manifest.id}`}/data.json`
+}
+
 /** The engine's ledger, as much of it as `yields` asks. */
 interface Ledger {
   get(path: string): Promise<StateEntry | null>

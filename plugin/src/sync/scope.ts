@@ -7,6 +7,7 @@ import {
   type PathMatcher,
   type SelectiveSettings,
 } from '@abele/sync-core'
+import { caseKey } from '@abele/sync-protocol'
 import { messageOf } from './messages'
 
 /**
@@ -69,9 +70,14 @@ export function ignoreFor(
   keptOut: string | null = null
 ): PathMatcher {
   const rules = ignoreText === null ? null : IgnoreRules.parse(ignoreText)
+  // Case-folded, as the settings watch compares it: a case-insensitive disk lists the file
+  // under whatever spelling it was made with.
+  const kept = keptOut === null ? null : caseKey(keptOut)
   return {
     ignores: (wirePath) =>
-      wirePath === keptOut || isHidden(wirePath, configDir) || (rules?.ignores(wirePath) ?? false),
+      (kept !== null && caseKey(wirePath) === kept) ||
+      isHidden(wirePath, configDir) ||
+      (rules?.ignores(wirePath) ?? false),
   }
 }
 
