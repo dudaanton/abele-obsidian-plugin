@@ -111,7 +111,20 @@ function onScreen(el: HTMLElement, scroller: HTMLElement | null | undefined): bo
  * - Flashed again when they lost the flash: the editor draws the lines anew once it has measured
  *   a note just opened, and the lines it flashed are gone with the old drawing.
  */
-async function keepOnScreen(
+function keepOnScreen(
+  targets: () => HTMLElement[],
+  scroller: () => HTMLElement | null | undefined,
+  scroll: () => void
+): void {
+  const last = keeping
+  keeping = Promise.all([last, looking(targets, scroller, scroll)]).then(() => {})
+}
+
+/** The looking-after of the last jumps, done: tests wait for it rather than leave it running. */
+let keeping: Promise<void> = Promise.resolve()
+export const lineFlashSettled = (): Promise<void> => keeping
+
+async function looking(
   targets: () => HTMLElement[],
   scroller: () => HTMLElement | null | undefined,
   scroll: () => void
@@ -159,7 +172,7 @@ async function flashInPreview(view: MarkdownView, range: LineRange): Promise<voi
         s.end.line >= range.from - 1
     )
   for (const section of within()) flash(section.el)
-  void keepOnScreen(
+  keepOnScreen(
     () => within().map((s) => s.el),
     () => rendererOf(view)?.previewEl,
     () => scrollPreview(view, top)
@@ -209,7 +222,7 @@ async function flashInEditor(view: MarkdownView, range: LineRange): Promise<void
     els = within()
   }
   for (const el of els) flash(el)
-  void keepOnScreen(within, () => cm.scrollDOM, scroll)
+  keepOnScreen(within, () => cm.scrollDOM, scroll)
 }
 
 /**

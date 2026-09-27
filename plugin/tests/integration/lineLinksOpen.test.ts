@@ -2,9 +2,9 @@
  * Opening a note at the lines a link names: which leaf it lands in, and what the person sees
  * there — the range selected in the editor, or flashed in reading view.
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { MarkdownView, type TFile } from 'obsidian'
-import { openNoteAtLines, resolveLineLink } from '@/lineLinks/open'
+import { lineFlashSettled, openNoteAtLines, resolveLineLink } from '@/lineLinks/open'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 
@@ -71,6 +71,12 @@ beforeEach(() => {
       return leaf
     },
   }
+})
+
+// The lines are looked after for a moment past the jump; that is over before the next test.
+afterEach(async () => {
+  vi.useRealTimers()
+  await lineFlashSettled()
 })
 
 const note = () => app.vault.getAbstractFileByPath(NOTE) as TFile
@@ -149,7 +155,7 @@ describe('opening at lines in reading view', () => {
     expect(flashed.map((s) => s.start.line)).toEqual([9, 10])
     expect(view.selection).toBeNull()
 
-    vi.advanceTimersByTime(3000)
+    await vi.advanceTimersByTimeAsync(3000)
     expect(view.sections.some((s) => s.el.classList.contains('abele-line-flash'))).toBe(false)
     vi.useRealTimers()
   })
