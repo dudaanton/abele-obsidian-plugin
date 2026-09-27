@@ -131,6 +131,25 @@ export function readTransferred(entry: TransferEntry, secrets: Record<string, st
 }
 
 /**
+ * What a receiving screen calls the connection's row: the vault and the server it is on, since
+ * the section beside it already says "Sync connection". The label alone, when neither came.
+ */
+export function connectionTitle(entry: TransferEntry): string {
+  const data = objectOf(entry.data) ?? {}
+  const text = (field: string): string => (typeof data[field] === 'string' ? data[field] : '')
+  const vault = text('vaultName') || text('vaultId')
+  const url = text('serverUrl')
+  let server = url
+  try {
+    server = new URL(url).host
+  } catch {
+    /* shown as it came */
+  }
+  if (vault === '') return server === '' ? CONNECTION_LABEL : `${CONNECTION_LABEL} to ${server}`
+  return server === '' ? vault : `${vault} on ${server}`
+}
+
+/**
  * How what arrived stands to what this device already syncs:
  * - `none`: this device syncs nothing, and takes it;
  * - `same`: it already syncs that very vault, as a device of its own; the arrival is not needed;

@@ -385,7 +385,8 @@ const closeSend = () => {
 const onApplied = ({ items, keysRefused, filesRefused, connection }: Applied) => {
   scanning.value = false
 
-  const parts = [`Applied ${plural(items, 'item')}.`]
+  // A transfer that brought only the connection applied no item, and its line says what did.
+  const parts = items > 0 || !connection ? [`Applied ${plural(items, 'item')}.`] : []
   if (keysRefused) {
     parts.push(
       `${plural(keysRefused, 'key')} could not be stored — the name this vault uses for it is one Obsidian will not take.`

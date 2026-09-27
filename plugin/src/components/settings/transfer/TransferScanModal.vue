@@ -83,7 +83,9 @@
           @keydown.space.prevent="toggle(item)"
         >
           <Checkbox :is-enabled="accepted.has(id(item))" @toggle="toggle(item)" />
-          <span class="abele-transfer-scan__entry-name">{{ item.entry.label }}</span>
+          <span class="abele-transfer-scan__entry-name">{{
+            isConnection(item) ? connectionTitle(item.entry) : item.entry.label
+          }}</span>
           <span
             v-if="isConnection(item) && connectionNote"
             class="abele-transfer-scan__entry-note"
@@ -134,6 +136,7 @@ import { SyncService } from '@/sync/SyncService'
 import {
   CONNECTION_SECTION,
   CONNECTION_TOKEN,
+  connectionTitle,
   matchConnection,
   readTransferred,
 } from '@/transfer/connection'

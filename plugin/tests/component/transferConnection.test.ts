@@ -20,6 +20,7 @@ import Input from '@/components/obsidian/Input.vue'
 import Checkbox from '@/components/obsidian/Checkbox.vue'
 import Button from '@/components/obsidian/Button.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
+import { Notice } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type AiSettings } from '@/ai/types'
 import { SyncService } from '@/sync/SyncService'
@@ -265,6 +266,30 @@ describe('receiving the connection', () => {
       .find((row) => row.text().includes('Sync connection'))!
 
   const ticked = (screen: Screen) => rowOf(screen).findComponent(Checkbox).props('isEnabled')
+
+  /** Named for what it is: the row said "Sync connection" twice and never which vault. */
+  it('names the vault and the server it connects to, and says "Sync connection" once', async () => {
+    const screen = await received()
+
+    const row = rowOf(screen)
+    expect(row.find('.abele-transfer-scan__entry-name').text()).toBe('Home on sync.example.com')
+    expect(row.text().split('Sync connection')).toHaveLength(2)
+  })
+
+  it('does not report "Applied 0 items" when only the connection was taken', async () => {
+    const screen = open(TransferSettings)
+    Notice.shown.length = 0
+    await click(screen, 'Scan')
+    screen.findComponent(TransferScanModal).vm.$emit('applied', {
+      items: 0,
+      keysRefused: 0,
+      filesRefused: 0,
+      connection: 'This device now syncs Home.',
+    })
+    await flushPromises()
+
+    expect(Notice.shown).toEqual(['This device now syncs Home.'])
+  })
 
   it('is taken by a device that syncs nothing, with its token filed by the service alone', async () => {
     const screen = await received()
