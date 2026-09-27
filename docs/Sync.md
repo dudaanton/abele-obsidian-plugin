@@ -90,6 +90,14 @@ of its own too, set on the server and shown under **Vault policy**.
 plugins themselves, so a new device installs what this one runs) and **Plugin settings** (each
 community plugin's `data.json`). The workspace, the graph and every plugin's cache never travel.
 
+Abele's own settings are one of those plugin settings: they follow **Plugin settings** like any
+other plugin's, the synced keys among them, and a change made on one device is reloaded on the
+others as it arrives. They name no device — the connection is kept in Obsidian's own storage for
+the vault (see below) — and nothing under **What this device syncs** is in them. When two devices
+change Abele's settings at nearly the same moment, the later save wins; the other is in the file's
+version history. Abele's chat index (`chat-index.json` beside the settings) stays on each device
+and is rebuilt from the chat files.
+
 These switches only work when the configuration folder is called `.obsidian`. On a device where
 Obsidian was told to use another folder (**Override config folder**, a phone on `.obsidian-mobile`
 for instance), the configuration folder does not sync at all for now: the Sync tab says so instead
@@ -106,11 +114,6 @@ empty yourself, or one still holding a hidden file such as `.DS_Store`, stays.
 
 These never travel, whatever the switches say:
 
-- **Abele's own `data.json`**, for now. It no longer names this device — the connection is kept
-  in Obsidian's own storage for the vault (see below) — but a device still on an older version of
-  Abele writes its connection into it. So Abele's settings, the synced keys among them, do not
-  reach your other devices through Abele Sync yet; the Transfer tab, or whatever else syncs your
-  settings, carries them.
 - **Hidden files and folders**, anything with a name starting with a dot — `.git/`, `.gitignore`,
   `.DS_Store`, `.stfolder`, `.trash/` — except the configuration folder. Obsidian does not show
   them to plugins, so the plugin neither fetches nor sends them, and never deletes them on the
@@ -286,4 +289,5 @@ was and the move is tried at the next start.
 
 Every device on a vault should run this version or none: an older version still writes its own
 connection into `data.json`, which this one ignores, and it reads the one it finds there as its
-own.
+own. Its chat index, which it keeps inside `data.json`, is added to this device's when the file
+arrives.

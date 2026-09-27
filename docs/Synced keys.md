@@ -122,10 +122,16 @@ file, so it is synced like every other key.
 
 The store is kept inside the plugin's `data.json` rather than in a file of its own, because
 Obsidian Sync carries only `data.json`, `main.js`, `manifest.json` and `styles.css` out of a
-plugin's folder.
+plugin's folder. Abele Sync carries it the same way, with **Plugin settings** on: the settings
+file travels, and the store inside it, still encrypted — the server keeps it as it keeps any file
+and never has the passphrase.
 
 When two devices change keys at nearly the same moment, the settings file of one may replace the
 other's. Each device remembers what it wrote, and when the settings arrive it merges key by key —
 the later change of each key wins — and writes back anything that was missing. A Syncthing
 conflict copy of the settings file (`data.sync-conflict-….json`) is read and merged the same way;
 delete the copy yourself once you have looked at it.
+
+The same merge has one edge: a key *removed* on one device while another device's save of the
+settings wins can come back, because the other device still holds it and writes it back as
+missing. Remove it again once both devices have synced.

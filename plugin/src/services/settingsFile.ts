@@ -47,4 +47,4 @@ export function isSettingsObject(value: unknown): value is Record<string, unknow
 }
 
 export const pause = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms))
+  new Promise((resolve) => window.setTimeout(resolve, ms))

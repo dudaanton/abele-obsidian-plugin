@@ -21,7 +21,7 @@ import { createPluginSecrets } from '@/secrets/host'
 import type AbelePlugin from '@/main'
 import { buildFakeVault, type FakeApp } from '../helpers/fakeVault'
 import { syncServer, type SyncServer } from '../helpers/syncServer'
-import { create, seed } from '../../../../abele-sync/packages/core/tests/helpers/seed.js'
+import { blob, create, seed } from '../../../../abele-sync/packages/core/tests/helpers/seed.js'
 
 /**
  * The service against a real server, a real engine and a real state database.
@@ -53,6 +53,8 @@ let domEvents: (() => void)[] = []
 let socketsOpened = 0
 /** Flipped by a test to make every request fail the way a lost network does. */
 let offline = false
+/** How many times the service told the plugin its `data.json` changed on disk. */
+let settingsArrived = 0
 
 const plugin = {
   manifest: { id: 'abele' },
@@ -62,6 +64,10 @@ const plugin = {
   loadData: () => Promise.resolve({}),
   saveData: () => Promise.resolve(),
   syncAiFeatures: () => undefined,
+  onExternalSettingsChange: () => {
+    settingsArrived++
+    return Promise.resolve()
+  },
 } as unknown as AbelePlugin
 
 beforeAll(() => {
@@ -78,6 +84,7 @@ beforeEach(async () => {
   domEvents = []
   socketsOpened = 0
   offline = false
+  settingsArrived = 0
   bearers = []
   Platform.isMobile = false
   app = buildFakeVault([
@@ -234,6 +241,22 @@ async function connect(
   expect(vaults.map((vault) => vault.name)).toEqual([vaultName])
   await service.chooseVault(vaultId, 'Laptop')
   return { accountToken, vaultId, other }
+}
+
+/** A new version of a file the server already holds, made by the scenario's own device. */
+async function modify(client: VaultClient, path: string, content: string): Promise<void> {
+  const page = await client.manifest(null)
+  const item = page.items.find((held) => held.path === path)
+  if (item === undefined) throw new Error(`the server holds no ${path}`)
+  await seed(client, [
+    {
+      op: 'modify',
+      file_id: item.file_id,
+      base_version_id: item.version_id,
+      ...(await blob(client, content)),
+      mtime: Date.now(),
+    },
+  ])
 }
 
 /** Every live path the server holds for the vault. */
@@ -435,14 +458,45 @@ describe('SyncService — syncing', () => {
     expect(await serverPaths(other)).toContain('Local.md')
   })
 
-  it('never sends the plugin data file that names this device', async () => {
+  it('sends its own data.json like any plugin’s settings, and never its chat index', async () => {
+    await write('.obsidian/plugins/abele/chat-index.json', '{"chats":[]}')
     const { other } = await connect()
     await synced()
 
     const paths = await serverPaths(other)
-    // The settings folder syncs; this one file inside it does not.
     expect(paths).toContain('.obsidian/app.json')
-    expect(paths).not.toContain('.obsidian/plugins/abele/data.json')
+    // It names no device any more (the connection is in local storage), so it travels.
+    expect(paths).toContain('.obsidian/plugins/abele/data.json')
+    // The chat index is each device's own, and no sync carries it.
+    expect(paths).not.toContain('.obsidian/plugins/abele/chat-index.json')
+  })
+
+  it('has the plugin reload its settings, once, when a pull wrote its data.json', async () => {
+    const { other } = await connect()
+    await synced()
+    expect(settingsArrived).toBe(0)
+
+    await modify(other, '.obsidian/plugins/abele/data.json', '{"tasksFolder":"Elsewhere"}')
+    await service.syncNow()
+    await waitFor('the plugin to be told', () => settingsArrived > 0)
+
+    expect(await read('.obsidian/plugins/abele/data.json')).toBe('{"tasksFolder":"Elsewhere"}')
+    await service.syncNow()
+    await tick()
+    expect(settingsArrived).toBe(1)
+  })
+
+  it('leaves the settings alone when a pull wrote only other files', async () => {
+    const { other } = await connect()
+    await synced()
+
+    await seed(other, [await create(other, 'Notes/New.md', 'from another device')])
+    await modify(other, '.obsidian/app.json', '{"a":2}')
+    await service.syncNow()
+    await tick()
+
+    expect(await read('Notes/New.md')).toBe('from another device')
+    expect(settingsArrived).toBe(0)
   })
 
   it('goes from idle through syncing and back', async () => {

@@ -30,6 +30,13 @@ export interface ObsidianFileSystemOptions {
    * logged and swallowed: the engine's own batch must still go out.
    */
   onWatch?: (paths: string[]) => void
+  /**
+   * Told the path of every file the engine wrote, moved (both names) or removed, once the disk
+   * has taken it. The engine writes only what it pulls, so this is how the host learns that a
+   * pull changed a file it reads itself — the plugin's own `data.json` (`OwnSettingsWatch`). A
+   * throw here is logged and swallowed: the engine's write has happened either way.
+   */
+  onEngineWrite?: (path: string) => void
 }
 
 /**
@@ -65,6 +72,7 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly pollMs: number
   private readonly now: () => number
   private readonly onWatch: ((paths: string[]) => void) | null
+  private readonly onEngineWrite: ((path: string) => void) | null
   /** Set while `watch` is running: what `kick` reaches for, and nothing when nobody watches. */
   private pollNow: (() => void) | null = null
 
@@ -75,6 +83,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.pollMs = options.pollMs ?? DEFAULT_POLL_MS
     this.now = options.now ?? ((): number => Date.now())
     this.onWatch = options.onWatch ?? null
+    this.onEngineWrite = options.onEngineWrite ?? null
   }
 
   private get adapter(): DataAdapter {
@@ -116,6 +125,7 @@ export class ObsidianFileSystem implements FileSystem {
     } catch (cause) {
       throw new EngineError('io', `cannot write ${path}`, cause)
     }
+    this.wrote(path)
   }
 
   async move(from: string, to: string): Promise<void> {
@@ -140,6 +150,7 @@ export class ObsidianFileSystem implements FileSystem {
         throw new EngineError('conflict', `${to} is held by another file`)
       }
       await this.rename(from, to)
+      this.wrote(from, to)
       // Only a listing that says outright that the old spelling is still there sends this
       // round again; a listing that would not answer leaves the rename as done.
       if ((await this.spelledExactly(to)) !== false) return
@@ -148,6 +159,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     await this.makeParents(to)
     await this.rename(from, to)
+    this.wrote(from, to)
     await this.pruneAbove(from)
   }
 
@@ -162,7 +174,20 @@ export class ObsidianFileSystem implements FileSystem {
       if ((await this.rawStat(path)) === null) return
       throw new EngineError('io', `cannot remove ${path}`, cause)
     }
+    this.wrote(path)
     await this.pruneAbove(path)
+  }
+
+  /** Tell the host what the engine changed on disk (`onEngineWrite`). */
+  private wrote(...paths: string[]): void {
+    if (this.onEngineWrite === null) return
+    for (const path of paths) {
+      try {
+        this.onEngineWrite(path)
+      } catch (error) {
+        console.debug('[abele-sync] the host would not take a write', error)
+      }
+    }
   }
 
   async stat(path: string): Promise<FileInfo | null> {

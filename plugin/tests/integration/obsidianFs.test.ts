@@ -416,6 +416,60 @@ describe('ObsidianFileSystem — moving and removing', () => {
   })
 })
 
+describe('ObsidianFileSystem — telling the host what the engine changed', () => {
+  function reporting(specs: FakeFileSpec[]): { fs: ObsidianFileSystem; told: string[] } {
+    app = buildFakeVault(specs)
+    const told: string[] = []
+    const fs = new ObsidianFileSystem(app as unknown as App, {
+      pollMs: POLL_MS,
+      onEngineWrite: (path) => told.push(path),
+    })
+    return { fs, told }
+  }
+
+  it('names every file written, moved (both names) or removed, once the disk has it', async () => {
+    const { fs, told } = reporting(VAULT)
+
+    await fs.writeAtomic('.obsidian/plugins/abele/data.json', text('{"b":3}'), 5000)
+    await fs.move('Note.md', 'Moved.md')
+    await fs.remove('Notes/Deep/second.md')
+
+    expect(told).toEqual([
+      '.obsidian/plugins/abele/data.json',
+      'Note.md',
+      'Moved.md',
+      'Notes/Deep/second.md',
+    ])
+  })
+
+  it('names nothing for a write the disk refused, or a remove of a file already gone', async () => {
+    const { fs, told } = reporting(VAULT)
+    app.vault.adapter.writeBinary = async () => {
+      throw new Error('ENOSPC: the disk is full')
+    }
+
+    await expect(codeOf(fs.writeAtomic('Note.md', text('x'), 1))).resolves.toBe('io')
+    await fs.remove('Gone.md')
+
+    expect(told).toEqual([])
+  })
+
+  it('writes all the same when the host throws', async () => {
+    app = buildFakeVault(VAULT)
+    const fs = new ObsidianFileSystem(app as unknown as App, {
+      onEngineWrite: () => {
+        throw new Error('the host is gone')
+      },
+    })
+    vi.spyOn(console, 'debug').mockImplementation(() => undefined)
+
+    await fs.writeAtomic('Note.md', text('still written'), 1)
+
+    expect(read(await fs.read('Note.md'))).toBe('still written')
+    vi.restoreAllMocks()
+  })
+})
+
 describe('ObsidianFileSystem — watching', () => {
   beforeEach(() => {
     vi.useFakeTimers()

@@ -25,6 +25,7 @@ import {
 import { newStateId } from './ids'
 import { readLedgerId, writeLedgerId, type LedgerId } from './ledgerId'
 import { messageOf, summarise } from './messages'
+import { OwnSettingsWatch } from './ownSettings'
 import { noop } from './queue'
 import {
   IGNORE_FILE,
@@ -74,7 +75,7 @@ export const PLAIN_HTTP_CONNECTION =
 export interface EngineHost {
   /** The app the service was started with, or null before `init` and after `destroy`. */
   app(): App | null
-  /** The plugin's id, whose own `data.json` is kept off the wire. */
+  /** The plugin's id, whose own `data.json` a pull may write (`OwnSettingsWatch`). */
   pluginId(): string
   deps(): SyncServiceDeps
   connection(): DeviceConnection
@@ -84,6 +85,8 @@ export interface EngineHost {
   damage(): string | null
   /** Runs after everything already asked of the engine (`SyncService.serialise`). */
   serialise<T>(fn: () => Promise<T>): Promise<T>
+  /** A run wrote the plugin's own `data.json`: the plugin reloads its settings. */
+  settingsArrived(): void
 }
 
 export class EngineRunner {
@@ -309,9 +312,14 @@ export class EngineRunner {
     const deps = this.host.deps()
     const pollMs = pollMsOf(deps)
     const fallbackMs = fallbackMsOf(deps)
+    const settings = new OwnSettingsWatch(
+      `${app.vault.configDir}/plugins/${this.host.pluginId()}/data.json`,
+      () => this.host.settingsArrived()
+    )
     const fs = new ObsidianFileSystem(app, {
       ...(pollMs === undefined ? {} : { pollMs }),
       onWatch: (paths) => this.noticed(paths),
+      onEngineWrite: (path) => settings.noteWrite(path),
     })
     const store = await IndexedDbStateStore.open(
       factoryOf(deps),
@@ -341,8 +349,15 @@ export class EngineRunner {
         ignoreText,
         ...(scriptsFolder === '' ? {} : { scriptsFolder }),
         ...(fallbackMs === undefined ? {} : { fallbackMs }),
-        onSync: (report) => this.board.note(summarise(report)),
-        onFail: (error, kind) => this.board.failed(error, kind),
+        onSync: (report) => {
+          this.board.note(summarise(report))
+          settings.settle()
+        },
+        // A run that failed after its pull still wrote what it pulled.
+        onFail: (error, kind) => {
+          this.board.failed(error, kind)
+          settings.settle()
+        },
         log: (line) => this.board.note(line),
       })
     } catch (error) {
@@ -456,14 +471,14 @@ export class EngineRunner {
   /**
    * What this device will not sync whatever the selective settings say.
    *
-   * The vault's `.abele-sync-ignore` is one half, parsed by the core's own gitignore reader so
-   * that the plugin and the daemon read one file the same way. The other half is this plugin's
-   * own `data.json`. It no longer names this device — the connection is in local storage — but
-   * it is still kept to this device for now: an older build elsewhere on the vault still writes
-   * its connection into it, and taking another device's settings file is a change of its own.
-   * Selective sync cannot say it — its exclusions are folders and categories, and the category
-   * here (`pluginSettings`) covers every plugin at once — so it is ignored by name. Case-folded,
-   * because a case-insensitive disk hands the same file back under any spelling.
+   * The vault's `.abele-sync-ignore`, parsed by the core's own gitignore reader so that the
+   * plugin and the daemon read one file the same way.
+   *
+   * Not this plugin's own `data.json` any more: it names no device (the connection is in local
+   * storage), so it follows the **Plugin settings** switch like any other plugin's, and a pull
+   * that writes it is followed by a reload (`OwnSettingsWatch`). Its chat index,
+   * `chat-index.json` beside it, needs no rule here: the core files everything in a plugin's
+   * folder but its code and `data.json` as a cache that never travels.
    *
    * And every hidden path but the config folder. Obsidian indexes nothing with a dot-segment,
    * so a `.git/HEAD` or a `.DS_Store` this device pulled would be missing from the very next
@@ -472,13 +487,9 @@ export class EngineRunner {
    */
   private ignore(app: App, ignoreText: string | null): PathMatcher {
     const rules = ignoreText === null ? null : IgnoreRules.parse(ignoreText)
-    const own = caseKey(`${app.vault.configDir}/plugins/${this.host.pluginId()}/data.json`)
     const configDir = app.vault.configDir
     return {
-      ignores: (wirePath) =>
-        isHidden(wirePath, configDir) ||
-        caseKey(wirePath) === own ||
-        (rules?.ignores(wirePath) ?? false),
+      ignores: (wirePath) => isHidden(wirePath, configDir) || (rules?.ignores(wirePath) ?? false),
     }
   }
 

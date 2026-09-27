@@ -240,6 +240,11 @@ cache), so the lists show it without a network.
 applied. The vault-wide policy — merge or conflict file, the server's size cap, how long history is
 kept — is on the server, not here.
 
+The settings file itself syncs with Abele Sync like any other plugin's, while **Plugin settings**
+is on: a change written here reaches the person's other devices and is reloaded there. Two devices
+changing settings at nearly the same moment — the later save wins, and the other is in the file's
+version history.
+
 This device's connection is not a setting at all. Which server and vault it syncs, the device it
 enrolled as and the keychain slot its token is in (always named `abele-sync-device-…`), whether it
 is paused, and what of the vault it takes — the kinds of attachment, the folders it skips, its size

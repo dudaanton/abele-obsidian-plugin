@@ -45,12 +45,14 @@ export function chatIndexDiskOf(plugin: unknown): ChatIndexDisk | null {
   const host = plugin as IndexPlugin | null | undefined
   const adapter = host?.app?.vault?.adapter as IndexAdapter | undefined
   if (!adapter || typeof adapter.writeBinary !== 'function') return null
+  const configDir = host?.app?.vault?.configDir
   const dir =
     host?.manifest?.dir ??
-    `${host?.app?.vault?.configDir ?? '.obsidian'}/plugins/${host?.manifest?.id ?? 'abele'}`
+    (configDir ? `${configDir}/plugins/${host?.manifest?.id ?? 'abele'}` : null)
+  if (dir === null) return null
   const path = `${dir}/${CHAT_INDEX_FILE}`
   const encoder = new TextEncoder()
-  const bytes = (text: string): ArrayBuffer => encoder.encode(text).buffer as ArrayBuffer
+  const bytes = (text: string): ArrayBuffer => encoder.encode(text).buffer
 
   return {
     async read() {

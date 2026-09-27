@@ -11,6 +11,7 @@ import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer
 import { EngineRunner } from './engineRunner'
 import { factoryOf, transportOf, type SyncServiceDeps } from './environment'
 import { noop, SerialQueue } from './queue'
+import { messageOf } from './messages'
 import { DISCONNECTED_STATUS, type SyncStatus } from './status'
 import { StatusBoard } from './statusBoard'
 
@@ -116,6 +117,7 @@ export class SyncService {
       token: () => this.keeper.token(),
       damage: () => this.keeper.damage(),
       serialise: <T>(fn: () => Promise<T>) => this.serialise(fn),
+      settingsArrived: () => this.settingsArrived(),
     },
     this.board
   )
@@ -392,10 +394,10 @@ export class SyncService {
    * What the running engine reads from the settings is the scripts folder; the rest of what it
    * was built on is the connection, which `updateConnection` reconciles itself.
    *
-   * The config folder is not walked here. It used to be, on the idea that a save wrote a file
-   * worth noticing at once — but the one file an Abele save writes is its own `data.json`, which
-   * never syncs, so every save paid a `stat` per config file to find nothing. What Obsidian
-   * writes there is found by the poll, as ever.
+   * The config folder is not walked here. The one file an Abele save writes is its own
+   * `data.json`, which syncs now, and the poll finds it the way it finds what Obsidian writes
+   * there: within one poll, rather than a `stat` per config file on every save — screens save
+   * as they are typed in. A setting that reaches another device half a minute later loses nothing.
    *
    * Subscribed to `AbeleConfig` at `init`, so every screen that saves reaches it, and so does a
    * `data.json` reloaded from disk — which, whatever another device wrote into it, names no
@@ -407,6 +409,22 @@ export class SyncService {
    */
   onSettingsSaved(): void {
     void this.serialise(() => this.runner.reconcile())
+  }
+
+  /**
+   * A pull wrote this plugin's own `data.json`: the plugin reloads its settings, the secret
+   * store and the AI features (`onExternalSettingsChange`). Not queued behind the engine — the
+   * reload saves settings of its own, and a save queues a reconcile there.
+   */
+  private settingsArrived(): void {
+    const plugin = this.plugin
+    if (plugin === null) return
+    this.note('Abele settings arrived from another device; reloading them')
+    void Promise.resolve()
+      .then(() => plugin.onExternalSettingsChange())
+      .catch((error: unknown) =>
+        this.note(`the settings that arrived could not be reloaded: ${messageOf(error)}`)
+      )
   }
 
   /* -- Wiring ----------------------------------------------------------- */
