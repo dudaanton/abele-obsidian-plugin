@@ -20,6 +20,8 @@ describe('the held-deletes question at a start', () => {
     const prompt = new HeldDeletesPrompt({
       list: vi.fn(async () => held(12)),
       visible: () => true,
+      decide: async () => null,
+      note: () => undefined,
     })
 
     await prompt.noticed(status({ state: 'paused', heldDeletes: 12, lastSyncAt: null }))
@@ -30,7 +32,12 @@ describe('the held-deletes question at a start', () => {
 
   it('shows a decision filed while paused until the files it covers are no longer held', async () => {
     let list = held(3)
-    const prompt = new HeldDeletesPrompt({ list: async () => list, visible: () => true })
+    const prompt = new HeldDeletesPrompt({
+      list: async () => list,
+      visible: () => true,
+      decide: async () => null,
+      note: () => undefined,
+    })
     await prompt.noticed(status({ state: 'paused', heldDeletes: 3 }))
 
     expect(prompt.filed('confirm', ['f0', 'f1', 'f2'], false)).toBe(false)

@@ -33,6 +33,13 @@ export interface HeldHost {
   list(): Promise<HeldDelete[]>
   /** Whether the app is in front, where a dialog can be seen. */
   visible(): boolean
+  /** Hand a decision to the running engine (`EngineRunner.decideDeletes`); null without one. */
+  decide(
+    kind: FiledDecision['kind'],
+    fileIds: readonly string[]
+  ): Promise<{ decided: number; applied: boolean } | null>
+  /** A line for the sync log. */
+  note(text: string): void
 }
 
 export class HeldDeletesPrompt {
@@ -112,6 +119,26 @@ export class HeldDeletesPrompt {
     this.decided.value = { kind, count: fileIds.length }
     this.decidedIds = new Set(fileIds)
     return replaced
+  }
+
+  /** See `SyncService.decideDeletes`: the decision, filed, and the hold read again. */
+  async decide(
+    kind: FiledDecision['kind'],
+    fileIds: readonly string[]
+  ): Promise<{ decided: number; applied: boolean } | null> {
+    const verb = kind === 'confirm' ? 'deleting everywhere' : 'putting back'
+    this.host.note(`${verb} ${fileIds.length} held file(s)`)
+    const result = await this.host.decide(kind, fileIds)
+    if (result !== null && result.decided > 0) {
+      const replaced = this.filed(kind, fileIds, result.applied)
+      if (replaced && !result.applied) {
+        this.host.note(
+          'this answer replaces the answer given before, which was not carried out yet'
+        )
+      }
+    }
+    await this.refresh()
+    return result
   }
 
   /**

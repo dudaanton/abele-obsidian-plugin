@@ -1,6 +1,6 @@
 import { Platform, type App } from 'obsidian'
 import { ref, type Ref } from 'vue'
-import { normalizeServerUrl } from '@abele/sync-protocol'
+import { normalizeServerUrl, serverUrlProblem } from '@abele/sync-protocol'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { isDeviceSecretId, secrets } from '@/secrets/SecretStore'
 import {
@@ -22,7 +22,9 @@ import {
   type ConnectionEdit,
   type ConnectionPatch,
 } from './enrolment'
+import { joinOf } from './joinState'
 import type { LocalStorage } from './ledgerId'
+import type { SyncState } from './status'
 
 /**
  * This device's connection as the service holds it: read out of the vault's local storage,
@@ -219,5 +221,24 @@ export class ConnectionKeeper {
     if (!isDeviceSecretId(id)) return null
     const secret = secrets().device.get(id)
     return secret === '' ? null : secret
+  }
+
+  /**
+   * What the status says before anything is opened (`SyncService.announce`): `joining` for a
+   * join still to be answered, which pulls nothing, `paused`, or `syncing` — when the connection
+   * names a server the address rule allows, a vault, and a device token the keychain holds. Null
+   * otherwise: a refused address pulls nothing, and `reconcile` says why.
+   */
+  announced(): SyncState | null {
+    const connection = this.connection.value
+    if (
+      connection.serverUrl === '' ||
+      connection.vaultId === '' ||
+      serverUrlProblem(connection.serverUrl) !== null ||
+      this.token() === null
+    ) {
+      return null
+    }
+    return joinOf(connection)?.ask ? 'joining' : connection.paused ? 'paused' : 'syncing'
   }
 }

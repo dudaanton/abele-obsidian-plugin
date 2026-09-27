@@ -1,5 +1,5 @@
 import { Platform, type App } from 'obsidian'
-import { ref, toRaw, type Ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import type {
   DeferredKept,
   DeleteDecision,
@@ -7,30 +7,21 @@ import type {
   StateEntry,
   VaultClient,
 } from '@abele/sync-core'
-import {
-  serverUrlProblem,
-  type ChangeItem,
-  type DeviceInfo,
-  type JoinPrefer,
-  type VaultInfo,
-} from '@abele/sync-protocol'
+import type { ChangeItem, DeviceInfo, JoinPrefer, VaultInfo } from '@abele/sync-protocol'
 import type AbelePlugin from '@/main'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import type { DeviceConnection } from './connection'
 import { ConnectionKeeper } from './connectionKeeper'
-import { Enrolment, type ConnectionEdit, type VaultChoice } from './enrolment'
+import type { ConnectionEdit, VaultChoice } from './enrolment'
 import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer/connection'
-import { EngineRunner } from './engineRunner'
-import { finishJoin, joinOf, tellJoinWaiting } from './joinState'
-import { HeldDeletesPrompt } from './heldDeletes'
-import { pluginNamesIn, StagedSettingsPrompt, type AppliedSettings } from './stagedSettings'
+import { tellJoinWaiting } from './joinState'
+import type { AppliedSettings } from './stagedSettings'
 import { listDevices, revokeDevice } from './devices'
-import { obsidianReloader } from './reload'
 import { watchTheFront } from './phone'
-import { ownSettingsPath, settingsArrived, settingsMeaning } from './ownSettings'
-import { askJoin, type JoinQuestion } from './join'
-import { factoryOf, transportOf, type SyncServiceDeps } from './environment'
+import type { JoinQuestion } from './join'
+import type { SyncServiceDeps } from './environment'
 import { noop, SerialQueue } from './queue'
+import { wireParts, type ServiceParts } from './serviceParts'
 import { DISCONNECTED_STATUS, type SyncStatus } from './status'
 import { StatusBoard } from './statusBoard'
 
@@ -56,7 +47,8 @@ export type { SyncServiceDeps } from './environment'
  * the connection record is `connectionKeeper.ts`. `connect` and `chooseVault` build one,
  * `disconnect` takes it away — those verbs are in `enrolment.ts`, since none of them is the
  * engine's business — and `updateConnection` and `onSettingsSaved` build another when what the
- * running one was built on has changed. This class is the facade the screens and the agent see.
+ * running one was built on has changed. `serviceParts.ts` makes those parts and wires them to one
+ * another; this class is the facade the screens and the agent see.
  *
  * ## The phone
  *
@@ -126,75 +118,32 @@ export class SyncService {
   /** Everything that touches the engine, one at a time (`queue.ts`). */
   private readonly queue = new SerialQueue()
 
-  /** The engine itself: building, keeping in step, taking down (`engineRunner.ts`). */
-  private readonly runner = new EngineRunner(
-    {
-      app: () => this.app,
-      manifest: () => this.plugin?.manifest ?? { id: 'abele' },
-      deps: () => this.deps,
-      connection: () => this.connection.value,
-      token: () => this.keeper.token(),
-      damage: () => this.keeper.damage(),
-      serialise: <T>(fn: () => Promise<T>) => this.serialise(fn),
-      settingsArrived: (replaced) =>
-        settingsArrived({ plugin: this.plugin, note: (text) => this.note(text) }, replaced),
-      settingsMeaning: () => settingsMeaning(this.plugin),
-      joined: (join) =>
-        finishJoin(
-          {
-            connection: () => this.connection.value,
-            save: (patch) => this.keeper.save(patch),
-            note: (text) => this.note(text),
-            reconcile: () => void this.serialise(() => this.runner.reconcile()),
-          },
-          join
-        ),
-      synced: (report) => void this.settingsPrompt.reported(report),
-    },
-    this.board
-  )
-
-  /** Setting this device up and taking it down again (`enrolment.ts`). */
-  private readonly enrolment = new Enrolment({
+  /** The runner, the enrolment verbs and the two prompts, wired together (`serviceParts.ts`). */
+  private readonly parts: ServiceParts = wireParts({
     app: () => this.app,
-    transport: () => transportOf(this.deps),
-    factory: () => factoryOf(this.deps),
-    note: (text) => this.note(text),
+    plugin: () => this.plugin,
+    deps: () => this.deps,
+    keeper: this.keeper,
+    board: this.board,
     connection: () => this.connection.value,
-    saveConnection: (patch) => this.keeper.save(patch),
+    note: (text) => this.note(text),
     serialise: <T>(fn: () => Promise<T>) => this.serialise(fn),
-    teardown: () => this.runner.teardown(),
-    reconcile: () => this.runner.reconcile(),
     telling: (line) => {
       this.telling.value = line
     },
   })
 
-  /**
-   * Many files deleted at once, held back by the engine, and the question about them
-   * (`heldDeletes.ts`). Told of every status; the dialog and the Sync tab read it.
-   */
-  readonly heldPrompt = new HeldDeletesPrompt({
-    list: () => this.runner.heldDeletes(),
-    visible: () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
-  })
+  /** The engine itself: building, keeping in step, taking down (`engineRunner.ts`). */
+  private readonly runner = this.parts.runner
 
-  /**
-   * Obsidian settings changed on another device, staged by the engine until the person says
-   * what to do with them, and the question about them (`stagedSettings.ts`). Its `reloader` is
-   * the seam a test replaces so that "Reload now" reloads nothing.
-   */
-  readonly settingsPrompt = new StagedSettingsPrompt(
-    {
-      list: () => this.runner.deferred(),
-      apply: () => this.runner.applyDeferred(),
-      keep: (paths) => this.runner.keepLocal(paths),
-      visible: () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
-      names: (ids) => pluginNamesIn(this.app, ids),
-      note: (text) => this.note(text),
-    },
-    obsidianReloader(() => this.app)
-  )
+  /** Setting this device up and taking it down again (`enrolment.ts`). */
+  private readonly enrolment = this.parts.enrolment
+
+  /** Many files deleted at once, and the question about them (`heldDeletes.ts`). */
+  readonly heldPrompt = this.parts.heldPrompt
+
+  /** Obsidian settings staged from another device, and the question about them. */
+  readonly settingsPrompt = this.parts.settingsPrompt
 
   /** Whether the visibility listener has been registered; it is registered once. */
   private watchingVisibility = false
@@ -241,9 +190,8 @@ export class SyncService {
   }
 
   /**
-   * Say a pull is coming, before anything is opened: `syncing` (or `paused`) when the connection
-   * names a server the address rule allows, a vault and a device token the keychain holds, and
-   * nothing otherwise — a refused address pulls nothing, and `reconcile` says why.
+   * Say a pull is coming, before anything is opened (`ConnectionKeeper.announced`), and nothing
+   * when none is.
    *
    * Called from `onload` as soon as the connection and the keychain are read, and again by
    * `init`. `runAfterSync` can be asked before the layout is ready — an `abele://` link that
@@ -251,17 +199,8 @@ export class SyncService {
    * gap would let a script run over a vault the first pull is about to rewrite.
    */
   announce(): void {
-    const connection = this.connection.value
-    if (
-      connection.serverUrl !== '' &&
-      connection.vaultId !== '' &&
-      serverUrlProblem(connection.serverUrl) === null &&
-      this.keeper.token() !== null
-    ) {
-      // A join still to be answered pulls nothing: no engine is built until it is.
-      const state = joinOf(connection)?.ask ? 'joining' : connection.paused ? 'paused' : 'syncing'
-      this.board.publish({ ...DISCONNECTED_STATUS, state })
-    }
+    const state = this.keeper.announced()
+    if (state !== null) this.board.publish({ ...DISCONNECTED_STATUS, state })
   }
 
   /** Read this device's connection, moving it out of `data.json`: see `ConnectionKeeper.open`. */
@@ -377,22 +316,11 @@ export class SyncService {
    * how many were decided and whether a sync carried them out — not while sync is paused, when
    * they are carried out once it resumes — or null with no engine to decide.
    */
-  async decideDeletes(
+  decideDeletes(
     kind: DeleteDecision['kind'],
     fileIds: readonly string[]
   ): Promise<{ decided: number; applied: boolean } | null> {
-    this.note(
-      `${kind === 'confirm' ? 'deleting everywhere' : 'putting back'} ${fileIds.length} held file(s)`
-    )
-    const result = await this.runner.decideDeletes(kind, fileIds)
-    if (result !== null && result.decided > 0) {
-      const replaced = this.heldPrompt.filed(kind, fileIds, result.applied)
-      if (replaced && !result.applied) {
-        this.note('this answer replaces the answer given before, which was not carried out yet')
-      }
-    }
-    await this.heldPrompt.refresh()
-    return result
+    return this.heldPrompt.decide(kind, fileIds)
   }
 
   /** The settings changes from other devices the engine holds staged, oldest first. */
@@ -467,21 +395,8 @@ export class SyncService {
    * or written; the server is asked only for its count, and a server that does not answer is
    * counted as unknown, which asks the question rather than skipping it.
    */
-  async joinQuestion(vault?: VaultInfo): Promise<JoinQuestion> {
-    const app = this.app
-    if (app === null) throw new Error('the sync service has not been started yet')
-    return askJoin({
-      app,
-      factory: factoryOf(this.deps),
-      connection: toRaw(this.connection.value),
-      token: this.keeper.token(),
-      transport: transportOf(this.deps),
-      timeoutMs: this.enrolment.revoker.timeoutMs,
-      scriptsFolder: AbeleConfig.getInstance().ai.scriptsFolder,
-      ownSettings: ownSettingsPath(app.vault.configDir, this.plugin?.manifest ?? { id: 'abele' }),
-      note: (text) => this.note(text),
-      vault,
-    })
+  joinQuestion(vault?: VaultInfo): Promise<JoinQuestion> {
+    return this.parts.joinQuestion(vault)
   }
 
   /** Answer the join question a transfer left open: see `Enrolment.answerJoin`. */
