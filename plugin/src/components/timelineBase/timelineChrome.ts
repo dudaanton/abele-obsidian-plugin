@@ -10,7 +10,12 @@ import type { Hit } from './timelineScene'
 import type { Frame } from './timelineDraw'
 import { ellipsis, fontOf, measure, withAlpha } from './timelineText'
 
-export function paintLaneNames(ctx: CanvasRenderingContext2D, f: Frame, top: number, bottom: number) {
+export function paintLaneNames(
+  ctx: CanvasRenderingContext2D,
+  f: Frame,
+  top: number,
+  bottom: number
+) {
   const { palette: p, scene } = f
   const m = scene.metrics
   if (scene.focus) return

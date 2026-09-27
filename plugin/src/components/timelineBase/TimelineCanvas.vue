@@ -46,7 +46,7 @@ import { formatYear } from '@/bases/historyDates'
 import { DESKTOP, PHONE, buildScene, type Hit, type Scene } from './timelineScene'
 import { paint } from './timelineDraw'
 import { labelWidth, readPalette, type Palette } from './timelineText'
-import { createGestures, type GestureHost, type HoverAt } from './timelineGestures'
+import { createGestures, type HoverAt } from './timelineGestures'
 
 const props = defineProps<{
   items: readonly TimelineItem[]
@@ -257,7 +257,7 @@ const gestures = createGestures({
   canCreate: () => props.canCreate,
   step: () => ticks.value.step,
   lang: () => props.lang,
-  emit: emit as GestureHost['emit'],
+  emit: emit,
 })
 const { onDown, onMove, onUp, onCancel, onLeave, onDouble, onAux, onMenu, onWheel, onKey } =
   gestures

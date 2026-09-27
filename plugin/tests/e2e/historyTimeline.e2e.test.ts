@@ -17,7 +17,7 @@
  * and nothing else.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { hasTestApi, isObsidianRunning, evalRaw, reloadApp } from './helpers/obsidianCli'
+import { hasTestApi, isObsidianRunning, evalLong, evalRaw, reloadApp } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import {
   HISTORY_COVERS,
@@ -343,7 +343,10 @@ describe.skipIf(!available)('the history timeline of a base', () => {
       await reloadApp('window.location.reload()')
     }
 
-    phone = evalAsync<Phone>(`(async () => {
+    // Started and asked after on a phone, whose real pinch and tap take their time.
+    phone = JSON.parse(
+      await evalLong(
+        `(async () => {
       ${PRELUDE}
       const report = { phone: document.body.classList.contains('is-phone'), shots: [] }
       try {
@@ -356,6 +359,27 @@ describe.skipIf(!available)('the history timeline of a base', () => {
         report.canvas = [c.clientWidth, c.clientHeight]
         report.over = overEdge(root)
         report.shots.push(await picture('timeline-phone.png'))
+        // Two fingers drawn apart zoom in: a real pinch in the middle of the screen on a phone.
+        const host = window.__e2eHost
+        const box = c.getBoundingClientRect()
+        const before = view(root).ppy
+        if (host) await host.pinch(2)
+        else {
+          const y = box.top + box.height / 3
+          pointer(root, 'pointerdown', box.left + 150, y, 'touch', 21)
+          pointer(root, 'pointerdown', box.left + 230, y, 'touch', 22)
+          for (let i = 1; i <= 5; i++) {
+            pointer(root, 'pointermove', box.left + 150 - i * 15, y, 'touch', 21)
+            pointer(root, 'pointermove', box.left + 230 + i * 15, y, 'touch', 22)
+            await frames(1)
+          }
+          pointer(root, 'pointerup', box.left + 75, y, 'touch', 21)
+          pointer(root, 'pointerup', box.left + 305, y, 'touch', 22)
+        }
+        await wait(300)
+        await frames(2)
+        report.ppy = [before, view(root).ppy]
+        report.shots.push(await picture('timeline-phone-pinched.png'))
         // Centuries: the bars of the Renaissance are wide enough for a finger.
         const tab = [...root.querySelectorAll('.abele-timeline-base__levels .abele-tabs__tab')].find((t) => t.textContent.trim() === 'Centuries')
         tab?.click()
@@ -363,37 +387,30 @@ describe.skipIf(!available)('the history timeline of a base', () => {
         go.value = '1580'
         go.dispatchEvent(new Event('input', { bubbles: true }))
         go.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+        go.blur()
+        await wait(300)
         await frames(3)
         const s = hitOf(root, 'Шекспир')
         if (s) {
           const [x, y] = centre(root, s)
-          await press(root, x, y, 'touch')
+          // A finger on a phone; a touch pointer where there is none.
+          if (host) await host.tap(x, y)
+          else await press(root, x, y, 'touch')
+          await until(() => panel(root), 3000)
+          await wait(300)
           report.picked = panel(root)?.dataset.selected
           report.rows = panelRows(root).length
           report.over = [...report.over, ...overEdge(root)]
           report.shots.push(await picture('timeline-phone-contemporaries.png'))
         }
-        // Two fingers drawn apart zoom in.
-        const box = c.getBoundingClientRect()
-        const y = box.top + box.height / 3
-        const before = view(root).ppy
-        pointer(root, 'pointerdown', box.left + 150, y, 'touch', 21)
-        pointer(root, 'pointerdown', box.left + 230, y, 'touch', 22)
-        for (let i = 1; i <= 5; i++) {
-          pointer(root, 'pointermove', box.left + 150 - i * 15, y, 'touch', 21)
-          pointer(root, 'pointermove', box.left + 230 + i * 15, y, 'touch', 22)
-          await frames(1)
-        }
-        pointer(root, 'pointerup', box.left + 75, y, 'touch', 21)
-        pointer(root, 'pointerup', box.left + 305, y, 'touch', 22)
-        await frames(2)
-        report.ppy = [before, view(root).ppy]
-        report.shots.push(await picture('timeline-phone-pinched.png'))
       } catch (e) {
         report.error = String((e && e.stack) || e)
       }
       return JSON.stringify(report)
-    })()`)
+    })()`,
+        170_000
+      )
+    ) as Phone
     console.info(`\n  ${JSON.stringify({ desktop, perf, phone })}\n`)
   }, 600_000)
 

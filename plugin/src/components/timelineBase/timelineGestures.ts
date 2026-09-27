@@ -268,7 +268,12 @@ export function createGestures(h: GestureHost) {
 
   /** Obsidian's own menu: what can be done with the note under the point, and a note at its year. */
   function showMenu(x: number, y: number, e: MouseEvent | PointerEvent) {
-    const hit = hitAt(h.hits(), x, y, e instanceof PointerEvent && e.pointerType === 'touch' ? 12 : 2)
+    const hit = hitAt(
+      h.hits(),
+      x,
+      y,
+      e instanceof PointerEvent && e.pointerType === 'touch' ? 12 : 2
+    )
     const menu = new Menu()
     if (hit && hit.kind !== 'cluster') {
       const item = hit.item
@@ -300,7 +305,7 @@ export function createGestures(h: GestureHost) {
 
   /**
    * Ctrl or Cmd with the wheel, and a trackpad's pinch, zoom; a sideways swipe or Shift moves
-   * along the years; the plain wheel scrolls the rows, or moves along when they all fit.
+   * along the years; the plain wheel scrolls the rows.
    */
   function onWheel(e: WheelEvent) {
     const p = local(e)
@@ -316,9 +321,13 @@ export function createGestures(h: GestureHost) {
       e.preventDefault()
       panBy(-dx, 0)
     } else if (dy) {
-      e.preventDefault()
-      if (h.maxScroll() > 0) panBy(0, -dy)
-      else panBy(-dy, 0)
+      // The rows scroll while they can; at their end the wheel is the page's again, so a
+      // timeline in the middle of a note does not trap the reader scrolling past it.
+      const y = h.scrollY()
+      if ((dy > 0 && y < h.maxScroll()) || (dy < 0 && y > 0)) {
+        e.preventDefault()
+        panBy(0, -dy)
+      }
     }
   }
 

@@ -82,10 +82,10 @@
     <!-- On the window's body: a leaf clips what is inside it, a card near its edge included. -->
     <Teleport v-if="hover" :to="cardHost">
       <TimelineCard
-      :item="hover.item"
-      :x="hover.x"
-      :y="hover.y"
-      :t="hover.t"
+        :item="hover.item"
+        :x="hover.x"
+        :y="hover.y"
+        :t="hover.t"
         :selected="selected"
         :lang="lang"
       />
@@ -431,6 +431,15 @@ function createInMiddle() {
 
   .abele-timeline-base__body {
     flex-direction: column;
+  }
+
+  // On a phone the drawing keeps the larger share of the height under a pick.
+  .abele-timeline-canvas {
+    flex-grow: 3;
+  }
+
+  .abele-timeline-panel {
+    flex-grow: 2;
   }
 }
 </style>

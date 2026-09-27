@@ -169,15 +169,17 @@ describe('packing a row into lines', () => {
     expect(tight.placed.get(y)).toEqual({ line: 0, labeled: false })
   })
 
-  it('packs thousands of bars quickly', () => {
-    const many = Array.from({ length: 5000 }, (_, i) =>
+  // A loose bound, as the calendar's: ten thousand bars take a tenth of a second alone, a second
+  // on a machine running several checks at once, and far longer if the packing went quadratic.
+  it('packs thousands of bars without going quadratic', () => {
+    const many = Array.from({ length: 10000 }, (_, i) =>
       item({ title: `Person ${i}`, start: String(1000 + (i % 900)), end: String(1060 + (i % 900)) })
     )
     const started = performance.now()
     const pack = packLane(many, { ...PACK, ppy: 2, maxRows: 40 })
-    expect(pack.placed.size + pack.overflow.length).toBe(5000)
-    expect(performance.now() - started).toBeLessThan(1500)
-  })
+    expect(pack.placed.size + pack.overflow.length).toBe(10000)
+    expect(performance.now() - started).toBeLessThan(5000)
+  }, 30_000)
 })
 
 describe('what does not fit', () => {

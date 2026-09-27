@@ -166,6 +166,14 @@ describe('about, perhaps, somewhere between', () => {
     expect(parse('1440-12')?.precision).toBe('month')
   })
 
+  it('reads a range of centuries, the unit written once', () => {
+    const d = parse('XVI–XVII вв.')!
+    expect([d.lo, d.hi]).toEqual([1501, 1701])
+    const bc = parse('V–IV вв. до н.э.')!
+    expect([bc.lo, bc.hi]).toEqual([astroYear(-500), astroYear(-301) + 1])
+    expect(shape(parse('16th–17th centuries'))).toEqual(shape(d))
+  })
+
   it('reads a range before Christ, the era written once at the end', () => {
     const d = parse('490–479 до н.э.')!
     expect([d.lo, d.hi]).toEqual([astroYear(-490), astroYear(-479) + 1])

@@ -29,7 +29,9 @@ zero, so Augustus (63 BC – AD 14) lived 76 years.
 
 ## Moving about
 
-- Drag to move along the years and up and down the rows; on a phone, with one finger.
+- Drag to move along the years and up and down the rows; on a phone, with one finger. A
+  sideways swipe on a trackpad, or Shift with the wheel, moves along the years too; the wheel
+  alone scrolls the rows.
 - Zoom with a pinch, Ctrl or Cmd with the wheel, or the **Millennia**, **Centuries**,
   **Decades**, **Years** buttons (**Days** appears when your notes have days).
 - Type a year or a name into the field at the top and press Enter to go there.

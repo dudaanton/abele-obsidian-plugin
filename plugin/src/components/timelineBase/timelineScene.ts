@@ -216,7 +216,10 @@ function focusScene(
 const MAX_ERA_ROWS = 3
 
 /** Eras that overlap in time — the Renaissance and the Middle Ages — on lines of their own. */
-function eraLayout(eras: readonly TimelineItem[]): { eraLines: Map<TimelineItem, number>; eraRows: number } {
+function eraLayout(eras: readonly TimelineItem[]): {
+  eraLines: Map<TimelineItem, number>
+  eraRows: number
+} {
   const ends: number[] = []
   const eraLines = new Map<TimelineItem, number>()
   for (const era of eras) {

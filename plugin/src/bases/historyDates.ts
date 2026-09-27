@@ -180,7 +180,7 @@ const PARTS: [RegExp, number, number][] = [
 ]
 
 const CENTURY_RE =
-  /^([ivxlc]+|\d{1,2})(?:-?(?:й|ый|ой|th|st|nd|rd))?\s*(век|века|в\.|в|c\.|c|cent\.?|century)$/
+  /^([ivxlc]+|\d{1,2})(?:-?(?:й|ый|ой|th|st|nd|rd))?\s*(век|века|вв\.|вв|в\.|в|c\.|c|cent\.?|century|centuries)$/
 const MILLENNIUM_RE =
   /^([ivxlc]+|\d{1,2})(?:-?(?:е|й|ое|th|st|nd|rd))?\s*(тыс\.|тыс|тысячелетие|тысячелетия|millennium)$/
 
@@ -340,7 +340,13 @@ function parseSides(sides: [string, string], opts: HistParseOptions): [HistDate,
   const lb = b.toLowerCase()
   const [, eraB] = splitEra(lb.replace(/[?~%]$/, ''))
   const [, eraA] = splitEra(la.replace(/[?~%]$/, ''))
-  const start = parseQualified(la, eraA ?? eraB, opts)
+  // "XVI–XVII вв.", "5th–4th centuries BC": the unit written once, after the second.
+  const unit = /\s*(вв?\.?|век|века|веков|c\.|cent\.?|centuries|century)(\s.*)?$/.exec(lb)
+  const start =
+    parseQualified(la, eraA ?? eraB, opts) ??
+    (unit && /^([ivxlc]+|\d{1,2})(-?(й|th|st|nd|rd))?$/.test(la.trim())
+      ? parseQualified(`${la.trim()} век`, eraA ?? eraB, opts)
+      : null)
   if (!start) return null
   if (NOW_RE.test(lb)) return [whole(start, a), nowDate(opts, b)]
   const end = parseQualified(lb, null, opts)

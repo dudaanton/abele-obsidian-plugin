@@ -52,6 +52,7 @@ the way a person would, in Russian or English:
 | `XVI век`, `16 век`, `16th century`, `XVI в.` | a century (the 16th is 1501–1600) |
 | `начало XVI века`, `вторая половина XVI века`, `early 16th century` | a third, a half or a quarter of one |
 | `III тыс. до н.э.`, `3rd millennium BC` | a millennium |
+| `XVI–XVII вв.`, `V–IV вв. до н.э.` | from one century to another |
 | `ок. 1450`, `~1450`, `c. 1450` | about a year |
 | `1450?` | perhaps that year |
 | `1440–1455` in a start or end field | somewhere between — not a span |

@@ -280,10 +280,21 @@ function paintItem(
   if (labeled) {
     const w = labelWidth(ctx, p, item, f.lang, f.covers, h)
     const inside = w + 2 * PAD <= x1 - x0
-    // Inside, the label keeps to the screen's left edge while its bar runs on past it.
-    const lx = inside ? Math.min(Math.max(x0 + PAD, areaX + PAD), x1 - PAD - w) : x1 + PAD
-    const end = paintLabel(ctx, f, item, lx, y, h, inside)
-    if (!inside) right = end
+    // Inside, the label keeps to the screen's left edge while its bar runs on past it — as long
+    // as what is left of the bar on screen holds it; a label cut by the edge says nothing.
+    const shown = x1 - Math.max(x0, areaX)
+    if (!inside) {
+      if (x1 + PAD >= areaX) right = paintLabel(ctx, f, item, x1 + PAD, y, h, false)
+    }
+    else if (shown >= w + 2 * PAD) {
+      const lx = Math.min(Math.max(x0 + PAD, areaX + PAD), x1 - PAD - w)
+      paintLabel(ctx, f, item, lx, y, h, true)
+    } else {
+      // Only the name, when the dates no longer fit what is left of the bar on screen.
+      const name = measure(ctx, item.title, fontOf(f.palette, true))
+      if (shown >= name + 2 * PAD)
+        paintLabel(ctx, f, item, Math.max(x0, areaX) + PAD, y, h, true, false)
+    }
   }
   hits.push({ kind: 'item', item, x: x0, y, w: Math.max(4, right - x0), h })
 }
@@ -296,10 +307,11 @@ function paintLabel(
   x: number,
   y: number,
   h: number,
-  inside: boolean
+  inside: boolean,
+  full = true
 ): number {
   const p = f.palette
-  if (f.covers && item.cover) {
+  if (full && f.covers && item.cover) {
     const d = h + 2
     const cx = x + d / 2
     const cy = y + h / 2
@@ -332,6 +344,7 @@ function paintLabel(
   ctx.fillStyle = p.text
   ctx.fillText(item.title, x, mid)
   x += measure(ctx, item.title, ctx.font) + 5
+  if (!full) return x
   const dates = datesOf(item, f.lang)
   ctx.font = fontOf(p, false)
   ctx.fillStyle = inside ? p.text : p.muted
@@ -340,4 +353,3 @@ function paintLabel(
   if (inside) ctx.globalAlpha /= 0.75
   return x + measure(ctx, dates, ctx.font)
 }
-
