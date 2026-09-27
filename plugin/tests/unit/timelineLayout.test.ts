@@ -12,6 +12,7 @@ import {
   isPoint,
   kindOf,
   packLane,
+  placeGroups,
   toTimelineItem,
   together,
   visibleRange,
@@ -123,6 +124,22 @@ const PACK: PackOptions = {
   labelPx: (i) => i.title.length * 7,
 }
 
+describe('the rows of a base', () => {
+  it('draws the eras group behind, also when the filters leave nothing else', () => {
+    expect(placeGroups(['Эпохи'], '')).toEqual([expect.objectContaining({ lane: -1, era: true })])
+    expect(placeGroups(['Rulers', 'Eras', 'Events'], '').map((p) => [p.lane, p.era])).toEqual([
+      [0, false],
+      [-1, true],
+      [1, false],
+    ])
+    expect(placeGroups(['Periods'], 'periods')[0].era).toBe(true)
+  })
+
+  it('makes one plain row of a single group that is not the eras', () => {
+    expect(placeGroups(['None'], '')).toEqual([{ lane: 0, label: '', color: null, era: false }])
+  })
+})
+
 describe('packing a row into lines', () => {
   it('puts bars that do not touch on one line, and the next one below', () => {
     const a = item({ title: 'A', start: '1500', end: '1550' })
@@ -230,6 +247,15 @@ describe('contemporaries', () => {
     const bosch = item({ title: 'Bosch', start: 'ок. 1450', end: '1516', born: true })
     const leonardo = item({ title: 'Leonardo', start: '1452', end: '1519', born: true })
     expect(together(leonardo, [bosch])[0]).toMatchObject({ years: 64, approx: true })
+  })
+
+  it('does not count someone alive after an exact death day', () => {
+    const exact = item({ title: 'Exact', start: '1564-04-26', end: '1616-04-23', born: true })
+    expect(ageAt(exact, 1617 + 68 / 365)).toBeNull()
+    expect(ageAt(exact, 1616 + 100 / 366)).toBe(51)
+    // A death known only by its year covers that whole year.
+    expect(ageAt(shakespeare, 1616.9)).toBe(52)
+    expect(ageAt(shakespeare, 1617.1)).toBeNull()
   })
 
   it('tells an age at a year', () => {

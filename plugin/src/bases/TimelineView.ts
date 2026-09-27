@@ -14,10 +14,10 @@ import {
 import { nanoid } from 'nanoid'
 import { ref, shallowRef, type Ref, type ShallowRef } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
-import { KIT_COLORS, type KitColor } from '@/constants/colors'
+import type { KitColor } from '@/constants/colors'
 import { coverLink, resourceUrl } from '@/helpers/resourceUrl'
 import { todayPoint, type HistLang } from './historyDates'
-import { toTimelineItem, type TimelineItem } from './timelineLayout'
+import { placeGroups, toTimelineItem, type TimelineItem } from './timelineLayout'
 
 export const TIMELINE_VIEW_ID = 'abele-timeline'
 export const TIMELINE_ID_ATTR = 'abele-timeline-base-id'
@@ -61,13 +61,8 @@ export const TIMELINE_GUESS = {
 
 /** A start read from one of these is a birth: without an end, the note is a life. */
 const BIRTH_KEYS = new Set(['born', 'birth', 'рождение', 'родился'])
-/** A group by one of these names is drawn as eras behind everything, unless the view says. */
-const ERA_GROUPS = new Set(['era', 'eras', 'epoch', 'epochs', 'эпоха', 'эпохи', 'эра', 'эры'])
 
 export const DEFAULT_ABOUT_YEARS = 5
-
-/** Group colours, in order, the calendar's way; grey is left out, it reads as no colour. */
-const GROUP_COLORS = KIT_COLORS.filter((c) => c !== 'grey')
 
 export interface TimelineLane {
   label: string
@@ -259,17 +254,16 @@ export class TimelineView extends BasesView {
     const placeOf = new Map<BasesEntry, { lane: number; color: KitColor | null; era: boolean }>()
     const labelOf = (key: { toString(): string } | null | undefined) =>
       key == null || key instanceof NullValue ? 'None' : key.toString() || 'None'
-    if (grouped.length > 1) {
-      grouped.forEach((group, i) => {
-        const label = labelOf(group.key)
-        const lower = label.toLowerCase()
-        const era = eraName ? lower === eraName : ERA_GROUPS.has(lower)
-        const color = GROUP_COLORS[i % GROUP_COLORS.length]
-        const lane = era ? -1 : lanes.length
-        if (!era) lanes.push({ label, color, count: 0 })
-        for (const entry of group.entries) placeOf.set(entry, { lane, color, era })
-      })
-    }
+    const places = placeGroups(
+      grouped.map((g) => labelOf(g.key)),
+      eraName
+    )
+    grouped.forEach((group, i) => {
+      const place = places[i]
+      if (place.lane >= lanes.length && !place.era)
+        lanes.push({ label: place.label, color: place.color, count: 0 })
+      for (const entry of group.entries) placeOf.set(entry, place)
+    })
     if (!lanes.length) lanes.push({ label: '', color: null, count: 0 })
 
     const links = weightProp ? null : linkCounts()

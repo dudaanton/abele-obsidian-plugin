@@ -4,7 +4,7 @@
  * into "+N"; how many are alive at each point; who lived at the same time as whom. Pure, no
  * Obsidian and no drawing.
  */
-import type { KitColor } from '@/constants/colors'
+import { KIT_COLORS, type KitColor } from '@/constants/colors'
 import { parseHistDate, parsePeriod, type HistDate, type HistParseOptions } from './historyDates'
 
 export type TimelineKind = 'person' | 'event' | 'period' | 'era'
@@ -146,6 +146,48 @@ export function toTimelineItem(raw: RawTimelineEntry, opts: HistParseOptions): T
 
 /** A point on the line, not a stretch: an event on one date. */
 export const isPoint = (item: TimelineItem): boolean => item.ending === 'none' && !item.start.fuzzy
+
+// ---- rows -----------------------------------------------------------------------------------
+
+/** Group names drawn as eras behind everything, unless the view names its own. */
+export const ERA_GROUPS = new Set([
+  'era',
+  'eras',
+  'epoch',
+  'epochs',
+  'эпоха',
+  'эпохи',
+  'эра',
+  'эры',
+])
+
+export interface GroupPlace {
+  /** The row; -1 for the eras. */
+  lane: number
+  label: string
+  color: KitColor | null
+  era: boolean
+}
+
+/**
+ * Where each of the base's groups goes: the eras group behind everything — also when it is the
+ * only group the filters leave — and every other group a row of its own colour, in the base's
+ * order. A single group that is not the eras is one plain row with no name, as with no grouping.
+ */
+export function placeGroups(labels: readonly string[], eraName: string): GroupPlace[] {
+  const colors = GROUP_COLORS
+  const isEra = (label: string) =>
+    eraName ? label.toLowerCase() === eraName : ERA_GROUPS.has(label.toLowerCase())
+  const rows = labels.filter((l) => !isEra(l)).length
+  let lane = 0
+  return labels.map((label, i) => {
+    if (isEra(label)) return { lane: -1, label, color: colors[i % colors.length], era: true }
+    if (labels.length === 1) return { lane: lane++, label: '', color: null, era: false }
+    return { lane: lane++, label, color: rows > 0 ? colors[i % colors.length] : null, era: false }
+  })
+}
+
+const GROUP_COLORS = KIT_COLORS.filter((c) => c !== 'grey')
 
 // ---- packing into lines ---------------------------------------------------------------------
 
@@ -413,7 +455,10 @@ export function together(selected: TimelineItem, items: readonly TimelineItem[])
 export function ageAt(item: TimelineItem, t: number): number | null {
   if (item.ending === 'none' || item.kind === 'era') return null
   if (t < item.start.at) return null
-  const life = lifeOf(item)
-  if (life && t > life[1] + 1) return null
+  // Alive to the end of what the death date says: its day when that is known, its whole year
+  // when only the year is, the latest it may be when it is vague.
+  // With no death at all, to where the drawing of the life ends.
+  const until = item.end ? (item.end.now ? item.to : item.end.hi) : (lifeOf(item)?.[1] ?? item.to)
+  if (t >= until && item.ending !== 'now') return null
   return Math.floor(t - item.start.at + 1e-9)
 }
