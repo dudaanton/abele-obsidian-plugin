@@ -213,10 +213,7 @@ export default class AbelePlugin extends Plugin {
     }
     setKeyboardDiagnostics(AbeleConfig.getInstance().keyboardDiagnostics)
 
-    dayjs.updateLocale('en', {
-      weekStart: AbeleConfig.getInstance().weekStartsOnMonday ? 1 : 0,
-    })
-
+    // The store takes the week start and the rest of what it draws from out of the settings.
     startupStep('store', () => GlobalStore.getInstance().init(this.app))
     // Under every tool that writes, so a chat can take back what its agent changed.
     startupStep('change tracker', () => ChangeTracker.install(this.app))
@@ -1416,6 +1413,7 @@ export default class AbelePlugin extends Plugin {
       )
     await AbeleConfig.getInstance().moveLegacySecrets()
     AgentRegistry.getInstance().notifyConfigReloaded()
+    GlobalStore.getInstance().applySettings()
     this.syncAiFeatures()
     applyQuickButton()
   }

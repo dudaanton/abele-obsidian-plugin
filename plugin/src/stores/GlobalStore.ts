@@ -15,11 +15,12 @@ import { parseNoteContent, renderTemplate } from '@/helpers/notesUtils'
 import { normalizePath, wikilinkToPath } from '@/helpers/pathsHelpers'
 import { DATE_FORMAT } from '@/constants/dates'
 import dayjs from 'dayjs'
+import updateLocale from 'dayjs/plugin/updateLocale'
 import { getAvailablePath, readFileContent } from '@/helpers/vaultUtils'
 import { syncTaskFileName } from '@/helpers/taskFileName'
 import { transactionFileTarget } from '@/helpers/transactionFileName'
 import { VaultWatcher } from '@/helpers/VaultWatcher'
-import { AbeleConfig } from '@/services/AbeleConfig'
+import { AbeleConfig, DEFAULT_SETTINGS } from '@/services/AbeleConfig'
 import type { FormField } from '@/scripting/types'
 import { App, TFile } from 'obsidian'
 import { computed, ref, shallowRef, toRaw } from 'vue'
@@ -111,7 +112,12 @@ export class GlobalStore {
    */
   public readonly chatLinksVersion = ref(0)
 
-  public readonly weekStartsOnMonday = ref(AbeleConfig.getInstance().weekStartsOnMonday)
+  /**
+   * Set from the settings by `applySettings`, never read from them here: the store can be built
+   * while `data.json` is still loading (the `skill` tool looks at `app` to describe itself), and
+   * a value copied then is the unset one — weeks started on Sunday with Monday switched on.
+   */
+  public readonly weekStartsOnMonday = ref(DEFAULT_SETTINGS.weekStartsOnMonday !== false)
 
   public readonly selectedJournal = computed(() => {
     if (!this.currentFile.value) return
@@ -138,10 +144,24 @@ export class GlobalStore {
     return this._app
   }
 
+  /**
+   * Takes what the views draw from out of the loaded settings. Run at `init`, which comes after
+   * the settings load (and again after the plugin is turned off and on, when this same instance
+   * is reused), and whenever `data.json` arrives from another device.
+   */
+  public applySettings(): void {
+    const monday = AbeleConfig.getInstance().weekStartsOnMonday !== false
+    this.weekStartsOnMonday.value = monday
+    dayjs.extend(updateLocale)
+    dayjs.updateLocale('en', { weekStart: monday ? 1 : 0 })
+  }
+
   public init(app: App): void {
     if (this.initialized.value) {
       return
     }
+
+    this.applySettings()
 
     this._app = app
     this._vaultWatcher = new VaultWatcher(app)
