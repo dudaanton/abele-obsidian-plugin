@@ -10,6 +10,7 @@ import {
   TFolder,
 } from 'obsidian'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
+import { applySettingsLook } from '@/helpers/settingsLook'
 import './styles.css'
 import { GlobalStore } from './stores/GlobalStore'
 import { pasteFromClipboard } from './commands/pasteFromClipboard'
@@ -301,14 +302,7 @@ export default class AbelePlugin extends Plugin {
       // Announce before layout-ready so cold-start links wait for the first pull.
       SyncService.getInstance().announce()
 
-      // Apply body classes from settings
-      if (AbeleConfig.getInstance().fullWidthSidebars) {
-        document.body.classList.add('abele-full-width-sidebars')
-      }
-      if (AbeleConfig.getInstance().halfWidthSidebarsOnTablet) {
-        document.body.classList.add('abele-half-width-sidebars')
-      }
-      setKeyboardDiagnostics(AbeleConfig.getInstance().keyboardDiagnostics)
+      applySettingsLook(AbeleConfig.getInstance())
       this.initSync()
 
       // The store takes the week start and the rest of what it draws from out of the settings.
@@ -1382,8 +1376,8 @@ export default class AbelePlugin extends Plugin {
       })
     )
 
-    // The same question at startup, which is where most of it is answered: the index is
-    // `data.json` and does not merge, so every chat this machine did not write is behind.
+    // The same question at startup, which is where most of it is answered: the index is this
+    // device's own cache (`chat-index.json`), so every chat another device wrote is behind.
     this.app.workspace.onLayoutReady(() => {
       void ChatStorage.getInstance().refreshHistory()
     })
@@ -1581,5 +1575,6 @@ export default class AbelePlugin extends Plugin {
     GlobalStore.getInstance().applySettings()
     this.syncAiFeatures()
     applyQuickButton()
+    applySettingsLook(AbeleConfig.getInstance())
   }
 }
