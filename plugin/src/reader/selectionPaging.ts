@@ -335,8 +335,13 @@ export class SelectionPager {
    * stops drawing it once the page has scrolled (seen in the iOS lab): turned away and back, the
    * words were selected and nothing showed it, so the next touch let them go. Setting the same
    * selection again, with the page's frame focused, brings it back.
+   *
+   * Not while a field outside the page is being typed into — a script's dialog opened over the
+   * selected words: the keyboard coming up resizes the page, the engine says so as a relocate,
+   * and focusing the frame here took the field's focus and sent the keyboard away again.
    */
   private repaint(): void {
+    if (typingElsewhere(this.doc)) return
     const sel = this.doc.getSelection()
     if (!sel || !sel.rangeCount || sel.isCollapsed || !sel.anchorNode || !sel.focusNode) return
     const anchor: Point = [sel.anchorNode, sel.anchorOffset]
@@ -458,8 +463,8 @@ export class SelectionPager {
     const focus: Point =
       dir > 0 ? [word.endContainer, word.endOffset] : [word.startContainer, word.startOffset]
     // The page takes focus back from the button that was tapped: a selection in a frame without
-    // focus is neither drawn nor given handles on iOS.
-    this.doc.defaultView?.focus()
+    // focus is neither drawn nor given handles on iOS. Never from a field being typed into.
+    if (!typingElsewhere(this.doc)) this.doc.defaultView?.focus()
     this.set(anchor, focus)
     return true
   }
@@ -500,6 +505,19 @@ export class SelectionPager {
     }
     return this.stepper.step(dir, from)
   }
+}
+
+/** What takes typing: a field, a list to pick from, editable text. */
+const TYPED = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
+
+/**
+ * Whether a field in the app around the page has the focus — a dialog's, say. The page's frame
+ * focused would take it from the field, and on a phone the keyboard with it.
+ */
+export function typingElsewhere(doc: Document): boolean {
+  const app = doc.defaultView?.frameElement?.ownerDocument ?? doc
+  const active = app.activeElement
+  return !!active && active !== app.body && active.matches(TYPED)
 }
 
 /** The pager of each page, so a tap on the page can reach it. */

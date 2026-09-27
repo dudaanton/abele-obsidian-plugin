@@ -493,6 +493,26 @@ describe('a selection on pages turned one at a time', () => {
     expect(selected()).toBe('beta gamma delta.Epsilon')
   })
 
+  it('is not drawn again, and takes no focus, while a field in a dialog over the book is typed into', () => {
+    // A script run on the words opened a dialog; the keyboard coming up for its field resized
+    // the page, the engine said so as a relocate, and the redraw focused the page's frame —
+    // the field lost focus and the keyboard went away again at once.
+    const { a, renderer, handle, doc } = pager()
+    handle([a, 6], [a, 10])
+    const field = doc.createElement('input')
+    doc.body.appendChild(field)
+    field.focus()
+    const sel = doc.getSelection()!
+    const set = vi.spyOn(sel, 'setBaseAndExtent')
+    const focus = vi.spyOn(doc.defaultView!, 'focus')
+    renderer.dispatchEvent(new Event('relocate'))
+    vi.advanceTimersByTime(40)
+    expect(focus).not.toHaveBeenCalled()
+    expect(set).not.toHaveBeenCalled()
+    expect(doc.activeElement).toBe(field)
+    field.remove()
+  })
+
   it('stops at the end of the chapter and says so, once', async () => {
     const { a, renderer, told, pager: p, handle } = pager({ page: 6, pages: 8 })
     handle([a, 6], [a, 10])
