@@ -73,6 +73,7 @@ const DIALOGS = [
   'transfer-preview',
   'transfer-scan',
   'agent-editor',
+  'lint-rule',
   'ask-name',
   'confirm-action',
   'discussion-remove',

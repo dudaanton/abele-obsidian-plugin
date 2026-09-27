@@ -23,6 +23,9 @@ import TransferSendModal from '@/components/settings/transfer/TransferSendModal.
 import TransferPreviewModal from '@/components/settings/transfer/TransferPreviewModal.vue'
 import TransferScanModal from '@/components/settings/transfer/TransferScanModal.vue'
 import AgentEditorModal from '@/components/settings/ai/AgentEditorModal.vue'
+import LintRuleModal from '@/components/settings/LintRuleModal.vue'
+import { BUILTIN_RULES } from '@/linter/rules'
+import { DEFAULT_LINTER_SETTINGS, ruleSetting } from '@/linter/settings'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { askName } from '@/modal/askName'
 import { confirmAction } from '@/modal/confirm'
@@ -124,6 +127,11 @@ const DIALOGS: Record<string, () => void> = {
   'transfer-scan': () => mountAlone(TransferScanModal),
   'agent-editor': () =>
     mountAlone(AgentEditorModal, { agentId: AgentRegistry.getInstance().list()[0]?.id ?? '' }),
+  // A rule with settings of its own, its changes going nowhere.
+  'lint-rule': () => {
+    const rule = BUILTIN_RULES.find((r) => r.params.length) ?? BUILTIN_RULES[0]
+    mountAlone(LintRuleModal, { rule, setting: ruleSetting(DEFAULT_LINTER_SETTINGS, rule) })
+  },
   'ask-name': () => void askName(GlobalStore.getInstance().app, { title: 'New script' }),
   'confirm-action': () =>
     void confirmAction(GlobalStore.getInstance().app, {
