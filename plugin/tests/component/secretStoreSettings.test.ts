@@ -178,7 +178,9 @@ describe('synced keys, on another device', () => {
     await flushPromises()
 
     expect(badge(view)).toBe('Off')
-    expect(file).toBeNull()
+    // The store leaves the file, and a marker says it was turned off: no store alone turns
+    // nothing off elsewhere.
+    expect(file).toMatchObject({ off: true })
     expect(phone.keychain.get('abele-provider-p')).toBe('sk-1')
   })
 })

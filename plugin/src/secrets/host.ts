@@ -15,7 +15,7 @@ import { voiceKeyId } from '@/ai/transcriptionSettings'
 import { readConnection } from '@/sync/connection'
 import type { LocalStorage } from '@/sync/ledgerId'
 import { SecretStore, isDeviceSecretId, type StoreHost } from './SecretStore'
-import type { SecretStoreFile } from './storeFile'
+import type { SecretStoreFile, StoreOff } from './storeFile'
 
 /**
  * Every keychain id the settings point at. The transfer sections already say, for each thing
@@ -64,7 +64,7 @@ export function pluginStoreHost(plugin: Plugin): StoreHost {
   return {
     keychain: () => plugin.app.secretStorage,
     read: () => AbeleConfig.getInstance().secretStore,
-    write: async (file: SecretStoreFile | null) => {
+    write: async (file: SecretStoreFile | StoreOff | null) => {
       const config = AbeleConfig.getInstance()
       config.secretStore = file ?? undefined
       await config.saveSettings()

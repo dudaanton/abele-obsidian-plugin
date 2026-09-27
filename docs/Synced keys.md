@@ -95,10 +95,15 @@ field for a new key.
   shorter passphrases still unlock.
 - **Remove from this device** takes the passphrase and every key in the store off this device's
   keychain. The store and other devices keep them; unlock again to get them back.
-- **Turn off** takes the store out of the settings. Every device that was unlocked keeps its
-  keys in its own keychain; a device that never unlocked gets nothing.
-- **Start over** (when locked, out of date or damaged) removes the store from the settings, for
-  when the passphrase is forgotten or the store is damaged. The keys this device has stay.
+- **Turn off** takes the store out of the settings and leaves a marker there saying it was turned
+  off. Every device that was unlocked keeps its keys in its own keychain; a device that never
+  unlocked gets nothing. Only that marker turns the store off elsewhere: a settings file that
+  simply has no store in it — a fresh install's, a settings transfer's, an older version's — is
+  not taken as one, and a device with the store keeps it and writes it back. An older version
+  that turns synced keys off writes no marker, so a device on this version puts the store back.
+- **Start over** (when locked, out of date or damaged) removes the store from the settings, with
+  the same marker, for when the passphrase is forgotten or the store is damaged. The keys this
+  device has stay.
 
 ## How it is kept safe
 

@@ -23,14 +23,17 @@ import {
   createStore,
   deviceKeyId,
   isStoreFile,
+  isStoreOff,
   keyFor,
   mergeEntries,
   readEntries,
   sameEntries,
+  storeOff,
   StoreError,
   writeEntries,
   type SecretEntries,
   type SecretStoreFile,
+  type StoreOff,
 } from './storeFile'
 
 /** Obsidian's `app.secretStorage`, as much of it as is used. */
@@ -46,8 +49,11 @@ export interface StoreHost {
   keychain(): Keychain
   /** The store as the settings hold it now; anything, since the file can be edited by hand. */
   read(): unknown
-  /** Puts the store into the settings and saves them; `null` takes it out. */
-  write(file: SecretStoreFile | null): Promise<void>
+  /**
+   * Puts the store into the settings and saves them. A `StoreOff` marker in its place says the
+   * store was turned off; `null` takes the field out, which no device reads as off.
+   */
+  write(file: SecretStoreFile | StoreOff | null): Promise<void>
   /** The keychain ids the settings point at: what moves into the store when it is made. */
   ids(): string[]
   /**
@@ -195,7 +201,14 @@ export class SecretStore {
    */
   async load(): Promise<void> {
     const file = this.host.read()
-    if (file === undefined || file === null) {
+    if (!isStoreFile(file)) {
+      // No store where this device knows one: a fresh install's file, a transfer's or an older
+      // build's won the sync, or the file was edited. None of them is anybody turning the store
+      // off, so the store stays as it is here, key and all, and the settings put it back.
+      if (this.storeId !== null && !this.endedBy(file)) {
+        console.debug('[Abele] the settings hold no synced key store; keeping this device’s')
+        return
+      }
       // Turned off on another device (or never on): the keychain keeps what it has, and the
       // key to a store that is gone is of no use to anyone.
       if (this.storeId) this.forget(deviceKeyId(this.storeId))
@@ -318,7 +331,7 @@ export class SecretStore {
     await this.saving
     this.mirror(this.entries ?? {})
     if (this.storeId) this.forget(deviceKeyId(this.storeId))
-    await this.host.write(null)
+    await this.host.write(storeOff(this.storeId))
     this.reset('off')
   }
 
@@ -329,7 +342,7 @@ export class SecretStore {
   async discard(): Promise<void> {
     await this.saving
     if (this.storeId) this.forget(deviceKeyId(this.storeId))
-    await this.host.write(null)
+    await this.host.write(storeOff(this.storeId))
     this.reset('off')
   }
 
@@ -391,6 +404,11 @@ export class SecretStore {
     // this device's next restart. Or a device-only id the file holds and `merged` no longer
     // does: the file loses it too.
     if (!sameEntries(merged, incoming)) this.persist()
+  }
+
+  /** Whether the settings say outright that the store this device knows was turned off. */
+  private endedBy(file: unknown): boolean {
+    return isStoreOff(file) && (file.id === null || file.id === this.storeId)
   }
 
   private record(id: string, value: string): void {

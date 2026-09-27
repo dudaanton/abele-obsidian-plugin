@@ -83,6 +83,28 @@ export function isStoreFile(value: unknown): value is SecretStoreFile {
   )
 }
 
+/**
+ * What the settings file holds under `secretStore` once the store was turned off, or thrown
+ * away: said outright, with the id of the store it ends.
+ *
+ * The settings file syncs, and a file without a store is also what a fresh install, a settings
+ * transfer and an older build write. Were the absence enough, any of those arriving would turn
+ * the store off on every device and make each forget its key; so only this marker does.
+ */
+export interface StoreOff {
+  off: true
+  /** The store turned off; null when the device that did it no longer knew which. */
+  id: string | null
+}
+
+export const storeOff = (id: string | null): StoreOff => ({ off: true, id })
+
+export function isStoreOff(value: unknown): value is StoreOff {
+  if (!value || typeof value !== 'object') return false
+  const marker = value as StoreOff
+  return marker.off === true && (marker.id === null || typeof marker.id === 'string')
+}
+
 /** The keychain id this device keeps the store's key under. */
 export const deviceKeyId = (storeId: string): string => `abele-store-key-${storeId}`
 

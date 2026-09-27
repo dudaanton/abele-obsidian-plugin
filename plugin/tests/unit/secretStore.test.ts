@@ -386,10 +386,13 @@ describe('removing from this device, and turning it off', () => {
     const phone = device(on)
     await phone.store.load()
     await phone.store.unlock('passphrase')
-    const macKeyId = deviceKeyId((on.file as SecretStoreFile).id)
+    const storeId = (on.file as SecretStoreFile).id
+    const macKeyId = deviceKeyId(storeId)
 
     await mac.store.disable()
-    expect(on.file).toBeNull()
+    // No store in the file, and a marker saying so: the absence alone turns nothing off.
+    expect(isStoreFile(on.file)).toBe(false)
+    expect(on.file).toEqual({ off: true, id: storeId })
     expect(mac.store.status.value).toBe('off')
     expect(mac.store.get('abele-provider-x')).toBe('sk-1')
     expect(mac.keychain.getSecret(macKeyId)).toBeNull()
@@ -398,6 +401,40 @@ describe('removing from this device, and turning it off', () => {
     expect(phone.store.status.value).toBe('off')
     expect(phone.store.get('abele-provider-x')).toBe('sk-1')
     expect(phone.keychain.getSecret(macKeyId)).toBeNull()
+  })
+
+  it('is not turned off by a settings file that simply holds no store', async () => {
+    const on = shared()
+    const mac = device(on, ['abele-provider-x'])
+    mac.keychain.setSecret('abele-provider-x', 'sk-1')
+    await mac.store.enable('passphrase', FAST)
+    const phone = device(on)
+    await phone.store.load()
+    await phone.store.unlock('passphrase')
+    const keyId = deviceKeyId((on.file as SecretStoreFile).id)
+
+    // A fresh install's file, a transfer's, an older build's: none of them names a store.
+    on.file = null
+    await phone.store.load()
+
+    expect(phone.store.status.value).toBe('unlocked')
+    expect(phone.keychain.getSecret(keyId)).not.toBeNull()
+    expect(phone.store.get('abele-provider-x')).toBe('sk-1')
+  })
+
+  it('throwing a store away says so in the file too', async () => {
+    const on = shared()
+    const mac = device(on)
+    await mac.store.enable('passphrase', FAST)
+    const id = (on.file as SecretStoreFile).id
+    const phone = device(on)
+    await phone.store.load()
+    expect(phone.store.status.value).toBe('locked')
+
+    await phone.store.discard()
+    expect(on.file).toEqual({ off: true, id })
+    await mac.store.load()
+    expect(mac.store.status.value).toBe('off')
   })
 
   it('writes only to the keychain once off', async () => {

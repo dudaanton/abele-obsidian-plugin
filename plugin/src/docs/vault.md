@@ -1097,7 +1097,9 @@ enrolled, and stays in its keychain alone.
 Two devices changing keys at once are merged key by key, the later change winning, and the
 store out of a Syncthing conflict copy of the settings file (`data.sync-conflict-….json`) is
 merged the same way; the copy itself is left for the person to delete. Never edit the store
-by hand: a single changed character makes it undecryptable on every device.
+by hand: a single changed character makes it undecryptable on every device. Once the store is
+turned off, `secretStore` holds only `{"off": true, "id": …}`, the marker that tells the other
+devices so; a settings file with no `secretStore` at all turns nothing off.
 
 ## MCP servers
 
