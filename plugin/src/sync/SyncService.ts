@@ -1,61 +1,23 @@
-import { Platform, requestUrl, type App } from 'obsidian'
-import { ref, toRaw, type Ref } from 'vue'
-import {
-  IgnoreRules,
-  SyncClient,
-  SyncEngine,
-  type PathMatcher,
-  type StateEntry,
-  type SyncFailure,
-  type VaultClient,
-} from '@abele/sync-core'
-import { caseKey, PLAIN_HTTP_REFUSED, serverUrlProblem, type VaultInfo } from '@abele/sync-protocol'
+import { Platform, type App } from 'obsidian'
+import { ref, type Ref } from 'vue'
+import type { StateEntry, VaultClient } from '@abele/sync-core'
+import { serverUrlProblem, type VaultInfo } from '@abele/sync-protocol'
 import type AbelePlugin from '@/main'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { isDeviceSecretId, secrets } from '@/secrets/SecretStore'
-import { IndexedDbStateStore, stateDatabaseName } from './IndexedDbStateStore'
-import { ObsidianFileSystem } from './ObsidianFileSystem'
-import {
-  CONNECTION_KEY,
-  connectionProblem,
-  emptyConnection,
-  inspectConnection,
-  MIGRATION_LINE,
-  MIGRATION_UNSTORED,
-  migrateConnection,
-  selectiveFrom,
-  writeConnection,
-  type DeviceConnection,
-} from './connection'
-import {
-  Enrolment,
-  KEPT_FIELDS,
-  enrolledElsewhere,
-  type ConnectionEdit,
-  type ConnectionPatch,
-  type VaultChoice,
-} from './enrolment'
+import type { DeviceConnection } from './connection'
+import { ConnectionKeeper } from './connectionKeeper'
+import { Enrolment, type ConnectionEdit, type VaultChoice } from './enrolment'
 import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer/connection'
-import { readLedgerId, writeLedgerId, type LedgerId, type LocalStorage } from './ledgerId'
-import { messageOf, summarise } from './messages'
+import { EngineRunner } from './engineRunner'
+import { factoryOf, transportOf, type SyncServiceDeps } from './environment'
 import { noop, SerialQueue } from './queue'
-import {
-  IGNORE_FILE,
-  SCOPE_KEY,
-  configLine,
-  ignoreLine,
-  isHidden,
-  isWireConfigDir,
-  readIgnore,
-  scopeKey,
-} from './scope'
-import { newStateId } from './ids'
-import { DISCONNECTED_STATUS, statusOf, type SyncStatus } from './status'
-import { fetchViaRequestUrl, USER_AGENT, wsFor } from './transport'
-import { PHONE_POLL_MS, phoneSocket } from './phone'
+import { DISCONNECTED_STATUS, type SyncStatus } from './status'
+import { StatusBoard } from './statusBoard'
 
 export { isWireConfigDir } from './scope'
 export type { ConnectionEdit, ConnectionPatch, VaultChoice } from './enrolment'
+export { PLAIN_HTTP_CONNECTION } from './engineRunner'
+export type { SyncServiceDeps } from './environment'
 
 /**
  * One engine per plugin, and everything Obsidian has to know about it.
@@ -69,28 +31,12 @@ export type { ConnectionEdit, ConnectionPatch, VaultChoice } from './enrolment'
  * ## The state machine
  *
  * The engine has five states (`idle`, `syncing`, `offline`, `paused`, `error`) and the plugin
- * adds `disconnected` above them for a vault nobody has set up. There is an engine exactly
- * when the connection names a server, a vault and a device token the keychain really holds;
- * with no engine the status is `disconnected` and every verb is a no-op that says so in the log.
- * `connect` and `chooseVault` build one, `disconnect` takes it away — those verbs are in
- * `enrolment.ts`, since none of them is the engine's business — and `updateConnection` and
- * `onSettingsSaved` build another when what the running one was built on has changed.
- *
- * ## The connection
- *
- * Where this device syncs and what it takes is not a setting: it is a record in the vault's
- * local storage (`connection.ts`), which no copy of the vault and no transfer carries. It is
- * read into {@link SyncService.connection} and written only through here, so the address rule
- * and the keychain-name check hold for every writer — a screen, the agent, a transfer.
- *
- * ## The scope rule
- *
- * What this device syncs — the selective settings and the vault's `.abele-sync-ignore` — is
- * hashed into a *scope key* and filed in the state under `scope`, exactly as the daemon files
- * it. When the stored key is not the current one, the feed has moved past files this device
- * passed over and now wants, so the first run is a `rescan()`, which walks the manifest again,
- * rather than a `sync()`, which only follows the feed. The key is recorded once the run got
- * through, so a rescan that failed is done again next time.
+ * adds `disconnected` above them for a vault nobody has set up. Building, keeping and taking
+ * down the engine is `engineRunner.ts`; what the status says and the log are `statusBoard.ts`;
+ * the connection record is `connectionKeeper.ts`. `connect` and `chooseVault` build one,
+ * `disconnect` takes it away — those verbs are in `enrolment.ts`, since none of them is the
+ * engine's business — and `updateConnection` and `onSettingsSaved` build another when what the
+ * running one was built on has changed. This class is the facade the screens and the agent see.
  *
  * ## The phone
  *
@@ -112,44 +58,6 @@ export type { ConnectionEdit, ConnectionPatch, VaultChoice } from './enrolment'
  * writes a token or a password to the log.
  */
 
-/** What Sync now and Rescan say while the device is paused, after which verb was refused. */
-const PAUSED_REFUSAL = 'sync is paused; nothing moves until Resume'
-
-/** How many lines the log keeps. Older ones fall off the front. */
-const LOG_LINES = 500
-
-/**
- * What the user has to do about a token the server no longer takes. The client's own message
- * says the request was refused, which is true and no help at all.
- */
-const REVOKED_HINT =
-  'this device was revoked or its token is no longer taken; connect again from the Sync settings'
-
-/**
- * Why a saved connection to plain http on another machine builds nothing. Said differently from
- * the sign-in refusal: this device was set up before the rule, and what it needs is a new sign-in.
- */
-export const PLAIN_HTTP_CONNECTION =
-  'this connection uses plain http to another machine; connect again with an https address'
-
-/**
- * What a test replaces to run the service against a server in its own process.
- *
- * Production passes none of it: the transport is Obsidian's `requestUrl`, the socket is the
- * WebView's own, and the database is the window's IndexedDB. A test hands over a `fetch` into
- * the running server, a `WebSocket` bound to its port, and an `IDBFactory` of its own so that
- * no two tests share a database.
- */
-export interface SyncServiceDeps {
-  fetch?: typeof fetch
-  WebSocket?: typeof WebSocket
-  indexedDB?: IDBFactory
-  /** How often the engine syncs with nothing prompting it. */
-  fallbackMs?: number
-  /** How often the configuration folder is walked. */
-  pollMs?: number
-}
-
 export class SyncService {
   private static instance: SyncService | null = null
 
@@ -167,17 +75,23 @@ export class SyncService {
     return SyncService.instance
   }
 
-  /** The status, for the status bar and the settings screens. */
-  readonly status: Ref<SyncStatus> = ref({ ...DISCONNECTED_STATUS })
+  /** What sync says: the status, its listeners and the log (`statusBoard.ts`). */
+  private readonly board = new StatusBoard()
 
-  /** The last {@link LOG_LINES} lines, oldest first. Every one of them is a `console.debug` too. */
-  readonly log: Ref<string[]> = ref([])
+  /** The status, for the status bar and the settings screens. */
+  readonly status: Ref<SyncStatus> = this.board.status
+
+  /** The last lines of the log, oldest first. Every one of them is a `console.debug` too. */
+  readonly log: Ref<string[]> = this.board.log
+
+  /** The connection record, read, checked and written (`connectionKeeper.ts`). */
+  private readonly keeper = new ConnectionKeeper((text) => this.note(text))
 
   /**
    * This device's connection as local storage holds it, for the Sync tab to show. Written only
    * through {@link SyncService.updateConnection} and the verbs, never by assigning to it.
    */
-  readonly connection: Ref<DeviceConnection> = ref(emptyConnection(Platform.isMobile))
+  readonly connection: Ref<DeviceConnection> = this.keeper.connection
 
   /**
    * Who a sign-in is telling that a device left, while it waits on that before enrolling —
@@ -185,63 +99,47 @@ export class SyncService {
    */
   readonly telling: Ref<string | null> = ref(null)
 
-  /** Where the connection is filed: the vault's local storage, from `openConnection` or `init`. */
-  private storage: LocalStorage | null = null
-
-  /**
-   * What was wrong with the record as it was read, or null. Said once in the log when it is
-   * read, and as the error status while it leaves the device with no token to sync with — the
-   * Sync tab would otherwise show only the sign-in card, and say nothing of why. Cleared by the
-   * next write, which replaces the record whole.
-   */
-  private damage: string | null = null
-
   private app: App | null = null
   private plugin: AbelePlugin | null = null
   private deps: SyncServiceDeps = {}
 
-  private engine: SyncEngine | null = null
-  private store: IndexedDbStateStore | null = null
-  private vault: VaultClient | null = null
-  private unwatchStatus: (() => void) | null = null
+  /** Everything that touches the engine, one at a time (`queue.ts`). */
+  private readonly queue = new SerialQueue()
 
-  /** What the running engine was built on; a change to any of it means building another. */
-  private built = ''
-  /**
-   * The device token the running engine's client holds. Kept apart from `built` rather than
-   * joined into it, so no field that reads like an identity ever carries a secret — and kept at
-   * all because re-enrolling puts a *new* token behind the same keychain id.
-   */
-  private builtToken = ''
-  /** The scope key the running engine's settings and ignore file hash to. */
-  private scope = ''
+  /** The engine itself: building, keeping in step, taking down (`engineRunner.ts`). */
+  private readonly runner = new EngineRunner(
+    {
+      app: () => this.app,
+      pluginId: () => this.plugin?.manifest.id ?? 'abele',
+      deps: () => this.deps,
+      connection: () => this.connection.value,
+      token: () => this.keeper.token(),
+      damage: () => this.keeper.damage(),
+      serialise: <T>(fn: () => Promise<T>) => this.serialise(fn),
+    },
+    this.board
+  )
 
   /** Setting this device up and taking it down again (`enrolment.ts`). */
   private readonly enrolment = new Enrolment({
     app: () => this.app,
-    transport: () => this.transport(),
-    factory: () => this.factory(),
+    transport: () => transportOf(this.deps),
+    factory: () => factoryOf(this.deps),
     note: (text) => this.note(text),
     connection: () => this.connection.value,
-    saveConnection: (patch) => this.saveConnection(patch),
+    saveConnection: (patch) => this.keeper.save(patch),
     serialise: <T>(fn: () => Promise<T>) => this.serialise(fn),
-    teardown: () => this.teardown(),
-    reconcile: () => this.reconcile(),
+    teardown: () => this.runner.teardown(),
+    reconcile: () => this.runner.reconcile(),
     telling: (line) => {
       this.telling.value = line
     },
   })
 
-  private readonly listeners = new Set<(status: SyncStatus) => void>()
   /** Whether the phone's visibility listener has been registered; it is registered once. */
   private watchingVisibility = false
   /** Drops the settings-saved subscription. */
   private unhookSettings: (() => void) | null = null
-  /** What the last failure was, which is how `publish` knows to say what to do about it. */
-  private lastFailure: SyncFailure | null = null
-
-  /** Everything that touches the engine, one at a time (`queue.ts`). */
-  private readonly queue = new SerialQueue()
 
   private constructor() {}
 
@@ -257,8 +155,7 @@ export class SyncService {
     this.app = app
     this.plugin = plugin
     this.deps = deps
-    this.storage = app
-    this.load(app)
+    this.keeper.read(app)
     // A settings save moves the scripts folder, which the engine is built on too.
     this.unhookSettings?.()
     this.unhookSettings = AbeleConfig.getInstance().onSaved(() => this.onSettingsSaved())
@@ -272,7 +169,7 @@ export class SyncService {
     void this.serialise(async () => {
       // Whatever instance a plugin reload left stopping goes first.
       await pending
-      await this.reconcile()
+      await this.runner.reconcile()
     })
     void this.retryPendingRevokes()
   }
@@ -293,111 +190,29 @@ export class SyncService {
       connection.serverUrl !== '' &&
       connection.vaultId !== '' &&
       serverUrlProblem(connection.serverUrl) === null &&
-      this.token() !== null
+      this.keeper.token() !== null
     ) {
-      this.publish({ ...DISCONNECTED_STATUS, state: connection.paused ? 'paused' : 'syncing' })
+      this.board.publish({
+        ...DISCONNECTED_STATUS,
+        state: connection.paused ? 'paused' : 'syncing',
+      })
     }
   }
 
-  /**
-   * Read this device's connection out of the vault's local storage, moving it out of `data.json`
-   * the first time a build that keeps it there has run on this device (`migrateConnection`).
-   *
-   * Called from `onload` as soon as the keychain is reachable — the move asks it whether the
-   * token the file names is here — and before `announce`, which reads the result. The `sync`
-   * block is the one `loadSettings` read off disk: by now the settings in memory have already
-   * dropped the fields being moved. A file that still holds them is written again without them,
-   * so the move happens once and the file stops naming this device.
-   *
-   * Nothing is moved, and nothing recorded, when there was no file to read: a `data.json` that
-   * is missing for now or would not parse may still name the connection, and a record written
-   * off it would say the move was made and drop that connection at the next launch that reads it.
-   */
-  async openConnection(app: App): Promise<void> {
-    this.storage = app
-    const config = AbeleConfig.getInstance()
-    const loaded = config.takeLoadedSync()
-    const migration =
-      loaded === null
-        ? null
-        : migrateConnection(
-            app,
-            loaded.sync,
-            (id) => secrets().device.get(id) !== '',
-            Platform.isMobile
-          )
-    this.load(app)
-    if (loaded === null) {
-      if (app.loadLocalStorage(CONNECTION_KEY) === null) {
-        this.note(
-          'data.json could not be read, or is not there yet; a connection it names is moved at ' +
-            'the next launch that reads it'
-        )
-      }
-      return
-    }
-    if (migration === null) return
-    this.note(MIGRATION_LINE[migration.outcome])
-    if (!migration.stored) {
-      this.note(MIGRATION_UNSTORED)
-      return
-    }
-    if (migration.rewrite) await config.rewrite()
+  /** Read this device's connection, moving it out of `data.json`: see `ConnectionKeeper.open`. */
+  openConnection(app: App): Promise<void> {
+    return this.keeper.open(app)
   }
 
   /**
-   * The record, into {@link SyncService.connection}, saying once in the log what of it was
-   * damaged — and keeping why, for `reconcile` to show instead of the sign-in card.
-   */
-  private load(storage: LocalStorage): void {
-    const { connection, damaged } = inspectConnection(storage, Platform.isMobile)
-    this.connection.value = connection
-    const damage =
-      damaged.length === 0
-        ? null
-        : `the saved connection is damaged (${damaged.join(', ')} could not be read); ` +
-          'disconnect and connect again'
-    if (damage !== null && damage !== this.damage) this.note(damage)
-    this.damage = damage
-  }
-
-  /**
-   * Change this device's connection, and put the engine in step with it.
-   *
-   * Only the fields named are checked, by the rules a sign-in holds them to: a server address
-   * the https rule refuses, and a keychain name this plugin never mints or keeps for a waiting
-   * revoke, are thrown back before anything is written. What is already saved is not re-judged —
-   * a connection made before the https rule can still have its switches changed, and `reconcile`
-   * says why it builds nothing.
-   *
-   * Where the token goes is not a field to edit: while a token is held, the address must stay
-   * the one it was minted on, and the fields that record that and the waiting revokes are the
-   * bookkeeping's alone — refused here, whatever the caller's types said.
+   * Change this device's connection, and put the engine in step with it. Checked first, by the
+   * rules `ConnectionKeeper.check` holds every change from outside to; nothing is written when
+   * it throws.
    */
   async updateConnection(patch: ConnectionEdit): Promise<void> {
-    const kept = KEPT_FIELDS.filter((field) => field in patch)
-    if (kept.length > 0) throw new Error(`${kept.join(', ')} is kept by the plugin itself`)
-    const problem = connectionProblem({
-      ...emptyConnection(),
-      serverUrl: patch.serverUrl ?? '',
-      deviceTokenId: patch.deviceTokenId ?? '',
-    })
-    if (problem !== null) throw new Error(problem)
-    // Asked only of a change that moves the address or the token: a locked keychain must not
-    // stop a switch being flipped, and `reconcile` reports it the way it reports any build.
-    const next = { ...this.connection.value, ...patch }
-    const moves = patch.serverUrl !== undefined || patch.deviceTokenId !== undefined
-    if (moves && next.serverUrl !== '' && this.holdsToken(next.deviceTokenId)) {
-      const elsewhere = enrolledElsewhere(next.serverUrl, next.enrolledUrl)
-      if (elsewhere !== null) throw new Error(elsewhere)
-    }
-    this.saveConnection(patch)
-    await this.serialise(() => this.reconcile())
-  }
-
-  /** Whether the keychain holds a device token under this id. */
-  private holdsToken(id: string): boolean {
-    return isDeviceSecretId(id) && secrets().device.get(id) !== ''
+    this.keeper.check(patch)
+    this.keeper.save(patch)
+    await this.serialise(() => this.runner.reconcile())
   }
 
   /** Stop everything and let the singleton go; the next `getInstance` builds a fresh one. */
@@ -409,10 +224,10 @@ export class SyncService {
     if (SyncService.instance === this) SyncService.instance = null
     this.unhookSettings?.()
     this.unhookSettings = null
-    const stopping = this.serialise(() => this.teardown())
+    const stopping = this.serialise(() => this.runner.teardown())
     SyncService.lastTeardown = stopping.then(noop, noop)
     await stopping
-    this.listeners.clear()
+    this.board.clearListeners()
     this.app = null
     this.plugin = null
     this.enrolment.endConnect()
@@ -422,7 +237,7 @@ export class SyncService {
 
   /** Whether an engine is running at all — that is, whether this device is set up. */
   isConnected(): boolean {
-    return this.engine !== null
+    return this.runner.isRunning()
   }
 
   /**
@@ -438,15 +253,12 @@ export class SyncService {
 
   /** Called with the status whenever it changes. The returned function unsubscribes. */
   onStatusChange(cb: (status: SyncStatus) => void): () => void {
-    this.listeners.add(cb)
-    return () => {
-      this.listeners.delete(cb)
-    }
+    return this.board.onStatusChange(cb)
   }
 
   /** The vault client the history, trash, usage and settings screens ask through. */
   client(): VaultClient | null {
-    return this.vault
+    return this.runner.client()
   }
 
   /**
@@ -460,10 +272,8 @@ export class SyncService {
    * file is deleted and a new one is made at the same name, and a screen holding the old one
    * would offer somebody another file's history.
    */
-  async entryFor(path: string): Promise<StateEntry | null> {
-    const store = this.store
-    if (store === null || this.engine === null) return null
-    return store.get(path)
+  entryFor(path: string): Promise<StateEntry | null> {
+    return this.runner.entryFor(path)
   }
 
   /**
@@ -473,12 +283,7 @@ export class SyncService {
    * disconnecting — and so may a screen that does something worth recording.
    */
   note(text: string): void {
-    console.debug(`[abele-sync] ${text}`)
-    const lines = this.log.value
-    lines.push(`${new Date().toISOString()} ${text}`)
-    // In place rather than as a new array: a sync writes dozens of lines, and copying five
-    // hundred of them each time is work for nothing. Vue tracks the mutation either way.
-    if (lines.length > LOG_LINES) lines.splice(0, lines.length - LOG_LINES)
+    this.board.note(text)
   }
 
   /* -- The verbs -------------------------------------------------------- */
@@ -492,55 +297,13 @@ export class SyncService {
    * watcher that would notice went with the engine. So this is the retry, and the first run of
    * the engine it builds is the sync that was asked for.
    */
-  async syncNow(): Promise<void> {
-    const engine = this.engine
-    if (engine === null) {
-      // The token is not read here: a keychain that throws is `reconcile`'s to report.
-      const connection = this.connection.value
-      if (connection.serverUrl === '' || connection.vaultId === '') {
-        this.note('nothing to sync: this device is not connected to a server')
-        return
-      }
-      this.note('sync now: nothing is running, so trying to start again')
-      await this.serialise(() => this.reconcile())
-      return
-    }
-    // The engine would run a sync it is asked for outright, paused or not; the switch says
-    // nothing moves until Resume, and that is what the person who pressed it was told.
-    if (this.connection.value.paused) {
-      this.note(`sync now: ${PAUSED_REFUSAL}`)
-      return
-    }
-    try {
-      await engine.sync()
-    } catch {
-      // `onFail` has set the status and the engine has written the reason to the log.
-    }
+  syncNow(): Promise<void> {
+    return this.runner.syncNow()
   }
 
   /** Walk the whole manifest again and then sync: for when this device widened what it takes. */
-  async rescan(): Promise<void> {
-    const engine = this.engine
-    const store = this.store
-    if (engine === null || store === null) {
-      this.note('nothing to rescan: this device is not connected to a server')
-      return
-    }
-    // The scope stays unrecorded, so the walk still happens: at the next start, or at Resume
-    // when what this device takes has widened (the engine settles that itself).
-    if (this.connection.value.paused) {
-      this.note(`rescan: ${PAUSED_REFUSAL}`)
-      return
-    }
-    // Read before the await: a teardown while this runs sets `this.scope` back to nothing, and
-    // writing that to the old store would tell the next start that any scope will do.
-    const scope = this.scope
-    try {
-      await engine.rescan()
-      await store.setMeta(SCOPE_KEY, scope)
-    } catch {
-      // The scope stays as it was, so the next start walks the manifest again.
-    }
+  rescan(): Promise<void> {
+    return this.runner.rescan()
   }
 
   /**
@@ -553,18 +316,18 @@ export class SyncService {
    * reconcile runs after that build and puts the engine where the tab says it is.
    */
   pause(): void {
-    this.saveConnection({ paused: true })
-    this.engine?.pause()
+    this.keeper.save({ paused: true })
+    this.runner.pause()
     this.note('paused')
-    void this.serialise(() => this.reconcile())
+    void this.serialise(() => this.runner.reconcile())
   }
 
   /** Sync again, and forget a token failure so the triggers are taken back. */
   resume(): void {
-    this.saveConnection({ paused: false })
-    this.engine?.resume()
+    this.keeper.save({ paused: false })
+    this.runner.resume()
     this.note('resumed')
-    void this.serialise(() => this.reconcile())
+    void this.serialise(() => this.runner.reconcile())
   }
 
   /* -- Setting the device up -------------------------------------------- */
@@ -643,355 +406,7 @@ export class SyncService {
    * to land inside the window.
    */
   onSettingsSaved(): void {
-    void this.serialise(() => this.reconcile())
-  }
-
-  /* -- Building the engine ---------------------------------------------- */
-
-  /**
-   * Writes the connection with these fields changed, and shows it. Unchecked: the verbs that
-   * call it write only what a server answered or what they empty, and `updateConnection` is the
-   * road for anything else.
-   *
-   * Always marked as moved: a record this service wrote is the device's own, and the one-time
-   * move out of `data.json` must never run over it. The selective settings are filled out the
-   * way a read fills them, so what the engine is built on now is what the next launch reads —
-   * whoever wrote them, the agent included.
-   */
-  private saveConnection(patch: ConnectionPatch): void {
-    const merged = { ...this.connection.value, ...patch }
-    const next: DeviceConnection = {
-      ...merged,
-      selective: selectiveFrom(merged.selective, Platform.isMobile),
-      migrated: true,
-    }
-    if (this.storage !== null) writeConnection(this.storage, next)
-    else console.debug('[abele-sync] the connection changed before local storage was read')
-    this.connection.value = next
-    this.damage = null
-  }
-
-  /** The ledger this local vault syncs on, from its own local storage (`ledgerId.ts`). */
-  private ledger(app: App): LedgerId {
-    return readLedgerId(app)
-  }
-
-  /**
-   * The ledger the engine is about to be built on, minted when this vault has none for the
-   * vault the connection names.
-   *
-   * `chooseVault` mints one as it enrols. This is for a connection that arrived some other way —
-   * a transfer, a move out of `data.json` — which names a server vault and carries no ledger id
-   * at all: a fresh one is what makes the first run a walk of the manifest rather than a delete
-   * of everything this disk does not hold.
-   */
-  private ledgerFor(app: App, vaultId: string): LedgerId {
-    const held = this.ledger(app)
-    if (held.stateId !== '' && held.vaultId === vaultId) return held
-    const minted = { stateId: newStateId(), vaultId }
-    writeLedgerId(app, minted)
-    this.note('a fresh ledger for this vault: the first sync walks the whole manifest')
-    return minted
-  }
-
-  /**
-   * The device token, or null when the connection names one the keychain does not hold — or
-   * names an id this plugin never mints, which is never read: pointed at a provider's key, it
-   * would send that key to the server as a bearer token.
-   */
-  private token(): string | null {
-    const id = this.connection.value.deviceTokenId
-    if (!isDeviceSecretId(id)) return null
-    const secret = secrets().device.get(id)
-    return secret === '' ? null : secret
-  }
-
-  /**
-   * Bring the engine in line with the connection and the settings.
-   *
-   * Everything the engine was built on is in one string, beside the token: change any of it and
-   * another engine is built, because the selective settings and the ignore rules are read once,
-   * when the scan filter is made. A change that moved neither only flips the pause switch —
-   * which is what makes it safe for every save in the plugin to come through here.
-   *
-   * The whole body is guarded, not only the build: reading the ignore file, hashing the scope
-   * and stopping the previous engine can all throw, and `init` has already published `syncing`
-   * — a throw that escaped would pin the status there with nothing running behind it.
-   */
-  private async reconcile(): Promise<void> {
-    const app = this.app
-    if (app === null) return
-    try {
-      const connection = this.connection.value
-      const token = this.token()
-      // A record that lost its token id reads as a device nobody set up; said as an error
-      // instead, so the Sync tab shows why and offers Disconnect rather than the sign-in card.
-      if (this.damage !== null && token === null) throw new Error(this.damage)
-      if (connection.serverUrl === '' || connection.vaultId === '' || token === null) {
-        if (this.engine !== null) {
-          this.note('not connected: the connection names no vault to sync with')
-        }
-        await this.teardown()
-        return
-      }
-      // Refused, not forgotten: the Sync tab still shows the connection and offers Disconnect.
-      const problem = serverUrlProblem(connection.serverUrl)
-      if (problem !== null) {
-        throw new Error(problem === PLAIN_HTTP_REFUSED ? PLAIN_HTTP_CONNECTION : problem)
-      }
-      // The token goes to the server that minted it and nowhere else: an address changed since
-      // (by hand, by an older build) is refused, and Disconnect still tells the right server.
-      const elsewhere = enrolledElsewhere(connection.serverUrl, connection.enrolledUrl)
-      if (elsewhere !== null) throw new Error(elsewhere)
-
-      const ignoreText = await readIgnore(app)
-      const scope = await scopeKey(connection.selective, ignoreText)
-      // The scripts folder too: the engine's filter reads it once, when it is built.
-      const scriptsFolder = AbeleConfig.getInstance().ai.scriptsFolder
-      const built = [
-        connection.serverUrl,
-        connection.vaultId,
-        connection.deviceTokenId,
-        scope,
-        scriptsFolder,
-      ].join(' ')
-      if (this.engine !== null && built === this.built && token === this.builtToken) {
-        this.applyPause(connection.paused)
-        return
-      }
-
-      // Quietly: the build says `syncing` next, and `disconnected` in between would swap the
-      // Sync tab for the sign-in card under whoever just ticked a switch there.
-      await this.teardown({ publish: false })
-      this.built = built
-      this.builtToken = token
-      this.scope = scope
-      await this.build(connection, token, ignoreText)
-    } catch (error) {
-      // A state database that would not open, a ledger that would not be read, a client the
-      // connection will not build. Nothing is running and nothing will retry, so it has to be
-      // said out loud: `disconnected` would hide the status bar and read as a device nobody
-      // ever set up.
-      //
-      // The teardown goes first even though it publishes `disconnected` of its own — a build
-      // that failed half way leaves an engine, a store and a client assigned, and `forget`
-      // cannot delete a database something still holds. The error is published after it, so
-      // that is the status that stands.
-      const message = messageOf(error)
-      await this.teardown()
-      this.note(`sync could not start: ${message}`)
-      this.publish({ ...DISCONNECTED_STATUS, state: 'error', lastError: message })
-    }
-  }
-
-  /** Pause or resume an engine already running, to match what the connection now says. */
-  private applyPause(paused: boolean): void {
-    const engine = this.engine
-    if (engine === null) return
-    const running = engine.status.state !== 'paused'
-    if (paused && running) engine.pause()
-    if (!paused && !running) engine.resume()
-  }
-
-  private async build(
-    connection: DeviceConnection,
-    token: string,
-    ignoreText: string | null
-  ): Promise<void> {
-    const app = this.app
-    if (app === null) return
-    const fs = new ObsidianFileSystem(app, {
-      ...(this.pollMs() === undefined ? {} : { pollMs: this.pollMs() }),
-      onWatch: (paths) => this.noticed(paths),
-    })
-    const store = await IndexedDbStateStore.open(
-      this.factory(),
-      stateDatabaseName(this.ledgerFor(app, connection.vaultId).stateId)
-    )
-    store.onClosedElsewhere(() => this.closedUnderEngine(store))
-    let engine: SyncEngine
-    let vault: VaultClient
-    try {
-      vault = new SyncClient({
-        baseUrl: connection.serverUrl,
-        fetch: this.transport(),
-        WebSocket: this.socket(),
-        token,
-        userAgent: USER_AGENT,
-      }).forVault(connection.vaultId)
-      const scriptsFolder = AbeleConfig.getInstance().ai.scriptsFolder
-      engine = new SyncEngine({
-        client: vault,
-        fs,
-        state: store,
-        // A plain copy, never the ref's own: the engine files it in the state database with the
-        // scope its marks were taken under, and IndexedDB cannot clone a reactive proxy.
-        selective: selectiveFrom(toRaw(connection.selective), Platform.isMobile),
-        ignore: this.ignore(app, ignoreText),
-        // Filed with the scope, so a later engine can tell what this ignore file left out.
-        ignoreText,
-        ...(scriptsFolder === '' ? {} : { scriptsFolder }),
-        ...(this.fallbackMs() === undefined ? {} : { fallbackMs: this.fallbackMs() }),
-        onSync: (report) => this.note(summarise(report)),
-        onFail: (error, kind) => this.failed(error, kind),
-        log: (line) => this.note(line),
-      })
-    } catch (error) {
-      // Nothing may be left holding the database when no engine got built to close it.
-      store.close()
-      throw error
-    }
-
-    this.store = store
-    this.vault = vault
-    this.engine = engine
-    this.unwatchStatus = engine.onStatus((engineStatus) => this.publish(statusOf(engineStatus)))
-    // Not the engine's own status, which is `idle` before its first run has begun: `idle` means
-    // *settled*, and `runAfterSync` would take it at its word in the gap before the first sync.
-    this.publish({ ...statusOf(engine.status), state: connection.paused ? 'paused' : 'syncing' })
-    this.note(`syncing vault ${connection.vaultId} with ${connection.serverUrl}`)
-    this.note(ignoreLine(ignoreText))
-    if (!isWireConfigDir(app.vault.configDir)) this.note(configLine(app.vault.configDir))
-    await this.first(engine, store, connection.paused)
-  }
-
-  /**
-   * The first run, and what keeps the engine going after it.
-   *
-   * The rescan is asked for *before* `start`, so it is the first run and the one `start`
-   * prompts queues behind it; the scope is filed only once the run got through, so a rescan
-   * that failed is done again on the next start. A phone is started too: its socket refuses to
-   * open (`phone.ts`), and the watcher and the clock are what it syncs on.
-   */
-  private async first(
-    engine: SyncEngine,
-    store: IndexedDbStateStore,
-    paused: boolean
-  ): Promise<void> {
-    // Read before the awaits: a teardown while the rescan runs sets `this.scope` back to
-    // nothing, and writing that to the old store would tell the next start any scope will do.
-    const scope = this.scope
-    const stored = await store.getMeta(SCOPE_KEY)
-    // A state that never recorded a key has never finished a sync, and its first one walks the
-    // manifest anyway.
-    const due = stored !== null && stored !== scope
-    if (paused) engine.pause()
-
-    if (paused) {
-      this.note('sync is paused; nothing will move until it is resumed')
-    } else if (due) {
-      this.note('rescan: what this device syncs changed since the last sync')
-      void engine
-        .rescan()
-        .then(() => store.setMeta(SCOPE_KEY, scope))
-        .catch(noop)
-    } else {
-      await store.setMeta(SCOPE_KEY, scope)
-    }
-
-    engine.start()
-  }
-
-  /**
-   * Another window of the app deleted or upgraded the ledger, and its connection closed under
-   * the running engine. Every transaction after this would fail with IndexedDB's own message,
-   * so the engine is stopped and the status says what happened and what to do.
-   */
-  private closedUnderEngine(store: IndexedDbStateStore): void {
-    void this.serialise(async () => {
-      if (this.store !== store) return
-      await this.teardown()
-      const message =
-        'another window of this app closed the sync ledger; reload Obsidian to sync again'
-      this.note(message)
-      this.publish({ ...DISCONNECTED_STATUS, state: 'error', lastError: message })
-    })
-  }
-
-  /**
-   * Stop the engine, close the state database, and go back to saying nothing is connected —
-   * unless `publish` is false, for a stop that a build follows at once: the status the old
-   * engine left stands until the new one says `syncing`.
-   */
-  private async teardown({ publish = true }: { publish?: boolean } = {}): Promise<void> {
-    const engine = this.engine
-    const store = this.store
-    this.unwatchStatus?.()
-    this.unwatchStatus = null
-    this.engine = null
-    this.store = null
-    this.vault = null
-    this.built = ''
-    this.builtToken = ''
-    this.scope = ''
-    // The engine that failed is gone; its failure must not colour the next one's message.
-    this.lastFailure = null
-    await engine?.stop()
-    try {
-      store?.close()
-    } catch (error) {
-      // The fields are already let go, so the caller is in a good state whatever the database
-      // says; a throw from here would escape into whichever verb asked for the teardown.
-      console.debug('[abele-sync] the state database would not close', error)
-    }
-    if (publish) this.publish({ ...DISCONNECTED_STATUS })
-  }
-
-  /* -- The pieces the engine is given ----------------------------------- */
-
-  /**
-   * What this device will not sync whatever the selective settings say.
-   *
-   * The vault's `.abele-sync-ignore` is one half, parsed by the core's own gitignore reader so
-   * that the plugin and the daemon read one file the same way. The other half is this plugin's
-   * own `data.json`. It no longer names this device — the connection is in local storage — but
-   * it is still kept to this device for now: an older build elsewhere on the vault still writes
-   * its connection into it, and taking another device's settings file is a change of its own.
-   * Selective sync cannot say it — its exclusions are folders and categories, and the category
-   * here (`pluginSettings`) covers every plugin at once — so it is ignored by name. Case-folded,
-   * because a case-insensitive disk hands the same file back under any spelling.
-   *
-   * And every hidden path but the config folder. Obsidian indexes nothing with a dot-segment,
-   * so a `.git/HEAD` or a `.DS_Store` this device pulled would be missing from the very next
-   * scan, and a missing file the ledger knows is a delete — a daemon on a git or Syncthing
-   * folder would lose them. Ignored here, they are neither taken nor deleted.
-   */
-  private ignore(app: App, ignoreText: string | null): PathMatcher {
-    const rules = ignoreText === null ? null : IgnoreRules.parse(ignoreText)
-    const id = this.plugin?.manifest.id ?? 'abele'
-    const own = caseKey(`${app.vault.configDir}/plugins/${id}/data.json`)
-    const configDir = app.vault.configDir
-    return {
-      ignores: (wirePath) =>
-        isHidden(wirePath, configDir) ||
-        caseKey(wirePath) === own ||
-        (rules?.ignores(wirePath) ?? false),
-    }
-  }
-
-  /** The engine's `fetch`: Obsidian's `requestUrl`, which no CORS rule and no phone refuses. */
-  private transport(): typeof fetch {
-    return this.deps.fetch ?? fetchViaRequestUrl(requestUrl)
-  }
-
-  /** A phone's refuses to open, whatever a test hands in: a phone must never hold one. */
-  private socket(): typeof WebSocket {
-    if (Platform.isMobile) return phoneSocket()
-    return this.deps.WebSocket ?? wsFor()
-  }
-
-  /** How often the engine syncs unprompted: the engine's own five minutes, a minute on a phone. */
-  private fallbackMs(): number | undefined {
-    return this.deps.fallbackMs ?? (Platform.isMobile ? PHONE_POLL_MS : undefined)
-  }
-
-  /** How often the config folder is walked: the adapter's own default, a minute on a phone. */
-  private pollMs(): number | undefined {
-    return this.deps.pollMs ?? (Platform.isMobile ? PHONE_POLL_MS : undefined)
-  }
-
-  private factory(): IDBFactory {
-    return this.deps.indexedDB ?? window.indexedDB
+    void this.serialise(() => this.runner.reconcile())
   }
 
   /* -- Wiring ----------------------------------------------------------- */
@@ -1012,75 +427,11 @@ export class SyncService {
     if (!Platform.isMobile || plugin === null || this.watchingVisibility) return
     this.watchingVisibility = true
     plugin.registerDomEvent(document, 'visibilitychange', () => {
-      if (this.engine === null || this.connection.value.paused) return
+      if (!this.runner.isRunning() || this.connection.value.paused) return
       const visible = document.visibilityState === 'visible'
       this.note(visible ? 'the app came back to the front' : 'the app left the front')
       void this.syncNow()
     })
-  }
-
-  /**
-   * The batch the watcher handed the engine, looked at for one path of the host's own.
-   *
-   * `.abele-sync-ignore` is part of the scope key, so an edit to it means the engine has to be
-   * built again on the new rules and the manifest walked. Nothing else in a batch is the
-   * service's business — the engine has already taken it in.
-   *
-   * A phone gets here too: it runs the same watcher, polling the ignore file with its config
-   * folder every minute.
-   */
-  private noticed(paths: string[]): void {
-    if (!paths.some((path) => caseKey(path) === caseKey(IGNORE_FILE))) return
-    this.note('the vault ignore file changed; reading it again')
-    void this.serialise(() => this.reconcile())
-  }
-
-  private publish(raw: SyncStatus): void {
-    const status = this.explain(raw)
-    // A settings save that changed nothing about sync still reaches here, and a status that has
-    // not moved must not repaint the status bar or wake `runAfterSync`.
-    const held = this.status.value
-    const same = (Object.keys(status) as Array<keyof SyncStatus>).every(
-      (key) => held[key] === status[key]
-    )
-    if (same) return
-    this.status.value = status
-    for (const listener of [...this.listeners]) {
-      try {
-        listener(status)
-      } catch (error) {
-        console.debug('[abele-sync] a status listener threw', error)
-      }
-    }
-  }
-
-  /**
-   * A failure the engine has already logged and turned into a status. Only a refused token
-   * needs anything more said: no retry will change it, and the user has to enrol again.
-   *
-   * The kind is remembered rather than acted on here, because the engine writes its own
-   * `lastError` *after* this hook returns; `explain` is where the message is replaced.
-   */
-  private failed(error: unknown, kind: SyncFailure): void {
-    this.lastFailure = kind
-    if (kind !== 'unauthorized') return
-    this.note(`${REVOKED_HINT} (the server said: ${messageOf(error)})`)
-  }
-
-  /**
-   * The status as a person can act on it.
-   *
-   * A refused token comes off the wire as "the request was refused", which is true and no help;
-   * the tooltip and the settings screen get the sentence that says what to do instead. Anything
-   * that is not an error clears the memory of the last failure.
-   */
-  private explain(status: SyncStatus): SyncStatus {
-    if (status.state !== 'error') {
-      this.lastFailure = null
-      return status
-    }
-    if (this.lastFailure !== 'unauthorized') return status
-    return { ...status, lastError: REVOKED_HINT }
   }
 
   /** Runs the work after everything asked for before it, whether that succeeded or not. */
