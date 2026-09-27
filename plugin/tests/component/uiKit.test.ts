@@ -442,7 +442,7 @@ describe('ConfirmModal', () => {
   const mountConfirm = () =>
     mount(ConfirmModal, {
       props,
-      global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+      global: { stubs: { ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' } } },
     })
 
   it('names what is about to be lost', () => {

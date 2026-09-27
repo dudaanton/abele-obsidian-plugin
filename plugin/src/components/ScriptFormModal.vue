@@ -1,7 +1,7 @@
 <template>
   <!-- A document gets the wider column: a reference full of code reads badly in a form's. -->
   <ObsidianModal :title="title" :size="asksSomething ? 'default' : 'wide'" @close="onCancel">
-    <form ref="formEl" class="abele-script-form" @submit.prevent="onSubmit">
+    <form :id="formId" ref="formEl" class="abele-script-form" @submit.prevent="onSubmit">
       <div v-for="field in fields" :key="field.name" class="abele-script-form__field">
         <label v-if="field.label && field !== titleField" class="abele-script-form__label">
           {{ field.label }}
@@ -46,15 +46,26 @@
         />
         <input v-else v-model="values[field.name]" type="text" class="abele-script-form__input" />
       </div>
-      <div
-        class="abele-script-form__actions"
-        :class="{ 'abele-script-form__actions_sticky': !asksSomething }"
-      >
-        <!-- Nothing to fill in means nothing to run: the form is something to read. -->
-        <button v-if="asksSomething" type="submit" class="mod-cta">Run</button>
-        <button type="button" @click="onCancel">{{ asksSomething ? 'Cancel' : 'Close' }}</button>
-      </div>
     </form>
+    <!-- Under the body, in sight however long the form or the document runs: a reference runs to
+         thousands of pixels, and on a phone a long form ran under the keyboard with its Run. -->
+    <template #footer>
+      <!-- Nothing to fill in means nothing to run: the form is something to read. -->
+      <Button
+        v-if="asksSomething"
+        text="Run"
+        accent
+        type="submit"
+        :form="formId"
+        tooltip="Run the script with these answers"
+      />
+      <Button
+        :text="asksSomething ? 'Cancel' : 'Close'"
+        type="button"
+        :tooltip="asksSomething ? 'Close this and run nothing' : 'Close this'"
+        @click="onCancel"
+      />
+    </template>
   </ObsidianModal>
 </template>
 
@@ -62,12 +73,14 @@
 import { computed, reactive, onMounted, onBeforeUnmount, useTemplateRef } from 'vue'
 import ObsidianModal from './obsidian/Modal.vue'
 import Checkbox from './obsidian/Checkbox.vue'
+import Button from './obsidian/Button.vue'
 import Markdown from './obsidian/Markdown.vue'
 import NoteEditorField from './NoteEditorField.vue'
 import NotePicker from './obsidian/NotePicker.vue'
 import type { FormField } from '@/scripting/types'
 import { pickItems, resolveNote } from '@/helpers/noteFilter'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { genid } from '@/helpers/vueUtils'
 
 const props = defineProps<{
   fields: FormField[]
@@ -118,6 +131,9 @@ const bodyOf = (field: FormField): string => {
   const named = field === documentField.value && ownHeading.value === title.value
   return named ? text.replace(LEADING_HEADING, '') : text
 }
+
+/** The Run button stands in the pinned row, outside the form, and submits it by its id. */
+const formId = `abele-script-form-${genid()}`
 
 const values = reactive<Record<string, string>>({})
 /** A note picker's chosen paths, kept as a list until the form is sent. */
@@ -199,10 +215,9 @@ function onCancel() {
  * Selectable on purpose: Obsidian sets `user-select: none` across its interface, so a block
  * meant to be copied out of has to say otherwise.
  *
- * It does not scroll: Obsidian's own modal is already capped at 85vh and scrolls what it
- * holds, so a second bounded box inside it gave a long document two scrollbars side by side
- * and stopped the modal short of the height it was allowed. One box scrolls, and it is the
- * one with the close button on it.
+ * It does not scroll: the dialog's body already does, so a second bounded box inside it gave a
+ * long document two scrollbars side by side and stopped the dialog short of the height it was
+ * allowed.
  */
 .abele-script-form__markdown {
   user-select: text;
@@ -227,27 +242,5 @@ function onCancel() {
 .abele-script-form__input,
 .abele-script-form__textarea {
   width: 100%;
-}
-
-.abele-script-form__actions {
-  display: flex;
-  gap: var(--size-4-2);
-  justify-content: flex-end;
-}
-
-/**
- * A reference runs to thousands of pixels, and a button at the end of it is a button nobody
- * reaches. Obsidian scrolls the modal itself, so the row sticks to the bottom of that.
- *
- * The offset is the modal's own padding, `.modal { padding: var(--size-4-4) }`: text is drawn
- * into that padding as it scrolls past, so a row stopping at the content edge leaves a strip
- * of it showing underneath. The row reaches the bottom edge and carries the padding itself.
- */
-.abele-script-form__actions_sticky {
-  position: sticky;
-  bottom: calc(var(--size-4-4) * -1);
-  padding: var(--size-4-3) 0 var(--size-4-4);
-  border-top: 1px solid var(--background-modifier-border);
-  background-color: var(--modal-background, var(--background-primary));
 }
 </style>

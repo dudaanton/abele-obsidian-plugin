@@ -29,7 +29,7 @@ const imageModel: ImageModelConfig2 = {
 }
 
 const STUBS = {
-  ObsidianModal: { template: '<div><slot /></div>' },
+  ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' },
   Dropdown: { props: ['modelValue', 'options'], template: '<div class="dropdown-stub" />' },
 }
 

@@ -61,7 +61,7 @@ function seed(overrides: Record<string, unknown> = {}) {
 
 const mountSettings = () =>
   mount(AiChatSettings, {
-    global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' }, Dropdown: true } },
+    global: { stubs: { ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' }, Dropdown: true } },
   })
 
 const deleteButton = (view: ReturnType<typeof mountSettings>) =>

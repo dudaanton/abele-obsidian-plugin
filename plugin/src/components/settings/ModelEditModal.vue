@@ -46,22 +46,6 @@
           @update:model-value="form.reasoningEffort = $event || undefined"
         />
       </Setting>
-
-      <div class="abele-model-edit__actions">
-        <Button
-          text="Save"
-          :disabled="!form.id"
-          tooltip="Keep these settings and close"
-          @click="onSave"
-        />
-        <Button
-          v-if="!isNew"
-          text="Delete"
-          warning
-          tooltip="Remove this model from the provider"
-          @click="confirming = true"
-        />
-      </div>
     </div>
 
     <ConfirmModal
@@ -73,6 +57,21 @@
       @confirm="onDelete"
       @close="confirming = false"
     />
+    <template #footer>
+      <Button
+        text="Save"
+        :disabled="!form.id"
+        tooltip="Keep these settings and close"
+        @click="onSave"
+      />
+      <Button
+        v-if="!isNew"
+        text="Delete"
+        warning
+        tooltip="Remove this model from the provider"
+        @click="confirming = true"
+      />
+    </template>
   </ObsidianModal>
 </template>
 
@@ -117,14 +116,5 @@ const onDelete = () => {
 <style lang="scss">
 .modal:has(.abele-model-edit) {
   width: min(31rem, 90vw);
-}
-
-.abele-model-edit__actions {
-  display: flex;
-  gap: var(--size-4-2);
-  justify-content: flex-end;
-  padding-top: var(--size-4-3);
-  border-top: 1px solid var(--background-modifier-border);
-  margin-top: var(--size-4-2);
 }
 </style>

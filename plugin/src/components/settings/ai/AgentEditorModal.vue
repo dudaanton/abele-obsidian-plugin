@@ -450,13 +450,16 @@ function toggleSkill(name: string): void {
 
 /**
  * The sections differ wildly in length — Delegation is one row, Access is three groups — so
- * the body scrolls on its own and the tab strip above it stays put.
+ * the body scrolls on its own and the tab strip above it stays put. A scrolling box clips at its
+ * padding edge, so the padding is room for a field's focus ring — the fields reach its sides —
+ * pulled back by the same margin so the rows stand where they would.
  */
 .abele-agent-editor__body {
   min-height: 16em;
   max-height: 60vh;
   overflow-y: auto;
-  padding-right: var(--size-4-1);
+  padding: var(--size-2-2) calc(var(--size-2-2) + var(--size-4-1)) var(--size-2-2) var(--size-2-2);
+  margin: calc(-1 * var(--size-2-2));
 }
 
 .abele-agent-editor__actions {

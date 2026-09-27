@@ -234,13 +234,15 @@ describe('a document', () => {
   it('keeps the way out in sight rather than at the foot of the text', () => {
     openWith([reference])
 
-    expect(inDocument('.abele-script-form__actions_sticky')).not.toBeNull()
+    expect(buttonSaying('Close')?.closest('.abele-modal__footer')).not.toBeNull()
   })
 
-  it('does not pin the row of a form, which is short enough to reach', () => {
+  /** On a phone a long form ran under the keyboard, and its Run with it. */
+  it('keeps the Run of a form in sight too, pinned under its fields', () => {
     openWith([question])
 
-    expect(inDocument('.abele-script-form__actions_sticky')).toBeNull()
+    expect(buttonSaying('Run')?.closest('.abele-modal__footer')).not.toBeNull()
+    expect(buttonSaying('Run')?.getAttribute('form')).toBe(inDocument('form')?.id)
   })
 })
 

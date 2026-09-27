@@ -24,7 +24,7 @@ import { useVault } from '../helpers/testEnv'
 
 /** The bodies are tested where they live; here only which one is on screen. */
 const stubs = {
-  ObsidianModal: { template: '<div><slot /></div>' },
+  ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' },
   AiScopeManager: true,
   AiSkillPromptPicker: true,
   AiPermissions: true,

@@ -34,22 +34,6 @@
           />
         </Setting>
       </template>
-
-      <div class="abele-model-edit__actions">
-        <Button
-          text="Save"
-          :disabled="!form.id"
-          tooltip="Keep these settings and close"
-          @click="onSave"
-        />
-        <Button
-          v-if="!isNew"
-          text="Delete"
-          warning
-          tooltip="Remove this image model from the provider"
-          @click="confirming = true"
-        />
-      </div>
     </div>
 
     <ConfirmModal
@@ -61,6 +45,21 @@
       @confirm="onDelete"
       @close="confirming = false"
     />
+    <template #footer>
+      <Button
+        text="Save"
+        :disabled="!form.id"
+        tooltip="Keep these settings and close"
+        @click="onSave"
+      />
+      <Button
+        v-if="!isNew"
+        text="Delete"
+        warning
+        tooltip="Remove this image model from the provider"
+        @click="confirming = true"
+      />
+    </template>
   </ObsidianModal>
 </template>
 

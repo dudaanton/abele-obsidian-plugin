@@ -77,17 +77,16 @@
           </div>
         </template>
       </div>
-
-      <div class="abele-template-select__buttons">
-        <Button text="Cancel" @click="emit('close')" />
-        <Button
-          text="Select"
-          :disabled="!selectedTemplate"
-          :accent="true"
-          @click="confirmSelection"
-        />
-      </div>
     </div>
+    <template #footer>
+      <Button text="Cancel" @click="emit('close')" />
+      <Button
+        text="Select"
+        :disabled="!selectedTemplate"
+        :accent="true"
+        @click="confirmSelection"
+      />
+    </template>
   </Modal>
 </template>
 
@@ -291,11 +290,5 @@ function confirmSelection() {
   padding: var(--size-4-4);
   text-align: center;
   opacity: 0.7;
-}
-
-.abele-template-select__buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--size-4-2);
 }
 </style>

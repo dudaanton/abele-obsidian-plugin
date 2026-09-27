@@ -14,7 +14,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 
-const STUBS = { ObsidianModal: { template: '<div><slot /></div>' } }
+const STUBS = { ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' } }
 
 let file: unknown = null
 

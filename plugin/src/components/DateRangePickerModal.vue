@@ -23,12 +23,6 @@
           <ObsidianIcon icon="calendar" @click="calendarTarget = 'to'" />
         </div>
       </Setting>
-
-      <div class="abele-date-range-picker__buttons">
-        <ObsidianButton text="Apply" accent :disabled="!fromDate || !toDate" @click="apply" />
-        <ObsidianButton text="Reset" @click="emit('reset')" />
-        <ObsidianButton text="Cancel" @click="emit('cancel')" />
-      </div>
     </div>
 
     <ObsidianModal
@@ -43,6 +37,11 @@
         />
       </div>
     </ObsidianModal>
+    <template #footer>
+      <ObsidianButton text="Apply" accent :disabled="!fromDate || !toDate" @click="apply" />
+      <ObsidianButton text="Reset" @click="emit('reset')" />
+      <ObsidianButton text="Cancel" @click="emit('cancel')" />
+    </template>
   </ObsidianModal>
 </template>
 
@@ -124,12 +123,6 @@ const apply = () => {
   input {
     width: 120px;
   }
-}
-
-.abele-date-range-picker__buttons {
-  display: flex;
-  gap: var(--size-4-2);
-  margin-top: var(--size-4-2);
 }
 
 .abele-date-range-picker__calendar-wrap {

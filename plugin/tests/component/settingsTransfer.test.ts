@@ -27,7 +27,7 @@ let original: (id: string, value: string) => void
 
 /** The dialog itself belongs to Obsidian; what these tests ask about is what it holds. */
 const STUBS = {
-  ObsidianModal: { template: '<div><slot /></div>' },
+  ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' },
   // Obsidian's own widget, which needs a real app to construct.
   Dropdown: {
     name: 'Dropdown',

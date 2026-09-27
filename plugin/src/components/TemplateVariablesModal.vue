@@ -104,12 +104,11 @@
           />
         </div>
       </div>
-
-      <div class="modal-buttons">
-        <Button text="Cancel" @click="emit('close')" />
-        <Button text="Apply" :accent="true" @click="confirmValues" />
-      </div>
     </div>
+    <template #footer>
+      <Button text="Cancel" @click="emit('close')" />
+      <Button text="Apply" :accent="true" @click="confirmValues" />
+    </template>
   </Modal>
 </template>
 
@@ -391,12 +390,5 @@ function confirmValues() {
   padding: 2px 8px;
   border-radius: var(--radius-s);
   color: var(--text-muted);
-}
-
-.modal-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--size-4-2);
-  margin-top: var(--size-4-2);
 }
 </style>

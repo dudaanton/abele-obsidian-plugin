@@ -43,12 +43,6 @@
         />
       </div>
     </div>
-
-    <div class="abele-datetime-picker__buttons">
-      <ObsidianButton text="Confirm" accent :disabled="!selectedDate" @click="confirm" />
-      <ObsidianButton text="Clear" @click="emit('clear')" />
-      <ObsidianButton text="Cancel" @click="emit('cancel')" />
-    </div>
   </div>
 </template>
 
@@ -56,7 +50,6 @@
 import { ref, computed, unref } from 'vue'
 import dayjs from 'dayjs'
 import Calendar from './Calendar.vue'
-import ObsidianButton from './obsidian/Button.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -191,6 +184,9 @@ const confirm = () => {
   const time = timeDisplay.value ? parseTime(timeDisplay.value) : null
   emit('confirm', { date: selectedDate.value, time })
 }
+
+/** The dialog around it carries the buttons, in its pinned row. */
+defineExpose({ confirm, canConfirm: computed(() => !!selectedDate.value) })
 </script>
 
 <style lang="scss">
@@ -275,10 +271,5 @@ const confirm = () => {
 .abele-datetime-picker__time-choice_active {
   background-color: hsl(var(--accent-h), var(--accent-s), var(--accent-l)) !important;
   color: var(--text-on-accent) !important;
-}
-
-.abele-datetime-picker__buttons {
-  display: flex;
-  gap: calc(var(--p-spacing) / 4);
 }
 </style>

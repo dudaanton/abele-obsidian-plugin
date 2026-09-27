@@ -5,15 +5,15 @@
         {{ shortText(highlight.text, 400) }}
       </blockquote>
       <Input v-model="text" as-text-area :rows="5" placeholder="What you think of it…" />
-      <div class="abele-book-comment__actions">
-        <Button
-          text="Save"
-          accent
-          tooltip="Save the comment in the highlights note"
-          @click="emit('save', text)"
-        />
-      </div>
     </div>
+    <template #footer>
+      <Button
+        text="Save"
+        accent
+        tooltip="Save the comment in the highlights note"
+        @click="emit('save', text)"
+      />
+    </template>
   </ObsidianModal>
 </template>
 
@@ -51,11 +51,6 @@ const text = ref(props.highlight.comment)
       var(--blockquote-border-color);
     color: var(--text-muted);
     font-size: var(--font-ui-small);
-  }
-
-  &__actions {
-    display: flex;
-    justify-content: flex-end;
   }
 }
 </style>

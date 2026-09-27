@@ -1,13 +1,10 @@
 <template>
   <ObsidianModal :title="title" @close="emit('close')">
-    <div class="abele-confirm">
-      <p class="abele-confirm__message">{{ message }}</p>
-
-      <div class="abele-confirm__actions">
-        <Button text="Cancel" :tooltip="cancelTooltip" @click="emit('close')" />
-        <Button :text="confirmText" warning :tooltip="confirmTooltip" @click="onConfirm" />
-      </div>
-    </div>
+    <p class="abele-confirm__message">{{ message }}</p>
+    <template #footer>
+      <Button text="Cancel" :tooltip="cancelTooltip" @click="emit('close')" />
+      <Button :text="confirmText" warning :tooltip="confirmTooltip" @click="onConfirm" />
+    </template>
   </ObsidianModal>
 </template>
 
@@ -50,14 +47,7 @@ function onConfirm(): void {
 
 <style lang="scss">
 .abele-confirm__message {
-  margin: 0 0 var(--size-4-4);
+  margin: 0;
   overflow-wrap: anywhere;
-}
-
-.abele-confirm__actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: var(--size-4-2);
 }
 </style>

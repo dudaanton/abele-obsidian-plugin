@@ -111,18 +111,11 @@
       <span class="abele-recurrence-picker__preview-label">Pattern:</span>
       <code>{{ pattern }}</code>
     </div>
-
-    <div class="abele-recurrence-picker__buttons">
-      <ObsidianButton text="Confirm" accent :disabled="!pattern" @click="confirm" />
-      <ObsidianButton text="Clear" @click="emit('clear')" />
-      <ObsidianButton text="Cancel" @click="emit('cancel')" />
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import ObsidianButton from './obsidian/Button.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianDropdown from './obsidian/Dropdown.vue'
 import Checkbox from './obsidian/Checkbox.vue'
@@ -286,6 +279,9 @@ const confirm = () => {
     emit('confirm', pattern.value)
   }
 }
+
+/** The dialog around it carries the buttons, in its pinned row. */
+defineExpose({ confirm, canConfirm: computed(() => !!pattern.value) })
 </script>
 
 <style lang="scss">
@@ -371,10 +367,5 @@ const confirm = () => {
 .abele-recurrence-picker__preview-label {
   color: var(--text-muted);
   margin-right: calc(var(--p-spacing) / 2);
-}
-
-.abele-recurrence-picker__buttons {
-  display: flex;
-  gap: calc(var(--p-spacing) / 4);
 }
 </style>

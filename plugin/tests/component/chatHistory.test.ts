@@ -86,7 +86,7 @@ function chatFile(title: string, extra: Partial<ChatMetadata> = {}): string {
 
 async function open(): Promise<VueWrapper> {
   wrapper = mount(AiChatHistory, {
-    global: { stubs: { ObsidianModal: { template: '<div><slot /></div>' } } },
+    global: { stubs: { ObsidianModal: { template: '<div><slot /><slot name="footer" /></div>' } } },
   })
   await flushPromises()
   return wrapper
