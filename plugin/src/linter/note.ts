@@ -159,6 +159,22 @@ export function propertyEntries(lines: string[], closing: number): PropertyEntry
   return out
 }
 
+/** A `# comment` ending a line of YAML — outside quotes, after a space — or empty. */
+export function trailingComment(line: string): string {
+  let quote = ''
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]
+    if (quote) {
+      if (c === quote) quote = ''
+    } else if (c === '"' || c === "'") {
+      quote = c
+    } else if (c === '#' && i > 0 && /\s/.test(line[i - 1])) {
+      return line.slice(i).trimEnd()
+    }
+  }
+  return ''
+}
+
 /** `key: value` as a line or lines of YAML, in the plain style the core schema reads back. */
 export function propertyLines(key: string, value: unknown): string[] {
   return dump({ [key]: value }, { schema: CORE_SCHEMA, lineWidth: -1 })
@@ -195,6 +211,9 @@ export function withProperty(content: string, key: string, value: unknown): stri
   if (closing < 0) return content
   const found = propertyEntries(lines, closing).find((e) => e.key === key)
   if (found) {
+    // A comment on the property's own line stays there, after its new value.
+    const comment = trailingComment(lines[found.start])
+    if (comment && written.length === 1) written[0] += ` ${comment}`
     lines.splice(found.start, found.end - found.start, ...written)
   } else {
     lines.splice(closing, 0, ...written)

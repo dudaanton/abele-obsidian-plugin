@@ -100,6 +100,9 @@ export async function lintContent(
   return issues
 }
 
+/** The rule a note that could not be read is listed under. */
+export const UNREADABLE = 'unreadable'
+
 /** The rules that look at this note, where they are set up to. */
 export const rulesFor = (app: App, file: TFile, rules: ActiveRule[]): ActiveRule[] =>
   rules.filter((r) => ruleApplies(app, file, r.setting))
@@ -112,7 +115,22 @@ export async function lintFile(
 ): Promise<LintIssue[]> {
   const mine = rulesFor(app, file, rules)
   if (!mine.length) return []
-  const content = await app.vault.cachedRead(file)
+  let content: string
+  try {
+    content = await app.vault.cachedRead(file)
+  } catch (err) {
+    // Deleted, moved or unreadable mid-run: said about that note, and the run goes on.
+    return [
+      {
+        path: file.path,
+        rule: UNREADABLE,
+        message: `The note could not be read: ${errorText(err)}`,
+        line: 0,
+        severity: 'error',
+        fixable: false,
+      },
+    ]
+  }
   return lintContent(file.path, content, file.stat, mine, errors)
 }
 
@@ -175,7 +193,7 @@ export async function fixContent(
     if (!issues.some((i) => i.fixable)) continue
     try {
       const out = await rule.fix(readNote(text, { path, ...facts }), setting.params)
-      if (typeof out === 'string' && out !== text) text = out
+      if (typeof out === 'string' && out !== text && !breaksProperties(text, out, path)) text = out
     } catch (err) {
       console.error(`[Abele] lint fix ${rule.id} failed on ${path}:`, err)
     }
@@ -183,7 +201,40 @@ export async function fixContent(
   return text
 }
 
+/**
+ * Whether a fix would leave properties that could be read unreadable — a hand-typed block no
+ * edit of ours foresaw. Such a fix is dropped rather than written.
+ */
+function breaksProperties(before: string, after: string, path: string): boolean {
+  const was = readNote(before, { path })
+  const now = readNote(after, { path })
+  const readable = (n: typeof was) => !n.hasFrontmatter || n.frontmatter !== null
+  if (readable(was) && !readable(now)) {
+    console.warn(`[Abele] a lint fix on ${path} would break its properties; not applied`)
+    return true
+  }
+  return false
+}
+
 export type FixOutcome = 'fixed' | 'unchanged' | 'changed-underneath'
+
+/** Writes `after` only while the note still holds `before`. */
+export async function writeIfUnchanged(
+  app: App,
+  file: TFile,
+  before: string,
+  after: string
+): Promise<FixOutcome> {
+  let moved = false
+  await app.vault.process(file, (current) => {
+    if (current !== before) {
+      moved = true
+      return current
+    }
+    return after
+  })
+  return moved ? 'changed-underneath' : 'fixed'
+}
 
 /** What fixing a note would write, without writing it: the text before and after. */
 export async function previewFix(
@@ -205,13 +256,5 @@ export async function fixFile(
 ): Promise<FixOutcome> {
   const { before, after } = await previewFix(app, file, rules, only)
   if (after === before) return 'unchanged'
-  let moved = false
-  await app.vault.process(file, (current) => {
-    if (current !== before) {
-      moved = true
-      return current
-    }
-    return after
-  })
-  return moved ? 'changed-underneath' : 'fixed'
+  return writeIfUnchanged(app, file, before, after)
 }

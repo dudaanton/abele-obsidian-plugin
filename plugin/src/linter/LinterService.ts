@@ -19,6 +19,7 @@ import {
   lintFile,
   lintFiles,
   previewFix,
+  writeIfUnchanged,
   type ActiveRule,
   type FixOutcome,
 } from './engine'
@@ -61,8 +62,19 @@ export class LinterService {
   readonly fixing = shallowRef<{ done: number; total: number } | null>(null)
 
   private controller: AbortController | null = null
-  /** The rules the report was made with — scripts loaded — which its fixes use too. */
-  private rules: ActiveRule[] = []
+  /**
+   * The rules each run was made with — scripts loaded — by the run's `startedAt`. The report on
+   * screen is fixed and read again with its own run's rules: a run stopped by a newer one may
+   * finish loading its rules after that one, and must not hand them to the newer report.
+   */
+  private runRules = new Map<number, ActiveRule[]>()
+  private lastStart = 0
+
+  /** The rules of the run on screen; none before its rules are loaded. */
+  private get rules(): ActiveRule[] {
+    const at = this.report.value?.startedAt
+    return (at !== undefined && this.runRules.get(at)) || []
+  }
 
   private get app(): App {
     return GlobalStore.getInstance().app
@@ -123,37 +135,48 @@ export class LinterService {
       running: true,
       cancelled: false,
       ruleErrors: {},
-      startedAt: Date.now(),
+      // Unique per run, since it is what tells the runs apart: two may start in one millisecond.
+      startedAt: (this.lastStart = Math.max(Date.now(), this.lastStart + 1)),
       finishedAt: 0,
     }
     this.report.value = base
-    this.rules = await this.loadRules(settings)
+    const onScreen = () => this.report.value?.startedAt === base.startedAt
     const issues: LintIssue[] = []
-    // The list is drawn anew a few times a second at most: each drawing groups all found so far.
-    let drawn = 0
-    const result = await lintFiles(this.app, files, this.rules, {
-      signal: controller.signal,
-      onProgress: (checked, _total, found) => {
-        issues.push(...found)
-        if (this.report.value?.startedAt !== base.startedAt) return
-        const now = Date.now()
-        if (now - drawn < PAINT_EVERY_MS && checked < files.length) return
-        drawn = now
-        this.report.value = { ...base, issues: [...issues], checked }
-      },
-    })
-    const done: LintReport = {
-      ...base,
-      issues: result.issues,
-      checked: result.checked,
-      running: false,
-      cancelled: result.cancelled,
-      ruleErrors: result.ruleErrors,
-      finishedAt: Date.now(),
+    let done: LintReport = { ...base, running: false, cancelled: true, finishedAt: Date.now() }
+    try {
+      const rules = await this.loadRules(settings)
+      if (onScreen()) this.runRules = new Map([[base.startedAt, rules]])
+      // The list is drawn anew a few times a second at most: each drawing groups all found so far.
+      let drawn = 0
+      const result = await lintFiles(this.app, files, rules, {
+        signal: controller.signal,
+        onProgress: (checked, _total, found) => {
+          issues.push(...found)
+          if (!onScreen()) return
+          const now = Date.now()
+          if (now - drawn < PAINT_EVERY_MS && checked < files.length) return
+          drawn = now
+          this.report.value = { ...base, issues: [...issues], checked }
+        },
+      })
+      done = {
+        ...base,
+        issues: result.issues,
+        checked: result.checked,
+        running: false,
+        cancelled: result.cancelled,
+        ruleErrors: result.ruleErrors,
+        finishedAt: Date.now(),
+      }
+    } catch (err) {
+      // Whatever broke, the tab stops saying it is linting and keeps what was found.
+      console.error('[Abele] lint run failed:', err)
+      done = { ...base, issues, running: false, cancelled: true, finishedAt: Date.now() }
+    } finally {
+      // A newer run has taken the screen: this one's result is not shown.
+      if (onScreen()) this.report.value = done
+      if (this.controller === controller) this.controller = null
     }
-    // A newer run has taken the screen: this one's result is not shown.
-    if (this.report.value?.startedAt === base.startedAt) this.report.value = done
-    if (this.controller === controller) this.controller = null
     return done
   }
 
@@ -189,6 +212,21 @@ export class LinterService {
   async preview(path: string, rule?: string): Promise<{ before: string; after: string } | null> {
     const file = this.file(path)
     return file ? previewFix(this.app, file, this.rules, rule) : null
+  }
+
+  /**
+   * Writes the fix a preview showed, exactly — and only while the note still holds the text it
+   * was worked out from. Changed since, nothing is written and the preview has to be asked again.
+   */
+  async applyPreview(path: string, shown: { before: string; after: string }): Promise<FixOutcome> {
+    const file = this.file(path)
+    if (!file || shown.after === shown.before) return 'unchanged'
+    const outcome = await writeIfUnchanged(this.app, file, shown.before, shown.after)
+    if (outcome === 'changed-underneath') {
+      new Notice(`${file.basename} changed since the preview, so it was left as it is`)
+    }
+    await this.relint(path)
+    return outcome
   }
 
   /** Fixes a note — one rule's findings, or every one that can be — and reads it again. */

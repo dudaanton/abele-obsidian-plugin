@@ -157,3 +157,17 @@ describe('helpers', () => {
     ])
   })
 })
+
+describe('a property changed next to a comment', () => {
+  it('keeps the comment on the property’s own line', () => {
+    expect(
+      withProperty('---\ncreated: "" # why it was empty\n---\n', 'created', '2026-01-02')
+    ).toBe('---\ncreated: 2026-01-02 # why it was empty\n---\n')
+  })
+
+  it('does not take a hash inside quotes for a comment', () => {
+    expect(withProperty('---\ncreated: "a # b"\n---\n', 'created', '2026-01-02')).toBe(
+      '---\ncreated: 2026-01-02\n---\n'
+    )
+  })
+})

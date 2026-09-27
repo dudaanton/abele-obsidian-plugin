@@ -186,7 +186,7 @@ describe('the linter tab', () => {
 
   it('shows what a note’s fix would change before writing it', async () => {
     vi.spyOn(service, 'preview').mockResolvedValue({ before: '# A', after: '## A' })
-    const fix = vi.spyOn(service, 'fix').mockResolvedValue('fixed')
+    const apply = vi.spyOn(service, 'applyPreview').mockResolvedValue('fixed')
     const w = show(report([issue('a.md', 'no-h1')]))
     const icons = w.findAll('.abele-linter__group-actions > *')
     await icons[1].trigger('click')
@@ -197,7 +197,10 @@ describe('the linter tab', () => {
       .find((b) => b.text() === 'Fix')!
       .trigger('click')
     await flushPromises()
-    expect(fix).toHaveBeenCalledWith('a.md')
+    expect(apply).toHaveBeenCalledWith(
+      'a.md',
+      expect.objectContaining({ before: '# A', after: '## A' })
+    )
   })
 
   it('offers to stop a run going on, and names a rule that failed', () => {

@@ -88,7 +88,9 @@ Settings → Linter beside the built-in ones as `script:<name>`, and neither a c
 `fix(note)`, returning the note's whole new text or `null`. `note` carries `path`, `name`,
 `folder`, `content`, `lines`, `frontmatter` (parsed, or `null` when missing or unreadable),
 `frontmatterError`, `frontmatterEnd`, `body`, `bodyStart`, `ctime` and `mtime`; changing it
-changes nothing. The script is run once when a lint starts, and `check` then once per note, so it
+changes nothing. A lint script only reads: `read`, `ls`, `find`, `noteInfo`, `listTemplates`,
+`log` and `dayjs` work, and every call that would write, ask, open or fetch throws — the only
+way it changes a note is the text `fix` returns, written by `lint_fix` or the linter's tab. The script is run once when a lint starts, and `check` then once per note, so it
 does no I/O of its own per note. Asked to add a rule the built-ins do not cover, write one of these
 with `create_script`; `lint` shows what it finds.
 

@@ -127,6 +127,43 @@ function compile(code: string): (ctx: ScriptContext) => Promise<unknown> {
   }
 }
 
+/**
+ * What a lint rule may use: reading the vault and nothing that changes it, asks, opens or reaches
+ * out. A rule runs whenever something lints — the agent's `lint` among them, without asking and
+ * bounded by a chat's scope that a script's own file calls are not — so its only way to change a
+ * note is the text its `fix` returns, which the linter writes through `lint_fix` or the tab.
+ */
+const LINT_READS = new Set([
+  'params',
+  'signal',
+  'dayjs',
+  'event',
+  'book',
+  'log',
+  'activeNotePath',
+  'read',
+  'ls',
+  'find',
+  'noteInfo',
+  'listTemplates',
+])
+
+function readOnly(ctx: ScriptContext, name: string): ScriptContext {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(ctx)) {
+    out[key] = LINT_READS.has(key)
+      ? value
+      : typeof value === 'function'
+        ? () => {
+            throw new Error(
+              `${key}() is not available to the lint rule "${name}": a lint rule may only read; it changes a note by the text its fix returns`
+            )
+          }
+        : undefined
+  }
+  return out as unknown as ScriptContext
+}
+
 /** What came of asking an agent's script to run: it finished, or it stopped to ask something. */
 export type ScriptOutcome =
   | { kind: 'done'; output: string }
@@ -487,12 +524,15 @@ export class ScriptService {
     const script = this.scripts.get(path)
     if (!script) throw new Error(`Script not found: ${path}`)
     const logs: string[] = []
-    const ctx = buildScriptContext({
-      params: {},
-      signal: signal ?? new AbortController().signal,
-      logs,
-      scriptName: script.meta.name,
-    })
+    const ctx = readOnly(
+      buildScriptContext({
+        params: {},
+        signal: signal ?? new AbortController().signal,
+        logs,
+        scriptName: script.meta.name,
+      }),
+      script.meta.name
+    )
     const declared =
       'return { check: typeof check === "function" ? check : undefined, ' +
       'fix: typeof fix === "function" ? fix : undefined }'

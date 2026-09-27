@@ -22,16 +22,24 @@ the settings `components/settings/LinterSettings.vue` and `LintRuleModal.vue`.
   an `AbortSignal`. A rule that throws is recorded once in `ruleErrors` and skipped for the rest of
   the run. A fix is computed on the text as read and written through `vault.process` only if the
   note still holds that text; otherwise the outcome is `changed-underneath` and nothing is
-  written.
+  written. A fix whose result would make readable properties unreadable is dropped. A note that
+cannot be read mid-run becomes one `unreadable` finding, and the run goes on.
 - **`LinterService`** holds the one report the tab shows (a `shallowRef`, replaced per batch),
-  runs, cancels, fixes and re-lints a fixed note in place.
+  runs, cancels, fixes and re-lints a fixed note in place. Each run keeps its own rules, by its
+  `startedAt` (unique per run); the report on screen is fixed with its run's rules only. A run
+  always finishes its report, a failure included. A previewed fix is written as shown, and only
+  while the note still holds the text it was worked out from (`applyPreview`).
 
 ## Script rules
 
 A script with `// @lint` (or `// @lint warning`) is parsed into `meta.lint`. It is not registered
 as a command nor offered as a `script_<name>` tool. `ScriptService.definition(path)` runs its body
 once — with the normal script context, but outside the list of runs — and returns what the body
-returns, or `{ check, fix }` picked up from functions of those names the body declared.
+returns, or `{ check, fix }` picked up from functions of those names the body declared. The context
+is read-only (`readOnly` in `ScriptService.ts`): every call that writes, asks, opens or fetches
+throws. `lint` runs without asking and within a chat's scope, while a script's own file calls
+ignore scopes, so a rule's only way to change a note is the text `fix` returns, which the
+linter writes through `lint_fix` (asks, scoped) or the tab.
 `scriptRules.ts` wraps that into a `LintRule` with id `script:<name>`; the note handed to the
 script is a copy.
 

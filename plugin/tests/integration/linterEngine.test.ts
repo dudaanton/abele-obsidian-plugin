@@ -331,3 +331,20 @@ describe('the settings', () => {
     expect(active.setting.params).toEqual({ property: 'type', allowed: [], default: '' })
   })
 })
+
+describe('a fix that would break the properties', () => {
+  it('is not written', async () => {
+    const fake = vault({ 'n.md': '---\na: 1\n---\n# Title\n' })
+    const app = fake as unknown as App
+    const s = linterSettingsFrom({})
+    const file = app.vault.getAbstractFileByPath('n.md') as never
+    const breaking: LintRule = {
+      ...rule('no-h1'),
+      id: 'breaking',
+      fix: (note) => note.content.replace('a: 1', 'a: [1').replace('# Title', '## Title'),
+    }
+    const rules = [{ rule: breaking, setting: activeRules(s, [rule('no-h1')])[0].setting }]
+    expect(await fixFile(app, file, rules)).toBe('unchanged')
+    expect(await app.vault.read(file)).toBe('---\na: 1\n---\n# Title\n')
+  })
+})

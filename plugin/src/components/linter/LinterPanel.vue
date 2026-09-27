@@ -194,6 +194,7 @@ import ObsidianModal from '../obsidian/Modal.vue'
 import Diff from '../Diff.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { LinterService } from '@/linter/LinterService'
+import { UNREADABLE } from '@/linter/engine'
 import { ScriptService } from '@/scripting/ScriptService'
 import { openIssue } from '@/linter/openIssue'
 import {
@@ -228,7 +229,10 @@ const groupTabs = [
 
 const titles = computed(() => {
   void ScriptService.getInstance().scriptList.value
-  return new Map(service.allRules().map((r) => [r.id, r.title]))
+  return new Map([
+    ...service.allRules().map((r) => [r.id, r.title] as [string, string]),
+    [UNREADABLE, 'Could not be read'] as [string, string],
+  ])
 })
 const titleOf = (id: string): string => titles.value.get(id) ?? id
 
@@ -278,9 +282,12 @@ const showPreview = async (path: string) => {
   if (diff) preview.value = { path, title: path.replace(/\.md$/i, ''), ...diff }
 }
 const applyPreview = async () => {
-  const path = preview.value?.path
+  const shown = preview.value
   preview.value = null
-  if (path) await service.fix(path)
+  if (!shown) return
+  // What was shown is what is written; a note changed since is shown again instead.
+  const outcome = await service.applyPreview(shown.path, shown)
+  if (outcome === 'changed-underneath') await showPreview(shown.path)
 }
 </script>
 

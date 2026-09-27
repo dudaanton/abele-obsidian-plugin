@@ -143,7 +143,9 @@ The note has its `path`, `name`, `folder`, whole `content` and its `lines`, the 
 properties (or `null`), the `body` under them and the line it starts on, `bodyStart`. Without
 `warning` in the header a finding is an error. The rule is listed in **Settings → Abele →
 Linter** with the others, where it can be switched off or kept to some folders. A lint script is
-not a command and not a tool for the agent: the linter is what runs it.
+not a command and not a tool for the agent: the linter is what runs it. It can read the vault
+but not change it — writing, asking, opening or fetching stops it with an error — so a note only
+changes through the text its fix returns, when you or the agent apply the fix.
 
 ## CSS snippets
 

@@ -37,6 +37,20 @@ return {
 }
 `
 
+const WRITER = `// @name Sneaky
+// @lint
+await write('Private/planted.md', 'x')
+function check(note) { return [] }
+`
+
+const WRITER_IN_CHECK = `// @name Sneaky check
+// @lint
+function check(note) {
+  create('Private/also.md', 'x')
+  return []
+}
+`
+
 const RUNNABLE = `// @name Say hi
 return 'hi'
 `
@@ -55,6 +69,8 @@ beforeEach(async () => {
     { path: 'Scripts/summary.js', raw: DECLARED },
     { path: 'Scripts/drafts.js', raw: RETURNED },
     { path: 'Scripts/hi.js', raw: RUNNABLE },
+    { path: 'Scripts/sneaky.js', raw: WRITER },
+    { path: 'Scripts/sneaky-check.js', raw: WRITER_IN_CHECK },
     { path: 'Notes/good.md', raw: '---\ncreated: 2026-01-01\n---\n\nSummary: ok\n' },
     { path: 'Notes/bare.md', raw: '# bare\ntext\n', frontmatter: undefined },
     {
@@ -104,7 +120,7 @@ describe('a lint script', () => {
         line: 1,
       }),
     ])
-    expect(report.ruleErrors).toEqual({})
+    expect(Object.keys(report.ruleErrors).sort()).toEqual(['script:Sneaky', 'script:Sneaky check'])
 
     await service.fix('Notes/bare.md', 'script:Has a summary')
     expect(app.vault.getFileByPath('Notes/bare.md')).not.toBeNull()
@@ -119,6 +135,22 @@ describe('a lint script', () => {
     expect(report.issues.filter((i) => i.rule === 'script:No drafts').map((i) => i.path)).toEqual([
       'Private/draft.md',
     ])
+  })
+})
+
+describe('a lint script only reads', () => {
+  it('cannot write while it is loaded nor while it checks, and says so', async () => {
+    const report = await LinterService.getInstance().run({ kind: 'folder', path: 'Notes' })
+    expect(report.ruleErrors['script:Sneaky']).toMatch(/only read/)
+    expect(report.ruleErrors['script:Sneaky check']).toMatch(/only read/)
+    expect(app.vault.getFileByPath('Private/planted.md')).toBeNull()
+    expect(app.vault.getFileByPath('Private/also.md')).toBeNull()
+  })
+
+  it('still reads the vault', async () => {
+    const ctx = ScriptService.getInstance()
+    const def = (await ctx.definition('Scripts/drafts.js')) as { check: unknown }
+    expect(typeof def.check).toBe('function')
   })
 })
 
@@ -160,5 +192,61 @@ describe('the agent tools', () => {
     await expect(createLintTool().execute('1', { path: 'Nowhere' })).rejects.toThrow(
       /No note or folder/
     )
+  })
+})
+
+describe('the report on screen', () => {
+  it('fixes with the rules its own run used, not a later or earlier run’s', async () => {
+    const service = LinterService.getInstance()
+    const config = AbeleConfig.getInstance()
+    // A slow first run, overtaken by a second with no-h1 switched off: its rules arrive last.
+    const load = service.loadRules.bind(service)
+    let first = true
+    vi.spyOn(service, 'loadRules').mockImplementation(async (settings) => {
+      const rules = await load(settings)
+      if (first) {
+        first = false
+        await new Promise((r) => setTimeout(r, 30))
+      }
+      return rules
+    })
+    const slow = service.run({ kind: 'folder', path: 'Notes' })
+    config.linter = linterSettingsFrom({ rules: { 'no-h1': { enabled: false } } })
+    const fast = await service.run({ kind: 'folder', path: 'Notes' })
+    await slow
+    expect(service.report.value?.startedAt).toBe(fast.startedAt)
+    await service.fix('Notes/bare.md')
+    expect(await app.vault.read(app.vault.getFileByPath('Notes/bare.md')!)).toContain('# bare')
+  })
+
+  it('writes a previewed fix only over the text it was worked out from', async () => {
+    const service = LinterService.getInstance()
+    await service.run({ kind: 'folder', path: 'Notes' })
+    const file = app.vault.getFileByPath('Notes/bare.md')!
+    const shown = await service.preview('Notes/bare.md')
+    await app.vault.modify(file, '# bare\nedited meanwhile\n')
+    expect(await service.applyPreview('Notes/bare.md', shown!)).toBe('changed-underneath')
+    expect(await app.vault.read(file)).toBe('# bare\nedited meanwhile\n')
+
+    const again = await service.preview('Notes/bare.md')
+    expect(await service.applyPreview('Notes/bare.md', again!)).toBe('fixed')
+    expect(await app.vault.read(file)).toBe(again!.after)
+  })
+
+  it('finishes the run when a note cannot be read, and names the note', async () => {
+    const service = LinterService.getInstance()
+    const read = app.vault.cachedRead.bind(app.vault)
+    app.vault.cachedRead = async (f) => {
+      if (f.path === 'Notes/good.md') throw new Error('gone')
+      return read(f)
+    }
+    const report = await service.run({ kind: 'folder', path: 'Notes' })
+    expect(report.running).toBe(false)
+    expect(service.report.value?.running).toBe(false)
+    expect(report.checked).toBe(2)
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({ path: 'Notes/good.md', rule: 'unreadable', fixable: false })
+    )
+    expect(report.issues.some((i) => i.path === 'Notes/bare.md')).toBe(true)
   })
 })
