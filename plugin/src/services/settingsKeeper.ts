@@ -249,7 +249,7 @@ export class SettingsKeeper {
    *   store turned off would switch it off on every device. The store stays and goes back into
    *   the file; turning it off writes a marker that says so (`storeFile.StoreOff`).
    *
-   * A file caught half written — the sync's writes are not atomic — is read again once after
+   * A file caught half written — by Obsidian's own save, or another tool's — is read again once after
    * `UNREADABLE_RETRY_MS`; one that still will not parse leaves the settings in memory as they
    * are and blocks every write until a readable one arrives. A file that has gone is not a
    * reason to fall back to defaults either: the settings in memory stay, and the next save

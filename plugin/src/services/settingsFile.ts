@@ -16,9 +16,10 @@ import { isPrototypeName } from '@/helpers/prototypeNames'
 /**
  * How long a reload waits before it looks at a file that would not parse a second time.
  *
- * Writes to the settings file are not atomic — Obsidian's adapter truncates and writes, and so
- * does the sync — so a reload that lands mid-write finds a short file. Half a second is far
- * longer than a write of a few kilobytes takes, and short enough that nobody sees the wait.
+ * Obsidian's own writes to the settings file are not atomic — its adapter truncates and writes
+ * — and neither are another tool's, so a reload that lands mid-write finds a short file. (The
+ * sync's are: it writes beside the file and renames over it.) Half a second is far longer than
+ * a write of a few kilobytes takes, and short enough that nobody sees the wait.
  */
 export const UNREADABLE_RETRY_MS = 500
 
