@@ -62,13 +62,19 @@ describe('running the startup scripts', () => {
       finished.push(A.path)
       return ''
     }
-    const { run, order } = setup([A, B, C], {
-      [A.path]: slow,
-      [B.path]: async () => {
-        finished.push(B.path)
-        return ''
+    // Nothing here is about the time limit; the default one is short enough that a busy machine
+    // wakes the slow script past it, and the next one would start while it still runs.
+    const { run, order } = setup(
+      [A, B, C],
+      {
+        [A.path]: slow,
+        [B.path]: async () => {
+          finished.push(B.path)
+          return ''
+        },
       },
-    })
+      { timeoutMs: 10_000 }
+    )
 
     const report = await runStartupScripts(run)
 
