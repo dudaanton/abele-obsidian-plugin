@@ -139,8 +139,8 @@ export class ChatStorage {
    * Walks the chat folder: adds what is not in the index, and re-reads what has changed.
    *
    * Both halves exist for the same reason. The file is the source of truth for a chat's links,
-   * its recap and its agent; the index is a copy in `data.json`, and `data.json` does not merge
-   * across devices. A chat answered on a phone arrives here as a file this machine has either
+   * its recap and its agent; the index is a copy each device keeps for itself
+   * (`chatIndexFile.ts`), and nothing merges it across devices. A chat answered on a phone arrives here as a file this machine has either
    * never seen — the first half — or has an entry for that was written before any of that
    * happened, and names no notes at all. That second one is what a person saw as "I only see
    * the linked chats on the phone".
@@ -271,7 +271,7 @@ export class ChatStorage {
    * Copies what a chat file says about itself into its index entry.
    *
    * Answers whether anything a reader would notice moved, so the caller can decide whether to
-   * pay for a settings write: the index is one JSON file holding every chat's entry.
+   * pay for an index write: the index is one JSON file holding every chat's entry.
    */
   private async syncEntry(entry: AiChatHistoryEntry, file: TFile): Promise<boolean> {
     const { app } = GlobalStore.getInstance()
@@ -343,7 +343,7 @@ export class ChatStorage {
       entry.title = newTitle
       // The card opens the chat by path, and the title is what it shows.
       GlobalStore.getInstance().chatLinksVersion.value++
-      await config.saveSettings()
+      await config.saveChatIndex()
     }
 
     return app.vault.getFileByPath(availablePath)
@@ -397,21 +397,21 @@ export class ChatStorage {
     }
 
     config.ai.chatHistory = history
-    await config.saveSettings()
+    await config.saveChatIndex()
     return moved
   }
 
-  // ── History management (stored in plugin data.json) ──
+  // ── History management (stored in the plugin's chat-index.json: `chatIndexFile.ts`) ──
 
   /**
    * Writes the history without the caller waiting on it. Those callers are chat writes and
-   * index syncs that must not stall on the settings file, so nobody awaits this — and a write
+   * index syncs that must not stall on the index file, so nobody awaits this — and a write
    * that fails, or that lands after the plugin unloaded, is logged here rather than left as an
    * unhandled rejection.
    */
   private saveHistory(): void {
     AbeleConfig.getInstance()
-      .saveSettings()
+      .saveChatIndex()
       .catch((err) => console.error('[Abele] Failed to save the chat history', err))
   }
 
@@ -445,7 +445,7 @@ export class ChatStorage {
       JSON.stringify(entry.notes) === JSON.stringify(next) &&
       entry.recap === (recap || undefined) &&
       entry.agentId === (agentId || undefined)
-    // Settings are one JSON file holding every chat's entry, so a save that changed nothing
+    // The index is one JSON file holding every chat's entry, so a save that changed nothing
     // costs more than the chat write that prompted it. Same guard as `updateHistoryEntry`.
     if (unchanged) return
 
@@ -525,12 +525,12 @@ export class ChatStorage {
     }
 
     GlobalStore.getInstance().chatLinksVersion.value++
-    await config.saveSettings()
+    await config.saveChatIndex()
   }
 
   /**
-   * Settings are a single JSON file holding every setting and every chat's history entry, so
-   * writing them on a save that changed no title would cost more than the chat write itself.
+   * The index is a single JSON file holding every chat's history entry, so
+   * writing it on a save that changed no title would cost more than the chat write itself.
    */
   private updateHistoryEntry(path: string, title: string, summary?: string): void {
     const config = AbeleConfig.getInstance()

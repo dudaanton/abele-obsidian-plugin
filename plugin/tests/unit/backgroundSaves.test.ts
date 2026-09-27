@@ -23,6 +23,8 @@ beforeEach(() => {
   const config = AbeleConfig.getInstance()
   config.ai = { ...DEFAULT_AI_SETTINGS, chatHistory: [] }
   vi.spyOn(config, 'saveSettings').mockRejectedValue(new Error('no plugin'))
+  // The chat index has a file of its own (`chatIndexFile.ts`), written through its own road.
+  vi.spyOn(config, 'saveChatIndex').mockRejectedValue(new Error('no plugin'))
   logged = vi.spyOn(console, 'error').mockImplementation(() => {
     // Asserted below.
   })

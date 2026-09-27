@@ -571,7 +571,7 @@ detaching a chat from a note removes its entry either way, and a later write lin
 Scripts — `.js` files under the scripts folder — are linked the same way, `create_script`
 included, and list their chats under the code when opened; no other file is linked.
 `recap` is a one-sentence summary of the work, written by the background model after a turn
-that wrote something. Both are copied into the chat index in the plugin's settings, which is
+that wrote something. Both are copied into the chat index, which is
 what draws the **Chats** list under a note: one card per linked chat, with its title, its recap
 (or, for a chat that never wrote, its summary) and the date of the link. `summary` is a sentence or two on
 what the chat is about, shown under its title in the chat history; the background model writes
@@ -615,6 +615,13 @@ hold `interceptorReplyOnly` (false by default), and it travels with the agent in
 script held back, or one it was stopped on, stays in the chat as a draft (`draft: true`,
 `interceptorScript: true`), with the script's lines beside it in `interceptorChat`; so do the
 lines a script left on a message it rewrote or failed on.
+
+The chat index is `chat-index.json` in the plugin's folder under the config directory, beside its
+settings file — not inside the settings, which sync between devices. No sync carries it: each
+device keeps its own and rebuilds it from the chat files it holds, so a chat that arrives from
+another device joins the list on its own. It is a cache: do not read it to find chats (list the
+chat folder instead) and never write it. One that would not parse is kept beside it as
+`chat-index.broken.json` for the person to look at, and a fresh one is built.
 
 A tool result or message that showed the agent a file carries `reads`: the file's path, a hash
 of its text at that moment, the time, whether it was read, attached or written by the agent, and

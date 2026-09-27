@@ -68,9 +68,9 @@ Three rules hold for every write. The setting has to exist already: this changes
 than inventing them, and a key the plugin never reads would otherwise sit in the file for good.
 The type has to match, so a folder name cannot become a list by accident. And keys and their
 keychain ids are neither readable nor writable — `ai.secrets`, anything named `apiKeyId` or
-`token`, the search key, and `secretStore`, the synced keys (below). The chat index,
-`ai.chatHistory`, is a cache rebuilt from the vault and is out of reach for the same reason a
-cache always is.
+`token`, the search key, and `secretStore`, the synced keys (below). The chat index is not a
+setting at all: it is a cache in a file of its own, rebuilt from the vault (see the vault
+reference, Chats), and out of reach for the same reason a cache always is.
 
 Say what changed afterwards. A setting is the person's, and a change they did not notice is a
 change they cannot undo.

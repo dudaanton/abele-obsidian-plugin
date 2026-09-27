@@ -7,7 +7,14 @@ import { migrateMcpPermissions } from '@/ai/mcp/permissions'
 import { notifyMcpPermissionReset } from '@/ai/mcp/settings'
 import { Notice } from 'obsidian'
 import { Journal, JournalDTO } from '@/entities/Journal'
-import { AiSettings, DEFAULT_AI_SETTINGS, ImageProvider, migrateOldPermissions } from '@/ai/types'
+import {
+  AiSettings,
+  DEFAULT_AI_SETTINGS,
+  ImageProvider,
+  migrateOldPermissions,
+  type AiChatHistoryEntry,
+} from '@/ai/types'
+import { chatIndexDiskOf, mergeChatIndex } from '@/ai/chatIndexFile'
 import { migrateAgents } from '@/ai/agents/migration'
 import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
 import {
@@ -458,6 +465,18 @@ export class AbeleConfig {
   private reloading: Promise<unknown> = Promise.resolve()
 
   /**
+   * Whether the chat index (`ai.chatHistory`) is in its own file (`ai/chatIndexFile.ts`). Until
+   * it is — the first launch of this build, or a disk that would not take the file — it stays
+   * in `data.json` as it always was, so no step of the move can lose a chat.
+   */
+  private indexOnDisk = false
+  /** Whether the settings last applied carried an index of their own: an older build's. */
+  private indexInSettings = false
+  /** The chat index writes, one after another, and what the last of them wrote. */
+  private indexSaving: Promise<void> = Promise.resolve()
+  private indexWritten: string | null = null
+
+  /**
    * Whether the settings file exists and could not be read. Anything that acts on its own —
    * automations — waits while it is: what is in memory then is defaults, not the person's.
    */
@@ -553,6 +572,8 @@ export class AbeleConfig {
     this.pendingEdits = new SettingsEdits()
     this.plugin = plugin
     this.onDisk = null
+    this.indexOnDisk = false
+    this.indexWritten = null
   }
 
   public destroy(): void {
@@ -581,14 +602,17 @@ export class AbeleConfig {
     try {
       // `null` is no file at all — a fresh install. `undefined` is a file Obsidian could not
       // parse, and that is still somebody's settings.
-      await this.take(await this.plugin.loadData())
+      const stored: unknown = await this.plugin.loadData()
+      const index = await this.readChatIndex()
+      this.indexOnDisk = index !== null
+      await this.take(stored, index ?? [])
     } finally {
       finishRead()
     }
   }
 
   /** Apply a file without losing edits made while it was being read. */
-  private async take(stored: any): Promise<void> {
+  private async take(stored: any, index: AiChatHistoryEntry[]): Promise<void> {
       const edits = this.pendingEdits
       this.loadedSync =
         stored === null || stored === undefined ? null : { sync: (stored as { sync?: unknown }).sync }
@@ -604,14 +628,15 @@ export class AbeleConfig {
       // need the executable catalog to distinguish an override from today's tool description.
       const candidates = pruneToolDescriptions(stored?.ai?.prompts?.toolDescriptions).kept
       const defaults = Object.keys(candidates).length ? await codeToolDescriptions() : {}
-      const migrated = this.applySettings(stored ?? undefined, defaults)
+      const migrated = this.applySettings(stored ?? undefined, defaults, index)
       // Include edits made before or during the read, without reverting unrelated incoming fields.
       this.applySettings(edits.apply(this.exportSettings()), defaults)
 
       // Migration only rewrites the settings held in memory. Persisting it here is what stops
       // the same migration running again on the next launch — and, for the Comment agent,
       // what stops a fresh one being minted every time the vault is opened.
-      if (migrated) await this.writeSettings()
+      if (this.indexInSettings || !this.indexOnDisk) await this.indexToFile()
+      if (migrated || (this.indexInSettings && this.indexOnDisk)) await this.writeSettings()
   }
 
   /**
@@ -663,7 +688,7 @@ export class AbeleConfig {
       console.debug('[Abele] data.json says what this copy already holds; nothing to reload')
       return false
     }
-    await this.take(stored)
+    await this.take(stored, this.ai?.chatHistory ?? [])
     // Only the startup load's block is moved: one from another device is never this one's.
     this.loadedSync = null
     this.version.value++
@@ -733,6 +758,60 @@ export class AbeleConfig {
   }
 
   /**
+   * Writes the chat index (`ai.chatHistory`) to its own file — `ChatStorage` calls this, not
+   * `saveSettings`, whenever a chat comes, goes or changes. One write at a time, and none when
+   * the index is what the file already holds.
+   *
+   * With no file to write to (a plugin with no vault, in tests) or a disk that refused it, the
+   * index goes into `data.json` instead, as it did before it had a file: a chat is never left
+   * listed nowhere.
+   */
+  async saveChatIndex(): Promise<void> {
+    if (!(await this.indexToFile())) await this.writeSettings()
+  }
+
+  /**
+   * The index written to its own file, one write at a time; answers whether the file holds it
+   * now. False with no file to write to, or when the disk refused — the index is then in
+   * `data.json`'s export again, and the caller decides whether to write that.
+   */
+  private indexToFile(): Promise<boolean> {
+    const run = this.indexSaving.then(async (): Promise<boolean> => {
+      const disk = chatIndexDiskOf(this.plugin)
+      if (disk === null) return false
+      const entries = this.ai?.chatHistory ?? []
+      const text = JSON.stringify(entries)
+      if (this.indexOnDisk && text === this.indexWritten) return true
+      try {
+        await disk.write(entries)
+        this.indexWritten = text
+        this.indexOnDisk = true
+        return true
+      } catch (error) {
+        console.error('[Abele] the chat index could not be written; keeping it in data.json', error)
+        this.indexOnDisk = false
+        return false
+      }
+    })
+    this.indexSaving = run.then((): void => undefined)
+    return run
+  }
+
+  /** The index file's entries, or null when there is none that reads. Never throws. */
+  private async readChatIndex(): Promise<AiChatHistoryEntry[] | null> {
+    const disk = chatIndexDiskOf(this.plugin)
+    if (disk === null) return null
+    try {
+      const entries = await disk.read()
+      if (entries !== null) this.indexWritten = JSON.stringify(entries)
+      return entries
+    } catch (error) {
+      console.error('[Abele] the chat index could not be read', error)
+      return null
+    }
+  }
+
+  /**
    * The write on its own, without the feature sync.
    *
    * A save during `loadSettings` must not register the AI features early: `onload` does that
@@ -766,7 +845,11 @@ export class AbeleConfig {
    * `toolDefaults` is what each tool says of itself now; a saved description equal to it is
    * dropped with the shipped defaults. Without it only the shipped defaults are recognised.
    */
-  applySettings(settings?: AbeleSettings, toolDefaults: Record<string, string> = {}): boolean {
+  applySettings(
+    settings?: AbeleSettings,
+    toolDefaults: Record<string, string> = {},
+    index: AiChatHistoryEntry[] = this.ai?.chatHistory ?? []
+  ): boolean {
     this.refreshDelay = settings?.refreshDelay ?? DEFAULT_SETTINGS.refreshDelay
     this.tasksFolder = settings?.tasksFolder ?? DEFAULT_SETTINGS.tasksFolder
     this.logsNotesTypes = settings?.logsNotesTypes || [...DEFAULT_SETTINGS.logsNotesTypes]
@@ -800,6 +883,12 @@ export class AbeleConfig {
     ]
     this.ai = settings?.ai ? { ...DEFAULT_AI_SETTINGS, ...settings.ai } : { ...DEFAULT_AI_SETTINGS }
     this.ai.chatSelectionScripts = selectionMenuScriptsFrom(this.ai.chatSelectionScripts)
+    // The chat index is this device's, in a file of its own (`ai/chatIndexFile.ts`); settings
+    // replace everything else but only add to it. One in the settings is an older build's, or
+    // this device's own from before the move, and its chats are folded in, never dropped.
+    const carried: unknown = (settings?.ai as { chatHistory?: unknown } | undefined)?.chatHistory
+    this.indexInSettings = Array.isArray(carried)
+    this.ai.chatHistory = mergeChatIndex(index, Array.isArray(carried) ? carried : [])
     // Runs before the legacy migrations below, so a settings file predating both is folded
     // into an agent using the values it actually had on disk.
     let migrated = migrateAgents(this.ai)
@@ -978,7 +1067,8 @@ export class AbeleConfig {
       journals: this.journals.map((j) => j.toDTO()),
       busyDayThreshold: this.busyDayThreshold,
       excludedPathsForDefaultTemplate: [...this.excludedPathsForDefaultTemplate],
-      ai: { ...this.ai },
+      // The chat index is not a setting: it is in a file of its own once that file holds it.
+      ai: this.indexOnDisk ? withoutChatIndex(this.ai) : { ...this.ai },
       // A copy all the way down rather than a spread: the migration already knows how to build
       // one field by field.
       sync: migrateSyncSettings(this.sync),
@@ -1037,6 +1127,17 @@ export class AbeleConfig {
         : {}),
     }
   }
+}
+
+/**
+ * The AI settings without the chat index, for a `data.json` that no longer carries it. Typed as
+ * the settings still are — with the field — because every reader in memory has it; only the
+ * file goes without, and a missing index reads as an empty one on the way back in.
+ */
+function withoutChatIndex(ai: AiSettings): AiSettings {
+  const copy: Partial<AiSettings> = { ...ai }
+  delete copy.chatHistory
+  return copy as AiSettings
 }
 
 /**
