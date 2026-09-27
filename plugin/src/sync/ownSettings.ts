@@ -1,5 +1,9 @@
+import { Notice } from 'obsidian'
 import type { StateEntry } from '@abele/sync-core'
 import { caseKey } from '@abele/sync-protocol'
+import type AbelePlugin from '@/main'
+import { canonicalJson } from '@/services/settingsFile'
+import { messageOf, SETTINGS_REPLACED } from './messages'
 
 /**
  * The plugin's own `data.json`, as a vault path: in the plugin's real folder — Obsidian's
@@ -106,4 +110,48 @@ export class OwnSettingsWatch {
     this.written = false
     this.tell(before)
   }
+}
+
+/**
+ * What the plugin's settings file says, as canonical JSON — the same for two files that say the
+ * same thing in another order — or '' for no plugin, no file, or one that will not read.
+ */
+export async function settingsMeaning(plugin: AbelePlugin | null): Promise<string> {
+  try {
+    const data: unknown = await plugin?.loadData()
+    return data === null || data === undefined ? '' : canonicalJson(data)
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * A pull wrote this plugin's own `data.json`: the plugin reloads its settings, the secret store
+ * and the AI features (`onExternalSettingsChange`). Not queued behind the engine — the reload
+ * saves settings of its own, and a save queues a reconcile there.
+ *
+ * `replaced` is what the settings file said before the vault's copy took the place of this
+ * device's own at a first contact. When the file now says something else, the person is told
+ * once where theirs went: a device whose ledger was lost — a disconnect, a phone that evicted the
+ * database — meets the file for the first time again, and would otherwise lose real settings
+ * without a word (task-6 re-review, R2).
+ */
+export function settingsArrived(
+  host: { plugin: AbelePlugin | null; note(text: string): void },
+  replaced: string | null
+): void {
+  const plugin = host.plugin
+  if (plugin === null) return
+  host.note('Abele settings arrived from another device; reloading them')
+  void Promise.resolve()
+    .then(() => plugin.onExternalSettingsChange())
+    .then(async () => {
+      if (replaced === null) return
+      if ((await settingsMeaning(plugin)) === replaced) return
+      host.note("this device's Abele settings gave way to the vault's; its own are in history")
+      new Notice(SETTINGS_REPLACED)
+    })
+    .catch((error: unknown) =>
+      host.note(`the settings that arrived could not be reloaded: ${messageOf(error)}`)
+    )
 }

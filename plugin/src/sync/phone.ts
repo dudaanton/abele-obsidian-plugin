@@ -36,3 +36,34 @@ export function phoneSocket(): typeof WebSocket {
   }
   return NoSocket as unknown as typeof WebSocket
 }
+
+/** What `watchTheFront` does when the app comes to the front or leaves it. */
+export interface FrontHandlers {
+  /** Ask a question about held deletes that was found while the app was away. */
+  held(): void
+  /** Sync, on a phone: `visible` is whether the app just came to the front. */
+  sync(visible: boolean): void
+}
+
+/**
+ * A phone syncs when its user looks at it, and as they put it away.
+ *
+ * Coming back, because the clock was frozen while the app was away and whatever other devices
+ * did since is what the user is about to read. Going away, because the system is about to
+ * freeze the app, and an edit whose push is still waiting on the watcher's pause would sit
+ * here until the app is next opened; the system gives a moment, and a small push fits in it.
+ * On every device, coming back also asks a question about held deletes that was found while
+ * the app was away (`HeldDeletesPrompt.foreground`).
+ *
+ * Registered through the plugin so Obsidian takes the listener away when the plugin unloads.
+ */
+export function watchTheFront(
+  plugin: { registerDomEvent: (el: Document, type: 'visibilitychange', cb: () => void) => void },
+  phone: boolean,
+  on: FrontHandlers
+): void {
+  plugin.registerDomEvent(document, 'visibilitychange', () => {
+    on.held()
+    if (phone) on.sync(document.visibilityState === 'visible')
+  })
+}

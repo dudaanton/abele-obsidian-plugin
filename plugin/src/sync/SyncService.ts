@@ -1,22 +1,21 @@
-import { Notice, Platform, type App } from 'obsidian'
+import { Platform, type App } from 'obsidian'
 import { ref, toRaw, type Ref } from 'vue'
 import type { DeleteDecision, HeldDelete, StateEntry, VaultClient } from '@abele/sync-core'
 import { serverUrlProblem, type JoinPrefer, type VaultInfo } from '@abele/sync-protocol'
 import type AbelePlugin from '@/main'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { canonicalJson } from '@/services/settingsFile'
-import type { DeviceConnection, JoinState } from './connection'
+import type { DeviceConnection } from './connection'
 import { ConnectionKeeper } from './connectionKeeper'
 import { Enrolment, type ConnectionEdit, type VaultChoice } from './enrolment'
 import type { SharedSelective, Sibling, TransferredConnection } from '@/transfer/connection'
 import { EngineRunner } from './engineRunner'
-import { joinOf } from './joinState'
+import { finishJoin, joinOf, tellJoinWaiting } from './joinState'
 import { HeldDeletesPrompt } from './heldDeletes'
-import { ownSettingsPath } from './ownSettings'
+import { watchTheFront } from './phone'
+import { ownSettingsPath, settingsArrived, settingsMeaning } from './ownSettings'
 import { askJoin, type JoinQuestion } from './join'
 import { factoryOf, transportOf, type SyncServiceDeps } from './environment'
 import { noop, SerialQueue } from './queue'
-import { messageOf, SETTINGS_REPLACED } from './messages'
 import { DISCONNECTED_STATUS, type SyncStatus } from './status'
 import { StatusBoard } from './statusBoard'
 
@@ -122,9 +121,19 @@ export class SyncService {
       token: () => this.keeper.token(),
       damage: () => this.keeper.damage(),
       serialise: <T>(fn: () => Promise<T>) => this.serialise(fn),
-      settingsArrived: (replaced) => this.settingsArrived(replaced),
-      settingsMeaning: () => this.settingsMeaning(),
-      joined: (join) => this.joined(join),
+      settingsArrived: (replaced) =>
+        settingsArrived({ plugin: this.plugin, note: (text) => this.note(text) }, replaced),
+      settingsMeaning: () => settingsMeaning(this.plugin),
+      joined: (join) =>
+        finishJoin(
+          {
+            connection: () => this.connection.value,
+            save: (patch) => this.keeper.save(patch),
+            note: (text) => this.note(text),
+            reconcile: () => void this.serialise(() => this.runner.reconcile()),
+          },
+          join
+        ),
     },
     this.board
   )
@@ -192,15 +201,7 @@ export class SyncService {
       await this.runner.reconcile()
     })
     void this.retryPendingRevokes()
-    // A join a transfer left open syncs nothing until it is answered, and only the status bar
-    // would say so: said once here, where the person sees it.
-    if (joinOf(this.connection.value)?.ask === true) {
-      const vault = this.connection.value.vaultName || this.connection.value.vaultId
-      new Notice(
-        `Abele Sync is waiting: choose how this vault's files are joined with ${vault} on the ` +
-          'Sync tab. Nothing syncs until then.'
-      )
-    }
+    tellJoinWaiting(this.connection.value)
   }
 
   /**
@@ -493,94 +494,20 @@ export class SyncService {
     void this.serialise(() => this.runner.reconcile())
   }
 
-  /**
-   * The engine finished the join it was built with: the choice is forgotten, so no later engine
-   * is built with it, and the next one — no longer leaving this device's own `data.json` alone —
-   * walks the manifest again to take that file up the way a first contact does. Only the join
-   * still on file is cleared: one answered again since, or for another vault, is not this one.
-   */
-  private joined(join: JoinState): void {
-    const now = this.connection.value.join
-    if (now === null || now.ask || now.vaultId !== join.vaultId) return
-    this.keeper.save({ join: null })
-    const vault = this.connection.value.vaultName || join.vaultId
-    this.note(`joined ${vault}; the choice of which side wins is done with`)
-    new Notice(
-      `This vault is now synced with ${vault}. Where both had a different copy of a file, the ` +
-        "other copy is kept in that file's Version history."
-    )
-    void this.serialise(() => this.runner.reconcile())
-  }
-
-  /**
-   * A pull wrote this plugin's own `data.json`: the plugin reloads its settings, the secret
-   * store and the AI features (`onExternalSettingsChange`). Not queued behind the engine — the
-   * reload saves settings of its own, and a save queues a reconcile there.
-   */
-  /**
-   * What the plugin's settings file says, as canonical JSON — the same for two files that say
-   * the same thing in another order — or '' for no file, or one that will not read.
-   */
-  private async settingsMeaning(): Promise<string> {
-    try {
-      const data: unknown = await this.plugin?.loadData()
-      return data === null || data === undefined ? '' : canonicalJson(data)
-    } catch {
-      return ''
-    }
-  }
-
-  /**
-   * `replaced` is what the settings file said before the vault's copy took the place of this
-   * device's own at a first contact. When the file now says something else, the
-   * person is told once where theirs went: a device whose ledger was lost — a disconnect, a
-   * phone that evicted the database — meets the file for the first time again, and would
-   * otherwise lose real settings without a word (task-6 re-review, R2).
-   */
-  private settingsArrived(replaced: string | null): void {
-    const plugin = this.plugin
-    if (plugin === null) return
-    this.note('Abele settings arrived from another device; reloading them')
-    void Promise.resolve()
-      .then(() => plugin.onExternalSettingsChange())
-      .then(async () => {
-        if (replaced === null) return
-        if ((await this.settingsMeaning()) === replaced) return
-        this.note("this device's Abele settings gave way to the vault's; its own are in history")
-        new Notice(SETTINGS_REPLACED)
-      })
-      .catch((error: unknown) =>
-        this.note(`the settings that arrived could not be reloaded: ${messageOf(error)}`)
-      )
-  }
-
   /* -- Wiring ----------------------------------------------------------- */
 
-  /**
-   * A phone syncs when its user looks at it, and as they put it away.
-   *
-   * Coming back, because the clock was frozen while the app was away and whatever other devices
-   * did since is what the user is about to read. Going away, because the system is about to
-   * freeze the app, and an edit whose push is still waiting on the watcher's pause would sit
-   * here until the app is next opened; the system gives a moment, and a small push fits in it.
-   * On every device, coming back also asks a question about held deletes that was found while
-   * the app was away (`HeldDeletesPrompt.foreground`).
-   *
-   * Registered through the plugin so Obsidian takes the listener away when the plugin unloads,
-   * and registered once — `init` may run again in a session whose settings were replaced.
-   */
+  /** See `watchTheFront`: registered once, since `init` may run again in one session. */
   private hookVisibility(): void {
     const plugin = this.plugin
     if (plugin === null || this.watchingVisibility) return
     this.watchingVisibility = true
-    const phone = Platform.isMobile
-    plugin.registerDomEvent(document, 'visibilitychange', () => {
-      // A question about held deletes found while the app was away is asked as it comes back.
-      this.heldPrompt.foreground()
-      if (!phone || !this.runner.isRunning() || this.connection.value.paused) return
-      const visible = document.visibilityState === 'visible'
-      this.note(visible ? 'the app came back to the front' : 'the app left the front')
-      void this.syncNow()
+    watchTheFront(plugin, Platform.isMobile, {
+      held: () => this.heldPrompt.foreground(),
+      sync: (visible) => {
+        if (!this.runner.isRunning() || this.connection.value.paused) return
+        this.note(visible ? 'the app came back to the front' : 'the app left the front')
+        void this.syncNow()
+      },
     })
   }
 

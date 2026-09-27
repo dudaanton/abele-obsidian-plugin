@@ -1,3 +1,4 @@
+import { Notice } from 'obsidian'
 import type { JoinPrefer } from '@abele/sync-protocol'
 import type { DeviceConnection } from './connection'
 
@@ -82,4 +83,46 @@ export function sideOf(prefer: JoinPrefer | null): string {
 /** What the log says of the join an engine was just built for. */
 export function joinLine(join: JoinState): string {
   return `joining: ${sideOf(join.prefer)}; the other copy is kept in the file's history`
+}
+
+/** What finishing a join needs of the service. */
+export interface JoinHost {
+  connection(): DeviceConnection
+  save(patch: { join: null }): void
+  note(text: string): void
+  /** Queue a reconcile, so the next engine is built without the join. */
+  reconcile(): void
+}
+
+/**
+ * The engine finished the join it was built with: the choice is forgotten, so no later engine
+ * is built with it, and the next one — no longer leaving this device's own `data.json` alone —
+ * walks the manifest again to take that file up the way a first contact does. Only the join
+ * still on file is cleared: one answered again since, or for another vault, is not this one.
+ */
+export function finishJoin(host: JoinHost, join: JoinState): void {
+  const connection = host.connection()
+  const now = connection.join
+  if (now === null || now.ask || now.vaultId !== join.vaultId) return
+  host.save({ join: null })
+  const vault = connection.vaultName || join.vaultId
+  host.note(`joined ${vault}; the choice of which side wins is done with`)
+  new Notice(
+    `This vault is now synced with ${vault}. Where both had a different copy of a file, the ` +
+      "other copy is kept in that file's Version history."
+  )
+  host.reconcile()
+}
+
+/**
+ * A join a transfer left open syncs nothing until it is answered, and only the status bar would
+ * say so: said once at startup, where the person sees it.
+ */
+export function tellJoinWaiting(connection: DeviceConnection): void {
+  if (joinOf(connection)?.ask !== true) return
+  const vault = connection.vaultName || connection.vaultId
+  new Notice(
+    `Abele Sync is waiting: choose how this vault's files are joined with ${vault} on the ` +
+      'Sync tab. Nothing syncs until then.'
+  )
 }
