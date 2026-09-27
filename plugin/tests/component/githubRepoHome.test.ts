@@ -4,11 +4,14 @@
  * and its languages — and what is shown when GitHub refuses the page or a part of it.
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { flushPromises, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { Platform } from 'obsidian'
 import { openTab, type Route } from '../helpers/githubTab'
 import { useVault } from '../helpers/testEnv'
 import { forgetRepoTrees } from '@/github/tree/repoTree'
+import { AbeleConfig } from '@/services/AbeleConfig'
+import { DEFAULT_GITHUB_SETTINGS } from '@/github/settings'
+import GithubSettingsView from '@/components/settings/GithubSettings.vue'
 
 const META = {
   name: 'r',
@@ -272,5 +275,26 @@ describe('the file tree', () => {
     await flushPromises()
     await click(wrapper.find('.abele-github-home__files').element)
     expect(model.tree).toBe(true)
+  })
+})
+
+describe('pinned repositories in the settings', () => {
+  it('are listed with their server, and unpinned from there', async () => {
+    const config = AbeleConfig.getInstance()
+    config.github = {
+      ...DEFAULT_GITHUB_SETTINGS,
+      enabled: true,
+      pinnedRepos: [{ url: 'https://github.com/acme/widgets' }],
+    }
+    const save = vi.spyOn(config, 'saveSettings').mockResolvedValue()
+    const wrapper = mount(GithubSettingsView, { attachTo: document.body })
+    await flushPromises()
+
+    const row = wrapper.findAll('.setting-item').find((r) => r.text().includes('acme/widgets'))
+    expect(row?.text()).toContain('github.com')
+    await click(row!.find('[data-icon="pin-off"]').element.closest('.abele-obsidian-icon')!)
+    expect(save).toHaveBeenCalled()
+    expect(config.github.pinnedRepos).toEqual([])
+    expect(wrapper.text()).toContain('Nothing pinned yet.')
   })
 })

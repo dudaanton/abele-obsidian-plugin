@@ -137,6 +137,11 @@ off they are not offered at all.
 `github.defaultRepo` is the repository (`owner/repo`, or a link into it; empty by default) where
 the command *Open GitHub link or item* looks up a bare `#123`, a title, a branch or a commit when
 no GitHub tab has been used and nothing was opened from it yet this session.
+`github.pinnedRepos` is the list of repositories pinned to the top of the command *Open GitHub
+repository…*, in the order pinned, each `{ url }` with the repository's own address
+(`https://github.com/owner/repo`, or the Enterprise server's), so a pin names its server. It
+travels with the GitHub settings. The repositories opened lately are not here: they are this
+device's own, in Obsidian's local storage.
 `github.searchLimitMb` (100 by default) is the largest repository — its files at that commit
 added up, in megabytes — that a tab's code search, go to definition or `github_grep` downloads
 whole to search; a larger one is searched through GitHub's own code search instead, on the

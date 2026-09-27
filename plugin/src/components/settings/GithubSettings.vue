@@ -27,6 +27,21 @@
       </Setting>
 
       <Section
+        title="Pinned repositories"
+        desc="First in Open GitHub repository…, and carried to your other devices with the settings. Pin one from that picker (Alt+Enter) or from a GitHub tab's menu."
+      >
+        <EmptyState v-if="!settings.pinnedRepos.length" text="Nothing pinned yet." />
+        <Setting
+          v-for="pin in settings.pinnedRepos"
+          :key="pin.url"
+          :name="pinName(pin.url)"
+          :desc="pinHost(pin.url)"
+        >
+          <Icon icon="pin-off" with-bg tooltip="Unpin this repository" @click="unpin(pin.url)" />
+        </Setting>
+      </Section>
+
+      <Section
         title="Access"
         desc="A fine-grained personal access token with read-only access to Contents, Issues, Pull requests and Discussions for the repositories you want to read. Without one, only public repositories can be read, 60 requests an hour, and discussions not at all."
       >
@@ -287,6 +302,26 @@ const saveServer = debounce((): void => void save(), 500)
 const updateServer = (value: string) => {
   settings.server = value.trim()
   saveServer()
+}
+
+/** `owner/repo` of a pinned address, and the server it is on. */
+const pinName = (url: string) => {
+  try {
+    return new URL(url).pathname.split('/').filter(Boolean).slice(0, 2).join('/')
+  } catch {
+    return url
+  }
+}
+const pinHost = (url: string) => {
+  try {
+    return new URL(url).host
+  } catch {
+    return ''
+  }
+}
+const unpin = (url: string) => {
+  settings.pinnedRepos = settings.pinnedRepos.filter((p) => p.url !== url)
+  void save()
 }
 
 const updateDefaultRepo = (value: string) => {

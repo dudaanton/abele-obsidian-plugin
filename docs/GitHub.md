@@ -24,13 +24,16 @@ GitHub**.
 | `…/blob/<ref>/README.md`, `…/docs/guide.md#install` | A markdown file, rendered — scrolled to that heading when the link names one. |
 | `…/blob/<ref>/README.md#L10-L20`, `…README.md?plain=1#L10-L20` | A markdown file, rendered, with the paragraphs, list items or code blocks holding those lines marked — or as code with the lines marked, when **Markdown files open as** is set to Code. |
 | `…/blob/<ref>/README.md?plain=1` | A markdown file as code, as GitHub shows it for this link. |
-| `…/owner/repo/tree/<ref>/<path>`, `…/tree/<ref>` | A folder at that branch, tag or commit — the repository's root without a path: its folders, its files and its README. |
+| `…/owner/repo` | The repository's front page — see *A repository's front page* below. |
+| `…/owner/repo/tree/<ref>` | The front page at that branch, tag or commit. |
+| `…/owner/repo/tree/<ref>/<path>` | A folder at that branch, tag or commit: its folders, its files and its README. |
 
 `#issuecomment-…`, `#discussioncomment-…` and `#pullrequestreview-…` scroll to that comment. A
 review comment — `…/pull/7#discussion_r…`, or `…/pull/7/files#r…` — opens the files, with the
 comment's file open and the comment marked. A file link that turns out to name a folder lists the
 folder, and a folder link that names a file shows the file, as GitHub redirects them. Anything
-else — a repository's front page, a release, a gist — still goes to the browser.
+else — a repository's list of pull requests or issues, a release, a gist, GitHub's own pages such
+as `github.com/settings/…` — still goes to the browser.
 
 A comparison's header has a button that swaps its two sides in the same tab — what base has that
 head has not — and its back arrow returns. GitHub sends at most 300 changed files for one
@@ -135,7 +138,7 @@ menu — takes a pasted link, or any of these:
 | `owner/repo#123`, `owner/repo 123` | the same, in that repository |
 | a commit SHA, whole or at least seven characters | the commit |
 | a branch name, or its start | the branch's files |
-| `owner/repo` | the repository's files on its default branch |
+| `owner/repo` | the repository's front page |
 | words | pull requests and issues (and, with a token, discussions) with them in the title |
 | `owner/repo` and words | the same, in that repository |
 
@@ -196,6 +199,72 @@ request's head commit, or the commit itself), and a file the change deleted as i
 nothing selected, at the line at the top of the tab when the tab is scrolled into that diff;
 otherwise at the top of the file — a markdown file the way the setting above says. The clicks are those of any link here: plain follows the tab rule, Mod opens a
 new tab, Alt the browser.
+
+## A repository's front page
+
+A link to a repository — `github.com/owner/repo`, or the same on the configured Enterprise server —
+opens its front page in a tab rather than in the browser. So does `owner/repo` in the picker, and a
+repository chosen in **Open GitHub repository…** (below).
+
+- **The title** is `owner / repo` with the branch, tag or commit shown beside it, and a badge for
+  public, private or internal — and for an archived repository. A fork says what it was forked
+  from.
+- **About:** the description, the homepage as a link, the topics, then the stars, forks and
+  watchers (GitHub's watchers: the people subscribed, not the stars again), the licence and the
+  default branch.
+- **The branch button** opens a picker of the repository's branches, then its tags, narrowed as
+  it is typed into. The first hundred of each are asked for once; in a repository with more, what
+  is typed is also looked up by its start. Choosing one moves the page to it in the same tab — the
+  address becomes `tree/<ref>`, and the files and README below are that ref's; the back arrow
+  returns. Away from the default branch a second button leads back to it. **Files** opens the file
+  tree panel beside the page, at the ref shown.
+- **Beside the files**, or above them in a narrow pane and on a phone: the latest release (a click
+  opens it on GitHub, since no tab shows a release), the five freshest open pull requests and the
+  five freshest open issues (a click opens each in the tab, Mod in a new one; **All** opens
+  GitHub's whole list in the browser), and the languages as a bar and their shares — the seven
+  largest by name, the rest as *Other*. A language's colour is one of the theme's named colours by
+  its place in the list, not GitHub's colour for it.
+- **The files and the README** are the repository's root, as a folder's page shows it: the entries,
+  then the README rendered, its relative links and pictures resolved in the repository at the ref
+  shown. A `#heading` in the link scrolls to that heading of the README. A repository with no
+  commits says it is empty.
+
+The page is one request for the repository and one for its root folder. The release, the pull
+requests, the issues and the languages are asked for after it, each on its own: a refusal of one
+— GitHub's hourly limit, say — is said in that list's place with a button to ask again, and the
+rest of the page stays. A refusal of the repository itself — a private one without a token that
+can see it — is the tab's error, in the same words as for any other item. A repository with its
+issues turned off has no issues list; one without a release has no release.
+
+Each is kept the way everything else in a tab is: GitHub is asked again with the answer's ETag,
+so reopening a page that has not changed costs nothing of the hourly limit.
+
+### Open GitHub repository…
+
+The command **Open GitHub repository…** — also in a GitHub tab's "more options" menu — is a
+picker of repositories with a search field:
+
+1. **Pinned** ones first, in the order pinned. A pin is kept in the settings by the repository's
+   address, so it travels to other devices with the GitHub settings and names its server. Pin or
+   unpin the row under the cursor with Alt+Enter, or the repository a tab shows from its "more
+   options" menu (**Pin repository**); the pinned ones are also listed, each with a way to unpin
+   it, in **Settings → GitHub → Pinned repositories**.
+2. **Recent** ones: the repositories something was opened in lately, on this device — the last
+   twenty, the latest first. They are kept in Obsidian's local storage, not in the settings, so
+   they do not travel.
+3. **Yours**: the repositories the token's account owns, collaborates on or reaches through an
+   organisation, freshest pushed first, up to a thousand.
+4. **Starred** ones.
+
+Yours and starred need a token; without one the picker says so. They are asked for when the
+picker first opens and kept for an hour. Each repository is listed once, under the first of these
+it belongs to. Typing narrows the list — the name first, then the whole `owner/repo`, then the
+description — and, once the typing pauses, asks GitHub's repository search for anything else by
+that name. `owner/repo` typed whole is offered as it is, whether or not a list has it. Enter
+opens the repository's front page by the tab rule, Mod+Enter in a new tab.
+
+Every repository in the picker is on the configured server today. When several GitHub connections
+arrive, each row will carry the one it is read with.
 
 ## Folders and the file tree
 

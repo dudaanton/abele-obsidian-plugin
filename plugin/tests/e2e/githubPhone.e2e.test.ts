@@ -103,7 +103,10 @@ const reload = async (how: string): Promise<void> => {
 }
 
 /** Opens the pull request on `section` and measures what reaches past the screen's edge. */
-const measure = (web: string, section: 'conversation' | 'files' | 'compare' | 'markdown') =>
+const measure = (
+  web: string,
+  section: 'conversation' | 'files' | 'compare' | 'markdown' | 'home'
+) =>
   evalAsync<Screen>(`(async () => {
     ${PRELUDE}
     const report = { phone: document.body.classList.contains('is-phone') }
@@ -112,16 +115,20 @@ const measure = (web: string, section: 'conversation' | 'files' | 'compare' | 'm
       const url = ${JSON.stringify(
         section === 'compare'
           ? `${web}/compare/${BASE_SHA}...main`
-          : section === 'markdown'
-            ? `${web}/blob/main/README.md#L10`
-            : `${web}/pull/42${section === 'files' ? '/files' : ''}`
+          : section === 'home'
+            ? web
+            : section === 'markdown'
+              ? `${web}/blob/main/README.md#L10`
+              : `${web}/pull/42${section === 'files' ? '/files' : ''}`
       )}
       const title = ${JSON.stringify(
         section === 'compare'
           ? '...main'
-          : section === 'markdown'
-            ? 'README.md'
-            : 'Rework the widget loader'
+          : section === 'home'
+            ? 'widgets'
+            : section === 'markdown'
+              ? 'README.md'
+              : 'Rework the widget loader'
       )}
       const leaf = githubLeaves()[0] ?? app.workspace.getLeaf(false)
       await leaf.setViewState({ type: 'abele-github', state: { url }, active: true })
@@ -132,6 +139,10 @@ const measure = (web: string, section: 'conversation' | 'files' | 'compare' | 'm
           ? root.querySelectorAll('.abele-github-comment').length > 5
           : ${JSON.stringify(section)} === 'markdown'
             ? root.querySelector('.abele-github-md__block_marked')
+            : ${JSON.stringify(section)} === 'home'
+            ? root.querySelector('[data-list="pulls"] .tree-item-self') &&
+              root.querySelector('.abele-github-folder__readme h1') &&
+              root.querySelector('.abele-github-home__lang-part')
             : root.querySelectorAll('.abele-github-file .cm-editor').length === 5), 20000)
       if (!ready) return { ...report, error: 'the pull request never showed' }
       await wait(800)
@@ -161,7 +172,7 @@ const measure = (web: string, section: 'conversation' | 'files' | 'compare' | 'm
 
       // On a real phone the harness's host takes the picture (see helpers/phone.ts).
       if (!window.__e2eHost) require('fs').mkdirSync(${JSON.stringify(SHOTS)}, { recursive: true })
-      const shot = ${JSON.stringify(SHOTS)} + (${JSON.stringify(section)} === 'compare' || ${JSON.stringify(section)} === 'markdown' ? '/github-' + ${JSON.stringify(section)} + '.png' : '/github-pull-' + ${JSON.stringify(section)} + '.png')
+      const shot = ${JSON.stringify(SHOTS)} + (['compare', 'markdown', 'home'].includes(${JSON.stringify(section)}) ? '/github-' + ${JSON.stringify(section)} + '.png' : '/github-pull-' + ${JSON.stringify(section)} + '.png')
       // The first picture after a reload can hang or fail; the measurements stand without it.
       if (window.__e2eHost) report.shot = await window.__e2eHost.shot(shot)
       for (let attempt = 0; attempt < 3 && !report.shot?.endsWith('.png'); attempt++) {
@@ -187,21 +198,28 @@ const measure = (web: string, section: 'conversation' | 'files' | 'compare' | 'm
  * The "Open GitHub link or item" picker with `text` typed, once GitHub has answered: what reaches
  * past the screen's edge, and a picture.
  */
-const measurePicker = (text: string, label: string) =>
+const measurePicker = (
+  text: string,
+  label: string,
+  command = 'abele:open-github-link',
+  cls = '.abele-github-open'
+) =>
   evalAsync<Screen & { rows?: number }>(`(async () => {
     ${PRELUDE}
     const report = { phone: document.body.classList.contains('is-phone') }
-    const picker = () => document.querySelector('.abele-github-open')
+    const picker = () => document.querySelector(${JSON.stringify(cls)})
     try {
       const config = window.__abeleTest.AbeleConfig.getInstance()
       config.github = { ...config.github, defaultRepo: 'acme/widgets' }
-      app.commands.executeCommandById('abele:open-github-link')
+      app.commands.executeCommandById(${JSON.stringify(command)})
       const input = await until(() => picker()?.querySelector('input'), 5000)
       if (!input) return { ...report, error: 'no picker' }
       input.value = ${JSON.stringify(text)}
       input.dispatchEvent(new Event('input', { bubbles: true }))
       await wait(200)
       await until(() => !picker().textContent.includes('Asking GitHub'), 10000)
+      // The repository picker fills in once the account's lists arrive.
+      await until(() => picker().querySelectorAll('.suggestion-item').length > 0, 5000)
       input.blur()
       await wait(500)
       const root = picker()
@@ -254,10 +272,17 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     screens.conversation = measure(gh.web, 'conversation')
     screens.compare = measure(gh.web, 'compare')
     screens.markdown = measure(gh.web, 'markdown')
+    screens.home = measure(gh.web, 'home')
     // Last: the tests below work in the pull request's files.
     screens.files = measure(gh.web, 'files')
     screens.picker = measurePicker('loader', 'suggestions')
     screens.pickerEmpty = measurePicker('', 'empty')
+    screens.repoPicker = measurePicker(
+      '',
+      'repositories',
+      'abele:open-github-repository',
+      '.abele-github-repos'
+    )
     console.info(`\n  ${JSON.stringify(screens)}\n`)
   }, 300_000)
 
@@ -273,7 +298,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     await reload('app.emulateMobile(false)')
   }, 180_000)
 
-  it.each(['conversation', 'files', 'compare', 'markdown'])(
+  it.each(['conversation', 'files', 'compare', 'markdown', 'home'])(
     '%s: shown in the phone layout',
     (section) => {
       expect(screens[section]?.error).toBeUndefined()
@@ -281,7 +306,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     }
   )
 
-  it.each(['picker', 'pickerEmpty'])('%s: the Open GitHub item picker fits the screen', (s) => {
+  it.each(['picker', 'pickerEmpty', 'repoPicker'])('%s: the picker fits the screen', (s) => {
     expect(screens[s]?.error).toBeUndefined()
     expect(screens[s]?.phone).toBe(true)
     expect(screens[s]?.over ?? ['no report']).toEqual([])
@@ -292,7 +317,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     expect((screens.picker as { rows?: number } | undefined)?.rows).toBe(3)
   })
 
-  it.each(['conversation', 'files', 'compare', 'markdown'])(
+  it.each(['conversation', 'files', 'compare', 'markdown', 'home'])(
     '%s: nothing reaches past the edge of the screen',
     (section) => {
       expect(screens[section]?.over ?? ['no report']).toEqual([])

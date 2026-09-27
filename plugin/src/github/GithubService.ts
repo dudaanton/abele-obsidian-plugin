@@ -10,6 +10,7 @@ import { checkAccess, parseRepoInput, type AccessReport } from './accessCheck'
 import { endpoints, normaliseHost, parseGithubUrl, targetKey, type GithubTarget } from './urls'
 import { DEFAULT_GITHUB_SETTINGS, type GithubSettings } from './settings'
 import { forgetRepoTrees } from './tree/repoTree'
+import { rememberRepo } from './open/repoList'
 
 export const GITHUB_VIEW_TYPE = 'abele-github'
 
@@ -159,5 +160,7 @@ export async function openGithubUrl(
   await leaf.setViewState({ type: GITHUB_VIEW_TYPE, state: { url }, active: true })
   await app.workspace.revealLeaf(leaf)
   lastGithubLeaf = leaf
+  // Offered first among the recent ones by "Open GitHub repository…" on this device.
+  if (app.saveLocalStorage) rememberRepo(app, target)
   return true
 }

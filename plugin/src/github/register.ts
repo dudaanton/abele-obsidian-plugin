@@ -18,6 +18,7 @@ import {
 import { linkAtClick, paneForClick, urlAtCursor } from './links'
 import { registerSnippetBlock } from './snippetCard'
 import { OpenPicker } from './open/OpenPicker'
+import { RepoPicker } from './open/RepoPicker'
 import { initGithubUsers } from './users'
 
 /**
@@ -111,6 +112,17 @@ export function registerGithub(plugin: Plugin): void {
       const view = app.workspace.getActiveViewOfType(GithubView)
       if (!githubSettings().enabled || !view?.canChatAbout()) return false
       if (!checking) view.chatAbout()
+      return true
+    },
+  })
+
+  plugin.addCommand({
+    id: 'open-github-repository',
+    name: 'Open GitHub repository…',
+    icon: 'book-marked',
+    checkCallback: (checking) => {
+      if (!githubSettings().enabled) return false
+      if (!checking) new RepoPicker(app).open()
       return true
     },
   })

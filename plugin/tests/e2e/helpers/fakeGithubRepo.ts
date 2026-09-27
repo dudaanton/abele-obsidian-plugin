@@ -125,11 +125,14 @@ export const HEAD_FILES: Files = {
 /** A branch whose name holds a slash; it stands where `main` does. */
 export const SLASHED_BRANCH = 'feature/paging'
 
+/** The one tag, on the base commit: the front page switched to it shows the older README. */
+export const TAG = 'v1.0.0'
+
 /** The files at a ref: a branch name or either commit. */
 export function filesAt(ref: string): Files | null {
   if (ref === 'main' || ref === HEAD_SHA || ref === 'HEAD' || ref === FIRST_SHA) return HEAD_FILES
   if (ref === SLASHED_BRANCH) return HEAD_FILES
-  if (ref === BASE_SHA) return BASE_FILES
+  if (ref === BASE_SHA || ref === TAG) return BASE_FILES
   return null
 }
 
@@ -315,7 +318,33 @@ export function fixtures(web: string) {
     files: list,
   })
   return {
-    repo: { name: REPO, full_name: `${OWNER}/${REPO}`, default_branch: 'main' },
+    repo: {
+      name: REPO,
+      full_name: `${OWNER}/${REPO}`,
+      owner: { login: OWNER },
+      default_branch: 'main',
+      description: 'Widgets for the dashboard, loaded in pages.',
+      homepage: 'https://widgets.example.com',
+      topics: ['dashboard', 'widgets'],
+      stargazers_count: 1234,
+      forks_count: 56,
+      subscribers_count: 7,
+      license: { spdx_id: 'MIT', name: 'MIT License' },
+      visibility: 'public',
+      private: false,
+      archived: false,
+      has_issues: true,
+      html_url: repoWeb,
+    },
+    languages: { TypeScript: 7000, CSS: 2000, Shell: 1000 },
+    release: {
+      name: 'Widgets 1.0',
+      tag_name: TAG,
+      published_at: '2026-08-15T10:00:00Z',
+      prerelease: false,
+      author: user('alice'),
+      html_url: `${repoWeb}/releases/tag/${TAG}`,
+    },
     pull,
     pullComments,
     reviews: [

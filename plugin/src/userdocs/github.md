@@ -23,15 +23,26 @@ With **Open GitHub links in Obsidian** on, a click on a GitHub link in a note op
 - a discussion, with its replies and chosen answer;
 - a commit, or a comparison of two branches;
 - a file at a branch or commit, with the linked lines marked; a markdown file is shown rendered;
-- a folder, with its files and README.
+- a folder, with its files and README;
+- a repository's front page: its description, stars and topics, the branch or tag shown with a
+  button to switch, the latest release, the five freshest open pull requests and issues, its
+  languages, and its files with the README.
 
-Anything else, such as a release, still goes to the browser.
+Anything else, such as a release or a list of all issues, still goes to the browser.
 
 ## Opening by number or name
 
 **Open GitHub link or item** takes a pasted link, `#123`, `owner/repo#123`, a branch, a commit or
 words of a title, and suggests matches as you type. A bare number is looked up in the repository
 you used last, or in the **Default repository** from the settings.
+
+## Opening a repository
+
+**Open GitHub repository…** lists your pinned repositories, the ones you opened lately on this
+device, your own and your starred ones (these two need a token), and searches GitHub for anything
+else you type. **Alt+Enter** pins or unpins the highlighted repository; a GitHub tab's menu has
+**Pin repository** too. Pins are kept in the settings, so they appear on your other devices, and
+**Settings → Abele → GitHub → Pinned repositories** lists them.
 
 ## Linking and quoting
 

@@ -68,11 +68,8 @@ export class RefPicker extends SuggestModal<RefRow> {
       lists = [all]
       const typed = query.trim()
       if (all.more && typed) {
-        let found = this.byPrefix.get(typed)
-        if (!found) {
-          found = refsStarting(this.client, this.repo, typed)
-          this.byPrefix.set(typed, found)
-        }
+        const found = this.byPrefix.get(typed) ?? refsStarting(this.client, this.repo, typed)
+        this.byPrefix.set(typed, found)
         const none: RefList = { branches: [], tags: [], more: false }
         lists.push(await found.catch(() => none))
       }

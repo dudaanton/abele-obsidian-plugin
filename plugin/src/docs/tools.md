@@ -105,7 +105,8 @@ Every item is named by a link or `owner/repo#12`; a repository by `owner/repo` o
 it. Answers are capped and say where the rest is — a page, a diff window, a line range. Ask for
 the next part rather than trying to get everything at once.
 
-- `github_views` — what the person has open in GitHub tabs: the item, comparison or folder, the
+- `github_views` — what the person has open in GitHub tabs: the item, comparison, folder or a
+  repository's front page (`Repository`), the
   pull request's or comparison's section in front, the diffs drawn open, the lines they selected, with the code, whether the file
   tree panel is open beside it, and words they selected in prose — a description, comment, reply,
   review comment, commit message, rendered file or a folder's README — quoted, with which comment
@@ -141,7 +142,8 @@ the next part rather than trying to get everything at once.
   code: any branch, exact line numbers, regular expressions, and no token needed for a public
   repository.
 - `github_open` — puts something in front of the person in a GitHub tab: an item, a comparison
-  (`compare/base...head`), a file, or a folder by its `tree/<ref>/<path>` link. `start_line` and
+  (`compare/base...head`), a file, a folder by its `tree/<ref>/<path>` link, or a repository's
+  front page by its own address (`tree/<ref>` alone is the front page at that ref). `start_line` and
   `end_line` mark lines: with `path` in a pull request's, commit's or comparison's diff
   (`old: true` for removed lines), or in a file link. It reuses the tab showing the item, else the GitHub tab used last.
 

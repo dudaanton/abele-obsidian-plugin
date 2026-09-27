@@ -43,6 +43,13 @@ genuinely theirs to take. Every one is prefixed **Abele:** in the palette.
   already showing that item, else the GitHub tab used last, else a new one; Mod+Enter opens a new
   tab. The same picker is *Open another GitHub item…* in a GitHub tab's "more options" menu (only
   while the GitHub integration is on)
+- Open GitHub repository… — a picker of repositories: pinned ones (`github.pinnedRepos`), the ones
+  opened lately on this device, the account's own and the starred ones (with a token, asked of
+  GitHub once an hour), and GitHub's repository search for what is typed; `owner/repo` typed whole
+  is offered as itself. A choice opens the repository's front page, Mod+Enter in a new tab;
+  Alt+Enter pins or unpins the row. A GitHub tab's "more options" menu has the same command, and
+  **Pin repository** / **Unpin repository** for the repository it shows (only while the GitHub
+  integration is on)
 - Chat about this GitHub item — in a GitHub tab: a new chat with a link to the item in the
   input. The same is the speech-bubble button in the tab's header and in its "more options"
   menu; *Ask here* under selected lines of code starts one with those lines quoted, and so does

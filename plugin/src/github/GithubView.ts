@@ -19,6 +19,8 @@ import { shortName, targetKey } from './urls'
 import type { GithubViewModel } from './model'
 import { chatSubject, emptyScreen } from './screen'
 import { OpenPicker } from './open/OpenPicker'
+import { RepoPicker } from './open/RepoPicker'
+import { isPinned, setPinned } from './open/repoList'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   GITHUB_VIEW_TYPE,
@@ -129,6 +131,25 @@ export class GithubView extends ItemView {
         .setSection('open')
         .onClick(() => new OpenPicker(this.app).open())
     )
+    menu.addItem((item) =>
+      item
+        .setTitle('Open GitHub repository…')
+        .setIcon('book-marked')
+        .setSection('open')
+        .onClick(() => new RepoPicker(this.app).open())
+    )
+    const t = this.model.target
+    if (t) {
+      const repo = { host: t.host, owner: t.owner, repo: t.repo }
+      const pinned = isPinned(repo)
+      menu.addItem((item) =>
+        item
+          .setTitle(pinned ? 'Unpin repository' : 'Pin repository')
+          .setIcon(pinned ? 'pin-off' : 'pin')
+          .setSection('open')
+          .onClick(() => void setPinned(repo, !pinned))
+      )
+    }
     if (!this.canChatAbout()) return
     menu.addItem((item) =>
       item

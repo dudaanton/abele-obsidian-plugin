@@ -183,6 +183,8 @@ describe('settings that arrived later than the transfer did', () => {
       userDisplay: 'login' as const,
       pageWidth: 'custom' as const,
       pageWidthPx: 1280,
+      // Pinned in "Open GitHub repository…", and pinned on the other device too.
+      pinnedRepos: [{ url: 'https://git.example/octo-org/octo-repo' }],
     }
     const entries = collectEntries(settings({ github }))
     const entry = find(entries, 'github', 'github')

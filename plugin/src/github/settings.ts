@@ -38,6 +38,17 @@ export interface GithubSettings {
    * as its source. The switch in the tab overrides it for that tab.
    */
   markdownView: 'preview' | 'code'
+  /**
+   * The repositories pinned to the top of "Open GitHub repository…", in the order pinned. Each
+   * is its address, which names its server; an object, so that the connection it is read with
+   * can be added beside the address later.
+   */
+  pinnedRepos: PinnedRepo[]
+}
+
+export interface PinnedRepo {
+  /** `https://<host>/<owner>/<repo>`. */
+  url: string
 }
 
 export const GITHUB_TOKEN_KEY_ID = 'abele-github-token'
@@ -53,9 +64,14 @@ export const DEFAULT_GITHUB_SETTINGS: GithubSettings = {
   pageWidth: 'custom',
   pageWidthPx: 1000,
   markdownView: 'preview',
+  pinnedRepos: [],
 }
 
 export const githubSettingsFrom = (stored?: Partial<GithubSettings>): GithubSettings => ({
   ...DEFAULT_GITHUB_SETTINGS,
   ...(stored ?? {}),
+  // A settings file from before pinning, or one edited by hand, holds nothing usable here.
+  pinnedRepos: Array.isArray(stored?.pinnedRepos)
+    ? stored.pinnedRepos.filter((p): p is PinnedRepo => typeof p?.url === 'string')
+    : [],
 })

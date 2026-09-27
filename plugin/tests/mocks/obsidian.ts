@@ -603,6 +603,8 @@ export class Modal {
   contentEl: HTMLElement = document.createElement('div')
   titleText = ''
   isOpen = false
+  /** The dialog's own keys, as Obsidian gives every modal. */
+  scope: Scope = new Scope()
 
   constructor(public app?: unknown) {
     // Obsidian's own class names, so that code finding its dialog from inside finds it here.

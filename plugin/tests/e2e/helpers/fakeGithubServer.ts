@@ -29,6 +29,7 @@ import {
   PULL,
   REPO,
   SLASHED_BRANCH,
+  TAG,
   FIRST_SHA,
   changedFiles,
   filesAt,
@@ -167,6 +168,19 @@ function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) 
   const f = fixtures(web)
   const accept = String(req.headers.accept ?? '')
   if (url.pathname === '/api/v3/search/issues') return searchIssues(res, url, web)
+  // The account's own repositories and the starred ones: this one, and a starred one to tell apart.
+  if (url.pathname === '/api/v3/user/repos') return send(res, 200, page(url, [f.repo]))
+  if (url.pathname === '/api/v3/user/starred')
+    return send(
+      res,
+      200,
+      page(url, [{ name: 'gadgets', owner: { login: 'other' }, description: 'Starred elsewhere.' }])
+    )
+  if (url.pathname === '/api/v3/search/repositories') {
+    const words = searchWords(url.searchParams.get('q') ?? '')
+    const items = words.every((w) => REPO.includes(w)) ? [f.repo] : []
+    return send(res, 200, { total_count: items.length, items })
+  }
   const profile = /^\/api\/v3\/users\/([^/]+)$/.exec(url.pathname)
   if (profile) {
     const login = decodeURIComponent(profile[1])
@@ -180,6 +194,13 @@ function rest(req: IncomingMessage, res: ServerResponse, url: URL, web: string) 
   const path = decodeURIComponent(url.pathname.slice(prefix.length))
 
   if (path === '') return send(res, 200, f.repo)
+  // What the front page asks for once it is up.
+  if (path === '/languages') return send(res, 200, f.languages)
+  if (path === '/releases/latest') return send(res, 200, f.release)
+  if (path === '/tags') return send(res, 200, [{ name: TAG }])
+  if (path === '/pulls') return send(res, 200, page(url, [f.pull]))
+  if (path === '/issues')
+    return send(res, 200, page(url, [{ ...f.pull, pull_request: {} }, f.issue]))
   if (path === `/pulls/${PULL}`) return send(res, 200, f.pull)
   if (path === `/issues/${PULL}`) return send(res, 200, { ...f.pull, pull_request: {} })
   if (path === `/issues/${PULL}/comments`) return send(res, 200, page(url, f.pullComments))
