@@ -2,7 +2,11 @@
   <div
     ref="root"
     class="abele-mermaid"
-    :class="{ 'abele-mermaid_full': full, 'abele-mermaid_error': error !== null }"
+    :class="{
+      'abele-mermaid_full': full,
+      'abele-mermaid_error': error !== null,
+      'abele-mermaid_bar': barBelow,
+    }"
   >
     <div v-if="error !== null" class="abele-mermaid__error">
       <div class="abele-mermaid__error-head">
@@ -31,6 +35,8 @@
       @keydown="onKey"
     >
       <div ref="canvas" class="abele-mermaid__canvas" />
+    </div>
+    <div v-if="error === null" class="abele-mermaid__bar">
       <div class="abele-mermaid__controls abele-mermaid__controls_top">
         <Icon v-if="edit" icon="code-2" tooltip="Edit the diagram's source" @click="edit()" />
         <Icon
@@ -48,23 +54,38 @@
       </div>
       <div class="abele-mermaid__controls abele-mermaid__pad">
         <span />
-        <Icon icon="chevron-up" tooltip="Pan up" @click="pan(0, 1)" />
+        <Icon icon="chevron-up" tooltip="Pan up" class="abele-mermaid__pan-up" @click="pan(0, 1)" />
         <Icon
           icon="zoom-in"
           tooltip="Zoom in"
           class="abele-mermaid__zoom-in"
           @click="zoom(ZOOM_STEP)"
         />
-        <Icon icon="chevron-left" tooltip="Pan left" @click="pan(1, 0)" />
+        <Icon
+          icon="chevron-left"
+          tooltip="Pan left"
+          class="abele-mermaid__pan-left"
+          @click="pan(1, 0)"
+        />
         <Icon
           icon="scan"
           tooltip="Fit the whole diagram in the frame"
           class="abele-mermaid__reset"
           @click="reset"
         />
-        <Icon icon="chevron-right" tooltip="Pan right" @click="pan(-1, 0)" />
+        <Icon
+          icon="chevron-right"
+          tooltip="Pan right"
+          class="abele-mermaid__pan-right"
+          @click="pan(-1, 0)"
+        />
         <span />
-        <Icon icon="chevron-down" tooltip="Pan down" @click="pan(0, -1)" />
+        <Icon
+          icon="chevron-down"
+          tooltip="Pan down"
+          class="abele-mermaid__pan-down"
+          @click="pan(0, -1)"
+        />
         <Icon
           icon="zoom-out"
           tooltip="Zoom out"
@@ -95,7 +116,7 @@
  * outside the frame the page scrolls as ever.
  */
 import { nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
-import { Keymap, Menu, Notice } from 'obsidian'
+import { Keymap, Menu, Notice, Platform } from 'obsidian'
 import Icon from '@/components/obsidian/Icon.vue'
 import Modal from '@/components/obsidian/Modal.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -134,6 +155,13 @@ const MAX_FRAME_HEIGHT = 640
 const MAX_FRAME_SHARE = 0.7
 /** How far the full-screen view enlarges a small diagram to fill the screen. */
 const FULL_MAX_SCALE = 2
+
+/**
+ * On a phone or a tablet the controls are always shown — there is no hover to call them up —
+ * so laid over the diagram they cover its right edge for good. There they stand in a bar of
+ * their own under the frame instead.
+ */
+const barBelow = Platform.isMobile
 
 const root = ref<HTMLElement>()
 const frame = ref<HTMLElement>()
@@ -518,9 +546,16 @@ defineExpose({ openCopyMenu })
 }
 
 /**
- * The controls sit over the diagram's corners and show while the pointer is over the frame or
- * a control has focus. A phone has no hover, so there they are always shown.
+ * The controls sit over the diagram's corners and show while the pointer is over the diagram or
+ * a control has focus. Their bar lies over the frame and lets the pointer through to it
+ * everywhere but on a control.
  */
+.abele-mermaid__bar {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 .abele-mermaid__controls {
   position: absolute;
   display: flex;
@@ -530,13 +565,13 @@ defineExpose({ openCopyMenu })
   border: var(--border-width) solid var(--background-modifier-border);
   border-radius: var(--radius-s);
   cursor: default;
+  pointer-events: auto;
   opacity: 0;
   transition: opacity var(--anim-duration-fast) ease-in-out;
 }
 
-.abele-mermaid__frame:hover .abele-mermaid__controls,
-.abele-mermaid__frame:focus-within .abele-mermaid__controls,
-body.is-mobile .abele-mermaid__controls {
+.abele-mermaid:hover .abele-mermaid__controls,
+.abele-mermaid:focus-within .abele-mermaid__controls {
   opacity: 1;
 }
 
@@ -550,6 +585,59 @@ body.is-mobile .abele-mermaid__controls {
   grid-template-columns: repeat(3, auto);
   right: var(--size-4-2);
   bottom: var(--size-4-2);
+}
+
+/**
+ * On a phone: one row under the frame, the diagram's own buttons at the start and the moves at
+ * the end, so nothing covers the diagram.
+ */
+.abele-mermaid_bar .abele-mermaid__bar {
+  position: static;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  column-gap: var(--size-4-2);
+  margin-top: var(--size-2-2);
+  pointer-events: auto;
+
+  .abele-mermaid__controls {
+    position: static;
+    display: flex;
+    gap: 0;
+    opacity: 1;
+    border: none;
+    padding: 0;
+    background: none;
+  }
+
+  .abele-mermaid__pad > span {
+    display: none;
+  }
+  .abele-mermaid__pan-left {
+    order: 1;
+  }
+  .abele-mermaid__pan-up {
+    order: 2;
+  }
+  .abele-mermaid__pan-down {
+    order: 3;
+  }
+  .abele-mermaid__pan-right {
+    order: 4;
+  }
+  .abele-mermaid__zoom-out {
+    order: 5;
+  }
+  .abele-mermaid__reset {
+    order: 6;
+  }
+  .abele-mermaid__zoom-in {
+    order: 7;
+  }
+}
+
+.abele-mermaid_full.abele-mermaid_bar .abele-mermaid__bar {
+  flex: 0 0 auto;
 }
 
 .abele-mermaid__error {

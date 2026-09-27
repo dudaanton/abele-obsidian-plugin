@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
-import { mermaidStub, Notice } from 'obsidian'
+import { mermaidStub, Notice, Platform } from 'obsidian'
 import MermaidDiagram from '@/components/mermaid/MermaidDiagram.vue'
 import { clearDiagramCache } from '@/mermaid/renderMermaid'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -135,6 +135,33 @@ describe('fitting the note', () => {
     )
     expect(height).toBeLessThanOrEqual(640)
     expect(scaleOf(wrapper)).toBeCloseTo(height / 4000)
+  })
+})
+
+/**
+ * On a phone the controls are always on screen — there is no hover to call them up — and laid
+ * over the diagram they covered its right edge for good. There they stand under the frame.
+ */
+describe('the controls on a phone', () => {
+  afterEach(() => {
+    Platform.isMobile = false
+  })
+
+  it('stand in a bar under the diagram, not over it', async () => {
+    Platform.isMobile = true
+    const wrapper = await open(chart(800, 300))
+
+    expect(wrapper.classes()).toContain('abele-mermaid_bar')
+    expect(wrapper.find('.abele-mermaid__frame .abele-mermaid__controls').exists()).toBe(false)
+    const frame = wrapper.find('.abele-mermaid__frame').element
+    expect(frame.nextElementSibling?.classList.contains('abele-mermaid__bar')).toBe(true)
+    await wrapper.find('.abele-mermaid__zoom-in').trigger('click')
+    expect(scaleOf(wrapper)).toBeCloseTo(0.625)
+  })
+
+  it('lie over the diagram on a computer, where they show on hover', async () => {
+    const wrapper = await open(chart(800, 300))
+    expect(wrapper.classes()).not.toContain('abele-mermaid_bar')
   })
 })
 
