@@ -86,7 +86,11 @@ font or style arriving late above them: they are measured again whenever a block
 changes size and whenever the view comes to rest on a new place. When that finds them moved, the
 console says so (`book marks moved with their words`, with the reason and how far). They are
 also measured again when the page's styles change — a font changed in the settings can move the
-words sideways without any line changing its height.
+words sideways without any line changing its height. And a few times in the first seconds after a page
+arrives or its styles change, the page is laid out again: on an iPhone opened fresh with a font
+of the device's own (a monospace text font), WebKit reported where the words of a justified line
+are from a layout made before the font was in place, so highlights sat a couple of letters off
+until the font was changed; a layout that was right does not move.
 
 A page is laid out again when a picture on it finishes loading, as when a font does, so a picture
 that arrives late never lies over the text after it. An inline element wrapped around blocks —

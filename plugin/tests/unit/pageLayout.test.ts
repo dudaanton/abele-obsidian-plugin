@@ -3,13 +3,15 @@
  * nudged and put back as it was, important and all, and nothing done to a page not in columns;
  * and what is drawn over the words — highlights — drawn again over where the words now are.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   redrawOver,
   relayoutColumns,
   relayoutOnFonts,
   relayoutOnPictures,
   keepMarksOnText,
+  FONT_CHECKS_MS,
+  relayoutText,
 } from '@/reader/pageLayout'
 
 function page(width?: string): Document {
@@ -45,9 +47,10 @@ describe('laying a page out again', () => {
     Object.defineProperty(doc.documentElement, 'offsetHeight', { get: () => (layouts++, 0) })
     relayoutOnFonts(doc)
     await Promise.resolve()
-    expect(layouts).toBe(2)
-    fonts.dispatchEvent(new Event('loadingdone'))
+    // The lines set anew (two layouts) and the columns (two more).
     expect(layouts).toBe(4)
+    fonts.dispatchEvent(new Event('loadingdone'))
+    expect(layouts).toBe(8)
   })
 
   it('draws what is over the words again each time, on a scrolled page too', async () => {
@@ -158,5 +161,43 @@ describe('laying a page out again', () => {
     await Promise.resolve()
     await frame()
     expect(redraws).toBe(before + 2)
+  })
+
+  it('lays the page out again a few times after it comes, and draws what is over it again', async () => {
+    vi.useFakeTimers()
+    try {
+      const doc = page('500px')
+      Object.defineProperty(doc, 'defaultView', { value: window })
+      let layouts = 0
+      Object.defineProperty(doc.documentElement, 'offsetHeight', { get: () => (layouts++, 0) })
+      let redraws = 0
+      const renderer = Object.assign(new EventTarget(), {
+        getContents: () => [{ doc, overlayer: { redraw: () => redraws++ } }],
+      })
+      keepMarksOnText(doc, () => renderer)
+      await vi.advanceTimersByTimeAsync(FONT_CHECKS_MS[FONT_CHECKS_MS.length - 1] + 100)
+      // Each check sets the lines anew and nudges the columns: four layouts.
+      expect(layouts).toBe(FONT_CHECKS_MS.length * 4)
+      expect(redraws).toBeGreaterThanOrEqual(1)
+      // Nothing more once they are done.
+      const done = layouts
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(layouts).toBe(done)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sets every line of the page anew: its alignment changed and put back, nothing left behind', () => {
+    const doc = page('500px')
+    doc.head.innerHTML = '<style id="book">p { text-align: justify }</style>'
+    const seen: string[] = []
+    Object.defineProperty(doc.documentElement, 'offsetHeight', {
+      get: () => (seen.push(String(doc.head.querySelectorAll('style').length)), 0),
+    })
+    relayoutText(doc)
+    // Laid out with the alignment overridden, then without it.
+    expect(seen).toEqual(['2', '1'])
+    expect(doc.head.innerHTML).toBe('<style id="book">p { text-align: justify }</style>')
   })
 })

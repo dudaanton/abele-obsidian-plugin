@@ -37,6 +37,38 @@ export function relayoutColumns(doc: Document): boolean {
   return true
 }
 
+/** Marks the passing style `relayoutText` puts in, so what watches the page's styles ignores it. */
+const RELAYOUT_MARK = 'data-abele-relayout'
+
+/** Whether a change of the page's head was only `relayoutText` passing through. */
+const onlyRelayout = (records: MutationRecord[]): boolean =>
+  records.every(
+    (r) =>
+      r.type === 'childList' &&
+      [...Array.from(r.addedNodes), ...Array.from(r.removedNodes)].every(
+        (n) => (n as Element).hasAttribute?.(RELAYOUT_MARK) ?? false
+      )
+  )
+
+/**
+ * Sets every line of the page anew: its alignment overridden and put back within one task, laid
+ * out each time, so nothing is painted in between and a page that was right stays as it was.
+ * WebKit keeps how far it stretched each justified line; laying the columns out again reuses it,
+ * so an iPhone that measured the lines before the text's font was in place kept reporting the
+ * words where the stretch had put them (2026-09-27: highlights two letters off on each fresh open).
+ */
+export function relayoutText(doc: Document): void {
+  const head = doc.head
+  if (!head) return
+  const style = doc.createElementNS('http://www.w3.org/1999/xhtml', 'style')
+  style.setAttribute(RELAYOUT_MARK, '')
+  style.textContent = 'html, body, body * { text-align: start !important; }'
+  head.append(style)
+  void doc.documentElement.offsetHeight
+  style.remove()
+  void doc.documentElement.offsetHeight
+}
+
 /**
  * Lays the page out again each time its fonts finish loading, as long as it is open, and then
  * has what is drawn over its words drawn again.
@@ -46,6 +78,7 @@ export function relayoutOnFonts(doc: Document, redraw?: () => void): void {
   if (!fonts) return
   const again = () => {
     if (!doc.defaultView) return
+    relayoutText(doc)
     relayoutColumns(doc)
     redraw?.()
   }
@@ -109,6 +142,18 @@ const BLOCKS =
   'p, li, dd, dt, blockquote, pre, table, figure, img, svg, video, h1, h2, h3, h4, h5, h6, header, aside, hr'
 
 /**
+ * When, after a page arrives or its styles change, it is laid out again (`relayoutColumns`) and
+ * what is drawn over its words measured again. On an iPhone opened fresh with a monospace text
+ * font, WebKit answered where the words of a justified line are from a layout made before the
+ * font was in place, while it drew them where they are: every highlight's first and last line a
+ * couple of letters off, on each fresh open, right again after the font was changed and back
+ * (2026-09-27). Nothing announces it — the font is the device's own, so no font event, and no
+ * line changes height — and the words' own measure is as stale as the highlight's. Laying the
+ * page out again puts it right; a layout that was right does not move.
+ */
+export const FONT_CHECKS_MS = [250, 700, 1500, 3000, 6000, 12000]
+
+/**
  * What is drawn over a page's words kept on them. The engine measures its highlights once, and
  * again only when the chapter's size changes — a page more or less. Words move without that: a
  * picture, a font or a style arriving above them in the same column pushes them down by lines and
@@ -146,10 +191,29 @@ export function keepMarksOnText(doc: Document, renderer: () => unknown): void {
     again('the view came to rest')
   }
   target?.addEventListener?.('relocate', settled)
+  // A layout made before the font was in place, unannounced (`FONT_CHECKS_MS`): the page laid
+  // out again a few times after it came and after each change of its styles.
+  let timers: number[] = []
+  const checkFont = () => {
+    for (const t of timers) window.clearTimeout(t)
+    timers = FONT_CHECKS_MS.map((ms) =>
+      window.setTimeout(() => {
+        if (!doc.defaultView) return
+        relayoutText(doc)
+        relayoutColumns(doc)
+        again('the page was laid out again')
+      }, ms)
+    )
+  }
+  checkFont()
   // The page's styles changed — the reader's settings, the book's own turned on or off: the words
   // can move sideways with every line keeping its height (a font as wide as another, a justified
   // line), which no size says. Measured again once the change is laid out.
-  const styles = new MutationObserver(() => again('the page style changed'))
+  const styles = new MutationObserver((records) => {
+    if (onlyRelayout(records)) return
+    again('the page style changed')
+    checkFont()
+  })
   if (doc.head)
     styles.observe(doc.head, {
       childList: true,
@@ -162,6 +226,7 @@ export function keepMarksOnText(doc: Document, renderer: () => unknown): void {
     () => {
       observer.disconnect()
       styles.disconnect()
+      for (const t of timers) window.clearTimeout(t)
     },
     { once: true }
   )
