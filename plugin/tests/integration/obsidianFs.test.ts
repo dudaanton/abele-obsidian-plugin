@@ -356,6 +356,8 @@ describe('ObsidianFileSystem — moving and removing', () => {
    * A folder another device renamed or emptied stays behind here as an empty tree, and the
    * folder picker goes on offering it. The daemon's rule: only folders that held the file a
    * moment ago, only while they are empty, and never one the person left empty themselves.
+   * The fake's `rmdir` is the desktop one, which refuses any folder without `recursive`; the
+   * listing is what keeps a folder that holds something.
    */
   it('removes the folders a remove or a move emptied, and no other', async () => {
     const fs = useVault([

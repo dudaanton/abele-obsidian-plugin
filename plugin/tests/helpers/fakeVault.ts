@@ -103,7 +103,10 @@ export interface FakeAdapter {
   rename(path: string, newPath: string): Promise<void>
   remove(path: string): Promise<void>
   mkdir(path: string): Promise<void>
-  /** Refuses a folder that holds anything unless `recursive`, as `fs.rmdir` does. */
+  /**
+   * Obsidian desktop's `rmdir`: `fs.rm(path, { recursive })`, which without `recursive` refuses
+   * every folder, empty ones included (EISDIR) — and with it removes whatever the folder holds.
+   */
   rmdir(path: string, recursive: boolean): Promise<void>
 }
 
@@ -850,10 +853,7 @@ export function buildFakeVault(specs: FakeFileSpec[]): FakeApp {
           if (folder === null || folder === '') throw new Error(`ENOENT: no such folder: ${path}`)
           const prefix = `${folder}/`
           const inside = (held: string): boolean => held.startsWith(prefix)
-          const held = [...disk.keys(), ...byPath.keys(), ...diskFolders, ...folders.keys()].filter(
-            inside
-          )
-          if (held.length > 0 && !recursive) throw new Error(`ENOTEMPTY: ${path}`)
+          if (!recursive) throw new Error(`EISDIR: Path is a directory: rm returned EISDIR (${path})`)
           for (const file of [...disk.keys(), ...byPath.keys()].filter(inside)) removeFile(file)
           for (const gone of [folder, ...[...diskFolders].filter(inside)]) diskFolders.delete(gone)
           for (const gone of [folder, ...[...folders.keys()].filter(inside)]) {

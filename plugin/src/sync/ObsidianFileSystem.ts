@@ -291,7 +291,12 @@ export class ObsidianFileSystem implements FileSystem {
       try {
         const listed = await this.adapter.list(folder)
         if (listed.files.length > 0 || listed.folders.length > 0) return
-        await this.adapter.rmdir(folder, false)
+        // `recursive`, though the folder was just seen empty: Obsidian desktop's `rmdir` is
+        // `fs.rm`, which without it refuses every folder, empty ones too (EISDIR), and the
+        // mobile adapter removes recursively whatever the flag says. The listing above is the
+        // check that it holds nothing — the same one Obsidian's own Sync makes before it
+        // removes a folder.
+        await this.adapter.rmdir(folder, true)
       } catch (error) {
         console.debug(`[abele-sync] left the folder ${folder} in place`, error)
         return
