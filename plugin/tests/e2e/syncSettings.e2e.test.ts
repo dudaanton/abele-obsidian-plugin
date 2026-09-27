@@ -191,7 +191,8 @@ describe.skipIf(why !== null)('settings that travel between devices', () => {
     await sync.syncNow()
     const last = sync
       .log()
-      .filter((line) => line.startsWith('sync: done'))
+      // Each line opens with its time.
+      .filter((line) => line.includes(' sync: done'))
       .pop()
     expect(last).toContain('pushed 0')
   })
@@ -278,7 +279,9 @@ describe.skipIf(why !== null)('settings that travel between devices', () => {
     sync.run(`await escapeIn(); return 'ok'`)
     const mine = JSON.stringify({ 'editor:toggle-italic': [{ modifiers: ['Mod'], key: 'K' }] })
     // Written the way Obsidian writes its own settings: through the adapter, under it.
-    app().evalAwait(`app.vault.adapter.write(${JSON.stringify(HOTKEYS)}, ${JSON.stringify(mine)})`)
+    app().evalAwait(
+      `app.vault.adapter.write(${JSON.stringify(HOTKEYS)}, ${JSON.stringify(mine)}).then(() => 'ok')`
+    )
     await waitFor(
       'the log to say this device replaced the change that waited',
       () => {
