@@ -327,6 +327,21 @@ const FONT_STACKS: Record<Exclude<ReaderFont, 'book' | 'theme'>, string> = {
 /** A CSS string value made safe to put inside a stylesheet. */
 const cssText = (value: string) => value.replace(/[<>{};]/g, '')
 
+/** The elements a book wraps its text in. */
+const WRAPPER = ':is(div, section, article, main)'
+
+/**
+ * A font list as CSS may take it, without Obsidian's `'??'` stand-ins: what `--font-text` holds
+ * where no font was chosen. They are no font; WebKit may still find a face under that name.
+ */
+export function fontList(value: string): string {
+  return cssText(value)
+    .split(',')
+    .map((f) => f.trim())
+    .filter((f) => f && !/^(['"])\?\?\1$/.test(f) && f !== '??')
+    .join(', ')
+}
+
 /**
  * The style every page is given, as the pair the engine takes: the first goes before the book's
  * own stylesheets, as defaults the book may override; the second after, as what it may not.
@@ -334,10 +349,11 @@ const cssText = (value: string) => value.replace(/[<>{};]/g, '')
 export function pageStyles(settings: ReaderSettings, theme: ThemeValues): [string, string] {
   const family =
     settings.font === 'theme'
-      ? cssText(theme.fontText) || FONT_STACKS.serif
+      ? fontList(theme.fontText) || FONT_STACKS.serif
       : settings.font === 'book'
         ? ''
         : FONT_STACKS[settings.font]
+  const mono = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
   const before = `
     @namespace epub "http://www.idpf.org/2007/ops";
     html { color-scheme: ${settings.themeColors && theme.dark ? 'dark' : 'light'}; }
@@ -358,10 +374,21 @@ export function pageStyles(settings: ReaderSettings, theme: ThemeValues): [strin
   rules.push(
     `html { font-size: ${settings.fontSize}% !important; -webkit-text-size-adjust: none; }`
   )
+  // Every piece of the text, not only paragraphs: a book's own font on a table cell, a heading or
+  // an inline element would otherwise show through. Code keeps a monospace.
   if (family)
     rules.push(
-      `html, body, p, li, blockquote, dd, div, span { font-family: ${family} !important; }`
+      `html, body, body * { font-family: ${family} !important; }`,
+      `body :is(pre, code, kbd, samp, tt), body :is(pre, code) * { font-family: ${mono} !important; }`
     )
+  // The page's side margins are the reader's: a book's padding on its page, and the side margins
+  // and padding of the wrappers it puts all its text in, go. A wrapper is a block holding blocks —
+  // not one holding a single paragraph or heading, as a heading's box does; a quote's own indent stays (a book on a phone,
+  // 2026-09-27, whose text sat in a column half the screen wide).
+  rules.push(
+    `body { padding-left: 0 !important; padding-right: 0 !important; }`,
+    `:is(body, body > ${WRAPPER}) > ${WRAPPER}:has(> :is(p, div, section, article, blockquote, ul, ol, table, figure, h1, h2, h3, h4, h5, h6)):not(:has(> :only-child:is(p, h1, h2, h3, h4, h5, h6))) { margin-left: 0 !important; margin-right: 0 !important; padding-left: 0 !important; padding-right: 0 !important; max-width: none !important; }`
+  )
   if (settings.lineHeight)
     rules.push(`p, li, blockquote, dd, div { line-height: ${settings.lineHeight} !important; }`)
   if (settings.themeColors) {

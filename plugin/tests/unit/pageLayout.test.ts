@@ -9,6 +9,7 @@ import {
   relayoutColumns,
   relayoutOnFonts,
   relayoutOnPictures,
+  keepMarksOnText,
 } from '@/reader/pageLayout'
 
 function page(width?: string): Document {
@@ -135,5 +136,27 @@ describe('laying a page out again', () => {
     // Anything else loading on the page is not a picture.
     doc.body.dispatchEvent(new Event('load'))
     expect(layouts).toBe(4)
+  })
+
+  it("draws what is over the words again when the page's styles change, as a font changed in the settings does", async () => {
+    const doc = page('500px')
+    Object.defineProperty(doc, 'defaultView', { value: window })
+    let redraws = 0
+    const renderer = Object.assign(new EventTarget(), {
+      getContents: () => [{ doc, overlayer: { redraw: () => redraws++ } }],
+    })
+    keepMarksOnText(doc, () => renderer)
+    const frame = () => new Promise((r) => window.requestAnimationFrame(() => r(null)))
+    await frame()
+    const before = redraws
+    const style = doc.createElement('style')
+    doc.head.append(style)
+    await Promise.resolve()
+    await frame()
+    expect(redraws).toBe(before + 1)
+    style.textContent = 'p { font-family: serif }'
+    await Promise.resolve()
+    await frame()
+    expect(redraws).toBe(before + 2)
   })
 })

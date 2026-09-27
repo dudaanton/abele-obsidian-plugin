@@ -141,6 +141,11 @@ describe.skipIf(!available)("a book's own styles", () => {
       remote: string
       marked: number
       links: number
+      wrapper: string
+      bodyPad: string
+      quote: string
+      cellFont: string
+      textFont: string
     }
     const r = run<{
       error?: string
@@ -160,6 +165,10 @@ describe.skipIf(!available)("a book's own styles", () => {
           remote: cs('remote').backgroundImage,
           marked: doc.querySelectorAll('style[data-abele-book-style]').length,
           links: doc.querySelectorAll('link').length,
+          wrapper: cs('wrapper').marginLeft + ' ' + cs('wrapper').paddingLeft,
+          bodyPad: doc.defaultView.getComputedStyle(doc.body).paddingLeft,
+          quote: cs('quote').marginLeft,
+          cellFont: cs('num').fontFamily, textFont: cs('indent').fontFamily,
         }
       }
       let view, on, larger, off, css
@@ -186,6 +195,12 @@ describe.skipIf(!available)("a book's own styles", () => {
     expect(on.num).toBe('right')
     expect(on.drop).toBe('left')
     expect(on.remote).toBe('none')
+    // The reader's page margins and font win; a quote keeps its own indent.
+    expect(on.wrapper).toBe('0px 0px')
+    expect(on.bodyPad).toBe('0px')
+    expect(parseFloat(on.quote)).toBeGreaterThan(10)
+    expect(on.cellFont).not.toMatch(/Courier|monospace/)
+    expect(on.textFont).not.toMatch(/Courier|monospace/)
     // 40px in the book, made to follow the reader's size.
     expect((r.larger?.big ?? 0) / on.big).toBeCloseTo(1.5, 1)
     expect(r.css).not.toContain('outside.invalid')

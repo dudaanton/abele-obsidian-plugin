@@ -114,6 +114,45 @@ describe('the layout the engine is given', () => {
 })
 
 describe('the style every page is given', () => {
+  it("leaves out Obsidian's '??' stand-ins for a font not chosen, which are no font at all", () => {
+    const fontText =
+      '"??", "??", ui-sans-serif, -apple-system, "Segoe UI", "Apple Color Emoji", sans-serif'
+    const [, after] = pageStyles(DEFAULT_READER_SETTINGS, { ...theme, fontText })
+    expect(after).not.toContain('??')
+    expect(after).toContain('font-family: ui-sans-serif, -apple-system')
+    // Nothing but stand-ins: the serif the reader falls back to.
+    const [, none] = pageStyles(DEFAULT_READER_SETTINGS, { ...theme, fontText: '\'??\', "??"' })
+    expect(none).toContain('Charter')
+  })
+
+  it("gives every piece of the book's text the reader's font, code aside, unless the book's is asked for", () => {
+    const [before, after] = pageStyles(DEFAULT_READER_SETTINGS, theme)
+    const doc = document.implementation.createHTMLDocument('page')
+    const style = doc.createElement('style')
+    style.textContent = before + after
+    doc.head.append(style)
+    doc.body.innerHTML =
+      '<section><p>a <em>b</em> <font face="Courier">c</font></p><table><tr><td id="td">1</td></tr></table>' +
+      '<h2 id="h">T</h2><pre id="pre">x</pre><p><code id="code">y</code></p></section>'
+    for (const id of ['td', 'h'])
+      expect(getComputedStyle(doc.getElementById(id) as Element).fontFamily, id).toContain('Inter')
+    for (const id of ['pre', 'code'])
+      expect(getComputedStyle(doc.getElementById(id) as Element).fontFamily, id).not.toContain(
+        'Inter'
+      )
+    const [, book] = pageStyles({ ...DEFAULT_READER_SETTINGS, font: 'book' }, theme)
+    expect(book).not.toContain('font-family')
+  })
+
+  it("keeps the reader's page margins: the book's side margins and padding on the page and its wrappers go", () => {
+    // Worked out by a real browser in bookStyles.e2e: happy-dom cannot match `:has()` here.
+    const [, after] = pageStyles(DEFAULT_READER_SETTINGS, theme)
+    expect(after).toContain('body { padding-left: 0 !important; padding-right: 0 !important; }')
+    expect(after).toMatch(
+      /> :is\(div, section, article, main\):has\(> :is\(p, div[^{]*:not\(:has\(> :only-child:is\(p,[^{]*\{ margin-left: 0 !important; margin-right: 0 !important; padding-left: 0 !important; padding-right: 0 !important;/
+    )
+  })
+
   it('makes an inline element holding blocks a block, so its words are measured where they are drawn', () => {
     const [before] = pageStyles(DEFAULT_READER_SETTINGS, theme)
     const doc = document.implementation.createHTMLDocument('page')

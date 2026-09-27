@@ -2,7 +2,8 @@
  * A book that styles itself through linked stylesheets, one importing another: indents, a table
  * aligned to the right, a drop cap, a rule that would set the text size over the reader's own
  * (`!important`), and rules reaching outside the book — a picture on the web, an import from the
- * web — that must never be fetched.
+ * web — that must never be fetched. Its text sits in a wrapper with wide side margins and a
+ * monospace font, as some books do; the reader's page margins and font win over both.
  */
 import { strToU8, zipSync } from 'fflate'
 
@@ -38,20 +39,27 @@ export function buildStyledEpub(): Uint8Array {
 p.indent { text-indent: 3em; }
 td.num { text-align: right; }
 p.big { font-size: 40px !important; }
-#remote { height: 20px; background-image: url('${OUTSIDE}/pixel.png'); }`,
+#remote { height: 20px; background-image: url('${OUTSIDE}/pixel.png'); }
+body { padding: 0 10%; }
+div.text { margin: 0 3em; padding: 0 2em; font-family: "Courier New", monospace; }
+td { font-family: "Courier New", monospace; }
+blockquote { margin: 0 2em; }`,
     'OPS/css/more.css': `p.dropcap::first-letter { float: left; font-size: 3em; }
 p.centre { text-align: center; }`,
     'OPS/c1.xhtml': `${HEAD}
 <html xmlns="http://www.w3.org/1999/xhtml"><head><title>One</title>
 <link rel="stylesheet" type="text/css" href="css/book.css"/></head>
 <body>
+<div class="text" id="wrapper">
 <h1>One</h1>
 <p class="indent" id="indent">An indented paragraph of the book, long enough to run over a line or two of the page.</p>
 <p class="centre" id="centre">Centred.</p>
 <p class="dropcap" id="dropcap">Dropped capital begins this paragraph.</p>
 <p class="big" id="big">Text the book wants huge.</p>
 <table><tr><td>Item</td><td class="num" id="num">1 000</td></tr></table>
+<blockquote id="quote">A quote keeps its indent.</blockquote>
 <div id="remote"></div>
+</div>
 </body></html>`,
   }
   const entries: Record<string, [Uint8Array, { level: 0 | 6 }]> = {}

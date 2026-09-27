@@ -162,6 +162,10 @@ export async function inlineBookStyles(
 export function showBookStyles(doc: Document, on: boolean): void {
   for (const style of Array.from(doc.querySelectorAll(`style[${BOOK_STYLE_MARK}]`))) {
     const sheet = (style as HTMLStyleElement).sheet
-    if (sheet) sheet.disabled = !on
+    if (sheet && sheet.disabled !== !on) {
+      sheet.disabled = !on
+      // Said on the element, so what watches the page's styles hears it.
+      style.toggleAttribute('data-abele-off', !on)
+    }
   }
 }

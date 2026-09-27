@@ -84,7 +84,9 @@ quote, the highlights note, or remove it. A tap beside the bar closes it.
 Highlights stay on their words when the words move without the page changing size — a picture,
 font or style arriving late above them: they are measured again whenever a block of the page
 changes size and whenever the view comes to rest on a new place. When that finds them moved, the
-console says so (`book marks moved with their words`, with the reason and how far).
+console says so (`book marks moved with their words`, with the reason and how far). They are
+also measured again when the page's styles change — a font changed in the settings can move the
+words sideways without any line changing its height.
 
 A page is laid out again when a picture on it finishes loading, as when a font does, so a picture
 that arrives late never lies over the text after it. An inline element wrapped around blocks —
@@ -537,6 +539,11 @@ linked from the reader's page frame, so they are put into each page as it loads,
   `javascript:`/`vbscript:` URLs);
 - the book's `!important` is taken out and its text sizes in `px`/`pt` become `rem`, so the
   reader's size, spacing, font and colours, and the engine's column layout, always win;
+- the reader's font is given to every piece of the text (table cells, headings, inline
+  elements), code aside, unless the book's own font is chosen; Obsidian's `'??'` stand-ins for a
+  font not chosen are left out of the theme's font, since WebKit may find a face under that name;
+- the page's side margins are the reader's: the book's padding on the page and the side margins
+  and padding of the wrappers it puts its text in go; a quote's or a heading's own indent stays;
 - the result is checked again with CSS escapes decoded, and a stylesheet that still reaches
   outside the book is dropped whole.
 

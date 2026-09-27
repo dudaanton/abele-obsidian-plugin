@@ -376,7 +376,8 @@ Three files, three concerns:
 - `bookStyles.e2e.test.ts` — **a book's own styles** (`tests/fixtures/books/styledBook.ts`): a
   linked stylesheet importing another shows its indents, alignment, table and drop cap; its fixed
   text size follows the reader's; no request leaves for the rules pointing outside the book; turned
-  off, the page loses them at once. The e2e fixture EPUB opens with its rules and without its web
+  off, the page loses them at once. Its text in a wrapper with wide side margins and a monospace
+  font gets the reader's margins and font; a quote keeps its indent. The e2e fixture EPUB opens with its rules and without its web
   picture. Pictures in `/tmp/abele-phone/styles-*.png`.
 - `bookNoteSpans.e2e.test.ts` — **notes wrapped in spans** (`tests/fixtures/books/notesBook.ts`,
   made-up text): each note a `span` around its number's `div`, sometimes a superscript paragraph,

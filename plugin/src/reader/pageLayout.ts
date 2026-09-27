@@ -146,5 +146,23 @@ export function keepMarksOnText(doc: Document, renderer: () => unknown): void {
     again('the view came to rest')
   }
   target?.addEventListener?.('relocate', settled)
-  win.addEventListener('pagehide', () => observer.disconnect(), { once: true })
+  // The page's styles changed — the reader's settings, the book's own turned on or off: the words
+  // can move sideways with every line keeping its height (a font as wide as another, a justified
+  // line), which no size says. Measured again once the change is laid out.
+  const styles = new MutationObserver(() => again('the page style changed'))
+  if (doc.head)
+    styles.observe(doc.head, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+    })
+  win.addEventListener(
+    'pagehide',
+    () => {
+      observer.disconnect()
+      styles.disconnect()
+    },
+    { once: true }
+  )
 }
