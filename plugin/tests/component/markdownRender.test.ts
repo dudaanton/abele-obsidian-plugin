@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { MarkdownRenderer, MarkdownView } from 'obsidian'
+import { Component, MarkdownRenderChild, MarkdownRenderer, MarkdownView } from 'obsidian'
 import Markdown from '@/components/obsidian/Markdown.vue'
 import { useVault } from '../helpers/testEnv'
 
@@ -103,6 +103,78 @@ describe('the component going away mid-render', () => {
     // Nothing to assert beyond it not throwing: a timer firing after teardown is an unhandled
     // error, which is what once turned a green suite into a failed CI run.
     await expect(settle(RENDER_MS * 3)).resolves.toBeUndefined()
+  })
+})
+
+/**
+ * What a render hands its post-processors lives as long as that render is on screen.
+ *
+ * A chart, a map, a diagram or a gallery is a child of the component a render is given. With
+ * one component for every render, a reply streamed in fifty pieces left fifty maps and charts
+ * alive under the one on screen until the chat closed — each map a WebGL context, of which a
+ * window gets only a few. Each render now has a component of its own, let go when a newer
+ * render takes its place or is abandoned, and all of them when the markdown goes.
+ */
+describe('what a render leaves behind', () => {
+  let children: Array<{ text: string; gone: boolean }>
+
+  beforeEach(() => {
+    children = []
+    vi.spyOn(MarkdownRenderer, 'render').mockImplementation(
+      async (_app: unknown, markdown: string, el: HTMLElement, _path: string, owner: unknown) => {
+        await settle(RENDER_MS)
+        const record = { text: markdown, gone: false }
+        children.push(record)
+        const child = new MarkdownRenderChild(el)
+        child.onunload = () => {
+          record.gone = true
+        }
+        ;(owner as Component).addChild(child)
+        el.setText(markdown)
+      }
+    )
+  })
+
+  const alive = () => children.filter((c) => !c.gone).map((c) => c.text)
+
+  it('lets the previous render go once a newer one is on screen', async () => {
+    const wrapper = open('one')
+    await settle(RENDER_MS * 2)
+    await wrapper.setProps({ text: 'one two' })
+    await settle(RENDER_MS * 3)
+
+    expect(wrapper.text()).toBe('one two')
+    expect(alive()).toEqual(['one two'])
+  })
+
+  it('lets a render go that finished after a newer one had started', async () => {
+    const wrapper = open('one')
+    await settle(RENDER_MS * 2)
+    await wrapper.setProps({ text: 'one two' })
+    await settle(1)
+    await wrapper.setProps({ text: 'one two three' })
+    await settle(RENDER_MS * 4)
+
+    expect(wrapper.text()).toBe('one two three')
+    expect(alive()).toEqual(['one two three'])
+  })
+
+  it('lets everything go when the markdown is taken off the page', async () => {
+    const wrapper = open('one')
+    await settle(RENDER_MS * 2)
+    wrapper.unmount()
+
+    expect(alive()).toEqual([])
+  })
+
+  it('lets a render go that lands after the markdown was taken off the page', async () => {
+    const wrapper = open('one')
+    await settle(1)
+    wrapper.unmount()
+    await settle(RENDER_MS * 2)
+
+    expect(children.map((c) => c.text)).toEqual(['one'])
+    expect(alive()).toEqual([])
   })
 })
 

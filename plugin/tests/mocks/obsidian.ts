@@ -769,19 +769,42 @@ export class ButtonComponent {
 }
 /**
  * A component is a lifecycle handle: things that render into the DOM take one so their
- * children can be unloaded with them. Nothing here has children to unload, so the methods
- * only have to exist — but they do have to exist, or mounting anything that renders markdown
- * dies in `onMounted`.
+ * children can be unloaded with them. Children are kept for real, as Obsidian keeps them — a
+ * child added to a loaded component is loaded, unloading a component unloads its children
+ * first, and `removeChild` unloads the one taken out — so a test can ask whether what a render
+ * left behind was let go.
  */
 export class Component {
-  load(): void {}
-  unload(): void {}
+  private _loaded = false
+  private _children: Component[] = []
+  load(): void {
+    if (this._loaded) return
+    this._loaded = true
+    this.onload()
+    for (const child of this._children.slice()) child.load()
+  }
+  unload(): void {
+    if (!this._loaded) return
+    this._loaded = false
+    for (const child of this._children.splice(0)) child.unload()
+    this.onunload()
+  }
   onload(): void {}
   onunload(): void {}
   addChild<T>(child: T): T {
+    const c = child as unknown as Component
+    if (c instanceof Component) {
+      this._children.push(c)
+      if (this._loaded) c.load()
+    }
     return child
   }
   removeChild<T>(child: T): T {
+    const at = this._children.indexOf(child as unknown as Component)
+    if (at !== -1) {
+      this._children.splice(at, 1)
+      ;(child as unknown as Component).unload()
+    }
     return child
   }
   register(): void {}

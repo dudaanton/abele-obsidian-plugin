@@ -57,6 +57,18 @@ const handleClick = (event: MouseEvent) => {
  */
 let generation = 0
 
+/**
+ * The component of the render on screen.
+ *
+ * Each render gets a component of its own, a child of the one the markdown holds, and hands it
+ * to Obsidian — which is what every chart, map, diagram, gallery and embed in the text is
+ * attached to. It is let go as soon as a newer render replaces it, or as soon as it finishes
+ * behind a newer one. With one component for all of them, a reply streamed in fifty pieces kept
+ * fifty sets of those alive under the one on screen until the chat closed, and a map is a WebGL
+ * context, of which a window only gets a handful.
+ */
+let shown: Component | null = null
+
 const renderContent = async () => {
   if (!target.value || !component) return
 
@@ -66,19 +78,31 @@ const renderContent = async () => {
   // range several times a second: the browser clamps the reader's position and drags them
   // down, and they cannot read what has already arrived until the reply ends.
   const next = createDiv()
+  const owner = component
+  // Loaded on its own until it is the one on screen: a render still in flight when the
+  // markdown goes is let go here, by this call, rather than by a parent that has already
+  // unloaded and would leave whatever the render attached afterwards running.
+  const own = new Component()
+  own.load()
 
   await MarkdownRenderer.render(
     GlobalStore.getInstance().app,
     props.text || '',
     next,
     props.filePath || '',
-    component
+    own
   )
 
-  if (mine !== generation || !target.value) return
+  // Overtaken, or the markdown is gone.
+  if (mine !== generation || !target.value || component !== owner) {
+    own.unload()
+    return
+  }
 
   target.value.empty()
   while (next.firstChild) target.value.appendChild(next.firstChild)
+  if (shown) owner.removeChild(shown)
+  shown = owner.addChild(own)
   // For whoever draws over the result — comments on an answer — since this replaced it whole.
   emit('rendered')
 }
@@ -114,6 +138,7 @@ onUnmounted(() => {
   generation++
   component?.unload()
   component = null
+  shown = null
 })
 
 const emit = defineEmits<{
