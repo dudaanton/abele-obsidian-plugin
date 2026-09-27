@@ -32,6 +32,11 @@ Up to 20 chats can be open at once, as tabs. Every chat is saved as a file in th
 (`AI/Chats` by default), so it survives a restart and can be found again in the history. When a
 chat grows too long for the model, it is compacted by itself.
 
+An answer is drawn the way a note is: an agent can show you a gallery of pictures, a diagram, a
+chart, a map, callouts, formulas and coloured highlights, or embed one of your notes, right in its
+reply. Links in it open the note they name. The same goes for what a script shows you and for the
+views scripts open.
+
 The chat's settings button opens one dialog with everything about this chat: its scope, skills,
 prompts, permissions, model and tools.
 

@@ -15,7 +15,8 @@ export function createQueryDocsTool(): AgentTool {
     label: 'Query docs',
     description:
       'Read the Abele plugin reference: how this vault stores tasks, transactions, time ' +
-      'entries and logs, what the agent tools do, and how scripts and templates work. Call ' +
+      'entries and logs, what the agent tools do, how scripts and templates work, and what a ' +
+      'reply can show (galleries, diagrams, charts, maps: the `display` section). Call ' +
       'with no arguments for the list of sections, then with `section`, then with `section` ' +
       'and `topic`. Use `query` to find which topic covers something.',
     parameters: {

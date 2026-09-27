@@ -8,6 +8,9 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { DOCS, tableOfContents, readSection, readTopic, searchDocs } from '@/docs'
+import { parseYaml } from 'obsidian'
+import { parseGalleryHeader } from '@/helpers/galleryUtils'
+import { parseMapBlock } from '@/helpers/mapConfig'
 import { createQueryDocsTool } from '@/ai/tools/QueryDocsTool'
 import { getToolRegistry } from '@/ai/tools'
 import { DEFAULT_GITHUB_SETTINGS } from '@/github/settings'
@@ -47,6 +50,58 @@ describe('how the reference is put together', () => {
       for (const topic of section.topics) {
         expect(topic.text.length, `${section.id}/${topic.id}`).toBeGreaterThan(20)
       }
+    }
+  })
+})
+
+/**
+ * Everything a note draws, an agent can put in a reply — but only if it knows the block. The
+ * `display` section is where it learns them, one topic per block with an example; these hold
+ * each example to the parser that will read it, so a block renamed or reshaped in the code
+ * cannot leave agents copying one that no longer draws.
+ */
+describe('what a reply can show', () => {
+  const display = () => DOCS.find((s) => s.id === 'display')!
+  const topic = (id: string) => display().topics.find((t) => t.id === id)?.text ?? ''
+  const example = (id: string, lang: string) => {
+    const found = new RegExp('```' + lang + '\\n([\\s\\S]*?)\\n```').exec(topic(id))
+    if (!found) throw new Error(`no ${lang} example in display/${id}`)
+    return found[1]
+  }
+
+  it('is named in the description the agent sees, so it is found without guessing', () => {
+    expect(createQueryDocsTool().description).toContain('`display`')
+  })
+
+  it('has a gallery an agent can copy', () => {
+    const block = example('galleries', 'markdown').split('\n')
+    expect(parseGalleryHeader(block[0])).not.toBeNull()
+    expect(block.length).toBeGreaterThan(2)
+  })
+
+  it('has a chart the chart block reads', () => {
+    const config = parseYaml(example('charts', 'abele-chart')) as { series?: unknown[] }
+    expect(config.series?.length).toBeGreaterThan(0)
+  })
+
+  it('has a map the map block reads', () => {
+    expect(parseMapBlock(example('maps', 'abele-map'))).not.toHaveProperty('error')
+  })
+
+  it('has a diagram', () => {
+    expect(example('diagrams', 'mermaid')).toMatch(/^graph /)
+  })
+
+  it('names every colour a highlight can be', async () => {
+    const { HIGHLIGHT_COLORS } = await import('@/editor/HighlightPlugin')
+    for (const colour of HIGHLIGHT_COLORS) expect(topic('coloured-highlights')).toContain(colour)
+  })
+
+  it('names the script view factories that exist', async () => {
+    const { Markdown } = await import('@/scripting/view/components')
+    for (const name of ['gallery', 'chart', 'mermaid', 'map'] as const) {
+      expect(typeof Markdown[name]).toBe('function')
+      expect(topic('in-a-script-view')).toContain(`Markdown.${name}(`)
     }
   })
 })
