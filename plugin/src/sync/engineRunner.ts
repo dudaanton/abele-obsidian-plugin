@@ -85,8 +85,14 @@ export interface EngineHost {
   damage(): string | null
   /** Runs after everything already asked of the engine (`SyncService.serialise`). */
   serialise<T>(fn: () => Promise<T>): Promise<T>
-  /** A run wrote the plugin's own `data.json`: the plugin reloads its settings. */
-  settingsArrived(): void
+  /**
+   * A run wrote the plugin's own `data.json`: the plugin reloads its settings. `replaced` is
+   * what the file said before, when the write was the vault's copy taking the place of this
+   * device's at a first contact (`OwnSettingsWatch`), and null otherwise.
+   */
+  settingsArrived(replaced: string | null): void
+  /** What the plugin's settings file says now, as canonical JSON: what `replaced` holds. */
+  settingsMeaning(): Promise<string>
   /**
    * A run finished the join this engine was built with (`joinFinished`): the host forgets the
    * choice, so no later engine is built with it, and says so.
@@ -346,7 +352,11 @@ export class EngineRunner {
     const pollMs = pollMsOf(deps)
     const fallbackMs = fallbackMsOf(deps)
     const ownSettings = `${app.vault.configDir}/plugins/${this.host.pluginId()}/data.json`
-    const settings = new OwnSettingsWatch(ownSettings, () => this.host.settingsArrived())
+    const settings = new OwnSettingsWatch(
+      ownSettings,
+      (replaced) => this.host.settingsArrived(replaced),
+      () => this.host.settingsMeaning()
+    )
     const fs = new ObsidianFileSystem(app, {
       ...(pollMs === undefined ? {} : { pollMs }),
       onWatch: (paths) => this.noticed(paths),

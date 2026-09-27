@@ -153,7 +153,11 @@ The first time a device syncs Abele's settings file — a new device, one set up
 transfer, one upgraded from a version that kept the file to itself — the vault's copy wins
 whatever the dates say: the device's own file, written at its first launch, goes to the file's
 version history and the vault's settings are loaded in its place. Where the vault has no such
-file yet, the device's becomes it.
+file yet, the device's becomes it. When the vault's settings say something other than the
+device's did, a notice says so once and points to the file's version history. That matters most
+for a device that already had settings of its own: one reconnected after a Disconnect, or a phone
+that cleared Abele's sync database to free space, meets the file for the first time again, and
+its settings give way to the vault's in the same way.
 
 A settings change made on this device while another device's settings are arriving is kept: the
 arrived file is taken in first and the change put back on top of it, so neither is lost. A

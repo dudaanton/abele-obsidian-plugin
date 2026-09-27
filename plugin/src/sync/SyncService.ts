@@ -4,6 +4,7 @@ import type { StateEntry, VaultClient } from '@abele/sync-core'
 import { serverUrlProblem, type JoinPrefer, type VaultInfo } from '@abele/sync-protocol'
 import type AbelePlugin from '@/main'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { canonicalJson } from '@/services/settingsFile'
 import type { DeviceConnection, JoinState } from './connection'
 import { ConnectionKeeper } from './connectionKeeper'
 import { Enrolment, type ConnectionEdit, type VaultChoice } from './enrolment'
@@ -13,7 +14,7 @@ import { joinOf } from './joinState'
 import { askJoin, type JoinQuestion } from './join'
 import { factoryOf, transportOf, type SyncServiceDeps } from './environment'
 import { noop, SerialQueue } from './queue'
-import { messageOf } from './messages'
+import { messageOf, SETTINGS_REPLACED } from './messages'
 import { DISCONNECTED_STATUS, type SyncStatus } from './status'
 import { StatusBoard } from './statusBoard'
 
@@ -119,7 +120,8 @@ export class SyncService {
       token: () => this.keeper.token(),
       damage: () => this.keeper.damage(),
       serialise: <T>(fn: () => Promise<T>) => this.serialise(fn),
-      settingsArrived: () => this.settingsArrived(),
+      settingsArrived: (replaced) => this.settingsArrived(replaced),
+      settingsMeaning: () => this.settingsMeaning(),
       joined: (join) => this.joined(join),
     },
     this.board
@@ -477,12 +479,38 @@ export class SyncService {
    * store and the AI features (`onExternalSettingsChange`). Not queued behind the engine — the
    * reload saves settings of its own, and a save queues a reconcile there.
    */
-  private settingsArrived(): void {
+  /**
+   * What the plugin's settings file says, as canonical JSON — the same for two files that say
+   * the same thing in another order — or '' for no file, or one that will not read.
+   */
+  private async settingsMeaning(): Promise<string> {
+    try {
+      const data: unknown = await this.plugin?.loadData()
+      return data === null || data === undefined ? '' : canonicalJson(data)
+    } catch {
+      return ''
+    }
+  }
+
+  /**
+   * `replaced` is what the settings file said before the vault's copy took the place of this
+   * device's own at a first contact. When the file now says something else, the
+   * person is told once where theirs went: a device whose ledger was lost — a disconnect, a
+   * phone that evicted the database — meets the file for the first time again, and would
+   * otherwise lose real settings without a word (task-6 re-review, R2).
+   */
+  private settingsArrived(replaced: string | null): void {
     const plugin = this.plugin
     if (plugin === null) return
     this.note('Abele settings arrived from another device; reloading them')
     void Promise.resolve()
       .then(() => plugin.onExternalSettingsChange())
+      .then(async () => {
+        if (replaced === null) return
+        if ((await this.settingsMeaning()) === replaced) return
+        this.note("this device's Abele settings gave way to the vault's; its own are in history")
+        new Notice(SETTINGS_REPLACED)
+      })
       .catch((error: unknown) =>
         this.note(`the settings that arrived could not be reloaded: ${messageOf(error)}`)
       )

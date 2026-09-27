@@ -25,15 +25,23 @@ export class OwnSettingsWatch {
   private readonly own: string
   private written = false
   private ledger: Ledger | null = null
+  /**
+   * What the file said when this run first reported it as yielding (`yields`), or null while it
+   * has not: what the vault's copy, if it is written here, replaced.
+   */
+  private before: string | null = null
 
   /**
    * `path` is the settings file's wire path — `.obsidian/plugins/<id>/data.json` — and `tell`
-   * what reloads it. Compared case-folded: a case-insensitive disk hands the same file back
+   * what reloads it; it is handed what the file said before the run wrote the vault's copy
+   * over this device's own, at a first contact, and null otherwise. `snapshot` reads what the
+   * file says now. Compared case-folded: a case-insensitive disk hands the same file back
    * under any spelling.
    */
   constructor(
     path: string,
-    private readonly tell: () => void
+    private readonly tell: (replaced: string | null) => void,
+    private readonly snapshot: () => Promise<string> = async () => ''
   ) {
     this.own = caseKey(path)
   }
@@ -63,7 +71,9 @@ export class OwnSettingsWatch {
   async yields(path: string): Promise<boolean> {
     if (this.ledger === null || caseKey(path) !== this.own) return false
     try {
-      return (await this.ledger.get(path)) === null
+      const yielding = (await this.ledger.get(path)) === null
+      if (yielding && this.before === null) this.before = await this.snapshot()
+      return yielding
     } catch (error) {
       console.debug('[abele-sync] the ledger would not say whether it holds the settings', error)
       return false
@@ -77,11 +87,14 @@ export class OwnSettingsWatch {
 
   /**
    * A run is over, whether it got through or failed: whatever it wrote is on disk. Tells the
-   * plugin if the settings file was among it.
+   * plugin if the settings file was among it, and, when that write was the vault's copy taking
+   * the place of this device's at a first contact, what the file said before it.
    */
   settle(): void {
+    const before = this.before
+    this.before = null
     if (!this.written) return
     this.written = false
-    this.tell()
+    this.tell(before)
   }
 }

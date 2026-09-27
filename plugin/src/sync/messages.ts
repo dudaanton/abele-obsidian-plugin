@@ -23,3 +23,12 @@ export function summarise(report: SyncReport): string {
     `rejected ${report.push.rejected.length}, held ${held})`
   )
 }
+
+/**
+ * Said when this device first synced Abele's settings and the vault's took the place of its own
+ * (`SyncService.settingsArrived`). Nothing is lost: the server kept this device's copy as a
+ * version of the file.
+ */
+export const SETTINGS_REPLACED =
+  "Abele's settings on this device were replaced by the vault's, which it met for the first " +
+  "time. This device's own are kept in the version history of Abele's settings file."

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import { Platform, type App } from 'obsidian'
+import { Notice, Platform, type App } from 'obsidian'
 import type { VaultClient } from '@abele/sync-core'
 import type { JoinPrefer } from '@abele/sync-protocol'
 import { IndexedDbStateStore, stateDatabaseName } from '@/sync/IndexedDbStateStore'
@@ -264,9 +264,13 @@ async function commitSettings(text: string): Promise<void> {
   ])
 }
 
+/** What a device says when the vault's settings took the place of its own. */
+const REPLACED = /settings on this device were replaced by the vault's/i
+
 beforeEach(async () => {
   server = await syncServer()
   devices = []
+  Notice.shown.length = 0
   tokens.values.clear()
   Platform.isMobile = false
   // The one the services read the scripts folder from, and the device-token keychain.
@@ -350,9 +354,25 @@ describe('Abele settings between two devices', () => {
       )
     )
     expect(texts.some((text) => text.includes('From the phone'))).toBe(true)
+    // The phone is told, once, where its own went; the laptop's became the vault's, and it is
+    // told nothing.
+    const told = Notice.shown.filter((message) => REPLACED.test(message))
+    expect(told).toHaveLength(1)
+    expect(told[0]).toMatch(/version history/i)
 
     await twoMoreCycles(a, b)
     expect([pushed(a), pushed(b)]).toEqual([0, 0])
+    expect(Notice.shown.filter((message) => REPLACED.test(message))).toHaveLength(1)
+  })
+
+  it('says nothing of a first contact whose file was already the vault’s', async () => {
+    const a = await device('Laptop')
+    await settle(a, a)
+    const text = new TextDecoder().decode(await a.app.vault.adapter.readBinary(DATA))
+
+    await device('Phone', { settings: JSON.parse(text) as Record<string, unknown> })
+
+    expect(Notice.shown.filter((message) => REPLACED.test(message))).toHaveLength(0)
   })
 
   /**
