@@ -12,6 +12,7 @@
 import { TFile, type App } from 'obsidian'
 import type { EntryStatus, PlannedEntry } from './entries'
 import type { TransferEntry, TransferFile } from './types'
+import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
 
 const SKILL_TYPE = 'abele-skill'
 const PROMPT_TYPE = 'abele-prompt'
@@ -128,6 +129,9 @@ export async function applyFiles(
     const { content } = entry.data as TransferFile
 
     try {
+      // Taken in on this device, by the person, from the list they ticked: a script that came
+      // this way is theirs here, and does not wait to be confirmed again; see `ScriptTrust.ts`.
+      await noteLocalScriptWrite(path, content)
       const existing = app.vault.getFileByPath(path)
       if (existing) {
         await app.vault.modify(existing, content)

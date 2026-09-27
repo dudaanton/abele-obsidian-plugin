@@ -3,6 +3,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { toSafeVaultPath, describeRename } from '@/helpers/pathsHelpers'
 import { contentHash } from '../readGuard'
+import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
 
 export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
@@ -41,6 +42,7 @@ export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool 
           if (!app.vault.getAbstractFileByPath(current)) await app.vault.createFolder(current)
         }
       }
+      await noteLocalScriptWrite(safePath, content)
       await app.vault.create(safePath, content)
       // Add new file to scope so agent can read/edit it
       if (!opts?.skipScope) ScopeResolver.getInstance().addFile(safePath)

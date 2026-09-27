@@ -188,6 +188,9 @@ export const SECTIONS: Section[] = [
     'toolbarScripts',
     'startupScripts',
     'startupScriptsPaused',
+    // Arms the device it arrives on, unless that device was switched off by hand; see
+    // `ScriptTrust.ts`. What was confirmed stays on each device and does not travel.
+    'confirmForeignScripts',
   ]),
   {
     kind: 'list',

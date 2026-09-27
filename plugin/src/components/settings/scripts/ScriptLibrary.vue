@@ -34,12 +34,25 @@
           :meta="paramSummary(script)"
         >
           <template #badges>
+            <Badge
+              v-if="verdictOf(script) !== 'confirmed'"
+              class="abele-script-waiting"
+              :text="verdictOf(script) === 'refused' ? 'Refused' : 'Waiting to be confirmed'"
+              color="orange"
+            />
             <Badge v-if="script.meta.enabled === false" text="Off" />
             <Badge v-if="buttonCount(script)" :text="buttonLabel(script)" />
             <Badge v-if="placeOf(script)" text="Toolbar" />
             <Badge v-if="startupOf(script)" text="Startup" />
           </template>
           <template #actions>
+            <Icon
+              v-if="verdictOf(script) !== 'confirmed'"
+              class="abele-script-review-action"
+              icon="shield-check"
+              tooltip="It changed without being written on this device: look at it and confirm it"
+              @click="review(script)"
+            />
             <Icon icon="play" tooltip="Run this script now" @click="run(script)" />
             <Icon
               v-if="script.meta.enabled !== false"
@@ -83,6 +96,7 @@ import Icon from '../../obsidian/Icon.vue'
 import EmptyState from '../../obsidian/EmptyState.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ScriptService } from '@/scripting/ScriptService'
+import { ScriptTrust } from '@/scripting/ScriptTrust'
 import type { ParsedScript } from '@/scripting/types'
 import { toolbarPlace, toolbarScriptsFrom } from '@/scripting/scriptToolbar'
 import { setOnToolbar } from '@/scripting/toolbarButtons'
@@ -141,6 +155,16 @@ const buttonCount = (script: ParsedScript): number => {
 const buttonLabel = (script: ParsedScript): string => {
   const count = buttonCount(script)
   return count === 1 ? '1 button' : `${count} buttons`
+}
+
+/** Whether this device lets the script run, or holds it until confirmed; see `ScriptTrust.ts`. */
+const verdictOf = (script: ParsedScript) => {
+  void ScriptTrust.getInstance().version.value
+  return ScriptService.getInstance().verdict(script)
+}
+
+const review = (script: ParsedScript) => {
+  void ScriptService.getInstance().review(script)
 }
 
 const run = (script: ParsedScript) => {

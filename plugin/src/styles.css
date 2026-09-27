@@ -297,6 +297,19 @@ body.is-mobile .abele-footnote-ref-link {
   color: var(--text-error);
 }
 
+/* The code of a script waiting to be confirmed (`reviewScript.ts`), read-only, in the theme's own font. */
+.abele-script-review__code {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  overflow: hidden;
+}
+
+.abele-script-review__path {
+  overflow-wrap: anywhere;
+}
+
 .view-content:has(.abele-code-toolbar) {
   padding: 0 !important;
   overflow: auto;

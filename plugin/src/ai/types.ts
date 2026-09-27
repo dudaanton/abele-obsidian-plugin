@@ -200,6 +200,12 @@ export interface AiSettings {
   startupScripts: StartupScript[]
   /** Skips every startup script until switched back: the way out when one breaks the start. */
   startupScriptsPaused: boolean
+  /**
+   * A script that appears or changes without being written on this device waits to be
+   * confirmed here before anything runs it. Whether a device checks is kept on the device
+   * (`ScriptTrust.ts`); this is what arms a device that has not said otherwise.
+   */
+  confirmForeignScripts: boolean
   defaultScope: Array<{ type: 'file' | 'folder' | 'pattern' | 'group'; path: string }>
   defaultFullVaultAccess: boolean
   chatFolder: string
@@ -402,6 +408,7 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
   toolbarScripts: [],
   startupScripts: [],
   startupScriptsPaused: false,
+  confirmForeignScripts: false,
   defaultScope: [],
   defaultFullVaultAccess: false,
   chatFolder: 'AI/Chats/{{name}}',

@@ -21,6 +21,8 @@ import Setting from '@/components/obsidian/Setting.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import { AbeleConfig, type HeaderButtonDefinition } from '@/services/AbeleConfig'
 import { ScriptService } from '@/scripting/ScriptService'
+import { ScriptTrust } from '@/scripting/ScriptTrust'
+import ScriptsGeneral from '@/components/settings/scripts/ScriptsGeneral.vue'
 import type { ParsedScript } from '@/scripting/types'
 import { useVault } from '../helpers/testEnv'
 
@@ -233,6 +235,48 @@ describe('the library', () => {
 
     expect(cards(wrapper)).toHaveLength(0)
     expect(wrapper.text()).toContain('General')
+  })
+})
+
+describe('scripts from other devices', () => {
+  beforeEach(() => {
+    ScriptTrust.reset()
+  })
+
+  it('marks a script that waits to be confirmed, and offers to review it', async () => {
+    vi.spyOn(ScriptService.getInstance(), 'verdict').mockImplementation((s) =>
+      s.path === archive.path ? 'waiting' : 'confirmed'
+    )
+    const review = vi.spyOn(ScriptService.getInstance(), 'review').mockResolvedValue(true)
+    const wrapper = mount(ScriptLibrary, { global: { stubs: STUBS } })
+
+    const card = cardTitled(wrapper, 'Archive')
+    expect(card.text()).toContain('Waiting to be confirmed')
+    expect(cardTitled(wrapper, 'Fetch details').text()).not.toContain('Waiting')
+    const icon = card
+      .findAllComponents(Icon)
+      .find((i) => String(i.props('tooltip')).startsWith('It changed without'))!
+    await icon.trigger('click')
+    expect(review).toHaveBeenCalledWith(archive)
+  })
+
+  it('switches checking on and off on this device, off by default', async () => {
+    const setOn = vi.spyOn(ScriptService.getInstance(), 'setConfirmForeign')
+    const wrapper = mount(ScriptsGeneral, { global: { stubs: STUBS } })
+    const setting = settingNamed(wrapper, 'Confirm scripts from other devices')!
+    expect(setting.props('desc')).toContain('accepts every script in the folder as it is now')
+    const box = setting.findComponent(Checkbox)
+    expect(box.props('isEnabled')).toBe(false)
+
+    await box.vm.$emit('toggle')
+    expect(setOn).toHaveBeenLastCalledWith(true)
+    expect(config.ai.confirmForeignScripts).toBe(true)
+    await nextTick()
+    expect(box.props('isEnabled')).toBe(true)
+
+    await box.vm.$emit('toggle')
+    expect(setOn).toHaveBeenLastCalledWith(false)
+    expect(config.ai.confirmForeignScripts).toBe(false)
   })
 })
 

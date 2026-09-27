@@ -117,6 +117,7 @@ import Badge from '../../obsidian/Badge.vue'
 import Setting from '../../obsidian/Setting.vue'
 import Dropdown from '../../obsidian/Dropdown.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
+import { ScriptService } from '@/scripting/ScriptService'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { createReceiver } from '@/transfer/frames'
 import { decodePayload, isEncrypted } from '@/transfer/payload'
@@ -334,6 +335,13 @@ const apply = async () => {
   const chosen = acceptedEntries.value
   const config = AbeleConfig.getInstance()
   config.applySettings(applyEntries(chosen, config.exportSettings(), mode.value))
+  // Taken in here, by hand: it arms this device even if it was once switched off on it.
+  const scriptSettings = chosen.find((entry) => entry.section === 'scripts')?.data as
+    | { confirmForeignScripts?: boolean }
+    | undefined
+  if (scriptSettings?.confirmForeignScripts) {
+    ScriptService.getInstance().setConfirmForeign(true)
+  }
 
   let keysRefused = 0
 

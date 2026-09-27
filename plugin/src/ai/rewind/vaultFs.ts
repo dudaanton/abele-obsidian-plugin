@@ -9,6 +9,7 @@
 import { TFile, TFolder, type App, type DataAdapter } from 'obsidian'
 import { contentHash } from '../readGuard'
 import type { Before, Current } from './types'
+import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
 
 /** Extensions read and kept as text. Anything else is bytes. */
 const TEXT_EXTENSIONS = new Set([
@@ -147,6 +148,8 @@ export class VaultFs {
       modifyBinary?(file: TFile, data: ArrayBuffer): Promise<void>
     }
     if (before.t === 'text') {
+      // Put back on this device, by the person's own rewind: a script stays confirmed here.
+      await noteLocalScriptWrite(path, before.text)
       if (file instanceof TFile) return this.app.vault.modify(file, before.text)
       if (!(await this.adapter.exists(path)) && !path.startsWith('.')) {
         await this.ensureParent(path)

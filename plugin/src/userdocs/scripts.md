@@ -82,6 +82,26 @@ If a startup script goes wrong, turn on **Don't run startup scripts** in the Sta
 skips all of them until you switch it back. A script that froze Obsidian is skipped by itself the
 next time Obsidian starts, with a notice naming it, so you can reach the settings — on a phone too.
 
+## Scripts from other devices
+
+A script runs code on every device your vault reaches. If you would rather a script that arrives
+from elsewhere — through Obsidian Sync, iCloud, Syncthing or git — did not run until you have
+looked at it, turn on **Confirm scripts from other devices** under **Settings → Abele → Scripts →
+General**. It is off unless you turn it on.
+
+With it on, a script that appears or changes without being written on this device waits. Buttons,
+automations, startup and agents do not run it, a notice says it arrived, and its card in the
+library says **Waiting to be confirmed**. Press its button, its review icon, or the notice's
+**Review**, or run **Review scripts waiting for confirmation** from the command palette: you see
+the script — what changed since you last confirmed it, or the whole of it if it is new — and
+**Confirm** lets it run. A button you pressed runs the script right after.
+
+Scripts you write on this device, in the code editor or through an agent or a transfer, count as
+confirmed. Turning the setting on accepts every script in the folder as it is at that moment.
+What you confirmed is remembered on this device only, so each device asks for itself. Turned on
+anywhere, it turns on on your other devices as the settings reach them; turned off, it goes off
+only on the device where you do it.
+
 ## Header buttons
 
 **Settings → Abele → Header buttons** (also under **Scripts**) puts buttons on notes. A button

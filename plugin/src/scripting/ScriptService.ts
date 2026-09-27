@@ -19,6 +19,10 @@ import { showFormModal } from './formModal'
 import { ScriptRuns, type RunSource } from './ScriptRuns'
 import { ScriptToolbar } from './toolbarButtons'
 import type { ParsedScript, FormField } from './types'
+import { isScriptPath } from './scriptPath'
+import { ScriptTrust, ScriptWaitingError, sha256, noteLocalScriptWrite } from './ScriptTrust'
+import type { TrustedFile, TrustVerdict } from './trustState'
+import { announceWaiting, reviewOne, reviewWaiting } from './scriptReview'
 import type { BookScriptContext } from './bookContext'
 import type { RestoreInfo } from './view/View'
 import type { AutomationEvent } from '@/automations/types'
@@ -99,6 +103,16 @@ const SCRIPT_GLOBALS = [
 ]
 
 const REDECLARED = /Identifier '(\w+)' has already been declared/
+
+/**
+ * Who asks for a run with a person right there, having just chosen the script: a script from
+ * elsewhere is put in front of them to confirm. Everything else — automations, startup, agents,
+ * a script's own `runScript`, a view rebuilt with the layout, a lint rule — is refused.
+ */
+const ASKS_A_PERSON = new Set<RunSource | 'lint'>(['command', 'note', 'link', 'book'])
+
+/** The id of the command that walks through the scripts waiting to be confirmed. */
+const REVIEW_COMMAND = 'review-waiting-scripts'
 
 /**
  * The script as a function of its context. Throws what the engine threw, said better.
@@ -245,6 +259,10 @@ export class ScriptService {
    */
   ready: Promise<void>
   private markReady: () => void = () => {}
+  /** Whether the index has been read at least once; an unread index arms nothing. */
+  private indexed = false
+  /** Versions of waiting scripts already announced this session, `path\0hash`. */
+  private readonly announced = new Set<string>()
 
   private constructor() {
     this.ready = this.resetReady()
@@ -278,6 +296,26 @@ export class ScriptService {
     this.toolbar?.stop()
     this.toolbar = new ScriptToolbar(this)
     this.toolbar.start()
+    this.registerReviewCommand()
+  }
+
+  private registerReviewCommand() {
+    const plugin = AbeleConfig.getInstance().plugin
+    if (!plugin) return
+    try {
+      plugin.addCommand({
+        id: REVIEW_COMMAND,
+        name: 'Review scripts waiting for confirmation',
+        icon: 'shield-check',
+        checkCallback: (checking: boolean) => {
+          if (!this.waitingScripts().length) return false
+          if (!checking) void this.reviewWaiting()
+          return true
+        },
+      })
+    } catch (err) {
+      console.error('[ScriptService] Error registering the review command:', err)
+    }
   }
 
   async createScript(): Promise<void> {
@@ -307,6 +345,7 @@ export class ScriptService {
 
     const scriptName = filename.replace(/\.js$/, '')
     const template = `// @name ${scriptName}\n// @description \n// @icon scroll-text\n\n`
+    await noteLocalScriptWrite(path, template)
     const file = await app.vault.create(path, template)
 
     const leaf = app.workspace.getLeaf('tab')
@@ -325,8 +364,14 @@ export class ScriptService {
       this.createEventRef = null
     }
     this.unregisterAllCommands()
+    try {
+      ;(AbeleConfig.getInstance().plugin as any)?.removeCommand?.(REVIEW_COMMAND)
+    } catch {
+      // already gone
+    }
     this.scripts.clear()
     this.scriptList.value = []
+    this.indexed = false
     this.ready = this.resetReady()
   }
 
@@ -338,15 +383,15 @@ export class ScriptService {
     const debouncedDiscover = debounce(() => this.discover(), 1000)
 
     this.watcherCallbackId = VaultWatcherWrapper.getInstance().registerCallback((event) => {
-      const path = event.newPath || event.oldPath || ''
-      if (path.startsWith(folder) && path.endsWith('.js')) {
+      // Both ends of a move: a script moved out of the folder has to leave the index too.
+      if ([event.newPath, event.oldPath].some((p) => !!p && isScriptPath(p))) {
         debouncedDiscover()
       }
     })
 
     const { app } = GlobalStore.getInstance()
     this.createEventRef = app.vault.on('create', (file: TAbstractFile) => {
-      if (file instanceof TFile && file.path.startsWith(folder) && file.extension === 'js') {
+      if (file instanceof TFile && isScriptPath(file.path)) {
         debouncedDiscover()
       }
     })
@@ -390,10 +435,8 @@ export class ScriptService {
     const { app } = GlobalStore.getInstance()
     const plugin = config.plugin
 
-    // Find all .js files in the folder
-    const files = app.vault
-      .getFiles()
-      .filter((f) => f.path.startsWith(folder) && f.extension === 'js')
+    // Every .js file under the folder — under it, not beside it: `Scripts-old/` is not `Scripts/`.
+    const files = app.vault.getFiles().filter((f) => isScriptPath(f.path))
 
     const next = new Map<string, ParsedScript>()
     for (const file of files) {
@@ -407,7 +450,12 @@ export class ScriptService {
 
         const code = extractScriptBody(source)
         const commandId = `abele:script-${scriptSlug(meta.name)}`
-        next.set(file.path, { path: file.path, meta, code, commandId })
+        // Without a hash the script still lists and, unchecked, runs; checked, it waits.
+        const hash = await sha256(source).catch((err: unknown): undefined => {
+          console.error(`[ScriptService] Could not hash ${file.path}:`, err)
+          return undefined
+        })
+        next.set(file.path, { path: file.path, meta, code, commandId, source, hash })
       } catch (err) {
         console.error(`[ScriptService] Error parsing ${file.path}:`, err)
       }
@@ -434,7 +482,87 @@ export class ScriptService {
     }
 
     this.scriptList.value = Array.from(this.scripts.values())
+    this.indexed = true
+    ScriptTrust.getInstance().sync(this.trustedFiles())
+    announceWaiting(this, this.announced)
     this.cleanupStaleEntries()
+  }
+
+  // ── Scripts from elsewhere ──
+
+  /** The index as the trust record sees it. */
+  trustedFiles(): TrustedFile[] {
+    return this.getAll()
+      .filter((s) => s.hash)
+      .map((s) => ({ path: s.path, hash: s.hash!, text: s.source ?? '' }))
+  }
+
+  /** Whether this version of the script may run on this device; see `ScriptTrust.ts`. */
+  verdict(script: ParsedScript): TrustVerdict {
+    const trust = ScriptTrust.getInstance()
+    // Armed by the settings only against an index that has been read: armed against an empty
+    // one, every script would wait.
+    if (this.indexed) trust.ensureArmed(this.trustedFiles())
+    return trust.verdict(script.path, script.hash)
+  }
+
+  /** The scripts that wait to be confirmed on this device, refused ones among them. */
+  waitingScripts(): ParsedScript[] {
+    return this.getAll().filter((s) => this.verdict(s) !== 'confirmed')
+  }
+
+  /** The switch in this device's settings: on takes every script as it is now. */
+  setConfirmForeign(on: boolean): void {
+    const trust = ScriptTrust.getInstance()
+    // Before the folder has been read there is nothing to take as it is: let the first read arm it.
+    if (on && this.indexed) trust.arm(this.trustedFiles())
+    else if (on) trust.allowArming()
+    else trust.disarm()
+    this.announced.clear()
+  }
+
+  /** Vouches for exactly this version — the one shown, the one that runs. */
+  confirm(script: ParsedScript): void {
+    if (!script.hash) return
+    ScriptTrust.getInstance().confirm({
+      path: script.path,
+      hash: script.hash,
+      text: script.source ?? '',
+    })
+  }
+
+  /** Shows a script from elsewhere for review; true once this version is confirmed. */
+  review(script: ParsedScript): Promise<boolean> {
+    return reviewOne(this, script)
+  }
+
+  /** Every waiting script in turn, from the command and the notice. */
+  reviewWaiting(): Promise<void> {
+    return reviewWaiting(this)
+  }
+
+  /** The script in the index at `path` now, whatever version it is. */
+  get(path: string): ParsedScript | undefined {
+    return this.scripts.get(path)
+  }
+
+  /**
+   * The script at `path` as it may run now, or why not.
+   *
+   * A confirmed version passes. One from elsewhere is put in front of the person when they have
+   * just chosen it (`ASKS_A_PERSON`) and refused otherwise. What passes is the index's entry
+   * as it is *after* the dialog: if the file changed while it was open, the new version is
+   * checked again rather than the confirmation of the old one standing for it.
+   */
+  async admit(path: string, source: RunSource | 'lint'): Promise<ParsedScript> {
+    for (;;) {
+      const script = this.scripts.get(path)
+      if (!script) throw new Error(`Script not found: ${path}`)
+      const verdict = this.verdict(script)
+      if (verdict === 'confirmed') return script
+      if (!ASKS_A_PERSON.has(source)) throw new ScriptWaitingError(script.meta.name, verdict)
+      if (!(await this.review(script))) throw new ScriptWaitingError(script.meta.name, verdict)
+    }
   }
 
   /** Remove stale script entries from toolModes */
@@ -476,8 +604,14 @@ export class ScriptService {
     return Array.from(this.scripts.values())
   }
 
+  /**
+   * The scripts an agent is offered as tools. One waiting to be confirmed is left out: its
+   * header — the name and description an agent reads — came from elsewhere too.
+   */
   getEnabledToolScripts(): ParsedScript[] {
-    return this.getAll().filter((s) => s.meta.enabled !== false && !s.meta.lint)
+    return this.getAll().filter(
+      (s) => s.meta.enabled !== false && !s.meta.lint && this.verdict(s) === 'confirmed'
+    )
   }
 
   /** The scripts that are rules of the linter (`// @lint`). */
@@ -492,8 +626,7 @@ export class ScriptService {
    * status bar — since the linter calls what comes back once per note.
    */
   async definition(path: string, signal?: AbortSignal): Promise<unknown> {
-    const script = this.scripts.get(path)
-    if (!script) throw new Error(`Script not found: ${path}`)
+    const script = await this.admit(path, 'lint')
     const logs: string[] = []
     const ctx = readOnly(
       buildScriptContext({
@@ -651,8 +784,7 @@ export class ScriptService {
     const opts: ExecuteOptions =
       options instanceof AbortSignal ? { signal: options, formHandler } : (options ?? {})
     const signal = opts.signal
-    const script = this.scripts.get(path)
-    if (!script) throw new Error(`Script not found: ${path}`)
+    const script = await this.admit(path, opts.source ?? 'agent')
 
     const combinedController = new AbortController()
 
@@ -734,8 +866,14 @@ export class ScriptService {
    * settings library's run button goes through here too, so both behave the same.
    */
   async executeFromCommand(path: string) {
-    const script = this.scripts.get(path)
-    if (!script) return
+    let script: ParsedScript
+    try {
+      // Before the form: its fields come from the script's header, which came with it.
+      script = await this.admit(path, 'command')
+    } catch (err) {
+      if (!(err instanceof ScriptWaitingError)) console.debug('[ScriptService] not run', err)
+      return
+    }
 
     let params: Record<string, unknown> = {}
 
@@ -756,6 +894,8 @@ export class ScriptService {
         new Notice(`Script "${script.meta.name}" completed.`)
       }
     } catch (err) {
+      // Left waiting in the dialog just now: nothing more to say.
+      if (err instanceof ScriptWaitingError) return
       const msg = err instanceof Error ? err.message : String(err)
       new Notice(`Script error: ${msg}`, 10000)
       console.error(`[ScriptService] Error executing ${path}:`, err)

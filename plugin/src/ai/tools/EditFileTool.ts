@@ -4,6 +4,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
 import { contentHash } from '../readGuard'
+import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
 
 export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
@@ -40,6 +41,7 @@ export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
       }
       // A function, not the string: in a replacement string `$&` and `$'` are patterns, not text.
       const updated = content.replace(old_string, () => new_string)
+      await noteLocalScriptWrite(file.path, updated)
       await app.vault.modify(file, updated)
       return {
         content: [{ type: 'text', text: `Edited: ${path}` }],

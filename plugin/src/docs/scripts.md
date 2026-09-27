@@ -81,6 +81,16 @@ background. `ai.startupScriptsPaused` skips them all. The script running at star
 on the device while it runs, so one that froze the app is skipped, once, at the next start, with a
 notice. Runs started this way are listed as `startup` in the list of runs.
 
+With `ai.confirmForeignScripts` on, a script that appears or changes without being written on
+this device — through Obsidian Sync, iCloud, Syncthing, git — waits to be confirmed on this device.
+The whole file counts, header included. Until it is confirmed, automations, startup, agents, a
+script's `runScript`, a script view and a lint rule do not run it (a run fails saying it waits,
+and an agent is not offered it as a tool); a button, the command palette, a link or the book menu
+show it to the person first, as a diff against the version last confirmed here, and run it once
+confirmed. A script written on this device — in the code editor, by the agent's file tools, from
+a script, by a transfer taken in here — counts as confirmed. Switching it on takes every script
+as it is then.
+
 The **Scripts** page of the plugin's settings lists every script as a card — its `@icon`,
 `@name`, `@description` and parameters, straight from the header above — and runs one,
 makes a header button for it, pins it to the toolbar, or puts it on the startup list from there

@@ -4,6 +4,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { ScopeResolver } from '../ScopeResolver'
 import { TFile } from 'obsidian'
 import { contentHash } from '../readGuard'
+import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
 
 export function createWriteFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
@@ -33,6 +34,8 @@ export function createWriteFileTool(opts?: { skipScope?: boolean }): AgentTool {
       const file = app.vault.getAbstractFileByPath(path)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
       const old = await app.vault.read(file)
+      // Written on this device: a script stays confirmed here; see `ScriptTrust.ts`.
+      await noteLocalScriptWrite(file.path, content)
       await app.vault.modify(file, content)
       return {
         content: [{ type: 'text', text: `Written: ${path}` }],

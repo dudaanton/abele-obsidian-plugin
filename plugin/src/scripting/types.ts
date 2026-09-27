@@ -41,6 +41,13 @@ export interface ParsedScript {
   meta: ScriptMeta
   code: string
   commandId: string
+  /**
+   * The whole file as it was read into the index — the header as well as the code, since the
+   * header decides where a script runs — and its SHA-256. This version is what runs, what is
+   * shown for review and what a confirmation vouches for; see `ScriptTrust.ts`.
+   */
+  source?: string
+  hash?: string
 }
 
 import type { NoteFilter, PickReturns } from '@/helpers/noteFilter'

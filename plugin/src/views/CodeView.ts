@@ -40,6 +40,7 @@ import { xml } from '@codemirror/lang-xml'
 import { yaml } from '@codemirror/lang-yaml'
 import { reactive } from 'vue'
 import { isScriptPath } from '@/scripting/scriptPath'
+import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
 import { mountFileChats, type FileChatsModel } from './codeViewChats'
 
 export const CODE_VIEW_TYPE = 'abele-code'
@@ -88,6 +89,19 @@ export class CodeView extends TextFileView {
     this.scope.register(['Mod', 'Shift'], 'z', () => undefined)
     this.scope.register(['Mod'], 'a', () => undefined)
     this.scope.register(['Mod'], 'd', () => undefined)
+  }
+
+  /**
+   * Saves, and when the text was edited in this tab and the file is a script, records it as
+   * written on this device — so a script edited here stays confirmed; see `ScriptTrust.ts`.
+   * Only an edit counts: a save of text this tab merely reloaded from a synced change would
+   * otherwise confirm what arrived without anybody having written it.
+   */
+  async save(clear?: boolean): Promise<void> {
+    const edited = this.dirty
+    const path = this.file?.path
+    if (edited && path) await noteLocalScriptWrite(path, this.getViewData())
+    return super.save(clear)
   }
 
   getViewType() {

@@ -105,7 +105,10 @@ agent's own, added to and changed by `remember`, pruned by `forget`, and edited 
 settings. `ai.scriptsEnabled` and `ai.scriptsFolder` are the script feature, and `ai.toolbarScripts`
 the names of the scripts pinned to the toolbar, `ai.startupScripts` the scripts run when the
 plugin starts, in order, with the devices each runs on, and `ai.startupScriptsPaused` the switch
-that skips them (see the scripts section); `ai.voice` is
+that skips them (see the scripts section); `ai.confirmForeignScripts` holds a script that changed
+without being written on a device until it is confirmed there — it switches a device on, but
+whether a device checks, and what it has confirmed, is kept on that device, not in this file, so
+turning it off here does not turn it off anywhere; `ai.voice` is
 dictation — which model transcribes and where its key lives.
 
 `ai.mcpServers` are the MCP servers the person connected, each `{ id, name, url, enabled, keyId,

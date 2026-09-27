@@ -10,6 +10,7 @@
  */
 import { FuzzySuggestModal, Notice, setIcon, type App, type FuzzyMatch } from 'obsidian'
 import { ScriptService } from './ScriptService'
+import { ScriptWaitingError } from './ScriptTrust'
 import { showFormModal } from './formModal'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { readerSettingsFrom } from '@/reader/settings'
@@ -48,6 +49,16 @@ export async function runScriptOnBook(
   book: BookScriptContext
 ): Promise<void> {
   const service = ScriptService.getInstance()
+  try {
+    // Before the form, whose fields come from the script's header: a script from elsewhere is
+    // shown for confirmation first, and left alone when it is not confirmed.
+    script = await service.admit(script.path, 'book')
+  } catch (err) {
+    if (!(err instanceof ScriptWaitingError)) {
+      new Notice(`${script.meta.name}: ${err instanceof Error ? err.message : String(err)}`, 10000)
+    }
+    return
+  }
   let { params, missing } = bookParams(script, book.text)
   if (missing) {
     const asked = await service.showParamForm(script, book.text)
@@ -63,6 +74,7 @@ export async function runScriptOnBook(
     if (result.trim()) new Notice(result.length > 500 ? `${result.slice(0, 500)}…` : result, 10000)
     else new Notice(`${script.meta.name}: done`)
   } catch (err) {
+    if (err instanceof ScriptWaitingError) return
     new Notice(`${script.meta.name}: ${err instanceof Error ? err.message : String(err)}`, 10000)
     console.error(`[Abele] script "${script.meta.name}" on a book failed`, err)
   }

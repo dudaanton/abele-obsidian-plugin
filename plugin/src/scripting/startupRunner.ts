@@ -99,6 +99,12 @@ export async function runStartupScripts(run: StartupRun): Promise<StartupOutcome
       }
       report.push({ name, outcome: result })
     } catch (err) {
+      // Waiting to be confirmed on this device: not run, which the notice about it has said.
+      if (err instanceof Error && err.name === 'ScriptWaitingError') {
+        console.debug(`[Abele] startup script "${name}" waits to be confirmed on this device`)
+        report.push({ name, outcome: 'skipped' })
+        continue
+      }
       console.warn(`[Abele] startup script "${name}" failed:`, err)
       report.push({ name, outcome: 'failed' })
     } finally {

@@ -422,6 +422,14 @@ Transfer tab, compressed and — if a key went with them — encrypted. They are
 are not content, and nothing reads them except the Transfer tab on the receiving device. Leave
 them alone; the person deletes them when the transfer has landed.
 
+## Scripts from other devices
+
+With `ai.confirmForeignScripts` on, each device keeps, outside the vault, the SHA-256 of every
+version of a script it wrote or had confirmed, and runs from a button, an automation, startup or
+an agent only a version it has. Nothing about it is stored in the vault: a script file is just
+its text. A script the agent writes or edits with its file tools counts as written on this
+device; on another device the same change waits to be confirmed there.
+
 ## Synced keys
 
 The plugin's settings file (`data.json` in its folder under the config directory) holds, when

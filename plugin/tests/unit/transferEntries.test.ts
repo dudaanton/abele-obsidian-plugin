@@ -121,6 +121,16 @@ describe('settings that arrived later than the transfer did', () => {
     })
   })
 
+  it('carries the switch that holds scripts from other devices with the script settings', () => {
+    const base = settings()
+    base.ai = { ...base.ai, scriptsEnabled: true, confirmForeignScripts: true }
+    const entries = collectEntries(base)
+
+    expect(find(entries, 'scripts', 'scripts')?.data).toMatchObject({
+      confirmForeignScripts: true,
+    })
+  })
+
   it('carries the startup scripts and their skip switch with the script settings', () => {
     const base = settings()
     const startupScripts = [{ script: 'Inbox', devices: 'mobile' as const }]

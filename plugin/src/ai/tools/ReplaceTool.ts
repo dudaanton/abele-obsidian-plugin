@@ -7,6 +7,7 @@ import { getEditorForFile } from '@/helpers/vaultUtils'
 import { TFile } from 'obsidian'
 import { contentHash } from '../readGuard'
 import { READ_FIRST_EDIT } from './fileToolDescriptions'
+import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
 
 interface ActionParam {
   type:
@@ -148,6 +149,7 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
       if (contentChanged && newContent !== null) {
         const raw = await app.vault.read(file)
         const updated = replaceNoteBody(raw, newContent)
+        await noteLocalScriptWrite(file.path, updated)
         await app.vault.modify(file, updated)
       }
 

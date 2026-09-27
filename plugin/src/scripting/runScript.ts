@@ -1,6 +1,7 @@
 import { Notice } from 'obsidian'
 import { ScriptService } from './ScriptService'
 import { showFormModal } from './formModal'
+import { ScriptWaitingError } from './ScriptTrust'
 import type { RunSource } from './ScriptRuns'
 import type { ParsedScript } from './types'
 
@@ -72,6 +73,8 @@ export async function runScriptByName(
       new Notice(result.length > 500 ? result.slice(0, 500) + '...' : result, 10000)
     }
   } catch (err: unknown) {
+    // Put in front of the person to confirm and left waiting: they know, nothing to add.
+    if (err instanceof ScriptWaitingError) return
     const msg = err instanceof Error ? err.message : String(err)
     new Notice(`${label} error: ${msg}`, 10000)
     console.error(`[Abele] Error executing script "${name}":`, err)
